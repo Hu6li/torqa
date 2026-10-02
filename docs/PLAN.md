@@ -15,7 +15,7 @@ core/                      Rust workspace (tokio + tracing)
   torqa-devices/           btleplug FTMS + HRM, fake trainer, (later) ANT+ FE-C, Click/OpenBikeControl
   torqa-routes/            GPX import, smoothing, DEM correction, climb detection
   torqa-terrain/           elevation tiles (Mapterhorn, AWS fallback), disk cache, height lookup
-  torqa-osm/               OpenStreetMap features via Overpass, tile cache
+  torqa-osm/               OpenStreetMap features from OpenFreeMap vector tiles, tile cache
   torqa-world/             terrain chunks, land cover, buildings, trees, rivers, road mesh
   torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, recording
   torqa-storage/           FIT export; later data dir and history index
@@ -80,7 +80,7 @@ Built in rideable steps:
   profile, track minimap; `torqa-app` application layer behind the `TorqaApp` Godot node
 - [x] Step 2 — 3D terrain from cached elevation tiles, road mesh along the route, sky, cameras
 - [x] Step 3a — OpenStreetMap: land cover, forests with trees, buildings, rivers; bridges and
-  tunnels in the elevation profile ([ADR 0006](adr/0006-map-data.md))
+  tunnels in the elevation profile ([ADR 0008](adr/0008-vector-tiles.md))
 - [x] Step 3b — bridge decks and tunnel tubes, weather/time-of-day presets, animated avatar,
   minimap drawn from the OSM data (offline, no tile server)
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT

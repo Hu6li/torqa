@@ -89,9 +89,19 @@ pub struct World {
 
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
-pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &MapData) -> World {
+/// `progress` is called with (chunks done, chunks total).
+pub async fn generate<M: ElevationModel>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+) -> World {
     let projection = LocalProjection::for_route(route);
     let road = RoadIndex::new(route, &projection);
+    let cells = chunks_near_route(&road);
+    let total = cells.len();
+    // Announce the step before the slower preparation below.
+    progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
     let buildings = buildings_by_chunk(map, &projection, &road);
     let mut world = World {
@@ -102,7 +112,7 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &Map
         ..World::default()
     };
 
-    for (cx, cn) in chunks_near_route(&road) {
+    for (done, (cx, cn)) in cells.into_iter().enumerate() {
         let heights = HeightGrid::sample(cx, cn, &projection, &road, model, &mut world).await;
         let origin = [
             heights.origin.0 + CHUNK_SIZE / 2.0,
@@ -121,6 +131,7 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &Map
             buildings: building_mesh,
             trees: vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin),
         });
+        progress(done + 1, total);
     }
     if world.fallback_samples > 0 {
         warn!(

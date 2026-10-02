@@ -72,7 +72,13 @@ async fn route_north(structures: &[Structure]) -> Route {
 }
 
 async fn world(map: &MapData) -> World {
-    generate(&route_north(&[]).await, &mut EastwardSlope, map).await
+    generate(
+        &route_north(&[]).await,
+        &mut EastwardSlope,
+        map,
+        &mut |_, _| {},
+    )
+    .await
 }
 
 /// All terrain vertices in absolute coordinates.
@@ -203,7 +209,7 @@ async fn ground_under_a_bridge_is_left_alone() {
         line: vec![at(0.0, 300.0), at(0.0, 700.0)],
     };
     let route = route_north(&[bridge]).await;
-    let world = generate(&route, &mut Valley, &MapData::default()).await;
+    let world = generate(&route, &mut Valley, &MapData::default(), &mut |_, _| {}).await;
 
     let under_bridge = terrain_vertices(&world)
         .find(|v| v[0].abs() < 9.0 && (v[2] + 500.0).abs() < 9.0)
@@ -213,7 +219,13 @@ async fn ground_under_a_bridge_is_left_alone() {
 
 #[tokio::test]
 async fn without_terrain_data_the_world_follows_the_road() {
-    let world = generate(&route_north(&[]).await, &mut NoData, &MapData::default()).await;
+    let world = generate(
+        &route_north(&[]).await,
+        &mut NoData,
+        &MapData::default(),
+        &mut |_, _| {},
+    )
+    .await;
 
     assert!(world.fallback_samples > 0);
     assert!(terrain_vertices(&world).all(|v| (v[1] - 500.0).abs() < 0.3));
@@ -400,7 +412,7 @@ async fn bridges_have_a_deck_and_pillars_down_to_the_valley() {
         line: vec![at(0.0, 300.0), at(0.0, 700.0)],
     };
     let route = route_north(&[bridge]).await;
-    let world = generate(&route, &mut Valley, &MapData::default()).await;
+    let world = generate(&route, &mut Valley, &MapData::default(), &mut |_, _| {}).await;
 
     let mesh = &world.structures;
     assert_valid(mesh);
@@ -430,7 +442,13 @@ async fn tunnels_are_tubes_visible_from_inside() {
         line: vec![at(0.0, 300.0), at(0.0, 700.0)],
     };
     let route = route_north(&[tunnel]).await;
-    let world = generate(&route, &mut EastwardSlope, &MapData::default()).await;
+    let world = generate(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+    )
+    .await;
 
     let mesh = &world.structures;
     assert_valid(mesh);
@@ -491,7 +509,7 @@ async fn ground_never_covers_a_bridge_deck() {
     };
     // The route keeps 500 m (file elevations), the bridge spans the bank.
     let route = route_north(&[bridge]).await;
-    let world = generate(&route, &mut Bank, &MapData::default()).await;
+    let world = generate(&route, &mut Bank, &MapData::default(), &mut |_, _| {}).await;
 
     for v in
         terrain_vertices(&world).filter(|v| v[0].abs() <= 10.0 && (-700.0..-300.0).contains(&v[2]))

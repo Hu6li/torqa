@@ -1,30 +1,30 @@
-//! OpenStreetMap data for Torqa: buildings, land cover, waterways, bridges and tunnels around a
-//! route, downloaded from the Overpass API in tiles and cached on disk for offline rides (R3).
+//! OpenStreetMap data for Torqa: buildings, land cover, water, roads, bridges and tunnels around
+//! a route, from [`OpenFreeMap`](https://openfreemap.org) vector tiles (`OpenMapTiles` schema),
+//! cached on disk for offline rides (R3).
 //!
-//! Map data © OpenStreetMap contributors, ODbL 1.0 — attribution must be shown where it is used.
+//! © `OpenFreeMap`, © `OpenMapTiles`, data © OpenStreetMap contributors (ODbL 1.0) — attribution
+//! must be shown where the data is used.
 
-mod parse;
+mod mvt;
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use futures::{StreamExt, stream};
 use tracing::{debug, info, warn};
 
 /// A position as (latitude, longitude) in degrees.
 pub type LatLon = (f64, f64);
 
-/// Edge length of a download tile in degrees.
-const TILE_DEGREES: f64 = 0.05;
-/// Bumped when the query changes, so stale cached tiles are not reused.
-const CACHE_VERSION: &str = "v2";
-
-/// Public Overpass instances, tried in order.
-const ENDPOINTS: [&str; 3] = [
-    "https://overpass-api.de/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-];
+/// Vector tile zoom: the most detailed level OpenFreeMap serves (~1.7 km tiles at 46° N).
+const ZOOM: u8 = 14;
+/// Tiles downloaded at the same time; they come from a CDN.
+const PARALLEL_DOWNLOADS: usize = 6;
+/// Bumped when the data source or schema changes, so stale cached tiles are not reused.
+const CACHE_VERSION: &str = "openfreemap-omt-v1";
+/// Describes the current tile set, including the URL of the latest planet snapshot.
+const TILEJSON: &str = "https://tiles.openfreemap.org/planet";
 
 /// Errors while getting map data.
 #[derive(Debug, thiserror::Error)]
@@ -32,7 +32,7 @@ pub enum OsmError {
     /// A tile is neither cached nor downloadable.
     #[error("map data unavailable for tile {0} (offline and not cached?)")]
     Unavailable(String),
-    /// The response could not be understood.
+    /// A tile could not be decoded.
     #[error("invalid map data: {0}")]
     Invalid(String),
     /// Reading or writing the cache failed.
@@ -45,7 +45,7 @@ pub enum OsmError {
 pub enum LandCover {
     /// Forest or woodland.
     Forest,
-    /// Meadow, grassland, heath.
+    /// Meadow, grassland, parks.
     Meadow,
     /// Fields.
     Farmland,
@@ -53,9 +53,9 @@ pub enum LandCover {
     Orchard,
     /// Built-up areas.
     Residential,
-    /// Lakes, ponds, reservoirs.
+    /// Lakes, rivers, ponds.
     Water,
-    /// Rock, scree, glaciers.
+    /// Rock, scree, glaciers, sand.
     Rock,
 }
 
@@ -73,20 +73,20 @@ pub struct Area {
 /// A building footprint.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Building {
-    /// OSM id, stable across downloads (used for deterministic variation).
+    /// Stable id (used for deterministic variation).
     pub id: i64,
     /// Closed outline.
     pub outline: Vec<LatLon>,
-    /// Height in metres, if tagged.
+    /// Height in metres, if known.
     pub height: Option<f64>,
-    /// Number of floors, if tagged.
+    /// Number of floors, if known.
     pub levels: Option<f64>,
 }
 
 /// A river, stream or canal centre line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Waterway {
-    /// Width in metres (tagged, or typical for the kind).
+    /// Width in metres (typical for the kind).
     pub width: f64,
     /// Centre line.
     pub line: Vec<LatLon>,
@@ -134,7 +134,7 @@ pub struct MapData {
     pub roads: Vec<Road>,
 }
 
-/// Downloads and caches OpenStreetMap data.
+/// Downloads and caches map tiles.
 pub struct Osm {
     cache_dir: PathBuf,
     client: reqwest::Client,
@@ -154,8 +154,7 @@ impl Osm {
                 env!("CARGO_PKG_VERSION"),
                 " (+https://github.com/bossm8/torqa)"
             ))
-            // Big tiles download in ~15 s; a stuck server should not hold up the mirrors long.
-            .timeout(Duration::from_secs(45))
+            .timeout(Duration::from_secs(30))
             .build()
             .expect("HTTP client with TLS");
         Self {
@@ -172,28 +171,46 @@ impl Osm {
         self
     }
 
-    /// Map features within `corridor` metres of the polyline `points`.
+    /// Map features within `corridor` metres of the polyline `points`. `progress` is called
+    /// with (tiles done, tiles total) as tiles arrive.
     ///
     /// Tiles that cannot be loaded are skipped with a warning, so partial data is still
     /// returned; the error is only reported if no tile could be loaded at all.
     ///
     /// # Errors
     /// [`OsmError`] if none of the needed tiles is available.
-    pub async fn around(&self, points: &[LatLon], corridor: f64) -> Result<MapData, OsmError> {
+    pub async fn around(
+        &self,
+        points: &[LatLon],
+        corridor: f64,
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<MapData, OsmError> {
         let tiles = tiles_near(points, corridor);
-        info!(tiles = tiles.len(), "loading map data");
+        let total = tiles.len();
+        info!(tiles = total, "loading map data");
+        progress(0, total);
+        let template = self.template().await;
+        let template = template.as_deref();
+        let mut downloads = stream::iter(tiles)
+            .map(|tile| async move { (tile, self.tile(tile, template).await) })
+            .buffer_unordered(PARALLEL_DOWNLOADS);
+        // Download in parallel, but merge in tile order: which copy of a building crossing a
+        // tile border is kept must not depend on download timing.
+        let mut results = Vec::with_capacity(total);
+        while let Some(result) = downloads.next().await {
+            results.push(result);
+            progress(results.len(), total);
+        }
+        results.sort_by_key(|(tile, _)| *tile);
         let mut data = MapData::default();
-        let mut seen = HashSet::new();
+        let mut buildings_seen = HashSet::new();
         let mut loaded = 0;
         let mut last_error = None;
-        for tile in &tiles {
-            match self.tile(*tile).await {
-                Ok(json) => {
-                    parse::merge(&json, &mut data, &mut seen)?;
-                    loaded += 1;
-                }
+        for (tile, result) in results {
+            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data, &mut buildings_seen)) {
+                Ok(()) => loaded += 1,
                 Err(error) => {
-                    warn!(tile = %tile_name(*tile), %error, "map tile unavailable");
+                    warn!(tile = %tile_name(tile), %error, "map tile unavailable");
                     last_error = Some(error);
                 }
             }
@@ -204,129 +221,134 @@ impl Osm {
         }
     }
 
-    async fn tile(&self, tile: (i32, i32)) -> Result<String, OsmError> {
+    /// The tile URL template of the latest snapshot, if online.
+    async fn template(&self) -> Option<String> {
+        if !self.online {
+            return None;
+        }
+        let response = self.client.get(TILEJSON).send().await.ok()?;
+        let tilejson: serde_json::Value = response.json().await.ok()?;
+        let template = tilejson["tiles"][0].as_str().map(ToOwned::to_owned);
+        if template.is_none() {
+            warn!("map tile index without tile URL");
+        }
+        template
+    }
+
+    async fn tile(&self, tile: (u32, u32), template: Option<&str>) -> Result<Vec<u8>, OsmError> {
         let path = self
             .cache_dir
             .join(CACHE_VERSION)
-            .join(format!("{}.json", tile_name(tile)));
-        match tokio::fs::read_to_string(&path).await {
-            Ok(json) => return Ok(json),
+            .join(ZOOM.to_string())
+            .join(tile.0.to_string())
+            .join(format!("{}.pbf", tile.1));
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => return Ok(bytes),
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
             Err(_) => {}
         }
-        if !self.online {
+        let Some(template) = template else {
             return Err(OsmError::Unavailable(tile_name(tile)));
-        }
-        let json = self.download(tile).await?;
+        };
+        let url = template
+            .replace("{z}", &ZOOM.to_string())
+            .replace("{x}", &tile.0.to_string())
+            .replace("{y}", &tile.1.to_string());
+        debug!(%url, "downloading map tile");
+        let bytes = self
+            .download(&url)
+            .await
+            .ok_or_else(|| OsmError::Unavailable(tile_name(tile)))?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
         // Write atomically, so an interrupted download never leaves a broken cache file.
         let partial = path.with_extension("part");
-        tokio::fs::write(&partial, &json).await?;
+        tokio::fs::write(&partial, &bytes).await?;
         tokio::fs::rename(&partial, &path).await?;
-        Ok(json)
+        Ok(bytes)
     }
 
-    async fn download(&self, tile: (i32, i32)) -> Result<String, OsmError> {
-        let query = query(tile);
-        for endpoint in ENDPOINTS {
-            debug!(endpoint, tile = %tile_name(tile), "downloading map tile");
-            let response = self
-                .client
-                .post(endpoint)
-                .form(&[("data", query.as_str())])
-                .send()
-                .await;
-            match response {
-                Ok(response) if response.status().is_success() => match response.text().await {
-                    Ok(text) => return Ok(text),
-                    Err(error) => warn!(endpoint, %error, "map download failed"),
+    /// Downloads with one retry, as CDNs occasionally drop a request.
+    async fn download(&self, url: &str) -> Option<Vec<u8>> {
+        for attempt in 1..=2 {
+            match self.client.get(url).send().await {
+                Ok(response) if response.status().is_success() => match response.bytes().await {
+                    Ok(bytes) => return Some(bytes.to_vec()),
+                    Err(error) => warn!(%url, %error, attempt, "map download failed"),
                 },
-                Ok(response) => warn!(endpoint, status = %response.status(), "map server refused"),
-                Err(error) => warn!(endpoint, %error, "map download failed"),
+                Ok(response) => {
+                    warn!(%url, status = %response.status(), attempt, "map server refused");
+                }
+                Err(error) => warn!(%url, %error, attempt, "map download failed"),
             }
         }
-        Err(OsmError::Unavailable(tile_name(tile)))
+        None
     }
 }
 
-/// The Overpass query for one tile: only features Torqa draws, to keep downloads small.
-fn query((lat, lon): (i32, i32)) -> String {
-    let south = f64::from(lat) * TILE_DEGREES;
-    let west = f64::from(lon) * TILE_DEGREES;
-    let bbox = format!(
-        "{south:.4},{west:.4},{:.4},{:.4}",
-        south + TILE_DEGREES,
-        west + TILE_DEGREES
-    );
-    let landuse = "^(forest|meadow|grass|farmland|farmyard|vineyard|orchard|residential|\
-                   commercial|industrial|retail|allotments|village_green|reservoir)$";
-    let natural = "^(wood|scrub|grassland|heath|water|bare_rock|scree|glacier|wetland)$";
-    let roads = "^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|\
-                 living_street|track)$";
-    format!(
-        "[out:json][timeout:90];(\
-         way[\"building\"]({bbox});\
-         way[\"landuse\"~\"{landuse}\"]({bbox});\
-         relation[\"landuse\"~\"{landuse}\"][\"type\"=\"multipolygon\"]({bbox});\
-         way[\"natural\"~\"{natural}\"]({bbox});\
-         relation[\"natural\"~\"{natural}\"][\"type\"=\"multipolygon\"]({bbox});\
-         way[\"waterway\"~\"^(river|stream|canal)$\"]({bbox});\
-         way[\"highway\"~\"{roads}\"]({bbox});\
-         way[\"highway\"][\"bridge\"][\"bridge\"!=\"no\"]({bbox});\
-         way[\"highway\"][\"tunnel\"][\"tunnel\"!=\"no\"]({bbox});\
-         );out tags geom;"
-    )
-}
-
-/// Tiles within `corridor` metres of the polyline.
-fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(i32, i32)> {
+/// Tiles (x, y at [`ZOOM`]) within `corridor` metres of the polyline.
+fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(u32, u32)> {
     const METERS_PER_DEGREE: f64 = 111_195.0;
     let mut tiles = BTreeSet::new();
     for &(lat, lon) in points {
         let d_lat = corridor / METERS_PER_DEGREE;
         let d_lon = corridor / (METERS_PER_DEGREE * lat.to_radians().cos().max(0.01));
-        let index = |degrees: f64| {
-            #[allow(clippy::cast_possible_truncation)] // tile indices are small
-            let index = (degrees / TILE_DEGREES).floor() as i32;
-            index
-        };
-        for tile_lat in index(lat - d_lat)..=index(lat + d_lat) {
-            for tile_lon in index(lon - d_lon)..=index(lon + d_lon) {
-                tiles.insert((tile_lat, tile_lon));
+        let (west, north) = tile_of(lat + d_lat, lon - d_lon);
+        let (east, south) = tile_of(lat - d_lat, lon + d_lon);
+        for x in west..=east {
+            for y in north..=south {
+                tiles.insert((x, y));
             }
         }
     }
     tiles
 }
 
-fn tile_name((lat, lon): (i32, i32)) -> String {
-    format!("{lat}_{lon}")
+/// The Web Mercator tile containing a position.
+fn tile_of(lat: f64, lon: f64) -> (u32, u32) {
+    let n = f64::from(1u32 << ZOOM);
+    let lat = lat.clamp(-85.05, 85.05).to_radians();
+    let x = (lon + 180.0) / 360.0 * n;
+    let y = (1.0 - (lat.tan() + 1.0 / lat.cos()).ln() / std::f64::consts::PI) / 2.0 * n;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped to the map
+    let clamp = |v: f64| v.floor().clamp(0.0, n - 1.0) as u32;
+    (clamp(x), clamp(y))
+}
+
+fn tile_name((x, y): (u32, u32)) -> String {
+    format!("{ZOOM}/{x}/{y}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn covers_the_corridor_with_tiles() {
-        // A 1 km route in Bern well inside one tile still needs its neighbours if the
-        // corridor crosses a tile border.
-        let inside = tiles_near(&[(46.925, 7.425), (46.934, 7.425)], 100.0);
-        assert_eq!(inside, BTreeSet::from([(938, 148)]));
+    /// The test tile's coordinates (see `tests/data`).
+    const TEST_TILE: (u32, u32) = (8531, 5767);
 
-        let near_border = tiles_near(&[(46.9499, 7.425)], 1500.0);
-        assert!(near_border.contains(&(938, 148)) && near_border.contains(&(939, 148)));
+    fn cache_with_test_tile(name: &str) -> PathBuf {
+        let cache = std::env::temp_dir().join(format!("torqa-osm-{name}-{}", std::process::id()));
+        let dir = cache.join(CACHE_VERSION).join("14").join("8531");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("5767.pbf"),
+            include_bytes!("../tests/data/14_8531_5767.pbf"),
+        )
+        .unwrap();
+        cache
     }
 
     #[test]
-    fn query_asks_only_for_drawn_features_in_the_tile() {
-        let query = query((938, 148));
-
-        assert!(query.contains("(46.9000,7.4000,46.9500,7.4500)"));
-        assert!(query.contains("way[\"building\"]"));
-        assert!(query.contains("[\"bridge\"!=\"no\"]"));
+    fn covers_the_corridor_with_tiles() {
+        // Wabern, near the Gurten: inside one tile with a small corridor.
+        assert_eq!(
+            tiles_near(&[(46.9296, 7.4512)], 50.0),
+            BTreeSet::from([TEST_TILE])
+        );
+        // A 1.5 km corridor reaches into the neighbouring tiles.
+        let wide = tiles_near(&[(46.9296, 7.4512)], 1500.0);
+        assert!(wide.contains(&TEST_TILE) && wide.len() >= 4);
     }
 
     #[tokio::test]
@@ -334,25 +356,32 @@ mod tests {
         let cache = std::env::temp_dir().join(format!("torqa-osm-empty-{}", std::process::id()));
         let osm = Osm::new(cache).offline();
 
-        let result = osm.around(&[(46.93, 7.44)], 100.0).await;
+        let result = osm.around(&[(46.9296, 7.4512)], 50.0, &mut |_, _| {}).await;
 
         assert!(matches!(result, Err(OsmError::Unavailable(_))));
     }
 
     #[tokio::test]
-    async fn offline_reads_cached_tiles() {
-        let cache = std::env::temp_dir().join(format!("torqa-osm-cache-{}", std::process::id()));
-        std::fs::create_dir_all(cache.join(CACHE_VERSION)).unwrap();
-        std::fs::write(
-            cache.join(CACHE_VERSION).join("938_148.json"),
-            parse::tests::SAMPLE,
-        )
-        .unwrap();
+    async fn reads_cached_tiles_offline_with_progress() {
+        let cache = cache_with_test_tile("offline");
         let osm = Osm::new(cache.clone()).offline();
+        let mut reports = Vec::new();
 
-        let data = osm.around(&[(46.93, 7.44)], 100.0).await.unwrap();
+        let data = osm
+            .around(&[(46.9296, 7.4512)], 50.0, &mut |done, total| {
+                reports.push((done, total));
+            })
+            .await
+            .unwrap();
 
-        assert_eq!(data.buildings.len(), 1);
+        assert!(
+            data.buildings.len() > 50,
+            "{} buildings",
+            data.buildings.len()
+        );
+        assert!(data.roads.len() > 10);
+        assert!(data.areas.iter().any(|a| a.cover == LandCover::Forest));
+        assert_eq!(reports, [(0, 1), (1, 1)]);
         std::fs::remove_dir_all(cache).unwrap();
     }
 
@@ -360,23 +389,24 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs network"]
     async fn live_download_around_the_gurten() {
-        let cache = std::env::temp_dir().join("torqa-osm-live");
+        let cache = std::env::temp_dir().join(format!("torqa-osm-live-{}", std::process::id()));
         let osm = Osm::new(cache);
 
         let started = std::time::Instant::now();
         let data = osm
-            .around(&[(46.925, 7.445), (46.918, 7.44)], 1500.0)
+            .around(&[(46.925, 7.445), (46.918, 7.44)], 1500.0, &mut |_, _| {})
             .await
             .unwrap();
 
         println!(
-            "{:?}: {} buildings, {} areas, {} waterways, {} structures",
+            "{:?}: {} buildings, {} areas, {} waterways, {} structures, {} roads",
             started.elapsed(),
             data.buildings.len(),
             data.areas.len(),
             data.waterways.len(),
-            data.structures.len()
+            data.structures.len(),
+            data.roads.len()
         );
-        assert!(!data.buildings.is_empty() && !data.areas.is_empty());
+        assert!(!data.buildings.is_empty() && !data.structures.is_empty());
     }
 }

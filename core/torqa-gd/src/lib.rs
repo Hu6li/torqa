@@ -88,6 +88,10 @@ impl TorqaApp {
     #[signal]
     fn devices_found(devices: VarArray);
 
+    /// Preparing a course advanced: what is being done, the unit counted, done and total.
+    #[signal]
+    fn loading_progress(step: GString, unit: GString, done: i64, total: i64);
+
     /// A route was imported: `{name, length_m, elevation_gain_m, max_grade, elevation_source}`.
     #[signal]
     fn route_loaded(route: VarDictionary);
@@ -396,6 +400,14 @@ impl TorqaApp {
                     "elevation_source" => source,
                 };
                 self.signals().route_loaded().emit(&info);
+            }
+            AppEvent::LoadProgress { stage, done, total } => {
+                self.signals().loading_progress().emit(
+                    &GString::from(stage.label()),
+                    &GString::from(stage.unit()),
+                    i64::try_from(done).unwrap_or(i64::MAX),
+                    i64::try_from(total).unwrap_or(i64::MAX),
+                );
             }
             AppEvent::WorldReady {
                 chunks,

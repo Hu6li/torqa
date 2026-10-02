@@ -6,7 +6,7 @@ mod import;
 pub mod paths;
 pub mod view;
 
-pub use import::{Imported, import_route};
+pub use import::{Imported, LoadStage, Progress, import_route};
 
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
@@ -74,6 +74,15 @@ pub struct RouteSummary {
 pub enum AppEvent {
     /// A scan finished.
     DevicesFound(Vec<DeviceInfo>),
+    /// Preparing a course advanced.
+    LoadProgress {
+        /// The current step.
+        stage: LoadStage,
+        /// Units done in this step.
+        done: usize,
+        /// Units in this step.
+        total: usize,
+    },
     /// A route was imported; its 3D world is being generated.
     RouteLoaded(RouteSummary),
     /// The 3D world for the loaded route is ready.
@@ -108,6 +117,23 @@ enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
     Route(Result<Box<Imported>, String>),
     World(Box<World>),
+    Progress(LoadStage, usize, usize),
+}
+
+/// Forwards load progress to the frame loop, at most once per percent per stage.
+struct Reporter {
+    tx: mpsc::Sender<JobResult>,
+    last: Option<(LoadStage, usize)>,
+}
+
+impl Reporter {
+    fn report(&mut self, stage: LoadStage, done: usize, total: usize) {
+        let percent = done * 100 / total.max(1);
+        if self.last != Some((stage, percent)) {
+            self.last = Some((stage, percent));
+            let _ = self.tx.send(JobResult::Progress(stage, done, total));
+        }
+    }
 }
 
 struct ActiveRide {
@@ -189,7 +215,15 @@ impl App {
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
-            let result = import_route(&path, &cache, offline).await.map(Box::new);
+            let mut reporter = Reporter {
+                tx: tx.clone(),
+                last: None,
+            };
+            let result = import_route(&path, &cache, offline, &mut |stage, done, total| {
+                reporter.report(stage, done, total);
+            })
+            .await
+            .map(Box::new);
             let _ = tx.send(JobResult::Route(result));
         });
     }
@@ -202,7 +236,14 @@ impl App {
             terrain = terrain.offline();
         }
         self.runtime.spawn(async move {
-            let world = torqa_world::generate(&route, &mut terrain, &map).await;
+            let mut reporter = Reporter {
+                tx: tx.clone(),
+                last: None,
+            };
+            let world = torqa_world::generate(&route, &mut terrain, &map, &mut |done, total| {
+                reporter.report(LoadStage::World, done, total);
+            })
+            .await;
             let _ = tx.send(JobResult::World(Box::new(world)));
         });
     }
@@ -383,6 +424,9 @@ impl App {
                     self.generate_world(route.clone(), map);
                     self.route = Some(route);
                 }
+                JobResult::Progress(stage, done, total) => {
+                    events.push(AppEvent::LoadProgress { stage, done, total });
+                }
                 JobResult::World(world) => {
                     events.push(AppEvent::WorldReady {
                         chunks: world.chunks.len(),
@@ -562,6 +606,27 @@ mod tests {
 
         assert!(matches!(events.last(), Some(AppEvent::WorldReady { chunks, .. }) if *chunks > 0));
         assert!(app.world().is_some_and(|w| !w.road.vertices.is_empty()));
+    }
+
+    #[test]
+    fn reports_progress_through_all_stages() {
+        let dir = temp_dir("progress");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        for stage in [
+            LoadStage::Route,
+            LoadStage::Map,
+            LoadStage::Elevation,
+            LoadStage::World,
+        ] {
+            let finished = events.iter().any(|e| {
+                matches!(e, AppEvent::LoadProgress { stage: s, done, total } if *s == stage && done == total)
+            });
+            assert!(finished, "{stage:?} not completed: {events:?}");
+        }
     }
 
     #[test]

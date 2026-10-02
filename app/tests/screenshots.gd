@@ -25,6 +25,9 @@ func _run() -> void:
 		route = ProjectSettings.globalize_path(DEFAULT_ROUTE)
 	var ride_s: float = OS.get_environment("SCREENSHOT_RIDE_S").to_float()
 	torqa.load_route(route, false)
+	# The setup screen while loading, for checking the progress display.
+	await create_timer(1.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
 	await _wait_for(torqa.world_ready)
 	# Let the world stream its chunks in.
 	for i: int in range(240):
