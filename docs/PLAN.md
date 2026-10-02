@@ -14,10 +14,12 @@ core/                      Rust workspace (tokio + tracing)
   torqa-physics/           speed integration, grade scaling, descent modes, virtual gears
   torqa-devices/           btleplug FTMS + HRM, fake trainer, (later) ANT+ FE-C, Click/OpenBikeControl
   torqa-routes/            GPX import, smoothing, DEM correction, climb detection
-  torqa-world/             DEM/OSM download + tile cache, route-corridor terrain/road/feature data
+  torqa-terrain/           elevation tiles (Mapterhorn, AWS fallback), disk cache, height lookup
+  torqa-world/             OSM download, route-corridor terrain/road/feature data
   torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, recording
-  torqa-storage/           data dir, FIT export, history index
-  torqa-gd/                gdext bindings
+  torqa-storage/           FIT export; later data dir and history index
+  torqa-app/               application layer: commands + update() per frame for front ends
+  torqa-gd/                gdext bindings (TorqaApp node)
   torqa-cli/               headless: scan devices, ride with fake trainer, export FIT
 app/                       Godot 4 project: scenes/ride3d, scenes/hud, scenes/menus, shaders, i18n
 docs/                      requirements, plan, ADRs
@@ -34,6 +36,8 @@ docs/                      requirements, plan, ADRs
   Grade updates throttled to ~1–2 Hz.
 - **Physics**: `P·η = v·(m·g·(Crr·cosθ + sinθ) + ½·ρ·CdA·v_rel²) + m·v·dv/dt`, integrated per
   tick. The trainer receives `grade × difficulty` (descents per R15).
+- **Elevation**: Mapterhorn terrain tiles with AWS fallback, cached on disk
+  ([ADR 0005](adr/0005-elevation-data.md)).
 - **Storage**: files are the source of truth; SQLite index is a local, rebuildable cache.
   See [ADR 0002](adr/0002-sync-safe-storage.md). Config TOML, data JSON
   ([ADR 0004](adr/0004-config-formats.md)).
@@ -57,21 +61,25 @@ docs/                      requirements, plan, ADRs
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices
-- [ ] FTMS driver (SIM / ERG / resistance), heart-rate sensor
-- [ ] Fake trainer
-- [ ] `torqa-cli scan` / `torqa-cli ride`
-- **Exit:** CLI controls the KICKR Core 2 grade and reads power/cadence/HR
+- [x] FTMS driver (SIM / ERG / resistance), heart-rate sensor
+- [x] Fake trainer
+- [x] `torqa-cli scan` / `torqa-cli ride`
+- [x] macOS CLI artifact from CI
+- **Exit:** CLI controls the KICKR Core 2 grade and reads power/cadence/HR ✅ (verified on hardware 2026-10-02)
 
 ### Phase 2 — Route, physics, FIT
-- [ ] GPX import, smoothing, online DEM correction
-- [ ] Physics model, difficulty, descent modes
-- [ ] FIT export
-- **Exit:** headless fake-trainer ride over a GPX produces a valid FIT
+- [x] GPX import, smoothing, online DEM correction
+- [x] Physics model, difficulty, descent modes
+- [x] FIT export
+- **Exit:** headless fake-trainer ride over a GPX produces a valid FIT ✅ (2026-10-02, validated with fitdecode)
 
 ### Phase 3 — 3D world (MVP)
-- [ ] World generation (hybrid default): terrain, road, OSM features, vegetation
-- [ ] Sky/weather presets, cameras, avatar
-- [ ] Minimap, elevation profile, basic HUD
+Built in rideable steps:
+- [x] Step 1 — ride view in the app: route picker, device scan, settings, HUD, elevation
+  profile, track minimap; `torqa-app` application layer behind the `TorqaApp` Godot node
+- [ ] Step 2 — 3D terrain from cached elevation tiles, road mesh along the route, sky, cameras
+- [ ] Step 3 — OSM buildings/forests/water, vegetation, avatar, weather/time-of-day presets,
+  bridges and tunnels, map tiles for the minimap
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 4 — Rider & history

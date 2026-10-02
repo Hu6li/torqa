@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/torqa-lockup-dark.svg">
+    <img src="docs/brand/torqa-lockup-light.svg" alt="Torqa" width="220">
+  </picture>
+</p>
+
 # Torqa
 
 A modern, offline-first, open-source indoor cycling app. Import a GPX route and ride it on your
@@ -31,7 +38,9 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 |---|---|
 | All checks (fmt, clippy, tests, cargo-deny, gdlint, GDExtension smoke test) | `scripts/check.sh` |
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
-| Run the CLI | `cargo run --manifest-path core/Cargo.toml -p torqa-cli` |
+| Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
+
+To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
 
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.

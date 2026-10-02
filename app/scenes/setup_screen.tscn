@@ -1,0 +1,187 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scenes/setup_screen.gd" id="1_setup"]
+[ext_resource type="Texture2D" path="res://assets/brand/torqa-logo-dark.svg" id="2_logo"]
+[ext_resource type="Texture2D" path="res://assets/brand/torqa-wordmark-dark.svg" id="3_wordmark"]
+
+[node name="SetupScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_setup")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.09, 0.1, 0.12, 1)
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 64
+theme_override_constants/margin_top = 48
+theme_override_constants/margin_right = 64
+theme_override_constants/margin_bottom = 48
+
+[node name="Rows" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Header" type="HBoxContainer" parent="Margin/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Logo" type="TextureRect" parent="Margin/Rows/Header"]
+custom_minimum_size = Vector2(84, 82)
+layout_mode = 2
+texture = ExtResource("2_logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Wordmark" type="TextureRect" parent="Margin/Rows/Header"]
+custom_minimum_size = Vector2(150, 56)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("3_wordmark")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Route" type="HBoxContainer" parent="Margin/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="OpenRouteButton" type="Button" parent="Margin/Rows/Route"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 44)
+layout_mode = 2
+text = "Open GPX route…"
+
+[node name="RouteLabel" type="Label" parent="Margin/Rows/Route"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "No route loaded"
+
+[node name="Scan" type="HBoxContainer" parent="Margin/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ScanButton" type="Button" parent="Margin/Rows/Scan"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 44)
+layout_mode = 2
+text = "Scan for devices"
+
+[node name="ScanLabel" type="Label" parent="Margin/Rows/Scan"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Wake your trainer by pedalling, then scan."
+
+[node name="Settings" type="GridContainer" parent="Margin/Rows"]
+layout_mode = 2
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 14
+columns = 3
+
+[node name="TrainerCaption" type="Label" parent="Margin/Rows/Settings"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+text = "Trainer"
+
+[node name="TrainerOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="TrainerSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="HeartRateCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Heart rate"
+
+[node name="HeartRateOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="HeartRateSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="DifficultyCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Trainer difficulty"
+
+[node name="DifficultySlider" type="HSlider" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 32)
+layout_mode = 2
+size_flags_vertical = 4
+step = 5.0
+value = 50.0
+
+[node name="DifficultyLabel" type="Label" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "50 %"
+
+[node name="MassCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Rider + bike (kg)"
+
+[node name="MassSpin" type="SpinBox" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 30.0
+max_value = 250.0
+step = 0.5
+value = 83.0
+
+[node name="MassSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="DescentCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Descents"
+
+[node name="FlatDescents" type="CheckBox" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Ride descents like flat roads"
+
+[node name="DescentSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="Margin/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 56)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_font_sizes/font_size = 24
+text = "Start ride"
+
+[node name="StatusLabel" type="Label" parent="Margin/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.55, 0.45, 1)
+autowrap_mode = 3
+
+[node name="FileDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Open a GPX route"
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.gpx ; GPX routes")
+use_native_dialog = true

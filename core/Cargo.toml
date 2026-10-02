@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-terrain", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-app", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,8 +10,31 @@ license = "GPL-3.0-only"
 publish = false
 
 [workspace.dependencies]
+torqa-app = { path = "torqa-app" }
 torqa-domain = { path = "torqa-domain" }
+torqa-devices = { path = "torqa-devices" }
+torqa-physics = { path = "torqa-physics" }
+torqa-routes = { path = "torqa-routes" }
+torqa-session = { path = "torqa-session" }
+torqa-storage = { path = "torqa-storage" }
+torqa-terrain = { path = "torqa-terrain" }
+anyhow = "1.0.104"
+btleplug = "0.13.3"
+clap = { version = "4.6.7", features = ["derive"] }
+embedded-io-adapters = { version = "0.7.0", features = ["std"] }
+futures = "0.3.34"
+image-webp = "0.2.4"
+png = "0.18.1"
+quick-xml = "0.42.0"
+reqwest = "0.13.5"
+rustyfit = "0.10.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 godot = "0.5.5"
+thiserror = "2.0.21"
+tokio = "1.53.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [workspace.lints.rust]
 missing_docs = "warn"

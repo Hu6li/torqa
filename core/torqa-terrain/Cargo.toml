@@ -1,0 +1,22 @@
+[package]
+name = "torqa-terrain"
+description = "Elevation tiles for Torqa: download, offline cache and height lookup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+image-webp.workspace = true
+png.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "fs"] }
+
+[lints]
+workspace = true

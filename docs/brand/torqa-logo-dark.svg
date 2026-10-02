@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="74 64 612 596" role="img" aria-labelledby="title">
+  <title id="title">Torqa</title>
+  <defs>
+    <path id="tooth" d="M287 214 C290 207 293 199 295 195 Q300 191 305 195 C307 199 310 207 313 214 Z"/>
+    <g id="crank"><path d="M279.3 423.0 L493.4 618.6 L537.6 569.5 L320.7 377.0 Z"/><circle cx="300" cy="400" r="60"/><circle cx="515.5" cy="594.0" r="46"/></g>
+    <mask id="crank-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="800">
+      <rect width="800" height="800" fill="#fff"/>
+      <use href="#crank" fill="#000" stroke="#000" stroke-width="18"/>
+    </mask>
+    <mask id="orca-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="800">
+      <rect width="800" height="800" fill="#fff"/>
+      <g fill="#000">
+        <ellipse cx="548.1" cy="301.8" rx="54" ry="23" transform="rotate(30 548.1 301.8)"/>
+      </g>
+      <use href="#crank" fill="#000" stroke="#000" stroke-width="18"/>
+    </mask>
+    <mask id="crank-holes" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="800">
+      <rect width="800" height="800" fill="#fff"/>
+      <circle cx="300" cy="400" r="30" fill="#000"/>
+      <circle cx="515.5" cy="594.0" r="18" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#F2F4F7" mask="url(#crank-gap)">
+    <path d="M405.1 555.9 A188 188 0 1 1 286.9 212.5 L289.2 245.4 A155 155 0 1 0 386.7 528.5 Z"/>
+    <use href="#tooth" transform="rotate(156.00 300 400)"/>
+    <use href="#tooth" transform="rotate(168.00 300 400)"/>
+    <use href="#tooth" transform="rotate(180.00 300 400)"/>
+    <use href="#tooth" transform="rotate(192.00 300 400)"/>
+    <use href="#tooth" transform="rotate(204.00 300 400)"/>
+    <use href="#tooth" transform="rotate(216.00 300 400)"/>
+    <use href="#tooth" transform="rotate(228.00 300 400)"/>
+    <use href="#tooth" transform="rotate(240.00 300 400)"/>
+    <use href="#tooth" transform="rotate(252.00 300 400)"/>
+    <use href="#tooth" transform="rotate(264.00 300 400)"/>
+    <use href="#tooth" transform="rotate(276.00 300 400)"/>
+    <use href="#tooth" transform="rotate(288.00 300 400)"/>
+    <use href="#tooth" transform="rotate(300.00 300 400)"/>
+    <use href="#tooth" transform="rotate(312.00 300 400)"/>
+    <use href="#tooth" transform="rotate(324.00 300 400)"/>
+    <use href="#tooth" transform="rotate(336.00 300 400)"/>
+    <use href="#tooth" transform="rotate(348.00 300 400)"/>
+  </g>
+  <path fill="#2EB0FF" mask="url(#crank-gap)" d="M276.0 264.1 A138 138 0 1 0 335.7 533.3 A146 146 0 0 1 276.0 264.1 Z"/>
+  <path fill="#F2F4F7" mask="url(#orca-cut)" d="M281.1 246.2 L269.4 206.1 C272.1 202.9 281.5 194.6 286.0 187.0 C290.4 179.3 294.7 168.7 296.2 160.2 C297.7 151.7 297.2 143.8 294.9 135.9 C292.6 128.1 288.3 119.1 282.1 113.0 C276.0 106.8 261.9 101.3 257.9 98.9 C264.1 97.7 280.2 91.3 294.9 91.3 C309.6 91.3 328.9 93.4 345.9 98.9 C362.9 104.5 382.1 114.3 397.0 124.4 C411.8 134.5 425.4 150.4 435.2 159.5 C445.0 168.7 449.0 173.9 455.6 179.3 C462.2 184.7 466.5 188.2 474.8 192.1 C483.1 195.9 492.8 197.4 505.4 202.3 C517.9 207.2 535.2 213.1 550.0 221.4 C564.9 229.7 581.9 240.5 594.7 252.0 C607.4 263.5 618.1 277.5 626.6 290.3 C635.1 303.0 641.0 316.3 645.7 328.6 C650.4 340.8 653.6 354.6 654.7 363.6 C655.7 372.7 652.5 379.6 652.1 382.8 C650.2 382.2 645.9 382.0 640.6 379.6 C635.3 377.1 628.4 371.6 620.2 368.1 C612.0 364.6 602.1 360.9 591.5 358.5 C580.9 356.2 568.6 354.3 556.4 354.1 C544.2 353.9 529.6 355.0 518.1 357.3 C506.7 359.5 495.8 363.1 487.5 367.5 C479.2 371.8 473.5 376.9 468.4 383.4 C463.3 389.9 458.8 402.6 456.9 406.4 L454.9 406.3 A155 155 0 0 0 281.1 246.2 Z"/>
+  <use href="#crank" fill="#F2F4F7" mask="url(#crank-holes)"/>
+</svg>

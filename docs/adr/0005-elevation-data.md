@@ -1,0 +1,38 @@
+# ADR 0005 — Elevation data source
+
+- Status: accepted
+- Date: 2026-10-02
+
+## Context
+
+Route elevations from GPX files are often noisy or missing (R12), and the 3D world needs terrain
+heights (R16). The source must be free, need no account, allow local caching for offline rides
+(R3), and preferably be European.
+
+## Decision
+
+- Primary: **[Mapterhorn](https://mapterhorn.com)** terrain tiles
+  (`https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`, 512 px, Terrarium encoding, zoom 12).
+  Copernicus GLO-30 worldwide plus high-resolution national LIDAR across much of Europe.
+  Data CC BY 4.0 — attribution required (see <https://mapterhorn.com/attribution>).
+- Fallback: **AWS Open Data Terrain Tiles** (256 px Terrarium PNG, zoom 13), per tile, when
+  Mapterhorn is unreachable or lacks a tile.
+- Tiles are cached on disk under the user's cache directory and sent with a descriptive
+  User-Agent; the cache makes prepared routes rideable offline.
+- If no terrain data is available (offline, uncached), the GPX elevations are used.
+
+## Rationale
+
+- A comparison against swissALTI3D measured Mapterhorn at about 1.8 m RMSE versus 17–27 m for
+  AWS Terrarium and plain Copernicus. Our own spot check at the Zytglogge in Bern (≈542 m) gave
+  540.6 m (Mapterhorn) and 548.4 m (AWS).
+- Copernicus' own portal (CDSE) requires an account and OAuth tokens, unsuitable for an app.
+- Same Terrarium encoding for both sources keeps one decoder.
+
+## Consequences
+
+- Torqa must display terrain attribution wherever heights are used (CLI docs, app credits).
+- Terrain models are bare-earth: bridges and tunnels show up as dips and humps. Planned fix:
+  use OpenStreetMap bridge/tunnel tags during world generation (Phase 3).
+- Mapterhorn is served via Cloudflare; no usage policy is published, so caching aggressively is
+  also a courtesy.

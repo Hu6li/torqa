@@ -12,7 +12,18 @@ name = "torqa-cli"
 path = "src/main.rs"
 
 [dependencies]
+torqa-app.workspace = true
 torqa-domain.workspace = true
+torqa-devices.workspace = true
+torqa-physics.workspace = true
+torqa-routes.workspace = true
+torqa-session.workspace = true
+torqa-storage.workspace = true
+torqa-terrain.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

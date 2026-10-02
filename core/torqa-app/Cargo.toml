@@ -1,0 +1,26 @@
+[package]
+name = "torqa-app"
+description = "Torqa application layer: devices, routes, rides and storage behind a frame-driven API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+torqa-domain.workspace = true
+torqa-devices.workspace = true
+torqa-physics.workspace = true
+torqa-routes.workspace = true
+torqa-session.workspace = true
+torqa-storage.workspace = true
+torqa-terrain.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "fs"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true
