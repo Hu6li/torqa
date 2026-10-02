@@ -22,7 +22,7 @@ godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
 run_godot() {
     output="$(godot --headless --path "$root/app" "$@" 2>&1)" || { echo "$output"; return 1; }
     echo "$output"
-    if echo "$output" | grep -q "SCRIPT ERROR\|^ERROR:"; then
+    if echo "$output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
         echo "Godot reported errors" >&2
         return 1
     fi

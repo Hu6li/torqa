@@ -77,7 +77,8 @@ or humps.
 Map data: © [OpenFreeMap](https://openfreemap.org) © [OpenMapTiles](https://openmaptiles.org),
 data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 Terrain data: [Mapterhorn](https://mapterhorn.com/attribution) (CC BY 4.0) and
-[AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
+[AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/). In Switzerland, the app drapes
+aerial imagery © [swisstopo](https://www.swisstopo.admin.ch) (SWISSIMAGE) over the terrain.
 
 ## Connection
 

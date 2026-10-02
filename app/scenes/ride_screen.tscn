@@ -144,5 +144,5 @@ theme_override_colors/font_color = Color(1, 1, 1, 0.55)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.5)
 theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 11
-text = "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL) · Terrain: Mapterhorn (CC BY 4.0), AWS Terrain Tiles"
+text = "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL) · Terrain: Mapterhorn (CC BY 4.0), AWS Terrain Tiles · Imagery © swisstopo"
 horizontal_alignment = 2

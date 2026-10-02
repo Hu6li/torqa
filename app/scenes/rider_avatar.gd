@@ -41,12 +41,22 @@ var _wheels: Array[Node3D] = []
 var _crankset: Node3D
 ## Per side (left, right): thigh, shin, shoe.
 var _legs: Array[Array] = []
+## The rider's body parts (everything that is not the bike).
+var _body: Array[Node] = []
 
 
 func _ready() -> void:
 	_build_bike()
+	var bike_parts: int = get_child_count()
 	_build_rider()
+	_body = get_children().slice(bike_parts)
 	animate(0.0, 0.0, 0.0)
+
+
+## Shows or hides the rider (not the bike), e.g. for the first-person view.
+func show_rider(shown: bool) -> void:
+	for part: Node in _body:
+		(part as Node3D).visible = shown
 
 
 ## Advances the animation: cadence in rpm, speed in km/h.
