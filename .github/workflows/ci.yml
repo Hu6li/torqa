@@ -31,6 +31,12 @@ jobs:
           workspaces: core
       - name: Build GDExtension
         run: scripts/build-gdext.sh release
+      - name: Build CLI
+        run: |
+          cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
+          mkdir -p dist
+          # Artifacts drop the executable bit; a tarball keeps it.
+          tar -czf dist/torqa-cli.tar.gz -C core/target/release torqa-cli
       - name: Install Godot and export templates
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
@@ -54,3 +60,7 @@ jobs:
         with:
           name: torqa-macos-arm64
           path: dist/Torqa.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: torqa-cli-macos-arm64
+          path: dist/torqa-cli.tar.gz

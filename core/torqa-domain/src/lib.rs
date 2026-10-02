@@ -1,5 +1,8 @@
 //! Core domain types and plugin interfaces of Torqa.
 
+pub mod telemetry;
+pub mod units;
+
 /// Human-readable application name.
 pub const APP_NAME: &str = "Torqa";
 

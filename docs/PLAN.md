@@ -57,9 +57,10 @@ docs/                      requirements, plan, ADRs
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices
-- [ ] FTMS driver (SIM / ERG / resistance), heart-rate sensor
-- [ ] Fake trainer
-- [ ] `torqa-cli scan` / `torqa-cli ride`
+- [x] FTMS driver (SIM / ERG / resistance), heart-rate sensor
+- [x] Fake trainer
+- [x] `torqa-cli scan` / `torqa-cli ride`
+- [ ] macOS CLI artifact from CI
 - **Exit:** CLI controls the KICKR Core 2 grade and reads power/cadence/HR
 
 ### Phase 2 — Route, physics, FIT

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-devices", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,7 +11,16 @@ publish = false
 
 [workspace.dependencies]
 torqa-domain = { path = "torqa-domain" }
+torqa-devices = { path = "torqa-devices" }
+anyhow = "1.0.104"
+btleplug = "0.13.3"
+clap = { version = "4.6.7", features = ["derive"] }
+futures = "0.3.34"
 godot = "0.5.5"
+thiserror = "2.0.21"
+tokio = "1.53.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [workspace.lints.rust]
 missing_docs = "warn"

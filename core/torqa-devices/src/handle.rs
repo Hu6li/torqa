@@ -1,0 +1,119 @@
+//! The driver-independent interface to a running device.
+
+use tokio::sync::mpsc;
+use torqa_domain::telemetry::{Telemetry, TrainerControl};
+
+/// Something a device reports while it is running.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeviceEvent {
+    /// The device is connected and ready; also sent again after a reconnect.
+    Connected,
+    /// New measurements.
+    Telemetry(Telemetry),
+    /// The connection was lost; the driver keeps trying to reconnect.
+    Disconnected,
+}
+
+/// Errors of device drivers.
+#[derive(Debug, thiserror::Error)]
+pub enum DeviceError {
+    /// The device is a sensor and cannot be controlled.
+    #[error("device cannot be controlled")]
+    NotControllable,
+    /// The driver task has stopped.
+    #[error("device driver has stopped")]
+    Stopped,
+    /// No Bluetooth adapter is available.
+    #[error("no Bluetooth adapter found")]
+    NoAdapter,
+    /// The device lacks a characteristic the driver needs.
+    #[error("device lacks characteristic {0:#06x}")]
+    MissingCharacteristic(u16),
+    /// The Bluetooth stack reported an error.
+    #[error("Bluetooth error: {0}")]
+    Bluetooth(#[from] btleplug::Error),
+}
+
+/// A running device. Dropping the handle stops its driver and disconnects the device.
+#[derive(Debug)]
+pub struct DeviceHandle {
+    name: String,
+    events: mpsc::Receiver<DeviceEvent>,
+    control: Option<mpsc::Sender<TrainerControl>>,
+}
+
+/// The driver side of a [`DeviceHandle`].
+pub(crate) struct DriverChannels {
+    pub(crate) events: mpsc::Sender<DeviceEvent>,
+    pub(crate) control: Option<mpsc::Receiver<TrainerControl>>,
+}
+
+const CHANNEL_CAPACITY: usize = 64;
+
+impl DeviceHandle {
+    /// Creates a handle and the channels its driver task uses.
+    pub(crate) fn new(name: String, controllable: bool) -> (Self, DriverChannels) {
+        let (events_tx, events_rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let (control_tx, control_rx) = if controllable {
+            let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+        let handle = Self {
+            name,
+            events: events_rx,
+            control: control_tx,
+        };
+        let channels = DriverChannels {
+            events: events_tx,
+            control: control_rx,
+        };
+        (handle, channels)
+    }
+
+    /// Human-readable device name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Whether the device accepts [`TrainerControl`]s.
+    #[must_use]
+    pub fn is_controllable(&self) -> bool {
+        self.control.is_some()
+    }
+
+    /// Waits for the next event; `None` once the driver has stopped.
+    pub async fn next_event(&mut self) -> Option<DeviceEvent> {
+        self.events.recv().await
+    }
+
+    /// Asks the trainer to apply a resistance control.
+    ///
+    /// Controls are applied in order; if several are queued, only the latest is sent. The last
+    /// control is re-applied automatically after a reconnect.
+    ///
+    /// # Errors
+    /// [`DeviceError::NotControllable`] for sensors, [`DeviceError::Stopped`] if the driver ended.
+    pub async fn control(&self, control: TrainerControl) -> Result<(), DeviceError> {
+        let sender = self.control.as_ref().ok_or(DeviceError::NotControllable)?;
+        sender.send(control).await.map_err(|_| DeviceError::Stopped)
+    }
+}
+
+impl DriverChannels {
+    /// Waits for the next control, skipping to the newest if several are queued.
+    ///
+    /// Never completes for sensors, which have no control channel.
+    pub(crate) async fn next_control(&mut self) -> Option<TrainerControl> {
+        let Some(rx) = self.control.as_mut() else {
+            return std::future::pending().await;
+        };
+        let mut latest = rx.recv().await?;
+        while let Ok(newer) = rx.try_recv() {
+            latest = newer;
+        }
+        Some(latest)
+    }
+}

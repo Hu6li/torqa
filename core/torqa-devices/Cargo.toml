@@ -1,0 +1,22 @@
+[package]
+name = "torqa-devices"
+description = "Trainer and sensor drivers for Torqa (Bluetooth FTMS, heart rate, fake trainer)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+torqa-domain.workspace = true
+btleplug.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time", "test-util"] }
+
+[lints]
+workspace = true
