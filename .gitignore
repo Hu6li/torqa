@@ -1,0 +1,17 @@
+# Rust
+/core/target/
+**/*.rs.bk
+
+# Godot
+/app/.godot/
+/app/bin/
+/app/export/
+
+# Build outputs
+/dist/
+
+# OS / editors
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
