@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: Checks (dev container)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: fmt, clippy, test, deny, gdlint in the dev container
+        uses: devcontainers/ci@v0.3
+        with:
+          runCmd: scripts/check.sh
+          push: never
+
+  macos:
+    name: macOS app (arm64)
+    # Docker on macOS has no Bluetooth/Metal, so macOS builds happen natively on the runner.
+    runs-on: macos-latest
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Build GDExtension
+        run: scripts/build-gdext.sh release
+      - name: Install Godot and export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q godot.zip
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          templates_dir="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$templates_dir"
+          unzip -q -j templates.tpz "templates/macos.zip" "templates/version.txt" -d "$templates_dir"
+      - name: Export app
+        run: |
+          mkdir -p dist
+          godot="$PWD/Godot.app/Contents/MacOS/Godot"
+          "$godot" --headless --path app --import
+          "$godot" --headless --path app --export-release "macOS" "$PWD/dist/Torqa.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: torqa-macos-arm64
+          path: dist/Torqa.zip

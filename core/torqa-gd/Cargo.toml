@@ -1,0 +1,18 @@
+[package]
+name = "torqa-gd"
+description = "Godot GDExtension bindings exposing the Torqa core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+torqa-domain.workspace = true
+godot.workspace = true
+
+[lints]
+workspace = true

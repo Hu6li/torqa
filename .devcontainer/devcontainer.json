@@ -1,0 +1,25 @@
+{
+  "name": "Torqa",
+  "build": { "dockerfile": "Dockerfile" },
+  "workspaceFolder": "/workspaces/torqa",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/torqa,type=bind",
+  // Build artifacts and the cargo cache live in volumes: bind mounts on macOS are slow.
+  "mounts": [
+    "source=torqa-cargo-registry,target=/usr/local/cargo/registry,type=volume",
+    "source=torqa-target,target=/workspaces/torqa/core/target,type=volume"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "geequlim.godot-tools",
+        "vadimcn.vscode-lldb"
+      ],
+      "settings": {
+        "rust-analyzer.linkedProjects": ["core/Cargo.toml"],
+        "rust-analyzer.check.command": "clippy"
+      }
+    }
+  }
+}

@@ -25,6 +25,14 @@ All tooling runs in a container — nothing is installed on your machine.
    [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
 2. Open this folder in VS Code and choose **Reopen in Container**.
 
+Without VS Code, `scripts/dev.sh <command>` runs any command in the same container.
+
+| Task | Command (inside the container) |
+|---|---|
+| All checks (fmt, clippy, tests, cargo-deny, gdlint, GDExtension smoke test) | `scripts/check.sh` |
+| Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
+| Run the CLI | `cargo run --manifest-path core/Cargo.toml -p torqa-cli` |
+
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.
 
