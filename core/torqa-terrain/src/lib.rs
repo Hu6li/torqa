@@ -7,7 +7,7 @@
 mod source;
 mod tile;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,6 +41,8 @@ pub struct Terrain {
     client: reqwest::Client,
     online: bool,
     tiles: HashMap<(usize, TileId), Arc<HeightTile>>,
+    /// Tiles that could not be loaded; not retried, so a missing tile costs one attempt.
+    unavailable: HashSet<(usize, TileId)>,
 }
 
 impl Terrain {
@@ -65,6 +67,7 @@ impl Terrain {
             client,
             online: true,
             tiles: HashMap::new(),
+            unavailable: HashSet::new(),
         }
     }
 
@@ -139,6 +142,23 @@ impl Terrain {
         if let Some(tile) = self.tiles.get(&(source, id)) {
             return Ok(Arc::clone(tile));
         }
+        if self.unavailable.contains(&(source, id)) {
+            return Err(TerrainError::Unavailable {
+                tile: id.to_string(),
+            });
+        }
+        let result = self.load_tile(source, id).await;
+        if result.is_err() {
+            self.unavailable.insert((source, id));
+        }
+        result
+    }
+
+    async fn load_tile(
+        &mut self,
+        source: usize,
+        id: TileId,
+    ) -> Result<Arc<HeightTile>, TerrainError> {
         let src = &self.sources[source];
         let path = self.cache_dir.join(src.cache_path(id));
 

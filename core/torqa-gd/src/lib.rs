@@ -11,13 +11,13 @@ use std::time::Duration;
 
 use godot::classes::{Engine, INode, Node};
 use godot::prelude::*;
-use torqa_app::view::{self, LocalProjection};
+use torqa_app::view;
 use torqa_app::{App, AppEvent, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
 use torqa_domain::units::{Kilograms, Percent, Rpm, Watts};
 use torqa_physics::{DescentMode, RiderSetup};
-use torqa_routes::ElevationSource;
+use torqa_routes::{ElevationSource, LocalProjection};
 use torqa_session::RideConfig;
 
 struct TorqaExtension;

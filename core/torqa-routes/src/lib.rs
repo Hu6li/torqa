@@ -2,6 +2,9 @@
 //! elevation and gradient lookup along the route.
 
 mod gpx;
+mod projection;
+
+pub use projection::LocalProjection;
 
 use torqa_domain::units::{GradePercent, Meters};
 use torqa_terrain::Terrain;
@@ -64,6 +67,8 @@ pub struct RoutePosition {
     pub elevation: Meters,
     /// Gradient of the road at this point.
     pub grade: GradePercent,
+    /// Direction of travel in radians, clockwise from north.
+    pub heading: f64,
 }
 
 /// A route ready to ride: evenly resampled, with smoothed elevations.
@@ -225,8 +230,17 @@ impl Route {
             lon: start.lon + (end.lon - start.lon) * fraction,
             elevation: Meters(start.elevation.0 + rise * fraction),
             grade: GradePercent(if span > 0.0 { rise / span * 100.0 } else { 0.0 }),
+            heading: heading(start, end),
         }
     }
+}
+
+/// Direction from `a` to `b` in radians, clockwise from north (flat-earth approximation,
+/// exact enough over a 10 m segment).
+fn heading(a: &RoutePoint, b: &RoutePoint) -> f64 {
+    let east = (b.lon - a.lon) * a.lat.to_radians().cos();
+    let north = b.lat - a.lat;
+    east.atan2(north)
 }
 
 /// Removes consecutive points closer than 10 cm, which would create zero-length segments.
@@ -511,5 +525,12 @@ mod tests {
         // 10 m over 100 m, softened a little by smoothing.
         let max = route.max_grade().0;
         assert!((7.0..10.5).contains(&max), "{max}");
+    }
+
+    #[tokio::test]
+    async fn heading_points_along_the_road() {
+        let north = import(&gpx_north(&[Some(0.0), Some(0.0)], 100.0)).await;
+
+        assert!(north.position(Meters(50.0)).heading.abs() < 1e-6);
     }
 }

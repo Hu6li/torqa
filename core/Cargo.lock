@@ -2094,6 +2094,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "torqa-world"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "torqa-routes",
+ "tracing",
+]
+
+[[package]]
 name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
