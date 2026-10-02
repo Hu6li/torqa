@@ -36,7 +36,7 @@ jobs:
           cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
           mkdir -p dist
           # Artifacts drop the executable bit; a tarball keeps it.
-          tar -czf dist/torqa-cli.tar.gz -C core/target/release torqa-cli
+          tar -czf dist/torqa-cli-macos-arm64.tar.gz -C core/target/release torqa-cli
       - name: Install Godot and export templates
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
@@ -54,13 +54,14 @@ jobs:
           # (godotengine/godot#123723), but only after .godot/ has been seeded; warm runs work.
           "$godot" --headless --path app --import || echo "Cold import crashed (known 4.7.2 issue), continuing"
           test -d app/.godot
-          "$godot" --headless --path app --export-release "macOS" "$PWD/dist/Torqa.zip"
-          test -s dist/Torqa.zip
+          "$godot" --headless --path app --export-release "macOS" "$PWD/dist/Torqa-macos-arm64.zip"
+          test -s dist/Torqa-macos-arm64.zip
+      # Both files are archives already; upload them as-is instead of zipping them again.
       - uses: actions/upload-artifact@v7
         with:
-          name: torqa-macos-arm64
-          path: dist/Torqa.zip
+          path: dist/Torqa-macos-arm64.zip
+          archive: false
       - uses: actions/upload-artifact@v7
         with:
-          name: torqa-cli-macos-arm64
-          path: dist/torqa-cli.tar.gz
+          path: dist/torqa-cli-macos-arm64.tar.gz
+          archive: false

@@ -5,11 +5,10 @@ sensors.
 
 ## Install (macOS)
 
-Download the `torqa-cli-macos-arm64` artifact from a CI run, then:
+Download the `torqa-cli-macos-arm64.tar.gz` artifact from a CI run, then:
 
 ```sh
-unzip torqa-cli-macos-arm64.zip
-tar -xzf torqa-cli.tar.gz
+tar -xzf torqa-cli-macos-arm64.tar.gz
 xattr -d com.apple.quarantine torqa-cli   # unsigned binary
 ./torqa-cli --help
 ```
