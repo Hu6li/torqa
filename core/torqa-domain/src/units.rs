@@ -16,6 +16,22 @@ quantity!(
     Watts
 );
 quantity!(
+    /// Distance or elevation in metres.
+    Meters
+);
+quantity!(
+    /// Mass in kilograms.
+    Kilograms
+);
+quantity!(
+    /// Area in square metres, e.g. the drag area `CdA`.
+    SquareMeters
+);
+quantity!(
+    /// Density in kilograms per cubic metre, e.g. air density.
+    KilogramsPerCubicMeter
+);
+quantity!(
     /// Cadence in revolutions per minute.
     Rpm
 );
