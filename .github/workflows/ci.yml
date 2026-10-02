@@ -44,8 +44,12 @@ jobs:
         run: |
           mkdir -p dist
           godot="$PWD/Godot.app/Contents/MacOS/Godot"
-          "$godot" --headless --path app --import
+          # Godot 4.7.2 on macOS runners crashes in MoltenVK on a cold headless editor start
+          # (godotengine/godot#123723), but only after .godot/ has been seeded; warm runs work.
+          "$godot" --headless --path app --import || echo "Cold import crashed (known 4.7.2 issue), continuing"
+          test -d app/.godot
           "$godot" --headless --path app --export-release "macOS" "$PWD/dist/Torqa.zip"
+          test -s dist/Torqa.zip
       - uses: actions/upload-artifact@v4
         with:
           name: torqa-macos-arm64
