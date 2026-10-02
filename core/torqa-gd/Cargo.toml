@@ -11,7 +11,12 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+torqa-app.workspace = true
+torqa-devices.workspace = true
 torqa-domain.workspace = true
+torqa-physics.workspace = true
+torqa-routes.workspace = true
+torqa-session.workspace = true
 godot.workspace = true
 
 [lints]

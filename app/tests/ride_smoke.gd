@@ -1,0 +1,78 @@
+extends SceneTree
+## Headless end-to-end check of the Torqa node API: load a route, ride it with the fake
+## trainer and save a FIT file. Run: godot --headless --path app -s res://tests/ride_smoke.gd
+
+const TIMEOUT_S: float = 20.0
+
+var _torqa: TorqaApp
+var _saved_path: String = ""
+var _failure: String = ""
+
+
+func _initialize() -> void:
+	_torqa = TorqaApp.new()
+	root.add_child(_torqa)
+	_torqa.failed.connect(func(message: String) -> void: _failure = message)
+	_torqa.ride_saved.connect(func(path: String) -> void: _saved_path = path)
+	_run.call_deferred()
+
+
+func _run() -> void:
+	var gpx_path: String = OS.get_user_data_dir().path_join("smoke.gpx")
+	_write_route(gpx_path)
+
+	_torqa.load_route(gpx_path, true)
+	var route: Array = await _wait_for(_torqa.route_loaded)
+	_check(not route.is_empty(), "route loaded")
+	var profile: PackedVector2Array = _torqa.elevation_profile(100)
+	_check(profile.size() >= 2, "elevation profile available")
+
+	_check(_torqa.connect_fake_trainer(250.0, 90.0), "fake trainer connected")
+	_check(_torqa.start_ride(50.0, false, 83.0), "ride started")
+	await create_timer(2.0).timeout
+	var state: Dictionary = _torqa.ride_state()
+	var distance_m: float = state.get("distance_m", 0.0)
+	var power: float = state.get("power", 0.0)
+	_check(distance_m > 0.5, "rider moves: %s" % state)
+	_check(is_equal_approx(power, 250.0), "power arrives: %s" % state)
+
+	_torqa.finish_ride()
+	_check(_saved_path.ends_with(".fit"), "ride saved: %s" % _saved_path)
+	_check(_failure.is_empty(), "no failure: %s" % _failure)
+	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
+	quit(0)
+
+
+## Waits for a signal and returns its arguments, failing after TIMEOUT_S.
+func _wait_for(sig: Signal) -> Array:
+	var result: Array = []
+	var received: Array[bool] = [false]
+	var on_signal: Callable = func(arg: Variant) -> void:
+		result.append(arg)
+		received[0] = true
+	sig.connect(on_signal, CONNECT_ONE_SHOT)
+	var waited: float = 0.0
+	while not received[0] and waited < TIMEOUT_S:
+		await process_frame
+		waited += root.get_process_delta_time()
+	_check(
+		received[0], "signal %s within %ss (failure: %s)" % [sig.get_name(), TIMEOUT_S, _failure]
+	)
+	return result
+
+
+func _write_route(path: String) -> void:
+	var xml: String = "<gpx><trk><name>Smoke</name><trkseg>"
+	for i: int in range(41):
+		var lat: float = 46.0 + i * 10.0 / 111195.0
+		xml += '<trkpt lat="%f" lon="7"><ele>500</ele></trkpt>' % lat
+	xml += "</trkseg></trk></gpx>"
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(xml)
+	file.close()
+
+
+func _check(condition: bool, what: String) -> void:
+	if not condition:
+		push_error("RIDE SMOKE TEST FAILED: " + what)
+		quit(1)

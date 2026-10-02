@@ -1,17 +1,31 @@
 //! Godot GDExtension bindings exposing the Torqa core to the presentation layer.
+//!
+//! This crate only translates between Godot types and [`torqa_app`]; it holds no logic.
 
 // This crate is the FFI boundary: gdext's entry point is an `unsafe impl`, and the
 // `#[gdextension]` macro drops item-level attributes, so the allow must be crate-wide.
 #![allow(unsafe_code)]
 
+use std::path::PathBuf;
+use std::time::Duration;
+
+use godot::classes::{Engine, INode, Node};
 use godot::prelude::*;
+use torqa_app::view::{self, LocalProjection};
+use torqa_app::{App, AppEvent, TrainerChoice, paths};
+use torqa_devices::ble::DeviceKind;
+use torqa_devices::fake::FakeRider;
+use torqa_domain::units::{Kilograms, Percent, Rpm, Watts};
+use torqa_physics::{DescentMode, RiderSetup};
+use torqa_routes::ElevationSource;
+use torqa_session::RideConfig;
 
 struct TorqaExtension;
 
 #[gdextension]
 unsafe impl ExtensionLibrary for TorqaExtension {}
 
-/// Entry point for GDScript into the Rust core.
+/// Static information about the Torqa core.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct TorqaCore;
@@ -23,4 +37,296 @@ impl TorqaCore {
     fn version() -> GString {
         GString::from(torqa_domain::version())
     }
+}
+
+/// The Torqa application as a node: add it to the scene tree, call its commands and listen to
+/// its signals. It advances rides in `_process`.
+#[derive(GodotClass)]
+#[class(base = Node)]
+pub struct TorqaApp {
+    base: Base<Node>,
+    app: Option<App>,
+}
+
+#[godot_api]
+impl INode for TorqaApp {
+    fn init(base: Base<Node>) -> Self {
+        // The editor instantiates nodes too; it must not start runtimes or touch Bluetooth.
+        let app = if Engine::singleton().is_editor_hint() {
+            None
+        } else {
+            App::new(paths::data_dir(), paths::cache_dir())
+                .inspect_err(|error| {
+                    godot_error!("Torqa: {error}");
+                })
+                .ok()
+        };
+        Self { base, app }
+    }
+
+    fn process(&mut self, delta: f64) {
+        let Some(app) = self.app.as_mut() else {
+            return;
+        };
+        let events = app.update(Duration::from_secs_f64(delta.max(0.0)));
+        for event in events {
+            self.emit(event);
+        }
+    }
+
+    fn exit_tree(&mut self) {
+        if let Some(app) = self.app.as_mut() {
+            app.shutdown();
+        }
+    }
+}
+
+#[godot_api]
+impl TorqaApp {
+    /// A scan finished: an array of dictionaries `{index, name, kind ("trainer" or
+    /// "heart_rate"), rssi}`.
+    #[signal]
+    fn devices_found(devices: VarArray);
+
+    /// A route was imported: `{name, length_m, elevation_gain_m, elevation_source}`.
+    #[signal]
+    fn route_loaded(route: VarDictionary);
+
+    /// A device connected (also after reconnecting).
+    #[signal]
+    fn device_connected(name: GString);
+
+    /// A device lost its connection and is reconnecting.
+    #[signal]
+    fn device_disconnected(name: GString);
+
+    /// The rider reached the finish.
+    #[signal]
+    fn ride_finished();
+
+    /// The ride was saved as a FIT file.
+    #[signal]
+    fn ride_saved(path: GString);
+
+    /// Something went wrong.
+    #[signal]
+    fn failed(message: GString);
+
+    /// Scans for trainers and heart-rate sensors.
+    #[func]
+    fn scan(&mut self, seconds: f64) {
+        if let Some(app) = self.app.as_mut() {
+            app.scan(Duration::from_secs_f64(seconds.max(1.0)));
+        }
+    }
+
+    /// Imports a GPX file; `offline` uses cached terrain only.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn load_route(&mut self, path: GString, offline: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.load_route(PathBuf::from(path.to_string()), offline);
+        }
+    }
+
+    /// Connects the simulated trainer.
+    #[func]
+    fn connect_fake_trainer(&mut self, power: f64, cadence: f64) -> bool {
+        let choice = TrainerChoice::Fake(FakeRider {
+            power: Watts(power),
+            cadence: Rpm(cadence),
+        });
+        self.command(|app| app.connect_trainer(choice))
+    }
+
+    /// Connects a scanned trainer by its index.
+    #[func]
+    fn connect_trainer(&mut self, index: i64) -> bool {
+        let Ok(index) = usize::try_from(index) else {
+            return false;
+        };
+        self.command(|app| app.connect_trainer(TrainerChoice::Discovered(index)))
+    }
+
+    /// Connects a scanned heart-rate sensor by its index.
+    #[func]
+    fn connect_heart_rate(&mut self, index: i64) -> bool {
+        let Ok(index) = usize::try_from(index) else {
+            return false;
+        };
+        self.command(|app| app.connect_heart_rate(index))
+    }
+
+    /// Starts riding the loaded route.
+    #[func]
+    fn start_ride(&mut self, difficulty: f64, flat_descents: bool, mass_kg: f64) -> bool {
+        let config = RideConfig {
+            setup: RiderSetup {
+                mass: Kilograms(mass_kg),
+                ..RiderSetup::default()
+            },
+            difficulty: Percent(difficulty),
+            descent: if flat_descents {
+                DescentMode::Flat
+            } else {
+                DescentMode::Coast
+            },
+        };
+        self.command(|app| app.start_ride(config))
+    }
+
+    /// Ends the ride and saves it (emits `ride_saved` or `failed`).
+    #[func]
+    fn finish_ride(&mut self) {
+        let Some(app) = self.app.as_mut() else {
+            return;
+        };
+        for event in app.finish_ride() {
+            self.emit(event);
+        }
+    }
+
+    /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
+    /// power, cadence, heart_rate}`; sensor values are `null` when unknown. Empty when not
+    /// riding. `x`/`y` are metres east/north of the route start, as in `track()`.
+    #[func]
+    fn ride_state(&self) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let (Some(state), Some(route)) = (app.ride_state(), app.route()) else {
+            return VarDictionary::new();
+        };
+        let (x, y) =
+            LocalProjection::for_route(route).project(state.position.lat, state.position.lon);
+        let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+        let t = state.telemetry;
+        vdict! {
+            "elapsed_s" => state.elapsed.as_secs_f64(),
+            "distance_m" => state.distance.0,
+            "remaining_m" => state.remaining.0,
+            "speed_kmh" => state.speed.as_kilometers_per_hour(),
+            "grade" => state.position.grade.0,
+            "elevation_m" => state.position.elevation.0,
+            "x" => x,
+            "y" => y,
+            "power" => &optional(t.power.map(|p| p.0)),
+            "cadence" => &optional(t.cadence.map(|c| c.0)),
+            "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),
+        }
+    }
+
+    /// `(distance m, elevation m)` points of the loaded route, at most `max_points`.
+    #[func]
+    fn elevation_profile(&self, max_points: i64) -> PackedVector2Array {
+        self.points(max_points, view::elevation_profile)
+    }
+
+    /// The loaded route in metres east/north of its start, at most `max_points`.
+    #[func]
+    fn track(&self, max_points: i64) -> PackedVector2Array {
+        self.points(max_points, view::track)
+    }
+}
+
+impl TorqaApp {
+    fn command(&mut self, run: impl FnOnce(&mut App) -> Result<(), torqa_app::AppError>) -> bool {
+        let Some(app) = self.app.as_mut() else {
+            return false;
+        };
+        match run(app) {
+            Ok(()) => true,
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                false
+            }
+        }
+    }
+
+    fn points(
+        &self,
+        max_points: i64,
+        pick: fn(&torqa_routes::Route, usize) -> Vec<(f64, f64)>,
+    ) -> PackedVector2Array {
+        let Some(route) = self.app.as_ref().and_then(App::route) else {
+            return PackedVector2Array::new();
+        };
+        let max_points = usize::try_from(max_points).unwrap_or(2);
+        pick(route, max_points)
+            .into_iter()
+            .map(|(a, b)| vector2(a, b))
+            .collect()
+    }
+
+    fn emit(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::DevicesFound(devices) => {
+                let mut array = VarArray::new();
+                for device in devices {
+                    let kind = match device.kind {
+                        DeviceKind::Trainer => "trainer",
+                        DeviceKind::HeartRateSensor => "heart_rate",
+                    };
+                    let rssi = device
+                        .rssi
+                        .map_or_else(Variant::nil, |rssi| i64::from(rssi).to_variant());
+                    let index = i64::try_from(device.index).unwrap_or(-1);
+                    array.push(
+                        &vdict! {
+                            "index" => index,
+                            "name" => device.name.as_str(),
+                            "kind" => kind,
+                            "rssi" => &rssi,
+                        }
+                        .to_variant(),
+                    );
+                }
+                self.signals().devices_found().emit(&array);
+            }
+            AppEvent::RouteLoaded(route) => {
+                let source = match route.elevation_source {
+                    ElevationSource::Terrain => "terrain",
+                    ElevationSource::File => "file",
+                };
+                let info = vdict! {
+                    "name" => route.name.as_str(),
+                    "length_m" => route.length,
+                    "elevation_gain_m" => route.elevation_gain,
+                    "elevation_source" => source,
+                };
+                self.signals().route_loaded().emit(&info);
+            }
+            AppEvent::Connected(name) => {
+                self.signals()
+                    .device_connected()
+                    .emit(&GString::from(name.as_str()));
+            }
+            AppEvent::Disconnected(name) => {
+                self.signals()
+                    .device_disconnected()
+                    .emit(&GString::from(name.as_str()));
+            }
+            AppEvent::RideFinished => self.signals().ride_finished().emit(),
+            AppEvent::RideSaved(path) => {
+                let path = path.display().to_string();
+                self.signals()
+                    .ride_saved()
+                    .emit(&GString::from(path.as_str()));
+            }
+            AppEvent::Error(message) => {
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+            }
+        }
+    }
+}
+
+// Godot vectors are f32; metre precision is ample for drawing.
+#[allow(clippy::cast_possible_truncation)]
+fn vector2(x: f64, y: f64) -> Vector2 {
+    Vector2::new(x as f32, y as f32)
 }

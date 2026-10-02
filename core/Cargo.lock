@@ -2034,7 +2034,12 @@ name = "torqa-gd"
 version = "0.1.0"
 dependencies = [
  "godot",
+ "torqa-app",
+ "torqa-devices",
  "torqa-domain",
+ "torqa-physics",
+ "torqa-routes",
+ "torqa-session",
 ]
 
 [[package]]

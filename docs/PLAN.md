@@ -18,7 +18,8 @@ core/                      Rust workspace (tokio + tracing)
   torqa-world/             OSM download, route-corridor terrain/road/feature data
   torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, recording
   torqa-storage/           FIT export; later data dir and history index
-  torqa-gd/                gdext bindings
+  torqa-app/               application layer: commands + update() per frame for front ends
+  torqa-gd/                gdext bindings (TorqaApp node)
   torqa-cli/               headless: scan devices, ride with fake trainer, export FIT
 app/                       Godot 4 project: scenes/ride3d, scenes/hud, scenes/menus, shaders, i18n
 docs/                      requirements, plan, ADRs
@@ -73,9 +74,12 @@ docs/                      requirements, plan, ADRs
 - **Exit:** headless fake-trainer ride over a GPX produces a valid FIT ✅ (2026-10-02, validated with fitdecode)
 
 ### Phase 3 — 3D world (MVP)
-- [ ] World generation (hybrid default): terrain, road, OSM features, vegetation
-- [ ] Sky/weather presets, cameras, avatar
-- [ ] Minimap, elevation profile, basic HUD
+Built in rideable steps:
+- [x] Step 1 — ride view in the app: route picker, device scan, settings, HUD, elevation
+  profile, track minimap; `torqa-app` application layer behind the `TorqaApp` Godot node
+- [ ] Step 2 — 3D terrain from cached elevation tiles, road mesh along the route, sky, cameras
+- [ ] Step 3 — OSM buildings/forests/water, vegetation, avatar, weather/time-of-day presets,
+  bridges and tunnels, map tiles for the minimap
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 4 — Rider & history

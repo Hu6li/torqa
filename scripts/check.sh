@@ -14,8 +14,22 @@ cd "$root/app"
 gdlint .
 gdformat --check .
 
-# Smoke test: the GDExtension loads and GDScript can call into Rust.
+# Godot checks: the extension loads, all scripts compile (warnings are errors) and the
+# Torqa node API works end to end.
 "$root/scripts/build-gdext.sh" debug
 godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
-godot --headless --path "$root/app" --quit-after 5 2>&1 | tee /dev/stderr | grep -q "^Torqa "
-echo "GDExtension smoke test passed"
+
+run_godot() {
+    output="$(godot --headless --path "$root/app" "$@" 2>&1)" || { echo "$output"; return 1; }
+    echo "$output"
+    if echo "$output" | grep -q "SCRIPT ERROR\|^ERROR:"; then
+        echo "Godot reported errors" >&2
+        return 1
+    fi
+}
+# Capture first: in a pipeline, sh would only see grep's exit status.
+main_output="$(run_godot --quit-after 10)"
+echo "$main_output" | grep -q "^Torqa "
+echo "Main scene smoke test passed"
+ride_output="$(run_godot -s res://tests/ride_smoke.gd)"
+echo "$ride_output" | grep "RIDE SMOKE TEST PASSED"
