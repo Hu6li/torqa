@@ -426,6 +426,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "embedded-io"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
+
+[[package]]
+name = "embedded-io-adapters"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c900a1c087f1f7d17cdc84a1290df91521cd90933efa76d68e568385d889f2f4"
+dependencies = [
+ "embedded-io",
+]
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,6 +1612,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "rustyfit"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07509579836cbc3cca701fac09d305aeab7bcd17b7274762ed0246267d1f2c8a"
+dependencies = [
+ "embedded-io",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2008,6 +2032,26 @@ dependencies = [
  "torqa-domain",
  "torqa-terrain",
  "tracing",
+]
+
+[[package]]
+name = "torqa-session"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "torqa-domain",
+ "torqa-physics",
+ "torqa-routes",
+]
+
+[[package]]
+name = "torqa-storage"
+version = "0.1.0"
+dependencies = [
+ "embedded-io-adapters",
+ "rustyfit",
+ "thiserror",
+ "torqa-domain",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-terrain", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-terrain", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,10 +14,13 @@ torqa-domain = { path = "torqa-domain" }
 torqa-devices = { path = "torqa-devices" }
 torqa-physics = { path = "torqa-physics" }
 torqa-routes = { path = "torqa-routes" }
+torqa-session = { path = "torqa-session" }
+torqa-storage = { path = "torqa-storage" }
 torqa-terrain = { path = "torqa-terrain" }
 anyhow = "1.0.104"
 btleplug = "0.13.3"
 clap = { version = "4.6.7", features = ["derive"] }
+embedded-io-adapters = { version = "0.7.0", features = ["std"] }
 futures = "0.3.34"
 image-webp = "0.2.4"
 png = "0.18.1"
