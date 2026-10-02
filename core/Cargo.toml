@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-terrain", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-world", "torqa-app", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-terrain", "torqa-osm", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-world", "torqa-app", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +12,7 @@ publish = false
 [workspace.dependencies]
 torqa-app = { path = "torqa-app" }
 torqa-domain = { path = "torqa-domain" }
+torqa-osm = { path = "torqa-osm" }
 torqa-devices = { path = "torqa-devices" }
 torqa-physics = { path = "torqa-physics" }
 torqa-routes = { path = "torqa-routes" }
