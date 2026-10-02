@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -126 494 184" role="img" aria-labelledby="title">
+  <title id="title">Torqa</title>
+  <g fill="#F2F4F7" fill-rule="evenodd">
+    <path d="M0 -106 H104 V-92 Q104 -84 96 -84 H65 V0 H39 V-84 H8 Q0 -84 0 -92 Z"/>
+    <path transform="translate(78 0)" d="M24 -80 H68 A24 24 0 0 1 92 -56 V-24 A24 24 0 0 1 68 0 H24 A24 24 0 0 1 0 -24 V-56 A24 24 0 0 1 24 -80 Z M34 -58 H58 A8 8 0 0 1 66 -50 V-30 A8 8 0 0 1 58 -22 H34 A8 8 0 0 1 26 -30 V-50 A8 8 0 0 1 34 -58 Z"/>
+    <path transform="translate(182 0)" d="M0 -56 A24 24 0 0 1 24 -80 H64 V-58 H34 A8 8 0 0 0 26 -50 V0 H0 Z"/>
+    <path transform="translate(258 0)" d="M24 -80 H92 V34 H66 V0 H24 A24 24 0 0 1 0 -24 V-56 A24 24 0 0 1 24 -80 Z M34 -58 H66 V-22 H34 A8 8 0 0 1 26 -30 V-50 A8 8 0 0 1 34 -58 Z"/>
+    <path transform="translate(362 0)" d="M4 -80 H68 A24 24 0 0 1 92 -56 V0 H66 V-8 L58 0 H22 A22 22 0 0 1 0 -22 V-26 A22 22 0 0 1 22 -48 H66 V-50 A8 8 0 0 0 58 -58 H4 Z M32 -30 H66 V-18 H32 A6 6 0 0 1 32 -30 Z"/>
+  </g>
+</svg>

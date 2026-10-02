@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/torqa-lockup-dark.svg">
+    <img src="docs/brand/torqa-lockup-light.svg" alt="Torqa" width="220">
+  </picture>
+</p>
+
 # Torqa
 
 A modern, offline-first, open-source indoor cycling app. Import a GPX route and ride it on your

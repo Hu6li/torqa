@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scenes/setup_screen.gd" id="1_setup"]
+[ext_resource type="Texture2D" path="res://assets/brand/torqa-logo-dark.svg" id="2_logo"]
+[ext_resource type="Texture2D" path="res://assets/brand/torqa-wordmark-dark.svg" id="3_wordmark"]
 
 [node name="SetupScreen" type="Control"]
 layout_mode = 3
@@ -36,10 +38,24 @@ theme_override_constants/margin_bottom = 48
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="Title" type="Label" parent="Margin/Rows"]
+[node name="Header" type="HBoxContainer" parent="Margin/Rows"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 56
-text = "Torqa"
+theme_override_constants/separation = 20
+
+[node name="Logo" type="TextureRect" parent="Margin/Rows/Header"]
+custom_minimum_size = Vector2(84, 82)
+layout_mode = 2
+texture = ExtResource("2_logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Wordmark" type="TextureRect" parent="Margin/Rows/Header"]
+custom_minimum_size = Vector2(150, 56)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("3_wordmark")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Route" type="HBoxContainer" parent="Margin/Rows"]
 layout_mode = 2
