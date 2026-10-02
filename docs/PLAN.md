@@ -50,10 +50,10 @@ docs/                      requirements, plan, ADRs
 
 ### Phase 0 — Foundation
 - [x] Requirements, plan, ADRs, CLAUDE.md, README, LICENSE
-- [ ] `.devcontainer/` (Dockerfile + devcontainer.json) with Rust, cargo-deny, gdtoolkit, headless Godot
-- [ ] Rust workspace skeleton + lint config (clippy pedantic, missing_docs, cargo-deny)
-- [ ] Godot project + gdext hello-world
-- [ ] GitHub Actions: container job (fmt, clippy, test, deny) + macOS runner job (GDExtension + app export)
+- [x] `.devcontainer/` (Dockerfile + devcontainer.json) with Rust, cargo-deny, gdtoolkit, headless Godot
+- [x] Rust workspace skeleton + lint config (clippy pedantic, missing_docs, cargo-deny)
+- [x] Godot project + gdext hello-world
+- [x] GitHub Actions: container job (fmt, clippy, test, deny) + macOS runner job (GDExtension + app export)
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices

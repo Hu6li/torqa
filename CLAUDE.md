@@ -42,6 +42,9 @@ Torqa — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
 
 - `cargo-deny` enforces GPL-compatible licenses and no unmaintained crates.
 - **Ask before adding any dependency** (crate, Godot plugin, container package).
+- **Always use the most recent stable version** of everything: crates, container base images, tools,
+  Godot, GitHub Actions. Look up the current release online before adding or touching a version —
+  never rely on remembered version numbers.
 
 ## Formats
 
