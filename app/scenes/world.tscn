@@ -44,6 +44,8 @@ directional_shadow_max_distance = 300.0
 
 [node name="Water" type="MeshInstance3D" parent="."]
 
+[node name="Structures" type="MeshInstance3D" parent="."]
+
 [node name="Rider" type="Node3D" parent="."]
 
 [node name="Camera" type="Camera3D" parent="."]

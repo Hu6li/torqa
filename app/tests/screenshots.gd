@@ -2,9 +2,8 @@ extends SceneTree
 ## Renders the ride screen in each camera mode to PNG files, for checking visuals without a
 ## GPU (software Vulkan). Run via scripts/screenshots.sh.
 
-const ROUTE: String = "res://../core/fixtures/gurtenstrasse.gpx"
-const TIMEOUT_S: float = 120.0
-const RIDE_S: float = 4.0
+const DEFAULT_ROUTE: String = "res://../core/fixtures/gurtenstrasse.gpx"
+const TIMEOUT_S: float = 180.0
 
 var _main: Control
 
@@ -21,7 +20,11 @@ func _run() -> void:
 	var world: RideWorld = _main.get_node("World")
 	var setup: SetupScreen = _main.get_node("SetupScreen")
 
-	torqa.load_route(ProjectSettings.globalize_path(ROUTE), false)
+	var route: String = OS.get_environment("SCREENSHOT_ROUTE")
+	if route.is_empty():
+		route = ProjectSettings.globalize_path(DEFAULT_ROUTE)
+	var ride_s: float = OS.get_environment("SCREENSHOT_RIDE_S").to_float()
+	torqa.load_route(route, false)
 	await _wait_for(torqa.world_ready)
 	# Let the world stream its chunks in.
 	for i: int in range(240):
@@ -29,7 +32,7 @@ func _run() -> void:
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
 	_check(torqa.start_ride(50.0, false, 83.0), "ride started")
 	setup.ride_started.emit()
-	await create_timer(RIDE_S).timeout
+	await create_timer(maxf(ride_s, 4.0)).timeout
 
 	for mode: int in range(3):
 		await create_timer(1.5).timeout

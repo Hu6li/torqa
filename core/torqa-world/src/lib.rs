@@ -8,6 +8,7 @@
 mod buildings;
 mod landcover;
 mod road;
+mod structures;
 mod vegetation;
 mod water;
 
@@ -76,6 +77,8 @@ pub struct World {
     pub road: MeshData,
     /// Rivers and streams.
     pub water: MeshData,
+    /// Bridges and tunnels.
+    pub structures: MeshData,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
 }
@@ -90,6 +93,7 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &Map
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH),
         water: water::ribbons(&map.waterways, &projection, &road, model).await,
+        structures: structures::build(&road, &projection, model).await,
         ..World::default()
     };
 
@@ -315,18 +319,24 @@ impl HeightGrid {
 }
 
 /// Levels terrain to just below the road near it and blends back to the natural height.
-/// Bridges and tunnels leave the ground below or above them untouched.
+/// Under bridges the ground is only lowered (the valley stays open, but nothing may cover the
+/// deck); above tunnels it is left alone.
 fn level_to_road(natural: f64, nearest_road: Option<(f64, f64, Surface)>) -> f64 {
-    let Some((distance, road_elevation, Surface::Ground)) = nearest_road else {
+    let Some((distance, road_elevation, surface)) = nearest_road else {
         return natural;
     };
     let levelled = road_elevation - ROAD_SINK;
+    let target = match surface {
+        Surface::Ground => levelled,
+        Surface::Bridge => natural.min(levelled),
+        Surface::Tunnel => return natural,
+    };
     if distance <= FLAT_INNER {
-        return levelled;
+        return target;
     }
     let t = ((distance - FLAT_INNER) / (FLAT_OUTER - FLAT_INNER)).clamp(0.0, 1.0);
     let smooth = t * t * (3.0 - 2.0 * t);
-    levelled + (natural - levelled) * smooth
+    target + (natural - target) * smooth
 }
 
 #[allow(clippy::cast_possible_truncation)]

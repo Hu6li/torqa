@@ -258,6 +258,15 @@ impl TorqaApp {
         }
     }
 
+    /// Bridges and tunnels as mesh arrays (vertex-coloured), in route coordinates.
+    #[func]
+    fn structures_mesh(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.structures))
+    }
+
     /// Rivers and streams as mesh arrays, in route coordinates.
     #[func]
     fn water_mesh(&self) -> VarDictionary {

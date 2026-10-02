@@ -182,19 +182,33 @@ async fn terrain_is_levelled_just_below_the_road() {
 
 #[tokio::test]
 async fn ground_under_a_bridge_is_left_alone() {
+    // A valley 30 m below the deck.
+    struct Valley;
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(if (320.0..680.0).contains(&north) {
+                470.0
+            } else {
+                500.0
+            }))
+        }
+    }
     let bridge = Structure {
         kind: StructureKind::Bridge,
         line: vec![at(0.0, 300.0), at(0.0, 700.0)],
     };
     let route = route_north(&[bridge]).await;
-    let world = generate(&route, &mut EastwardSlope, &MapData::default()).await;
+    let world = generate(&route, &mut Valley, &MapData::default()).await;
 
     let under_bridge = terrain_vertices(&world)
         .find(|v| v[0].abs() < 9.0 && (v[2] + 500.0).abs() < 9.0)
         .unwrap();
-    // Natural height (500 m + 10 % of the small offset east), not levelled to 499.75 m.
-    let natural = 500.0 + 0.1 * under_bridge[0];
-    assert!((under_bridge[1] - natural).abs() < 0.01, "{under_bridge:?}");
+    assert!((under_bridge[1] - 470.0).abs() < 0.01, "{under_bridge:?}");
 }
 
 #[tokio::test]
@@ -346,4 +360,142 @@ async fn rivers_become_water_ribbons_near_the_route() {
             .iter()
             .all(|v| v[0].abs() <= CORRIDOR as f32 + 10.0)
     );
+}
+
+/// Every triangle is clockwise seen from the side its normal points to (Godot's front face):
+/// the right-hand normal points against the stored vertex normal.
+fn assert_faces_follow_normals(mesh: &MeshData) {
+    for t in mesh.indices.as_chunks::<3>().0 {
+        let triangle = t.map(|k| mesh.vertices[k as usize]);
+        let normal = mesh.normals[t[0] as usize];
+        let face = face_normal(triangle);
+        let dot = face[0] * normal[0] + face[1] * normal[1] + face[2] * normal[2];
+        assert!(
+            dot < 0.0,
+            "triangle {triangle:?} faces away from {normal:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn bridges_have_a_deck_and_pillars_down_to_the_valley() {
+    // A 400 m bridge over a valley: the model is 30 m lower under the bridge.
+    struct Valley;
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(if (320.0..680.0).contains(&north) {
+                470.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 300.0), at(0.0, 700.0)],
+    };
+    let route = route_north(&[bridge]).await;
+    let world = generate(&route, &mut Valley, &MapData::default()).await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    assert_faces_follow_normals(mesh);
+    let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
+    assert!(
+        (lowest - 469.0).abs() < 0.1,
+        "pillars reach the valley floor: {lowest}"
+    );
+    let highest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
+    assert!(
+        (highest - 501.0).abs() < 0.1,
+        "parapets 1 m above the road: {highest}"
+    );
+    // Nothing outside the bridge.
+    assert!(
+        mesh.vertices
+            .iter()
+            .all(|v| (-720.0..=-280.0).contains(&v[2]))
+    );
+}
+
+#[tokio::test]
+async fn tunnels_are_tubes_visible_from_inside() {
+    let tunnel = Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 300.0), at(0.0, 700.0)],
+    };
+    let route = route_north(&[tunnel]).await;
+    let world = generate(&route, &mut EastwardSlope, &MapData::default()).await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    assert_faces_follow_normals(mesh);
+    // Inner faces point towards the tunnel axis (x = 0, 500 m + half the radius up).
+    let inward = mesh
+        .vertices
+        .iter()
+        .zip(&mesh.normals)
+        .filter(|(v, n)| n[0] * v[0] < 0.0 || (n[1] < 0.0 && v[1] > 500.0))
+        .count();
+    assert!(inward > 0);
+    let top = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
+    assert!((top - 505.0).abs() < 0.1, "arch 5 m high: {top}");
+}
+
+#[tokio::test]
+async fn all_world_meshes_face_their_normals() {
+    let house = Building {
+        id: 7,
+        outline: square(60.0, 500.0, 5.0),
+        height: Some(9.0),
+        levels: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+
+    assert_faces_follow_normals(&world.road);
+    for chunk in &world.chunks {
+        assert_faces_follow_normals(&chunk.buildings);
+    }
+}
+
+#[tokio::test]
+async fn ground_never_covers_a_bridge_deck() {
+    // Terrain 10 m above the road where the bridge starts (an abutment in a slope).
+    struct Bank;
+    impl ElevationModel for Bank {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(if (300.0..400.0).contains(&north) {
+                510.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 300.0), at(0.0, 700.0)],
+    };
+    // The route keeps 500 m (file elevations), the bridge spans the bank.
+    let route = route_north(&[bridge]).await;
+    let world = generate(&route, &mut Bank, &MapData::default()).await;
+
+    for v in
+        terrain_vertices(&world).filter(|v| v[0].abs() <= 10.0 && (-700.0..-300.0).contains(&v[2]))
+    {
+        assert!(v[1] <= 500.0 - 0.25 + 0.01, "terrain above the deck: {v:?}");
+    }
 }
