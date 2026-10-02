@@ -114,6 +114,31 @@ impl DeviceHandle {
         self.events.recv().await
     }
 
+    /// Returns the next event if one is waiting, without blocking (for frame loops).
+    ///
+    /// # Errors
+    /// [`DeviceError::Stopped`] once the driver has stopped and all events were read.
+    pub fn try_next_event(&mut self) -> Result<Option<DeviceEvent>, DeviceError> {
+        match self.events.try_recv() {
+            Ok(event) => Ok(Some(event)),
+            Err(mpsc::error::TryRecvError::Empty) => Ok(None),
+            Err(mpsc::error::TryRecvError::Disconnected) => Err(DeviceError::Stopped),
+        }
+    }
+
+    /// Queues a resistance control without blocking (for frame loops); see [`Self::control`].
+    ///
+    /// # Errors
+    /// [`DeviceError::NotControllable`] for sensors, [`DeviceError::Stopped`] if the driver
+    /// ended. A full queue is not an error: the control is dropped, as a newer one follows.
+    pub fn try_control(&self, control: TrainerControl) -> Result<(), DeviceError> {
+        let sender = self.control.as_ref().ok_or(DeviceError::NotControllable)?;
+        match sender.try_send(control) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(DeviceError::Stopped),
+        }
+    }
+
     /// Asks the trainer to apply a resistance control.
     ///
     /// Controls are applied in order; if several are queued, only the latest is sent. The last

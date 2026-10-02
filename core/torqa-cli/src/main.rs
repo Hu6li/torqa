@@ -2,7 +2,6 @@
 
 mod devices;
 mod free_ride;
-mod paths;
 mod route_ride;
 
 use std::path::PathBuf;
@@ -10,6 +9,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use torqa_app::paths;
 use torqa_devices::ble::Bluetooth;
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, Route};

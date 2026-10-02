@@ -1,10 +1,31 @@
-//! Platform file locations.
+//! Platform file locations and file names.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// The platform's per-user data directory for Torqa (rides, routes, settings).
+#[must_use]
+pub fn data_dir() -> PathBuf {
+    let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
+    let home = env("HOME").or_else(|| env("USERPROFILE"));
+    let base = if cfg!(target_os = "macos") {
+        home.map(|h| h.join("Library/Application Support"))
+    } else if cfg!(windows) {
+        env("APPDATA")
+    } else {
+        env("XDG_DATA_HOME").or_else(|| home.map(|h| h.join(".local/share")))
+    };
+    let name = if cfg!(target_os = "macos") || cfg!(windows) {
+        "Torqa"
+    } else {
+        "torqa"
+    };
+    base.unwrap_or_else(std::env::temp_dir).join(name)
+}
+
 /// The platform's per-user cache directory for Torqa.
-pub(crate) fn cache_dir() -> PathBuf {
+#[must_use]
+pub fn cache_dir() -> PathBuf {
     let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
     let home = env("HOME").or_else(|| env("USERPROFILE"));
     let base = if cfg!(target_os = "macos") {
@@ -18,7 +39,8 @@ pub(crate) fn cache_dir() -> PathBuf {
 }
 
 /// `torqa-YYYYMMDD-HHMMSS.fit` in UTC.
-pub(crate) fn activity_file_name(start: SystemTime) -> PathBuf {
+#[must_use]
+pub fn activity_file_name(start: SystemTime) -> PathBuf {
     let secs = start
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));

@@ -3,6 +3,7 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
+use torqa_app::paths;
 use torqa_devices::DeviceEvent;
 use torqa_domain::units::{Kilograms, MetersPerSecond, Percent};
 use torqa_physics::RiderSetup;
@@ -11,7 +12,6 @@ use torqa_session::{Ride, RideConfig, RideState};
 
 use crate::RideArgs;
 use crate::devices::{Devices, field, next_event, stdin_lines};
-use crate::paths;
 
 const TICK: Duration = Duration::from_millis(250);
 

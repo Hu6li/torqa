@@ -1980,12 +1980,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "torqa-app"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tokio",
+ "torqa-devices",
+ "torqa-domain",
+ "torqa-physics",
+ "torqa-routes",
+ "torqa-session",
+ "torqa-storage",
+ "torqa-terrain",
+ "tracing",
+]
+
+[[package]]
 name = "torqa-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "tokio",
+ "torqa-app",
  "torqa-devices",
  "torqa-domain",
  "torqa-physics",
