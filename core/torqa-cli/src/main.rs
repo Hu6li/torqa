@@ -7,13 +7,12 @@ mod route_ride;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use torqa_app::paths;
 use torqa_devices::ble::Bluetooth;
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, Route};
-use torqa_terrain::{Terrain, TileSource};
 use tracing_subscriber::EnvFilter;
 
 use devices::DeviceArgs;
@@ -77,6 +76,9 @@ struct RouteArgs {
     /// Only use cached terrain data.
     #[arg(long)]
     offline: bool,
+    /// Also generate the 3D world and report its size and timings.
+    #[arg(long)]
+    world: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -108,11 +110,7 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Scan { seconds } => scan(seconds).await,
         Command::Ride(args) => ride(args).await,
-        Command::Route(args) => {
-            let route = load_route(&args.file, args.offline).await?;
-            print_route(&route);
-            Ok(())
-        }
+        Command::Route(args) => route_info(&args).await,
     }
 }
 
@@ -156,16 +154,57 @@ async fn ride(args: RideArgs) -> Result<()> {
     result
 }
 
-async fn load_route(path: &std::path::Path, offline: bool) -> Result<Route> {
-    let xml =
-        std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
-    let mut terrain = Terrain::new(TileSource::defaults(), paths::cache_dir().join("terrain"));
-    if offline {
-        terrain = terrain.offline();
-    }
-    Route::from_gpx(&xml, Some(&mut terrain))
+async fn route_info(args: &RouteArgs) -> Result<()> {
+    let started = std::time::Instant::now();
+    let imported = torqa_app::import_route(&args.file, &paths::cache_dir(), args.offline)
         .await
-        .with_context(|| format!("cannot import {}", path.display()))
+        .map_err(anyhow::Error::msg)?;
+    print_route(&imported.route);
+    let map = &imported.map;
+    println!(
+        "Map: {} buildings, {} areas, {} waterways, {} bridges/tunnels (import {:.1} s)",
+        map.buildings.len(),
+        map.areas.len(),
+        map.waterways.len(),
+        map.structures.len(),
+        started.elapsed().as_secs_f64()
+    );
+    if args.world {
+        let started = std::time::Instant::now();
+        let mut terrain = torqa_terrain::Terrain::new(
+            torqa_terrain::TileSource::defaults(),
+            paths::cache_dir().join("terrain"),
+        );
+        if args.offline {
+            terrain = terrain.offline();
+        }
+        let world = torqa_world::generate(&imported.route, &mut terrain, map).await;
+        let triangles = |m: &torqa_world::MeshData| m.indices.len() / 3;
+        println!(
+            "World: {} chunks, {} terrain / {} building triangles, {} trees ({:.1} s)",
+            world.chunks.len(),
+            world
+                .chunks
+                .iter()
+                .map(|c| triangles(&c.mesh))
+                .sum::<usize>(),
+            world
+                .chunks
+                .iter()
+                .map(|c| triangles(&c.buildings))
+                .sum::<usize>(),
+            world.chunks.iter().map(|c| c.trees.len()).sum::<usize>(),
+            started.elapsed().as_secs_f64()
+        );
+    }
+    Ok(())
+}
+
+async fn load_route(path: &std::path::Path, offline: bool) -> Result<Route> {
+    let imported = torqa_app::import_route(path, &paths::cache_dir(), offline)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    Ok(imported.route)
 }
 
 fn print_route(route: &Route) {

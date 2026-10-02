@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use torqa_routes::{LocalProjection, Route};
+use torqa_routes::{LocalProjection, Route, Surface};
 
 use crate::MeshData;
 
@@ -20,6 +20,8 @@ struct Segment {
     /// Distance along the route at the start.
     distance_a: f64,
     distance_b: f64,
+    /// What carries the road on this segment.
+    surface: Surface,
 }
 
 /// The route's centre line in local coordinates, indexed for nearest-point queries.
@@ -38,6 +40,7 @@ impl RoadIndex {
                     projection.project(p.lat, p.lon),
                     p.elevation.0,
                     p.distance.0,
+                    p.surface,
                 )
             })
             .collect();
@@ -50,6 +53,12 @@ impl RoadIndex {
                 elevation_b: w[1].1,
                 distance_a: w[0].2,
                 distance_b: w[1].2,
+                // A segment touching a bridge or tunnel belongs to it.
+                surface: if w[0].3 == Surface::Ground {
+                    w[1].3
+                } else {
+                    w[0].3
+                },
             })
             .collect();
         let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
@@ -65,9 +74,14 @@ impl RoadIndex {
         Self { segments, cells }
     }
 
-    /// Distance to the closest point of the road within `max_distance`, and the road's
-    /// elevation there.
-    pub(crate) fn nearest(&self, east: f64, north: f64, max_distance: f64) -> Option<(f64, f64)> {
+    /// Distance to the closest point of the road within `max_distance`, the road's elevation
+    /// there and what carries the road.
+    pub(crate) fn nearest(
+        &self,
+        east: f64,
+        north: f64,
+        max_distance: f64,
+    ) -> Option<(f64, f64, Surface)> {
         let reach = if max_distance.is_finite() {
             max_distance
         } else {
@@ -80,7 +94,7 @@ impl RoadIndex {
         };
         let (low_e, low_n) = cell_of(east - reach, north - reach);
         let (high_e, high_n) = cell_of(east + reach, north + reach);
-        let mut best: Option<(f64, f64)> = None;
+        let mut best: Option<(f64, f64, Surface)> = None;
         for ce in low_e..=high_e {
             for cn in low_n..=high_n {
                 let Some(indices) = self.cells.get(&(ce, cn)) else {
@@ -161,8 +175,9 @@ fn direction(segment: &Segment) -> (f64, f64) {
     (de / length, dn / length)
 }
 
-/// Distance from a point to a segment, and the road elevation at the closest point.
-fn closest_on_segment(segment: &Segment, east: f64, north: f64) -> (f64, f64) {
+/// Distance from a point to a segment, the road elevation at the closest point and the
+/// segment's surface.
+fn closest_on_segment(segment: &Segment, east: f64, north: f64) -> (f64, f64, Surface) {
     let (de, dn) = (segment.b.0 - segment.a.0, segment.b.1 - segment.a.1);
     let length_squared = de * de + dn * dn;
     let t = if length_squared > 0.0 {
@@ -172,5 +187,5 @@ fn closest_on_segment(segment: &Segment, east: f64, north: f64) -> (f64, f64) {
     };
     let (pe, pn) = (segment.a.0 + de * t, segment.a.1 + dn * t);
     let elevation = segment.elevation_a + (segment.elevation_b - segment.elevation_a) * t;
-    ((east - pe).hypot(north - pn), elevation)
+    ((east - pe).hypot(north - pn), elevation, segment.surface)
 }

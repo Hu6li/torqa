@@ -2,8 +2,11 @@
 //! frame-driven API. Front ends (the Godot app, tests) call commands and [`App::update`] once per
 //! frame; all asynchronous work runs on an internal runtime, so callers never block or await.
 
+mod import;
 pub mod paths;
 pub mod view;
+
+pub use import::{Imported, import_route};
 
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
@@ -103,7 +106,7 @@ pub enum TrainerChoice {
 
 enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
-    Route(Result<(Route, String), String>),
+    Route(Result<Box<Imported>, String>),
     World(Box<World>),
 }
 
@@ -184,38 +187,22 @@ impl App {
         self.offline = offline;
         self.world = None;
         let tx = self.jobs_tx.clone();
-        let cache = self.cache_dir.join("terrain");
+        let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
-            let result = async {
-                let xml = tokio::fs::read_to_string(&path)
-                    .await
-                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-                let mut terrain = Terrain::new(TileSource::defaults(), cache);
-                if offline {
-                    terrain = terrain.offline();
-                }
-                let route = Route::from_gpx(&xml, Some(&mut terrain))
-                    .await
-                    .map_err(|e| format!("cannot import {}: {e}", path.display()))?;
-                let fallback_name = path
-                    .file_stem()
-                    .map_or_else(|| "Route".to_owned(), |s| s.to_string_lossy().into_owned());
-                Ok((route, fallback_name))
-            }
-            .await;
+            let result = import_route(&path, &cache, offline).await.map(Box::new);
             let _ = tx.send(JobResult::Route(result));
         });
     }
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
-    fn generate_world(&mut self, route: Route) {
+    fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
         let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"));
         if self.offline {
             terrain = terrain.offline();
         }
         self.runtime.spawn(async move {
-            let world = torqa_world::generate(&route, &mut terrain).await;
+            let world = torqa_world::generate(&route, &mut terrain, &map).await;
             let _ = tx.send(JobResult::World(Box::new(world)));
         });
     }
@@ -384,15 +371,16 @@ impl App {
                     self.discovered = devices;
                     events.push(AppEvent::DevicesFound(infos));
                 }
-                JobResult::Route(Ok((route, fallback_name))) => {
+                JobResult::Route(Ok(imported)) => {
+                    let Imported { route, map, name } = *imported;
                     events.push(AppEvent::RouteLoaded(RouteSummary {
-                        name: route.name().map_or(fallback_name, ToOwned::to_owned),
+                        name,
                         length: route.length().0,
                         elevation_gain: route.elevation_gain().0,
                         max_grade: route.max_grade().0,
                         elevation_source: route.elevation_source(),
                     }));
-                    self.generate_world(route.clone());
+                    self.generate_world(route.clone(), map);
                     self.route = Some(route);
                 }
                 JobResult::World(world) => {

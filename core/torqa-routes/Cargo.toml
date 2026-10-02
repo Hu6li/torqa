@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 torqa-domain.workspace = true
 torqa-terrain.workspace = true
+torqa-osm.workspace = true
 quick-xml.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

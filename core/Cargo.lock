@@ -2020,6 +2020,7 @@ dependencies = [
  "tokio",
  "torqa-devices",
  "torqa-domain",
+ "torqa-osm",
  "torqa-physics",
  "torqa-routes",
  "torqa-session",
@@ -2044,6 +2045,7 @@ dependencies = [
  "torqa-session",
  "torqa-storage",
  "torqa-terrain",
+ "torqa-world",
  "tracing-subscriber",
 ]
 
@@ -2104,6 +2106,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "torqa-domain",
+ "torqa-osm",
  "torqa-terrain",
  "tracing",
 ]
@@ -2145,6 +2148,7 @@ name = "torqa-world"
 version = "0.1.0"
 dependencies = [
  "tokio",
+ "torqa-osm",
  "torqa-routes",
  "tracing",
 ]

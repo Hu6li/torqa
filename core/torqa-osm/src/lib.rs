@@ -143,7 +143,8 @@ impl Osm {
                 env!("CARGO_PKG_VERSION"),
                 " (+https://github.com/bossm8/torqa)"
             ))
-            .timeout(Duration::from_secs(120))
+            // Big tiles download in ~15 s; a stuck server should not hold up the mirrors long.
+            .timeout(Duration::from_secs(45))
             .build()
             .expect("HTTP client with TLS");
         Self {

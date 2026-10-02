@@ -1,8 +1,7 @@
 shader_type spatial;
-// Terrain coloured by slope and altitude: meadow, rock on steep slopes, snow up high.
+// Terrain tinted by its land cover (vertex colour from OpenStreetMap; alpha marks water), with
+// rock on steep slopes and snow up high.
 
-uniform vec3 grass_color : source_color = vec3(0.30, 0.46, 0.20);
-uniform vec3 dry_grass_color : source_color = vec3(0.46, 0.50, 0.27);
 uniform vec3 rock_color : source_color = vec3(0.45, 0.43, 0.40);
 uniform vec3 snow_color : source_color = vec3(0.93, 0.95, 0.97);
 uniform float snow_line = 2400.0;
@@ -31,14 +30,18 @@ void vertex() {
 }
 
 void fragment() {
-	// Large and small patches break up the uniform green.
+	// Large and small patches break up flat colours.
 	float patches = value_noise(world_position.xz / 90.0) * 0.65 + value_noise(world_position.xz / 9.0) * 0.35;
-	vec3 color = mix(grass_color, dry_grass_color, smoothstep(0.35, 0.85, patches));
+	// Land-cover colours arrive as sRGB vertex colours; shading works in linear space.
+	vec3 cover = pow(COLOR.rgb, vec3(2.2));
+	vec3 color = cover * (0.85 + patches * 0.3);
 	float steepness = 1.0 - world_normal.y;
 	color = mix(color, rock_color, smoothstep(0.16, 0.30, steepness + patches * 0.05));
 	float snow = smoothstep(snow_line - 150.0, snow_line + 150.0, world_position.y + patches * 120.0);
 	color = mix(color, snow_color, snow * smoothstep(0.45, 0.25, steepness));
-	ALBEDO = color;
-	ROUGHNESS = 0.95;
-	SPECULAR = 0.2;
+
+	float water = smoothstep(0.4, 0.6, COLOR.a);
+	ALBEDO = mix(color, cover, water);
+	ROUGHNESS = mix(0.95, 0.08, water);
+	SPECULAR = mix(0.2, 0.6, water);
 }
