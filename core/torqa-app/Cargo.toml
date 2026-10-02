@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 torqa-domain.workspace = true
+torqa-osm.workspace = true
 torqa-devices.workspace = true
 torqa-physics.workspace = true
 torqa-routes.workspace = true

@@ -231,9 +231,10 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// Terrain chunk `index` as mesh arrays: `{vertices, normals, uvs, indices, center}` in
-    /// Godot coordinates (x east, y up, −z north, metres from the route start). Vertices are
-    /// relative to `center`, so a node placed there gets correct visibility ranges.
+    /// World chunk `index`: `{center, terrain, buildings, conifers, broadleaves}`. `terrain`
+    /// and `buildings` are mesh arrays (`{vertices, normals, uvs, colors, indices}`), the tree
+    /// entries `MultiMesh` transform buffers. Geometry is relative to `center`, in Godot
+    /// coordinates (x east, y up, −z north, metres from the route start).
     #[func]
     fn world_chunk(&self, index: i64) -> VarDictionary {
         let chunk = self
@@ -245,10 +246,25 @@ impl TorqaApp {
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
-        let center = Vector3::new(chunk.center[0], chunk.center[1], chunk.center[2]);
-        let mut arrays = mesh_arrays(&chunk.mesh, center);
-        arrays.set("center", center);
-        arrays
+        let [x, y, z] = chunk.center;
+        let conifers = PackedFloat32Array::from(chunk.trees.conifers.as_slice());
+        let broadleaves = PackedFloat32Array::from(chunk.trees.broadleaves.as_slice());
+        vdict! {
+            "center" => Vector3::new(x, y, z),
+            "terrain" => &mesh_arrays(&chunk.mesh),
+            "buildings" => &mesh_arrays(&chunk.buildings),
+            "conifers" => &conifers,
+            "broadleaves" => &broadleaves,
+        }
+    }
+
+    /// Rivers and streams as mesh arrays, in route coordinates.
+    #[func]
+    fn water_mesh(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.water))
     }
 
     /// The road as mesh arrays `{vertices, normals, uvs, indices}`; `uv.y` is the distance
@@ -258,9 +274,7 @@ impl TorqaApp {
         self.app
             .as_ref()
             .and_then(App::world)
-            .map_or_else(VarDictionary::new, |world| {
-                mesh_arrays(&world.road, Vector3::ZERO)
-            })
+            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.road))
     }
 
     /// `(distance m, elevation m)` points of the loaded route, at most `max_points`.
@@ -383,13 +397,13 @@ impl TorqaApp {
     }
 }
 
-/// Converts mesh data to the arrays Godot's `ArrayMesh` takes, with vertices relative to
-/// `origin`.
-fn mesh_arrays(mesh: &torqa_world::MeshData, origin: Vector3) -> VarDictionary {
+/// Converts mesh data to the arrays Godot's `ArrayMesh` takes; `colors` is empty when the
+/// mesh has none.
+fn mesh_arrays(mesh: &torqa_world::MeshData) -> VarDictionary {
     let vertices: PackedVector3Array = mesh
         .vertices
         .iter()
-        .map(|&[x, y, z]| Vector3::new(x, y, z) - origin)
+        .map(|&[x, y, z]| Vector3::new(x, y, z))
         .collect();
     let normals: PackedVector3Array = mesh
         .normals
@@ -397,6 +411,11 @@ fn mesh_arrays(mesh: &torqa_world::MeshData, origin: Vector3) -> VarDictionary {
         .map(|&[x, y, z]| Vector3::new(x, y, z))
         .collect();
     let uvs: PackedVector2Array = mesh.uvs.iter().map(|&[u, v]| Vector2::new(u, v)).collect();
+    let colors: PackedColorArray = mesh
+        .colors
+        .iter()
+        .map(|&[r, g, b, a]| Color::from_rgba(r, g, b, a))
+        .collect();
     let indices: PackedInt32Array = mesh
         .indices
         .iter()
@@ -406,6 +425,7 @@ fn mesh_arrays(mesh: &torqa_world::MeshData, origin: Vector3) -> VarDictionary {
         "vertices" => &vertices,
         "normals" => &normals,
         "uvs" => &uvs,
+        "colors" => &colors,
         "indices" => &indices,
     }
 }

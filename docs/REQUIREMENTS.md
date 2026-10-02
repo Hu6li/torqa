@@ -75,6 +75,17 @@ a synced ride video, or street-level imagery.
 | R30 | Local storage in a **configurable data directory** that may live in a synced folder (e.g. Nextcloud) → sync-safe design, see ADR 0002. |
 | R31 | Detailed ride history and analysis: power/HR/cadence charts, zones, PRs. |
 
+## Courses
+
+| ID | Requirement |
+|---|---|
+| R32 | **Course files** (`.tqc`): a prepared course is saved as one self-contained file that can be stored, copied, shared (mail, Nextcloud, USB, websites) and imported again, fully offline. See ADR 0007. |
+| R33 | A course contains the original GPX, the processed route (elevations, bridges/tunnels), the corridor's terrain heights and OpenStreetMap features, the **pre-built 3D world**, a preview image and a manifest (format and generator versions, name, stats, attribution). |
+| R34 | **Course library**: a `courses/` folder in the data directory (may be synced, R30). The app lists its courses to pick from, imports `.tqc` files into it and saves newly prepared routes as courses. |
+| R35 | Courses built by an older generator still ride instantly from their stored world; they can be rebuilt from the stored inputs with a newer generator. Video courses (R17) use the same format and reference their video file instead of embedding it. |
+
+Sharing is file-based for now; a built-in online catalog may follow later.
+
 ## MVP definition
 
 Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mode → save a FIT file.

@@ -1,24 +1,32 @@
-//! 3D world geometry for Torqa (R16): terrain chunks in a corridor around the route and a road
-//! mesh along it.
+//! 3D world geometry for Torqa (R16): terrain chunks in a corridor around the route, coloured
+//! by land cover, with buildings and trees from OpenStreetMap, rivers, and the road.
 //!
-//! Coordinates follow Godot: metres from the route start with x east, y up and z south
-//! (−z is north). Triangles wind clockwise seen from their front, Godot's front-face order.
+//! Coordinates follow Godot: metres with x east, y up and z south (−z is north), relative to
+//! the route start for the road and water, and to each chunk's centre for chunk geometry.
+//! Triangles wind clockwise seen from their front, Godot's front-face order.
 
+mod buildings;
+mod landcover;
 mod road;
+mod vegetation;
+mod water;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
-use torqa_routes::{ElevationModel, LocalProjection, Route};
+use torqa_osm::MapData;
+use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
+use landcover::LandIndex;
 use road::RoadIndex;
+pub use vegetation::Trees;
 
 /// Edge length of a terrain chunk.
 const CHUNK_SIZE: f64 = 480.0;
 /// Distance between terrain vertices.
 const GRID: f64 = 16.0;
-/// Terrain is generated up to this far from the route.
-const CORRIDOR: f64 = 1500.0;
+/// Terrain (and map data) is used up to this far from the route.
+pub const CORRIDOR: f64 = 1500.0;
 /// Half the road width.
 const ROAD_HALF_WIDTH: f64 = 3.0;
 /// Terrain within this distance of the road centre is levelled to the road. Larger than half a
@@ -40,17 +48,23 @@ pub struct MeshData {
     pub normals: Vec<[f32; 3]>,
     /// Texture coordinates; for the road `u` is 0–1 across and `v` the distance in metres.
     pub uvs: Vec<[f32; 2]>,
+    /// Vertex colours (RGB tint, alpha 1 marks water); empty when the mesh has none.
+    pub colors: Vec<[f32; 4]>,
     /// Three vertex indices per triangle.
     pub indices: Vec<u32>,
 }
 
-/// A square piece of terrain.
+/// A square piece of the world.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerrainChunk {
-    /// Centre of the chunk (at sea level).
+    /// Centre of the chunk at sea level; the chunk's geometry is relative to it.
     pub center: [f32; 3],
-    /// Geometry in world coordinates.
+    /// Ground, coloured by land cover.
     pub mesh: MeshData,
+    /// Buildings standing in the chunk.
+    pub buildings: MeshData,
+    /// Trees standing in the chunk.
+    pub trees: Trees,
 }
 
 /// The generated world.
@@ -60,24 +74,44 @@ pub struct World {
     pub chunks: Vec<TerrainChunk>,
     /// The road along the route.
     pub road: MeshData,
+    /// Rivers and streams.
+    pub water: MeshData,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
 }
 
-/// Builds terrain and road for `route`, sampling heights from `model` (e.g. the terrain tiles).
-/// Where the model has no data, the terrain follows the road's elevation.
-pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M) -> World {
+/// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
+/// placing `map` features. Where the model has no data, the terrain follows the road.
+pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &MapData) -> World {
     let projection = LocalProjection::for_route(route);
     let road = RoadIndex::new(route, &projection);
+    let land = LandIndex::new(&map.areas, &projection);
+    let buildings = buildings_by_chunk(map, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH),
+        water: water::ribbons(&map.waterways, &projection, &road, model).await,
         ..World::default()
     };
 
-    let chunk_cells = chunks_near_route(&road);
-    for (cx, cn) in chunk_cells {
-        let chunk = terrain_chunk(cx, cn, &projection, &road, model, &mut world).await;
-        world.chunks.push(chunk);
+    for (cx, cn) in chunks_near_route(&road) {
+        let heights = HeightGrid::sample(cx, cn, &projection, &road, model, &mut world).await;
+        let origin = [
+            heights.origin.0 + CHUNK_SIZE / 2.0,
+            0.0,
+            -(heights.origin.1 + CHUNK_SIZE / 2.0),
+        ];
+        let mut building_mesh = MeshData::default();
+        for (building, footprint) in buildings.get(&(cx, cn)).into_iter().flatten() {
+            buildings::add(&mut building_mesh, building, footprint, &heights, origin);
+        }
+        #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
+        let center = [origin[0] as f32, 0.0, origin[2] as f32];
+        world.chunks.push(TerrainChunk {
+            center,
+            mesh: heights.mesh(&land, origin),
+            buildings: building_mesh,
+            trees: vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin),
+        });
     }
     if world.fallback_samples > 0 {
         warn!(
@@ -85,8 +119,51 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M) -> World 
             "terrain data missing in places; terrain follows the road there"
         );
     }
-    info!(chunks = world.chunks.len(), "world generated");
+    info!(
+        chunks = world.chunks.len(),
+        trees = world.chunks.iter().map(|c| c.trees.len()).sum::<usize>(),
+        "world generated"
+    );
     world
+}
+
+/// Buildings with their footprints in metres east/north, by chunk.
+type BuildingsByChunk<'a> = HashMap<(i32, i32), Vec<(&'a torqa_osm::Building, Vec<(f64, f64)>)>>;
+
+/// Buildings near the route with their footprints, grouped by the chunk containing their
+/// first corner.
+fn buildings_by_chunk<'a>(
+    map: &'a MapData,
+    projection: &LocalProjection,
+    road: &RoadIndex,
+) -> BuildingsByChunk<'a> {
+    let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
+    for building in &map.buildings {
+        let footprint = buildings::footprint(building, projection);
+        let Some(&(east, north)) = footprint.first() else {
+            continue;
+        };
+        // Buildings mapped across the road (e.g. bad data) would block it.
+        let on_road = footprint
+            .iter()
+            .any(|&(e, n)| road.nearest(e, n, ROAD_HALF_WIDTH + 1.0).is_some());
+        if on_road || road.nearest(east, north, CORRIDOR).is_none() {
+            continue;
+        }
+        by_chunk
+            .entry(chunk_of(east, north))
+            .or_default()
+            .push((building, footprint));
+    }
+    by_chunk
+}
+
+fn chunk_of(east: f64, north: f64) -> (i32, i32) {
+    #[allow(clippy::cast_possible_truncation)] // world coordinates are far below 2^31 chunks
+    (
+        (east / CHUNK_SIZE).floor() as i32,
+        (north / CHUNK_SIZE).floor() as i32,
+    )
 }
 
 /// Chunk grid cells (east, north) within the corridor of any part of the route.
@@ -95,15 +172,12 @@ fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
     let reach = CORRIDOR + CHUNK_SIZE / 2.0 * std::f64::consts::SQRT_2;
     // Sampling the road every half chunk is enough to touch every chunk in reach.
     for (east, north) in road.samples(CHUNK_SIZE / 2.0) {
-        let range = |center: f64| {
-            let low = ((center - reach) / CHUNK_SIZE).floor();
-            let high = ((center + reach) / CHUNK_SIZE).floor();
-            #[allow(clippy::cast_possible_truncation)]
-            // world coordinates are far below 2^31 chunks
-            (low as i32..=high as i32)
-        };
-        for cx in range(east) {
-            for cn in range(north) {
+        let (low, high) = (
+            chunk_of(east - reach, north - reach),
+            chunk_of(east + reach, north + reach),
+        );
+        for cx in low.0..=high.0 {
+            for cn in low.1..=high.1 {
                 let center_e = (f64::from(cx) + 0.5) * CHUNK_SIZE;
                 let center_n = (f64::from(cn) + 0.5) * CHUNK_SIZE;
                 if (center_e - east).hypot(center_n - north) <= reach {
@@ -115,94 +189,135 @@ fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
     cells
 }
 
-#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-async fn terrain_chunk<M: ElevationModel>(
-    cx: i32,
-    cn: i32,
-    projection: &LocalProjection,
-    road: &RoadIndex,
-    model: &mut M,
-    world: &mut World,
-) -> TerrainChunk {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let cells = (CHUNK_SIZE / GRID).round() as usize;
-    let side = cells + 1;
-    // Heights with a one-vertex border, so normals at the edges match the neighbours.
-    let bordered = side + 2;
-    let origin_e = f64::from(cx) * CHUNK_SIZE;
-    let origin_n = f64::from(cn) * CHUNK_SIZE;
-    let chunk_road_elevation = road
-        .nearest(
-            origin_e + CHUNK_SIZE / 2.0,
-            origin_n + CHUNK_SIZE / 2.0,
-            f64::INFINITY,
-        )
-        .map_or(0.0, |(_, elevation)| elevation);
+/// Terrain heights of one chunk on the vertex grid, with a one-vertex border so normals at
+/// the edges match the neighbours.
+pub(crate) struct HeightGrid {
+    /// South-west corner in metres east/north.
+    origin: (f64, f64),
+    /// Vertices per side, without the border.
+    side: usize,
+    heights: Vec<f64>,
+}
 
-    let mut heights = vec![0.0; bordered * bordered];
-    for j in 0..bordered {
-        for i in 0..bordered {
-            #[allow(clippy::cast_precision_loss)] // small grid indices
-            let (east, north) = (
-                origin_e + (i as f64 - 1.0) * GRID,
-                origin_n + (j as f64 - 1.0) * GRID,
-            );
-            let (lat, lon) = projection.unproject(east, north);
-            let natural = if let Ok(height) = model.elevation(lat, lon).await {
-                height
-            } else {
-                world.fallback_samples += 1;
-                road.nearest(east, north, FALLBACK_RADIUS)
-                    .map_or(chunk_road_elevation, |(_, elevation)| elevation)
-            };
-            heights[j * bordered + i] =
-                level_to_road(natural, road.nearest(east, north, FLAT_OUTER));
+impl HeightGrid {
+    async fn sample<M: ElevationModel>(
+        cx: i32,
+        cn: i32,
+        projection: &LocalProjection,
+        road: &RoadIndex,
+        model: &mut M,
+        world: &mut World,
+    ) -> Self {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let side = (CHUNK_SIZE / GRID).round() as usize + 1;
+        let bordered = side + 2;
+        let origin = (f64::from(cx) * CHUNK_SIZE, f64::from(cn) * CHUNK_SIZE);
+        let chunk_road_elevation = road
+            .nearest(
+                origin.0 + CHUNK_SIZE / 2.0,
+                origin.1 + CHUNK_SIZE / 2.0,
+                f64::INFINITY,
+            )
+            .map_or(0.0, |(_, elevation, _)| elevation);
+
+        let mut heights = vec![0.0; bordered * bordered];
+        for j in 0..bordered {
+            for i in 0..bordered {
+                #[allow(clippy::cast_precision_loss)] // small grid indices
+                let (east, north) = (
+                    origin.0 + (i as f64 - 1.0) * GRID,
+                    origin.1 + (j as f64 - 1.0) * GRID,
+                );
+                let (lat, lon) = projection.unproject(east, north);
+                let natural = if let Ok(height) = model.elevation(lat, lon).await {
+                    height
+                } else {
+                    world.fallback_samples += 1;
+                    road.nearest(east, north, FALLBACK_RADIUS)
+                        .map_or(chunk_road_elevation, |(_, elevation, _)| elevation)
+                };
+                heights[j * bordered + i] =
+                    level_to_road(natural, road.nearest(east, north, FLAT_OUTER));
+            }
+        }
+        Self {
+            origin,
+            side,
+            heights,
         }
     }
 
-    let height = |i: usize, j: usize| heights[(j + 1) * bordered + (i + 1)];
-    let mut mesh = MeshData::default();
-    for j in 0..side {
-        for i in 0..side {
-            #[allow(clippy::cast_precision_loss)]
-            let (east, north) = (origin_e + i as f64 * GRID, origin_n + j as f64 * GRID);
-            let h = height(i, j);
-            mesh.vertices.push([east as f32, h as f32, -north as f32]);
-            // Central differences; (bi, bj) index the bordered grid, so neighbours always exist.
-            let (bi, bj) = (i + 1, j + 1);
-            let at = |bi: usize, bj: usize| heights[bj * bordered + bi];
-            let slope_east = (at(bi + 1, bj) - at(bi - 1, bj)) / (2.0 * GRID);
-            let slope_north = (at(bi, bj + 1) - at(bi, bj - 1)) / (2.0 * GRID);
-            mesh.normals.push(unit([-slope_east, 1.0, slope_north]));
-            mesh.uvs.push([(east / GRID) as f32, (north / GRID) as f32]);
-        }
-    }
-    for j in 0..cells {
-        for i in 0..cells {
-            let index = |i: usize, j: usize| u32::try_from(j * side + i).expect("chunk fits u32");
-            let (sw, se, nw, ne) = (
-                index(i, j),
-                index(i + 1, j),
-                index(i, j + 1),
-                index(i + 1, j + 1),
-            );
-            mesh.indices.extend([sw, nw, ne, sw, ne, se]);
-        }
+    /// Height at a grid vertex; `i`/`j` may be −1 or `side` (the border).
+    fn vertex(&self, i: isize, j: isize) -> f64 {
+        let bordered = self.side + 2;
+        let clamp = |k: isize| usize::try_from(k + 1).unwrap_or(0).min(bordered - 1);
+        self.heights[clamp(j) * bordered + clamp(i)]
     }
 
-    TerrainChunk {
-        center: [
-            (origin_e + CHUNK_SIZE / 2.0) as f32,
-            0.0,
-            -(origin_n + CHUNK_SIZE / 2.0) as f32,
-        ],
-        mesh,
+    /// Height at any point of (or slightly around) the chunk, interpolated like the mesh.
+    pub(crate) fn at(&self, east: f64, north: f64) -> f64 {
+        let u = (east - self.origin.0) / GRID;
+        let v = (north - self.origin.1) / GRID;
+        let (i, j) = (u.floor(), v.floor());
+        let (fu, fv) = (u - i, v - j);
+        #[allow(clippy::cast_possible_truncation)] // clamped to the small grid by `vertex`
+        let (i, j) = (i as isize, j as isize);
+        let bottom = self.vertex(i, j) * (1.0 - fu) + self.vertex(i + 1, j) * fu;
+        let top = self.vertex(i, j + 1) * (1.0 - fu) + self.vertex(i + 1, j + 1) * fu;
+        bottom * (1.0 - fv) + top * fv
+    }
+
+    /// The ground mesh relative to `origin`, coloured by land cover.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // f32 GPU data; small grid
+    fn mesh(&self, land: &LandIndex, origin: [f64; 3]) -> MeshData {
+        let side = self.side;
+        let mut mesh = MeshData::default();
+        for j in 0..side {
+            for i in 0..side {
+                #[allow(clippy::cast_precision_loss)]
+                let (east, north) = (
+                    self.origin.0 + i as f64 * GRID,
+                    self.origin.1 + j as f64 * GRID,
+                );
+                let (ii, jj) = (i as isize, j as isize);
+                let h = self.vertex(ii, jj);
+                mesh.vertices.push([
+                    (east - origin[0]) as f32,
+                    (h - origin[1]) as f32,
+                    (-north - origin[2]) as f32,
+                ]);
+                // Central differences; the border ring provides the outer neighbours.
+                let slope_east = (self.vertex(ii + 1, jj) - self.vertex(ii - 1, jj)) / (2.0 * GRID);
+                let slope_north =
+                    (self.vertex(ii, jj + 1) - self.vertex(ii, jj - 1)) / (2.0 * GRID);
+                mesh.normals.push(unit([-slope_east, 1.0, slope_north]));
+                mesh.uvs.push([(east / GRID) as f32, (north / GRID) as f32]);
+                mesh.colors
+                    .push(landcover::color(land.cover_at(east, north)));
+            }
+        }
+        let cells = side - 1;
+        for j in 0..cells {
+            for i in 0..cells {
+                let index =
+                    |i: usize, j: usize| u32::try_from(j * side + i).expect("chunk fits u32");
+                let (sw, se, nw, ne) = (
+                    index(i, j),
+                    index(i + 1, j),
+                    index(i, j + 1),
+                    index(i + 1, j + 1),
+                );
+                mesh.indices.extend([sw, nw, ne, sw, ne, se]);
+            }
+        }
+        mesh
     }
 }
 
 /// Levels terrain to just below the road near it and blends back to the natural height.
-fn level_to_road(natural: f64, nearest_road: Option<(f64, f64)>) -> f64 {
-    let Some((distance, road_elevation)) = nearest_road else {
+/// Bridges and tunnels leave the ground below or above them untouched.
+fn level_to_road(natural: f64, nearest_road: Option<(f64, f64, Surface)>) -> f64 {
+    let Some((distance, road_elevation, Surface::Ground)) = nearest_road else {
         return natural;
     };
     let levelled = road_elevation - ROAD_SINK;
@@ -224,151 +339,18 @@ fn unit(v: [f64; 3]) -> [f32; 3] {
     ]
 }
 
-#[cfg(test)]
-mod tests {
-    use std::fmt::Write as _;
-
-    use super::*;
-
-    /// Terrain rising 10 % towards the east, 500 m at the route start.
-    struct EastwardSlope;
-
-    impl ElevationModel for EastwardSlope {
-        fn elevation(
-            &mut self,
-            _lat: f64,
-            lon: f64,
-        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
-            let east = (lon - 7.0) * 111_195.0 * 46f64.to_radians().cos();
-            std::future::ready(Ok(500.0 + 0.1 * east))
-        }
-    }
-
-    /// No terrain data at all, as when offline without cached tiles.
-    struct NoData;
-
-    impl ElevationModel for NoData {
-        fn elevation(
-            &mut self,
-            _lat: f64,
-            _lon: f64,
-        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
-            std::future::ready(Err("offline".to_owned()))
-        }
-    }
-
-    /// A 1 km flat road due north at 500 m.
-    async fn route_north() -> Route {
-        let mut xml = String::from("<gpx><trk><trkseg>");
-        for i in 0..=10 {
-            let lat = 46.0 + f64::from(i) * 100.0 / 111_195.0;
-            let _ = write!(xml, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
-        }
-        xml.push_str("</trkseg></trk></gpx>");
-        Route::from_gpx(&xml, None).await.unwrap()
-    }
-
-    fn triangles(mesh: &MeshData) -> impl Iterator<Item = [[f32; 3]; 3]> + '_ {
-        mesh.indices
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|t| t.map(|k| mesh.vertices[k as usize]))
-    }
-
-    /// Normal of a triangle by the right-hand rule; negative y means clockwise seen from above.
-    fn face_normal_y([first, second, third]: [[f32; 3]; 3]) -> f32 {
-        let edge_1 = [0, 1, 2].map(|k| second[k] - first[k]);
-        let edge_2 = [0, 1, 2].map(|k| third[k] - first[k]);
-        edge_1[2] * edge_2[0] - edge_1[0] * edge_2[2]
-    }
-
-    #[tokio::test]
-    async fn terrain_surrounds_the_route() {
-        let world = generate(&route_north().await, &mut EastwardSlope).await;
-
-        assert_ne!(world.chunks.len(), 0);
-        // Every chunk is within the corridor; the route spans x = 0 and z = 0..−1000.
-        for chunk in &world.chunks {
-            let [x, _, z] = chunk.center;
-            assert!(
-                x.abs() < 2000.0 && (-2700.0..1700.0).contains(&z),
-                "{x}, {z}"
-            );
-        }
-        assert_eq!(world.fallback_samples, 0);
-    }
-
-    #[tokio::test]
-    async fn meshes_are_valid_and_face_up() {
-        let world = generate(&route_north().await, &mut EastwardSlope).await;
-
-        for mesh in world.chunks.iter().map(|c| &c.mesh).chain([&world.road]) {
-            assert_eq!(mesh.vertices.len(), mesh.normals.len());
-            assert_eq!(mesh.vertices.len(), mesh.uvs.len());
-            assert_eq!(mesh.indices.len() % 3, 0);
-            assert!(
-                mesh.indices
-                    .iter()
-                    .all(|&i| (i as usize) < mesh.vertices.len())
-            );
-            // Godot draws clockwise triangles; seen from above they must be clockwise.
-            assert!(triangles(mesh).all(|t| face_normal_y(t) < 0.0));
-            assert!(mesh.normals.iter().all(|n| n[1] > 0.0));
-        }
-    }
-
-    #[tokio::test]
-    async fn terrain_follows_the_model_away_from_the_road() {
-        let world = generate(&route_north().await, &mut EastwardSlope).await;
-
-        let vertex = world
-            .chunks
-            .iter()
-            .flat_map(|c| &c.mesh.vertices)
-            .find(|v| (v[0] - 1000.0).abs() < 9.0 && (v[2] + 500.0).abs() < 9.0)
-            .expect("a vertex 1 km east of the route");
-        let expected = 500.0 + 0.1 * vertex[0];
-        assert!(
-            (vertex[1] - expected).abs() < 0.5,
-            "{} vs {expected}",
-            vertex[1]
-        );
-    }
-
-    #[tokio::test]
-    async fn terrain_is_levelled_just_below_the_road() {
-        let world = generate(&route_north().await, &mut EastwardSlope).await;
-
-        let near_road: Vec<_> = world
-            .chunks
-            .iter()
-            .flat_map(|c| &c.mesh.vertices)
-            .filter(|v| v[0].abs() <= 10.0 && (-1000.0..0.0).contains(&v[2]))
-            .collect();
-        assert_ne!(near_road.len(), 0);
-        for v in near_road {
-            assert!((v[1] - (500.0 - 0.25)).abs() < 0.01, "{v:?}");
-        }
-        assert!(
-            world
-                .road
-                .vertices
-                .iter()
-                .all(|v| (v[1] - 500.0).abs() < 0.01)
-        );
-    }
-
-    #[tokio::test]
-    async fn without_terrain_data_the_world_follows_the_road() {
-        let world = generate(&route_north().await, &mut NoData).await;
-
-        assert!(world.fallback_samples > 0);
-        let all_flat = world
-            .chunks
-            .iter()
-            .flat_map(|c| &c.mesh.vertices)
-            .all(|v| (v[1] - 500.0).abs() < 0.3);
-        assert!(all_flat);
-    }
+/// A deterministic pseudo-random number in `[0, 1)` from a seed (`SplitMix64`), so the world
+/// looks the same every time a route is loaded.
+pub(crate) fn hash(seed: i64) -> f64 {
+    #[allow(clippy::cast_sign_loss)] // bit reinterpretation
+    let mut z = (seed as u64).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    #[allow(clippy::cast_precision_loss)] // 53 significant bits are plenty
+    let value = (z >> 11) as f64 / (1u64 << 53) as f64;
+    value
 }
+
+#[cfg(test)]
+mod tests;

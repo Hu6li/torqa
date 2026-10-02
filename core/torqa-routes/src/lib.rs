@@ -3,10 +3,12 @@
 
 mod gpx;
 mod projection;
+mod structures;
 
 pub use projection::LocalProjection;
 
 use torqa_domain::units::{GradePercent, Meters};
+use torqa_osm::Structure;
 use torqa_terrain::Terrain;
 use tracing::warn;
 
@@ -34,6 +36,19 @@ pub enum RouteError {
     NoElevation,
 }
 
+/// The positions of a GPX file as (latitude, longitude), without building a route; for
+/// fetching data along it before importing.
+///
+/// # Errors
+/// [`RouteError::InvalidGpx`] if the file is not valid GPX.
+pub fn track_points(xml: &str) -> Result<Vec<(f64, f64)>, RouteError> {
+    Ok(gpx::parse(xml)?
+        .points
+        .iter()
+        .map(|p| (p.lat, p.lon))
+        .collect())
+}
+
 /// Where a route's elevations come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElevationSource {
@@ -54,6 +69,20 @@ pub struct RoutePoint {
     pub elevation: Meters,
     /// Distance from the start along the route.
     pub distance: Meters,
+    /// What carries the road here.
+    pub surface: Surface,
+}
+
+/// What carries the road at a point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Surface {
+    /// The ground.
+    #[default]
+    Ground,
+    /// A bridge: the road runs above the terrain.
+    Bridge,
+    /// A tunnel: the road runs below the terrain.
+    Tunnel,
 }
 
 /// Where a rider is on the route.
@@ -88,16 +117,19 @@ impl Route {
     /// # Errors
     /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
     pub async fn from_gpx(xml: &str, terrain: Option<&mut Terrain>) -> Result<Self, RouteError> {
-        Self::from_gpx_with(xml, terrain).await
+        Self::from_gpx_with(xml, terrain, &[]).await
     }
 
-    /// Like [`Route::from_gpx`], with any [`ElevationModel`].
+    /// Like [`Route::from_gpx`], with any [`ElevationModel`] and the road `structures`
+    /// (bridges, tunnels) along the route: there the elevation runs straight from one end to the
+    /// other instead of following the ground (or water) below or the mountain above.
     ///
     /// # Errors
     /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
     pub async fn from_gpx_with<M: ElevationModel>(
         xml: &str,
         model: Option<&mut M>,
+        structures: &[Structure],
     ) -> Result<Self, RouteError> {
         let gpx = gpx::parse(xml)?;
         let mut track = dedup(gpx.points);
@@ -123,7 +155,9 @@ impl Route {
             None if track.len() < 2 => return Err(RouteError::TooShort),
             None => return Err(RouteError::NoElevation),
         };
-        let points = resample(&track)?;
+        let mut points = resample(&track)?;
+        let surfaces = structures::surfaces(&points, structures);
+        structures::bridge_elevations(&mut points, &surfaces);
 
         let window = match source {
             ElevationSource::Terrain => TERRAIN_SMOOTHING,
@@ -139,8 +173,9 @@ impl Route {
         let points = points
             .iter()
             .zip(smoothed)
+            .zip(surfaces)
             .enumerate()
-            .map(|(i, (p, elevation))| {
+            .map(|(i, ((p, elevation), surface))| {
                 if i > 0 {
                     distance += haversine(&points[i - 1], p);
                 }
@@ -149,6 +184,7 @@ impl Route {
                     lon: p.lon,
                     elevation: Meters(elevation),
                     distance: Meters(distance),
+                    surface,
                 }
             })
             .collect();
@@ -507,7 +543,9 @@ mod tests {
             <trkpt lat="46.0" lon="7.0"/><trkpt lat="46.009" lon="7.0"/>
         </trkseg></trk></gpx>"#;
 
-        let route = Route::from_gpx_with(xml, Some(&mut Ridge)).await.unwrap();
+        let route = Route::from_gpx_with(xml, Some(&mut Ridge), &[])
+            .await
+            .unwrap();
 
         assert_eq!(route.elevation_source(), ElevationSource::Terrain);
         assert!(route.max_grade().0 < 0.5, "{:?}", route.max_grade());
@@ -532,5 +570,85 @@ mod tests {
         let north = import(&gpx_north(&[Some(0.0), Some(0.0)], 100.0)).await;
 
         assert!(north.position(Meters(50.0)).heading.abs() < 1e-6);
+    }
+
+    /// A valley 60 m deep in the middle of a 1 km route due north at 500 m.
+    struct Valley;
+
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * 111_195.0;
+            let depth = if (300.0..700.0).contains(&north) {
+                60.0
+            } else {
+                0.0
+            };
+            std::future::ready(Ok(500.0 - depth))
+        }
+    }
+
+    /// A densely recorded track due north (a point every 10 m), as from a bike computer.
+    fn dense_track_north() -> String {
+        gpx_north(&[None; 101], 10.0)
+    }
+
+    fn line_north(from_m: f64, to_m: f64, lon: f64) -> Vec<(f64, f64)> {
+        vec![
+            (46.0 + from_m / 111_195.0, lon),
+            (46.0 + to_m / 111_195.0, lon),
+        ]
+    }
+
+    #[tokio::test]
+    async fn bridges_carry_the_road_straight_across_valleys() {
+        let bridge = Structure {
+            kind: torqa_osm::StructureKind::Bridge,
+            line: line_north(280.0, 720.0, 7.0),
+        };
+
+        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[bridge])
+            .await
+            .unwrap();
+
+        assert!(route.max_grade().0 < 1.0, "{:?}", route.max_grade());
+        assert_eq!(route.position(Meters(500.0)).elevation, Meters(500.0));
+        let middle = route
+            .points()
+            .iter()
+            .find(|p| p.distance.0 >= 500.0)
+            .unwrap();
+        assert_eq!(middle.surface, Surface::Bridge);
+        assert_eq!(route.points()[0].surface, Surface::Ground);
+    }
+
+    #[tokio::test]
+    async fn without_the_bridge_the_route_dips_into_the_valley() {
+        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[])
+            .await
+            .unwrap();
+
+        assert!(route.position(Meters(500.0)).elevation.0 < 450.0);
+    }
+
+    #[tokio::test]
+    async fn roads_crossing_above_are_not_the_route() {
+        // A bridge running east-west over the route.
+        let crossing = Structure {
+            kind: torqa_osm::StructureKind::Bridge,
+            line: vec![
+                (46.0 + 500.0 / 111_195.0, 6.999),
+                (46.0 + 500.0 / 111_195.0, 7.001),
+            ],
+        };
+
+        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[crossing])
+            .await
+            .unwrap();
+
+        assert!(route.points().iter().all(|p| p.surface == Surface::Ground));
     }
 }

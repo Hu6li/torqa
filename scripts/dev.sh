@@ -17,5 +17,6 @@ exec docker run --rm $tty_flags \
     -v "$root:/workspaces/torqa" \
     -v torqa-cargo-registry:/usr/local/cargo/registry \
     -v torqa-target:/workspaces/torqa/core/target \
+    -v torqa-cache:/root/.cache \
     -w /workspaces/torqa \
     torqa-dev "$@"

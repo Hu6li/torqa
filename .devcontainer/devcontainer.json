@@ -6,7 +6,9 @@
   // Build artifacts and the cargo cache live in volumes: bind mounts on macOS are slow.
   "mounts": [
     "source=torqa-cargo-registry,target=/usr/local/cargo/registry,type=volume",
-    "source=torqa-target,target=/workspaces/torqa/core/target,type=volume"
+    "source=torqa-target,target=/workspaces/torqa/core/target,type=volume",
+    // Map and terrain downloads, as a real installation would keep them.
+    "source=torqa-cache,target=/root/.cache,type=volume"
   ],
   "customizations": {
     "vscode": {

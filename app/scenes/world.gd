@@ -8,6 +8,8 @@ enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
+## Trees and buildings are small; beyond this the land-cover colours carry the scene.
+const DETAIL_RANGE: float = 1800.0
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
 const JERSEY_COLOR: Color = Color(0.04, 0.61, 0.96)
@@ -21,9 +23,14 @@ var _placed: bool = false
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
+var _water_material: ShaderMaterial = ShaderMaterial.new()
+var _building_material: StandardMaterial3D = StandardMaterial3D.new()
+var _conifer_mesh: ArrayMesh
+var _broadleaf_mesh: ArrayMesh
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
+@onready var _water: MeshInstance3D = $Water
 @onready var _rider: Node3D = $Rider
 @onready var _camera: Camera3D = $Camera
 
@@ -48,6 +55,12 @@ func reset_view() -> void:
 func _ready() -> void:
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
 	_road_material.shader = preload("res://shaders/road.gdshader")
+	_water_material.shader = preload("res://shaders/water.gdshader")
+	_building_material.vertex_color_use_as_albedo = true
+	_building_material.vertex_color_is_srgb = true
+	_building_material.roughness = 0.9
+	_conifer_mesh = _tree_mesh(true)
+	_broadleaf_mesh = _tree_mesh(false)
 	_build_rider()
 
 
@@ -68,22 +81,57 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
 	_road.material_override = _road_material
+	_water.mesh = _mesh_from(_torqa.water_mesh())
+	_water.material_override = _water_material
 
 
 func _build_some_chunks() -> void:
 	var built: int = 0
 	while _next_chunk < _chunk_count and built < CHUNKS_PER_FRAME:
-		var arrays: Dictionary = _torqa.world_chunk(_next_chunk)
-		var chunk: MeshInstance3D = MeshInstance3D.new()
-		chunk.mesh = _mesh_from(arrays)
-		chunk.material_override = _terrain_material
-		chunk.position = arrays["center"]
-		chunk.visibility_range_end = VISIBILITY_RANGE
-		chunk.visibility_range_end_margin = 300.0
-		chunk.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-		_terrain.add_child(chunk)
+		var chunk: Dictionary = _torqa.world_chunk(_next_chunk)
+		var center: Vector3 = chunk["center"]
+		var node: Node3D = Node3D.new()
+		node.position = center
+		_terrain.add_child(node)
+		var terrain_arrays: Dictionary = chunk["terrain"]
+		var building_arrays: Dictionary = chunk["buildings"]
+		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
+		ground.visibility_range_end = VISIBILITY_RANGE
+		node.add_child(ground)
+		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
+		buildings.visibility_range_end = DETAIL_RANGE
+		node.add_child(buildings)
+		for kind: String in ["conifers", "broadleaves"]:
+			var buffer: PackedFloat32Array = chunk[kind]
+			if buffer.is_empty():
+				continue
+			var mesh: ArrayMesh = _conifer_mesh if kind == "conifers" else _broadleaf_mesh
+			node.add_child(_trees(buffer, mesh))
 		_next_chunk += 1
 		built += 1
+
+
+func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
+	var instance: MeshInstance3D = MeshInstance3D.new()
+	instance.mesh = _mesh_from(arrays)
+	instance.material_override = material
+	instance.visibility_range_end_margin = 300.0
+	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	return instance
+
+
+func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
+	var multimesh: MultiMesh = MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = mesh
+	multimesh.instance_count = buffer.size() / 12
+	multimesh.buffer = buffer
+	var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	instance.visibility_range_end = DETAIL_RANGE
+	instance.visibility_range_end_margin = 300.0
+	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	return instance
 
 
 func _follow_ride(state: Dictionary, delta: float) -> void:
@@ -134,15 +182,58 @@ func _mesh_from(arrays: Dictionary) -> ArrayMesh:
 	var vertices: PackedVector3Array = arrays["vertices"]
 	var normals: PackedVector3Array = arrays["normals"]
 	var uvs: PackedVector2Array = arrays["uvs"]
+	var colors: PackedColorArray = arrays["colors"]
 	var indices: PackedInt32Array = arrays["indices"]
 	surface[Mesh.ARRAY_VERTEX] = vertices
 	surface[Mesh.ARRAY_NORMAL] = normals
 	surface[Mesh.ARRAY_TEX_UV] = uvs
+	if not colors.is_empty():
+		surface[Mesh.ARRAY_COLOR] = colors
 	surface[Mesh.ARRAY_INDEX] = indices
 	var mesh: ArrayMesh = ArrayMesh.new()
 	if not vertices.is_empty():
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
 	return mesh
+
+
+## A low-poly tree standing on its origin: a trunk with a cone (conifer) or ball crown.
+func _tree_mesh(conifer: bool) -> ArrayMesh:
+	var mesh: ArrayMesh = ArrayMesh.new()
+	var trunk: CylinderMesh = CylinderMesh.new()
+	trunk.top_radius = 0.15
+	trunk.bottom_radius = 0.25
+	trunk.height = 3.0
+	trunk.radial_segments = 6
+	trunk.rings = 1
+	_add_surface(mesh, trunk, Vector3(0, 1.5, 0), _material(Color(0.33, 0.24, 0.17)))
+	if conifer:
+		var crown: CylinderMesh = CylinderMesh.new()
+		crown.top_radius = 0.0
+		crown.bottom_radius = 2.3
+		crown.height = 10.0
+		crown.radial_segments = 8
+		crown.rings = 1
+		_add_surface(mesh, crown, Vector3(0, 7.0, 0), _material(Color(0.1, 0.24, 0.13)))
+	else:
+		var crown: SphereMesh = SphereMesh.new()
+		crown.radius = 3.0
+		crown.height = 5.5
+		crown.radial_segments = 8
+		crown.rings = 4
+		_add_surface(mesh, crown, Vector3(0, 5.5, 0), _material(Color(0.2, 0.36, 0.14)))
+	return mesh
+
+
+func _add_surface(
+	mesh: ArrayMesh, shape: PrimitiveMesh, offset: Vector3, material: Material
+) -> void:
+	var arrays: Array = shape.get_mesh_arrays()
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for i: int in range(vertices.size()):
+		vertices[i] += offset
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 
 
 ## A simple stand-in cyclist until the real avatar arrives.
