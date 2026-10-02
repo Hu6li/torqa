@@ -15,10 +15,25 @@ const METRICS: Array[Array] = [
 	["elapsed_s", "Time", ""],
 ]
 const TOAST_SECONDS: float = 4.0
+## Power zones 1–7 (Coggan): name and colour, as commonly used by training platforms.
+const POWER_ZONES: Array[Array] = [
+	["Recovery", Color(0.6, 0.62, 0.66)],
+	["Endurance", Color(0.25, 0.6, 0.95)],
+	["Tempo", Color(0.3, 0.8, 0.45)],
+	["Threshold", Color(0.98, 0.8, 0.2)],
+	["VO2max", Color(0.98, 0.55, 0.2)],
+	["Anaerobic", Color(0.95, 0.3, 0.3)],
+	["Neuromuscular", Color(0.7, 0.4, 0.95)],
+]
+const KM_PER_MILE: float = 1.609344
+const METERS_PER_FOOT: float = 0.3048
 
 var _torqa: TorqaApp
 var _world: RideWorld
 var _values: Dictionary[String, Label] = {}
+var _units: Dictionary[String, Label] = {}
+var _imperial: bool = false
+var _power_detail: Label = Label.new()
 var _finished: bool = false
 var _toast_left: float = 0.0
 
@@ -50,8 +65,13 @@ func begin() -> void:
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
 	_finish_button.text = "Finish & save"
+	var profile: Dictionary = _torqa.profile()
+	_imperial = profile.get("units", "metric") == "imperial"
+	_units["speed_kmh"].text = "mph" if _imperial else "km/h"
+	_units["distance_m"].text = "mi" if _imperial else "km"
 	for label: Label in _values.values():
 		label.text = "--"
+	_power_detail.text = ""
 	_show_toast("Waiting for the trainer…")
 
 
@@ -92,13 +112,19 @@ func _process(delta: float) -> void:
 	var y_m: float = state["y"]
 	var heading: float = state["heading"]
 	_values["power"].text = _number(state["power"], 0)
-	_values["speed_kmh"].text = _number(state["speed_kmh"], 1)
+	_show_power_detail(state["watts_per_kg"], state["power_zone"])
+	var speed_kmh: float = state["speed_kmh"]
+	_values["speed_kmh"].text = "%.1f" % (speed_kmh / KM_PER_MILE if _imperial else speed_kmh)
 	_values["grade"].text = "%+.1f" % grade
 	_values["heart_rate"].text = _number(state["heart_rate"], 0)
 	_values["cadence"].text = _number(state["cadence"], 0)
-	_values["distance_m"].text = "%.2f" % (distance_m / 1000.0)
+	var distance_km: float = distance_m / 1000.0
+	_values["distance_m"].text = "%.2f" % (distance_km / KM_PER_MILE if _imperial else distance_km)
 	_values["elapsed_s"].text = _duration(elapsed_s)
-	_profile_info.text = "%d m  ·  %+.1f %%" % [roundi(elevation), grade]
+	if _imperial:
+		_profile_info.text = "%d ft  ·  %+.1f %%" % [roundi(elevation / METERS_PER_FOOT), grade]
+	else:
+		_profile_info.text = "%d m  ·  %+.1f %%" % [roundi(elevation), grade]
 	_minimap.set_rider(Vector2(x_m, y_m), heading)
 	_profile.set_rider_distance(distance_m)
 
@@ -108,6 +134,8 @@ func _build_metrics() -> void:
 	power.add_theme_constant_override("separation", 0)
 	power.add_child(UiTheme.caption("Power"))
 	power.add_child(_value_row("power", 48, "W"))
+	_power_detail.add_theme_font_size_override("font_size", 13)
+	power.add_child(_power_detail)
 	_metrics.add_child(power)
 
 	var divider: ColorRect = ColorRect.new()
@@ -144,8 +172,23 @@ func _value_row(key: String, size: int, unit: String) -> HBoxContainer:
 		unit_label.add_theme_font_size_override("font_size", maxi(11, size / 3))
 		unit_label.add_theme_color_override("font_color", UiTheme.MUTED)
 		row.add_child(unit_label)
+		_units[key] = unit_label
 	_values[key] = value
 	return row
+
+
+## "3.6 W/kg · Z4 Threshold", coloured by zone; empty without power.
+func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
+	if watts_per_kg == null or zone == null:
+		_power_detail.text = ""
+		return
+	var ratio: float = watts_per_kg
+	var zone_number: int = zone
+	var index: int = clampi(zone_number - 1, 0, POWER_ZONES.size() - 1)
+	var zone_name: String = POWER_ZONES[index][0]
+	var color: Color = POWER_ZONES[index][1]
+	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, zone_name]
+	_power_detail.add_theme_color_override("font_color", color)
 
 
 func _cycle_camera() -> void:

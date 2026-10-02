@@ -37,7 +37,9 @@ var _open_when_added: bool = false
 @onready var _heart_rate_option: OptionButton = %HeartRateOption
 @onready var _difficulty_slider: HSlider = %DifficultySlider
 @onready var _difficulty_label: Label = %DifficultyLabel
-@onready var _mass_spin: SpinBox = %MassSpin
+@onready var _profile_option: OptionButton = %ProfileOption
+@onready var _edit_profile_button: Button = %EditProfileButton
+@onready var _profile_dialog: ProfileDialog = ProfileDialog.new()
 @onready var _flat_descents: CheckBox = %FlatDescents
 @onready var _time_option: OptionButton = %TimeOption
 @onready var _weather_option: OptionButton = %WeatherOption
@@ -65,12 +67,17 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.failed.connect(_on_failed)
 	_torqa.course_added.connect(_on_course_added)
 	_refresh_courses()
+	_refresh_profiles()
 
 
 func _ready() -> void:
 	_open_route_button.pressed.connect(_on_open_route_pressed)
 	_file_dialog.file_selected.connect(_on_file_selected)
 	_course_option.item_selected.connect(_on_course_selected)
+	add_child(_profile_dialog)
+	_profile_dialog.profile_confirmed.connect(_on_profile_confirmed)
+	_profile_option.item_selected.connect(_on_profile_selected)
+	_edit_profile_button.pressed.connect(_on_edit_profile_pressed)
 	_save_course_button.pressed.connect(_on_save_course_pressed)
 	_scan_button.pressed.connect(_on_scan_pressed)
 	_difficulty_slider.value_changed.connect(_on_difficulty_changed)
@@ -121,6 +128,40 @@ func _on_course_added(path: String) -> void:
 		_open_when_added = false
 		_status_label.text = ""
 		_torqa.open_course(path)
+
+
+func _on_profile_selected(index: int) -> void:
+	var id: String = _profile_option.get_item_metadata(index)
+	if id.is_empty():
+		_profile_dialog.edit({})
+		return
+	_torqa.select_profile(id)
+	_refresh_profiles()
+
+
+func _on_edit_profile_pressed() -> void:
+	_profile_dialog.edit(_torqa.profile())
+
+
+func _on_profile_confirmed(id: String, profile: Dictionary) -> void:
+	_torqa.save_profile(id, profile)
+	_refresh_profiles()
+
+
+## Lists the riders with the active one selected; the last entry creates a new rider.
+func _refresh_profiles() -> void:
+	var active: Dictionary = _torqa.profile()
+	var active_id: String = active.get("id", "")
+	_profile_option.clear()
+	for profile: Dictionary in _torqa.profiles():
+		var id: String = profile["id"]
+		var profile_name: String = profile["name"]
+		_profile_option.add_item(profile_name)
+		_profile_option.set_item_metadata(_profile_option.item_count - 1, id)
+		if id == active_id:
+			_profile_option.select(_profile_option.item_count - 1)
+	_profile_option.add_item("New rider…")
+	_profile_option.set_item_metadata(_profile_option.item_count - 1, "")
 
 
 func _begin_loading(what: String, from_course: bool) -> void:
@@ -236,7 +277,7 @@ func _on_start_pressed() -> void:
 	var heart_rate: int = _heart_rate_option.get_selected_metadata()
 	if heart_rate != NO_HEART_RATE:
 		_torqa.connect_heart_rate(heart_rate)
-	if _torqa.start_ride(_difficulty_slider.value, _flat_descents.button_pressed, _mass_spin.value):
+	if _torqa.start_ride(_difficulty_slider.value, _flat_descents.button_pressed):
 		ride_started.emit()
 
 

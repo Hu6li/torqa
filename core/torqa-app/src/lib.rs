@@ -16,9 +16,13 @@ use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
+use torqa_domain::profile::Profile;
+use torqa_domain::units::Percent;
+use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
+use torqa_storage::profiles::{self, StoredProfile};
 use torqa_terrain::{Terrain, TileSource};
 use torqa_world::World;
 use tracing::warn;
@@ -51,6 +55,12 @@ pub enum AppError {
     /// Saving a course needs a route whose world has been built.
     #[error("the course is not ready yet")]
     CourseNotReady,
+    /// No profile with that id.
+    #[error("unknown profile")]
+    UnknownProfile,
+    /// Reading or writing a file in the data directory failed.
+    #[error("{0}")]
+    Storage(String),
 }
 
 /// A device found by a scan.
@@ -184,6 +194,7 @@ pub struct App {
     /// Cached files the loaded route and its world were built from.
     used: UsedFiles,
     ride: Option<ActiveRide>,
+    profile: StoredProfile,
     data_dir: PathBuf,
     cache_dir: PathBuf,
 }
@@ -214,9 +225,65 @@ impl App {
             loaded: None,
             used: UsedFiles::default(),
             ride: None,
+            profile: initial_profile(&data_dir),
             data_dir,
             cache_dir,
         })
+    }
+
+    /// All rider profiles, by name.
+    #[must_use]
+    pub fn profiles(&self) -> Vec<StoredProfile> {
+        let listed = profiles::list(&self.data_dir);
+        if listed.is_empty() {
+            // Not saved yet, e.g. a read-only data directory: still offer the rider in use.
+            vec![self.profile.clone()]
+        } else {
+            listed
+        }
+    }
+
+    /// The rider riding now.
+    #[must_use]
+    pub fn profile(&self) -> &StoredProfile {
+        &self.profile
+    }
+
+    /// Switches to another rider, remembered for the next start.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownProfile`] if there is no such profile.
+    pub fn select_profile(&mut self, id: &str) -> Result<(), AppError> {
+        let profile = profiles::load(&self.data_dir, id).map_err(|_| AppError::UnknownProfile)?;
+        self.profile = StoredProfile {
+            id: id.to_owned(),
+            profile,
+        };
+        if let Err(error) = profiles::set_active(&self.data_dir, id) {
+            warn!(%error, "cannot remember the active profile");
+        }
+        Ok(())
+    }
+
+    /// Saves a profile (a new one if `id` is `None`) and makes it the active one; returns its id.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if it cannot be written.
+    pub fn save_profile(&mut self, id: Option<&str>, profile: Profile) -> Result<String, AppError> {
+        let id = id.map_or_else(
+            || profiles::new_id(&self.data_dir, &profile.name),
+            ToOwned::to_owned,
+        );
+        profiles::save(&self.data_dir, &id, &profile)
+            .map_err(|e| AppError::Storage(format!("cannot save profile: {e}")))?;
+        if let Err(error) = profiles::set_active(&self.data_dir, &id) {
+            warn!(%error, "cannot remember the active profile");
+        }
+        self.profile = StoredProfile {
+            id: id.clone(),
+            profile,
+        };
+        Ok(id)
     }
 
     /// Scans for trainers and heart-rate sensors; reports [`AppEvent::DevicesFound`].
@@ -442,15 +509,28 @@ impl App {
         Ok(())
     }
 
-    /// Starts riding the loaded route. The clock starts once the trainer is connected.
+    /// Starts riding the loaded route as the active rider, whose profile sets the mass. The
+    /// clock starts once the trainer is connected.
     ///
     /// # Errors
     /// [`AppError::NoRoute`] or [`AppError::NoTrainer`] if either is missing.
-    pub fn start_ride(&mut self, config: RideConfig) -> Result<(), AppError> {
+    pub fn start_ride(
+        &mut self,
+        difficulty: Percent,
+        descent: DescentMode,
+    ) -> Result<(), AppError> {
         let route = self.route.clone().ok_or(AppError::NoRoute)?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
+        let config = RideConfig {
+            setup: RiderSetup {
+                mass: self.profile.profile.system_mass(),
+                ..RiderSetup::default()
+            },
+            difficulty,
+            descent,
+        };
         self.ride = Some(ActiveRide {
             ride: Ride::new(route, config),
             started: None,
@@ -470,9 +550,7 @@ impl App {
         if active.ride.samples().is_empty() {
             return Vec::new();
         }
-        let path = self
-            .data_dir
-            .join("rides")
+        let path = profiles::rides_dir(&self.data_dir, &self.profile.id)
             .join(paths::activity_file_name(start));
         let saved = torqa_storage::encode_fit(start, active.ride.samples())
             .map_err(|e| e.to_string())
@@ -679,27 +757,27 @@ impl App {
     }
 }
 
+/// The profile chosen last, else the first one, else a new default profile (saved, so it shows
+/// up in the data directory to be edited).
+fn initial_profile(data_dir: &Path) -> StoredProfile {
+    let listed = profiles::list(data_dir);
+    if let Some(found) = profiles::active(data_dir)
+        .and_then(|id| listed.iter().find(|p| p.id == id).cloned())
+        .or_else(|| listed.into_iter().next())
+    {
+        return found;
+    }
+    let profile = Profile::default();
+    let id = profiles::new_id(data_dir, &profile.name);
+    if let Err(error) = profiles::save(data_dir, &id, &profile) {
+        warn!(%error, "cannot save the default profile");
+    }
+    StoredProfile { id, profile }
+}
+
 /// A free file name in `library` for a course called `name`.
 fn unique_course_path(library: &Path, name: &str) -> PathBuf {
-    let slug: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    let slug = if slug.is_empty() {
-        "course".to_owned()
-    } else {
-        slug
-    };
+    let slug = torqa_storage::slug(name, "course");
     let mut path = library.join(format!("{slug}.{}", course::EXTENSION));
     let mut n = 1;
     while path.exists() {
@@ -781,7 +859,7 @@ mod tests {
             cadence: Rpm(90.0),
         }))
         .unwrap();
-        app.start_ride(RideConfig::default()).unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast).unwrap();
         run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
         // Ride three seconds of frames.
         for _ in 0..180 {
@@ -796,7 +874,7 @@ mod tests {
         let Some(AppEvent::RideSaved(path)) = events.first() else {
             panic!("not saved: {events:?}");
         };
-        assert!(path.starts_with(dir.join("data").join("rides")));
+        assert!(path.starts_with(dir.join("data/profiles/rider/rides")));
         assert!(std::fs::metadata(path).unwrap().len() > 100);
         app.shutdown();
     }
@@ -894,12 +972,37 @@ mod tests {
     }
 
     #[test]
+    fn riders_have_their_own_profiles_and_rides() {
+        let dir = temp_dir("profiles");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(app.profile().id, "rider");
+
+        let anna = Profile {
+            name: "Anna".to_owned(),
+            ftp: Watts(280.0),
+            ..Profile::default()
+        };
+        let id = app.save_profile(None, anna.clone()).unwrap();
+
+        assert_eq!(app.profile().profile, anna);
+        let names: Vec<String> = app.profiles().into_iter().map(|p| p.profile.name).collect();
+        assert_eq!(names, ["Anna", "Rider"]);
+        // The choice survives a restart.
+        let restarted = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(restarted.profile().id, id);
+        assert!(matches!(
+            app.select_profile("nobody"),
+            Err(AppError::UnknownProfile)
+        ));
+    }
+
+    #[test]
     fn ride_needs_route_and_trainer() {
         let dir = temp_dir("needs");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
 
         assert!(matches!(
-            app.start_ride(RideConfig::default()),
+            app.start_ride(Percent(50.0), DescentMode::Coast),
             Err(AppError::NoRoute)
         ));
         assert!(matches!(

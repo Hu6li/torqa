@@ -16,6 +16,13 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Findings / limits
 
+- **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
+  saved earlier in `rides/` are not moved. The setup screen's mass field is gone — mass comes
+  from the profile (rider + bike). New dependency `toml` 1.1.6 (chosen in ADR 0004).
+- **Lake Biel fixture** reports a steepest grade of 19 % — the elevation profile has a sharp
+  spike around 2.3 km, probably a bridge/underpass the smoothing does not catch. Worth a look
+  on a real ride.
+
 - **Aerial imagery dropped** (PR #8): SWISSIMAGE draped on the terrain looked worse than the
   land-cover shading and was removed. PR #8 now only brings zoom 15 terrain and the
   first-person camera.

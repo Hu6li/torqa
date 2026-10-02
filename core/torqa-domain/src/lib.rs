@@ -1,6 +1,7 @@
 //! Core domain types and plugin interfaces of Torqa.
 
 pub mod files;
+pub mod profile;
 pub mod recording;
 pub mod telemetry;
 pub mod units;

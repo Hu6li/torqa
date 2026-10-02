@@ -1,6 +1,33 @@
-//! Storage for Torqa: recorded rides as FIT activities (R28) and course files (R32–R35).
+//! Storage for Torqa: recorded rides as FIT activities (R28), course files (R32–R35) and rider
+//! profiles (R22).
 
 pub mod course;
+pub mod profiles;
+
+/// A file-name-safe form of `name`: lowercase letters and digits joined by single hyphens, or
+/// `fallback` if nothing remains.
+#[must_use]
+pub fn slug(name: &str, fallback: &str) -> String {
+    let slug = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        fallback.to_owned()
+    } else {
+        slug
+    }
+}
 
 use std::io::Cursor;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

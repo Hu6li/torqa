@@ -180,20 +180,19 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "50 %"
 
-[node name="MassCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="RiderCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
 layout_mode = 2
-text = "Rider + bike (kg)"
+text = "Rider"
 
-[node name="MassSpin" type="SpinBox" parent="Margin/Center/Card/Rows/Settings"]
+[node name="ProfileOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
-min_value = 30.0
-max_value = 250.0
-step = 0.5
-value = 83.0
+tooltip_text = "Weight, FTP and heart rate come from the rider's profile"
 
-[node name="MassSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="EditProfileButton" type="Button" parent="Margin/Center/Card/Rows/Settings"]
+unique_name_in_owner = true
 layout_mode = 2
+text = "Edit…"
 
 [node name="TimeCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
 layout_mode = 2

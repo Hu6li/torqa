@@ -40,7 +40,7 @@ func _run() -> void:
 	_check(listed, "course listed in the library")
 
 	_check(_torqa.connect_fake_trainer(250.0, 90.0), "fake trainer connected")
-	_check(_torqa.start_ride(50.0, false, 83.0), "ride started")
+	_check(_torqa.start_ride(50.0, false), "ride started")
 	await create_timer(2.0).timeout
 	var state: Dictionary = _torqa.ride_state()
 	var distance_m: float = state.get("distance_m", 0.0)

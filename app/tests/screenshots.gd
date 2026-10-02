@@ -33,7 +33,7 @@ func _run() -> void:
 	for i: int in range(240):
 		await process_frame
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
-	_check(torqa.start_ride(50.0, false, 83.0), "ride started")
+	_check(torqa.start_ride(50.0, false), "ride started")
 	setup.ride_started.emit()
 	var time: String = OS.get_environment("SCREENSHOT_TIME")
 	var weather: String = OS.get_environment("SCREENSHOT_WEATHER")

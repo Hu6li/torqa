@@ -99,7 +99,8 @@ Built in rideable steps:
   (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
 ### Phase 4 — Rider & history
-- [ ] Multi-profile, zones, customizable HUD
+- [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
+- [ ] Customizable HUD
 - [ ] History & analysis, climbs/PRs
 - [ ] Ghosts & pacers, audio, units, i18n
 
