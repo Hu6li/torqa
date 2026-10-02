@@ -53,7 +53,7 @@ docs/                      requirements, plan, ADRs
 - [x] `.devcontainer/` (Dockerfile + devcontainer.json) with Rust, cargo-deny, gdtoolkit, headless Godot
 - [x] Rust workspace skeleton + lint config (clippy pedantic, missing_docs, cargo-deny)
 - [x] Godot project + gdext hello-world
-- [ ] GitHub Actions: container job (fmt, clippy, test, deny) + macOS runner job (GDExtension + app export)
+- [x] GitHub Actions: container job (fmt, clippy, test, deny) + macOS runner job (GDExtension + app export)
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices
