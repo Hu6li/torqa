@@ -10,7 +10,7 @@ jobs:
     name: Checks (dev container)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: fmt, clippy, test, deny, gdlint in the dev container
         uses: devcontainers/ci@v0.3
         with:
@@ -24,7 +24,7 @@ jobs:
     env:
       GODOT_VERSION: "4.7.2"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
