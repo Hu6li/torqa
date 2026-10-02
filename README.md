@@ -10,7 +10,9 @@
 A modern, offline-first, open-source indoor cycling app. Import a GPX route and ride it on your
 smart trainer through a generated 3D world, a synced ride video, or street-level imagery.
 
-> **Status:** early planning — see [docs/PLAN.md](docs/PLAN.md).
+> **Status:** early development — see [docs/PLAN.md](docs/PLAN.md).
+
+![Riding the Gurtenstrasse in Torqa](docs/images/ride-chase.png)
 
 ## Features (planned)
 
@@ -38,6 +40,7 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 |---|---|
 | All checks (fmt, clippy, tests, cargo-deny, gdlint, GDExtension smoke test) | `scripts/check.sh` |
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
+| Render ride screenshots (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).

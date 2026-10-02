@@ -11,6 +11,8 @@ const SCAN_SECONDS: float = 5.0
 
 var _torqa: TorqaApp
 var _route_ready: bool = false
+var _world_ready: bool = false
+var _route_text: String = ""
 
 @onready var _open_route_button: Button = %OpenRouteButton
 @onready var _route_label: Label = %RouteLabel
@@ -30,6 +32,7 @@ var _route_ready: bool = false
 func bind(torqa: TorqaApp) -> void:
 	_torqa = torqa
 	_torqa.route_loaded.connect(_on_route_loaded)
+	_torqa.world_ready.connect(_on_world_ready)
 	_torqa.devices_found.connect(_on_devices_found)
 	_torqa.failed.connect(_on_failed)
 
@@ -51,6 +54,7 @@ func _on_open_route_pressed() -> void:
 
 func _on_file_selected(path: String) -> void:
 	_route_ready = false
+	_world_ready = false
 	_route_label.text = "Loading %s …" % path.get_file()
 	_status_label.text = ""
 	_torqa.load_route(path, false)
@@ -64,10 +68,21 @@ func _on_route_loaded(route: Dictionary) -> void:
 	var gain_m: float = route["elevation_gain_m"]
 	var max_grade: float = route["max_grade"]
 	var route_name: String = route["name"]
-	_route_label.text = (
+	_route_text = (
 		"%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
 		% [route_name, length_km, gain_m, max_grade, source]
 	)
+	_route_label.text = _route_text + "\nBuilding the 3D world…"
+	_update_start_button()
+
+
+func _on_world_ready(info: Dictionary) -> void:
+	_world_ready = true
+	var fallback: int = info["fallback_samples"]
+	var note: String = "3D world ready"
+	if fallback > 0:
+		note += " (no terrain data in places: flat there — load once while online)"
+	_route_label.text = _route_text + "\n" + note
 	_update_start_button()
 
 
@@ -137,4 +152,4 @@ func _reset_device_options() -> void:
 
 
 func _update_start_button() -> void:
-	_start_button.disabled = not _route_ready
+	_start_button.disabled = not (_route_ready and _world_ready)

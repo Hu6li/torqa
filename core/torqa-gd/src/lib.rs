@@ -92,6 +92,10 @@ impl TorqaApp {
     #[signal]
     fn route_loaded(route: VarDictionary);
 
+    /// The 3D world for the loaded route is ready: `{chunks, fallback_samples}`.
+    #[signal]
+    fn world_ready(world: VarDictionary);
+
     /// A device connected (also after reconnecting).
     #[signal]
     fn device_connected(name: GString);
@@ -187,8 +191,9 @@ impl TorqaApp {
     }
 
     /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
-    /// power, cadence, heart_rate}`; sensor values are `null` when unknown. Empty when not
-    /// riding. `x`/`y` are metres east/north of the route start, as in `track()`.
+    /// heading, power, cadence, heart_rate}`; sensor values are `null` when unknown. Empty when
+    /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
+    /// is the direction of travel in radians clockwise from north.
     #[func]
     fn ride_state(&self) -> VarDictionary {
         let Some(app) = self.app.as_ref() else {
@@ -210,10 +215,52 @@ impl TorqaApp {
             "elevation_m" => state.position.elevation.0,
             "x" => x,
             "y" => y,
+            "heading" => state.position.heading,
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
             "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),
         }
+    }
+
+    /// Number of terrain chunks in the generated world (0 until `world_ready`).
+    #[func]
+    fn world_chunk_count(&self) -> i64 {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
+    }
+
+    /// Terrain chunk `index` as mesh arrays: `{vertices, normals, uvs, indices, center}` in
+    /// Godot coordinates (x east, y up, −z north, metres from the route start). Vertices are
+    /// relative to `center`, so a node placed there gets correct visibility ranges.
+    #[func]
+    fn world_chunk(&self, index: i64) -> VarDictionary {
+        let chunk = self
+            .app
+            .as_ref()
+            .and_then(App::world)
+            .zip(usize::try_from(index).ok())
+            .and_then(|(world, index)| world.chunks.get(index));
+        let Some(chunk) = chunk else {
+            return VarDictionary::new();
+        };
+        let center = Vector3::new(chunk.center[0], chunk.center[1], chunk.center[2]);
+        let mut arrays = mesh_arrays(&chunk.mesh, center);
+        arrays.set("center", center);
+        arrays
+    }
+
+    /// The road as mesh arrays `{vertices, normals, uvs, indices}`; `uv.y` is the distance
+    /// along the route in metres.
+    #[func]
+    fn road_mesh(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| {
+                mesh_arrays(&world.road, Vector3::ZERO)
+            })
     }
 
     /// `(distance m, elevation m)` points of the loaded route, at most `max_points`.
@@ -300,6 +347,16 @@ impl TorqaApp {
                 };
                 self.signals().route_loaded().emit(&info);
             }
+            AppEvent::WorldReady {
+                chunks,
+                fallback_samples,
+            } => {
+                let info = vdict! {
+                    "chunks" => i64::try_from(chunks).unwrap_or(0),
+                    "fallback_samples" => i64::try_from(fallback_samples).unwrap_or(0),
+                };
+                self.signals().world_ready().emit(&info);
+            }
             AppEvent::Connected(name) => {
                 self.signals()
                     .device_connected()
@@ -323,6 +380,33 @@ impl TorqaApp {
                     .emit(&GString::from(message.as_str()));
             }
         }
+    }
+}
+
+/// Converts mesh data to the arrays Godot's `ArrayMesh` takes, with vertices relative to
+/// `origin`.
+fn mesh_arrays(mesh: &torqa_world::MeshData, origin: Vector3) -> VarDictionary {
+    let vertices: PackedVector3Array = mesh
+        .vertices
+        .iter()
+        .map(|&[x, y, z]| Vector3::new(x, y, z) - origin)
+        .collect();
+    let normals: PackedVector3Array = mesh
+        .normals
+        .iter()
+        .map(|&[x, y, z]| Vector3::new(x, y, z))
+        .collect();
+    let uvs: PackedVector2Array = mesh.uvs.iter().map(|&[u, v]| Vector2::new(u, v)).collect();
+    let indices: PackedInt32Array = mesh
+        .indices
+        .iter()
+        .map(|&i| i32::try_from(i).unwrap_or(0))
+        .collect();
+    vdict! {
+        "vertices" => &vertices,
+        "normals" => &normals,
+        "uvs" => &uvs,
+        "indices" => &indices,
     }
 }
 

@@ -6,7 +6,7 @@ pub mod paths;
 pub mod view;
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime};
 
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
@@ -15,6 +15,7 @@ use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_terrain::{Terrain, TileSource};
+use torqa_world::World;
 use tracing::warn;
 
 /// How long [`App::shutdown`] waits for devices to disconnect.
@@ -70,8 +71,15 @@ pub struct RouteSummary {
 pub enum AppEvent {
     /// A scan finished.
     DevicesFound(Vec<DeviceInfo>),
-    /// A route was imported and is ready to ride.
+    /// A route was imported; its 3D world is being generated.
     RouteLoaded(RouteSummary),
+    /// The 3D world for the loaded route is ready.
+    WorldReady {
+        /// Number of terrain chunks.
+        chunks: usize,
+        /// Terrain samples without elevation data (terrain follows the road there).
+        fallback_samples: usize,
+    },
     /// A device connected (also after a reconnect).
     Connected(String),
     /// A device lost its connection; it reconnects automatically.
@@ -96,6 +104,7 @@ pub enum TrainerChoice {
 enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
     Route(Result<(Route, String), String>),
+    World(Box<World>),
 }
 
 struct ActiveRide {
@@ -115,6 +124,8 @@ pub struct App {
     trainer: Option<DeviceHandle>,
     sensor: Option<DeviceHandle>,
     route: Option<Route>,
+    world: Option<Arc<World>>,
+    offline: bool,
     ride: Option<ActiveRide>,
     data_dir: PathBuf,
     cache_dir: PathBuf,
@@ -141,6 +152,8 @@ impl App {
             trainer: None,
             sensor: None,
             route: None,
+            world: None,
+            offline: false,
             ride: None,
             data_dir,
             cache_dir,
@@ -168,6 +181,8 @@ impl App {
 
     /// Imports a GPX route with terrain-corrected elevations; reports [`AppEvent::RouteLoaded`].
     pub fn load_route(&mut self, path: PathBuf, offline: bool) {
+        self.offline = offline;
+        self.world = None;
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.join("terrain");
         self.runtime.spawn(async move {
@@ -189,6 +204,19 @@ impl App {
             }
             .await;
             let _ = tx.send(JobResult::Route(result));
+        });
+    }
+
+    /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
+    fn generate_world(&mut self, route: Route) {
+        let tx = self.jobs_tx.clone();
+        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"));
+        if self.offline {
+            terrain = terrain.offline();
+        }
+        self.runtime.spawn(async move {
+            let world = torqa_world::generate(&route, &mut terrain).await;
+            let _ = tx.send(JobResult::World(Box::new(world)));
         });
     }
 
@@ -302,6 +330,12 @@ impl App {
         self.route.as_ref()
     }
 
+    /// The 3D world of the loaded route, once generated.
+    #[must_use]
+    pub fn world(&self) -> Option<&World> {
+        self.world.as_deref()
+    }
+
     /// Disconnects all devices, waiting at most a few seconds.
     pub fn shutdown(&mut self) {
         let trainer = self.trainer.take();
@@ -358,7 +392,15 @@ impl App {
                         max_grade: route.max_grade().0,
                         elevation_source: route.elevation_source(),
                     }));
+                    self.generate_world(route.clone());
                     self.route = Some(route);
+                }
+                JobResult::World(world) => {
+                    events.push(AppEvent::WorldReady {
+                        chunks: world.chunks.len(),
+                        fallback_samples: world.fallback_samples,
+                    });
+                    self.world = Some(Arc::from(world));
                 }
                 JobResult::Scan(Err(message)) | JobResult::Route(Err(message)) => {
                     events.push(AppEvent::Error(message));
@@ -520,6 +562,18 @@ mod tests {
         assert!(path.starts_with(dir.join("data").join("rides")));
         assert!(std::fs::metadata(path).unwrap().len() > 100);
         app.shutdown();
+    }
+
+    #[test]
+    fn generates_the_world_after_loading_a_route() {
+        let dir = temp_dir("world");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        assert!(matches!(events.last(), Some(AppEvent::WorldReady { chunks, .. }) if *chunks > 0));
+        assert!(app.world().is_some_and(|w| !w.road.vertices.is_empty()));
     }
 
     #[test]

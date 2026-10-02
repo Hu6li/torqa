@@ -1992,6 +1992,7 @@ dependencies = [
  "torqa-session",
  "torqa-storage",
  "torqa-terrain",
+ "torqa-world",
  "tracing",
 ]
 
@@ -2040,6 +2041,7 @@ dependencies = [
  "torqa-physics",
  "torqa-routes",
  "torqa-session",
+ "torqa-world",
 ]
 
 [[package]]

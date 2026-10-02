@@ -15,6 +15,7 @@ torqa-routes.workspace = true
 torqa-session.workspace = true
 torqa-storage.workspace = true
 torqa-terrain.workspace = true
+torqa-world.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time", "fs"] }
 tracing.workspace = true
