@@ -23,7 +23,7 @@ void fragment() {
 	casing *= above_plinth * walls;
 
 	// Far away, windows shrink below a pixel and alias; blend them into their average tone.
-	float detail = 1.0 - smoothstep(0.35, 0.9, max(fwidth(wall.x), fwidth(wall.y)));
+	float detail = 1.0 - smoothstep(0.2, 0.6, max(fwidth(wall.x), fwidth(wall.y)));
 	vec3 average = mix(base, pow(glass, vec3(2.2)), 0.18 * above_plinth * walls);
 	vec3 color = mix(base, pow(frame, vec3(2.2)), casing - pane);
 	color = mix(color, pow(glass, vec3(2.2)), pane);

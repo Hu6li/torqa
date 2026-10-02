@@ -1,4 +1,4 @@
-//! A flat map of the corridor for the minimap: land cover, water, roads and buildings as one
+//! A flat map of the corridor for the minimap, in a dark palette matching the HUD: land cover, water, roads and buildings as one
 //! coloured triangle list in metres east/north of the route start.
 
 use torqa_osm::{LandCover, MapData};
@@ -9,11 +9,11 @@ use crate::buildings::{signed_area, triangulate};
 use crate::road::RoadIndex;
 
 /// Background of the minimap (open land).
-pub const BACKGROUND: [f32; 4] = [0.56, 0.68, 0.46, 1.0];
-const WATER: [f32; 4] = [0.45, 0.62, 0.86, 1.0];
-const BUILDING: [f32; 4] = [0.56, 0.53, 0.50, 1.0];
-const MINOR_ROAD: [f32; 4] = [0.97, 0.97, 0.95, 1.0];
-const MAJOR_ROAD: [f32; 4] = [1.0, 0.86, 0.55, 1.0];
+pub const BACKGROUND: [f32; 4] = [0.15, 0.17, 0.16, 1.0];
+const WATER: [f32; 4] = [0.11, 0.21, 0.31, 1.0];
+const BUILDING: [f32; 4] = [0.29, 0.29, 0.32, 1.0];
+const MINOR_ROAD: [f32; 4] = [0.36, 0.37, 0.40, 1.0];
+const MAJOR_ROAD: [f32; 4] = [0.60, 0.53, 0.37, 1.0];
 /// Rings are simplified to this tolerance in metres; finer detail is invisible on the minimap.
 const SIMPLIFY: f64 = 2.5;
 
@@ -102,12 +102,12 @@ fn layer(cover: LandCover) -> u8 {
 
 fn cover_color(cover: LandCover) -> [f32; 4] {
     match cover {
-        LandCover::Meadow => [0.60, 0.74, 0.48, 1.0],
-        LandCover::Farmland => [0.80, 0.78, 0.58, 1.0],
-        LandCover::Residential => [0.78, 0.76, 0.73, 1.0],
-        LandCover::Orchard => [0.64, 0.75, 0.47, 1.0],
-        LandCover::Forest => [0.33, 0.52, 0.31, 1.0],
-        LandCover::Rock => [0.72, 0.70, 0.67, 1.0],
+        LandCover::Meadow => [0.17, 0.21, 0.17, 1.0],
+        LandCover::Farmland => [0.21, 0.21, 0.17, 1.0],
+        LandCover::Residential => [0.20, 0.20, 0.22, 1.0],
+        LandCover::Orchard => [0.18, 0.22, 0.16, 1.0],
+        LandCover::Forest => [0.12, 0.20, 0.14, 1.0],
+        LandCover::Rock => [0.25, 0.25, 0.25, 1.0],
         LandCover::Water => WATER,
     }
 }

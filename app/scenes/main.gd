@@ -9,6 +9,7 @@ extends Control
 
 func _ready() -> void:
 	print("Torqa %s" % TorqaCore.version())
+	theme = UiTheme.build()
 	_world.bind(_torqa)
 	_setup.bind(_torqa)
 	_ride.bind(_torqa, _world)
