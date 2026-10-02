@@ -114,16 +114,17 @@ impl Bluetooth {
     #[must_use]
     pub fn connect(&self, device: DiscoveredDevice) -> DeviceHandle {
         let controllable = device.kind == DeviceKind::Trainer;
-        let (handle, channels) = DeviceHandle::new(device.name.clone(), controllable);
-        let driver = Driver {
-            adapter: self.adapter.clone(),
-            device,
-            channels,
-            last_control: None,
-            resistance_range: ResistanceRange::default(),
-        };
-        tokio::spawn(driver.run());
-        handle
+        let adapter = self.adapter.clone();
+        DeviceHandle::spawn(device.name.clone(), controllable, move |channels| {
+            Driver {
+                adapter,
+                device,
+                channels,
+                last_control: None,
+                resistance_range: ResistanceRange::default(),
+            }
+            .run()
+        })
     }
 }
 

@@ -27,37 +27,37 @@ pub struct FakeRider {
 /// Must be called within a Tokio runtime.
 #[must_use]
 pub fn spawn(rider: FakeRider, period: Duration) -> DeviceHandle {
-    let (handle, mut channels) = DeviceHandle::new("Fake trainer".to_owned(), true);
-
-    tokio::spawn(async move {
-        if channels.events.send(DeviceEvent::Connected).await.is_err() {
-            return;
-        }
-        let mut control = None;
-        let mut ticker = interval(period);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-        loop {
-            tokio::select! {
-                _ = ticker.tick() => {
-                    let telemetry = Telemetry {
-                        power: Some(power(rider, control.as_ref())),
-                        cadence: Some(rider.cadence),
-                        ..Telemetry::default()
-                    };
-                    if channels.events.send(DeviceEvent::Telemetry(telemetry)).await.is_err() {
-                        return;
-                    }
-                }
-                next = channels.next_control() => match next {
-                    Some(c) => control = Some(c),
-                    None => return,
-                },
+    DeviceHandle::spawn(
+        "Fake trainer".to_owned(),
+        true,
+        move |mut channels| async move {
+            if channels.events.send(DeviceEvent::Connected).await.is_err() {
+                return;
             }
-        }
-    });
+            let mut control = None;
+            let mut ticker = interval(period);
+            ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-    handle
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        let telemetry = Telemetry {
+                            power: Some(power(rider, control.as_ref())),
+                            cadence: Some(rider.cadence),
+                            ..Telemetry::default()
+                        };
+                        if channels.events.send(DeviceEvent::Telemetry(telemetry)).await.is_err() {
+                            return;
+                        }
+                    }
+                    next = channels.next_control() => match next {
+                        Some(c) => control = Some(c),
+                        None => return,
+                    },
+                }
+            }
+        },
+    )
 }
 
 fn power(rider: FakeRider, control: Option<&TrainerControl>) -> Watts {
@@ -146,5 +146,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(settle(&mut handle).await.power, Some(Watts(200.0)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_stops_the_driver() {
+        let handle = spawn(RIDER, Duration::from_millis(250));
+        let started = tokio::time::Instant::now();
+
+        handle.close(Duration::from_secs(5)).await;
+
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "close timed out"
+        );
     }
 }

@@ -1,6 +1,10 @@
 //! The driver-independent interface to a running device.
 
+use std::future::Future;
+use std::time::Duration;
+
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
 
 /// Something a device reports while it is running.
@@ -34,12 +38,14 @@ pub enum DeviceError {
     Bluetooth(#[from] btleplug::Error),
 }
 
-/// A running device. Dropping the handle stops its driver and disconnects the device.
+/// A running device. Dropping the handle stops its driver and disconnects the device in the
+/// background; use [`DeviceHandle::close`] to wait for the disconnect.
 #[derive(Debug)]
 pub struct DeviceHandle {
     name: String,
     events: mpsc::Receiver<DeviceEvent>,
     control: Option<mpsc::Sender<TrainerControl>>,
+    task: JoinHandle<()>,
 }
 
 /// The driver side of a [`DeviceHandle`].
@@ -51,8 +57,12 @@ pub(crate) struct DriverChannels {
 const CHANNEL_CAPACITY: usize = 64;
 
 impl DeviceHandle {
-    /// Creates a handle and the channels its driver task uses.
-    pub(crate) fn new(name: String, controllable: bool) -> (Self, DriverChannels) {
+    /// Spawns a driver task on the current Tokio runtime and returns its handle.
+    pub(crate) fn spawn<F, Fut>(name: String, controllable: bool, driver: F) -> Self
+    where
+        F: FnOnce(DriverChannels) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         let (events_tx, events_rx) = mpsc::channel(CHANNEL_CAPACITY);
         let (control_tx, control_rx) = if controllable {
             let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
@@ -60,16 +70,31 @@ impl DeviceHandle {
         } else {
             (None, None)
         };
-        let handle = Self {
+        let task = tokio::spawn(driver(DriverChannels {
+            events: events_tx,
+            control: control_rx,
+        }));
+        Self {
             name,
             events: events_rx,
             control: control_tx,
-        };
-        let channels = DriverChannels {
-            events: events_tx,
-            control: control_rx,
-        };
-        (handle, channels)
+            task,
+        }
+    }
+
+    /// Stops the driver and waits until the device is disconnected, at most `timeout`.
+    pub async fn close(self, timeout: Duration) {
+        let Self {
+            events,
+            control,
+            task,
+            ..
+        } = self;
+        // Closing both channels is what tells the driver to disconnect.
+        drop(events);
+        drop(control);
+        // On timeout the driver keeps disconnecting in the background; nothing else to do.
+        let _ = tokio::time::timeout(timeout, task).await;
     }
 
     /// Human-readable device name.

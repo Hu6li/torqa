@@ -25,7 +25,8 @@ On first use macOS asks whether your terminal app may use Bluetooth — allow it
 ```
 
 Wake the trainer by pedalling and make sure no other app (Zwift, Wahoo app) is connected to it —
-FTMS allows only one controlling app.
+FTMS allows only one controlling app. Heart-rate straps usually only advertise while worn (moisten
+the electrodes) and while not connected to a watch or phone.
 
 ## Ride
 
@@ -43,7 +44,10 @@ Live readings are printed every second. Type a command and press Enter:
 | `g 5` | SIM mode, 5 % grade (negative for descents) |
 | `p 200` | ERG mode, hold 200 W |
 | `r 30` | Resistance at 30 % of the trainer's range |
-| `q` | Quit (Ctrl+C works too) |
+| `q` | Quit and disconnect (Ctrl+C works too; press it twice to skip the disconnect) |
+
+If no heart-rate strap is found, the ride continues without one. Wahoo trainers estimate cadence
+from the flywheel, so it may read 0 for the first seconds or at very low power.
 
 If the trainer drops out, the CLI reconnects automatically and re-applies the last command.
 Set `RUST_LOG=debug` for protocol details (accepted/rejected commands, resistance range).

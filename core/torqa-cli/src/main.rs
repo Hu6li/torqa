@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
@@ -120,16 +120,45 @@ async fn ride(args: RideArgs) -> Result<()> {
         )?),
         None => unreachable!("Bluetooth is opened whenever the trainer is not fake"),
     };
+    // Straps only advertise while worn and not connected elsewhere; ride on without one.
     let mut sensor = match (&bluetooth, &args.hr) {
         (Some((bluetooth, devices)), Some(name)) => {
-            Some(bluetooth.connect(pick(devices, DeviceKind::HeartRateSensor, name)?))
+            match pick(devices, DeviceKind::HeartRateSensor, name) {
+                Ok(device) => Some(bluetooth.connect(device)),
+                Err(error) => {
+                    eprintln!("Continuing without heart rate: {error:#}");
+                    None
+                }
+            }
         }
         _ => None,
     };
 
+    let result = ride_loop(&mut trainer, sensor.as_mut()).await;
+
+    println!("Disconnecting… (Ctrl+C again to quit immediately)");
+    let close_all = async {
+        trainer.close(CLOSE_TIMEOUT).await;
+        if let Some(sensor) = sensor {
+            sensor.close(CLOSE_TIMEOUT).await;
+        }
+    };
+    tokio::select! {
+        () = close_all => {}
+        _ = tokio::signal::ctrl_c() => {}
+    }
+    result
+}
+
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+
+async fn ride_loop(
+    trainer: &mut DeviceHandle,
+    mut sensor: Option<&mut DeviceHandle>,
+) -> Result<()> {
     println!("{HELP}");
     let mut state = Telemetry::default();
-    let mut input = BufReader::new(tokio::io::stdin()).lines();
+    let mut input = stdin_lines();
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
 
     loop {
@@ -138,12 +167,12 @@ async fn ride(args: RideArgs) -> Result<()> {
                 let event = event.context("trainer driver stopped")?;
                 report(trainer.name(), &event, &mut state);
             }
-            event = next_event(sensor.as_mut()) => {
+            event = next_event(sensor.as_deref_mut()) => {
                 let (name, event) = event.context("heart-rate driver stopped")?;
                 report(&name, &event, &mut state);
             }
-            line = input.next_line() => {
-                let Some(line) = line? else { break };
+            line = input.recv() => {
+                let Some(line) = line else { break };
                 match parse_input(&line) {
                     Ok(Input::Control(control)) => trainer.control(control).await?,
                     Ok(Input::Quit) => break,
@@ -156,6 +185,23 @@ async fn ride(args: RideArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Reads stdin lines on a plain thread.
+///
+/// Tokio's stdin reads on a blocking-pool thread that runtime shutdown waits for, so the
+/// process could not exit while a read is pending.
+fn stdin_lines() -> mpsc::Receiver<String> {
+    let (tx, rx) = mpsc::channel(16);
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            let Ok(line) = line else { break };
+            if tx.blocking_send(line).is_err() {
+                break;
+            }
+        }
+    });
+    rx
 }
 
 const HELP: &str = "Commands: g <grade %> | p <watts> (ERG) | r <resistance %> | q";
