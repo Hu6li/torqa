@@ -1988,6 +1988,11 @@ dependencies = [
  "tokio",
  "torqa-devices",
  "torqa-domain",
+ "torqa-physics",
+ "torqa-routes",
+ "torqa-session",
+ "torqa-storage",
+ "torqa-terrain",
  "tracing-subscriber",
 ]
 

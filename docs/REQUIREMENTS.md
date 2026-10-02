@@ -34,7 +34,7 @@ a synced ride video, or street-level imagery.
 | ID | Requirement |
 |---|---|
 | R11 | Import **GPX** (MVP); importer interface allows TCX/FIT/KML later. Routes are used as-is (no route editor). |
-| R12 | Elevation: when online, correct with a DEM (Copernicus GLO-30 / AWS terrain tiles) and smooth; offline, use GPX elevation with smoothing. |
+| R12 | Elevation: when online, correct with a terrain model (Mapterhorn, AWS Terrain Tiles fallback — ADR 0005) and smooth; offline, use cached tiles or GPX elevation with smoothing. |
 
 ## Physics
 

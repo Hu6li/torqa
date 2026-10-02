@@ -49,5 +49,36 @@ Live readings are printed every second. Type a command and press Enter:
 If no heart-rate strap is found, the ride continues without one. Wahoo trainers estimate cadence
 from the flywheel, so it may read 0 for the first seconds or at very low power.
 
+## Ride a route
+
+```sh
+./torqa-cli route my-ride.gpx                     # length, climbing, elevation source
+./torqa-cli ride --route my-ride.gpx --hr         # ride it; the trainer follows the gradient
+./torqa-cli ride --route my-ride.gpx --difficulty 100 --descent flat --mass 90
+./torqa-cli ride --route my-ride.gpx --fake --time-scale 50   # quick simulated test ride
+```
+
+Elevations come from a terrain model (corrected and smoothed), downloaded once and cached, so a
+route you have imported before also works offline (`--offline` forces cache-only). Without
+terrain data, the GPX elevations are used.
+
+| Option | Meaning |
+|---|---|
+| `--difficulty 50` | Share of the road gradient you feel on the trainer (speed always uses the real gradient) |
+| `--descent coast\|flat` | Coast: gravity builds speed downhill. Flat: descents ride like flat roads |
+| `--mass 83` | Rider plus bike in kg |
+| `--output ride.fit` | Where to save the activity (default `torqa-<date>-<time>.fit`) |
+
+The ride starts when the trainer connects and ends at the finish or with `q` / Ctrl+C; the FIT
+file can be uploaded to Strava, intervals.icu, Garmin Connect and others as a virtual ride.
+
+Known limitation: terrain models are bare-earth, so bridges and tunnels show up as short dips
+or humps.
+
+Terrain data: [Mapterhorn](https://mapterhorn.com/attribution) (CC BY 4.0) and
+[AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
+
+## Connection
+
 If the trainer drops out, the CLI reconnects automatically and re-applies the last command.
 Set `RUST_LOG=debug` for protocol details (accepted/rejected commands, resistance range).

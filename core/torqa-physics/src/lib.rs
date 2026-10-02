@@ -15,8 +15,9 @@ const GRAVITY: f64 = 9.81;
 /// Longest integration step; larger time steps are split for stability.
 const MAX_STEP: Duration = Duration::from_millis(50);
 /// Below this speed the drive force is computed as if moving at it, so `P / v` stays finite
-/// when starting from standstill.
-const MIN_DRIVE_SPEED: f64 = 1.0;
+/// when starting from standstill. Kept low so any pedalling still climbs very steep ramps
+/// (or terrain-model artefacts) slowly instead of stalling.
+const MIN_DRIVE_SPEED: f64 = 0.1;
 
 /// Rider, bike and environment parameters (R13).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -183,6 +184,13 @@ mod tests {
         // No pedalling at −6 %: terminal speed about 55 km/h.
         let speed = settled_kmh(0.0, -6.0);
         assert!((53.0..57.0).contains(&speed), "{speed} km/h");
+    }
+
+    #[test]
+    fn steep_ramps_are_slow_but_never_stall() {
+        // 100 W up 40 %: a crawl, but still moving.
+        let speed = settled_kmh(100.0, 40.0);
+        assert!((0.5..3.0).contains(&speed), "{speed} km/h");
     }
 
     #[test]

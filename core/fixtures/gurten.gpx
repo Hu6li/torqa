@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Approximate climb from Wabern to Gurten Kulm (Bern) for testing; no elevations on purpose,
+     so the terrain model has to provide them. -->
+<gpx version="1.1" creator="Torqa test fixture" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Gurten (test)</name></metadata>
+  <trk><trkseg>
+    <trkpt lat="46.92960" lon="7.45120"/>
+    <trkpt lat="46.92700" lon="7.44950"/>
+    <trkpt lat="46.92520" lon="7.44700"/>
+    <trkpt lat="46.92420" lon="7.44850"/>
+    <trkpt lat="46.92250" lon="7.44620"/>
+    <trkpt lat="46.92150" lon="7.44400"/>
+    <trkpt lat="46.92050" lon="7.44520"/>
+    <trkpt lat="46.91950" lon="7.44250"/>
+    <trkpt lat="46.91900" lon="7.43950"/>
+  </trkseg></trk>
+</gpx>
