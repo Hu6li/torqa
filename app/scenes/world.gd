@@ -45,7 +45,6 @@ const VISIBILITY_RANGE: float = 4500.0
 const DETAIL_RANGE: float = 1800.0
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
-const JERSEY_COLOR: Color = Color(0.04, 0.61, 0.96)
 
 var _torqa: TorqaApp
 var _chunk_count: int = 0
@@ -53,6 +52,7 @@ var _next_chunk: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
 var _heading: float = 0.0
 var _placed: bool = false
+var _avatar: RiderAvatar = RiderAvatar.new()
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
@@ -136,7 +136,7 @@ func _ready() -> void:
 	_building_material.roughness = 0.9
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
-	_build_rider()
+	_rider.add_child(_avatar)
 	apply_conditions("Midday", "Clear")
 
 
@@ -218,6 +218,10 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var elevation: float = state["elevation_m"]
 	var heading: float = state["heading"]
 	var grade: float = state["grade"]
+	var speed_kmh: float = state["speed_kmh"]
+	var cadence: Variant = state["cadence"]
+	var cadence_rpm: float = cadence if cadence != null else 0.0
+	_avatar.animate(delta, cadence_rpm, speed_kmh)
 	var weight: float = 1.0 - exp(-delta * HEADING_SMOOTHING)
 	_heading = heading if not _placed else lerp_angle(_heading, heading, weight)
 
@@ -312,38 +316,6 @@ func _add_surface(
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
-
-
-## A simple stand-in cyclist until the real avatar arrives.
-func _build_rider() -> void:
-	var dark: StandardMaterial3D = _material(Color(0.08, 0.08, 0.09))
-	var jersey: StandardMaterial3D = _material(JERSEY_COLOR)
-	var skin: StandardMaterial3D = _material(Color(0.86, 0.68, 0.55))
-	for z: float in [-0.52, 0.52]:
-		var wheel: TorusMesh = TorusMesh.new()
-		wheel.inner_radius = 0.31
-		wheel.outer_radius = 0.35
-		_add_part(wheel, dark, Vector3(0, 0.35, z), Vector3(0, 0, PI / 2.0))
-	var frame: BoxMesh = BoxMesh.new()
-	frame.size = Vector3(0.05, 0.05, 1.0)
-	_add_part(frame, jersey, Vector3(0, 0.62, 0), Vector3(deg_to_rad(-8.0), 0, 0))
-	var body: CapsuleMesh = CapsuleMesh.new()
-	body.radius = 0.17
-	body.height = 0.75
-	_add_part(body, jersey, Vector3(0, 1.12, 0.05), Vector3(deg_to_rad(-55.0), 0, 0))
-	var head: SphereMesh = SphereMesh.new()
-	head.radius = 0.12
-	head.height = 0.24
-	_add_part(head, skin, Vector3(0, 1.42, -0.32), Vector3.ZERO)
-
-
-func _add_part(mesh: Mesh, material: Material, position: Vector3, rotation_rad: Vector3) -> void:
-	var part: MeshInstance3D = MeshInstance3D.new()
-	part.mesh = mesh
-	part.material_override = material
-	part.position = position
-	part.rotation = rotation_rad
-	_rider.add_child(part)
 
 
 static func _material(color: Color) -> StandardMaterial3D:

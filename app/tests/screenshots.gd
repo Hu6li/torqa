@@ -48,6 +48,21 @@ func _run() -> void:
 		image.save_png(path)
 		print("saved ", path)
 		world.cycle_camera()
+
+	# A close side view of the rider, for checking the avatar.
+	var rider: Node3D = world.get_node("Rider")
+	var side: Camera3D = Camera3D.new()
+	world.add_child(side)
+	var target: Vector3 = rider.global_position + Vector3.UP * 0.8
+	var right: Vector3 = rider.global_transform.basis.x
+	side.global_position = target + right * 3.0 + Vector3.UP * 0.3
+	side.look_at(target, Vector3.UP)
+	side.current = true
+	for frame: int in range(3):
+		await create_timer(0.25).timeout
+		var image: Image = root.get_texture().get_image()
+		image.save_png(out_dir.path_join("side-%d.png" % frame))
+		print("saved side-%d" % frame)
 	quit(0)
 
 
