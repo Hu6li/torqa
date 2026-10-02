@@ -57,7 +57,8 @@ var _avatar: RiderAvatar = RiderAvatar.new()
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
 var _water_material: ShaderMaterial = ShaderMaterial.new()
-var _building_material: StandardMaterial3D = StandardMaterial3D.new()
+var _building_material: ShaderMaterial = ShaderMaterial.new()
+var _structure_material: StandardMaterial3D = StandardMaterial3D.new()
 var _conifer_mesh: ArrayMesh
 var _broadleaf_mesh: ArrayMesh
 
@@ -131,9 +132,10 @@ func _ready() -> void:
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
 	_road_material.shader = preload("res://shaders/road.gdshader")
 	_water_material.shader = preload("res://shaders/water.gdshader")
-	_building_material.vertex_color_use_as_albedo = true
-	_building_material.vertex_color_is_srgb = true
-	_building_material.roughness = 0.9
+	_building_material.shader = preload("res://shaders/building.gdshader")
+	_structure_material.vertex_color_use_as_albedo = true
+	_structure_material.vertex_color_is_srgb = true
+	_structure_material.roughness = 0.9
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -160,7 +162,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_water.mesh = _mesh_from(_torqa.water_mesh())
 	_water.material_override = _water_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
-	_structures.material_override = _building_material
+	_structures.material_override = _structure_material
 
 
 func _build_some_chunks() -> void:

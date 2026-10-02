@@ -162,7 +162,7 @@ fn ribbon(flat: &mut FlatMap, line: &[(f64, f64)], width: f64, color: [f32; 4], 
 }
 
 /// Douglas–Peucker simplification keeping the first and last point.
-fn simplify(points: &[(f64, f64)], tolerance: f64) -> Vec<(f64, f64)> {
+pub(crate) fn simplify(points: &[(f64, f64)], tolerance: f64) -> Vec<(f64, f64)> {
     if points.len() < 3 {
         return points.to_vec();
     }

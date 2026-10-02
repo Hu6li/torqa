@@ -230,9 +230,46 @@ fn offset(p: CentrePoint, across: f64, up: f64) -> [f64; 3] {
 
 /// Adds a quad with corners in order around its edge, wound to face `normal` in Godot's
 /// clockwise front-face order.
-#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
 pub(crate) fn quad(mesh: &mut MeshData, corners: [[f64; 3]; 4], normal: [f64; 3], color: [f32; 4]) {
-    let [first, second, third, _] = corners;
+    quad_uv(mesh, corners, [[0.0; 2]; 4], normal, color);
+}
+
+/// Like [`quad`], with a texture coordinate per corner.
+pub(crate) fn quad_uv(
+    mesh: &mut MeshData,
+    corners: [[f64; 3]; 4],
+    uvs: [[f32; 2]; 4],
+    normal: [f64; 3],
+    color: [f32; 4],
+) {
+    let base = push_facing(mesh, &corners, &uvs, normal, color);
+    mesh.indices
+        .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+/// Adds a triangle wound to face `normal`.
+pub(crate) fn triangle_uv(
+    mesh: &mut MeshData,
+    corners: [[f64; 3]; 3],
+    uvs: [[f32; 2]; 3],
+    normal: [f64; 3],
+    color: [f32; 4],
+) {
+    let base = push_facing(mesh, &corners, &uvs, normal, color);
+    mesh.indices.extend([base, base + 1, base + 2]);
+}
+
+/// Pushes a polygon's vertices, reversed if needed so they run clockwise seen from `normal`'s
+/// side; returns the index of the first vertex.
+#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
+fn push_facing(
+    mesh: &mut MeshData,
+    corners: &[[f64; 3]],
+    uvs: &[[f32; 2]],
+    normal: [f64; 3],
+    color: [f32; 4],
+) -> u32 {
+    let (first, second, third) = (corners[0], corners[1], corners[2]);
     let edge_1 = [0, 1, 2].map(|k| second[k] - first[k]);
     let edge_2 = [0, 1, 2].map(|k| third[k] - first[k]);
     let cross = [
@@ -242,20 +279,18 @@ pub(crate) fn quad(mesh: &mut MeshData, corners: [[f64; 3]; 4], normal: [f64; 3]
     ];
     // Clockwise seen from the front means the right-hand normal points away from the viewer.
     let facing_viewer = cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2] > 0.0;
-    let order = if facing_viewer {
-        [0, 3, 2, 1]
-    } else {
-        [0, 1, 2, 3]
-    };
-    let base = u32::try_from(mesh.vertices.len()).expect("structure mesh fits u32");
+    let mut order: Vec<usize> = (0..corners.len()).collect();
+    if facing_viewer {
+        order[1..].reverse();
+    }
+    let base = u32::try_from(mesh.vertices.len()).expect("mesh fits u32");
     let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
     let unit = normal.map(|n| (n / length) as f32);
     for i in order {
         mesh.vertices.push(corners[i].map(|v| v as f32));
         mesh.normals.push(unit);
-        mesh.uvs.push([0.0, 0.0]);
+        mesh.uvs.push(uvs[i]);
         mesh.colors.push(color);
     }
-    mesh.indices
-        .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    base
 }

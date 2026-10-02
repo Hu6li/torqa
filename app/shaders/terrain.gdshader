@@ -40,8 +40,9 @@ void fragment() {
 	float snow = smoothstep(snow_line - 150.0, snow_line + 150.0, world_position.y + patches * 120.0);
 	color = mix(color, snow_color, snow * smoothstep(0.45, 0.25, steepness));
 
+	// Under lakes and rivers: the bed, mostly hidden by the water surface above it.
 	float water = smoothstep(0.4, 0.6, COLOR.a);
-	ALBEDO = mix(color, cover, water);
-	ROUGHNESS = mix(0.95, 0.08, water);
-	SPECULAR = mix(0.2, 0.6, water);
+	ALBEDO = mix(color, vec3(0.08, 0.1, 0.09), water);
+	ROUGHNESS = 0.95;
+	SPECULAR = 0.2;
 }
