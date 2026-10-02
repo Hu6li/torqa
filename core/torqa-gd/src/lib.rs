@@ -88,7 +88,7 @@ impl TorqaApp {
     #[signal]
     fn devices_found(devices: VarArray);
 
-    /// A route was imported: `{name, length_m, elevation_gain_m, elevation_source}`.
+    /// A route was imported: `{name, length_m, elevation_gain_m, max_grade, elevation_source}`.
     #[signal]
     fn route_loaded(route: VarDictionary);
 
@@ -295,6 +295,7 @@ impl TorqaApp {
                     "name" => route.name.as_str(),
                     "length_m" => route.length,
                     "elevation_gain_m" => route.elevation_gain,
+                    "max_grade" => route.max_grade,
                     "elevation_source" => source,
                 };
                 self.signals().route_loaded().emit(&info);

@@ -174,10 +174,11 @@ fn print_route(route: &Route) {
         ElevationSource::File => "GPX file",
     };
     println!(
-        "{}: {:.2} km, {:.0} m climbing, elevation from {source}",
+        "{}: {:.2} km, {:.0} m climbing, steepest {:.1} %, elevation from {source}",
         route.name().unwrap_or("Route"),
         route.length().0 / 1000.0,
-        route.elevation_gain().0
+        route.elevation_gain().0,
+        route.max_grade().0
     );
 }
 

@@ -59,6 +59,8 @@ pub struct RouteSummary {
     pub length: f64,
     /// Total climbing in metres.
     pub elevation_gain: f64,
+    /// Steepest climbing gradient in percent.
+    pub max_grade: f64,
     /// Where the elevations come from.
     pub elevation_source: ElevationSource,
 }
@@ -353,6 +355,7 @@ impl App {
                         name: route.name().map_or(fallback_name, ToOwned::to_owned),
                         length: route.length().0,
                         elevation_gain: route.elevation_gain().0,
+                        max_grade: route.max_grade().0,
                         elevation_source: route.elevation_source(),
                     }));
                     self.route = Some(route);

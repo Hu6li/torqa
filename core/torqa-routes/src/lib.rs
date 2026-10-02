@@ -83,14 +83,28 @@ impl Route {
     /// # Errors
     /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
     pub async fn from_gpx(xml: &str, terrain: Option<&mut Terrain>) -> Result<Self, RouteError> {
-        let gpx = gpx::parse(xml)?;
-        let mut points = resample(&dedup(gpx.points))?;
+        Self::from_gpx_with(xml, terrain).await
+    }
 
+    /// Like [`Route::from_gpx`], with any [`ElevationModel`].
+    ///
+    /// # Errors
+    /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
+    pub async fn from_gpx_with<M: ElevationModel>(
+        xml: &str,
+        model: Option<&mut M>,
+    ) -> Result<Self, RouteError> {
+        let gpx = gpx::parse(xml)?;
+        let mut track = dedup(gpx.points);
+
+        // The model is sampled only at the file's points, which lie on the road. Between
+        // sparse points a straight line can cut across a hillside, so elevations there are
+        // interpolated rather than sampled.
         let mut source = None;
-        if let Some(terrain) = terrain {
-            match terrain_elevations(&points, terrain).await {
+        if let Some(model) = model {
+            match model_elevations(&track, model).await {
                 Ok(elevations) => {
-                    for (point, elevation) in points.iter_mut().zip(elevations) {
+                    for (point, elevation) in track.iter_mut().zip(elevations) {
                         point.elevation = Some(elevation);
                     }
                     source = Some(ElevationSource::Terrain);
@@ -100,9 +114,11 @@ impl Route {
         }
         let source = match source {
             Some(source) => source,
-            None if fill_gaps(&mut points) => ElevationSource::File,
+            None if fill_gaps(&mut track) => ElevationSource::File,
+            None if track.len() < 2 => return Err(RouteError::TooShort),
             None => return Err(RouteError::NoElevation),
         };
+        let points = resample(&track)?;
 
         let window = match source {
             ElevationSource::Terrain => TERRAIN_SMOOTHING,
@@ -172,6 +188,18 @@ impl Route {
                 .map(|w| (w[1].elevation.0 - w[0].elevation.0).max(0.0))
                 .sum(),
         )
+    }
+
+    /// The steepest climbing gradient anywhere on the route.
+    #[must_use]
+    pub fn max_grade(&self) -> GradePercent {
+        let steepest = self
+            .points
+            .windows(2)
+            .filter(|w| w[1].distance.0 > w[0].distance.0)
+            .map(|w| (w[1].elevation.0 - w[0].elevation.0) / (w[1].distance.0 - w[0].distance.0))
+            .fold(0.0, f64::max);
+        GradePercent(steepest * 100.0)
     }
 
     /// Position, elevation and gradient at a distance from the start (clamped to the route).
@@ -253,13 +281,31 @@ fn resample(points: &[RawPoint]) -> Result<Vec<RawPoint>, RouteError> {
     Ok(result)
 }
 
-async fn terrain_elevations(
+/// A source of ground elevations, such as the terrain model.
+pub trait ElevationModel {
+    /// Ground elevation in metres at a WGS84 position.
+    fn elevation(
+        &mut self,
+        lat: f64,
+        lon: f64,
+    ) -> impl std::future::Future<Output = Result<f64, String>> + Send;
+}
+
+impl ElevationModel for Terrain {
+    async fn elevation(&mut self, lat: f64, lon: f64) -> Result<f64, String> {
+        Terrain::elevation(self, lat, lon)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+async fn model_elevations<M: ElevationModel>(
     points: &[RawPoint],
-    terrain: &mut Terrain,
-) -> Result<Vec<f64>, torqa_terrain::TerrainError> {
+    model: &mut M,
+) -> Result<Vec<f64>, String> {
     let mut elevations = Vec::with_capacity(points.len());
     for point in points {
-        elevations.push(terrain.elevation(point.lat, point.lon).await?);
+        elevations.push(model.elevation(point.lat, point.lon).await?);
     }
     Ok(elevations)
 }
@@ -424,5 +470,46 @@ mod tests {
             Route::from_gpx(&gpx_north(&[Some(1.0)], 100.0), None).await,
             Err(RouteError::TooShort)
         ));
+    }
+
+    /// Terrain with a 200 m ridge between latitudes 46.000 and 46.009, everywhere else 500 m.
+    struct Ridge;
+
+    impl ElevationModel for Ridge {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let t = ((lat - 46.0) / 0.009).clamp(0.0, 1.0);
+            std::future::ready(Ok(500.0 + 200.0 * (t * std::f64::consts::PI).sin()))
+        }
+    }
+
+    #[tokio::test]
+    async fn sparse_points_do_not_cut_across_the_terrain() {
+        // Two points 1 km apart on a road that goes around the ridge, not over it.
+        let xml = r#"<gpx><trk><trkseg>
+            <trkpt lat="46.0" lon="7.0"/><trkpt lat="46.009" lon="7.0"/>
+        </trkseg></trk></gpx>"#;
+
+        let route = Route::from_gpx_with(xml, Some(&mut Ridge)).await.unwrap();
+
+        assert_eq!(route.elevation_source(), ElevationSource::Terrain);
+        assert!(route.max_grade().0 < 0.5, "{:?}", route.max_grade());
+        assert!(route.elevation_gain().0 < 1.0);
+    }
+
+    #[tokio::test]
+    async fn reports_the_steepest_gradient() {
+        let elevations: Vec<_> = [0.0, 0.0, 3.0, 13.0, 13.0, 13.0, 13.0]
+            .into_iter()
+            .map(Some)
+            .collect();
+        let route = import(&gpx_north(&elevations, 100.0)).await;
+
+        // 10 m over 100 m, softened a little by smoothing.
+        let max = route.max_grade().0;
+        assert!((7.0..10.5).contains(&max), "{max}");
     }
 }

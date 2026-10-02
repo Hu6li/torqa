@@ -62,9 +62,11 @@ func _on_route_loaded(route: Dictionary) -> void:
 	var source: String = "terrain model" if route["elevation_source"] == "terrain" else "GPX file"
 	var length_km: float = route["length_m"] / 1000.0
 	var gain_m: float = route["elevation_gain_m"]
+	var max_grade: float = route["max_grade"]
+	var route_name: String = route["name"]
 	_route_label.text = (
-		"%s — %.1f km, %.0f m climbing (elevation from %s)"
-		% [route["name"], length_km, gain_m, source]
+		"%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
+		% [route_name, length_km, gain_m, max_grade, source]
 	)
 	_update_start_button()
 
