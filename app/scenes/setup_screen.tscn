@@ -64,6 +64,25 @@ texture = ExtResource("3_wordmark")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="Courses" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="CourseOption" type="OptionButton" parent="Margin/Center/Card/Rows/Courses"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Courses saved in your library ride offline"
+
+[node name="SaveCourseButton" type="Button" parent="Margin/Center/Card/Rows/Courses"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 44)
+layout_mode = 2
+tooltip_text = "Keep this route with its map and terrain, to ride it offline or share it"
+disabled = true
+text = "Save as course"
+
 [node name="Route" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16
@@ -72,7 +91,7 @@ theme_override_constants/separation = 16
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 44)
 layout_mode = 2
-text = "Open GPX route…"
+text = "Open route or course…"
 
 [node name="RouteLabel" type="Label" parent="Margin/Center/Card/Rows/Route"]
 unique_name_in_owner = true
@@ -228,9 +247,9 @@ autowrap_mode = 3
 
 [node name="FileDialog" type="FileDialog" parent="."]
 unique_name_in_owner = true
-title = "Open a GPX route"
+title = "Open a GPX route or Torqa course"
 ok_button_text = "Open"
 file_mode = 0
 access = 2
-filters = PackedStringArray("*.gpx ; GPX routes")
+filters = PackedStringArray("*.gpx, *.tqc ; GPX routes and Torqa courses")
 use_native_dialog = true

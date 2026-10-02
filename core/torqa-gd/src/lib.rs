@@ -116,6 +116,10 @@ impl TorqaApp {
     #[signal]
     fn ride_saved(path: GString);
 
+    /// A course was saved or imported into the library.
+    #[signal]
+    fn course_added(path: GString);
+
     /// Something went wrong.
     #[signal]
     fn failed(message: GString);
@@ -135,6 +139,52 @@ impl TorqaApp {
         if let Some(app) = self.app.as_mut() {
             app.load_route(PathBuf::from(path.to_string()), offline);
         }
+    }
+
+    /// Opens a course file from the library or elsewhere; emits `route_loaded` like
+    /// `load_route`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn open_course(&mut self, path: GString) {
+        if let Some(app) = self.app.as_mut() {
+            app.open_course(PathBuf::from(path.to_string()));
+        }
+    }
+
+    /// Saves the loaded route as a course in the library (emits `course_added` or `failed`).
+    /// False until the world is ready.
+    #[func]
+    fn save_course(&mut self) -> bool {
+        self.command(App::save_course)
+    }
+
+    /// Copies a course file into the library (emits `course_added` or `failed`).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn import_course(&mut self, path: GString) {
+        if let Some(app) = self.app.as_mut() {
+            app.import_course(PathBuf::from(path.to_string()));
+        }
+    }
+
+    /// The courses in the library: `[{path, name, length_m, elevation_gain_m, max_grade}]`.
+    #[func]
+    fn courses(&self) -> VarArray {
+        let mut array = VarArray::new();
+        for course in self.app.as_ref().map(App::courses).unwrap_or_default() {
+            let path = course.path.display().to_string();
+            array.push(
+                &vdict! {
+                    "path" => path.as_str(),
+                    "name" => course.manifest.name.as_str(),
+                    "length_m" => course.manifest.length_m,
+                    "elevation_gain_m" => course.manifest.elevation_gain_m,
+                    "max_grade" => course.manifest.max_grade_percent,
+                }
+                .to_variant(),
+            );
+        }
+        array
     }
 
     /// Connects the simulated trainer.
@@ -434,6 +484,12 @@ impl TorqaApp {
                 let path = path.display().to_string();
                 self.signals()
                     .ride_saved()
+                    .emit(&GString::from(path.as_str()));
+            }
+            AppEvent::CourseAdded(path) => {
+                let path = path.display().to_string();
+                self.signals()
+                    .course_added()
                     .emit(&GString::from(path.as_str()));
             }
             AppEvent::Error(message) => {

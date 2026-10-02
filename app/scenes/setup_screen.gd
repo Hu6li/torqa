@@ -15,12 +15,19 @@ const STEP_WEIGHTS: Dictionary[String, Vector2] = {
 	"Correcting elevations": Vector2(0.6, 0.8),
 	"Building 3D world": Vector2(0.8, 1.0),
 }
+const COURSE_EXTENSION: String = "tqc"
 
 var _torqa: TorqaApp
 var _route_ready: bool = false
 var _world_ready: bool = false
 var _route_text: String = ""
+## Whether the loaded route came from a course file, which needs no saving again.
+var _from_course: bool = false
+## A course file imported from outside the library, opened once it has been copied there.
+var _open_when_added: bool = false
 
+@onready var _course_option: OptionButton = %CourseOption
+@onready var _save_course_button: Button = %SaveCourseButton
 @onready var _open_route_button: Button = %OpenRouteButton
 @onready var _route_label: Label = %RouteLabel
 @onready var _file_dialog: FileDialog = %FileDialog
@@ -56,11 +63,15 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.loading_progress.connect(_on_loading_progress)
 	_torqa.devices_found.connect(_on_devices_found)
 	_torqa.failed.connect(_on_failed)
+	_torqa.course_added.connect(_on_course_added)
+	_refresh_courses()
 
 
 func _ready() -> void:
 	_open_route_button.pressed.connect(_on_open_route_pressed)
 	_file_dialog.file_selected.connect(_on_file_selected)
+	_course_option.item_selected.connect(_on_course_selected)
+	_save_course_button.pressed.connect(_on_save_course_pressed)
 	_scan_button.pressed.connect(_on_scan_pressed)
 	_difficulty_slider.value_changed.connect(_on_difficulty_changed)
 	_start_button.pressed.connect(_on_start_pressed)
@@ -79,15 +90,69 @@ func _on_open_route_pressed() -> void:
 
 
 func _on_file_selected(path: String) -> void:
+	if path.get_extension().to_lower() == COURSE_EXTENSION:
+		# Courses opened from elsewhere join the library first, so they are listed next time.
+		_open_when_added = true
+		_torqa.import_course(path)
+		_begin_loading(path.get_file(), true)
+		return
+	_begin_loading(path.get_file(), false)
+	_torqa.load_route(path, false)
+
+
+func _on_course_selected(index: int) -> void:
+	var path: String = _course_option.get_item_metadata(index)
+	if path.is_empty():
+		return
+	_begin_loading(_course_option.get_item_text(index), true)
+	_torqa.open_course(path)
+
+
+func _on_save_course_pressed() -> void:
+	if _torqa.save_course():
+		_save_course_button.disabled = true
+		_status_label.text = "Saving course…"
+
+
+func _on_course_added(path: String) -> void:
+	_status_label.text = "Course added to your library: %s" % path.get_file()
+	_refresh_courses(path)
+	if _open_when_added:
+		_open_when_added = false
+		_status_label.text = ""
+		_torqa.open_course(path)
+
+
+func _begin_loading(what: String, from_course: bool) -> void:
 	_route_ready = false
 	_world_ready = false
-	_route_label.text = "Loading %s …" % path.get_file()
+	_from_course = from_course
+	_route_label.text = "Loading %s …" % what
 	_loading.show()
 	_loading_bar.value = 0.0
 	_loading_label.text = ""
 	_status_label.text = ""
-	_torqa.load_route(path, false)
 	_update_start_button()
+
+
+## Lists the library's courses, selecting `selected` (a path) if given.
+func _refresh_courses(selected: String = "") -> void:
+	_course_option.clear()
+	var courses: Array = _torqa.courses()
+	_course_option.add_item(
+		"Saved courses (%d)…" % courses.size() if not courses.is_empty() else "No saved courses yet"
+	)
+	_course_option.set_item_metadata(0, "")
+	for course: Dictionary in courses:
+		var course_name: String = course["name"]
+		var length_km: float = course["length_m"] / 1000.0
+		var gain_m: float = course["elevation_gain_m"]
+		var path: String = course["path"]
+		_course_option.add_item("%s — %.1f km, %.0f m" % [course_name, length_km, gain_m])
+		_course_option.set_item_metadata(_course_option.item_count - 1, path)
+		if path == selected:
+			_course_option.select(_course_option.item_count - 1)
+	_course_option.disabled = courses.is_empty()
 
 
 func _on_route_loaded(route: Dictionary) -> void:
@@ -177,6 +242,8 @@ func _on_start_pressed() -> void:
 
 func _on_failed(message: String) -> void:
 	_loading.hide()
+	_open_when_added = false
+	_update_start_button()
 	_scan_button.disabled = false
 	_status_label.text = message
 
@@ -192,3 +259,4 @@ func _reset_device_options() -> void:
 
 func _update_start_button() -> void:
 	_start_button.disabled = not (_route_ready and _world_ready)
+	_save_course_button.disabled = not _world_ready or _from_course

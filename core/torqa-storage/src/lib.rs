@@ -1,4 +1,6 @@
-//! Ride storage for Torqa. Currently: export of recorded rides as FIT activities (R28).
+//! Storage for Torqa: recorded rides as FIT activities (R28) and course files (R32–R35).
+
+pub mod course;
 
 use std::io::Cursor;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

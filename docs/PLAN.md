@@ -90,10 +90,13 @@ Built in rideable steps:
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
-- [ ] `.tqc` format: write/read with format and generator versions
-- [ ] Course library in the data directory; list, import, save-as-course in the app
-- [ ] Rebuild outdated worlds from stored inputs
-- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file
+- [x] `.tqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
+  versions (ADR 0007 amendment)
+- [x] Course library in the data directory; list, import, save-as-course in the app
+- [x] Rebuild outdated worlds from stored inputs (format 1 always rebuilds offline)
+- [ ] Format 2: store the pre-built world for an instant start
+- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅
+  (2026-10-03, Lake Biel: 15 MB, opened offline with an empty cache)
 
 ### Phase 4 — Rider & history
 - [ ] Multi-profile, zones, customizable HUD

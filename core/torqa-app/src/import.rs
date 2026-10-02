@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use torqa_domain::files::UsedFiles;
 use torqa_osm::{MapData, Osm};
 use torqa_routes::{ElevationModel, Route};
 use torqa_terrain::{Terrain, TileSource};
@@ -55,11 +56,12 @@ pub struct Imported {
     pub map: MapData,
     /// Name from the file, or the file name.
     pub name: String,
+    /// The original GPX track, kept for saving the course.
+    pub gpx: String,
 }
 
-/// Reads a GPX file, fetches map data along it (bridges and tunnels shape the elevation
-/// profile) and corrects elevations with the terrain model. Downloads are cached under
-/// `cache_dir`; `offline` uses the caches only.
+/// Reads a GPX file and imports it with [`import_gpx`], named after the file if the track has
+/// no name.
 ///
 /// # Errors
 /// A readable message if the file cannot be read or imported.
@@ -67,17 +69,40 @@ pub async fn import_route(
     path: &Path,
     cache_dir: &Path,
     offline: bool,
+    used: &UsedFiles,
     progress: Progress<'_>,
 ) -> Result<Imported, String> {
     progress(LoadStage::Route, 0, 1);
     let xml = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let invalid = |e: torqa_routes::RouteError| format!("cannot import {}: {e}", path.display());
-    let track = torqa_routes::track_points(&xml).map_err(invalid)?;
+    let fallback = path
+        .file_stem()
+        .map_or_else(|| "Route".to_owned(), |s| s.to_string_lossy().into_owned());
+    import_gpx(xml, &fallback, cache_dir, offline, used, progress)
+        .await
+        .map_err(|e| format!("cannot import {}: {e}", path.display()))
+}
+
+/// Imports a GPX track: fetches map data along it (bridges and tunnels shape the elevation
+/// profile) and corrects elevations with the terrain model. Downloads are cached under
+/// `cache_dir` and every cached file used is recorded in `used`; `offline` uses the caches
+/// only.
+///
+/// # Errors
+/// A readable message if the track cannot be imported.
+pub async fn import_gpx(
+    xml: String,
+    fallback_name: &str,
+    cache_dir: &Path,
+    offline: bool,
+    used: &UsedFiles,
+    progress: Progress<'_>,
+) -> Result<Imported, String> {
+    let track = torqa_routes::track_points(&xml).map_err(|e| e.to_string())?;
     progress(LoadStage::Route, 1, 1);
 
-    let mut osm = Osm::new(cache_dir.join("osm"));
+    let mut osm = Osm::new(cache_dir.join("osm")).recording(used.clone());
     if offline {
         osm = osm.offline();
     }
@@ -91,7 +116,8 @@ pub async fn import_route(
             MapData::default()
         });
 
-    let mut terrain = Terrain::new(TileSource::defaults(), cache_dir.join("terrain"));
+    let mut terrain =
+        Terrain::new(TileSource::defaults(), cache_dir.join("terrain")).recording(used.clone());
     if offline {
         terrain = terrain.offline();
     }
@@ -103,16 +129,17 @@ pub async fn import_route(
     };
     let route = Route::from_gpx_with(&xml, Some(&mut counting), &map.structures)
         .await
-        .map_err(invalid)?;
+        .map_err(|e| e.to_string())?;
     progress(LoadStage::Elevation, track.len(), track.len());
-    let name = route.name().map_or_else(
-        || {
-            path.file_stem()
-                .map_or_else(|| "Route".to_owned(), |s| s.to_string_lossy().into_owned())
-        },
-        ToOwned::to_owned,
-    );
-    Ok(Imported { route, map, name })
+    let name = route
+        .name()
+        .map_or_else(|| fallback_name.to_owned(), ToOwned::to_owned);
+    Ok(Imported {
+        route,
+        map,
+        name,
+        gpx: xml,
+    })
 }
 
 /// Reports elevation lookups as progress.

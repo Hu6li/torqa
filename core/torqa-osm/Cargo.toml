@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+torqa-domain.workspace = true
 futures.workspace = true
 geo-types.workspace = true
 mvt-reader.workspace = true

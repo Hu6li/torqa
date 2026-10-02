@@ -160,6 +160,7 @@ async fn route_info(args: &RouteArgs) -> Result<()> {
         &args.file,
         &paths::cache_dir(),
         args.offline,
+        &torqa_domain::files::UsedFiles::default(),
         &mut |_, _, _| {},
     )
     .await
@@ -228,9 +229,15 @@ async fn route_info(args: &RouteArgs) -> Result<()> {
 }
 
 async fn load_route(path: &std::path::Path, offline: bool) -> Result<Route> {
-    let imported = torqa_app::import_route(path, &paths::cache_dir(), offline, &mut |_, _, _| {})
-        .await
-        .map_err(anyhow::Error::msg)?;
+    let imported = torqa_app::import_route(
+        path,
+        &paths::cache_dir(),
+        offline,
+        &torqa_domain::files::UsedFiles::default(),
+        &mut |_, _, _| {},
+    )
+    .await
+    .map_err(anyhow::Error::msg)?;
     Ok(imported.route)
 }
 

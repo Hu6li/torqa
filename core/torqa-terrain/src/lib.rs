@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use torqa_domain::files::UsedFiles;
 use tracing::{debug, warn};
 
 pub use source::{ImageFormat, TileSource};
@@ -43,6 +44,7 @@ pub struct Terrain {
     tiles: HashMap<(usize, TileId), Arc<HeightTile>>,
     /// Tiles that could not be loaded; not retried, so a missing tile costs one attempt.
     unavailable: HashSet<(usize, TileId)>,
+    used: UsedFiles,
 }
 
 impl Terrain {
@@ -68,6 +70,7 @@ impl Terrain {
             online: true,
             tiles: HashMap::new(),
             unavailable: HashSet::new(),
+            used: UsedFiles::default(),
         }
     }
 
@@ -75,6 +78,13 @@ impl Terrain {
     #[must_use]
     pub fn offline(mut self) -> Self {
         self.online = false;
+        self
+    }
+
+    /// Records every cached tile file read or written in `used`.
+    #[must_use]
+    pub fn recording(mut self, used: UsedFiles) -> Self {
+        self.used = used;
         self
     }
 
@@ -181,6 +191,7 @@ impl Terrain {
         };
 
         let tile = Arc::new(HeightTile::decode(&bytes, src.format).map_err(TerrainError::Decode)?);
+        self.used.record(&path);
         self.tiles.insert((source, id), Arc::clone(&tile));
         Ok(tile)
     }

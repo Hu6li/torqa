@@ -1,6 +1,7 @@
 extends SceneTree
-## Headless end-to-end check of the Torqa node API: load a route, ride it with the fake
-## trainer and save a FIT file. Run: godot --headless --path app -s res://tests/ride_smoke.gd
+## Headless end-to-end check of the Torqa node API: load a route, save it as a course, ride it
+## with the fake trainer, save a FIT file and reopen the course.
+## Run: godot --headless --path app -s res://tests/ride_smoke.gd
 
 const TIMEOUT_S: float = 20.0
 
@@ -26,6 +27,17 @@ func _run() -> void:
 	_check(not route.is_empty(), "route loaded")
 	var profile: PackedVector2Array = _torqa.elevation_profile(100)
 	_check(profile.size() >= 2, "elevation profile available")
+	await _wait_for(_torqa.world_ready)
+
+	_check(_torqa.save_course(), "course saving started")
+	var added: Array = await _wait_for(_torqa.course_added)
+	var course_path: String = added[0]
+	_check(course_path.ends_with(".tqc"), "course saved: %s" % course_path)
+	var listed: bool = false
+	for course: Dictionary in _torqa.courses():
+		var path: String = course["path"]
+		listed = listed or path == course_path
+	_check(listed, "course listed in the library")
 
 	_check(_torqa.connect_fake_trainer(250.0, 90.0), "fake trainer connected")
 	_check(_torqa.start_ride(50.0, false, 83.0), "ride started")
@@ -39,6 +51,13 @@ func _run() -> void:
 	_torqa.finish_ride()
 	_check(_saved_path.ends_with(".fit"), "ride saved: %s" % _saved_path)
 	_check(_failure.is_empty(), "no failure: %s" % _failure)
+
+	_torqa.open_course(course_path)
+	var reopened: Array = await _wait_for(_torqa.route_loaded)
+	var reopened_route: Dictionary = reopened[0]
+	var reopened_name: String = reopened_route["name"]
+	_check(reopened_name == "Smoke", "course reopened: %s" % reopened_route)
+	DirAccess.remove_absolute(course_path)
 	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
 	quit(0)
 

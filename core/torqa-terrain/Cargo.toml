@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+torqa-domain.workspace = true
 image-webp.workspace = true
 png.workspace = true
 reqwest.workspace = true

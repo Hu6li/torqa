@@ -6,20 +6,29 @@ mod import;
 pub mod paths;
 pub mod view;
 
-pub use import::{Imported, LoadStage, Progress, import_route};
+pub use import::{Imported, LoadStage, Progress, import_gpx, import_route};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime};
 
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
+use torqa_domain::files::UsedFiles;
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::{Ride, RideConfig, RideState};
+use torqa_storage::course::{self, Manifest};
 use torqa_terrain::{Terrain, TileSource};
 use torqa_world::World;
 use tracing::warn;
+
+/// Credits for the data a course bundles, stored in course files (ODbL, CC BY).
+const ATTRIBUTION: [&str; 3] = [
+    "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL)",
+    "Terrain: Mapterhorn (CC BY 4.0)",
+    "Terrain: AWS Terrain Tiles",
+];
 
 /// How long [`App::shutdown`] waits for devices to disconnect.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -39,6 +48,9 @@ pub enum AppError {
     /// The device index does not refer to a discovered device of the right kind.
     #[error("unknown device")]
     UnknownDevice,
+    /// Saving a course needs a route whose world has been built.
+    #[error("the course is not ready yet")]
+    CourseNotReady,
 }
 
 /// A device found by a scan.
@@ -67,6 +79,15 @@ pub struct RouteSummary {
     pub max_grade: f64,
     /// Where the elevations come from.
     pub elevation_source: ElevationSource,
+}
+
+/// A course in the library.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseEntry {
+    /// The course file.
+    pub path: PathBuf,
+    /// What the course file says about itself.
+    pub manifest: Manifest,
 }
 
 /// Something that happened since the last [`App::update`].
@@ -100,6 +121,8 @@ pub enum AppEvent {
     RideFinished,
     /// The ride was saved as a FIT file.
     RideSaved(PathBuf),
+    /// A course was saved or imported into the library.
+    CourseAdded(PathBuf),
     /// A background operation failed.
     Error(String),
 }
@@ -118,6 +141,7 @@ enum JobResult {
     Route(Result<Box<Imported>, String>),
     World(Box<World>),
     Progress(LoadStage, usize, usize),
+    CourseAdded(Result<PathBuf, String>),
 }
 
 /// Forwards load progress to the frame loop, at most once per percent per stage.
@@ -155,6 +179,10 @@ pub struct App {
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
+    /// Name and GPX of the loaded route, for saving it as a course.
+    loaded: Option<(String, String)>,
+    /// Cached files the loaded route and its world were built from.
+    used: UsedFiles,
     ride: Option<ActiveRide>,
     data_dir: PathBuf,
     cache_dir: PathBuf,
@@ -183,6 +211,8 @@ impl App {
             route: None,
             world: None,
             offline: false,
+            loaded: None,
+            used: UsedFiles::default(),
             ride: None,
             data_dir,
             cache_dir,
@@ -210,8 +240,7 @@ impl App {
 
     /// Imports a GPX route with terrain-corrected elevations; reports [`AppEvent::RouteLoaded`].
     pub fn load_route(&mut self, path: PathBuf, offline: bool) {
-        self.offline = offline;
-        self.world = None;
+        let used = self.start_loading(offline);
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
@@ -219,7 +248,7 @@ impl App {
                 tx: tx.clone(),
                 last: None,
             };
-            let result = import_route(&path, &cache, offline, &mut |stage, done, total| {
+            let result = import_route(&path, &cache, offline, &used, &mut |stage, done, total| {
                 reporter.report(stage, done, total);
             })
             .await
@@ -228,10 +257,147 @@ impl App {
         });
     }
 
+    /// Opens a course file: its data goes back into the cache and the course is built offline;
+    /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`].
+    pub fn open_course(&mut self, path: PathBuf) {
+        let used = self.start_loading(true);
+        let tx = self.jobs_tx.clone();
+        let cache = self.cache_dir.clone();
+        self.runtime.spawn(async move {
+            let mut reporter = Reporter {
+                tx: tx.clone(),
+                last: None,
+            };
+            reporter.report(LoadStage::Route, 0, 1);
+            let unpack_from = path.clone();
+            let unpack_to = cache.clone();
+            let unpacked =
+                tokio::task::spawn_blocking(move || course::unpack(&unpack_from, &unpack_to))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r.map_err(|e| format!("cannot open {}: {e}", path.display())));
+            let result = match unpacked {
+                Ok(unpacked) => import_gpx(
+                    unpacked.gpx,
+                    &unpacked.manifest.name,
+                    &cache,
+                    true,
+                    &used,
+                    &mut |stage, done, total| reporter.report(stage, done, total),
+                )
+                .await
+                .map(|mut imported| {
+                    imported.name = unpacked.manifest.name;
+                    Box::new(imported)
+                }),
+                Err(message) => Err(message),
+            };
+            let _ = tx.send(JobResult::Route(result));
+        });
+    }
+
+    /// Saves the loaded route with everything needed to ride it offline as a course in the
+    /// library; reports [`AppEvent::CourseAdded`].
+    ///
+    /// # Errors
+    /// [`AppError::CourseNotReady`] until the route's world has been built.
+    pub fn save_course(&mut self) -> Result<(), AppError> {
+        let (Some(route), Some(_), Some((name, gpx))) = (&self.route, &self.world, &self.loaded)
+        else {
+            return Err(AppError::CourseNotReady);
+        };
+        let manifest = Manifest {
+            format: course::FORMAT_VERSION,
+            generator: format!("Torqa {}", torqa_domain::version()),
+            name: name.clone(),
+            length_m: route.length().0,
+            elevation_gain_m: route.elevation_gain().0,
+            max_grade_percent: route.max_grade().0,
+            created_unix_s: SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            attribution: ATTRIBUTION.map(ToOwned::to_owned).to_vec(),
+        };
+        let gpx = gpx.clone();
+        let data = self.used.paths();
+        let cache = self.cache_dir.clone();
+        let library = self.courses_dir();
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn_blocking(move || {
+            let result = std::fs::create_dir_all(&library)
+                .map_err(course::CourseError::from)
+                .and_then(|()| {
+                    let path = unique_course_path(&library, &manifest.name);
+                    course::write(&path, &manifest, &gpx, &cache, &data).map(|()| path)
+                })
+                .map_err(|e| format!("cannot save course: {e}"));
+            let _ = tx.send(JobResult::CourseAdded(result));
+        });
+        Ok(())
+    }
+
+    /// Copies a course file into the library; reports [`AppEvent::CourseAdded`].
+    pub fn import_course(&mut self, path: PathBuf) {
+        let library = self.courses_dir();
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn_blocking(move || {
+            let result = course::read_manifest(&path)
+                .and_then(|manifest| {
+                    std::fs::create_dir_all(&library)?;
+                    let target = unique_course_path(&library, &manifest.name);
+                    let partial = target.with_extension("part");
+                    std::fs::copy(&path, &partial)?;
+                    std::fs::rename(&partial, &target)?;
+                    Ok(target)
+                })
+                .map_err(|e| format!("cannot import {}: {e}", path.display()));
+            let _ = tx.send(JobResult::CourseAdded(result));
+        });
+    }
+
+    /// The courses in the library, by name. Unreadable files are skipped.
+    #[must_use]
+    pub fn courses(&self) -> Vec<CourseEntry> {
+        let Ok(entries) = std::fs::read_dir(self.courses_dir()) else {
+            return Vec::new();
+        };
+        let mut courses: Vec<CourseEntry> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == course::EXTENSION))
+            .filter_map(|path| match course::read_manifest(&path) {
+                Ok(manifest) => Some(CourseEntry { path, manifest }),
+                Err(error) => {
+                    warn!(path = %path.display(), %error, "skipping course");
+                    None
+                }
+            })
+            .collect();
+        courses.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
+        courses
+    }
+
+    /// The course library: `courses/` in the data directory (R34).
+    #[must_use]
+    pub fn courses_dir(&self) -> PathBuf {
+        self.data_dir.join("courses")
+    }
+
+    /// Forgets the current route and starts recording the files a new one uses.
+    fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        self.offline = offline;
+        self.world = None;
+        self.route = None;
+        self.loaded = None;
+        self.used = UsedFiles::default();
+        self.used.clone()
+    }
+
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
-        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"));
+        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"))
+            .recording(self.used.clone());
         if self.offline {
             terrain = terrain.offline();
         }
@@ -413,7 +579,13 @@ impl App {
                     events.push(AppEvent::DevicesFound(infos));
                 }
                 JobResult::Route(Ok(imported)) => {
-                    let Imported { route, map, name } = *imported;
+                    let Imported {
+                        route,
+                        map,
+                        name,
+                        gpx,
+                    } = *imported;
+                    self.loaded = Some((name.clone(), gpx));
                     events.push(AppEvent::RouteLoaded(RouteSummary {
                         name,
                         length: route.length().0,
@@ -434,7 +606,10 @@ impl App {
                     });
                     self.world = Some(Arc::from(world));
                 }
-                JobResult::Scan(Err(message)) | JobResult::Route(Err(message)) => {
+                JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
+                JobResult::Scan(Err(message))
+                | JobResult::Route(Err(message))
+                | JobResult::CourseAdded(Err(message)) => {
                     events.push(AppEvent::Error(message));
                 }
             }
@@ -502,6 +677,36 @@ impl App {
             }
         }
     }
+}
+
+/// A free file name in `library` for a course called `name`.
+fn unique_course_path(library: &Path, name: &str) -> PathBuf {
+    let slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let slug = if slug.is_empty() {
+        "course".to_owned()
+    } else {
+        slug
+    };
+    let mut path = library.join(format!("{slug}.{}", course::EXTENSION));
+    let mut n = 1;
+    while path.exists() {
+        n += 1;
+        path = library.join(format!("{slug}-{n}.{}", course::EXTENSION));
+    }
+    path
 }
 
 #[cfg(test)]
@@ -594,6 +799,65 @@ mod tests {
         assert!(path.starts_with(dir.join("data").join("rides")));
         assert!(std::fs::metadata(path).unwrap().len() > 100);
         app.shutdown();
+    }
+
+    #[test]
+    fn a_saved_course_rides_on_another_machine() {
+        let dir = temp_dir("course");
+        let mut prepared = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
+        prepared.load_route(write_route(&dir), true);
+        assert!(matches!(
+            prepared.save_course(),
+            Err(AppError::CourseNotReady)
+        ));
+        run_until(&mut prepared, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        prepared.save_course().unwrap();
+        let events = run_until(&mut prepared, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(file)) = events.last() else {
+            unreachable!()
+        };
+        assert_eq!(*file, dir.join("a/data/courses/test-loop.tqc"));
+        let listed = prepared.courses();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].manifest.name, "Test loop");
+        assert!((listed[0].manifest.length_m - 400.0).abs() < 1.0);
+
+        let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
+        other.import_course(file.clone());
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(imported)) = events.last() else {
+            unreachable!()
+        };
+        assert!(imported.starts_with(dir.join("b/data/courses")));
+        other.open_course(imported.clone());
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        let summary = events.iter().find_map(|e| match e {
+            AppEvent::RouteLoaded(summary) => Some(summary),
+            _ => None,
+        });
+        assert!(summary.is_some_and(|s| s.name == "Test loop" && (s.length - 400.0).abs() < 1.0));
+        assert!(other.world().is_some());
+    }
+
+    #[test]
+    fn saving_a_course_twice_keeps_both() {
+        let library = temp_dir("unique");
+        std::fs::write(library.join("lake-biel.tqc"), b"").unwrap();
+
+        assert_eq!(
+            unique_course_path(&library, "Lake Biel"),
+            library.join("lake-biel-2.tqc")
+        );
+        assert_eq!(
+            unique_course_path(&library, "Gurten / Bern!"),
+            library.join("gurten-bern.tqc")
+        );
+        assert_eq!(
+            unique_course_path(&library, "??"),
+            library.join("course.tqc")
+        );
     }
 
     #[test]
