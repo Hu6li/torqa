@@ -60,8 +60,8 @@ docs/                      requirements, plan, ADRs
 - [x] FTMS driver (SIM / ERG / resistance), heart-rate sensor
 - [x] Fake trainer
 - [x] `torqa-cli scan` / `torqa-cli ride`
-- [ ] macOS CLI artifact from CI
-- **Exit:** CLI controls the KICKR Core 2 grade and reads power/cadence/HR
+- [x] macOS CLI artifact from CI
+- **Exit:** CLI controls the KICKR Core 2 grade and reads power/cadence/HR ✅ (verified on hardware 2026-10-02)
 
 ### Phase 2 — Route, physics, FIT
 - [ ] GPX import, smoothing, online DEM correction
