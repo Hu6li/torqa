@@ -26,7 +26,7 @@ var _finished: bool = false
 @onready var _profile: ElevationProfile = %Profile
 @onready var _status: Label = %Status
 @onready var _finish_button: Button = %FinishButton
-@onready var _camera_hint: Label = %CameraHint
+@onready var _camera_button: Button = %CameraButton
 
 
 func bind(torqa: TorqaApp, world: RideWorld) -> void:
@@ -58,13 +58,18 @@ func _ready() -> void:
 		var unit: String = metric[2]
 		_add_metric(key, caption, unit)
 	_finish_button.pressed.connect(_on_finish_pressed)
+	_camera_button.pressed.connect(_cycle_camera)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
 	if visible and key != null and key.pressed and not key.echo and key.keycode == KEY_C:
-		_camera_hint.text = "C: camera (%s)" % _world.cycle_camera()
+		_cycle_camera()
 		get_viewport().set_input_as_handled()
+
+
+func _cycle_camera() -> void:
+	_camera_button.text = "Camera: %s" % _world.cycle_camera()
 
 
 func _process(_delta: float) -> void:
