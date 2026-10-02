@@ -81,8 +81,8 @@ Built in rideable steps:
 - [x] Step 2 — 3D terrain from cached elevation tiles, road mesh along the route, sky, cameras
 - [x] Step 3a — OpenStreetMap: land cover, forests with trees, buildings, rivers; bridges and
   tunnels in the elevation profile ([ADR 0006](adr/0006-map-data.md))
-- [ ] Step 3b — avatar, weather/time-of-day presets, bridge decks and tunnel tubes, map tiles
-  for the minimap
+- [x] Step 3b — bridge decks and tunnel tubes, weather/time-of-day presets, animated avatar,
+  minimap drawn from the OSM data (offline, no tile server)
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))

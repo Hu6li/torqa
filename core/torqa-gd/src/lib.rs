@@ -267,6 +267,33 @@ impl TorqaApp {
             .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.structures))
     }
 
+    /// The minimap as coloured triangles: `{vertices, colors, background}`, vertices in metres
+    /// east/north of the route start (as in `track()`).
+    #[func]
+    fn minimap_mesh(&self) -> VarDictionary {
+        let Some(world) = self.app.as_ref().and_then(App::world) else {
+            return VarDictionary::new();
+        };
+        let vertices: PackedVector2Array = world
+            .minimap
+            .vertices
+            .iter()
+            .map(|&[x, y]| Vector2::new(x, y))
+            .collect();
+        let colors: PackedColorArray = world
+            .minimap
+            .colors
+            .iter()
+            .map(|&[r, g, b, a]| Color::from_rgba(r, g, b, a))
+            .collect();
+        let [r, g, b, a] = torqa_world::MINIMAP_BACKGROUND;
+        vdict! {
+            "vertices" => &vertices,
+            "colors" => &colors,
+            "background" => Color::from_rgba(r, g, b, a),
+        }
+    }
+
     /// Rivers and streams as mesh arrays, in route coordinates.
     #[func]
     fn water_mesh(&self) -> VarDictionary {

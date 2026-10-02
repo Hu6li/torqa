@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
 
 use crate::{
-    Area, Building, LandCover, LatLon, MapData, OsmError, Structure, StructureKind, Waterway,
+    Area, Building, LandCover, LatLon, MapData, OsmError, Road, Structure, StructureKind, Waterway,
 };
 
 #[derive(Deserialize)]
@@ -70,9 +70,28 @@ fn add(element: &Element, data: &mut MapData) {
         } else {
             None
         };
-        if let Some(kind) = kind
-            && line.len() >= 2
-        {
+        if line.len() < 2 {
+            return;
+        }
+        let highway = tags.get("highway").map_or("", String::as_str);
+        if matches!(
+            highway,
+            "motorway"
+                | "trunk"
+                | "primary"
+                | "secondary"
+                | "tertiary"
+                | "unclassified"
+                | "residential"
+                | "living_street"
+                | "track"
+        ) {
+            data.roads.push(Road {
+                major: matches!(highway, "motorway" | "trunk" | "primary" | "secondary"),
+                line: line.clone(),
+            });
+        }
+        if let Some(kind) = kind {
             data.structures.push(Structure { kind, line });
         }
         return;
@@ -249,6 +268,15 @@ pub(crate) mod tests {
         let kinds: Vec<_> = parse(SAMPLE).structures.iter().map(|s| s.kind).collect();
 
         assert_eq!(kinds, [StructureKind::Bridge, StructureKind::Tunnel]);
+    }
+
+    #[test]
+    fn reads_roads_for_the_minimap() {
+        let roads = parse(SAMPLE).roads;
+
+        // Both secondary roads (on a bridge and in a tunnel); the path is not drawn.
+        assert_eq!(roads.len(), 2);
+        assert!(roads.iter().all(|r| r.major));
     }
 
     #[test]

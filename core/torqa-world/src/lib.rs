@@ -7,6 +7,7 @@
 
 mod buildings;
 mod landcover;
+mod minimap;
 mod road;
 mod structures;
 mod vegetation;
@@ -19,6 +20,7 @@ use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
 use landcover::LandIndex;
+pub use minimap::{BACKGROUND as MINIMAP_BACKGROUND, FlatMap};
 use road::RoadIndex;
 pub use vegetation::Trees;
 
@@ -79,6 +81,8 @@ pub struct World {
     pub water: MeshData,
     /// Bridges and tunnels.
     pub structures: MeshData,
+    /// Flat map of the corridor for the minimap.
+    pub minimap: FlatMap,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
 }
@@ -94,6 +98,7 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &Map
         road: road.mesh(ROAD_HALF_WIDTH),
         water: water::ribbons(&map.waterways, &projection, &road, model).await,
         structures: structures::build(&road, &projection, model).await,
+        minimap: minimap::build(map, &projection, &road),
         ..World::default()
     };
 

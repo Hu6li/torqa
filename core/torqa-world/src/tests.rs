@@ -499,3 +499,36 @@ async fn ground_never_covers_a_bridge_deck() {
         assert!(v[1] <= 500.0 - 0.25 + 0.01, "terrain above the deck: {v:?}");
     }
 }
+
+#[tokio::test]
+async fn minimap_draws_map_features_near_the_route_only() {
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(300.0, 500.0, 100.0)],
+        inner: vec![],
+    };
+    let far_lake = Area {
+        cover: LandCover::Water,
+        outer: vec![square(9000.0, 500.0, 100.0)],
+        inner: vec![],
+    };
+    let house = Building {
+        id: 1,
+        outline: square(60.0, 500.0, 5.0),
+        height: None,
+        levels: None,
+    };
+    let world = world(&MapData {
+        areas: vec![forest, far_lake],
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+
+    let flat = &world.minimap;
+    assert_eq!(flat.vertices.len() % 3, 0);
+    assert_eq!(flat.vertices.len(), flat.colors.len());
+    // Forest square (2 triangles) and house (2 triangles); the lake is 9 km away.
+    assert_eq!(flat.vertices.len(), 12);
+    assert!(flat.vertices.iter().all(|v| v[0] < 500.0));
+}

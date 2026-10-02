@@ -17,7 +17,7 @@ pub type LatLon = (f64, f64);
 /// Edge length of a download tile in degrees.
 const TILE_DEGREES: f64 = 0.05;
 /// Bumped when the query changes, so stale cached tiles are not reused.
-const CACHE_VERSION: &str = "v1";
+const CACHE_VERSION: &str = "v2";
 
 /// Public Overpass instances, tried in order.
 const ENDPOINTS: [&str; 3] = [
@@ -92,6 +92,15 @@ pub struct Waterway {
     pub line: Vec<LatLon>,
 }
 
+/// A road for the minimap.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Road {
+    /// Through roads (primary, secondary, ...) rather than local streets and tracks.
+    pub major: bool,
+    /// Centre line.
+    pub line: Vec<LatLon>,
+}
+
 /// Whether a road is carried over or under the ground.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StructureKind {
@@ -121,6 +130,8 @@ pub struct MapData {
     pub waterways: Vec<Waterway>,
     /// Road bridges and tunnels.
     pub structures: Vec<Structure>,
+    /// Roads.
+    pub roads: Vec<Road>,
 }
 
 /// Downloads and caches OpenStreetMap data.
@@ -252,6 +263,8 @@ fn query((lat, lon): (i32, i32)) -> String {
     let landuse = "^(forest|meadow|grass|farmland|farmyard|vineyard|orchard|residential|\
                    commercial|industrial|retail|allotments|village_green|reservoir)$";
     let natural = "^(wood|scrub|grassland|heath|water|bare_rock|scree|glacier|wetland)$";
+    let roads = "^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|\
+                 living_street|track)$";
     format!(
         "[out:json][timeout:90];(\
          way[\"building\"]({bbox});\
@@ -260,6 +273,7 @@ fn query((lat, lon): (i32, i32)) -> String {
          way[\"natural\"~\"{natural}\"]({bbox});\
          relation[\"natural\"~\"{natural}\"][\"type\"=\"multipolygon\"]({bbox});\
          way[\"waterway\"~\"^(river|stream|canal)$\"]({bbox});\
+         way[\"highway\"~\"{roads}\"]({bbox});\
          way[\"highway\"][\"bridge\"][\"bridge\"!=\"no\"]({bbox});\
          way[\"highway\"][\"tunnel\"][\"tunnel\"!=\"no\"]({bbox});\
          );out tags geom;"
