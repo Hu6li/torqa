@@ -1,40 +1,6 @@
 //! Route geometry prepared for drawing: elevation profile and a flat map of the track.
 
-use torqa_routes::Route;
-
-const EARTH_RADIUS: f64 = 6_371_000.0;
-
-/// Converts positions to metres east/north of the route start (equirectangular projection,
-/// accurate to well under 1 % over the extent of a ride).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LocalProjection {
-    origin_lat: f64,
-    origin_lon: f64,
-    meters_per_degree_lon: f64,
-}
-
-impl LocalProjection {
-    /// A projection centred on the first point of `route`.
-    #[must_use]
-    pub fn for_route(route: &Route) -> Self {
-        let start = route.points()[0];
-        let meters_per_degree = EARTH_RADIUS.to_radians();
-        Self {
-            origin_lat: start.lat,
-            origin_lon: start.lon,
-            meters_per_degree_lon: meters_per_degree * start.lat.to_radians().cos(),
-        }
-    }
-
-    /// Metres east and north of the origin.
-    #[must_use]
-    pub fn project(&self, lat: f64, lon: f64) -> (f64, f64) {
-        (
-            (lon - self.origin_lon) * self.meters_per_degree_lon,
-            (lat - self.origin_lat) * EARTH_RADIUS.to_radians(),
-        )
-    }
-}
+use torqa_routes::{LocalProjection, Route};
 
 /// `(distance, elevation)` in metres, at most `max_points` evenly picked points including the
 /// finish.

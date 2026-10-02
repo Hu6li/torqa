@@ -17,6 +17,7 @@ const METRICS: Array[Array] = [
 ]
 
 var _torqa: TorqaApp
+var _world: RideWorld
 var _values: Dictionary[String, Label] = {}
 var _finished: bool = false
 
@@ -25,10 +26,12 @@ var _finished: bool = false
 @onready var _profile: ElevationProfile = %Profile
 @onready var _status: Label = %Status
 @onready var _finish_button: Button = %FinishButton
+@onready var _camera_hint: Label = %CameraHint
 
 
-func bind(torqa: TorqaApp) -> void:
+func bind(torqa: TorqaApp, world: RideWorld) -> void:
 	_torqa = torqa
+	_world = world
 	_torqa.device_connected.connect(_on_device_connected)
 	_torqa.device_disconnected.connect(_on_device_disconnected)
 	# Deferred: the handler calls back into Torqa, which is still busy emitting the signal.
@@ -55,6 +58,13 @@ func _ready() -> void:
 		var unit: String = metric[2]
 		_add_metric(key, caption, unit)
 	_finish_button.pressed.connect(_on_finish_pressed)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var key: InputEventKey = event as InputEventKey
+	if visible and key != null and key.pressed and not key.echo and key.keycode == KEY_C:
+		_camera_hint.text = "C: camera (%s)" % _world.cycle_camera()
+		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
