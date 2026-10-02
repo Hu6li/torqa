@@ -85,6 +85,12 @@ Built in rideable steps:
   for the minimap
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
+### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
+- [ ] `.tqc` format: write/read with format and generator versions
+- [ ] Course library in the data directory; list, import, save-as-course in the app
+- [ ] Rebuild outdated worlds from stored inputs
+- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file
+
 ### Phase 4 — Rider & history
 - [ ] Multi-profile, zones, customizable HUD
 - [ ] History & analysis, climbs/PRs
