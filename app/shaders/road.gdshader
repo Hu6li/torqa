@@ -8,6 +8,8 @@ uniform float road_width = 6.0;
 uniform float line_width = 0.12;
 uniform float dash_length = 3.0;
 uniform float dash_gap = 6.0;
+// 0 dry, 1 soaked: darker and glossier asphalt.
+uniform float wetness : hint_range(0.0, 1.0) = 0.0;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -21,6 +23,8 @@ void fragment() {
 	bool centre = abs(across - road_width * 0.5) < half_line
 		&& mod(UV.y, dash_length + dash_gap) < dash_length;
 	float grain = hash(floor(vec2(across, UV.y) * 20.0)) * 0.04;
-	ALBEDO = edge || centre ? marking_color : asphalt_color + grain;
-	ROUGHNESS = edge || centre ? 0.6 : 0.85;
+	vec3 albedo = edge || centre ? marking_color : asphalt_color + grain;
+	ALBEDO = albedo * (1.0 - wetness * 0.35);
+	ROUGHNESS = mix(edge || centre ? 0.6 : 0.85, 0.15, wetness);
+	SPECULAR = mix(0.5, 0.8, wetness);
 }

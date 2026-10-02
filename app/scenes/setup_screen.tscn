@@ -151,6 +151,30 @@ value = 83.0
 [node name="MassSpacer" type="Control" parent="Margin/Rows/Settings"]
 layout_mode = 2
 
+[node name="TimeCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Time of day"
+
+[node name="TimeOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="TimeSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="WeatherCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Weather"
+
+[node name="WeatherOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="WeatherSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
 [node name="DescentCaption" type="Label" parent="Margin/Rows/Settings"]
 layout_mode = 2
 text = "Descents"

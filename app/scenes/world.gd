@@ -4,6 +4,39 @@ extends Node3D
 
 enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 
+## Sun elevation and azimuth (degrees, azimuth clockwise from north), colour and energy, and
+## sky top/horizon colours per time of day.
+const TIMES: Dictionary[String, Dictionary] = {
+	"Morning":
+	{
+		"elevation": 14.0,
+		"azimuth": 110.0,
+		"sun": Color(1.0, 0.82, 0.66),
+		"energy": 0.95,
+		"top": Color(0.36, 0.55, 0.82),
+		"horizon": Color(0.92, 0.78, 0.66),
+	},
+	"Midday":
+	{
+		"elevation": 55.0,
+		"azimuth": 190.0,
+		"sun": Color(1.0, 0.98, 0.94),
+		"energy": 1.2,
+		"top": Color(0.32, 0.52, 0.82),
+		"horizon": Color(0.68, 0.78, 0.88),
+	},
+	"Evening":
+	{
+		"elevation": 9.0,
+		"azimuth": 265.0,
+		"sun": Color(1.0, 0.62, 0.38),
+		"energy": 0.85,
+		"top": Color(0.28, 0.36, 0.62),
+		"horizon": Color(0.98, 0.62, 0.42),
+	},
+}
+const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
+
 ## Chunks are turned into meshes gradually, so building the world never stalls a frame.
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
@@ -34,6 +67,9 @@ var _broadleaf_mesh: ArrayMesh
 @onready var _structures: MeshInstance3D = $Structures
 @onready var _rider: Node3D = $Rider
 @onready var _camera: Camera3D = $Camera
+@onready var _sun: DirectionalLight3D = $Sun
+@onready var _environment: Environment = ($Environment as WorldEnvironment).environment
+@onready var _rain: GPUParticles3D = $Camera/Rain
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -46,6 +82,44 @@ func cycle_camera() -> String:
 	_camera_mode = ((_camera_mode + 1) % CameraMode.size()) as CameraMode
 	var mode_name: String = CameraMode.keys()[_camera_mode]
 	return mode_name.capitalize()
+
+
+## Sets the light, sky, fog and precipitation for a time of day and a weather.
+func apply_conditions(time_of_day: String, weather: String) -> void:
+	var time: Dictionary = TIMES.get(time_of_day, TIMES["Midday"])
+	var elevation: float = time["elevation"]
+	var azimuth: float = time["azimuth"]
+	# The light shines along its −z axis: from the sun's direction towards the ground.
+	_sun.rotation = Vector3(deg_to_rad(-elevation), deg_to_rad(180.0 - azimuth), 0.0)
+	var sky: ProceduralSkyMaterial = _environment.sky.sky_material as ProceduralSkyMaterial
+	var top: Color = time["top"]
+	var horizon: Color = time["horizon"]
+	var sun_color: Color = time["sun"]
+	var energy: float = time["energy"]
+	var overcast: float = 0.0
+	var fog: float = 0.00035
+	match weather:
+		"Cloudy":
+			overcast = 0.75
+		"Hazy":
+			overcast = 0.3
+			fog = 0.0016
+		"Rain":
+			overcast = 1.0
+			fog = 0.0012
+	var grey: Color = Color(0.6, 0.62, 0.65)
+	sky.sky_top_color = top.lerp(grey * 0.8, overcast)
+	sky.sky_horizon_color = horizon.lerp(grey, overcast)
+	sky.ground_horizon_color = sky.sky_horizon_color
+	sky.sun_angle_max = lerpf(25.0, 0.0, overcast)
+	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
+	_sun.light_energy = energy * lerpf(1.0, 0.35, overcast)
+	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
+	_environment.ambient_light_energy = lerpf(0.9, 1.25, overcast)
+	_environment.fog_density = fog
+	_environment.fog_light_color = sky.sky_horizon_color
+	_rain.emitting = weather == "Rain"
+	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.
@@ -63,6 +137,7 @@ func _ready() -> void:
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_build_rider()
+	apply_conditions("Midday", "Clear")
 
 
 func _process(delta: float) -> void:

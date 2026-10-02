@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scenes/world.gd" id="1_world"]
 
@@ -25,6 +25,25 @@ fog_enabled = true
 fog_light_color = Color(0.68, 0.76, 0.86, 1)
 fog_density = 0.00035
 fog_sky_affect = 0.25
+
+[sub_resource type="ParticleProcessMaterial" id="rain_process"]
+emission_shape = 3
+emission_box_extents = Vector3(18, 1, 18)
+direction = Vector3(0.05, -1, 0)
+spread = 3.0
+initial_velocity_min = 11.0
+initial_velocity_max = 13.0
+gravity = Vector3(0, -2, 0)
+
+[sub_resource type="StandardMaterial3D" id="rain_material"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.82, 0.86, 0.92, 0.35)
+billboard_mode = 2
+
+[sub_resource type="QuadMesh" id="rain_drop"]
+material = SubResource("rain_material")
+size = Vector2(0.02, 0.45)
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_world")
@@ -53,3 +72,13 @@ current = true
 fov = 70.0
 near = 0.1
 far = 8000.0
+
+[node name="Rain" type="GPUParticles3D" parent="Camera"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, -6)
+emitting = false
+amount = 4000
+lifetime = 1.6
+visibility_aabb = AABB(-25, -25, -25, 50, 50, 50)
+process_material = SubResource("rain_process")
+draw_pass_1 = SubResource("rain_drop")
+

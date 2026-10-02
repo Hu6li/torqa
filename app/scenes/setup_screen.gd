@@ -25,8 +25,18 @@ var _route_text: String = ""
 @onready var _difficulty_label: Label = %DifficultyLabel
 @onready var _mass_spin: SpinBox = %MassSpin
 @onready var _flat_descents: CheckBox = %FlatDescents
+@onready var _time_option: OptionButton = %TimeOption
+@onready var _weather_option: OptionButton = %WeatherOption
 @onready var _start_button: Button = %StartButton
 @onready var _status_label: Label = %StatusLabel
+
+
+## The chosen time of day and weather, as names known to `RideWorld`.
+func conditions() -> Dictionary:
+	return {
+		"time": _time_option.get_item_text(_time_option.selected),
+		"weather": _weather_option.get_item_text(_weather_option.selected),
+	}
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -45,6 +55,11 @@ func _ready() -> void:
 	_start_button.pressed.connect(_on_start_pressed)
 	_on_difficulty_changed(_difficulty_slider.value)
 	_reset_device_options()
+	for time: String in RideWorld.TIMES.keys():
+		_time_option.add_item(time)
+	_time_option.select(1)
+	for weather: String in RideWorld.WEATHERS:
+		_weather_option.add_item(weather)
 	_update_start_button()
 
 
