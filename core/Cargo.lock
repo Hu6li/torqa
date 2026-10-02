@@ -1992,6 +1992,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "torqa-physics"
+version = "0.1.0"
+dependencies = [
+ "torqa-domain",
+]
+
+[[package]]
 name = "torqa-routes"
 version = "0.1.0"
 dependencies = [
