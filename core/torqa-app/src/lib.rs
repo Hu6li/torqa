@@ -2,6 +2,7 @@
 //! frame-driven API. Front ends (the Godot app, tests) call commands and [`App::update`] once per
 //! frame; all asynchronous work runs on an internal runtime, so callers never block or await.
 
+pub mod hud;
 mod import;
 pub mod paths;
 pub mod view;
@@ -17,7 +18,7 @@ use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
 use torqa_domain::profile::Profile;
-use torqa_domain::recording::Sample;
+use torqa_domain::recording::{RideSummary, Sample};
 use torqa_domain::units::{Meters, Percent};
 use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{Climb, ElevationSource, Route};
@@ -248,6 +249,9 @@ struct ActiveRide {
     records: RouteRecords,
     /// The next climb whose top has not been reached.
     next_climb: usize,
+    /// Summary of the samples so far and how many it covers, refreshed once per new sample
+    /// rather than every frame.
+    summary: (usize, RideSummary),
 }
 
 /// The application state.
@@ -611,6 +615,7 @@ impl App {
             finished: false,
             records,
             next_climb: 0,
+            summary: (0, RideSummary::default()),
         });
         Ok(())
     }
@@ -748,6 +753,39 @@ impl App {
         }
     }
 
+    /// The active rider's HUD metrics, in order (R23); the first is shown large.
+    #[must_use]
+    pub fn hud_layout(&self) -> Vec<String> {
+        hud::sanitize(&profiles::load_hud(&self.data_dir, &self.profile.id).unwrap_or_default())
+    }
+
+    /// Saves the active rider's HUD metrics; unknown or repeated ones are dropped. Returns the
+    /// layout as saved.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if it cannot be written.
+    pub fn set_hud_layout(&mut self, layout: &[String]) -> Result<Vec<String>, AppError> {
+        let layout = hud::sanitize(layout);
+        profiles::save_hud(&self.data_dir, &self.profile.id, &layout)
+            .map_err(|e| AppError::Storage(format!("cannot save HUD layout: {e}")))?;
+        Ok(layout)
+    }
+
+    /// Live values of all HUD metrics while riding (see [`hud::values`]).
+    #[must_use]
+    pub fn hud_values(&self) -> Vec<(&'static str, Option<f64>)> {
+        let Some(active) = &self.ride else {
+            return Vec::new();
+        };
+        hud::values(
+            &active.ride.state(),
+            active.ride.samples(),
+            &active.summary.1,
+            active.ride.route(),
+            &self.profile.profile,
+        )
+    }
+
     /// The climb the rider is on now, if any.
     #[must_use]
     pub fn current_climb(&self) -> Option<ClimbProgress> {
@@ -834,6 +872,10 @@ impl App {
                 && let Err(error) = trainer.try_control(control)
             {
                 warn!(%error, "cannot control trainer");
+            }
+            let samples = active.ride.samples();
+            if samples.len() != active.summary.0 {
+                active.summary = (samples.len(), summarize(samples, self.profile.profile.ftp));
             }
             // Samples arrive once a second, so a climb is timed once a sample lies past its top.
             let climbs = active.ride.route().climbs();
@@ -1158,6 +1200,12 @@ mod tests {
         let state = app.ride_state().unwrap();
         assert!(state.distance.0 > 1.0, "rider should be moving: {state:?}");
         assert_eq!(state.telemetry.power, Some(Watts(250.0)));
+        let values = app.hud_values();
+        assert_eq!(values.len(), hud::METRICS.len());
+        let value = |id: &str| values.iter().find(|(m, _)| *m == id).and_then(|(_, v)| *v);
+        assert_eq!(value("power_3s"), Some(250.0));
+        assert_eq!(value("heart_rate"), None);
+        assert!(value("distance").is_some_and(|km| km > 0.0));
 
         let events = app.finish_ride();
         let Some(AppEvent::RideSaved(path)) = events.first() else {
@@ -1361,6 +1409,22 @@ mod tests {
         assert!(history.iter().any(|h| h.route_record));
         assert!(history.iter().any(|h| h.climb_records == [true]));
         app.shutdown();
+    }
+
+    #[test]
+    fn riders_keep_their_own_hud_layout() {
+        let dir = temp_dir("hud");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(app.hud_layout(), hud::DEFAULT_LAYOUT);
+
+        let saved = app
+            .set_hud_layout(&["power_3s".to_owned(), "nonsense".to_owned()])
+            .unwrap();
+
+        assert_eq!(saved, ["power_3s"]);
+        assert_eq!(app.hud_layout(), ["power_3s"]);
+        app.save_profile(None, Profile::default()).unwrap();
+        assert_eq!(app.hud_layout(), hud::DEFAULT_LAYOUT);
     }
 
     #[test]

@@ -63,6 +63,11 @@ static func build() -> Theme:
 	theme.set_stylebox("hover", "CheckBox", StyleBoxEmpty.new())
 	theme.set_stylebox("pressed", "CheckBox", StyleBoxEmpty.new())
 	theme.set_stylebox("focus", "CheckBox", StyleBoxEmpty.new())
+	# The default boxes are dark grey, invisible on dark panels.
+	theme.set_icon("unchecked", "CheckBox", _check_icon(false))
+	theme.set_icon("checked", "CheckBox", _check_icon(true))
+	theme.set_icon("unchecked_disabled", "CheckBox", _check_icon(false, 0.35))
+	theme.set_icon("checked_disabled", "CheckBox", _check_icon(true, 0.35))
 
 	var field: StyleBoxFlat = _box(SURFACE, 10, 12, 8)
 	theme.set_stylebox("normal", "LineEdit", field)
@@ -75,6 +80,22 @@ static func build() -> Theme:
 	theme.set_stylebox("slider", "HSlider", _box(Color(1, 1, 1, 0.14), 4, 0, 3))
 	theme.set_stylebox("grabber_area", "HSlider", _box(ACCENT, 4, 0, 3))
 	theme.set_stylebox("grabber_area_highlight", "HSlider", _box(ACCENT, 4, 0, 3))
+
+	# Dialogs are separate windows: they need the theme set on them and their own frame.
+	# Square: the frame rounds the window; rounded corners here would let the window's grey
+	# background show through.
+	var dialog: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), 0, 20, 16)
+	theme.set_stylebox("panel", "AcceptDialog", dialog)
+	var frame: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), RADIUS, 0, 0)
+	frame.expand_margin_top = 32
+	frame.expand_margin_left = 6
+	frame.expand_margin_right = 6
+	frame.expand_margin_bottom = 6
+	frame.border_color = Color(1, 1, 1, 0.08)
+	frame.set_border_width_all(1)
+	theme.set_stylebox("embedded_border", "Window", frame)
+	theme.set_stylebox("embedded_unfocused_border", "Window", frame)
+	theme.set_color("title_color", "Window", TEXT)
 
 	var popup: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12, 0.98), 10, 6, 6)
 	theme.set_stylebox("panel", "PopupMenu", popup)
@@ -92,6 +113,11 @@ static func panel() -> StyleBoxFlat:
 	box.shadow_size = 12
 	box.anti_aliasing = true
 	return box
+
+
+## A button background for use over the 3D scene, as dark as the HUD panels.
+static func hud_button() -> StyleBoxFlat:
+	return _box(PANEL, 10, 14, 9)
 
 
 ## A caption label: small, muted, upper case.
@@ -129,3 +155,31 @@ static func duration(seconds: float) -> String:
 	if total >= 3600:
 		return "%d:%02d:%02d" % [total / 3600, total / 60 % 60, total % 60]
 	return "%d:%02d" % [total / 60, total % 60]
+
+
+## An 18 px check box: a light outline, or an accent square with a white tick.
+static func _check_icon(checked: bool, alpha: float = 1.0) -> ImageTexture:
+	const SIZE: int = 18
+	var image: Image = Image.create_empty(SIZE, SIZE, false, Image.FORMAT_RGBA8)
+	var outline: Color = Color(TEXT, 0.55 * alpha)
+	var fill: Color = Color(ACCENT, alpha)
+	for y: int in range(1, SIZE - 1):
+		for x: int in range(1, SIZE - 1):
+			# Corners left out for a slightly rounded look.
+			var corner: bool = (x == 1 or x == SIZE - 2) and (y == 1 or y == SIZE - 2)
+			if corner:
+				continue
+			var edge: bool = x <= 2 or y <= 2 or x >= SIZE - 3 or y >= SIZE - 3
+			if checked:
+				image.set_pixel(x, y, fill)
+			elif edge:
+				image.set_pixel(x, y, outline)
+	if checked:
+		var tick: Color = Color(1, 1, 1, alpha)
+		for i: int in range(4):
+			image.set_pixel(4 + i, 8 + i, tick)
+			image.set_pixel(4 + i, 9 + i, tick)
+		for i: int in range(7):
+			image.set_pixel(7 + i, 11 - i, tick)
+			image.set_pixel(7 + i, 10 - i, tick)
+	return ImageTexture.create_from_image(image)

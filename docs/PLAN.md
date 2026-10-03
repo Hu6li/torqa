@@ -104,7 +104,8 @@ Built in rideable steps:
 
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
-- [ ] Customizable HUD
+- [x] Customizable HUD: 22 figures (3 s / 10 s power, NP, TSS, kJ, upcoming grade, …), one
+  large, per-rider layout
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
