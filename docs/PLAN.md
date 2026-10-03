@@ -105,7 +105,8 @@ Built in rideable steps:
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [ ] Customizable HUD
-- [ ] HUD layout per rider in the profile settings: separate preview, drag-and-drop order (R51)
+- [ ] HUD layout per rider in the profile settings: drag and drop from the widget list
+  directly into the HUD preview and within it (R51, R54)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
@@ -122,7 +123,7 @@ Built in rideable steps:
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds, logo
 
-### Phase 8 — Start page & course gallery (R36–R42, R48–R53)
+### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
 - [ ] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
 - [ ] Path card: route in `#2EB0FF` on black with elevation strip
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
