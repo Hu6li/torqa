@@ -11,7 +11,8 @@ Things to review or decide together. Newest first; remove entries once settled.
    rebuilds route and world offline from those files — which also satisfies "rebuild with a
    newer generator" (R35) for free. Storing the pre-built world for an instant start needs a
    binary mesh format (own codec or a crate like `postcard`); I left it for a later step. OK,
-   or do you want the stored world now?
+   or do you want the stored world now? Measured: the 7 km Lake Biel course is 6.2 MB and
+   opens offline on an empty machine in ~23 s with the debug build (release not measured).
 
 ### Findings / limits
 

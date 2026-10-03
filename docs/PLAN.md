@@ -96,7 +96,7 @@ Built in rideable steps:
 - [x] Rebuild outdated worlds from stored inputs (format 1 always rebuilds offline)
 - [ ] Format 2: store the pre-built world for an instant start
 - **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅
-  (2026-10-03, Lake Biel: 15 MB, opened offline with an empty cache)
+  (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
 ### Phase 4 — Rider & history
 - [ ] Multi-profile, zones, customizable HUD

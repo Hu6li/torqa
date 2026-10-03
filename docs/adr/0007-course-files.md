@@ -59,6 +59,6 @@ packs exactly those. Opening a course puts them back into the cache (existing fi
 cache paths are versioned) and builds the course offline. This needs no own format for terrain,
 map or meshes, and every course is always built by the current generator (R35).
 
-Measured on the 12 km Lake Biel route: 15 MB, opened on an empty machine offline in ~23 s
+Measured on the 7 km Lake Biel route: 6.2 MB, opened on an empty machine offline in ~23 s
 (debug build). Storing the pre-built world for an instant start remains a later step
 (format 2); readers reject formats newer than they know.
