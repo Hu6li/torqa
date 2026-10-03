@@ -27,14 +27,10 @@ func _hud_editor() -> void:
 	editor.remove("power")
 	_expect(editor.layout(), ["cadence", "heart_rate", "speed"], "remove")
 
-	# Drag "speed" onto the upper half of the first chip of the shown list: before it.
-	var shown: Array[Node] = _chips(editor, 0)
-	(shown[0] as Control).size = Vector2(200, 30)
-	shown[0].call("_drop_data", Vector2(10, 5), {HudEditor.DRAG_KEY: "speed"})
-	_expect(editor.layout(), ["speed", "cadence", "heart_rate"], "drop before a figure")
-	# Drag "cadence" onto an available chip: hidden.
-	_chips(editor, 2)[0].call("_drop_data", Vector2.ZERO, {HudEditor.DRAG_KEY: "cadence"})
-	_expect(editor.layout(), ["speed", "heart_rate"], "drop on the available list")
+	# Drag "cadence" out of the HUD onto an available figure: removed.
+	_available_chips(editor)[0].call("_drop_data", Vector2.ZERO, {HudEditor.DRAG_KEY: "cadence"})
+	_expect(editor.layout(), ["heart_rate", "speed"], "drop on the available list")
+	editor.place("speed", 0)
 
 	# Directly in the HUD (R54): drop "power" on the lower half of the large figure: right after it.
 	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
@@ -82,9 +78,9 @@ func _translations() -> void:
 	TranslationServer.set_locale(before)
 
 
-## The chips of a list column of the editor: 0 = shown, 2 = available.
-func _chips(editor: HudEditor, column: int) -> Array[Node]:
-	return editor.get_child(column).get_child(1).get_child(0).get_children()
+## The available figures of the editor (its second column).
+func _available_chips(editor: HudEditor) -> Array[Node]:
+	return editor.get_child(1).get_child(1).get_child(0).get_children()
 
 
 func _expect(actual: PackedStringArray, expected: Array, what: String) -> void:

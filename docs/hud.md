@@ -4,15 +4,14 @@ The figures on the left of the ride screen are yours to choose, per rider. Edit 
 **Rider settings → HUD** (the *Edit…* button next to the rider on the setup screen), or with
 **Customize HUD** while riding — the ride keeps going, and changes are saved to the rider.
 
-The editor has three columns: the figures **shown** as a list, the **HUD** itself with example
-values, and the figures still **available**.
+The editor shows the **HUD** itself with example values, and the figures still **available**.
 
 - **Drag a figure straight into the HUD** to where it should appear: a blue line shows where
   it will land — before or after the figure under the pointer (left/right in the grid,
-  above/below the large figure). Dropping on free space adds it at the end.
-- **Move** figures by dragging them within the HUD (or within the list), and **drag them out**
-  onto *available* to hide them.
-- The + and × buttons do the same with a click.
+  above/below the large figure). Dropping on free space adds it at the end; + does the same
+  with a click.
+- **Move** figures by dragging them within the HUD, and **drag them back** onto the available
+  list to remove them.
 - The **first** figure is shown large at the top; with power figures, your W/kg and power zone
   appear below it. Up to 13 figures in total.
 

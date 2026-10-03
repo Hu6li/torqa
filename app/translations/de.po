@@ -55,9 +55,6 @@ msgstr "Apr."
 msgid "Aug"
 msgstr "Aug."
 
-msgid "Available — drag in to add"
-msgstr "Verfügbar — zum Hinzufügen hineinziehen"
-
 msgid "Avg cadence"
 msgstr "Ø Trittfrequenz"
 
@@ -235,9 +232,6 @@ msgstr "Puls"
 msgid "Heart-rate zone"
 msgstr "Pulszone"
 
-msgid "Hide"
-msgstr "Ausblenden"
-
 msgid "History"
 msgstr "Verlauf"
 
@@ -261,9 +255,6 @@ msgstr "Strecke mit Karte und Gelände behalten, um sie offline zu fahren oder z
 
 msgid "Language"
 msgstr "Sprache"
-
-msgid "Large"
-msgstr "Gross"
 
 msgid "Light"
 msgstr "Leicht"
@@ -385,9 +376,6 @@ msgstr "Leistung 3 s"
 msgid "Power zone"
 msgstr "Leistungszone"
 
-msgid "Preview"
-msgstr "Vorschau"
-
 msgid "Profile"
 msgstr "Profil"
 
@@ -447,9 +435,6 @@ msgstr "Sept."
 
 msgid "Show"
 msgstr "Anzeigen"
-
-msgid "Shown — drag to reorder"
-msgstr "Angezeigt — zum Umsortieren ziehen"
 
 msgid "Speed"
 msgstr "Tempo"
@@ -585,3 +570,6 @@ msgstr "← Zurück"
 
 msgid "★ Personal record"
 msgstr "★ Persönliche Bestzeit"
+
+msgid "Available — drag in to add, drop here to remove"
+msgstr "Verfügbar — zum Hinzufügen hineinziehen, zum Entfernen hierher ziehen"
