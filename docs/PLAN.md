@@ -105,8 +105,8 @@ Built in rideable steps:
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [x] Customizable HUD (R23)
-- [ ] HUD layout per rider in the profile settings: drag and drop from the widget list
-  directly into the HUD preview and within it (R51 ✅ editor with preview, R54 direct placement)
+- [x] HUD layout per rider in the profile settings: drag and drop from the widget list
+  directly into the HUD preview and within it (R51, R54)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
