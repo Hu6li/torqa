@@ -148,6 +148,16 @@ Built in rideable steps:
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
   visual target (R44)
 
+### Phase 10 — Workout modes & overlay (R55–R56)
+- [ ] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
+  ramping) in the core, tested with the fake trainer and a simulated heart rate
+- [ ] Overlay window: transparent, borderless, always on top, movable and resizable, shows the
+  rider's HUD; workout selection only; recorded as a ride
+- [ ] Overlay over full-screen apps on macOS (native window level / Spaces behaviour)
+- [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)
+- **Exit:** stream a full-screen video on the Mac while the overlay HUD holds Zone 3 on the KICKR
+  and the session lands in the history as a FIT
+
 ## Risks
 
 - Zwift Click protocol is reverse-engineered and may change → isolated behind `ShiftInput`.
@@ -155,6 +165,8 @@ Built in rideable steps:
 - Insta360 GPS extraction is less documented than GoPro GPMF.
 - MyWhoosh-level realism on Godot and an M1 integrated GPU is ambitious → quality presets
   (R43), lighting first, then vegetation; art direction reviewed on rendered previews.
+- Overlay over full-screen apps needs native window settings Godot doesn't expose (macOS Spaces);
+  Wayland has no portable always-on-top → platform code isolated behind the overlay window.
 - Free realistic terrain imagery is limited → procedural texturing by OSM landuse/slope by default.
 
 ## Verification

@@ -2,7 +2,8 @@
 
 Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions), extended
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
-settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement (R48–R54).
+settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement (R48–R54),
+plus overlay mode and constant-power / heart-rate workouts (R55–R56).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -62,11 +63,11 @@ a synced ride video, or street-level imagery.
 
 | ID | Requirement |
 |---|---|
-| R21 | Structured workouts later, but architected for now: ZWO, ERG/MRC, FIT workouts, built-in editor. No multi-week training plans. |
+| R21 | Structured workouts later, but architected for now: ZWO, ERG/MRC, FIT workouts, built-in editor. No multi-week training plans. *(Constant-power and heart-rate workouts: R56.)* |
 | R22 | Rider profile: weight, FTP, max HR, power and HR zones, built-in FTP test. **Multiple user profiles** per installation. |
 | R23 | Fully customizable HUD widgets: power (instant/3 s/10 s), cadence, HR, speed, distance, time, elevation gain, current & upcoming gradient, W/kg, NP, TSS, kJ, zone. *(Per-rider layout and editor: R51.)* |
 | R24 | Metric and imperial units. English UI first, i18n-ready from day one. |
-| R25 | Single window / fullscreen, external monitor / TV. Phone companion app is a possible future extension. |
+| R25 | Single window / fullscreen, external monitor / TV. Phone companion app is a possible future extension. *(Overlay mode: R55.)* |
 | R26 | Audio, selectable per ride: ambient sounds, original video audio, music app control. |
 | R27 | Auto-detected climbs with personal KOM-style times; personal records per route. Multiplayer possibly later — keep simulation state separable from rendering. |
 
@@ -118,6 +119,13 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R45 | Realism priorities, all four: **vegetation** (dense trees, bushes, grass and flowers moving in the wind); **terrain & road surface** (PBR ground materials blended by slope, height and land cover; detailed asphalt and gravel roads, verges); **lighting & atmosphere** (global illumination, soft shadows, volumetric clouds and fog, haze toward distant terrain); **rider & bike**. |
 | R46 | **Rider**: realistic female or male rider (user's choice) with natural, cadence-driven pedaling and body motion on a detailed bike. Customization (bikes, kits, …) may follow; the rider and bike are kept modular for it. |
 | R47 | **Assets** must stay redistributable as open source with the GPL-3.0 project: own work, CC0, CC-BY or CC-BY-SA, credited in a credits file. Models are produced by documented Blender Python scripts (MakeHuman/MPFB2 for riders); scripts and exported models are both committed. See ADR 0009. |
+
+## Workouts & overlay
+
+| ID | Requirement |
+|---|---|
+| R55 | **Overlay mode**: Torqa can be started as an overlay only — a transparent, always-on-top HUD window over any other app, so a video can be streamed full-screen while the rider's HUD (R51) shows on top. It also stays visible over full-screen apps. The overlay can be moved and resized anywhere on screen, and its position and size are remembered. Only workouts can be selected in the overlay (no courses, no 3D world). An overlay session is recorded as a ride (history, FIT). macOS first; Windows and Linux later (on Wayland only where the compositor allows always-on-top). |
+| R56 | **Constant-power and heart-rate workouts** as additional workout modes (alongside structured workouts, R21): **constant power** (ERG at a target, e.g. 200 W) and **heart-rate hold** — the target is a zone (e.g. Zone 3, aiming at the middle of the zone) or a specific bpm, and the target power is adjusted continuously from the measured heart rate. The controller stays within user-set minimum and maximum power and ramps gently, since heart rate lags power by 30–60 s. |
 
 ## MVP definition
 
