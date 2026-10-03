@@ -1,7 +1,10 @@
 # Torqa — Requirements
 
-Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions).
-Requirement IDs (`R<n>`) are referenced from code, tests and ADRs.
+Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions), extended
+2026-10-03 with course previews, start page and realistic graphics (R36–R47).
+Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
+existing requirements are never reworded or renumbered; changes are new requirements that state
+what they supersede, and the old entry only gets a short pointer.
 
 ## Vision
 
@@ -48,7 +51,7 @@ a synced ride video, or street-level imagery.
 
 | ID | Requirement |
 |---|---|
-| R16 | **3D world (MVP)**: semi-realistic style. World source user-selectable, default **hybrid** (real DEM + OpenStreetMap when available, procedural fallback). Weather/time-of-day presets. Cameras: first person, chase, drone — user's choice. Optional cadence-synced avatar. 60 fps on an M1 integrated GPU. |
+| R16 | **3D world (MVP)**: semi-realistic style. World source user-selectable, default **hybrid** (real DEM + OpenStreetMap when available, procedural fallback). Weather/time-of-day presets. Cameras: first person, chase, drone — user's choice. Optional cadence-synced avatar. 60 fps on an M1 integrated GPU. *(Performance superseded by R43; visual target extended by R44–R47.)* |
 | R17 | **Video**: own GoPro/Insta360 footage, downloaded videos, and plain videos without GPS (legacy Tacx RLV not supported). Auto-sync from embedded GPS (GoPro GPMF) with manual sync-point fallback. 1080p target; higher resolutions transcoded down on import. Variable playback speed with frame blending. |
 | R18 | **Street imagery**: Google Street View (online only, user's API key, no caching per Google ToS) and Mapillary. Smooth crossfade/zoom transitions between panoramas. |
 | R19 | Overlays: 2D minimap (OpenStreetMap tiles, cached for offline) and elevation profile with current position. |
@@ -83,8 +86,30 @@ a synced ride video, or street-level imagery.
 | R33 | A course contains the original GPX, the processed route (elevations, bridges/tunnels), the corridor's terrain heights and OpenStreetMap features, the **pre-built 3D world**, a preview image and a manifest (format and generator versions, name, stats, attribution). |
 | R34 | **Course library**: a `courses/` folder in the data directory (may be synced, R30). The app lists its courses to pick from, imports `.tqc` files into it and saves newly prepared routes as courses. |
 | R35 | Courses built by an older generator still ride instantly from their stored world; they can be rebuilt from the stored inputs with a newer generator. Video courses (R17) use the same format and reference their video file instead of embedding it. |
+| R36 | **Course screenshots**: every course carries a small screenshot gallery stored in the `.tqc`. 3D courses render it automatically from the generated world when the course is built (e.g. start, highest point, scenic spots); video courses take frames from the video at fixed distances. The user can pick which image is the **cover**. |
+| R37 | **Path card**: every course also has a route image: the GPX path in the logo blue **`#2EB0FF` on black**, with start/finish markers and an elevation strip underneath in the same blue. |
 
 Sharing is file-based for now; a built-in online catalog may follow later.
+
+## App structure & ride flow
+
+| ID | Requirement |
+|---|---|
+| R38 | A real **start page** separate from the ride view, with a top tab bar: **Courses**, **History**, **Profile**, **Devices & Settings**. The ride view only shows the ride. |
+| R39 | **Courses tab**: gallery overview of the course library (R34) — each card shows the cover or path card, distance, elevation gain, a small map, the course type (3D / video) and other key stats. Importing a GPX / preparing a new course starts here. |
+| R40 | **Course detail page** (opened from a card): screenshot gallery, path card, map, elevation profile, stats, personal records on the course, and the per-ride options (difficulty, descent mode, weather, time of day, camera, ghost) → **Ride**. |
+| R41 | The last-used trainer and sensors **reconnect automatically** in the background at app start; the user is only prompted if that fails when a ride starts. |
+| R42 | At the end of a ride a **summary screen** (stats, charts, PRs, save/discard, upload) is shown, then the app returns to the start page. |
+
+## Graphics
+
+| ID | Requirement |
+|---|---|
+| R43 | Supersedes the R16 performance target. **Quality presets** Low / Medium / High / Ultra. An M1 (base) integrated GPU holds **60 fps on Medium**; High/Ultra target stronger Apple GPUs and, later, discrete GPUs on Windows/Linux. |
+| R44 | **Visual target**: at least Zwift, ideally MyWhoosh-level realism for terrain and rider — believable, not a faithful replica of the real place. No racing UI or racing accessories (banners, arches, crowds). |
+| R45 | Realism priorities, all four: **vegetation** (dense trees, bushes, grass and flowers moving in the wind); **terrain & road surface** (PBR ground materials blended by slope, height and land cover; detailed asphalt and gravel roads, verges); **lighting & atmosphere** (global illumination, soft shadows, volumetric clouds and fog, haze toward distant terrain); **rider & bike**. |
+| R46 | **Rider**: realistic female or male rider (user's choice) with natural, cadence-driven pedaling and body motion on a detailed bike. Customization (bikes, kits, …) may follow; the rider and bike are kept modular for it. |
+| R47 | **Assets** must stay redistributable as open source with the GPL-3.0 project: own work, CC0, CC-BY or CC-BY-SA, credited in a credits file. Models are produced by documented Blender Python scripts (MakeHuman/MPFB2 for riders); scripts and exported models are both committed. See ADR 0009. |
 
 ## MVP definition
 
