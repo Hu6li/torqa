@@ -526,8 +526,8 @@ msgstr "Die Fahrt endet, nichts wird gespeichert."
 msgid "Share of the road gradient you feel on the trainer"
 msgstr "Anteil der Strassensteigung, den du auf dem Trainer spürst"
 
-msgid "Click to rename the ride"
-msgstr "Klicken, um die Fahrt umzubenennen"
+msgid "Rename the ride"
+msgstr "Fahrt umbenennen"
 
 msgid "Delete"
 msgstr "Löschen"
@@ -556,8 +556,11 @@ msgstr "%d W  ·  %.1f W/kg"
 msgid "%d bpm"
 msgstr "%d bpm"
 
-msgid "%s  ·  %s climbing  ·  max %d %%"
-msgstr "%s  ·  %s Aufstieg  ·  max. %d %%"
+msgid "Length"
+msgstr "Länge"
+
+msgid "Steepest"
+msgstr "Steilste Stelle"
 
 msgid "Courses"
 msgstr "Strecken"
@@ -585,3 +588,21 @@ msgstr "Deine Strecken"
 
 msgid "← Courses"
 msgstr "← Strecken"
+
+msgid "Rename"
+msgstr "Umbenennen"
+
+msgid "Rename the course"
+msgstr "Strecke umbenennen"
+
+msgid "Delete course"
+msgstr "Strecke löschen"
+
+msgid "Delete course?"
+msgstr "Strecke löschen?"
+
+msgid "Building 3D world"
+msgstr "3D-Welt wird gebaut"
+
+msgid "Its file is deleted; your rides on it are kept."
+msgstr "Die Datei wird gelöscht; deine Fahrten darauf bleiben erhalten."

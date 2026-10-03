@@ -89,7 +89,7 @@ a synced ride video, or street-level imagery.
 | R34 | **Course library**: a `courses/` folder in the data directory (may be synced, R30). The app lists its courses to pick from, imports `.tqc` files into it and saves newly prepared routes as courses. |
 | R35 | Courses built by an older generator still ride instantly from their stored world; they can be rebuilt from the stored inputs with a newer generator. Video courses (R17) use the same format and reference their video file instead of embedding it. |
 | R36 | **Course screenshots**: every course carries a small screenshot gallery stored in the `.tqc`. 3D courses render it automatically from the generated world when the course is built (e.g. start, highest point, scenic spots); video courses take frames from the video at fixed distances. The user can pick which image is the **cover**. |
-| R37 | **Path card**: every course also has a route image: the GPX path in the logo blue **`#2EB0FF` on black**, with start/finish markers and an elevation strip underneath in the same blue. |
+| R37 | **Path card**: every course also has a route image: the GPX path in the logo blue **`#2EB0FF` on black**, with start/finish markers. The elevation profile is shown on the course detail page only (review of #28). |
 
 Sharing is file-based for now; a built-in online catalog may follow later.
 

@@ -3,9 +3,8 @@ extends VBoxContainer
 ## The course library as a gallery (R39). Importing a GPX prepares a new course here: it is
 ## built, added to the library and opened.
 
-## Open the detail page of `course` (from `TorqaApp.courses()`); `loaded` if it is the course
-## that was just prepared and needs no loading.
-signal course_opened(course: Dictionary, loaded: bool)
+## Open the detail page of `course` (from `TorqaApp.courses()`).
+signal course_opened(course: Dictionary)
 
 const STEP_WEIGHTS: Dictionary[String, Vector2] = {
 	"Reading route": Vector2(0.0, 0.02),
@@ -43,7 +42,7 @@ func refresh() -> void:
 	var courses: Array = _torqa.courses()
 	for course: Dictionary in courses:
 		var card: CourseCard = CourseCard.new(course, imperial)
-		card.pressed.connect(func() -> void: course_opened.emit(course, false))
+		card.pressed.connect(func() -> void: course_opened.emit(course))
 		_gallery.add_child(card)
 	_empty.visible = courses.is_empty()
 
@@ -130,7 +129,7 @@ func _on_course_added(path: String) -> void:
 		return
 	for course: Dictionary in _torqa.courses():
 		if course["path"] == path:
-			course_opened.emit(course, importing == "gpx")
+			course_opened.emit(course)
 
 
 func _on_failed(message: String) -> void:

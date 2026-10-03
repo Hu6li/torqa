@@ -18,6 +18,8 @@ var _history: HistoryScreen = (
 )
 var _profile: ProfileTab = ProfileTab.new()
 var _devices: DevicesTab = DevicesTab.new()
+## The options and ghost of the ride waiting for its world.
+var _pending_ride: Array = []
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -67,14 +69,16 @@ func _ready() -> void:
 	_courses.course_opened.connect(_open_course)
 	_detail.back_requested.connect(_show_gallery)
 	_detail.ride_requested.connect(_on_ride_requested)
+	_detail.ready_to_ride.connect(_start_ride)
+	_detail.course_changed.connect(_courses.refresh)
 	_profile.profile_changed.connect(_courses.refresh)
 	_tabs.tab_changed.connect(_on_tab_changed)
 
 
-func _open_course(course: Dictionary, loaded: bool) -> void:
+func _open_course(course: Dictionary) -> void:
 	_courses.hide()
 	_detail.show()
-	_detail.open(course, loaded)
+	_detail.open(course)
 
 
 func _show_gallery() -> void:
@@ -94,6 +98,16 @@ func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
 		_detail.show_status(tr("No trainer connected — choose one under Devices & Settings."))
 		_tabs.current_tab = Tab.DEVICES
 		return
+	_pending_ride = [options, ghost]
+	_detail.build()
+
+
+func _start_ride() -> void:
+	if _pending_ride.is_empty():
+		return
+	var options: Dictionary = _pending_ride[0]
+	var ghost: Dictionary = _pending_ride[1]
+	_pending_ride = []
 	var difficulty: float = options["difficulty"]
 	var flat_descents: bool = options["flat_descents"]
 	if _torqa.start_ride(difficulty, flat_descents, ghost):

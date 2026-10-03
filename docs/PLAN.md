@@ -128,10 +128,11 @@ Built in rideable steps:
 
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
 - [x] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
-- [x] Path card: route in `#2EB0FF` on black with elevation strip
+- [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only)
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
   (ADR 0007 format bump); video frames once video mode exists (Phase 5)
-- [x] Courses gallery (cards with stats and small map) and course detail page with ride options
+- [x] Courses gallery (cards with stats and small map) and course detail page with ride options;
+  courses renamed and deleted there, 3D world built only when riding
 - [x] Ride summary screen after the ride (name, keep or discard), then back home (R42)
 - [x] Auto-reconnect last-used devices (R41)
 - [x] In-ride settings dialog (camera, difficulty, descents, time of day, weather, HUD) from

@@ -102,7 +102,7 @@ func _ride_settings() -> void:
 	dialog.free()
 
 
-## Course cards and path cards (R37, R39) from a course preview.
+## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.
 func _course_cards() -> void:
 	var course: Dictionary = {
 		"path": "/tmp/x.tqc",
@@ -113,10 +113,18 @@ func _course_cards() -> void:
 		"track": PackedVector2Array([Vector2(0, 0), Vector2(500, 800), Vector2(900, 1200)]),
 		"profile": PackedVector2Array([Vector2(0, 560), Vector2(2400, 709)]),
 	}
-	var figures: String = CourseCard.figures_text(course, false)
-	_check(figures == "2.4 km  ·  149 m climbing  ·  max 18 %", "card figures: %s" % figures)
-	var imperial: String = CourseCard.figures_text(course, true)
-	_check(imperial.begins_with("1.5 mi  ·  490 ft"), "imperial card figures: %s" % imperial)
+	var figures: Array[PackedStringArray] = CourseCard.figures(course, false)
+	var expected: Array[PackedStringArray] = [
+		PackedStringArray(["Length", "2.4 km"]),
+		PackedStringArray(["Climbing", "149 m"]),
+		PackedStringArray(["Steepest", "18 %"]),
+	]
+	_check(figures == expected, "card figures: %s" % [figures])
+	var imperial: Array[PackedStringArray] = CourseCard.figures(course, true)
+	_check(
+		imperial[0][1] == "1.5 mi" and imperial[1][1] == "490 ft",
+		"imperial card figures: %s" % [imperial]
+	)
 	var card: CourseCard = CourseCard.new(course, false)
 	root.add_child(card)
 	var opened: Array[bool] = [false]

@@ -165,13 +165,54 @@ impl TorqaApp {
     }
 
     /// Opens a course file from the library or elsewhere; emits `route_loaded` like
-    /// `load_route`.
+    /// `load_route`. Its 3D world is built by `build_world`.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn open_course(&mut self, path: GString) {
         if let Some(app) = self.app.as_mut() {
             app.open_course(PathBuf::from(path.to_string()));
         }
+    }
+
+    /// Builds the opened course's 3D world, for riding it (emits `world_ready`); true if it is
+    /// ready already.
+    #[func]
+    fn build_world(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::build_world)
+    }
+
+    /// The course file of the loaded route; empty if it is not one (yet).
+    #[func]
+    fn loaded_course(&self) -> GString {
+        self.app
+            .as_ref()
+            .and_then(App::loaded_course)
+            .map_or_else(GString::new, |p| {
+                GString::from(p.display().to_string().as_str())
+            })
+    }
+
+    /// Whether a route is loaded (its figures, climbs and records are available).
+    #[func]
+    fn has_route(&self) -> bool {
+        self.app.as_ref().is_some_and(|app| app.route().is_some())
+    }
+
+    /// Renames a course in the library; emits `failed` on errors (e.g. a blank name).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn rename_course(&mut self, path: GString, name: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        let name = name.to_string();
+        self.command(|app| app.rename_course(&path, &name))
+    }
+
+    /// Deletes a course from the library; rides on it stay in the history.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn delete_course(&mut self, path: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        self.command(|app| app.delete_course(&path))
     }
 
     /// Saves the loaded route as a course in the library (emits `course_added` or `failed`).

@@ -205,6 +205,40 @@ pub fn unpack(path: &Path, data_root: &Path) -> Result<Unpacked, CourseError> {
     Ok(Unpacked { manifest, gpx })
 }
 
+/// Replaces the manifest of the course at `path`, e.g. to rename it; the other entries are
+/// copied unchanged. The file is replaced only once the new one is complete.
+///
+/// # Errors
+/// [`CourseError::NewerFormat`] for files from a newer Torqa, or an I/O, zip or manifest error.
+pub fn rewrite_manifest(path: &Path, manifest: &Manifest) -> Result<(), CourseError> {
+    let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
+    manifest_of(&mut zip)?;
+    let partial = path.with_extension("part");
+    let mut out = ZipWriter::new(BufWriter::new(File::create(&partial)?));
+    let written = (|| {
+        out.start_file(
+            MANIFEST,
+            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+        )?;
+        serde_json::to_writer_pretty(&mut out, manifest)?;
+        for index in 0..zip.len() {
+            let entry = zip.by_index_raw(index)?;
+            if entry.name() != MANIFEST {
+                out.raw_copy_file(entry)?;
+            }
+        }
+        out.finish()?.flush()?;
+        Ok::<(), CourseError>(())
+    })();
+    match written {
+        Ok(()) => Ok(std::fs::rename(&partial, path)?),
+        Err(error) => {
+            let _ = std::fs::remove_file(&partial);
+            Err(error)
+        }
+    }
+}
+
 fn manifest_of<R: io::Read + io::Seek>(zip: &mut ZipArchive<R>) -> Result<Manifest, CourseError> {
     let mut json = String::new();
     zip.by_name(MANIFEST)?.read_to_string(&mut json)?;
@@ -244,6 +278,37 @@ mod tests {
             track: vec![[0.0, 0.0], [10.0, 250.5]],
             profile: vec![[0.0, 500.0], [12_345.0, 620.0]],
         }
+    }
+
+    #[test]
+    fn renaming_keeps_the_route_and_data() {
+        let dir = temp_dir("rename");
+        let cache = dir.join("cache");
+        let tile = cache.join("terrain/t.webp");
+        std::fs::create_dir_all(tile.parent().unwrap()).unwrap();
+        std::fs::write(&tile, b"tile").unwrap();
+        let course = dir.join("c.tqc");
+        write(
+            &course,
+            &manifest(),
+            "<gpx/>",
+            &cache,
+            std::slice::from_ref(&tile),
+        )
+        .unwrap();
+
+        let mut renamed = read_manifest(&course).unwrap();
+        renamed.name = "Bielersee".to_owned();
+        rewrite_manifest(&course, &renamed).unwrap();
+
+        assert_eq!(read_manifest(&course).unwrap(), renamed);
+        let unpacked = unpack(&course, &dir.join("other")).unwrap();
+        assert_eq!(unpacked.gpx, "<gpx/>");
+        assert_eq!(
+            std::fs::read(dir.join("other/terrain/t.webp")).unwrap(),
+            b"tile"
+        );
+        assert!(!dir.join("c.part").exists());
     }
 
     #[test]

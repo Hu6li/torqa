@@ -1,6 +1,7 @@
 class_name CourseCard
 extends PanelContainer
-## A course in the gallery (R39): its path card, name and key figures; click to open it.
+## A course in the gallery (R39): its path card, name and key figures in rows; click to open
+## it. The elevation profile is left to the course page.
 
 signal pressed
 
@@ -11,14 +12,13 @@ func _init(course: Dictionary, imperial: bool) -> void:
 	custom_minimum_size = Vector2(WIDTH, 0)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var rows: VBoxContainer = VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 8)
+	rows.add_theme_constant_override("separation", 12)
 	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var path: PathCard = PathCard.new()
-	path.custom_minimum_size = Vector2(WIDTH - 32.0, 170)
+	path.custom_minimum_size = Vector2(WIDTH - 32.0, 160)
 	path.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var track: PackedVector2Array = course.get("track", PackedVector2Array())
-	var profile: PackedVector2Array = course.get("profile", PackedVector2Array())
-	path.set_preview(track, profile)
+	path.set_track(track)
 	rows.add_child(path)
 	var title: Label = Label.new()
 	title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -26,15 +26,33 @@ func _init(course: Dictionary, imperial: bool) -> void:
 	title.add_theme_font_size_override("font_size", 18)
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	rows.add_child(title)
-	var figures: Label = Label.new()
-	figures.text = figures_text(course, imperial)
-	figures.add_theme_color_override("font_color", UiTheme.MUTED)
-	rows.add_child(figures)
+	rows.add_child(figure_rows(course, imperial))
 	add_child(rows)
 
 
-## "12.4 km  ·  284 m climbing  ·  max 8 %", in the rider's units.
-static func figures_text(course: Dictionary, imperial: bool) -> String:
+## The key figures, one per row: caption on the left, value on the right, in the rider's units.
+static func figure_rows(course: Dictionary, imperial: bool) -> GridContainer:
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 2
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 6)
+	for figure: PackedStringArray in figures(course, imperial):
+		var caption: Label = Label.new()
+		caption.text = TranslationServer.translate(figure[0])
+		caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		caption.add_theme_color_override("font_color", UiTheme.MUTED)
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(caption)
+		var value: Label = Label.new()
+		value.text = figure[1]
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(value)
+	return grid
+
+
+## `[caption, value]` pairs: length, climbing and steepest gradient, in the rider's units.
+static func figures(course: Dictionary, imperial: bool) -> Array[PackedStringArray]:
 	var length_km: float = course["length_m"] / 1000.0
 	var gain_m: float = course["elevation_gain_m"]
 	var max_grade: float = course["max_grade"]
@@ -44,10 +62,13 @@ static func figures_text(course: Dictionary, imperial: bool) -> String:
 	var climbing: String = (
 		"%d ft" % roundi(gain_m / HudPanel.METERS_PER_FOOT) if imperial else "%d m" % roundi(gain_m)
 	)
-	return (
-		TranslationServer.translate("%s  ·  %s climbing  ·  max %d %%")
-		% [distance, climbing, roundi(max_grade)]
-	)
+	# i18n-begin
+	return [
+		PackedStringArray(["Length", distance]),
+		PackedStringArray(["Climbing", climbing]),
+		PackedStringArray(["Steepest", "%d %%" % roundi(max_grade)]),
+	]
+	# i18n-end
 
 
 func _gui_input(event: InputEvent) -> void:
