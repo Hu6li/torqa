@@ -4,6 +4,8 @@ extends Control
 ## status toasts and the camera and finish buttons.
 
 signal closed
+## The ride was saved and the rider wants to see its analysis.
+signal summary_requested
 
 ## Small metrics under the power figure: key in `ride_state()`, caption, unit.
 const METRICS: Array[Array] = [
@@ -15,16 +17,6 @@ const METRICS: Array[Array] = [
 	["elapsed_s", "Time", ""],
 ]
 const TOAST_SECONDS: float = 4.0
-## Power zones 1–7 (Coggan): name and colour, as commonly used by training platforms.
-const POWER_ZONES: Array[Array] = [
-	["Recovery", Color(0.6, 0.62, 0.66)],
-	["Endurance", Color(0.25, 0.6, 0.95)],
-	["Tempo", Color(0.3, 0.8, 0.45)],
-	["Threshold", Color(0.98, 0.8, 0.2)],
-	["VO2max", Color(0.98, 0.55, 0.2)],
-	["Anaerobic", Color(0.95, 0.3, 0.3)],
-	["Neuromuscular", Color(0.7, 0.4, 0.95)],
-]
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 
@@ -35,6 +27,7 @@ var _units: Dictionary[String, Label] = {}
 var _imperial: bool = false
 var _power_detail: Label = Label.new()
 var _finished: bool = false
+var _saved: bool = false
 var _toast_left: float = 0.0
 
 @onready var _metrics: VBoxContainer = %Metrics
@@ -61,6 +54,7 @@ func bind(torqa: TorqaApp, world: RideWorld) -> void:
 ## Prepares the screen for a new ride on the loaded route.
 func begin() -> void:
 	_finished = false
+	_saved = false
 	_minimap.set_track(_torqa.track(2000))
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
@@ -184,9 +178,9 @@ func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
 		return
 	var ratio: float = watts_per_kg
 	var zone_number: int = zone
-	var index: int = clampi(zone_number - 1, 0, POWER_ZONES.size() - 1)
-	var zone_name: String = POWER_ZONES[index][0]
-	var color: Color = POWER_ZONES[index][1]
+	var index: int = clampi(zone_number - 1, 0, UiTheme.POWER_ZONES.size() - 1)
+	var zone_name: String = UiTheme.POWER_ZONES[index][0]
+	var color: Color = UiTheme.POWER_ZONES[index][1]
 	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, zone_name]
 	_power_detail.add_theme_color_override("font_color", color)
 
@@ -216,7 +210,10 @@ func _on_ride_finished() -> void:
 
 func _on_finish_pressed() -> void:
 	if _finished:
-		closed.emit()
+		if _saved:
+			summary_requested.emit()
+		else:
+			closed.emit()
 		return
 	_show_toast("Nothing recorded.")
 	_torqa.finish_ride()
@@ -226,9 +223,10 @@ func _on_finish_pressed() -> void:
 
 func _on_ride_saved(path: String) -> void:
 	_finished = true
+	_saved = true
 	_show_toast("Saved %s" % path.get_file())
 	_toast_left = TOAST_SECONDS * 2.0
-	_finish_button.text = "Back"
+	_finish_button.text = "View summary"
 
 
 func _on_failed(message: String) -> void:

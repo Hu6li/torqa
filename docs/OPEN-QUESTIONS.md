@@ -16,6 +16,10 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Findings / limits
 
+- **History (PR #11)**: the history scans each rider's `rides/` folder and reads the JSON
+  summaries; the SQLite index from ADR 0002 is not built yet — not needed until there are
+  hundreds of rides or cross-ride queries (PRs, climbs).
+
 - **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
   saved earlier in `rides/` are not moved. The setup screen's mass field is gone — mass comes
   from the profile (rider + bike). New dependency `toml` 1.1.6 (chosen in ADR 0004).

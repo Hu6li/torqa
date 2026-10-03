@@ -17,12 +17,15 @@ use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
 use torqa_domain::profile::Profile;
+use torqa_domain::recording::Sample;
 use torqa_domain::units::Percent;
 use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{ElevationSource, Route};
+use torqa_session::analysis::{summarize, time_in_heart_rate_zones, time_in_power_zones};
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
 use torqa_storage::profiles::{self, StoredProfile};
+use torqa_storage::rides::{self, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
 use torqa_world::World;
 use tracing::warn;
@@ -98,6 +101,26 @@ pub struct CourseEntry {
     pub path: PathBuf,
     /// What the course file says about itself.
     pub manifest: Manifest,
+}
+
+/// A ride in the history.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryEntry {
+    /// The FIT activity file.
+    pub fit: PathBuf,
+    /// Route and summary.
+    pub record: RideRecord,
+}
+
+/// Everything recorded during one ride, for its analysis.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RideDetail {
+    /// The 1 Hz samples.
+    pub samples: Vec<Sample>,
+    /// Time in each power zone of the active rider.
+    pub power_zones: [Duration; 7],
+    /// Time in each heart-rate zone of the active rider.
+    pub heart_rate_zones: [Duration; 5],
 }
 
 /// Something that happened since the last [`App::update`].
@@ -552,17 +575,95 @@ impl App {
         }
         let path = profiles::rides_dir(&self.data_dir, &self.profile.id)
             .join(paths::activity_file_name(start));
-        let saved = torqa_storage::encode_fit(start, active.ride.samples())
+        let samples = active.ride.samples();
+        let saved = torqa_storage::encode_fit(start, samples)
             .map_err(|e| e.to_string())
             .and_then(|fit| {
                 std::fs::create_dir_all(path.parent().unwrap_or(&self.data_dir))
                     .and_then(|()| std::fs::write(&path, fit))
                     .map_err(|e| format!("cannot save {}: {e}", path.display()))
             });
+        if saved.is_ok() {
+            let record = RideRecord {
+                route: self
+                    .loaded
+                    .as_ref()
+                    .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
+                start,
+                summary: summarize(samples, self.profile.profile.ftp),
+            };
+            // The FIT file is what counts; the history rebuilds missing metadata from it.
+            if let Err(error) = rides::save(&path, &record) {
+                warn!(%error, "cannot save ride metadata");
+            }
+        }
         vec![match saved {
             Ok(()) => AppEvent::RideSaved(path),
             Err(message) => AppEvent::Error(message),
         }]
+    }
+
+    /// The active rider's rides, newest first (R31). Rides without metadata, e.g. FIT files
+    /// copied in by hand, are analysed once and get it written.
+    #[must_use]
+    pub fn history(&self) -> Vec<HistoryEntry> {
+        rides::fit_files(&self.rides_dir())
+            .into_iter()
+            .filter_map(|fit| {
+                let record = rides::load(&fit).or_else(|_| self.rebuild_metadata(&fit));
+                match record {
+                    Ok(record) => Some(HistoryEntry { fit, record }),
+                    Err(error) => {
+                        warn!(path = %fit.display(), %error, "skipping ride");
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// The recorded data of one ride, with zones of the active rider.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the FIT file cannot be read.
+    pub fn ride_detail(&self, fit: &Path) -> Result<RideDetail, AppError> {
+        let (_, samples) = read_fit(fit).map_err(AppError::Storage)?;
+        let profile = &self.profile.profile;
+        Ok(RideDetail {
+            power_zones: time_in_power_zones(&samples, profile),
+            heart_rate_zones: time_in_heart_rate_zones(&samples, profile),
+            samples,
+        })
+    }
+
+    /// Deletes a ride: its FIT file and metadata.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the FIT file cannot be removed.
+    pub fn delete_ride(&self, fit: &Path) -> Result<(), AppError> {
+        std::fs::remove_file(fit)
+            .map_err(|e| AppError::Storage(format!("cannot delete {}: {e}", fit.display())))?;
+        let _ = std::fs::remove_file(rides::metadata_path(fit));
+        Ok(())
+    }
+
+    fn rides_dir(&self) -> PathBuf {
+        profiles::rides_dir(&self.data_dir, &self.profile.id)
+    }
+
+    fn rebuild_metadata(&self, fit: &Path) -> Result<RideRecord, String> {
+        let (start, samples) = read_fit(fit)?;
+        let record = RideRecord {
+            route: fit
+                .file_stem()
+                .map_or_else(|| "Ride".to_owned(), |s| s.to_string_lossy().into_owned()),
+            start,
+            summary: summarize(&samples, self.profile.profile.ftp),
+        };
+        if let Err(error) = rides::save(fit, &record) {
+            warn!(%error, "cannot save rebuilt ride metadata");
+        }
+        Ok(record)
     }
 
     /// Processes everything that happened since the last call and advances the ride by `dt`.
@@ -757,6 +858,11 @@ impl App {
     }
 }
 
+fn read_fit(fit: &Path) -> Result<(SystemTime, Vec<Sample>), String> {
+    let bytes = std::fs::read(fit).map_err(|e| format!("cannot read {}: {e}", fit.display()))?;
+    torqa_storage::decode_fit(&bytes).map_err(|e| format!("{}: {e}", fit.display()))
+}
+
 /// The profile chosen last, else the first one, else a new default profile (saved, so it shows
 /// up in the data directory to be edited).
 fn initial_profile(data_dir: &Path) -> StoredProfile {
@@ -876,6 +982,23 @@ mod tests {
         };
         assert!(path.starts_with(dir.join("data/profiles/rider/rides")));
         assert!(std::fs::metadata(path).unwrap().len() > 100);
+
+        let history = app.history();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].fit, *path);
+        assert_eq!(history[0].record.route, "Test loop");
+        assert!(history[0].record.summary.distance.0 > 1.0);
+        let detail = app.ride_detail(path).unwrap();
+        assert!(detail.samples.len() > 1);
+        assert!(detail.power_zones.iter().sum::<Duration>() > Duration::ZERO);
+
+        // Without metadata, e.g. a FIT file copied in by hand, the history rebuilds it.
+        std::fs::remove_file(rides::metadata_path(path)).unwrap();
+        assert_eq!(app.history().len(), 1);
+        assert!(rides::metadata_path(path).exists());
+
+        app.delete_ride(path).unwrap();
+        assert_eq!(app.history().len(), 0);
         app.shutdown();
     }
 

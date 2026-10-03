@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://scenes/setup_screen.tscn" id="2_setup"]
 [ext_resource type="PackedScene" path="res://scenes/ride_screen.tscn" id="3_ride"]
 [ext_resource type="PackedScene" path="res://scenes/world.tscn" id="4_world"]
+[ext_resource type="PackedScene" path="res://scenes/history_screen.tscn" id="5_history"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -23,5 +24,9 @@ visible = false
 layout_mode = 1
 
 [node name="RideScreen" parent="." instance=ExtResource("3_ride")]
+visible = false
+layout_mode = 1
+
+[node name="HistoryScreen" parent="." instance=ExtResource("5_history")]
 visible = false
 layout_mode = 1

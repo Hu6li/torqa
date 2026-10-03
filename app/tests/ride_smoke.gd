@@ -51,6 +51,14 @@ func _run() -> void:
 	_torqa.finish_ride()
 	_check(_saved_path.ends_with(".fit"), "ride saved: %s" % _saved_path)
 	_check(_failure.is_empty(), "no failure: %s" % _failure)
+	var history: Array = _torqa.history()
+	_check(not history.is_empty(), "ride in the history")
+	var newest: Dictionary = history[0]
+	var newest_path: String = newest["path"]
+	_check(newest_path == _saved_path, "newest ride first: %s" % newest)
+	var detail: Dictionary = _torqa.ride_detail(newest_path, 100)
+	var power_chart: PackedVector2Array = detail.get("power", PackedVector2Array())
+	_check(not power_chart.is_empty(), "power chart: %s" % detail)
 
 	_torqa.open_course(course_path)
 	var reopened: Array = await _wait_for(_torqa.route_loaded)

@@ -64,6 +64,17 @@ texture = ExtResource("3_wordmark")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="HeaderSpacer" type="Control" parent="Margin/Center/Card/Rows/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HistoryButton" type="Button" parent="Margin/Center/Card/Rows/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+size_flags_vertical = 4
+text = "History"
+
 [node name="Courses" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16

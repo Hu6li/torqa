@@ -8,6 +8,26 @@ const MUTED: Color = Color(0.64, 0.68, 0.74)
 const PANEL: Color = Color(0.06, 0.07, 0.09, 0.72)
 const SURFACE: Color = Color(1, 1, 1, 0.07)
 const RADIUS: int = 14
+## Power zones 1–7 (Coggan): name and colour, as commonly used by training platforms.
+const POWER_ZONES: Array[Array] = [
+	["Recovery", Color(0.6, 0.62, 0.66)],
+	["Endurance", Color(0.25, 0.6, 0.95)],
+	["Tempo", Color(0.3, 0.8, 0.45)],
+	["Threshold", Color(0.98, 0.8, 0.2)],
+	["VO2max", Color(0.98, 0.55, 0.2)],
+	["Anaerobic", Color(0.95, 0.3, 0.3)],
+	["Neuromuscular", Color(0.7, 0.4, 0.95)],
+]
+## Heart-rate zones 1–5: name and colour.
+const HEART_RATE_ZONES: Array[Array] = [
+	["Very light", Color(0.6, 0.62, 0.66)],
+	["Light", Color(0.25, 0.6, 0.95)],
+	["Moderate", Color(0.3, 0.8, 0.45)],
+	["Hard", Color(0.98, 0.55, 0.2)],
+	["Maximum", Color(0.95, 0.3, 0.3)],
+]
+const POWER_COLOR: Color = Color(0.04, 0.61, 0.96)
+const HEART_RATE_COLOR: Color = Color(0.95, 0.33, 0.38)
 
 
 static func build() -> Theme:
