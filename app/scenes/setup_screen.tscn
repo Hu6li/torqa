@@ -150,6 +150,7 @@ layout_mode = 2
 text = "Wake your trainer by pedalling, then scan."
 
 [node name="Settings" type="GridContainer" parent="Margin/Scroll/Center/Card/Rows"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/h_separation = 24
 theme_override_constants/v_separation = 8
@@ -180,23 +181,6 @@ layout_mode = 2
 [node name="HeartRateSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="DifficultyCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-text = "Trainer difficulty"
-
-[node name="DifficultySlider" type="HSlider" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 32)
-layout_mode = 2
-size_flags_vertical = 4
-step = 5.0
-value = 50.0
-
-[node name="DifficultyLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "50 %"
-
 [node name="RiderCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Rider"
@@ -210,42 +194,6 @@ tooltip_text = "Weight, FTP and heart rate come from the rider's profile"
 unique_name_in_owner = true
 layout_mode = 2
 text = "Edit…"
-
-[node name="TimeCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-text = "Time of day"
-
-[node name="TimeOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 40)
-layout_mode = 2
-
-[node name="TimeSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-
-[node name="WeatherCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-text = "Weather"
-
-[node name="WeatherOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 40)
-layout_mode = 2
-
-[node name="WeatherSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-
-[node name="DescentCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
-text = "Descents"
-
-[node name="FlatDescents" type="CheckBox" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Ride descents like flat roads"
-
-[node name="DescentSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
-layout_mode = 2
 
 [node name="GhostCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2

@@ -656,6 +656,18 @@ impl App {
         Ok(())
     }
 
+    /// Changes trainer difficulty and descent mode of the current ride (R48).
+    pub fn adjust_ride(&mut self, difficulty: Percent, descent: DescentMode) {
+        if let Some(active) = &mut self.ride {
+            active.ride.adjust(difficulty, descent);
+        }
+    }
+
+    /// Ends the ride without saving anything (R49).
+    pub fn abort_ride(&mut self) {
+        self.ride = None;
+    }
+
     /// Ends the ride and saves it; reports [`AppEvent::RideSaved`] on the next update.
     pub fn finish_ride(&mut self) -> Vec<AppEvent> {
         let Some(active) = self.ride.take() else {
@@ -1350,6 +1362,7 @@ mod tests {
         assert_eq!(value("heart_rate"), None);
         assert!(value("distance").is_some_and(|km| km > 0.0));
 
+        app.adjust_ride(Percent(80.0), DescentMode::Flat);
         let events = app.finish_ride();
         let Some(AppEvent::RideSaved(path)) = events.first() else {
             panic!("not saved: {events:?}");
@@ -1622,6 +1635,33 @@ mod tests {
             app.select_profile("nobody"),
             Err(AppError::UnknownProfile)
         ));
+    }
+
+    #[test]
+    fn aborted_rides_leave_no_trace() {
+        let dir = temp_dir("abort");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(50));
+        }
+
+        app.abort_ride();
+
+        assert!(app.ride_state().is_none());
+        assert_eq!(app.finish_ride(), []);
+        assert_eq!(app.history().len(), 0);
+        app.shutdown();
     }
 
     #[test]

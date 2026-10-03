@@ -2,7 +2,8 @@
 
 The figures on the left of the ride screen are yours to choose, per rider. Edit them in
 **Rider settings → HUD** (the *Edit…* button next to the rider on the setup screen), or with
-**Customize HUD** while riding — the ride keeps going, and changes are saved to the rider.
+**Settings → HUD** while riding (button or key S) — the ride keeps going, and changes are
+saved to the rider.
 
 The editor shows the **HUD** itself with example values, and the figures still **available**.
 

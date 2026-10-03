@@ -131,6 +131,14 @@ impl Ride {
         self.grade_update()
     }
 
+    /// Changes trainer difficulty and descent mode during the ride (R48); the trainer gets the
+    /// new gradient on the next tick rather than at the next regular update.
+    pub fn adjust(&mut self, difficulty: Percent, descent: DescentMode) {
+        self.config.difficulty = difficulty;
+        self.config.descent = descent;
+        self.last_grade = None;
+    }
+
     /// Whether the rider has reached the end of the route.
     #[must_use]
     pub fn is_finished(&self) -> bool {
@@ -303,6 +311,22 @@ mod tests {
 
         let last = controls.last().map(grade_of).unwrap();
         assert!((last - 8.0).abs() < 0.5, "{controls:?}");
+    }
+
+    #[tokio::test]
+    async fn difficulty_changes_reach_the_trainer_at_once() {
+        let config = RideConfig {
+            difficulty: Percent(100.0),
+            ..RideConfig::default()
+        };
+        let mut ride = Ride::new(route(&[8.0], 5000.0).await, config);
+        pedal(&mut ride, 300.0, 30);
+
+        ride.adjust(Percent(50.0), DescentMode::Coast);
+        let controls = pedal(&mut ride, 300.0, 1);
+
+        let first = controls.first().map(grade_of).unwrap();
+        assert!((first - 4.0).abs() < 0.3, "{controls:?}");
     }
 
     #[tokio::test]

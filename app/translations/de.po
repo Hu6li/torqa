@@ -46,9 +46,6 @@ msgstr "Fahrt: %s"
 msgid "Anaerobic"
 msgstr "Anaerob"
 
-msgid "Apply"
-msgstr "Übernehmen"
-
 msgid "Apr"
 msgstr "Apr."
 
@@ -85,9 +82,6 @@ msgstr "Trittfrequenz"
 msgid "Camera: %s"
 msgstr "Kamera: %s"
 
-msgid "Camera: Chase"
-msgstr "Kamera: Verfolger"
-
 msgid "Cat 1"
 msgstr "Kat. 1"
 
@@ -102,9 +96,6 @@ msgstr "Kat. 4"
 
 msgid "Chase"
 msgstr "Verfolger"
-
-msgid "Choose which figures the HUD shows"
-msgstr "Wählen, welche Werte das HUD zeigt"
 
 msgid "Clear"
 msgstr "Klar"
@@ -144,9 +135,6 @@ msgstr "Strecke zur Bibliothek hinzugefügt: %s"
 
 msgid "Courses saved in your library ride offline"
 msgstr "Gespeicherte Strecken fahren auch offline"
-
-msgid "Customize HUD"
-msgstr "HUD anpassen"
 
 msgid "Dec"
 msgstr "Dez."
@@ -445,9 +433,6 @@ msgstr "Losfahren"
 msgid "Sun"
 msgstr "So"
 
-msgid "Switch camera (keyboard: C)"
-msgstr "Kamera wechseln (Taste C)"
-
 msgid "System language"
 msgstr "Systemsprache"
 
@@ -573,3 +558,42 @@ msgstr "★ Persönliche Bestzeit"
 
 msgid "Available — drag in to add, drop here to remove"
 msgstr "Verfügbar — zum Hinzufügen hineinziehen, zum Entfernen hierher ziehen"
+
+msgid "%s connected"
+msgstr "%s verbunden"
+
+msgid "%s disconnected — reconnecting…"
+msgstr "%s getrennt — verbinde neu …"
+
+msgid "Abort ride"
+msgstr "Fahrt abbrechen"
+
+msgid "Abort ride?"
+msgstr "Fahrt abbrechen?"
+
+msgid "Abort without saving"
+msgstr "Abbrechen ohne Speichern"
+
+msgid "Camera"
+msgstr "Kamera"
+
+msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
+msgstr "Kamera, Schwierigkeit, Wetter, HUD; beenden oder abbrechen (Taste S)"
+
+msgid "Done"
+msgstr "Fertig"
+
+msgid "Ride"
+msgstr "Fahrt"
+
+msgid "Ride settings"
+msgstr "Fahrt-Einstellungen"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "The ride ends and nothing is saved."
+msgstr "Die Fahrt endet, nichts wird gespeichert."
+
+msgid "Share of the road gradient you feel on the trainer"
+msgstr "Anteil der Strassensteigung, den du auf dem Trainer spürst"
