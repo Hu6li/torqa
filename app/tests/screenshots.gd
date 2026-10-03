@@ -33,7 +33,7 @@ func _run() -> void:
 	for i: int in range(240):
 		await process_frame
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
-	_check(torqa.start_ride(50.0, false, 83.0), "ride started")
+	_check(torqa.start_ride(50.0, false), "ride started")
 	setup.ride_started.emit()
 	var time: String = OS.get_environment("SCREENSHOT_TIME")
 	var weather: String = OS.get_environment("SCREENSHOT_WEATHER")
@@ -66,6 +66,13 @@ func _run() -> void:
 		var image: Image = root.get_texture().get_image()
 		image.save_png(out_dir.path_join("side-%d.png" % frame))
 		print("saved side-%d" % frame)
+
+	# The ride's analysis in the history.
+	torqa.finish_ride()
+	setup.history_requested.emit()
+	await create_timer(1.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("history.png"))
+	print("saved history")
 	quit(0)
 
 

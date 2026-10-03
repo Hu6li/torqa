@@ -1,6 +1,6 @@
 [package]
 name = "torqa-storage"
-description = "Ride recording storage for Torqa: FIT export"
+description = "Storage for Torqa: FIT export, course files and rider profiles"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,11 @@ publish.workspace = true
 torqa-domain.workspace = true
 rustyfit.workspace = true
 embedded-io-adapters.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+toml.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

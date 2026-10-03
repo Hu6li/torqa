@@ -1,0 +1,329 @@
+//! Course files (`.tqc`, R32–R35, ADR 0007): one zip file holding a prepared course, so it can be
+//! kept, shared and ridden offline on any machine.
+//!
+//! Layout:
+//!
+//! ```text
+//! manifest.json   format and generator versions, name, key figures, attribution
+//! route.gpx       the original track
+//! data/…          the downloaded terrain and map files the course was built from,
+//!                 under their paths relative to the download cache
+//! ```
+//!
+//! Opening a course puts the data files back into the cache, after which the course is built
+//! offline exactly as when it was prepared — always with the current world generator (R35).
+
+use std::fs::File;
+use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::path::{Component, Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
+
+/// File extension of course files.
+pub const EXTENSION: &str = "tqc";
+/// The course file format written by this version; newer formats are rejected.
+pub const FORMAT_VERSION: u32 = 1;
+
+const MANIFEST: &str = "manifest.json";
+const ROUTE: &str = "route.gpx";
+const DATA: &str = "data/";
+
+/// Reading or writing a course file failed.
+#[derive(Debug, thiserror::Error)]
+pub enum CourseError {
+    /// File system error.
+    #[error("{0}")]
+    Io(#[from] io::Error),
+    /// The file is not a valid zip container.
+    #[error("not a course file: {0}")]
+    Zip(#[from] zip::result::ZipError),
+    /// The manifest is missing fields or malformed.
+    #[error("invalid course manifest: {0}")]
+    Manifest(#[from] serde_json::Error),
+    /// The file was written by a newer Torqa.
+    #[error(
+        "course format {0} is newer than this Torqa supports ({FORMAT_VERSION}); please update"
+    )]
+    NewerFormat(u32),
+    /// A data file to pack lies outside the data root.
+    #[error("{} is not inside {}", .0.display(), .1.display())]
+    OutsideRoot(PathBuf, PathBuf),
+    /// An entry would be extracted outside the data root.
+    #[error("unsafe path in course file: {0}")]
+    UnsafePath(String),
+}
+
+/// Describes a course; stored as `manifest.json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Manifest {
+    /// Course file format version.
+    pub format: u32,
+    /// The program that prepared the course, e.g. `Torqa 0.1.0`.
+    pub generator: String,
+    /// Display name.
+    pub name: String,
+    /// Route length in metres.
+    pub length_m: f64,
+    /// Total climbing in metres.
+    pub elevation_gain_m: f64,
+    /// Steepest climbing gradient in percent.
+    pub max_grade_percent: f64,
+    /// When the course was prepared, in seconds since the Unix epoch.
+    pub created_unix_s: u64,
+    /// Credits the bundled data requires, to show wherever the course is used.
+    pub attribution: Vec<String>,
+}
+
+/// A course read back from its file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unpacked {
+    /// The manifest.
+    pub manifest: Manifest,
+    /// The original GPX track.
+    pub gpx: String,
+}
+
+/// Writes a course file at `path`, bundling the `data` files, which must lie under `data_root`.
+/// The file appears atomically: readers never see a half-written course.
+///
+/// # Errors
+/// [`CourseError::OutsideRoot`] for a data file outside `data_root`, or an I/O or zip error.
+pub fn write(
+    path: &Path,
+    manifest: &Manifest,
+    gpx: &str,
+    data_root: &Path,
+    data: &[PathBuf],
+) -> Result<(), CourseError> {
+    let partial = path.with_extension(format!("{EXTENSION}.part"));
+    let result = write_to(&partial, manifest, gpx, data_root, data)
+        .and_then(|()| Ok(std::fs::rename(&partial, path)?));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    result
+}
+
+fn write_to(
+    path: &Path,
+    manifest: &Manifest,
+    gpx: &str,
+    data_root: &Path,
+    data: &[PathBuf],
+) -> Result<(), CourseError> {
+    let mut zip = ZipWriter::new(BufWriter::new(File::create(path)?));
+    let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    // Images are compressed already; deflating them again only costs time.
+    let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    zip.start_file(MANIFEST, deflated)?;
+    serde_json::to_writer_pretty(&mut zip, manifest)?;
+    zip.start_file(ROUTE, deflated)?;
+    zip.write_all(gpx.as_bytes())?;
+    for file in data {
+        let relative = file
+            .strip_prefix(data_root)
+            .map_err(|_| CourseError::OutsideRoot(file.clone(), data_root.to_owned()))?;
+        let name = relative
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let is_image = matches!(
+            relative.extension().and_then(|e| e.to_str()),
+            Some("jpg" | "jpeg" | "png" | "webp")
+        );
+        zip.start_file(
+            format!("{DATA}{name}"),
+            if is_image { stored } else { deflated },
+        )?;
+        io::copy(&mut BufReader::new(File::open(file)?), &mut zip)?;
+    }
+    zip.finish()?.flush()?;
+    Ok(())
+}
+
+/// Reads only the manifest, e.g. for listing courses.
+///
+/// # Errors
+/// [`CourseError::NewerFormat`] for files from a newer Torqa, or an I/O, zip or manifest error.
+pub fn read_manifest(path: &Path) -> Result<Manifest, CourseError> {
+    let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
+    manifest_of(&mut zip)
+}
+
+/// Reads a course and puts its data files under `data_root`. Files already there are kept: the
+/// cache paths are versioned, so an existing file has the same content.
+///
+/// # Errors
+/// [`CourseError::NewerFormat`] for files from a newer Torqa, [`CourseError::UnsafePath`] for
+/// entries that would land outside `data_root`, or an I/O, zip or manifest error.
+pub fn unpack(path: &Path, data_root: &Path) -> Result<Unpacked, CourseError> {
+    let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
+    let manifest = manifest_of(&mut zip)?;
+    let mut gpx = String::new();
+    zip.by_name(ROUTE)?.read_to_string(&mut gpx)?;
+
+    for index in 0..zip.len() {
+        let mut entry = zip.by_index(index)?;
+        let Some(name) = entry.name().strip_prefix(DATA).map(ToOwned::to_owned) else {
+            continue;
+        };
+        if entry.is_dir() {
+            continue;
+        }
+        let relative = Path::new(&name);
+        if !relative
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+        {
+            return Err(CourseError::UnsafePath(entry.name().to_owned()));
+        }
+        let target = data_root.join(relative);
+        if target.exists() {
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let partial = target.with_extension("part");
+        io::copy(&mut entry, &mut File::create(&partial)?)?;
+        std::fs::rename(&partial, &target)?;
+    }
+    Ok(Unpacked { manifest, gpx })
+}
+
+fn manifest_of<R: io::Read + io::Seek>(zip: &mut ZipArchive<R>) -> Result<Manifest, CourseError> {
+    let mut json = String::new();
+    zip.by_name(MANIFEST)?.read_to_string(&mut json)?;
+    // Check the version before the fields: a newer format may have changed them.
+    let format = serde_json::from_str::<serde_json::Value>(&json)?["format"]
+        .as_u64()
+        .and_then(|f| u32::try_from(f).ok())
+        .unwrap_or(0);
+    if format > FORMAT_VERSION {
+        return Err(CourseError::NewerFormat(format));
+    }
+    Ok(serde_json::from_str(&json)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("torqa-course-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn manifest() -> Manifest {
+        Manifest {
+            format: FORMAT_VERSION,
+            generator: "Torqa test".to_owned(),
+            name: "Lake Biel".to_owned(),
+            length_m: 12_345.0,
+            elevation_gain_m: 120.0,
+            max_grade_percent: 6.5,
+            created_unix_s: 1_790_000_000,
+            attribution: vec!["Terrain: Mapterhorn (CC BY 4.0)".to_owned()],
+        }
+    }
+
+    #[test]
+    fn a_course_moves_its_data_to_another_machine() {
+        let dir = temp_dir("roundtrip");
+        let prepared = dir.join("cache-a");
+        let tile = prepared.join("terrain/mapterhorn/15/1/2.webp");
+        let map = prepared.join("osm/v2/14/8531/5770.pbf");
+        for (file, content) in [(&tile, b"tile".as_slice()), (&map, b"map".as_slice())] {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, content).unwrap();
+        }
+        let course = dir.join("lake-biel.tqc");
+
+        write(
+            &course,
+            &manifest(),
+            "<gpx/>",
+            &prepared,
+            &[tile.clone(), map.clone()],
+        )
+        .unwrap();
+        let other = dir.join("cache-b");
+        let unpacked = unpack(&course, &other).unwrap();
+
+        assert_eq!(unpacked.manifest, manifest());
+        assert_eq!(unpacked.gpx, "<gpx/>");
+        assert_eq!(read_manifest(&course).unwrap(), manifest());
+        assert_eq!(
+            std::fs::read(other.join("terrain/mapterhorn/15/1/2.webp")).unwrap(),
+            b"tile"
+        );
+        assert_eq!(
+            std::fs::read(other.join("osm/v2/14/8531/5770.pbf")).unwrap(),
+            b"map"
+        );
+        assert!(!dir.join("lake-biel.tqc.part").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_courses_from_a_newer_torqa() {
+        let dir = temp_dir("newer");
+        let course = dir.join("future.tqc");
+        let future = Manifest {
+            format: FORMAT_VERSION + 1,
+            ..manifest()
+        };
+        write(&course, &future, "<gpx/>", &dir, &[]).unwrap();
+
+        let error = read_manifest(&course).unwrap_err();
+
+        assert!(matches!(error, CourseError::NewerFormat(f) if f == FORMAT_VERSION + 1));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn never_extracts_outside_the_data_root() {
+        let dir = temp_dir("unsafe");
+        let course = dir.join("evil.tqc");
+        let mut zip = ZipWriter::new(File::create(&course).unwrap());
+        let options = SimpleFileOptions::default();
+        zip.start_file(MANIFEST, options).unwrap();
+        serde_json::to_writer(&mut zip, &manifest()).unwrap();
+        zip.start_file(ROUTE, options).unwrap();
+        zip.start_file("data/../escaped.txt", options).unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+
+        let error = unpack(&course, &dir.join("cache")).unwrap_err();
+
+        assert!(matches!(error, CourseError::UnsafePath(_)), "{error}");
+        assert!(!dir.join("escaped.txt").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn refuses_to_pack_files_outside_the_data_root() {
+        let dir = temp_dir("outside");
+        let stray = dir.join("stray.bin");
+        std::fs::write(&stray, b"x").unwrap();
+
+        let error = write(
+            &dir.join("c.tqc"),
+            &manifest(),
+            "",
+            &dir.join("cache"),
+            &[stray],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, CourseError::OutsideRoot(..)));
+        assert!(!dir.join("c.tqc").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

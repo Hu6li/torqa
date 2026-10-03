@@ -1,6 +1,36 @@
-//! Route geometry prepared for drawing: elevation profile and a flat map of the track.
+//! Data prepared for drawing: route elevation profile, a flat map of the track and charts of
+//! recorded rides.
 
+use torqa_domain::recording::Sample;
 use torqa_routes::{LocalProjection, Route};
+
+/// A recorded value over the ride as `(elapsed seconds, value)`, averaged into at most
+/// `max_points` equal time buckets so long rides stay cheap to draw. Buckets without values
+/// (e.g. no heart-rate strap) are left out.
+#[must_use]
+pub fn ride_series(
+    samples: &[Sample],
+    max_points: usize,
+    value: impl Fn(&Sample) -> Option<f64>,
+) -> Vec<(f64, f64)> {
+    let per_bucket = samples.len().div_ceil(max_points.max(1)).max(1);
+    samples
+        .chunks(per_bucket)
+        .filter_map(|bucket| {
+            let values: Vec<f64> = bucket.iter().filter_map(&value).collect();
+            if values.is_empty() {
+                return None;
+            }
+            #[allow(clippy::cast_precision_loss)] // bucket sizes are small
+            let count = values.len() as f64;
+            let middle = &bucket[bucket.len() / 2];
+            Some((
+                middle.elapsed.as_secs_f64(),
+                values.iter().sum::<f64>() / count,
+            ))
+        })
+        .collect()
+}
 
 /// `(distance, elevation)` in metres, at most `max_points` evenly picked points including the
 /// finish.
@@ -49,6 +79,36 @@ mod tests {
         }
         xml.push_str("</trkseg></trk></gpx>");
         Route::from_gpx(&xml, None).await.unwrap()
+    }
+
+    #[test]
+    fn ride_series_averages_buckets_and_skips_gaps() {
+        use std::time::Duration;
+        use torqa_domain::units::{GradePercent, Meters, MetersPerSecond, Watts};
+
+        let samples: Vec<Sample> = (0..10u32)
+            .map(|i| Sample {
+                elapsed: Duration::from_secs(u64::from(i)),
+                lat: 46.0,
+                lon: 7.0,
+                elevation: Meters(0.0),
+                distance: Meters(0.0),
+                speed: MetersPerSecond(0.0),
+                grade: GradePercent(0.0),
+                power: (i < 6).then(|| Watts(f64::from(i) * 10.0)),
+                cadence: None,
+                heart_rate: None,
+            })
+            .collect();
+
+        let series = ride_series(&samples, 5, |s| s.power.map(|p| p.0));
+
+        // Pairs of seconds: (0, 10) → 5 W, (20, 30) → 25 W, (40, 50) → 45 W; the rest has none.
+        assert_eq!(series, [(1.0, 5.0), (3.0, 25.0), (5.0, 45.0)]);
+        assert_eq!(
+            ride_series(&samples, 5, |s| s.heart_rate.map(|h| h.0)).len(),
+            0
+        );
     }
 
     #[tokio::test]

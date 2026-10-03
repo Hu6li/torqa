@@ -1,20 +1,22 @@
 class_name Minimap
 extends Control
-## Map of the surroundings (north up) with the route and the rider. Click to switch between a
-## close view following the rider and the whole route.
+## The map around the rider. The close view turns with the direction of travel (heading up);
+## clicking switches to the whole route, north up.
 
-const PADDING: float = 20.0
+const PADDING: float = 24.0
 ## Half the width of the close view.
-const CLOSE_RADIUS_M: float = 600.0
-const TRACK_COLOR: Color = Color(0.95, 0.4, 0.15)
-const START_COLOR: Color = Color(0.2, 0.75, 0.35)
-const FINISH_COLOR: Color = Color(0.85, 0.2, 0.2)
+const CLOSE_RADIUS_M: float = 450.0
+const TRACK_COLOR: Color = Color(1.0, 0.56, 0.2)
+const START_COLOR: Color = Color(0.3, 0.8, 0.45)
+const FINISH_COLOR: Color = Color(0.92, 0.3, 0.3)
 
 ## Metres east/north of the route start.
 var _track: PackedVector2Array = PackedVector2Array()
 var _rider: Vector2 = Vector2.ZERO
+## Direction of travel, radians clockwise from north.
+var _heading: float = 0.0
 var _map: ArrayMesh
-var _background: Color = Color(0.56, 0.68, 0.46)
+var _background: Color = Color(0.15, 0.17, 0.16)
 var _follow: bool = true
 
 
@@ -42,13 +44,13 @@ func set_map(map: Dictionary) -> void:
 	queue_redraw()
 
 
-func set_rider(position_m: Vector2) -> void:
+func set_rider(position_m: Vector2, heading: float) -> void:
 	_rider = position_m
+	_heading = heading
 	queue_redraw()
 
 
 func _ready() -> void:
-	clip_contents = true
 	mouse_filter = MOUSE_FILTER_STOP
 	tooltip_text = "Click: close view / whole route"
 
@@ -67,31 +69,64 @@ func _draw() -> void:
 	if _map != null:
 		draw_mesh(_map, null, view)
 	if _track.size() >= 2:
-		draw_polyline(view * _track, TRACK_COLOR, 4.0, true)
-		draw_circle(view * _track[0], 7.0, START_COLOR)
-		draw_circle(view * _track[_track.size() - 1], 7.0, FINISH_COLOR)
-	var rider: Vector2 = view * _rider
-	draw_circle(rider, 10.0, Color.BLACK)
-	draw_circle(rider, 7.0, Color.WHITE)
-	var label: String = "Close" if _follow else "Route"
-	draw_string(get_theme_default_font(), Vector2(10, size.y - 10), label)
+		draw_polyline(view * _track, Color(0, 0, 0, 0.35), 6.0, true)
+		draw_polyline(view * _track, TRACK_COLOR, 3.5, true)
+		draw_circle(view * _track[0], 5.0, START_COLOR)
+		draw_circle(view * _track[_track.size() - 1], 5.0, FINISH_COLOR)
+	_draw_rider(view * _rider, _heading if not _follow else 0.0)
+	if _follow:
+		_draw_north(view)
+	var font: Font = get_theme_default_font()
+	var label: String = "CLOSE" if _follow else "ROUTE"
+	draw_string(
+		font, Vector2(14, size.y - 12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiTheme.MUTED
+	)
 
 
-## Map metres (north up) to control pixels.
+## An arrow pointing in the direction of travel (`angle` clockwise from screen up).
+func _draw_rider(center: Vector2, angle: float) -> void:
+	var tip: Vector2 = Vector2(0, -11).rotated(angle)
+	var left: Vector2 = Vector2(-7, 8).rotated(angle)
+	var right: Vector2 = Vector2(7, 8).rotated(angle)
+	var notch: Vector2 = Vector2(0, 4).rotated(angle)
+	var arrow: PackedVector2Array = PackedVector2Array(
+		[center + tip, center + right, center + notch, center + left]
+	)
+	draw_circle(center, 14.0, Color(0, 0, 0, 0.25))
+	draw_colored_polygon(arrow, Color.WHITE)
+	draw_polyline(arrow + PackedVector2Array([center + tip]), UiTheme.ACCENT, 1.5, true)
+
+
+## A small "N" at the edge showing where north is in the rotated close view.
+func _draw_north(view: Transform2D) -> void:
+	var north: Vector2 = (view.basis_xform(Vector2(0, 1))).normalized()
+	var center: Vector2 = size / 2.0
+	var position: Vector2 = center + north * (minf(size.x, size.y) / 2.0 - 18.0)
+	draw_circle(position, 10.0, Color(0, 0, 0, 0.45))
+	var font: Font = get_theme_default_font()
+	draw_string(
+		font, position + Vector2(-4.5, 4.5), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE
+	)
+
+
+## Map metres to control pixels: heading up around the rider, or the whole route north up.
 func _view() -> Transform2D:
-	var center: Vector2 = _rider
-	var scale_px: float = (minf(size.x, size.y) / 2.0) / CLOSE_RADIUS_M
 	if not _follow and _track.size() >= 2:
 		var bounds: Rect2 = Rect2(_track[0], Vector2.ZERO)
 		for point: Vector2 in _track:
 			bounds = bounds.expand(point)
 		var extent: Vector2 = bounds.size.max(Vector2(1, 1))
 		var available: Vector2 = size - Vector2(PADDING, PADDING) * 2.0
-		scale_px = minf(available.x / extent.x, available.y / extent.y)
-		center = bounds.get_center()
-	# Screen y grows downwards, north is up.
-	return Transform2D(
-		Vector2(scale_px, 0),
-		Vector2(0, -scale_px),
-		size / 2.0 - Vector2(center.x, -center.y) * scale_px
+		var fit: float = minf(available.x / extent.x, available.y / extent.y)
+		return Transform2D().translated(-bounds.get_center()).scaled(Vector2(fit, -fit)).translated(
+			size / 2.0
+		)
+	var scale_px: float = (minf(size.x, size.y) / 2.0) / CLOSE_RADIUS_M
+	# Turning the map by the heading (counter-clockwise in map space) puts travel at the top.
+	return (
+		Transform2D()
+		. translated(-_rider)
+		. rotated(_heading)
+		. scaled(Vector2(scale_px, -scale_px))
+		. translated(size / 2.0 + Vector2(0, size.y * 0.15))
 	)

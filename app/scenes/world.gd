@@ -57,7 +57,8 @@ var _avatar: RiderAvatar = RiderAvatar.new()
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
 var _water_material: ShaderMaterial = ShaderMaterial.new()
-var _building_material: StandardMaterial3D = StandardMaterial3D.new()
+var _building_material: ShaderMaterial = ShaderMaterial.new()
+var _structure_material: StandardMaterial3D = StandardMaterial3D.new()
 var _conifer_mesh: ArrayMesh
 var _broadleaf_mesh: ArrayMesh
 
@@ -80,6 +81,8 @@ func bind(torqa: TorqaApp) -> void:
 ## Cycles chase → first person → drone and returns the new mode's name.
 func cycle_camera() -> String:
 	_camera_mode = ((_camera_mode + 1) % CameraMode.size()) as CameraMode
+	# From the rider's own eyes only the bike is visible.
+	_avatar.show_rider(_camera_mode != CameraMode.FIRST_PERSON)
 	var mode_name: String = CameraMode.keys()[_camera_mode]
 	return mode_name.capitalize()
 
@@ -131,9 +134,10 @@ func _ready() -> void:
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
 	_road_material.shader = preload("res://shaders/road.gdshader")
 	_water_material.shader = preload("res://shaders/water.gdshader")
-	_building_material.vertex_color_use_as_albedo = true
-	_building_material.vertex_color_is_srgb = true
-	_building_material.roughness = 0.9
+	_building_material.shader = preload("res://shaders/building.gdshader")
+	_structure_material.vertex_color_use_as_albedo = true
+	_structure_material.vertex_color_is_srgb = true
+	_structure_material.roughness = 0.9
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -160,7 +164,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_water.mesh = _mesh_from(_torqa.water_mesh())
 	_water.material_override = _water_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
-	_structures.material_override = _building_material
+	_structures.material_override = _structure_material
 
 
 func _build_some_chunks() -> void:
@@ -231,7 +235,8 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	_rider.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north))
 
 	var target: Transform3D = _camera_target(_rider.transform)
-	if _placed:
+	# First person is fixed to the head; smoothing its position would trail behind the rider.
+	if _placed and _camera_mode != CameraMode.FIRST_PERSON:
 		var camera_weight: float = 1.0 - exp(-delta * CAMERA_SMOOTHING)
 		_camera.transform = _camera.transform.interpolate_with(target, camera_weight)
 	else:
@@ -247,8 +252,9 @@ func _camera_target(rider: Transform3D) -> Transform3D:
 	var look_at: Vector3
 	match _camera_mode:
 		CameraMode.FIRST_PERSON:
-			eye = origin + Vector3.UP * 1.55 + forward * 0.4
-			look_at = eye + forward * 20.0
+			# The rider's eyes, slightly ahead of the helmet, looking down the road.
+			eye = rider * Vector3(0, 1.56, -0.5)
+			look_at = eye + forward * 20.0 - Vector3.UP * 1.5
 		CameraMode.DRONE:
 			eye = origin - flat_forward * 28.0 + Vector3.UP * 20.0
 			look_at = origin + flat_forward * 10.0

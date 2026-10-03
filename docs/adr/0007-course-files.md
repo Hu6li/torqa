@@ -1,6 +1,6 @@
 # ADR 0007 — Course files (`.tqc`)
 
-- Status: accepted
+- Status: accepted; amended 2026-10-03 (format 1 bundles inputs only, see below)
 - Date: 2026-10-02
 
 ## Context
@@ -42,3 +42,23 @@ preview.png        image for the course list
   potentially a few hundred MB for long routes. Mesh quantisation can shrink this later.
 - Attribution travels with the data, satisfying ODbL and CC BY when courses are shared.
 - New dependency: `zip` (MIT) with only the pure-Rust deflate backend.
+
+## Amendment 2026-10-03 — format 1
+
+The first implemented format bundles the **inputs** and no pre-built world:
+
+```
+manifest.json      format, generator, name, length, climbing, max grade, created, attribution
+route.gpx          the original track
+data/…             every terrain tile and map tile the course was built from,
+                   under its path relative to the download cache
+```
+
+Data providers record which cached files they read or wrote while a course is prepared; saving
+packs exactly those. Opening a course puts them back into the cache (existing files are kept;
+cache paths are versioned) and builds the course offline. This needs no own format for terrain,
+map or meshes, and every course is always built by the current generator (R35).
+
+Measured on the 7 km Lake Biel route: 6.2 MB, opened on an empty machine offline in ~23 s
+(debug build). Storing the pre-built world for an instant start remains a later step
+(format 2); readers reject formats newer than they know.

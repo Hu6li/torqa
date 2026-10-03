@@ -331,8 +331,10 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
     assert_valid(mesh);
     let top = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
     let bottom = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
-    // Ground at the lowest corner (500 m + 10 % of 55 m east), 2 storeys + 1 m roof slab.
-    assert!((top - (505.5 + 7.0)).abs() < 0.3, "top {top}");
+    // Ground at the lowest corner (500 m + 10 % of 55 m east), 2 storeys + 1 m to the eaves,
+    // and a 35° gable roof over the 10 m wide house: ridge 3.5 m above the eaves.
+    let ridge = 505.5 + 7.0 + 5.0 * 35f32.to_radians().tan();
+    assert!((top - ridge).abs() < 0.3, "top {top}, ridge {ridge}");
     assert!((bottom - (505.5 - 1.0)).abs() < 0.3, "bottom {bottom}");
 
     let centre = [60.0 - chunk.center[0], -500.0 - chunk.center[2]];
@@ -549,4 +551,40 @@ async fn minimap_draws_map_features_near_the_route_only() {
     // Forest square (2 triangles) and house (2 triangles); the lake is 9 km away.
     assert_eq!(flat.vertices.len(), 12);
     assert!(flat.vertices.iter().all(|v| v[0] < 500.0));
+}
+
+#[tokio::test]
+async fn lakes_get_a_flat_surface_at_the_water_level() {
+    // A lake east of the road whose surface the terrain model reports at 429 m.
+    struct Lake;
+    impl ElevationModel for Lake {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if east > 50.0 { 429.0 } else { 440.0 }))
+        }
+    }
+    let lake = Area {
+        cover: LandCover::Water,
+        outer: vec![square(400.0, 500.0, 300.0)],
+        inner: vec![],
+    };
+    let route = route_north(&[]).await;
+    let map = MapData {
+        areas: vec![lake],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Lake, &map, &mut |_, _| {}).await;
+
+    let water = &world.water;
+    assert_valid(water);
+    assert_faces_follow_normals(water);
+    assert_ne!(water.vertices.len(), 0);
+    assert!(
+        water.vertices.iter().all(|v| (v[1] - 429.3).abs() < 0.01),
+        "flat at the lake level"
+    );
 }

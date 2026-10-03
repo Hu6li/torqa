@@ -15,6 +15,9 @@ heights (R16). The source must be free, need no account, allow local caching for
   (`https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`, 512 px, Terrarium encoding, zoom 12).
   Copernicus GLO-30 worldwide plus high-resolution national LIDAR across much of Europe.
   Data CC BY 4.0 — attribution required (see <https://mapterhorn.com/attribution>).
+- Where high-resolution national data exists (e.g. swissALTI3D in Switzerland), Mapterhorn
+  also serves zoom 15 (~1.6 m per pixel); it is tried first, falling back to zoom 12 where
+  tiles are missing (added 2026-10-03).
 - Fallback: **AWS Open Data Terrain Tiles** (256 px Terrarium PNG, zoom 13), per tile, when
   Mapterhorn is unreachable or lacks a tile.
 - Tiles are cached on disk under the user's cache directory and sent with a descriptive

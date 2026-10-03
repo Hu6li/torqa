@@ -58,10 +58,27 @@ impl TileSource {
         }
     }
 
-    /// The default sources in order of preference: Mapterhorn, then AWS.
+    /// Mapterhorn at zoom 15 (~1.6 m per pixel at 47° N), served where high-resolution national
+    /// data exists (e.g. swissALTI3D in Switzerland); elsewhere tiles are missing and the next
+    /// source is used.
+    #[must_use]
+    pub fn mapterhorn_detail() -> Self {
+        Self {
+            name: "mapterhorn-z15",
+            zoom: 15,
+            ..Self::mapterhorn()
+        }
+    }
+
+    /// The default sources in order of preference: detailed Mapterhorn, worldwide Mapterhorn,
+    /// then AWS.
     #[must_use]
     pub fn defaults() -> Vec<Self> {
-        vec![Self::mapterhorn(), Self::aws_terrain_tiles()]
+        vec![
+            Self::mapterhorn_detail(),
+            Self::mapterhorn(),
+            Self::aws_terrain_tiles(),
+        ]
     }
 
     pub(crate) fn url(&self, id: TileId) -> String {

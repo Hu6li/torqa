@@ -6,20 +6,36 @@ mod import;
 pub mod paths;
 pub mod view;
 
-pub use import::{Imported, LoadStage, Progress, import_route};
+pub use import::{Imported, LoadStage, Progress, import_gpx, import_route};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime};
 
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
+use torqa_domain::files::UsedFiles;
+use torqa_domain::profile::Profile;
+use torqa_domain::recording::Sample;
+use torqa_domain::units::Percent;
+use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{ElevationSource, Route};
+use torqa_session::analysis::{summarize, time_in_heart_rate_zones, time_in_power_zones};
 use torqa_session::{Ride, RideConfig, RideState};
+use torqa_storage::course::{self, Manifest};
+use torqa_storage::profiles::{self, StoredProfile};
+use torqa_storage::rides::{self, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
 use torqa_world::World;
 use tracing::warn;
+
+/// Credits for the data a course bundles, stored in course files (ODbL, CC BY).
+const ATTRIBUTION: [&str; 3] = [
+    "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL)",
+    "Terrain: Mapterhorn (CC BY 4.0)",
+    "Terrain: AWS Terrain Tiles",
+];
 
 /// How long [`App::shutdown`] waits for devices to disconnect.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -39,6 +55,15 @@ pub enum AppError {
     /// The device index does not refer to a discovered device of the right kind.
     #[error("unknown device")]
     UnknownDevice,
+    /// Saving a course needs a route whose world has been built.
+    #[error("the course is not ready yet")]
+    CourseNotReady,
+    /// No profile with that id.
+    #[error("unknown profile")]
+    UnknownProfile,
+    /// Reading or writing a file in the data directory failed.
+    #[error("{0}")]
+    Storage(String),
 }
 
 /// A device found by a scan.
@@ -67,6 +92,35 @@ pub struct RouteSummary {
     pub max_grade: f64,
     /// Where the elevations come from.
     pub elevation_source: ElevationSource,
+}
+
+/// A course in the library.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseEntry {
+    /// The course file.
+    pub path: PathBuf,
+    /// What the course file says about itself.
+    pub manifest: Manifest,
+}
+
+/// A ride in the history.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryEntry {
+    /// The FIT activity file.
+    pub fit: PathBuf,
+    /// Route and summary.
+    pub record: RideRecord,
+}
+
+/// Everything recorded during one ride, for its analysis.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RideDetail {
+    /// The 1 Hz samples.
+    pub samples: Vec<Sample>,
+    /// Time in each power zone of the active rider.
+    pub power_zones: [Duration; 7],
+    /// Time in each heart-rate zone of the active rider.
+    pub heart_rate_zones: [Duration; 5],
 }
 
 /// Something that happened since the last [`App::update`].
@@ -100,6 +154,8 @@ pub enum AppEvent {
     RideFinished,
     /// The ride was saved as a FIT file.
     RideSaved(PathBuf),
+    /// A course was saved or imported into the library.
+    CourseAdded(PathBuf),
     /// A background operation failed.
     Error(String),
 }
@@ -118,6 +174,7 @@ enum JobResult {
     Route(Result<Box<Imported>, String>),
     World(Box<World>),
     Progress(LoadStage, usize, usize),
+    CourseAdded(Result<PathBuf, String>),
 }
 
 /// Forwards load progress to the frame loop, at most once per percent per stage.
@@ -155,7 +212,12 @@ pub struct App {
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
+    /// Name and GPX of the loaded route, for saving it as a course.
+    loaded: Option<(String, String)>,
+    /// Cached files the loaded route and its world were built from.
+    used: UsedFiles,
     ride: Option<ActiveRide>,
+    profile: StoredProfile,
     data_dir: PathBuf,
     cache_dir: PathBuf,
 }
@@ -183,10 +245,68 @@ impl App {
             route: None,
             world: None,
             offline: false,
+            loaded: None,
+            used: UsedFiles::default(),
             ride: None,
+            profile: initial_profile(&data_dir),
             data_dir,
             cache_dir,
         })
+    }
+
+    /// All rider profiles, by name.
+    #[must_use]
+    pub fn profiles(&self) -> Vec<StoredProfile> {
+        let listed = profiles::list(&self.data_dir);
+        if listed.is_empty() {
+            // Not saved yet, e.g. a read-only data directory: still offer the rider in use.
+            vec![self.profile.clone()]
+        } else {
+            listed
+        }
+    }
+
+    /// The rider riding now.
+    #[must_use]
+    pub fn profile(&self) -> &StoredProfile {
+        &self.profile
+    }
+
+    /// Switches to another rider, remembered for the next start.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownProfile`] if there is no such profile.
+    pub fn select_profile(&mut self, id: &str) -> Result<(), AppError> {
+        let profile = profiles::load(&self.data_dir, id).map_err(|_| AppError::UnknownProfile)?;
+        self.profile = StoredProfile {
+            id: id.to_owned(),
+            profile,
+        };
+        if let Err(error) = profiles::set_active(&self.data_dir, id) {
+            warn!(%error, "cannot remember the active profile");
+        }
+        Ok(())
+    }
+
+    /// Saves a profile (a new one if `id` is `None`) and makes it the active one; returns its id.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if it cannot be written.
+    pub fn save_profile(&mut self, id: Option<&str>, profile: Profile) -> Result<String, AppError> {
+        let id = id.map_or_else(
+            || profiles::new_id(&self.data_dir, &profile.name),
+            ToOwned::to_owned,
+        );
+        profiles::save(&self.data_dir, &id, &profile)
+            .map_err(|e| AppError::Storage(format!("cannot save profile: {e}")))?;
+        if let Err(error) = profiles::set_active(&self.data_dir, &id) {
+            warn!(%error, "cannot remember the active profile");
+        }
+        self.profile = StoredProfile {
+            id: id.clone(),
+            profile,
+        };
+        Ok(id)
     }
 
     /// Scans for trainers and heart-rate sensors; reports [`AppEvent::DevicesFound`].
@@ -210,8 +330,7 @@ impl App {
 
     /// Imports a GPX route with terrain-corrected elevations; reports [`AppEvent::RouteLoaded`].
     pub fn load_route(&mut self, path: PathBuf, offline: bool) {
-        self.offline = offline;
-        self.world = None;
+        let used = self.start_loading(offline);
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
@@ -219,7 +338,7 @@ impl App {
                 tx: tx.clone(),
                 last: None,
             };
-            let result = import_route(&path, &cache, offline, &mut |stage, done, total| {
+            let result = import_route(&path, &cache, offline, &used, &mut |stage, done, total| {
                 reporter.report(stage, done, total);
             })
             .await
@@ -228,10 +347,147 @@ impl App {
         });
     }
 
+    /// Opens a course file: its data goes back into the cache and the course is built offline;
+    /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`].
+    pub fn open_course(&mut self, path: PathBuf) {
+        let used = self.start_loading(true);
+        let tx = self.jobs_tx.clone();
+        let cache = self.cache_dir.clone();
+        self.runtime.spawn(async move {
+            let mut reporter = Reporter {
+                tx: tx.clone(),
+                last: None,
+            };
+            reporter.report(LoadStage::Route, 0, 1);
+            let unpack_from = path.clone();
+            let unpack_to = cache.clone();
+            let unpacked =
+                tokio::task::spawn_blocking(move || course::unpack(&unpack_from, &unpack_to))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r.map_err(|e| format!("cannot open {}: {e}", path.display())));
+            let result = match unpacked {
+                Ok(unpacked) => import_gpx(
+                    unpacked.gpx,
+                    &unpacked.manifest.name,
+                    &cache,
+                    true,
+                    &used,
+                    &mut |stage, done, total| reporter.report(stage, done, total),
+                )
+                .await
+                .map(|mut imported| {
+                    imported.name = unpacked.manifest.name;
+                    Box::new(imported)
+                }),
+                Err(message) => Err(message),
+            };
+            let _ = tx.send(JobResult::Route(result));
+        });
+    }
+
+    /// Saves the loaded route with everything needed to ride it offline as a course in the
+    /// library; reports [`AppEvent::CourseAdded`].
+    ///
+    /// # Errors
+    /// [`AppError::CourseNotReady`] until the route's world has been built.
+    pub fn save_course(&mut self) -> Result<(), AppError> {
+        let (Some(route), Some(_), Some((name, gpx))) = (&self.route, &self.world, &self.loaded)
+        else {
+            return Err(AppError::CourseNotReady);
+        };
+        let manifest = Manifest {
+            format: course::FORMAT_VERSION,
+            generator: format!("Torqa {}", torqa_domain::version()),
+            name: name.clone(),
+            length_m: route.length().0,
+            elevation_gain_m: route.elevation_gain().0,
+            max_grade_percent: route.max_grade().0,
+            created_unix_s: SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            attribution: ATTRIBUTION.map(ToOwned::to_owned).to_vec(),
+        };
+        let gpx = gpx.clone();
+        let data = self.used.paths();
+        let cache = self.cache_dir.clone();
+        let library = self.courses_dir();
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn_blocking(move || {
+            let result = std::fs::create_dir_all(&library)
+                .map_err(course::CourseError::from)
+                .and_then(|()| {
+                    let path = unique_course_path(&library, &manifest.name);
+                    course::write(&path, &manifest, &gpx, &cache, &data).map(|()| path)
+                })
+                .map_err(|e| format!("cannot save course: {e}"));
+            let _ = tx.send(JobResult::CourseAdded(result));
+        });
+        Ok(())
+    }
+
+    /// Copies a course file into the library; reports [`AppEvent::CourseAdded`].
+    pub fn import_course(&mut self, path: PathBuf) {
+        let library = self.courses_dir();
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn_blocking(move || {
+            let result = course::read_manifest(&path)
+                .and_then(|manifest| {
+                    std::fs::create_dir_all(&library)?;
+                    let target = unique_course_path(&library, &manifest.name);
+                    let partial = target.with_extension("part");
+                    std::fs::copy(&path, &partial)?;
+                    std::fs::rename(&partial, &target)?;
+                    Ok(target)
+                })
+                .map_err(|e| format!("cannot import {}: {e}", path.display()));
+            let _ = tx.send(JobResult::CourseAdded(result));
+        });
+    }
+
+    /// The courses in the library, by name. Unreadable files are skipped.
+    #[must_use]
+    pub fn courses(&self) -> Vec<CourseEntry> {
+        let Ok(entries) = std::fs::read_dir(self.courses_dir()) else {
+            return Vec::new();
+        };
+        let mut courses: Vec<CourseEntry> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == course::EXTENSION))
+            .filter_map(|path| match course::read_manifest(&path) {
+                Ok(manifest) => Some(CourseEntry { path, manifest }),
+                Err(error) => {
+                    warn!(path = %path.display(), %error, "skipping course");
+                    None
+                }
+            })
+            .collect();
+        courses.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
+        courses
+    }
+
+    /// The course library: `courses/` in the data directory (R34).
+    #[must_use]
+    pub fn courses_dir(&self) -> PathBuf {
+        self.data_dir.join("courses")
+    }
+
+    /// Forgets the current route and starts recording the files a new one uses.
+    fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        self.offline = offline;
+        self.world = None;
+        self.route = None;
+        self.loaded = None;
+        self.used = UsedFiles::default();
+        self.used.clone()
+    }
+
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
-        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"));
+        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"))
+            .recording(self.used.clone());
         if self.offline {
             terrain = terrain.offline();
         }
@@ -276,15 +532,28 @@ impl App {
         Ok(())
     }
 
-    /// Starts riding the loaded route. The clock starts once the trainer is connected.
+    /// Starts riding the loaded route as the active rider, whose profile sets the mass. The
+    /// clock starts once the trainer is connected.
     ///
     /// # Errors
     /// [`AppError::NoRoute`] or [`AppError::NoTrainer`] if either is missing.
-    pub fn start_ride(&mut self, config: RideConfig) -> Result<(), AppError> {
+    pub fn start_ride(
+        &mut self,
+        difficulty: Percent,
+        descent: DescentMode,
+    ) -> Result<(), AppError> {
         let route = self.route.clone().ok_or(AppError::NoRoute)?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
+        let config = RideConfig {
+            setup: RiderSetup {
+                mass: self.profile.profile.system_mass(),
+                ..RiderSetup::default()
+            },
+            difficulty,
+            descent,
+        };
         self.ride = Some(ActiveRide {
             ride: Ride::new(route, config),
             started: None,
@@ -304,21 +573,97 @@ impl App {
         if active.ride.samples().is_empty() {
             return Vec::new();
         }
-        let path = self
-            .data_dir
-            .join("rides")
+        let path = profiles::rides_dir(&self.data_dir, &self.profile.id)
             .join(paths::activity_file_name(start));
-        let saved = torqa_storage::encode_fit(start, active.ride.samples())
+        let samples = active.ride.samples();
+        let saved = torqa_storage::encode_fit(start, samples)
             .map_err(|e| e.to_string())
             .and_then(|fit| {
                 std::fs::create_dir_all(path.parent().unwrap_or(&self.data_dir))
                     .and_then(|()| std::fs::write(&path, fit))
                     .map_err(|e| format!("cannot save {}: {e}", path.display()))
             });
+        if saved.is_ok() {
+            let record = RideRecord {
+                route: self
+                    .loaded
+                    .as_ref()
+                    .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
+                start,
+                summary: summarize(samples, self.profile.profile.ftp),
+            };
+            // The FIT file is what counts; the history rebuilds missing metadata from it.
+            if let Err(error) = rides::save(&path, &record) {
+                warn!(%error, "cannot save ride metadata");
+            }
+        }
         vec![match saved {
             Ok(()) => AppEvent::RideSaved(path),
             Err(message) => AppEvent::Error(message),
         }]
+    }
+
+    /// The active rider's rides, newest first (R31). Rides without metadata, e.g. FIT files
+    /// copied in by hand, are analysed once and get it written.
+    #[must_use]
+    pub fn history(&self) -> Vec<HistoryEntry> {
+        rides::fit_files(&self.rides_dir())
+            .into_iter()
+            .filter_map(|fit| {
+                let record = rides::load(&fit).or_else(|_| self.rebuild_metadata(&fit));
+                match record {
+                    Ok(record) => Some(HistoryEntry { fit, record }),
+                    Err(error) => {
+                        warn!(path = %fit.display(), %error, "skipping ride");
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// The recorded data of one ride, with zones of the active rider.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the FIT file cannot be read.
+    pub fn ride_detail(&self, fit: &Path) -> Result<RideDetail, AppError> {
+        let (_, samples) = read_fit(fit).map_err(AppError::Storage)?;
+        let profile = &self.profile.profile;
+        Ok(RideDetail {
+            power_zones: time_in_power_zones(&samples, profile),
+            heart_rate_zones: time_in_heart_rate_zones(&samples, profile),
+            samples,
+        })
+    }
+
+    /// Deletes a ride: its FIT file and metadata.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the FIT file cannot be removed.
+    pub fn delete_ride(&self, fit: &Path) -> Result<(), AppError> {
+        std::fs::remove_file(fit)
+            .map_err(|e| AppError::Storage(format!("cannot delete {}: {e}", fit.display())))?;
+        let _ = std::fs::remove_file(rides::metadata_path(fit));
+        Ok(())
+    }
+
+    fn rides_dir(&self) -> PathBuf {
+        profiles::rides_dir(&self.data_dir, &self.profile.id)
+    }
+
+    fn rebuild_metadata(&self, fit: &Path) -> Result<RideRecord, String> {
+        let (start, samples) = read_fit(fit)?;
+        let record = RideRecord {
+            route: fit
+                .file_stem()
+                .map_or_else(|| "Ride".to_owned(), |s| s.to_string_lossy().into_owned()),
+            start,
+            summary: summarize(&samples, self.profile.profile.ftp),
+        };
+        if let Err(error) = rides::save(fit, &record) {
+            warn!(%error, "cannot save rebuilt ride metadata");
+        }
+        Ok(record)
     }
 
     /// Processes everything that happened since the last call and advances the ride by `dt`.
@@ -413,7 +758,13 @@ impl App {
                     events.push(AppEvent::DevicesFound(infos));
                 }
                 JobResult::Route(Ok(imported)) => {
-                    let Imported { route, map, name } = *imported;
+                    let Imported {
+                        route,
+                        map,
+                        name,
+                        gpx,
+                    } = *imported;
+                    self.loaded = Some((name.clone(), gpx));
                     events.push(AppEvent::RouteLoaded(RouteSummary {
                         name,
                         length: route.length().0,
@@ -434,7 +785,10 @@ impl App {
                     });
                     self.world = Some(Arc::from(world));
                 }
-                JobResult::Scan(Err(message)) | JobResult::Route(Err(message)) => {
+                JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
+                JobResult::Scan(Err(message))
+                | JobResult::Route(Err(message))
+                | JobResult::CourseAdded(Err(message)) => {
                     events.push(AppEvent::Error(message));
                 }
             }
@@ -502,6 +856,41 @@ impl App {
             }
         }
     }
+}
+
+fn read_fit(fit: &Path) -> Result<(SystemTime, Vec<Sample>), String> {
+    let bytes = std::fs::read(fit).map_err(|e| format!("cannot read {}: {e}", fit.display()))?;
+    torqa_storage::decode_fit(&bytes).map_err(|e| format!("{}: {e}", fit.display()))
+}
+
+/// The profile chosen last, else the first one, else a new default profile (saved, so it shows
+/// up in the data directory to be edited).
+fn initial_profile(data_dir: &Path) -> StoredProfile {
+    let listed = profiles::list(data_dir);
+    if let Some(found) = profiles::active(data_dir)
+        .and_then(|id| listed.iter().find(|p| p.id == id).cloned())
+        .or_else(|| listed.into_iter().next())
+    {
+        return found;
+    }
+    let profile = Profile::default();
+    let id = profiles::new_id(data_dir, &profile.name);
+    if let Err(error) = profiles::save(data_dir, &id, &profile) {
+        warn!(%error, "cannot save the default profile");
+    }
+    StoredProfile { id, profile }
+}
+
+/// A free file name in `library` for a course called `name`.
+fn unique_course_path(library: &Path, name: &str) -> PathBuf {
+    let slug = torqa_storage::slug(name, "course");
+    let mut path = library.join(format!("{slug}.{}", course::EXTENSION));
+    let mut n = 1;
+    while path.exists() {
+        n += 1;
+        path = library.join(format!("{slug}-{n}.{}", course::EXTENSION));
+    }
+    path
 }
 
 #[cfg(test)]
@@ -576,7 +965,7 @@ mod tests {
             cadence: Rpm(90.0),
         }))
         .unwrap();
-        app.start_ride(RideConfig::default()).unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast).unwrap();
         run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
         // Ride three seconds of frames.
         for _ in 0..180 {
@@ -591,9 +980,85 @@ mod tests {
         let Some(AppEvent::RideSaved(path)) = events.first() else {
             panic!("not saved: {events:?}");
         };
-        assert!(path.starts_with(dir.join("data").join("rides")));
+        assert!(path.starts_with(dir.join("data/profiles/rider/rides")));
         assert!(std::fs::metadata(path).unwrap().len() > 100);
+
+        let history = app.history();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].fit, *path);
+        assert_eq!(history[0].record.route, "Test loop");
+        assert!(history[0].record.summary.distance.0 > 1.0);
+        let detail = app.ride_detail(path).unwrap();
+        assert!(detail.samples.len() > 1);
+        assert!(detail.power_zones.iter().sum::<Duration>() > Duration::ZERO);
+
+        // Without metadata, e.g. a FIT file copied in by hand, the history rebuilds it.
+        std::fs::remove_file(rides::metadata_path(path)).unwrap();
+        assert_eq!(app.history().len(), 1);
+        assert!(rides::metadata_path(path).exists());
+
+        app.delete_ride(path).unwrap();
+        assert_eq!(app.history().len(), 0);
         app.shutdown();
+    }
+
+    #[test]
+    fn a_saved_course_rides_on_another_machine() {
+        let dir = temp_dir("course");
+        let mut prepared = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
+        prepared.load_route(write_route(&dir), true);
+        assert!(matches!(
+            prepared.save_course(),
+            Err(AppError::CourseNotReady)
+        ));
+        run_until(&mut prepared, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        prepared.save_course().unwrap();
+        let events = run_until(&mut prepared, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(file)) = events.last() else {
+            unreachable!()
+        };
+        assert_eq!(*file, dir.join("a/data/courses/test-loop.tqc"));
+        let listed = prepared.courses();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].manifest.name, "Test loop");
+        assert!((listed[0].manifest.length_m - 400.0).abs() < 1.0);
+
+        let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
+        other.import_course(file.clone());
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(imported)) = events.last() else {
+            unreachable!()
+        };
+        assert!(imported.starts_with(dir.join("b/data/courses")));
+        other.open_course(imported.clone());
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+
+        let summary = events.iter().find_map(|e| match e {
+            AppEvent::RouteLoaded(summary) => Some(summary),
+            _ => None,
+        });
+        assert!(summary.is_some_and(|s| s.name == "Test loop" && (s.length - 400.0).abs() < 1.0));
+        assert!(other.world().is_some());
+    }
+
+    #[test]
+    fn saving_a_course_twice_keeps_both() {
+        let library = temp_dir("unique");
+        std::fs::write(library.join("lake-biel.tqc"), b"").unwrap();
+
+        assert_eq!(
+            unique_course_path(&library, "Lake Biel"),
+            library.join("lake-biel-2.tqc")
+        );
+        assert_eq!(
+            unique_course_path(&library, "Gurten / Bern!"),
+            library.join("gurten-bern.tqc")
+        );
+        assert_eq!(
+            unique_course_path(&library, "??"),
+            library.join("course.tqc")
+        );
     }
 
     #[test]
@@ -630,12 +1095,37 @@ mod tests {
     }
 
     #[test]
+    fn riders_have_their_own_profiles_and_rides() {
+        let dir = temp_dir("profiles");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(app.profile().id, "rider");
+
+        let anna = Profile {
+            name: "Anna".to_owned(),
+            ftp: Watts(280.0),
+            ..Profile::default()
+        };
+        let id = app.save_profile(None, anna.clone()).unwrap();
+
+        assert_eq!(app.profile().profile, anna);
+        let names: Vec<String> = app.profiles().into_iter().map(|p| p.profile.name).collect();
+        assert_eq!(names, ["Anna", "Rider"]);
+        // The choice survives a restart.
+        let restarted = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(restarted.profile().id, id);
+        assert!(matches!(
+            app.select_profile("nobody"),
+            Err(AppError::UnknownProfile)
+        ));
+    }
+
+    #[test]
     fn ride_needs_route_and_trainer() {
         let dir = temp_dir("needs");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
 
         assert!(matches!(
-            app.start_ride(RideConfig::default()),
+            app.start_ride(Percent(50.0), DescentMode::Coast),
             Err(AppError::NoRoute)
         ));
         assert!(matches!(

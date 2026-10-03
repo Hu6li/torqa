@@ -83,17 +83,27 @@ Built in rideable steps:
   tunnels in the elevation profile ([ADR 0008](adr/0008-vector-tiles.md))
 - [x] Step 3b — bridge decks and tunnel tubes, weather/time-of-day presets, animated avatar,
   minimap drawn from the OSM data (offline, no tile server)
+- [x] Step 3c — detailed terrain (Mapterhorn zoom 15, swissALTI3D in Switzerland), true
+  first-person camera. Aerial imagery (SWISSIMAGE) was tried and dropped: draped photos looked
+  worse than the land-cover shading
+- [ ] Step 3d — real 3D buildings in Switzerland (swissBUILDINGS3D)
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
-- [ ] `.tqc` format: write/read with format and generator versions
-- [ ] Course library in the data directory; list, import, save-as-course in the app
-- [ ] Rebuild outdated worlds from stored inputs
-- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file
+- [x] `.tqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
+  versions (ADR 0007 amendment)
+- [x] Course library in the data directory; list, import, save-as-course in the app
+- [x] Rebuild outdated worlds from stored inputs (format 1 always rebuilds offline)
+- [ ] Format 2: store the pre-built world for an instant start
+- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅
+  (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
 ### Phase 4 — Rider & history
-- [ ] Multi-profile, zones, customizable HUD
-- [ ] History & analysis, climbs/PRs
+- [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
+- [ ] Customizable HUD
+- [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
+  zones
+- [ ] Climbs and personal records
 - [ ] Ghosts & pacers, audio, units, i18n
 
 ### Phase 5 — Video mode

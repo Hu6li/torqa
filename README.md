@@ -44,6 +44,9 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
+To keep prepared routes for offline riding and sharing, see [docs/courses.md](docs/courses.md);
+rider profiles and zones are described in [docs/riders.md](docs/riders.md), the ride history in
+[docs/history.md](docs/history.md).
 
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.

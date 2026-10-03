@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use futures::{StreamExt, stream};
+use torqa_domain::files::UsedFiles;
 use tracing::{debug, info, warn};
 
 /// A position as (latitude, longitude) in degrees.
@@ -139,6 +140,7 @@ pub struct Osm {
     cache_dir: PathBuf,
     client: reqwest::Client,
     online: bool,
+    used: UsedFiles,
 }
 
 impl Osm {
@@ -161,6 +163,7 @@ impl Osm {
             cache_dir,
             client,
             online: true,
+            used: UsedFiles::default(),
         }
     }
 
@@ -168,6 +171,13 @@ impl Osm {
     #[must_use]
     pub fn offline(mut self) -> Self {
         self.online = false;
+        self
+    }
+
+    /// Records every cached tile file read or written in `used`.
+    #[must_use]
+    pub fn recording(mut self, used: UsedFiles) -> Self {
+        self.used = used;
         self
     }
 
@@ -243,7 +253,10 @@ impl Osm {
             .join(tile.0.to_string())
             .join(format!("{}.pbf", tile.1));
         match tokio::fs::read(&path).await {
-            Ok(bytes) => return Ok(bytes),
+            Ok(bytes) => {
+                self.used.record(&path);
+                return Ok(bytes);
+            }
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
             Err(_) => {}
         }
@@ -266,6 +279,7 @@ impl Osm {
         let partial = path.with_extension("part");
         tokio::fs::write(&partial, &bytes).await?;
         tokio::fs::rename(&partial, &path).await?;
+        self.used.record(&path);
         Ok(bytes)
     }
 

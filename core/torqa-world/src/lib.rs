@@ -57,6 +57,22 @@ pub struct MeshData {
     pub indices: Vec<u32>,
 }
 
+impl MeshData {
+    /// Adds another mesh's triangles.
+    ///
+    /// # Panics
+    /// If the combined mesh has more than `u32::MAX` vertices.
+    pub fn append(&mut self, other: MeshData) {
+        let offset = u32::try_from(self.vertices.len()).expect("mesh fits u32");
+        self.vertices.extend(other.vertices);
+        self.normals.extend(other.normals);
+        self.uvs.extend(other.uvs);
+        self.colors.extend(other.colors);
+        self.indices
+            .extend(other.indices.into_iter().map(|i| i + offset));
+    }
+}
+
 /// A square piece of the world.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerrainChunk {
@@ -106,7 +122,12 @@ pub async fn generate<M: ElevationModel>(
     let buildings = buildings_by_chunk(map, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH),
-        water: water::ribbons(&map.waterways, &projection, &road, model).await,
+        water: {
+            let mut water = water::surfaces(&map.areas, &projection, &road, model).await;
+            let rivers = water::ribbons(&map.waterways, &projection, &road, model).await;
+            water.append(rivers);
+            water
+        },
         structures: structures::build(&road, &projection, model).await,
         minimap: minimap::build(map, &projection, &road),
         ..World::default()

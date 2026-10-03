@@ -15,10 +15,10 @@ use torqa_app::view;
 use torqa_app::{App, AppEvent, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
-use torqa_domain::units::{Kilograms, Percent, Rpm, Watts};
-use torqa_physics::{DescentMode, RiderSetup};
+use torqa_domain::profile::{Profile, UnitSystem};
+use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Rpm, Watts};
+use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, LocalProjection};
-use torqa_session::RideConfig;
 
 struct TorqaExtension;
 
@@ -116,6 +116,10 @@ impl TorqaApp {
     #[signal]
     fn ride_saved(path: GString);
 
+    /// A course was saved or imported into the library.
+    #[signal]
+    fn course_added(path: GString);
+
     /// Something went wrong.
     #[signal]
     fn failed(message: GString);
@@ -135,6 +139,144 @@ impl TorqaApp {
         if let Some(app) = self.app.as_mut() {
             app.load_route(PathBuf::from(path.to_string()), offline);
         }
+    }
+
+    /// Opens a course file from the library or elsewhere; emits `route_loaded` like
+    /// `load_route`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn open_course(&mut self, path: GString) {
+        if let Some(app) = self.app.as_mut() {
+            app.open_course(PathBuf::from(path.to_string()));
+        }
+    }
+
+    /// Saves the loaded route as a course in the library (emits `course_added` or `failed`).
+    /// False until the world is ready.
+    #[func]
+    fn save_course(&mut self) -> bool {
+        self.command(App::save_course)
+    }
+
+    /// Copies a course file into the library (emits `course_added` or `failed`).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn import_course(&mut self, path: GString) {
+        if let Some(app) = self.app.as_mut() {
+            app.import_course(PathBuf::from(path.to_string()));
+        }
+    }
+
+    /// The courses in the library: `[{path, name, length_m, elevation_gain_m, max_grade}]`.
+    #[func]
+    fn courses(&self) -> VarArray {
+        let mut array = VarArray::new();
+        for course in self.app.as_ref().map(App::courses).unwrap_or_default() {
+            let path = course.path.display().to_string();
+            array.push(
+                &vdict! {
+                    "path" => path.as_str(),
+                    "name" => course.manifest.name.as_str(),
+                    "length_m" => course.manifest.length_m,
+                    "elevation_gain_m" => course.manifest.elevation_gain_m,
+                    "max_grade" => course.manifest.max_grade_percent,
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// The active rider's rides, newest first: `[{path, route, start_unix_s, elapsed_s,
+    /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
+    /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
+    /// max_heart_rate}]`; values the ride did not record are `null`.
+    #[func]
+    fn history(&self) -> VarArray {
+        let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+        let mut array = VarArray::new();
+        for entry in self.app.as_ref().map(App::history).unwrap_or_default() {
+            let s = &entry.record.summary;
+            let path = entry.fit.display().to_string();
+            let start = entry
+                .record
+                .start
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+            array.push(
+                &vdict! {
+                    "path" => path.as_str(),
+                    "route" => entry.record.route.as_str(),
+                    "start_unix_s" => start,
+                    "elapsed_s" => s.elapsed.as_secs_f64(),
+                    "distance_m" => s.distance.0,
+                    "elevation_gain_m" => s.elevation_gain.0,
+                    "avg_speed_kmh" => s.avg_speed.as_kilometers_per_hour(),
+                    "avg_power" => &optional(s.avg_power.map(|v| v.0)),
+                    "max_power" => &optional(s.max_power.map(|v| v.0)),
+                    "normalized_power" => &optional(s.normalized_power.map(|v| v.0)),
+                    "intensity_factor" => &optional(s.intensity_factor),
+                    "training_stress" => &optional(s.training_stress),
+                    "work_kj" => &optional(s.work.map(|w| w.0 / 1000.0)),
+                    "avg_cadence" => &optional(s.avg_cadence.map(|v| v.0)),
+                    "avg_heart_rate" => &optional(s.avg_heart_rate.map(|v| v.0)),
+                    "max_heart_rate" => &optional(s.max_heart_rate.map(|v| v.0)),
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
+    /// `speed_kmh`, `elevation_m` — and seconds per zone of the active rider in `power_zones`
+    /// (7) and `heart_rate_zones` (5). Empty (and emits `failed`) if the file cannot be read.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn ride_detail(&mut self, path: GString, max_points: i64) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let detail = match app.ride_detail(std::path::Path::new(&path.to_string())) {
+            Ok(detail) => detail,
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                return VarDictionary::new();
+            }
+        };
+        let max_points = usize::try_from(max_points).unwrap_or(500);
+        let series = |value: fn(&torqa_domain::recording::Sample) -> Option<f64>| {
+            view::ride_series(&detail.samples, max_points, value)
+                .into_iter()
+                .map(|(a, b)| vector2(a, b))
+                .collect::<PackedVector2Array>()
+        };
+        let seconds = |zones: &[Duration]| {
+            zones
+                .iter()
+                .map(Duration::as_secs_f64)
+                .collect::<PackedFloat64Array>()
+        };
+        vdict! {
+            "power" => &series(|s| s.power.map(|p| p.0)),
+            "heart_rate" => &series(|s| s.heart_rate.map(|h| h.0)),
+            "cadence" => &series(|s| s.cadence.map(|c| c.0)),
+            "speed_kmh" => &series(|s| Some(s.speed.as_kilometers_per_hour())),
+            "elevation_m" => &series(|s| Some(s.elevation.0)),
+            "power_zones" => &seconds(&detail.power_zones),
+            "heart_rate_zones" => &seconds(&detail.heart_rate_zones),
+        }
+    }
+
+    /// Deletes a ride from the history.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn delete_ride(&mut self, path: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        self.command(|app| app.delete_ride(&path))
     }
 
     /// Connects the simulated trainer.
@@ -165,22 +307,107 @@ impl TorqaApp {
         self.command(|app| app.connect_heart_rate(index))
     }
 
-    /// Starts riding the loaded route.
+    /// Starts riding the loaded route as the active rider.
     #[func]
-    fn start_ride(&mut self, difficulty: f64, flat_descents: bool, mass_kg: f64) -> bool {
-        let config = RideConfig {
-            setup: RiderSetup {
-                mass: Kilograms(mass_kg),
-                ..RiderSetup::default()
+    fn start_ride(&mut self, difficulty: f64, flat_descents: bool) -> bool {
+        let descent = if flat_descents {
+            DescentMode::Flat
+        } else {
+            DescentMode::Coast
+        };
+        self.command(|app| app.start_ride(Percent(difficulty), descent))
+    }
+
+    /// All riders: `[{id, name}]`, by name.
+    #[func]
+    fn profiles(&self) -> VarArray {
+        let mut array = VarArray::new();
+        for stored in self.app.as_ref().map(App::profiles).unwrap_or_default() {
+            array.push(
+                &vdict! {
+                    "id" => stored.id.as_str(),
+                    "name" => stored.profile.name.as_str(),
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// The active rider: `{id, name, rider_mass_kg, bike_mass_kg, ftp_w, max_heart_rate_bpm,
+    /// units}` with `units` either `"metric"` or `"imperial"`.
+    #[func]
+    fn profile(&self) -> VarDictionary {
+        let Some(stored) = self.app.as_ref().map(App::profile) else {
+            return VarDictionary::new();
+        };
+        let p = &stored.profile;
+        vdict! {
+            "id" => stored.id.as_str(),
+            "name" => p.name.as_str(),
+            "rider_mass_kg" => p.rider_mass.0,
+            "bike_mass_kg" => p.bike_mass.0,
+            "ftp_w" => p.ftp.0,
+            "max_heart_rate_bpm" => p.max_heart_rate.0,
+            "units" => match p.units {
+                UnitSystem::Metric => "metric",
+                UnitSystem::Imperial => "imperial",
             },
-            difficulty: Percent(difficulty),
-            descent: if flat_descents {
-                DescentMode::Flat
+        }
+    }
+
+    /// Switches to another rider.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn select_profile(&mut self, id: GString) -> bool {
+        self.command(|app| app.select_profile(&id.to_string()))
+    }
+
+    /// Saves a rider (a new one if `id` is empty) from a dictionary shaped like `profile()`
+    /// and makes it active; returns its id, or an empty string on failure (emits `failed`).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn save_profile(&mut self, id: GString, data: VarDictionary) -> GString {
+        let number = |key: &str, default: f64| {
+            data.get(key)
+                .and_then(|v| v.try_to::<f64>().ok())
+                .unwrap_or(default)
+        };
+        let defaults = Profile::default();
+        let profile = Profile {
+            name: data
+                .get("name")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .map_or(defaults.name, |n| n.to_string()),
+            rider_mass: Kilograms(number("rider_mass_kg", defaults.rider_mass.0)),
+            bike_mass: Kilograms(number("bike_mass_kg", defaults.bike_mass.0)),
+            ftp: Watts(number("ftp_w", defaults.ftp.0)),
+            max_heart_rate: BeatsPerMinute(number("max_heart_rate_bpm", defaults.max_heart_rate.0)),
+            units: if data
+                .get("units")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .is_some_and(|u| u == "imperial")
+            {
+                UnitSystem::Imperial
             } else {
-                DescentMode::Coast
+                UnitSystem::Metric
             },
         };
-        self.command(|app| app.start_ride(config))
+        let id = id.to_string();
+        let id = (!id.is_empty()).then_some(id);
+        let Some(app) = self.app.as_mut() else {
+            return GString::new();
+        };
+        match app.save_profile(id.as_deref(), profile) {
+            Ok(id) => GString::from(id.as_str()),
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                GString::new()
+            }
+        }
     }
 
     /// Ends the ride and saves it (emits `ride_saved` or `failed`).
@@ -195,7 +422,8 @@ impl TorqaApp {
     }
 
     /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
-    /// heading, power, cadence, heart_rate}`; sensor values are `null` when unknown. Empty when
+    /// heading, power, cadence, heart_rate, watts_per_kg, power_zone, heart_rate_zone}`; sensor
+    /// values and what derives from them are `null` when unknown. Empty when
     /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
     /// is the direction of travel in radians clockwise from north.
     #[func]
@@ -210,6 +438,9 @@ impl TorqaApp {
             LocalProjection::for_route(route).project(state.position.lat, state.position.lon);
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
         let t = state.telemetry;
+        let rider = &app.profile().profile;
+        let zone =
+            |value: Option<u8>| value.map_or_else(Variant::nil, |z| i64::from(z).to_variant());
         vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "distance_m" => state.distance.0,
@@ -223,6 +454,9 @@ impl TorqaApp {
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
             "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),
+            "watts_per_kg" => &optional(t.power.map(|p| rider.watts_per_kg(p))),
+            "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
+            "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
         }
     }
 
@@ -434,6 +668,12 @@ impl TorqaApp {
                 let path = path.display().to_string();
                 self.signals()
                     .ride_saved()
+                    .emit(&GString::from(path.as_str()));
+            }
+            AppEvent::CourseAdded(path) => {
+                let path = path.display().to_string();
+                self.signals()
+                    .course_added()
                     .emit(&GString::from(path.as_str()));
             }
             AppEvent::Error(message) => {

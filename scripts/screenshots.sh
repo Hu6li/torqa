@@ -12,7 +12,7 @@ output="$(SCREENSHOT_DIR="$root/screenshots" timeout 900 xvfb-run -a -s "-screen
     godot --path "$root/app" --rendering-driver vulkan --resolution 1600x900 \
     -s res://tests/screenshots.gd 2>&1)" || { echo "$output"; exit 1; }
 echo "$output" | grep -E "saved|world generated" || true
-if echo "$output" | grep -q "SCRIPT ERROR\|^ERROR:"; then
-    echo "$output" | grep -A2 "SCRIPT ERROR\|^ERROR:" >&2
+if echo "$output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
+    echo "$output" | grep -A2 "SCRIPT ERROR\|SHADER ERROR\|^ERROR:" >&2
     exit 1
 fi
