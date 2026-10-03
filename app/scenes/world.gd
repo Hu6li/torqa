@@ -54,7 +54,6 @@ var _heading: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _ghost: RiderAvatar = RiderAvatar.new()
-var _ambience: Ambience = Ambience.new()
 var _ghost_distance: float = 0.0
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
@@ -125,18 +124,7 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_environment.fog_density = fog
 	_environment.fog_light_color = sky.sky_horizon_color
 	_rain.emitting = weather == "Rain"
-	_ambience.set_conditions(time_of_day, weather)
 	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
-
-
-## Ambient sound loudness 0–1 for the next ride; 0 is silent.
-func set_sound_volume(volume: float) -> void:
-	_ambience.volume = volume
-
-
-## Stops the ambient sound, e.g. when leaving the ride.
-func silence() -> void:
-	_ambience.silence()
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.
@@ -159,7 +147,6 @@ func _ready() -> void:
 	_ghost.ghostly = true
 	_ghost.hide()
 	add_child(_ghost)
-	add_child(_ambience)
 	apply_conditions("Midday", "Clear")
 
 
@@ -253,7 +240,6 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	_rider.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north))
 	_place_ghost(state["ghost"], delta)
-	_ambience.update(delta, speed_kmh, state["surroundings"])
 
 	var target: Transform3D = _camera_target(_rider.transform)
 	# First person is fixed to the head; smoothing its position would trail behind the rider.

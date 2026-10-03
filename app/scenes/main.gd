@@ -28,7 +28,6 @@ func _on_ride_started() -> void:
 	var time: String = conditions["time"]
 	var weather: String = conditions["weather"]
 	_world.apply_conditions(time, weather)
-	_world.set_sound_volume(_setup.sound_volume())
 	_world.reset_view()
 	_world.show()
 	_ride.begin()
@@ -36,14 +35,12 @@ func _on_ride_started() -> void:
 
 
 func _on_ride_closed() -> void:
-	_world.silence()
 	_ride.hide()
 	_world.hide()
 	_setup.show()
 
 
 func _show_history() -> void:
-	_world.silence()
 	_ride.hide()
 	_world.hide()
 	_setup.hide()

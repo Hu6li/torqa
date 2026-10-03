@@ -111,8 +111,8 @@ Built in rideable steps:
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
-- [x] Audio: synthesised ambience from speed, weather and surroundings; music app control
-  (video sound with Phase 5) (R26)
+- [ ] Audio (R26): music app control ✅; ambient sound dropped for now (synthesised version
+  did not sound right); video sound with Phase 5
 - [ ] i18n (units done with profiles)
 
 ### Phase 5 — Video mode

@@ -833,13 +833,6 @@ impl App {
         });
     }
 
-    /// What surrounds the rider now, for the ambient sound.
-    #[must_use]
-    pub fn surroundings(&self) -> Option<torqa_world::Surroundings> {
-        let state = self.ride_state()?;
-        Some(self.world.as_ref()?.surroundings_at(state.distance))
-    }
-
     /// The ghost of the current ride, if any.
     #[must_use]
     pub fn ghost_state(&self) -> Option<GhostState> {

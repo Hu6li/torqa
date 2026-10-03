@@ -6,15 +6,7 @@ var _failed: bool = false
 
 
 func _initialize() -> void:
-	_run.call_deferred()
-
-
-func _run() -> void:
 	_hud_editor()
-	_ambience()
-	# Freed players release their playbacks on the audio server a frame later.
-	for i: int in range(3):
-		await process_frame
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -50,43 +42,7 @@ func _hud_editor() -> void:
 		editor.place(str(TorqaApp.hud_metrics()[i]["id"]), 99)
 	_check(editor.layout().size() == TorqaApp.hud_max_metrics(), "at most the maximum figures")
 	_check(not changes.is_empty(), "changes are reported")
-	editor.free()
-
-
-func _ambience() -> void:
-	var ambience: Ambience = Ambience.new()
-	root.add_child(ambience)
-	var players: Array[Node] = ambience.get_children()
-	var wind: AudioStreamPlayer = players[0]
-	var rain: AudioStreamPlayer = players[2]
-	var stream: AudioStreamWAV = wind.stream
-	_check(stream.data.size() == Ambience.MIX_RATE * 2 * 2, "two seconds of 16-bit noise")
-
-	ambience.set_conditions("Midday", "Clear")
-	for i: int in range(60):
-		ambience.update(0.05, 5.0, {"forest": 1.0, "water": 0.0, "town": 0.0})
-	var slow: float = wind.volume_db
-	for i: int in range(60):
-		ambience.update(0.05, 45.0, {"forest": 1.0, "water": 0.0, "town": 0.0})
-	_check(wind.volume_db > slow + 6.0, "wind grows with speed: %s → %s" % [slow, wind.volume_db])
-	_check(rain.volume_db < -40.0, "no rain in clear weather: %s" % rain.volume_db)
-	ambience.set_conditions("Midday", "Rain")
-	for i: int in range(60):
-		ambience.update(0.05, 45.0, null)
-	_check(rain.volume_db > -12.0, "rain when raining: %s" % rain.volume_db)
-	ambience.silence()
-	_check(not wind.playing and wind.volume_db <= -80.0, "silenced")
-
-	# For listening: the synthesised sounds as WAV files next to the screenshots, if asked for.
-	var out_dir: String = OS.get_environment("AMBIENCE_DIR")
-	if not out_dir.is_empty():
-		for i: int in range(players.size()):
-			var player: AudioStreamPlayer = players[i]
-			if player.stream is AudioStreamWAV:
-				(player.stream as AudioStreamWAV).save_to_wav(
-					out_dir.path_join("ambience-%s.wav" % player.bus.trim_prefix("Ambience"))
-				)
-	ambience.free()
+	editor.queue_free()
 
 
 ## The chips of a list column of the editor: 0 = shown, 2 = available.

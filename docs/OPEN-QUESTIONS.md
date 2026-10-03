@@ -6,11 +6,8 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Needs your ears / hardware (cannot be checked in the container)
 
-- **Ambient sound** (audio PR): synthesised, so I could only test levels, not how it sounds.
-  `AMBIENCE_DIR=/workspaces/torqa/screenshots godot --headless --path app -s
-  res://tests/ui_smoke.gd` (in the container) writes the raw wind/road/rain/water/bird sounds
-  as WAV files; in the app they are additionally filtered by speed. Too synthetic? Then we
-  should add recorded CC0 sounds (a new asset source to decide on).
+- **Ambient sound**: removed after review — the synthesised sounds did not convince. If we
+  want it back, it needs recorded sounds (CC0 sources) — a decision on an asset source.
 - **Music control on macOS**: Torqa runs AppleScript (`osascript`) to Spotify, else Apple
   Music; macOS asks once for permission ("Torqa wants to control Spotify"). The usage text is
   in the export preset now. Please try M / . / , during a ride with Spotify or Music playing.

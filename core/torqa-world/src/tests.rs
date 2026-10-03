@@ -232,46 +232,6 @@ async fn without_terrain_data_the_world_follows_the_road() {
 }
 
 #[tokio::test]
-async fn the_soundscape_knows_forest_and_water_beside_the_road() {
-    // A forest east of the road from 200 to 400 m, a lake west of it from 700 to 900 m.
-    let area = |cover, east| Area {
-        cover,
-        outer: vec![square(
-            east,
-            if cover == LandCover::Forest {
-                300.0
-            } else {
-                800.0
-            },
-            100.0,
-        )],
-        inner: vec![],
-    };
-    let world = world(&MapData {
-        areas: vec![
-            area(LandCover::Forest, 100.0),
-            area(LandCover::Water, -100.0),
-        ],
-        ..MapData::default()
-    })
-    .await;
-
-    let forest = world.surroundings_at(torqa_domain::units::Meters(300.0));
-    let lake = world.surroundings_at(torqa_domain::units::Meters(800.0));
-    let open = world.surroundings_at(torqa_domain::units::Meters(550.0));
-
-    // One side of the road is forest, the other is not.
-    assert!((forest.forest - 0.5).abs() < 1e-6, "{forest:?}");
-    assert!((lake.water - 0.5).abs() < 1e-6, "{lake:?}");
-    assert_eq!(open, Surroundings::default());
-    // Beyond the route: the finish's surroundings.
-    assert_eq!(
-        world.surroundings_at(torqa_domain::units::Meters(5000.0)),
-        *world.soundscape.last().unwrap()
-    );
-}
-
-#[tokio::test]
 async fn land_cover_colours_the_ground() {
     let forest = Area {
         cover: LandCover::Forest,

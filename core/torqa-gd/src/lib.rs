@@ -489,7 +489,7 @@ impl TorqaApp {
 
     /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
     /// heading, power, cadence, heart_rate, watts_per_kg, power_zone, heart_rate_zone, metrics,
-    /// surroundings {forest, water, town}, ghost, climb}`; sensor
+    /// ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when
     /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
     /// is the direction of travel in radians clockwise from north.
@@ -525,14 +525,6 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
-            "surroundings" => &app.surroundings().map_or_else(Variant::nil, |s| {
-                vdict! {
-                    "forest" => s.forest,
-                    "water" => s.water,
-                    "town" => s.town,
-                }
-                .to_variant()
-            }),
             "ghost" => &app.ghost_state().map_or_else(Variant::nil, |g| {
                 let at = route.position(g.distance);
                 let (gx, gy) = LocalProjection::for_route(route).project(at.lat, at.lon);

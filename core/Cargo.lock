@@ -2265,7 +2265,6 @@ name = "torqa-world"
 version = "0.1.0"
 dependencies = [
  "tokio",
- "torqa-domain",
  "torqa-osm",
  "torqa-routes",
  "tracing",
