@@ -12,6 +12,8 @@ const OUTLINE: Color = Color(1, 1, 1, 0.75)
 ## `(distance m, elevation m)` points.
 var _profile: PackedVector2Array = PackedVector2Array()
 var _rider_distance: float = 0.0
+## `[start m, end m, colour]` per climb.
+var _climbs: Array[Array] = []
 var _min_elevation: float = 0.0
 var _max_elevation: float = 0.0
 
@@ -29,6 +31,17 @@ func set_profile(profile: PackedVector2Array) -> void:
 		if missing > 0.0:
 			_min_elevation -= missing / 2.0
 			_max_elevation += missing / 2.0
+	queue_redraw()
+
+
+## Marks the route's climbs (`TorqaApp.climbs()["climbs"]`) with a band in their category colour.
+func set_climbs(climbs: Array) -> void:
+	_climbs.clear()
+	for climb: Dictionary in climbs:
+		var category: String = climb["category"]
+		_climbs.append(
+			[climb["start_m"], climb["end_m"], UiTheme.CLIMB_COLORS.get(category, Color.GRAY)]
+		)
 	queue_redraw()
 
 
@@ -56,6 +69,13 @@ func _draw() -> void:
 			PackedVector2Array()
 		)
 	draw_polyline(outline, OUTLINE, 1.5, true)
+	for climb: Array in _climbs:
+		var start_m: float = climb[0]
+		var end_m: float = climb[1]
+		var color: Color = climb[2]
+		var from: float = _to_screen(Vector2(start_m, 0.0)).x
+		var to: float = _to_screen(Vector2(end_m, 0.0)).x
+		draw_rect(Rect2(from, bottom - 3.0, to - from, 3.0), color)
 
 	var rider: Vector2 = _to_screen(Vector2(_rider_distance, _elevation_at(_rider_distance)))
 	draw_line(Vector2(rider.x, 0), Vector2(rider.x, bottom), Color(UiTheme.ACCENT, 0.9), 1.5)

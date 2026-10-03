@@ -112,6 +112,15 @@ impl TorqaApp {
     #[signal]
     fn ride_finished();
 
+    /// The rider reached the top of climb `index` (as in `climbs()`); `previous_best_s` is
+    /// −1 without an earlier time.
+    #[signal]
+    fn climb_completed(index: i64, elapsed_s: f64, previous_best_s: f64);
+
+    /// The rider finished the route; `previous_best_s` is −1 without an earlier time.
+    #[signal]
+    fn route_completed(elapsed_s: f64, previous_best_s: f64);
+
     /// The ride was saved as a FIT file.
     #[signal]
     fn ride_saved(path: GString);
@@ -221,6 +230,9 @@ impl TorqaApp {
                     "avg_cadence" => &optional(s.avg_cadence.map(|v| v.0)),
                     "avg_heart_rate" => &optional(s.avg_heart_rate.map(|v| v.0)),
                     "max_heart_rate" => &optional(s.max_heart_rate.map(|v| v.0)),
+                    "route_time_s" => &optional(entry.record.route_time.map(|t| t.as_secs_f64())),
+                    "route_record" => entry.route_record,
+                    "climbs" => &climb_times(&entry),
                 }
                 .to_variant(),
             );
@@ -457,6 +469,53 @@ impl TorqaApp {
             "watts_per_kg" => &optional(t.power.map(|p| rider.watts_per_kg(p))),
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
+            "climb" => &app.current_climb().map_or_else(Variant::nil, |c| {
+                let count = i64::try_from(route.climbs().len()).unwrap_or(0);
+                vdict! {
+                    "index" => i64::try_from(c.index).unwrap_or(0),
+                    "count" => count,
+                    "category" => c.climb.category.label(),
+                    "length_m" => c.climb.length().0,
+                    "ridden_m" => c.ridden.0,
+                    "grade" => c.climb.average_grade.0,
+                    "elapsed_s" => c.elapsed.as_secs_f64(),
+                    "best_s" => &optional(c.best.map(|b| b.as_secs_f64())),
+                }
+                .to_variant()
+            }),
+        }
+    }
+
+    /// The loaded route's climbs with the active rider's best times: `{route_best_s,
+    /// climbs: [{start_m, end_m, length_m, gain_m, grade, category, best_s}]}`; times are `null`
+    /// without an earlier ride.
+    #[func]
+    fn climbs(&self) -> VarDictionary {
+        let Some((app, route)) = self.app.as_ref().and_then(|a| a.route().map(|r| (a, r))) else {
+            return VarDictionary::new();
+        };
+        let optional = |value: Option<Duration>| {
+            value.map_or_else(Variant::nil, |v| v.as_secs_f64().to_variant())
+        };
+        let records = app.records_for(route);
+        let mut climbs = VarArray::new();
+        for (index, climb) in route.climbs().iter().enumerate() {
+            climbs.push(
+                &vdict! {
+                    "start_m" => climb.start.0,
+                    "end_m" => climb.end.0,
+                    "length_m" => climb.length().0,
+                    "gain_m" => climb.gain.0,
+                    "grade" => climb.average_grade.0,
+                    "category" => climb.category.label(),
+                    "best_s" => &optional(records.climbs.get(index).copied().flatten()),
+                }
+                .to_variant(),
+            );
+        }
+        vdict! {
+            "route_best_s" => &optional(records.route),
+            "climbs" => &climbs,
         }
     }
 
@@ -599,27 +658,7 @@ impl TorqaApp {
     fn emit(&mut self, event: AppEvent) {
         match event {
             AppEvent::DevicesFound(devices) => {
-                let mut array = VarArray::new();
-                for device in devices {
-                    let kind = match device.kind {
-                        DeviceKind::Trainer => "trainer",
-                        DeviceKind::HeartRateSensor => "heart_rate",
-                    };
-                    let rssi = device
-                        .rssi
-                        .map_or_else(Variant::nil, |rssi| i64::from(rssi).to_variant());
-                    let index = i64::try_from(device.index).unwrap_or(-1);
-                    array.push(
-                        &vdict! {
-                            "index" => index,
-                            "name" => device.name.as_str(),
-                            "kind" => kind,
-                            "rssi" => &rssi,
-                        }
-                        .to_variant(),
-                    );
-                }
-                self.signals().devices_found().emit(&array);
+                self.signals().devices_found().emit(&device_array(devices));
             }
             AppEvent::RouteLoaded(route) => {
                 let source = match route.elevation_source {
@@ -676,6 +715,26 @@ impl TorqaApp {
                     .course_added()
                     .emit(&GString::from(path.as_str()));
             }
+            AppEvent::ClimbCompleted {
+                index,
+                elapsed,
+                previous_best,
+            } => {
+                self.signals().climb_completed().emit(
+                    i64::try_from(index).unwrap_or(0),
+                    elapsed.as_secs_f64(),
+                    previous_best.map_or(-1.0, |b| b.as_secs_f64()),
+                );
+            }
+            AppEvent::RouteCompleted {
+                elapsed,
+                previous_best,
+            } => {
+                self.signals().route_completed().emit(
+                    elapsed.as_secs_f64(),
+                    previous_best.map_or(-1.0, |b| b.as_secs_f64()),
+                );
+            }
             AppEvent::Error(message) => {
                 self.signals()
                     .failed()
@@ -683,6 +742,53 @@ impl TorqaApp {
             }
         }
     }
+}
+
+/// Scanned devices as `[{index, name, kind, rssi}]` for `devices_found`.
+fn device_array(devices: Vec<torqa_app::DeviceInfo>) -> VarArray {
+    let mut array = VarArray::new();
+    for device in devices {
+        let kind = match device.kind {
+            DeviceKind::Trainer => "trainer",
+            DeviceKind::HeartRateSensor => "heart_rate",
+        };
+        let rssi = device
+            .rssi
+            .map_or_else(Variant::nil, |rssi| i64::from(rssi).to_variant());
+        let index = i64::try_from(device.index).unwrap_or(-1);
+        array.push(
+            &vdict! {
+                "index" => index,
+                "name" => device.name.as_str(),
+                "kind" => kind,
+                "rssi" => &rssi,
+            }
+            .to_variant(),
+        );
+    }
+    array
+}
+
+/// A history entry's climb times: `[{start_m, end_m, length_m, time_s, avg_power, record}]`.
+fn climb_times(entry: &torqa_app::HistoryEntry) -> VarArray {
+    let mut array = VarArray::new();
+    for (climb, record) in entry.record.climbs.iter().zip(&entry.climb_records) {
+        let power = climb
+            .avg_power
+            .map_or_else(Variant::nil, |p| p.0.to_variant());
+        array.push(
+            &vdict! {
+                "start_m" => climb.start.0,
+                "end_m" => climb.end.0,
+                "length_m" => climb.end.0 - climb.start.0,
+                "time_s" => climb.elapsed.as_secs_f64(),
+                "avg_power" => &power,
+                "record" => *record,
+            }
+            .to_variant(),
+        );
+    }
+    array
 }
 
 /// Converts mesh data to the arrays Godot's `ArrayMesh` takes; `colors` is empty when the

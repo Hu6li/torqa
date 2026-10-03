@@ -18,14 +18,16 @@ use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
 use torqa_domain::profile::Profile;
 use torqa_domain::recording::Sample;
-use torqa_domain::units::Percent;
+use torqa_domain::units::{Meters, Percent};
 use torqa_physics::{DescentMode, RiderSetup};
-use torqa_routes::{ElevationSource, Route};
-use torqa_session::analysis::{summarize, time_in_heart_rate_zones, time_in_power_zones};
+use torqa_routes::{Climb, ElevationSource, Route};
+use torqa_session::analysis::{
+    effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
+};
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
 use torqa_storage::profiles::{self, StoredProfile};
-use torqa_storage::rides::{self, RideRecord};
+use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
 use torqa_world::World;
 use tracing::warn;
@@ -110,6 +112,34 @@ pub struct HistoryEntry {
     pub fit: PathBuf,
     /// Route and summary.
     pub record: RideRecord,
+    /// Whether this is the rider's fastest time over the whole route.
+    pub route_record: bool,
+    /// Per entry of [`RideRecord::climbs`]: whether it is the rider's fastest time there.
+    pub climb_records: Vec<bool>,
+}
+
+/// The rider's best times on a route (R27).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RouteRecords {
+    /// Fastest time over the whole route.
+    pub route: Option<Duration>,
+    /// Fastest time per climb, in the order of [`Route::climbs`].
+    pub climbs: Vec<Option<Duration>>,
+}
+
+/// The climb the rider is on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClimbProgress {
+    /// Index in [`Route::climbs`].
+    pub index: usize,
+    /// The climb.
+    pub climb: Climb,
+    /// Distance ridden on it so far.
+    pub ridden: Meters,
+    /// Time on it so far.
+    pub elapsed: Duration,
+    /// The rider's best time on it.
+    pub best: Option<Duration>,
 }
 
 /// Everything recorded during one ride, for its analysis.
@@ -156,6 +186,22 @@ pub enum AppEvent {
     RideSaved(PathBuf),
     /// A course was saved or imported into the library.
     CourseAdded(PathBuf),
+    /// The rider reached the top of a climb.
+    ClimbCompleted {
+        /// Index in [`Route::climbs`].
+        index: usize,
+        /// Time from foot to top.
+        elapsed: Duration,
+        /// The best time before this ride, if any.
+        previous_best: Option<Duration>,
+    },
+    /// The rider reached the finish.
+    RouteCompleted {
+        /// Time for the whole route.
+        elapsed: Duration,
+        /// The best time before this ride, if any.
+        previous_best: Option<Duration>,
+    },
     /// A background operation failed.
     Error(String),
 }
@@ -198,6 +244,10 @@ struct ActiveRide {
     /// Wall-clock start, set when the trainer first connects.
     started: Option<SystemTime>,
     finished: bool,
+    /// Best times before this ride, to compare against.
+    records: RouteRecords,
+    /// The next climb whose top has not been reached.
+    next_climb: usize,
 }
 
 /// The application state.
@@ -554,10 +604,13 @@ impl App {
             difficulty,
             descent,
         };
+        let records = self.records_for(&route);
         self.ride = Some(ActiveRide {
             ride: Ride::new(route, config),
             started: None,
             finished: false,
+            records,
+            next_climb: 0,
         });
         Ok(())
     }
@@ -584,6 +637,10 @@ impl App {
                     .map_err(|e| format!("cannot save {}: {e}", path.display()))
             });
         if saved.is_ok() {
+            let route = active.ride.route();
+            let finished = samples
+                .last()
+                .is_some_and(|s| s.distance.0 >= route.length().0 - 1.0);
             let record = RideRecord {
                 route: self
                     .loaded
@@ -591,6 +648,23 @@ impl App {
                     .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
                 start,
                 summary: summarize(samples, self.profile.profile.ftp),
+                route_key: Some(route.key()),
+                route_time: finished
+                    .then(|| effort(samples, Meters(0.0), route.length()))
+                    .flatten()
+                    .map(|e| e.elapsed),
+                climbs: route
+                    .climbs()
+                    .iter()
+                    .filter_map(|c| {
+                        effort(samples, c.start, c.end).map(|e| ClimbTime {
+                            start: c.start,
+                            end: c.end,
+                            elapsed: e.elapsed,
+                            avg_power: e.avg_power,
+                        })
+                    })
+                    .collect(),
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
@@ -607,19 +681,93 @@ impl App {
     /// copied in by hand, are analysed once and get it written.
     #[must_use]
     pub fn history(&self) -> Vec<HistoryEntry> {
-        rides::fit_files(&self.rides_dir())
+        let records: Vec<(PathBuf, RideRecord)> = rides::fit_files(&self.rides_dir())
             .into_iter()
             .filter_map(|fit| {
                 let record = rides::load(&fit).or_else(|_| self.rebuild_metadata(&fit));
                 match record {
-                    Ok(record) => Some(HistoryEntry { fit, record }),
+                    Ok(record) => Some((fit, record)),
                     Err(error) => {
                         warn!(path = %fit.display(), %error, "skipping ride");
                         None
                     }
                 }
             })
+            .collect();
+        let all: Vec<&RideRecord> = records.iter().map(|(_, r)| r).collect();
+        records
+            .iter()
+            .map(|(fit, record)| {
+                let same_route: Vec<&RideRecord> = all
+                    .iter()
+                    .copied()
+                    .filter(|other| {
+                        other.route_key.is_some() && other.route_key == record.route_key
+                    })
+                    .collect();
+                let best_route = same_route.iter().filter_map(|r| r.route_time).min();
+                HistoryEntry {
+                    fit: fit.clone(),
+                    route_record: record.route_time.is_some() && record.route_time == best_route,
+                    climb_records: record
+                        .climbs
+                        .iter()
+                        .map(|climb| Some(climb.elapsed) == best_climb_time(&same_route, climb))
+                        .collect(),
+                    record: record.clone(),
+                }
+            })
             .collect()
+    }
+
+    /// The active rider's best times on `route`, from earlier rides on the same course.
+    #[must_use]
+    pub fn records_for(&self, route: &Route) -> RouteRecords {
+        let key = route.key();
+        let history = self.history();
+        let same_route: Vec<&RideRecord> = history
+            .iter()
+            .map(|entry| &entry.record)
+            .filter(|record| record.route_key.as_deref() == Some(key.as_str()))
+            .collect();
+        RouteRecords {
+            route: same_route.iter().filter_map(|r| r.route_time).min(),
+            climbs: route
+                .climbs()
+                .iter()
+                .map(|c| {
+                    let probe = ClimbTime {
+                        start: c.start,
+                        end: c.end,
+                        elapsed: Duration::ZERO,
+                        avg_power: None,
+                    };
+                    best_climb_time(&same_route, &probe)
+                })
+                .collect(),
+        }
+    }
+
+    /// The climb the rider is on now, if any.
+    #[must_use]
+    pub fn current_climb(&self) -> Option<ClimbProgress> {
+        let active = self.ride.as_ref()?;
+        let state = active.ride.state();
+        let (index, climb) = active
+            .ride
+            .route()
+            .climbs()
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.start.0 <= state.distance.0 && state.distance.0 < c.end.0)?;
+        let started = time_at(active.ride.samples(), climb.start).unwrap_or(state.elapsed);
+        Some(ClimbProgress {
+            index,
+            climb: *climb,
+            ridden: Meters(state.distance.0 - climb.start.0),
+            elapsed: state.elapsed.saturating_sub(started),
+            best: active.records.climbs.get(index).copied().flatten(),
+        })
     }
 
     /// The recorded data of one ride, with zones of the active rider.
@@ -659,6 +807,10 @@ impl App {
                 .map_or_else(|| "Ride".to_owned(), |s| s.to_string_lossy().into_owned()),
             start,
             summary: summarize(&samples, self.profile.profile.ftp),
+            // The route is unknown, so this ride counts towards no records.
+            route_key: None,
+            route_time: None,
+            climbs: Vec::new(),
         };
         if let Err(error) = rides::save(fit, &record) {
             warn!(%error, "cannot save rebuilt ride metadata");
@@ -683,8 +835,29 @@ impl App {
             {
                 warn!(%error, "cannot control trainer");
             }
+            // Samples arrive once a second, so a climb is timed once a sample lies past its top.
+            let climbs = active.ride.route().climbs();
+            while let Some(climb) = climbs.get(active.next_climb)
+                && let Some(done) = effort(active.ride.samples(), climb.start, climb.end)
+            {
+                events.push(AppEvent::ClimbCompleted {
+                    index: active.next_climb,
+                    elapsed: done.elapsed,
+                    previous_best: active
+                        .records
+                        .climbs
+                        .get(active.next_climb)
+                        .copied()
+                        .flatten(),
+                });
+                active.next_climb += 1;
+            }
             if active.ride.is_finished() {
                 active.finished = true;
+                events.push(AppEvent::RouteCompleted {
+                    elapsed: active.ride.state().elapsed,
+                    previous_best: active.records.route,
+                });
                 events.push(AppEvent::RideFinished);
             }
         }
@@ -856,6 +1029,16 @@ impl App {
             }
         }
     }
+}
+
+/// The fastest time on `climb` among `records`.
+fn best_climb_time(records: &[&RideRecord], climb: &ClimbTime) -> Option<Duration> {
+    records
+        .iter()
+        .flat_map(|r| r.climbs.iter())
+        .filter(|other| other.same_climb(climb))
+        .map(|other| other.elapsed)
+        .min()
 }
 
 fn read_fit(fit: &Path) -> Result<(SystemTime, Vec<Sample>), String> {
@@ -1092,6 +1275,92 @@ mod tests {
             });
             assert!(finished, "{stage:?} not completed: {events:?}");
         }
+    }
+
+    /// 300 m flat, 600 m at 6 %, 300 m flat, due north.
+    fn write_climb_route(dir: &std::path::Path) -> PathBuf {
+        let mut xml = String::from("<gpx><trk><name>Hill</name><trkseg>");
+        for i in 0..=120 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let ele = 500.0 + f64::from((i - 30).clamp(0, 60)) * 0.6;
+            let _ = write!(
+                xml,
+                r#"<trkpt lat="{lat}" lon="7"><ele>{ele}</ele></trkpt>"#
+            );
+        }
+        xml.push_str("</trkseg></trk></gpx>");
+        let path = dir.join("hill.gpx");
+        std::fs::write(&path, xml).unwrap();
+        path
+    }
+
+    /// Rides the loaded route with the fake trainer in fast-forward and saves it.
+    fn ride_to_the_finish(app: &mut App) -> Vec<AppEvent> {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast).unwrap();
+        run_until(app, |e| matches!(e, AppEvent::Connected(_)));
+        let mut events = Vec::new();
+        for _ in 0..2000 {
+            std::thread::sleep(Duration::from_millis(2));
+            events.extend(app.update(Duration::from_millis(500)));
+            if events.iter().any(|e| matches!(e, AppEvent::RideFinished)) {
+                app.finish_ride();
+                return events;
+            }
+        }
+        panic!("did not finish: {events:?}");
+    }
+
+    #[test]
+    fn climbs_and_routes_are_timed_against_the_riders_records() {
+        let dir = temp_dir("records");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_climb_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert_eq!(app.route().unwrap().climbs().len(), 1);
+
+        let first = ride_to_the_finish(&mut app);
+        let climb = first.iter().find_map(|e| match e {
+            AppEvent::ClimbCompleted {
+                index: 0,
+                elapsed,
+                previous_best: None,
+            } => Some(*elapsed),
+            _ => None,
+        });
+        assert!(climb.is_some_and(|t| t > Duration::ZERO), "{first:?}");
+        assert!(first.iter().any(|e| matches!(
+            e,
+            AppEvent::RouteCompleted {
+                previous_best: None,
+                ..
+            }
+        )));
+
+        let records = app.records_for(app.route().unwrap());
+        assert_eq!(records.climbs, [climb]);
+        assert!(records.route.is_some());
+
+        // Riding it again compares with the first ride.
+        std::thread::sleep(Duration::from_millis(1100)); // a new FIT file name
+        let second = ride_to_the_finish(&mut app);
+        assert!(second.iter().any(|e| matches!(
+            e,
+            AppEvent::ClimbCompleted {
+                previous_best: Some(best),
+                ..
+            } if Some(*best) == climb
+        )));
+        let history = app.history();
+        assert_eq!(history.len(), 2);
+        // Each record belongs to a ride; equal times would count for both.
+        assert!(history.iter().any(|h| h.route_record));
+        assert!(history.iter().any(|h| h.climb_records == [true]));
+        app.shutdown();
     }
 
     #[test]

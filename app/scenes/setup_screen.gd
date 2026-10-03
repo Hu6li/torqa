@@ -210,8 +210,32 @@ func _on_route_loaded(route: Dictionary) -> void:
 		"%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
 		% [route_name, length_km, gain_m, max_grade, source]
 	)
+	_route_text += _climbs_text()
 	_route_label.text = _route_text + "\nBuilding the 3D world…"
 	_update_start_button()
+
+
+## "Climbs: Cat 3 2.4 km at 8.1 % (best 12:34) · …", or nothing for a route without climbs.
+func _climbs_text() -> String:
+	var info: Dictionary = _torqa.climbs()
+	var climbs: Array = info.get("climbs", [])
+	if climbs.is_empty():
+		return ""
+	var parts: PackedStringArray = PackedStringArray()
+	for climb: Dictionary in climbs:
+		var category: String = climb["category"]
+		var length_km: float = climb["length_m"] / 1000.0
+		var grade: float = climb["grade"]
+		var part: String = "%s %.1f km at %.1f %%" % [category, length_km, grade]
+		if climb["best_s"] != null:
+			var best: float = climb["best_s"]
+			part += " (best %s)" % UiTheme.duration(best)
+		parts.append(part)
+	var text: String = "\nClimbs: " + " · ".join(parts)
+	if info["route_best_s"] != null:
+		var route_best: float = info["route_best_s"]
+		text += "\nYour best time on this route: %s" % UiTheme.duration(route_best)
+	return text
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:
