@@ -143,6 +143,11 @@ static func panel() -> StyleBoxFlat:
 	return box
 
 
+## The main action of a screen (e.g. Ride), in the accent colour.
+static func accent_button() -> StyleBoxFlat:
+	return _box(ACCENT, 12, 18, 10)
+
+
 ## A button background for use over the 3D scene, as dark as the HUD panels.
 static func hud_button() -> StyleBoxFlat:
 	return _box(PANEL, 10, 14, 9)

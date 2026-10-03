@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scenes/main.gd" id="1_main"]
-[ext_resource type="PackedScene" path="res://scenes/setup_screen.tscn" id="2_setup"]
+[ext_resource type="PackedScene" path="res://scenes/start_page.tscn" id="2_setup"]
 [ext_resource type="PackedScene" path="res://scenes/ride_screen.tscn" id="3_ride"]
 [ext_resource type="PackedScene" path="res://scenes/world.tscn" id="4_world"]
 [ext_resource type="PackedScene" path="res://scenes/history_screen.tscn" id="5_history"]
@@ -20,7 +20,7 @@ script = ExtResource("1_main")
 [node name="World" parent="." instance=ExtResource("4_world")]
 visible = false
 
-[node name="SetupScreen" parent="." instance=ExtResource("2_setup")]
+[node name="StartPage" parent="." instance=ExtResource("2_setup")]
 layout_mode = 1
 
 [node name="RideScreen" parent="." instance=ExtResource("3_ride")]

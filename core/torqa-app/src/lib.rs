@@ -42,6 +42,9 @@ const ATTRIBUTION: [&str; 3] = [
     "Terrain: AWS Terrain Tiles",
 ];
 
+/// Points of the thinned track and profile stored with a course for its card.
+const PREVIEW_POINTS: usize = 200;
+
 /// How long the reconnect at start scans for the devices used last.
 const RECONNECT_SCAN: Duration = Duration::from_secs(6);
 
@@ -309,6 +312,8 @@ pub struct App {
     sensor_id: Option<String>,
     /// The running scan was started to reconnect the remembered devices.
     reconnecting: bool,
+    /// The loaded route came from a course file (and is in the library already).
+    from_course: bool,
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
@@ -345,6 +350,7 @@ impl App {
             trainer_id: None,
             sensor_id: None,
             reconnecting: false,
+            from_course: false,
             route: None,
             world: None,
             offline: false,
@@ -454,6 +460,7 @@ impl App {
     /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`].
     pub fn open_course(&mut self, path: PathBuf) {
         let used = self.start_loading(true);
+        self.from_course = true;
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
@@ -510,7 +517,19 @@ impl App {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
             attribution: ATTRIBUTION.map(ToOwned::to_owned).to_vec(),
+            route_key: Some(route.key()),
+            track: thin(&view::track(route, PREVIEW_POINTS)),
+            profile: thin(&view::elevation_profile(route, PREVIEW_POINTS)),
         };
+        // Preparing the same course again must not fill the library with copies.
+        if let Some(existing) = self
+            .courses()
+            .into_iter()
+            .find(|c| c.manifest.route_key == manifest.route_key)
+        {
+            let _ = self.jobs_tx.send(JobResult::CourseAdded(Ok(existing.path)));
+            return Ok(());
+        }
         let gpx = gpx.clone();
         let data = self.used.paths();
         let cache = self.cache_dir.clone();
@@ -579,6 +598,8 @@ impl App {
     /// Forgets the current route and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
         self.offline = offline;
+        // Opening a course sets this; a GPX import goes into the library when ready.
+        self.from_course = false;
         self.world = None;
         self.route = None;
         self.loaded = None;
@@ -1247,6 +1268,12 @@ impl App {
                         fallback_samples: world.fallback_samples,
                     });
                     self.world = Some(Arc::from(world));
+                    // A prepared GPX goes into the course library (R39).
+                    if !self.from_course
+                        && let Err(error) = self.save_course()
+                    {
+                        warn!(%error, "cannot add the course to the library");
+                    }
                 }
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
                 JobResult::Scan(Err(message)) if std::mem::take(&mut self.reconnecting) => {
@@ -1324,6 +1351,12 @@ impl App {
             }
         }
     }
+}
+
+/// Single-precision points for course previews, which need no more precision.
+#[allow(clippy::cast_possible_truncation)] // metres in a course fit f32 easily
+fn thin(points: &[(f64, f64)]) -> Vec<[f32; 2]> {
+    points.iter().map(|&(a, b)| [a as f32, b as f32]).collect()
 }
 
 /// The fastest time on `climb` among `records`.
@@ -1542,6 +1575,10 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].manifest.name, "Test loop");
         assert!((listed[0].manifest.length_m - 400.0).abs() < 1.0);
+        // Prepared once, listed once — the import added it, saving again found it — and with a
+        // preview for its card.
+        assert!(listed[0].manifest.track.len() > 2);
+        assert!(listed[0].manifest.profile.len() > 2);
 
         let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
         other.import_course(file.clone());

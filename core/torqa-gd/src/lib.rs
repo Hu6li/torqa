@@ -190,7 +190,9 @@ impl TorqaApp {
         }
     }
 
-    /// The courses in the library: `[{path, name, length_m, elevation_gain_m, max_grade}]`.
+    /// The courses in the library: `[{path, name, length_m, elevation_gain_m, max_grade,
+    /// created_unix_s, track, profile}]`; `track` (metres east/north of the start) and
+    /// `profile` (distance, elevation) are thinned for cards and empty for older courses.
     #[func]
     fn courses(&self) -> VarArray {
         let mut array = VarArray::new();
@@ -203,6 +205,9 @@ impl TorqaApp {
                     "length_m" => course.manifest.length_m,
                     "elevation_gain_m" => course.manifest.elevation_gain_m,
                     "max_grade" => course.manifest.max_grade_percent,
+                    "created_unix_s" => i64::try_from(course.manifest.created_unix_s).unwrap_or(0),
+                    "track" => &points(&course.manifest.track),
+                    "profile" => &points(&course.manifest.profile),
                 }
                 .to_variant(),
             );
@@ -955,6 +960,11 @@ fn hud_values(app: &App) -> VarDictionary {
         values.set(id, &value.map_or_else(Variant::nil, |v| v.to_variant()));
     }
     values
+}
+
+/// Preview points as Godot vectors.
+fn points(points: &[[f32; 2]]) -> PackedVector2Array {
+    points.iter().map(|&[x, y]| Vector2::new(x, y)).collect()
 }
 
 /// Scanned devices as `[{index, name, kind, rssi}]` for `devices_found`.

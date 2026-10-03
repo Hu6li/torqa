@@ -5,7 +5,7 @@ the rider's folder, `profiles/<rider>/rides/` in the Torqa data directory, toget
 JSON file holding its summary.
 
 After a ride, its **summary** shows the same figures as the history: give the ride a name,
-keep it with **Done** or **Discard ride**. Afterwards it is in **History** (setup screen).
+keep it with **Done** or **Discard ride**. Afterwards it is in the **History** tab.
 
 **Names**: a ride is called after its course and date (e.g. *Gurtenstrasse · Sat 3 Oct*)
 until you name it — click the title to rename, in the summary or later in the history. Names
@@ -35,7 +35,7 @@ Torqa finds the climbs of every route automatically — rises of at least 3 % on
 *Cat 4* (from 8 000, e.g. 2 km at 4 %), *Cat 3* (16 000), *Cat 2* (32 000), *Cat 1* (64 000) and
 *HC* (80 000, e.g. Alpe d'Huez).
 
-- After loading a route, the setup screen lists its climbs with your best times there.
+- A course page lists its climbs with your best times there.
 - While riding, the elevation profile marks the climbs in their category colour; on a climb a
   panel shows the category, distance to the top, gradient, your time so far and your best.
 - At the top of each climb and at the finish you see your time — and whether it is a new

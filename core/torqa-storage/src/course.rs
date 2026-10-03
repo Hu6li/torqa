@@ -74,6 +74,16 @@ pub struct Manifest {
     pub created_unix_s: u64,
     /// Credits the bundled data requires, to show wherever the course is used.
     pub attribution: Vec<String>,
+    /// Fingerprint of the route, to find the rider's records and avoid duplicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_key: Option<String>,
+    /// Thinned track for course cards (R37): metres east/north of the start. Optional fields
+    /// like this one are read as empty by older Torqa versions and need no format bump.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track: Vec<[f32; 2]>,
+    /// Thinned elevation profile for course cards: (distance m, elevation m).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profile: Vec<[f32; 2]>,
 }
 
 /// A course read back from its file.
@@ -230,6 +240,9 @@ mod tests {
             max_grade_percent: 6.5,
             created_unix_s: 1_790_000_000,
             attribution: vec!["Terrain: Mapterhorn (CC BY 4.0)".to_owned()],
+            route_key: Some("0123456789abcdef".to_owned()),
+            track: vec![[0.0, 0.0], [10.0, 250.5]],
+            profile: vec![[0.0, 500.0], [12_345.0, 620.0]],
         }
     }
 

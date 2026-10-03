@@ -1,7 +1,7 @@
 # Riders
 
 Each rider has a profile: name, weight, bike weight, FTP, maximum heart rate and units
-(metric or imperial). Pick the rider on the setup screen before a ride; *Edit…* changes the
+(metric or imperial). Pick the rider in the **Profile** tab; *Edit…* changes the
 profile, *New rider…* in the list adds one.
 
 - **Weight + bike weight** set how hard climbs are and how fast you roll.

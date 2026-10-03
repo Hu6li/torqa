@@ -22,20 +22,8 @@ msgstr "%s zurück"
 msgid "%s to go  ·  %.1f %%"
 msgstr "noch %s  ·  %.1f %%"
 
-msgid "%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
-msgstr "%s — %.1f km, %.0f Höhenmeter, steilste Stelle %.0f %% (Höhen aus %s)"
-
 msgid "(best %s)"
 msgstr "(Bestzeit %s)"
-
-msgid "(no terrain data in places: flat there — load once while online)"
-msgstr "(stellenweise keine Geländedaten: dort flach — einmal online laden)"
-
-msgid "3D world ready"
-msgstr "3D-Welt bereit"
-
-msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
-msgstr "Ein Geisterfahrer auf der Strasse: deine Bestzeit, ein Tempomacher oder eine aufgezeichnete Fahrt"
 
 msgid "A recorded activity…"
 msgstr "Eine aufgezeichnete Fahrt …"
@@ -69,12 +57,6 @@ msgstr "Zurück"
 
 msgid "Bike weight"
 msgstr "Velogewicht"
-
-msgid "Building 3D world"
-msgstr "3D-Welt wird gebaut"
-
-msgid "Building the 3D world…"
-msgstr "3D-Welt wird gebaut …"
 
 msgid "Cadence"
 msgstr "Trittfrequenz"
@@ -118,23 +100,11 @@ msgstr "Aufstieg"
 msgid "Climbing"
 msgstr "Höhenmeter"
 
-msgid "Climbs: %s"
-msgstr "Anstiege: %s"
-
 msgid "Close"
 msgstr "Nah"
 
 msgid "Cloudy"
 msgstr "Bewölkt"
-
-msgid "Correcting elevations"
-msgstr "Höhen werden korrigiert"
-
-msgid "Course added to your library: %s"
-msgstr "Strecke zur Bibliothek hinzugefügt: %s"
-
-msgid "Courses saved in your library ride offline"
-msgstr "Gespeicherte Strecken fahren auch offline"
 
 msgid "Dec"
 msgstr "Dez."
@@ -147,9 +117,6 @@ msgstr "Abfahrten"
 
 msgid "Distance"
 msgstr "Distanz"
-
-msgid "Downloading map data"
-msgstr "Kartendaten werden geladen"
 
 msgid "Drone"
 msgstr "Drohne"
@@ -193,9 +160,6 @@ msgstr "%d Gerät(e) gefunden"
 msgid "Fri"
 msgstr "Fr"
 
-msgid "GPX file"
-msgstr "GPX-Datei"
-
 msgid "Grade"
 msgstr "Steigung"
 
@@ -237,9 +201,6 @@ msgstr "Juli"
 
 msgid "Jun"
 msgstr "Juni"
-
-msgid "Keep this route with its map and terrain, to ride it offline or share it"
-msgstr "Strecke mit Karte und Gelände behalten, um sie offline zu fahren oder zu teilen"
 
 msgid "Language"
 msgstr "Sprache"
@@ -307,12 +268,6 @@ msgstr "Nächste 500 m"
 msgid "No rides yet. Finished rides appear here."
 msgstr "Noch keine Fahrten. Beendete Fahrten erscheinen hier."
 
-msgid "No route loaded"
-msgstr "Keine Strecke geladen"
-
-msgid "No saved courses yet"
-msgstr "Noch keine gespeicherten Strecken"
-
 msgid "Nobody"
 msgstr "Niemanden"
 
@@ -334,14 +289,8 @@ msgstr "Nov."
 msgid "Oct"
 msgstr "Okt."
 
-msgid "Open"
-msgstr "Öffnen"
-
 msgid "Open a GPX route or Torqa course"
 msgstr "GPX-Strecke oder Torqa-Strecke öffnen"
-
-msgid "Open route or course…"
-msgstr "Strecke öffnen …"
 
 msgid "Pacer at W/kg…"
 msgstr "Tempomacher mit W/kg …"
@@ -376,9 +325,6 @@ msgstr "Gegen eine aufgezeichnete Fahrt fahren"
 msgid "Rain"
 msgstr "Regen"
 
-msgid "Reading route"
-msgstr "Strecke wird gelesen"
-
 msgid "Recovery"
 msgstr "Erholung"
 
@@ -400,17 +346,8 @@ msgstr "Sa"
 msgid "Save"
 msgstr "Speichern"
 
-msgid "Save as course"
-msgstr "Als Strecke speichern"
-
 msgid "Saved %s"
 msgstr "%s gespeichert"
-
-msgid "Saved courses (%d)…"
-msgstr "Gespeicherte Strecken (%d) …"
-
-msgid "Saving course…"
-msgstr "Strecke wird gespeichert …"
 
 msgid "Scan for devices"
 msgstr "Geräte suchen"
@@ -426,9 +363,6 @@ msgstr "Anzeigen"
 
 msgid "Speed"
 msgstr "Tempo"
-
-msgid "Start ride"
-msgstr "Losfahren"
 
 msgid "Sun"
 msgstr "So"
@@ -505,9 +439,6 @@ msgstr "Mi"
 msgid "Weight"
 msgstr "Gewicht"
 
-msgid "Weight, FTP and heart rate come from the rider's profile"
-msgstr "Gewicht, FTP und Puls stammen aus dem Profil der Person"
-
 msgid "Whole route"
 msgstr "Ganze Strecke"
 
@@ -540,9 +471,6 @@ msgstr "neue Bestzeit, %s schneller!"
 
 msgid "points"
 msgstr "Punkte"
-
-msgid "terrain model"
-msgstr "Geländemodell"
 
 msgid "tiles"
 msgstr "Kacheln"
@@ -621,3 +549,39 @@ msgstr "Verbinde deine Geräte …"
 
 msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
 msgstr "%s nicht gefunden — durch Treten wecken (oder Brustgurt anziehen), dann suchen."
+
+msgid "%d W  ·  %.1f W/kg"
+msgstr "%d W  ·  %.1f W/kg"
+
+msgid "%d bpm"
+msgstr "%d bpm"
+
+msgid "%s  ·  %s climbing  ·  max %d %%"
+msgstr "%s  ·  %s Aufstieg  ·  max. %d %%"
+
+msgid "Courses"
+msgstr "Strecken"
+
+msgid "Devices"
+msgstr "Geräte"
+
+msgid "Devices & Settings"
+msgstr "Geräte & Einstellungen"
+
+msgid "Import GPX or course…"
+msgstr "GPX oder Strecke importieren …"
+
+msgid "No courses yet. Import a GPX route to prepare your first course."
+msgstr "Noch keine Strecken. Importiere eine GPX-Route, um deine erste Strecke vorzubereiten."
+
+msgid "No trainer connected — choose one under Devices & Settings."
+msgstr "Kein Rollentrainer verbunden — wähle einen unter Geräte & Einstellungen."
+
+msgid "Ride options"
+msgstr "Fahrt-Optionen"
+
+msgid "Your courses"
+msgstr "Deine Strecken"
+
+msgid "← Courses"
+msgstr "← Strecken"
