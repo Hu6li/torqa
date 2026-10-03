@@ -2,7 +2,7 @@
 
 Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions), extended
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
-settings, ride names and per-rider HUD layouts (R48–R51).
+settings, ride names, per-rider HUD layouts and UI quality (R48–R53).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -105,6 +105,8 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R49 | The in-ride dialog also ends the ride: **finish and save** (→ summary, R42) or **abort without saving**, the latter after a confirmation. |
 | R50 | **Ride names**: every ride in the history has a name, defaulting to the course name and date. It can be set on the summary screen (R42) and renamed later in the history; it is used as the activity name in FIT export and uploads. Files on disk keep stable identifiers, so renaming is sync-safe (ADR 0002). |
 | R51 | **HUD per rider**: each rider profile has its own HUD layout (R23), editable in the rider's profile settings. The editor shows a separate HUD preview, and widgets are added, removed and **reordered by drag and drop**. It is the same editor as the HUD section of the in-ride settings dialog (R48), so changes made during a ride are saved to the rider's layout. |
+| R52 | **Modern, coherent UI** in a *sleek minimal* style: slim typography, thin translucent panels, generous spacing, few controls visible at once; during a ride the 3D view dominates. All screens and dialogs share one design system (type scale, spacing, colours, corner radii, control styles); no unstyled stock widgets. Course summaries (course cards, detail page, the loaded-course panel) are designed as polished cards with a clear hierarchy of name, path card (R37), key stats and elevation profile. |
+| R53 | **Stable, responsive layouts**: loading a course or other content never changes font sizes or lets the layout grow or jump. Resizable windows and dialogs (e.g. rider settings) reflow and resize their inputs with the window instead of leaving them fixed in the middle. Layouts work from 1280×720 up to 4K / TV (R25). |
 
 ## Graphics
 

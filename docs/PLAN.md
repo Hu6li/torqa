@@ -122,7 +122,7 @@ Built in rideable steps:
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds, logo
 
-### Phase 8 — Start page & course gallery (R36–R42, R48–R51)
+### Phase 8 — Start page & course gallery (R36–R42, R48–R53)
 - [ ] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
 - [ ] Path card: route in `#2EB0FF` on black with elevation strip
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
@@ -132,6 +132,8 @@ Built in rideable steps:
 - [ ] Shared settings dialog in the ride view and course detail page, reusing the HUD editor
   (R51); finish & save or abort without saving (R48–R49)
 - [ ] Ride names: default course + date, set on the summary, rename in history (R50)
+- [ ] UI design system (sleek minimal) applied to all screens and dialogs, polished course
+  summaries; no text bloat on course load, dialogs that reflow when resized (R52–R53)
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
 ### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
