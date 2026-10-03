@@ -2,7 +2,7 @@
 
 Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions), extended
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
-settings and ride names (R48–R50).
+settings, ride names and per-rider HUD layouts (R48–R51).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -64,7 +64,7 @@ a synced ride video, or street-level imagery.
 |---|---|
 | R21 | Structured workouts later, but architected for now: ZWO, ERG/MRC, FIT workouts, built-in editor. No multi-week training plans. |
 | R22 | Rider profile: weight, FTP, max HR, power and HR zones, built-in FTP test. **Multiple user profiles** per installation. |
-| R23 | Fully customizable HUD widgets: power (instant/3 s/10 s), cadence, HR, speed, distance, time, elevation gain, current & upcoming gradient, W/kg, NP, TSS, kJ, zone. |
+| R23 | Fully customizable HUD widgets: power (instant/3 s/10 s), cadence, HR, speed, distance, time, elevation gain, current & upcoming gradient, W/kg, NP, TSS, kJ, zone. *(Per-rider layout and editor: R51.)* |
 | R24 | Metric and imperial units. English UI first, i18n-ready from day one. |
 | R25 | Single window / fullscreen, external monitor / TV. Phone companion app is a possible future extension. |
 | R26 | Audio, selectable per ride: ambient sounds, original video audio, music app control. |
@@ -104,6 +104,7 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R48 | **In-ride settings dialog**: the ride view's controls (today's bottom buttons: camera, HUD customization) move into one settings dialog opened from a single button or key. It is shared: the same dialog and settings (camera, HUD, difficulty, descent mode, weather, time of day, …) are used from the course detail page (R40), so options are set the same way before and during a ride. |
 | R49 | The in-ride dialog also ends the ride: **finish and save** (→ summary, R42) or **abort without saving**, the latter after a confirmation. |
 | R50 | **Ride names**: every ride in the history has a name, defaulting to the course name and date. It can be set on the summary screen (R42) and renamed later in the history; it is used as the activity name in FIT export and uploads. Files on disk keep stable identifiers, so renaming is sync-safe (ADR 0002). |
+| R51 | **HUD per rider**: each rider profile has its own HUD layout (R23), editable in the rider's profile settings. The editor shows a separate HUD preview, and widgets are added, removed and **reordered by drag and drop**. It is the same editor as the HUD section of the in-ride settings dialog (R48), so changes made during a ride are saved to the rider's layout. |
 
 ## Graphics
 

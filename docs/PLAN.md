@@ -105,6 +105,7 @@ Built in rideable steps:
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [ ] Customizable HUD
+- [ ] HUD layout per rider in the profile settings: separate preview, drag-and-drop order (R51)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
@@ -121,15 +122,15 @@ Built in rideable steps:
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds, logo
 
-### Phase 8 — Start page & course gallery (R36–R42, R48–R50)
+### Phase 8 — Start page & course gallery (R36–R42, R48–R51)
 - [ ] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
 - [ ] Path card: route in `#2EB0FF` on black with elevation strip
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
   (ADR 0007 format bump); video frames once video mode exists (Phase 5)
 - [ ] Courses gallery (cards with stats and small map) and course detail page with ride options
 - [ ] Auto-reconnect last-used devices; ride summary screen, then back to the start page
-- [ ] Shared settings dialog in the ride view and course detail page; finish & save or abort
-  without saving (R48–R49)
+- [ ] Shared settings dialog in the ride view and course detail page, reusing the HUD editor
+  (R51); finish & save or abort without saving (R48–R49)
 - [ ] Ride names: default course + date, set on the summary, rename in history (R50)
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
