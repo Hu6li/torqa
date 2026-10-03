@@ -17,6 +17,7 @@ var _units: OptionButton = OptionButton.new()
 
 
 func _ready() -> void:
+	theme = UiTheme.build()
 	title = "Rider profile"
 	ok_button_text = "Save"
 	var grid: GridContainer = GridContainer.new()

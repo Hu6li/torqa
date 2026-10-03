@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use godot::classes::{Engine, INode, Node};
 use godot::prelude::*;
+use torqa_app::hud::MetricKind;
 use torqa_app::view;
 use torqa_app::{App, AppEvent, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
@@ -469,6 +470,7 @@ impl TorqaApp {
             "watts_per_kg" => &optional(t.power.map(|p| rider.watts_per_kg(p))),
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
+            "metrics" => &hud_values(app),
             "climb" => &app.current_climb().map_or_else(Variant::nil, |c| {
                 let count = i64::try_from(route.climbs().len()).unwrap_or(0);
                 vdict! {
@@ -483,6 +485,68 @@ impl TorqaApp {
                 }
                 .to_variant()
             }),
+        }
+    }
+
+    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind}]`, with `kind` one of
+    /// `number`, `speed`, `distance`, `elevation`, `duration`, `grade`, `zone`. Values come in
+    /// `ride_state()["metrics"]` in km/h, km, m and s.
+    #[func]
+    fn hud_metrics() -> VarArray {
+        let mut array = VarArray::new();
+        for metric in torqa_app::hud::METRICS {
+            let kind = match metric.kind {
+                MetricKind::Number => "number",
+                MetricKind::Speed => "speed",
+                MetricKind::Distance => "distance",
+                MetricKind::Elevation => "elevation",
+                MetricKind::Duration => "duration",
+                MetricKind::Grade => "grade",
+                MetricKind::Zone => "zone",
+            };
+            array.push(
+                &vdict! {
+                    "id" => metric.id,
+                    "caption" => metric.caption,
+                    "unit" => metric.unit,
+                    "decimals" => i64::from(metric.decimals),
+                    "kind" => kind,
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// The active rider's HUD metric ids, in order; the first is shown large.
+    #[func]
+    fn hud_layout(&self) -> PackedStringArray {
+        self.app
+            .as_ref()
+            .map(App::hud_layout)
+            .unwrap_or_default()
+            .iter()
+            .map(|id| GString::from(id.as_str()))
+            .collect()
+    }
+
+    /// Saves the active rider's HUD metrics and returns them as saved (unknown ids dropped).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn set_hud_layout(&mut self, layout: PackedStringArray) -> PackedStringArray {
+        let ids: Vec<String> = layout.as_slice().iter().map(ToString::to_string).collect();
+        let Some(app) = self.app.as_mut() else {
+            return PackedStringArray::new();
+        };
+        match app.set_hud_layout(&ids) {
+            Ok(saved) => saved.iter().map(|id| GString::from(id.as_str())).collect(),
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                PackedStringArray::new()
+            }
         }
     }
 
@@ -742,6 +806,15 @@ impl TorqaApp {
             }
         }
     }
+}
+
+/// Live HUD values as `{id: value or null}`.
+fn hud_values(app: &App) -> VarDictionary {
+    let mut values = VarDictionary::new();
+    for (id, value) in app.hud_values() {
+        values.set(id, &value.map_or_else(Variant::nil, |v| v.to_variant()));
+    }
+    values
 }
 
 /// Scanned devices as `[{index, name, kind, rssi}]` for `devices_found`.
