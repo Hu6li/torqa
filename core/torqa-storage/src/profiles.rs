@@ -11,6 +11,7 @@ use torqa_domain::units::{BeatsPerMinute, Kilograms, Watts};
 const PROFILES: &str = "profiles";
 const PROFILE_FILE: &str = "profile.toml";
 const SETTINGS_FILE: &str = "settings.toml";
+const HUD_FILE: &str = "hud.toml";
 
 /// Reading or writing a profile failed.
 #[derive(Debug, thiserror::Error)]
@@ -150,6 +151,34 @@ pub fn new_id(data_dir: &Path, name: &str) -> String {
     id
 }
 
+/// The rider's HUD layout: which metrics to show, in order (R23).
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct HudFile {
+    metrics: Vec<String>,
+}
+
+/// The rider's chosen HUD metrics, in order, if the rider chose any.
+#[must_use]
+pub fn load_hud(data_dir: &Path, id: &str) -> Option<Vec<String>> {
+    let text = std::fs::read_to_string(profile_dir(data_dir, id).join(HUD_FILE)).ok()?;
+    Some(toml::from_str::<HudFile>(&text).ok()?.metrics)
+}
+
+/// Saves the rider's HUD metrics.
+///
+/// # Errors
+/// On file system errors.
+pub fn save_hud(data_dir: &Path, id: &str, metrics: &[String]) -> Result<(), ProfileError> {
+    let file = HudFile {
+        metrics: metrics.to_vec(),
+    };
+    write_atomically(
+        &profile_dir(data_dir, id).join(HUD_FILE),
+        &toml::to_string_pretty(&file)?,
+    )
+}
+
 /// Where a rider's activities are saved.
 #[must_use]
 pub fn rides_dir(data_dir: &Path, id: &str) -> PathBuf {
@@ -258,6 +287,21 @@ mod tests {
         assert_eq!(new_id(&data, "Marco"), "marco-2");
         assert_eq!(new_id(&data, "Anna B."), "anna-b");
         assert_eq!(new_id(&data, "!!"), "rider");
+        std::fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn hud_layouts_are_per_rider() {
+        let data = temp_dir("hud");
+        assert_eq!(load_hud(&data, "anna"), None);
+
+        save_hud(&data, "anna", &["power_3s".to_owned(), "speed".to_owned()]).unwrap();
+
+        assert_eq!(
+            load_hud(&data, "anna"),
+            Some(vec!["power_3s".to_owned(), "speed".to_owned()])
+        );
+        assert_eq!(load_hud(&data, "zoe"), None);
         std::fs::remove_dir_all(data).unwrap();
     }
 

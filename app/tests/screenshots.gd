@@ -32,6 +32,10 @@ func _run() -> void:
 	# Let the world stream its chunks in.
 	for i: int in range(240):
 		await process_frame
+	# A custom HUD, e.g. SCREENSHOT_HUD=power_3s,speed,normalized_power,upcoming_grade
+	var hud: String = OS.get_environment("SCREENSHOT_HUD")
+	if not hud.is_empty():
+		torqa.set_hud_layout(PackedStringArray(hud.split(",")))
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
 	_check(torqa.start_ride(50.0, false), "ride started")
 	setup.ride_started.emit()
@@ -66,6 +70,16 @@ func _run() -> void:
 		var image: Image = root.get_texture().get_image()
 		image.save_png(out_dir.path_join("side-%d.png" % frame))
 		print("saved side-%d" % frame)
+
+	# The HUD editor.
+	side.current = false
+	var ride_screen: RideScreen = _main.get_node("RideScreen")
+	for child: Node in ride_screen.get_children():
+		if child is HudDialog:
+			(child as HudDialog).edit(TorqaApp.hud_metrics(), torqa.hud_layout())
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("hud-dialog.png"))
+	print("saved hud dialog")
 
 	# The ride's analysis in the history.
 	torqa.finish_ride()

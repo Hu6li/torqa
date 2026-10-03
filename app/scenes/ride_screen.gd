@@ -7,23 +7,18 @@ signal closed
 ## The ride was saved and the rider wants to see its analysis.
 signal summary_requested
 
-## Small metrics under the power figure: key in `ride_state()`, caption, unit.
-const METRICS: Array[Array] = [
-	["speed_kmh", "Speed", "km/h"],
-	["grade", "Grade", "%"],
-	["heart_rate", "Heart rate", "bpm"],
-	["cadence", "Cadence", "rpm"],
-	["distance_m", "Distance", "km"],
-	["elapsed_s", "Time", ""],
-]
 const TOAST_SECONDS: float = 4.0
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 
 var _torqa: TorqaApp
 var _world: RideWorld
+## Metric descriptions by id, from `TorqaApp.hud_metrics()`.
+var _catalogue: Dictionary[String, Dictionary] = {}
+## The metrics shown, first one large.
+var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
-var _units: Dictionary[String, Label] = {}
+var _hud_dialog: HudDialog = HudDialog.new()
 var _imperial: bool = false
 var _power_detail: Label = Label.new()
 var _climb_panel: PanelContainer = PanelContainer.new()
@@ -42,6 +37,7 @@ var _toast_left: float = 0.0
 @onready var _toast_label: Label = %ToastLabel
 @onready var _camera_button: Button = %CameraButton
 @onready var _finish_button: Button = %FinishButton
+@onready var _customize_button: Button = %CustomizeButton
 
 
 func bind(torqa: TorqaApp, world: RideWorld) -> void:
@@ -71,11 +67,7 @@ func begin() -> void:
 	_finish_button.text = "Finish & save"
 	var profile: Dictionary = _torqa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
-	_units["speed_kmh"].text = "mph" if _imperial else "km/h"
-	_units["distance_m"].text = "mi" if _imperial else "km"
-	for label: Label in _values.values():
-		label.text = "--"
-	_power_detail.text = ""
+	_build_metrics(_torqa.hud_layout())
 	_show_toast("Waiting for the trainer…")
 
 
@@ -86,8 +78,21 @@ func _ready() -> void:
 	var opaque: StyleBoxFlat = UiTheme.panel()
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
-	_build_metrics()
+	for metric: Dictionary in TorqaApp.hud_metrics():
+		var id: String = metric["id"]
+		_catalogue[id] = metric
+	# Parked in the tree until the first ride builds the metrics, so it is freed with the screen.
+	_power_detail.hide()
+	_metrics.add_child(_power_detail)
 	_build_climb_panel()
+	add_child(_hud_dialog)
+	_hud_dialog.layout_confirmed.connect(_on_layout_confirmed)
+	_customize_button.pressed.connect(
+		func() -> void: _hud_dialog.edit(_catalogue.values(), _layout)
+	)
+	# Over the 3D scene, the light default buttons let road markings shine through the text.
+	for button: Button in [_camera_button, _finish_button, _customize_button]:
+		button.add_theme_stylebox_override("normal", UiTheme.hud_button())
 	_finish_button.pressed.connect(_on_finish_pressed)
 	_camera_button.pressed.connect(_cycle_camera)
 
@@ -112,20 +117,13 @@ func _process(delta: float) -> void:
 	var grade: float = state["grade"]
 	var elevation: float = state["elevation_m"]
 	var distance_m: float = state["distance_m"]
-	var elapsed_s: float = state["elapsed_s"]
 	var x_m: float = state["x"]
 	var y_m: float = state["y"]
 	var heading: float = state["heading"]
-	_values["power"].text = _number(state["power"], 0)
+	var metrics: Dictionary = state["metrics"]
+	for id: String in _values:
+		_values[id].text = _format(_catalogue[id], metrics.get(id))
 	_show_power_detail(state["watts_per_kg"], state["power_zone"])
-	var speed_kmh: float = state["speed_kmh"]
-	_values["speed_kmh"].text = "%.1f" % (speed_kmh / KM_PER_MILE if _imperial else speed_kmh)
-	_values["grade"].text = "%+.1f" % grade
-	_values["heart_rate"].text = _number(state["heart_rate"], 0)
-	_values["cadence"].text = _number(state["cadence"], 0)
-	var distance_km: float = distance_m / 1000.0
-	_values["distance_m"].text = "%.2f" % (distance_km / KM_PER_MILE if _imperial else distance_km)
-	_values["elapsed_s"].text = _duration(elapsed_s)
 	if _imperial:
 		_profile_info.text = "%d ft  ·  %+.1f %%" % [roundi(elevation / METERS_PER_FOOT), grade]
 	else:
@@ -135,14 +133,32 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
-func _build_metrics() -> void:
-	var power: VBoxContainer = VBoxContainer.new()
-	power.add_theme_constant_override("separation", 0)
-	power.add_child(UiTheme.caption("Power"))
-	power.add_child(_value_row("power", 48, "W"))
+## Builds the metrics column for `layout`: the first metric large, the rest in a grid.
+func _build_metrics(layout: PackedStringArray) -> void:
+	_layout = layout
+	_values.clear()
+	# The W/kg line moves to the new large figure rather than being freed with the old one.
+	if _power_detail.get_parent() != null:
+		_power_detail.get_parent().remove_child(_power_detail)
+	for child: Node in _metrics.get_children():
+		_metrics.remove_child(child)
+		child.queue_free()
+	_power_detail.text = ""
+	if layout.is_empty():
+		return
+	var main_id: String = layout[0]
+	var main: VBoxContainer = VBoxContainer.new()
+	main.add_theme_constant_override("separation", 0)
+	var main_caption: String = _catalogue[main_id]["caption"]
+	main.add_child(UiTheme.caption(main_caption))
+	main.add_child(_value_row(main_id, 48))
+	# Power figures get the rider's W/kg and zone underneath.
 	_power_detail.add_theme_font_size_override("font_size", 13)
-	power.add_child(_power_detail)
-	_metrics.add_child(power)
+	_power_detail.visible = main_id in ["power", "power_3s", "power_10s"]
+	main.add_child(_power_detail)
+	_metrics.add_child(main)
+	if layout.size() == 1:
+		return
 
 	var divider: ColorRect = ColorRect.new()
 	divider.color = Color(1, 1, 1, 0.08)
@@ -153,24 +169,24 @@ func _build_metrics() -> void:
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 10)
-	for metric: Array in METRICS:
-		var key: String = metric[0]
-		var caption: String = metric[1]
-		var unit: String = metric[2]
+	for i: int in range(1, layout.size()):
+		var id: String = layout[i]
 		var cell: VBoxContainer = VBoxContainer.new()
 		cell.custom_minimum_size = Vector2(98, 0)
 		cell.add_theme_constant_override("separation", 0)
+		var caption: String = _catalogue[id]["caption"]
 		cell.add_child(UiTheme.caption(caption))
-		cell.add_child(_value_row(key, 24, unit))
+		cell.add_child(_value_row(id, 24))
 		grid.add_child(cell)
 	_metrics.add_child(grid)
 
 
-func _value_row(key: String, size: int, unit: String) -> HBoxContainer:
+func _value_row(id: String, size: int) -> HBoxContainer:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	var value: Label = UiTheme.value(size)
 	row.add_child(value)
+	var unit: String = _unit(_catalogue[id])
 	if not unit.is_empty():
 		var unit_label: Label = Label.new()
 		unit_label.text = unit
@@ -178,9 +194,50 @@ func _value_row(key: String, size: int, unit: String) -> HBoxContainer:
 		unit_label.add_theme_font_size_override("font_size", maxi(11, size / 3))
 		unit_label.add_theme_color_override("font_color", UiTheme.MUTED)
 		row.add_child(unit_label)
-		_units[key] = unit_label
-	_values[key] = value
+	_values[id] = value
 	return row
+
+
+## The unit shown next to a metric, in the rider's unit system.
+func _unit(metric: Dictionary) -> String:
+	match metric["kind"]:
+		"speed":
+			return "mph" if _imperial else "km/h"
+		"distance":
+			return "mi" if _imperial else "km"
+		"elevation":
+			return "ft" if _imperial else "m"
+		"grade":
+			return "%"
+	return metric["unit"]
+
+
+## A metric's value (km/h, km, m or s, as `ride_state()["metrics"]` has them) as display text.
+func _format(metric: Dictionary, value: Variant) -> String:
+	if value == null:
+		return "--"
+	var number: float = value
+	var decimals: int = metric["decimals"]
+	match metric["kind"]:
+		"speed", "distance":
+			if _imperial:
+				number /= KM_PER_MILE
+		"elevation":
+			if _imperial:
+				number /= METERS_PER_FOOT
+		"duration":
+			return _duration(number)
+		"grade":
+			return "%+.1f" % number
+		"zone":
+			return "Z%d" % roundi(number)
+	return "%.*f" % [decimals, number]
+
+
+func _on_layout_confirmed(layout: PackedStringArray) -> void:
+	var saved: PackedStringArray = _torqa.set_hud_layout(layout)
+	if not saved.is_empty():
+		_build_metrics(saved)
 
 
 ## "3.6 W/kg · Z4 Threshold", coloured by zone; empty without power.
@@ -311,12 +368,6 @@ func _on_ride_saved(path: String) -> void:
 func _on_failed(message: String) -> void:
 	if visible:
 		_show_toast(message)
-
-
-static func _number(value: Variant, decimals: int) -> String:
-	if value == null:
-		return "--"
-	return "%.*f" % [decimals, value]
 
 
 static func _duration(seconds: float) -> String:
