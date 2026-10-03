@@ -18,6 +18,11 @@ Things to review or decide together. Newest first; remove entries once settled.
   spelling (ss, "Velo") and informal "du". Error messages from the core (e.g. file or network
   errors) are still English only.
 
+- **Reconnect at start** (R41): untested with real devices — please start Torqa with the KICKR
+  awake and the strap on after riding with them once; both should show as connected without
+  scanning. Device identifiers come from the system (address on Linux/Windows, a per-computer
+  UUID on macOS); if one changes, the name is used as a fallback.
+
 ### Findings
 
 - **Ride names in FIT** (R50): FIT has no activity-title field, so names live in the ride's

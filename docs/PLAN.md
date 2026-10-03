@@ -133,7 +133,7 @@ Built in rideable steps:
   (ADR 0007 format bump); video frames once video mode exists (Phase 5)
 - [ ] Courses gallery (cards with stats and small map) and course detail page with ride options
 - [x] Ride summary screen after the ride (name, keep or discard), then back home (R42)
-- [ ] Auto-reconnect last-used devices (R41)
+- [x] Auto-reconnect last-used devices (R41)
 - [x] In-ride settings dialog (camera, difficulty, descents, time of day, weather, HUD) from
   one button or key S; finish & save or abort without saving after a confirmation (R48–R49)
 - [ ] The same ride options on the course detail page (R48, with the start page)

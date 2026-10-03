@@ -73,8 +73,14 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.devices_found.connect(_on_devices_found)
 	_torqa.failed.connect(_on_failed)
 	_torqa.course_added.connect(_on_course_added)
+	_torqa.device_connected.connect(_on_device_connected)
+	_torqa.remembered_missing.connect(_on_remembered_missing)
 	_refresh_courses()
 	_refresh_profiles()
+	# The trainer and strap used last reconnect in the background (R41).
+	if _torqa.reconnect_remembered():
+		_scan_button.disabled = true
+		_scan_label.text = tr("Reconnecting your devices…")
 
 
 func _ready() -> void:
@@ -374,7 +380,11 @@ func _on_devices_found(devices: Array) -> void:
 	_scan_button.disabled = false
 	_reset_device_options()
 	var trainers: int = 0
+	var remembered: Array[int] = []
 	for device: Dictionary in devices:
+		if device["remembered"]:
+			var remembered_index: int = device["index"]
+			remembered.append(remembered_index)
 		var label: String = device["name"]
 		if device["rssi"] != null:
 			label += "  (%d dBm)" % device["rssi"]
@@ -386,11 +396,28 @@ func _on_devices_found(devices: Array) -> void:
 		if device["kind"] == "trainer":
 			trainers += 1
 	_scan_label.text = tr("Found %d device(s)") % devices.size()
-	# Prefer a real trainer over the fake one once one is found.
+	# Prefer the devices used last, else a real trainer over the fake one.
 	if trainers > 0:
 		_trainer_option.select(1)
 	if _heart_rate_option.item_count > 1:
 		_heart_rate_option.select(1)
+	for option: OptionButton in [_trainer_option, _heart_rate_option]:
+		for i: int in range(option.item_count):
+			var index: int = option.get_item_metadata(i)
+			if remembered.has(index):
+				option.select(i)
+
+
+func _on_device_connected(device_name: String) -> void:
+	_scan_label.text = tr("%s connected") % device_name
+
+
+## The reconnect at start missed some devices (R41): ask the rider to wake them.
+func _on_remembered_missing(names: PackedStringArray) -> void:
+	_status_label.text = (
+		tr("%s not found — wake it by pedalling (or put on the strap), then scan.")
+		% ", ".join(names)
+	)
 
 
 func _on_start_pressed() -> void:

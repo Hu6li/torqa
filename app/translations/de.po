@@ -615,3 +615,9 @@ msgstr "Die Fahrt und ihre FIT-Datei werden gelöscht."
 
 msgid "Ride summary"
 msgstr "Zusammenfassung der Fahrt"
+
+msgid "Reconnecting your devices…"
+msgstr "Verbinde deine Geräte …"
+
+msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
+msgstr "%s nicht gefunden — durch Treten wecken (oder Brustgurt anziehen), dann suchen."

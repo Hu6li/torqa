@@ -11,7 +11,7 @@ msgstr ""
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:334
+#: app/scenes/setup_screen.gd:340
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
@@ -23,7 +23,7 @@ msgstr ""
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:314
+#: app/scenes/ride_screen.gd:314 app/scenes/setup_screen.gd:412
 msgid "%s connected"
 msgstr ""
 
@@ -31,23 +31,27 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
+#: app/scenes/setup_screen.gd:418
+msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
+msgstr ""
+
 #: app/scenes/ride_screen.gd:260
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:315
+#: app/scenes/setup_screen.gd:321
 msgid "%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:300 app/scenes/setup_screen.gd:337
+#: app/scenes/ride_screen.gd:300 app/scenes/setup_screen.gd:343
 msgid "(best %s)"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:361
+#: app/scenes/setup_screen.gd:367
 msgid "(no terrain data in places: flat there — load once while online)"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:359
+#: app/scenes/setup_screen.gd:365
 msgid "3D world ready"
 msgstr ""
 
@@ -55,7 +59,7 @@ msgstr ""
 msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:94
+#: app/scenes/setup_screen.gd:100
 msgid "A recorded activity…"
 msgstr ""
 
@@ -71,7 +75,7 @@ msgstr ""
 msgid "Abort without saving"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:242
+#: app/scenes/setup_screen.gd:248
 msgid "Activity: %s"
 msgstr ""
 
@@ -119,7 +123,7 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:319
+#: app/scenes/setup_screen.gd:325
 msgid "Building the 3D world…"
 msgstr ""
 
@@ -191,7 +195,7 @@ msgstr ""
 msgid "Climbing"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:339
+#: app/scenes/setup_screen.gd:345
 msgid "Climbs: %s"
 msgstr ""
 
@@ -207,7 +211,7 @@ msgstr ""
 msgid "Correcting elevations"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:158
+#: app/scenes/setup_screen.gd:164
 msgid "Course added to your library: %s"
 msgstr ""
 
@@ -275,7 +279,7 @@ msgstr ""
 msgid "FTP"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:208 app/scenes/setup_screen.gd:426
+#: app/scenes/setup_screen.gd:214 app/scenes/setup_screen.gd:453
 msgid "Fake trainer (200 W, for testing)"
 msgstr ""
 
@@ -299,7 +303,7 @@ msgstr ""
 msgid "First Person"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:388
+#: app/scenes/setup_screen.gd:398
 msgid "Found %d device(s)"
 msgstr ""
 
@@ -307,7 +311,7 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:308
+#: app/scenes/setup_screen.gd:314
 msgid "GPX file"
 msgstr ""
 
@@ -379,7 +383,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:273
+#: app/scenes/setup_screen.gd:279
 msgid "Loading %s …"
 msgstr ""
 
@@ -447,7 +451,7 @@ msgstr ""
 msgid "New rider"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:201 app/scenes/setup_screen.gd:211
+#: app/scenes/setup_screen.gd:207 app/scenes/setup_screen.gd:217
 msgid "New rider…"
 msgstr ""
 
@@ -463,15 +467,15 @@ msgstr ""
 msgid "No route loaded"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:289
+#: app/scenes/setup_screen.gd:295
 msgid "No saved courses yet"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:89
+#: app/scenes/setup_screen.gd:95
 msgid "Nobody"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:209 app/scenes/setup_screen.gd:429
+#: app/scenes/setup_screen.gd:215 app/scenes/setup_screen.gd:456
 msgid "None"
 msgstr ""
 
@@ -507,15 +511,15 @@ msgstr ""
 msgid "Open route or course…"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:93
+#: app/scenes/setup_screen.gd:99
 msgid "Pacer at W/kg…"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:92
+#: app/scenes/setup_screen.gd:98
 msgid "Pacer at a power…"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:91
+#: app/scenes/setup_screen.gd:97
 msgid "Pacer at your FTP"
 msgstr ""
 
@@ -553,6 +557,10 @@ msgstr ""
 
 #: app/scenes/setup_screen.gd:18
 msgid "Reading route"
+msgstr ""
+
+#: app/scenes/setup_screen.gd:83
+msgid "Reconnecting your devices…"
 msgstr ""
 
 #: app/ui/ui_theme.gd:14
@@ -603,11 +611,11 @@ msgstr ""
 msgid "Saved %s"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:287
+#: app/scenes/setup_screen.gd:293
 msgid "Saved courses (%d)…"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:154
+#: app/scenes/setup_screen.gd:160
 msgid "Saving course…"
 msgstr ""
 
@@ -615,7 +623,7 @@ msgstr ""
 msgid "Scan for devices"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:368
+#: app/scenes/setup_screen.gd:374
 msgid "Scanning…"
 msgstr ""
 
@@ -763,11 +771,11 @@ msgstr ""
 msgid "Work"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:90
+#: app/scenes/setup_screen.gd:96
 msgid "Your best on this route"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:342
+#: app/scenes/setup_screen.gd:348
 msgid "Your best time on this route: %s"
 msgstr ""
 
@@ -799,7 +807,7 @@ msgstr ""
 msgid "points"
 msgstr ""
 
-#: app/scenes/setup_screen.gd:308
+#: app/scenes/setup_screen.gd:314
 msgid "terrain model"
 msgstr ""
 
