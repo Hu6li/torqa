@@ -96,6 +96,13 @@ func _run() -> void:
 	for child: Node in ride_screen.get_children():
 		if child is HudDialog:
 			(child as HudDialog).edit(torqa.hud_layout(), false)
+			await process_frame
+			# Hover a figure over the HUD's grid, so the drop indicator shows.
+			var preview: HudPanel = child.find_children("*", "HudPanel", true, false)[0]
+			var grid: Node = preview.get_child(preview.get_child_count() - 1)
+			grid.get_child(2).call(
+				"_can_drop_data", Vector2(80, 10), {HudPanel.DRAG_KEY: "power_3s"}
+			)
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("hud-dialog.png"))
 	print("saved hud dialog")

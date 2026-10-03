@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
-#: app/ui/hud_editor.gd:99
+#: app/ui/hud_editor.gd:98
 msgid "%d of %d figures. The first one is shown large. Values are examples."
 msgstr ""
 
@@ -71,7 +71,7 @@ msgstr ""
 msgid "Aug"
 msgstr ""
 
-#: app/ui/hud_editor.gd:37
+#: app/ui/hud_editor.gd:40
 msgid "Available — drag in to add"
 msgstr ""
 
@@ -291,6 +291,10 @@ msgstr ""
 msgid "HUD"
 msgstr ""
 
+#: app/ui/hud_editor.gd:26
+msgid "HUD — drop figures where you want them"
+msgstr ""
+
 #: app/ui/ui_theme.gd:27
 msgid "Hard"
 msgstr ""
@@ -307,7 +311,7 @@ msgstr ""
 msgid "Heart-rate zone"
 msgstr ""
 
-#: app/ui/hud_editor.gd:151
+#: app/ui/hud_editor.gd:150
 msgid "Hide"
 msgstr ""
 
@@ -343,7 +347,7 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: app/ui/hud_editor.gd:145
+#: app/ui/hud_editor.gd:144
 msgid "Large"
 msgstr ""
 
@@ -507,10 +511,6 @@ msgstr ""
 msgid "Power zone"
 msgstr ""
 
-#: app/ui/hud_editor.gd:25
-msgid "Preview"
-msgstr ""
-
 #: app/scenes/profile_dialog.gd:32
 msgid "Profile"
 msgstr ""
@@ -587,11 +587,11 @@ msgstr ""
 msgid "Sep"
 msgstr ""
 
-#: app/ui/hud_editor.gd:151
+#: app/ui/hud_editor.gd:150
 msgid "Show"
 msgstr ""
 
-#: app/ui/hud_editor.gd:22
+#: app/ui/hud_editor.gd:23
 msgid "Shown — drag to reorder"
 msgstr ""
 

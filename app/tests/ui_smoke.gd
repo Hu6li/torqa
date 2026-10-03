@@ -36,6 +36,29 @@ func _hud_editor() -> void:
 	_chips(editor, 2)[0].call("_drop_data", Vector2.ZERO, {HudEditor.DRAG_KEY: "cadence"})
 	_expect(editor.layout(), ["speed", "heart_rate"], "drop on the available list")
 
+	# Directly in the HUD (R54): drop "power" on the lower half of the large figure: right after it.
+	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
+	var large: Control = preview.get_child(0)
+	large.size = Vector2(200, 80)
+	var accepts: bool = large.call("_can_drop_data", Vector2(10, 70), {HudPanel.DRAG_KEY: "power"})
+	_check(accepts, "the HUD accepts figures")
+	large.call("_drop_data", Vector2(10, 70), {HudPanel.DRAG_KEY: "power"})
+	_expect(editor.layout(), ["speed", "power", "heart_rate"], "drop into the HUD")
+	# Grid cells split left/right: dropping "speed" on the right half of "heart_rate" (the last
+	# figure) moves it to the end.
+	preview = editor.find_children("*", "HudPanel", true, false)[0]
+	var grid: Node = preview.get_child(preview.get_child_count() - 1)
+	var last: Control = grid.get_child(grid.get_child_count() - 1)
+	last.size = Vector2(100, 40)
+	last.call("_drop_data", Vector2(90, 10), {HudPanel.DRAG_KEY: "speed"})
+	_expect(editor.layout(), ["power", "heart_rate", "speed"], "move within the HUD")
+	# Free space in the HUD appends.
+	preview = editor.find_children("*", "HudPanel", true, false)[0]
+	preview.call("_drop_data", Vector2.ZERO, {HudPanel.DRAG_KEY: "cadence"})
+	_expect(editor.layout(), ["power", "heart_rate", "speed", "cadence"], "drop on free space")
+	editor.remove("power")
+	editor.remove("cadence")
+
 	for id: String in ["speed", "heart_rate"]:
 		editor.remove(id)
 	_expect(editor.layout(), ["heart_rate"], "the last figure stays")

@@ -1,12 +1,13 @@
 class_name HudEditor
 extends HBoxContainer
-## Edits a HUD layout (R51): the chosen figures in order (the first is shown large), a live
-## preview of the HUD and the figures still available. Figures are added, removed and reordered
-## by drag and drop; the + and × buttons do the same for those who prefer clicking.
+## Edits a HUD layout (R51, R54): the chosen figures in order (the first is shown large), the
+## HUD itself with example values, and the figures still available. Figures are dragged straight
+## into the HUD to the place they should appear, moved within it and dragged out to remove
+## them; the list and the + and × buttons do the same for those who prefer it.
 
 signal layout_changed(layout: PackedStringArray)
 
-const DRAG_KEY: String = "hud_metric"
+const DRAG_KEY: String = HudPanel.DRAG_KEY
 
 var _layout: PackedStringArray = PackedStringArray()
 var _max: int = TorqaApp.hud_max_metrics()
@@ -22,10 +23,12 @@ func _init() -> void:
 	add_child(_column(tr("Shown — drag to reorder"), _chosen, true))
 	var preview_column: VBoxContainer = VBoxContainer.new()
 	preview_column.add_theme_constant_override("separation", 8)
-	preview_column.add_child(UiTheme.caption(tr("Preview")))
+	preview_column.add_child(UiTheme.caption(tr("HUD — drop figures where you want them")))
 	var frame: PanelContainer = PanelContainer.new()
 	frame.custom_minimum_size = Vector2(260, 0)
 	frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_preview.editable = true
+	_preview.drop_requested.connect(place)
 	frame.add_child(_preview)
 	preview_column.add_child(frame)
 	_hint.add_theme_color_override("font_color", UiTheme.MUTED)
@@ -71,11 +74,7 @@ func remove(id: String) -> void:
 
 ## The metric id carried by drag `data`, or "" if it is not a HUD figure.
 static func dragged(data: Variant) -> String:
-	if typeof(data) != TYPE_DICTIONARY:
-		return ""
-	var fields: Dictionary = data
-	var id: String = fields.get(DRAG_KEY, "")
-	return id
+	return HudPanel.dragged(data)
 
 
 func _changed() -> void:

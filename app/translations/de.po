@@ -217,6 +217,9 @@ msgstr "Steigung"
 msgid "HC"
 msgstr "HC"
 
+msgid "HUD — drop figures where you want them"
+msgstr "HUD — Werte dorthin ziehen, wo sie erscheinen sollen"
+
 msgid "HUD"
 msgstr "HUD"
 
