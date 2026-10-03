@@ -11,6 +11,8 @@ const START_COLOR: Color = Color(0.3, 0.8, 0.45)
 const FINISH_COLOR: Color = Color(0.92, 0.3, 0.3)
 
 ## Metres east/north of the route start.
+var _ghost: Vector2 = Vector2.ZERO
+var _ghost_shown: bool = false
 var _track: PackedVector2Array = PackedVector2Array()
 var _rider: Vector2 = Vector2.ZERO
 ## Direction of travel, radians clockwise from north.
@@ -44,6 +46,13 @@ func set_map(map: Dictionary) -> void:
 	queue_redraw()
 
 
+## The ghost's position in metres east/north of the start, or hides it with `visible` false.
+func set_ghost(position_m: Vector2, visible_on_map: bool) -> void:
+	_ghost = position_m
+	_ghost_shown = visible_on_map
+	queue_redraw()
+
+
 func set_rider(position_m: Vector2, heading: float) -> void:
 	_rider = position_m
 	_heading = heading
@@ -73,6 +82,9 @@ func _draw() -> void:
 		draw_polyline(view * _track, TRACK_COLOR, 3.5, true)
 		draw_circle(view * _track[0], 5.0, START_COLOR)
 		draw_circle(view * _track[_track.size() - 1], 5.0, FINISH_COLOR)
+	if _ghost_shown:
+		draw_circle(view * _ghost, 6.0, Color(0, 0, 0, 0.35))
+		draw_circle(view * _ghost, 4.5, UiTheme.GHOST_COLOR)
 	_draw_rider(view * _rider, _heading if not _follow else 0.0)
 	if _follow:
 		_draw_north(view)

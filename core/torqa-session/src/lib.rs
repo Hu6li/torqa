@@ -5,6 +5,7 @@
 //! the same engine runs headless in the CLI, in tests and behind the 3D world.
 
 pub mod analysis;
+pub mod ghost;
 
 use std::time::Duration;
 

@@ -12,6 +12,7 @@ const OUTLINE: Color = Color(1, 1, 1, 0.75)
 ## `(distance m, elevation m)` points.
 var _profile: PackedVector2Array = PackedVector2Array()
 var _rider_distance: float = 0.0
+var _ghost_distance: float = -1.0
 ## `[start m, end m, colour]` per climb.
 var _climbs: Array[Array] = []
 var _min_elevation: float = 0.0
@@ -42,6 +43,12 @@ func set_climbs(climbs: Array) -> void:
 		_climbs.append(
 			[climb["start_m"], climb["end_m"], UiTheme.CLIMB_COLORS.get(category, Color.GRAY)]
 		)
+	queue_redraw()
+
+
+## The ghost's distance along the route, or a negative value to hide it.
+func set_ghost_distance(distance_m: float) -> void:
+	_ghost_distance = distance_m
 	queue_redraw()
 
 
@@ -77,6 +84,9 @@ func _draw() -> void:
 		var to: float = _to_screen(Vector2(end_m, 0.0)).x
 		draw_rect(Rect2(from, bottom - 3.0, to - from, 3.0), color)
 
+	if _ghost_distance >= 0.0:
+		var ghost: Vector2 = _to_screen(Vector2(_ghost_distance, _elevation_at(_ghost_distance)))
+		draw_circle(ghost, 4.0, UiTheme.GHOST_COLOR)
 	var rider: Vector2 = _to_screen(Vector2(_rider_distance, _elevation_at(_rider_distance)))
 	draw_line(Vector2(rider.x, 0), Vector2(rider.x, bottom), Color(UiTheme.ACCENT, 0.9), 1.5)
 	draw_circle(rider, 5.0, Color.WHITE)

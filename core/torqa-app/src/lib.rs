@@ -19,12 +19,13 @@ use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
 use torqa_domain::profile::Profile;
 use torqa_domain::recording::{RideSummary, Sample};
-use torqa_domain::units::{Meters, Percent};
+use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{Climb, ElevationSource, Route};
 use torqa_session::analysis::{
     effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
+use torqa_session::ghost::Ghost;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
 use torqa_storage::profiles::{self, StoredProfile};
@@ -67,6 +68,35 @@ pub enum AppError {
     /// Reading or writing a file in the data directory failed.
     #[error("{0}")]
     Storage(String),
+    /// The chosen ghost cannot ride this route.
+    #[error("{0}")]
+    GhostUnavailable(String),
+}
+
+/// Who to race against (R20).
+#[derive(Debug, Clone, PartialEq)]
+pub enum GhostChoice {
+    /// Nobody.
+    None,
+    /// The rider's fastest earlier ride on this route.
+    PersonalBest,
+    /// A pacer holding constant power.
+    Power(Watts),
+    /// A pacer holding constant power per kilogram of the rider's body weight.
+    WattsPerKg(f64),
+    /// A recorded activity (GPX with times, or FIT) along this route.
+    Activity(PathBuf),
+}
+
+/// Where the ghost is relative to the rider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GhostState {
+    /// What the ghost is.
+    pub name: String,
+    /// Its distance from the route start.
+    pub distance: Meters,
+    /// Seconds the rider is behind it (negative: ahead); `None` once it is out of reach.
+    pub gap: Option<f64>,
 }
 
 /// A device found by a scan.
@@ -252,6 +282,7 @@ struct ActiveRide {
     /// Summary of the samples so far and how many it covers, refreshed once per new sample
     /// rather than every frame.
     summary: (usize, RideSummary),
+    ghost: Option<Ghost>,
 }
 
 /// The application state.
@@ -595,11 +626,13 @@ impl App {
         &mut self,
         difficulty: Percent,
         descent: DescentMode,
+        ghost: &GhostChoice,
     ) -> Result<(), AppError> {
         let route = self.route.clone().ok_or(AppError::NoRoute)?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
+        let ghost = self.ghost_for(&route, descent, ghost)?;
         let config = RideConfig {
             setup: RiderSetup {
                 mass: self.profile.profile.system_mass(),
@@ -616,6 +649,7 @@ impl App {
             records,
             next_climb: 0,
             summary: (0, RideSummary::default()),
+            ghost,
         });
         Ok(())
     }
@@ -784,6 +818,72 @@ impl App {
             active.ride.route(),
             &self.profile.profile,
         )
+    }
+
+    /// The ghost of the current ride, if any.
+    #[must_use]
+    pub fn ghost_state(&self) -> Option<GhostState> {
+        let active = self.ride.as_ref()?;
+        let ghost = active.ghost.as_ref()?;
+        let state = active.ride.state();
+        Some(GhostState {
+            name: ghost.name.clone(),
+            distance: ghost.distance_at(state.elapsed),
+            gap: ghost.gap(state.distance, state.elapsed),
+        })
+    }
+
+    fn ghost_for(
+        &self,
+        route: &Route,
+        descent: DescentMode,
+        choice: &GhostChoice,
+    ) -> Result<Option<Ghost>, AppError> {
+        let profile = &self.profile.profile;
+        let setup = RiderSetup {
+            mass: profile.system_mass(),
+            ..RiderSetup::default()
+        };
+        let unavailable = |why: String| AppError::GhostUnavailable(why);
+        let ghost = match choice {
+            GhostChoice::None => return Ok(None),
+            GhostChoice::PersonalBest => {
+                let key = route.key();
+                let best = self
+                    .history()
+                    .into_iter()
+                    .filter(|h| h.record.route_key.as_deref() == Some(key.as_str()))
+                    .filter_map(|h| h.record.route_time.map(|t| (t, h.fit)))
+                    .min_by_key(|(t, _)| *t)
+                    .ok_or_else(|| unavailable("no finished ride on this route yet".to_owned()))?;
+                let (_, samples) = read_fit(&best.1).map_err(unavailable)?;
+                Ghost::from_samples("Your best", &samples)
+            }
+            GhostChoice::Power(watts) => Some(Ghost::pacer(
+                &format!("Pacer {:.0} W", watts.0),
+                route,
+                &setup,
+                descent,
+                *watts,
+            )),
+            GhostChoice::WattsPerKg(ratio) => Some(Ghost::pacer(
+                &format!("Pacer {ratio:.1} W/kg"),
+                route,
+                &setup,
+                descent,
+                Watts(ratio * profile.rider_mass.0),
+            )),
+            GhostChoice::Activity(path) => {
+                let points = activity_points(path).map_err(unavailable)?;
+                let name = path
+                    .file_stem()
+                    .map_or_else(|| "Ghost".to_owned(), |s| s.to_string_lossy().into_owned());
+                Some(Ghost::from_activity(&name, route, &points).ok_or_else(|| {
+                    unavailable(format!("{} does not follow this route", path.display()))
+                })?)
+            }
+        };
+        Ok(ghost)
     }
 
     /// The climb the rider is on now, if any.
@@ -1083,6 +1183,34 @@ fn best_climb_time(records: &[&RideRecord], climb: &ClimbTime) -> Option<Duratio
         .min()
 }
 
+/// The timed positions of a recorded activity: a GPX file with times, or a FIT file.
+fn activity_points(path: &Path) -> Result<Vec<torqa_routes::TimedPoint>, String> {
+    let is_fit = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("fit"));
+    if is_fit {
+        let (start, samples) = read_fit(path)?;
+        let start = start
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_secs_f64());
+        return Ok(samples
+            .iter()
+            .map(|s| torqa_routes::TimedPoint {
+                lat: s.lat,
+                lon: s.lon,
+                time: start + s.elapsed.as_secs_f64(),
+            })
+            .collect());
+    }
+    let xml = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let points = torqa_routes::timed_points(&xml).map_err(|e| e.to_string())?;
+    if points.is_empty() {
+        return Err(format!("{} has no times to race against", path.display()));
+    }
+    Ok(points)
+}
+
 fn read_fit(fit: &Path) -> Result<(SystemTime, Vec<Sample>), String> {
     let bytes = std::fs::read(fit).map_err(|e| format!("cannot read {}: {e}", fit.display()))?;
     torqa_storage::decode_fit(&bytes).map_err(|e| format!("{}: {e}", fit.display()))
@@ -1190,7 +1318,8 @@ mod tests {
             cadence: Rpm(90.0),
         }))
         .unwrap();
-        app.start_ride(Percent(50.0), DescentMode::Coast).unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
         run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
         // Ride three seconds of frames.
         for _ in 0..180 {
@@ -1343,13 +1472,14 @@ mod tests {
     }
 
     /// Rides the loaded route with the fake trainer in fast-forward and saves it.
-    fn ride_to_the_finish(app: &mut App) -> Vec<AppEvent> {
+    fn ride_to_the_finish(app: &mut App, ghost: &GhostChoice) -> Vec<AppEvent> {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(400.0),
             cadence: Rpm(90.0),
         }))
         .unwrap();
-        app.start_ride(Percent(50.0), DescentMode::Coast).unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, ghost)
+            .unwrap();
         run_until(app, |e| matches!(e, AppEvent::Connected(_)));
         let mut events = Vec::new();
         for _ in 0..2000 {
@@ -1371,7 +1501,16 @@ mod tests {
         run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert_eq!(app.route().unwrap().climbs().len(), 1);
 
-        let first = ride_to_the_finish(&mut app);
+        // Nothing to race on a first ride.
+        assert!(matches!(
+            app.ghost_for(
+                app.route().unwrap(),
+                DescentMode::Coast,
+                &GhostChoice::PersonalBest
+            ),
+            Err(AppError::GhostUnavailable(_))
+        ));
+        let first = ride_to_the_finish(&mut app, &GhostChoice::None);
         let climb = first.iter().find_map(|e| match e {
             AppEvent::ClimbCompleted {
                 index: 0,
@@ -1395,7 +1534,7 @@ mod tests {
 
         // Riding it again compares with the first ride.
         std::thread::sleep(Duration::from_millis(1100)); // a new FIT file name
-        let second = ride_to_the_finish(&mut app);
+        let second = ride_to_the_finish(&mut app, &GhostChoice::PersonalBest);
         assert!(second.iter().any(|e| matches!(
             e,
             AppEvent::ClimbCompleted {
@@ -1405,6 +1544,25 @@ mod tests {
         )));
         let history = app.history();
         assert_eq!(history.len(), 2);
+        // Racing the first ride at the same power: the gap stays about zero.
+        app.start_ride(
+            Percent(50.0),
+            DescentMode::Coast,
+            &GhostChoice::PersonalBest,
+        )
+        .unwrap();
+        let ghost = app.ghost_state().unwrap();
+        assert_eq!(ghost.name, "Your best");
+        assert_eq!(ghost.distance, Meters(0.0));
+        app.finish_ride();
+        app.start_ride(
+            Percent(50.0),
+            DescentMode::Coast,
+            &GhostChoice::WattsPerKg(3.0),
+        )
+        .unwrap();
+        assert_eq!(app.ghost_state().unwrap().name, "Pacer 3.0 W/kg");
+        app.finish_ride();
         // Each record belongs to a ride; equal times would count for both.
         assert!(history.iter().any(|h| h.route_record));
         assert!(history.iter().any(|h| h.climb_records == [true]));
@@ -1458,7 +1616,7 @@ mod tests {
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
 
         assert!(matches!(
-            app.start_ride(Percent(50.0), DescentMode::Coast),
+            app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None),
             Err(AppError::NoRoute)
         ));
         assert!(matches!(

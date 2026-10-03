@@ -6,6 +6,9 @@ signal ride_started
 signal history_requested
 
 ## Metadata of the trainer and heart-rate options that are not scanned devices.
+## Ghost options (R20), in the order of the list.
+enum Ghost { NONE, BEST, FTP, POWER, WATTS_PER_KG, ACTIVITY }
+
 const FAKE_TRAINER: int = -1
 const NO_HEART_RATE: int = -1
 const SCAN_SECONDS: float = 5.0
@@ -27,6 +30,9 @@ var _from_course: bool = false
 ## A course file imported from outside the library, opened once it has been copied there.
 var _open_when_added: bool = false
 
+## The activity chosen to race against.
+var _ghost_activity: String = ""
+
 @onready var _history_button: Button = %HistoryButton
 @onready var _course_option: OptionButton = %CourseOption
 @onready var _save_course_button: Button = %SaveCourseButton
@@ -43,6 +49,9 @@ var _open_when_added: bool = false
 @onready var _edit_profile_button: Button = %EditProfileButton
 @onready var _profile_dialog: ProfileDialog = ProfileDialog.new()
 @onready var _flat_descents: CheckBox = %FlatDescents
+@onready var _ghost_option: OptionButton = %GhostOption
+@onready var _ghost_value: SpinBox = %GhostValue
+@onready var _ghost_file_dialog: FileDialog = %GhostFileDialog
 @onready var _time_option: OptionButton = %TimeOption
 @onready var _weather_option: OptionButton = %WeatherOption
 @onready var _start_button: Button = %StartButton
@@ -79,6 +88,18 @@ func _ready() -> void:
 	add_child(_profile_dialog)
 	_profile_dialog.profile_confirmed.connect(_on_profile_confirmed)
 	_profile_option.item_selected.connect(_on_profile_selected)
+	for label: String in [
+		"Nobody",
+		"Your best on this route",
+		"Pacer at your FTP",
+		"Pacer at a power…",
+		"Pacer at W/kg…",
+		"A recorded activity…",
+	]:
+		_ghost_option.add_item(label)
+	_ghost_option.item_selected.connect(_on_ghost_selected)
+	_ghost_file_dialog.file_selected.connect(_on_ghost_file_selected)
+	_ghost_file_dialog.canceled.connect(func() -> void: _ghost_option.select(Ghost.NONE))
 	_edit_profile_button.pressed.connect(_on_edit_profile_pressed)
 	_save_course_button.pressed.connect(_on_save_course_pressed)
 	_history_button.pressed.connect(func() -> void: history_requested.emit())
@@ -165,8 +186,56 @@ func _refresh_profiles() -> void:
 		_profile_option.set_item_metadata(_profile_option.item_count - 1, id)
 		if id == active_id:
 			_profile_option.select(_profile_option.item_count - 1)
+	_update_ghost_options()
 	_profile_option.add_item("New rider…")
 	_profile_option.set_item_metadata(_profile_option.item_count - 1, "")
+
+
+func _on_ghost_selected(index: int) -> void:
+	_ghost_value.visible = index in [Ghost.POWER, Ghost.WATTS_PER_KG]
+	if index == Ghost.POWER:
+		_set_ghost_value(50.0, 600.0, 5.0, " W", 200.0)
+	elif index == Ghost.WATTS_PER_KG:
+		_set_ghost_value(1.0, 7.0, 0.1, " W/kg", 3.0)
+	elif index == Ghost.ACTIVITY:
+		_ghost_file_dialog.popup_centered_ratio(0.7)
+
+
+func _set_ghost_value(low: float, high: float, step: float, suffix: String, value: float) -> void:
+	_ghost_value.min_value = low
+	_ghost_value.max_value = high
+	_ghost_value.step = step
+	_ghost_value.suffix = suffix
+	_ghost_value.value = value
+
+
+func _on_ghost_file_selected(path: String) -> void:
+	_ghost_activity = path
+	_ghost_option.set_item_text(Ghost.ACTIVITY, "Activity: %s" % path.get_file())
+
+
+## The ghost to race, as `TorqaApp.start_ride` takes it.
+func _ghost_choice() -> Dictionary:
+	match _ghost_option.selected:
+		Ghost.BEST:
+			return {"kind": "best"}
+		Ghost.FTP:
+			return {"kind": "power", "watts": _torqa.profile().get("ftp_w", 200.0)}
+		Ghost.POWER:
+			return {"kind": "power", "watts": _ghost_value.value}
+		Ghost.WATTS_PER_KG:
+			return {"kind": "wkg", "watts_per_kg": _ghost_value.value}
+		Ghost.ACTIVITY:
+			return {"kind": "activity", "path": _ghost_activity}
+	return {"kind": "none"}
+
+
+## Offers "your best" only where the rider has finished the route before.
+func _update_ghost_options() -> void:
+	var has_best: bool = _torqa.has_personal_best()
+	_ghost_option.set_item_disabled(Ghost.BEST, not has_best)
+	if not has_best and _ghost_option.selected == Ghost.BEST:
+		_ghost_option.select(Ghost.NONE)
 
 
 func _begin_loading(what: String, from_course: bool) -> void:
@@ -249,6 +318,7 @@ func _on_loading_progress(step: String, unit: String, done: int, total: int) -> 
 
 
 func _on_world_ready(info: Dictionary) -> void:
+	_update_ghost_options()
 	_loading.hide()
 	_world_ready = true
 	var fallback: int = info["fallback_samples"]
@@ -306,7 +376,7 @@ func _on_start_pressed() -> void:
 	var heart_rate: int = _heart_rate_option.get_selected_metadata()
 	if heart_rate != NO_HEART_RATE:
 		_torqa.connect_heart_rate(heart_rate)
-	if _torqa.start_ride(_difficulty_slider.value, _flat_descents.button_pressed):
+	if _torqa.start_ride(_difficulty_slider.value, _flat_descents.button_pressed, _ghost_choice()):
 		ride_started.emit()
 
 

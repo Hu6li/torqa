@@ -241,6 +241,29 @@ text = "Ride descents like flat roads"
 [node name="DescentSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
 layout_mode = 2
 
+[node name="GhostCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+layout_mode = 2
+text = "Race against"
+
+[node name="GhostOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "A ghost rider on the road: your best time, a pacer or a recorded activity"
+
+[node name="GhostValue" type="SpinBox" parent="Margin/Center/Card/Rows/Settings"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="GhostFileDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Race against a recorded activity"
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.gpx, *.fit ; GPX or FIT activities")
+use_native_dialog = true
+
 [node name="StartButton" type="Button" parent="Margin/Center/Card/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 56)

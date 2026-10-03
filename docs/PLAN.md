@@ -110,7 +110,8 @@ Built in rideable steps:
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
-- [ ] Ghosts & pacers, audio, units, i18n
+- [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
+- [ ] Audio, i18n (units done with profiles)
 
 ### Phase 5 — Video mode
 - [ ] Import + transcode, GPMF + manual sync, variable speed + frame blending

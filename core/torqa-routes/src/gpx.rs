@@ -1,4 +1,4 @@
-//! Minimal GPX 1.0/1.1 reader: track points (or route points) with optional elevation.
+//! Minimal GPX 1.0/1.1 reader: track points (or route points) with optional elevation and time.
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
@@ -11,6 +11,8 @@ pub(crate) struct RawPoint {
     pub(crate) lat: f64,
     pub(crate) lon: f64,
     pub(crate) elevation: Option<f64>,
+    /// Seconds since the Unix epoch, for recorded activities.
+    pub(crate) time: Option<f64>,
 }
 
 /// The parsed contents of a GPX file.
@@ -25,6 +27,7 @@ enum Capture {
     None,
     Name,
     Elevation,
+    Time,
 }
 
 /// Reads track points; falls back to route points for files from route planners that only
@@ -51,6 +54,7 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
                     }
                     "wpt" => in_waypoint = true,
                     "ele" if point.is_some() => capture = Capture::Elevation,
+                    "time" if point.is_some() => capture = Capture::Time,
                     "name" if point.is_none() && !in_waypoint && gpx.name.is_none() => {
                         capture = Capture::Name;
                     }
@@ -75,6 +79,11 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
                     ("ele", Capture::Elevation) => {
                         if let Some((p, _)) = point.as_mut() {
                             p.elevation = text.trim().parse().ok();
+                        }
+                    }
+                    ("time", Capture::Time) => {
+                        if let Some((p, _)) = point.as_mut() {
+                            p.time = parse_time(text.trim());
                         }
                     }
                     ("name", Capture::Name) => {
@@ -132,7 +141,46 @@ fn read_point(e: &BytesStart<'_>) -> Result<RawPoint, RouteError> {
         lat,
         lon,
         elevation: None,
+        time: None,
     })
+}
+
+/// Seconds since the Unix epoch from an ISO 8601 / XML Schema date-time as GPX uses it, e.g.
+/// `2026-10-03T07:15:30Z`, `…30.250Z` or `…30+02:00`. `None` if malformed.
+pub(crate) fn parse_time(text: &str) -> Option<f64> {
+    let (date, rest) = text.split_once('T')?;
+    let mut date_parts = date.splitn(3, '-');
+    let year: i64 = date_parts.next()?.parse().ok()?;
+    let month: i64 = date_parts.next()?.parse().ok()?;
+    let day: i64 = date_parts.next()?.parse().ok()?;
+    // The zone starts at Z, + or the first - after the time.
+    let zone_at = rest.find(['Z', '+', '-']).unwrap_or(rest.len());
+    let (clock, zone) = rest.split_at(zone_at);
+    let mut clock_parts = clock.splitn(3, ':');
+    let hour: f64 = clock_parts.next()?.parse().ok()?;
+    let minute: f64 = clock_parts.next()?.parse().ok()?;
+    let second: f64 = clock_parts.next()?.parse().ok()?;
+    let offset = match zone {
+        "" | "Z" => 0.0,
+        _ => {
+            let sign = if zone.starts_with('-') { -1.0 } else { 1.0 };
+            let (h, m) = zone[1..].split_once(':')?;
+            sign * (h.parse::<f64>().ok()? * 3600.0 + m.parse::<f64>().ok()? * 60.0)
+        }
+    };
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    // Days since 1970-01-01 (Howard Hinnant's days_from_civil).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    #[allow(clippy::cast_precision_loss)] // day counts are far below 2^52
+    let days = days as f64;
+    Some(days * 86_400.0 + hour * 3600.0 + minute * 60.0 + second - offset)
 }
 
 fn resolve_entity(reference: &quick_xml::events::BytesRef<'_>) -> Option<char> {
@@ -146,6 +194,25 @@ fn resolve_entity(reference: &quick_xml::events::BytesRef<'_>) -> Option<char> {
         "quot" => Some('"'),
         "apos" => Some('\''),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod time_tests {
+    use super::parse_time;
+
+    #[test]
+    fn reads_gpx_timestamps() {
+        assert_eq!(parse_time("1970-01-01T00:00:00Z"), Some(0.0));
+        assert_eq!(parse_time("2000-03-01T00:00:00Z"), Some(951_868_800.0));
+        assert_eq!(parse_time("2026-10-03T07:15:30Z"), Some(1_791_011_730.0));
+        // The same moment in Central European Summer Time, with fractional seconds.
+        assert_eq!(
+            parse_time("2026-10-03T09:15:30.5+02:00"),
+            Some(1_791_011_730.5)
+        );
+        assert_eq!(parse_time("2026-10-03T07:15:30"), Some(1_791_011_730.0));
+        assert_eq!(parse_time("yesterday"), None);
     }
 }
 
@@ -174,12 +241,14 @@ mod tests {
                 RawPoint {
                     lat: 46.9,
                     lon: 7.4,
-                    elevation: Some(540.5)
+                    elevation: Some(540.5),
+                    time: Some(1_767_225_600.0),
                 },
                 RawPoint {
                     lat: 46.91,
                     lon: 7.41,
-                    elevation: None
+                    elevation: None,
+                    time: None,
                 },
             ]
         );

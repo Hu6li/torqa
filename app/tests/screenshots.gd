@@ -47,7 +47,12 @@ func _run() -> void:
 	if not hud.is_empty():
 		torqa.set_hud_layout(PackedStringArray(hud.split(",")))
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
-	_check(torqa.start_ride(50.0, false), "ride started")
+	# A pacer to race, e.g. SCREENSHOT_GHOST=300 (watts).
+	var ghost: Dictionary = {"kind": "none"}
+	var ghost_watts: String = OS.get_environment("SCREENSHOT_GHOST")
+	if not ghost_watts.is_empty():
+		ghost = {"kind": "power", "watts": ghost_watts.to_float()}
+	_check(torqa.start_ride(50.0, false, ghost), "ride started")
 	setup.ride_started.emit()
 	var time: String = OS.get_environment("SCREENSHOT_TIME")
 	var weather: String = OS.get_environment("SCREENSHOT_WEATHER")

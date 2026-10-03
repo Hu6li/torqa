@@ -35,6 +35,8 @@ const CLIMB_COLORS: Dictionary[String, Color] = {
 	"Cat 1": Color(0.95, 0.3, 0.3),
 	"HC": Color(0.7, 0.4, 0.95),
 }
+## Ghost riders and pacers (R20) on the road, the map and the profile.
+const GHOST_COLOR: Color = Color(0.98, 0.55, 0.2)
 const POWER_COLOR: Color = Color(0.04, 0.61, 0.96)
 const HEART_RATE_COLOR: Color = Color(0.95, 0.33, 0.38)
 
