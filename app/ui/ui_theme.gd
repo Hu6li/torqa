@@ -26,6 +26,15 @@ const HEART_RATE_ZONES: Array[Array] = [
 	["Hard", Color(0.98, 0.55, 0.2)],
 	["Maximum", Color(0.95, 0.3, 0.3)],
 ]
+## Climb categories as labelled by Torqa, easiest first.
+const CLIMB_COLORS: Dictionary[String, Color] = {
+	"Climb": Color(0.6, 0.62, 0.66),
+	"Cat 4": Color(0.3, 0.8, 0.45),
+	"Cat 3": Color(0.98, 0.8, 0.2),
+	"Cat 2": Color(0.98, 0.55, 0.2),
+	"Cat 1": Color(0.95, 0.3, 0.3),
+	"HC": Color(0.7, 0.4, 0.95),
+}
 const POWER_COLOR: Color = Color(0.04, 0.61, 0.96)
 const HEART_RATE_COLOR: Color = Color(0.95, 0.33, 0.38)
 
@@ -112,3 +121,11 @@ static func _box(color: Color, radius: int, horizontal: int, vertical: int) -> S
 	box.content_margin_bottom = vertical
 	box.anti_aliasing = true
 	return box
+
+
+## A time as m:ss, or h:mm:ss from an hour.
+static func duration(seconds: float) -> String:
+	var total: int = roundi(seconds)
+	if total >= 3600:
+		return "%d:%02d:%02d" % [total / 3600, total / 60 % 60, total % 60]
+	return "%d:%02d" % [total / 60, total % 60]

@@ -26,6 +26,10 @@ var _values: Dictionary[String, Label] = {}
 var _units: Dictionary[String, Label] = {}
 var _imperial: bool = false
 var _power_detail: Label = Label.new()
+var _climb_panel: PanelContainer = PanelContainer.new()
+var _climb_title: Label = UiTheme.caption("")
+var _climb_left: Label = UiTheme.value(20)
+var _climb_time: Label = Label.new()
 var _finished: bool = false
 var _saved: bool = false
 var _toast_left: float = 0.0
@@ -48,6 +52,8 @@ func bind(torqa: TorqaApp, world: RideWorld) -> void:
 	# Deferred: the handler calls back into Torqa, which is still busy emitting the signal.
 	_torqa.ride_finished.connect(_on_ride_finished, CONNECT_DEFERRED)
 	_torqa.ride_saved.connect(_on_ride_saved)
+	_torqa.climb_completed.connect(_on_climb_completed)
+	_torqa.route_completed.connect(_on_route_completed)
 	_torqa.failed.connect(_on_failed)
 
 
@@ -58,6 +64,10 @@ func begin() -> void:
 	_minimap.set_track(_torqa.track(2000))
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
+	var climb_info: Dictionary = _torqa.climbs()
+	var climbs: Array = climb_info.get("climbs", [])
+	_profile.set_climbs(climbs)
+	_climb_panel.hide()
 	_finish_button.text = "Finish & save"
 	var profile: Dictionary = _torqa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
@@ -77,6 +87,7 @@ func _ready() -> void:
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_metrics()
+	_build_climb_panel()
 	_finish_button.pressed.connect(_on_finish_pressed)
 	_camera_button.pressed.connect(_cycle_camera)
 
@@ -120,6 +131,7 @@ func _process(delta: float) -> void:
 	else:
 		_profile_info.text = "%d m  ·  %+.1f %%" % [roundi(elevation), grade]
 	_minimap.set_rider(Vector2(x_m, y_m), heading)
+	_show_climb(state["climb"])
 	_profile.set_rider_distance(distance_m)
 
 
@@ -185,6 +197,73 @@ func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
 	_power_detail.add_theme_color_override("font_color", color)
 
 
+func _build_climb_panel() -> void:
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 2)
+	rows.add_child(_climb_title)
+	rows.add_child(_climb_left)
+	_climb_time.add_theme_font_size_override("font_size", 14)
+	_climb_time.add_theme_color_override("font_color", UiTheme.MUTED)
+	rows.add_child(_climb_time)
+	_climb_panel.add_child(rows)
+	_climb_panel.hide()
+	($RightColumn as VBoxContainer).add_child(_climb_panel)
+
+
+## Progress on the climb the rider is on (`ride_state()["climb"]`), hidden between climbs.
+func _show_climb(climb: Variant) -> void:
+	if climb == null:
+		_climb_panel.hide()
+		return
+	var info: Dictionary = climb
+	var index: int = info["index"]
+	var count: int = info["count"]
+	var category: String = info["category"]
+	var left_m: float = info["length_m"] - info["ridden_m"]
+	var grade: float = info["grade"]
+	var elapsed: float = info["elapsed_s"]
+	_climb_title.text = "%s  ·  climb %d of %d" % [category.to_upper(), index + 1, count]
+	var color: Color = UiTheme.CLIMB_COLORS.get(category, UiTheme.MUTED)
+	_climb_title.add_theme_color_override("font_color", color)
+	var left: String = (
+		"%.2f mi" % (left_m / 1000.0 / KM_PER_MILE)
+		if _imperial
+		else ("%.1f km" % (left_m / 1000.0) if left_m >= 1000.0 else "%d m" % roundi(left_m))
+	)
+	_climb_left.text = "%s to go  ·  %.1f %%" % [left, grade]
+	var time: String = UiTheme.duration(elapsed)
+	if info["best_s"] != null:
+		var best: float = info["best_s"]
+		time += "  ·  best %s" % UiTheme.duration(best)
+	_climb_time.text = time
+	_climb_panel.show()
+
+
+func _on_climb_completed(_index: int, elapsed_s: float, previous_best_s: float) -> void:
+	_show_toast(
+		(
+			"Climb done in %s%s"
+			% [UiTheme.duration(elapsed_s), _record_text(elapsed_s, previous_best_s)]
+		)
+	)
+
+
+func _on_route_completed(elapsed_s: float, previous_best_s: float) -> void:
+	_show_toast(
+		"Finished in %s%s" % [UiTheme.duration(elapsed_s), _record_text(elapsed_s, previous_best_s)]
+	)
+	_toast_left = TOAST_SECONDS * 2.0
+
+
+## " — new record, 0:12 faster!", " (best 11:58)" or "" for a first time.
+static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
+	if previous_best_s < 0.0:
+		return ""
+	if elapsed_s < previous_best_s:
+		return " — new record, %s faster!" % UiTheme.duration(previous_best_s - elapsed_s)
+	return " (best %s)" % UiTheme.duration(previous_best_s)
+
+
 func _cycle_camera() -> void:
 	_camera_button.text = "Camera: %s" % _world.cycle_camera()
 
@@ -204,7 +283,7 @@ func _on_device_disconnected(device_name: String) -> void:
 
 
 func _on_ride_finished() -> void:
-	_show_toast("Finished!")
+	# The finish toast with the time comes from `route_completed`.
 	_torqa.finish_ride()
 
 

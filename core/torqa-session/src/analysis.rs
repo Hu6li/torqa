@@ -73,6 +73,48 @@ pub fn summarize(samples: &[Sample], ftp: Watts) -> RideSummary {
     }
 }
 
+/// The rider's time and power over one stretch of the route, e.g. a climb.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Effort {
+    /// Time from `start` to `end`.
+    pub elapsed: Duration,
+    /// Average power over the stretch, if power was recorded.
+    pub avg_power: Option<Watts>,
+}
+
+/// When the rider passed `distance`, interpolated between samples; `None` if not reached.
+#[must_use]
+pub fn time_at(samples: &[Sample], distance: Meters) -> Option<Duration> {
+    let after = samples.iter().position(|s| s.distance.0 >= distance.0)?;
+    if after == 0 {
+        return Some(samples[0].elapsed);
+    }
+    let (a, b) = (&samples[after - 1], &samples[after]);
+    let span = b.distance.0 - a.distance.0;
+    let fraction = if span > 0.0 {
+        (distance.0 - a.distance.0) / span
+    } else {
+        0.0
+    };
+    Some(a.elapsed + b.elapsed.saturating_sub(a.elapsed).mul_f64(fraction))
+}
+
+/// The effort between two distances along the route, if the rider covered all of it.
+#[must_use]
+pub fn effort(samples: &[Sample], start: Meters, end: Meters) -> Option<Effort> {
+    let started = time_at(samples, start)?;
+    let ended = time_at(samples, end)?;
+    let powers: Vec<f64> = samples
+        .iter()
+        .filter(|s| s.elapsed >= started && s.elapsed <= ended)
+        .filter_map(|s| s.power.map(|p| p.0))
+        .collect();
+    Some(Effort {
+        elapsed: ended.saturating_sub(started),
+        avg_power: average(&powers).map(Watts),
+    })
+}
+
 /// Time spent in each of the rider's seven power zones. Each interval between samples counts
 /// for the zone at its end, so the zones add up to the ride's duration where power was known.
 #[must_use]
@@ -213,6 +255,20 @@ mod tests {
         assert_eq!(summary.avg_power, Some(Watts(200.0)));
         assert_eq!(summary.max_power, Some(Watts(300.0)));
         assert_eq!(summary.avg_heart_rate, Some(BeatsPerMinute(140.0)));
+    }
+
+    #[test]
+    fn efforts_interpolate_between_samples() {
+        // 8 m per second: 100 m → 12.5 s, 300 m → 37.5 s.
+        let samples = ride(&[Some(200.0); 60]);
+
+        let climb = effort(&samples, Meters(100.0), Meters(300.0)).unwrap();
+
+        assert_eq!(climb.elapsed, Duration::from_secs(25));
+        assert_eq!(climb.avg_power, Some(Watts(200.0)));
+        assert_eq!(time_at(&samples, Meters(0.0)), Some(Duration::ZERO));
+        // Not reached: the ride covered 472 m.
+        assert_eq!(effort(&samples, Meters(100.0), Meters(500.0)), None);
     }
 
     #[test]

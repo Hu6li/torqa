@@ -1,10 +1,12 @@
 //! Routes for Torqa: GPX import (R11), elevation correction and smoothing (R12) and position,
 //! elevation and gradient lookup along the route.
 
+pub mod climbs;
 mod gpx;
 mod projection;
 mod structures;
 
+pub use climbs::{Climb, ClimbCategory};
 pub use projection::LocalProjection;
 
 use torqa_domain::units::{GradePercent, Meters};
@@ -106,6 +108,7 @@ pub struct Route {
     name: Option<String>,
     points: Vec<RoutePoint>,
     elevation_source: ElevationSource,
+    climbs: Vec<Climb>,
 }
 
 impl Route {
@@ -189,8 +192,10 @@ impl Route {
             })
             .collect();
 
+        let points: Vec<RoutePoint> = points;
         Ok(Self {
             name: gpx.name,
+            climbs: climbs::detect(&points),
             points,
             elevation_source: source,
         })
@@ -212,6 +217,33 @@ impl Route {
     #[must_use]
     pub fn points(&self) -> &[RoutePoint] {
         &self.points
+    }
+
+    /// The climbs along the route, in order.
+    #[must_use]
+    pub fn climbs(&self) -> &[Climb] {
+        &self.climbs
+    }
+
+    /// A fingerprint of the route's course: equal for the same track ridden again (e.g. the same
+    /// GPX file or course), so rides on it can be compared. Ignores name and elevations.
+    #[must_use]
+    pub fn key(&self) -> String {
+        // FNV-1a over the position every 100 m, rounded to about 10 m.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut feed = |value: i64| {
+            for byte in value.to_le_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        #[allow(clippy::cast_possible_truncation)] // degrees × 10⁴ fit easily
+        for point in self.points.iter().step_by(10) {
+            feed((point.lat * 1e4).round() as i64);
+            feed((point.lon * 1e4).round() as i64);
+        }
+        feed(i64::try_from(self.points.len()).unwrap_or(i64::MAX));
+        format!("{hash:016x}")
     }
 
     /// Total length.
@@ -444,6 +476,36 @@ mod tests {
 
     async fn import(xml: &str) -> Route {
         Route::from_gpx(xml, None).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn routes_know_their_climbs() {
+        // 1 km flat, 2 km at 5 %, 1 km flat.
+        let elevations: Vec<_> = (0..=40)
+            .map(|i| Some(f64::from(i.clamp(10, 30) - 10) * 5.0))
+            .collect();
+        let route = import(&gpx_north(&elevations, 100.0)).await;
+
+        let climbs = route.climbs();
+        assert_eq!(climbs.len(), 1, "{climbs:?}");
+        assert!((climbs[0].gain.0 - 100.0).abs() < 5.0, "{climbs:?}");
+        // Smoothing the file's elevations rounds both ends of the climb by up to a window.
+        assert!(
+            (climbs[0].length().0 - 2000.0).abs() <= GPX_SMOOTHING * 2.0 + 1.0,
+            "{climbs:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_same_track_has_the_same_key() {
+        let track = gpx_north(&[Some(0.0); 11], 100.0);
+        let renamed = track.replace("<trk>", "<trk><name>Other name</name>");
+        let other = gpx_north(&[Some(0.0); 12], 100.0);
+
+        let key = import(&track).await.key();
+
+        assert_eq!(key, import(&renamed).await.key());
+        assert_ne!(key, import(&other).await.key());
     }
 
     #[tokio::test]

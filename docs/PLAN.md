@@ -107,7 +107,7 @@ Built in rideable steps:
 - [ ] Customizable HUD
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
-- [ ] Climbs and personal records
+- [x] Climbs (auto-detected, categorised) and personal records per route and climb
 - [ ] Ghosts & pacers, audio, units, i18n
 
 ### Phase 5 — Video mode

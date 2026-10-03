@@ -19,6 +19,7 @@ var _detail: VBoxContainer = VBoxContainer.new()
 var _title: Label = Label.new()
 var _subtitle: Label = Label.new()
 var _stats: GridContainer = GridContainer.new()
+var _climbs: VBoxContainer = VBoxContainer.new()
 var _chart: RideChart = RideChart.new()
 var _power_zones: ZoneBars = ZoneBars.new()
 var _heart_rate_zones: ZoneBars = ZoneBars.new()
@@ -107,6 +108,8 @@ func _ready() -> void:
 	_stats.add_theme_constant_override("h_separation", 28)
 	_stats.add_theme_constant_override("v_separation", 12)
 	_detail.add_child(_stats)
+	_climbs.add_theme_constant_override("separation", 4)
+	_detail.add_child(_climbs)
 
 	var legend: HBoxContainer = HBoxContainer.new()
 	legend.add_theme_constant_override("separation", 18)
@@ -149,6 +152,7 @@ func _show_ride(index: int) -> void:
 	_title.text = route
 	_subtitle.text = _date(start)
 	_fill_stats(ride)
+	_fill_climbs(ride)
 	var detail: Dictionary = _torqa.ride_detail(path, CHART_POINTS)
 	if detail.is_empty():
 		return
@@ -209,6 +213,54 @@ func _fill_stats(ride: Dictionary) -> void:
 		value.text = "%s %s" % [text, unit] if not unit.is_empty() else text
 		cell.add_child(value)
 		_stats.add_child(cell)
+
+
+## The ride's times on the route's climbs, records marked.
+func _fill_climbs(ride: Dictionary) -> void:
+	for child: Node in _climbs.get_children():
+		child.queue_free()
+	var climbs: Array = ride.get("climbs", [])
+	var route_time: Variant = ride.get("route_time_s")
+	_climbs.visible = not climbs.is_empty() or route_time != null
+	if not _climbs.visible:
+		return
+	_climbs.add_child(UiTheme.caption("Times"))
+	if route_time != null:
+		var route_s: float = route_time
+		var record: bool = ride["route_record"]
+		_climbs.add_child(_time_row("Whole route", route_s, null, record))
+	for i: int in range(climbs.size()):
+		var climb: Dictionary = climbs[i]
+		var start_km: float = climb["start_m"] / 1000.0
+		var length_km: float = climb["length_m"] / 1000.0
+		var time_s: float = climb["time_s"]
+		var record: bool = climb["record"]
+		var what: String = "Climb %d  ·  %.1f km from km %.1f" % [i + 1, length_km, start_km]
+		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
+
+
+func _time_row(what: String, seconds: float, power: Variant, record: bool) -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var name_label: Label = Label.new()
+	name_label.text = what
+	name_label.custom_minimum_size = Vector2(300, 0)
+	row.add_child(name_label)
+	var time: Label = Label.new()
+	time.text = UiTheme.duration(seconds)
+	time.custom_minimum_size = Vector2(70, 0)
+	row.add_child(time)
+	var watts: Label = Label.new()
+	watts.text = _number(power, "%d") + " W" if power != null else ""
+	watts.custom_minimum_size = Vector2(70, 0)
+	watts.add_theme_color_override("font_color", UiTheme.MUTED)
+	row.add_child(watts)
+	if record:
+		var badge: Label = Label.new()
+		badge.text = "★ Personal record"
+		badge.add_theme_color_override("font_color", UiTheme.CLIMB_COLORS["Cat 3"])
+		row.add_child(badge)
+	return row
 
 
 func _on_delete_pressed() -> void:
