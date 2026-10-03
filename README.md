@@ -41,6 +41,7 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 | All checks (fmt, clippy, tests, cargo-deny, gdlint, GDExtension smoke test) | `scripts/check.sh` |
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
 | Render ride screenshots (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
+| Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
