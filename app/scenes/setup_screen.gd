@@ -49,6 +49,8 @@ var _ghost_activity: String = ""
 @onready var _edit_profile_button: Button = %EditProfileButton
 @onready var _profile_dialog: ProfileDialog = ProfileDialog.new()
 @onready var _flat_descents: CheckBox = %FlatDescents
+@onready var _sound_option: OptionButton = %SoundOption
+@onready var _sound_volume: HSlider = %SoundVolume
 @onready var _ghost_option: OptionButton = %GhostOption
 @onready var _ghost_value: SpinBox = %GhostValue
 @onready var _ghost_file_dialog: FileDialog = %GhostFileDialog
@@ -59,6 +61,11 @@ var _ghost_activity: String = ""
 @onready var _loading: HBoxContainer = %Loading
 @onready var _loading_bar: ProgressBar = %LoadingBar
 @onready var _loading_label: Label = %LoadingLabel
+
+
+## Ambient sound loudness for the ride, 0–1 (0 when silent).
+func sound_volume() -> float:
+	return _sound_volume.value if _sound_option.selected == 0 else 0.0
 
 
 ## The chosen time of day and weather, as names known to `RideWorld`.
@@ -98,6 +105,11 @@ func _ready() -> void:
 	]:
 		_ghost_option.add_item(label)
 	_ghost_option.item_selected.connect(_on_ghost_selected)
+	_sound_option.add_item("Ambient sounds")
+	_sound_option.add_item("Silent")
+	_sound_option.item_selected.connect(
+		func(index: int) -> void: _sound_volume.editable = index == 0
+	)
 	_ghost_file_dialog.file_selected.connect(_on_ghost_file_selected)
 	_ghost_file_dialog.canceled.connect(func() -> void: _ghost_option.select(Ghost.NONE))
 	_edit_profile_button.pressed.connect(_on_edit_profile_pressed)

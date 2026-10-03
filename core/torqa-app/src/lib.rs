@@ -4,6 +4,7 @@
 
 pub mod hud;
 mod import;
+pub mod media;
 pub mod paths;
 pub mod view;
 
@@ -252,6 +253,7 @@ enum JobResult {
     World(Box<World>),
     Progress(LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, String>),
+    Failed(String),
 }
 
 /// Forwards load progress to the frame loop, at most once per percent per stage.
@@ -820,6 +822,24 @@ impl App {
         )
     }
 
+    /// Tells the music app to play/pause or skip (R26), in the background; failures are
+    /// reported as [`AppEvent::Error`].
+    pub fn control_music(&mut self, command: media::MediaCommand) {
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn_blocking(move || {
+            if let Err(message) = media::send(command) {
+                let _ = tx.send(JobResult::Failed(message));
+            }
+        });
+    }
+
+    /// What surrounds the rider now, for the ambient sound.
+    #[must_use]
+    pub fn surroundings(&self) -> Option<torqa_world::Surroundings> {
+        let state = self.ride_state()?;
+        Some(self.world.as_ref()?.surroundings_at(state.distance))
+    }
+
     /// The ghost of the current ride, if any.
     #[must_use]
     pub fn ghost_state(&self) -> Option<GhostState> {
@@ -1103,7 +1123,8 @@ impl App {
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
                 JobResult::Scan(Err(message))
                 | JobResult::Route(Err(message))
-                | JobResult::CourseAdded(Err(message)) => {
+                | JobResult::CourseAdded(Err(message))
+                | JobResult::Failed(message) => {
                     events.push(AppEvent::Error(message));
                 }
             }

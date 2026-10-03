@@ -255,6 +255,25 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 
+[node name="SoundCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+layout_mode = 2
+text = "Sound"
+
+[node name="SoundOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Wind, tyres, rain, water and birds, following your speed and surroundings"
+
+[node name="SoundVolume" type="HSlider" parent="Margin/Center/Card/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Volume"
+max_value = 1.0
+step = 0.05
+value = 0.8
+
 [node name="GhostFileDialog" type="FileDialog" parent="."]
 unique_name_in_owner = true
 title = "Race against a recorded activity"

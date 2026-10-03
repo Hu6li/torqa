@@ -2,6 +2,26 @@
 
 Things to review or decide together. Newest first; remove entries once settled.
 
+## 2026-10-03 — Phase 4: HUD editor, ghosts, audio
+
+### Needs your ears / hardware (cannot be checked in the container)
+
+- **Ambient sound** (audio PR): synthesised, so I could only test levels, not how it sounds.
+  `AMBIENCE_DIR=/workspaces/torqa/screenshots godot --headless --path app -s
+  res://tests/ui_smoke.gd` (in the container) writes the raw wind/road/rain/water/bird sounds
+  as WAV files; in the app they are additionally filtered by speed. Too synthetic? Then we
+  should add recorded CC0 sounds (a new asset source to decide on).
+- **Music control on macOS**: Torqa runs AppleScript (`osascript`) to Spotify, else Apple
+  Music; macOS asks once for permission ("Torqa wants to control Spotify"). The usage text is
+  in the export preset now. Please try M / . / , during a ride with Spotify or Music playing.
+  Windows (media keys) and Linux (`playerctl`) are untested too.
+- **Video audio** (R26, original video sound) waits for video mode (Phase 5).
+
+### Findings
+
+- **Stacked PRs**: #19 (ghosts) builds on #18 (HUD editor), the audio PR on #19. All target
+  `main`; merge in order and each shrinks to its own commit.
+
 ## 2026-10-03 — Course files (Phase 3c)
 
 ### Needs a decision
@@ -33,5 +53,3 @@ Things to review or decide together. Newest first; remove entries once settled.
 - **60 fps on M1** not yet measured (software renderer in the container only).
 - **GitHub token** cannot read check results (`checks:read` missing), so I can't see CI status
   of PRs; I rely on `scripts/check.sh` locally.
-- **PR order**: #6 (world details) → #7 (visual polish) → #8 (terrain, first person) → #9
-  (course files) → #10 (rider profiles); each is based on the previous one. Merge in that order.

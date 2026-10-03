@@ -9,6 +9,7 @@ mod buildings;
 mod landcover;
 mod minimap;
 mod road;
+mod soundscape;
 mod structures;
 mod vegetation;
 mod water;
@@ -22,6 +23,7 @@ use tracing::{info, warn};
 use landcover::LandIndex;
 pub use minimap::{BACKGROUND as MINIMAP_BACKGROUND, FlatMap};
 use road::RoadIndex;
+pub use soundscape::{SOUNDSCAPE_STEP, Surroundings};
 pub use vegetation::Trees;
 
 /// Edge length of a terrain chunk.
@@ -101,6 +103,21 @@ pub struct World {
     pub minimap: FlatMap,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
+    /// What surrounds the road every [`SOUNDSCAPE_STEP`] metres, for the ambient sound.
+    pub soundscape: Vec<Surroundings>,
+}
+
+impl World {
+    /// What surrounds the road at `distance` from the start (nothing if unknown).
+    #[must_use]
+    pub fn surroundings_at(&self, distance: torqa_domain::units::Meters) -> Surroundings {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped below
+        let index = (distance.0.max(0.0) / SOUNDSCAPE_STEP).round() as usize;
+        self.soundscape
+            .get(index.min(self.soundscape.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
@@ -130,6 +147,7 @@ pub async fn generate<M: ElevationModel>(
         },
         structures: structures::build(&road, &projection, model).await,
         minimap: minimap::build(map, &projection, &road),
+        soundscape: soundscape::along(route, &projection, &land),
         ..World::default()
     };
 

@@ -12,6 +12,7 @@ use std::time::Duration;
 use godot::classes::{Engine, INode, Node};
 use godot::prelude::*;
 use torqa_app::hud::MetricKind;
+use torqa_app::media::MediaCommand;
 use torqa_app::view;
 use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
@@ -359,6 +360,21 @@ impl TorqaApp {
         self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
     }
 
+    /// Controls the rider's music app: `play_pause`, `next` or `previous` (emits `failed` if
+    /// no player reacts).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn control_music(&mut self, command: GString) {
+        let command = match command.to_string().as_str() {
+            "next" => MediaCommand::Next,
+            "previous" => MediaCommand::Previous,
+            _ => MediaCommand::PlayPause,
+        };
+        if let Some(app) = self.app.as_mut() {
+            app.control_music(command);
+        }
+    }
+
     /// Whether the active rider has finished the loaded route before, so `best` can be raced.
     #[func]
     fn has_personal_best(&self) -> bool {
@@ -472,7 +488,8 @@ impl TorqaApp {
     }
 
     /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
-    /// heading, power, cadence, heart_rate, watts_per_kg, power_zone, heart_rate_zone}`; sensor
+    /// heading, power, cadence, heart_rate, watts_per_kg, power_zone, heart_rate_zone, metrics,
+    /// surroundings {forest, water, town}, ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when
     /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
     /// is the direction of travel in radians clockwise from north.
@@ -508,6 +525,14 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
+            "surroundings" => &app.surroundings().map_or_else(Variant::nil, |s| {
+                vdict! {
+                    "forest" => s.forest,
+                    "water" => s.water,
+                    "town" => s.town,
+                }
+                .to_variant()
+            }),
             "ghost" => &app.ghost_state().map_or_else(Variant::nil, |g| {
                 let at = route.position(g.distance);
                 let (gx, gy) = LocalProjection::for_route(route).project(at.lat, at.lon);
