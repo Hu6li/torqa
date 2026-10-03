@@ -15,7 +15,6 @@ use std::time::{Duration, SystemTime};
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
-use torqa_imagery::{Bounds, Imagery, Request};
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_terrain::{Terrain, TileSource};
@@ -233,46 +232,18 @@ impl App {
     fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
         let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"));
-        let mut imagery = Imagery::new(self.cache_dir.join("imagery"));
         if self.offline {
             terrain = terrain.offline();
-            imagery = imagery.offline();
         }
         self.runtime.spawn(async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 last: None,
             };
-            let mut world =
-                torqa_world::generate(&route, &mut terrain, &map, &mut |done, total| {
-                    reporter.report(LoadStage::World, done, total);
-                })
-                .await;
-            let requests: Vec<Request> = world
-                .chunks
-                .iter()
-                .map(|chunk| {
-                    let [south, west, north, east] = chunk.bounds;
-                    Request {
-                        bounds: Bounds {
-                            south,
-                            west,
-                            north,
-                            east,
-                        },
-                        // About half a metre per pixel along the road, where the ground is seen up close.
-                        size: if chunk.near_route { 1024 } else { 256 },
-                    }
-                })
-                .collect();
-            let photos = imagery
-                .photos(&requests, &mut |done, total| {
-                    reporter.report(LoadStage::Imagery, done, total);
-                })
-                .await;
-            for (chunk, photo) in world.chunks.iter_mut().zip(photos) {
-                chunk.photo = photo;
-            }
+            let world = torqa_world::generate(&route, &mut terrain, &map, &mut |done, total| {
+                reporter.report(LoadStage::World, done, total);
+            })
+            .await;
             let _ = tx.send(JobResult::World(Box::new(world)));
         });
     }

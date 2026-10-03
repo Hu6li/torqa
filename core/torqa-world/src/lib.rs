@@ -84,18 +84,7 @@ pub struct TerrainChunk {
     pub buildings: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
-    /// Edge length in metres.
-    pub size: f32,
-    /// The chunk's area in degrees: south, west, north, east (for aerial imagery).
-    pub bounds: [f64; 4],
-    /// Whether the road passes close, where detail is seen up close.
-    pub near_route: bool,
-    /// Aerial photo of the chunk (JPEG, north up), if available; added after generation.
-    pub photo: Option<Vec<u8>>,
 }
-
-/// Chunks whose centre is within this distance of the road count as near the route.
-const NEAR_ROUTE: f64 = 450.0;
 
 /// The generated world.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -157,26 +146,11 @@ pub async fn generate<M: ElevationModel>(
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
-        let (south, west) = projection.unproject(heights.origin.0, heights.origin.1);
-        let (north, east) =
-            projection.unproject(heights.origin.0 + CHUNK_SIZE, heights.origin.1 + CHUNK_SIZE);
-        let near_route = road
-            .nearest(
-                heights.origin.0 + CHUNK_SIZE / 2.0,
-                heights.origin.1 + CHUNK_SIZE / 2.0,
-                NEAR_ROUTE,
-            )
-            .is_some();
         world.chunks.push(TerrainChunk {
             center,
             mesh: heights.mesh(&land, origin),
             buildings: building_mesh,
             trees: vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin),
-            #[allow(clippy::cast_possible_truncation)] // small constant
-            size: CHUNK_SIZE as f32,
-            bounds: [south, west, north, east],
-            near_route,
-            photo: None,
         });
         progress(done + 1, total);
     }

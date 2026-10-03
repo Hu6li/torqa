@@ -5,13 +5,6 @@ shader_type spatial;
 uniform vec3 rock_color : source_color = vec3(0.45, 0.43, 0.40);
 uniform vec3 snow_color : source_color = vec3(0.93, 0.95, 0.97);
 uniform float snow_line = 2400.0;
-// Aerial photo of this chunk (north up) and the world rectangle it covers: x and z of the
-// north-west corner, then width and depth in metres.
-uniform sampler2D photo : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
-uniform bool has_photo = false;
-uniform vec4 photo_rect = vec4(0.0, 0.0, 1.0, 1.0);
-
-#include "res://shaders/aerial.gdshaderinc"
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -47,15 +40,6 @@ void fragment() {
 	float snow = smoothstep(snow_line - 150.0, snow_line + 150.0, world_position.y + patches * 120.0);
 	color = mix(color, snow_color, snow * smoothstep(0.45, 0.25, steepness));
 
-	if (has_photo) {
-		vec2 uv = (world_position.xz - photo_rect.xy) / photo_rect.zw;
-		color = aerial_albedo(texture(photo, uv).rgb);
-		// Photo pixels are about half a metre wide, so up close they would look smeared; fine
-		// noise gives the ground grain there.
-		float near = 1.0 - smoothstep(15.0, 80.0, distance(world_position, CAMERA_POSITION_WORLD));
-		float grain = value_noise(world_position.xz / 1.3) * 0.6 + value_noise(world_position.xz / 0.35) * 0.4;
-		color *= 1.0 + (grain - 0.5) * 0.35 * near;
-	}
 	// Under lakes and rivers: the bed, mostly hidden by the water surface above it.
 	float water = smoothstep(0.4, 0.6, COLOR.a);
 	ALBEDO = mix(color, vec3(0.08, 0.1, 0.09), water);

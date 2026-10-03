@@ -588,20 +588,3 @@ async fn lakes_get_a_flat_surface_at_the_water_level() {
         "flat at the lake level"
     );
 }
-
-#[tokio::test]
-async fn chunks_know_their_area_for_aerial_imagery() {
-    let world = world(&MapData::default()).await;
-
-    for chunk in &world.chunks {
-        let [south, west, north, east] = chunk.bounds;
-        assert!(north > south && east > west);
-        // 480 m in degrees at 46° N.
-        assert!(((north - south) * METERS_PER_DEGREE - 480.0).abs() < 1.0);
-        let centre = at(f64::from(chunk.center[0]), -f64::from(chunk.center[2]));
-        assert!((south..north).contains(&centre.0) && (west..east).contains(&centre.1));
-    }
-    assert!(
-        world.chunks.iter().any(|c| c.near_route) && world.chunks.iter().any(|c| !c.near_route)
-    );
-}

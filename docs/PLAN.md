@@ -83,9 +83,9 @@ Built in rideable steps:
   tunnels in the elevation profile ([ADR 0008](adr/0008-vector-tiles.md))
 - [x] Step 3b — bridge decks and tunnel tubes, weather/time-of-day presets, animated avatar,
   minimap drawn from the OSM data (offline, no tile server)
-- [x] Step 3c — realism in Switzerland: SWISSIMAGE aerial photos on terrain and roofs,
-  swissALTI3D terrain via Mapterhorn zoom 15, true first-person camera
-  ([ADR 0009](adr/0009-swiss-aerial-imagery.md))
+- [x] Step 3c — detailed terrain (Mapterhorn zoom 15, swissALTI3D in Switzerland), true
+  first-person camera. Aerial imagery (SWISSIMAGE) was tried and dropped: draped photos looked
+  worse than the land-cover shading
 - [ ] Step 3d — real 3D buildings in Switzerland (swissBUILDINGS3D)
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
@@ -116,8 +116,7 @@ Built in rideable steps:
 - Zwift Click protocol is reverse-engineered and may change → isolated behind `ShiftInput`.
 - Garmin / TrainingPeaks / Komoot upload APIs need partner approval.
 - Insta360 GPS extraction is less documented than GoPro GPMF.
-- Free realistic terrain imagery is limited → procedural texturing by OSM landuse/slope by default;
-  Switzerland uses swisstopo open data (ADR 0009).
+- Free realistic terrain imagery is limited → procedural texturing by OSM landuse/slope by default.
 
 ## Verification
 

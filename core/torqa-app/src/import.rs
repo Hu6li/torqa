@@ -18,8 +18,6 @@ pub enum LoadStage {
     Elevation,
     /// Building the 3D world.
     World,
-    /// Downloading (or reading cached) aerial photos for the world.
-    Imagery,
 }
 
 impl LoadStage {
@@ -31,7 +29,6 @@ impl LoadStage {
             Self::Map => "Downloading map data",
             Self::Elevation => "Correcting elevations",
             Self::World => "Building 3D world",
-            Self::Imagery => "Downloading aerial imagery",
         }
     }
 
@@ -42,7 +39,7 @@ impl LoadStage {
             Self::Route => "files",
             Self::Map => "tiles",
             Self::Elevation => "points",
-            Self::World | Self::Imagery => "chunks",
+            Self::World => "chunks",
         }
     }
 }

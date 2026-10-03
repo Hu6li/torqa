@@ -2080,7 +2080,6 @@ dependencies = [
  "tokio",
  "torqa-devices",
  "torqa-domain",
- "torqa-imagery",
  "torqa-osm",
  "torqa-physics",
  "torqa-routes",
@@ -2138,16 +2137,6 @@ dependencies = [
  "torqa-routes",
  "torqa-session",
  "torqa-world",
-]
-
-[[package]]
-name = "torqa-imagery"
-version = "0.1.0"
-dependencies = [
- "futures",
- "reqwest",
- "tokio",
- "tracing",
 ]
 
 [[package]]

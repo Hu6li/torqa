@@ -43,10 +43,6 @@ const CHUNKS_PER_FRAME: int = 6
 const VISIBILITY_RANGE: float = 4500.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
-## Aerial photos are kept small, except for chunks this close to the camera; full-size photos of
-## a whole long route would not fit in video memory.
-const PHOTO_DETAIL_RANGE: float = 900.0
-const PHOTO_SMALL_SIZE: int = 256
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
 
@@ -57,8 +53,6 @@ var _camera_mode: CameraMode = CameraMode.CHASE
 var _heading: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
-var _photos: Array[ChunkPhoto] = []
-var _next_photo_check: int = 0
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
@@ -152,7 +146,6 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_build_some_chunks()
-	_update_photo_detail()
 	if not visible or _torqa == null:
 		return
 	var state: Dictionary = _torqa.ride_state()
@@ -164,8 +157,6 @@ func _process(delta: float) -> void:
 func _on_world_ready(_info: Dictionary) -> void:
 	for chunk: Node in _terrain.get_children():
 		chunk.queue_free()
-	_photos.clear()
-	_next_photo_check = 0
 	_chunk_count = _torqa.world_chunk_count()
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
@@ -186,19 +177,10 @@ func _build_some_chunks() -> void:
 		_terrain.add_child(node)
 		var terrain_arrays: Dictionary = chunk["terrain"]
 		var building_arrays: Dictionary = chunk["buildings"]
-		var terrain_material: ShaderMaterial = _terrain_material
-		var building_material: ShaderMaterial = _building_material
-		var jpeg: PackedByteArray = chunk["photo"]
-		var size: float = chunk["size"]
-		var photo: ChunkPhoto = ChunkPhoto.create(jpeg, center, size)
-		if photo != null:
-			terrain_material = photo.apply(_terrain_material)
-			building_material = photo.apply(_building_material)
-			_photos.append(photo)
-		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, terrain_material)
+		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
 		ground.visibility_range_end = VISIBILITY_RANGE
 		node.add_child(ground)
-		var buildings: MeshInstance3D = _mesh_instance(building_arrays, building_material)
+		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
 		buildings.visibility_range_end = DETAIL_RANGE
 		node.add_child(buildings)
 		for kind: String in ["conifers", "broadleaves"]:
@@ -209,22 +191,6 @@ func _build_some_chunks() -> void:
 			node.add_child(_trees(buffer, mesh))
 		_next_chunk += 1
 		built += 1
-
-
-## Swaps one chunk's photo per frame between full and small size, by distance to the camera.
-func _update_photo_detail() -> void:
-	if _photos.is_empty():
-		return
-	_next_photo_check = (_next_photo_check + 1) % _photos.size()
-	var photo: ChunkPhoto = _photos[_next_photo_check]
-	var distance: float = Vector2(photo.center.x, photo.center.z).distance_to(
-		Vector2(_camera.global_position.x, _camera.global_position.z)
-	)
-	# Hysteresis keeps a chunk on the edge from switching back and forth.
-	if distance < PHOTO_DETAIL_RANGE:
-		photo.set_detailed(true)
-	elif distance > PHOTO_DETAIL_RANGE * 1.3:
-		photo.set_detailed(false)
 
 
 func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
@@ -363,55 +329,3 @@ static func _material(color: Color) -> StandardMaterial3D:
 	material.albedo_color = color
 	material.roughness = 0.7
 	return material
-
-
-## The aerial photo of one chunk and the materials showing it.
-class ChunkPhoto:
-	var center: Vector3
-	var _jpeg: PackedByteArray
-	var _small: Texture2D
-	var _detailed: bool = false
-	var _rect: Vector4
-	var _materials: Array[ShaderMaterial] = []
-
-	## The photo for a chunk at `center` with side `size`, or null without a decodable photo.
-	static func create(jpeg: PackedByteArray, center: Vector3, size: float) -> ChunkPhoto:
-		if jpeg.is_empty():
-			return null
-		var image: Image = Image.new()
-		if image.load_jpg_from_buffer(jpeg) != OK:
-			return null
-		var photo: ChunkPhoto = ChunkPhoto.new()
-		photo.center = center
-		photo._rect = Vector4(center.x - size / 2.0, center.z - size / 2.0, size, size)
-		if image.get_width() > PHOTO_SMALL_SIZE:
-			photo._jpeg = jpeg
-			image.resize(PHOTO_SMALL_SIZE, PHOTO_SMALL_SIZE, Image.INTERPOLATE_BILINEAR)
-		photo._small = ChunkPhoto._texture(image)
-		return photo
-
-	## A copy of `material` showing this photo.
-	func apply(material: ShaderMaterial) -> ShaderMaterial:
-		var copy: ShaderMaterial = material.duplicate() as ShaderMaterial
-		copy.set_shader_parameter("photo", _small)
-		copy.set_shader_parameter("has_photo", true)
-		copy.set_shader_parameter("photo_rect", _rect)
-		_materials.append(copy)
-		return copy
-
-	func set_detailed(detailed: bool) -> void:
-		if detailed == _detailed or _jpeg.is_empty():
-			return
-		_detailed = detailed
-		var texture: Texture2D = _small
-		if detailed:
-			var image: Image = Image.new()
-			if image.load_jpg_from_buffer(_jpeg) != OK:
-				return
-			texture = ChunkPhoto._texture(image)
-		for material: ShaderMaterial in _materials:
-			material.set_shader_parameter("photo", texture)
-
-	static func _texture(image: Image) -> Texture2D:
-		image.generate_mipmaps()
-		return ImageTexture.create_from_image(image)

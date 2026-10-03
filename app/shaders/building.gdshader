@@ -7,25 +7,10 @@ uniform float storey = 3.0;
 uniform float window_spacing = 3.2;
 uniform vec3 glass : source_color = vec3(0.16, 0.2, 0.24);
 uniform vec3 frame : source_color = vec3(0.95, 0.95, 0.93);
-// Aerial photo of the chunk, as in the terrain shader: roofs show the real roof from above.
-uniform sampler2D photo : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
-uniform bool has_photo = false;
-uniform vec4 photo_rect = vec4(0.0, 0.0, 1.0, 1.0);
-
-#include "res://shaders/aerial.gdshaderinc"
-
-varying vec3 world_position;
-
-void vertex() {
-	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
 
 void fragment() {
 	vec3 base = pow(COLOR.rgb, vec3(2.2));
 	float roof = step(0.5, COLOR.a);
-	if (has_photo && roof > 0.5) {
-		base = aerial_albedo(texture(photo, (world_position.xz - photo_rect.xy) / photo_rect.zw).rgb);
-	}
 	vec2 wall = UV;
 
 	float row = fract(wall.y / storey);
