@@ -56,6 +56,10 @@ func _run() -> void:
 	var newest: Dictionary = history[0]
 	var newest_path: String = newest["path"]
 	_check(newest_path == _saved_path, "newest ride first: %s" % newest)
+	_check(_torqa.rename_ride(newest_path, "Smoke spin"), "ride renamed")
+	var renamed: Dictionary = _torqa.history()[0]
+	var renamed_name: String = renamed["name"]
+	_check(renamed_name == "Smoke spin", "name kept: %s" % renamed)
 	var detail: Dictionary = _torqa.ride_detail(newest_path, 100)
 	var power_chart: PackedVector2Array = detail.get("power", PackedVector2Array())
 	_check(not power_chart.is_empty(), "power chart: %s" % detail)

@@ -198,7 +198,7 @@ impl TorqaApp {
         array
     }
 
-    /// The active rider's rides, newest first: `[{path, route, start_unix_s, elapsed_s,
+    /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
     /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
     /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
     /// max_heart_rate}]`; values the ride did not record are `null`.
@@ -218,6 +218,7 @@ impl TorqaApp {
                 &vdict! {
                     "path" => path.as_str(),
                     "route" => entry.record.route.as_str(),
+                    "name" => entry.record.name.as_deref().unwrap_or_default(),
                     "start_unix_s" => start,
                     "elapsed_s" => s.elapsed.as_secs_f64(),
                     "distance_m" => s.distance.0,
@@ -283,6 +284,15 @@ impl TorqaApp {
             "power_zones" => &seconds(&detail.power_zones),
             "heart_rate_zones" => &seconds(&detail.heart_rate_zones),
         }
+    }
+
+    /// Names a ride (empty: back to route and date); emits `failed` on errors.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn rename_ride(&mut self, path: GString, name: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        let name = name.to_string();
+        self.command(|app| app.rename_ride(&path, &name))
     }
 
     /// Deletes a ride from the history.

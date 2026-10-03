@@ -1,7 +1,8 @@
 class_name HistoryScreen
 extends Control
 ## The rider's past rides (R31): a list on the left, the selected ride's figures, chart and
-## time in zones on the right.
+## time in zones on the right. Rides have names (R50), edited in place. Right after a ride the
+## same screen is its summary (R42): that ride only, to name, keep or discard.
 
 signal closed
 
@@ -16,7 +17,13 @@ var _list: VBoxContainer = VBoxContainer.new()
 var _selected: int = -1
 var _empty: Label = Label.new()
 var _detail: VBoxContainer = VBoxContainer.new()
-var _title: Label = Label.new()
+var _title: LineEdit = LineEdit.new()
+var _left: PanelContainer = PanelContainer.new()
+var _summary_caption: Label = UiTheme.caption(tr("Ride summary"))
+var _actions: HBoxContainer = HBoxContainer.new()
+var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
+## Showing a single ride's summary after riding it, rather than the history.
+var _summary: bool = false
 var _subtitle: Label = Label.new()
 var _stats: GridContainer = GridContainer.new()
 var _climbs: VBoxContainer = VBoxContainer.new()
@@ -30,8 +37,28 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa = torqa
 
 
+## The summary of the ride just saved in `path` (R42): only that ride, to name, keep or
+## discard; `closed` when done.
+func open_summary(path: String) -> void:
+	_summary = true
+	_load()
+	for i: int in range(_rides.size()):
+		var ride: Dictionary = _rides[i]
+		if ride["path"] == path:
+			_show_ride(i)
+
+
 ## Reloads the rides of the active rider and shows the newest.
 func open() -> void:
+	_summary = false
+	_load()
+
+
+func _load() -> void:
+	_left.visible = not _summary
+	_summary_caption.visible = _summary
+	_actions.visible = _summary
+	_delete_button.visible = not _summary
 	_imperial = _torqa.profile().get("units", "metric") == "imperial"
 	_rides = _torqa.history()
 	for child: Node in _list.get_children():
@@ -59,7 +86,7 @@ func _ready() -> void:
 	columns.add_theme_constant_override("separation", 20)
 	(%Margin as MarginContainer).add_child(columns)
 
-	var left: PanelContainer = PanelContainer.new()
+	var left: PanelContainer = _left
 	left.custom_minimum_size = Vector2(400, 0)
 	columns.add_child(left)
 	var left_rows: VBoxContainer = VBoxContainer.new()
@@ -69,7 +96,7 @@ func _ready() -> void:
 	header.add_theme_constant_override("separation", 14)
 	var back: Button = Button.new()
 	back.text = tr("← Back")
-	back.pressed.connect(func() -> void: closed.emit())
+	back.pressed.connect(_close)
 	header.add_child(back)
 	var heading: Label = Label.new()
 	heading.text = tr("Your rides")
@@ -95,16 +122,25 @@ func _ready() -> void:
 	var title_row: HBoxContainer = HBoxContainer.new()
 	var titles: VBoxContainer = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.add_child(_summary_caption)
 	_title.add_theme_font_size_override("font_size", 24)
-	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_title.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	_title.tooltip_text = tr("Click to rename the ride")
+	_title.text_submitted.connect(func(_text: String) -> void: _title.release_focus())
+	_title.focus_exited.connect(_rename)
 	titles.add_child(_title)
 	_subtitle.add_theme_color_override("font_color", UiTheme.MUTED)
 	titles.add_child(_subtitle)
 	title_row.add_child(titles)
 	_delete_button.text = tr("Delete ride")
-	_delete_button.pressed.connect(_on_delete_pressed)
+	_delete_button.pressed.connect(_confirm_delete.popup_centered)
 	title_row.add_child(_delete_button)
 	_detail.add_child(title_row)
+	_confirm_delete.title = tr("Delete ride?")
+	_confirm_delete.dialog_text = tr("The ride and its FIT file are deleted.")
+	_confirm_delete.ok_button_text = tr("Delete")
+	_confirm_delete.confirmed.connect(_on_delete_confirmed)
+	add_child(_confirm_delete)
 
 	_stats.columns = 6
 	_stats.add_theme_constant_override("h_separation", 28)
@@ -148,14 +184,33 @@ func _ready() -> void:
 		zones.add_child(column)
 	_detail.add_child(zones)
 
+	# Summary only: keep (the ride is saved already) or discard it.
+	var push: Control = Control.new()
+	push.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_detail.add_child(push)
+	_actions.add_theme_constant_override("separation", 12)
+	_actions.alignment = BoxContainer.ALIGNMENT_END
+	var discard: Button = Button.new()
+	discard.text = tr("Discard ride")
+	discard.pressed.connect(_confirm_delete.popup_centered)
+	_actions.add_child(discard)
+	var done: Button = Button.new()
+	done.text = tr("Done")
+	done.custom_minimum_size = Vector2(140, 0)
+	done.pressed.connect(_close)
+	_actions.add_child(done)
+	_actions.hide()
+	_detail.add_child(_actions)
+
 
 func _show_ride(index: int) -> void:
 	_selected = index
 	var ride: Dictionary = _rides[index]
 	var path: String = ride["path"]
-	var route: String = ride["route"]
 	var start: int = ride["start_unix_s"]
-	_title.text = route
+	var ride_name: String = ride["name"]
+	_title.placeholder_text = _default_name(ride)
+	_title.text = ride_name
 	_subtitle.text = _date(start)
 	_fill_stats(ride)
 	_fill_climbs(ride)
@@ -271,24 +326,56 @@ func _time_row(what: String, seconds: float, power: Variant, record: bool) -> HB
 	return row
 
 
-func _on_delete_pressed() -> void:
+func _on_delete_confirmed() -> void:
 	if _selected < 0:
 		return
 	var ride: Dictionary = _rides[_selected]
 	var path: String = ride["path"]
 	if _torqa.delete_ride(path):
-		open()
+		if _summary:
+			_close()
+		else:
+			_load()
+
+
+## Saves the name typed into the title (R50); an empty name shows route and date again.
+func _rename() -> void:
+	if _selected < 0:
+		return
+	var ride: Dictionary = _rides[_selected]
+	var path: String = ride["path"]
+	var old_name: String = ride["name"]
+	var new_name: String = _title.text.strip_edges()
+	if new_name == old_name or not _torqa.rename_ride(path, new_name):
+		return
+	ride["name"] = new_name
+	if _selected < _list.get_child_count():
+		(_list.get_child(_selected) as Button).text = _list_text(ride)
+
+
+func _close() -> void:
+	_rename()
+	_summary = false
+	closed.emit()
+
+
+## "Gurtenstrasse · Sat 3 Oct": the name of a ride the rider has not named (R50).
+func _default_name(ride: Dictionary) -> String:
+	var route: String = ride["route"]
+	var start: int = ride["start_unix_s"]
+	return "%s · %s" % [route, _date(start).get_slice(",", 0).rsplit(" ", true, 1)[0]]
 
 
 func _list_text(ride: Dictionary) -> String:
-	var route: String = ride["route"]
 	var start: int = ride["start_unix_s"]
 	var distance_km: float = ride["distance_m"] / 1000.0
 	var elapsed_s: float = ride["elapsed_s"]
 	var distance: String = (
 		"%.1f mi" % (distance_km / KM_PER_MILE) if _imperial else "%.1f km" % distance_km
 	)
-	return "%s\n%s  ·  %s  ·  %s" % [route, _date(start), distance, _duration(elapsed_s)]
+	var ride_name: String = ride["name"]
+	var title: String = ride_name if not ride_name.is_empty() else _default_name(ride)
+	return "%s\n%s  ·  %s  ·  %s" % [title, _date(start), distance, _duration(elapsed_s)]
 
 
 ## Local date and time of a Unix timestamp, e.g. "Sat 3 Oct 2026, 07:15".

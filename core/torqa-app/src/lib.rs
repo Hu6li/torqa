@@ -718,6 +718,7 @@ impl App {
                         })
                     })
                     .collect(),
+                name: None,
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
@@ -947,6 +948,21 @@ impl App {
         })
     }
 
+    /// Names a ride (R50); an empty name goes back to the route and date. Only the metadata
+    /// changes, so file names stay stable for syncing.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the metadata cannot be read or written.
+    pub fn rename_ride(&self, fit: &Path, name: &str) -> Result<(), AppError> {
+        let storage = |e: rides::RideError| AppError::Storage(format!("cannot rename ride: {e}"));
+        let mut record = rides::load(fit)
+            .or_else(|_| self.rebuild_metadata(fit).map_err(AppError::Storage))
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        let name = name.trim();
+        record.name = (!name.is_empty()).then(|| name.to_owned());
+        rides::save(fit, &record).map_err(storage)
+    }
+
     /// Deletes a ride: its FIT file and metadata.
     ///
     /// # Errors
@@ -974,6 +990,7 @@ impl App {
             route_key: None,
             route_time: None,
             climbs: Vec::new(),
+            name: None,
         };
         if let Err(error) = rides::save(fit, &record) {
             warn!(%error, "cannot save rebuilt ride metadata");
@@ -1383,6 +1400,11 @@ mod tests {
         std::fs::remove_file(rides::metadata_path(path)).unwrap();
         assert_eq!(app.history().len(), 1);
         assert!(rides::metadata_path(path).exists());
+
+        app.rename_ride(path, "  Lunch spin ").unwrap();
+        assert_eq!(app.history()[0].record.name.as_deref(), Some("Lunch spin"));
+        app.rename_ride(path, "").unwrap();
+        assert_eq!(app.history()[0].record.name, None);
 
         app.delete_ride(path).unwrap();
         assert_eq!(app.history().len(), 0);

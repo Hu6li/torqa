@@ -8,7 +8,8 @@ and ghost panels on the right, and one **Settings** button (or key **S**).
 - **Ride**: camera (chase, first person, drone), trainer difficulty, descents ridden like flat
   roads, time of day and weather — the same options as on the setup screen.
 - **HUD**: arrange your figures (see [hud.md](hud.md)).
-- **Finish & save** ends the ride, saves it and shows its summary.
+- **Finish & save** ends the ride, saves it and shows its summary (name it there; see
+  [history.md](history.md)).
 - **Abort without saving** ends the ride after asking once; nothing is saved.
 
 Keys: **C** switches the camera, **S** opens the settings, **M** / **.** / **,** control your

@@ -20,6 +20,9 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Findings
 
+- **Ride names in FIT** (R50): FIT has no activity-title field, so names live in the ride's
+  JSON only; uploaders (Phase 7) pass the name as the title (Strava, intervals.icu accept it).
+  If you also want it inside the FIT file, the sport-profile name would be the only place.
 - **Stacked PRs**: #19 (ghosts) builds on #18 (HUD editor), the audio PR on #19. All target
   `main`; merge in order and each shrinks to its own commit.
 

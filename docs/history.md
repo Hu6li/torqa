@@ -4,7 +4,15 @@ Every finished ride is saved as a FIT file (for Strava, intervals.icu, Garmin Co
 the rider's folder, `profiles/<rider>/rides/` in the Torqa data directory, together with a small
 JSON file holding its summary.
 
-Open **History** on the setup screen, or press **View summary** after a ride:
+After a ride, its **summary** shows the same figures as the history: give the ride a name,
+keep it with **Done** or **Discard ride**. Afterwards it is in **History** (setup screen).
+
+**Names**: a ride is called after its course and date (e.g. *Gurtenstrasse · Sat 3 Oct*)
+until you name it — click the title to rename, in the summary or later in the history. Names
+are stored in the ride's JSON file only, so the files keep their names (sync-safe); uploads
+will send the name as the activity title.
+
+The history shows:
 
 - **Figures**: time, distance, climbing, average speed, average / normalized / maximum power,
   intensity factor, training stress score (TSS), work in kJ, average heart rate and cadence.

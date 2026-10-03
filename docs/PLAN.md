@@ -132,11 +132,12 @@ Built in rideable steps:
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
   (ADR 0007 format bump); video frames once video mode exists (Phase 5)
 - [ ] Courses gallery (cards with stats and small map) and course detail page with ride options
-- [ ] Auto-reconnect last-used devices; ride summary screen, then back to the start page
+- [x] Ride summary screen after the ride (name, keep or discard), then back home (R42)
+- [ ] Auto-reconnect last-used devices (R41)
 - [x] In-ride settings dialog (camera, difficulty, descents, time of day, weather, HUD) from
   one button or key S; finish & save or abort without saving after a confirmation (R48–R49)
 - [ ] The same ride options on the course detail page (R48, with the start page)
-- [ ] Ride names: default course + date, set on the summary, rename in history (R50)
+- [x] Ride names: default course + date, set on the summary, rename in history (R50)
 - [ ] UI design system (sleek minimal) applied to all screens and dialogs, polished course
   summaries; no text bloat on course load, dialogs that reflow when resized (R52–R53)
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
