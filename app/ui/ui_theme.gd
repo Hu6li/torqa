@@ -82,9 +82,11 @@ static func build() -> Theme:
 	theme.set_stylebox("grabber_area_highlight", "HSlider", _box(ACCENT, 4, 0, 3))
 
 	# Dialogs are separate windows: they need the theme set on them and their own frame.
-	var dialog: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12, 0.98), RADIUS, 20, 16)
+	# Square: the frame rounds the window; rounded corners here would let the window's grey
+	# background show through.
+	var dialog: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), 0, 20, 16)
 	theme.set_stylebox("panel", "AcceptDialog", dialog)
-	var frame: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12, 0.98), RADIUS, 0, 0)
+	var frame: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), RADIUS, 0, 0)
 	frame.expand_margin_top = 32
 	frame.expand_margin_left = 6
 	frame.expand_margin_right = 6
