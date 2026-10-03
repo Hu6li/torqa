@@ -40,6 +40,14 @@ pub struct DiscoveredDevice {
     peripheral: Peripheral,
 }
 
+impl DiscoveredDevice {
+    /// The system's identifier for the device, stable on this computer (address or UUID).
+    #[must_use]
+    pub fn id(&self) -> String {
+        format!("{:?}", self.peripheral.id())
+    }
+}
+
 /// Access to the system's Bluetooth adapter.
 #[derive(Clone)]
 pub struct Bluetooth {

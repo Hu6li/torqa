@@ -131,9 +131,21 @@ impl TorqaApp {
     #[signal]
     fn course_added(path: GString);
 
+    /// Devices used last that the reconnect at start did not find, by name.
+    #[signal]
+    fn remembered_missing(names: PackedStringArray);
+
     /// Something went wrong.
     #[signal]
     fn failed(message: GString);
+
+    /// Reconnects the trainer and heart-rate sensor used last, in the background (emits
+    /// `devices_found`, `device_connected` and, for those not found, `remembered_missing`).
+    /// False if none is remembered.
+    #[func]
+    fn reconnect_remembered(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::reconnect_remembered)
+    }
 
     /// Scans for trainers and heart-rate sensors.
     #[func]
@@ -922,6 +934,11 @@ impl TorqaApp {
                     previous_best.map_or(-1.0, |b| b.as_secs_f64()),
                 );
             }
+            AppEvent::RememberedMissing(names) => {
+                let names: PackedStringArray =
+                    names.iter().map(|n| GString::from(n.as_str())).collect();
+                self.signals().remembered_missing().emit(&names);
+            }
             AppEvent::Error(message) => {
                 self.signals()
                     .failed()
@@ -958,6 +975,7 @@ fn device_array(devices: Vec<torqa_app::DeviceInfo>) -> VarArray {
                 "name" => device.name.as_str(),
                 "kind" => kind,
                 "rssi" => &rssi,
+                "remembered" => device.remembered,
             }
             .to_variant(),
         );

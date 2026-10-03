@@ -1,4 +1,14 @@
-# During a ride
+# Devices and riding
+
+## Devices
+
+Torqa remembers the trainer and heart-rate strap you used last and **reconnects them in the
+background** when it starts — they appear selected on the setup screen. If one is not found
+(asleep, or connected to another app), the setup screen says so: pedal to wake the trainer or
+put on the strap, then press **Scan for devices**. Choosing another device and riding with it
+makes that one the remembered device.
+
+## During a ride
 
 The ride screen keeps the road in view: your figures on the left, map, elevation profile, climb
 and ghost panels on the right, and one **Settings** button (or key **S**).

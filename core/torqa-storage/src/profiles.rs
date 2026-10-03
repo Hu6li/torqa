@@ -103,6 +103,28 @@ impl From<ProfileFile> for Profile {
 struct Settings {
     /// The profile chosen last.
     active_profile: Option<String>,
+    /// The trainer connected last, reconnected at start (R41).
+    trainer: Option<RememberedDevice>,
+    /// The heart-rate sensor connected last.
+    heart_rate: Option<RememberedDevice>,
+}
+
+/// A Bluetooth device to reconnect at start (R41).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RememberedDevice {
+    /// The system's identifier for it (stable per computer).
+    pub id: String,
+    /// Its advertised name, for messages and as a fallback when the identifier changed.
+    pub name: String,
+}
+
+/// The devices to reconnect at start.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RememberedDevices {
+    /// The trainer connected last.
+    pub trainer: Option<RememberedDevice>,
+    /// The heart-rate sensor connected last.
+    pub heart_rate: Option<RememberedDevice>,
 }
 
 /// All readable profiles, by name. Unreadable ones are skipped.
@@ -191,8 +213,49 @@ pub fn rides_dir(data_dir: &Path, id: &str) -> PathBuf {
 /// The id of the profile chosen last, if any.
 #[must_use]
 pub fn active(data_dir: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(data_dir.join(SETTINGS_FILE)).ok()?;
-    toml::from_str::<Settings>(&text).ok()?.active_profile
+    settings(data_dir).active_profile
+}
+
+/// The devices connected last.
+#[must_use]
+pub fn remembered_devices(data_dir: &Path) -> RememberedDevices {
+    let settings = settings(data_dir);
+    RememberedDevices {
+        trainer: settings.trainer,
+        heart_rate: settings.heart_rate,
+    }
+}
+
+/// Remembers a trainer (or, with `trainer` false, a heart-rate sensor) to reconnect next time.
+///
+/// # Errors
+/// On file system errors.
+pub fn remember_device(
+    data_dir: &Path,
+    trainer: bool,
+    device: RememberedDevice,
+) -> Result<(), ProfileError> {
+    let mut settings = settings(data_dir);
+    if trainer {
+        settings.trainer = Some(device);
+    } else {
+        settings.heart_rate = Some(device);
+    }
+    save_settings(data_dir, &settings)
+}
+
+fn settings(data_dir: &Path) -> Settings {
+    std::fs::read_to_string(data_dir.join(SETTINGS_FILE))
+        .ok()
+        .and_then(|text| toml::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(data_dir: &Path, settings: &Settings) -> Result<(), ProfileError> {
+    write_atomically(
+        &data_dir.join(SETTINGS_FILE),
+        &toml::to_string_pretty(settings)?,
+    )
 }
 
 /// Remembers the chosen profile for the next start.
@@ -200,13 +263,10 @@ pub fn active(data_dir: &Path) -> Option<String> {
 /// # Errors
 /// On file system errors.
 pub fn set_active(data_dir: &Path, id: &str) -> Result<(), ProfileError> {
-    let settings = Settings {
-        active_profile: Some(id.to_owned()),
-    };
-    write_atomically(
-        &data_dir.join(SETTINGS_FILE),
-        &toml::to_string_pretty(&settings)?,
-    )
+    // Read first: the file holds other settings too.
+    let mut settings = settings(data_dir);
+    settings.active_profile = Some(id.to_owned());
+    save_settings(data_dir, &settings)
 }
 
 fn profile_dir(data_dir: &Path, id: &str) -> PathBuf {
@@ -306,6 +366,25 @@ mod tests {
             Some(vec!["power_3s".to_owned(), "speed".to_owned()])
         );
         assert_eq!(load_hud(&data, "zoe"), None);
+        std::fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn remembers_devices_alongside_the_active_profile() {
+        let data = temp_dir("devices");
+        assert_eq!(remembered_devices(&data), RememberedDevices::default());
+        let kickr = RememberedDevice {
+            id: "hci0/dev_AA".to_owned(),
+            name: "KICKR CORE".to_owned(),
+        };
+
+        set_active(&data, "anna").unwrap();
+        remember_device(&data, true, kickr.clone()).unwrap();
+        set_active(&data, "zoe").unwrap();
+
+        assert_eq!(remembered_devices(&data).trainer, Some(kickr));
+        assert_eq!(remembered_devices(&data).heart_rate, None);
+        assert_eq!(active(&data), Some("zoe".to_owned()));
         std::fs::remove_dir_all(data).unwrap();
     }
 

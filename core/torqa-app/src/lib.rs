@@ -42,6 +42,9 @@ const ATTRIBUTION: [&str; 3] = [
     "Terrain: AWS Terrain Tiles",
 ];
 
+/// How long the reconnect at start scans for the devices used last.
+const RECONNECT_SCAN: Duration = Duration::from_secs(6);
+
 /// How long [`App::shutdown`] waits for devices to disconnect.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -111,6 +114,8 @@ pub struct DeviceInfo {
     pub kind: DeviceKind,
     /// Signal strength in dBm, if known.
     pub rssi: Option<i16>,
+    /// Whether this is the trainer or sensor used last (R41).
+    pub remembered: bool,
 }
 
 /// Key facts about a loaded route.
@@ -210,6 +215,9 @@ pub enum AppEvent {
     },
     /// A device connected (also after a reconnect).
     Connected(String),
+    /// Devices used last that a reconnect at start did not find (R41), by name: the rider
+    /// should wake them and scan.
+    RememberedMissing(Vec<String>),
     /// A device lost its connection; it reconnects automatically.
     Disconnected(String),
     /// The rider reached the finish.
@@ -296,6 +304,11 @@ pub struct App {
     discovered: Vec<DiscoveredDevice>,
     trainer: Option<DeviceHandle>,
     sensor: Option<DeviceHandle>,
+    /// Identifiers of the connected Bluetooth trainer and sensor, to avoid reconnecting them.
+    trainer_id: Option<String>,
+    sensor_id: Option<String>,
+    /// The running scan was started to reconnect the remembered devices.
+    reconnecting: bool,
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
@@ -329,6 +342,9 @@ impl App {
             discovered: Vec::new(),
             trainer: None,
             sensor: None,
+            trainer_id: None,
+            sensor_id: None,
+            reconnecting: false,
             route: None,
             world: None,
             offline: false,
@@ -598,14 +614,91 @@ impl App {
     pub fn connect_trainer(&mut self, choice: TrainerChoice) -> Result<(), AppError> {
         let _runtime = self.runtime.enter();
         let handle = match choice {
-            TrainerChoice::Fake(rider) => fake::spawn(rider, Duration::from_millis(250)),
+            TrainerChoice::Fake(rider) => {
+                self.trainer_id = None;
+                fake::spawn(rider, Duration::from_millis(250))
+            }
             TrainerChoice::Discovered(index) => {
                 let device = self.discovered_device(index, DeviceKind::Trainer)?;
+                let id = device.id();
+                // Already connected (e.g. reconnected at start): keep the link.
+                if self.trainer.is_some() && self.trainer_id.as_deref() == Some(id.as_str()) {
+                    return Ok(());
+                }
+                self.remember(true, &device);
+                self.trainer_id = Some(id);
                 self.bluetooth()?.connect(device)
             }
         };
         self.trainer = Some(handle);
         Ok(())
+    }
+
+    /// Reconnects the trainer and heart-rate sensor used last (R41): scans in the background
+    /// and connects them when found, reporting [`AppEvent::DevicesFound`] (with the remembered
+    /// devices marked) and [`AppEvent::RememberedMissing`] for those not found. Returns false,
+    /// without touching Bluetooth, if no device is remembered.
+    pub fn reconnect_remembered(&mut self) -> bool {
+        let remembered = profiles::remembered_devices(&self.data_dir);
+        if remembered.trainer.is_none() && remembered.heart_rate.is_none() {
+            return false;
+        }
+        self.reconnecting = true;
+        self.scan(RECONNECT_SCAN);
+        true
+    }
+
+    fn remember(&self, trainer: bool, device: &DiscoveredDevice) {
+        let remembered = profiles::RememberedDevice {
+            id: device.id(),
+            name: device.name.clone(),
+        };
+        if let Err(error) = profiles::remember_device(&self.data_dir, trainer, remembered) {
+            warn!(%error, "cannot remember the device");
+        }
+    }
+
+    /// Connects the remembered devices found by a reconnect scan; returns the names of those
+    /// not found.
+    fn connect_remembered(&mut self) -> Vec<String> {
+        let remembered = profiles::remembered_devices(&self.data_dir);
+        let mut missing = Vec::new();
+        for (wanted, kind) in [
+            (remembered.trainer, DeviceKind::Trainer),
+            (remembered.heart_rate, DeviceKind::HeartRateSensor),
+        ] {
+            let Some(wanted) = wanted else { continue };
+            let found = self
+                .discovered
+                .iter()
+                .position(|d| d.kind == kind && d.id() == wanted.id)
+                .or_else(|| {
+                    self.discovered
+                        .iter()
+                        .position(|d| d.kind == kind && d.name == wanted.name)
+                });
+            let connected = match (found, kind) {
+                (Some(index), DeviceKind::Trainer) => {
+                    self.connect_trainer(TrainerChoice::Discovered(index))
+                }
+                (Some(index), DeviceKind::HeartRateSensor) => self.connect_heart_rate(index),
+                (None, _) => Err(AppError::UnknownDevice),
+            };
+            if connected.is_err() {
+                missing.push(wanted.name);
+            }
+        }
+        missing
+    }
+
+    /// Whether a scanned device is one of the remembered ones.
+    fn is_remembered(&self, device: &DiscoveredDevice) -> bool {
+        let remembered = profiles::remembered_devices(&self.data_dir);
+        let wanted = match device.kind {
+            DeviceKind::Trainer => remembered.trainer,
+            DeviceKind::HeartRateSensor => remembered.heart_rate,
+        };
+        wanted.is_some_and(|w| w.id == device.id() || w.name == device.name)
     }
 
     /// Connects a heart-rate sensor, replacing any previous one.
@@ -614,7 +707,13 @@ impl App {
     /// [`AppError::UnknownDevice`] if the index is not a heart-rate sensor from the last scan.
     pub fn connect_heart_rate(&mut self, index: usize) -> Result<(), AppError> {
         let device = self.discovered_device(index, DeviceKind::HeartRateSensor)?;
+        let id = device.id();
+        if self.sensor.is_some() && self.sensor_id.as_deref() == Some(id.as_str()) {
+            return Ok(());
+        }
         let _runtime = self.runtime.enter();
+        self.remember(false, &device);
+        self.sensor_id = Some(id);
         self.sensor = Some(self.bluetooth()?.connect(device));
         Ok(())
     }
@@ -1108,11 +1207,18 @@ impl App {
                             name: d.name.clone(),
                             kind: d.kind,
                             rssi: d.rssi,
+                            remembered: self.is_remembered(d),
                         })
                         .collect();
                     self.bluetooth = Some(bluetooth);
                     self.discovered = devices;
                     events.push(AppEvent::DevicesFound(infos));
+                    if std::mem::take(&mut self.reconnecting) {
+                        let missing = self.connect_remembered();
+                        if !missing.is_empty() {
+                            events.push(AppEvent::RememberedMissing(missing));
+                        }
+                    }
                 }
                 JobResult::Route(Ok(imported)) => {
                     let Imported {
@@ -1143,6 +1249,10 @@ impl App {
                     self.world = Some(Arc::from(world));
                 }
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
+                JobResult::Scan(Err(message)) if std::mem::take(&mut self.reconnecting) => {
+                    // No Bluetooth (or no permission): the rider sees it when scanning.
+                    warn!(%message, "cannot reconnect the devices used last");
+                }
                 JobResult::Scan(Err(message))
                 | JobResult::Route(Err(message))
                 | JobResult::CourseAdded(Err(message))
@@ -1684,6 +1794,16 @@ mod tests {
         assert_eq!(app.finish_ride(), []);
         assert_eq!(app.history().len(), 0);
         app.shutdown();
+    }
+
+    #[test]
+    fn without_remembered_devices_nothing_is_scanned() {
+        let dir = temp_dir("reconnect");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        // No Bluetooth is touched (the container has none): nothing to reconnect.
+        assert!(!app.reconnect_remembered());
+        assert_eq!(app.update(Duration::ZERO), []);
     }
 
     #[test]
