@@ -107,7 +107,9 @@ impl Ghost {
         Self::from_trace(name, matched.into_iter().map(|(d, t)| (d, t - start)))
     }
 
-    fn from_trace(name: &str, points: impl Iterator<Item = (f64, f64)>) -> Option<Self> {
+    /// From `(distance m, time s)` points; standing still and going back are skipped. `None`
+    /// with fewer than two usable points.
+    pub fn from_trace(name: &str, points: impl Iterator<Item = (f64, f64)>) -> Option<Self> {
         let mut trace: Vec<(f64, f64)> = Vec::new();
         for (distance, time) in points {
             match trace.last() {

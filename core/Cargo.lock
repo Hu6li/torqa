@@ -2272,6 +2272,7 @@ dependencies = [
  "torqa-session",
  "torqa-storage",
  "torqa-terrain",
+ "torqa-video",
  "torqa-world",
  "tracing",
 ]
@@ -2403,6 +2404,7 @@ name = "torqa-video"
 version = "0.1.0"
 dependencies = [
  "ffmpeg-next",
+ "quick-xml",
  "thiserror",
 ]
 

@@ -1,7 +1,8 @@
 class_name CourseCard
 extends PanelContainer
-## A course in the gallery (R39): its path card, name and key figures in rows; click to open
-## it. The elevation profile is left to the course page.
+## A course in the gallery (R39): its path card, name and key figures in rows, marked if it is
+## ridden along a video (R17); click to open it. The elevation profile is left to the course
+## page.
 
 signal pressed
 
@@ -24,10 +25,29 @@ func _init(course: Dictionary, imperial: bool) -> void:
 	title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	title.text = course["name"]
 	title.add_theme_font_size_override("font_size", 18)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	rows.add_child(title)
+	var heading: HBoxContainer = HBoxContainer.new()
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	heading.add_child(title)
+	if not str(course.get("video", "")).is_empty():
+		heading.add_child(video_badge())
+	rows.add_child(heading)
 	rows.add_child(figure_rows(course, imperial))
 	add_child(rows)
+
+
+## The mark of a video course.
+static func video_badge() -> PanelContainer:
+	var badge: PanelContainer = PanelContainer.new()
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	badge.add_theme_stylebox_override("panel", UiTheme.chip(true))
+	var label: Label = Label.new()
+	label.text = TranslationServer.translate("Video")
+	label.add_theme_font_size_override("font_size", 12)
+	badge.add_child(label)
+	return badge
 
 
 ## The key figures, one per row: caption on the left, value on the right, in the rider's units.

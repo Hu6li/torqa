@@ -289,8 +289,8 @@ msgstr "Nov."
 msgid "Oct"
 msgstr "Okt."
 
-msgid "Open a GPX route or Torqa course"
-msgstr "GPX-Strecke oder Torqa-Strecke öffnen"
+msgid "Open a GPX route, video or Torqa course"
+msgstr "GPX-Route, Video oder Torqa-Strecke öffnen"
 
 msgid "Pacer at W/kg…"
 msgstr "Tempomacher mit W/kg …"
@@ -571,11 +571,26 @@ msgstr "Geräte"
 msgid "Devices & Settings"
 msgstr "Geräte & Einstellungen"
 
-msgid "Import GPX or course…"
-msgstr "GPX oder Strecke importieren …"
+msgid "Import route, video or course…"
+msgstr "Route, Video oder Strecke importieren …"
 
-msgid "No courses yet. Import a GPX route to prepare your first course."
-msgstr "Noch keine Strecken. Importiere eine GPX-Route, um deine erste Strecke vorzubereiten."
+msgid "No courses yet. Import a GPX route or a video to prepare your first course."
+msgstr "Noch keine Strecken. Importiere eine GPX-Route oder ein Video, um deine erste Strecke vorzubereiten."
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Routes, videos and courses"
+msgstr "Routen, Videos und Strecken"
+
+msgid "GPX routes"
+msgstr "GPX-Routen"
+
+msgid "Videos with GPS, Incyclist route videos (.xml)"
+msgstr "Videos mit GPS, Incyclist-Streckenvideos (.xml)"
+
+msgid "Torqa courses"
+msgstr "Torqa-Strecken"
 
 msgid "No trainer connected — choose one under Devices & Settings."
 msgstr "Kein Rollentrainer verbunden — wähle einen unter Geräte & Einstellungen."

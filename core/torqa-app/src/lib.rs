@@ -6,6 +6,7 @@ pub mod hud;
 mod import;
 pub mod media;
 pub mod paths;
+pub mod video;
 pub mod view;
 
 pub use import::{Imported, LoadStage, Progress, import_gpx, import_route};
@@ -262,6 +263,7 @@ enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
     // Loading results carry the load they belong to; those of an abandoned load are dropped.
     Route(u64, Result<Box<Imported>, String>),
+    Video(u64, Result<Box<(Imported, video::VideoSource)>, String>),
     World(u64, Box<World>),
     Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, String>),
@@ -336,6 +338,8 @@ pub struct App {
     course: Option<PathBuf>,
     /// The route key of the course being written to the library, until it is there.
     saving: Option<String>,
+    /// The loaded course's video, for video courses (R17).
+    video: Option<video::VideoCourse>,
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
@@ -377,6 +381,7 @@ impl App {
             world_plan: WorldPlan::Now,
             course: None,
             saving: None,
+            video: None,
             route: None,
             world: None,
             offline: false,
@@ -509,24 +514,102 @@ impl App {
                     .await
                     .map_err(|e| e.to_string())
                     .and_then(|r| r.map_err(|e| format!("cannot open {}: {e}", path.display())));
-            let result = match unpacked {
-                Ok(unpacked) => import_gpx(
-                    unpacked.gpx,
-                    &unpacked.manifest.name,
+            let unpacked = match unpacked {
+                Ok(unpacked) => unpacked,
+                Err(message) => {
+                    let _ = tx.send(JobResult::Route(load, Err(message)));
+                    return;
+                }
+            };
+            // A video course needs its video, referenced rather than stored (R35).
+            let mut video = None;
+            if let Some(reference) = &unpacked.manifest.video {
+                let Some(file) = reference.locate(&path) else {
+                    let message = format!(
+                        "video {} not found — put it next to the course file",
+                        reference.file_name
+                    );
+                    let _ = tx.send(JobResult::Route(load, Err(message)));
+                    return;
+                };
+                video = Some(video::VideoSource {
+                    video: file,
+                    name: unpacked.manifest.name.clone(),
+                    gpx: unpacked.gpx.clone(),
+                    offset: Duration::from_secs_f64(reference.offset_s.max(0.0)),
+                });
+            }
+            let imported = import_gpx(
+                unpacked.gpx,
+                &unpacked.manifest.name,
+                &cache,
+                true,
+                &used,
+                &mut |stage, done, total| reporter.report(stage, done, total),
+            )
+            .await
+            .map(|mut imported| {
+                imported.name = unpacked.manifest.name;
+                imported
+            });
+            let _ = tx.send(match (imported, video) {
+                (Ok(imported), Some(source)) => {
+                    JobResult::Video(load, Ok(Box::new((imported, source))))
+                }
+                (Ok(imported), None) => JobResult::Route(load, Ok(Box::new(imported))),
+                (Err(message), _) => JobResult::Route(load, Err(message)),
+            });
+        });
+    }
+
+    /// Prepares a video course (R17) from a GoPro video with GPS or an Incyclist route video
+    /// (its `.xml` control file): the route as usual, without a 3D world, paired with the
+    /// video; reports [`AppEvent::RouteLoaded`] and [`AppEvent::WorldReady`] like
+    /// [`App::load_route`], and adds it to the library. `offline` as for [`App::load_route`].
+    pub fn load_video(&mut self, path: PathBuf, offline: bool) {
+        let used = self.start_loading(offline);
+        let load = self.load;
+        let tx = self.jobs_tx.clone();
+        let cache = self.cache_dir.clone();
+        self.runtime.spawn(async move {
+            let mut reporter = Reporter {
+                tx: tx.clone(),
+                load,
+                last: None,
+            };
+            reporter.report(LoadStage::Route, 0, 1);
+            let source = tokio::task::spawn_blocking(move || video::source(&path))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r);
+            let result = match source {
+                Ok(source) => import_gpx(
+                    source.gpx.clone(),
+                    &source.name,
                     &cache,
-                    true,
+                    offline,
                     &used,
                     &mut |stage, done, total| reporter.report(stage, done, total),
                 )
                 .await
-                .map(|mut imported| {
-                    imported.name = unpacked.manifest.name;
-                    Box::new(imported)
-                }),
+                .map(|imported| Box::new((imported, source))),
                 Err(message) => Err(message),
             };
-            let _ = tx.send(JobResult::Route(load, result));
+            let _ = tx.send(JobResult::Video(load, result));
         });
+    }
+
+    /// The loaded video course's video, if it is one.
+    #[must_use]
+    pub fn video(&self) -> Option<&video::VideoCourse> {
+        self.video.as_ref()
+    }
+
+    /// The moment of the video to show now, during a ride on a video course.
+    #[must_use]
+    pub fn video_time(&self) -> Option<Duration> {
+        let video = self.video.as_ref()?;
+        Some(video.time_at(self.ride_state()?.distance))
     }
 
     /// Saves the loaded route with everything needed to ride it offline as a course in the
@@ -553,6 +636,16 @@ impl App {
             route_key: Some(route.key()),
             track: thin(&view::track(route, PREVIEW_POINTS)),
             profile: thin(&view::elevation_profile(route, PREVIEW_POINTS)),
+            video: self.video.as_ref().map(|v| course::VideoReference {
+                path: v.video.display().to_string(),
+                file_name: v
+                    .video
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                size: std::fs::metadata(&v.video).map_or(0, |m| m.len()),
+                offset_s: v.offset.as_secs_f64(),
+            }),
         };
         // Preparing the same course again must not fill the library with copies; one still
         // being written reports itself when done.
@@ -695,6 +788,7 @@ impl App {
         self.course = None;
         // Opening a course sets this; a GPX import goes into the library when ready.
         self.from_course = false;
+        self.video = None;
         self.world = None;
         self.route = None;
         self.loaded = None;
@@ -1339,30 +1433,39 @@ impl App {
                     }
                 }
                 JobResult::Route(load, _)
+                | JobResult::Video(load, _)
                 | JobResult::World(load, _)
                 | JobResult::Progress(load, ..)
                     if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
-                    let Imported {
-                        route,
-                        map,
-                        name,
-                        gpx,
-                    } = *imported;
-                    self.loaded = Some((name.clone(), gpx));
-                    events.push(AppEvent::RouteLoaded(RouteSummary {
-                        name,
-                        length: route.length().0,
-                        elevation_gain: route.elevation_gain().0,
-                        max_grade: route.max_grade().0,
-                        elevation_source: route.elevation_source(),
-                    }));
+                    let map = imported.map.clone();
+                    self.route_loaded(*imported, events);
                     if let WorldPlan::OnRequest(waiting) = &mut self.world_plan {
                         *waiting = Some(map);
-                    } else {
-                        self.generate_world(route.clone(), map);
+                    } else if let Some(route) = self.route.clone() {
+                        self.generate_world(route, map);
                     }
-                    self.route = Some(route);
+                }
+                JobResult::Video(_, Ok(loaded)) => {
+                    let (imported, source) = *loaded;
+                    match video::VideoCourse::new(&imported.route, &source) {
+                        Ok(course) => {
+                            self.video = Some(course);
+                            self.route_loaded(imported, events);
+                            // No 3D world: the video is the view.
+                            self.world = Some(Arc::new(World::default()));
+                            events.push(AppEvent::WorldReady {
+                                chunks: 0,
+                                fallback_samples: 0,
+                            });
+                            if !self.from_course
+                                && let Err(error) = self.save_course()
+                            {
+                                warn!(%error, "cannot add the video course to the library");
+                            }
+                        }
+                        Err(message) => events.push(AppEvent::Error(message)),
+                    }
                 }
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
@@ -1396,12 +1499,29 @@ impl App {
                 }
                 JobResult::Scan(Err(message))
                 | JobResult::Route(_, Err(message))
+                | JobResult::Video(_, Err(message))
                 | JobResult::CourseAdded(Err(message))
                 | JobResult::Failed(message) => {
                     events.push(AppEvent::Error(message));
                 }
             }
         }
+    }
+
+    /// Takes a loaded route as the current one and reports it.
+    fn route_loaded(&mut self, imported: Imported, events: &mut Vec<AppEvent>) {
+        let Imported {
+            route, name, gpx, ..
+        } = imported;
+        self.loaded = Some((name.clone(), gpx));
+        events.push(AppEvent::RouteLoaded(RouteSummary {
+            name,
+            length: route.length().0,
+            elevation_gain: route.elevation_gain().0,
+            max_grade: route.max_grade().0,
+            elevation_source: route.elevation_source(),
+        }));
+        self.route = Some(route);
     }
 
     fn poll_trainer(&mut self, events: &mut Vec<AppEvent>) {
@@ -1775,6 +1895,154 @@ mod tests {
         app.delete_course(course).unwrap();
         assert_eq!(app.courses().len(), 0);
         assert_eq!(app.loaded_course(), None);
+    }
+
+    /// A copy of a generated test video in `dir`, so each test owns its files.
+    fn video_in(dir: &Path, generated: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::rename(generated, &path)
+            .or_else(|_| std::fs::copy(generated, &path).map(|_| ()))
+            .unwrap();
+        path
+    }
+
+    fn loaded_video(app: &mut App, path: PathBuf) -> Vec<AppEvent> {
+        app.load_video(path, true);
+        run_until(app, |e| {
+            matches!(e, AppEvent::CourseAdded(_) | AppEvent::Error(_))
+        })
+    }
+
+    #[test]
+    fn a_gopro_video_with_gps_becomes_a_course_that_follows_the_rider() {
+        let dir = temp_dir("gopro");
+        let video = video_in(&dir, &torqa_video::testing::gopro_video("app"), "Ride.MOV");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        let events = loaded_video(&mut app, video.clone());
+
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AppEvent::RouteLoaded(s) if s.name == "Ride")),
+            "{events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AppEvent::WorldReady { chunks: 0, .. }))
+        );
+        let course = app.video().unwrap();
+        assert_eq!(course.video, video);
+        // 10 m every quarter second: the video is 2.5 s in after 100 m.
+        let at = |m: f64| course.time_at(Meters(m)).as_secs_f64();
+        assert!(at(0.0) < 0.05, "{}", at(0.0));
+        assert!((at(100.0) - 2.5).abs() < 0.1, "{}", at(100.0));
+        assert!(at(10_000.0) <= course.duration.as_secs_f64());
+        let listed = app.courses();
+        assert_eq!(listed.len(), 1);
+        let reference = listed[0].manifest.video.as_ref().unwrap();
+        assert_eq!(reference.file_name, "Ride.MOV");
+    }
+
+    #[test]
+    fn video_courses_find_their_video_on_another_machine() {
+        let dir = temp_dir("video-course");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::gopro_video("moved"),
+            "Gurten.mov",
+        );
+        let mut prepared = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
+        let events = loaded_video(&mut prepared, video.clone());
+        let Some(AppEvent::CourseAdded(file)) = events.last() else {
+            panic!("{events:?}")
+        };
+
+        // Another machine: the course elsewhere, the video not where it was recorded.
+        let shared = dir.join("shared");
+        let aside = dir.join("aside");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::create_dir_all(&aside).unwrap();
+        std::fs::copy(file, shared.join("gurten.tqc")).unwrap();
+        std::fs::rename(&video, aside.join("Gurten.mov")).unwrap();
+        let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
+        other.open_course(shared.join("gurten.tqc"));
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::Error(_)));
+        assert!(
+            matches!(events.last(), Some(AppEvent::Error(m)) if m.contains("Gurten.mov")),
+            "{events:?}"
+        );
+
+        std::fs::rename(aside.join("Gurten.mov"), shared.join("Gurten.mov")).unwrap();
+        other.open_course(shared.join("gurten.tqc"));
+        run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+        assert_eq!(other.video().unwrap().video, shared.join("Gurten.mov"));
+        // Opened, not prepared: nothing is added to that machine's library.
+        assert_eq!(other.courses().len(), 0);
+    }
+
+    #[test]
+    fn an_incyclist_route_video_starts_at_its_start_frame() {
+        let dir = temp_dir("incyclist");
+        video_in(
+            &dir,
+            &torqa_video::testing::test_video("incyclist", 64, 48),
+            "climb.mp4",
+        );
+        // 200 m north, 10 m every 0.1 s, from frame 11 at 10 fps: 1 s into the video.
+        let mut gpx = String::from("<gpx><trk><trkseg>");
+        for i in 0..=20 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let _ = write!(
+                gpx,
+                r#"<trkpt lat="{lat}" lon="7"><ele>500</ele><time>2024-06-01T08:00:{:06.3}Z</time></trkpt>"#,
+                f64::from(i) / 10.0
+            );
+        }
+        gpx.push_str("</trkseg></trk></gpx>");
+        std::fs::write(dir.join("climb.gpx"), gpx).unwrap();
+        std::fs::write(
+            dir.join("climb.xml"),
+            "<gpx-import><title>Col &amp; Climb</title><video-file-path>climb.mp4</video-file-path>\
+             <gpx-file-path>climb.gpx</gpx-file-path><framerate>10</framerate>\
+             <start-frame>11</start-frame></gpx-import>",
+        )
+        .unwrap();
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        let events = loaded_video(&mut app, dir.join("climb.xml"));
+
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AppEvent::RouteLoaded(s) if s.name == "Col & Climb")),
+            "{events:?}"
+        );
+        let course = app.video().unwrap();
+        assert_eq!(course.offset, Duration::from_secs(1));
+        assert!((course.time_at(Meters(0.0)).as_secs_f64() - 1.0).abs() < 0.05);
+        assert!((course.time_at(Meters(40.0)).as_secs_f64() - 1.4).abs() < 0.1);
+    }
+
+    #[test]
+    fn videos_without_gps_are_refused_with_a_reason() {
+        let dir = temp_dir("nogps");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::test_video("app-nogps", 64, 48),
+            "a.mp4",
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        let events = loaded_video(&mut app, video);
+
+        assert!(
+            matches!(events.last(), Some(AppEvent::Error(m)) if m.contains("no GPS")),
+            "{events:?}"
+        );
+        assert!(app.video().is_none());
+        assert_eq!(app.courses().len(), 0);
     }
 
     #[test]

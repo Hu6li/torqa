@@ -9,7 +9,12 @@ publish.workspace = true
 
 [dependencies]
 ffmpeg-next.workspace = true
+quick-xml.workspace = true
 thiserror.workspace = true
+
+[features]
+# Test videos for other crates' tests.
+testing = []
 
 [lints]
 workspace = true
