@@ -13,7 +13,7 @@ use godot::classes::{Engine, INode, Node};
 use godot::prelude::*;
 use torqa_app::hud::MetricKind;
 use torqa_app::view;
-use torqa_app::{App, AppEvent, TrainerChoice, paths};
+use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
 use torqa_domain::profile::{Profile, UnitSystem};
@@ -320,15 +320,52 @@ impl TorqaApp {
         self.command(|app| app.connect_heart_rate(index))
     }
 
-    /// Starts riding the loaded route as the active rider.
+    /// Starts riding the loaded route as the active rider, against `ghost`: `{kind}` with
+    /// `kind` one of `none`, `best` (own best on the route), `power` (`{watts}`), `wkg`
+    /// (`{watts_per_kg}`) or `activity` (`{path}` of a GPX or FIT file). Emits `failed` and
+    /// returns false if it cannot start, e.g. no best time yet.
     #[func]
-    fn start_ride(&mut self, difficulty: f64, flat_descents: bool) -> bool {
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn start_ride(&mut self, difficulty: f64, flat_descents: bool, ghost: VarDictionary) -> bool {
         let descent = if flat_descents {
             DescentMode::Flat
         } else {
             DescentMode::Coast
         };
-        self.command(|app| app.start_ride(Percent(difficulty), descent))
+        let number = |key: &str| {
+            ghost
+                .get(key)
+                .and_then(|v| v.try_to::<f64>().ok())
+                .unwrap_or(0.0)
+        };
+        let kind = ghost
+            .get("kind")
+            .and_then(|v| v.try_to::<GString>().ok())
+            .map(|k| k.to_string())
+            .unwrap_or_default();
+        let choice = match kind.as_str() {
+            "best" => GhostChoice::PersonalBest,
+            "power" => GhostChoice::Power(Watts(number("watts"))),
+            "wkg" => GhostChoice::WattsPerKg(number("watts_per_kg")),
+            "activity" => GhostChoice::Activity(PathBuf::from(
+                ghost
+                    .get("path")
+                    .and_then(|v| v.try_to::<GString>().ok())
+                    .map(|p| p.to_string())
+                    .unwrap_or_default(),
+            )),
+            _ => GhostChoice::None,
+        };
+        self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
+    }
+
+    /// Whether the active rider has finished the loaded route before, so `best` can be raced.
+    #[func]
+    fn has_personal_best(&self) -> bool {
+        self.app
+            .as_ref()
+            .and_then(|app| app.route().map(|route| app.records_for(route)))
+            .is_some_and(|records| records.route.is_some())
     }
 
     /// All riders: `[{id, name}]`, by name.
@@ -471,6 +508,21 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
+            "ghost" => &app.ghost_state().map_or_else(Variant::nil, |g| {
+                let at = route.position(g.distance);
+                let (gx, gy) = LocalProjection::for_route(route).project(at.lat, at.lon);
+                vdict! {
+                    "name" => g.name.as_str(),
+                    "distance_m" => g.distance.0,
+                    "x" => gx,
+                    "y" => gy,
+                    "elevation_m" => at.elevation.0,
+                    "heading" => at.heading,
+                    "grade" => at.grade.0,
+                    "gap_s" => &optional(g.gap),
+                }
+                .to_variant()
+            }),
             "climb" => &app.current_climb().map_or_else(Variant::nil, |c| {
                 let count = i64::try_from(route.climbs().len()).unwrap_or(0);
                 vdict! {

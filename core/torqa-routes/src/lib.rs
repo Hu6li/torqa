@@ -38,6 +38,35 @@ pub enum RouteError {
     NoElevation,
 }
 
+/// A recorded position with its time, e.g. from an activity to follow as a ghost.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimedPoint {
+    /// Latitude in degrees (WGS84).
+    pub lat: f64,
+    /// Longitude in degrees (WGS84).
+    pub lon: f64,
+    /// Seconds since the Unix epoch.
+    pub time: f64,
+}
+
+/// The timed positions of a recorded GPX activity; points without a time are left out.
+///
+/// # Errors
+/// [`RouteError::InvalidGpx`] if the file is not valid GPX.
+pub fn timed_points(xml: &str) -> Result<Vec<TimedPoint>, RouteError> {
+    Ok(gpx::parse(xml)?
+        .points
+        .into_iter()
+        .filter_map(|p| {
+            p.time.map(|time| TimedPoint {
+                lat: p.lat,
+                lon: p.lon,
+                time,
+            })
+        })
+        .collect())
+}
+
 /// The positions of a GPX file as (latitude, longitude), without building a route; for
 /// fetching data along it before importing.
 ///
@@ -348,6 +377,7 @@ fn resample(points: &[RawPoint]) -> Result<Vec<RawPoint>, RouteError> {
                     .elevation
                     .zip(b.elevation)
                     .map(|(ea, eb)| ea + (eb - ea) * t),
+                time: None,
             });
             next += SPACING;
         }

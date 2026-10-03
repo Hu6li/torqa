@@ -53,6 +53,8 @@ var _camera_mode: CameraMode = CameraMode.CHASE
 var _heading: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
+var _ghost: RiderAvatar = RiderAvatar.new()
+var _ghost_distance: float = 0.0
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
@@ -141,6 +143,10 @@ func _ready() -> void:
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
+	_ghost.accent = UiTheme.GHOST_COLOR
+	_ghost.ghostly = true
+	_ghost.hide()
+	add_child(_ghost)
 	apply_conditions("Midday", "Clear")
 
 
@@ -233,6 +239,7 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var yaw: Basis = Basis(Vector3.UP, -_heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	_rider.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north))
+	_place_ghost(state["ghost"], delta)
 
 	var target: Transform3D = _camera_target(_rider.transform)
 	# First person is fixed to the head; smoothing its position would trail behind the rider.
@@ -242,6 +249,33 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	else:
 		_camera.transform = target
 		_placed = true
+
+
+## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never
+## merges with the rider when both are side by side.
+func _place_ghost(ghost: Variant, delta: float) -> void:
+	if ghost == null:
+		_ghost.hide()
+		return
+	var info: Dictionary = ghost
+	var east: float = info["x"]
+	var north: float = info["y"]
+	var elevation: float = info["elevation_m"]
+	var heading: float = info["heading"]
+	var grade: float = info["grade"]
+	var distance_m: float = info["distance_m"]
+	var speed_kmh: float = (
+		maxf(distance_m - _ghost_distance, 0.0) / maxf(delta, 0.001) * 3.6
+		if _ghost.visible
+		else 0.0
+	)
+	_ghost_distance = distance_m
+	var yaw: Basis = Basis(Vector3.UP, -heading)
+	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
+	var left: Vector3 = yaw * Vector3.LEFT
+	_ghost.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north) + left * 1.1)
+	_ghost.animate(delta, 85.0 if speed_kmh > 1.0 else 0.0, speed_kmh)
+	_ghost.show()
 
 
 func _camera_target(rider: Transform3D) -> Transform3D:

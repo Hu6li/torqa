@@ -12,7 +12,6 @@ const SKIN: Color = Color(0.84, 0.65, 0.52)
 const HELMET: Color = Color(0.96, 0.96, 0.97)
 const SHOE: Color = Color(0.92, 0.93, 0.94)
 const FRAME: Color = Color(0.1, 0.12, 0.15)
-const FRAME_ACCENT: Color = Color(0.04, 0.55, 0.9)
 const TYRE: Color = Color(0.04, 0.04, 0.045)
 const RIM: Color = Color(0.55, 0.57, 0.6)
 
@@ -35,6 +34,10 @@ const ANKLE_OFFSET: Vector3 = Vector3(0, 0.07, 0.04)
 const HIP: Vector3 = Vector3(0, 0.97, 0.24)
 const SHOULDER: Vector3 = Vector3(0, 1.3, -0.24)
 
+## Jersey and frame accent colour; set before the avatar enters the tree.
+var accent: Color = JERSEY
+## See-through, for ghost riders (R20); set before the avatar enters the tree.
+var ghostly: bool = false
 var _crank_angle: float = 0.0
 var _wheel_angle: float = 0.0
 var _wheels: Array[Node3D] = []
@@ -50,6 +53,11 @@ func _ready() -> void:
 	var bike_parts: int = get_child_count()
 	_build_rider()
 	_body = get_children().slice(bike_parts)
+	if ghostly:
+		for part: Node in find_children("*", "GeometryInstance3D", true, false):
+			var geometry: GeometryInstance3D = part
+			geometry.transparency = 0.45
+			geometry.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	animate(0.0, 0.0, 0.0)
 
 
@@ -98,7 +106,7 @@ func _knee(hip: Vector3, foot: Vector3) -> Vector3:
 
 func _build_bike() -> void:
 	var frame: StandardMaterial3D = _material(FRAME, 0.35)
-	var accent: StandardMaterial3D = _material(FRAME_ACCENT, 0.35)
+	var frame_accent: StandardMaterial3D = _material(accent, 0.35)
 	var tyre: StandardMaterial3D = _material(TYRE, 0.8)
 	var rim: StandardMaterial3D = _material(RIM, 0.3)
 	for hub: Vector3 in [REAR_HUB, FRONT_HUB]:
@@ -124,7 +132,7 @@ func _build_bike() -> void:
 
 	for tube: Array in [
 		[BOTTOM_BRACKET, SEAT_CLUSTER, 0.017, frame],
-		[BOTTOM_BRACKET, HEAD_BOTTOM, 0.02, accent],
+		[BOTTOM_BRACKET, HEAD_BOTTOM, 0.02, frame_accent],
 		[SEAT_CLUSTER, HEAD_TOP, 0.015, frame],
 		[HEAD_BOTTOM, HEAD_TOP, 0.02, frame],
 		[SEAT_CLUSTER, SADDLE, 0.012, frame],
@@ -166,7 +174,7 @@ func _build_bike() -> void:
 
 
 func _build_rider() -> void:
-	var jersey: StandardMaterial3D = _material(JERSEY, 0.55)
+	var jersey: StandardMaterial3D = _material(accent, 0.55)
 	var side_panel: StandardMaterial3D = _material(JERSEY_SIDE, 0.55)
 	var shorts: StandardMaterial3D = _material(SHORTS, 0.6)
 	var skin: StandardMaterial3D = _material(SKIN, 0.7)

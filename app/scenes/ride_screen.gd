@@ -19,6 +19,9 @@ var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
 var _climb_left: Label = UiTheme.value(20)
 var _climb_time: Label = Label.new()
+var _ghost_panel: PanelContainer = PanelContainer.new()
+var _ghost_name: Label = UiTheme.caption("")
+var _ghost_gap: Label = UiTheme.value(20)
 var _finished: bool = false
 var _saved: bool = false
 var _toast_left: float = 0.0
@@ -74,6 +77,7 @@ func _ready() -> void:
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_climb_panel()
+	_build_ghost_panel()
 	add_child(_hud_dialog)
 	_hud_dialog.layout_confirmed.connect(_on_layout_confirmed)
 	_customize_button.pressed.connect(
@@ -117,6 +121,7 @@ func _process(delta: float) -> void:
 		_profile_info.text = "%d m  ·  %+.1f %%" % [roundi(elevation), grade]
 	_minimap.set_rider(Vector2(x_m, y_m), heading)
 	_show_climb(state["climb"])
+	_show_ghost(state["ghost"])
 	_profile.set_rider_distance(distance_m)
 
 
@@ -124,6 +129,45 @@ func _on_layout_confirmed(layout: PackedStringArray) -> void:
 	var saved: PackedStringArray = _torqa.set_hud_layout(layout)
 	if not saved.is_empty():
 		_hud.show_layout(saved)
+
+
+func _build_ghost_panel() -> void:
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 2)
+	_ghost_name.add_theme_color_override("font_color", UiTheme.GHOST_COLOR)
+	rows.add_child(_ghost_name)
+	rows.add_child(_ghost_gap)
+	_ghost_panel.add_child(rows)
+	_ghost_panel.hide()
+	($RightColumn as VBoxContainer).add_child(_ghost_panel)
+
+
+## The ghost (`ride_state()["ghost"]`) on the map and profile, and the time gap to it.
+func _show_ghost(ghost: Variant) -> void:
+	if ghost == null:
+		_ghost_panel.hide()
+		_minimap.set_ghost(Vector2.ZERO, false)
+		_profile.set_ghost_distance(-1.0)
+		return
+	var info: Dictionary = ghost
+	var x_m: float = info["x"]
+	var y_m: float = info["y"]
+	var distance_m: float = info["distance_m"]
+	var ghost_name: String = info["name"]
+	_minimap.set_ghost(Vector2(x_m, y_m), true)
+	_profile.set_ghost_distance(distance_m)
+	_ghost_name.text = ghost_name.to_upper()
+	if info["gap_s"] == null:
+		_ghost_gap.text = "Finished"
+		_ghost_gap.remove_theme_color_override("font_color")
+	else:
+		var gap: float = info["gap_s"]
+		var behind: bool = gap > 0.0
+		_ghost_gap.text = "%s %s" % [UiTheme.duration(absf(gap)), "behind" if behind else "ahead"]
+		_ghost_gap.add_theme_color_override(
+			"font_color", UiTheme.HEART_RATE_COLOR if behind else UiTheme.CLIMB_COLORS["Cat 4"]
+		)
+	_ghost_panel.show()
 
 
 func _build_climb_panel() -> void:
