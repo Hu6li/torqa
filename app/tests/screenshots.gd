@@ -114,8 +114,15 @@ func _run() -> void:
 			print("saved hud dialog")
 			dialog.hide()
 
-	# The ride's analysis in the history.
+	# The ride's summary (R42), then the history.
 	torqa.finish_ride()
+	var newest: Dictionary = torqa.history()[0]
+	var saved_path: String = newest["path"]
+	ride_screen.summary_requested.emit(saved_path)
+	await create_timer(1.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
+	print("saved summary")
+	(_main.get_node("HistoryScreen") as HistoryScreen).closed.emit()
 	setup.history_requested.emit()
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("history.png"))

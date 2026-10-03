@@ -4,8 +4,8 @@ extends Control
 ## status toasts and one settings button (R48) — the rest of the screen is the ride.
 
 signal closed
-## The ride was saved and the rider wants to see its analysis.
-signal summary_requested
+## The ride was saved to `path`; show its summary (R42).
+signal summary_requested(path: String)
 
 ## Keys during the ride: C camera; M play/pause music, "." next and "," previous track.
 # i18n-begin
@@ -26,6 +26,7 @@ var _settings_dialog: RideSettingsDialog = RideSettingsDialog.new()
 var _options: Dictionary = {}
 ## Finished from the settings: go to the summary as soon as the ride is saved.
 var _summary_when_saved: bool = false
+var _saved_path: String = ""
 var _imperial: bool = false
 var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
@@ -325,7 +326,7 @@ func _on_ride_finished() -> void:
 ## After the finish: to the summary, or back if nothing was recorded.
 func _on_finish_pressed() -> void:
 	if _saved:
-		summary_requested.emit()
+		summary_requested.emit(_saved_path)
 	else:
 		closed.emit()
 
@@ -344,9 +345,10 @@ func _finish_ride() -> void:
 func _on_ride_saved(path: String) -> void:
 	_finished = true
 	_saved = true
+	_saved_path = path
 	_settings_button.hide()
 	if _summary_when_saved:
-		summary_requested.emit()
+		summary_requested.emit(path)
 		return
 	_show_toast(tr("Saved %s") % path.get_file())
 	_toast_left = TOAST_SECONDS * 2.0

@@ -44,6 +44,8 @@ pub struct RideRecord {
     pub route_time: Option<Duration>,
     /// Times on the route's climbs that the rider completed.
     pub climbs: Vec<ClimbTime>,
+    /// The name the rider gave the ride (R50); `None` shows the route and date.
+    pub name: Option<String>,
 }
 
 /// The time on one climb of a ride.
@@ -104,6 +106,9 @@ struct RideFile {
     route_time_s: Option<f64>,
     #[serde(default)]
     climbs: Vec<ClimbFile>,
+    // Added without a format bump: older readers ignore it, newer ones default it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 impl From<&RideRecord> for RideFile {
@@ -132,6 +137,7 @@ impl From<&RideRecord> for RideFile {
             max_heart_rate_bpm: s.max_heart_rate.map(|v| v.0),
             ftp_w: s.ftp.0,
             route_key: r.route_key.clone(),
+            name: r.name.clone(),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
             climbs: r
                 .climbs
@@ -170,6 +176,7 @@ impl From<RideFile> for RideRecord {
                 ftp: Watts(f.ftp_w),
             },
             route_key: f.route_key,
+            name: f.name,
             route_time: f.route_time_s.map(|t| Duration::from_secs_f64(t.max(0.0))),
             climbs: f
                 .climbs
@@ -270,6 +277,7 @@ mod tests {
                 elapsed: Duration::from_secs(700),
                 avg_power: Some(Watts(260.0)),
             }],
+            name: Some("Morning loop".to_owned()),
         }
     }
 
@@ -302,6 +310,7 @@ mod tests {
         assert_eq!(record.route, "Old");
         assert_eq!(record.route_key, None);
         assert_eq!(record.climbs, []);
+        assert_eq!(record.name, None);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

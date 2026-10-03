@@ -597,3 +597,21 @@ msgstr "Die Fahrt endet, nichts wird gespeichert."
 
 msgid "Share of the road gradient you feel on the trainer"
 msgstr "Anteil der Strassensteigung, den du auf dem Trainer spürst"
+
+msgid "Click to rename the ride"
+msgstr "Klicken, um die Fahrt umzubenennen"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete ride?"
+msgstr "Fahrt löschen?"
+
+msgid "Discard ride"
+msgstr "Fahrt verwerfen"
+
+msgid "The ride and its FIT file are deleted."
+msgstr "Die Fahrt und ihre FIT-Datei werden gelöscht."
+
+msgid "Ride summary"
+msgstr "Zusammenfassung der Fahrt"
