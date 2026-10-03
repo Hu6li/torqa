@@ -7,6 +7,12 @@ signal closed
 ## The ride was saved and the rider wants to see its analysis.
 signal summary_requested
 
+## Keys during the ride: C camera; M play/pause music, "." next and "," previous track.
+const MUSIC_KEYS: Dictionary[Key, Array] = {
+	KEY_M: ["play_pause", "Music: play / pause"],
+	KEY_PERIOD: ["next", "Music: next track"],
+	KEY_COMMA: ["previous", "Music: previous track"],
+}
 const TOAST_SECONDS: float = 4.0
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
@@ -92,9 +98,18 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
-	if visible and key != null and key.pressed and not key.echo and key.keycode == KEY_C:
+	if not visible or key == null or not key.pressed or key.echo:
+		return
+	if key.keycode == KEY_C:
 		_cycle_camera()
-		get_viewport().set_input_as_handled()
+	elif MUSIC_KEYS.has(key.keycode):
+		var command: String = MUSIC_KEYS[key.keycode][0]
+		var message: String = MUSIC_KEYS[key.keycode][1]
+		_torqa.control_music(command)
+		_show_toast(message)
+	else:
+		return
+	get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
