@@ -102,26 +102,6 @@ Built in rideable steps:
 - **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅
   (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
-### Phase 3d — Start page & course gallery (R36–R42)
-- [ ] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
-- [ ] Path card: route in `#2EB0FF` on black with elevation strip
-- [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
-  (ADR 0007 format bump); video frames once video mode exists (Phase 5)
-- [ ] Courses gallery (cards with stats and small map) and course detail page with ride options
-- [ ] Auto-reconnect last-used devices; ride summary screen, then back to the start page
-- **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
-
-### Phase 3e — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
-- [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
-  docs
-- [ ] Quality presets Low–Ultra in settings, frame-time budget per preset
-- [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
-- [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
-- [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
-- [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
-- **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
-  visual target (R44)
-
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [ ] Customizable HUD
@@ -140,6 +120,26 @@ Built in rideable steps:
 - [ ] Virtual gears + Zwift Click / OpenBikeControl / keyboard
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds, logo
+
+### Phase 8 — Start page & course gallery (R36–R42)
+- [ ] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
+- [ ] Path card: route in `#2EB0FF` on black with elevation strip
+- [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
+  (ADR 0007 format bump); video frames once video mode exists (Phase 5)
+- [ ] Courses gallery (cards with stats and small map) and course detail page with ride options
+- [ ] Auto-reconnect last-used devices; ride summary screen, then back to the start page
+- **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
+
+### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
+- [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
+  docs
+- [ ] Quality presets Low–Ultra in settings, frame-time budget per preset
+- [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
+- [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
+- [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
+- [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
+- **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
+  visual target (R44)
 
 ## Risks
 
