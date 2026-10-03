@@ -6,7 +6,12 @@ var _failed: bool = false
 
 
 func _initialize() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
 	_hud_editor()
+	_ride_settings()
 	_translations()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -63,6 +68,37 @@ func _hud_editor() -> void:
 	_check(editor.layout().size() == TorqaApp.hud_max_metrics(), "at most the maximum figures")
 	_check(not changes.is_empty(), "changes are reported")
 	editor.free()
+
+
+## The ride options and the in-ride settings dialog (R48, R49).
+func _ride_settings() -> void:
+	var options: RideOptions = RideOptions.new()
+	root.add_child(options)
+	var wanted: Dictionary = {
+		"camera": 2, "difficulty": 75.0, "flat_descents": true, "time": "Evening", "weather": "Rain"
+	}
+	options.set_options(wanted)
+	_check(options.options() == wanted, "options round trip: %s" % options.options())
+	options.free()
+
+	var dialog: RideSettingsDialog = RideSettingsDialog.new()
+	root.add_child(dialog)
+	var events: Array[String] = []
+	dialog.finish_requested.connect(func() -> void: events.append("finish"))
+	dialog.abort_requested.connect(func() -> void: events.append("abort"))
+	dialog.options_changed.connect(func(_options: Dictionary) -> void: events.append("options"))
+	dialog.edit(wanted, PackedStringArray(["power", "speed"]), false)
+	dialog.custom_action.emit(&"finish")
+	_check(events == ["finish"], "finish at once: %s" % [events])
+	# Aborting asks first; only the confirmation aborts.
+	dialog.custom_action.emit(&"abort")
+	_check(events == ["finish"], "abort needs a confirmation: %s" % [events])
+	var confirm: ConfirmationDialog = (
+		dialog.find_children("*", "ConfirmationDialog", true, false)[0]
+	)
+	confirm.confirmed.emit()
+	_check(events == ["finish", "abort"], "abort once confirmed: %s" % [events])
+	dialog.free()
 
 
 func _translations() -> void:

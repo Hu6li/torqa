@@ -45,17 +45,14 @@ var _ghost_activity: String = ""
 @onready var _scan_label: Label = %ScanLabel
 @onready var _trainer_option: OptionButton = %TrainerOption
 @onready var _heart_rate_option: OptionButton = %HeartRateOption
-@onready var _difficulty_slider: HSlider = %DifficultySlider
-@onready var _difficulty_label: Label = %DifficultyLabel
 @onready var _profile_option: OptionButton = %ProfileOption
 @onready var _edit_profile_button: Button = %EditProfileButton
 @onready var _profile_dialog: ProfileDialog = ProfileDialog.new()
-@onready var _flat_descents: CheckBox = %FlatDescents
 @onready var _ghost_option: OptionButton = %GhostOption
 @onready var _ghost_value: SpinBox = %GhostValue
 @onready var _ghost_file_dialog: FileDialog = %GhostFileDialog
-@onready var _time_option: OptionButton = %TimeOption
-@onready var _weather_option: OptionButton = %WeatherOption
+@onready var _settings: GridContainer = %Settings
+@onready var _ride_options: RideOptions = RideOptions.new()
 @onready var _start_button: Button = %StartButton
 @onready var _status_label: Label = %StatusLabel
 @onready var _loading: HBoxContainer = %Loading
@@ -63,12 +60,9 @@ var _ghost_activity: String = ""
 @onready var _loading_label: Label = %LoadingLabel
 
 
-## The chosen time of day and weather, as names known to `RideWorld`.
-func conditions() -> Dictionary:
-	return {
-		"time": _time_option.get_item_text(_time_option.selected),
-		"weather": _weather_option.get_item_text(_weather_option.selected),
-	}
+## The ride options chosen before the ride, as `RideOptions.options()` returns them.
+func ride_options() -> Dictionary:
+	return _ride_options.options()
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -114,15 +108,20 @@ func _ready() -> void:
 	_save_course_button.pressed.connect(_on_save_course_pressed)
 	_history_button.pressed.connect(func() -> void: history_requested.emit())
 	_scan_button.pressed.connect(_on_scan_pressed)
-	_difficulty_slider.value_changed.connect(_on_difficulty_changed)
 	_start_button.pressed.connect(_on_start_pressed)
-	_on_difficulty_changed(_difficulty_slider.value)
 	_reset_device_options()
-	for time: String in RideWorld.TIMES.keys():
-		_time_option.add_item(time)
-	_time_option.select(1)
-	for weather: String in RideWorld.WEATHERS:
-		_weather_option.add_item(weather)
+	# The same options as in the in-ride settings (R48), right below the devices and rider.
+	_settings.get_parent().add_child(_ride_options)
+	_settings.get_parent().move_child(_ride_options, _settings.get_index() + 1)
+	for i: int in range(_settings.get_child_count()):
+		var cell: Control = _settings.get_child(i)
+		match i % 3:
+			0:
+				cell.custom_minimum_size.x = RideOptions.CAPTION_WIDTH
+			1:
+				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			2:
+				cell.custom_minimum_size.x = RideOptions.EXTRA_WIDTH
 	_update_start_button()
 
 
@@ -394,10 +393,6 @@ func _on_devices_found(devices: Array) -> void:
 		_heart_rate_option.select(1)
 
 
-func _on_difficulty_changed(value: float) -> void:
-	_difficulty_label.text = "%d %%" % int(value)
-
-
 func _on_start_pressed() -> void:
 	_status_label.text = ""
 	var trainer: int = _trainer_option.get_selected_metadata()
@@ -411,7 +406,10 @@ func _on_start_pressed() -> void:
 	var heart_rate: int = _heart_rate_option.get_selected_metadata()
 	if heart_rate != NO_HEART_RATE:
 		_torqa.connect_heart_rate(heart_rate)
-	if _torqa.start_ride(_difficulty_slider.value, _flat_descents.button_pressed, _ghost_choice()):
+	var options: Dictionary = _ride_options.options()
+	var difficulty: float = options["difficulty"]
+	var flat_descents: bool = options["flat_descents"]
+	if _torqa.start_ride(difficulty, flat_descents, _ghost_choice()):
 		ride_started.emit()
 
 

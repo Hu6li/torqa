@@ -1,7 +1,7 @@
 class_name RideScreen
 extends Control
 ## The live ride HUD: a compact metrics column, the map with the elevation profile below it,
-## status toasts and the camera and finish buttons.
+## status toasts and one settings button (R48) — the rest of the screen is the ride.
 
 signal closed
 ## The ride was saved and the rider wants to see its analysis.
@@ -21,7 +21,11 @@ const METERS_PER_FOOT: float = 0.3048
 
 var _torqa: TorqaApp
 var _world: RideWorld
-var _hud_dialog: HudDialog = HudDialog.new()
+var _settings_dialog: RideSettingsDialog = RideSettingsDialog.new()
+## The ride options in effect (`RideOptions.options()`).
+var _options: Dictionary = {}
+## Finished from the settings: go to the summary as soon as the ride is saved.
+var _summary_when_saved: bool = false
 var _imperial: bool = false
 var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
@@ -40,9 +44,8 @@ var _toast_left: float = 0.0
 @onready var _profile_info: Label = %ProfileInfo
 @onready var _toast: PanelContainer = %Toast
 @onready var _toast_label: Label = %ToastLabel
-@onready var _camera_button: Button = %CameraButton
+@onready var _settings_button: Button = %SettingsButton
 @onready var _finish_button: Button = %FinishButton
-@onready var _customize_button: Button = %CustomizeButton
 
 
 func bind(torqa: TorqaApp, world: RideWorld) -> void:
@@ -58,10 +61,14 @@ func bind(torqa: TorqaApp, world: RideWorld) -> void:
 	_torqa.failed.connect(_on_failed)
 
 
-## Prepares the screen for a new ride on the loaded route.
-func begin() -> void:
+## Prepares the screen for a new ride on the loaded route with `options` in effect.
+func begin(options: Dictionary) -> void:
+	_options = options
 	_finished = false
 	_saved = false
+	_summary_when_saved = false
+	_settings_button.show()
+	_finish_button.hide()
 	_minimap.set_track(_torqa.track(2000))
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
@@ -69,7 +76,6 @@ func begin() -> void:
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
 	_climb_panel.hide()
-	_finish_button.text = tr("Finish & save")
 	var profile: Dictionary = _torqa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
@@ -86,16 +92,16 @@ func _ready() -> void:
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_climb_panel()
 	_build_ghost_panel()
-	add_child(_hud_dialog)
-	_hud_dialog.layout_confirmed.connect(_on_layout_confirmed)
-	_customize_button.pressed.connect(
-		func() -> void: _hud_dialog.edit(_torqa.hud_layout(), _imperial)
-	)
+	add_child(_settings_dialog)
+	_settings_dialog.options_changed.connect(_on_options_changed)
+	_settings_dialog.hud_changed.connect(_on_hud_changed)
+	_settings_dialog.finish_requested.connect(_on_finish_requested)
+	_settings_dialog.abort_requested.connect(_on_abort_requested)
 	# Over the 3D scene, the light default buttons let road markings shine through the text.
-	for button: Button in [_camera_button, _finish_button, _customize_button]:
+	for button: Button in [_settings_button, _finish_button]:
 		button.add_theme_stylebox_override("normal", UiTheme.hud_button())
+	_settings_button.pressed.connect(_open_settings)
 	_finish_button.pressed.connect(_on_finish_pressed)
-	_camera_button.pressed.connect(_cycle_camera)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -104,6 +110,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.keycode == KEY_C:
 		_cycle_camera()
+	elif key.keycode == KEY_S and not _finished:
+		_open_settings()
 	elif MUSIC_KEYS.has(key.keycode):
 		var command: String = MUSIC_KEYS[key.keycode][0]
 		var message: String = MUSIC_KEYS[key.keycode][1]
@@ -142,10 +150,36 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
-func _on_layout_confirmed(layout: PackedStringArray) -> void:
+func _open_settings() -> void:
+	_options["camera"] = _world.camera()
+	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial)
+
+
+## Applies changed ride options at once: camera, conditions and sound in the world, difficulty
+## and descents on the trainer.
+func _on_options_changed(options: Dictionary) -> void:
+	_options = options
+	_world.apply_options(options)
+	var difficulty: float = options["difficulty"]
+	var flat_descents: bool = options["flat_descents"]
+	_torqa.adjust_ride(difficulty, flat_descents)
+
+
+func _on_hud_changed(layout: PackedStringArray) -> void:
 	var saved: PackedStringArray = _torqa.set_hud_layout(layout)
 	if not saved.is_empty():
 		_hud.show_layout(saved)
+
+
+func _on_finish_requested() -> void:
+	_summary_when_saved = true
+	_finish_ride()
+
+
+func _on_abort_requested() -> void:
+	_torqa.abort_ride()
+	_finished = true
+	closed.emit()
 
 
 func _build_ghost_panel() -> void:
@@ -266,7 +300,7 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 
 
 func _cycle_camera() -> void:
-	_camera_button.text = tr("Camera: %s") % tr(_world.cycle_camera())
+	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
 
 
 func _show_toast(message: String) -> void:
@@ -276,11 +310,11 @@ func _show_toast(message: String) -> void:
 
 
 func _on_device_connected(device_name: String) -> void:
-	_show_toast("%s connected" % device_name)
+	_show_toast(tr("%s connected") % device_name)
 
 
 func _on_device_disconnected(device_name: String) -> void:
-	_show_toast("%s disconnected — reconnecting…" % device_name)
+	_show_toast(tr("%s disconnected — reconnecting…") % device_name)
 
 
 func _on_ride_finished() -> void:
@@ -288,25 +322,36 @@ func _on_ride_finished() -> void:
 	_torqa.finish_ride()
 
 
+## After the finish: to the summary, or back if nothing was recorded.
 func _on_finish_pressed() -> void:
-	if _finished:
-		if _saved:
-			summary_requested.emit()
-		else:
-			closed.emit()
-		return
-	_show_toast(tr("Nothing recorded."))
-	_torqa.finish_ride()
+	if _saved:
+		summary_requested.emit()
+	else:
+		closed.emit()
+
+
+func _finish_ride() -> void:
 	_finished = true
-	_finish_button.text = tr("Back")
+	_settings_button.hide()
+	_torqa.finish_ride()
+	if not _saved:
+		# Nothing to save (e.g. the trainer never connected): offer the way back.
+		_show_toast(tr("Nothing recorded."))
+		_finish_button.text = tr("Back")
+		_finish_button.show()
 
 
 func _on_ride_saved(path: String) -> void:
 	_finished = true
 	_saved = true
+	_settings_button.hide()
+	if _summary_when_saved:
+		summary_requested.emit()
+		return
 	_show_toast(tr("Saved %s") % path.get_file())
 	_toast_left = TOAST_SECONDS * 2.0
 	_finish_button.text = tr("View summary")
+	_finish_button.show()
 
 
 func _on_failed(message: String) -> void:

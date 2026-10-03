@@ -375,6 +375,27 @@ impl TorqaApp {
         }
     }
 
+    /// Changes difficulty and descent mode of the current ride.
+    #[func]
+    fn adjust_ride(&mut self, difficulty: f64, flat_descents: bool) {
+        let descent = if flat_descents {
+            DescentMode::Flat
+        } else {
+            DescentMode::Coast
+        };
+        if let Some(app) = self.app.as_mut() {
+            app.adjust_ride(Percent(difficulty), descent);
+        }
+    }
+
+    /// Ends the current ride without saving it.
+    #[func]
+    fn abort_ride(&mut self) {
+        if let Some(app) = self.app.as_mut() {
+            app.abort_ride();
+        }
+    }
+
     /// Whether the active rider has finished the loaded route before, so `best` can be raced.
     #[func]
     fn has_personal_best(&self) -> bool {

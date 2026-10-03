@@ -84,11 +84,28 @@ func bind(torqa: TorqaApp) -> void:
 
 ## Cycles chase → first person → drone and returns the new mode's name.
 func cycle_camera() -> String:
-	_camera_mode = ((_camera_mode + 1) % CameraMode.size()) as CameraMode
+	set_camera((_camera_mode + 1) % CameraMode.size())
+	return camera_names()[_camera_mode]
+
+
+## The camera modes' names, in `CameraMode` order.
+static func camera_names() -> PackedStringArray:
+	var names: PackedStringArray = PackedStringArray()
+	for key: String in CameraMode.keys():
+		names.append(key.capitalize())
+	return names
+
+
+## The current camera mode (`CameraMode`).
+func camera() -> int:
+	return _camera_mode
+
+
+## Switches to camera `mode` (`CameraMode`).
+func set_camera(mode: int) -> void:
+	_camera_mode = clampi(mode, 0, CameraMode.size() - 1) as CameraMode
 	# From the rider's own eyes only the bike is visible.
 	_avatar.show_rider(_camera_mode != CameraMode.FIRST_PERSON)
-	var mode_name: String = CameraMode.keys()[_camera_mode]
-	return mode_name.capitalize()
 
 
 ## Sets the light, sky, fog and precipitation for a time of day and a weather.
@@ -127,6 +144,15 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_environment.fog_light_color = sky.sky_horizon_color
 	_rain.emitting = weather == "Rain"
 	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+
+
+## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
+func apply_options(options: Dictionary) -> void:
+	var time: String = options["time"]
+	var weather: String = options["weather"]
+	var camera_mode: int = options["camera"]
+	apply_conditions(time, weather)
+	set_camera(camera_mode)
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.

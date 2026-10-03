@@ -117,25 +117,19 @@ offset_bottom = -24.0
 grow_vertical = 0
 theme_override_constants/separation = 10
 
-[node name="CameraButton" type="Button" parent="Buttons"]
+[node name="SettingsButton" type="Button" parent="Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Switch camera (keyboard: C)"
+tooltip_text = "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 focus_mode = 0
-text = "Camera: Chase"
+text = "Settings"
 
 [node name="FinishButton" type="Button" parent="Buttons"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 focus_mode = 0
-text = "Finish & save"
-
-[node name="CustomizeButton" type="Button" parent="Buttons"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Choose which figures the HUD shows"
-focus_mode = 0
-text = "Customize HUD"
+text = "View summary"
 
 [node name="Attribution" type="Label" parent="."]
 layout_mode = 1
