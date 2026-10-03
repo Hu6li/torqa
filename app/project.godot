@@ -5,6 +5,8 @@ config_version=5
 
 [application]
 
+boot_splash/bg_color=Color(0.07, 0.08, 0.1, 1)
+boot_splash/image="res://assets/brand/torqa-splash.png"
 config/name="Torqa"
 config/description="Offline-first indoor cycling"
 run/main_scene="res://scenes/main.tscn"
