@@ -301,6 +301,8 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 
 
 func _cycle_camera() -> void:
+	if not _torqa.video().is_empty():
+		return
 	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
 
 

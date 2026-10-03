@@ -13,6 +13,7 @@ func _run() -> void:
 	_hud_editor()
 	_ride_settings()
 	_course_cards()
+	_video_view()
 	_translations()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -100,6 +101,24 @@ func _ride_settings() -> void:
 	confirm.confirmed.emit()
 	_check(events == ["finish", "abort"], "abort once confirmed: %s" % [events])
 	dialog.free()
+
+
+## The video view blends from frame to frame by video time (R17).
+func _video_view() -> void:
+	var view: VideoView = VideoView.new()
+	root.add_child(view)
+	var dark: Image = Image.create_empty(8, 6, false, Image.FORMAT_RGBA8)
+	var light: Image = Image.create_empty(8, 6, false, Image.FORMAT_RGBA8)
+	light.fill(Color.WHITE)
+	view.take(dark, 1.0)
+	_check(view.blend_at(1.0) == 1.0, "the first frame shows as it is")
+	view.take(light, 1.1)
+	_check(is_equal_approx(view.blend_at(1.05), 0.5), "halfway between frames, half of each")
+	_check(view.blend_at(2.0) == 1.0, "past the newest frame, that frame")
+	var first: Texture2D = view.texture
+	view.take(dark, 1.2)
+	_check(view.texture != first, "the newest frame gets its own texture")
+	view.free()
 
 
 ## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.

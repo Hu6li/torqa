@@ -9,7 +9,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use godot::classes::{Engine, INode, Node};
+use godot::classes::image::Format as ImageFormat;
+use godot::classes::{Engine, INode, Image, Node};
 use godot::prelude::*;
 use torqa_app::hud::MetricKind;
 use torqa_app::media::MediaCommand;
@@ -205,6 +206,29 @@ impl TorqaApp {
             .as_ref()
             .and_then(App::video_time)
             .map_or(-1.0, |t| t.as_secs_f64())
+    }
+
+    /// The next video frame during a ride on a video course, once decoded: `{time_s, image}`
+    /// (an RGBA8 `Image`); empty while none is new. It is the frame following `video_time()`,
+    /// to blend towards from the previous one.
+    #[func]
+    fn video_frame(&mut self) -> VarDictionary {
+        let Some(frame) = self.app.as_mut().and_then(App::video_frame) else {
+            return VarDictionary::new();
+        };
+        let (Ok(width), Ok(height)) = (i32::try_from(frame.width), i32::try_from(frame.height))
+        else {
+            return VarDictionary::new();
+        };
+        let data = PackedByteArray::from(frame.rgba);
+        let Some(image) = Image::create_from_data(width, height, false, ImageFormat::RGBA8, &data)
+        else {
+            return VarDictionary::new();
+        };
+        vdict! {
+            "time_s" => frame.time.as_secs_f64(),
+            "image" => &image,
+        }
     }
 
     /// Opens a course file from the library or elsewhere; emits `route_loaded` like

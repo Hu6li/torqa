@@ -3,12 +3,14 @@
 //! moment of the video, through the same matching used for ghosts (R20).
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use torqa_domain::units::Meters;
 use torqa_routes::Route;
 use torqa_session::ghost::Ghost;
-use torqa_video::{Video, gps_track, gpx_from_track, incyclist};
+use torqa_video::{Frame, Video, gps_track, gpx_from_track, incyclist};
 
 /// File extensions of the videos Torqa reads directly (GoPro and similar).
 pub const VIDEO_EXTENSIONS: [&str; 4] = ["mp4", "mov", "m4v", "mkv"];
@@ -117,5 +119,122 @@ impl VideoCourse {
             .time_at(distance)
             .unwrap_or_else(|| self.sync.total_time());
         (self.offset + along).min(self.duration)
+    }
+}
+
+/// Decodes a video course's frames on its own thread, so riding never waits for the decoder:
+/// [`VideoPlayer::show`] asks for a moment, [`VideoPlayer::frame`] hands out the newest frame
+/// once decoded.
+pub struct VideoPlayer {
+    shared: Arc<(Mutex<PlayerState>, Condvar)>,
+    thread: Option<JoinHandle<()>>,
+}
+
+#[derive(Default)]
+struct PlayerState {
+    wanted: Option<Duration>,
+    ready: Option<Frame>,
+    error: Option<String>,
+    stop: bool,
+}
+
+impl VideoPlayer {
+    /// Opens `video` for playback.
+    ///
+    /// # Errors
+    /// A readable message if the video cannot be opened.
+    pub fn open(video: &Path) -> Result<Self, String> {
+        let shared = Arc::new((Mutex::new(PlayerState::default()), Condvar::new()));
+        let state = Arc::clone(&shared);
+        let path = video.to_owned();
+        let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+        // The decoder stays on its thread: FFmpeg's scaler may not move between threads.
+        let thread = std::thread::Builder::new()
+            .name("video".to_owned())
+            .spawn(move || {
+                let mut video = match Video::open(&path) {
+                    Ok(video) => {
+                        let _ = opened_tx.send(Ok(()));
+                        video
+                    }
+                    Err(error) => {
+                        let _ =
+                            opened_tx.send(Err(format!("cannot open {}: {error}", path.display())));
+                        return;
+                    }
+                };
+                // The frame after the moment shown, so the view can blend towards it (R17).
+                let step = Duration::from_secs_f64(1.0 / video.info().frame_rate.max(1.0));
+                let (lock, wake) = &*state;
+                let mut shown: Option<Duration> = None;
+                loop {
+                    let wanted = {
+                        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+                        while s.wanted.is_none() && !s.stop {
+                            s = wake.wait(s).unwrap_or_else(PoisonError::into_inner);
+                        }
+                        if s.stop {
+                            return;
+                        }
+                        s.wanted.take()
+                    };
+                    let Some(wanted) = wanted else { continue };
+                    let decoded = video.frame_at(wanted + step);
+                    let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+                    match decoded {
+                        Ok(frame) if shown != Some(frame.time) => {
+                            shown = Some(frame.time);
+                            s.ready = Some(frame.clone());
+                        }
+                        Ok(_) => {}
+                        Err(error) => s.error = Some(error.to_string()),
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        opened_rx
+            .recv()
+            .map_err(|_| "the video player stopped".to_owned())??;
+        Ok(Self {
+            shared,
+            thread: Some(thread),
+        })
+    }
+
+    /// Asks for the frames around `time`; a newer request replaces one not yet started.
+    pub fn show(&self, time: Duration) {
+        let (lock, wake) = &*self.shared;
+        lock.lock().unwrap_or_else(PoisonError::into_inner).wanted = Some(time);
+        wake.notify_one();
+    }
+
+    /// The newest decoded frame not handed out yet: the one following the moment asked for.
+    ///
+    /// # Errors
+    /// The decoder's message if the video could not be decoded there.
+    pub fn frame(&self) -> Result<Option<Frame>, String> {
+        let (lock, _) = &*self.shared;
+        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        match s.error.take() {
+            Some(error) => Err(error),
+            None => Ok(s.ready.take()),
+        }
+    }
+}
+
+impl Drop for VideoPlayer {
+    fn drop(&mut self) {
+        let (lock, wake) = &*self.shared;
+        lock.lock().unwrap_or_else(PoisonError::into_inner).stop = true;
+        wake.notify_one();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl std::fmt::Debug for VideoPlayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VideoPlayer").finish_non_exhaustive()
     }
 }

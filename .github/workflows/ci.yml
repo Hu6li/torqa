@@ -29,6 +29,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+      # FFmpeg is built from source into the extension (ADR 0010); its assembly needs nasm.
+      - name: Install FFmpeg build tools
+        run: brew install nasm
       - name: Build GDExtension
         run: scripts/build-gdext.sh release
       - name: Build CLI
