@@ -61,7 +61,7 @@ func set_rider(position_m: Vector2, heading: float) -> void:
 
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_STOP
-	tooltip_text = "Click: close view / whole route"
+	tooltip_text = tr("Click: close view / whole route")
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -89,7 +89,7 @@ func _draw() -> void:
 	if _follow:
 		_draw_north(view)
 	var font: Font = get_theme_default_font()
-	var label: String = "CLOSE" if _follow else "ROUTE"
+	var label: String = (tr("Close") if _follow else tr("Route")).to_upper()
 	draw_string(
 		font, Vector2(14, size.y - 12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiTheme.MUTED
 	)

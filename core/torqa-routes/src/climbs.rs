@@ -47,6 +47,7 @@ impl ClimbCategory {
     /// Short label, e.g. `Cat 3` or `HC`.
     #[must_use]
     pub fn label(self) -> &'static str {
+        // i18n-begin: translated by the front end.
         match self {
             Self::Uncategorized => "Climb",
             Self::Cat4 => "Cat 4",
@@ -55,6 +56,7 @@ impl ClimbCategory {
             Self::Cat1 => "Cat 1",
             Self::Hc => "HC",
         }
+        // i18n-end
     }
 }
 

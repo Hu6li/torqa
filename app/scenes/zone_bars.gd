@@ -16,7 +16,7 @@ func set_zones(seconds: PackedFloat64Array, zones: Array[Array]) -> void:
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		var label: Label = Label.new()
-		label.text = "Z%d %s" % [i + 1, zone_name]
+		label.text = "Z%d %s" % [i + 1, tr(zone_name)]
 		label.custom_minimum_size = Vector2(130, 0)
 		label.add_theme_font_size_override("font_size", 12)
 		row.add_child(label)

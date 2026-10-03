@@ -8,6 +8,7 @@ const MUTED: Color = Color(0.64, 0.68, 0.74)
 const PANEL: Color = Color(0.06, 0.07, 0.09, 0.72)
 const SURFACE: Color = Color(1, 1, 1, 0.07)
 const RADIUS: int = 14
+# i18n-begin: zone and climb names are shown translated.
 ## Power zones 1–7 (Coggan): name and colour, as commonly used by training platforms.
 const POWER_ZONES: Array[Array] = [
 	["Recovery", Color(0.6, 0.62, 0.66)],
@@ -37,6 +38,7 @@ const CLIMB_COLORS: Dictionary[String, Color] = {
 }
 ## Ghost riders and pacers (R20) on the road, the map and the profile.
 const GHOST_COLOR: Color = Color(0.98, 0.55, 0.2)
+# i18n-end
 const POWER_COLOR: Color = Color(0.04, 0.61, 0.96)
 const HEART_RATE_COLOR: Color = Color(0.95, 0.33, 0.38)
 
@@ -116,6 +118,13 @@ static func build() -> Theme:
 	theme.set_color("font_unselected_color", "TabContainer", MUTED)
 	theme.set_color("font_hovered_color", "TabContainer", TEXT)
 
+	# Scroll bars: a slim light thumb, no track.
+	for bar: String in ["VScrollBar", "HScrollBar"]:
+		theme.set_stylebox("scroll", bar, _box(Color(0, 0, 0, 0), 3, 3, 3))
+		theme.set_stylebox("grabber", bar, _box(Color(1, 1, 1, 0.18), 3, 3, 3))
+		theme.set_stylebox("grabber_highlight", bar, _box(Color(1, 1, 1, 0.3), 3, 3, 3))
+		theme.set_stylebox("grabber_pressed", bar, _box(Color(ACCENT, 0.6), 3, 3, 3))
+
 	var popup: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12, 0.98), 10, 6, 6)
 	theme.set_stylebox("panel", "PopupMenu", popup)
 	theme.set_stylebox("hover", "PopupMenu", _box(Color(ACCENT, 0.35), 6, 8, 4))
@@ -147,10 +156,12 @@ static func chip(highlighted: bool) -> StyleBoxFlat:
 	return box
 
 
-## A caption label: small, muted, upper case.
+## A caption label: small, muted, upper case; `text` is translated first.
 static func caption(text: String) -> Label:
 	var label: Label = Label.new()
-	label.text = text.to_upper()
+	# Translated here, before upper-casing; the label must not look up the upper-cased text.
+	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	label.text = TranslationServer.translate(text).to_upper()
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", MUTED)
 	return label

@@ -7,6 +7,7 @@ var _failed: bool = false
 
 func _initialize() -> void:
 	_hud_editor()
+	_translations()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -42,7 +43,20 @@ func _hud_editor() -> void:
 		editor.place(str(TorqaApp.hud_metrics()[i]["id"]), 99)
 	_check(editor.layout().size() == TorqaApp.hud_max_metrics(), "at most the maximum figures")
 	_check(not changes.is_empty(), "changes are reported")
-	editor.queue_free()
+	editor.free()
+
+
+func _translations() -> void:
+	var before: String = TranslationServer.get_locale()
+	TranslationServer.set_locale("de")
+	_check(TranslationServer.translate("Power") == "Leistung", "German texts load")
+	_check(
+		TranslationServer.translate("Climb done in %s") % "4:12" == "Anstieg geschafft in 4:12",
+		"formatted texts translate"
+	)
+	TranslationServer.set_locale("en")
+	_check(TranslationServer.translate("Power") == "Power", "English is the source language")
+	TranslationServer.set_locale(before)
 
 
 ## The chips of a list column of the editor: 0 = shown, 2 = available.

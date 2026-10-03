@@ -1,0 +1,13 @@
+# Texts built at run time that the extractor cannot find in a literal, one per line.
+# Camera modes (RideWorld.CameraMode names, capitalised).
+Chase
+First Person
+Drone
+# Units of the loading steps (torqa-app LoadStage::unit).
+files
+tiles
+points
+chunks
+# Language choice in the rider settings (ProfileDialog.LANGUAGES); other language names stay
+# in their own language.
+System language

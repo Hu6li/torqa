@@ -156,5 +156,5 @@ func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
 	var index: int = clampi(zone_number - 1, 0, UiTheme.POWER_ZONES.size() - 1)
 	var zone_name: String = UiTheme.POWER_ZONES[index][0]
 	var color: Color = UiTheme.POWER_ZONES[index][1]
-	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, zone_name]
+	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, tr(zone_name)]
 	_power_detail.add_theme_color_override("font_color", color)

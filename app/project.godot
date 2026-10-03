@@ -32,3 +32,7 @@ gdscript/warnings/return_value_discarded=1
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://translations/de.po")

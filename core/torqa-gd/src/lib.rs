@@ -401,7 +401,8 @@ impl TorqaApp {
     }
 
     /// The active rider: `{id, name, rider_mass_kg, bike_mass_kg, ftp_w, max_heart_rate_bpm,
-    /// units}` with `units` either `"metric"` or `"imperial"`.
+    /// units, language}` with `units` either `"metric"` or `"imperial"` and `language` a locale
+    /// code, empty for the system language.
     #[func]
     fn profile(&self) -> VarDictionary {
         let Some(stored) = self.app.as_ref().map(App::profile) else {
@@ -419,6 +420,7 @@ impl TorqaApp {
                 UnitSystem::Metric => "metric",
                 UnitSystem::Imperial => "imperial",
             },
+            "language" => p.language.as_str(),
         }
     }
 
@@ -449,6 +451,11 @@ impl TorqaApp {
             bike_mass: Kilograms(number("bike_mass_kg", defaults.bike_mass.0)),
             ftp: Watts(number("ftp_w", defaults.ftp.0)),
             max_heart_rate: BeatsPerMinute(number("max_heart_rate_bpm", defaults.max_heart_rate.0)),
+            language: data
+                .get("language")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .map(|l| l.to_string())
+                .unwrap_or_default(),
             units: if data
                 .get("units")
                 .and_then(|v| v.try_to::<GString>().ok())

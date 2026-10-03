@@ -30,33 +30,39 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 64
-theme_override_constants/margin_top = 48
+theme_override_constants/margin_top = 24
 theme_override_constants/margin_right = 64
-theme_override_constants/margin_bottom = 48
+theme_override_constants/margin_bottom = 24
 
-[node name="Center" type="CenterContainer" parent="Margin"]
+[node name="Scroll" type="ScrollContainer" parent="Margin"]
 layout_mode = 2
+horizontal_scroll_mode = 0
 
-[node name="Card" type="PanelContainer" parent="Margin/Center"]
+[node name="Center" type="CenterContainer" parent="Margin/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Card" type="PanelContainer" parent="Margin/Scroll/Center"]
 custom_minimum_size = Vector2(780, 0)
 layout_mode = 2
 
-[node name="Rows" type="VBoxContainer" parent="Margin/Center/Card"]
+[node name="Rows" type="VBoxContainer" parent="Margin/Scroll/Center/Card"]
 layout_mode = 2
-theme_override_constants/separation = 18
+theme_override_constants/separation = 12
 
-[node name="Header" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+[node name="Header" type="HBoxContainer" parent="Margin/Scroll/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="Logo" type="TextureRect" parent="Margin/Center/Card/Rows/Header"]
+[node name="Logo" type="TextureRect" parent="Margin/Scroll/Center/Card/Rows/Header"]
 custom_minimum_size = Vector2(84, 82)
 layout_mode = 2
 texture = ExtResource("2_logo")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Wordmark" type="TextureRect" parent="Margin/Center/Card/Rows/Header"]
+[node name="Wordmark" type="TextureRect" parent="Margin/Scroll/Center/Card/Rows/Header"]
 custom_minimum_size = Vector2(150, 56)
 layout_mode = 2
 size_flags_vertical = 4
@@ -64,29 +70,29 @@ texture = ExtResource("3_wordmark")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="HeaderSpacer" type="Control" parent="Margin/Center/Card/Rows/Header"]
+[node name="HeaderSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="HistoryButton" type="Button" parent="Margin/Center/Card/Rows/Header"]
+[node name="HistoryButton" type="Button" parent="Margin/Scroll/Center/Card/Rows/Header"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(140, 44)
 layout_mode = 2
 size_flags_vertical = 4
 text = "History"
 
-[node name="Courses" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+[node name="Courses" type="HBoxContainer" parent="Margin/Scroll/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="CourseOption" type="OptionButton" parent="Margin/Center/Card/Rows/Courses"]
+[node name="CourseOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Courses"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 44)
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Courses saved in your library ride offline"
 
-[node name="SaveCourseButton" type="Button" parent="Margin/Center/Card/Rows/Courses"]
+[node name="SaveCourseButton" type="Button" parent="Margin/Scroll/Center/Card/Rows/Courses"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 44)
 layout_mode = 2
@@ -94,29 +100,29 @@ tooltip_text = "Keep this route with its map and terrain, to ride it offline or 
 disabled = true
 text = "Save as course"
 
-[node name="Route" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+[node name="Route" type="HBoxContainer" parent="Margin/Scroll/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="OpenRouteButton" type="Button" parent="Margin/Center/Card/Rows/Route"]
+[node name="OpenRouteButton" type="Button" parent="Margin/Scroll/Center/Card/Rows/Route"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 44)
 layout_mode = 2
 text = "Open route or course…"
 
-[node name="RouteLabel" type="Label" parent="Margin/Center/Card/Rows/Route"]
+[node name="RouteLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows/Route"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "No route loaded"
 
-[node name="Loading" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+[node name="Loading" type="HBoxContainer" parent="Margin/Scroll/Center/Card/Rows"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="LoadingBar" type="ProgressBar" parent="Margin/Center/Card/Rows/Loading"]
+[node name="LoadingBar" type="ProgressBar" parent="Margin/Scroll/Center/Card/Rows/Loading"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 24)
 layout_mode = 2
@@ -124,61 +130,61 @@ size_flags_vertical = 4
 max_value = 1.0
 show_percentage = false
 
-[node name="LoadingLabel" type="Label" parent="Margin/Center/Card/Rows/Loading"]
+[node name="LoadingLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows/Loading"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="Scan" type="HBoxContainer" parent="Margin/Center/Card/Rows"]
+[node name="Scan" type="HBoxContainer" parent="Margin/Scroll/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="ScanButton" type="Button" parent="Margin/Center/Card/Rows/Scan"]
+[node name="ScanButton" type="Button" parent="Margin/Scroll/Center/Card/Rows/Scan"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 44)
 layout_mode = 2
 text = "Scan for devices"
 
-[node name="ScanLabel" type="Label" parent="Margin/Center/Card/Rows/Scan"]
+[node name="ScanLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows/Scan"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Wake your trainer by pedalling, then scan."
 
-[node name="Settings" type="GridContainer" parent="Margin/Center/Card/Rows"]
+[node name="Settings" type="GridContainer" parent="Margin/Scroll/Center/Card/Rows"]
 layout_mode = 2
 theme_override_constants/h_separation = 24
-theme_override_constants/v_separation = 14
+theme_override_constants/v_separation = 8
 columns = 3
 
-[node name="TrainerCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TrainerCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 text = "Trainer"
 
-[node name="TrainerOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TrainerOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 40)
 layout_mode = 2
 
-[node name="TrainerSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TrainerSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="HeartRateCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="HeartRateCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Heart rate"
 
-[node name="HeartRateOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="HeartRateOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 40)
 layout_mode = 2
 
-[node name="HeartRateSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="HeartRateSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="DifficultyCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="DifficultyCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Trainer difficulty"
 
-[node name="DifficultySlider" type="HSlider" parent="Margin/Center/Card/Rows/Settings"]
+[node name="DifficultySlider" type="HSlider" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 32)
 layout_mode = 2
@@ -186,71 +192,74 @@ size_flags_vertical = 4
 step = 5.0
 value = 50.0
 
-[node name="DifficultyLabel" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="DifficultyLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "50 %"
 
-[node name="RiderCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="RiderCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Rider"
 
-[node name="ProfileOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="ProfileOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Weight, FTP and heart rate come from the rider's profile"
 
-[node name="EditProfileButton" type="Button" parent="Margin/Center/Card/Rows/Settings"]
+[node name="EditProfileButton" type="Button" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Edit…"
 
-[node name="TimeCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TimeCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Time of day"
 
-[node name="TimeOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TimeOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 40)
 layout_mode = 2
 
-[node name="TimeSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="TimeSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="WeatherCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="WeatherCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Weather"
 
-[node name="WeatherOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="WeatherOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 40)
 layout_mode = 2
 
-[node name="WeatherSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="WeatherSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="DescentCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="DescentCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Descents"
 
-[node name="FlatDescents" type="CheckBox" parent="Margin/Center/Card/Rows/Settings"]
+[node name="FlatDescents" type="CheckBox" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Ride descents like flat roads"
 
-[node name="DescentSpacer" type="Control" parent="Margin/Center/Card/Rows/Settings"]
+[node name="DescentSpacer" type="Control" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 
-[node name="GhostCaption" type="Label" parent="Margin/Center/Card/Rows/Settings"]
+[node name="GhostCaption" type="Label" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 layout_mode = 2
 text = "Race against"
 
-[node name="GhostOption" type="OptionButton" parent="Margin/Center/Card/Rows/Settings"]
+[node name="GhostOption" type="OptionButton" parent="Margin/Scroll/Center/Card/Rows/Settings"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "A ghost rider on the road: your best time, a pacer or a recorded activity"
 
-[node name="GhostValue" type="SpinBox" parent="Margin/Center/Card/Rows/Settings"]
+[node name="GhostSlot" type="MarginContainer" parent="Margin/Scroll/Center/Card/Rows/Settings"]
+layout_mode = 2
+
+[node name="GhostValue" type="SpinBox" parent="Margin/Scroll/Center/Card/Rows/Settings/GhostSlot"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -264,7 +273,7 @@ access = 2
 filters = PackedStringArray("*.gpx, *.fit ; GPX or FIT activities")
 use_native_dialog = true
 
-[node name="StartButton" type="Button" parent="Margin/Center/Card/Rows"]
+[node name="StartButton" type="Button" parent="Margin/Scroll/Center/Card/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 56)
 layout_mode = 2
@@ -272,7 +281,7 @@ size_flags_horizontal = 0
 theme_override_font_sizes/font_size = 24
 text = "Start ride"
 
-[node name="StatusLabel" type="Label" parent="Margin/Center/Card/Rows"]
+[node name="StatusLabel" type="Label" parent="Margin/Scroll/Center/Card/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.55, 0.45, 1)

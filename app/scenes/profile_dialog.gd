@@ -8,6 +8,8 @@ extends ConfirmationDialog
 signal profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedStringArray)
 
 const UNITS: Array[String] = ["metric", "imperial"]
+## Interface languages: locale code and name in that language; "" follows the system.
+const LANGUAGES: Array[Array] = [["", "System language"], ["en", "English"], ["de", "Deutsch"]]
 
 var _id: String = ""
 var _name_edit: LineEdit = LineEdit.new()
@@ -16,26 +18,36 @@ var _bike_mass: SpinBox = _spin(3.0, 40.0, 0.1, " kg")
 var _ftp: SpinBox = _spin(50.0, 600.0, 1.0, " W")
 var _max_heart_rate: SpinBox = _spin(100.0, 230.0, 1.0, " bpm")
 var _units: OptionButton = OptionButton.new()
+var _language: OptionButton = OptionButton.new()
 var _hud: HudEditor = HudEditor.new()
 
 
 func _ready() -> void:
 	theme = UiTheme.build()
-	title = "Rider settings"
-	ok_button_text = "Save"
+	title = tr("Rider settings")
+	ok_button_text = tr("Save")
 	min_size = Vector2i(720, 460)
 	var tabs: TabContainer = TabContainer.new()
 	var grid: GridContainer = GridContainer.new()
-	grid.name = "Profile"
+	grid.name = tr("Profile")
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 12)
 	_name_edit.custom_minimum_size = Vector2(260, 0)
 	# The fields grow with the dialog rather than staying fixed in the middle (R53).
-	for field: Control in [_name_edit, _rider_mass, _bike_mass, _ftp, _max_heart_rate, _units]:
+	for field: Control in [
+		_name_edit, _rider_mass, _bike_mass, _ftp, _max_heart_rate, _units, _language
+	]:
 		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_units.add_item("Metric (km, kg)")
-	_units.add_item("Imperial (mi, lb)")
+	_units.add_item(tr("Metric (km, kg)"))
+	_units.add_item(tr("Imperial (mi, lb)"))
+	# Language names stay in their own language; only "System language" is translated.
+	_language.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	for language: Array in LANGUAGES:
+		var code: String = language[0]
+		var language_name: String = language[1]
+		_language.add_item(tr(language_name) if code.is_empty() else language_name)
+	# i18n-begin
 	for row: Array in [
 		["Name", _name_edit],
 		["Weight", _rider_mass],
@@ -43,14 +55,16 @@ func _ready() -> void:
 		["FTP", _ftp],
 		["Max heart rate", _max_heart_rate],
 		["Units", _units],
+		["Language", _language],
 	]:
+		# i18n-end
 		var caption: Label = Label.new()
 		caption.text = row[0]
 		var field: Control = row[1]
 		grid.add_child(caption)
 		grid.add_child(field)
 	tabs.add_child(grid)
-	_hud.name = "HUD"
+	_hud.name = tr("HUD")
 	tabs.add_child(_hud)
 	add_child(tabs)
 	_units.item_selected.connect(
@@ -69,8 +83,12 @@ func edit(profile: Dictionary, hud_layout: PackedStringArray) -> void:
 	_ftp.value = profile.get("ftp_w", 200.0)
 	_max_heart_rate.value = profile.get("max_heart_rate_bpm", 185.0)
 	_units.select(maxi(UNITS.find(profile.get("units", "metric")), 0))
+	_language.select(0)
+	for i: int in range(LANGUAGES.size()):
+		if LANGUAGES[i][0] == profile.get("language", ""):
+			_language.select(i)
 	_hud.edit(hud_layout, UNITS[_units.selected] == "imperial")
-	title = "New rider" if _id.is_empty() else "Rider settings"
+	title = tr("New rider") if _id.is_empty() else tr("Rider settings")
 	popup_centered(Vector2i(960, 600))
 	_name_edit.grab_focus()
 
@@ -82,12 +100,13 @@ func _on_confirmed() -> void:
 		. emit(
 			_id,
 			{
-				"name": profile_name if not profile_name.is_empty() else "Rider",
+				"name": profile_name if not profile_name.is_empty() else tr("Rider"),
 				"rider_mass_kg": _rider_mass.value,
 				"bike_mass_kg": _bike_mass.value,
 				"ftp_w": _ftp.value,
 				"max_heart_rate_bpm": _max_heart_rate.value,
 				"units": UNITS[_units.selected],
+				"language": LANGUAGES[_language.selected][0],
 			},
 			_hud.layout()
 		)

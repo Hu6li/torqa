@@ -10,8 +10,8 @@ var _editor: HudEditor = HudEditor.new()
 
 func _ready() -> void:
 	theme = UiTheme.build()
-	title = "Customize HUD"
-	ok_button_text = "Apply"
+	title = tr("Customize HUD")
+	ok_button_text = tr("Apply")
 	min_size = Vector2i(860, 480)
 	add_child(_editor)
 	confirmed.connect(func() -> void: layout_confirmed.emit(_editor.layout()))

@@ -1,0 +1,584 @@
+# German translation of Torqa (Swiss spelling: ss instead of ß).
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: de\n"
+
+msgid "%d of %d figures. The first one is shown large. Values are examples."
+msgstr "%d von %d Werten. Der erste wird gross angezeigt. Die Zahlen sind Beispiele."
+
+msgid "%s  ·  climb %d of %d"
+msgstr "%s  ·  Anstieg %d von %d"
+
+msgid "%s %.1f km at %.1f %%"
+msgstr "%s %.1f km mit %.1f %%"
+
+msgid "%s ahead"
+msgstr "%s voraus"
+
+msgid "%s behind"
+msgstr "%s zurück"
+
+msgid "%s to go  ·  %.1f %%"
+msgstr "noch %s  ·  %.1f %%"
+
+msgid "%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
+msgstr "%s — %.1f km, %.0f Höhenmeter, steilste Stelle %.0f %% (Höhen aus %s)"
+
+msgid "(best %s)"
+msgstr "(Bestzeit %s)"
+
+msgid "(no terrain data in places: flat there — load once while online)"
+msgstr "(stellenweise keine Geländedaten: dort flach — einmal online laden)"
+
+msgid "3D world ready"
+msgstr "3D-Welt bereit"
+
+msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
+msgstr "Ein Geisterfahrer auf der Strasse: deine Bestzeit, ein Tempomacher oder eine aufgezeichnete Fahrt"
+
+msgid "A recorded activity…"
+msgstr "Eine aufgezeichnete Fahrt …"
+
+msgid "Activity: %s"
+msgstr "Fahrt: %s"
+
+msgid "Anaerobic"
+msgstr "Anaerob"
+
+msgid "Apply"
+msgstr "Übernehmen"
+
+msgid "Apr"
+msgstr "Apr."
+
+msgid "Aug"
+msgstr "Aug."
+
+msgid "Available — drag in to add"
+msgstr "Verfügbar — zum Hinzufügen hineinziehen"
+
+msgid "Avg cadence"
+msgstr "Ø Trittfrequenz"
+
+msgid "Avg heart rate"
+msgstr "Ø Puls"
+
+msgid "Avg power"
+msgstr "Ø Leistung"
+
+msgid "Avg speed"
+msgstr "Ø Tempo"
+
+msgid "Back"
+msgstr "Zurück"
+
+msgid "Bike weight"
+msgstr "Velogewicht"
+
+msgid "Building 3D world"
+msgstr "3D-Welt wird gebaut"
+
+msgid "Building the 3D world…"
+msgstr "3D-Welt wird gebaut …"
+
+msgid "Cadence"
+msgstr "Trittfrequenz"
+
+msgid "Camera: %s"
+msgstr "Kamera: %s"
+
+msgid "Camera: Chase"
+msgstr "Kamera: Verfolger"
+
+msgid "Cat 1"
+msgstr "Kat. 1"
+
+msgid "Cat 2"
+msgstr "Kat. 2"
+
+msgid "Cat 3"
+msgstr "Kat. 3"
+
+msgid "Cat 4"
+msgstr "Kat. 4"
+
+msgid "Chase"
+msgstr "Verfolger"
+
+msgid "Choose which figures the HUD shows"
+msgstr "Wählen, welche Werte das HUD zeigt"
+
+msgid "Clear"
+msgstr "Klar"
+
+msgid "Click: close view / whole route"
+msgstr "Klick: Nahansicht / ganze Strecke"
+
+msgid "Climb"
+msgstr "Anstieg"
+
+msgid "Climb %d  ·  %.1f km from km %.1f"
+msgstr "Anstieg %d  ·  %.1f km ab km %.1f"
+
+msgid "Climb done in %s"
+msgstr "Anstieg geschafft in %s"
+
+msgid "Climbed"
+msgstr "Aufstieg"
+
+msgid "Climbing"
+msgstr "Höhenmeter"
+
+msgid "Climbs: %s"
+msgstr "Anstiege: %s"
+
+msgid "Close"
+msgstr "Nah"
+
+msgid "Cloudy"
+msgstr "Bewölkt"
+
+msgid "Correcting elevations"
+msgstr "Höhen werden korrigiert"
+
+msgid "Course added to your library: %s"
+msgstr "Strecke zur Bibliothek hinzugefügt: %s"
+
+msgid "Courses saved in your library ride offline"
+msgstr "Gespeicherte Strecken fahren auch offline"
+
+msgid "Customize HUD"
+msgstr "HUD anpassen"
+
+msgid "Dec"
+msgstr "Dez."
+
+msgid "Delete ride"
+msgstr "Fahrt löschen"
+
+msgid "Descents"
+msgstr "Abfahrten"
+
+msgid "Distance"
+msgstr "Distanz"
+
+msgid "Downloading map data"
+msgstr "Kartendaten werden geladen"
+
+msgid "Drone"
+msgstr "Drohne"
+
+msgid "Edit…"
+msgstr "Bearbeiten …"
+
+msgid "Elevation"
+msgstr "Höhe"
+
+msgid "Endurance"
+msgstr "Grundlage"
+
+msgid "Evening"
+msgstr "Abend"
+
+msgid "FTP"
+msgstr "FTP"
+
+msgid "Fake trainer (200 W, for testing)"
+msgstr "Test-Trainer (200 W, zum Ausprobieren)"
+
+msgid "Feb"
+msgstr "Feb."
+
+msgid "Finish & save"
+msgstr "Beenden & speichern"
+
+msgid "Finished"
+msgstr "Im Ziel"
+
+msgid "Finished in %s"
+msgstr "Im Ziel nach %s"
+
+msgid "First Person"
+msgstr "Ich-Perspektive"
+
+msgid "Found %d device(s)"
+msgstr "%d Gerät(e) gefunden"
+
+msgid "Fri"
+msgstr "Fr"
+
+msgid "GPX file"
+msgstr "GPX-Datei"
+
+msgid "Grade"
+msgstr "Steigung"
+
+msgid "HC"
+msgstr "HC"
+
+msgid "HUD"
+msgstr "HUD"
+
+msgid "Hard"
+msgstr "Hart"
+
+msgid "Hazy"
+msgstr "Dunstig"
+
+msgid "Heart rate"
+msgstr "Puls"
+
+msgid "Heart-rate zone"
+msgstr "Pulszone"
+
+msgid "Hide"
+msgstr "Ausblenden"
+
+msgid "History"
+msgstr "Verlauf"
+
+msgid "Imperial (mi, lb)"
+msgstr "Imperial (mi, lb)"
+
+msgid "Intensity"
+msgstr "Intensität"
+
+msgid "Jan"
+msgstr "Jan."
+
+msgid "Jul"
+msgstr "Juli"
+
+msgid "Jun"
+msgstr "Juni"
+
+msgid "Keep this route with its map and terrain, to ride it offline or share it"
+msgstr "Strecke mit Karte und Gelände behalten, um sie offline zu fahren oder zu teilen"
+
+msgid "Language"
+msgstr "Sprache"
+
+msgid "Large"
+msgstr "Gross"
+
+msgid "Light"
+msgstr "Leicht"
+
+msgid "Loading %s …"
+msgstr "%s wird geladen …"
+
+msgid "Mar"
+msgstr "März"
+
+msgid "Max heart rate"
+msgstr "Maximalpuls"
+
+msgid "Max power"
+msgstr "Max. Leistung"
+
+msgid "Maximum"
+msgstr "Maximal"
+
+msgid "May"
+msgstr "Mai"
+
+msgid "Metric (km, kg)"
+msgstr "Metrisch (km, kg)"
+
+msgid "Midday"
+msgstr "Mittag"
+
+msgid "Moderate"
+msgstr "Mittel"
+
+msgid "Mon"
+msgstr "Mo"
+
+msgid "Morning"
+msgstr "Morgen"
+
+msgid "Music: next track"
+msgstr "Musik: nächster Titel"
+
+msgid "Music: play / pause"
+msgstr "Musik: Wiedergabe / Pause"
+
+msgid "Music: previous track"
+msgstr "Musik: vorheriger Titel"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Neuromuscular"
+msgstr "Neuromuskulär"
+
+msgid "New rider"
+msgstr "Neue Fahrerin / neuer Fahrer"
+
+msgid "New rider…"
+msgstr "Neue Person …"
+
+msgid "Next 500 m"
+msgstr "Nächste 500 m"
+
+msgid "No rides yet. Finished rides appear here."
+msgstr "Noch keine Fahrten. Beendete Fahrten erscheinen hier."
+
+msgid "No route loaded"
+msgstr "Keine Strecke geladen"
+
+msgid "No saved courses yet"
+msgstr "Noch keine gespeicherten Strecken"
+
+msgid "Nobody"
+msgstr "Niemanden"
+
+msgid "None"
+msgstr "Keiner"
+
+msgid "Normalized"
+msgstr "Normalisiert"
+
+msgid "Normalized power"
+msgstr "Normalisierte Leistung"
+
+msgid "Nothing recorded."
+msgstr "Nichts aufgezeichnet."
+
+msgid "Nov"
+msgstr "Nov."
+
+msgid "Oct"
+msgstr "Okt."
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open a GPX route or Torqa course"
+msgstr "GPX-Strecke oder Torqa-Strecke öffnen"
+
+msgid "Open route or course…"
+msgstr "Strecke öffnen …"
+
+msgid "Pacer at W/kg…"
+msgstr "Tempomacher mit W/kg …"
+
+msgid "Pacer at a power…"
+msgstr "Tempomacher mit Leistung …"
+
+msgid "Pacer at your FTP"
+msgstr "Tempomacher mit deiner FTP"
+
+msgid "Power"
+msgstr "Leistung"
+
+msgid "Power 10 s"
+msgstr "Leistung 10 s"
+
+msgid "Power 3 s"
+msgstr "Leistung 3 s"
+
+msgid "Power zone"
+msgstr "Leistungszone"
+
+msgid "Preview"
+msgstr "Vorschau"
+
+msgid "Profile"
+msgstr "Profil"
+
+msgid "Race against"
+msgstr "Rennen gegen"
+
+msgid "Race against a recorded activity"
+msgstr "Gegen eine aufgezeichnete Fahrt fahren"
+
+msgid "Rain"
+msgstr "Regen"
+
+msgid "Reading route"
+msgstr "Strecke wird gelesen"
+
+msgid "Recovery"
+msgstr "Erholung"
+
+msgid "Ride descents like flat roads"
+msgstr "Abfahrten wie flache Strassen fahren"
+
+msgid "Rider"
+msgstr "Person"
+
+msgid "Rider settings"
+msgstr "Einstellungen der Person"
+
+msgid "Route"
+msgstr "Strecke"
+
+msgid "Sat"
+msgstr "Sa"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Save as course"
+msgstr "Als Strecke speichern"
+
+msgid "Saved %s"
+msgstr "%s gespeichert"
+
+msgid "Saved courses (%d)…"
+msgstr "Gespeicherte Strecken (%d) …"
+
+msgid "Saving course…"
+msgstr "Strecke wird gespeichert …"
+
+msgid "Scan for devices"
+msgstr "Geräte suchen"
+
+msgid "Scanning…"
+msgstr "Suche läuft …"
+
+msgid "Sep"
+msgstr "Sept."
+
+msgid "Show"
+msgstr "Anzeigen"
+
+msgid "Shown — drag to reorder"
+msgstr "Angezeigt — zum Umsortieren ziehen"
+
+msgid "Speed"
+msgstr "Tempo"
+
+msgid "Start ride"
+msgstr "Losfahren"
+
+msgid "Sun"
+msgstr "So"
+
+msgid "Switch camera (keyboard: C)"
+msgstr "Kamera wechseln (Taste C)"
+
+msgid "System language"
+msgstr "Systemsprache"
+
+msgid "TSS"
+msgstr "TSS"
+
+msgid "Tempo"
+msgstr "Tempo"
+
+msgid "Threshold"
+msgstr "Schwelle"
+
+msgid "Thu"
+msgstr "Do"
+
+msgid "Time"
+msgstr "Zeit"
+
+msgid "Time in heart-rate zones"
+msgstr "Zeit in Pulszonen"
+
+msgid "Time in power zones"
+msgstr "Zeit in Leistungszonen"
+
+msgid "Time of day"
+msgstr "Tageszeit"
+
+msgid "Times"
+msgstr "Zeiten"
+
+msgid "To go"
+msgstr "Noch"
+
+msgid "Trainer"
+msgstr "Rollentrainer"
+
+msgid "Trainer difficulty"
+msgstr "Trainer-Schwierigkeit"
+
+msgid "Tue"
+msgstr "Di"
+
+msgid "Units"
+msgstr "Einheiten"
+
+msgid "VO2max"
+msgstr "VO2max"
+
+msgid "Very light"
+msgstr "Sehr leicht"
+
+msgid "View summary"
+msgstr "Zusammenfassung"
+
+msgid "W/kg"
+msgstr "W/kg"
+
+msgid "Waiting for the trainer…"
+msgstr "Warte auf den Rollentrainer …"
+
+msgid "Wake your trainer by pedalling, then scan."
+msgstr "Wecke den Trainer durch Treten, dann suchen."
+
+msgid "Weather"
+msgstr "Wetter"
+
+msgid "Wed"
+msgstr "Mi"
+
+msgid "Weight"
+msgstr "Gewicht"
+
+msgid "Weight, FTP and heart rate come from the rider's profile"
+msgstr "Gewicht, FTP und Puls stammen aus dem Profil der Person"
+
+msgid "Whole route"
+msgstr "Ganze Strecke"
+
+msgid "Work"
+msgstr "Arbeit"
+
+msgid "Your best on this route"
+msgstr "Deine Bestzeit auf dieser Strecke"
+
+msgid "Your best time on this route: %s"
+msgstr "Deine Bestzeit auf dieser Strecke: %s"
+
+msgid "Your rides"
+msgstr "Deine Fahrten"
+
+msgid "best %s"
+msgstr "Bestzeit %s"
+
+msgid "chunks"
+msgstr "Abschnitte"
+
+msgid "files"
+msgstr "Dateien"
+
+msgid "kJ"
+msgstr "kJ"
+
+msgid "new record, %s faster!"
+msgstr "neue Bestzeit, %s schneller!"
+
+msgid "points"
+msgstr "Punkte"
+
+msgid "terrain model"
+msgstr "Geländemodell"
+
+msgid "tiles"
+msgstr "Kacheln"
+
+msgid "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL) · Terrain: Mapterhorn (CC BY 4.0), AWS Terrain Tiles"
+msgstr "© OpenFreeMap © OpenMapTiles · Daten © OpenStreetMap-Mitwirkende (ODbL) · Gelände: Mapterhorn (CC BY 4.0), AWS Terrain Tiles"
+
+msgid "← Back"
+msgstr "← Zurück"
+
+msgid "★ Personal record"
+msgstr "★ Persönliche Bestzeit"

@@ -8,11 +8,13 @@ signal closed
 signal summary_requested
 
 ## Keys during the ride: C camera; M play/pause music, "." next and "," previous track.
+# i18n-begin
 const MUSIC_KEYS: Dictionary[Key, Array] = {
 	KEY_M: ["play_pause", "Music: play / pause"],
 	KEY_PERIOD: ["next", "Music: next track"],
 	KEY_COMMA: ["previous", "Music: previous track"],
 }
+# i18n-end
 const TOAST_SECONDS: float = 4.0
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
@@ -67,12 +69,12 @@ func begin() -> void:
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
 	_climb_panel.hide()
-	_finish_button.text = "Finish & save"
+	_finish_button.text = tr("Finish & save")
 	var profile: Dictionary = _torqa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
 	_hud.show_layout(_torqa.hud_layout())
-	_show_toast("Waiting for the trainer…")
+	_show_toast(tr("Waiting for the trainer…"))
 
 
 func _ready() -> void:
@@ -106,7 +108,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var command: String = MUSIC_KEYS[key.keycode][0]
 		var message: String = MUSIC_KEYS[key.keycode][1]
 		_torqa.control_music(command)
-		_show_toast(message)
+		_show_toast(tr(message))
 	else:
 		return
 	get_viewport().set_input_as_handled()
@@ -173,12 +175,14 @@ func _show_ghost(ghost: Variant) -> void:
 	_profile.set_ghost_distance(distance_m)
 	_ghost_name.text = ghost_name.to_upper()
 	if info["gap_s"] == null:
-		_ghost_gap.text = "Finished"
+		_ghost_gap.text = tr("Finished")
 		_ghost_gap.remove_theme_color_override("font_color")
 	else:
 		var gap: float = info["gap_s"]
 		var behind: bool = gap > 0.0
-		_ghost_gap.text = "%s %s" % [UiTheme.duration(absf(gap)), "behind" if behind else "ahead"]
+		_ghost_gap.text = (
+			(tr("%s behind") if behind else tr("%s ahead")) % UiTheme.duration(absf(gap))
+		)
 		_ghost_gap.add_theme_color_override(
 			"font_color", UiTheme.HEART_RATE_COLOR if behind else UiTheme.CLIMB_COLORS["Cat 4"]
 		)
@@ -210,7 +214,7 @@ func _show_climb(climb: Variant) -> void:
 	var left_m: float = info["length_m"] - info["ridden_m"]
 	var grade: float = info["grade"]
 	var elapsed: float = info["elapsed_s"]
-	_climb_title.text = "%s  ·  climb %d of %d" % [category.to_upper(), index + 1, count]
+	_climb_title.text = (tr("%s  ·  climb %d of %d") % [tr(category).to_upper(), index + 1, count])
 	var color: Color = UiTheme.CLIMB_COLORS.get(category, UiTheme.MUTED)
 	_climb_title.add_theme_color_override("font_color", color)
 	var left: String = (
@@ -218,11 +222,11 @@ func _show_climb(climb: Variant) -> void:
 		if _imperial
 		else ("%.1f km" % (left_m / 1000.0) if left_m >= 1000.0 else "%d m" % roundi(left_m))
 	)
-	_climb_left.text = "%s to go  ·  %.1f %%" % [left, grade]
+	_climb_left.text = tr("%s to go  ·  %.1f %%") % [left, grade]
 	var time: String = UiTheme.duration(elapsed)
 	if info["best_s"] != null:
 		var best: float = info["best_s"]
-		time += "  ·  best %s" % UiTheme.duration(best)
+		time += "  ·  " + tr("best %s") % UiTheme.duration(best)
 	_climb_time.text = time
 	_climb_panel.show()
 
@@ -230,15 +234,18 @@ func _show_climb(climb: Variant) -> void:
 func _on_climb_completed(_index: int, elapsed_s: float, previous_best_s: float) -> void:
 	_show_toast(
 		(
-			"Climb done in %s%s"
-			% [UiTheme.duration(elapsed_s), _record_text(elapsed_s, previous_best_s)]
+			tr("Climb done in %s") % UiTheme.duration(elapsed_s)
+			+ _record_text(elapsed_s, previous_best_s)
 		)
 	)
 
 
 func _on_route_completed(elapsed_s: float, previous_best_s: float) -> void:
 	_show_toast(
-		"Finished in %s%s" % [UiTheme.duration(elapsed_s), _record_text(elapsed_s, previous_best_s)]
+		(
+			tr("Finished in %s") % UiTheme.duration(elapsed_s)
+			+ _record_text(elapsed_s, previous_best_s)
+		)
 	)
 	_toast_left = TOAST_SECONDS * 2.0
 
@@ -248,12 +255,18 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 	if previous_best_s < 0.0:
 		return ""
 	if elapsed_s < previous_best_s:
-		return " — new record, %s faster!" % UiTheme.duration(previous_best_s - elapsed_s)
-	return " (best %s)" % UiTheme.duration(previous_best_s)
+		return (
+			" — "
+			+ (
+				TranslationServer.translate("new record, %s faster!")
+				% UiTheme.duration(previous_best_s - elapsed_s)
+			)
+		)
+	return " " + TranslationServer.translate("(best %s)") % UiTheme.duration(previous_best_s)
 
 
 func _cycle_camera() -> void:
-	_camera_button.text = "Camera: %s" % _world.cycle_camera()
+	_camera_button.text = tr("Camera: %s") % tr(_world.cycle_camera())
 
 
 func _show_toast(message: String) -> void:
@@ -282,18 +295,18 @@ func _on_finish_pressed() -> void:
 		else:
 			closed.emit()
 		return
-	_show_toast("Nothing recorded.")
+	_show_toast(tr("Nothing recorded."))
 	_torqa.finish_ride()
 	_finished = true
-	_finish_button.text = "Back"
+	_finish_button.text = tr("Back")
 
 
 func _on_ride_saved(path: String) -> void:
 	_finished = true
 	_saved = true
-	_show_toast("Saved %s" % path.get_file())
+	_show_toast(tr("Saved %s") % path.get_file())
 	_toast_left = TOAST_SECONDS * 2.0
-	_finish_button.text = "View summary"
+	_finish_button.text = tr("View summary")
 
 
 func _on_failed(message: String) -> void:
