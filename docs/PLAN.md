@@ -113,7 +113,7 @@ Built in rideable steps:
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [ ] Audio (R26): music app control ✅; ambient sound dropped for now (synthesised version
   did not sound right); video sound with Phase 5
-- [ ] i18n (units done with profiles)
+- [x] i18n: all texts translatable, German translation, language per rider (R24)
 
 ### Phase 5 — Video mode
 - [ ] Import + transcode, GPMF + manual sync, variable speed + frame blending

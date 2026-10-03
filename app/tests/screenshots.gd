@@ -24,6 +24,10 @@ func _run() -> void:
 	if route.is_empty():
 		route = ProjectSettings.globalize_path(DEFAULT_ROUTE)
 	var ride_s: float = OS.get_environment("SCREENSHOT_RIDE_S").to_float()
+	# Another interface language, e.g. SCREENSHOT_LOCALE=de.
+	var locale: String = OS.get_environment("SCREENSHOT_LOCALE")
+	if not locale.is_empty():
+		TranslationServer.set_locale(locale)
 	torqa.load_route(route, false)
 	# The setup screen while loading, for checking the progress display.
 	await create_timer(1.0).timeout

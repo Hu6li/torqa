@@ -19,10 +19,10 @@ var _hint: Label = Label.new()
 func _init() -> void:
 	add_theme_constant_override("separation", 20)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
-	add_child(_column("Shown — drag to reorder", _chosen, true))
+	add_child(_column(tr("Shown — drag to reorder"), _chosen, true))
 	var preview_column: VBoxContainer = VBoxContainer.new()
 	preview_column.add_theme_constant_override("separation", 8)
-	preview_column.add_child(UiTheme.caption("Preview"))
+	preview_column.add_child(UiTheme.caption(tr("Preview")))
 	var frame: PanelContainer = PanelContainer.new()
 	frame.custom_minimum_size = Vector2(260, 0)
 	frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -34,7 +34,7 @@ func _init() -> void:
 	_hint.custom_minimum_size = Vector2(260, 0)
 	preview_column.add_child(_hint)
 	add_child(preview_column)
-	add_child(_column("Available — drag in to add", _available, false))
+	add_child(_column(tr("Available — drag in to add"), _available, false))
 
 
 ## Shows `layout` for editing, with units for an imperial or metric rider.
@@ -96,7 +96,7 @@ func _refresh() -> void:
 	_preview.show_layout(_layout)
 	_preview.show_samples()
 	_hint.text = (
-		"%d of %d figures. The first one is shown large. Values are examples."
+		tr("%d of %d figures. The first one is shown large. Values are examples.")
 		% [_layout.size(), _max]
 	)
 
@@ -138,17 +138,17 @@ class _Chip:
 		add_theme_stylebox_override("panel", UiTheme.chip(large))
 		var row: HBoxContainer = HBoxContainer.new()
 		var label: Label = Label.new()
-		label.text = caption
+		label.text = tr(caption)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
 		if large:
-			var badge: Label = UiTheme.caption("Large")
+			var badge: Label = UiTheme.caption(tr("Large"))
 			row.add_child(badge)
 		var button: Button = Button.new()
 		button.text = "×" if chosen else "+"
 		button.flat = true
 		button.focus_mode = Control.FOCUS_NONE
-		button.tooltip_text = "Hide" if chosen else "Show"
+		button.tooltip_text = tr("Hide") if chosen else tr("Show")
 		button.pressed.connect(_on_button)
 		row.add_child(button)
 		add_child(row)

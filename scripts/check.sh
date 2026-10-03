@@ -9,6 +9,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo deny --all-features check
+# Translatable texts: template up to date, every translation complete (R24).
+python3 "$root/scripts/i18n/extract.py" --check
 
 cd "$root/app"
 gdlint .

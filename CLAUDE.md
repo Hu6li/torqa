@@ -31,6 +31,8 @@ Torqa — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
 ## GDScript conventions
 
 - Statically typed everywhere, warnings as errors; `gdlint` + `gdformat`.
+- User-facing text goes through `tr()` before formatting; regenerate the template with
+  `scripts/i18n/extract.py` and keep every translation complete (see docs/translating.md).
 
 ## Testing
 

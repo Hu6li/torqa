@@ -40,6 +40,7 @@ func open() -> void:
 	for i: int in range(_rides.size()):
 		var ride: Dictionary = _rides[i]
 		var entry: Button = Button.new()
+		entry.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		entry.text = _list_text(ride)
 		entry.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		entry.toggle_mode = true
@@ -67,11 +68,11 @@ func _ready() -> void:
 	var header: HBoxContainer = HBoxContainer.new()
 	header.add_theme_constant_override("separation", 14)
 	var back: Button = Button.new()
-	back.text = "← Back"
+	back.text = tr("← Back")
 	back.pressed.connect(func() -> void: closed.emit())
 	header.add_child(back)
 	var heading: Label = Label.new()
-	heading.text = "Your rides"
+	heading.text = tr("Your rides")
 	heading.add_theme_font_size_override("font_size", 22)
 	header.add_child(heading)
 	left_rows.add_child(header)
@@ -82,7 +83,7 @@ func _ready() -> void:
 	_list.add_theme_constant_override("separation", 8)
 	scroll.add_child(_list)
 	left_rows.add_child(scroll)
-	_empty.text = "No rides yet. Finished rides appear here."
+	_empty.text = tr("No rides yet. Finished rides appear here.")
 	_empty.add_theme_color_override("font_color", UiTheme.MUTED)
 	left_rows.add_child(_empty)
 
@@ -95,11 +96,12 @@ func _ready() -> void:
 	var titles: VBoxContainer = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.add_theme_font_size_override("font_size", 24)
+	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	titles.add_child(_title)
 	_subtitle.add_theme_color_override("font_color", UiTheme.MUTED)
 	titles.add_child(_subtitle)
 	title_row.add_child(titles)
-	_delete_button.text = "Delete ride"
+	_delete_button.text = tr("Delete ride")
 	_delete_button.pressed.connect(_on_delete_pressed)
 	title_row.add_child(_delete_button)
 	_detail.add_child(title_row)
@@ -113,11 +115,13 @@ func _ready() -> void:
 
 	var legend: HBoxContainer = HBoxContainer.new()
 	legend.add_theme_constant_override("separation", 18)
+	# i18n-begin
 	for entry: Array in [
 		["Power", UiTheme.POWER_COLOR],
 		["Heart rate", UiTheme.HEART_RATE_COLOR],
 		["Elevation", Color(1, 1, 1, 0.35)],
 	]:
+		# i18n-end
 		var key_name: String = entry[0]
 		var key_color: Color = entry[1]
 		var key: Label = UiTheme.caption(key_name)
@@ -129,9 +133,11 @@ func _ready() -> void:
 
 	var zones: HBoxContainer = HBoxContainer.new()
 	zones.add_theme_constant_override("separation", 32)
+	# i18n-begin
 	for entry: Array in [
 		["Time in power zones", _power_zones], ["Time in heart-rate zones", _heart_rate_zones]
 	]:
+		# i18n-end
 		var column: VBoxContainer = VBoxContainer.new()
 		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		column.add_theme_constant_override("separation", 8)
@@ -176,6 +182,7 @@ func _fill_stats(ride: Dictionary) -> void:
 	var gain_m: float = ride["elevation_gain_m"]
 	var speed_kmh: float = ride["avg_speed_kmh"]
 	var elapsed_s: float = ride["elapsed_s"]
+	# i18n-begin
 	var stats: Array[Array] = [
 		["Time", _duration(elapsed_s), ""],
 		[
@@ -202,6 +209,7 @@ func _fill_stats(ride: Dictionary) -> void:
 		["Avg heart rate", _number(ride["avg_heart_rate"], "%d"), "bpm"],
 		["Avg cadence", _number(ride["avg_cadence"], "%d"), "rpm"],
 	]
+	# i18n-end
 	for stat: Array in stats:
 		var cell: VBoxContainer = VBoxContainer.new()
 		cell.add_theme_constant_override("separation", 0)
@@ -224,18 +232,18 @@ func _fill_climbs(ride: Dictionary) -> void:
 	_climbs.visible = not climbs.is_empty() or route_time != null
 	if not _climbs.visible:
 		return
-	_climbs.add_child(UiTheme.caption("Times"))
+	_climbs.add_child(UiTheme.caption(tr("Times")))
 	if route_time != null:
 		var route_s: float = route_time
 		var record: bool = ride["route_record"]
-		_climbs.add_child(_time_row("Whole route", route_s, null, record))
+		_climbs.add_child(_time_row(tr("Whole route"), route_s, null, record))
 	for i: int in range(climbs.size()):
 		var climb: Dictionary = climbs[i]
 		var start_km: float = climb["start_m"] / 1000.0
 		var length_km: float = climb["length_m"] / 1000.0
 		var time_s: float = climb["time_s"]
 		var record: bool = climb["record"]
-		var what: String = "Climb %d  ·  %.1f km from km %.1f" % [i + 1, length_km, start_km]
+		var what: String = tr("Climb %d  ·  %.1f km from km %.1f") % [i + 1, length_km, start_km]
 		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
 
 
@@ -257,7 +265,7 @@ func _time_row(what: String, seconds: float, power: Variant, record: bool) -> HB
 	row.add_child(watts)
 	if record:
 		var badge: Label = Label.new()
-		badge.text = "★ Personal record"
+		badge.text = tr("★ Personal record")
 		badge.add_theme_color_override("font_color", UiTheme.CLIMB_COLORS["Cat 3"])
 		row.add_child(badge)
 	return row
@@ -287,18 +295,20 @@ func _list_text(ride: Dictionary) -> String:
 static func _date(unix_s: int) -> String:
 	var bias_minutes: int = Time.get_time_zone_from_system().get("bias", 0)
 	var date: Dictionary = Time.get_datetime_dict_from_unix_time(unix_s + bias_minutes * 60)
+	# i18n-begin
 	var weekdays: Array[String] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 	var months: Array[String] = [
 		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 	]
+	# i18n-end
 	var weekday: int = date["weekday"]
 	var month: int = date["month"]
 	return (
 		"%s %d %s %d, %02d:%02d"
 		% [
-			weekdays[weekday],
+			TranslationServer.translate(weekdays[weekday]),
 			date["day"],
-			months[month - 1],
+			TranslationServer.translate(months[month - 1]),
 			date["year"],
 			date["hour"],
 			date["minute"]

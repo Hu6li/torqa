@@ -47,6 +47,7 @@ struct ProfileFile {
     ftp_w: f64,
     max_heart_rate_bpm: f64,
     units: Units,
+    language: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -74,6 +75,7 @@ impl From<&Profile> for ProfileFile {
                 UnitSystem::Metric => Units::Metric,
                 UnitSystem::Imperial => Units::Imperial,
             },
+            language: p.language.clone(),
         }
     }
 }
@@ -90,6 +92,7 @@ impl From<ProfileFile> for Profile {
                 Units::Metric => UnitSystem::Metric,
                 Units::Imperial => UnitSystem::Imperial,
             },
+            language: f.language,
         }
     }
 }
@@ -238,6 +241,7 @@ mod tests {
             name: "Zoë".to_owned(),
             ftp: Watts(310.0),
             units: UnitSystem::Imperial,
+            language: "de".to_owned(),
             ..Profile::default()
         };
         let anna = Profile {

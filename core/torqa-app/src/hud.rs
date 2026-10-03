@@ -59,6 +59,7 @@ const fn metric(
     }
 }
 
+// i18n-begin: captions and units are translated by the front end.
 /// Every metric, in the order offered to the rider.
 pub const METRICS: &[Metric] = &[
     metric("power", "Power", "W", 0, MetricKind::Number, 245.0),
@@ -126,6 +127,8 @@ pub const METRICS: &[Metric] = &[
     metric("training_stress", "TSS", "", 0, MetricKind::Number, 38.0),
     metric("work", "Work", "kJ", 0, MetricKind::Number, 412.0),
 ];
+
+// i18n-end
 
 /// The layout before a rider customises it: the first metric is shown large.
 pub const DEFAULT_LAYOUT: &[&str] = &[

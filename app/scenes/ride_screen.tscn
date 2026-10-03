@@ -70,7 +70,8 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.64, 0.68, 0.74, 1)
 theme_override_font_sizes/font_size = 11
-text = "ELEVATION"
+text = "Elevation"
+uppercase = true
 
 [node name="ProfileInfo" type="Label" parent="RightColumn/ProfilePanel/Rows/Header"]
 unique_name_in_owner = true

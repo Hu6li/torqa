@@ -4,6 +4,7 @@ extends Node3D
 
 enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 
+# i18n-begin: time-of-day and weather names are shown in the setup screen.
 ## Sun elevation and azimuth (degrees, azimuth clockwise from north), colour and energy, and
 ## sky top/horizon colours per time of day.
 const TIMES: Dictionary[String, Dictionary] = {
@@ -36,6 +37,7 @@ const TIMES: Dictionary[String, Dictionary] = {
 	},
 }
 const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
+# i18n-end
 
 ## Chunks are turned into meshes gradually, so building the world never stalls a frame.
 const CHUNKS_PER_FRAME: int = 6

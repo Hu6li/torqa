@@ -27,6 +27,8 @@ pub struct Profile {
     pub max_heart_rate: BeatsPerMinute,
     /// Display units.
     pub units: UnitSystem,
+    /// User interface language as a locale code (e.g. `de`); empty for the system language.
+    pub language: String,
 }
 
 impl Default for Profile {
@@ -38,6 +40,7 @@ impl Default for Profile {
             ftp: Watts(200.0),
             max_heart_rate: BeatsPerMinute(185.0),
             units: UnitSystem::Metric,
+            language: String::new(),
         }
     }
 }

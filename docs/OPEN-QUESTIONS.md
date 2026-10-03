@@ -14,6 +14,10 @@ Things to review or decide together. Newest first; remove entries once settled.
   Windows (media keys) and Linux (`playerctl`) are untested too.
 - **Video audio** (R26, original video sound) waits for video mode (Phase 5).
 
+- **German translation** (i18n PR): please read over `app/translations/de.po` — I used Swiss
+  spelling (ss, "Velo") and informal "du". Error messages from the core (e.g. file or network
+  errors) are still English only.
+
 ### Findings
 
 - **Stacked PRs**: #19 (ghosts) builds on #18 (HUD editor), the audio PR on #19. All target

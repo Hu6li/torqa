@@ -13,12 +13,14 @@ const FAKE_TRAINER: int = -1
 const NO_HEART_RATE: int = -1
 const SCAN_SECONDS: float = 5.0
 ## Overall progress: each step's share of a typical first load (downloads dominate).
+# i18n-begin: loading steps and units arrive from the core in English.
 const STEP_WEIGHTS: Dictionary[String, Vector2] = {
 	"Reading route": Vector2(0.0, 0.02),
 	"Downloading map data": Vector2(0.02, 0.6),
 	"Correcting elevations": Vector2(0.6, 0.8),
 	"Building 3D world": Vector2(0.8, 1.0),
 }
+# i18n-end
 const COURSE_EXTENSION: String = "tqc"
 
 var _torqa: TorqaApp
@@ -88,6 +90,7 @@ func _ready() -> void:
 	add_child(_profile_dialog)
 	_profile_dialog.profile_confirmed.connect(_on_profile_confirmed)
 	_profile_option.item_selected.connect(_on_profile_selected)
+	# i18n-begin
 	for label: String in [
 		"Nobody",
 		"Your best on this route",
@@ -97,7 +100,14 @@ func _ready() -> void:
 		"A recorded activity…",
 	]:
 		_ghost_option.add_item(label)
+	# i18n-end
 	_ghost_option.item_selected.connect(_on_ghost_selected)
+	# Names of riders, devices and courses must never be looked up as translations; their fixed
+	# entries are translated in code instead.
+	for names: OptionButton in [
+		_profile_option, _trainer_option, _heart_rate_option, _course_option
+	]:
+		names.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_ghost_file_dialog.file_selected.connect(_on_ghost_file_selected)
 	_ghost_file_dialog.canceled.connect(func() -> void: _ghost_option.select(Ghost.NONE))
 	_edit_profile_button.pressed.connect(_on_edit_profile_pressed)
@@ -142,11 +152,11 @@ func _on_course_selected(index: int) -> void:
 func _on_save_course_pressed() -> void:
 	if _torqa.save_course():
 		_save_course_button.disabled = true
-		_status_label.text = "Saving course…"
+		_status_label.text = tr("Saving course…")
 
 
 func _on_course_added(path: String) -> void:
-	_status_label.text = "Course added to your library: %s" % path.get_file()
+	_status_label.text = tr("Course added to your library: %s") % path.get_file()
 	_refresh_courses(path)
 	if _open_when_added:
 		_open_when_added = false
@@ -177,6 +187,8 @@ func _on_profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedSt
 ## Lists the riders with the active one selected; the last entry creates a new rider.
 func _refresh_profiles() -> void:
 	var active: Dictionary = _torqa.profile()
+	var language: String = active.get("language", "")
+	_apply_language(language)
 	var active_id: String = active.get("id", "")
 	_profile_option.clear()
 	for profile: Dictionary in _torqa.profiles():
@@ -187,8 +199,25 @@ func _refresh_profiles() -> void:
 		if id == active_id:
 			_profile_option.select(_profile_option.item_count - 1)
 	_update_ghost_options()
-	_profile_option.add_item("New rider…")
+	_profile_option.add_item(tr("New rider…"))
 	_profile_option.set_item_metadata(_profile_option.item_count - 1, "")
+
+
+func _notification(what: int) -> void:
+	# Entries built in code with tr() (names lists, where automatic translation is off).
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready() and _torqa != null:
+		_trainer_option.set_item_text(0, tr("Fake trainer (200 W, for testing)"))
+		_heart_rate_option.set_item_text(0, tr("None"))
+		_refresh_courses()
+		_profile_option.set_item_text(_profile_option.item_count - 1, tr("New rider…"))
+
+
+## Switches the interface to the rider's language (R24); "" follows the system. Texts set by
+## code update the next time they are shown.
+static func _apply_language(code: String) -> void:
+	var locale: String = code if not code.is_empty() else OS.get_locale_language()
+	if TranslationServer.get_locale() != locale:
+		TranslationServer.set_locale(locale)
 
 
 func _on_ghost_selected(index: int) -> void:
@@ -211,7 +240,7 @@ func _set_ghost_value(low: float, high: float, step: float, suffix: String, valu
 
 func _on_ghost_file_selected(path: String) -> void:
 	_ghost_activity = path
-	_ghost_option.set_item_text(Ghost.ACTIVITY, "Activity: %s" % path.get_file())
+	_ghost_option.set_item_text(Ghost.ACTIVITY, tr("Activity: %s") % path.get_file())
 
 
 ## The ghost to race, as `TorqaApp.start_ride` takes it.
@@ -242,7 +271,7 @@ func _begin_loading(what: String, from_course: bool) -> void:
 	_route_ready = false
 	_world_ready = false
 	_from_course = from_course
-	_route_label.text = "Loading %s …" % what
+	_route_label.text = tr("Loading %s …") % what
 	_loading.show()
 	_loading_bar.value = 0.0
 	_loading_label.text = ""
@@ -255,7 +284,11 @@ func _refresh_courses(selected: String = "") -> void:
 	_course_option.clear()
 	var courses: Array = _torqa.courses()
 	_course_option.add_item(
-		"Saved courses (%d)…" % courses.size() if not courses.is_empty() else "No saved courses yet"
+		(
+			tr("Saved courses (%d)…") % courses.size()
+			if not courses.is_empty()
+			else tr("No saved courses yet")
+		)
 	)
 	_course_option.set_item_metadata(0, "")
 	for course: Dictionary in courses:
@@ -272,17 +305,19 @@ func _refresh_courses(selected: String = "") -> void:
 
 func _on_route_loaded(route: Dictionary) -> void:
 	_route_ready = true
-	var source: String = "terrain model" if route["elevation_source"] == "terrain" else "GPX file"
+	var source: String = (
+		tr("terrain model") if route["elevation_source"] == "terrain" else tr("GPX file")
+	)
 	var length_km: float = route["length_m"] / 1000.0
 	var gain_m: float = route["elevation_gain_m"]
 	var max_grade: float = route["max_grade"]
 	var route_name: String = route["name"]
 	_route_text = (
-		"%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)"
+		tr("%s — %.1f km, %.0f m climbing, steepest %.0f %% (elevation from %s)")
 		% [route_name, length_km, gain_m, max_grade, source]
 	)
 	_route_text += _climbs_text()
-	_route_label.text = _route_text + "\nBuilding the 3D world…"
+	_route_label.text = _route_text + "\n" + tr("Building the 3D world…")
 	_update_start_button()
 
 
@@ -297,15 +332,15 @@ func _climbs_text() -> String:
 		var category: String = climb["category"]
 		var length_km: float = climb["length_m"] / 1000.0
 		var grade: float = climb["grade"]
-		var part: String = "%s %.1f km at %.1f %%" % [category, length_km, grade]
+		var part: String = tr("%s %.1f km at %.1f %%") % [tr(category), length_km, grade]
 		if climb["best_s"] != null:
 			var best: float = climb["best_s"]
-			part += " (best %s)" % UiTheme.duration(best)
+			part += " " + tr("(best %s)") % UiTheme.duration(best)
 		parts.append(part)
-	var text: String = "\nClimbs: " + " · ".join(parts)
+	var text: String = "\n" + tr("Climbs: %s") % " · ".join(parts)
 	if info["route_best_s"] != null:
 		var route_best: float = info["route_best_s"]
-		text += "\nYour best time on this route: %s" % UiTheme.duration(route_best)
+		text += "\n" + tr("Your best time on this route: %s") % UiTheme.duration(route_best)
 	return text
 
 
@@ -314,7 +349,7 @@ func _on_loading_progress(step: String, unit: String, done: int, total: int) -> 
 	var share: Vector2 = STEP_WEIGHTS.get(step, Vector2(0.0, 1.0))
 	var fraction: float = float(done) / float(maxi(total, 1))
 	_loading_bar.value = lerpf(share.x, share.y, fraction)
-	_loading_label.text = "%s… %d / %d %s" % [step, done, total, unit]
+	_loading_label.text = "%s… %d / %d %s" % [tr(step), done, total, tr(unit)]
 
 
 func _on_world_ready(info: Dictionary) -> void:
@@ -322,16 +357,16 @@ func _on_world_ready(info: Dictionary) -> void:
 	_loading.hide()
 	_world_ready = true
 	var fallback: int = info["fallback_samples"]
-	var note: String = "3D world ready"
+	var note: String = tr("3D world ready")
 	if fallback > 0:
-		note += " (no terrain data in places: flat there — load once while online)"
+		note += " " + tr("(no terrain data in places: flat there — load once while online)")
 	_route_label.text = _route_text + "\n" + note
 	_update_start_button()
 
 
 func _on_scan_pressed() -> void:
 	_scan_button.disabled = true
-	_scan_label.text = "Scanning…"
+	_scan_label.text = tr("Scanning…")
 	_status_label.text = ""
 	_torqa.scan(SCAN_SECONDS)
 
@@ -351,7 +386,7 @@ func _on_devices_found(devices: Array) -> void:
 		option.set_item_metadata(option.item_count - 1, device["index"])
 		if device["kind"] == "trainer":
 			trainers += 1
-	_scan_label.text = "Found %d device(s)" % devices.size()
+	_scan_label.text = tr("Found %d device(s)") % devices.size()
 	# Prefer a real trainer over the fake one once one is found.
 	if trainers > 0:
 		_trainer_option.select(1)
@@ -390,10 +425,10 @@ func _on_failed(message: String) -> void:
 
 func _reset_device_options() -> void:
 	_trainer_option.clear()
-	_trainer_option.add_item("Fake trainer (200 W, for testing)")
+	_trainer_option.add_item(tr("Fake trainer (200 W, for testing)"))
 	_trainer_option.set_item_metadata(0, FAKE_TRAINER)
 	_heart_rate_option.clear()
-	_heart_rate_option.add_item("None")
+	_heart_rate_option.add_item(tr("None"))
 	_heart_rate_option.set_item_metadata(0, NO_HEART_RATE)
 
 
