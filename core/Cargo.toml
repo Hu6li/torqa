@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-terrain", "torqa-osm", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-world", "torqa-app", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-terrain", "torqa-video", "torqa-osm", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-session", "torqa-world", "torqa-app", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -19,10 +19,13 @@ torqa-routes = { path = "torqa-routes" }
 torqa-session = { path = "torqa-session" }
 torqa-storage = { path = "torqa-storage" }
 torqa-terrain = { path = "torqa-terrain" }
+torqa-video = { path = "torqa-video" }
 torqa-world = { path = "torqa-world" }
 anyhow = "1.0.104"
 btleplug = "0.13.3"
 clap = { version = "4.6.7", features = ["derive"] }
+# FFmpeg 9 built from source (static): the same version in the container and in app builds.
+ffmpeg-next = { version = "9.0.0", default-features = false, features = ["codec", "format", "software-scaling", "build"] }
 embedded-io-adapters = { version = "0.7.0", features = ["std"] }
 futures = "0.3.34"
 geo-types = "0.7.20"

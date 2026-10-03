@@ -24,6 +24,8 @@ allow = [
     "Unicode-3.0",
     # Mozilla CA root certificates (webpki-root-certs, via reqwest TLS): permissive data license.
     "CDLA-Permissive-2.0",
+    # FFmpeg's Rust bindings (ffmpeg-next, ffmpeg-sys-next); permissive, GPL-compatible (FSF).
+    "WTFPL",
 ]
 
 [licenses.private]

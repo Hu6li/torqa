@@ -8,10 +8,13 @@ ARG GDTOOLKIT_VERSION=4.5.0
 # libdbus: btleplug's Linux backend talks to BlueZ over D-Bus.
 # libfontconfig: needed by the Godot binary even in headless mode.
 # mesa-vulkan-drivers (lavapipe) + xvfb: software rendering for 3D screenshots without a GPU.
+# libclang-dev + nasm: torqa-video builds FFmpeg from source (bindgen needs libclang, FFmpeg's
+# assembly needs nasm).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libdbus-1-dev pkg-config libfontconfig1 pipx unzip ca-certificates \
         mesa-vulkan-drivers xvfb xauth libxcursor1 libxinerama1 libxrandr2 libxi6 libgl1 \
+        libclang-dev nasm \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rustup component add rustfmt clippy

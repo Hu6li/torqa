@@ -115,8 +115,13 @@ Built in rideable steps:
   did not sound right); video sound with Phase 5
 - [x] i18n: all texts translatable, German translation, language per rider (R24)
 
-### Phase 5 — Video mode
-- [ ] Import + transcode, GPMF + manual sync, variable speed + frame blending
+### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
+- [x] Video decoding in the core: frame for any moment, forward/backward/seek, scaled to 1080p
+- [ ] GoPro GPMF GPS → route and distance↔time sync; video courses (`.tqc` referencing the video)
+- [ ] Video ride view: playback following the rider's speed, frame blending, HUD on top
+- [ ] Videos without GPS: manual sync points against a GPX
+- [ ] Transcode above 1080p on import (VideoToolbox), Insta360 GPS
+- **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 
 ### Phase 6 — Street imagery
 - [ ] Google Street View (user key) + Mapillary with crossfades

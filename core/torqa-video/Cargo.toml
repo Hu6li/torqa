@@ -1,0 +1,15 @@
+[package]
+name = "torqa-video"
+description = "Video decoding for Torqa's video ride mode, built on FFmpeg"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ffmpeg-next.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
