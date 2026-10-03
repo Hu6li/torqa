@@ -1,16 +1,29 @@
 class_name HudPanel
 extends VBoxContainer
 ## The ride HUD's figures: the first metric of a layout large, the others in a grid (R23). Used
-## live during rides and, with sample values, as the preview in the HUD editor (R51).
+## live during rides and, with sample values, as the preview in the HUD editor (R51). When
+## `editable`, figures are dragged in, around and out of it directly (R54).
+
+## Editing: a figure was dropped on the HUD and should go to `index` of the layout.
+signal drop_requested(id: String, index: int)
 
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 const POWER_METRICS: Array[String] = ["power", "power_3s", "power_10s"]
+## Drag data carries the metric id under this key.
+const DRAG_KEY: String = "hud_metric"
 
 ## Metric descriptions by id, from `TorqaApp.hud_metrics()`.
 var catalogue: Dictionary[String, Dictionary] = {}
 ## Speed, distance and elevation in imperial units.
 var imperial: bool = false
+## Figures can be dragged into, around and out of the HUD.
+var editable: bool = false:
+	set(value):
+		editable = value
+		mouse_filter = Control.MOUSE_FILTER_STOP if value else Control.MOUSE_FILTER_PASS
+## The cell showing where a dragged figure would land.
+var _indicated: _Cell = null
 var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
 var _power_detail: Label = Label.new()
@@ -42,8 +55,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		add_child(_power_detail)
 		return
 	var main_id: String = layout[0]
-	var main: VBoxContainer = VBoxContainer.new()
-	main.add_theme_constant_override("separation", 0)
+	var main: _Cell = _Cell.new(self, main_id, 0, false)
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
 	# Power figures get the rider's W/kg and zone underneath.
@@ -64,13 +76,47 @@ func show_layout(layout: PackedStringArray) -> void:
 	grid.add_theme_constant_override("v_separation", 10)
 	for i: int in range(1, layout.size()):
 		var id: String = layout[i]
-		var cell: VBoxContainer = VBoxContainer.new()
+		var cell: _Cell = _Cell.new(self, id, i, true)
 		cell.custom_minimum_size = Vector2(98, 0)
-		cell.add_theme_constant_override("separation", 0)
 		cell.add_child(UiTheme.caption(_caption(id)))
 		cell.add_child(_value_row(id, 24))
 		grid.add_child(cell)
 	add_child(grid)
+
+
+## The metric id carried by drag `data`, or "" if it is not a HUD figure.
+static func dragged(data: Variant) -> String:
+	if typeof(data) != TYPE_DICTIONARY:
+		return ""
+	var fields: Dictionary = data
+	var id: String = fields.get(DRAG_KEY, "")
+	return id
+
+
+## Dropping on free space in the HUD appends the figure.
+func _can_drop_data(_at: Vector2, data: Variant) -> bool:
+	if not editable or dragged(data).is_empty():
+		return false
+	_indicate(null, false)
+	return true
+
+
+func _drop_data(_at: Vector2, data: Variant) -> void:
+	drop_requested.emit(dragged(data), _layout.size())
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_DRAG_END:
+		_indicate(null, false)
+
+
+## Shows the drop position at `cell` (before it, or `after` it); none for null.
+func _indicate(cell: _Cell, after: bool) -> void:
+	if _indicated != null and _indicated != cell:
+		_indicated.mark(0)
+	_indicated = cell
+	if cell != null:
+		cell.mark(2 if after else 1)
 
 
 ## Live values (`ride_state()["metrics"]`), with W/kg and power zone for the power line.
@@ -158,3 +204,66 @@ func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
 	var color: Color = UiTheme.POWER_ZONES[index][1]
 	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, tr(zone_name)]
 	_power_detail.add_theme_color_override("font_color", color)
+
+
+## One figure of the HUD. In an editable HUD it can be dragged elsewhere, and dropping a figure
+## on it places that one before or after it, shown by an accent line.
+class _Cell:
+	extends VBoxContainer
+
+	const MARK_WIDTH: float = 3.0
+
+	var _panel: HudPanel
+	var _id: String
+	var _index: int
+	## Grid cells split left/right, the large figure top/bottom.
+	var _sideways: bool
+	## 0 none, 1 before, 2 after.
+	var _mark: int = 0
+
+	func _init(panel: HudPanel, id: String, index: int, sideways: bool) -> void:
+		_panel = panel
+		_id = id
+		_index = index
+		_sideways = sideways
+		add_theme_constant_override("separation", 0)
+		if panel.editable:
+			mouse_filter = Control.MOUSE_FILTER_STOP
+			mouse_default_cursor_shape = Control.CURSOR_DRAG
+
+	func mark(where: int) -> void:
+		if where != _mark:
+			_mark = where
+			queue_redraw()
+
+	func _after(at: Vector2) -> bool:
+		return at.x > size.x / 2.0 if _sideways else at.y > size.y / 2.0
+
+	func _get_drag_data(_at: Vector2) -> Variant:
+		if not _panel.editable:
+			return null
+		var preview: Label = UiTheme.caption(_id)
+		preview.text = (get_child(0) as Label).text
+		set_drag_preview(preview)
+		return {HudPanel.DRAG_KEY: _id}
+
+	func _can_drop_data(at: Vector2, data: Variant) -> bool:
+		if not _panel.editable or HudPanel.dragged(data).is_empty():
+			return false
+		_panel._indicate(self, _after(at))
+		return true
+
+	func _drop_data(at: Vector2, data: Variant) -> void:
+		_panel._indicate(null, false)
+		_panel.drop_requested.emit(HudPanel.dragged(data), _index + (1 if _after(at) else 0))
+
+	func _draw() -> void:
+		if _mark == 0:
+			return
+		var color: Color = UiTheme.ACCENT
+		if _sideways:
+			var x: float = -MARK_WIDTH - 4.0 if _mark == 1 else size.x + 4.0
+			draw_rect(Rect2(x, 0.0, MARK_WIDTH, size.y), color)
+		else:
+			var y: float = -MARK_WIDTH - 2.0 if _mark == 1 else size.y + 2.0
+			draw_rect(Rect2(0.0, y, size.x, MARK_WIDTH), color)

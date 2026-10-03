@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
-#: app/ui/hud_editor.gd:99
+#: app/ui/hud_editor.gd:106
 msgid "%d of %d figures. The first one is shown large. Values are examples."
 msgstr ""
 
@@ -71,8 +71,8 @@ msgstr ""
 msgid "Aug"
 msgstr ""
 
-#: app/ui/hud_editor.gd:37
-msgid "Available — drag in to add"
+#: app/ui/hud_editor.gd:42
+msgid "Available — drag in to add, drop here to remove"
 msgstr ""
 
 #: app/scenes/history_screen.gd:210
@@ -291,6 +291,10 @@ msgstr ""
 msgid "HUD"
 msgstr ""
 
+#: app/ui/hud_editor.gd:24
+msgid "HUD — drop figures where you want them"
+msgstr ""
+
 #: app/ui/ui_theme.gd:27
 msgid "Hard"
 msgstr ""
@@ -305,10 +309,6 @@ msgstr ""
 
 #: core/torqa-app/src/hud.rs:89
 msgid "Heart-rate zone"
-msgstr ""
-
-#: app/ui/hud_editor.gd:151
-msgid "Hide"
 msgstr ""
 
 #: app/scenes/setup_screen.tscn:82
@@ -341,10 +341,6 @@ msgstr ""
 
 #: app/scenes/profile_dialog.gd:58
 msgid "Language"
-msgstr ""
-
-#: app/ui/hud_editor.gd:145
-msgid "Large"
 msgstr ""
 
 #: app/ui/ui_theme.gd:25
@@ -507,10 +503,6 @@ msgstr ""
 msgid "Power zone"
 msgstr ""
 
-#: app/ui/hud_editor.gd:25
-msgid "Preview"
-msgstr ""
-
 #: app/scenes/profile_dialog.gd:32
 msgid "Profile"
 msgstr ""
@@ -587,12 +579,8 @@ msgstr ""
 msgid "Sep"
 msgstr ""
 
-#: app/ui/hud_editor.gd:151
+#: app/ui/hud_editor.gd:138
 msgid "Show"
-msgstr ""
-
-#: app/ui/hud_editor.gd:22
-msgid "Shown — drag to reorder"
 msgstr ""
 
 #: core/torqa-app/src/hud.rs:96
