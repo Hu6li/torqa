@@ -88,6 +88,10 @@ impl TorqaApp {
     #[signal]
     fn devices_found(devices: VarArray);
 
+    /// Preparing a course advanced: what is being done, the unit counted, done and total.
+    #[signal]
+    fn loading_progress(step: GString, unit: GString, done: i64, total: i64);
+
     /// A route was imported: `{name, length_m, elevation_gain_m, max_grade, elevation_source}`.
     #[signal]
     fn route_loaded(route: VarDictionary);
@@ -258,6 +262,42 @@ impl TorqaApp {
         }
     }
 
+    /// Bridges and tunnels as mesh arrays (vertex-coloured), in route coordinates.
+    #[func]
+    fn structures_mesh(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.structures))
+    }
+
+    /// The minimap as coloured triangles: `{vertices, colors, background}`, vertices in metres
+    /// east/north of the route start (as in `track()`).
+    #[func]
+    fn minimap_mesh(&self) -> VarDictionary {
+        let Some(world) = self.app.as_ref().and_then(App::world) else {
+            return VarDictionary::new();
+        };
+        let vertices: PackedVector2Array = world
+            .minimap
+            .vertices
+            .iter()
+            .map(|&[x, y]| Vector2::new(x, y))
+            .collect();
+        let colors: PackedColorArray = world
+            .minimap
+            .colors
+            .iter()
+            .map(|&[r, g, b, a]| Color::from_rgba(r, g, b, a))
+            .collect();
+        let [r, g, b, a] = torqa_world::MINIMAP_BACKGROUND;
+        vdict! {
+            "vertices" => &vertices,
+            "colors" => &colors,
+            "background" => Color::from_rgba(r, g, b, a),
+        }
+    }
+
     /// Rivers and streams as mesh arrays, in route coordinates.
     #[func]
     fn water_mesh(&self) -> VarDictionary {
@@ -360,6 +400,14 @@ impl TorqaApp {
                     "elevation_source" => source,
                 };
                 self.signals().route_loaded().emit(&info);
+            }
+            AppEvent::LoadProgress { stage, done, total } => {
+                self.signals().loading_progress().emit(
+                    &GString::from(stage.label()),
+                    &GString::from(stage.unit()),
+                    i64::try_from(done).unwrap_or(i64::MAX),
+                    i64::try_from(total).unwrap_or(i64::MAX),
+                );
             }
             AppEvent::WorldReady {
                 chunks,

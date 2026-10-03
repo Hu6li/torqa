@@ -1,6 +1,6 @@
 # ADR 0006 — Map data from OpenStreetMap
 
-- Status: accepted
+- Status: superseded by [ADR 0008](0008-vector-tiles.md)
 - Date: 2026-10-02
 
 ## Context

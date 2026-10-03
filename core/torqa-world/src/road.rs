@@ -127,6 +127,29 @@ impl RoadIndex {
         samples
     }
 
+    /// Consecutive centre-line points on bridges and in tunnels, one list per structure.
+    pub(crate) fn structure_runs(&self) -> Vec<(Surface, Vec<CentrePoint>)> {
+        let mut runs: Vec<(Surface, Vec<CentrePoint>)> = Vec::new();
+        let mut previous = Surface::Ground;
+        for segment in &self.segments {
+            let point = |position: (f64, f64), elevation: f64| CentrePoint {
+                position,
+                elevation,
+                direction: direction(segment),
+            };
+            if segment.surface != Surface::Ground {
+                if segment.surface != previous {
+                    runs.push((segment.surface, vec![point(segment.a, segment.elevation_a)]));
+                }
+                if let Some((_, points)) = runs.last_mut() {
+                    points.push(point(segment.b, segment.elevation_b));
+                }
+            }
+            previous = segment.surface;
+        }
+        runs
+    }
+
     /// A ribbon `2 × half_width` wide along the centre line.
     #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
     pub(crate) fn mesh(&self, half_width: f64) -> MeshData {
@@ -161,6 +184,17 @@ impl RoadIndex {
         }
         mesh
     }
+}
+
+/// A point on the road's centre line with its direction of travel.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CentrePoint {
+    /// Metres east/north.
+    pub(crate) position: (f64, f64),
+    /// Road surface elevation.
+    pub(crate) elevation: f64,
+    /// Unit direction of travel (east, north).
+    pub(crate) direction: (f64, f64),
 }
 
 fn cell_of(east: f64, north: f64) -> (i64, i64) {

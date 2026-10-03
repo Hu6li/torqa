@@ -73,6 +73,24 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "No route loaded"
 
+[node name="Loading" type="HBoxContainer" parent="Margin/Rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LoadingBar" type="ProgressBar" parent="Margin/Rows/Loading"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 24)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 1.0
+show_percentage = false
+
+[node name="LoadingLabel" type="Label" parent="Margin/Rows/Loading"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="Scan" type="HBoxContainer" parent="Margin/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 16
@@ -149,6 +167,30 @@ step = 0.5
 value = 83.0
 
 [node name="MassSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="TimeCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Time of day"
+
+[node name="TimeOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="TimeSpacer" type="Control" parent="Margin/Rows/Settings"]
+layout_mode = 2
+
+[node name="WeatherCaption" type="Label" parent="Margin/Rows/Settings"]
+layout_mode = 2
+text = "Weather"
+
+[node name="WeatherOption" type="OptionButton" parent="Margin/Rows/Settings"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+
+[node name="WeatherSpacer" type="Control" parent="Margin/Rows/Settings"]
 layout_mode = 2
 
 [node name="DescentCaption" type="Label" parent="Margin/Rows/Settings"]

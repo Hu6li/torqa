@@ -18,6 +18,10 @@ func _ready() -> void:
 
 func _on_ride_started() -> void:
 	_setup.hide()
+	var conditions: Dictionary = _setup.conditions()
+	var time: String = conditions["time"]
+	var weather: String = conditions["weather"]
+	_world.apply_conditions(time, weather)
 	_world.reset_view()
 	_world.show()
 	_ride.begin()

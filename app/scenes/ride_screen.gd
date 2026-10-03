@@ -44,6 +44,7 @@ func bind(torqa: TorqaApp, world: RideWorld) -> void:
 func begin() -> void:
 	_finished = false
 	_minimap.set_track(_torqa.track(2000))
+	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(1500))
 	_status.text = "Waiting for the trainer…"
 	_finish_button.text = "Finish & save"

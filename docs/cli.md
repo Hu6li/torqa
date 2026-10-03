@@ -74,6 +74,8 @@ file can be uploaded to Strava, intervals.icu, Garmin Connect and others as a vi
 Known limitation: terrain models are bare-earth, so bridges and tunnels show up as short dips
 or humps.
 
+Map data: © [OpenFreeMap](https://openfreemap.org) © [OpenMapTiles](https://openmaptiles.org),
+data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 Terrain data: [Mapterhorn](https://mapterhorn.com/attribution) (CC BY 4.0) and
 [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
 

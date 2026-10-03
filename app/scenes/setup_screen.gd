@@ -8,6 +8,13 @@ signal ride_started
 const FAKE_TRAINER: int = -1
 const NO_HEART_RATE: int = -1
 const SCAN_SECONDS: float = 5.0
+## Overall progress: each step's share of a typical first load (downloads dominate).
+const STEP_WEIGHTS: Dictionary[String, Vector2] = {
+	"Reading route": Vector2(0.0, 0.02),
+	"Downloading map data": Vector2(0.02, 0.6),
+	"Correcting elevations": Vector2(0.6, 0.8),
+	"Building 3D world": Vector2(0.8, 1.0),
+}
 
 var _torqa: TorqaApp
 var _route_ready: bool = false
@@ -25,14 +32,28 @@ var _route_text: String = ""
 @onready var _difficulty_label: Label = %DifficultyLabel
 @onready var _mass_spin: SpinBox = %MassSpin
 @onready var _flat_descents: CheckBox = %FlatDescents
+@onready var _time_option: OptionButton = %TimeOption
+@onready var _weather_option: OptionButton = %WeatherOption
 @onready var _start_button: Button = %StartButton
 @onready var _status_label: Label = %StatusLabel
+@onready var _loading: HBoxContainer = %Loading
+@onready var _loading_bar: ProgressBar = %LoadingBar
+@onready var _loading_label: Label = %LoadingLabel
+
+
+## The chosen time of day and weather, as names known to `RideWorld`.
+func conditions() -> Dictionary:
+	return {
+		"time": _time_option.get_item_text(_time_option.selected),
+		"weather": _weather_option.get_item_text(_weather_option.selected),
+	}
 
 
 func bind(torqa: TorqaApp) -> void:
 	_torqa = torqa
 	_torqa.route_loaded.connect(_on_route_loaded)
 	_torqa.world_ready.connect(_on_world_ready)
+	_torqa.loading_progress.connect(_on_loading_progress)
 	_torqa.devices_found.connect(_on_devices_found)
 	_torqa.failed.connect(_on_failed)
 
@@ -45,6 +66,11 @@ func _ready() -> void:
 	_start_button.pressed.connect(_on_start_pressed)
 	_on_difficulty_changed(_difficulty_slider.value)
 	_reset_device_options()
+	for time: String in RideWorld.TIMES.keys():
+		_time_option.add_item(time)
+	_time_option.select(1)
+	for weather: String in RideWorld.WEATHERS:
+		_weather_option.add_item(weather)
 	_update_start_button()
 
 
@@ -56,6 +82,9 @@ func _on_file_selected(path: String) -> void:
 	_route_ready = false
 	_world_ready = false
 	_route_label.text = "Loading %s …" % path.get_file()
+	_loading.show()
+	_loading_bar.value = 0.0
+	_loading_label.text = ""
 	_status_label.text = ""
 	_torqa.load_route(path, false)
 	_update_start_button()
@@ -76,7 +105,16 @@ func _on_route_loaded(route: Dictionary) -> void:
 	_update_start_button()
 
 
+func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:
+	_loading.show()
+	var share: Vector2 = STEP_WEIGHTS.get(step, Vector2(0.0, 1.0))
+	var fraction: float = float(done) / float(maxi(total, 1))
+	_loading_bar.value = lerpf(share.x, share.y, fraction)
+	_loading_label.text = "%s… %d / %d %s" % [step, done, total, unit]
+
+
 func _on_world_ready(info: Dictionary) -> void:
+	_loading.hide()
 	_world_ready = true
 	var fallback: int = info["fallback_samples"]
 	var note: String = "3D world ready"
@@ -138,6 +176,7 @@ func _on_start_pressed() -> void:
 
 
 func _on_failed(message: String) -> void:
+	_loading.hide()
 	_scan_button.disabled = false
 	_status_label.text = message
 

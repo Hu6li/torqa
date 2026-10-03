@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kirchenfeldbruecke, Bern, extended 250 m straight onto land at both ends. Bridge geometry
+     from OpenStreetMap, (c) OpenStreetMap contributors, ODbL 1.0. -->
+<gpx version="1.1" creator="Torqa test fixture" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Kirchenfeldbruecke</name></metadata>
+  <trk><trkseg>
+    <trkpt lat="46.9486196" lon="7.4478088"/>
+    <trkpt lat="46.9481850" lon="7.4479243"/>
+    <trkpt lat="46.9477505" lon="7.4480397"/>
+    <trkpt lat="46.9473159" lon="7.4481552"/>
+    <trkpt lat="46.9468813" lon="7.4482706"/>
+    <trkpt lat="46.9464467" lon="7.4483861"/>
+    <trkpt lat="46.9464162" lon="7.4483984"/>
+    <trkpt lat="46.9463908" lon="7.4484059"/>
+    <trkpt lat="46.9448906" lon="7.4488003"/>
+    <trkpt lat="46.9444242" lon="7.4489234"/>
+    <trkpt lat="46.9439896" lon="7.4490389"/>
+    <trkpt lat="46.9435550" lon="7.4491543"/>
+    <trkpt lat="46.9431204" lon="7.4492698"/>
+    <trkpt lat="46.9426859" lon="7.4493852"/>
+    <trkpt lat="46.9422513" lon="7.4495007"/>
+  </trkseg></trk>
+</gpx>

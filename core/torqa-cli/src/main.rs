@@ -156,10 +156,37 @@ async fn ride(args: RideArgs) -> Result<()> {
 
 async fn route_info(args: &RouteArgs) -> Result<()> {
     let started = std::time::Instant::now();
-    let imported = torqa_app::import_route(&args.file, &paths::cache_dir(), args.offline)
-        .await
-        .map_err(anyhow::Error::msg)?;
+    let imported = torqa_app::import_route(
+        &args.file,
+        &paths::cache_dir(),
+        args.offline,
+        &mut |_, _, _| {},
+    )
+    .await
+    .map_err(anyhow::Error::msg)?;
     print_route(&imported.route);
+    let route = &imported.route;
+    let (low, high) = route
+        .points()
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+            (lo.min(p.elevation.0), hi.max(p.elevation.0))
+        });
+    let steepest = route
+        .points()
+        .windows(2)
+        .max_by(|a, b| {
+            let grade = |w: &[torqa_routes::RoutePoint]| {
+                (w[1].elevation.0 - w[0].elevation.0)
+                    / (w[1].distance.0 - w[0].distance.0).max(0.01)
+            };
+            grade(a).total_cmp(&grade(b))
+        })
+        .map_or(0.0, |w| w[0].distance.0);
+    println!(
+        "Elevation {low:.0}–{high:.0} m, steepest at {:.2} km",
+        steepest / 1000.0
+    );
     let map = &imported.map;
     println!(
         "Map: {} buildings, {} areas, {} waterways, {} bridges/tunnels (import {:.1} s)",
@@ -178,7 +205,7 @@ async fn route_info(args: &RouteArgs) -> Result<()> {
         if args.offline {
             terrain = terrain.offline();
         }
-        let world = torqa_world::generate(&imported.route, &mut terrain, map).await;
+        let world = torqa_world::generate(&imported.route, &mut terrain, map, &mut |_, _| {}).await;
         let triangles = |m: &torqa_world::MeshData| m.indices.len() / 3;
         println!(
             "World: {} chunks, {} terrain / {} building triangles, {} trees ({:.1} s)",
@@ -201,7 +228,7 @@ async fn route_info(args: &RouteArgs) -> Result<()> {
 }
 
 async fn load_route(path: &std::path::Path, offline: bool) -> Result<Route> {
-    let imported = torqa_app::import_route(path, &paths::cache_dir(), offline)
+    let imported = torqa_app::import_route(path, &paths::cache_dir(), offline, &mut |_, _, _| {})
         .await
         .map_err(anyhow::Error::msg)?;
     Ok(imported.route)

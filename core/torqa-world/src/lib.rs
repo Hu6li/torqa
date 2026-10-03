@@ -7,7 +7,9 @@
 
 mod buildings;
 mod landcover;
+mod minimap;
 mod road;
+mod structures;
 mod vegetation;
 mod water;
 
@@ -18,6 +20,7 @@ use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
 use landcover::LandIndex;
+pub use minimap::{BACKGROUND as MINIMAP_BACKGROUND, FlatMap};
 use road::RoadIndex;
 pub use vegetation::Trees;
 
@@ -76,24 +79,40 @@ pub struct World {
     pub road: MeshData,
     /// Rivers and streams.
     pub water: MeshData,
+    /// Bridges and tunnels.
+    pub structures: MeshData,
+    /// Flat map of the corridor for the minimap.
+    pub minimap: FlatMap,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
 }
 
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
-pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &MapData) -> World {
+/// `progress` is called with (chunks done, chunks total).
+pub async fn generate<M: ElevationModel>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+) -> World {
     let projection = LocalProjection::for_route(route);
     let road = RoadIndex::new(route, &projection);
+    let cells = chunks_near_route(&road);
+    let total = cells.len();
+    // Announce the step before the slower preparation below.
+    progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
     let buildings = buildings_by_chunk(map, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH),
         water: water::ribbons(&map.waterways, &projection, &road, model).await,
+        structures: structures::build(&road, &projection, model).await,
+        minimap: minimap::build(map, &projection, &road),
         ..World::default()
     };
 
-    for (cx, cn) in chunks_near_route(&road) {
+    for (done, (cx, cn)) in cells.into_iter().enumerate() {
         let heights = HeightGrid::sample(cx, cn, &projection, &road, model, &mut world).await;
         let origin = [
             heights.origin.0 + CHUNK_SIZE / 2.0,
@@ -112,6 +131,7 @@ pub async fn generate<M: ElevationModel>(route: &Route, model: &mut M, map: &Map
             buildings: building_mesh,
             trees: vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin),
         });
+        progress(done + 1, total);
     }
     if world.fallback_samples > 0 {
         warn!(
@@ -315,18 +335,24 @@ impl HeightGrid {
 }
 
 /// Levels terrain to just below the road near it and blends back to the natural height.
-/// Bridges and tunnels leave the ground below or above them untouched.
+/// Under bridges the ground is only lowered (the valley stays open, but nothing may cover the
+/// deck); above tunnels it is left alone.
 fn level_to_road(natural: f64, nearest_road: Option<(f64, f64, Surface)>) -> f64 {
-    let Some((distance, road_elevation, Surface::Ground)) = nearest_road else {
+    let Some((distance, road_elevation, surface)) = nearest_road else {
         return natural;
     };
     let levelled = road_elevation - ROAD_SINK;
+    let target = match surface {
+        Surface::Ground => levelled,
+        Surface::Bridge => natural.min(levelled),
+        Surface::Tunnel => return natural,
+    };
     if distance <= FLAT_INNER {
-        return levelled;
+        return target;
     }
     let t = ((distance - FLAT_INNER) / (FLAT_OUTER - FLAT_INNER)).clamp(0.0, 1.0);
     let smooth = t * t * (3.0 - 2.0 * t);
-    levelled + (natural - levelled) * smooth
+    target + (natural - target) * smooth
 }
 
 #[allow(clippy::cast_possible_truncation)]

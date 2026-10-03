@@ -1,1 +1,1 @@
-doc-valid-idents = ["GDExtension", "GDScript", "OpenStreetMap", "ODbL", ".."]
+doc-valid-idents = ["GDExtension", "GDScript", "OpenStreetMap", "OpenFreeMap", "OpenMapTiles", "ODbL", ".."]
