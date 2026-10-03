@@ -13,14 +13,8 @@ const METERS_PER_FOOT: float = 0.3048
 
 var _torqa: TorqaApp
 var _world: RideWorld
-## Metric descriptions by id, from `TorqaApp.hud_metrics()`.
-var _catalogue: Dictionary[String, Dictionary] = {}
-## The metrics shown, first one large.
-var _layout: PackedStringArray = PackedStringArray()
-var _values: Dictionary[String, Label] = {}
 var _hud_dialog: HudDialog = HudDialog.new()
 var _imperial: bool = false
-var _power_detail: Label = Label.new()
 var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
 var _climb_left: Label = UiTheme.value(20)
@@ -29,7 +23,7 @@ var _finished: bool = false
 var _saved: bool = false
 var _toast_left: float = 0.0
 
-@onready var _metrics: VBoxContainer = %Metrics
+@onready var _hud: HudPanel = %Metrics
 @onready var _minimap: Minimap = %Minimap
 @onready var _profile: ElevationProfile = %Profile
 @onready var _profile_info: Label = %ProfileInfo
@@ -67,7 +61,8 @@ func begin() -> void:
 	_finish_button.text = "Finish & save"
 	var profile: Dictionary = _torqa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
-	_build_metrics(_torqa.hud_layout())
+	_hud.imperial = _imperial
+	_hud.show_layout(_torqa.hud_layout())
 	_show_toast("Waiting for the trainer…")
 
 
@@ -78,17 +73,11 @@ func _ready() -> void:
 	var opaque: StyleBoxFlat = UiTheme.panel()
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
-	for metric: Dictionary in TorqaApp.hud_metrics():
-		var id: String = metric["id"]
-		_catalogue[id] = metric
-	# Parked in the tree until the first ride builds the metrics, so it is freed with the screen.
-	_power_detail.hide()
-	_metrics.add_child(_power_detail)
 	_build_climb_panel()
 	add_child(_hud_dialog)
 	_hud_dialog.layout_confirmed.connect(_on_layout_confirmed)
 	_customize_button.pressed.connect(
-		func() -> void: _hud_dialog.edit(_catalogue.values(), _layout)
+		func() -> void: _hud_dialog.edit(_torqa.hud_layout(), _imperial)
 	)
 	# Over the 3D scene, the light default buttons let road markings shine through the text.
 	for button: Button in [_camera_button, _finish_button, _customize_button]:
@@ -121,9 +110,7 @@ func _process(delta: float) -> void:
 	var y_m: float = state["y"]
 	var heading: float = state["heading"]
 	var metrics: Dictionary = state["metrics"]
-	for id: String in _values:
-		_values[id].text = _format(_catalogue[id], metrics.get(id))
-	_show_power_detail(state["watts_per_kg"], state["power_zone"])
+	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
 	if _imperial:
 		_profile_info.text = "%d ft  ·  %+.1f %%" % [roundi(elevation / METERS_PER_FOOT), grade]
 	else:
@@ -133,125 +120,10 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
-## Builds the metrics column for `layout`: the first metric large, the rest in a grid.
-func _build_metrics(layout: PackedStringArray) -> void:
-	_layout = layout
-	_values.clear()
-	# The W/kg line moves to the new large figure rather than being freed with the old one.
-	if _power_detail.get_parent() != null:
-		_power_detail.get_parent().remove_child(_power_detail)
-	for child: Node in _metrics.get_children():
-		_metrics.remove_child(child)
-		child.queue_free()
-	_power_detail.text = ""
-	if layout.is_empty():
-		return
-	var main_id: String = layout[0]
-	var main: VBoxContainer = VBoxContainer.new()
-	main.add_theme_constant_override("separation", 0)
-	var main_caption: String = _catalogue[main_id]["caption"]
-	main.add_child(UiTheme.caption(main_caption))
-	main.add_child(_value_row(main_id, 48))
-	# Power figures get the rider's W/kg and zone underneath.
-	_power_detail.add_theme_font_size_override("font_size", 13)
-	_power_detail.visible = main_id in ["power", "power_3s", "power_10s"]
-	main.add_child(_power_detail)
-	_metrics.add_child(main)
-	if layout.size() == 1:
-		return
-
-	var divider: ColorRect = ColorRect.new()
-	divider.color = Color(1, 1, 1, 0.08)
-	divider.custom_minimum_size = Vector2(0, 1)
-	_metrics.add_child(divider)
-
-	var grid: GridContainer = GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 10)
-	for i: int in range(1, layout.size()):
-		var id: String = layout[i]
-		var cell: VBoxContainer = VBoxContainer.new()
-		cell.custom_minimum_size = Vector2(98, 0)
-		cell.add_theme_constant_override("separation", 0)
-		var caption: String = _catalogue[id]["caption"]
-		cell.add_child(UiTheme.caption(caption))
-		cell.add_child(_value_row(id, 24))
-		grid.add_child(cell)
-	_metrics.add_child(grid)
-
-
-func _value_row(id: String, size: int) -> HBoxContainer:
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	var value: Label = UiTheme.value(size)
-	row.add_child(value)
-	var unit: String = _unit(_catalogue[id])
-	if not unit.is_empty():
-		var unit_label: Label = Label.new()
-		unit_label.text = unit
-		unit_label.size_flags_vertical = Control.SIZE_SHRINK_END
-		unit_label.add_theme_font_size_override("font_size", maxi(11, size / 3))
-		unit_label.add_theme_color_override("font_color", UiTheme.MUTED)
-		row.add_child(unit_label)
-	_values[id] = value
-	return row
-
-
-## The unit shown next to a metric, in the rider's unit system.
-func _unit(metric: Dictionary) -> String:
-	match metric["kind"]:
-		"speed":
-			return "mph" if _imperial else "km/h"
-		"distance":
-			return "mi" if _imperial else "km"
-		"elevation":
-			return "ft" if _imperial else "m"
-		"grade":
-			return "%"
-	return metric["unit"]
-
-
-## A metric's value (km/h, km, m or s, as `ride_state()["metrics"]` has them) as display text.
-func _format(metric: Dictionary, value: Variant) -> String:
-	if value == null:
-		return "--"
-	var number: float = value
-	var decimals: int = metric["decimals"]
-	match metric["kind"]:
-		"speed", "distance":
-			if _imperial:
-				number /= KM_PER_MILE
-		"elevation":
-			if _imperial:
-				number /= METERS_PER_FOOT
-		"duration":
-			return _duration(number)
-		"grade":
-			return "%+.1f" % number
-		"zone":
-			return "Z%d" % roundi(number)
-	return "%.*f" % [decimals, number]
-
-
 func _on_layout_confirmed(layout: PackedStringArray) -> void:
 	var saved: PackedStringArray = _torqa.set_hud_layout(layout)
 	if not saved.is_empty():
-		_build_metrics(saved)
-
-
-## "3.6 W/kg · Z4 Threshold", coloured by zone; empty without power.
-func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
-	if watts_per_kg == null or zone == null:
-		_power_detail.text = ""
-		return
-	var ratio: float = watts_per_kg
-	var zone_number: int = zone
-	var index: int = clampi(zone_number - 1, 0, UiTheme.POWER_ZONES.size() - 1)
-	var zone_name: String = UiTheme.POWER_ZONES[index][0]
-	var color: Color = UiTheme.POWER_ZONES[index][1]
-	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, zone_name]
-	_power_detail.add_theme_color_override("font_color", color)
+		_hud.show_layout(saved)
 
 
 func _build_climb_panel() -> void:
@@ -368,10 +240,3 @@ func _on_ride_saved(path: String) -> void:
 func _on_failed(message: String) -> void:
 	if visible:
 		_show_toast(message)
-
-
-static func _duration(seconds: float) -> String:
-	var total: int = int(seconds)
-	if total >= 3600:
-		return "%d:%02d:%02d" % [total / 3600, total % 3600 / 60, total % 60]
-	return "%d:%02d" % [total / 60, total % 60]

@@ -28,6 +28,16 @@ func _run() -> void:
 	# The setup screen while loading, for checking the progress display.
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
+	# The rider settings with the HUD editor.
+	for child: Node in setup.get_children():
+		if child is ProfileDialog:
+			var dialog: ProfileDialog = child
+			dialog.edit(torqa.profile(), torqa.hud_layout())
+			var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+			tabs.current_tab = 1
+			await create_timer(0.5).timeout
+			root.get_texture().get_image().save_png(out_dir.path_join("rider-settings.png"))
+			dialog.hide()
 	await _wait_for(torqa.world_ready)
 	# Let the world stream its chunks in.
 	for i: int in range(240):
@@ -76,7 +86,7 @@ func _run() -> void:
 	var ride_screen: RideScreen = _main.get_node("RideScreen")
 	for child: Node in ride_screen.get_children():
 		if child is HudDialog:
-			(child as HudDialog).edit(TorqaApp.hud_metrics(), torqa.hud_layout())
+			(child as HudDialog).edit(torqa.hud_layout(), false)
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("hud-dialog.png"))
 	print("saved hud dialog")

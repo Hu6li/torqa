@@ -25,7 +25,7 @@ pub enum MetricKind {
 }
 
 /// A metric the HUD can show.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metric {
     /// Stable identifier, stored in the rider's layout.
     pub id: &'static str,
@@ -37,6 +37,8 @@ pub struct Metric {
     pub decimals: u8,
     /// How to show it.
     pub kind: MetricKind,
+    /// A typical value, in the units of [`values`], for previews of a layout.
+    pub sample: f64,
 }
 
 const fn metric(
@@ -45,6 +47,7 @@ const fn metric(
     unit: &'static str,
     decimals: u8,
     kind: MetricKind,
+    sample: f64,
 ) -> Metric {
     Metric {
         id,
@@ -52,45 +55,76 @@ const fn metric(
         unit,
         decimals,
         kind,
+        sample,
     }
 }
 
 /// Every metric, in the order offered to the rider.
 pub const METRICS: &[Metric] = &[
-    metric("power", "Power", "W", 0, MetricKind::Number),
-    metric("power_3s", "Power 3 s", "W", 0, MetricKind::Number),
-    metric("power_10s", "Power 10 s", "W", 0, MetricKind::Number),
-    metric("avg_power", "Avg power", "W", 0, MetricKind::Number),
+    metric("power", "Power", "W", 0, MetricKind::Number, 245.0),
+    metric("power_3s", "Power 3 s", "W", 0, MetricKind::Number, 252.0),
+    metric("power_10s", "Power 10 s", "W", 0, MetricKind::Number, 238.0),
+    metric("avg_power", "Avg power", "W", 0, MetricKind::Number, 221.0),
     metric(
         "normalized_power",
         "Normalized power",
         "W",
         0,
         MetricKind::Number,
+        236.0,
     ),
-    metric("watts_per_kg", "W/kg", "W/kg", 1, MetricKind::Number),
-    metric("power_zone", "Power zone", "", 0, MetricKind::Zone),
-    metric("heart_rate", "Heart rate", "bpm", 0, MetricKind::Number),
+    metric("watts_per_kg", "W/kg", "W/kg", 1, MetricKind::Number, 3.3),
+    metric("power_zone", "Power zone", "", 0, MetricKind::Zone, 3.0),
+    metric(
+        "heart_rate",
+        "Heart rate",
+        "bpm",
+        0,
+        MetricKind::Number,
+        148.0,
+    ),
     metric(
         "heart_rate_zone",
         "Heart-rate zone",
         "",
         0,
         MetricKind::Zone,
+        3.0,
     ),
-    metric("cadence", "Cadence", "rpm", 0, MetricKind::Number),
-    metric("speed", "Speed", "", 1, MetricKind::Speed),
-    metric("avg_speed", "Avg speed", "", 1, MetricKind::Speed),
-    metric("distance", "Distance", "", 2, MetricKind::Distance),
-    metric("remaining", "To go", "", 2, MetricKind::Distance),
-    metric("elapsed", "Time", "", 0, MetricKind::Duration),
-    metric("elevation", "Elevation", "", 0, MetricKind::Elevation),
-    metric("elevation_gain", "Climbed", "", 0, MetricKind::Elevation),
-    metric("grade", "Grade", "", 1, MetricKind::Grade),
-    metric("upcoming_grade", "Next 500 m", "", 1, MetricKind::Grade),
-    metric("intensity", "Intensity", "", 2, MetricKind::Number),
-    metric("training_stress", "TSS", "", 0, MetricKind::Number),
-    metric("work", "Work", "kJ", 0, MetricKind::Number),
+    metric("cadence", "Cadence", "rpm", 0, MetricKind::Number, 88.0),
+    metric("speed", "Speed", "", 1, MetricKind::Speed, 31.4),
+    metric("avg_speed", "Avg speed", "", 1, MetricKind::Speed, 29.8),
+    metric("distance", "Distance", "", 2, MetricKind::Distance, 12.4),
+    metric("remaining", "To go", "", 2, MetricKind::Distance, 7.6),
+    metric("elapsed", "Time", "", 0, MetricKind::Duration, 1543.0),
+    metric(
+        "elevation",
+        "Elevation",
+        "",
+        0,
+        MetricKind::Elevation,
+        612.0,
+    ),
+    metric(
+        "elevation_gain",
+        "Climbed",
+        "",
+        0,
+        MetricKind::Elevation,
+        284.0,
+    ),
+    metric("grade", "Grade", "", 1, MetricKind::Grade, 4.2),
+    metric(
+        "upcoming_grade",
+        "Next 500 m",
+        "",
+        1,
+        MetricKind::Grade,
+        6.1,
+    ),
+    metric("intensity", "Intensity", "", 2, MetricKind::Number, 0.86),
+    metric("training_stress", "TSS", "", 0, MetricKind::Number, 38.0),
+    metric("work", "Work", "kJ", 0, MetricKind::Number, 412.0),
 ];
 
 /// The layout before a rider customises it: the first metric is shown large.

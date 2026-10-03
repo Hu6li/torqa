@@ -97,6 +97,23 @@ static func build() -> Theme:
 	theme.set_stylebox("embedded_unfocused_border", "Window", frame)
 	theme.set_color("title_color", "Window", TEXT)
 
+	# Tabs: plain captions, the current one underlined in the accent colour.
+	var tab: StyleBoxFlat = _box(Color(0, 0, 0, 0), 0, 14, 8)
+	var current_tab: StyleBoxFlat = tab.duplicate()
+	current_tab.border_color = ACCENT
+	current_tab.border_width_bottom = 2
+	theme.set_stylebox("tab_selected", "TabContainer", current_tab)
+	theme.set_stylebox("tab_unselected", "TabContainer", tab)
+	theme.set_stylebox("tab_hovered", "TabContainer", tab)
+	theme.set_stylebox("tabbar_background", "TabContainer", StyleBoxEmpty.new())
+	var tab_panel: StyleBoxFlat = _box(Color(0, 0, 0, 0), 0, 0, 16)
+	tab_panel.border_color = Color(1, 1, 1, 0.08)
+	tab_panel.border_width_top = 1
+	theme.set_stylebox("panel", "TabContainer", tab_panel)
+	theme.set_color("font_selected_color", "TabContainer", TEXT)
+	theme.set_color("font_unselected_color", "TabContainer", MUTED)
+	theme.set_color("font_hovered_color", "TabContainer", TEXT)
+
 	var popup: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12, 0.98), 10, 6, 6)
 	theme.set_stylebox("panel", "PopupMenu", popup)
 	theme.set_stylebox("hover", "PopupMenu", _box(Color(ACCENT, 0.35), 6, 8, 4))
@@ -118,6 +135,14 @@ static func panel() -> StyleBoxFlat:
 ## A button background for use over the 3D scene, as dark as the HUD panels.
 static func hud_button() -> StyleBoxFlat:
 	return _box(PANEL, 10, 14, 9)
+
+
+## A list entry that can be dragged; the highlighted one marks the HUD's large figure.
+static func chip(highlighted: bool) -> StyleBoxFlat:
+	var box: StyleBoxFlat = _box(Color(ACCENT, 0.22) if highlighted else SURFACE, 8, 12, 4)
+	box.border_color = Color(ACCENT, 0.6) if highlighted else Color(1, 1, 1, 0.06)
+	box.set_border_width_all(1)
+	return box
 
 
 ## A caption label: small, muted, upper case.

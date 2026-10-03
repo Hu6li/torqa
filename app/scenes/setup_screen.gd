@@ -136,18 +136,20 @@ func _on_course_added(path: String) -> void:
 func _on_profile_selected(index: int) -> void:
 	var id: String = _profile_option.get_item_metadata(index)
 	if id.is_empty():
-		_profile_dialog.edit({})
+		_profile_dialog.edit({}, TorqaApp.hud_default_layout())
 		return
 	_torqa.select_profile(id)
 	_refresh_profiles()
 
 
 func _on_edit_profile_pressed() -> void:
-	_profile_dialog.edit(_torqa.profile())
+	_profile_dialog.edit(_torqa.profile(), _torqa.hud_layout())
 
 
-func _on_profile_confirmed(id: String, profile: Dictionary) -> void:
-	_torqa.save_profile(id, profile)
+func _on_profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedStringArray) -> void:
+	# Saving makes the rider active, so the layout goes to the right rider.
+	if not _torqa.save_profile(id, profile).is_empty():
+		_torqa.set_hud_layout(hud_layout)
 	_refresh_profiles()
 
 

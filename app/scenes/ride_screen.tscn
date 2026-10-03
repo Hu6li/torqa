@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scenes/ride_screen.gd" id="1_ride"]
 [ext_resource type="Script" path="res://scenes/minimap.gd" id="2_minimap"]
 [ext_resource type="Script" path="res://scenes/elevation_profile.gd" id="3_profile"]
+[ext_resource type="Script" path="res://ui/hud_panel.gd" id="4_hud"]
 
 [node name="RideScreen" type="Control"]
 layout_mode = 3
@@ -25,6 +26,7 @@ offset_bottom = 200.0
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 12
+script = ExtResource("4_hud")
 
 [node name="RightColumn" type="VBoxContainer" parent="."]
 layout_mode = 1
