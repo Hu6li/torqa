@@ -488,7 +488,7 @@ impl TorqaApp {
         }
     }
 
-    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind}]`, with `kind` one of
+    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind, sample}]`, with `kind` one of
     /// `number`, `speed`, `distance`, `elevation`, `duration`, `grade`, `zone`. Values come in
     /// `ride_state()["metrics"]` in km/h, km, m and s.
     #[func]
@@ -511,11 +511,27 @@ impl TorqaApp {
                     "unit" => metric.unit,
                     "decimals" => i64::from(metric.decimals),
                     "kind" => kind,
+                    "sample" => metric.sample,
                 }
                 .to_variant(),
             );
         }
         array
+    }
+
+    /// The HUD metric ids a new rider starts with.
+    #[func]
+    fn hud_default_layout() -> PackedStringArray {
+        torqa_app::hud::DEFAULT_LAYOUT
+            .iter()
+            .map(|&id| GString::from(id))
+            .collect()
+    }
+
+    /// Most metrics a HUD layout may hold.
+    #[func]
+    fn hud_max_metrics() -> i64 {
+        i64::try_from(torqa_app::hud::MAX_METRICS).unwrap_or(i64::MAX)
     }
 
     /// The active rider's HUD metric ids, in order; the first is shown large.
