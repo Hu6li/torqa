@@ -3,6 +3,7 @@ extends Control
 ## Choose a route, a trainer, an optional heart-rate strap and ride settings, then start.
 
 signal ride_started
+signal history_requested
 
 ## Metadata of the trainer and heart-rate options that are not scanned devices.
 const FAKE_TRAINER: int = -1
@@ -26,6 +27,7 @@ var _from_course: bool = false
 ## A course file imported from outside the library, opened once it has been copied there.
 var _open_when_added: bool = false
 
+@onready var _history_button: Button = %HistoryButton
 @onready var _course_option: OptionButton = %CourseOption
 @onready var _save_course_button: Button = %SaveCourseButton
 @onready var _open_route_button: Button = %OpenRouteButton
@@ -79,6 +81,7 @@ func _ready() -> void:
 	_profile_option.item_selected.connect(_on_profile_selected)
 	_edit_profile_button.pressed.connect(_on_edit_profile_pressed)
 	_save_course_button.pressed.connect(_on_save_course_pressed)
+	_history_button.pressed.connect(func() -> void: history_requested.emit())
 	_scan_button.pressed.connect(_on_scan_pressed)
 	_difficulty_slider.value_changed.connect(_on_difficulty_changed)
 	_start_button.pressed.connect(_on_start_pressed)

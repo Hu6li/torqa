@@ -66,6 +66,13 @@ func _run() -> void:
 		var image: Image = root.get_texture().get_image()
 		image.save_png(out_dir.path_join("side-%d.png" % frame))
 		print("saved side-%d" % frame)
+
+	# The ride's analysis in the history.
+	torqa.finish_ride()
+	setup.history_requested.emit()
+	await create_timer(1.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("history.png"))
+	print("saved history")
 	quit(0)
 
 

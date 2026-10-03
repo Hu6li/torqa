@@ -3,6 +3,7 @@
 
 pub mod course;
 pub mod profiles;
+pub mod rides;
 
 /// A file-name-safe form of `name`: lowercase letters and digits joined by single hyphens, or
 /// `fallback` if nothing remains.
@@ -33,12 +34,13 @@ use std::io::Cursor;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use embedded_io_adapters::std::FromStd;
-use rustyfit::Encoder;
 use rustyfit::profile::{mesgdef, typedef};
 use rustyfit::proto::{FIT, Message};
+use rustyfit::{Decoder, Encoder};
 use torqa_domain::recording::Sample;
+use torqa_domain::units::{BeatsPerMinute, GradePercent, Meters, MetersPerSecond, Rpm, Watts};
 
-/// FIT export failed.
+/// FIT export or import failed.
 #[derive(Debug, thiserror::Error)]
 pub enum FitError {
     /// There is nothing to export.
@@ -47,6 +49,52 @@ pub enum FitError {
     /// The encoder rejected the data.
     #[error("FIT encoding failed: {0}")]
     Encode(String),
+    /// The file is not a readable FIT activity.
+    #[error("cannot read FIT file: {0}")]
+    Decode(String),
+}
+
+/// Reads the records of a FIT activity back as samples, with the start time. Values the file
+/// does not have (e.g. no power meter) stay `None`.
+///
+/// # Errors
+/// [`FitError::Decode`] if the data is not a FIT file, [`FitError::Empty`] without records.
+pub fn decode_fit(bytes: &[u8]) -> Result<(SystemTime, Vec<Sample>), FitError> {
+    let fit = Decoder::new()
+        .decode(FromStd::new(Cursor::new(bytes)))
+        .map_err(|e| FitError::Decode(format!("{e:?}")))?
+        .ok_or_else(|| FitError::Decode("empty file".to_owned()))?;
+    let records: Vec<mesgdef::Record> = fit
+        .messages
+        .iter()
+        .filter(|m| m.num == typedef::MesgNum::RECORD)
+        .map(mesgdef::Record::from)
+        .collect();
+    let start = records
+        .iter()
+        .find_map(|r| r.timestamp.unix_timestamp())
+        .ok_or(FitError::Empty)?;
+    let samples = records
+        .iter()
+        .filter_map(|r| {
+            let at = r.timestamp.unix_timestamp()?;
+            Some(Sample {
+                elapsed: Duration::from_secs(u64::try_from(at - start).unwrap_or(0)),
+                lat: r.position_lat_degrees().unwrap_or(0.0),
+                lon: r.position_long_degrees().unwrap_or(0.0),
+                elevation: Meters(r.altitude_scaled().unwrap_or(0.0)),
+                distance: Meters(r.distance_scaled().unwrap_or(0.0)),
+                speed: MetersPerSecond(r.speed_scaled().unwrap_or(0.0)),
+                grade: GradePercent(r.grade_scaled().unwrap_or(0.0)),
+                power: (r.power != u16::MAX).then(|| Watts(f64::from(r.power))),
+                cadence: (r.cadence != u8::MAX).then(|| Rpm(f64::from(r.cadence))),
+                heart_rate: (r.heart_rate != u8::MAX)
+                    .then(|| BeatsPerMinute(f64::from(r.heart_rate))),
+            })
+        })
+        .collect();
+    let start = UNIX_EPOCH + Duration::from_secs(u64::try_from(start).unwrap_or(0));
+    Ok((start, samples))
 }
 
 /// Encodes a recorded ride as a FIT activity file.
@@ -298,9 +346,6 @@ fn activity(end: typedef::DateTime, s: &Summary) -> mesgdef::Activity {
 
 #[cfg(test)]
 mod tests {
-    use rustyfit::Decoder;
-    use torqa_domain::units::{BeatsPerMinute, GradePercent, Meters, MetersPerSecond, Rpm, Watts};
-
     use super::*;
 
     fn samples(count: u32) -> Vec<Sample> {
@@ -367,6 +412,36 @@ mod tests {
         assert_eq!(record.heart_rate, 140);
         assert_eq!(record.position_lat, semicircles(46.9001));
         assert_eq!(record.speed, 10_000); // mm/s
+    }
+
+    #[test]
+    fn a_saved_ride_reads_back_as_the_recorded_samples() {
+        let start = UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        let recorded = samples(5);
+
+        let (read_start, read) = decode_fit(&encode_fit(start, &recorded).unwrap()).unwrap();
+
+        assert_eq!(read_start, start);
+        assert_eq!(read.len(), 5);
+        let (a, b) = (&recorded[3], &read[3]);
+        assert_eq!(b.elapsed, a.elapsed);
+        assert_eq!(b.power, a.power);
+        assert_eq!(b.cadence, a.cadence);
+        assert_eq!(b.heart_rate, a.heart_rate);
+        assert!((b.lat - a.lat).abs() < 1e-6);
+        assert!((b.elevation.0 - a.elevation.0).abs() < 0.2);
+        assert!((b.distance.0 - a.distance.0).abs() < 0.01);
+        assert!((b.speed.0 - a.speed.0).abs() < 0.001);
+        // The first sample had no heart-rate strap yet.
+        assert_eq!(read[0].heart_rate, None);
+    }
+
+    #[test]
+    fn rejects_files_that_are_not_fit() {
+        assert!(matches!(
+            decode_fit(b"not a fit file"),
+            Err(FitError::Decode(_))
+        ));
     }
 
     #[test]

@@ -55,6 +55,10 @@ quantity!(
     /// A share of a range in percent, 0–100.
     Percent
 );
+quantity!(
+    /// Energy in joules, e.g. the mechanical work of a ride.
+    Joules
+);
 
 impl MetersPerSecond {
     /// Converts from kilometres per hour.

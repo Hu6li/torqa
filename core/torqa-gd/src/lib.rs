@@ -187,6 +187,98 @@ impl TorqaApp {
         array
     }
 
+    /// The active rider's rides, newest first: `[{path, route, start_unix_s, elapsed_s,
+    /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
+    /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
+    /// max_heart_rate}]`; values the ride did not record are `null`.
+    #[func]
+    fn history(&self) -> VarArray {
+        let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+        let mut array = VarArray::new();
+        for entry in self.app.as_ref().map(App::history).unwrap_or_default() {
+            let s = &entry.record.summary;
+            let path = entry.fit.display().to_string();
+            let start = entry
+                .record
+                .start
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+            array.push(
+                &vdict! {
+                    "path" => path.as_str(),
+                    "route" => entry.record.route.as_str(),
+                    "start_unix_s" => start,
+                    "elapsed_s" => s.elapsed.as_secs_f64(),
+                    "distance_m" => s.distance.0,
+                    "elevation_gain_m" => s.elevation_gain.0,
+                    "avg_speed_kmh" => s.avg_speed.as_kilometers_per_hour(),
+                    "avg_power" => &optional(s.avg_power.map(|v| v.0)),
+                    "max_power" => &optional(s.max_power.map(|v| v.0)),
+                    "normalized_power" => &optional(s.normalized_power.map(|v| v.0)),
+                    "intensity_factor" => &optional(s.intensity_factor),
+                    "training_stress" => &optional(s.training_stress),
+                    "work_kj" => &optional(s.work.map(|w| w.0 / 1000.0)),
+                    "avg_cadence" => &optional(s.avg_cadence.map(|v| v.0)),
+                    "avg_heart_rate" => &optional(s.avg_heart_rate.map(|v| v.0)),
+                    "max_heart_rate" => &optional(s.max_heart_rate.map(|v| v.0)),
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
+    /// `speed_kmh`, `elevation_m` — and seconds per zone of the active rider in `power_zones`
+    /// (7) and `heart_rate_zones` (5). Empty (and emits `failed`) if the file cannot be read.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn ride_detail(&mut self, path: GString, max_points: i64) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let detail = match app.ride_detail(std::path::Path::new(&path.to_string())) {
+            Ok(detail) => detail,
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                return VarDictionary::new();
+            }
+        };
+        let max_points = usize::try_from(max_points).unwrap_or(500);
+        let series = |value: fn(&torqa_domain::recording::Sample) -> Option<f64>| {
+            view::ride_series(&detail.samples, max_points, value)
+                .into_iter()
+                .map(|(a, b)| vector2(a, b))
+                .collect::<PackedVector2Array>()
+        };
+        let seconds = |zones: &[Duration]| {
+            zones
+                .iter()
+                .map(Duration::as_secs_f64)
+                .collect::<PackedFloat64Array>()
+        };
+        vdict! {
+            "power" => &series(|s| s.power.map(|p| p.0)),
+            "heart_rate" => &series(|s| s.heart_rate.map(|h| h.0)),
+            "cadence" => &series(|s| s.cadence.map(|c| c.0)),
+            "speed_kmh" => &series(|s| Some(s.speed.as_kilometers_per_hour())),
+            "elevation_m" => &series(|s| Some(s.elevation.0)),
+            "power_zones" => &seconds(&detail.power_zones),
+            "heart_rate_zones" => &seconds(&detail.heart_rate_zones),
+        }
+    }
+
+    /// Deletes a ride from the history.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn delete_ride(&mut self, path: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        self.command(|app| app.delete_ride(&path))
+    }
+
     /// Connects the simulated trainer.
     #[func]
     fn connect_fake_trainer(&mut self, power: f64, cadence: f64) -> bool {
