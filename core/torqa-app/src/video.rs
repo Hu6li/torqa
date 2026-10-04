@@ -312,16 +312,23 @@ impl VideoPlayer {
     }
 
     /// The newest decoded frame not handed out yet: the one following the moment asked for.
-    ///
-    /// # Errors
-    /// The decoder's message if the video could not be decoded there.
-    pub fn frame(&self) -> Result<Option<Frame>, String> {
+    #[must_use]
+    pub fn frame(&self) -> Option<Frame> {
         let (lock, _) = &*self.shared;
-        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        match s.error.take() {
-            Some(error) => Err(error),
-            None => Ok(s.ready.take()),
-        }
+        lock.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ready
+            .take()
+    }
+
+    /// Why the video could not be decoded, once, if it could not.
+    #[must_use]
+    pub fn error(&self) -> Option<String> {
+        let (lock, _) = &*self.shared;
+        lock.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .error
+            .take()
     }
 }
 

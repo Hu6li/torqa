@@ -2324,6 +2324,7 @@ dependencies = [
  "torqa-routes",
  "torqa-session",
  "torqa-world",
+ "tracing",
 ]
 
 [[package]]

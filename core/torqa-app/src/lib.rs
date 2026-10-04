@@ -314,6 +314,8 @@ struct ActiveRide {
     player: Option<video::VideoPlayer>,
     /// And its sound (R26), if it has any.
     sound: Option<video::SoundPlayer>,
+    /// Whether the video shows: a ride along a blank screen must say why.
+    video_watch: VideoWatch,
 }
 
 /// When the 3D world of a loaded route is built.
@@ -323,6 +325,17 @@ enum WorldPlan {
     /// Once asked for (riding a course), with the route's map data when it is loaded.
     OnRequest(Option<torqa_osm::MapData>),
 }
+
+/// Frames of the video handed out during a ride, and whether a problem was reported.
+#[derive(Debug)]
+struct VideoWatch {
+    since: std::time::Instant,
+    frames: usize,
+    reported: bool,
+}
+
+/// How long a video course may show no picture before the rider is told.
+const NO_PICTURE_AFTER: Duration = Duration::from_secs(5);
 
 /// The application state.
 pub struct App {
@@ -755,12 +768,32 @@ impl App {
     /// The newest video frame decoded for the ride on a video course, once; it follows the
     /// moment of [`App::video_time`], so the view can blend from the frame before.
     pub fn video_frame(&mut self) -> Option<torqa_video::Frame> {
-        let player = self.ride.as_ref()?.player.as_ref()?;
-        player
-            .frame()
-            .inspect_err(|error| warn!(%error, "cannot decode the video"))
-            .ok()
-            .flatten()
+        let active = self.ride.as_mut()?;
+        let frame = active.player.as_ref()?.frame()?;
+        active.video_watch.frames += 1;
+        Some(frame)
+    }
+
+    /// Reports once if the ride's video cannot be decoded or shows no picture.
+    fn watch_video(&mut self, events: &mut Vec<AppEvent>) {
+        let Some(active) = &mut self.ride else { return };
+        let Some(player) = &active.player else { return };
+        if active.video_watch.reported {
+            return;
+        }
+        let problem = player
+            .error()
+            .map(|error| format!("cannot play the video: {error}"))
+            .or_else(|| {
+                (active.video_watch.frames == 0
+                    && active.video_watch.since.elapsed() > NO_PICTURE_AFTER)
+                    .then(|| "the video shows no picture yet — see the log for why".to_owned())
+            });
+        if let Some(message) = problem {
+            warn!(%message, "video course");
+            active.video_watch.reported = true;
+            events.push(AppEvent::Error(message));
+        }
     }
 
     /// The next stereo samples of the video's sound during a ride on a video course, at most
@@ -1149,6 +1182,11 @@ impl App {
             ghost,
             player,
             sound,
+            video_watch: VideoWatch {
+                since: std::time::Instant::now(),
+                frames: 0,
+                reported: false,
+            },
         });
         Ok(())
     }
@@ -1551,6 +1589,7 @@ impl App {
                 sound.follow(time);
             }
         }
+        self.watch_video(&mut events);
         events
     }
 
@@ -2513,6 +2552,48 @@ mod tests {
         );
         app.abort_ride();
         assert_eq!(app.video_sound_rate(), None);
+    }
+
+    #[test]
+    fn a_video_showing_no_picture_is_reported_once() {
+        let dir = temp_dir("no-picture");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::gopro_video("no-picture"),
+            "Ride.MOV",
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        loaded_video(&mut app, video);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        let ride = |app: &mut App, take_frames: bool| {
+            app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+                .unwrap();
+            let mut problems = Vec::new();
+            for _ in 0..360 {
+                std::thread::sleep(Duration::from_millis(16));
+                for event in app.update(Duration::from_millis(16)) {
+                    if let AppEvent::Error(message) = event {
+                        problems.push(message);
+                    }
+                }
+                if take_frames {
+                    let _ = app.video_frame();
+                }
+            }
+            app.abort_ride();
+            problems
+        };
+
+        // Shown as it should: nothing to report.
+        assert_eq!(ride(&mut app, true), Vec::<String>::new());
+        // Never shown (as on a front end that cannot display it): said once, not every frame.
+        let problems = ride(&mut app, false);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("no picture"), "{problems:?}");
     }
 
     #[test]

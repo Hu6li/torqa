@@ -19,6 +19,7 @@ torqa-routes.workspace = true
 torqa-session.workspace = true
 torqa-world.workspace = true
 godot.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

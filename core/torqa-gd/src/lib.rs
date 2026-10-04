@@ -23,6 +23,8 @@ use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Percent, Rpm, Watts
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, LocalProjection};
 
+mod log;
+
 struct TorqaExtension;
 
 #[gdextension]
@@ -58,6 +60,8 @@ impl INode for TorqaApp {
         let app = if Engine::singleton().is_editor_hint() {
             None
         } else {
+            // Set once per process; a second node keeps the first one's.
+            let _ = tracing::subscriber::set_global_default(log::StderrLog);
             App::new(paths::data_dir(), paths::cache_dir())
                 .inspect_err(|error| {
                     godot_error!("Torqa: {error}");
