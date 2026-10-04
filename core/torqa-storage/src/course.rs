@@ -100,6 +100,11 @@ pub struct VideoReference {
     pub size: u64,
     /// Where the route's first point sits in the video, in seconds.
     pub offset_s: f64,
+    /// Where the route's last point sits in the video, in seconds, for videos aligned by hand
+    /// (no GPS): the video is spread evenly between the two. `None` when GPS or the GPX's
+    /// timestamps pair them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_s: Option<f64>,
 }
 
 impl VideoReference {
@@ -394,6 +399,7 @@ mod tests {
             file_name: "ride.mp4".to_owned(),
             size: 10,
             offset_s: 0.0,
+            end_s: None,
         };
 
         assert_eq!(reference.locate(&dir.join("ride.tqc")), Some(video.clone()));

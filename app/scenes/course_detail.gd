@@ -29,6 +29,9 @@ var _ride_button: Button = Button.new()
 var _loading_bar: ProgressBar = ProgressBar.new()
 var _status: Label = Label.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
+## For videos placed on the route by hand: move where the route starts and ends in them.
+var _align_button: Button = Button.new()
+var _align_dialog: VideoAlignDialog = VideoAlignDialog.new()
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -53,6 +56,7 @@ func open(course: Dictionary) -> void:
 	_profile.set_climbs([])
 	_records.text = ""
 	_status.text = ""
+	_align_button.hide()
 	_loading_bar.hide()
 	_ride_button.disabled = true
 	_loading_route = true
@@ -104,6 +108,10 @@ func _init() -> void:
 	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(push)
 	var delete: Button = Button.new()
+	_align_button.text = tr("Align video…")
+	_align_button.hide()
+	_align_button.pressed.connect(_open_alignment)
+	top.add_child(_align_button)
 	delete.text = tr("Delete course")
 	delete.pressed.connect(_confirm_delete.popup_centered)
 	top.add_child(delete)
@@ -160,6 +168,8 @@ func _init() -> void:
 	_confirm_delete.ok_button_text = tr("Delete")
 	_confirm_delete.confirmed.connect(_delete)
 	add_child(_confirm_delete)
+	_align_dialog.aligned.connect(_on_aligned)
+	add_child(_align_dialog)
 
 
 func _show_figures() -> void:
@@ -197,6 +207,7 @@ func _on_route_loaded(_route: Dictionary) -> void:
 func _show_route() -> void:
 	_loading_route = false
 	_ride_button.disabled = false
+	_align_button.visible = _torqa.video().get("aligned_by_hand", false)
 	var climbs: Dictionary = _torqa.climbs()
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
@@ -242,3 +253,19 @@ func _on_failed(message: String) -> void:
 		_building = false
 		_loading_bar.hide()
 		_status.text = message
+
+
+func _open_alignment() -> void:
+	var video: Dictionary = _torqa.video()
+	if video.is_empty():
+		return
+	var path: String = video["path"]
+	var duration_s: float = video["duration_s"]
+	var start_s: float = video["offset_s"]
+	var end_s: float = video["end_s"]
+	_align_dialog.edit(_torqa, path, duration_s, start_s, end_s)
+
+
+func _on_aligned(start_s: float, end_s: float) -> void:
+	if _torqa.align_video(start_s, end_s):
+		_status.text = tr("Video aligned with the route.")

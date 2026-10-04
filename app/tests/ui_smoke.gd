@@ -14,6 +14,7 @@ func _run() -> void:
 	_ride_settings()
 	_course_cards()
 	_video_view()
+	_video_alignment()
 	_translations()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -119,6 +120,28 @@ func _video_view() -> void:
 	view.take(dark, 1.2)
 	_check(view.texture != first, "the newest frame gets its own texture")
 	view.free()
+
+
+## Placing a video without GPS on a route (R17): start and end, the end after the start.
+func _video_alignment() -> void:
+	var dialog: VideoAlignDialog = VideoAlignDialog.new()
+	root.add_child(dialog)
+	var results: Array = []
+	dialog.aligned.connect(
+		func(start_s: float, end_s: float) -> void: results.append([start_s, end_s])
+	)
+	dialog.edit(null, "", 60.0, 0.0, 60.0)
+	_check(dialog.marks() == [0.0, 60.0], "marks span the whole video: %s" % [dialog.marks()])
+	_check(not dialog.get_ok_button().disabled, "the whole video is a valid alignment")
+	var sliders: Array[Node] = dialog.find_children("*", "HSlider", true, false)
+	(sliders[0] as HSlider).value = 12.5
+	(sliders[1] as HSlider).value = 10.0
+	_check(dialog.get_ok_button().disabled, "an end before the start cannot be confirmed")
+	(sliders[1] as HSlider).value = 48.0
+	_check(not dialog.get_ok_button().disabled, "valid again once the end is after the start")
+	dialog.confirmed.emit()
+	_check(results == [[12.5, 48.0]], "aligned with the chosen marks: %s" % [results])
+	dialog.free()
 
 
 ## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.

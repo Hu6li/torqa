@@ -586,8 +586,8 @@ msgstr "Routen, Videos und Strecken"
 msgid "GPX routes"
 msgstr "GPX-Routen"
 
-msgid "Videos with GPS, Incyclist route videos (.xml)"
-msgstr "Videos mit GPS, Incyclist-Streckenvideos (.xml)"
+msgid "Videos, Incyclist route videos (.xml)"
+msgstr "Videos, Incyclist-Streckenvideos (.xml)"
 
 msgid "Torqa courses"
 msgstr "Torqa-Strecken"
@@ -621,3 +621,33 @@ msgstr "3D-Welt wird gebaut"
 
 msgid "Its file is deleted; your rides on it are kept."
 msgstr "Die Datei wird gelöscht; deine Fahrten darauf bleiben erhalten."
+
+msgid "Align video…"
+msgstr "Video ausrichten …"
+
+msgid "Choose the route of this video"
+msgstr "Route zu diesem Video wählen"
+
+msgid "Align"
+msgstr "Ausrichten"
+
+msgid "Video aligned with the route."
+msgstr "Video auf die Route ausgerichtet."
+
+msgid "Route start"
+msgstr "Start der Route"
+
+msgid "Route end"
+msgstr "Ende der Route"
+
+msgid "Pick where the route starts and ends in the video."
+msgstr "Wähle, wo die Route im Video beginnt und endet."
+
+msgid "In between, the video follows your distance evenly."
+msgstr "Dazwischen folgt das Video gleichmässig deiner Distanz."
+
+msgid "The route must end after it starts."
+msgstr "Die Route muss nach ihrem Start enden."
+
+msgid "Align video with route"
+msgstr "Video auf Route ausrichten"

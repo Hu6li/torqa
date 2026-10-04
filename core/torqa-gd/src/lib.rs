@@ -185,7 +185,8 @@ impl TorqaApp {
             .collect()
     }
 
-    /// The loaded video course: `{path, duration_s, offset_s}`; empty for other courses.
+    /// The loaded video course: `{path, duration_s, offset_s, end_s, aligned_by_hand}`;
+    /// `end_s` is -1 unless the video was placed on the route by hand. Empty for other courses.
     #[func]
     fn video(&self) -> VarDictionary {
         let Some(video) = self.app.as_ref().and_then(App::video) else {
@@ -196,6 +197,78 @@ impl TorqaApp {
             "path" => path.as_str(),
             "duration_s" => video.duration.as_secs_f64(),
             "offset_s" => video.offset.as_secs_f64(),
+            "end_s" => video.end.map_or(-1.0, |e| e.as_secs_f64()),
+            "aligned_by_hand" => video.aligned_by_hand(),
+        }
+    }
+
+    /// A video about to be imported: `{duration_s, has_gps}`; empty (and `failed`) if it
+    /// cannot be read. Without GPS it is placed on a GPX with `load_aligned_video`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn video_probe(&mut self, path: GString) -> VarDictionary {
+        match torqa_app::video::probe(&PathBuf::from(path.to_string())) {
+            Ok(probe) => vdict! {
+                "duration_s" => probe.duration.as_secs_f64(),
+                "has_gps" => probe.has_gps,
+            },
+            Err(message) => {
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                VarDictionary::new()
+            }
+        }
+    }
+
+    /// Prepares a video course from a video without GPS placed on the GPX route `gpx`: the
+    /// route starts `start_s` and ends `end_s` seconds into the video. Emits like `load_video`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn load_aligned_video(
+        &mut self,
+        video: GString,
+        gpx: GString,
+        start_s: f64,
+        end_s: f64,
+        offline: bool,
+    ) {
+        if let Some(app) = self.app.as_mut() {
+            app.load_aligned_video(
+                PathBuf::from(video.to_string()),
+                PathBuf::from(gpx.to_string()),
+                seconds(start_s),
+                seconds(end_s),
+                offline,
+            );
+        }
+    }
+
+    /// Moves where the route starts and ends in the loaded video course's video (only for
+    /// videos aligned by hand); emits `failed` if the marks do not fit.
+    #[func]
+    fn align_video(&mut self, start_s: f64, end_s: f64) -> bool {
+        self.command(|app| app.align_video(seconds(start_s), seconds(end_s)))
+    }
+
+    /// The frame of the video at `path` shown `time_s` seconds in, e.g. to align it; `null`
+    /// if it cannot be decoded. Call `close_video_preview` when done.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn video_preview(&mut self, path: GString, time_s: f64) -> Option<Gd<Image>> {
+        let frame = self
+            .app
+            .as_mut()?
+            .video_preview(&PathBuf::from(path.to_string()), seconds(time_s))
+            .ok()?;
+        image(frame)
+    }
+
+    /// Closes the video opened by `video_preview`.
+    #[func]
+    fn close_video_preview(&mut self) {
+        if let Some(app) = self.app.as_mut() {
+            app.close_video_preview();
         }
     }
 
@@ -216,17 +289,12 @@ impl TorqaApp {
         let Some(frame) = self.app.as_mut().and_then(App::video_frame) else {
             return VarDictionary::new();
         };
-        let (Ok(width), Ok(height)) = (i32::try_from(frame.width), i32::try_from(frame.height))
-        else {
-            return VarDictionary::new();
-        };
-        let data = PackedByteArray::from(frame.rgba);
-        let Some(image) = Image::create_from_data(width, height, false, ImageFormat::RGBA8, &data)
-        else {
+        let time_s = frame.time.as_secs_f64();
+        let Some(image) = image(frame) else {
             return VarDictionary::new();
         };
         vdict! {
-            "time_s" => frame.time.as_secs_f64(),
+            "time_s" => time_s,
             "image" => &image,
         }
     }
@@ -1173,4 +1241,17 @@ fn mesh_arrays(mesh: &torqa_world::MeshData) -> VarDictionary {
 #[allow(clippy::cast_possible_truncation)]
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x as f32, y as f32)
+}
+
+/// A decoded video frame as a Godot RGBA8 image.
+fn image(frame: torqa_app::Frame) -> Option<Gd<Image>> {
+    let width = i32::try_from(frame.width).ok()?;
+    let height = i32::try_from(frame.height).ok()?;
+    let data = PackedByteArray::from(frame.rgba);
+    Image::create_from_data(width, height, false, ImageFormat::RGBA8, &data)
+}
+
+/// Seconds from Godot as a duration; negative or invalid values count as zero.
+fn seconds(value: f64) -> Duration {
+    Duration::try_from_secs_f64(value.max(0.0)).unwrap_or_default()
 }

@@ -1,6 +1,7 @@
-//! Video courses (R17): a route ridden along a video — a GoPro recording with its own GPS, or
-//! an Incyclist route video (control file + GPX + video). The rider's distance decides the
-//! moment of the video, through the same matching used for ghosts (R20).
+//! Video courses (R17): a route ridden along a video — a GoPro recording with its own GPS, an
+//! Incyclist route video (control file + GPX + video), or any video placed on a GPX by hand
+//! (where the route starts and ends in it). The rider's distance decides the moment of the
+//! video, through the same matching used for ghosts (R20).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -26,6 +27,59 @@ pub struct VideoSource {
     pub gpx: String,
     /// Where the route's first point sits in the video.
     pub offset: Duration,
+    /// Where the route's last point sits in the video, for videos aligned by hand: the video
+    /// is spread evenly between `offset` and this. `None` when timestamps pair them.
+    pub end: Option<Duration>,
+}
+
+/// A video without GPS placed on the GPX route at `gpx` by hand: the route starts at `start`
+/// and ends at `end` in the video. The GPX's own timestamps, from another recording, are not
+/// used.
+///
+/// # Errors
+/// A readable message if the GPX cannot be read.
+pub fn aligned_source(
+    video: &Path,
+    gpx: &Path,
+    start: Duration,
+    end: Duration,
+) -> Result<VideoSource, String> {
+    let xml =
+        std::fs::read_to_string(gpx).map_err(|e| format!("cannot read {}: {e}", gpx.display()))?;
+    let name = video
+        .file_stem()
+        .map_or_else(|| "Video".to_owned(), |s| s.to_string_lossy().into_owned());
+    Ok(VideoSource {
+        video: video.to_owned(),
+        name,
+        gpx: xml,
+        offset: start,
+        end: Some(end),
+    })
+}
+
+/// What the import needs to know about a video first: its length, and whether it carries GPS
+/// (then it pairs itself with its route) or must be placed on a GPX by hand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Probe {
+    /// The video's length.
+    pub duration: Duration,
+    /// Whether it records GPS.
+    pub has_gps: bool,
+}
+
+/// Looks at a video before importing it.
+///
+/// # Errors
+/// A readable message if it cannot be opened as a video.
+pub fn probe(path: &Path) -> Result<Probe, String> {
+    let unreadable = |e: &dyn std::fmt::Display| format!("cannot read {}: {e}", path.display());
+    let duration = Video::open(path)
+        .map_err(|e| unreadable(&e))?
+        .info()
+        .duration;
+    let has_gps = torqa_video::has_gps(path).map_err(|e| unreadable(&e))?;
+    Ok(Probe { duration, has_gps })
 }
 
 /// Reads what a video course needs from an Incyclist control file (`.xml`) or a video with
@@ -51,12 +105,13 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
             name: route.title.clone(),
             gpx,
             offset: route.video_offset(),
+            end: None,
         });
     }
     let track = gps_track(path).map_err(|e| unreadable(&e))?;
     if track.len() < 2 {
         return Err(format!(
-            "{} has no GPS track — record with GPS on, or use a route video with a GPX",
+            "{} has no GPS track — place it on a GPX route instead",
             path.display()
         ));
     }
@@ -68,6 +123,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
         gpx: gpx_from_track(&name, &track),
         name,
         offset: Duration::ZERO,
+        end: None,
     })
 }
 
@@ -78,37 +134,69 @@ pub struct VideoCourse {
     pub video: PathBuf,
     /// Where the route's first point sits in the video.
     pub offset: Duration,
+    /// Where the route's last point sits in the video, if aligned by hand.
+    pub end: Option<Duration>,
     /// The video's length.
     pub duration: Duration,
     /// Video time at each distance along the route.
     sync: Ghost,
 }
 
+/// Start and end marks must lie in the video, the end after the start.
+///
+/// # Errors
+/// A readable message otherwise.
+pub fn check_marks(start: Duration, end: Duration, duration: Duration) -> Result<(), String> {
+    // Container durations are rounded; a mark on the last frame may lie a little past them.
+    let slack = Duration::from_millis(500);
+    if end <= start || end > duration + slack {
+        return Err("the route must end after it starts, within the video".to_owned());
+    }
+    Ok(())
+}
+
 impl VideoCourse {
-    /// Pairs `route` (imported from `source.gpx`) with the video. The GPX timestamps give the
-    /// video time at each point; without them, the video is spread evenly over the route.
+    /// Pairs `route` (imported from `source.gpx`) with the video: by the GPX timestamps, or
+    /// evenly between the start and end marks of a video aligned by hand. Without either, the
+    /// video is spread evenly from its offset to its end.
     ///
     /// # Errors
-    /// A readable message if the video cannot be opened.
+    /// A readable message if the video cannot be opened or the marks do not fit it.
     pub fn new(route: &Route, source: &VideoSource) -> Result<Self, String> {
         let duration = Video::open(&source.video)
             .map_err(|e| format!("cannot open {}: {e}", source.video.display()))?
             .info()
             .duration;
-        // Matching counts from the route start; the offset places that in the video.
-        let points = torqa_routes::timed_points(&source.gpx).unwrap_or_default();
-        let sync = Ghost::from_activity("video", route, &points)
-            .or_else(|| {
-                let rest = duration.saturating_sub(source.offset).as_secs_f64();
-                Ghost::from_trace("video", [(0.0, 0.0), (route.length().0, rest)].into_iter())
-            })
-            .ok_or_else(|| "the video and the route do not match".to_owned())?;
+        let evenly = |end: Duration| {
+            let span = end.saturating_sub(source.offset).as_secs_f64();
+            Ghost::from_trace("video", [(0.0, 0.0), (route.length().0, span)].into_iter())
+        };
+        let sync = match source.end {
+            Some(end) => {
+                check_marks(source.offset, end, duration)?;
+                evenly(end)
+            }
+            // Matching counts from the route start; the offset places that in the video.
+            None => torqa_routes::timed_points(&source.gpx)
+                .ok()
+                .and_then(|points| Ghost::from_activity("video", route, &points))
+                .or_else(|| evenly(duration)),
+        }
+        .ok_or_else(|| "the video and the route do not match".to_owned())?;
         Ok(Self {
             video: source.video.clone(),
             offset: source.offset,
+            end: source.end,
             duration,
             sync,
         })
+    }
+
+    /// Whether the video was placed on the route by hand (start and end marks), so the marks
+    /// can be moved.
+    #[must_use]
+    pub fn aligned_by_hand(&self) -> bool {
+        self.end.is_some()
     }
 
     /// The moment of the video at `distance` along the route (the end beyond it).
