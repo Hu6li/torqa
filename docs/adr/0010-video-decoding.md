@@ -31,7 +31,9 @@ Options considered:
   branch, i.e. the latest 9.0.x), statically linked — the same version in the dev container,
   in CI and in app builds, no system FFmpeg needed. The default configuration is **LGPL**,
   compatible with our GPL-3.0; no GPL-only or non-free parts are enabled.
-- On macOS FFmpeg's configure picks up VideoToolbox for hardware decoding.
+- On macOS FFmpeg's configure builds in VideoToolbox. The decoder does not use it yet: frames
+  are decoded in software on a background thread (hardware decoding is a follow-up, see
+  PLAN Phase 5).
 
 ## Consequences
 
@@ -41,4 +43,5 @@ Options considered:
 - H.264 and HEVC are patent-encumbered in some countries; FFmpeg's decoders are used as is,
   as by most open-source players.
 - Transcoding down on import (R17) needs an encoder: VideoToolbox on macOS; until then frames
-  are scaled while decoding, which an M1 handles for 4K HEVC thanks to hardware decoding.
+  are scaled while decoding. Whether software decoding keeps up with 4K on an M1 is to be
+  measured; hardware decoding is the next step if not.

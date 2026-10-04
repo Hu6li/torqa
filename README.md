@@ -7,24 +7,48 @@
 
 # Torqa
 
-A modern, offline-first, open-source indoor cycling app. Import a GPX route and ride it on your
-smart trainer through a generated 3D world, a synced ride video, or street-level imagery.
+A modern, offline-first, open-source indoor cycling app. Import a GPX route or a ride video and
+ride it on your smart trainer through a generated 3D world or along the video.
 
-> **Status:** early development — see [docs/PLAN.md](docs/PLAN.md).
+> **Status:** early development — see [docs/PLAN.md](docs/PLAN.md) for what is done and what
+> comes next.
 
 ![Riding the Gurtenstrasse in Torqa](docs/images/ride-chase.png)
 
-## Features (planned)
+## Features
 
-- Smart trainer control over Bluetooth FTMS (Wahoo KICKR Core 2 and other trainers): SIM, ERG, resistance
-- GPX import with terrain-corrected elevation
-- Semi-realistic 3D worlds generated from real terrain and OpenStreetMap data — rideable offline
-- Video rides with GPS sync and variable playback speed
-- Google Street View / Mapillary rides
-- Realistic physics, adjustable trainer difficulty, ghosts and pacers
-- FIT export, ride history and analysis
+Working today:
 
-See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full list.
+- Smart trainer control over Bluetooth FTMS (tested with the CLI on a Wahoo KICKR Core 2): SIM, ERG,
+  resistance; heart-rate straps; the devices used last reconnect at start
+- GPX import with terrain-corrected elevation, auto-detected climbs
+- 3D worlds generated from real terrain and OpenStreetMap data, with cameras, time of day and
+  weather
+- Course library: prepared routes as `.tqc` files that ride offline on any computer
+- Video courses: GoPro videos with GPS and Incyclist route videos; the video plays at your speed
+- Realistic physics, adjustable trainer difficulty, descent modes; ghosts and pacers
+- Rider profiles with zones, a customizable HUD, music control, English and German
+- FIT export, ride history and analysis, personal records per course and climb
+
+Planned: Street View / Mapillary rides, virtual gears and Zwift Click, workouts, uploads to
+Strava and others, ANT+ FE-C, Windows and Linux builds. See
+[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full list.
+
+## Using Torqa
+
+| Topic | Doc |
+|---|---|
+| Start page, course gallery and course pages | [docs/start.md](docs/start.md) |
+| Courses: offline riding and sharing | [docs/courses.md](docs/courses.md) |
+| Video courses | [docs/video.md](docs/video.md) |
+| Devices, riding and in-ride settings | [docs/riding.md](docs/riding.md) |
+| Riders, zones | [docs/riders.md](docs/riders.md) |
+| Ride HUD | [docs/hud.md](docs/hud.md) |
+| Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
+| Ride history, climbs and records | [docs/history.md](docs/history.md) |
+| Music control | [docs/audio.md](docs/audio.md) |
+| Translations | [docs/translating.md](docs/translating.md) |
+| Command-line tool for testing trainers | [docs/cli.md](docs/cli.md) |
 
 ## Development
 
@@ -38,19 +62,15 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 
 | Task | Command (inside the container) |
 |---|---|
-| All checks (fmt, clippy, tests, cargo-deny, gdlint, GDExtension smoke test) | `scripts/check.sh` |
+| All checks (fmt, clippy, tests, cargo-deny, translations, gdlint, gdformat, Godot smoke tests) | `scripts/check.sh` |
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
-| Render ride screenshots (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
+| Render screenshots of the start page, a ride and the summary (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
 | Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
+| Refresh the translation template after text changes | `python3 scripts/i18n/extract.py` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
-The start page is described in [docs/start.md](docs/start.md). To keep prepared routes for offline
-riding and sharing, see [docs/courses.md](docs/courses.md);
-rider profiles and zones are described in [docs/riders.md](docs/riders.md), the ride history in
-[docs/history.md](docs/history.md), riding and in-ride settings in [docs/riding.md](docs/riding.md), the ride HUD in
-[docs/hud.md](docs/hud.md), ghosts and pacers in [docs/ghosts.md](docs/ghosts.md), music control in [docs/audio.md](docs/audio.md), translations in
-[docs/translating.md](docs/translating.md).
+The first build compiles FFmpeg from source (several minutes); later builds reuse it.
 
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.

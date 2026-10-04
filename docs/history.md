@@ -31,7 +31,7 @@ is computed and saved the first time the history is opened.
 ## Climbs and personal records
 
 Torqa finds the climbs of every route automatically — rises of at least 3 % on average and
-300 m long — and rates them like popular platforms by length × gradient: *Climb* (small),
+300 m long, with length × gradient of at least 3 000 (e.g. 1 km at 3 %) — and rates them like popular platforms by length × gradient: *Climb* (small),
 *Cat 4* (from 8 000, e.g. 2 km at 4 %), *Cat 3* (16 000), *Cat 2* (32 000), *Cat 1* (64 000) and
 *HC* (80 000, e.g. Alpe d'Huez).
 

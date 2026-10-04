@@ -7,7 +7,8 @@ it slows down, sprint and it speeds up. The 3D world is not used on video course
 
 **Import route, video or course…** on the Courses tab takes:
 
-- **Your own videos with GPS** — GoPro recordings (`.mp4`/`.mov`) carry their GPS track inside
+- **Your own videos with GPS** — GoPro recordings (`.mp4`, `.mov`; `.m4v` and `.mkv` are
+  read too) carry their GPS track inside
   the file (GPMF). Torqa reads it, builds the route from it and pairs every moment of the video
   with a position on it. Record with GPS switched on; a video without GPS is refused for now
   (manual sync points are planned).
@@ -25,6 +26,9 @@ Open the course and press **Ride** as usual. Instead of the 3D world, the video 
 screen, with your figures, map and elevation profile on top. Where you are on the route
 decides the moment of the video: it plays at the speed you ride, stands still when you stop,
 and blends smoothly from frame to frame even when you crawl up a steep climb.
+
+Videos are decoded on the processor for now. 1080p is the target; larger videos are scaled
+down while playing, which may not keep up — hardware decoding is planned.
 
 ## The video stays where it is
 
