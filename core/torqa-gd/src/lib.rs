@@ -584,6 +584,35 @@ impl TorqaApp {
         self.command(|app| app.delete_ride(&path))
     }
 
+    /// Whether rides are simulated (fake trainer): they can be sped up and jumped (#53).
+    #[func]
+    fn simulating(&self) -> bool {
+        self.app.as_ref().is_some_and(App::simulating)
+    }
+
+    /// Speeds the simulated ride up, 1 to 20 times; returns the speed in effect.
+    #[func]
+    fn set_time_scale(&mut self, scale: f64) -> f64 {
+        self.app
+            .as_mut()
+            .map_or(1.0, |app| app.set_time_scale(scale))
+    }
+
+    /// Moves the simulated ride's rider to `distance_m` along the route.
+    #[func]
+    fn jump_to_distance(&mut self, distance_m: f64) -> bool {
+        self.app
+            .as_mut()
+            .is_some_and(|app| app.jump_to(Meters(distance_m)))
+    }
+
+    /// Moves the simulated ride's rider to the route's point nearest `x`/`y` (metres east and
+    /// north of the start, as on the map).
+    #[func]
+    fn jump_near(&mut self, x: f64, y: f64) -> bool {
+        self.app.as_mut().is_some_and(|app| app.jump_near(x, y))
+    }
+
     /// Whether the trainer is connected now (rides start at once then).
     #[func]
     fn trainer_connected(&self) -> bool {

@@ -120,6 +120,7 @@ Built in rideable steps:
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [x] Customizable HUD (R23)
+- [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in

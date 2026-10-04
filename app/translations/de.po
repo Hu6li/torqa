@@ -742,3 +742,21 @@ msgstr "Eine Strecke namens «%s» gibt es schon. Ersetzen oder beide behalten?"
 
 msgid "Replace"
 msgstr "Ersetzen"
+
+msgid "Click: jump there"
+msgstr "Klicken: dorthin springen"
+
+msgid "Simulation"
+msgstr "Simulation"
+
+msgid "Click the map or profile to jump · + / − speed · C: free camera"
+msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera"
+
+msgid "Click: jump there · corner: close view / whole route"
+msgstr "Klicken: dorthin springen · Ecke: Nahansicht / ganze Route"
+
+msgid "Simulation: %d×"
+msgstr "Simulation: %d×"
+
+msgid "Free"
+msgstr "Frei"

@@ -47,11 +47,22 @@ const VISIBILITY_RANGE: float = 4500.0
 const DETAIL_RANGE: float = 1800.0
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
+## The free camera of simulated rides (#53): metres per second, and radians per pixel of mouse.
+const FREE_SPEED: float = 25.0
+const FREE_LOOK: float = 0.004
+## A rider moving further than this between frames jumped: the camera follows at once.
+const JUMP_M: float = 50.0
+# i18n-begin
+const FREE_CAMERA: String = "Free"
+# i18n-end
 
 var _torqa: TorqaApp
 var _chunk_count: int = 0
 var _next_chunk: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
+## Flying freely instead of following the rider (simulated rides only).
+var _free: bool = false
+var _free_speed: float = 1.0
 var _heading: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
@@ -82,9 +93,14 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.world_ready.connect(_on_world_ready)
 
 
-## Cycles chase → first person → drone and returns the new mode's name.
+## Cycles chase → first person → drone (→ free in simulated rides) and returns the new
+## mode's name.
 func cycle_camera() -> String:
-	set_camera((_camera_mode + 1) % CameraMode.size())
+	if not _free and _camera_mode == CameraMode.DRONE and _torqa != null and _torqa.simulating():
+		_free = true
+		_avatar.show_rider(true)
+		return FREE_CAMERA
+	set_camera(CameraMode.CHASE if _free else (_camera_mode + 1) % CameraMode.size())
 	return camera_names()[_camera_mode]
 
 
@@ -103,6 +119,7 @@ func camera() -> int:
 
 ## Switches to camera `mode` (`CameraMode`).
 func set_camera(mode: int) -> void:
+	_free = false
 	_camera_mode = clampi(mode, 0, CameraMode.size() - 1) as CameraMode
 	# From the rider's own eyes only the bike is visible.
 	_avatar.show_rider(_camera_mode != CameraMode.FIRST_PERSON)
@@ -180,6 +197,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_build_some_chunks()
+	if _free and visible:
+		_fly(delta)
 	if not visible or _torqa == null:
 		return
 	var state: Dictionary = _torqa.ride_state()
@@ -270,9 +289,15 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	# Godot looks along −z (north); headings run clockwise from north, rotations anticlockwise.
 	var yaw: Basis = Basis(Vector3.UP, -_heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
-	_rider.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north))
+	var position: Vector3 = Vector3(east, elevation, -north)
+	# A jump (simulated rides): no gliding across the whole way.
+	if _rider.position.distance_to(position) > JUMP_M:
+		_placed = false
+	_rider.transform = Transform3D(yaw * pitch, position)
 	_place_ghost(state["ghost"], delta)
 
+	if _free:
+		return
 	var target: Transform3D = _camera_target(_rider.transform)
 	# First person is fixed to the head; smoothing its position would trail behind the rider.
 	if _placed and _camera_mode != CameraMode.FIRST_PERSON:
@@ -281,6 +306,47 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	else:
 		_camera.transform = target
 		_placed = true
+
+
+## Free camera: arrow keys move, R/F rise and sink, Shift is faster, the mouse wheel sets
+## the speed; drag with the right mouse button to look around.
+func _unhandled_input(event: InputEvent) -> void:
+	if not _free or not visible:
+		return
+	var motion: InputEventMouseMotion = event as InputEventMouseMotion
+	if motion != null and motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+		var turned: Vector3 = _camera.rotation
+		turned.y -= motion.relative.x * FREE_LOOK
+		turned.x = clampf(turned.x - motion.relative.y * FREE_LOOK, -1.5, 1.5)
+		turned.z = 0.0
+		_camera.rotation = turned
+		get_viewport().set_input_as_handled()
+	var wheel: InputEventMouseButton = event as InputEventMouseButton
+	if wheel != null and wheel.pressed:
+		if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_free_speed = minf(_free_speed * 1.25, 20.0)
+		elif wheel.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_free_speed = maxf(_free_speed / 1.25, 0.1)
+
+
+func _fly(delta: float) -> void:
+	var move: Vector3 = Vector3.ZERO
+	for binding: Array in [
+		[KEY_UP, Vector3.FORWARD],
+		[KEY_DOWN, Vector3.BACK],
+		[KEY_LEFT, Vector3.LEFT],
+		[KEY_RIGHT, Vector3.RIGHT],
+		[KEY_R, Vector3.UP],
+		[KEY_F, Vector3.DOWN],
+	]:
+		var key: Key = binding[0]
+		if Input.is_physical_key_pressed(key):
+			var direction: Vector3 = binding[1]
+			move += direction
+	if move == Vector3.ZERO:
+		return
+	var boost: float = 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0
+	_camera.position += _camera.basis * move.normalized() * FREE_SPEED * _free_speed * boost * delta
 
 
 ## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never

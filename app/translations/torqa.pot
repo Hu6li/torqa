@@ -15,7 +15,7 @@ msgstr ""
 msgid "%d of %d figures. The first one is shown large. Values are examples."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:256
+#: app/scenes/ride_screen.gd:278
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
@@ -23,19 +23,19 @@ msgstr ""
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:223
+#: app/scenes/ride_screen.gd:245
 msgid "%s ahead"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:223
+#: app/scenes/ride_screen.gd:245
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:320
+#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:386
 msgid "%s connected"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:324
+#: app/scenes/ride_screen.gd:390
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
@@ -47,11 +47,11 @@ msgstr ""
 msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:264
+#: app/scenes/ride_screen.gd:286
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/course_detail.gd:259 app/scenes/ride_screen.gd:304
+#: app/scenes/course_detail.gd:259 app/scenes/ride_screen.gd:326
 msgid "(best %s)"
 msgstr ""
 
@@ -151,7 +151,7 @@ msgstr ""
 msgid "Avg speed"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:347
+#: app/scenes/ride_screen.gd:413
 msgid "Back"
 msgstr ""
 
@@ -175,7 +175,7 @@ msgstr ""
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:310
+#: app/scenes/ride_screen.gd:376
 msgid "Camera: %s"
 msgstr ""
 
@@ -207,8 +207,20 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: app/scenes/minimap.gd:64
+#: app/scenes/ride_screen.gd:352
+msgid "Click the map or profile to jump · + / − speed · C: free camera"
+msgstr ""
+
+#: app/scenes/minimap.gd:27
 msgid "Click: close view / whole route"
+msgstr ""
+
+#: app/scenes/elevation_profile.gd:20
+msgid "Click: jump there"
+msgstr ""
+
+#: app/scenes/minimap.gd:25
+msgid "Click: jump there · corner: close view / whole route"
 msgstr ""
 
 #: app/ui/ui_theme.gd:32 core/torqa-routes/src/climbs.rs:52
@@ -219,7 +231,7 @@ msgstr ""
 msgid "Climb %d  ·  %.1f km from km %.1f"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:276
+#: app/scenes/ride_screen.gd:298
 msgid "Climb done in %s"
 msgstr ""
 
@@ -231,7 +243,7 @@ msgstr ""
 msgid "Climbing"
 msgstr ""
 
-#: app/scenes/minimap.gd:92
+#: app/scenes/minimap.gd:115
 msgid "Close"
 msgstr ""
 
@@ -335,11 +347,11 @@ msgstr ""
 msgid "Finish & save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:217
+#: app/scenes/ride_screen.gd:239
 msgid "Finished"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:285
+#: app/scenes/ride_screen.gd:307
 msgid "Finished in %s"
 msgstr ""
 
@@ -349,6 +361,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd:118
 msgid "Found %d device(s)"
+msgstr ""
+
+#: app/scenes/world.gd:56
+msgid "Free"
 msgstr ""
 
 #: app/scenes/history_screen.gd:400
@@ -563,7 +579,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:346
+#: app/scenes/ride_screen.gd:412
 msgid "Nothing recorded."
 msgstr ""
 
@@ -707,7 +723,7 @@ msgstr ""
 msgid "Rider settings"
 msgstr ""
 
-#: app/scenes/minimap.gd:92
+#: app/scenes/minimap.gd:115
 msgid "Route"
 msgstr ""
 
@@ -723,7 +739,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:359
+#: app/scenes/ride_screen.gd:425
 msgid "Saved %s"
 msgstr ""
 
@@ -749,6 +765,14 @@ msgstr ""
 
 #: app/ui/hud_editor.gd:138
 msgid "Show"
+msgstr ""
+
+#: app/scenes/ride_screen.gd:338
+msgid "Simulation"
+msgstr ""
+
+#: app/scenes/ride_screen.gd:370
+msgid "Simulation: %d×"
 msgstr ""
 
 #: app/ui/ride_options.gd:51
@@ -887,7 +911,7 @@ msgstr ""
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:361 app/scenes/ride_screen.tscn:132
+#: app/scenes/ride_screen.gd:427 app/scenes/ride_screen.tscn:132
 msgid "View summary"
 msgstr ""
 
@@ -895,7 +919,7 @@ msgstr ""
 msgid "W/kg"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:85
+#: app/scenes/ride_screen.gd:91
 msgid "Waiting for the trainer…"
 msgstr ""
 
@@ -939,7 +963,7 @@ msgstr ""
 msgid "Your rides"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:268
+#: app/scenes/ride_screen.gd:290
 msgid "best %s"
 msgstr ""
 
@@ -955,7 +979,7 @@ msgstr ""
 msgid "kJ"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:300
+#: app/scenes/ride_screen.gd:322
 msgid "new record, %s faster!"
 msgstr ""
 

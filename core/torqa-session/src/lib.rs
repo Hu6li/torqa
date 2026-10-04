@@ -139,6 +139,13 @@ impl Ride {
         self.last_grade = None;
     }
 
+    /// Moves the rider to `distance` along the route, keeping their speed — for simulated
+    /// rides (#53). The trainer gets the gradient there on the next tick.
+    pub fn jump_to(&mut self, distance: Meters) {
+        self.distance = Meters(distance.0.clamp(0.0, self.route.length().0));
+        self.last_grade = None;
+    }
+
     /// Whether the rider has reached the end of the route.
     #[must_use]
     pub fn is_finished(&self) -> bool {
@@ -311,6 +318,28 @@ mod tests {
 
         let last = controls.last().map(grade_of).unwrap();
         assert!((last - 8.0).abs() < 0.5, "{controls:?}");
+    }
+
+    #[tokio::test]
+    async fn a_jump_moves_the_rider_and_the_trainer_feels_the_road_there() {
+        let config = RideConfig {
+            difficulty: Percent(100.0),
+            ..RideConfig::default()
+        };
+        let mut ride = Ride::new(route(&[0.0, 8.0], 1000.0).await, config);
+        pedal(&mut ride, 250.0, 10);
+        let speed = ride.state().speed;
+
+        ride.jump_to(Meters(1500.0));
+        let controls = pedal(&mut ride, 250.0, 1);
+
+        assert!((ride.state().distance.0 - 1500.0).abs() < 15.0);
+        // Not braked by the jump, and the trainer gets the 8 % climb at once.
+        assert!(ride.state().speed.0 > speed.0 * 0.5);
+        assert!((grade_of(&controls[0]) - 8.0).abs() < 0.5, "{controls:?}");
+        // Beyond the end means the end.
+        ride.jump_to(Meters(5000.0));
+        assert!(ride.is_finished());
     }
 
     #[tokio::test]

@@ -23,7 +23,7 @@ use torqa_domain::profile::Profile;
 use torqa_domain::recording::{RideSummary, Sample};
 use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup};
-use torqa_routes::{Climb, ElevationSource, Route};
+use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
     effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
@@ -316,6 +316,10 @@ struct ActiveRide {
     sound: Option<video::SoundPlayer>,
     /// Whether the video shows: a ride along a blank screen must say why.
     video_watch: VideoWatch,
+    /// Ride time per real time, with the fake trainer (#53).
+    time_scale: f64,
+    /// Sped up or jumped: its times are not real, so it counts towards no records.
+    simulated: bool,
 }
 
 /// The name the rider gave the course being imported.
@@ -349,6 +353,11 @@ struct VideoWatch {
     frames: usize,
     reported: bool,
 }
+
+/// The longest step a ride advances by at once, also when sped up.
+const MAX_RIDE_STEP: Duration = Duration::from_millis(50);
+/// How far a simulated ride can be sped up (#53).
+const MAX_TIME_SCALE: f64 = 20.0;
 
 /// How long a video course may show no picture before the rider is told.
 const NO_PICTURE_AFTER: Duration = Duration::from_secs(5);
@@ -1145,6 +1154,70 @@ impl App {
         });
     }
 
+    /// Whether rides are simulated: with the fake trainer, which can be sped up and jumped
+    /// along the route (#53).
+    #[must_use]
+    pub fn simulating(&self) -> bool {
+        self.trainer.is_some() && self.trainer_id.is_none()
+    }
+
+    /// Speeds the simulated ride up (or back down to 1): ride time per real time, from 1 to
+    /// 20; returns the speed in effect. Without a simulated ride, 1.
+    pub fn set_time_scale(&mut self, scale: f64) -> f64 {
+        let simulating = self.simulating();
+        let Some(active) = self.ride.as_mut().filter(|_| simulating) else {
+            return 1.0;
+        };
+        active.time_scale = if scale.is_finite() {
+            scale.clamp(1.0, MAX_TIME_SCALE)
+        } else {
+            1.0
+        };
+        if active.time_scale > 1.0 {
+            active.simulated = true;
+        }
+        active.time_scale
+    }
+
+    /// Moves the simulated ride's rider to `distance` along the route; false without one.
+    pub fn jump_to(&mut self, distance: Meters) -> bool {
+        let simulating = self.simulating();
+        let Some(active) = self.ride.as_mut().filter(|_| simulating) else {
+            return false;
+        };
+        active.ride.jump_to(distance);
+        active.simulated = true;
+        // Climbs passed by jumping are not timed; the next one counts from where it starts.
+        let distance = active.ride.state().distance;
+        active.next_climb = active
+            .ride
+            .route()
+            .climbs()
+            .iter()
+            .position(|c| c.start.0 >= distance.0)
+            .unwrap_or(active.ride.route().climbs().len());
+        true
+    }
+
+    /// Moves the simulated ride's rider to the route's point nearest to `x`/`y` (metres east
+    /// and north of the start, as on the map); false without a simulated ride.
+    pub fn jump_near(&mut self, x: f64, y: f64) -> bool {
+        let Some(route) = self.ride.as_ref().map(|a| a.ride.route()) else {
+            return false;
+        };
+        let projection = LocalProjection::for_route(route);
+        let nearest = route
+            .points()
+            .iter()
+            .map(|p| {
+                let (px, py) = projection.project(p.lat, p.lon);
+                ((px - x).hypot(py - y), p.distance)
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, distance)| distance);
+        nearest.is_some_and(|distance| self.jump_to(distance))
+    }
+
     /// Whether the trainer is connected now.
     #[must_use]
     pub fn trainer_connected(&self) -> bool {
@@ -1317,6 +1390,8 @@ impl App {
                 frames: 0,
                 reported: false,
             },
+            time_scale: 1.0,
+            simulated: false,
         });
         Ok(())
     }
@@ -1359,6 +1434,9 @@ impl App {
             let finished = samples
                 .last()
                 .is_some_and(|s| s.distance.0 >= route.length().0 - 1.0);
+            // A simulated ride's times are not real: like a ride known only from its FIT file,
+            // it counts towards no records.
+            let real = !active.simulated;
             let record = RideRecord {
                 route: self
                     .loaded
@@ -1366,14 +1444,15 @@ impl App {
                     .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
                 start,
                 summary: summarize(samples, self.profile.profile.ftp),
-                route_key: Some(route.key()),
-                route_time: finished
+                route_key: real.then(|| route.key()),
+                route_time: (finished && real)
                     .then(|| effort(samples, Meters(0.0), route.length()))
                     .flatten()
                     .map(|e| e.elapsed),
                 climbs: route
                     .climbs()
                     .iter()
+                    .filter(|_| real)
                     .filter_map(|c| {
                         effort(samples, c.start, c.end).map(|e| ClimbTime {
                             start: c.start,
@@ -1674,7 +1753,16 @@ impl App {
             && active.started.is_some()
             && !active.finished
         {
-            if let Some(control) = active.ride.tick(dt)
+            // Sped up, the ride advances in small steps all the same, so its physics and
+            // one-second samples stay as exact as at real speed.
+            let mut left = dt.mul_f64(active.time_scale);
+            let mut control = None;
+            while !left.is_zero() {
+                let step = left.min(MAX_RIDE_STEP);
+                left -= step;
+                control = active.ride.tick(step).or(control);
+            }
+            if let Some(control) = control
                 && let Some(trainer) = &self.trainer
                 && let Err(error) = trainer.try_control(control)
             {
@@ -2159,6 +2247,60 @@ mod tests {
         let state = app.ride_state().unwrap();
         assert!(state.distance.0 > 1.0, "rider should be moving: {state:?}");
         assert!(app.trainer_connected());
+        app.shutdown();
+    }
+
+    #[test]
+    fn simulated_rides_speed_up_and_jump_but_set_no_records() {
+        let dir = temp_dir("simulation");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_climb_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(!app.simulating());
+        assert_eq!(app.set_time_scale(10.0), 1.0, "nothing to speed up");
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(300.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        assert!(app.simulating());
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        assert_eq!(app.set_time_scale(100.0), 20.0);
+        assert_eq!(app.set_time_scale(10.0), 10.0);
+
+        // One real second at 10×: ten seconds of riding, sampled every ride second.
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+        let state = app.ride_state().unwrap();
+        assert!(state.elapsed > Duration::from_secs(8), "{state:?}");
+        let samples = app.ride.as_ref().unwrap().ride.samples().len();
+        let seconds = usize::try_from(state.elapsed.as_secs()).unwrap();
+        assert!(
+            samples.abs_diff(seconds) <= 1,
+            "{samples} samples in {seconds} s"
+        );
+
+        // Jumps: by distance, and to the route's point nearest a spot on the map.
+        assert!(app.jump_to(Meters(150.0)));
+        assert!((app.ride_state().unwrap().distance.0 - 150.0).abs() < 1.0);
+        let route = app.route().unwrap().clone();
+        let target = route.position(Meters(80.0));
+        let (x, y) = LocalProjection::for_route(&route).project(target.lat, target.lon);
+        assert!(app.jump_near(x + 3.0, y - 2.0));
+        assert!((app.ride_state().unwrap().distance.0 - 80.0).abs() < 12.0);
+
+        let saved = app.finish_ride();
+        let Some(AppEvent::RideSaved(fit)) = saved.first() else {
+            panic!("{saved:?}")
+        };
+        let record = &app.history()[0].record;
+        assert_eq!(app.history()[0].fit, *fit);
+        assert_eq!(record.route_key, None, "a simulated ride sets no records");
+        assert_eq!(record.climbs.len(), 0);
         app.shutdown();
     }
 

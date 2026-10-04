@@ -28,3 +28,16 @@ music ([audio.md](audio.md)).
 
 On video courses the video is the view: the course page and the ride settings offer trainer
 difficulty, descents and the video's **Sound** instead, and **C** does nothing.
+
+## Simulation (fake trainer)
+
+With the simulated trainer (*Devices & Settings*), a ride is a simulation for trying courses
+out (#53):
+
+- **Speed**: 1×, 2×, 5×, 10× or 20× in the bar at the bottom, or **+** / **−**.
+- **Jump**: click the map or the elevation profile to put the rider there (the map's corner
+  caption still switches between close view and whole route).
+- **Free camera**: **C** past the drone view; arrow keys move, **R** / **F** rise and sink,
+  **Shift** is faster, the mouse wheel sets the speed, drag with the right button to look.
+
+A sped-up or jumped ride is saved, but counts towards no personal records.

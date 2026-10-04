@@ -3,12 +3,29 @@ extends Control
 ## The map around the rider. The close view turns with the direction of travel (heading up);
 ## clicking switches to the whole route, north up.
 
+## A simulated ride's rider should jump to `position_m` (metres east/north of the start, #53).
+signal jump_requested(position_m: Vector2)
+
 const PADDING: float = 24.0
 ## Half the width of the close view.
 const CLOSE_RADIUS_M: float = 450.0
 const TRACK_COLOR: Color = Color(1.0, 0.56, 0.2)
 const START_COLOR: Color = Color(0.3, 0.8, 0.45)
 const FINISH_COLOR: Color = Color(0.92, 0.3, 0.3)
+
+## The corner caption that switches between close view and whole route.
+const CAPTION_WIDTH: float = 90.0
+const CAPTION_HEIGHT: float = 28.0
+
+## Clicks jump the rider there (simulated rides).
+var jumpable: bool = false:
+	set(value):
+		jumpable = value
+		tooltip_text = (
+			tr("Click: jump there · corner: close view / whole route")
+			if value
+			else tr("Click: close view / whole route")
+		)
 
 ## Metres east/north of the route start.
 var _ghost: Vector2 = Vector2.ZERO
@@ -61,15 +78,21 @@ func set_rider(position_m: Vector2, heading: float) -> void:
 
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_STOP
-	tooltip_text = tr("Click: close view / whole route")
+	jumpable = jumpable
 
 
 func _gui_input(event: InputEvent) -> void:
 	var click: InputEventMouseButton = event as InputEventMouseButton
-	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+	if click == null or not click.pressed or click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	# In a simulated ride a click jumps there; the corner caption still switches the view.
+	var caption: Rect2 = Rect2(0, size.y - CAPTION_HEIGHT, CAPTION_WIDTH, CAPTION_HEIGHT)
+	if jumpable and not caption.has_point(click.position):
+		jump_requested.emit(_view().affine_inverse() * click.position)
+	else:
 		_follow = not _follow
 		queue_redraw()
-		accept_event()
+	accept_event()
 
 
 func _draw() -> void:
