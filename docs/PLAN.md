@@ -141,7 +141,7 @@ Built in rideable steps:
 - [ ] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
 - [ ] Original video sound (R26)
-- [ ] Ride options that apply to video courses only (no camera, time of day, weather)
+- [x] Ride options that apply to video courses only (no camera, time of day, weather)
 - **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 
 ### Phase 6 — Street imagery

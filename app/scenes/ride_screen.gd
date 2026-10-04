@@ -154,7 +154,7 @@ func _process(delta: float) -> void:
 
 func _open_settings() -> void:
 	_options["camera"] = _world.camera()
-	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial)
+	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial, _torqa.video().is_empty())
 
 
 ## Applies changed ride options at once: camera, conditions and sound in the world, difficulty

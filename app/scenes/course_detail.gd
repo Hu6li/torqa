@@ -281,6 +281,7 @@ func _on_failed(message: String) -> void:
 
 func _show_video_buttons() -> void:
 	var video: Dictionary = _torqa.video()
+	_options.show_world_options(video.is_empty())
 	var by_hand: bool = video.get("aligned_by_hand", false)
 	_add_video_button.visible = video.is_empty()
 	_align_button.visible = by_hand

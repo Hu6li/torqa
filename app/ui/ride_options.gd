@@ -1,8 +1,9 @@
 class_name RideOptions
 extends GridContainer
 ## The options of a ride that can be set before and changed during it (R48): camera, trainer
-## difficulty, descents, time of day and weather. The same control serves the setup
-## screen and the in-ride settings, so options are set the same way in both places.
+## difficulty, descents, time of day and weather. The same control serves the course page and
+## the in-ride settings, so options are set the same way in both places. On video courses
+## the video is the view, so camera, time of day and weather are hidden (R17).
 
 ## The rider changed an option; read them with `options()`.
 signal changed
@@ -17,6 +18,8 @@ var _difficulty_label: Label = Label.new()
 var _flat_descents: CheckBox = CheckBox.new()
 var _time: OptionButton = OptionButton.new()
 var _weather: OptionButton = OptionButton.new()
+## The controls of the options that only change the 3D world.
+var _world_rows: Array[Control] = []
 
 
 func _init() -> void:
@@ -37,11 +40,11 @@ func _init() -> void:
 	for weather: String in RideWorld.WEATHERS:
 		_weather.add_item(weather)
 	# i18n-begin
-	_row("Camera", _camera, null)
+	_row("Camera", _camera, null, true)
 	_row("Trainer difficulty", _difficulty, _difficulty_label)
 	_row("Descents", _flat_descents, null)
-	_row("Time of day", _time, null)
-	_row("Weather", _weather, null)
+	_row("Time of day", _time, null, true)
+	_row("Weather", _weather, null, true)
 	# i18n-end
 	for option: OptionButton in [_camera, _time, _weather]:
 		option.item_selected.connect(func(_index: int) -> void: _changed())
@@ -77,6 +80,12 @@ func set_options(options: Dictionary) -> void:
 	_update_labels()
 
 
+## Shows or hides the options of the 3D world: hidden for video courses.
+func show_world_options(shown: bool) -> void:
+	for control: Control in _world_rows:
+		control.visible = shown
+
+
 func _changed() -> void:
 	_update_labels()
 	changed.emit()
@@ -86,7 +95,7 @@ func _update_labels() -> void:
 	_difficulty_label.text = "%d %%" % roundi(_difficulty.value)
 
 
-func _row(caption: String, field: Control, extra: Control) -> void:
+func _row(caption: String, field: Control, extra: Control, world: bool = false) -> void:
 	var label: Label = Label.new()
 	label.text = caption
 	label.custom_minimum_size = Vector2(CAPTION_WIDTH, 0)
@@ -96,6 +105,8 @@ func _row(caption: String, field: Control, extra: Control) -> void:
 	var third: Control = extra if extra != null else Control.new()
 	third.custom_minimum_size.x = EXTRA_WIDTH
 	add_child(third)
+	if world:
+		_world_rows.append_array([label, field, third])
 
 
 static func _select_text(option: OptionButton, text: String) -> void:
