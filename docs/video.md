@@ -10,6 +10,12 @@ it slows down, sprint and it speeds up. The 3D world is not used on video course
 - **Your own videos with GPS** — GoPro recordings (`.mp4`, `.mov`; `.m4v` and `.mkv` are
   read too) carry their GPS track inside the file (GPMF). Torqa reads it, builds the route
   from it and pairs every moment of the video with a position on it.
+- **Tacx Real Life Videos** — an `.rlv` file with its `.pgmf` course and the video (often
+  `.avi`), side by side. Choose the **`.rlv` file**. The RLV says how far the camera moved per
+  frame, the PGMF the slopes; Torqa pairs them. RLV courses know distance and slope but not
+  *where* they are: they are ridden along their video only (no 3D world, no map position),
+  with the slopes on the trainer as recorded. The video's name in the RLV may be an old
+  Windows path; Torqa looks for that file name (or the RLV's own name) next to the `.rlv`.
 - **Any other video** is added to the course of its GPX route — see below. Importing a video
   without GPS here shows these steps instead.
 - **Route videos made for Incyclist** — a folder with a video, a `.gpx` route and an `.xml`

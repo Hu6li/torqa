@@ -142,6 +142,8 @@ Built in rideable steps:
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
 - [x] Video courses ridden along the video or in 3D, chosen when riding (#44); videos can be
   removed from any course
+- [x] Tacx RLV import (`.rlv` + `.pgmf` + video, #42): ridden along the video by distance
+  and slope, no 3D
 - [x] Original video sound (R26): pitch-keeping time stretch (WSOLA) at the rider's speed,
   fades out when slow, switchable per ride
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)
