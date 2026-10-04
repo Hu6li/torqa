@@ -185,7 +185,8 @@ Built in rideable steps:
 - [x] Natural road in its landscape: a smooth curve with its verge, cuttings into hillsides
   and embankments down to valleys (finer ground near the road), never covered by the ground
 - [x] Other streets from the map drawn in 3D: asphalt streets, gravel tracks and paths, draped
-  on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them
+  on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them;
+  ways for pedestrians only (footways, sidewalks, steps) left out
 - [ ] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs

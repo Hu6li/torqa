@@ -148,15 +148,11 @@ fn add_road(
     geometry: &Geometry<f64>,
     projection: &TileProjection,
 ) {
-    let class = match tags.text("class") {
-        "motorway" | "trunk" | "primary" | "secondary" => Some(RoadClass::Major),
-        "tertiary" | "minor" => Some(RoadClass::Street),
-        "service" => Some(RoadClass::Service),
-        "track" => Some(RoadClass::Track),
-        // Cycleways among them: routes often follow them.
-        "path" => Some(RoadClass::Path),
-        _ => None,
-    };
+    let class = road_class(
+        tags.text("class"),
+        tags.text("subclass"),
+        tags.text("bicycle"),
+    );
     let kind = match tags.text("brunnel") {
         "bridge" => Some(StructureKind::Bridge),
         "tunnel" => Some(StructureKind::Tunnel),
@@ -174,6 +170,25 @@ fn add_road(
                 structure: kind,
             });
         }
+    }
+}
+
+/// What a way of the transportation layer is to Torqa, from its `class`, `subclass` and
+/// `bicycle` access. `None` for railways, ferries and ways for pedestrians only: footways and
+/// mapped sidewalks, pedestrian zones, steps, platforms and paths closed to bikes. Those carry
+/// no ride and do not belong among the streets drawn; footways open to bikes stay as paths.
+fn road_class(class: &str, subclass: &str, bicycle: &str) -> Option<RoadClass> {
+    let bikes = matches!(bicycle, "yes" | "designated" | "permissive");
+    match (class, subclass) {
+        ("motorway" | "trunk" | "primary" | "secondary", _) => Some(RoadClass::Major),
+        ("tertiary" | "minor", _) => Some(RoadClass::Street),
+        ("service", _) => Some(RoadClass::Service),
+        ("track", _) => Some(RoadClass::Track),
+        ("path", "steps" | "platform" | "corridor") => None,
+        ("path", "footway" | "pedestrian") => bikes.then_some(RoadClass::Path),
+        // Cycleways and trails: routes often follow them.
+        ("path", _) => (bicycle != "no").then_some(RoadClass::Path),
+        _ => None,
     }
 }
 
@@ -281,6 +296,38 @@ mod tests {
                 .all(|b| b.outline.first() == b.outline.last())
         );
         assert!(data.buildings.iter().any(|b| b.height.is_some()));
+    }
+
+    #[test]
+    fn ways_for_pedestrians_only_are_left_out() {
+        // Sidewalks, footpaths, steps, platforms, pedestrian zones, paths closed to bikes.
+        for (subclass, bicycle) in [
+            ("footway", ""),
+            ("footway", "no"),
+            ("pedestrian", ""),
+            ("steps", "yes"),
+            ("platform", ""),
+            ("corridor", ""),
+            ("path", "no"),
+        ] {
+            assert_eq!(road_class("path", subclass, bicycle), None, "{subclass}");
+        }
+        // Shared foot and cycle paths, cycleways and trails stay.
+        for (subclass, bicycle) in [
+            ("footway", "yes"),
+            ("footway", "designated"),
+            ("cycleway", ""),
+            ("path", ""),
+            ("path", "designated"),
+        ] {
+            assert_eq!(
+                road_class("path", subclass, bicycle),
+                Some(RoadClass::Path),
+                "{subclass} {bicycle}"
+            );
+        }
+        assert_eq!(road_class("minor", "", ""), Some(RoadClass::Street));
+        assert_eq!(road_class("rail", "rail", ""), None);
     }
 
     #[test]
