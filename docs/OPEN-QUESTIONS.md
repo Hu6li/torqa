@@ -17,8 +17,6 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 - **Route video libraries**: the free Van Gestel videos used by Incyclist are CC BY-NC-SA —
   fine to ride, not to bundle. Torqa only refers to videos; tests generate their own footage.
-- **Video course options**: camera, time of day and weather do nothing on video courses yet;
-  the settings dialog still shows them (PLAN Phase 5).
 - **Plugin traits**: CLAUDE.md and the PLAN name `RouteImporter`, `TrainerDriver`, … but none
   exist yet — each capability has one implementation behind a concrete type. I noted in the
   PLAN that each trait comes with its second implementation; say if you want them earlier.

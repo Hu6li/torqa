@@ -151,7 +151,7 @@ msgstr ""
 msgid "Cadence"
 msgstr ""
 
-#: app/ui/ride_options.gd:40
+#: app/ui/ride_options.gd:43
 msgid "Camera"
 msgstr ""
 
@@ -251,7 +251,7 @@ msgstr ""
 msgid "Delete ride?"
 msgstr ""
 
-#: app/ui/ride_options.gd:42
+#: app/ui/ride_options.gd:45
 msgid "Descents"
 msgstr ""
 
@@ -611,7 +611,7 @@ msgstr ""
 msgid "Ride"
 msgstr ""
 
-#: app/ui/ride_options.gd:33
+#: app/ui/ride_options.gd:36
 msgid "Ride descents like flat roads"
 msgstr ""
 
@@ -683,7 +683,7 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: app/ui/ride_options.gd:32
+#: app/ui/ride_options.gd:35
 msgid "Share of the road gradient you feel on the trainer"
 msgstr ""
 
@@ -747,7 +747,7 @@ msgstr ""
 msgid "Time in power zones"
 msgstr ""
 
-#: app/ui/ride_options.gd:43
+#: app/ui/ride_options.gd:46
 msgid "Time of day"
 msgstr ""
 
@@ -767,7 +767,7 @@ msgstr ""
 msgid "Trainer"
 msgstr ""
 
-#: app/ui/ride_options.gd:41
+#: app/ui/ride_options.gd:44
 msgid "Trainer difficulty"
 msgstr ""
 
@@ -791,11 +791,11 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:317
+#: app/scenes/course_detail.gd:318
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:314
+#: app/scenes/course_detail.gd:315
 msgid "Video aligned with the route."
 msgstr ""
 
@@ -827,7 +827,7 @@ msgstr ""
 msgid "Wake your trainer by pedalling, then scan."
 msgstr ""
 
-#: app/ui/ride_options.gd:44
+#: app/ui/ride_options.gd:47
 msgid "Weather"
 msgstr ""
 

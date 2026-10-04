@@ -26,5 +26,5 @@ and ghost panels on the right, and one **Settings** button (or key **S**).
 Keys: **C** switches the camera, **S** opens the settings, **M** / **.** / **,** control your
 music ([audio.md](audio.md)).
 
-On video courses the video is the view: camera, time of day and weather have no effect there
-(the settings still show them for now), and **C** does nothing.
+On video courses the video is the view: the course page and the ride settings only offer
+trainer difficulty and descents, and **C** does nothing.

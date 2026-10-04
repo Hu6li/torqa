@@ -38,9 +38,13 @@ func _ready() -> void:
 	add_child(_confirm_abort)
 
 
-## Opens the dialog showing the ride's current `options` and HUD `layout`.
-func edit(options: Dictionary, layout: PackedStringArray, imperial: bool) -> void:
+## Opens the dialog showing the ride's current `options` and HUD `layout`; `world_options`
+## false hides those of the 3D world (video courses).
+func edit(
+	options: Dictionary, layout: PackedStringArray, imperial: bool, world_options: bool = true
+) -> void:
 	_options.set_options(options)
+	_options.show_world_options(world_options)
 	_hud.edit(layout, imperial)
 	popup_centered(Vector2i(960, 600))
 
