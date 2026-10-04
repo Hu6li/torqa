@@ -10,7 +10,8 @@ makes that one the remembered device.
 
 ## During a ride
 
-The ride screen keeps the road in view: your figures on the left, map, elevation profile, climb
+The ride screen keeps the road in view — the 3D world, or the video on video courses
+([video.md](video.md)): your figures on the left, map, elevation profile, climb
 and ghost panels on the right, and one **Settings** button (or key **S**).
 
 **Settings** opens the ride settings; changes apply at once and the ride keeps going:

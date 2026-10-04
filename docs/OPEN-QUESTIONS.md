@@ -2,6 +2,24 @@
 
 Things to review or decide together. Newest first; remove entries once settled.
 
+## 2026-10-03 — Phase 5: video courses
+
+### Needs your hardware
+
+- **Video ride on the Mac**: please import a GoPro recording with GPS (or an Incyclist route
+  video, choose its `.xml`) and ride it. Decoding runs on the CPU for now; 1080p should keep up
+  on M1, 4K is scaled down per frame and may not. If it stutters, hardware decoding
+  (VideoToolbox) and transcoding on import come next.
+- **macOS CI**: the extension now links FFmpeg, built from source; the macOS job installs
+  `nasm` for it. The first build takes a while (FFmpeg compile), later ones are cached.
+
+### Findings
+
+- **Route video libraries**: the free Van Gestel videos used by Incyclist are CC BY-NC-SA —
+  fine to ride, not to bundle. Torqa only refers to videos; tests generate their own footage.
+- **Video course options**: camera, time of day and weather do nothing on video courses yet;
+  the settings dialog still shows them.
+
 ## 2026-10-03 — Phase 4: HUD editor, ghosts, audio
 
 ### Needs your ears / hardware (cannot be checked in the container)

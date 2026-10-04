@@ -31,11 +31,11 @@ msgstr ""
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:314
+#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:316
 msgid "%s connected"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:318
+#: app/scenes/ride_screen.gd:320
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
@@ -103,7 +103,7 @@ msgstr ""
 msgid "Avg speed"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:341
+#: app/scenes/ride_screen.gd:343
 msgid "Back"
 msgstr ""
 
@@ -127,7 +127,7 @@ msgstr ""
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:304
+#: app/scenes/ride_screen.gd:306
 msgid "Camera: %s"
 msgstr ""
 
@@ -479,7 +479,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:340
+#: app/scenes/ride_screen.gd:342
 msgid "Nothing recorded."
 msgstr ""
 
@@ -603,7 +603,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:353
+#: app/scenes/ride_screen.gd:355
 msgid "Saved %s"
 msgstr ""
 
@@ -731,7 +731,7 @@ msgstr ""
 msgid "Videos with GPS, Incyclist route videos (.xml)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:355 app/scenes/ride_screen.tscn:132
+#: app/scenes/ride_screen.gd:357 app/scenes/ride_screen.tscn:132
 msgid "View summary"
 msgstr ""
 

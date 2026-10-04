@@ -19,6 +19,13 @@ it slows down, sprint and it speeds up. The 3D world is not used on video course
 The route goes through the usual import (elevation correction when online) and the course is
 added to your library, marked **Video** on its card.
 
+## Riding a video course
+
+Open the course and press **Ride** as usual. Instead of the 3D world, the video fills the
+screen, with your figures, map and elevation profile on top. Where you are on the route
+decides the moment of the video: it plays at the speed you ride, stands still when you stop,
+and blends smoothly from frame to frame even when you crawl up a steep climb.
+
 ## The video stays where it is
 
 Videos are large, so a video course (`.tqc`) only **refers** to its video, it does not contain

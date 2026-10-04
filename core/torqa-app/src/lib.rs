@@ -79,6 +79,9 @@ pub enum AppError {
     /// The chosen ghost cannot ride this route.
     #[error("{0}")]
     GhostUnavailable(String),
+    /// The video of a video course cannot be played.
+    #[error("{0}")]
+    Video(String),
 }
 
 /// Who to race against (R20).
@@ -304,6 +307,8 @@ struct ActiveRide {
     /// rather than every frame.
     summary: (usize, RideSummary),
     ghost: Option<Ghost>,
+    /// Plays the video of a video course along the ride.
+    player: Option<video::VideoPlayer>,
 }
 
 /// When the 3D world of a loaded route is built.
@@ -610,6 +615,17 @@ impl App {
     pub fn video_time(&self) -> Option<Duration> {
         let video = self.video.as_ref()?;
         Some(video.time_at(self.ride_state()?.distance))
+    }
+
+    /// The newest video frame decoded for the ride on a video course, once; it follows the
+    /// moment of [`App::video_time`], so the view can blend from the frame before.
+    pub fn video_frame(&mut self) -> Option<torqa_video::Frame> {
+        let player = self.ride.as_ref()?.player.as_ref()?;
+        player
+            .frame()
+            .inspect_err(|error| warn!(%error, "cannot decode the video"))
+            .ok()
+            .flatten()
     }
 
     /// Saves the loaded route with everything needed to ride it offline as a course in the
@@ -946,6 +962,12 @@ impl App {
             return Err(AppError::NoTrainer);
         }
         let ghost = self.ghost_for(&route, descent, ghost)?;
+        let player = self
+            .video
+            .as_ref()
+            .map(|v| video::VideoPlayer::open(&v.video))
+            .transpose()
+            .map_err(AppError::Video)?;
         let config = RideConfig {
             setup: RiderSetup {
                 mass: self.profile.profile.system_mass(),
@@ -963,6 +985,7 @@ impl App {
             next_climb: 0,
             summary: (0, RideSummary::default()),
             ghost,
+            player,
         });
         Ok(())
     }
@@ -1355,6 +1378,11 @@ impl App {
                 });
                 events.push(AppEvent::RideFinished);
             }
+        }
+        if let (Some(active), Some(video)) = (&self.ride, &self.video)
+            && let Some(player) = &active.player
+        {
+            player.show(video.time_at(active.ride.state().distance));
         }
         events
     }
@@ -1943,6 +1971,42 @@ mod tests {
         assert_eq!(listed.len(), 1);
         let reference = listed[0].manifest.video.as_ref().unwrap();
         assert_eq!(reference.file_name, "Ride.MOV");
+    }
+
+    #[test]
+    fn the_video_plays_as_far_as_the_rider_has_come() {
+        let dir = temp_dir("video-ride");
+        let video = video_in(&dir, &torqa_video::testing::gopro_video("ride"), "Ride.MOV");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        loaded_video(&mut app, video);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(300.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+
+        let mut frames: Vec<(Duration, Duration)> = Vec::new();
+        for _ in 0..240 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+            let shown = app.video_time().unwrap();
+            if let Some(frame) = app.video_frame() {
+                assert_eq!((frame.width, frame.height), (64, 48));
+                frames.push((shown, frame.time));
+            }
+        }
+
+        let distance = app.ride_state().unwrap().distance;
+        assert!(distance.0 > 5.0, "rider should be moving: {distance:?}");
+        assert!(frames.len() >= 2, "{frames:?}");
+        assert!(frames.windows(2).all(|w| w[1].1 > w[0].1), "{frames:?}");
+        // Each frame is the one coming up next, to blend towards (decoding may lag a little).
+        let (shown, last) = frames[frames.len() - 1];
+        assert!(last + Duration::from_millis(150) > shown, "{frames:?}");
+        app.abort_ride();
+        assert!(app.video_frame().is_none());
     }
 
     #[test]

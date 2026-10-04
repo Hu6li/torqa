@@ -2,6 +2,9 @@ extends Control
 ## Root scene: owns the Torqa node and switches between the start page, the ride and the ride
 ## summary.
 
+## Video courses are ridden along their video instead of the 3D world (R17).
+var _video: VideoView = VideoView.new()
+
 @onready var _torqa: TorqaApp = $Torqa
 @onready var _world: RideWorld = $World
 @onready var _start: StartPage = $StartPage
@@ -12,6 +15,8 @@ extends Control
 func _ready() -> void:
 	print("Torqa %s" % TorqaCore.version())
 	theme = UiTheme.build()
+	add_child(_video)
+	move_child(_video, _world.get_index() + 1)
 	_world.bind(_torqa)
 	_start.bind(_torqa)
 	_ride.bind(_torqa, _world)
@@ -24,9 +29,13 @@ func _ready() -> void:
 
 func _on_ride_started(options: Dictionary) -> void:
 	_start.hide()
-	_world.apply_options(options)
-	_world.reset_view()
-	_world.show()
+	if _torqa.video().is_empty():
+		_world.apply_options(options)
+		_world.reset_view()
+		_world.show()
+	else:
+		_video.begin(_torqa)
+		_video.show()
 	_ride.begin(options)
 	_ride.show()
 
@@ -35,6 +44,7 @@ func _on_ride_started(options: Dictionary) -> void:
 func _show_summary(path: String) -> void:
 	_ride.hide()
 	_world.hide()
+	_video.hide()
 	_summary.open_summary(path)
 	_summary.show()
 
@@ -42,6 +52,7 @@ func _show_summary(path: String) -> void:
 func _back_home() -> void:
 	_ride.hide()
 	_world.hide()
+	_video.hide()
 	_summary.hide()
 	_start.refresh()
 	_start.show()
