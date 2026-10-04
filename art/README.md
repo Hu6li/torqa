@@ -53,3 +53,14 @@ names need an entry there.
 The build also writes `models.json` next to the models: each model's kind, roof, the footprint
 its walls stand on (`length` along x, `width` along y), `eaves` and total `height`. The world
 reads it to fit models to the outlines on the map.
+
+### Gallery
+
+Rendered with `scripts/render-models.sh` (three variants per model; colours vary per building):
+
+| | |
+|---|---|
+| ![House](../docs/images/buildings/house_gable_2_m-close.jpg) | ![Apartment house](../docs/images/buildings/house_hipped_3_l-close.jpg) |
+| ![Chalet](../docs/images/buildings/chalet_3_m-close.jpg) | ![Bernese farmhouse](../docs/images/buildings/farmhouse_l-close.jpg) |
+| ![Church with needle spires](../docs/images/buildings/church_needle_l-close.jpg) | ![Churches with saddle roofs](../docs/images/buildings/church_saddle_m.jpg) |
+| ![Chapels](../docs/images/buildings/chapel_m.jpg) | |
