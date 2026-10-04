@@ -178,7 +178,8 @@ impl Route {
         // From the track as recorded: rides and records on a file keep matching as the map
         // (and the matching) changes.
         let key = key_of(&resample(&recorded)?);
-        let mut track = dedup(snap::to_roads(&recorded, &map.roads));
+        let snapped = snap::to_roads(&recorded, &map.roads);
+        let mut track = dedup(snapped.track);
 
         // The model is sampled only at the file's points, which lie on the road. Between
         // sparse points a straight line can cut across a hillside, so elevations there are
@@ -202,7 +203,8 @@ impl Route {
             None => return Err(RouteError::NoElevation),
         };
         let mut points = resample(&track)?;
-        let surfaces = structures::surfaces(&points, &map.structures);
+        let mut surfaces = structures::surfaces(&points, &snapped.structures);
+        structures::keep_real(&points, &mut surfaces, source == ElevationSource::Terrain);
         structures::bridge_elevations(&mut points, &surfaces);
 
         let window = match source {
@@ -542,9 +544,23 @@ mod tests {
         assert_eq!(snapped.key(), plain.key());
     }
 
-    fn map_with(structure: torqa_osm::Structure) -> MapData {
+    /// The road the dense track rides north along 7°E, with `structure` on it (approach roads
+    /// either side), and maybe other roads.
+    fn map_with(structure: torqa_osm::Structure, others: Vec<torqa_osm::Road>) -> MapData {
+        let road = |line: Vec<(f64, f64)>, structure| torqa_osm::Road {
+            class: torqa_osm::RoadClass::Street,
+            line,
+            structure,
+        };
+        let (start, end) = (structure.line[0], structure.line[structure.line.len() - 1]);
+        let mut roads = vec![
+            road(vec![(45.999, 7.0), start], None),
+            road(structure.line, Some(structure.kind)),
+            road(vec![end, (46.011, 7.0)], None),
+        ];
+        roads.extend(others);
         MapData {
-            structures: vec![structure],
+            roads,
             ..MapData::default()
         }
     }
@@ -762,10 +778,13 @@ mod tests {
             line: line_north(280.0, 720.0, 7.0),
         };
 
-        let route =
-            Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &map_with(bridge))
-                .await
-                .unwrap();
+        let route = Route::from_gpx_with(
+            &dense_track_north(),
+            Some(&mut Valley),
+            &map_with(bridge, Vec::new()),
+        )
+        .await
+        .unwrap();
 
         assert!(route.max_grade().0 < 1.0, "{:?}", route.max_grade());
         assert_eq!(route.position(Meters(500.0)).elevation, Meters(500.0));
@@ -790,19 +809,44 @@ mod tests {
 
     #[tokio::test]
     async fn roads_crossing_above_are_not_the_route() {
-        // A bridge running east-west over the route.
-        let crossing = torqa_osm::Structure {
+        // The route's own road is plain; a bridge runs east-west over it.
+        let plain = torqa_osm::Structure {
             kind: torqa_osm::StructureKind::Bridge,
+            line: line_north(280.0, 720.0, 7.0),
+        };
+        let crossing = torqa_osm::Road {
+            class: torqa_osm::RoadClass::Major,
             line: vec![
                 (46.0 + 500.0 / 111_195.0, 6.999),
                 (46.0 + 500.0 / 111_195.0, 7.001),
             ],
+            structure: Some(torqa_osm::StructureKind::Bridge),
+        };
+        let mut map = map_with(plain, vec![crossing]);
+        map.roads[1].structure = None;
+
+        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &map)
+            .await
+            .unwrap();
+
+        assert!(route.points().iter().all(|p| p.surface == Surface::Ground));
+    }
+
+    #[tokio::test]
+    async fn tunnels_and_bridges_the_terrain_does_not_bear_out_stay_on_the_ground() {
+        // The map says tunnel where the route crosses the valley: there is no hill above it.
+        let tunnel = torqa_osm::Structure {
+            kind: torqa_osm::StructureKind::Tunnel,
+            line: line_north(280.0, 720.0, 7.0),
         };
 
-        let route =
-            Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &map_with(crossing))
-                .await
-                .unwrap();
+        let route = Route::from_gpx_with(
+            &dense_track_north(),
+            Some(&mut Valley),
+            &map_with(tunnel, Vec::new()),
+        )
+        .await
+        .unwrap();
 
         assert!(route.points().iter().all(|p| p.surface == Surface::Ground));
     }

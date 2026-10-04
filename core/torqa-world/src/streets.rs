@@ -1,17 +1,35 @@
 //! The streets, tracks and paths of the map around the route, other than the road ridden,
 //! draped on the terrain of each chunk (from its own heights, so they sit exactly on the ground
-//! the rider sees).
+//! the rider sees). Streets joining or crossing the road run up to it and under it, so
+//! junctions look joined; bridges are straight decks between their ends; tunnels stay under
+//! the ground.
 
-use torqa_osm::{MapData, RoadClass};
-use torqa_routes::LocalProjection;
+use torqa_osm::{MapData, RoadClass, StructureKind};
+use torqa_routes::{ElevationModel, LocalProjection};
 
 use crate::road::RoadIndex;
 use crate::{HeightGrid, MeshData, ROAD_HALF_WIDTH};
 
 /// Distance between the points of a draped street: short enough to follow the ground.
 const STEP_M: f64 = 3.0;
-/// Streets lie this far above the ground, so the terrain does not show through.
-const LIFT_M: f64 = 0.12;
+/// Bridge decks are this thick at their edges.
+const DECK_DEPTH_M: f64 = 0.7;
+
+/// How far a street lies above the ground: bigger roads above smaller ones, so where they
+/// overlap at junctions the bigger one shows, and a little more for every street (up to 2 cm)
+/// so overlapping ones of a kind never flicker.
+fn lift(class: RoadClass, index: usize) -> f64 {
+    let base = match class {
+        RoadClass::Major => 0.16,
+        RoadClass::Street => 0.14,
+        RoadClass::Service => 0.12,
+        RoadClass::Track => 0.1,
+        RoadClass::Path => 0.08,
+    };
+    #[allow(clippy::cast_precision_loss)] // a small remainder
+    let jitter = (index % 20) as f64 * 0.001;
+    base + jitter
+}
 
 /// A street of the map in metres east/north, with its bounds for quick chunk tests.
 pub(crate) struct Street {
@@ -19,6 +37,9 @@ pub(crate) struct Street {
     points: Vec<(f64, f64)>,
     min: (f64, f64),
     max: (f64, f64),
+    /// For bridges: the deck's height at both ends (the ground's there).
+    deck: Option<(f64, f64)>,
+    index: usize,
 }
 
 /// Width in metres by kind of way.
@@ -40,37 +61,59 @@ fn paved(class: RoadClass) -> bool {
     )
 }
 
-/// The map's streets around the route, densified. Bridges and tunnels are left out: draped on
-/// the ground, a tunnel would run over the mountain.
-pub(crate) fn lines(map: &MapData, projection: &LocalProjection) -> Vec<Street> {
-    map.roads
-        .iter()
-        .filter(|r| r.structure.is_none())
-        .filter_map(|road| {
-            let line: Vec<(f64, f64)> = road
-                .line
-                .iter()
-                .map(|&(lat, lon)| projection.project(lat, lon))
-                .collect();
-            let points = densify(&line);
-            let (mut min, mut max) = (points.first()?.to_owned(), points.first()?.to_owned());
-            for &(e, n) in &points {
-                min = (min.0.min(e), min.1.min(n));
-                max = (max.0.max(e), max.1.max(n));
+/// The map's streets around the route, densified, with bridge decks' end heights from `model`.
+/// Tunnels are left out: draped on the ground, they would run over the mountain.
+pub(crate) async fn lines<M: ElevationModel>(
+    map: &MapData,
+    projection: &LocalProjection,
+    model: &mut M,
+) -> Vec<Street> {
+    let mut streets = Vec::new();
+    for (index, road) in map.roads.iter().enumerate() {
+        if road.structure == Some(StructureKind::Tunnel) {
+            continue;
+        }
+        let line: Vec<(f64, f64)> = road
+            .line
+            .iter()
+            .map(|&(lat, lon)| projection.project(lat, lon))
+            .collect();
+        let points = densify(&line);
+        let Some(&first) = points.first() else {
+            continue;
+        };
+        let deck = if road.structure == Some(StructureKind::Bridge) {
+            let mut end = async |(lat, lon): (f64, f64)| model.elevation(lat, lon).await.ok();
+            let (start, finish) = (road.line[0], road.line[road.line.len() - 1]);
+            match (end(start).await, end(finish).await) {
+                (Some(a), Some(b)) => Some((a, b)),
+                // Without the ground's heights a deck cannot be placed.
+                _ => continue,
             }
-            Some(Street {
-                class: road.class,
-                points,
-                min,
-                max,
-            })
-        })
-        .collect()
+        } else {
+            None
+        };
+        let (mut min, mut max) = (first, first);
+        for &(e, n) in &points {
+            min = (min.0.min(e), min.1.min(n));
+            max = (max.0.max(e), max.1.max(n));
+        }
+        streets.push(Street {
+            class: road.class,
+            points,
+            min,
+            max,
+            deck,
+            index,
+        });
+    }
+    streets
 }
 
 /// The paved streets and the unpaved tracks and paths within the chunk square `[origin,
-/// origin + size]`, relative to `chunk_origin`, leaving out what runs along or across the road
-/// ridden (drawn there already).
+/// origin + size]`, relative to `chunk_origin`. Stretches running along the road ridden are
+/// left out (it is drawn there already, and they are mostly the same road); streets joining or
+/// crossing it run on under it.
 pub(crate) fn meshes(
     streets: &[Street],
     origin: (f64, f64),
@@ -80,11 +123,7 @@ pub(crate) fn meshes(
     chunk_origin: [f64; 3],
 ) -> (MeshData, MeshData) {
     let (mut paved_mesh, mut unpaved_mesh) = (MeshData::default(), MeshData::default());
-    // A step past the edges, so the pieces of neighbouring chunks meet.
-    let (low, high) = (
-        (origin.0 - STEP_M, origin.1 - STEP_M),
-        (origin.0 + size + STEP_M, origin.1 + size + STEP_M),
-    );
+    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
     for street in streets {
         if street.max.0 < low.0
             || street.min.0 > high.0
@@ -99,20 +138,95 @@ pub(crate) fn meshes(
         } else {
             &mut unpaved_mesh
         };
-        let mut run: Vec<(f64, f64)> = Vec::new();
-        for &(e, n) in &street.points {
-            let inside = e >= low.0 && e <= high.0 && n >= low.1 && n <= high.1;
-            let on_route = road.nearest(e, n, ROAD_HALF_WIDTH + half + 0.5).is_some();
-            if inside && !on_route {
-                run.push((e, n));
+        let total = along(&street.points);
+        // The street cut exactly at the chunk's edges, so the neighbour's piece starts where
+        // this one ends; points with their distance along the street.
+        let mut pieces: Vec<Vec<((f64, f64), f64)>> = Vec::new();
+        let mut piece: Vec<((f64, f64), f64)> = Vec::new();
+        let mut travelled = 0.0;
+        for pair in street.points.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let length = (b.0 - a.0).hypot(b.1 - a.1);
+            if let Some((t0, t1)) = clip(a, b, low, high) {
+                let start = (a.0 + (b.0 - a.0) * t0, a.1 + (b.1 - a.1) * t0);
+                let end = (a.0 + (b.0 - a.0) * t1, a.1 + (b.1 - a.1) * t1);
+                if piece
+                    .last()
+                    .is_none_or(|&(p, _)| (p.0 - start.0).hypot(p.1 - start.1) > 1e-6)
+                {
+                    pieces.push(std::mem::take(&mut piece));
+                    piece.push((start, travelled + length * t0));
+                }
+                piece.push((end, travelled + length * t1));
             } else {
-                ribbon(target, &run, half, heights, chunk_origin);
-                run.clear();
+                pieces.push(std::mem::take(&mut piece));
             }
+            travelled += length;
         }
-        ribbon(target, &run, half, heights, chunk_origin);
+        pieces.push(piece);
+        for piece in pieces {
+            let points: Vec<(f64, f64)> = piece.iter().map(|&(p, _)| p).collect();
+            let mut run: Vec<((f64, f64), f64)> = Vec::new();
+            for (i, &(point, distance)) in piece.iter().enumerate() {
+                let direction = local_direction(&points, i);
+                let reach = ROAD_HALF_WIDTH + half + 0.5;
+                if road.runs_along(point.0, point.1, reach, direction) {
+                    ribbon(target, &run, half, street, total, heights, chunk_origin);
+                    run.clear();
+                } else {
+                    run.push((point, distance));
+                }
+            }
+            ribbon(target, &run, half, street, total, heights, chunk_origin);
+        }
     }
     (paved_mesh, unpaved_mesh)
+}
+
+/// The part of segment `a`–`b` inside the rectangle `low`–`high`, as positions along it
+/// (0–1), if any (Liang–Barsky).
+fn clip(a: (f64, f64), b: (f64, f64), low: (f64, f64), high: (f64, f64)) -> Option<(f64, f64)> {
+    let (de, dn) = (b.0 - a.0, b.1 - a.1);
+    let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
+    for (p, q) in [
+        (-de, a.0 - low.0),
+        (de, high.0 - a.0),
+        (-dn, a.1 - low.1),
+        (dn, high.1 - a.1),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+        }
+    }
+    (t0 < t1).then_some((t0, t1))
+}
+
+/// The length of a line.
+fn along(points: &[(f64, f64)]) -> f64 {
+    points
+        .windows(2)
+        .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+        .sum()
+}
+
+/// The unit direction of a line at its point `i`.
+fn local_direction(points: &[(f64, f64)], i: usize) -> (f64, f64) {
+    let (a, b) = (
+        points[i.saturating_sub(1)],
+        points[(i + 1).min(points.len() - 1)],
+    );
+    let (de, dn) = (b.0 - a.0, b.1 - a.1);
+    let length = de.hypot(dn).max(1e-9);
+    (de / length, dn / length)
 }
 
 /// Points along `line` at most `STEP_M` apart.
@@ -133,36 +247,48 @@ fn densify(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
     points
 }
 
-/// A strip of `half` width along `run`, each edge on the ground below it.
+/// A strip of `half` width along `run` (points with their distance along the street): on the
+/// ground below each edge, or for a bridge a deck straight between its ends' heights, with
+/// its sides.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
 fn ribbon(
     mesh: &mut MeshData,
-    run: &[(f64, f64)],
+    run: &[((f64, f64), f64)],
     half: f64,
+    street: &Street,
+    total: f64,
     heights: &HeightGrid,
     origin: [f64; 3],
 ) {
     if run.len() < 2 {
         return;
     }
+    let lift = lift(street.class, street.index);
     let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
-    let mut distance = 0.0;
-    for (i, &(east, north)) in run.iter().enumerate() {
-        let (before, after) = (run[i.saturating_sub(1)], run[(i + 1).min(run.len() - 1)]);
+    // Per point: left edge, right edge, and for bridges the bottoms of the deck's sides.
+    let per_point = if street.deck.is_some() { 4 } else { 2 };
+    for (i, &((east, north), distance)) in run.iter().enumerate() {
+        let (before, after) = (
+            run[i.saturating_sub(1)].0,
+            run[(i + 1).min(run.len() - 1)].0,
+        );
         let (de, dn) = (after.0 - before.0, after.1 - before.1);
         let length = de.hypot(dn).max(1e-6);
         // Right of travel is the direction turned clockwise by 90°.
         let (re, rn) = (dn / length, -de / length);
-        if i > 0 {
-            distance += (east - run[i - 1].0).hypot(north - run[i - 1].1);
-        }
+        let deck = street
+            .deck
+            .map(|(start, end)| start + (end - start) * (distance / total.max(1e-6)) + lift);
         for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
             let (e, n) = (east + re * half * side, north + rn * half * side);
-            let height = heights.at(e, n) + LIFT_M;
-            // The ground's slope here, for shading like the terrain around.
-            let slope_e = (heights.at(e + 1.0, n) - heights.at(e - 1.0, n)) / 2.0;
-            let slope_n = (heights.at(e, n + 1.0) - heights.at(e, n - 1.0)) / 2.0;
-            let normal = normalize([-slope_e, 1.0, slope_n]);
+            let (height, normal) = if let Some(top) = deck {
+                (top, [0.0, 1.0, 0.0])
+            } else {
+                // The ground's slope here, for shading like the terrain around.
+                let slope_e = (heights.at(e + 1.0, n) - heights.at(e - 1.0, n)) / 2.0;
+                let slope_n = (heights.at(e, n + 1.0) - heights.at(e, n - 1.0)) / 2.0;
+                (heights.at(e, n) + lift, normalize([-slope_e, 1.0, slope_n]))
+            };
             mesh.vertices.push([
                 (e - origin[0]) as f32,
                 (height - origin[1]) as f32,
@@ -171,11 +297,47 @@ fn ribbon(
             mesh.normals.push(normal.map(|v| v as f32));
             mesh.uvs.push([u, distance as f32]);
         }
+        if let Some(top) = deck {
+            for side in [-1.0, 1.0] {
+                let (e, n) = (east + re * half * side, north + rn * half * side);
+                mesh.vertices.push([
+                    (e - origin[0]) as f32,
+                    (top - DECK_DEPTH_M - origin[1]) as f32,
+                    (-n - origin[2]) as f32,
+                ]);
+                mesh.normals
+                    .push([(re * side) as f32, 0.0, (-rn * side) as f32]);
+                // Dark like the verge.
+                mesh.uvs
+                    .push([if side < 0.0 { 0.0 } else { 1.0 }, distance as f32]);
+            }
+        }
         if i > 0 {
-            let at = base + u32::try_from(i * 2).expect("streets fit u32");
-            let (left_0, right_0, left_1, right_1) = (at - 2, at - 1, at, at + 1);
+            let step = u32::try_from(per_point).expect("small");
+            let at = base + u32::try_from(i * per_point).expect("streets fit u32");
+            let previous = at - step;
+            let (left_0, right_0, left_1, right_1) = (previous, previous + 1, at, at + 1);
             mesh.indices
                 .extend([left_0, left_1, right_1, left_0, right_1, right_0]);
+            if per_point == 4 {
+                // The deck's sides, facing out.
+                let (bottom_left_0, bottom_right_0) = (previous + 2, previous + 3);
+                let (bottom_left_1, bottom_right_1) = (at + 2, at + 3);
+                mesh.indices.extend([
+                    left_0,
+                    bottom_left_0,
+                    bottom_left_1,
+                    left_0,
+                    bottom_left_1,
+                    left_1,
+                    right_0,
+                    right_1,
+                    bottom_right_1,
+                    right_0,
+                    bottom_right_1,
+                    bottom_right_0,
+                ]);
+            }
         }
     }
 }

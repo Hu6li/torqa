@@ -9,8 +9,8 @@ use mvt_reader::Reader;
 use mvt_reader::feature::Value;
 
 use crate::{
-    Area, Building, LandCover, LatLon, MapData, OsmError, Road, RoadClass, Structure,
-    StructureKind, Waterway, ZOOM,
+    Area, Building, LandCover, LatLon, MapData, OsmError, Road, RoadClass, StructureKind, Waterway,
+    ZOOM,
 };
 
 /// Adds the features of tile (x, y) to `data`. Buildings crossing tile borders appear in each
@@ -166,12 +166,6 @@ fn add_road(
         let line = projection.line(line);
         if line.len() < 2 {
             continue;
-        }
-        if let Some(kind) = kind {
-            data.structures.push(Structure {
-                kind,
-                line: line.clone(),
-            });
         }
         if let Some(class) = class {
             data.roads.push(Road {

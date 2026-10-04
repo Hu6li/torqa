@@ -178,9 +178,14 @@ Built in rideable steps:
 
 ### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
 - [x] Route on the real road: GPX snapped to the OpenStreetMap roads and paths it rides
-  (bends between sparse points restored, GPS wander removed); record keys unchanged
+  (bends between sparse points restored, GPS wander removed); record keys unchanged — roads
+  chosen for the whole track (no hops onto side streets, sidewalks or parallel roads), turns
+  through junctions, corners rounded; bridges and tunnels only from the roads ridden and where
+  the terrain bears them out
+- [x] Natural road in its landscape: a smooth curve with its verge, cuttings into hillsides
+  and embankments down to valleys (finer ground near the road), never covered by the ground
 - [x] Other streets from the map drawn in 3D: asphalt streets, gravel tracks and paths, draped
-  on the ground; trees and grass kept off them
+  on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them
 - [ ] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs

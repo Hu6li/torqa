@@ -1,6 +1,6 @@
 shader_type spatial;
-// Asphalt (R45) with solid edge lines and a dashed centre line. UV.x runs 0–1 across the road,
-// UV.y is the distance along the route in metres. The surface is a CC0 asphalt texture
+// Asphalt (R45) with solid edge lines and a dashed centre line. UV.x runs 0–1 across the road
+// (beyond, the skirts hanging from its edges), UV.y is the distance along the route in metres. The surface is a CC0 asphalt texture
 // (ambientCG, docs/CREDITS.md) tinted to `asphalt_color`, smoother and darker in the wheel
 // tracks; markings are slightly worn and anti-aliased so they do not flicker in the distance.
 
@@ -8,6 +8,8 @@ uniform sampler2D asphalt_albedo : source_color, filter_linear_mipmap_anisotropi
 uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 asphalt_color : source_color = vec3(0.16, 0.16, 0.17);
 uniform vec3 marking_color : source_color = vec3(0.92, 0.92, 0.88);
+// The skirts below the road's edges (UV.x below 0 and above 1): gravel and earth.
+uniform vec3 shoulder_color : source_color = vec3(0.3, 0.27, 0.22);
 uniform float road_width = 6.0;
 uniform float line_width = 0.12;
 uniform float dash_length = 3.0;
@@ -68,10 +70,13 @@ void fragment() {
 	}
 	asphalt *= 1.0 - tracks * 0.12;
 	vec3 albedo = mix(asphalt, marking_color, marking);
+	float shoulder = 1.0 - step(0.0, UV.x) * step(UV.x, 1.0);
+	albedo = mix(albedo, shoulder_color * (0.85 + 0.3 * value_noise(vec2(along * 1.7, across * 3.0))), shoulder);
 	ALBEDO = albedo * (1.0 - wetness * 0.35);
 	NORMAL_MAP = normal_map;
 	NORMAL_MAP_DEPTH = mix(0.7, 0.3, max(marking, wetness));
 	ROUGHNESS = mix(mix(0.88, 0.76, tracks), 0.6, marking);
+	ROUGHNESS = mix(ROUGHNESS, 0.97, shoulder);
 	ROUGHNESS = mix(ROUGHNESS, 0.15, wetness);
 	SPECULAR = mix(0.5, 0.8, wetness);
 }

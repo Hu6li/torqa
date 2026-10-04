@@ -190,11 +190,11 @@ async fn route_info(args: &RouteArgs) -> Result<()> {
     );
     let map = &imported.map;
     println!(
-        "Map: {} buildings, {} areas, {} waterways, {} bridges/tunnels (import {:.1} s)",
+        "Map: {} buildings, {} areas, {} waterways, {} roads (import {:.1} s)",
         map.buildings.len(),
         map.areas.len(),
         map.waterways.len(),
-        map.structures.len(),
+        map.roads.len(),
         started.elapsed().as_secs_f64()
     );
     if args.world {

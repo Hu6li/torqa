@@ -1,25 +1,69 @@
-//! Puts a recorded track onto the roads it rides (map matching). GPS positions wander a few
-//! metres either side of the road and sparse files cut corners between their points; the route
-//! drawn and ridden should follow the road itself.
+//! Puts a recorded track onto the roads it rides (map matching) and smooths it. GPS positions
+//! wander a few metres either side of the road and sparse files cut corners between their
+//! points; the route drawn and ridden should follow the road, and above all look like one: no
+//! hops onto side streets, sidewalks or parallel roads, no corners cut at junctions, no kinks.
+//! Looking natural matters more than lying exactly on the map's lines.
+//!
+//! The road of every point is chosen for the whole track at once (the cheapest sequence, as in
+//! a hidden Markov model): near roads are cheap, roads running across the track and footpaths
+//! cost extra, and so does changing to another road unless the two meet.
 
 use std::collections::HashMap;
 
-use torqa_osm::Road;
+use torqa_osm::{Road, RoadClass, Structure};
 
 use crate::gpx::RawPoint;
 
-/// Points further than this from any road are off road and keep their position.
+/// Roads further than this from a point are not considered for it.
 const MAX_SNAP_M: f64 = 20.0;
-/// Staying on the road matched last is preferred, so the track does not hop to a parallel
-/// road or into side streets at junctions: its distance counts this much less.
-const SAME_ROAD_BIAS: f64 = 0.6;
-/// Spatial index cell size.
-const CELL_M: f64 = 50.0;
+/// What leaving a point where it was recorded costs, in metres of distance to a road.
+const OFF_ROAD_COST: f64 = 14.0;
+/// Going on or off road.
+const LEAVE_COST: f64 = 4.0;
+/// Changing to a road that does not meet the current one: a rider cannot hop to a parallel
+/// road or a sidewalk, so only overwhelming evidence makes the track do it.
+const HOP_COST: f64 = 60.0;
+/// Continuing onto a road that meets the current one (ways of one street, or a turn).
+const TURN_COST: f64 = 1.0;
+/// Extra cost of a road running across the track rather than along it, at right angles.
+const CROSSING_COST: f64 = 14.0;
 /// A road detour between two points much longer than the straight line is not what was ridden
 /// (e.g. a loop of the road between them): then the points are joined straight.
 const MAX_DETOUR: f64 = 2.5;
+/// Where the track changes road, it turns at the junction if that is this close to both of
+/// its points there (sparse files have points 100 m apart; the detour limit keeps the way
+/// sensible).
+const JUNCTION_REACH_M: f64 = 150.0;
+/// Points of the finished line are at most this far apart...
+const STEP_M: f64 = 5.0;
+/// ...and it is smoothed so it bends like a road, no point moving further than this from where
+/// it was put: corners round off, the route stays on its road.
+const MAX_SHIFT_M: f64 = 2.5;
+/// Pairs of smoothing passes; each pair shrinks and re-inflates the line (Taubin), which takes
+/// out kinks and jitter but keeps long bends as they are.
+const SMOOTHING_PAIRS: usize = 8;
+/// Spatial index cell size.
+const CELL_M: f64 = 50.0;
 
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
+
+/// Footpaths and tracks are taken only where the track clearly follows them: sidewalks and
+/// cycle lanes are often mapped beside streets.
+fn class_cost(class: RoadClass) -> f64 {
+    match class {
+        RoadClass::Path => 5.0,
+        RoadClass::Track => 2.0,
+        RoadClass::Major | RoadClass::Street | RoadClass::Service => 0.0,
+    }
+}
+
+/// A track put on the roads it rides.
+#[derive(Debug, Default)]
+pub(crate) struct Snapped {
+    pub(crate) track: Vec<RawPoint>,
+    /// The bridges and tunnels among the roads it was put on.
+    pub(crate) structures: Vec<Structure>,
+}
 
 /// A flat projection around the track, accurate to a fraction of a metre over a route.
 struct Flat {
@@ -61,15 +105,24 @@ struct Match {
     at: (f64, f64),
 }
 
-/// The track with its points on the roads they ride, and the roads' bends between them.
-pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Vec<RawPoint> {
+/// A point of the line being built, with where it was put (smoothing keeps it near there).
+#[derive(Debug, Clone, Copy)]
+struct Node {
+    at: (f64, f64),
+    anchor: (f64, f64),
+    elevation: Option<f64>,
+    time: Option<f64>,
+    /// On a road, rather than where a point off road was recorded.
+    on_road: bool,
+}
+
+/// The track on the roads it rides, smoothed, and the bridges and tunnels it uses.
+pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Snapped {
     let Some(first) = track.first() else {
-        return Vec::new();
+        return Snapped::default();
     };
-    if roads.is_empty() {
-        return smooth_off_road(track, &vec![None; track.len()]);
-    }
     let flat = Flat::new(first.lat, first.lon);
+    let positions: Vec<(f64, f64)> = track.iter().map(|p| flat.to_xy(p.lat, p.lon)).collect();
     let lines: Vec<Vec<(f64, f64)>> = roads
         .iter()
         .map(|r| {
@@ -79,84 +132,373 @@ pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Vec<RawPoint> {
                 .collect()
         })
         .collect();
-    let index = Index::new(&lines);
+    let network = Network::new(lines, roads);
+    let matches = network.choose(&positions);
 
-    let mut matches: Vec<Option<Match>> = Vec::with_capacity(track.len());
-    let mut last_road = None;
-    for point in track {
-        let found = index.nearest(&lines, flat.to_xy(point.lat, point.lon), last_road);
-        last_road = found.map(|m| m.road).or(last_road);
-        matches.push(found);
-    }
-
-    let mut out: Vec<RawPoint> = Vec::with_capacity(track.len() * 2);
-    let smoothed = smooth_off_road(track, &matches);
-    for i in 0..track.len() {
+    let mut nodes: Vec<Node> = Vec::with_capacity(track.len() * 2);
+    for (i, point) in track.iter().enumerate() {
+        let at = matches[i].map_or(positions[i], |m| m.at);
         if i > 0
             && let (Some(from), Some(to)) = (matches[i - 1], matches[i])
         {
-            add_bends(&mut out, &flat, &lines, &track[i - 1], &track[i], from, to);
+            network.connect(&mut nodes, from, to, (&track[i - 1], point));
         }
-        let mut point = smoothed[i];
-        if let Some(m) = matches[i] {
-            (point.lat, point.lon) = flat.to_lat_lon(m.at);
+        nodes.push(Node {
+            at,
+            anchor: at,
+            elevation: point.elevation,
+            time: point.time,
+            on_road: matches[i].is_some(),
+        });
+    }
+    let nodes = smooth(&densify(&nodes));
+
+    let mut used: Vec<usize> = matches.iter().flatten().map(|m| m.road).collect();
+    used.sort_unstable();
+    used.dedup();
+    Snapped {
+        track: nodes
+            .iter()
+            .map(|n| {
+                let (lat, lon) = flat.to_lat_lon(n.at);
+                RawPoint {
+                    lat,
+                    lon,
+                    elevation: n.elevation,
+                    time: n.time,
+                }
+            })
+            .collect(),
+        structures: used
+            .into_iter()
+            .filter_map(|r| {
+                roads[r].structure.map(|kind| Structure {
+                    kind,
+                    line: roads[r].line.clone(),
+                })
+            })
+            .collect(),
+    }
+}
+
+/// Where two roads meet, with the positions there on each.
+type Meeting = ((f64, f64), Match, Match);
+
+/// The roads, projected and indexed.
+struct Network<'a> {
+    lines: Vec<Vec<(f64, f64)>>,
+    roads: &'a [Road],
+    index: HashMap<(i64, i64), Vec<(usize, usize)>>,
+}
+
+impl<'a> Network<'a> {
+    fn new(lines: Vec<Vec<(f64, f64)>>, roads: &'a [Road]) -> Self {
+        let mut index: HashMap<(i64, i64), Vec<(usize, usize)>> = HashMap::new();
+        for (road, line) in lines.iter().enumerate() {
+            for segment in 0..line.len().saturating_sub(1) {
+                let (a, b) = (line[segment], line[segment + 1]);
+                let (x0, x1) = (cell(a.0.min(b.0)), cell(a.0.max(b.0)));
+                let (y0, y1) = (cell(a.1.min(b.1)), cell(a.1.max(b.1)));
+                for x in x0..=x1 {
+                    for y in y0..=y1 {
+                        index.entry((x, y)).or_default().push((road, segment));
+                    }
+                }
+            }
         }
-        out.push(point);
+        Self {
+            lines,
+            roads,
+            index,
+        }
+    }
+
+    /// The closest point of every road within reach of `point`.
+    fn candidates(&self, point: (f64, f64)) -> Vec<Match> {
+        let (cx, cy) = (cell(point.0), cell(point.1));
+        let mut best: HashMap<usize, (f64, Match)> = HashMap::new();
+        for x in cx - 1..=cx + 1 {
+            for y in cy - 1..=cy + 1 {
+                for &(road, segment) in self.index.get(&(x, y)).into_iter().flatten() {
+                    let line = &self.lines[road];
+                    let (at, along) = project(point, line[segment], line[segment + 1]);
+                    let distance = (at.0 - point.0).hypot(at.1 - point.1);
+                    if distance > MAX_SNAP_M {
+                        continue;
+                    }
+                    let candidate = Match {
+                        road,
+                        segment,
+                        along,
+                        at,
+                    };
+                    best.entry(road)
+                        .and_modify(|b| {
+                            if distance < b.0 {
+                                *b = (distance, candidate);
+                            }
+                        })
+                        .or_insert((distance, candidate));
+                }
+            }
+        }
+        let mut found: Vec<Match> = best.into_values().map(|(_, m)| m).collect();
+        // A deterministic order, whatever the hash map did.
+        found.sort_by_key(|m| (m.road, m.segment));
+        found
+    }
+
+    /// The road of every point (or none), the cheapest for the whole track.
+    fn choose(&self, positions: &[(f64, f64)]) -> Vec<Option<Match>> {
+        let states: Vec<Vec<(Option<Match>, f64)>> = positions
+            .iter()
+            .enumerate()
+            .map(|(i, &point)| {
+                let heading = heading(positions, i);
+                let mut options = vec![(None, OFF_ROAD_COST)];
+                for m in self.candidates(point) {
+                    let line = &self.lines[m.road];
+                    let (a, b) = (line[m.segment], line[m.segment + 1]);
+                    let length = distance(a, b).max(1e-9);
+                    let direction = ((b.0 - a.0) / length, (b.1 - a.1) / length);
+                    let across = heading.map_or(0.0, |h| {
+                        CROSSING_COST * (1.0 - (h.0 * direction.0 + h.1 * direction.1).abs())
+                    });
+                    let cost =
+                        distance(m.at, point) + class_cost(self.roads[m.road].class) + across;
+                    options.push((Some(m), cost));
+                }
+                options
+            })
+            .collect();
+
+        let mut meet_cache: HashMap<(usize, usize), bool> = HashMap::new();
+        let mut cost: Vec<f64> = states[0].iter().map(|s| s.1).collect();
+        let mut back: Vec<Vec<usize>> = vec![Vec::new()];
+        for i in 1..states.len() {
+            let mut next_cost = Vec::with_capacity(states[i].len());
+            let mut next_back = Vec::with_capacity(states[i].len());
+            for (state, emission) in &states[i] {
+                let mut best = (0, f64::INFINITY);
+                for (p, (previous, _)) in states[i - 1].iter().enumerate() {
+                    let total = cost[p] + self.transition(*previous, *state, &mut meet_cache);
+                    if total < best.1 {
+                        best = (p, total);
+                    }
+                }
+                next_back.push(best.0);
+                next_cost.push(best.1 + emission);
+            }
+            cost = next_cost;
+            back.push(next_back);
+        }
+        let mut chosen = vec![None; states.len()];
+        let mut state = cost
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.total_cmp(b.1))
+            .map_or(0, |(s, _)| s);
+        for i in (0..states.len()).rev() {
+            chosen[i] = states[i][state].0;
+            if i > 0 {
+                state = back[i][state];
+            }
+        }
+        chosen
+    }
+
+    fn transition(
+        &self,
+        from: Option<Match>,
+        to: Option<Match>,
+        meet_cache: &mut HashMap<(usize, usize), bool>,
+    ) -> f64 {
+        match (from, to) {
+            (Some(a), Some(b)) if a.road == b.road => 0.0,
+            (Some(a), Some(b)) => {
+                let key = (a.road.min(b.road), a.road.max(b.road));
+                let meet = *meet_cache
+                    .entry(key)
+                    .or_insert_with(|| self.meet(a.road, b.road, None).is_some());
+                if meet { TURN_COST } else { HOP_COST }
+            }
+            (None, None) => 0.0,
+            _ => LEAVE_COST,
+        }
+    }
+
+    /// Where roads `a` and `b` meet, closest to `near` if given: a vertex of one on the other
+    /// (OpenStreetMap ways share nodes at junctions; pieces of a way from neighbouring tiles
+    /// share theirs). With the positions there on `a` and on `b`.
+    fn meet(&self, a: usize, b: usize, near: Option<(f64, f64)>) -> Option<Meeting> {
+        let mut best: Option<(f64, Meeting)> = None;
+        for (first, second) in [(a, b), (b, a)] {
+            let line = &self.lines[first];
+            for (vertex, &point) in line.iter().enumerate() {
+                let Some(on_second) = self.closest_on(second, point) else {
+                    continue;
+                };
+                if distance(on_second.at, point) > 1.0 {
+                    continue;
+                }
+                let on_first = Match {
+                    road: first,
+                    segment: vertex.min(line.len().saturating_sub(2)),
+                    along: if vertex + 1 == line.len() { 1.0 } else { 0.0 },
+                    at: point,
+                };
+                let found = if first == a {
+                    (point, on_first, on_second)
+                } else {
+                    (point, on_second, on_first)
+                };
+                let Some(near) = near else {
+                    return Some(found);
+                };
+                let score = distance(point, near);
+                if best.as_ref().is_none_or(|(s, _)| score < *s) {
+                    best = Some((score, found));
+                }
+            }
+        }
+        best.map(|(_, found)| found)
+    }
+
+    fn closest_on(&self, road: usize, point: (f64, f64)) -> Option<Match> {
+        let line = &self.lines[road];
+        (0..line.len().saturating_sub(1))
+            .map(|segment| {
+                let (at, along) = project(point, line[segment], line[segment + 1]);
+                Match {
+                    road,
+                    segment,
+                    along,
+                    at,
+                }
+            })
+            .min_by(|x, y| distance(x.at, point).total_cmp(&distance(y.at, point)))
+    }
+
+    /// The way from `from` to `to` (the positions on roads of two consecutive points `ends`):
+    /// along their road's bends, or round the junction where the track changes road.
+    fn connect(&self, nodes: &mut Vec<Node>, from: Match, to: Match, ends: (&RawPoint, &RawPoint)) {
+        let mut path = vec![from.at];
+        if from.road == to.road {
+            path.extend(self.bends(from, to));
+        } else if let Some((junction, on_from, on_to)) = self.meet(from.road, to.road, Some(to.at))
+            && distance(junction, from.at) <= JUNCTION_REACH_M
+            && distance(junction, to.at) <= JUNCTION_REACH_M
+        {
+            path.extend(self.bends(from, on_from));
+            path.push(junction);
+            path.extend(self.bends(on_to, to));
+        }
+        path.push(to.at);
+        let lengths: Vec<f64> = path.windows(2).map(|w| distance(w[0], w[1])).collect();
+        let total: f64 = lengths.iter().sum();
+        if total > distance(from.at, to.at).max(1.0) * MAX_DETOUR {
+            return;
+        }
+        let mut done = 0.0;
+        for (point, length) in path[1..path.len() - 1].iter().zip(&lengths) {
+            done += length;
+            if nodes.last().is_some_and(|n| distance(n.at, *point) < 0.05) {
+                continue;
+            }
+            let share = if total > 0.0 { done / total } else { 0.0 };
+            nodes.push(Node {
+                at: *point,
+                anchor: *point,
+                elevation: lerp_option(ends.0.elevation, ends.1.elevation, share),
+                time: lerp_option(ends.0.time, ends.1.time, share),
+                on_road: true,
+            });
+        }
+    }
+
+    /// A road's vertices strictly between two positions on it, in the direction of travel.
+    fn bends(&self, from: Match, to: Match) -> Vec<(f64, f64)> {
+        let line = &self.lines[from.road];
+        if (to.segment, to.along) >= (from.segment, from.along) {
+            (from.segment + 1..=to.segment).map(|v| line[v]).collect()
+        } else {
+            (to.segment + 1..=from.segment)
+                .rev()
+                .map(|v| line[v])
+                .collect()
+        }
+    }
+}
+
+/// Direction of travel at point `i` (unit), from its neighbours; `None` where they coincide.
+fn heading(positions: &[(f64, f64)], i: usize) -> Option<(f64, f64)> {
+    let before = positions[i.saturating_sub(1)];
+    let after = positions[(i + 1).min(positions.len() - 1)];
+    let (dx, dy) = (after.0 - before.0, after.1 - before.1);
+    let length = dx.hypot(dy);
+    (length > 0.5).then(|| (dx / length, dy / length))
+}
+
+/// The line with points inserted so that, along roads, none are more than `STEP_M` apart.
+/// Between points off road the line is not the road ridden (sparse files cut corners), so
+/// nothing is added there: elevations along it are interpolated rather than taken from the
+/// terrain.
+fn densify(nodes: &[Node]) -> Vec<Node> {
+    let mut out = Vec::with_capacity(nodes.len() * 2);
+    for pair in nodes.windows(2) {
+        let (from, to) = (pair[0], pair[1]);
+        out.push(from);
+        if !(from.on_road && to.on_road) {
+            continue;
+        }
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // short segments
+        let pieces = (distance(from.at, to.at) / STEP_M).ceil() as usize;
+        for piece in 1..pieces {
+            #[allow(clippy::cast_precision_loss)] // few pieces
+            let share = piece as f64 / pieces as f64;
+            out.push(Node {
+                at: lerp(from.at, to.at, share),
+                anchor: lerp(from.anchor, to.anchor, share),
+                elevation: lerp_option(from.elevation, to.elevation, share),
+                time: from
+                    .time
+                    .zip(to.time)
+                    .map(|(start, end)| start + (end - start) * share),
+                on_road: true,
+            });
+        }
+    }
+    out.extend(nodes.last());
+    out
+}
+
+/// Rounds corners and takes out jitter, keeping every point within `MAX_SHIFT_M` of where it
+/// was put; the ends stay.
+fn smooth(nodes: &[Node]) -> Vec<Node> {
+    let mut out = nodes.to_vec();
+    for pass in 0..2 * SMOOTHING_PAIRS {
+        // Taubin's factors: shrink, then inflate a little more.
+        let factor = if pass % 2 == 0 { 0.5 } else { -0.53 };
+        let previous: Vec<(f64, f64)> = out.iter().map(|n| n.at).collect();
+        for i in 1..out.len().saturating_sub(1) {
+            let middle = lerp(previous[i - 1], previous[i + 1], 0.5);
+            let moved = lerp(previous[i], middle, factor);
+            let anchor = out[i].anchor;
+            let (dx, dy) = (moved.0 - anchor.0, moved.1 - anchor.1);
+            let shift = dx.hypot(dy);
+            out[i].at = if shift > MAX_SHIFT_M {
+                let scale = MAX_SHIFT_M / shift;
+                (anchor.0 + dx * scale, anchor.1 + dy * scale)
+            } else {
+                moved
+            };
+        }
     }
     out
 }
 
-/// The road's vertices between two matched points on the same road, with elevation and time
-/// interpolated between theirs.
-fn add_bends(
-    out: &mut Vec<RawPoint>,
-    flat: &Flat,
-    lines: &[Vec<(f64, f64)>],
-    a: &RawPoint,
-    b: &RawPoint,
-    from: Match,
-    to: Match,
-) {
-    if from.road != to.road {
-        return;
-    }
-    let line = &lines[from.road];
-    // Vertices strictly between the two positions, in the direction of travel.
-    let between: Vec<(f64, f64)> = if (to.segment, to.along) >= (from.segment, from.along) {
-        (from.segment + 1..=to.segment).map(|v| line[v]).collect()
-    } else {
-        (to.segment + 1..=from.segment)
-            .rev()
-            .map(|v| line[v])
-            .collect()
-    };
-    if between.is_empty() {
-        return;
-    }
-    let mut path = vec![from.at];
-    path.extend(&between);
-    path.push(to.at);
-    let lengths: Vec<f64> = path
-        .windows(2)
-        .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
-        .collect();
-    let total: f64 = lengths.iter().sum();
-    let straight = (to.at.0 - from.at.0).hypot(to.at.1 - from.at.1);
-    if total > straight.max(1.0) * MAX_DETOUR {
-        return;
-    }
-    let mut done = 0.0;
-    for (vertex, length) in between.iter().zip(&lengths) {
-        done += length;
-        let share = if total > 0.0 { done / total } else { 0.0 };
-        let (lat, lon) = flat.to_lat_lon(*vertex);
-        out.push(RawPoint {
-            lat,
-            lon,
-            elevation: lerp_option(a.elevation, b.elevation, share),
-            time: lerp_option(a.time, b.time, share),
-        });
-    }
+fn lerp(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
 }
 
 fn lerp_option(a: Option<f64>, b: Option<f64>, share: f64) -> Option<f64> {
@@ -166,81 +508,8 @@ fn lerp_option(a: Option<f64>, b: Option<f64>, share: f64) -> Option<f64> {
     }
 }
 
-/// Off-road points (not matched) averaged with their neighbours, to take out GPS jitter; matched
-/// points and the ends are left alone.
-fn smooth_off_road(track: &[RawPoint], matches: &[Option<Match>]) -> Vec<RawPoint> {
-    let mut out = track.to_vec();
-    for i in 1..track.len().saturating_sub(1) {
-        if matches[i].is_none() {
-            out[i].lat = (track[i - 1].lat + 2.0 * track[i].lat + track[i + 1].lat) / 4.0;
-            out[i].lon = (track[i - 1].lon + 2.0 * track[i].lon + track[i + 1].lon) / 4.0;
-        }
-    }
-    out
-}
-
-/// Road segments by grid cell.
-struct Index {
-    cells: HashMap<(i64, i64), Vec<(usize, usize)>>,
-}
-
-impl Index {
-    fn new(lines: &[Vec<(f64, f64)>]) -> Self {
-        let mut cells: HashMap<(i64, i64), Vec<(usize, usize)>> = HashMap::new();
-        for (road, line) in lines.iter().enumerate() {
-            for segment in 0..line.len().saturating_sub(1) {
-                let (a, b) = (line[segment], line[segment + 1]);
-                let (x0, x1) = (cell(a.0.min(b.0)), cell(a.0.max(b.0)));
-                let (y0, y1) = (cell(a.1.min(b.1)), cell(a.1.max(b.1)));
-                for x in x0..=x1 {
-                    for y in y0..=y1 {
-                        cells.entry((x, y)).or_default().push((road, segment));
-                    }
-                }
-            }
-        }
-        Self { cells }
-    }
-
-    /// The closest point on a road within reach, preferring `last_road`.
-    fn nearest(
-        &self,
-        lines: &[Vec<(f64, f64)>],
-        point: (f64, f64),
-        last_road: Option<usize>,
-    ) -> Option<Match> {
-        let (cx, cy) = (cell(point.0), cell(point.1));
-        let mut best: Option<(f64, Match)> = None;
-        for x in cx - 1..=cx + 1 {
-            for y in cy - 1..=cy + 1 {
-                for &(road, segment) in self.cells.get(&(x, y)).into_iter().flatten() {
-                    let line = &lines[road];
-                    let (at, along) = project(point, line[segment], line[segment + 1]);
-                    let distance = (at.0 - point.0).hypot(at.1 - point.1);
-                    if distance > MAX_SNAP_M {
-                        continue;
-                    }
-                    let score = if Some(road) == last_road {
-                        distance * SAME_ROAD_BIAS
-                    } else {
-                        distance
-                    };
-                    if best.as_ref().is_none_or(|(s, _)| score < *s) {
-                        best = Some((
-                            score,
-                            Match {
-                                road,
-                                segment,
-                                along,
-                                at,
-                            },
-                        ));
-                    }
-                }
-            }
-        }
-        best.map(|(_, m)| m)
-    }
+fn distance(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (b.0 - a.0).hypot(b.1 - a.1)
 }
 
 #[allow(clippy::cast_possible_truncation)] // local metres over a route stay far below 2^63 cells
@@ -262,7 +531,7 @@ fn project(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> ((f64, f64), f64) {
 
 #[cfg(test)]
 mod tests {
-    use torqa_osm::RoadClass;
+    use torqa_osm::StructureKind;
 
     use super::*;
 
@@ -283,8 +552,12 @@ mod tests {
     }
 
     fn road(points: &[(f64, f64)]) -> Road {
+        road_of(RoadClass::Street, points)
+    }
+
+    fn road_of(class: RoadClass, points: &[(f64, f64)]) -> Road {
         Road {
-            class: RoadClass::Street,
+            class,
             line: points.iter().map(|&p| flat().to_lat_lon(p)).collect(),
             structure: None,
         }
@@ -295,10 +568,27 @@ mod tests {
     }
 
     fn length(points: &[(f64, f64)]) -> f64 {
+        points.windows(2).map(|w| distance(w[0], w[1])).sum()
+    }
+
+    /// The largest change of direction between consecutive pieces of the line, in degrees.
+    fn sharpest_turn(points: &[(f64, f64)]) -> f64 {
         points
-            .windows(2)
-            .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
-            .sum()
+            .windows(3)
+            .map(|w| {
+                let a = (w[1].0 - w[0].0).atan2(w[1].1 - w[0].1);
+                let b = (w[2].0 - w[1].0).atan2(w[2].1 - w[1].1);
+                let turn = (b - a).to_degrees().abs();
+                if turn > 180.0 { 360.0 - turn } else { turn }
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// Distance from `p` to the polyline `line`.
+    fn off(line: &[(f64, f64)], p: (f64, f64)) -> f64 {
+        line.windows(2)
+            .map(|w| distance(project(p, w[0], w[1]).0, p))
+            .fold(f64::INFINITY, f64::min)
     }
 
     #[test]
@@ -309,7 +599,7 @@ mod tests {
             .map(|i| point(if i % 2 == 0 { 6.0 } else { -6.0 }, f64::from(i) * 20.0))
             .collect();
 
-        let snapped = xy(&to_roads(&track, &[straight]));
+        let snapped = xy(&to_roads(&track, &[straight]).track);
 
         assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
         assert!((length(&snapped) - 500.0).abs() < 0.1);
@@ -334,10 +624,10 @@ mod tests {
             })
             .collect();
 
-        let snapped = xy(&to_roads(&track, &[bend]));
+        let snapped = xy(&to_roads(&track, &[bend]).track);
 
         // Along the curve (π × 100 m), not its chords (300 m), every point on it.
-        assert!((length(&snapped) - std::f64::consts::PI * 100.0).abs() < 1.0);
+        assert!((length(&snapped) - std::f64::consts::PI * 100.0).abs() < 1.5);
         for (x, y) in &snapped {
             assert!((x.hypot(*y) - 100.0).abs() < 0.5, "off the road: {x}, {y}");
         }
@@ -348,10 +638,10 @@ mod tests {
         let far_road = road(&[(200.0, 0.0), (200.0, 500.0)]);
         let track: Vec<RawPoint> = (0..=10).map(|i| point(0.0, f64::from(i) * 50.0)).collect();
 
-        let snapped = xy(&to_roads(&track, &[far_road]));
+        let snapped = xy(&to_roads(&track, &[far_road]).track);
 
-        assert_eq!(snapped.len(), track.len());
         assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01));
+        assert!((length(&snapped) - 500.0).abs() < 0.1);
     }
 
     #[test]
@@ -363,8 +653,139 @@ mod tests {
             .map(|i| point(if i < 5 { 3.0 } else { 5.8 }, f64::from(i) * 20.0))
             .collect();
 
-        let snapped = xy(&to_roads(&track, &[ridden, parallel]));
+        let snapped = xy(&to_roads(&track, &[ridden, parallel]).track);
 
         assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
+    }
+
+    #[test]
+    fn a_sidewalk_beside_the_street_does_not_pull_the_route_over() {
+        let street = road(&[(0.0, -10.0), (0.0, 410.0)]);
+        let sidewalk = road_of(RoadClass::Path, &[(5.0, -10.0), (5.0, 410.0)]);
+        // GPS mostly between them, sometimes right on the sidewalk.
+        let track: Vec<RawPoint> = (0..=20)
+            .map(|i| point(if i % 3 == 0 { 5.0 } else { 2.8 }, f64::from(i) * 20.0))
+            .collect();
+
+        let snapped = xy(&to_roads(&track, &[street, sidewalk]).track);
+
+        assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
+    }
+
+    #[test]
+    fn side_streets_passed_at_junctions_are_not_taken() {
+        // A street north with side streets branching east and west at 200 m.
+        let main = road(&[(0.0, -10.0), (0.0, 200.0), (0.0, 410.0)]);
+        let east = road(&[(0.0, 200.0), (300.0, 200.0)]);
+        let west = road(&[(0.0, 200.0), (-300.0, 200.0)]);
+        // The track passes the junction drifting east, one point right on the side street.
+        let track: Vec<RawPoint> = [
+            (1.0, 0.0),
+            (2.0, 100.0),
+            (4.0, 190.0),
+            (7.0, 200.0),
+            (4.0, 210.0),
+            (1.0, 300.0),
+            (0.0, 400.0),
+        ]
+        .iter()
+        .map(|&(x, y)| point(x, y))
+        .collect();
+
+        let snapped = xy(&to_roads(&track, &[main, east, west]).track);
+
+        assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
+    }
+
+    #[test]
+    fn turns_at_junctions_go_round_the_corner_not_across_it() {
+        // North, then east at a junction 200 m along; one point each side of the corner.
+        let north = road(&[(0.0, -10.0), (0.0, 200.0)]);
+        let east = road(&[(0.0, 200.0), (300.0, 200.0)]);
+        let track: Vec<RawPoint> = [(0.0, 0.0), (0.0, 120.0), (90.0, 200.0), (250.0, 200.0)]
+            .iter()
+            .map(|&(x, y)| point(x, y))
+            .collect();
+        let streets = [(0.0, -10.0), (0.0, 200.0), (300.0, 200.0)];
+
+        let snapped = xy(&to_roads(&track, &[north, east]).track);
+
+        // Round the corner, cutting it a little but never across the block, and turning over
+        // several points rather than at one.
+        let corner = snapped
+            .iter()
+            .map(|&p| distance(p, (0.0, 200.0)))
+            .fold(f64::INFINITY, f64::min);
+        assert!((0.3..4.0).contains(&corner), "{corner}");
+        for &p in &snapped {
+            assert!(off(&streets, p) <= MAX_SHIFT_M + 1e-6, "{p:?}");
+        }
+        assert!(
+            sharpest_turn(&snapped) < 65.0,
+            "{}",
+            sharpest_turn(&snapped)
+        );
+    }
+
+    #[test]
+    fn the_route_bends_smoothly_without_kinks() {
+        // A road of straight pieces with sharp corners, ridden densely beside it.
+        let zigzag = [
+            (0.0, 0.0),
+            (0.0, 100.0),
+            (40.0, 140.0),
+            (40.0, 260.0),
+            (0.0, 300.0),
+        ];
+        let track: Vec<RawPoint> = (0..=60)
+            .map(|i| {
+                let t = f64::from(i) / 60.0 * 300.0;
+                let x = if t < 100.0 {
+                    0.0
+                } else if t < 140.0 {
+                    t - 100.0
+                } else if t < 260.0 {
+                    40.0
+                } else {
+                    300.0 - t
+                };
+                point(x + 1.5, t)
+            })
+            .collect();
+
+        let snapped = xy(&to_roads(&track, &[road(&zigzag)]).track);
+
+        assert!(
+            sharpest_turn(&snapped) < 30.0,
+            "{}",
+            sharpest_turn(&snapped)
+        );
+        assert!(
+            snapped
+                .windows(2)
+                .all(|w| distance(w[0], w[1]) <= STEP_M * 1.5)
+        );
+        for &p in &snapped {
+            assert!(off(&zigzag, p) <= MAX_SHIFT_M + 1e-6, "{p:?}");
+        }
+    }
+
+    #[test]
+    fn only_the_roads_ridden_bring_their_bridges_and_tunnels() {
+        let ridden = Road {
+            structure: Some(StructureKind::Bridge),
+            ..road(&[(0.0, -10.0), (0.0, 310.0)])
+        };
+        // A tunnel of another road running alongside, 15 m away.
+        let other = Road {
+            structure: Some(StructureKind::Tunnel),
+            ..road(&[(15.0, -10.0), (15.0, 310.0)])
+        };
+        let track: Vec<RawPoint> = (0..=15).map(|i| point(1.0, f64::from(i) * 20.0)).collect();
+
+        let snapped = to_roads(&track, &[ridden, other]);
+
+        assert_eq!(snapped.structures.len(), 1);
+        assert_eq!(snapped.structures[0].kind, StructureKind::Bridge);
     }
 }

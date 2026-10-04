@@ -136,7 +136,7 @@ pub enum StructureKind {
     Tunnel,
 }
 
-/// A road bridge or tunnel.
+/// A road bridge or tunnel: a road the route rides, where it is one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Structure {
     /// Bridge or tunnel.
@@ -154,8 +154,6 @@ pub struct MapData {
     pub areas: Vec<Area>,
     /// Rivers and streams.
     pub waterways: Vec<Waterway>,
-    /// Road bridges and tunnels.
-    pub structures: Vec<Structure>,
     /// Roads.
     pub roads: Vec<Road>,
 }
@@ -437,15 +435,16 @@ mod tests {
             .await
             .unwrap();
 
+        let structures = data.roads.iter().filter(|r| r.structure.is_some()).count();
         println!(
-            "{:?}: {} buildings, {} areas, {} waterways, {} structures, {} roads",
+            "{:?}: {} buildings, {} areas, {} waterways, {} roads ({} bridges or tunnels)",
             started.elapsed(),
             data.buildings.len(),
             data.areas.len(),
             data.waterways.len(),
-            data.structures.len(),
-            data.roads.len()
+            data.roads.len(),
+            structures
         );
-        assert!(!data.buildings.is_empty() && !data.structures.is_empty());
+        assert!(!data.buildings.is_empty() && structures > 0);
     }
 }

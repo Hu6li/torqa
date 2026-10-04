@@ -66,8 +66,29 @@ async fn route_north(structures: &[Structure]) -> Route {
         );
     }
     xml.push_str("</trkseg></trk></gpx>");
+    // The road ridden, with the structures on it.
+    let mut roads = Vec::new();
+    let mut from = at(0.0, -20.0);
+    for structure in structures {
+        roads.push(torqa_osm::Road {
+            class: torqa_osm::RoadClass::Street,
+            line: vec![from, structure.line[0]],
+            structure: None,
+        });
+        roads.push(torqa_osm::Road {
+            class: torqa_osm::RoadClass::Street,
+            line: structure.line.clone(),
+            structure: Some(structure.kind),
+        });
+        from = structure.line[structure.line.len() - 1];
+    }
+    roads.push(torqa_osm::Road {
+        class: torqa_osm::RoadClass::Street,
+        line: vec![from, at(0.0, 1020.0)],
+        structure: None,
+    });
     let map = MapData {
-        structures: structures.to_vec(),
+        roads,
         ..MapData::default()
     };
     Route::from_gpx_with::<EastwardSlope>(&xml, None, &map)
@@ -171,23 +192,107 @@ async fn terrain_follows_the_model_away_from_the_road() {
 }
 
 #[tokio::test]
-async fn terrain_is_levelled_just_below_the_road() {
+async fn the_verge_is_level_just_below_the_road() {
     let world = world(&MapData::default()).await;
 
     let near_road: Vec<_> = terrain_vertices(&world)
-        .filter(|v| v[0].abs() <= 10.0 && (-1000.0..0.0).contains(&v[2]))
+        .filter(|v| v[0].abs() <= 6.5 && (-1000.0..0.0).contains(&v[2]))
         .collect();
-    assert_ne!(near_road.len(), 0);
+    assert!(near_road.len() > 100);
     for v in near_road {
         assert!((v[1] - (500.0 - 0.25)).abs() < 0.01, "{v:?}");
     }
+    // The road's surface (between its skirts) is at the route's 500 m.
     assert!(
         world
             .road
             .vertices
+            .as_chunks::<4>()
+            .0
             .iter()
-            .all(|v| (v[1] - 500.0).abs() < 0.01)
+            .all(|s| (s[1][1] - 500.0).abs() < 0.01 && (s[2][1] - 500.0).abs() < 0.01)
     );
+}
+
+/// The terrain's height at (`x`, `z`) as its mesh has it.
+fn ground_at(world: &World, x: f32, z: f32) -> Option<f32> {
+    let chunk = world.chunks.iter().find(|c| {
+        (x - c.center[0]).abs() <= CHUNK_SIZE as f32 / 2.0
+            && (z - c.center[2]).abs() <= CHUNK_SIZE as f32 / 2.0
+    })?;
+    let (px, pz) = (x - chunk.center[0], z - chunk.center[2]);
+    triangles(&chunk.mesh).find_map(|[a, b, c]| {
+        let det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+        if det.abs() < 1e-9 {
+            return None;
+        }
+        let wa = ((b[2] - c[2]) * (px - c[0]) + (c[0] - b[0]) * (pz - c[2])) / det;
+        let wb = ((c[2] - a[2]) * (px - c[0]) + (a[0] - c[0]) * (pz - c[2])) / det;
+        let wc = 1.0 - wa - wb;
+        (wa >= -1e-4 && wb >= -1e-4 && wc >= -1e-4).then(|| wa * a[1] + wb * b[1] + wc * c[1])
+    })
+}
+
+#[tokio::test]
+async fn no_ground_covers_the_road_on_a_hillside_with_a_hairpin() {
+    // Terrain rising 30 % to the east; the road climbs north along it, turns in a hairpin of
+    // 15 m radius and comes back 30 m further up the slope, cut into the hillside.
+    struct Hillside;
+    impl ElevationModel for Hillside {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(500.0 + 0.3 * east))
+        }
+    }
+    let mut points = Vec::new();
+    for i in 0..=30 {
+        points.push((0.0, f64::from(i) * 10.0));
+    }
+    for k in 1..12 {
+        let angle = std::f64::consts::PI * f64::from(k) / 12.0;
+        points.push((15.0 - 15.0 * angle.cos(), 300.0 + 15.0 * angle.sin()));
+    }
+    for i in (0..=30).rev() {
+        points.push((30.0, f64::from(i) * 10.0));
+    }
+    let mut xml = String::from("<gpx><trk><trkseg>");
+    for &(east, north) in &points {
+        let (lat, lon) = at(east, north);
+        let elevation = 500.0 + 0.3 * east;
+        let _ = write!(
+            xml,
+            r#"<trkpt lat="{lat}" lon="{lon}"><ele>{elevation}</ele></trkpt>"#
+        );
+    }
+    xml.push_str("</trkseg></trk></gpx>");
+    let route = Route::from_gpx_with::<Hillside>(&xml, None, &MapData::default())
+        .await
+        .unwrap();
+    let world = generate(&route, &mut Hillside, &MapData::default(), &mut |_, _| {}).await;
+
+    // Every edge of the road, and its middle, lies above the ground there.
+    let road = &world.road.vertices;
+    let mut checked = 0;
+    for section in road.as_chunks::<4>().0 {
+        let (left, right) = (section[1], section[2]);
+        let middle = [0, 1, 2].map(|k| f32::midpoint(left[k], right[k]));
+        for point in [left, middle, right] {
+            let ground = ground_at(&world, point[0], point[2]).expect("ground under the road");
+            assert!(
+                ground <= point[1] + 0.01,
+                "ground {ground} over the road at {point:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 300);
+    // The hillside above the upper leg is natural again further up.
+    let up = ground_at(&world, 90.0, -150.0).unwrap();
+    assert!((up - (500.0 + 0.3 * 90.0)).abs() < 0.5, "{up}");
 }
 
 #[tokio::test]
@@ -307,7 +412,7 @@ async fn forests_get_trees_but_not_on_the_road() {
         );
         // Beyond the ground levelled for the road, trees stand on the natural terrain.
         assert!(
-            x.abs() < FLAT_OUTER as f32 || (y - (500.0 + 0.1 * x)).abs() < 1.0,
+            x.abs() < LEVEL_REACH as f32 || (y - (500.0 + 0.1 * x)).abs() < 1.0,
             "tree not on the ground: {y}"
         );
     }
@@ -374,7 +479,7 @@ async fn grass_and_flowers_line_the_road_but_not_lakes_or_the_road_itself() {
 }
 
 #[tokio::test]
-async fn other_streets_lie_on_the_ground_but_not_on_the_road_ridden() {
+async fn other_streets_join_the_road_ridden_and_lie_on_the_ground() {
     use torqa_osm::{Road, RoadClass, StructureKind};
 
     let way = |class, from: (f64, f64), to: (f64, f64), structure| Road {
@@ -384,7 +489,9 @@ async fn other_streets_lie_on_the_ground_but_not_on_the_road_ridden() {
     };
     let world = world(&MapData {
         roads: vec![
-            // A side street crossing the route, a farm track beside it, a tunnel.
+            // The road ridden itself, as the map has it.
+            way(RoadClass::Street, (0.0, 0.0), (0.0, 1000.0), None),
+            // A side street crossing the route, a farm track beside it, a tunnel, a bridge.
             way(RoadClass::Street, (-200.0, 300.0), (200.0, 300.0), None),
             way(RoadClass::Track, (60.0, 100.0), (60.0, 600.0), None),
             way(
@@ -392,6 +499,12 @@ async fn other_streets_lie_on_the_ground_but_not_on_the_road_ridden() {
                 (-300.0, 800.0),
                 (300.0, 800.0),
                 Some(StructureKind::Tunnel),
+            ),
+            way(
+                RoadClass::Street,
+                (100.0, 900.0),
+                (300.0, 900.0),
+                Some(StructureKind::Bridge),
             ),
         ],
         ..MapData::default()
@@ -415,21 +528,33 @@ async fn other_streets_lie_on_the_ground_but_not_on_the_road_ridden() {
 
     assert!(streets.len() > 100, "{} street vertices", streets.len());
     assert!(tracks.len() > 100, "{} track vertices", tracks.len());
+    let mut under_the_road = 0;
     for [x, y, z] in &streets {
-        // The crossing street only, and not on the road (6 m wide) where it crosses.
-        assert!(
-            (z + 300.0).abs() < 3.0,
-            "street vertex at {x}, {z}: the tunnel?"
-        );
-        assert!(x.abs() > 5.5, "street drawn over the road ridden at {x}");
-        // On the ground, which rises 0.1 m per metre east beyond the levelled road.
-        if x.abs() > FLAT_OUTER as f32 {
+        // The crossing street and the bridge only: not the road ridden again, not the tunnel.
+        let crossing = (z + 300.0).abs() < 3.0;
+        let bridge = (z + 900.0).abs() < 3.0 && (99.0..=301.0).contains(x);
+        assert!(crossing || bridge, "street vertex at {x}, {z}");
+        if crossing && x.abs() < 3.0 {
+            // It runs on under the road, below its surface, so the junction is joined.
+            under_the_road += 1;
             assert!(
-                (y - (500.0 + 0.1 * x)).abs() < 0.5,
+                *y < 500.0 - 0.05,
+                "street over the road ridden: {y} at {x}, {z}"
+            );
+        }
+        // On the ground, which rises 0.1 m per metre east beyond the shaped ground; the
+        // bridge's deck runs straight between its ends, here on the same slope.
+        if x.abs() > LEVEL_REACH as f32 {
+            assert!(
+                (y - (500.0 + 0.1 * x)).abs() < 0.8,
                 "street off the ground: {y} at {x}"
             );
         }
     }
+    assert!(
+        under_the_road > 0,
+        "the crossing street stops short of the road"
+    );
     for [x, _, _] in &tracks {
         assert!((x - 60.0).abs() < 2.0);
     }
@@ -653,9 +778,12 @@ async fn ground_never_covers_a_bridge_deck() {
     let route = route_north(&[bridge]).await;
     let world = generate(&route, &mut Bank, &MapData::default(), &mut |_, _| {}).await;
 
-    for v in
-        terrain_vertices(&world).filter(|v| v[0].abs() <= 10.0 && (-700.0..-300.0).contains(&v[2]))
-    {
+    // Under the deck and its verge the ground stays below it; the bank rises only beside it.
+    let under: Vec<_> = terrain_vertices(&world)
+        .filter(|v| v[0].abs() <= 6.3 && (-700.0..-300.0).contains(&v[2]))
+        .collect();
+    assert!(under.len() > 50);
+    for v in under {
         assert!(v[1] <= 500.0 - 0.25 + 0.01, "terrain above the deck: {v:?}");
     }
 }

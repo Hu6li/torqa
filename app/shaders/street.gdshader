@@ -1,6 +1,6 @@
 // Streets, tracks and paths of the map around the route (R45): asphalt for paved streets,
-// gravel for tracks and paths (with grass down the middle of tracks), edges darkening into the
-// verge. UV.x runs 0–1 across, UV.y is the distance along in metres. CC0 textures from
+// gravel for tracks and paths (with grass down the middle of tracks), edges darkening a little
+// into the verge. UV.x runs 0–1 across, UV.y is the distance along in metres. CC0 textures from
 // ambientCG (docs/CREDITS.md).
 shader_type spatial;
 
@@ -31,9 +31,11 @@ void fragment() {
 		color = tint * sample / max(average, vec3(0.02));
 		normal_map = texture(surface_normal, surface).rgb;
 	}
-	float edge = 1.0 - smoothstep(0.0, 0.12, min(UV.x, 1.0 - UV.x));
+	// A faint edge only: where streets overlap at junctions, a strong one would draw stripes
+	// across the other street.
+	float edge = 1.0 - smoothstep(0.0, 0.05, min(UV.x, 1.0 - UV.x));
 	float middle = middle_grass * (1.0 - smoothstep(0.08, 0.16, abs(UV.x - 0.5)));
-	color = mix(color, pow(verge_color, vec3(2.2)), max(edge * 0.6, middle * 0.85));
+	color = mix(color, pow(verge_color, vec3(2.2)), max(edge * 0.35, middle * 0.85));
 	ALBEDO = color * (1.0 - wetness * 0.3);
 	NORMAL_MAP = normal_map;
 	NORMAL_MAP_DEPTH = 0.6;
