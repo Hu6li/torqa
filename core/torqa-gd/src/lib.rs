@@ -19,7 +19,7 @@ use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
 use torqa_domain::profile::{Profile, UnitSystem};
-use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Rpm, Watts};
+use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Percent, Rpm, Watts};
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, LocalProjection};
 
@@ -185,8 +185,9 @@ impl TorqaApp {
             .collect()
     }
 
-    /// The loaded video course: `{path, duration_s, offset_s, end_s, aligned_by_hand}`;
-    /// `end_s` is -1 unless the video was placed on the route by hand. Empty for other courses.
+    /// The loaded video course: `{path, duration_s, offset_s, aligned_by_hand, marks}`;
+    /// `marks` (x metres along the route, y seconds into the video) are those of a video
+    /// placed on the route by hand, from the route's start to its end. Empty for other courses.
     #[func]
     fn video(&self) -> VarDictionary {
         let Some(video) = self.app.as_ref().and_then(App::video) else {
@@ -197,8 +198,12 @@ impl TorqaApp {
             "path" => path.as_str(),
             "duration_s" => video.duration.as_secs_f64(),
             "offset_s" => video.offset.as_secs_f64(),
-            "end_s" => video.end.map_or(-1.0, |e| e.as_secs_f64()),
             "aligned_by_hand" => video.aligned_by_hand(),
+            "marks" => &video
+                .marks
+                .iter()
+                .map(|m| vector2(m.distance.0, m.time.as_secs_f64()))
+                .collect::<PackedVector2Array>(),
         }
     }
 
@@ -221,14 +226,15 @@ impl TorqaApp {
         }
     }
 
-    /// Adds a video (e.g. one without GPS) to the loaded GPX course: the route starts `start_s`
-    /// and ends `end_s` seconds into it. The course becomes a video course; emits `failed` if
-    /// that is not possible.
+    /// Adds a video (e.g. one without GPS) to the loaded GPX course, placed by `marks` (x
+    /// metres along the route, y seconds into the video, from the route's start to its end).
+    /// The course becomes a video course; emits `failed` if that is not possible.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn add_video(&mut self, video: GString, start_s: f64, end_s: f64) -> bool {
+    fn add_video(&mut self, video: GString, marks: PackedVector2Array) -> bool {
         let video = PathBuf::from(video.to_string());
-        self.command(|app| app.add_video(&video, seconds(start_s), seconds(end_s)))
+        let marks = sync_marks(&marks);
+        self.command(|app| app.add_video(&video, &marks))
     }
 
     /// Takes a video added with `add_video` off the loaded course, which is reopened as a 3D
@@ -238,11 +244,13 @@ impl TorqaApp {
         self.command(App::remove_video)
     }
 
-    /// Moves where the route starts and ends in the loaded video course's video (only for
-    /// videos aligned by hand); emits `failed` if the marks do not fit.
+    /// Replaces the marks of the loaded video course (see `add_video`); emits `failed` if they
+    /// do not fit.
     #[func]
-    fn align_video(&mut self, start_s: f64, end_s: f64) -> bool {
-        self.command(|app| app.align_video(seconds(start_s), seconds(end_s)))
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn align_video(&mut self, marks: PackedVector2Array) -> bool {
+        let marks = sync_marks(&marks);
+        self.command(|app| app.align_video(&marks))
     }
 
     /// The frame of the video at `path` shown `time_s` seconds in, e.g. to align it; `null`
@@ -1248,4 +1256,16 @@ fn image(frame: torqa_app::Frame) -> Option<Gd<Image>> {
 /// Seconds from Godot as a duration; negative or invalid values count as zero.
 fn seconds(value: f64) -> Duration {
     Duration::try_from_secs_f64(value.max(0.0)).unwrap_or_default()
+}
+
+/// Sync marks from Godot: x metres along the route, y seconds into the video.
+fn sync_marks(marks: &PackedVector2Array) -> Vec<torqa_app::SyncMark> {
+    marks
+        .as_slice()
+        .iter()
+        .map(|m| torqa_app::SyncMark {
+            distance: Meters(f64::from(m.x)),
+            time: seconds(f64::from(m.y)),
+        })
+        .collect()
 }

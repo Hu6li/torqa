@@ -294,7 +294,7 @@ func _on_video_chosen(path: String) -> void:
 		return
 	_adding_video = path
 	var duration_s: float = probe["duration_s"]
-	_align_dialog.edit(_torqa, path, duration_s, 0.0, duration_s)
+	_edit_alignment(path, duration_s, PackedVector2Array())
 
 
 func _open_alignment() -> void:
@@ -304,17 +304,23 @@ func _open_alignment() -> void:
 	_adding_video = ""
 	var path: String = video["path"]
 	var duration_s: float = video["duration_s"]
-	var start_s: float = video["offset_s"]
-	var end_s: float = video["end_s"]
-	_align_dialog.edit(_torqa, path, duration_s, start_s, end_s)
+	var marks: PackedVector2Array = video["marks"]
+	_edit_alignment(path, duration_s, marks)
 
 
-func _on_aligned(start_s: float, end_s: float) -> void:
+func _edit_alignment(path: String, duration_s: float, marks: PackedVector2Array) -> void:
+	var profile: PackedVector2Array = _torqa.elevation_profile(600)
+	var length_m: float = profile[profile.size() - 1].x if not profile.is_empty() else 0.0
+	var imperial: bool = _torqa.profile().get("units", "metric") == "imperial"
+	_align_dialog.edit(_torqa, path, duration_s, length_m, profile, marks, imperial)
+
+
+func _on_aligned(marks: PackedVector2Array) -> void:
 	if _adding_video.is_empty():
-		if _torqa.align_video(start_s, end_s):
+		if _torqa.align_video(marks):
 			_status.text = tr("Video aligned with the route.")
 		return
-	if _torqa.add_video(_adding_video, start_s, end_s):
+	if _torqa.add_video(_adding_video, marks):
 		_status.text = tr("Video added: this course is ridden along it now.")
 		_show_video_buttons()
 		course_changed.emit()

@@ -138,7 +138,7 @@ Built in rideable steps:
 - [x] Video ride view: playback following the rider's speed, frame blending, HUD on top
 - [x] Videos without GPS added to a GPX course ("Add video…" on the course page): route start
   and end marks in the video with frame previews; movable or removable later
-- [ ] More sync points between start and end (stops, speed changes in the footage)
+- [x] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
 - [ ] Original video sound (R26)
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)

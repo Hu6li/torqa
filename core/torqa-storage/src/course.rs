@@ -105,6 +105,11 @@ pub struct VideoReference {
     /// timestamps pair them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_s: Option<f64>,
+    /// All marks of a video aligned by hand, `[distance m, video s]` from the route's start to
+    /// its end (the first and last are `offset_s` and `end_s`); empty for courses with only
+    /// those two.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<[f64; 2]>,
 }
 
 impl VideoReference {
@@ -400,6 +405,7 @@ mod tests {
             size: 10,
             offset_s: 0.0,
             end_s: None,
+            marks: Vec::new(),
         };
 
         assert_eq!(reference.locate(&dir.join("ride.tqc")), Some(video.clone()));

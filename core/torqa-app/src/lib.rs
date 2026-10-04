@@ -37,6 +37,7 @@ pub use torqa_video::Frame;
 use torqa_video::Video;
 use torqa_world::World;
 use tracing::warn;
+pub use video::SyncMark;
 
 /// Credits for the data a course bundles, stored in course files (ODbL, CC BY).
 const ATTRIBUTION: [&str; 3] = [
@@ -551,7 +552,7 @@ impl App {
                     name: unpacked.manifest.name.clone(),
                     gpx: unpacked.gpx.clone(),
                     offset: Duration::from_secs_f64(reference.offset_s.max(0.0)),
-                    end: reference.end_s.map(|e| Duration::from_secs_f64(e.max(0.0))),
+                    marks: video_marks(reference),
                 });
             }
             let imported = import_gpx(
@@ -629,19 +630,14 @@ impl App {
     }
 
     /// Adds a video to the loaded course (a GPX course from the library), placed on its route
-    /// by hand: the route starts at `start` and ends at `end` in the video, which follows the
-    /// rider's distance evenly in between. The course becomes a video course; its file refers
+    /// by hand: `marks` say where route positions sit in the video, from the route's start to
+    /// its end; the video follows the rider's distance evenly between neighbouring marks. The course becomes a video course; its file refers
     /// to the video.
     ///
     /// # Errors
     /// [`AppError::Video`] if no course is loaded, it has a video already, or the video does
     /// not fit the marks; [`AppError::Storage`] if the course file cannot be updated.
-    pub fn add_video(
-        &mut self,
-        video: &Path,
-        start: Duration,
-        end: Duration,
-    ) -> Result<(), AppError> {
+    pub fn add_video(&mut self, video: &Path, marks: &[SyncMark]) -> Result<(), AppError> {
         let (Some(route), Some(path), Some((name, gpx))) =
             (&self.route, &self.course, &self.loaded)
         else {
@@ -656,8 +652,8 @@ impl App {
             video: video.to_owned(),
             name: name.clone(),
             gpx: gpx.clone(),
-            offset: start,
-            end: Some(end),
+            offset: Duration::ZERO,
+            marks: marks.to_vec(),
         };
         let added = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         let reference = video_reference(&added);
@@ -690,13 +686,13 @@ impl App {
         Ok(())
     }
 
-    /// Moves where the route starts and ends in the loaded video course's video, for videos
-    /// placed on the route by hand; the course file keeps the new marks.
+    /// Replaces the marks of the loaded video course's video (see [`App::add_video`]), for
+    /// videos placed on the route by hand; the course file keeps the new marks.
     ///
     /// # Errors
     /// [`AppError::Video`] if the loaded course is not aligned by hand or the marks do not fit
     /// the video, [`AppError::Storage`] if the course file cannot be updated.
-    pub fn align_video(&mut self, start: Duration, end: Duration) -> Result<(), AppError> {
+    pub fn align_video(&mut self, marks: &[SyncMark]) -> Result<(), AppError> {
         let (Some(route), Some(current), Some((name, gpx))) =
             (&self.route, &self.video, &self.loaded)
         else {
@@ -711,8 +707,8 @@ impl App {
             video: current.video.clone(),
             name: name.clone(),
             gpx: gpx.clone(),
-            offset: start,
-            end: Some(end),
+            offset: Duration::ZERO,
+            marks: marks.to_vec(),
         };
         let aligned = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         if let Some(path) = &self.course {
@@ -1830,8 +1826,28 @@ fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
             .unwrap_or_default(),
         size: std::fs::metadata(&video.video).map_or(0, |m| m.len()),
         offset_s: video.offset.as_secs_f64(),
-        end_s: video.end.map(|e| e.as_secs_f64()),
+        end_s: video.marks.last().map(|m| m.time.as_secs_f64()),
+        marks: video
+            .marks
+            .iter()
+            .map(|m| [m.distance.0, m.time.as_secs_f64()])
+            .collect(),
     }
+}
+
+/// The marks of a video course from its file, older files with a start and end only included.
+fn video_marks(reference: &course::VideoReference) -> Vec<SyncMark> {
+    let mark = |distance: f64, time: f64| SyncMark {
+        distance: Meters(distance),
+        time: Duration::try_from_secs_f64(time.max(0.0)).unwrap_or_default(),
+    };
+    if !reference.marks.is_empty() {
+        return reference.marks.iter().map(|&[d, t]| mark(d, t)).collect();
+    }
+    // The route's end is placed when the course is paired with its route.
+    reference.end_s.map_or_else(Vec::new, |end| {
+        vec![mark(0.0, reference.offset_s), mark(0.0, end)]
+    })
 }
 
 /// Changes the manifest of the course file at `path`.
@@ -2276,6 +2292,17 @@ mod tests {
         assert!((course.time_at(Meters(40.0)).as_secs_f64() - 1.4).abs() < 0.1);
     }
 
+    /// Sync marks from `(distance m, video s)` pairs.
+    fn marks(pairs: &[(f64, f64)]) -> Vec<SyncMark> {
+        pairs
+            .iter()
+            .map(|&(d, t)| SyncMark {
+                distance: Meters(d),
+                time: Duration::from_secs_f64(t),
+            })
+            .collect()
+    }
+
     /// 200 m north, 10 m per point, with timestamps of another day's recording.
     fn write_timed_route(dir: &Path) -> PathBuf {
         let mut gpx = String::from("<gpx><trk><trkseg>");
@@ -2306,7 +2333,7 @@ mod tests {
         let mut app = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
         // Only a course can take a video.
         assert!(
-            app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+            app.add_video(&video, &marks(&[(0.0, 1.0), (1.0, 3.0)]))
                 .is_err()
         );
         // The GPX course, as imported on the Courses tab and opened on its page.
@@ -2318,7 +2345,8 @@ mod tests {
         app.open_course(file.clone());
         run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
 
-        app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+        // Start and end only; the end mark is put at the route's end whatever its distance.
+        app.add_video(&video, &marks(&[(0.0, 1.0), (0.0, 3.0)]))
             .unwrap();
 
         let length = app.route().unwrap().length().0;
@@ -2331,31 +2359,55 @@ mod tests {
         // Ridden along the video: nothing to build.
         assert!(app.build_world());
         assert!(
-            app.add_video(&video, Duration::ZERO, Duration::from_secs(1))
+            app.add_video(&video, &marks(&[(0.0, 0.0), (0.0, 1.0)]))
                 .is_err()
         );
 
-        // Moved later: the course file keeps the new marks.
-        app.align_video(Duration::from_millis(500), Duration::from_millis(3500))
+        // Moved later, with a point in between where the footage slows down: a quarter of the
+        // route takes two seconds of video, the rest one.
+        let quarter = length / 4.0;
+        app.align_video(&marks(&[(0.0, 0.5), (quarter, 2.5), (length, 3.5)]))
             .unwrap();
         assert!((at(&app, 0.0) - 0.5).abs() < 0.01);
-        assert!(
-            app.align_video(Duration::from_secs(3), Duration::from_secs(2))
-                .is_err()
-        );
-        assert!(
-            app.align_video(Duration::from_secs(1), Duration::from_secs(60))
-                .is_err()
-        );
+        assert!((at(&app, quarter / 2.0) - 1.5).abs() < 0.01);
+        assert!((at(&app, quarter) - 2.5).abs() < 0.01);
+        assert!((at(&app, quarter + (length - quarter) / 2.0) - 3.0).abs() < 0.01);
+        // Points must follow each other on the route and in the video, within it.
+        for wrong in [
+            vec![(0.0, 3.0), (quarter, 2.5), (length, 3.5)],
+            vec![
+                (0.0, 0.5),
+                (quarter, 2.0),
+                (quarter / 2.0, 2.5),
+                (length, 3.5),
+            ],
+            vec![(0.0, 0.5), (length + 10.0, 2.5), (length, 3.5)],
+            vec![(0.0, 1.0), (quarter, 2.0), (length, 60.0)],
+        ] {
+            assert!(app.align_video(&marks(&wrong)).is_err(), "{wrong:?}");
+        }
         let reference = course::read_manifest(file).unwrap().video.unwrap();
         assert!((reference.offset_s - 0.5).abs() < 1e-9);
         assert_eq!(reference.end_s, Some(3.5));
+        assert_eq!(reference.marks.len(), 3);
 
         let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
         other.open_course(file.clone());
         run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert!((at(&other, 0.0) - 0.5).abs() < 0.01);
+        assert!((at(&other, quarter) - 2.5).abs() < 0.01);
         assert!((at(&other, length) - 3.5).abs() < 0.01);
+
+        // Course files with only a start and an end (before points in between) still open.
+        update_manifest(file, |m| {
+            let video = m.video.as_mut().unwrap();
+            video.marks.clear();
+            video.end_s = Some(3.0);
+        })
+        .unwrap();
+        other.open_course(file.clone());
+        run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!((at(&other, length / 2.0) - 1.75).abs() < 0.01);
 
         // Removed again: a 3D course, as before.
         app.remove_video().unwrap();
@@ -2379,10 +2431,7 @@ mod tests {
         loaded_video(&mut app, video);
 
         assert!(!app.video().unwrap().aligned_by_hand());
-        assert!(
-            app.align_video(Duration::ZERO, Duration::from_secs(2))
-                .is_err()
-        );
+        assert!(app.align_video(&marks(&[(0.0, 0.0), (0.0, 2.0)])).is_err());
         assert!(app.remove_video().is_err());
     }
 

@@ -27,9 +27,19 @@ pub struct VideoSource {
     pub gpx: String,
     /// Where the route's first point sits in the video.
     pub offset: Duration,
-    /// Where the route's last point sits in the video, for videos aligned by hand: the video
-    /// is spread evenly between `offset` and this. `None` when timestamps pair them.
-    pub end: Option<Duration>,
+    /// For videos aligned by hand: where route positions sit in the video, from the start to
+    /// the end of the route; the video follows the distance evenly between neighbours. Empty
+    /// when timestamps pair them.
+    pub marks: Vec<SyncMark>,
+}
+
+/// A position on the route and the moment of the video showing it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SyncMark {
+    /// Distance along the route.
+    pub distance: Meters,
+    /// Moment in the video.
+    pub time: Duration,
 }
 
 /// What the import needs to know about a video first: its length, and whether it carries GPS
@@ -79,7 +89,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
             name: route.title.clone(),
             gpx,
             offset: route.video_offset(),
-            end: None,
+            marks: Vec::new(),
         });
     }
     let track = gps_track(path).map_err(|e| unreadable(&e))?;
@@ -97,7 +107,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
         gpx: gpx_from_track(&name, &track),
         name,
         offset: Duration::ZERO,
-        end: None,
+        marks: Vec::new(),
     })
 }
 
@@ -108,31 +118,53 @@ pub struct VideoCourse {
     pub video: PathBuf,
     /// Where the route's first point sits in the video.
     pub offset: Duration,
-    /// Where the route's last point sits in the video, if aligned by hand.
-    pub end: Option<Duration>,
+    /// The marks of a video aligned by hand, from the route's start to its end; empty
+    /// otherwise.
+    pub marks: Vec<SyncMark>,
     /// The video's length.
     pub duration: Duration,
     /// Video time at each distance along the route.
     sync: Ghost,
 }
 
-/// Start and end marks must lie in the video, the end after the start.
+/// Puts the first mark at the route's start and the last at its end, then checks that the
+/// marks follow each other along the route and in the video, within its length.
 ///
 /// # Errors
-/// A readable message otherwise.
-pub fn check_marks(start: Duration, end: Duration, duration: Duration) -> Result<(), String> {
+/// A readable message if they do not.
+pub fn fit_marks(
+    marks: &[SyncMark],
+    length: Meters,
+    duration: Duration,
+) -> Result<Vec<SyncMark>, String> {
     // Container durations are rounded; a mark on the last frame may lie a little past them.
     let slack = Duration::from_millis(500);
-    if end <= start || end > duration + slack {
-        return Err("the route must end after it starts, within the video".to_owned());
+    if marks.len() < 2 {
+        return Err("a video needs a start and an end on the route".to_owned());
     }
-    Ok(())
+    let mut fitted = marks.to_vec();
+    fitted[0].distance = Meters(0.0);
+    let last = fitted.len() - 1;
+    fitted[last].distance = length;
+    let ordered = fitted
+        .windows(2)
+        .all(|w| w[1].distance.0 > w[0].distance.0 && w[1].time > w[0].time);
+    if !ordered {
+        return Err(
+            "each point must come after the one before it, on the route and in the video"
+                .to_owned(),
+        );
+    }
+    if fitted[last].time > duration + slack {
+        return Err("the route must end within the video".to_owned());
+    }
+    Ok(fitted)
 }
 
 impl VideoCourse {
     /// Pairs `route` (imported from `source.gpx`) with the video: by the GPX timestamps, or
-    /// evenly between the start and end marks of a video aligned by hand. Without either, the
-    /// video is spread evenly from its offset to its end.
+    /// by the marks of a video aligned by hand, evenly in between. Without either, the video
+    /// is spread evenly from its offset to its end.
     ///
     /// # Errors
     /// A readable message if the video cannot be opened or the marks do not fit it.
@@ -141,36 +173,43 @@ impl VideoCourse {
             .map_err(|e| format!("cannot open {}: {e}", source.video.display()))?
             .info()
             .duration;
-        let evenly = |end: Duration| {
-            let span = end.saturating_sub(source.offset).as_secs_f64();
-            Ghost::from_trace("video", [(0.0, 0.0), (route.length().0, span)].into_iter())
+        let marks = if source.marks.is_empty() {
+            Vec::new()
+        } else {
+            fit_marks(&source.marks, route.length(), duration)?
         };
-        let sync = match source.end {
-            Some(end) => {
-                check_marks(source.offset, end, duration)?;
-                evenly(end)
-            }
+        let offset = marks.first().map_or(source.offset, |m| m.time);
+        let sync = if marks.is_empty() {
             // Matching counts from the route start; the offset places that in the video.
-            None => torqa_routes::timed_points(&source.gpx)
+            torqa_routes::timed_points(&source.gpx)
                 .ok()
                 .and_then(|points| Ghost::from_activity("video", route, &points))
-                .or_else(|| evenly(duration)),
+                .or_else(|| {
+                    let span = duration.saturating_sub(offset).as_secs_f64();
+                    Ghost::from_trace("video", [(0.0, 0.0), (route.length().0, span)].into_iter())
+                })
+        } else {
+            Ghost::from_trace(
+                "video",
+                marks
+                    .iter()
+                    .map(|m| (m.distance.0, m.time.saturating_sub(offset).as_secs_f64())),
+            )
         }
         .ok_or_else(|| "the video and the route do not match".to_owned())?;
         Ok(Self {
             video: source.video.clone(),
-            offset: source.offset,
-            end: source.end,
+            offset,
+            marks,
             duration,
             sync,
         })
     }
 
-    /// Whether the video was placed on the route by hand (start and end marks), so the marks
-    /// can be moved.
+    /// Whether the video was placed on the route by hand (marks), so the marks can be moved.
     #[must_use]
     pub fn aligned_by_hand(&self) -> bool {
-        self.end.is_some()
+        !self.marks.is_empty()
     }
 
     /// The moment of the video at `distance` along the route (the end beyond it).

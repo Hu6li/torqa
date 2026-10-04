@@ -26,15 +26,17 @@ A video without GPS cannot tell where it was filmed, so it is added to a course:
 
 1. Import the **GPX route** of the ride shown in the video (Courses tab).
 2. Open that course and press **Add video…**, then choose the video.
-3. **Align video with route** opens: set the **route start** and the **route end** — the
-   moments in the video where the route's first and last points are — with the sliders and
-   the ±1 s / ±0.1 s buttons, checking the frame shown above each.
+3. **Align video with route** opens with two **sync points**: the route's **start** and
+   **end**. Select one and set the moment of the video showing that place, with the slider
+   and the ±1 s / ±0.1 s buttons, checking the frame above.
+4. Where the footage stops or changes speed (a traffic light, a steep climb), **Add point**:
+   set its place on the route (shown on the elevation profile) and its moment in the video.
 
-The course is now ridden along the video. Between the two marks the video follows your
-distance evenly, so it works best for footage at a fairly steady speed; the GPX's own
-timestamps are not used (they come from another recording). **Align video…** moves the marks
-later, **Remove video** turns it back into a 3D course; the course file keeps the change.
-Courses made from a video with GPS follow their GPS and have nothing to align.
+The course is now ridden along the video. Between neighbouring points the video follows your
+distance evenly; the GPX's own timestamps are not used (they come from another recording).
+**Align video…** changes the points later, **Remove video** turns it back into a 3D course;
+the course file keeps the change. Courses made from a video with GPS follow their GPS and have
+nothing to align.
 
 ## Riding a video course
 
