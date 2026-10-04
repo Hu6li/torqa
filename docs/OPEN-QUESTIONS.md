@@ -18,7 +18,10 @@ Things to review or decide together. Newest first; remove entries once settled.
 - **Route video libraries**: the free Van Gestel videos used by Incyclist are CC BY-NC-SA —
   fine to ride, not to bundle. Torqa only refers to videos; tests generate their own footage.
 - **Video course options**: camera, time of day and weather do nothing on video courses yet;
-  the settings dialog still shows them.
+  the settings dialog still shows them (PLAN Phase 5).
+- **Plugin traits**: CLAUDE.md and the PLAN name `RouteImporter`, `TrainerDriver`, … but none
+  exist yet — each capability has one implementation behind a concrete type. I noted in the
+  PLAN that each trait comes with its second implementation; say if you want them earlier.
 
 ## 2026-10-03 — Phase 4: HUD editor, ghosts, audio
 
@@ -30,7 +33,7 @@ Things to review or decide together. Newest first; remove entries once settled.
   Music; macOS asks once for permission ("Torqa wants to control Spotify"). The usage text is
   in the export preset now. Please try M / . / , during a ride with Spotify or Music playing.
   Windows (media keys) and Linux (`playerctl`) are untested too.
-- **Video audio** (R26, original video sound) waits for video mode (Phase 5).
+- **Video audio** (R26, original video sound) is a Phase 5 item now that video mode exists.
 
 - **German translation** (i18n PR): please read over `app/translations/de.po` — I used Swiss
   spelling (ss, "Velo") and informal "du". Error messages from the core (e.g. file or network
@@ -46,8 +49,6 @@ Things to review or decide together. Newest first; remove entries once settled.
 - **Ride names in FIT** (R50): FIT has no activity-title field, so names live in the ride's
   JSON only; uploaders (Phase 7) pass the name as the title (Strava, intervals.icu accept it).
   If you also want it inside the FIT file, the sport-profile name would be the only place.
-- **Stacked PRs**: #19 (ghosts) builds on #18 (HUD editor), the audio PR on #19. All target
-  `main`; merge in order and each shrinks to its own commit.
 
 ## 2026-10-03 — Course files (Phase 3c)
 
@@ -65,11 +66,10 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 - **History (PR #11)**: the history scans each rider's `rides/` folder and reads the JSON
   summaries; the SQLite index from ADR 0002 is not built yet — not needed until there are
-  hundreds of rides or cross-ride queries (PRs, climbs).
+  hundreds of rides.
 
 - **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
-  saved earlier in `rides/` are not moved. The setup screen's mass field is gone — mass comes
-  from the profile (rider + bike). New dependency `toml` 1.1.6 (chosen in ADR 0004).
+  saved earlier in `rides/` are not moved. Mass comes from the profile (rider + bike).
 - **Lake Biel fixture** reports a steepest grade of 19 % — the elevation profile has a sharp
   spike around 2.3 km, probably a bridge/underpass the smoothing does not catch. Worth a look
   on a real ride.
