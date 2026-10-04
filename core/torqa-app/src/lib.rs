@@ -330,6 +330,9 @@ pub struct App {
     sensor: Option<DeviceHandle>,
     /// Identifiers of the connected Bluetooth trainer and sensor, to avoid reconnecting them.
     trainer_id: Option<String>,
+    /// When the current trainer last reported itself connected; `None` while it is not. A
+    /// ride started later must not wait for a report that has already come.
+    trainer_connected: Option<SystemTime>,
     sensor_id: Option<String>,
     /// The running scan was started to reconnect the remembered devices.
     reconnecting: bool,
@@ -379,6 +382,7 @@ impl App {
             trainer: None,
             sensor: None,
             trainer_id: None,
+            trainer_connected: None,
             sensor_id: None,
             reconnecting: false,
             from_course: false,
@@ -835,6 +839,12 @@ impl App {
         });
     }
 
+    /// Whether the trainer is connected now.
+    #[must_use]
+    pub fn trainer_connected(&self) -> bool {
+        self.trainer_connected.is_some()
+    }
+
     /// Connects the trainer, replacing any previous one.
     ///
     /// # Errors
@@ -859,6 +869,7 @@ impl App {
             }
         };
         self.trainer = Some(handle);
+        self.trainer_connected = None;
         Ok(())
     }
 
@@ -979,7 +990,9 @@ impl App {
         let records = self.records_for(&route);
         self.ride = Some(ActiveRide {
             ride: Ride::new(route, config),
-            started: None,
+            // With the trainer connected already (e.g. while the world was built), the ride
+            // starts now; otherwise when it connects.
+            started: self.trainer_connected.map(|_| SystemTime::now()),
             finished: false,
             records,
             next_climb: 0,
@@ -1559,6 +1572,7 @@ impl App {
         loop {
             match trainer.try_next_event() {
                 Ok(Some(DeviceEvent::Connected)) => {
+                    self.trainer_connected = Some(SystemTime::now());
                     if let Some(active) = &mut self.ride
                         && active.started.is_none()
                     {
@@ -1567,6 +1581,7 @@ impl App {
                     events.push(AppEvent::Connected(trainer.name().to_owned()));
                 }
                 Ok(Some(DeviceEvent::Disconnected)) => {
+                    self.trainer_connected = None;
                     if let Some(active) = &mut self.ride {
                         active.ride.on_power_source_lost();
                     }
@@ -1752,6 +1767,34 @@ mod tests {
         assert_eq!(summary.name, "Test loop");
         assert!((summary.length - 400.0).abs() < 1.0);
         assert!(app.route().is_some());
+    }
+
+    #[test]
+    fn a_ride_starts_with_a_trainer_connected_before_it() {
+        // As on the course page: the trainer connects, the world is built, then the ride
+        // starts — the trainer reported itself long before.
+        let dir = temp_dir("connected-first");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        for _ in 0..120 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+
+        let state = app.ride_state().unwrap();
+        assert!(state.distance.0 > 1.0, "rider should be moving: {state:?}");
+        assert!(app.trainer_connected());
+        app.shutdown();
     }
 
     #[test]

@@ -81,7 +81,8 @@ func begin(options: Dictionary) -> void:
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
 	_hud.show_layout(_torqa.hud_layout())
-	_show_toast(tr("Waiting for the trainer…"))
+	if not _torqa.trainer_connected():
+		_show_toast(tr("Waiting for the trainer…"))
 
 
 func _ready() -> void:

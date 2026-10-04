@@ -435,6 +435,12 @@ impl TorqaApp {
         self.command(|app| app.delete_ride(&path))
     }
 
+    /// Whether the trainer is connected now (rides start at once then).
+    #[func]
+    fn trainer_connected(&self) -> bool {
+        self.app.as_ref().is_some_and(App::trainer_connected)
+    }
+
     /// Connects the simulated trainer.
     #[func]
     fn connect_fake_trainer(&mut self, power: f64, cadence: f64) -> bool {
