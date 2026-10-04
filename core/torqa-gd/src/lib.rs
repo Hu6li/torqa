@@ -409,6 +409,32 @@ impl TorqaApp {
         self.command(App::save_course)
     }
 
+    /// Names the course the next import adds (`load_route`, `load_video`, `import_course`):
+    /// `name`, replacing the course of that name with `replace`, else kept next to it.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn name_next_import(&mut self, name: GString, replace: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.name_next_import(&name.to_string(), replace);
+        }
+    }
+
+    /// Whether the library has a course named `name` (ignoring case).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn course_exists(&self, name: GString) -> bool {
+        self.app
+            .as_ref()
+            .is_some_and(|app| app.course_named(&name.to_string()).is_some())
+    }
+
+    /// A name for the course imported from `path`, for the rider to confirm.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn suggested_course_name(path: GString) -> GString {
+        GString::from(App::suggested_course_name(&PathBuf::from(path.to_string())).as_str())
+    }
+
     /// Copies a course file into the library (emits `course_added` or `failed`).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot

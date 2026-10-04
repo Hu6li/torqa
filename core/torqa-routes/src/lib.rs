@@ -67,6 +67,12 @@ pub fn timed_points(xml: &str) -> Result<Vec<TimedPoint>, RouteError> {
         .collect())
 }
 
+/// The name a GPX file gives its route, if it is valid and has one; without building it.
+#[must_use]
+pub fn route_name(xml: &str) -> Option<String> {
+    gpx::parse(xml).ok()?.name
+}
+
 /// The positions of a GPX file as (latitude, longitude), without building a route; for
 /// fetching data along it before importing.
 ///

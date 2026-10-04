@@ -724,3 +724,21 @@ msgstr "In 3D"
 
 msgid "Along the video"
 msgstr "Mit dem Video"
+
+msgid "Course name in use"
+msgstr "Streckenname bereits vergeben"
+
+msgid "Name the course"
+msgstr "Strecke benennen"
+
+msgid "Keep both"
+msgstr "Beide behalten"
+
+msgid "Import"
+msgstr "Importieren"
+
+msgid "A course named “%s” exists already. Replace it, or keep both?"
+msgstr "Eine Strecke namens «%s» gibt es schon. Ersetzen oder beide behalten?"
+
+msgid "Replace"
+msgstr "Ersetzen"

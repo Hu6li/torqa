@@ -33,6 +33,12 @@ func _run() -> void:
 	# Import the route as a new course, as the Courses tab's import does.
 	var courses: CoursesTab = start.find_children("*", "CoursesTab", true, false)[0]
 	courses.call("_on_file_selected", route)
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("import-name.png"))
+	# The course is named as suggested (#40); confirming closes the dialog.
+	var name_dialog: ConfirmationDialog = courses.get("_name_dialog")
+	name_dialog.hide()
+	courses.call("_on_name_confirmed")
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
 	# The rider settings with the HUD editor.

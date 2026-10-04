@@ -6,7 +6,9 @@ it needs. Courses ride **fully offline**, on any computer.
 ## Prepare a course
 
 Import a GPX route with **Import route, video or course…** on the Courses tab while online.
-Torqa downloads terrain and map data, builds the 3D world and adds the course to your library.
+Torqa asks for the course's **name** (suggested from the file), downloads terrain and map
+data, builds the 3D world and adds the course to your library. If a course of that name exists
+already, choose **Replace** to replace it or **Keep both**.
 
 ## Ride a course
 

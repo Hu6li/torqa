@@ -39,7 +39,7 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:148
+#: app/scenes/courses_tab.gd:198
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
@@ -55,16 +55,20 @@ msgstr ""
 msgid "(best %s)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:149
+#: app/scenes/courses_tab.gd:199
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:150
+#: app/scenes/courses_tab.gd:200
 msgid "2. Open that course."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:151
+#: app/scenes/courses_tab.gd:201
 msgid "3. Press Add video…, choose the video and set where the route starts and ends."
+msgstr ""
+
+#: app/scenes/courses_tab.gd:166
+msgid "A course named “%s” exists already. Replace it, or keep both?"
 msgstr ""
 
 #: app/ui/ghost_picker.gd:27
@@ -235,6 +239,10 @@ msgstr ""
 msgid "Cloudy"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:125
+msgid "Course name in use"
+msgstr ""
+
 #: app/scenes/start_page.gd:52
 msgid "Courses"
 msgstr ""
@@ -347,7 +355,7 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:103
+#: app/scenes/courses_tab.gd:109
 msgid "GPX routes"
 msgstr ""
 
@@ -395,7 +403,11 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:62
+#: app/scenes/courses_tab.gd:118
+msgid "Import"
+msgstr ""
+
+#: app/scenes/courses_tab.gd:68
 msgid "Import route, video or course…"
 msgstr ""
 
@@ -427,6 +439,10 @@ msgstr ""
 msgid "Jun"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:127
+msgid "Keep both"
+msgstr ""
+
 #: app/scenes/profile_dialog.gd:58
 msgid "Language"
 msgstr ""
@@ -439,7 +455,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:160
+#: app/scenes/courses_tab.gd:210
 msgid "Loading %s …"
 msgstr ""
 
@@ -499,6 +515,10 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:117
+msgid "Name the course"
+msgstr ""
+
 #: app/ui/ui_theme.gd:20
 msgid "Neuromuscular"
 msgstr ""
@@ -515,7 +535,7 @@ msgstr ""
 msgid "Next 500 m"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:82
+#: app/scenes/courses_tab.gd:88
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
@@ -555,7 +575,7 @@ msgstr ""
 msgid "Oct"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:94
+#: app/scenes/courses_tab.gd:100
 msgid "Open a GPX route, video or Torqa course"
 msgstr ""
 
@@ -651,6 +671,10 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:126
+msgid "Replace"
+msgstr ""
+
 #: app/scenes/course_detail.gd:172 app/scenes/ride_settings_dialog.gd:23
 msgid "Ride"
 msgstr ""
@@ -687,7 +711,7 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:102
+#: app/scenes/courses_tab.gd:108
 msgid "Routes, videos and courses"
 msgstr ""
 
@@ -807,7 +831,7 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:105
+#: app/scenes/courses_tab.gd:111
 msgid "Torqa courses"
 msgstr ""
 
@@ -851,7 +875,7 @@ msgstr ""
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:111
+#: app/scenes/courses_tab.gd:132
 msgid "Video without GPS"
 msgstr ""
 
@@ -859,7 +883,7 @@ msgstr ""
 msgid "Videos"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:104
+#: app/scenes/courses_tab.gd:110
 msgid "Videos with GPS, Incyclist route videos (.xml)"
 msgstr ""
 
@@ -907,7 +931,7 @@ msgstr ""
 msgid "Your best time on this route: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:58
+#: app/scenes/courses_tab.gd:64
 msgid "Your courses"
 msgstr ""
 

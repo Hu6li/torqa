@@ -318,6 +318,13 @@ struct ActiveRide {
     video_watch: VideoWatch,
 }
 
+/// The name the rider gave the course being imported.
+#[derive(Debug)]
+struct Naming {
+    name: String,
+    replace: bool,
+}
+
 /// How a ride is shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum View {
@@ -373,6 +380,8 @@ pub struct App {
     course: Option<PathBuf>,
     /// The route key of the course being written to the library, until it is there.
     saving: Option<String>,
+    /// How the rider named the course being imported.
+    naming: Option<Naming>,
     /// The loaded course's video, for video courses (R17).
     video: Option<video::VideoCourse>,
     /// How the next ride is shown.
@@ -421,6 +430,7 @@ impl App {
             world_plan: WorldPlan::Now,
             course: None,
             saving: None,
+            naming: None,
             video: None,
             view: View::World,
             preview: None,
@@ -537,6 +547,7 @@ impl App {
     pub fn open_course(&mut self, path: PathBuf) {
         let used = self.start_loading(true);
         let load = self.load;
+        self.naming = None;
         self.from_course = true;
         self.world_plan = WorldPlan::OnRequest(None);
         self.course = Some(path.clone());
@@ -854,6 +865,10 @@ impl App {
         if self.world.is_none() && self.video.is_none() {
             return Err(AppError::CourseNotReady);
         }
+        let naming = self.naming.take();
+        let name = naming
+            .as_ref()
+            .map_or_else(|| name.clone(), |n| n.name.clone());
         let manifest = Manifest {
             format: course::FORMAT_VERSION,
             generator: format!("Torqa {}", torqa_domain::version()),
@@ -871,20 +886,27 @@ impl App {
             video: self.video.as_ref().map(video_reference),
         };
         // Preparing the same course again must not fill the library with copies; one still
-        // being written reports itself when done.
-        if manifest.route_key.is_some() && manifest.route_key == self.saving {
-            return Ok(());
+        // being written reports itself when done. A course named on import is the rider's
+        // choice: saved as asked. A video course is not the GPX course of its route (#40).
+        if naming.is_none() {
+            if manifest.route_key.is_some() && manifest.route_key == self.saving {
+                return Ok(());
+            }
+            let video_file = |m: &Manifest| m.video.as_ref().map(|v| v.file_name.clone());
+            if let Some(existing) = self.courses().into_iter().find(|c| {
+                c.manifest.route_key == manifest.route_key
+                    && video_file(&c.manifest) == video_file(&manifest)
+            }) {
+                let _ = self.jobs_tx.send(JobResult::CourseSaved(Ok(existing.path)));
+                return Ok(());
+            }
         }
-        if let Some(existing) = self
-            .courses()
-            .into_iter()
-            .find(|c| c.manifest.route_key == manifest.route_key)
-        {
-            let _ = self.jobs_tx.send(JobResult::CourseSaved(Ok(existing.path)));
-            return Ok(());
+        let replacing = self.import_target(naming.as_ref());
+        let gpx = gpx.clone();
+        if let Some((loaded, _)) = &mut self.loaded {
+            loaded.clone_from(&name);
         }
         self.saving.clone_from(&manifest.route_key);
-        let gpx = gpx.clone();
         let data = self.used.paths();
         let cache = self.cache_dir.clone();
         let library = self.courses_dir();
@@ -893,8 +915,13 @@ impl App {
             let result = std::fs::create_dir_all(&library)
                 .map_err(course::CourseError::from)
                 .and_then(|()| {
-                    let path = unique_course_path(&library, &manifest.name);
-                    course::write(&path, &manifest, &gpx, &cache, &data).map(|()| path)
+                    let path =
+                        replacing.unwrap_or_else(|| unique_course_path(&library, &manifest.name));
+                    // Written aside first: a replaced course stays whole if writing fails.
+                    let partial = path.with_extension("part");
+                    course::write(&partial, &manifest, &gpx, &cache, &data)?;
+                    std::fs::rename(&partial, &path)?;
+                    Ok(path)
                 })
                 .map_err(|e| format!("cannot save course: {e}"));
             let _ = tx.send(JobResult::CourseSaved(result));
@@ -958,17 +985,54 @@ impl App {
         Ok(())
     }
 
+    /// Names the course the next import adds to the library ([`App::load_route`],
+    /// [`App::load_video`] or [`App::import_course`]): saved as `name`, replacing a course of
+    /// that name with `replace`, else next to it (#40).
+    pub fn name_next_import(&mut self, name: &str, replace: bool) {
+        self.naming = Some(Naming {
+            name: name.trim().to_owned(),
+            replace,
+        });
+    }
+
+    /// The library's course named `name` (ignoring case and surrounding spaces), if any.
+    #[must_use]
+    pub fn course_named(&self, name: &str) -> Option<PathBuf> {
+        let name = name.trim();
+        self.courses()
+            .into_iter()
+            .find(|c| c.manifest.name.trim().eq_ignore_ascii_case(name))
+            .map(|c| c.path)
+    }
+
+    /// Where the course from the next import goes: next to others, or over the one of that name.
+    fn import_target(&self, naming: Option<&Naming>) -> Option<PathBuf> {
+        naming
+            .filter(|n| n.replace)
+            .and_then(|n| self.course_named(&n.name))
+    }
+
     /// Copies a course file into the library; reports [`AppEvent::CourseAdded`].
     pub fn import_course(&mut self, path: PathBuf) {
         let library = self.courses_dir();
         let tx = self.jobs_tx.clone();
+        let naming = self.naming.take();
+        let replacing = self.import_target(naming.as_ref());
         self.runtime.spawn_blocking(move || {
             let result = course::read_manifest(&path)
-                .and_then(|manifest| {
+                .and_then(|mut manifest| {
                     std::fs::create_dir_all(&library)?;
-                    let target = unique_course_path(&library, &manifest.name);
-                    let partial = target.with_extension("part");
+                    if let Some(naming) = &naming {
+                        manifest.name.clone_from(&naming.name);
+                    }
+                    let target =
+                        replacing.unwrap_or_else(|| unique_course_path(&library, &manifest.name));
+                    // Not `.part`: renaming rewrites the copy through a `.part` file itself.
+                    let partial = target.with_extension("import");
                     std::fs::copy(&path, &partial)?;
+                    if naming.is_some() {
+                        course::rewrite_manifest(&partial, &manifest)?;
+                    }
                     std::fs::rename(&partial, &target)?;
                     Ok(target)
                 })
@@ -997,6 +1061,29 @@ impl App {
             .collect();
         courses.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
         courses
+    }
+
+    /// A name for the course imported from `path`, for the rider to confirm: a GPX file's
+    /// route name, an Incyclist video's title, a course file's name, else the file name.
+    #[must_use]
+    pub fn suggested_course_name(path: &Path) -> String {
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let read = || std::fs::read_to_string(path).ok();
+        let named = match extension.as_str() {
+            "gpx" => read().and_then(|xml| torqa_routes::route_name(&xml)),
+            "xml" => read()
+                .and_then(|xml| torqa_video::incyclist::parse(&xml).ok())
+                .map(|route| route.title),
+            "tqc" => course::read_manifest(path).ok().map(|m| m.name),
+            _ => None,
+        };
+        named.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
+            path.file_stem()
+                .map_or_else(|| "Course".to_owned(), |s| s.to_string_lossy().into_owned())
+        })
     }
 
     /// The course library: `courses/` in the data directory (R34).
@@ -2718,6 +2805,112 @@ mod tests {
         );
         assert!(app.video().is_none());
         assert_eq!(app.courses().len(), 0);
+    }
+
+    /// An Incyclist route video in `dir` for `video` (copied there), on a 200 m GPX.
+    fn write_incyclist(dir: &Path, video: &Path) {
+        std::fs::copy(video, dir.join("climb.mp4")).unwrap();
+        let mut gpx = String::from("<gpx><trk><trkseg>");
+        for i in 0..=20 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let _ = write!(
+                gpx,
+                r#"<trkpt lat="{lat}" lon="7"><ele>500</ele><time>2024-06-01T08:00:{:06.3}Z</time></trkpt>"#,
+                f64::from(i) / 10.0
+            );
+        }
+        gpx.push_str("</trkseg></trk></gpx>");
+        std::fs::write(dir.join("climb.gpx"), gpx).unwrap();
+        std::fs::write(
+            dir.join("climb.xml"),
+            "<gpx-import><title>Col &amp; Climb</title><video-file-path>climb.mp4</video-file-path>\
+             <gpx-file-path>climb.gpx</gpx-file-path><framerate>10</framerate>\
+             <start-frame>1</start-frame></gpx-import>",
+        )
+        .unwrap();
+    }
+
+    fn added(app: &mut App) -> PathBuf {
+        let events = run_until(app, |e| {
+            matches!(e, AppEvent::CourseAdded(_) | AppEvent::Error(_))
+        });
+        match events.last() {
+            Some(AppEvent::CourseAdded(path)) => path.clone(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_route_video_of_an_imported_gpx_is_a_course_of_its_own() {
+        let dir = temp_dir("same-gpx");
+        write_incyclist(&dir, &torqa_video::testing::test_video("same-gpx", 64, 48));
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_route(dir.join("climb.gpx"), true);
+        let gpx_course = added(&mut app);
+        app.load_video(dir.join("climb.xml"), true);
+        let video_course = added(&mut app);
+
+        assert_ne!(gpx_course, video_course);
+        let courses = app.courses();
+        assert_eq!(courses.len(), 2);
+        assert_eq!(
+            courses
+                .iter()
+                .filter(|c| c.manifest.video.is_some())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn imported_courses_get_the_name_given_and_replace_only_when_asked() {
+        let dir = temp_dir("naming");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let route = write_route(&dir);
+
+        app.name_next_import("  Evening loop ", false);
+        let first = added_after(&mut app, |app| app.load_route(route.clone(), true));
+        assert_eq!(course::read_manifest(&first).unwrap().name, "Evening loop");
+        assert_eq!(app.course_named("evening LOOP"), Some(first.clone()));
+        // Same name, kept next to it.
+        app.name_next_import("Evening loop", false);
+        let second = added_after(&mut app, |app| app.load_route(route.clone(), true));
+        assert_ne!(first, second);
+        assert_eq!(app.courses().len(), 2);
+        // Replacing: the course of that name is the new one, nothing added.
+        app.name_next_import("Evening loop", true);
+        write_incyclist(&dir, &torqa_video::testing::test_video("naming", 64, 48));
+        let replaced = added_after(&mut app, |app| app.load_video(dir.join("climb.xml"), true));
+        assert_eq!(app.courses().len(), 2);
+        assert!(replaced == first || replaced == second);
+        assert!(course::read_manifest(&replaced).unwrap().video.is_some());
+        // Course files too.
+        app.name_next_import("Shared", false);
+        let copied = added_after(&mut app, |app| app.import_course(replaced.clone()));
+        assert_eq!(course::read_manifest(&copied).unwrap().name, "Shared");
+        assert_eq!(app.courses().len(), 3);
+    }
+
+    fn added_after(app: &mut App, import: impl FnOnce(&mut App)) -> PathBuf {
+        import(app);
+        added(app)
+    }
+
+    #[test]
+    fn imports_suggest_the_name_the_files_give() {
+        let dir = temp_dir("suggest");
+        write_incyclist(&dir, &torqa_video::testing::test_video("suggest", 64, 48));
+        let named = dir.join("named.gpx");
+        std::fs::write(&named, r#"<gpx><trk><name>Gurten</name><trkseg><trkpt lat="46" lon="7"/></trkseg></trk></gpx>"#).unwrap();
+
+        assert_eq!(App::suggested_course_name(&named), "Gurten");
+        assert_eq!(App::suggested_course_name(&dir.join("climb.gpx")), "climb");
+        assert_eq!(
+            App::suggested_course_name(&dir.join("climb.xml")),
+            "Col & Climb"
+        );
+        assert_eq!(App::suggested_course_name(&dir.join("Ride.MOV")), "Ride");
     }
 
     #[test]
