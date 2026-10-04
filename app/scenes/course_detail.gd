@@ -29,6 +29,15 @@ var _ride_button: Button = Button.new()
 var _loading_bar: ProgressBar = ProgressBar.new()
 var _status: Label = Label.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
+## Videos on GPX courses (R17): add one (e.g. without GPS), move where the route starts and
+## ends in it, or take it off again.
+var _add_video_button: Button = Button.new()
+var _align_button: Button = Button.new()
+var _remove_video_button: Button = Button.new()
+var _video_dialog: FileDialog = FileDialog.new()
+var _align_dialog: VideoAlignDialog = VideoAlignDialog.new()
+## The video being added, while its alignment is set; empty when moving the marks.
+var _adding_video: String = ""
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -53,6 +62,8 @@ func open(course: Dictionary) -> void:
 	_profile.set_climbs([])
 	_records.text = ""
 	_status.text = ""
+	for button: Button in [_add_video_button, _align_button, _remove_video_button]:
+		button.hide()
 	_loading_bar.hide()
 	_ride_button.disabled = true
 	_loading_route = true
@@ -104,6 +115,16 @@ func _init() -> void:
 	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(push)
 	var delete: Button = Button.new()
+	_add_video_button.text = tr("Add video…")
+	_add_video_button.tooltip_text = tr("Ride this course along a video of it")
+	_add_video_button.pressed.connect(func() -> void: _video_dialog.popup_centered_ratio(0.7))
+	_align_button.text = tr("Align video…")
+	_align_button.pressed.connect(_open_alignment)
+	_remove_video_button.text = tr("Remove video")
+	_remove_video_button.pressed.connect(_remove_video)
+	for button: Button in [_add_video_button, _align_button, _remove_video_button]:
+		button.hide()
+		top.add_child(button)
 	delete.text = tr("Delete course")
 	delete.pressed.connect(_confirm_delete.popup_centered)
 	top.add_child(delete)
@@ -160,6 +181,19 @@ func _init() -> void:
 	_confirm_delete.ok_button_text = tr("Delete")
 	_confirm_delete.confirmed.connect(_delete)
 	add_child(_confirm_delete)
+	_align_dialog.aligned.connect(_on_aligned)
+	add_child(_align_dialog)
+	_video_dialog.title = tr("Choose a video of this course")
+	_video_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_video_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	var videos: PackedStringArray = PackedStringArray()
+	for extension: String in TorqaApp.video_extensions():
+		if extension != "xml":
+			videos.append("*." + extension)
+	_video_dialog.filters = PackedStringArray([", ".join(videos) + " ; " + tr("Videos")])
+	_video_dialog.use_native_dialog = true
+	_video_dialog.file_selected.connect(_on_video_chosen)
+	add_child(_video_dialog)
 
 
 func _show_figures() -> void:
@@ -197,6 +231,7 @@ func _on_route_loaded(_route: Dictionary) -> void:
 func _show_route() -> void:
 	_loading_route = false
 	_ride_button.disabled = false
+	_show_video_buttons()
 	var climbs: Dictionary = _torqa.climbs()
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
@@ -242,3 +277,54 @@ func _on_failed(message: String) -> void:
 		_building = false
 		_loading_bar.hide()
 		_status.text = message
+
+
+func _show_video_buttons() -> void:
+	var video: Dictionary = _torqa.video()
+	var by_hand: bool = video.get("aligned_by_hand", false)
+	_add_video_button.visible = video.is_empty()
+	_align_button.visible = by_hand
+	_remove_video_button.visible = by_hand
+
+
+func _on_video_chosen(path: String) -> void:
+	var probe: Dictionary = _torqa.video_probe(path)
+	if probe.is_empty():
+		return
+	_adding_video = path
+	var duration_s: float = probe["duration_s"]
+	_align_dialog.edit(_torqa, path, duration_s, 0.0, duration_s)
+
+
+func _open_alignment() -> void:
+	var video: Dictionary = _torqa.video()
+	if video.is_empty():
+		return
+	_adding_video = ""
+	var path: String = video["path"]
+	var duration_s: float = video["duration_s"]
+	var start_s: float = video["offset_s"]
+	var end_s: float = video["end_s"]
+	_align_dialog.edit(_torqa, path, duration_s, start_s, end_s)
+
+
+func _on_aligned(start_s: float, end_s: float) -> void:
+	if _adding_video.is_empty():
+		if _torqa.align_video(start_s, end_s):
+			_status.text = tr("Video aligned with the route.")
+		return
+	if _torqa.add_video(_adding_video, start_s, end_s):
+		_status.text = tr("Video added: this course is ridden along it now.")
+		_show_video_buttons()
+		course_changed.emit()
+	_adding_video = ""
+
+
+## Back to riding the course in 3D; the course reloads.
+func _remove_video() -> void:
+	if _torqa.remove_video():
+		_loading_route = true
+		_ride_button.disabled = true
+		for button: Button in [_add_video_button, _align_button, _remove_video_button]:
+			button.hide()
+		course_changed.emit()

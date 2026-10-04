@@ -81,6 +81,17 @@ fn reads_the_gps_track_with_video_times() {
 }
 
 #[test]
+fn tells_videos_with_gps_from_plain_ones() {
+    let gopro = gopro_video("probe");
+    let plain = test_video("probe", 64, 48);
+
+    assert!(has_gps(&gopro).unwrap());
+    assert!(!has_gps(&plain).unwrap());
+    std::fs::remove_file(gopro).unwrap();
+    std::fs::remove_file(plain).unwrap();
+}
+
+#[test]
 fn videos_without_gps_have_no_track() {
     let path = test_video("nogps", 64, 48);
 

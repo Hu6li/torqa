@@ -11,6 +11,7 @@ Torqa opens on the start page with four tabs:
   descents, time of day, weather), who to race ([ghosts.md](ghosts.md)) and **Ride**. The 3D
   world is built when you press **Ride**, so looking around the library stays quick.
   **Rename** and **Delete course** are on the course page; deleting keeps your rides on it.
+  **Add video…** there rides the course along a video of it ([video.md](video.md)).
 - **History** — your rides ([history.md](history.md)).
 - **Profile** — who rides, their figures, editing them and their HUD, new riders
   ([riders.md](riders.md), [hud.md](hud.md)).

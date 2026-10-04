@@ -621,3 +621,63 @@ msgstr "3D-Welt wird gebaut"
 
 msgid "Its file is deleted; your rides on it are kept."
 msgstr "Die Datei wird gelöscht; deine Fahrten darauf bleiben erhalten."
+
+msgid "Align video…"
+msgstr "Video ausrichten …"
+
+msgid "Align"
+msgstr "Ausrichten"
+
+msgid "Video aligned with the route."
+msgstr "Video auf die Route ausgerichtet."
+
+msgid "Route start"
+msgstr "Start der Route"
+
+msgid "Route end"
+msgstr "Ende der Route"
+
+msgid "Pick where the route starts and ends in the video."
+msgstr "Wähle, wo die Route im Video beginnt und endet."
+
+msgid "In between, the video follows your distance evenly."
+msgstr "Dazwischen folgt das Video gleichmässig deiner Distanz."
+
+msgid "The route must end after it starts."
+msgstr "Die Route muss nach ihrem Start enden."
+
+msgid "Align video with route"
+msgstr "Video auf Route ausrichten"
+
+msgid "Video without GPS"
+msgstr "Video ohne GPS"
+
+msgid "Add video…"
+msgstr "Video hinzufügen …"
+
+msgid "Video added: this course is ridden along it now."
+msgstr "Video hinzugefügt: Diese Strecke fährst du jetzt mit dem Video."
+
+msgid "Videos"
+msgstr "Videos"
+
+msgid "Ride this course along a video of it"
+msgstr "Diese Strecke mit einem Video davon fahren"
+
+msgid "Remove video"
+msgstr "Video entfernen"
+
+msgid "1. Import the GPX route of the ride shown in the video."
+msgstr "1. Importiere die GPX-Route der Fahrt im Video."
+
+msgid "%s has no GPS, so it cannot become a course by itself."
+msgstr "%s hat kein GPS und kann darum nicht allein zur Strecke werden."
+
+msgid "3. Press Add video…, choose the video and set where the route starts and ends."
+msgstr "3. Drücke «Video hinzufügen …», wähle das Video und lege fest, wo die Route beginnt und endet."
+
+msgid "2. Open that course."
+msgstr "2. Öffne diese Strecke."
+
+msgid "Choose a video of this course"
+msgstr "Video dieser Strecke wählen"

@@ -2,7 +2,8 @@ class_name CoursesTab
 extends VBoxContainer
 ## The course library as a gallery (R39). Importing a GPX, a GoPro video with GPS or an
 ## Incyclist route video (R17) prepares a new course here: it is built, added to the library
-## and opened.
+## and opened. A video without GPS cannot become a course by itself: a dialog explains how to
+## add it to the course of its GPX route instead.
 
 ## Open the detail page of `course` (from `TorqaApp.courses()`).
 signal course_opened(course: Dictionary)
@@ -23,8 +24,9 @@ var _loading_bar: ProgressBar = ProgressBar.new()
 var _loading_label: Label = Label.new()
 var _status: Label = Label.new()
 var _file_dialog: FileDialog = FileDialog.new()
+var _no_gps_dialog: AcceptDialog = AcceptDialog.new()
 ## What the running import is: "" none, "gpx" a route or "video" a video course being
-## prepared, "tqc" a course file.
+## prepared, "tqc" a course file, "probe" a video being looked at.
 var _importing: String = ""
 
 
@@ -106,6 +108,10 @@ func _init() -> void:
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	add_child(_file_dialog)
+	_no_gps_dialog.title = tr("Video without GPS")
+	_no_gps_dialog.dialog_autowrap = true
+	_no_gps_dialog.min_size = Vector2i(560, 0)
+	add_child(_no_gps_dialog)
 
 
 func _on_file_selected(path: String) -> void:
@@ -114,16 +120,45 @@ func _on_file_selected(path: String) -> void:
 		_importing = "tqc"
 		_torqa.import_course(path)
 		return
-	var video: bool = TorqaApp.video_extensions().has(path.get_extension().to_lower())
-	_importing = "video" if video else "gpx"
+	var extension: String = path.get_extension().to_lower()
+	if extension == "gpx":
+		_start_loading("gpx", path)
+		_torqa.load_route(path, false)
+	elif extension == "xml":
+		_start_loading("video", path)
+		_torqa.load_video(path, false)
+	else:
+		# Set so that a video that cannot be read is reported like a failed import.
+		_importing = "probe"
+		var probe: Dictionary = _torqa.video_probe(path)
+		if probe.is_empty():
+			return
+		_importing = ""
+		if probe["has_gps"]:
+			_start_loading("video", path)
+			_torqa.load_video(path, false)
+		else:
+			_no_gps_dialog.dialog_text = no_gps_steps(path.get_file())
+			_no_gps_dialog.popup_centered()
+
+
+## What to do with a video without GPS: it rides on the course of its GPX route.
+func no_gps_steps(file: String) -> String:
+	var steps: PackedStringArray = [
+		tr("%s has no GPS, so it cannot become a course by itself.") % file,
+		tr("1. Import the GPX route of the ride shown in the video."),
+		tr("2. Open that course."),
+		tr("3. Press Add video…, choose the video and set where the route starts and ends."),
+	]
+	return "\n\n".join(steps)
+
+
+func _start_loading(kind: String, path: String) -> void:
+	_importing = kind
 	_import_button.disabled = true
 	_loading_bar.value = 0.0
 	_loading_label.text = tr("Loading %s …") % path.get_file()
 	_loading.show()
-	if video:
-		_torqa.load_video(path, false)
-	else:
-		_torqa.load_route(path, false)
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:

@@ -289,6 +289,44 @@ pub fn gps_track(path: &Path) -> Result<Vec<TimedGps>, VideoError> {
     Ok(track)
 }
 
+/// Whether the video records GPS (GoPro GPMF), found from its first data packets rather than
+/// by reading the whole file.
+///
+/// # Errors
+/// [`VideoError`] if the file cannot be opened.
+pub fn has_gps(path: &Path) -> Result<bool, VideoError> {
+    // GoPro writes a payload about once a second; a few without positions mean no GPS (or no
+    // fix in the first seconds, when a track would start late anyway).
+    const PAYLOADS_TO_CHECK: usize = 10;
+    init();
+    let mut input = ffmpeg::format::input(path)?;
+    let data_streams: Vec<usize> = input
+        .streams()
+        .filter(|s| s.parameters().medium() == ffmpeg::media::Type::Data)
+        .map(|s| s.index())
+        .collect();
+    if data_streams.is_empty() {
+        return Ok(false);
+    }
+    let mut checked = 0;
+    for (stream, packet) in input.packets() {
+        if !data_streams.contains(&stream.index()) {
+            continue;
+        }
+        if packet
+            .data()
+            .is_some_and(|d| !gpmf::gps_points(d).is_empty())
+        {
+            return Ok(true);
+        }
+        checked += 1;
+        if checked >= PAYLOADS_TO_CHECK * data_streams.len() {
+            break;
+        }
+    }
+    Ok(false)
+}
+
 /// A GPX track of a video's GPS (e.g. from [`gps_track`]) named `name`, so the usual import
 /// prepares a course from the footage. Each point's `<time>` is its moment in the video,
 /// counted from the Unix epoch, so the video time can be read back from the track.
