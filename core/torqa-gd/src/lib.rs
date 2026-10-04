@@ -179,17 +179,19 @@ impl TorqaApp {
         }
     }
 
-    /// File extensions `load_video` accepts, for file dialogs: videos and Incyclist's `xml`.
+    /// File extensions `load_video` accepts, for file dialogs: videos, Incyclist's `xml` and
+    /// Tacx's `rlv`.
     #[func]
     fn video_extensions() -> PackedStringArray {
         torqa_app::video::VIDEO_EXTENSIONS
             .iter()
-            .chain(&["xml"])
+            .chain(&["xml", "rlv"])
             .map(|e| GString::from(*e))
             .collect()
     }
 
-    /// The loaded video course: `{path, duration_s, offset_s, aligned_by_hand, marks}`;
+    /// The loaded video course: `{path, duration_s, offset_s, aligned_by_hand, located, marks}`;
+    /// `located` is false for courses without a place (Tacx RLV), ridden along the video only;
     /// `marks` (x metres along the route, y seconds into the video) are those of a video
     /// placed on the route by hand, from the route's start to its end. Empty for other courses.
     #[func]
@@ -203,6 +205,7 @@ impl TorqaApp {
             "duration_s" => video.duration.as_secs_f64(),
             "offset_s" => video.offset.as_secs_f64(),
             "aligned_by_hand" => video.aligned_by_hand(),
+            "located" => video.located,
             "marks" => &video
                 .marks
                 .iter()

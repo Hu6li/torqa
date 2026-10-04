@@ -8,6 +8,7 @@
 pub mod audio;
 pub mod gpmf;
 pub mod incyclist;
+pub mod tacx;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 

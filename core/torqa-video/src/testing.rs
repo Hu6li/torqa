@@ -342,3 +342,89 @@ pub fn gps5_payload(points: &[(f64, f64, f64, f64)], fix: u32) -> Vec<u8> {
         &device,
     )
 }
+
+/// Writes Tacx files for tests: blocks of records after a file header.
+struct Writer(Vec<u8>);
+
+impl Writer {
+    fn new(fingerprint: u16, blocks: u32) -> Self {
+        let mut w = Self(Vec::new());
+        w.u16(fingerprint).u16(100).u32(blocks);
+        w
+    }
+
+    fn block(&mut self, kind: u16, records: u32, size: u32) -> &mut Self {
+        self.u16(kind).u16(100).u32(records).u32(size)
+    }
+
+    fn u16(&mut self, v: u16) -> &mut Self {
+        self.0.extend(v.to_le_bytes());
+        self
+    }
+
+    fn u32(&mut self, v: u32) -> &mut Self {
+        self.0.extend(v.to_le_bytes());
+        self
+    }
+
+    fn f32(&mut self, v: f32) -> &mut Self {
+        self.0.extend(v.to_le_bytes());
+        self
+    }
+
+    fn f64(&mut self, v: f64) -> &mut Self {
+        self.0.extend(v.to_le_bytes());
+        self
+    }
+
+    /// A text field of `size` bytes in UTF-16.
+    fn text(&mut self, text: &str, size: usize) -> &mut Self {
+        let mut field: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        field.resize(size, 0);
+        self.0.extend(field);
+        self
+    }
+}
+
+/// A Tacx `.rlv` for `video` at 10 fps: 1 m per frame, from frame 20 on 0.5 m, to the
+/// course's end at 30 m (frame 40, the end of [`test_video`]).
+#[must_use]
+pub fn rlv_bytes(video: &str) -> Vec<u8> {
+    let mut w = Writer::new(2000, 4);
+    w.block(2010, 1, 534)
+        .text(video, 522)
+        .f32(10.0)
+        .u32(75)
+        .u32(0);
+    w.block(2020, 2, 8).u32(0).f32(1.0).u32(20).f32(0.5);
+    w.block(2030, 1, 8).u32(5).u32(1);
+    w.block(2040, 1, 596)
+        .f32(0.0)
+        .f32(30.0)
+        .text("All", 66)
+        .text("", 522);
+    w.0
+}
+
+/// A Tacx `.pgmf` course named `name`: 15 m at 5 %, then 15 m at −2 %, from 500 m.
+#[must_use]
+pub fn pgmf_bytes(name: &str) -> Vec<u8> {
+    let mut w = Writer::new(1000, 2);
+    w.block(1010, 1, 70)
+        .u32(0)
+        .text(name, 34)
+        .u32(1)
+        .u32(1)
+        .f64(30.0)
+        .f64(0.0)
+        .f32(500.0)
+        .u32(0);
+    w.block(1020, 2, 12)
+        .f32(15.0)
+        .f32(5.0)
+        .f32(0.0)
+        .f32(15.0)
+        .f32(-2.0)
+        .f32(0.0);
+    w.0
+}

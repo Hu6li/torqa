@@ -197,7 +197,7 @@ func _init() -> void:
 	_video_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	var videos: PackedStringArray = PackedStringArray()
 	for extension: String in TorqaApp.video_extensions():
-		if extension != "xml":
+		if not extension in ["xml", "rlv"]:
 			videos.append("*." + extension)
 	_video_dialog.filters = PackedStringArray([", ".join(videos) + " ; " + tr("Videos")])
 	_video_dialog.use_native_dialog = true
@@ -290,16 +290,21 @@ func _on_failed(message: String) -> void:
 
 func _show_video_buttons() -> void:
 	var video: Dictionary = _torqa.video()
-	# A video course is ridden either way: all options apply.
-	_options.show_option_groups(true, not video.is_empty())
+	# A video course is ridden either way, unless it has no place (Tacx RLV): then only along
+	# its video, which it keeps.
+	var located: bool = video.get("located", true)
+	_options.show_option_groups(located, not video.is_empty())
 	_add_video_button.visible = video.is_empty()
 	_align_button.visible = video.get("aligned_by_hand", false)
-	_remove_video_button.visible = not video.is_empty()
+	_remove_video_button.visible = not video.is_empty() and located
 
 
 func _on_ride_pressed() -> void:
-	if _torqa.video().is_empty():
+	var video: Dictionary = _torqa.video()
+	if video.is_empty():
 		_ride(false)
+	elif not video.get("located", true):
+		_ride(true)
 	else:
 		_view_dialog.popup_centered()
 

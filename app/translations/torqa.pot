@@ -39,7 +39,7 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:198
+#: app/scenes/courses_tab.gd:204
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
@@ -55,19 +55,19 @@ msgstr ""
 msgid "(best %s)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:199
+#: app/scenes/courses_tab.gd:205
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:200
+#: app/scenes/courses_tab.gd:206
 msgid "2. Open that course."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:201
+#: app/scenes/courses_tab.gd:207
 msgid "3. Press Add video…, choose the video and set where the route starts and ends."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:166
+#: app/scenes/courses_tab.gd:172
 msgid "A course named “%s” exists already. Replace it, or keep both?"
 msgstr ""
 
@@ -239,7 +239,7 @@ msgstr ""
 msgid "Cloudy"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:125
+#: app/scenes/courses_tab.gd:131
 msgid "Course name in use"
 msgstr ""
 
@@ -403,7 +403,7 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:118
+#: app/scenes/courses_tab.gd:124
 msgid "Import"
 msgstr ""
 
@@ -439,7 +439,7 @@ msgstr ""
 msgid "Jun"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:127
+#: app/scenes/courses_tab.gd:133
 msgid "Keep both"
 msgstr ""
 
@@ -455,7 +455,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:210
+#: app/scenes/courses_tab.gd:216
 msgid "Loading %s …"
 msgstr ""
 
@@ -515,7 +515,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:117
+#: app/scenes/courses_tab.gd:123
 msgid "Name the course"
 msgstr ""
 
@@ -671,7 +671,7 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:126
+#: app/scenes/courses_tab.gd:132
 msgid "Replace"
 msgstr ""
 
@@ -831,7 +831,7 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:111
+#: app/scenes/courses_tab.gd:117
 msgid "Torqa courses"
 msgstr ""
 
@@ -863,19 +863,19 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:351
+#: app/scenes/course_detail.gd:356
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:348
+#: app/scenes/course_detail.gd:353
 msgid "Video aligned with the route."
 msgstr ""
 
-#: app/scenes/course_detail.gd:360
+#: app/scenes/course_detail.gd:365
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:132
+#: app/scenes/courses_tab.gd:138
 msgid "Video without GPS"
 msgstr ""
 
@@ -883,8 +883,8 @@ msgstr ""
 msgid "Videos"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:110
-msgid "Videos with GPS, Incyclist route videos (.xml)"
+#: app/scenes/courses_tab.gd:114
+msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
 #: app/scenes/ride_screen.gd:361 app/scenes/ride_screen.tscn:132

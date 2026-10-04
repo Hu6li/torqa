@@ -13,7 +13,7 @@ use torqa_domain::units::Meters;
 use torqa_routes::Route;
 use torqa_session::ghost::Ghost;
 use torqa_video::audio::{Audio, Stereo, Stretcher};
-use torqa_video::{Frame, Video, gps_track, gpx_from_track, incyclist};
+use torqa_video::{Frame, Video, gps_track, gpx_from_track, incyclist, tacx};
 
 /// File extensions of the videos Torqa reads directly (GoPro and similar).
 pub const VIDEO_EXTENSIONS: [&str; 4] = ["mp4", "mov", "m4v", "mkv"];
@@ -33,6 +33,8 @@ pub struct VideoSource {
     /// the end of the route; the video follows the distance evenly between neighbours. Empty
     /// when timestamps pair them.
     pub marks: Vec<SyncMark>,
+    /// Whether the GPX is a real place; `false` for a Tacx RLV course drawn from its slopes.
+    pub located: bool,
 }
 
 /// A position on the route and the moment of the video showing it.
@@ -42,6 +44,113 @@ pub struct SyncMark {
     pub distance: Meters,
     /// Moment in the video.
     pub time: Duration,
+}
+
+/// A Tacx Real Life Video (#42) from its `.rlv` file: the video and the `.pgmf` course next to
+/// it (found by name, ignoring case). The course has no place, only distance and slope, so its
+/// GPX is drawn from the slopes and the video is paired by the RLV's speed changes.
+///
+/// # Errors
+/// A readable message if a file is missing or cannot be read.
+fn tacx_source(path: &Path) -> Result<VideoSource, String> {
+    let unreadable =
+        |file: &Path, e: &dyn std::fmt::Display| format!("cannot read {}: {e}", file.display());
+    let bytes = std::fs::read(path).map_err(|e| unreadable(path, &e))?;
+    let rlv = tacx::parse_rlv(&bytes).map_err(|e| unreadable(path, &e))?;
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let video = find_file(dir, |name| name.eq_ignore_ascii_case(rlv.video_file_name()))
+        .or_else(|| {
+            // Courses copied about often keep the video next to the RLV under its own name.
+            find_file(dir, |name| {
+                let file = Path::new(name);
+                file.file_stem()
+                    .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case(&stem))
+                    && !file.extension().is_some_and(|e| {
+                        ["rlv", "pgmf"].contains(&e.to_string_lossy().to_lowercase().as_str())
+                    })
+            })
+        })
+        .ok_or_else(|| {
+            format!(
+                "video {} not found — put it next to {}",
+                rlv.video_file_name(),
+                path.display()
+            )
+        })?;
+    let pgmf_name = format!("{stem}.pgmf");
+    let pgmf_path =
+        find_file(dir, |name| name.eq_ignore_ascii_case(&pgmf_name)).ok_or_else(|| {
+            format!("{pgmf_name} not found — it holds the course's slopes, put it next to the RLV")
+        })?;
+    let pgmf_bytes = std::fs::read(&pgmf_path).map_err(|e| unreadable(&pgmf_path, &e))?;
+    let pgmf = tacx::parse_pgmf(&pgmf_bytes).map_err(|e| unreadable(&pgmf_path, &e))?;
+    let duration = Video::open(&video)
+        .map_err(|e| unreadable(&video, &e))?
+        .info()
+        .duration;
+    // The RLV's end may lie a few frames past the video's; the video ends where it ends.
+    let mut marks: Vec<SyncMark> = Vec::new();
+    for (distance, time) in rlv.sync_points() {
+        let time = time.min(duration);
+        if marks.last().is_none_or(|m| time > m.time) {
+            marks.push(SyncMark {
+                distance: Meters(distance),
+                time,
+            });
+        }
+    }
+    let name = tacx_name(&pgmf, &stem);
+    Ok(VideoSource {
+        video,
+        gpx: tacx::gpx_from_profile(&name, &pgmf),
+        name,
+        offset: Duration::ZERO,
+        marks,
+        located: false,
+    })
+}
+
+/// The name of a Tacx course: its PGMF's, unless missing or cut short by the field's size,
+/// then the RLV's file name (`stem`).
+fn tacx_name(pgmf: &tacx::Pgmf, stem: &str) -> String {
+    let name = pgmf.name.trim();
+    if name.is_empty() || name.chars().count() >= PGMF_NAME_CHARS {
+        stem.to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The name a Tacx course from the `.rlv` at `path` gets, if its PGMF can be read.
+#[must_use]
+pub fn tacx_course_name(path: &Path) -> Option<String> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let pgmf_name = format!("{stem}.pgmf");
+    let pgmf = find_file(dir, |name| name.eq_ignore_ascii_case(&pgmf_name))?;
+    let pgmf = tacx::parse_pgmf(&std::fs::read(pgmf).ok()?).ok()?;
+    Some(tacx_name(&pgmf, &stem))
+}
+
+/// Characters a PGMF course name can hold (34 bytes of UTF-16).
+const PGMF_NAME_CHARS: usize = 17;
+
+/// The file in `dir` whose name `matches`, if any.
+fn find_file(dir: &Path, matches: impl Fn(&str) -> bool) -> Option<PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .is_some_and(|name| matches(&name.to_string_lossy()))
+        })
 }
 
 /// What the import needs to know about a video first: its length, and whether it carries GPS
@@ -79,6 +188,9 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     let unreadable = |e: &dyn std::fmt::Display| format!("cannot read {}: {e}", path.display());
+    if extension == "rlv" {
+        return tacx_source(path);
+    }
     if extension == "xml" {
         let xml = std::fs::read_to_string(path).map_err(|e| unreadable(&e))?;
         let route = incyclist::parse(&xml).map_err(|e| unreadable(&e))?;
@@ -92,6 +204,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
             gpx,
             offset: route.video_offset(),
             marks: Vec::new(),
+            located: true,
         });
     }
     let track = gps_track(path).map_err(|e| unreadable(&e))?;
@@ -110,6 +223,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
         name,
         offset: Duration::ZERO,
         marks: Vec::new(),
+        located: true,
     })
 }
 
@@ -123,6 +237,8 @@ pub struct VideoCourse {
     /// The marks of a video aligned by hand, from the route's start to its end; empty
     /// otherwise.
     pub marks: Vec<SyncMark>,
+    /// Whether the route is a real place (see [`VideoSource::located`]).
+    pub located: bool,
     /// The video's length.
     pub duration: Duration,
     /// Video time at each distance along the route.
@@ -203,6 +319,7 @@ impl VideoCourse {
             video: source.video.clone(),
             offset,
             marks,
+            located: source.located,
             duration,
             sync,
         })

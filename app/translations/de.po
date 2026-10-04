@@ -586,8 +586,8 @@ msgstr "Routen, Videos und Strecken"
 msgid "GPX routes"
 msgstr "GPX-Routen"
 
-msgid "Videos with GPS, Incyclist route videos (.xml)"
-msgstr "Videos mit GPS, Incyclist-Streckenvideos (.xml)"
+msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
+msgstr "Videos mit GPS, Streckenvideos (Incyclist .xml, Tacx .rlv)"
 
 msgid "Torqa courses"
 msgstr "Torqa-Strecken"

@@ -107,7 +107,13 @@ func _init() -> void:
 		[
 			"*.gpx, *.tqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
 			"*.gpx ; " + tr("GPX routes"),
-			"%s ; %s" % [", ".join(videos), tr("Videos with GPS, Incyclist route videos (.xml)")],
+			(
+				"%s ; %s"
+				% [
+					", ".join(videos),
+					tr("Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)")
+				]
+			),
 			"*.tqc ; " + tr("Torqa courses"),
 		]
 	)
@@ -138,7 +144,7 @@ func _init() -> void:
 func _on_file_selected(path: String) -> void:
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()
-	if not extension in ["tqc", "gpx", "xml"]:
+	if not extension in ["tqc", "gpx", "xml", "rlv"]:
 		# Set so that a video that cannot be read is reported like a failed import.
 		_importing = "probe"
 		var probe: Dictionary = _torqa.video_probe(path)

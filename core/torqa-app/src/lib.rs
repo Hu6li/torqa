@@ -591,6 +591,7 @@ impl App {
                     gpx: unpacked.gpx.clone(),
                     offset: Duration::from_secs_f64(reference.offset_s.max(0.0)),
                     marks: video_marks(reference),
+                    located: reference.located,
                 });
             }
             let imported = import_gpx(
@@ -649,7 +650,9 @@ impl App {
                     source.gpx.clone(),
                     &source.name,
                     &cache,
-                    offline,
+                    // A course without a place keeps its own elevations: terrain data from
+                    // wherever its drawn line lies would only spoil them.
+                    offline || !source.located,
                     &used,
                     &mut |stage, done, total| reporter.report(stage, done, total),
                 )
@@ -692,6 +695,7 @@ impl App {
             gpx: gpx.clone(),
             offset: Duration::ZERO,
             marks: marks.to_vec(),
+            located: true,
         };
         let added = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         let reference = video_reference(&added);
@@ -708,9 +712,14 @@ impl App {
     /// [`AppError::Video`] if the loaded course has no video, [`AppError::Storage`] if the
     /// course file cannot be updated.
     pub fn remove_video(&mut self) -> Result<(), AppError> {
-        let (Some(_), Some(path)) = (&self.video, &self.course) else {
+        let (Some(video), Some(path)) = (&self.video, &self.course) else {
             return Err(AppError::Video("this course has no video".to_owned()));
         };
+        if !video.located {
+            return Err(AppError::Video(
+                "this course is known only along its video and keeps it".to_owned(),
+            ));
+        }
         update_manifest(path, |manifest| manifest.video = None)?;
         self.video = None;
         self.view = View::World;
@@ -718,9 +727,11 @@ impl App {
     }
 
     /// How the next ride on a video course is shown: along its video, or in 3D (#44).
-    /// Courses without a video are always ridden in 3D.
+    /// Courses without a video are always ridden in 3D, courses without a place (Tacx RLV)
+    /// always along their video.
     pub fn ride_along_video(&mut self, along: bool) {
-        self.view = if along && self.video.is_some() {
+        let unlocated = self.video.as_ref().is_some_and(|v| !v.located);
+        self.view = if (along || unlocated) && self.video.is_some() {
             View::Video
         } else {
             View::World
@@ -756,6 +767,7 @@ impl App {
             gpx: gpx.clone(),
             offset: Duration::ZERO,
             marks: marks.to_vec(),
+            located: current.located,
         };
         let aligned = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         if let Some(path) = &self.course {
@@ -1078,6 +1090,7 @@ impl App {
                 .and_then(|xml| torqa_video::incyclist::parse(&xml).ok())
                 .map(|route| route.title),
             "tqc" => course::read_manifest(path).ok().map(|m| m.name),
+            "rlv" => video::tacx_course_name(path),
             _ => None,
         };
         named.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
@@ -2023,6 +2036,7 @@ fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
             .iter()
             .map(|m| [m.distance.0, m.time.as_secs_f64()])
             .collect(),
+        located: video.located,
     }
 }
 
@@ -2745,6 +2759,66 @@ mod tests {
         app.ride_along_video(true);
         start(&mut app);
         assert!(!app.riding_along_video());
+    }
+
+    #[test]
+    fn a_tacx_real_life_video_rides_along_its_video_by_distance_and_slope() {
+        use torqa_video::testing::{pgmf_bytes, rlv_bytes, test_video};
+
+        let dir = temp_dir("rlv");
+        video_in(&dir, &test_video("rlv", 64, 48), "stelvio.mp4");
+        std::fs::write(
+            dir.join("Stelvio.rlv"),
+            rlv_bytes(r"C:\Tacx\Videos\STELVIO.MP4"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("Stelvio.PGMF"), pgmf_bytes("Passo dello Stelvio")).unwrap();
+        assert_eq!(
+            App::suggested_course_name(&dir.join("Stelvio.rlv")),
+            "Stelvio"
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_video(dir.join("Stelvio.rlv"), false);
+        let file = added(&mut app);
+
+        let route = app.route().unwrap();
+        assert!(
+            (route.length().0 - 30.0).abs() < 0.5,
+            "{}",
+            route.length().0
+        );
+        // The elevations are the course's own (from 500 m, up then down), not terrain data's
+        // from wherever its drawn line happens to lie.
+        assert_eq!(route.elevation_source(), ElevationSource::File);
+        assert!(route.elevation_gain().0 > 0.3);
+        let course = app.video().unwrap();
+        assert!(!course.located);
+        let at = |m: f64| course.time_at(Meters(m)).as_secs_f64();
+        // 1 m per frame for 20 m, then 0.5 m: 2 s at 20 m, 3 s at 25 m.
+        assert!((at(20.0) - 2.0).abs() < 0.05, "{}", at(20.0));
+        assert!((at(25.0) - 3.0).abs() < 0.05, "{}", at(25.0));
+        // The PGMF's 17-character name field cut "Passo dello Stelvio" short: the RLV's
+        // file name is used instead.
+        assert_eq!(course::read_manifest(&file).unwrap().name, "Stelvio");
+
+        // Only along its video: it has no place for a 3D world, and keeps its video.
+        app.ride_along_video(false);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(200.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        assert!(app.riding_along_video());
+        app.abort_ride();
+        assert!(app.remove_video().is_err());
+
+        // Opened again from its file: still a course without a place.
+        app.open_course(file);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(!app.video().unwrap().located);
     }
 
     #[test]
