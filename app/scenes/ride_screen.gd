@@ -154,7 +154,8 @@ func _process(delta: float) -> void:
 
 func _open_settings() -> void:
 	_options["camera"] = _world.camera()
-	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial, _torqa.video().is_empty())
+	var world: bool = not _torqa.riding_along_video()
+	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial, world)
 
 
 ## Applies changed ride options at once: camera, conditions and sound in the world, difficulty
@@ -304,7 +305,7 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 
 
 func _cycle_camera() -> void:
-	if not _torqa.video().is_empty():
+	if _torqa.riding_along_video():
 		return
 	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
 

@@ -34,14 +34,19 @@ A video without GPS cannot tell where it was filmed, so it is added to a course:
 
 The course is now ridden along the video. Between neighbouring points the video follows your
 distance evenly; the GPX's own timestamps are not used (they come from another recording).
-**Align video…** changes the points later, **Remove video** turns it back into a 3D course;
-the course file keeps the change. Courses made from a video with GPS follow their GPS and have
+**Align video…** changes the points later; the course file keeps the change.
+
+**Remove video** on any video course's page takes the video off: the course is then ridden
+in 3D only. Courses made from a video with GPS follow their GPS and have
 nothing to align.
 
 ## Riding a video course
 
-Open the course and press **Ride** as usual. Instead of the 3D world, the video fills the
-screen, with your figures, map and elevation profile on top. Where you are on the route
+Open the course and press **Ride**: Torqa asks whether to ride **along the video** or **in
+3D** — a video course is a route like any other, so its 3D world is there too (built the
+first time you choose it; online, it fetches the terrain and map data the video course does
+not hold yet). Along the video, the video fills the screen, with your figures, map and
+elevation profile on top. Where you are on the route
 decides the moment of the video: it plays at the speed you ride, stands still when you stop,
 and blends smoothly from frame to frame even when you crawl up a steep climb.
 

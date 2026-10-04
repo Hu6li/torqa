@@ -318,6 +318,15 @@ struct ActiveRide {
     video_watch: VideoWatch,
 }
 
+/// How a ride is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum View {
+    /// In the generated 3D world.
+    World,
+    /// Along the course's video.
+    Video,
+}
+
 /// When the 3D world of a loaded route is built.
 enum WorldPlan {
     /// Right after the route.
@@ -366,6 +375,8 @@ pub struct App {
     saving: Option<String>,
     /// The loaded course's video, for video courses (R17).
     video: Option<video::VideoCourse>,
+    /// How the next ride is shown.
+    view: View,
     /// A video open for preview frames, e.g. while aligning it to a route.
     preview: Option<(PathBuf, Video)>,
     route: Option<Route>,
@@ -411,6 +422,7 @@ impl App {
             course: None,
             saving: None,
             video: None,
+            view: View::World,
             preview: None,
             route: None,
             world: None,
@@ -674,31 +686,40 @@ impl App {
         let reference = video_reference(&added);
         update_manifest(path, |manifest| manifest.video = Some(reference))?;
         self.video = Some(added);
-        // The video is the view now: no 3D world to build.
-        self.world_plan = WorldPlan::Now;
-        self.world = Some(Arc::new(World::default()));
+        self.view = View::Video;
         Ok(())
     }
 
-    /// Takes a video added with [`App::add_video`] off the loaded course, which is ridden in
-    /// 3D again; the course is reopened (reports [`AppEvent::RouteLoaded`]). Videos a course
-    /// was made from (with GPS) stay.
+    /// Takes the video off the loaded course, which is ridden in 3D only from then on; the
+    /// route stays as it is.
     ///
     /// # Errors
-    /// [`AppError::Video`] if the loaded course has no video added by hand,
-    /// [`AppError::Storage`] if the course file cannot be updated.
+    /// [`AppError::Video`] if the loaded course has no video, [`AppError::Storage`] if the
+    /// course file cannot be updated.
     pub fn remove_video(&mut self) -> Result<(), AppError> {
-        let (Some(video), Some(path)) = (&self.video, self.course.clone()) else {
+        let (Some(_), Some(path)) = (&self.video, &self.course) else {
             return Err(AppError::Video("this course has no video".to_owned()));
         };
-        if !video.aligned_by_hand() {
-            return Err(AppError::Video(
-                "this course was made from its video and keeps it".to_owned(),
-            ));
-        }
-        update_manifest(&path, |manifest| manifest.video = None)?;
-        self.open_course(path);
+        update_manifest(path, |manifest| manifest.video = None)?;
+        self.video = None;
+        self.view = View::World;
         Ok(())
+    }
+
+    /// How the next ride on a video course is shown: along its video, or in 3D (#44).
+    /// Courses without a video are always ridden in 3D.
+    pub fn ride_along_video(&mut self, along: bool) {
+        self.view = if along && self.video.is_some() {
+            View::Video
+        } else {
+            View::World
+        };
+    }
+
+    /// Whether the current ride plays the course's video.
+    #[must_use]
+    pub fn riding_along_video(&self) -> bool {
+        self.ride.as_ref().is_some_and(|ride| ride.player.is_some())
     }
 
     /// Replaces the marks of the loaded video course's video (see [`App::add_video`]), for
@@ -825,10 +846,14 @@ impl App {
     /// # Errors
     /// [`AppError::CourseNotReady`] until the route's world has been built.
     pub fn save_course(&mut self) -> Result<(), AppError> {
-        let (Some(route), Some(_), Some((name, gpx))) = (&self.route, &self.world, &self.loaded)
-        else {
+        // A GPX course is complete with the data of its world; a video course rides along
+        // its video and builds the world on demand.
+        let (Some(route), Some((name, gpx))) = (&self.route, &self.loaded) else {
             return Err(AppError::CourseNotReady);
         };
+        if self.world.is_none() && self.video.is_none() {
+            return Err(AppError::CourseNotReady);
+        }
         let manifest = Manifest {
             format: course::FORMAT_VERSION,
             generator: format!("Torqa {}", torqa_domain::version()),
@@ -882,6 +907,11 @@ impl App {
     pub fn build_world(&mut self) -> bool {
         if self.world.is_some() {
             return true;
+        }
+        // A video course's file holds the data of its route only, as no world was built when
+        // it was saved: the world fetches the rest when online.
+        if self.video.is_some() {
+            self.offline = false;
         }
         if let WorldPlan::OnRequest(map) = std::mem::replace(&mut self.world_plan, WorldPlan::Now)
             && let (Some(route), Some(map)) = (self.route.clone(), map)
@@ -984,6 +1014,7 @@ impl App {
         // Opening a course sets this; a GPX import goes into the library when ready.
         self.from_course = false;
         self.video = None;
+        self.view = View::World;
         self.world = None;
         self.route = None;
         self.loaded = None;
@@ -1148,14 +1179,13 @@ impl App {
             return Err(AppError::NoTrainer);
         }
         let ghost = self.ghost_for(&route, descent, ghost)?;
-        let player = self
-            .video
-            .as_ref()
+        let along = self.video.as_ref().filter(|_| self.view == View::Video);
+        let player = along
             .map(|v| video::VideoPlayer::open(&v.video))
             .transpose()
             .map_err(AppError::Video)?;
         // A ride without the video's sound is still a ride.
-        let sound = self.video.as_ref().and_then(|v| {
+        let sound = along.and_then(|v| {
             video::SoundPlayer::open(&v.video)
                 .inspect_err(|error| warn!(%error, "no sound for the video"))
                 .ok()
@@ -1685,13 +1715,11 @@ impl App {
                     match video::VideoCourse::new(&imported.route, &source) {
                         Ok(course) => {
                             self.video = Some(course);
+                            self.view = View::Video;
+                            let map = imported.map.clone();
                             self.route_loaded(imported, events);
-                            // No 3D world: the video is the view.
-                            self.world = Some(Arc::new(World::default()));
-                            events.push(AppEvent::WorldReady {
-                                chunks: 0,
-                                fallback_samples: 0,
-                            });
+                            // Ridden along the video, or in 3D once asked for (#44).
+                            self.world_plan = WorldPlan::OnRequest(Some(map));
                             if !self.from_course
                                 && let Err(error) = self.save_course()
                             {
@@ -2234,11 +2262,8 @@ mod tests {
                 .any(|e| matches!(e, AppEvent::RouteLoaded(s) if s.name == "Ride")),
             "{events:?}"
         );
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, AppEvent::WorldReady { chunks: 0, .. }))
-        );
+        // Ridden along the video unless the rider asks for 3D: no world built for it.
+        assert!(app.world().is_none());
         let course = app.video().unwrap();
         assert_eq!(course.video, video);
         // 10 m every quarter second: the video is 2.5 s in after 100 m.
@@ -2319,7 +2344,7 @@ mod tests {
 
         std::fs::rename(aside.join("Gurten.mov"), shared.join("Gurten.mov")).unwrap();
         other.open_course(shared.join("gurten.tqc"));
-        run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+        run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert_eq!(other.video().unwrap().video, shared.join("Gurten.mov"));
         // Opened, not prepared: nothing is added to that machine's library.
         assert_eq!(other.courses().len(), 0);
@@ -2432,8 +2457,6 @@ mod tests {
         assert!((at(&app, length / 2.0) - 2.0).abs() < 0.01);
         assert!((at(&app, length) - 3.0).abs() < 0.01);
         assert!(app.video().unwrap().aligned_by_hand());
-        // Ridden along the video: nothing to build.
-        assert!(app.build_world());
         assert!(
             app.add_video(&video, &marks(&[(0.0, 0.0), (0.0, 1.0)]))
                 .is_err()
@@ -2487,7 +2510,6 @@ mod tests {
 
         // Removed again: a 3D course, as before.
         app.remove_video().unwrap();
-        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert!(app.video().is_none());
         assert!(course::read_manifest(file).unwrap().video.is_none());
         assert!(!app.build_world());
@@ -2597,6 +2619,48 @@ mod tests {
     }
 
     #[test]
+    fn a_video_course_is_ridden_along_its_video_or_in_3d() {
+        let dir = temp_dir("video-or-3d");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::gopro_video("or-3d"),
+            "Ride.MOV",
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        loaded_video(&mut app, video);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        let start = |app: &mut App| {
+            app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+                .unwrap();
+        };
+
+        // In 3D: the route's world is built, the video stays off.
+        app.ride_along_video(false);
+        assert!(!app.build_world());
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        start(&mut app);
+        assert!(!app.riding_along_video());
+        assert!(app.video_frame().is_none());
+        app.abort_ride();
+
+        // Along the video, as before.
+        app.ride_along_video(true);
+        start(&mut app);
+        assert!(app.riding_along_video());
+        app.abort_ride();
+
+        // Without its video, a course is ridden in 3D only.
+        app.remove_video().unwrap();
+        app.ride_along_video(true);
+        start(&mut app);
+        assert!(!app.riding_along_video());
+    }
+
+    #[test]
     fn videos_with_gps_follow_it_and_cannot_be_moved() {
         let dir = temp_dir("gps-align");
         let video = video_in(
@@ -2610,7 +2674,6 @@ mod tests {
 
         assert!(!app.video().unwrap().aligned_by_hand());
         assert!(app.align_video(&marks(&[(0.0, 0.0), (0.0, 2.0)])).is_err());
-        assert!(app.remove_video().is_err());
     }
 
     #[test]

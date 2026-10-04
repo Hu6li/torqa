@@ -57,7 +57,7 @@ func _init() -> void:
 	_video_sound.text = tr("Play the video's sound")
 	_video_sound.button_pressed = true
 	_video_sound.toggled.connect(func(_on: bool) -> void: _changed())
-	show_world_options(true)
+	show_option_groups(true, false)
 	_update_labels()
 
 
@@ -91,12 +91,12 @@ func set_options(options: Dictionary) -> void:
 	_update_labels()
 
 
-## Shows the options of the 3D world, or (`shown` false) those of a video course instead.
-func show_world_options(shown: bool) -> void:
+## Shows the options of the 3D world and those of a video course (sound), each or not.
+func show_option_groups(world: bool, video: bool) -> void:
 	for control: Control in _world_rows:
-		control.visible = shown
+		control.visible = world
 	for control: Control in _video_rows:
-		control.visible = not shown
+		control.visible = video
 
 
 func _changed() -> void:

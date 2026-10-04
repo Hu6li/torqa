@@ -140,6 +140,8 @@ Built in rideable steps:
   and end marks in the video with frame previews; movable or removable later
 - [x] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
+- [x] Video courses ridden along the video or in 3D, chosen when riding (#44); videos can be
+  removed from any course
 - [x] Original video sound (R26): pitch-keeping time stretch (WSOLA) at the rider's speed,
   fades out when slow, switchable per ride
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)

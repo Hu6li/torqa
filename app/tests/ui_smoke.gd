@@ -88,7 +88,7 @@ func _ride_settings() -> void:
 	options.set_options(wanted)
 	_check(options.options() == wanted, "options round trip: %s" % options.options())
 	# Video courses: only the trainer's options are shown; the others keep their values.
-	options.show_world_options(false)
+	options.show_option_groups(false, true)
 	var shown: PackedStringArray = PackedStringArray()
 	for i: int in range(0, options.get_child_count(), options.columns):
 		var caption: Label = options.get_child(i) as Label
@@ -99,7 +99,7 @@ func _ride_settings() -> void:
 		"video course options: %s" % shown
 	)
 	_check(options.options() == wanted, "hidden options keep their values")
-	options.show_world_options(true)
+	options.show_option_groups(true, false)
 	options.free()
 
 	var dialog: RideSettingsDialog = RideSettingsDialog.new()

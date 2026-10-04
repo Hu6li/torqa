@@ -15,27 +15,27 @@ msgstr ""
 msgid "%d of %d figures. The first one is shown large. Values are examples."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:255
+#: app/scenes/ride_screen.gd:256
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
-#: app/scenes/course_detail.gd:247
+#: app/scenes/course_detail.gd:256
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:222
+#: app/scenes/ride_screen.gd:223
 msgid "%s ahead"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:222
+#: app/scenes/ride_screen.gd:223
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:319
+#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:320
 msgid "%s connected"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:323
+#: app/scenes/ride_screen.gd:324
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
@@ -47,11 +47,11 @@ msgstr ""
 msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:263
+#: app/scenes/ride_screen.gd:264
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/course_detail.gd:250 app/scenes/ride_screen.gd:303
+#: app/scenes/course_detail.gd:259 app/scenes/ride_screen.gd:304
 msgid "(best %s)"
 msgstr ""
 
@@ -95,7 +95,7 @@ msgstr ""
 msgid "Add points where the footage stops or changes speed."
 msgstr ""
 
-#: app/scenes/course_detail.gd:118
+#: app/scenes/course_detail.gd:122
 msgid "Add video…"
 msgstr ""
 
@@ -107,8 +107,12 @@ msgstr ""
 msgid "Align video with route"
 msgstr ""
 
-#: app/scenes/course_detail.gd:121
+#: app/scenes/course_detail.gd:125
 msgid "Align video…"
+msgstr ""
+
+#: app/scenes/course_detail.gd:188
+msgid "Along the video"
 msgstr ""
 
 #: app/ui/ui_theme.gd:19
@@ -143,7 +147,7 @@ msgstr ""
 msgid "Avg speed"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:346
+#: app/scenes/ride_screen.gd:347
 msgid "Back"
 msgstr ""
 
@@ -151,7 +155,7 @@ msgstr ""
 msgid "Bike weight"
 msgstr ""
 
-#: app/scenes/course_detail.gd:96
+#: app/scenes/course_detail.gd:100
 msgid "Building 3D world"
 msgstr ""
 
@@ -167,7 +171,7 @@ msgstr ""
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:309
+#: app/scenes/ride_screen.gd:310
 msgid "Camera: %s"
 msgstr ""
 
@@ -191,7 +195,7 @@ msgstr ""
 msgid "Chase"
 msgstr ""
 
-#: app/scenes/course_detail.gd:186
+#: app/scenes/course_detail.gd:195
 msgid "Choose a video of this course"
 msgstr ""
 
@@ -211,7 +215,7 @@ msgstr ""
 msgid "Climb %d  ·  %.1f km from km %.1f"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:275
+#: app/scenes/ride_screen.gd:276
 msgid "Climb done in %s"
 msgstr ""
 
@@ -239,15 +243,15 @@ msgstr ""
 msgid "Dec"
 msgstr ""
 
-#: app/scenes/course_detail.gd:181 app/scenes/history_screen.gd:145
+#: app/scenes/course_detail.gd:183 app/scenes/history_screen.gd:145
 msgid "Delete"
 msgstr ""
 
-#: app/scenes/course_detail.gd:128
+#: app/scenes/course_detail.gd:132
 msgid "Delete course"
 msgstr ""
 
-#: app/scenes/course_detail.gd:179
+#: app/scenes/course_detail.gd:181
 msgid "Delete course?"
 msgstr ""
 
@@ -291,7 +295,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: app/scenes/course_detail.gd:143 app/scenes/history_screen.gd:162 core/torqa-app/src/hud.rs:103 app/scenes/ride_screen.tscn:73
+#: app/scenes/course_detail.gd:147 app/scenes/history_screen.gd:162 core/torqa-app/src/hud.rs:103 app/scenes/ride_screen.tscn:73
 msgid "Elevation"
 msgstr ""
 
@@ -323,11 +327,11 @@ msgstr ""
 msgid "Finish & save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:216
+#: app/scenes/ride_screen.gd:217
 msgid "Finished"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:284
+#: app/scenes/ride_screen.gd:285
 msgid "Finished in %s"
 msgstr ""
 
@@ -383,12 +387,20 @@ msgstr ""
 msgid "History"
 msgstr ""
 
+#: app/scenes/course_detail.gd:186
+msgid "How do you want to ride?"
+msgstr ""
+
 #: app/scenes/profile_dialog.gd:43 app/scenes/profile_tab.gd:105
 msgid "Imperial (mi, lb)"
 msgstr ""
 
 #: app/scenes/courses_tab.gd:62
 msgid "Import route, video or course…"
+msgstr ""
+
+#: app/scenes/course_detail.gd:189
+msgid "In 3D"
 msgstr ""
 
 #: app/ui/video_align_dialog.gd:104
@@ -399,7 +411,7 @@ msgstr ""
 msgid "Intensity"
 msgstr ""
 
-#: app/scenes/course_detail.gd:180
+#: app/scenes/course_detail.gd:182
 msgid "Its file is deleted; your rides on it are kept."
 msgstr ""
 
@@ -531,7 +543,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:345
+#: app/scenes/ride_screen.gd:346
 msgid "Nothing recorded."
 msgstr ""
 
@@ -599,7 +611,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: app/scenes/course_detail.gd:156
+#: app/scenes/course_detail.gd:160
 msgid "Race against"
 msgstr ""
 
@@ -623,7 +635,7 @@ msgstr ""
 msgid "Remove point"
 msgstr ""
 
-#: app/scenes/course_detail.gd:123
+#: app/scenes/course_detail.gd:127
 msgid "Remove video"
 msgstr ""
 
@@ -639,7 +651,7 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
-#: app/scenes/course_detail.gd:168 app/scenes/ride_settings_dialog.gd:23
+#: app/scenes/course_detail.gd:172 app/scenes/ride_settings_dialog.gd:23
 msgid "Ride"
 msgstr ""
 
@@ -647,7 +659,7 @@ msgstr ""
 msgid "Ride descents like flat roads"
 msgstr ""
 
-#: app/scenes/course_detail.gd:154
+#: app/scenes/course_detail.gd:158
 msgid "Ride options"
 msgstr ""
 
@@ -659,7 +671,7 @@ msgstr ""
 msgid "Ride summary"
 msgstr ""
 
-#: app/scenes/course_detail.gd:119
+#: app/scenes/course_detail.gd:123
 msgid "Ride this course along a video of it"
 msgstr ""
 
@@ -687,7 +699,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:358
+#: app/scenes/ride_screen.gd:359
 msgid "Saved %s"
 msgstr ""
 
@@ -759,6 +771,10 @@ msgstr ""
 msgid "The ride ends and nothing is saved."
 msgstr ""
 
+#: app/scenes/course_detail.gd:187
+msgid "This course has a video. Ride along it, or in the 3D world?"
+msgstr ""
+
 #: app/ui/ui_theme.gd:17
 msgid "Threshold"
 msgstr ""
@@ -823,19 +839,23 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:324
+#: app/scenes/course_detail.gd:351
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:321
+#: app/scenes/course_detail.gd:348
 msgid "Video aligned with the route."
+msgstr ""
+
+#: app/scenes/course_detail.gd:360
+msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
 #: app/scenes/courses_tab.gd:111
 msgid "Video without GPS"
 msgstr ""
 
-#: app/scenes/course_detail.gd:193
+#: app/scenes/course_detail.gd:202
 msgid "Videos"
 msgstr ""
 
@@ -843,7 +863,7 @@ msgstr ""
 msgid "Videos with GPS, Incyclist route videos (.xml)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:360 app/scenes/ride_screen.tscn:132
+#: app/scenes/ride_screen.gd:361 app/scenes/ride_screen.tscn:132
 msgid "View summary"
 msgstr ""
 
@@ -883,7 +903,7 @@ msgstr ""
 msgid "Your best on this route"
 msgstr ""
 
-#: app/scenes/course_detail.gd:242
+#: app/scenes/course_detail.gd:251
 msgid "Your best time on this route: %s"
 msgstr ""
 
@@ -895,7 +915,7 @@ msgstr ""
 msgid "Your rides"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:267
+#: app/scenes/ride_screen.gd:268
 msgid "best %s"
 msgstr ""
 
@@ -911,7 +931,7 @@ msgstr ""
 msgid "kJ"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:299
+#: app/scenes/ride_screen.gd:300
 msgid "new record, %s faster!"
 msgstr ""
 
@@ -931,7 +951,7 @@ msgstr ""
 msgid "← Back"
 msgstr ""
 
-#: app/scenes/course_detail.gd:111
+#: app/scenes/course_detail.gd:115
 msgid "← Courses"
 msgstr ""
 

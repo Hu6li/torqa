@@ -241,11 +241,25 @@ impl TorqaApp {
         self.command(|app| app.add_video(&video, &marks))
     }
 
-    /// Takes a video added with `add_video` off the loaded course, which is reopened as a 3D
-    /// course (emits `route_loaded`).
+    /// Takes the video off the loaded course, which is ridden in 3D only from then on.
     #[func]
     fn remove_video(&mut self) -> bool {
         self.command(App::remove_video)
+    }
+
+    /// How the next ride on a video course is shown: along its video, or in 3D (then call
+    /// `build_world` first). Courses without a video are always ridden in 3D.
+    #[func]
+    fn ride_along_video(&mut self, along: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.ride_along_video(along);
+        }
+    }
+
+    /// Whether the current ride plays the course's video.
+    #[func]
+    fn riding_along_video(&self) -> bool {
+        self.app.as_ref().is_some_and(App::riding_along_video)
     }
 
     /// Replaces the marks of the loaded video course (see `add_video`); emits `failed` if they

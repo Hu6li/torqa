@@ -709,3 +709,18 @@ msgstr "Ton"
 
 msgid "Play the video's sound"
 msgstr "Ton des Videos abspielen"
+
+msgid "This course has a video. Ride along it, or in the 3D world?"
+msgstr "Diese Strecke hat ein Video. Mit dem Video fahren oder in der 3D-Welt?"
+
+msgid "How do you want to ride?"
+msgstr "Wie möchtest du fahren?"
+
+msgid "Video removed: this course is ridden in 3D."
+msgstr "Video entfernt: Diese Strecke fährst du in 3D."
+
+msgid "In 3D"
+msgstr "In 3D"
+
+msgid "Along the video"
+msgstr "Mit dem Video"

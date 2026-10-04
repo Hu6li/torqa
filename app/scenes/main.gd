@@ -29,7 +29,7 @@ func _ready() -> void:
 
 func _on_ride_started(options: Dictionary) -> void:
 	_start.hide()
-	if _torqa.video().is_empty():
+	if not _torqa.riding_along_video():
 		_world.apply_options(options)
 		_world.reset_view()
 		_world.show()
