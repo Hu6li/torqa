@@ -7,7 +7,7 @@
 
 mod mvt;
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -54,6 +54,8 @@ pub enum LandCover {
     Orchard,
     /// Built-up areas.
     Residential,
+    /// Industrial, commercial and retail land: halls, warehouses, shops.
+    Industrial,
     /// Lakes, rivers, ponds.
     Water,
     /// Rock, scree, glaciers, sand.
@@ -82,6 +84,8 @@ pub struct Building {
     pub height: Option<f64>,
     /// Number of floors, if known.
     pub levels: Option<f64>,
+    /// Façade colour as mapped (sRGB, 0–1), if known.
+    pub color: Option<[f32; 3]>,
 }
 
 /// A river, stream or canal centre line.
@@ -156,6 +160,8 @@ pub struct MapData {
     pub waterways: Vec<Waterway>,
     /// Roads.
     pub roads: Vec<Road>,
+    /// Churches and chapels, as points on or near their building.
+    pub churches: Vec<LatLon>,
 }
 
 /// Downloads and caches map tiles.
@@ -227,8 +233,8 @@ impl Osm {
         let mut downloads = stream::iter(tiles)
             .map(|tile| async move { (tile, self.tile(tile, template).await) })
             .buffer_unordered(PARALLEL_DOWNLOADS);
-        // Download in parallel, but merge in tile order: which copy of a building crossing a
-        // tile border is kept must not depend on download timing.
+        // Download in parallel, but merge in tile order so the data does not depend on
+        // download timing.
         let mut results = Vec::with_capacity(total);
         while let Some(result) = downloads.next().await {
             results.push(result);
@@ -236,11 +242,10 @@ impl Osm {
         }
         results.sort_by_key(|(tile, _)| *tile);
         let mut data = MapData::default();
-        let mut buildings_seen = HashSet::new();
         let mut loaded = 0;
         let mut last_error = None;
         for (tile, result) in results {
-            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data, &mut buildings_seen)) {
+            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data)) {
                 Ok(()) => loaded += 1,
                 Err(error) => {
                     warn!(tile = %tile_name(tile), %error, "map tile unavailable");

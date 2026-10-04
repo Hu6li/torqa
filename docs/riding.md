@@ -29,6 +29,21 @@ music ([audio.md](audio.md)).
 On video courses the video is the view: the course page and the ride settings offer trainer
 difficulty, descents and the video's **Sound** instead, and **C** does nothing.
 
+## The 3D world
+
+The world is built from the map around the course (OpenStreetMap): the road you ride follows the
+mapped road, other streets, tracks and paths lie beside it, and buildings stand where they are
+mapped. The map rarely says what a building is, so Torqa infers it from where it stands and its
+size. That gives:
+
+- churches with a tower, and chapels with a turret on the roof;
+- chalets with timber walls and deep eaves in the mountains;
+- farmhouses under big roofs in the countryside;
+- apartment blocks, and metal-clad halls on industrial land;
+- houses and sheds everywhere else.
+
+Mapped heights and façade colours are used where the map has them.
+
 ## Simulation (fake trainer)
 
 With the simulated trainer (*Devices & Settings*), a ride is a simulation for trying courses

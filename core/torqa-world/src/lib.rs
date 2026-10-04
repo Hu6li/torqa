@@ -16,7 +16,7 @@ mod water;
 
 use std::collections::{BTreeSet, HashMap};
 
-use torqa_osm::MapData;
+use torqa_osm::{LandCover, MapData};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
@@ -137,7 +137,7 @@ pub async fn generate<M: ElevationModel>(
     // Announce the step before the slower preparation below.
     progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
-    let buildings = buildings_by_chunk(map, &projection, &road);
+    let buildings = buildings_by_chunk(map, &projection, &road, &land);
     let streets = streets::lines(map, &projection, model).await;
     let clearance = streets::Clearance::new(&streets);
     let mut world = World {
@@ -161,8 +161,8 @@ pub async fn generate<M: ElevationModel>(
             -(heights.origin.1 + CHUNK_SIZE / 2.0),
         ];
         let mut building_mesh = MeshData::default();
-        for (building, footprint) in buildings.get(&(cx, cn)).into_iter().flatten() {
-            buildings::add(&mut building_mesh, building, footprint, &heights, origin);
+        for plot in buildings.get(&(cx, cn)).into_iter().flatten() {
+            buildings::add(&mut building_mesh, plot, &heights, origin);
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
@@ -206,17 +206,14 @@ pub async fn generate<M: ElevationModel>(
     world
 }
 
-/// Buildings with their footprints in metres east/north, by chunk.
-type BuildingsByChunk<'a> = HashMap<(i32, i32), Vec<(&'a torqa_osm::Building, Vec<(f64, f64)>)>>;
-
-/// Buildings near the route with their footprints, grouped by the chunk containing their
-/// first corner.
+/// Buildings near the route, grouped by the chunk containing their first corner.
 fn buildings_by_chunk<'a>(
     map: &'a MapData,
     projection: &LocalProjection,
     road: &RoadIndex,
-) -> BuildingsByChunk<'a> {
-    let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
+    land: &LandIndex,
+) -> HashMap<(i32, i32), Vec<buildings::Plot<'a>>> {
+    let mut plots = Vec::new();
     for building in &map.buildings {
         let footprint = buildings::footprint(building, projection);
         let Some(&(east, north)) = footprint.first() else {
@@ -229,10 +226,35 @@ fn buildings_by_chunk<'a>(
         if on_road || road.nearest(east, north, CORRIDOR).is_none() {
             continue;
         }
+        let (e, n) = buildings::centroid(&footprint);
+        let setting = if land.has(e, n, LandCover::Industrial) {
+            buildings::Setting::Industrial
+        } else if land.has(e, n, LandCover::Residential) {
+            buildings::Setting::Town
+        } else {
+            buildings::Setting::Countryside
+        };
+        plots.push(buildings::Plot {
+            building,
+            footprint,
+            setting,
+            church: false,
+        });
+    }
+    let churches: Vec<_> = map
+        .churches
+        .iter()
+        .map(|&(lat, lon)| projection.project(lat, lon))
+        .collect();
+    buildings::mark_churches(&mut plots, &churches);
+
+    let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
+    for plot in plots {
+        let (east, north) = plot.footprint[0];
         by_chunk
             .entry(chunk_of(east, north))
             .or_default()
-            .push((building, footprint));
+            .push(plot);
     }
     by_chunk
 }

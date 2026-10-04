@@ -1,5 +1,10 @@
-// Test geometry compares f32 GPU data with exact, small reference values.
-#![allow(clippy::cast_possible_truncation, clippy::float_cmp)]
+// Test geometry compares f32 GPU data with exact, small reference values, and reads small
+// non-negative style codes from colours.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::float_cmp
+)]
 
 use std::fmt::Write as _;
 
@@ -46,12 +51,17 @@ fn at(east: f64, north: f64) -> (f64, f64) {
 
 /// A closed square ring around a point.
 fn square(east: f64, north: f64, half: f64) -> Vec<(f64, f64)> {
+    rectangle(east, north, half, half)
+}
+
+/// A closed rectangular ring around a point, `half_east` by `half_north` from it.
+fn rectangle(east: f64, north: f64, half_east: f64, half_north: f64) -> Vec<(f64, f64)> {
     vec![
-        at(east - half, north - half),
-        at(east + half, north - half),
-        at(east + half, north + half),
-        at(east - half, north + half),
-        at(east - half, north - half),
+        at(east - half_east, north - half_north),
+        at(east + half_east, north - half_north),
+        at(east + half_east, north + half_north),
+        at(east - half_east, north + half_north),
+        at(east - half_east, north - half_north),
     ]
 }
 
@@ -574,13 +584,81 @@ async fn other_streets_join_the_road_ridden_and_lie_on_the_ground() {
     }
 }
 
+/// One building surface: corners in absolute coordinates (x east, y up, z south), the stored
+/// normal and the vertex colour, whose alpha is the shader style.
+struct Face {
+    corners: [[f32; 3]; 3],
+    normal: [f32; 3],
+    color: [f32; 4],
+}
+
+impl Face {
+    fn middle(&self) -> [f32; 3] {
+        [0, 1, 2].map(|k| self.corners.iter().map(|c| c[k]).sum::<f32>() / 3.0)
+    }
+
+    fn style(&self) -> u8 {
+        (self.color[3] * 9.0).round() as u8
+    }
+}
+
+/// The building faces of a world within `radius` metres of (east, north), checking on the way
+/// that every chunk's building mesh is valid and faces its normals.
+fn building_faces(world: &World, (east, north): (f32, f32), radius: f32) -> Vec<Face> {
+    let mut faces = Vec::new();
+    for chunk in &world.chunks {
+        let mesh = &chunk.buildings;
+        assert_valid(mesh);
+        assert_faces_follow_normals(mesh);
+        for t in mesh.indices.as_chunks::<3>().0 {
+            let corners = t.map(|k| {
+                let v = mesh.vertices[k as usize];
+                [v[0] + chunk.center[0], v[1], v[2] + chunk.center[2]]
+            });
+            let face = Face {
+                corners,
+                normal: mesh.normals[t[0] as usize],
+                color: mesh.colors[t[0] as usize],
+            };
+            let middle = face.middle();
+            if (middle[0] - east).hypot(-middle[2] - north) < radius {
+                faces.push(face);
+            }
+        }
+    }
+    faces
+}
+
+fn highest(faces: &[Face]) -> f32 {
+    faces
+        .iter()
+        .flat_map(|f| f.corners)
+        .map(|c| c[1])
+        .fold(f32::MIN, f32::max)
+}
+
+fn lowest(faces: &[Face]) -> f32 {
+    faces
+        .iter()
+        .flat_map(|f| f.corners)
+        .map(|c| c[1])
+        .fold(f32::MAX, f32::min)
+}
+
+/// Ground of the eastward slope at a point `east` metres from the road.
+fn slope_at(east: f32) -> f32 {
+    500.0 + 0.1 * east
+}
+
 #[tokio::test]
 async fn buildings_stand_on_the_ground_with_walls_facing_out() {
+    // A 10 × 10 m house of two storeys on ground rising eastwards.
     let house = Building {
         id: 42,
         outline: square(60.0, 500.0, 5.0),
         height: None,
         levels: Some(2.0),
+        color: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -588,31 +666,238 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
     })
     .await;
 
-    let (chunk, mesh) = world
-        .chunks
-        .iter()
-        .find_map(|c| (!c.buildings.vertices.is_empty()).then_some((c, &c.buildings)))
-        .expect("the house");
-    assert_valid(mesh);
-    let top = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
-    let bottom = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
-    // Ground at the lowest corner (500 m + 10 % of 55 m east), 2 storeys + 1 m to the eaves,
-    // and a 35° gable roof over the 10 m wide house: ridge 3.5 m above the eaves.
-    let ridge = 505.5 + 7.0 + 5.0 * 35f32.to_radians().tan();
-    assert!((top - ridge).abs() < 0.3, "top {top}, ridge {ridge}");
-    assert!((bottom - (505.5 - 1.0)).abs() < 0.3, "bottom {bottom}");
+    let faces = building_faces(&world, (60.0, 500.0), 30.0);
+    // From below the lowest corner, 55 m east, to a pitched roof (perhaps with a chimney)
+    // over two storeys of walls from the highest corner, 65 m east.
+    let eaves = slope_at(65.0) + 2.0 * 3.0 + 0.4;
+    let top = highest(&faces);
+    assert!((eaves + 3.0..eaves + 6.0).contains(&top), "top {top}");
+    assert!((lowest(&faces) - (slope_at(55.0) - 1.0)).abs() < 0.01);
 
-    let centre = [60.0 - chunk.center[0], -500.0 - chunk.center[2]];
-    for triangle in triangles(mesh) {
-        let normal = face_normal(triangle);
-        if normal[1].abs() > 0.5 {
-            assert!(normal[1] < 0.0, "roof must be clockwise seen from above");
+    // Upright faces along the outline (walls, gables, windows, roof edges) face out; those
+    // inside it belong to the chimney.
+    let mut outside = 0;
+    for face in faces.iter().filter(|f| f.normal[1].abs() < 0.1) {
+        let middle = face.middle();
+        let offset = [middle[0] - 60.0, middle[2] + 500.0];
+        if offset[0].abs().max(offset[1].abs()) < 4.9 {
             continue;
         }
-        // Clockwise seen from outside: the right-hand normal points into the building.
-        let middle = [0, 2].map(|k| (triangle[0][k] + triangle[1][k] + triangle[2][k]) / 3.0);
-        let outward = [middle[0] - centre[0], middle[1] - centre[1]];
-        assert!(normal[0] * outward[0] + normal[2] * outward[1] < 0.0);
+        outside += 1;
+        let facing = face.normal[0] * offset[0] + face.normal[2] * offset[1];
+        assert!(facing > 0.0, "face at {middle:?} faces in");
+    }
+    assert!(outside >= 8);
+}
+
+#[tokio::test]
+async fn churches_get_a_tower_and_chapels_a_turret() {
+    // A 14 × 30 m church and a 7 × 12 m chapel, with their church points inside.
+    let church = Building {
+        id: 3,
+        outline: rectangle(80.0, 300.0, 7.0, 15.0),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let chapel = Building {
+        id: 4,
+        outline: rectangle(80.0, 700.0, 3.5, 6.0),
+        ..church.clone()
+    };
+    let world = world(&MapData {
+        buildings: vec![church, chapel],
+        churches: vec![at(80.0, 302.0), at(80.0, 701.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    // The tower rises far above the nave; its top is no wider than a tower.
+    let church = building_faces(&world, (80.0, 300.0), 40.0);
+    let top = highest(&church);
+    assert!(top > slope_at(73.0) + 25.0, "top {top}");
+    let tower_top: Vec<[f32; 3]> = church
+        .iter()
+        .flat_map(|f| f.corners)
+        .filter(|c| c[1] > slope_at(73.0) + 20.0)
+        .collect();
+    let width = |k: usize| {
+        let values = tower_top.iter().map(|c| c[k]);
+        values.clone().fold(f32::MIN, f32::max) - values.fold(f32::MAX, f32::min)
+    };
+    assert!(
+        width(0) < 9.0 && width(2) < 9.0,
+        "{} × {}",
+        width(0),
+        width(2)
+    );
+    assert!(church.iter().any(|f| f.style() == 4), "church windows");
+
+    // The chapel's highest 3 m are a turret on its ridge.
+    let chapel = building_faces(&world, (80.0, 700.0), 20.0);
+    let top = highest(&chapel);
+    let turret: Vec<[f32; 3]> = chapel
+        .iter()
+        .flat_map(|f| f.corners)
+        .filter(|c| c[1] > top - 3.0)
+        .collect();
+    assert!(turret.iter().all(|c| (c[0] - 80.0).abs() < 1.0));
+    assert!(top < slope_at(76.5) + 20.0, "top {top}");
+}
+
+#[tokio::test]
+async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
+    let block = Building {
+        id: 5,
+        outline: rectangle(80.0, 500.0, 10.0, 15.0),
+        height: Some(18.0),
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![block],
+        ..MapData::default()
+    })
+    .await;
+
+    let faces = building_faces(&world, (80.0, 500.0), 30.0);
+    // Six storeys of 3 m make the mapped 18 m above the highest corner; a parapet and perhaps
+    // a stair housing top them.
+    let eaves = slope_at(90.0) + 6.0 * 3.0 + 0.4;
+    let top = highest(&faces);
+    assert!(
+        (top - (eaves + 0.8)).abs() < 0.01 || (top - (eaves + 2.6)).abs() < 0.01,
+        "top {top}"
+    );
+    // Nothing slopes: faces are upright or level.
+    assert!(
+        faces
+            .iter()
+            .all(|f| f.normal[1].abs() < 0.01 || f.normal[1].abs() > 0.99)
+    );
+}
+
+#[tokio::test]
+async fn halls_on_industrial_land_are_low_and_clad_in_metal() {
+    let estate = Area {
+        cover: LandCover::Industrial,
+        outer: vec![square(150.0, 500.0, 100.0)],
+        inner: vec![],
+    };
+    let hall = Building {
+        id: 6,
+        outline: rectangle(150.0, 500.0, 30.0, 15.0),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![hall],
+        areas: vec![estate],
+        ..MapData::default()
+    })
+    .await;
+
+    let faces = building_faces(&world, (150.0, 500.0), 50.0);
+    let height = highest(&faces) - slope_at(180.0);
+    assert!((6.0..=12.5).contains(&height), "{height} m");
+    let walls = faces.iter().filter(|f| f.normal[1].abs() < 0.1);
+    assert!(walls.clone().any(|f| f.style() == 5), "metal cladding");
+    assert!(walls.clone().all(|f| f.style() != 0), "no house windows");
+}
+
+#[tokio::test]
+async fn chalets_in_the_mountains_have_timber_walls_and_deep_eaves() {
+    struct Mountains;
+    impl ElevationModel for Mountains {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            std::future::ready(Ok(1300.0))
+        }
+    }
+    // A 12 × 10 m house at 1300 m.
+    let house = Building {
+        id: 9,
+        outline: rectangle(80.0, 500.0, 6.0, 5.0),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let map = MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    };
+    let world = generate(
+        &route_north(&[]).await,
+        &mut Mountains,
+        &map,
+        &mut |_, _| {},
+    )
+    .await;
+
+    let faces = building_faces(&world, (80.0, 500.0), 30.0);
+    // Timber above a plastered ground floor.
+    assert!(faces.iter().any(|f| f.style() == 2), "timber");
+    assert!(faces.iter().any(|f| f.style() == 0), "plaster");
+    // A shallow roof reaching well beyond the walls all round.
+    let sloped = faces
+        .iter()
+        .filter(|f| (0.1..0.99).contains(&f.normal[1].abs()));
+    assert!(sloped.clone().count() >= 4);
+    assert!(sloped.clone().all(|f| f.normal[1].abs() > 0.85));
+    let corners: Vec<[f32; 3]> = faces.iter().flat_map(|f| f.corners).collect();
+    let reach = |k: usize, centre: f32| {
+        corners
+            .iter()
+            .map(|c| (c[k] - centre).abs())
+            .fold(f32::MIN, f32::max)
+    };
+    assert!(reach(0, 80.0) > 6.0 + 1.1 && reach(2, -500.0) > 5.0 + 1.1);
+}
+
+#[tokio::test]
+async fn roofs_of_irregular_outlines_stay_over_them() {
+    // An L-shaped farmhouse: 20 m arms, 10 m wide.
+    let corners = [
+        (60.0, 400.0),
+        (80.0, 400.0),
+        (80.0, 410.0),
+        (70.0, 410.0),
+        (70.0, 420.0),
+        (60.0, 420.0),
+        (60.0, 400.0),
+    ];
+    let house = Building {
+        id: 11,
+        outline: corners.iter().map(|&(e, n)| at(e, n)).collect(),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+
+    let faces = building_faces(&world, (70.0, 410.0), 30.0);
+    assert!(
+        faces.iter().any(|f| (0.1..0.99).contains(&f.normal[1])),
+        "a pitched roof"
+    );
+    // Nothing reaches beyond the walls by more than the eaves' overhang (at most 1.2 m), so
+    // nothing covers the notch.
+    for c in faces.iter().flat_map(|f| f.corners) {
+        let (east, north) = (c[0], -c[2]);
+        let beyond = |value: f32, low: f32, high: f32| (low - value).max(value - high).max(0.0);
+        let to_arm =
+            |e: (f32, f32), n: (f32, f32)| beyond(east, e.0, e.1).max(beyond(north, n.0, n.1));
+        let outside =
+            to_arm((60.0, 80.0), (400.0, 410.0)).min(to_arm((60.0, 70.0), (400.0, 420.0)));
+        assert!(outside < 1.25, "{c:?} is {outside} m out");
     }
 }
 
@@ -739,6 +1024,7 @@ async fn all_world_meshes_face_their_normals() {
         outline: square(60.0, 500.0, 5.0),
         height: Some(9.0),
         levels: None,
+        color: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -805,6 +1091,7 @@ async fn minimap_draws_map_features_near_the_route_only() {
         outline: square(60.0, 500.0, 5.0),
         height: None,
         levels: None,
+        color: None,
     };
     let world = world(&MapData {
         areas: vec![forest, far_lake],

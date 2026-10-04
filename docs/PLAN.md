@@ -188,6 +188,9 @@ Built in rideable steps:
   on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them;
   ways for pedestrians only (footways, sidewalks, steps) left out
 - [ ] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
+  — kinds inferred from the map (places of worship, land use, size, elevation) with their own
+  roofs, materials and details, built as shells ✅; Blender-made models placed where they fit
+  still to come
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower

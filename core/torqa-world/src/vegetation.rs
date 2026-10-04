@@ -151,6 +151,8 @@ pub(crate) fn place_grass(
             let cover = land.cover_at(e, n);
             let (density, flowery) = match cover {
                 Some(LandCover::Water | LandCover::Rock) => (0.0, false),
+                // Yards and car parks: a little grass at the edges.
+                Some(LandCover::Industrial) => (0.2, false),
                 Some(LandCover::Forest) => (0.25, false),
                 Some(LandCover::Meadow) | None => (1.0, true),
                 Some(LandCover::Farmland | LandCover::Orchard | LandCover::Residential) => {
