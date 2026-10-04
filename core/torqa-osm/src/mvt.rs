@@ -174,7 +174,11 @@ fn add_road(
             });
         }
         if let Some(class) = class {
-            data.roads.push(Road { class, line });
+            data.roads.push(Road {
+                class,
+                line,
+                structure: kind,
+            });
         }
     }
 }

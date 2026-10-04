@@ -100,6 +100,8 @@ pub struct Road {
     pub class: RoadClass,
     /// Centre line.
     pub line: Vec<LatLon>,
+    /// Carried over or under the ground here, if it is.
+    pub structure: Option<StructureKind>,
 }
 
 impl Road {

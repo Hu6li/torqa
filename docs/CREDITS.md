@@ -15,8 +15,8 @@ maps at 1K, re-encoded as JPEG; in `app/assets/textures/`.
 | `soil` | [Ground048](https://ambientcg.com/view?id=Ground048) | farmland |
 | `rock` | [Rock030](https://ambientcg.com/view?id=Rock030) | steep slopes and rocky ground |
 | `snow` | [Snow004](https://ambientcg.com/view?id=Snow004) | high ground |
-| `gravel` | [Gravel023](https://ambientcg.com/view?id=Gravel023) | road verges (to come) |
-| `asphalt` | [Asphalt031](https://ambientcg.com/view?id=Asphalt031) | roads |
+| `gravel` | [Gravel023](https://ambientcg.com/view?id=Gravel023) | tracks and paths |
+| `asphalt` | [Asphalt031](https://ambientcg.com/view?id=Asphalt031) | roads and streets |
 
 ## Data
 

@@ -374,6 +374,82 @@ async fn grass_and_flowers_line_the_road_but_not_lakes_or_the_road_itself() {
 }
 
 #[tokio::test]
+async fn other_streets_lie_on_the_ground_but_not_on_the_road_ridden() {
+    use torqa_osm::{Road, RoadClass, StructureKind};
+
+    let way = |class, from: (f64, f64), to: (f64, f64), structure| Road {
+        class,
+        line: vec![at(from.0, from.1), at(to.0, to.1)],
+        structure,
+    };
+    let world = world(&MapData {
+        roads: vec![
+            // A side street crossing the route, a farm track beside it, a tunnel.
+            way(RoadClass::Street, (-200.0, 300.0), (200.0, 300.0), None),
+            way(RoadClass::Track, (60.0, 100.0), (60.0, 600.0), None),
+            way(
+                RoadClass::Major,
+                (-300.0, 800.0),
+                (300.0, 800.0),
+                Some(StructureKind::Tunnel),
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let vertices = |pick: fn(&crate::TerrainChunk) -> &MeshData| -> Vec<[f32; 3]> {
+        world
+            .chunks
+            .iter()
+            .flat_map(|c| {
+                pick(c)
+                    .vertices
+                    .iter()
+                    .map(move |v| [v[0] + c.center[0], v[1] + c.center[1], v[2] + c.center[2]])
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let streets = vertices(|c| &c.streets);
+    let tracks = vertices(|c| &c.tracks);
+
+    assert!(streets.len() > 100, "{} street vertices", streets.len());
+    assert!(tracks.len() > 100, "{} track vertices", tracks.len());
+    for [x, y, z] in &streets {
+        // The crossing street only, and not on the road (6 m wide) where it crosses.
+        assert!(
+            (z + 300.0).abs() < 3.0,
+            "street vertex at {x}, {z}: the tunnel?"
+        );
+        assert!(x.abs() > 5.5, "street drawn over the road ridden at {x}");
+        // On the ground, which rises 0.1 m per metre east beyond the levelled road.
+        if x.abs() > FLAT_OUTER as f32 {
+            assert!(
+                (y - (500.0 + 0.1 * x)).abs() < 0.5,
+                "street off the ground: {y} at {x}"
+            );
+        }
+    }
+    for [x, _, _] in &tracks {
+        assert!((x - 60.0).abs() < 2.0);
+    }
+    // Nothing grows on them.
+    for chunk in &world.chunks {
+        for tuft in chunk.trees.grass.as_chunks::<12>().0 {
+            let (x, z) = (tuft[3] + chunk.center[0], tuft[11] + chunk.center[2]);
+            assert!(
+                (z + 300.0).abs() > 2.75 || x.abs() < 5.5,
+                "grass on the street at {x}"
+            );
+            assert!(
+                (x - 60.0).abs() > 1.4 || !(100.0..=600.0).contains(&-z),
+                "grass on the track"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn buildings_stand_on_the_ground_with_walls_facing_out() {
     let house = Building {
         id: 42,

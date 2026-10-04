@@ -9,6 +9,7 @@ mod buildings;
 mod landcover;
 mod minimap;
 mod road;
+mod streets;
 mod structures;
 mod vegetation;
 mod water;
@@ -82,6 +83,10 @@ pub struct TerrainChunk {
     pub mesh: MeshData,
     /// Buildings standing in the chunk.
     pub buildings: MeshData,
+    /// Paved streets of the map around the route (not the road ridden), on this chunk's ground.
+    pub streets: MeshData,
+    /// Unpaved tracks and paths of the map, likewise.
+    pub tracks: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
 }
@@ -120,6 +125,8 @@ pub async fn generate<M: ElevationModel>(
     progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
     let buildings = buildings_by_chunk(map, &projection, &road);
+    let streets = streets::lines(map, &projection);
+    let clearance = streets::Clearance::new(&streets);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH),
         water: {
@@ -146,14 +153,19 @@ pub async fn generate<M: ElevationModel>(
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
-        let mut trees =
-            vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin);
-        vegetation::place_grass(
-            &mut trees,
+        let ground = vegetation::Ground {
+            heights: &heights,
+            land: &land,
+            road: &road,
+            streets: &clearance,
+        };
+        let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
+        vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
+        let (paved, unpaved) = streets::meshes(
+            &streets,
             heights.origin,
             CHUNK_SIZE,
             &heights,
-            &land,
             &road,
             origin,
         );
@@ -161,6 +173,8 @@ pub async fn generate<M: ElevationModel>(
             center,
             mesh: heights.mesh(&land, origin),
             buildings: building_mesh,
+            streets: paved,
+            tracks: unpaved,
             trees,
         });
         progress(done + 1, total);

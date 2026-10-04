@@ -176,6 +176,9 @@ var _conifer_mesh: ArrayMesh
 var _grass_mesh: ArrayMesh = _plant_mesh(false)
 var _flower_mesh: ArrayMesh = _plant_mesh(true)
 var _plant_material: ShaderMaterial = ShaderMaterial.new()
+## Other streets of the map (asphalt) and tracks and paths (gravel).
+var _street_material: ShaderMaterial = ShaderMaterial.new()
+var _track_material: ShaderMaterial = ShaderMaterial.new()
 var _broadleaf_mesh: ArrayMesh
 
 @onready var _terrain: Node3D = $Terrain
@@ -271,7 +274,8 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_environment.fog_light_color = sky_horizon
 	_apply_fog_volume()
 	_rain.emitting = weather == "Rain"
-	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
+		material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
 
 
 ## Applies a graphics preset (`QUALITY` key, as `TorqaApp.graphics_quality()` names it).
@@ -315,7 +319,8 @@ func apply_quality(name: String) -> void:
 	_terrain_material.set_shader_parameter("detail", _quality["ground_detail"])
 	_terrain_material.set_shader_parameter("detail_distance", 450.0 * distance)
 	var ground_detail: int = _quality["ground_detail"]
-	_road_material.set_shader_parameter("detail", mini(ground_detail, 1))
+	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
+		material.set_shader_parameter("detail", mini(ground_detail, 1))
 
 
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
@@ -356,6 +361,15 @@ func _ready() -> void:
 	# Haze towards distant terrain takes the sky's colour (R45).
 	_environment.fog_aerial_perspective = 0.6
 	_plant_material.shader = preload("res://shaders/plants.gdshader")
+	for surface: Array in [[_street_material, "asphalt"], [_track_material, "gravel"]]:
+		var material: ShaderMaterial = surface[0]
+		var folder: String = "res://assets/textures/%s/" % surface[1]
+		material.shader = preload("res://shaders/street.gdshader")
+		material.set_shader_parameter("surface_albedo", load(folder + "albedo.jpg"))
+		material.set_shader_parameter("surface_normal", load(folder + "normal.jpg"))
+	_track_material.set_shader_parameter("tint", Color(0.5, 0.46, 0.4))
+	_track_material.set_shader_parameter("middle_grass", 1.0)
+	_track_material.set_shader_parameter("roughness", 0.95)
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -411,6 +425,14 @@ func _build_some_chunks() -> void:
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
+		for surface: Array in [["streets", _street_material], ["tracks", _track_material]]:
+			var arrays: Dictionary = chunk.get(surface[0], {})
+			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+			if not vertices.is_empty():
+				var material: ShaderMaterial = surface[1]
+				var way: MeshInstance3D = _mesh_instance(arrays, material)
+				way.visibility_range_end = VISIBILITY_RANGE * _distance
+				node.add_child(way)
 		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
 		buildings.visibility_range_end = DETAIL_RANGE * _distance
 		node.add_child(buildings)

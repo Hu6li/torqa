@@ -524,6 +524,7 @@ mod tests {
         let road = torqa_osm::Road {
             class: torqa_osm::RoadClass::Street,
             line: vec![(45.999, 7.0), (46.01, 7.0)],
+            structure: None,
         };
         let map = MapData {
             roads: vec![road],

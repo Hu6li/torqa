@@ -286,6 +286,7 @@ mod tests {
         Road {
             class: RoadClass::Street,
             line: points.iter().map(|&p| flat().to_lat_lon(p)).collect(),
+            structure: None,
         }
     }
 
