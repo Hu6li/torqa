@@ -15,7 +15,7 @@ msgstr ""
 msgid "%d of %d figures. The first one is shown large. Values are examples."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:252
+#: app/scenes/ride_screen.gd:253
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
@@ -23,19 +23,19 @@ msgstr ""
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:219
+#: app/scenes/ride_screen.gd:220
 msgid "%s ahead"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:219
+#: app/scenes/ride_screen.gd:220
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:316
+#: app/scenes/devices_tab.gd:22 app/scenes/ride_screen.gd:317
 msgid "%s connected"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:320
+#: app/scenes/ride_screen.gd:321
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
@@ -43,11 +43,11 @@ msgstr ""
 msgid "%s not found — wake it by pedalling (or put on the strap), then scan."
 msgstr ""
 
-#: app/scenes/ride_screen.gd:260
+#: app/scenes/ride_screen.gd:261
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/course_detail.gd:215 app/scenes/ride_screen.gd:300
+#: app/scenes/course_detail.gd:215 app/scenes/ride_screen.gd:301
 msgid "(best %s)"
 msgstr ""
 
@@ -103,7 +103,7 @@ msgstr ""
 msgid "Avg speed"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:343
+#: app/scenes/ride_screen.gd:344
 msgid "Back"
 msgstr ""
 
@@ -127,7 +127,7 @@ msgstr ""
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:306
+#: app/scenes/ride_screen.gd:307
 msgid "Camera: %s"
 msgstr ""
 
@@ -167,7 +167,7 @@ msgstr ""
 msgid "Climb %d  ·  %.1f km from km %.1f"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:272
+#: app/scenes/ride_screen.gd:273
 msgid "Climb done in %s"
 msgstr ""
 
@@ -275,11 +275,11 @@ msgstr ""
 msgid "Finish & save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:213
+#: app/scenes/ride_screen.gd:214
 msgid "Finished"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:281
+#: app/scenes/ride_screen.gd:282
 msgid "Finished in %s"
 msgstr ""
 
@@ -479,7 +479,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:342
+#: app/scenes/ride_screen.gd:343
 msgid "Nothing recorded."
 msgstr ""
 
@@ -603,7 +603,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:355
+#: app/scenes/ride_screen.gd:356
 msgid "Saved %s"
 msgstr ""
 
@@ -731,7 +731,7 @@ msgstr ""
 msgid "Videos with GPS, Incyclist route videos (.xml)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:357 app/scenes/ride_screen.tscn:132
+#: app/scenes/ride_screen.gd:358 app/scenes/ride_screen.tscn:132
 msgid "View summary"
 msgstr ""
 
@@ -739,7 +739,7 @@ msgstr ""
 msgid "W/kg"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:84
+#: app/scenes/ride_screen.gd:85
 msgid "Waiting for the trainer…"
 msgstr ""
 
@@ -783,7 +783,7 @@ msgstr ""
 msgid "Your rides"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:264
+#: app/scenes/ride_screen.gd:265
 msgid "best %s"
 msgstr ""
 
@@ -799,7 +799,7 @@ msgstr ""
 msgid "kJ"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:296
+#: app/scenes/ride_screen.gd:297
 msgid "new record, %s faster!"
 msgstr ""
 
