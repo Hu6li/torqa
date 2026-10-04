@@ -87,8 +87,10 @@ static func build() -> Theme:
 
 	# Dialogs are separate windows: they need the theme set on them and their own frame.
 	# Square: the frame rounds the window; rounded corners here would let the window's grey
-	# background show through.
+	# background show through. Not anti-aliased either: that fades the outermost pixels, and
+	# the grey showed through them as thin lines along the dialog's edges (#48).
 	var dialog: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), 0, 20, 16)
+	dialog.anti_aliasing = false
 	theme.set_stylebox("panel", "AcceptDialog", dialog)
 	var frame: StyleBoxFlat = _box(Color(0.09, 0.1, 0.12), RADIUS, 0, 0)
 	frame.expand_margin_top = 32

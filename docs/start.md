@@ -3,8 +3,8 @@
 Torqa opens on the start page with four tabs:
 
 - **Courses** — your course library as cards: each shows the route in blue on black, then
-  length, climbing and steepest gradient; video courses are marked **Video**. **Import route,
-  video or course…** prepares a GPX route (terrain, map, 3D world) or a video with GPS
+  length, climbing and steepest gradient; video courses are marked **Video**. **Import**
+  prepares a GPX route (terrain, map, 3D world) or a video with GPS
   ([video.md](video.md)) and adds it to the library, or adds a `.tqc` course file
   ([courses.md](courses.md)). Click a card for the course page: route, key figures, elevation
   profile with its climbs, your best times there, the ride options (camera, difficulty,

@@ -9,7 +9,13 @@ extends ConfirmationDialog
 ## route's start to its end.
 signal aligned(marks: PackedVector2Array)
 
+## The preview's largest and smallest size; in between it takes what the window leaves (#50).
 const PREVIEW_SIZE: Vector2 = Vector2(560, 315)
+const MIN_PREVIEW_WIDTH: float = 200.0
+## Room taken beside and below the preview: the point list, margins, the controls under the
+## video, the route profile and the buttons.
+const BESIDE_PREVIEW: float = 330.0
+const BELOW_PREVIEW: float = 400.0
 ## Fine steps, in seconds, for the buttons under the video.
 const STEPS: Array[float] = [-1.0, -0.1, 0.1, 1.0]
 
@@ -28,6 +34,7 @@ var _profile: ElevationProfile = ElevationProfile.new()
 var _distance_slider: HSlider = HSlider.new()
 var _distance_label: Label = Label.new()
 var _problem: Label = Label.new()
+var _hint: Label = Label.new()
 ## Decoding a frame per slider step would lag behind the drag; the newest one wins.
 var _refresh: Timer = Timer.new()
 
@@ -57,6 +64,7 @@ func edit(
 	_distance_slider.max_value = length_m
 	_profile.set_profile(profile)
 	_select(0)
+	_fit()
 	popup_centered()
 
 
@@ -97,7 +105,7 @@ func _init() -> void:
 	ok_button_text = tr("Align")
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 14)
-	var hint: Label = Label.new()
+	var hint: Label = _hint
 	var sentences: PackedStringArray = [
 		tr("Pair moments of the video with places on the route."),
 		tr("Add points where the footage stops or changes speed."),
@@ -105,7 +113,7 @@ func _init() -> void:
 	]
 	hint.text = " ".join(sentences)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size = Vector2(PREVIEW_SIZE.x + 300.0, 0)
+	hint.custom_minimum_size = Vector2(PREVIEW_SIZE.x + BESIDE_PREVIEW - 30.0, 0)
 	rows.add_child(hint)
 	var columns: HBoxContainer = HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 24)
@@ -123,6 +131,30 @@ func _init() -> void:
 	add_child(_refresh)
 	confirmed.connect(func() -> void: aligned.emit(marks()))
 	visibility_changed.connect(_on_visibility_changed)
+
+
+func _ready() -> void:
+	get_tree().root.size_changed.connect(_on_window_resized)
+
+
+## Sizes the preview to the app window so that the whole dialog, buttons included, fits.
+func _fit() -> void:
+	var room: Vector2 = Vector2(get_tree().root.size) * 0.92
+	var width: float = clampf(room.x - BESIDE_PREVIEW, MIN_PREVIEW_WIDTH, PREVIEW_SIZE.x)
+	var height: float = minf(width * 9.0 / 16.0, room.y - BELOW_PREVIEW)
+	height = maxf(height, MIN_PREVIEW_WIDTH * 9.0 / 16.0)
+	width = minf(width, height * 16.0 / 9.0)
+	_picture.custom_minimum_size = Vector2(width, height)
+	_profile.custom_minimum_size = Vector2(width, 80)
+	_hint.custom_minimum_size = Vector2(width + BESIDE_PREVIEW - 30.0, 0)
+	# Shrink back as well as grow.
+	reset_size()
+
+
+func _on_window_resized() -> void:
+	if visible:
+		_fit()
+		popup_centered()
 
 
 func _build_list() -> Control:

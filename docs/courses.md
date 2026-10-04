@@ -5,7 +5,7 @@ it needs. Courses ride **fully offline**, on any computer.
 
 ## Prepare a course
 
-Import a GPX route with **Import route, video or course…** on the Courses tab while online.
+Import a GPX route with **Import** on the Courses tab while online.
 Torqa asks for the course's **name** (suggested from the file), downloads terrain and map
 data, builds the 3D world and adds the course to your library. If a course of that name exists
 already, choose **Replace** to replace it or **Keep both**.
@@ -17,7 +17,7 @@ Click its card on the Courses tab, then **Ride**. No internet connection is need
 ## Share a course
 
 Course files are ordinary files: send them by mail, put them on Nextcloud, a USB stick or a
-website. To use a course someone sent you, open the `.tqc` file with *Import route, video or course…*;
+website. To use a course someone sent you, open the `.tqc` file with **Import**;
 it is copied into your library.
 
 The library is the `courses` folder of the Torqa data directory:

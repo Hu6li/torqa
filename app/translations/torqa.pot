@@ -39,7 +39,7 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:204
+#: app/scenes/courses_tab.gd:205
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
@@ -55,19 +55,19 @@ msgstr ""
 msgid "(best %s)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:205
+#: app/scenes/courses_tab.gd:206
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:206
+#: app/scenes/courses_tab.gd:207
 msgid "2. Open that course."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:207
+#: app/scenes/courses_tab.gd:208
 msgid "3. Press Add video…, choose the video and set where the route starts and ends."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:172
+#: app/scenes/courses_tab.gd:173
 msgid "A course named “%s” exists already. Replace it, or keep both?"
 msgstr ""
 
@@ -91,11 +91,11 @@ msgstr ""
 msgid "Activity: %s"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:137
+#: app/ui/video_align_dialog.gd:169
 msgid "Add point"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:103
+#: app/ui/video_align_dialog.gd:111
 msgid "Add points where the footage stops or changes speed."
 msgstr ""
 
@@ -103,11 +103,11 @@ msgstr ""
 msgid "Add video…"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:97
+#: app/ui/video_align_dialog.gd:105
 msgid "Align"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:96
+#: app/ui/video_align_dialog.gd:104
 msgid "Align video with route"
 msgstr ""
 
@@ -239,7 +239,7 @@ msgstr ""
 msgid "Cloudy"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:131
+#: app/scenes/courses_tab.gd:132
 msgid "Course name in use"
 msgstr ""
 
@@ -307,7 +307,7 @@ msgstr ""
 msgid "Elevation"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:228
+#: app/ui/video_align_dialog.gd:260
 msgid "End"
 msgstr ""
 
@@ -355,8 +355,12 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:109
+#: app/scenes/courses_tab.gd:110
 msgid "GPX routes"
+msgstr ""
+
+#: app/scenes/courses_tab.gd:69
+msgid "GPX routes, videos with GPS, route videos and course files"
 msgstr ""
 
 #: core/torqa-app/src/hud.rs:117
@@ -403,19 +407,15 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:124
+#: app/scenes/courses_tab.gd:68 app/scenes/courses_tab.gd:125
 msgid "Import"
-msgstr ""
-
-#: app/scenes/courses_tab.gd:68
-msgid "Import route, video or course…"
 msgstr ""
 
 #: app/scenes/course_detail.gd:189
 msgid "In 3D"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:104
+#: app/ui/video_align_dialog.gd:112
 msgid "In between, the video follows your distance evenly."
 msgstr ""
 
@@ -439,7 +439,7 @@ msgstr ""
 msgid "Jun"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:133
+#: app/scenes/courses_tab.gd:134
 msgid "Keep both"
 msgstr ""
 
@@ -455,7 +455,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:216
+#: app/scenes/courses_tab.gd:217
 msgid "Loading %s …"
 msgstr ""
 
@@ -515,7 +515,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:123
+#: app/scenes/courses_tab.gd:124
 msgid "Name the course"
 msgstr ""
 
@@ -535,7 +535,7 @@ msgstr ""
 msgid "Next 500 m"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:88
+#: app/scenes/courses_tab.gd:89
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
@@ -575,7 +575,7 @@ msgstr ""
 msgid "Oct"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:100
+#: app/scenes/courses_tab.gd:101
 msgid "Open a GPX route, video or Torqa course"
 msgstr ""
 
@@ -591,7 +591,7 @@ msgstr ""
 msgid "Pacer at your FTP"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:102
+#: app/ui/video_align_dialog.gd:110
 msgid "Pair moments of the video with places on the route."
 msgstr ""
 
@@ -599,15 +599,15 @@ msgstr ""
 msgid "Play the video's sound"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:224
+#: app/ui/video_align_dialog.gd:256
 msgid "Point"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:115
+#: app/ui/video_align_dialog.gd:123
 msgid "Points must follow each other on the route and in the video."
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:168
+#: app/ui/video_align_dialog.gd:200
 msgid "Position on the route"
 msgstr ""
 
@@ -651,7 +651,7 @@ msgstr ""
 msgid "Recovery"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:140
+#: app/ui/video_align_dialog.gd:172
 msgid "Remove point"
 msgstr ""
 
@@ -671,7 +671,7 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:132
+#: app/scenes/courses_tab.gd:133
 msgid "Replace"
 msgstr ""
 
@@ -711,7 +711,7 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:108
+#: app/scenes/courses_tab.gd:109
 msgid "Routes, videos and courses"
 msgstr ""
 
@@ -759,7 +759,7 @@ msgstr ""
 msgid "Speed"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:226
+#: app/ui/video_align_dialog.gd:258
 msgid "Start"
 msgstr ""
 
@@ -771,7 +771,7 @@ msgstr ""
 msgid "Sun"
 msgstr ""
 
-#: app/ui/video_align_dialog.gd:132
+#: app/ui/video_align_dialog.gd:164
 msgid "Sync points"
 msgstr ""
 
@@ -831,7 +831,7 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:117
+#: app/scenes/courses_tab.gd:118
 msgid "Torqa courses"
 msgstr ""
 
@@ -875,7 +875,7 @@ msgstr ""
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:138
+#: app/scenes/courses_tab.gd:139
 msgid "Video without GPS"
 msgstr ""
 
@@ -883,7 +883,7 @@ msgstr ""
 msgid "Videos"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:114
+#: app/scenes/courses_tab.gd:115
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 

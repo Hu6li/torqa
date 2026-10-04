@@ -5,7 +5,7 @@ it slows down, sprint and it speeds up. The 3D world is not used on video course
 
 ## What you can import
 
-**Import route, video or course…** on the Courses tab takes:
+**Import** on the Courses tab takes:
 
 - **Your own videos with GPS** — GoPro recordings (`.mp4`, `.mov`; `.m4v` and `.mkv` are
   read too) carry their GPS track inside the file (GPMF). Torqa reads it, builds the route

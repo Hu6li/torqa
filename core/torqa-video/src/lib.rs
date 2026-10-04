@@ -37,6 +37,9 @@ pub enum VideoError {
     /// No frame could be decoded at all.
     #[error("the video has no frames")]
     Empty,
+    /// The video is stored in a format Torqa cannot decode (yet).
+    #[error("videos stored as {0} cannot be played yet; convert it to H.264 or HEVC")]
+    Unsupported(&'static str),
 }
 
 /// What a video is like.
@@ -109,6 +112,11 @@ impl Video {
                 f64_from(input.duration().max(0)) / f64::from(ffmpeg::ffi::AV_TIME_BASE),
             )
         };
+        // FFmpeg's own AV1 decoder only drives hardware decoders (M3 Macs and later have
+        // one); without it every frame fails, so say so up front rather than show nothing.
+        if stream.parameters().id() == ffmpeg::codec::Id::AV1 {
+            return Err(VideoError::Unsupported("AV1"));
+        }
         let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
         let decoder = context.decoder().video()?;
         let (width, height) = display_size(decoder.width(), decoder.height());

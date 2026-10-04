@@ -571,8 +571,8 @@ msgstr "Geräte"
 msgid "Devices & Settings"
 msgstr "Geräte & Einstellungen"
 
-msgid "Import route, video or course…"
-msgstr "Route, Video oder Strecke importieren …"
+msgid "GPX routes, videos with GPS, route videos and course files"
+msgstr "GPX-Routen, Videos mit GPS, Streckenvideos und Streckendateien"
 
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr "Noch keine Strecken. Importiere eine GPX-Route oder ein Video, um deine erste Strecke vorzubereiten."

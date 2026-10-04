@@ -65,8 +65,9 @@ func _init() -> void:
 	heading.add_theme_font_size_override("font_size", 22)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
-	_import_button.text = tr("Import route, video or course…")
-	_import_button.custom_minimum_size = Vector2(260, 44)
+	_import_button.text = tr("Import")
+	_import_button.tooltip_text = tr("GPX routes, videos with GPS, route videos and course files")
+	_import_button.custom_minimum_size = Vector2(160, 44)
 	_import_button.pressed.connect(func() -> void: _file_dialog.popup_centered_ratio(0.7))
 	header.add_child(_import_button)
 	add_child(header)
