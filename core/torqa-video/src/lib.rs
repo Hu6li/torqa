@@ -5,6 +5,8 @@
 //! therefore hands out the frame for any moment, decoding forward when that is cheap and
 //! seeking otherwise, scaled down to at most [`MAX_WIDTH`] for display.
 
+pub mod gpmf;
+
 use std::path::Path;
 use std::sync::Once;
 use std::time::Duration;
@@ -231,6 +233,100 @@ impl Video {
             rgba: pixels,
         })
     }
+}
+
+/// A camera position with the moment of the video it belongs to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimedGps {
+    /// When in the video.
+    pub time: Duration,
+    /// Where.
+    pub point: gpmf::GpsPoint,
+}
+
+/// The GPS track a GoPro recorded into the video (its `gpmd` metadata track), each position
+/// with its video time; empty for videos without GPS.
+///
+/// # Errors
+/// [`VideoError`] if the file cannot be read.
+pub fn gps_track(path: &Path) -> Result<Vec<TimedGps>, VideoError> {
+    init();
+    let mut input = ffmpeg::format::input(path)?;
+    // GoPro writes GPMF into a data track ("GoPro MET"); the track whose packets hold GPS is it.
+    let data_streams: Vec<(usize, f64)> = input
+        .streams()
+        .filter(|s| s.parameters().medium() == ffmpeg::media::Type::Data)
+        .map(|s| (s.index(), f64::from(s.time_base())))
+        .collect();
+    let mut tracks: Vec<Vec<TimedGps>> = vec![Vec::new(); data_streams.len()];
+    for (stream, packet) in input.packets() {
+        let Some(slot) = data_streams.iter().position(|&(i, _)| i == stream.index()) else {
+            continue;
+        };
+        let time_base = data_streams[slot].1;
+        let Some(data) = packet.data() else { continue };
+        let points = gpmf::gps_points(data);
+        // A payload covers its packet's time span (about a second); its samples are spread
+        // evenly over it.
+        let start = f64_from(packet.pts().or(packet.dts()).unwrap_or(0).max(0)) * time_base;
+        let span = f64_from(packet.duration().max(0)) * time_base;
+        #[allow(clippy::cast_precision_loss)] // a handful of samples per packet
+        let step = if points.is_empty() {
+            0.0
+        } else {
+            span / points.len() as f64
+        };
+        #[allow(clippy::cast_precision_loss)]
+        tracks[slot].extend(points.into_iter().enumerate().map(|(i, point)| TimedGps {
+            time: Duration::from_secs_f64(start + step * i as f64),
+            point,
+        }));
+    }
+    let track = tracks.into_iter().max_by_key(Vec::len).unwrap_or_default();
+    Ok(track)
+}
+
+/// A GPX track of a video's GPS (e.g. from [`gps_track`]) named `name`, so the usual import
+/// prepares a course from the footage. Each point's `<time>` is its moment in the video,
+/// counted from the Unix epoch, so the video time can be read back from the track.
+#[must_use]
+pub fn gpx_from_track(name: &str, track: &[TimedGps]) -> String {
+    use std::fmt::Write as _;
+
+    let escaped = name
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let mut gpx = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Torqa\" \
+         xmlns=\"http://www.topografix.com/GPX/1/1\">\n<trk><name>{escaped}</name><trkseg>\n"
+    );
+    for sample in track {
+        let seconds = sample.time.as_secs_f64();
+        let _ = writeln!(
+            gpx,
+            "<trkpt lat=\"{:.7}\" lon=\"{:.7}\"><ele>{:.2}</ele><time>{}</time></trkpt>",
+            sample.point.lat,
+            sample.point.lon,
+            sample.point.altitude,
+            iso_time(seconds)
+        );
+    }
+    gpx.push_str("</trkseg></trk>\n</gpx>\n");
+    gpx
+}
+
+/// `1970-01-01T00:00:12.345Z` for 12.345 seconds after the epoch (videos are shorter than a day).
+fn iso_time(seconds: f64) -> String {
+    let whole = seconds.max(0.0);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // under a day
+    let total = whole.floor() as u64;
+    format!(
+        "1970-01-01T{:02}:{:02}:{:06.3}Z",
+        total / 3600,
+        total / 60 % 60,
+        whole - f64::from(u32::try_from(total - total % 60).unwrap_or(0))
+    )
 }
 
 /// Sets up FFmpeg once per process.

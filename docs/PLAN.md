@@ -117,7 +117,8 @@ Built in rideable steps:
 
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
 - [x] Video decoding in the core: frame for any moment, forward/backward/seek, scaled to 1080p
-- [ ] GoPro GPMF GPS → route and distance↔time sync; video courses (`.tqc` referencing the video)
+- [x] GoPro GPMF GPS (`GPS5`, `GPS9`) with video times; GPX from the footage for the usual import
+- [ ] Distance↔video-time sync; video courses (`.tqc` referencing the video)
 - [ ] Video ride view: playback following the rider's speed, frame blending, HUD on top
 - [ ] Videos without GPS: manual sync points against a GPX
 - [ ] Transcode above 1080p on import (VideoToolbox), Insta360 GPS
