@@ -1,7 +1,8 @@
 class_name CoursesTab
 extends VBoxContainer
-## The course library as a gallery (R39). Importing a GPX prepares a new course here: it is
-## built, added to the library and opened.
+## The course library as a gallery (R39). Importing a GPX, a GoPro video with GPS or an
+## Incyclist route video (R17) prepares a new course here: it is built, added to the library
+## and opened.
 
 ## Open the detail page of `course` (from `TorqaApp.courses()`).
 signal course_opened(course: Dictionary)
@@ -22,7 +23,8 @@ var _loading_bar: ProgressBar = ProgressBar.new()
 var _loading_label: Label = Label.new()
 var _status: Label = Label.new()
 var _file_dialog: FileDialog = FileDialog.new()
-## What the running import is: "" none, "gpx" a route being prepared, "tqc" a course file.
+## What the running import is: "" none, "gpx" a route or "video" a video course being
+## prepared, "tqc" a course file.
 var _importing: String = ""
 
 
@@ -55,8 +57,8 @@ func _init() -> void:
 	heading.add_theme_font_size_override("font_size", 22)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
-	_import_button.text = tr("Import GPX or course…")
-	_import_button.custom_minimum_size = Vector2(220, 44)
+	_import_button.text = tr("Import route, video or course…")
+	_import_button.custom_minimum_size = Vector2(260, 44)
 	_import_button.pressed.connect(func() -> void: _file_dialog.popup_centered_ratio(0.7))
 	header.add_child(_import_button)
 	add_child(header)
@@ -75,7 +77,7 @@ func _init() -> void:
 	_status.hide()
 	add_child(_status)
 
-	_empty.text = tr("No courses yet. Import a GPX route to prepare your first course.")
+	_empty.text = tr("No courses yet. Import a GPX route or a video to prepare your first course.")
 	_empty.add_theme_color_override("font_color", UiTheme.MUTED)
 	add_child(_empty)
 	var scroll: ScrollContainer = ScrollContainer.new()
@@ -87,10 +89,20 @@ func _init() -> void:
 	scroll.add_child(_gallery)
 	add_child(scroll)
 
-	_file_dialog.title = tr("Open a GPX route or Torqa course")
+	_file_dialog.title = tr("Open a GPX route, video or Torqa course")
 	_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	_file_dialog.filters = PackedStringArray(["*.gpx, *.tqc ; GPX routes and Torqa courses"])
+	var videos: PackedStringArray = PackedStringArray()
+	for extension: String in TorqaApp.video_extensions():
+		videos.append("*." + extension)
+	_file_dialog.filters = PackedStringArray(
+		[
+			"*.gpx, *.tqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
+			"*.gpx ; " + tr("GPX routes"),
+			"%s ; %s" % [", ".join(videos), tr("Videos with GPS, Incyclist route videos (.xml)")],
+			"*.tqc ; " + tr("Torqa courses"),
+		]
+	)
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	add_child(_file_dialog)
@@ -102,16 +114,20 @@ func _on_file_selected(path: String) -> void:
 		_importing = "tqc"
 		_torqa.import_course(path)
 		return
-	_importing = "gpx"
+	var video: bool = TorqaApp.video_extensions().has(path.get_extension().to_lower())
+	_importing = "video" if video else "gpx"
 	_import_button.disabled = true
 	_loading_bar.value = 0.0
 	_loading_label.text = tr("Loading %s …") % path.get_file()
 	_loading.show()
-	_torqa.load_route(path, false)
+	if video:
+		_torqa.load_video(path, false)
+	else:
+		_torqa.load_route(path, false)
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:
-	if _importing != "gpx":
+	if _importing != "gpx" and _importing != "video":
 		return
 	var share: Vector2 = STEP_WEIGHTS.get(step, Vector2(0.0, 1.0))
 	_loading_bar.value = lerpf(share.x, share.y, float(done) / float(maxi(total, 1)))

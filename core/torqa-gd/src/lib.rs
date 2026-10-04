@@ -164,6 +164,49 @@ impl TorqaApp {
         }
     }
 
+    /// Prepares a video course (R17) from a GoPro video with GPS or an Incyclist route video's
+    /// `.xml` file; emits `route_loaded`, `world_ready` and `course_added` like `load_route`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn load_video(&mut self, path: GString, offline: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.load_video(PathBuf::from(path.to_string()), offline);
+        }
+    }
+
+    /// File extensions `load_video` accepts, for file dialogs: videos and Incyclist's `xml`.
+    #[func]
+    fn video_extensions() -> PackedStringArray {
+        torqa_app::video::VIDEO_EXTENSIONS
+            .iter()
+            .chain(&["xml"])
+            .map(|e| GString::from(*e))
+            .collect()
+    }
+
+    /// The loaded video course: `{path, duration_s, offset_s}`; empty for other courses.
+    #[func]
+    fn video(&self) -> VarDictionary {
+        let Some(video) = self.app.as_ref().and_then(App::video) else {
+            return VarDictionary::new();
+        };
+        let path = video.video.display().to_string();
+        vdict! {
+            "path" => path.as_str(),
+            "duration_s" => video.duration.as_secs_f64(),
+            "offset_s" => video.offset.as_secs_f64(),
+        }
+    }
+
+    /// The moment of the video to show now, in seconds; -1 when not riding a video course.
+    #[func]
+    fn video_time(&self) -> f64 {
+        self.app
+            .as_ref()
+            .and_then(App::video_time)
+            .map_or(-1.0, |t| t.as_secs_f64())
+    }
+
     /// Opens a course file from the library or elsewhere; emits `route_loaded` like
     /// `load_route`. Its 3D world is built by `build_world`.
     #[func]
@@ -232,13 +275,19 @@ impl TorqaApp {
     }
 
     /// The courses in the library: `[{path, name, length_m, elevation_gain_m, max_grade,
-    /// created_unix_s, track, profile}]`; `track` (metres east/north of the start) and
-    /// `profile` (distance, elevation) are thinned for cards and empty for older courses.
+    /// created_unix_s, track, profile, video}]`; `track` (metres east/north of the start) and
+    /// `profile` (distance, elevation) are thinned for cards and empty for older courses;
+    /// `video` is the video's file name for video courses, else empty.
     #[func]
     fn courses(&self) -> VarArray {
         let mut array = VarArray::new();
         for course in self.app.as_ref().map(App::courses).unwrap_or_default() {
             let path = course.path.display().to_string();
+            let video = course
+                .manifest
+                .video
+                .as_ref()
+                .map_or("", |v| v.file_name.as_str());
             array.push(
                 &vdict! {
                     "path" => path.as_str(),
@@ -249,6 +298,7 @@ impl TorqaApp {
                     "created_unix_s" => i64::try_from(course.manifest.created_unix_s).unwrap_or(0),
                     "track" => &points(&course.manifest.track),
                     "profile" => &points(&course.manifest.profile),
+                    "video" => video,
                 }
                 .to_variant(),
             );

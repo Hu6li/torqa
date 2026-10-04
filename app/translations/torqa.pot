@@ -175,7 +175,7 @@ msgstr ""
 msgid "Climbed"
 msgstr ""
 
-#: app/scenes/history_screen.gd:263 app/ui/course_card.gd:68
+#: app/scenes/history_screen.gd:263 app/ui/course_card.gd:88
 msgid "Climbing"
 msgstr ""
 
@@ -295,6 +295,10 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:101
+msgid "GPX routes"
+msgstr ""
+
 #: core/torqa-app/src/hud.rs:117
 msgid "Grade"
 msgstr ""
@@ -335,8 +339,8 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:58
-msgid "Import GPX or course…"
+#: app/scenes/courses_tab.gd:60
+msgid "Import route, video or course…"
 msgstr ""
 
 #: app/scenes/history_screen.gd:275 core/torqa-app/src/hud.rs:126
@@ -363,7 +367,7 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: app/ui/course_card.gd:67
+#: app/ui/course_card.gd:87
 msgid "Length"
 msgstr ""
 
@@ -371,7 +375,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:108
+#: app/scenes/courses_tab.gd:121
 msgid "Loading %s …"
 msgstr ""
 
@@ -447,8 +451,8 @@ msgstr ""
 msgid "Next 500 m"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:78
-msgid "No courses yet. Import a GPX route to prepare your first course."
+#: app/scenes/courses_tab.gd:80
+msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
 #: app/scenes/history_screen.gd:121
@@ -487,8 +491,8 @@ msgstr ""
 msgid "Oct"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:90
-msgid "Open a GPX route or Torqa course"
+#: app/scenes/courses_tab.gd:92
+msgid "Open a GPX route, video or Torqa course"
 msgstr ""
 
 #: app/ui/ghost_picker.gd:26
@@ -587,6 +591,10 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:100
+msgid "Routes, videos and courses"
+msgstr ""
+
 #: app/scenes/history_screen.gd:400
 msgid "Sat"
 msgstr ""
@@ -627,7 +635,7 @@ msgstr ""
 msgid "Speed"
 msgstr ""
 
-#: app/ui/course_card.gd:69
+#: app/ui/course_card.gd:89
 msgid "Steepest"
 msgstr ""
 
@@ -687,6 +695,10 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
+#: app/scenes/courses_tab.gd:103
+msgid "Torqa courses"
+msgstr ""
+
 #: app/scenes/devices_tab.gd:70
 msgid "Trainer"
 msgstr ""
@@ -709,6 +721,14 @@ msgstr ""
 
 #: app/ui/ui_theme.gd:24
 msgid "Very light"
+msgstr ""
+
+#: app/ui/course_card.gd:47
+msgid "Video"
+msgstr ""
+
+#: app/scenes/courses_tab.gd:102
+msgid "Videos with GPS, Incyclist route videos (.xml)"
 msgstr ""
 
 #: app/scenes/ride_screen.gd:355 app/scenes/ride_screen.tscn:132
@@ -755,7 +775,7 @@ msgstr ""
 msgid "Your best time on this route: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:54
+#: app/scenes/courses_tab.gd:56
 msgid "Your courses"
 msgstr ""
 

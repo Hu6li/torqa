@@ -134,7 +134,20 @@ func _course_cards() -> void:
 	click.pressed = true
 	card.call("_gui_input", click)
 	_check(opened[0], "a click opens the course")
+	_check(not _has_badge(card), "a GPX course has no video badge")
 	card.free()
+	course["video"] = "Gurten.MP4"
+	var video_card: CourseCard = CourseCard.new(course, false)
+	_check(_has_badge(video_card), "a video course is marked as one")
+	video_card.free()
+
+
+func _has_badge(node: Node) -> bool:
+	for child: Node in node.get_children():
+		var label: Label = child as Label
+		if (label != null and label.text == "Video") or _has_badge(child):
+			return true
+	return false
 
 
 func _translations() -> void:

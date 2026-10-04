@@ -1,0 +1,232 @@
+//! Test videos for Torqa's own tests (feature `testing`): small MPEG-4 videos generated on the
+//! fly, optionally with a GoPro-style GPS metadata track, so no sample footage is needed.
+
+// Fixtures: a failure to build a test video is a broken test environment, so they panic.
+#![allow(clippy::missing_panics_doc)]
+
+use std::path::PathBuf;
+
+use ffmpeg::codec;
+use ffmpeg::format::Pixel;
+use ffmpeg_next as ffmpeg;
+
+use crate::init;
+
+/// Frames per second of the test videos.
+pub const FPS: i32 = 10;
+/// Frames of [`test_video`].
+pub const FRAMES: i32 = 40;
+
+/// A 4 s, 10 fps MPEG-4 video whose frame `i` is a flat grey of brightness `40 + 4·i`, so each
+/// decoded frame tells which one it is.
+#[must_use]
+pub fn test_video(name: &str, width: u32, height: u32) -> PathBuf {
+    init();
+    let path = std::env::temp_dir().join(format!("torqa-video-{name}-{}.mp4", std::process::id()));
+    let codec = ffmpeg::encoder::find(codec::Id::MPEG4).expect("MPEG-4 encoder built in");
+    let mut output = ffmpeg::format::output(&path).unwrap();
+    let global_header = output
+        .format()
+        .flags()
+        .contains(ffmpeg::format::Flags::GLOBAL_HEADER);
+    let mut stream = output.add_stream(codec).unwrap();
+    let mut encoder = codec::context::Context::new_with_codec(codec)
+        .encoder()
+        .video()
+        .unwrap();
+    encoder.set_width(width);
+    encoder.set_height(height);
+    encoder.set_format(Pixel::YUV420P);
+    encoder.set_time_base((1, FPS));
+    encoder.set_frame_rate(Some((FPS, 1)));
+    encoder.set_gop(10);
+    encoder.set_bit_rate(2_000_000);
+    if global_header {
+        encoder.set_flags(codec::Flags::GLOBAL_HEADER);
+    }
+    let mut encoder = encoder.open_as(codec).unwrap();
+    stream.set_parameters(&encoder);
+    stream.set_time_base((1, FPS));
+    output.write_header().unwrap();
+    let stream_time_base = output.stream(0).unwrap().time_base();
+
+    let write_packets = |encoder: &mut ffmpeg::encoder::Video,
+                         output: &mut ffmpeg::format::context::Output| {
+        let mut packet = ffmpeg::Packet::empty();
+        while encoder.receive_packet(&mut packet).is_ok() {
+            packet.set_stream(0);
+            // Without durations the MP4 edit list ends at the last frame's start and cuts it.
+            packet.set_duration(1);
+            packet.rescale_ts((1, FPS), stream_time_base);
+            packet.write_interleaved(output).unwrap();
+        }
+    };
+    for i in 0..FRAMES {
+        let mut frame = ffmpeg::frame::Video::new(Pixel::YUV420P, width, height);
+        let luma = u8::try_from(40 + 4 * i).unwrap();
+        frame.data_mut(0).fill(luma);
+        frame.data_mut(1).fill(128);
+        frame.data_mut(2).fill(128);
+        frame.set_pts(Some(i64::from(i)));
+        encoder.send_frame(&frame).unwrap();
+        write_packets(&mut encoder, &mut output);
+    }
+    encoder.send_eof().unwrap();
+    write_packets(&mut encoder, &mut output);
+    output.write_trailer().unwrap();
+    path
+}
+
+/// Parameters of a GoPro metadata track. `ffmpeg-next` has no setter for the codec tag the
+/// MP4 muxer needs, so this test fixture sets the field directly.
+#[allow(unsafe_code)] // test fixture only: writes one plain integer field of owned parameters
+fn gpmd_parameters() -> ffmpeg::codec::Parameters {
+    let mut parameters = ffmpeg::codec::Parameters::new();
+    parameters.set_medium(ffmpeg::media::Type::Data);
+    // SAFETY: `parameters` is owned and valid; `codec_tag` is a plain integer field.
+    unsafe {
+        (*parameters.as_mut_ptr()).codec_tag = u32::from_le_bytes(*b"gpmd");
+    }
+    parameters
+}
+
+/// A 3 s video with a GoPro-style GPMF data track: one payload per second, 4 positions each,
+/// heading north 10 m per position.
+#[must_use]
+pub fn gopro_video(name: &str) -> PathBuf {
+    init();
+    // MOV rather than MP4: FFmpeg's MP4 muxer only accepts registered tags, while both are read
+    // by the same demuxer GoPro files go through.
+    let path = std::env::temp_dir().join(format!("torqa-gopro-{name}-{}.mov", std::process::id()));
+    let video_codec = ffmpeg::encoder::find(codec::Id::MPEG4).unwrap();
+    let mut output = ffmpeg::format::output_as(&path, "mov").unwrap();
+    let mut video = output.add_stream(video_codec).unwrap();
+    let mut encoder = codec::context::Context::new_with_codec(video_codec)
+        .encoder()
+        .video()
+        .unwrap();
+    encoder.set_width(64);
+    encoder.set_height(48);
+    encoder.set_format(Pixel::YUV420P);
+    encoder.set_time_base((1, FPS));
+    encoder.set_flags(codec::Flags::GLOBAL_HEADER);
+    let mut encoder = encoder.open_as(video_codec).unwrap();
+    video.set_parameters(&encoder);
+    video.set_time_base((1, FPS));
+    let mut data = output
+        .add_stream(ffmpeg::encoder::find(codec::Id::None))
+        .unwrap();
+    data.set_time_base((1, 1000));
+    data.set_parameters(gpmd_parameters());
+    output.write_header().unwrap();
+    let video_tb = output.stream(0).unwrap().time_base();
+    let data_tb = output.stream(1).unwrap().time_base();
+
+    let write_video = |encoder: &mut ffmpeg::encoder::Video,
+                       output: &mut ffmpeg::format::context::Output| {
+        let mut packet = ffmpeg::Packet::empty();
+        while encoder.receive_packet(&mut packet).is_ok() {
+            packet.set_stream(0);
+            packet.set_duration(1);
+            packet.rescale_ts((1, FPS), video_tb);
+            packet.write_interleaved(output).unwrap();
+        }
+    };
+    for second in 0..3u16 {
+        for i in 0..FPS {
+            let mut frame = ffmpeg::frame::Video::new(Pixel::YUV420P, 64, 48);
+            frame.data_mut(0).fill(100);
+            frame.data_mut(1).fill(128);
+            frame.data_mut(2).fill(128);
+            frame.set_pts(Some(i64::from(second) * i64::from(FPS) + i64::from(i)));
+            encoder.send_frame(&frame).unwrap();
+            write_video(&mut encoder, &mut output);
+        }
+        let points: Vec<(f64, f64, f64, f64)> = (0..4)
+            .map(|k| {
+                let metres = f64::from(second * 4 + k) * 10.0;
+                (46.0 + metres / 111_195.0, 7.0, 500.0, 10.0)
+            })
+            .collect();
+        let payload = gps5_payload(&points, 3);
+        let mut packet = ffmpeg::Packet::copy(&payload);
+        packet.set_stream(1);
+        packet.set_pts(Some(i64::from(second) * 1000));
+        packet.set_dts(Some(i64::from(second) * 1000));
+        packet.set_duration(1000);
+        packet.rescale_ts((1, 1000), data_tb);
+        packet.write_interleaved(&mut output).unwrap();
+    }
+    encoder.send_eof().unwrap();
+    write_video(&mut encoder, &mut output);
+    output.write_trailer().unwrap();
+    path
+}
+
+/// One GPMF entry, padded to four bytes.
+#[must_use]
+pub fn entry(key: [u8; 4], kind: u8, sample_size: u8, repeat: u16, data: &[u8]) -> Vec<u8> {
+    let mut bytes = key.to_vec();
+    bytes.push(kind);
+    bytes.push(sample_size);
+    bytes.extend(repeat.to_be_bytes());
+    bytes.extend(data);
+    while !bytes.len().is_multiple_of(4) {
+        bytes.push(0);
+    }
+    bytes
+}
+
+fn be(values: &[i32]) -> Vec<u8> {
+    values.iter().flat_map(|v| v.to_be_bytes()).collect()
+}
+
+/// A HERO-style payload: a device with an accelerometer stream and a `GPS5` stream.
+#[must_use]
+pub fn gps5_payload(points: &[(f64, f64, f64, f64)], fix: u32) -> Vec<u8> {
+    let scales = be(&[10_000_000, 10_000_000, 1000, 1000, 100]);
+    let mut samples = Vec::new();
+    #[allow(clippy::cast_possible_truncation)]
+    for &(lat, lon, alt, speed) in points {
+        samples.extend(be(&[
+            (lat * 1e7).round() as i32,
+            (lon * 1e7).round() as i32,
+            (alt * 1000.0).round() as i32,
+            (speed * 1000.0).round() as i32,
+            (speed * 100.0).round() as i32,
+        ]));
+    }
+    let mut gps = entry(*b"STNM", b'c', 1, 9, b"GPS (Lat.");
+    gps.extend(entry(*b"GPSF", b'L', 4, 1, &fix.to_be_bytes()));
+    gps.extend(entry(*b"SCAL", b'l', 4, 5, &scales));
+    gps.extend(entry(
+        *b"GPS5",
+        b'l',
+        20,
+        u16::try_from(points.len()).unwrap(),
+        &samples,
+    ));
+    let accel = entry(*b"ACCL", b's', 6, 2, &[0; 12]);
+    let mut device = entry(*b"DVID", b'L', 4, 1, &1u32.to_be_bytes());
+    device.extend(entry(
+        *b"STRM",
+        0,
+        1,
+        u16::try_from(accel.len()).unwrap(),
+        &accel,
+    ));
+    device.extend(entry(
+        *b"STRM",
+        0,
+        1,
+        u16::try_from(gps.len()).unwrap(),
+        &gps,
+    ));
+    entry(
+        *b"DEVC",
+        0,
+        1,
+        u16::try_from(device.len()).unwrap(),
+        &device,
+    )
+}

@@ -160,77 +160,10 @@ fn numbers(entry: &Entry<'_>) -> Vec<f64> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-
-    /// One GPMF entry, padded to four bytes.
-    pub(crate) fn entry(
-        key: [u8; 4],
-        kind: u8,
-        sample_size: u8,
-        repeat: u16,
-        data: &[u8],
-    ) -> Vec<u8> {
-        let mut bytes = key.to_vec();
-        bytes.push(kind);
-        bytes.push(sample_size);
-        bytes.extend(repeat.to_be_bytes());
-        bytes.extend(data);
-        while !bytes.len().is_multiple_of(4) {
-            bytes.push(0);
-        }
-        bytes
-    }
+    use crate::testing::{entry, gps5_payload};
 
     fn be(values: &[i32]) -> Vec<u8> {
         values.iter().flat_map(|v| v.to_be_bytes()).collect()
-    }
-
-    /// A HERO-style payload: a device with an accelerometer stream and a `GPS5` stream.
-    pub(crate) fn gps5_payload(points: &[(f64, f64, f64, f64)], fix: u32) -> Vec<u8> {
-        let scales = be(&[10_000_000, 10_000_000, 1000, 1000, 100]);
-        let mut samples = Vec::new();
-        #[allow(clippy::cast_possible_truncation)]
-        for &(lat, lon, alt, speed) in points {
-            samples.extend(be(&[
-                (lat * 1e7).round() as i32,
-                (lon * 1e7).round() as i32,
-                (alt * 1000.0).round() as i32,
-                (speed * 1000.0).round() as i32,
-                (speed * 100.0).round() as i32,
-            ]));
-        }
-        let mut gps = entry(*b"STNM", b'c', 1, 9, b"GPS (Lat.");
-        gps.extend(entry(*b"GPSF", b'L', 4, 1, &fix.to_be_bytes()));
-        gps.extend(entry(*b"SCAL", b'l', 4, 5, &scales));
-        gps.extend(entry(
-            *b"GPS5",
-            b'l',
-            20,
-            u16::try_from(points.len()).unwrap(),
-            &samples,
-        ));
-        let accel = entry(*b"ACCL", b's', 6, 2, &[0; 12]);
-        let mut device = entry(*b"DVID", b'L', 4, 1, &1u32.to_be_bytes());
-        device.extend(entry(
-            *b"STRM",
-            0,
-            1,
-            u16::try_from(accel.len()).unwrap(),
-            &accel,
-        ));
-        device.extend(entry(
-            *b"STRM",
-            0,
-            1,
-            u16::try_from(gps.len()).unwrap(),
-            &gps,
-        ));
-        entry(
-            *b"DEVC",
-            0,
-            1,
-            u16::try_from(device.len()).unwrap(),
-            &device,
-        )
     }
 
     #[test]

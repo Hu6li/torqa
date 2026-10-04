@@ -84,6 +84,40 @@ pub struct Manifest {
     /// Thinned elevation profile for course cards: (distance m, elevation m).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub profile: Vec<[f32; 2]>,
+    /// For video courses (R17): the video, which is referenced rather than embedded (R35).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<VideoReference>,
+}
+
+/// The video a video course plays, found again by path, or by name next to the course file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VideoReference {
+    /// Where the video was when the course was prepared.
+    pub path: String,
+    /// Its file name, to find it next to the course file after moving both.
+    pub file_name: String,
+    /// Its size in bytes, to tell it from another file of the same name.
+    pub size: u64,
+    /// Where the route's first point sits in the video, in seconds.
+    pub offset_s: f64,
+}
+
+impl VideoReference {
+    /// The video file: at its recorded path, else next to the course file `course`; `None` if
+    /// neither holds a file of the recorded size.
+    #[must_use]
+    pub fn locate(&self, course: &Path) -> Option<PathBuf> {
+        let candidates = [
+            PathBuf::from(&self.path),
+            course
+                .parent()
+                .map(|dir| dir.join(&self.file_name))
+                .unwrap_or_default(),
+        ];
+        candidates
+            .into_iter()
+            .find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() == self.size))
+    }
 }
 
 /// A course read back from its file.
@@ -277,6 +311,7 @@ mod tests {
             route_key: Some("0123456789abcdef".to_owned()),
             track: vec![[0.0, 0.0], [10.0, 250.5]],
             profile: vec![[0.0, 500.0], [12_345.0, 620.0]],
+            video: None,
         }
     }
 
@@ -346,6 +381,27 @@ mod tests {
             b"map"
         );
         assert!(!dir.join("lake-biel.tqc.part").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn video_courses_find_their_video_after_moving() {
+        let dir = temp_dir("video");
+        let video = dir.join("ride.mp4");
+        std::fs::write(&video, b"0123456789").unwrap();
+        let reference = VideoReference {
+            path: dir.join("gone/ride.mp4").display().to_string(),
+            file_name: "ride.mp4".to_owned(),
+            size: 10,
+            offset_s: 0.0,
+        };
+
+        assert_eq!(reference.locate(&dir.join("ride.tqc")), Some(video.clone()));
+        let other_size = VideoReference {
+            size: 11,
+            ..reference
+        };
+        assert_eq!(other_size.locate(&dir.join("ride.tqc")), None);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

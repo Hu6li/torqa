@@ -3,20 +3,19 @@
 A course is a prepared route saved as one `.tqc` file: the GPX track plus the terrain, map data
 it needs. Courses ride **fully offline**, on any computer.
 
-## Save a course
+## Prepare a course
 
-1. Open a GPX route (*Open route or course…*) while online and wait for "3D world ready".
-2. Press **Save as course**. The course lands in your library and appears under
-   *Saved courses*.
+Import a GPX route with **Import route, video or course…** on the Courses tab while online.
+Torqa downloads terrain and map data, builds the 3D world and adds the course to your library.
 
-## Ride a saved course
+## Ride a course
 
-Pick it under *Saved courses*. No internet connection is needed.
+Click its card on the Courses tab, then **Ride**. No internet connection is needed.
 
 ## Share a course
 
 Course files are ordinary files: send them by mail, put them on Nextcloud, a USB stick or a
-website. To use a course someone sent you, open the `.tqc` file with *Open route or course…*;
+website. To use a course someone sent you, open the `.tqc` file with *Import route, video or course…*;
 it is copied into your library.
 
 The library is the `courses` folder of the Torqa data directory:
@@ -28,6 +27,11 @@ The library is the `courses` folder of the Torqa data directory:
 | Linux | `~/.local/share/torqa/courses` |
 
 You can also copy `.tqc` files there directly. The data directory may live in a synced folder.
+
+## Video courses
+
+Courses ridden along a video refer to the video rather than containing it; keep the video next
+to the `.tqc` file when moving or sharing them ([video.md](video.md)).
 
 ## Size and attribution
 

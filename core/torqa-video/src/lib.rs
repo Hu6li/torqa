@@ -6,6 +6,9 @@
 //! seeking otherwise, scaled down to at most [`MAX_WIDTH`] for display.
 
 pub mod gpmf;
+pub mod incyclist;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 
 use std::path::Path;
 use std::sync::Once;

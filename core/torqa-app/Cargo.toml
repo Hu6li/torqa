@@ -16,12 +16,14 @@ torqa-routes.workspace = true
 torqa-session.workspace = true
 torqa-storage.workspace = true
 torqa-terrain.workspace = true
+torqa-video.workspace = true
 torqa-world.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time", "fs"] }
 tracing.workspace = true
 
 [dev-dependencies]
+torqa-video = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
