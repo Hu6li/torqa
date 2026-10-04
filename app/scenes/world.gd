@@ -52,6 +52,85 @@ const FREE_SPEED: float = 25.0
 const FREE_LOOK: float = 0.004
 ## A rider moving further than this between frames jumped: the camera follows at once.
 const JUMP_M: float = 50.0
+## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
+## scales how far terrain and details are drawn. MSAA stays at 2×: at 4× a few distant pixels
+## broke and the glow spread them into bright blobs.
+const QUALITY: Dictionary[String, Dictionary] = {
+	"low":
+	{
+		"shadow_atlas": 2048,
+		"shadow_distance": 180.0,
+		"shadow_splits": 2,
+		"soft_shadows": 0.0,
+		"ssao": false,
+		"ssil": false,
+		"sdfgi": false,
+		"volumetric_fog": false,
+		"glow": false,
+		"msaa": Viewport.MSAA_DISABLED,
+		"fxaa": true,
+		"render_scale": 0.77,
+		"cloud_octaves": 3,
+		"cloud_light_steps": 0,
+		"distance": 0.65,
+	},
+	"medium":
+	{
+		"shadow_atlas": 4096,
+		"shadow_distance": 300.0,
+		"shadow_splits": 2,
+		"soft_shadows": 0.0,
+		"ssao": true,
+		"ssil": false,
+		"sdfgi": false,
+		"volumetric_fog": false,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 4,
+		"cloud_light_steps": 1,
+		"distance": 1.0,
+	},
+	"high":
+	{
+		"shadow_atlas": 4096,
+		"shadow_distance": 500.0,
+		"shadow_splits": 4,
+		"soft_shadows": 0.5,
+		"ssao": true,
+		"ssil": true,
+		"sdfgi": false,
+		"volumetric_fog": true,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 5,
+		"cloud_light_steps": 3,
+		"distance": 1.35,
+	},
+	"ultra":
+	{
+		"shadow_atlas": 8192,
+		"shadow_distance": 800.0,
+		"shadow_splits": 4,
+		"soft_shadows": 0.7,
+		"ssao": true,
+		"ssil": true,
+		"sdfgi": true,
+		"volumetric_fog": true,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 6,
+		"cloud_light_steps": 5,
+		"distance": 1.7,
+	},
+}
+## How fast the clouds drift, in cloud-layer units per second.
+const CLOUD_DRIFT: Vector2 = Vector2(0.004, 0.0015)
 # i18n-begin
 const FREE_CAMERA: String = "Free"
 # i18n-end
@@ -60,6 +139,13 @@ var _torqa: TorqaApp
 var _chunk_count: int = 0
 var _next_chunk: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
+var _sky: ShaderMaterial = ShaderMaterial.new()
+var _cloud_offset: Vector2 = Vector2.ZERO
+## The current weather's cloudiness (0 clear, 1 overcast), for the fog of the preset.
+var _overcast: float = 0.0
+var _quality: Dictionary = QUALITY["medium"]
+## Draw-distance factor of the current preset.
+var _distance: float = 1.0
 ## Flying freely instead of following the rider (simulated rides only).
 var _free: bool = false
 var _free_speed: float = 1.0
@@ -132,35 +218,82 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var azimuth: float = time["azimuth"]
 	# The light shines along its −z axis: from the sun's direction towards the ground.
 	_sun.rotation = Vector3(deg_to_rad(-elevation), deg_to_rad(180.0 - azimuth), 0.0)
-	var sky: ProceduralSkyMaterial = _environment.sky.sky_material as ProceduralSkyMaterial
 	var top: Color = time["top"]
 	var horizon: Color = time["horizon"]
 	var sun_color: Color = time["sun"]
 	var energy: float = time["energy"]
 	var overcast: float = 0.0
 	var fog: float = 0.00035
+	# Fair-weather clouds even on clear days: a bare gradient looked artificial.
+	var cover: float = 0.3
 	match weather:
 		"Cloudy":
 			overcast = 0.75
+			cover = 0.8
 		"Hazy":
 			overcast = 0.3
 			fog = 0.0016
+			cover = 0.45
 		"Rain":
 			overcast = 1.0
 			fog = 0.0012
+			cover = 1.0
+	_overcast = overcast
 	var grey: Color = Color(0.6, 0.62, 0.65)
-	sky.sky_top_color = top.lerp(grey * 0.8, overcast)
-	sky.sky_horizon_color = horizon.lerp(grey, overcast)
-	sky.ground_horizon_color = sky.sky_horizon_color
-	sky.sun_angle_max = lerpf(25.0, 0.0, overcast)
+	var sky_top: Color = top.lerp(grey * 0.8, overcast)
+	var sky_horizon: Color = horizon.lerp(grey, overcast)
+	_sky.set_shader_parameter("top_color", sky_top)
+	_sky.set_shader_parameter("horizon_color", sky_horizon)
+	_sky.set_shader_parameter("cloud_cover", cover)
+	_sky.set_shader_parameter("cloud_darkness", lerpf(0.25, 0.6, overcast))
 	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
 	_sun.light_energy = energy * lerpf(1.0, 0.35, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
 	_environment.ambient_light_energy = lerpf(0.9, 1.25, overcast)
 	_environment.fog_density = fog
-	_environment.fog_light_color = sky.sky_horizon_color
+	_environment.fog_light_color = sky_horizon
+	_apply_fog_volume()
 	_rain.emitting = weather == "Rain"
 	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+
+
+## Applies a graphics preset (`QUALITY` key, as `TorqaApp.graphics_quality()` names it).
+func apply_quality(name: String) -> void:
+	_quality = QUALITY.get(name, QUALITY["medium"])
+	var shadow_atlas: int = _quality["shadow_atlas"]
+	RenderingServer.directional_shadow_atlas_set_size(shadow_atlas, true)
+	_sun.directional_shadow_max_distance = _quality["shadow_distance"]
+	var splits: int = _quality["shadow_splits"]
+	_sun.directional_shadow_mode = (
+		DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		if splits == 4
+		else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	)
+	# A sun of real size casts soft shadows (PCSS): softer further from the caster.
+	_sun.light_angular_distance = _quality["soft_shadows"]
+	_environment.ssao_enabled = _quality["ssao"]
+	_environment.ssil_enabled = _quality["ssil"]
+	_environment.sdfgi_enabled = _quality["sdfgi"]
+	_environment.glow_enabled = _quality["glow"]
+	_apply_fog_volume()
+	var viewport: Viewport = get_viewport()
+	viewport.msaa_3d = _quality["msaa"]
+	viewport.screen_space_aa = (
+		Viewport.SCREEN_SPACE_AA_FXAA if _quality["fxaa"] else Viewport.SCREEN_SPACE_AA_DISABLED
+	)
+	var render_scale: float = _quality["render_scale"]
+	viewport.scaling_3d_mode = (
+		Viewport.SCALING_3D_MODE_FSR if render_scale < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+	)
+	viewport.scaling_3d_scale = render_scale
+	_sky.set_shader_parameter("cloud_octaves", _quality["cloud_octaves"])
+	_sky.set_shader_parameter("light_steps", _quality["cloud_light_steps"])
+	# Lighter presets refresh the sky's light over several frames.
+	_environment.sky.process_mode = (
+		Sky.PROCESS_MODE_INCREMENTAL if name in ["low", "medium"] else Sky.PROCESS_MODE_AUTOMATIC
+	)
+	var distance: float = _quality["distance"]
+	_set_distance(distance)
 
 
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
@@ -185,6 +318,10 @@ func _ready() -> void:
 	_structure_material.vertex_color_use_as_albedo = true
 	_structure_material.vertex_color_is_srgb = true
 	_structure_material.roughness = 0.9
+	_sky.shader = preload("res://shaders/sky.gdshader")
+	_environment.sky.sky_material = _sky
+	# Haze towards distant terrain takes the sky's colour (R45).
+	_environment.fog_aerial_perspective = 0.6
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -197,6 +334,9 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_build_some_chunks()
+	if visible:
+		_cloud_offset += CLOUD_DRIFT * delta
+		_sky.set_shader_parameter("cloud_offset", _cloud_offset)
 	if _free and visible:
 		_fly(delta)
 	if not visible or _torqa == null:
@@ -235,10 +375,10 @@ func _build_some_chunks() -> void:
 		var terrain_arrays: Dictionary = chunk["terrain"]
 		var building_arrays: Dictionary = chunk["buildings"]
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
-		ground.visibility_range_end = VISIBILITY_RANGE
+		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
 		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
-		buildings.visibility_range_end = DETAIL_RANGE
+		buildings.visibility_range_end = DETAIL_RANGE * _distance
 		node.add_child(buildings)
 		for kind: String in ["conifers", "broadleaves"]:
 			var buffer: PackedFloat32Array = chunk[kind]
@@ -267,7 +407,7 @@ func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
 	multimesh.buffer = buffer
 	var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	instance.multimesh = multimesh
-	instance.visibility_range_end = DETAIL_RANGE
+	instance.visibility_range_end = DETAIL_RANGE * _distance
 	instance.visibility_range_end_margin = 300.0
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return instance
@@ -347,6 +487,28 @@ func _fly(delta: float) -> void:
 		return
 	var boost: float = 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0
 	_camera.position += _camera.basis * move.normalized() * FREE_SPEED * _free_speed * boost * delta
+
+
+## Volumetric fog on the presets that afford it, thicker in haze and rain.
+func _apply_fog_volume() -> void:
+	var volumetric: bool = _quality["volumetric_fog"]
+	_environment.volumetric_fog_enabled = volumetric
+	if volumetric:
+		# Extinction per metre: a light veil on clear days, thick in rain.
+		_environment.volumetric_fog_density = lerpf(0.0006, 0.004, _overcast)
+		_environment.volumetric_fog_albedo = _environment.fog_light_color
+		_environment.volumetric_fog_length = 300.0
+
+
+## Scales how far terrain and details are drawn, for the chunks built already too.
+func _set_distance(factor: float) -> void:
+	var change: float = factor / _distance
+	_distance = factor
+	for node: Node in _terrain.find_children("*", "GeometryInstance3D", true, false):
+		var geometry: GeometryInstance3D = node as GeometryInstance3D
+		if geometry.visibility_range_end > 0.0:
+			geometry.visibility_range_end *= change
+	_camera.far = VISIBILITY_RANGE * factor * 1.6
 
 
 ## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never

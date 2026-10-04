@@ -179,8 +179,11 @@ Built in rideable steps:
 ### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs
-- [ ] Quality presets Low–Ultra in settings, frame-time budget per preset
+- [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
+  preset is suggested when a ride stays below)
 - [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
+  — sky with lit procedural clouds, aerial haze, PCSS shadows, SSIL/SDFGI and volumetric fog by
+  preset ✅; true volumetric (raymarched 3D) clouds still to come
 - [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
 - [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
 - [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling

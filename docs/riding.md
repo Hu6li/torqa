@@ -41,3 +41,17 @@ out (#53):
   **Shift** is faster, the mouse wheel sets the speed, drag with the right button to look.
 
 A sped-up or jumped ride is saved, but counts towards no personal records.
+
+## Graphics quality
+
+**Devices & Settings → Graphics** sets how detailed the 3D world is drawn on this computer
+(R43); it applies from the next ride:
+
+| Preset | For | What it adds |
+|---|---|---|
+| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds |
+| Medium | MacBook with M1 (60 fps) | ambient occlusion, soft-edged shadows, lit clouds, haze |
+| High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, 35 % more view distance |
+| Ultra | fast GPUs | global illumination (SDFGI), larger shadow maps, 70 % more view distance |
+
+If a ride stays well below 60 fps, Torqa suggests a lower preset once.

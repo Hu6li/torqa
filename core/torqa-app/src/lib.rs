@@ -30,6 +30,7 @@ use torqa_session::analysis::{
 use torqa_session::ghost::Ghost;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
+pub use torqa_storage::profiles::GraphicsQuality;
 use torqa_storage::profiles::{self, StoredProfile};
 use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
@@ -1152,6 +1153,24 @@ impl App {
             .await;
             let _ = tx.send(JobResult::World(load, Box::new(world)));
         });
+    }
+
+    /// How detailed the 3D world is drawn on this computer (R43).
+    #[must_use]
+    pub fn graphics_quality(&self) -> profiles::GraphicsQuality {
+        profiles::graphics_quality(&self.data_dir)
+    }
+
+    /// Chooses how detailed the 3D world is drawn on this computer (R43).
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the choice cannot be saved.
+    pub fn set_graphics_quality(
+        &mut self,
+        quality: profiles::GraphicsQuality,
+    ) -> Result<(), AppError> {
+        profiles::set_graphics_quality(&self.data_dir, quality)
+            .map_err(|e| AppError::Storage(e.to_string()))
     }
 
     /// Whether rides are simulated: with the fake trainer, which can be sped up and jumped

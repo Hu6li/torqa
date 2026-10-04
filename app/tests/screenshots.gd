@@ -61,6 +61,10 @@ func _run() -> void:
 	var hud: String = OS.get_environment("SCREENSHOT_HUD")
 	if not hud.is_empty():
 		torqa.set_hud_layout(PackedStringArray(hud.split(",")))
+	# A graphics preset, e.g. SCREENSHOT_QUALITY=ultra (R43).
+	var quality: String = OS.get_environment("SCREENSHOT_QUALITY")
+	if not quality.is_empty():
+		_check(torqa.set_graphics_quality(quality), "graphics quality %s" % quality)
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
 	# A pacer to race, e.g. SCREENSHOT_GHOST=300 (watts).
 	var ghost: Dictionary = {"kind": "none"}

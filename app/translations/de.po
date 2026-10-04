@@ -760,3 +760,39 @@ msgstr "Simulation: %d×"
 
 msgid "Free"
 msgstr "Frei"
+
+msgid "Graphics"
+msgstr "Grafik"
+
+msgid "Quality"
+msgstr "Qualität"
+
+msgid "Low"
+msgstr "Niedrig"
+
+msgid "Medium"
+msgstr "Mittel"
+
+msgid "High"
+msgstr "Hoch"
+
+msgid "Ultra"
+msgstr "Ultra"
+
+msgid "Applies from the next ride."
+msgstr "Gilt ab der nächsten Fahrt."
+
+msgid "For weaker computers: shorter view, simpler shadows and sky."
+msgstr "Für schwächere Computer: kürzere Sicht, einfachere Schatten und Himmel."
+
+msgid "60 fps on a MacBook with M1: soft light, shadows and haze."
+msgstr "60 fps auf einem MacBook mit M1: weiches Licht, Schatten und Dunst."
+
+msgid "For stronger GPUs: softer shadows, bounced light, light fog, more distance."
+msgstr "Für stärkere Grafikkarten: weichere Schatten, indirektes Licht, leichter Nebel, mehr Sichtweite."
+
+msgid "Everything on, including global illumination: for fast GPUs."
+msgstr "Alles an, auch globale Beleuchtung: für schnelle Grafikkarten."
+
+msgid "Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother."
+msgstr "Unter 60 fps: Eine tiefere Grafikqualität (Geräte & Einstellungen) läuft flüssiger."

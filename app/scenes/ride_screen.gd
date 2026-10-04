@@ -16,6 +16,10 @@ const MUSIC_KEYS: Dictionary[Key, Array] = {
 }
 # i18n-end
 const TOAST_SECONDS: float = 4.0
+## The frame-time budget of every preset (R43): 60 fps, with some slack; held below it this
+## long, a lower preset is suggested once per ride.
+const FRAME_BUDGET_S: float = 1.0 / 60.0 * 1.15
+const SLOW_FOR_S: float = 10.0
 ## Speeds of a simulated ride (#53).
 const TIME_SCALES: Array[float] = [1.0, 2.0, 5.0, 10.0, 20.0]
 const KM_PER_MILE: float = 1.609344
@@ -44,6 +48,9 @@ var _toast_left: float = 0.0
 var _simulation: PanelContainer = PanelContainer.new()
 var _speed_buttons: Array[Button] = []
 var _time_scale: float = 1.0
+var _frame_time: float = 0.0
+var _slow_for: float = 0.0
+var _budget_noted: bool = false
 
 @onready var _hud: HudPanel = %Metrics
 @onready var _minimap: Minimap = %Minimap
@@ -94,6 +101,9 @@ func begin(options: Dictionary) -> void:
 	_minimap.jumpable = simulating
 	_profile.jumpable = simulating
 	_set_time_scale(1.0)
+	_frame_time = 0.0
+	_slow_for = 0.0
+	_budget_noted = false
 
 
 func _ready() -> void:
@@ -153,6 +163,7 @@ func _process(delta: float) -> void:
 			_toast.hide()
 	if not visible or _finished:
 		return
+	_watch_frame_time(delta)
 	var state: Dictionary = _torqa.ride_state()
 	if state.is_empty():
 		return
@@ -324,6 +335,20 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 			)
 		)
 	return " " + TranslationServer.translate("(best %s)") % UiTheme.duration(previous_best_s)
+
+
+## Suggests a lower graphics preset when the ride stays below 60 fps (R43). Simulated rides
+## are left alone: they are for trying courses out.
+func _watch_frame_time(delta: float) -> void:
+	if _budget_noted or _simulation.visible or _torqa.riding_along_video():
+		return
+	_frame_time = lerpf(_frame_time if _frame_time > 0.0 else delta, delta, 0.05)
+	_slow_for = _slow_for + delta if _frame_time > FRAME_BUDGET_S else 0.0
+	if _slow_for > SLOW_FOR_S and _torqa.graphics_quality() != "low":
+		_budget_noted = true
+		_show_toast(
+			tr("Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother.")
+		)
 
 
 func _build_simulation_panel() -> void:

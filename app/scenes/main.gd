@@ -18,6 +18,7 @@ func _ready() -> void:
 	add_child(_video)
 	move_child(_video, _world.get_index() + 1)
 	_world.bind(_torqa)
+	_world.apply_quality(_torqa.graphics_quality())
 	_start.bind(_torqa)
 	_ride.bind(_torqa, _world)
 	_summary.bind(_torqa)
@@ -30,6 +31,7 @@ func _ready() -> void:
 func _on_ride_started(options: Dictionary) -> void:
 	_start.hide()
 	if not _torqa.riding_along_video():
+		_world.apply_quality(_torqa.graphics_quality())
 		_world.apply_options(options)
 		_world.reset_view()
 		_world.show()

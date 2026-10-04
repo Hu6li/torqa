@@ -584,6 +584,36 @@ impl TorqaApp {
         self.command(|app| app.delete_ride(&path))
     }
 
+    /// The graphics presets, lightest first: `low`, `medium`, `high`, `ultra` (R43).
+    #[func]
+    fn graphics_qualities() -> PackedStringArray {
+        torqa_app::GraphicsQuality::ALL
+            .iter()
+            .map(|q| GString::from(q.name()))
+            .collect()
+    }
+
+    /// The graphics preset chosen on this computer.
+    #[func]
+    fn graphics_quality(&self) -> GString {
+        let quality = self
+            .app
+            .as_ref()
+            .map(App::graphics_quality)
+            .unwrap_or_default();
+        GString::from(quality.name())
+    }
+
+    /// Chooses the graphics preset for this computer; false for unknown names.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn set_graphics_quality(&mut self, name: GString) -> bool {
+        let Some(quality) = torqa_app::GraphicsQuality::from_name(&name.to_string()) else {
+            return false;
+        };
+        self.command(|app| app.set_graphics_quality(quality))
+    }
+
     /// Whether rides are simulated (fake trainer): they can be sped up and jumped (#53).
     #[func]
     fn simulating(&self) -> bool {

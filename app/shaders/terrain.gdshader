@@ -25,6 +25,11 @@ float value_noise(vec2 p) {
 }
 
 void vertex() {
+	// Degenerate triangles at chunk edges can leave a vertex without a normal; lit with it,
+	// a pixel turned NaN, which the glow spread into bright blobs in the distance.
+	if (dot(NORMAL, NORMAL) < 1e-12) {
+		NORMAL = vec3(0.0, 1.0, 0.0);
+	}
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
