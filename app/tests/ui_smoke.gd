@@ -12,6 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_hud_editor()
 	_ride_settings()
+	_course_cards()
 	_translations()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -99,6 +100,41 @@ func _ride_settings() -> void:
 	confirm.confirmed.emit()
 	_check(events == ["finish", "abort"], "abort once confirmed: %s" % [events])
 	dialog.free()
+
+
+## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.
+func _course_cards() -> void:
+	var course: Dictionary = {
+		"path": "/tmp/x.tqc",
+		"name": "Gurten",
+		"length_m": 2400.0,
+		"elevation_gain_m": 149.4,
+		"max_grade": 17.6,
+		"track": PackedVector2Array([Vector2(0, 0), Vector2(500, 800), Vector2(900, 1200)]),
+		"profile": PackedVector2Array([Vector2(0, 560), Vector2(2400, 709)]),
+	}
+	var figures: Array[PackedStringArray] = CourseCard.figures(course, false)
+	var expected: Array[PackedStringArray] = [
+		PackedStringArray(["Length", "2.4 km"]),
+		PackedStringArray(["Climbing", "149 m"]),
+		PackedStringArray(["Steepest", "18 %"]),
+	]
+	_check(figures == expected, "card figures: %s" % [figures])
+	var imperial: Array[PackedStringArray] = CourseCard.figures(course, true)
+	_check(
+		imperial[0][1] == "1.5 mi" and imperial[1][1] == "490 ft",
+		"imperial card figures: %s" % [imperial]
+	)
+	var card: CourseCard = CourseCard.new(course, false)
+	root.add_child(card)
+	var opened: Array[bool] = [false]
+	card.pressed.connect(func() -> void: opened[0] = true)
+	var click: InputEventMouseButton = InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	card.call("_gui_input", click)
+	_check(opened[0], "a click opens the course")
+	card.free()
 
 
 func _translations() -> void:

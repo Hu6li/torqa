@@ -69,6 +69,15 @@ func _run() -> void:
 	var reopened_route: Dictionary = reopened[0]
 	var reopened_name: String = reopened_route["name"]
 	_check(reopened_name == "Smoke", "course reopened: %s" % reopened_route)
+	_check(not _torqa.build_world(), "the world is built on request")
+	# Leaving and re-entering the course page while its world is being built.
+	_torqa.open_course(course_path)
+	_torqa.build_world()
+	_torqa.open_course(course_path)
+	await _wait_for(_torqa.route_loaded)
+	_torqa.build_world()
+	await _wait_for(_torqa.world_ready)
+	_check(_torqa.world_chunk_count() > 0, "world of the course opened last")
 	DirAccess.remove_absolute(course_path)
 	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
 	quit(0)

@@ -1,0 +1,77 @@
+class_name CourseCard
+extends PanelContainer
+## A course in the gallery (R39): its path card, name and key figures in rows; click to open
+## it. The elevation profile is left to the course page.
+
+signal pressed
+
+const WIDTH: float = 300.0
+
+
+func _init(course: Dictionary, imperial: bool) -> void:
+	custom_minimum_size = Vector2(WIDTH, 0)
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 12)
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var path: PathCard = PathCard.new()
+	path.custom_minimum_size = Vector2(WIDTH - 32.0, 160)
+	path.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var track: PackedVector2Array = course.get("track", PackedVector2Array())
+	path.set_track(track)
+	rows.add_child(path)
+	var title: Label = Label.new()
+	title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	title.text = course["name"]
+	title.add_theme_font_size_override("font_size", 18)
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	rows.add_child(title)
+	rows.add_child(figure_rows(course, imperial))
+	add_child(rows)
+
+
+## The key figures, one per row: caption on the left, value on the right, in the rider's units.
+static func figure_rows(course: Dictionary, imperial: bool) -> GridContainer:
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 2
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 6)
+	for figure: PackedStringArray in figures(course, imperial):
+		var caption: Label = Label.new()
+		caption.text = TranslationServer.translate(figure[0])
+		caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		caption.add_theme_color_override("font_color", UiTheme.MUTED)
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(caption)
+		var value: Label = Label.new()
+		value.text = figure[1]
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(value)
+	return grid
+
+
+## `[caption, value]` pairs: length, climbing and steepest gradient, in the rider's units.
+static func figures(course: Dictionary, imperial: bool) -> Array[PackedStringArray]:
+	var length_km: float = course["length_m"] / 1000.0
+	var gain_m: float = course["elevation_gain_m"]
+	var max_grade: float = course["max_grade"]
+	var distance: String = (
+		"%.1f mi" % (length_km / HudPanel.KM_PER_MILE) if imperial else "%.1f km" % length_km
+	)
+	var climbing: String = (
+		"%d ft" % roundi(gain_m / HudPanel.METERS_PER_FOOT) if imperial else "%d m" % roundi(gain_m)
+	)
+	# i18n-begin
+	return [
+		PackedStringArray(["Length", distance]),
+		PackedStringArray(["Climbing", climbing]),
+		PackedStringArray(["Steepest", "%d %%" % roundi(max_grade)]),
+	]
+	# i18n-end
+
+
+func _gui_input(event: InputEvent) -> void:
+	var click: InputEventMouseButton = event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		pressed.emit()

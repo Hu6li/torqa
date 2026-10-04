@@ -18,7 +18,7 @@ func _run() -> void:
 	var out_dir: String = OS.get_environment("SCREENSHOT_DIR")
 	var torqa: TorqaApp = _main.get_node("Torqa")
 	var world: RideWorld = _main.get_node("World")
-	var setup: SetupScreen = _main.get_node("SetupScreen")
+	var start: StartPage = _main.get_node("StartPage")
 
 	var route: String = OS.get_environment("SCREENSHOT_ROUTE")
 	if route.is_empty():
@@ -28,21 +28,26 @@ func _run() -> void:
 	var locale: String = OS.get_environment("SCREENSHOT_LOCALE")
 	if not locale.is_empty():
 		TranslationServer.set_locale(locale)
-	torqa.load_route(route, false)
-	# The setup screen while loading, for checking the progress display.
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-courses.png"))
+	# Import the route as a new course, as the Courses tab's import does.
+	var courses: CoursesTab = start.find_children("*", "CoursesTab", true, false)[0]
+	courses.call("_on_file_selected", route)
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
 	# The rider settings with the HUD editor.
-	for child: Node in setup.get_children():
-		if child is ProfileDialog:
-			var dialog: ProfileDialog = child
-			dialog.edit(torqa.profile(), torqa.hud_layout())
-			var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
-			tabs.current_tab = 1
-			await create_timer(0.5).timeout
-			root.get_texture().get_image().save_png(out_dir.path_join("rider-settings.png"))
-			dialog.hide()
-	await _wait_for(torqa.world_ready)
+	var dialog: ProfileDialog = start.find_children("*", "ProfileDialog", true, false)[0]
+	dialog.edit(torqa.profile(), torqa.hud_layout())
+	var dialog_tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+	dialog_tabs.current_tab = 1
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("rider-settings.png"))
+	dialog.hide()
+	await _wait_for(torqa.course_added)
+	# The prepared course opens on its detail page.
+	await create_timer(1.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("course-detail.png"))
+	print("saved course detail")
 	# Let the world stream its chunks in.
 	for i: int in range(240):
 		await process_frame
@@ -57,7 +62,7 @@ func _run() -> void:
 	if not ghost_watts.is_empty():
 		ghost = {"kind": "power", "watts": ghost_watts.to_float()}
 	_check(torqa.start_ride(50.0, false, ghost), "ride started")
-	setup.ride_started.emit()
+	start.ride_started.emit(start.ride_options())
 	var time: String = OS.get_environment("SCREENSHOT_TIME")
 	var weather: String = OS.get_environment("SCREENSHOT_WEATHER")
 	if not time.is_empty() or not weather.is_empty():
@@ -95,24 +100,26 @@ func _run() -> void:
 	var ride_screen: RideScreen = _main.get_node("RideScreen")
 	for child: Node in ride_screen.get_children():
 		if child is RideSettingsDialog:
-			var dialog: RideSettingsDialog = child
-			dialog.edit(setup.ride_options(), torqa.hud_layout(), false)
+			var settings_dialog: RideSettingsDialog = child
+			settings_dialog.edit(start.ride_options(), torqa.hud_layout(), false)
 			await create_timer(0.5).timeout
 			root.get_texture().get_image().save_png(out_dir.path_join("ride-settings.png"))
 			print("saved ride settings")
-			var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+			var tabs: TabContainer = (
+				settings_dialog.find_children("*", "TabContainer", true, false)[0]
+			)
 			tabs.current_tab = 1
 			await process_frame
 			# Hover a figure over the HUD's grid, so the drop indicator shows.
-			var preview: HudPanel = dialog.find_children("*", "HudPanel", true, false)[0]
+			var preview: HudPanel = settings_dialog.find_children("*", "HudPanel", true, false)[0]
 			var grid: Node = preview.get_child(preview.get_child_count() - 1)
 			grid.get_child(2).call(
 				"_can_drop_data", Vector2(80, 10), {HudPanel.DRAG_KEY: "power_3s"}
 			)
 			await create_timer(0.5).timeout
-			root.get_texture().get_image().save_png(out_dir.path_join("hud-dialog.png"))
-			print("saved hud dialog")
-			dialog.hide()
+			root.get_texture().get_image().save_png(out_dir.path_join("hud-settings_dialog.png"))
+			print("saved hud settings_dialog")
+			settings_dialog.hide()
 
 	# The ride's summary (R42), then the history.
 	torqa.finish_ride()
@@ -123,9 +130,25 @@ func _run() -> void:
 	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
 	print("saved summary")
 	(_main.get_node("HistoryScreen") as HistoryScreen).closed.emit()
-	setup.history_requested.emit()
+	var start_tabs: TabContainer = start.find_children("*", "TabContainer", true, false)[0]
+	start_tabs.current_tab = StartPage.Tab.HISTORY
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("history.png"))
+	start_tabs.current_tab = StartPage.Tab.COURSES
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-after-ride.png"))
+	var detail: CourseDetail = start.find_children("*", "CourseDetail", true, false)[0]
+	detail.back_requested.emit()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-gallery.png"))
+	for tab: Array in [
+		[StartPage.Tab.PROFILE, "start-profile"], [StartPage.Tab.DEVICES, "start-devices"]
+	]:
+		var index: int = tab[0]
+		var file: String = tab[1]
+		start_tabs.current_tab = index
+		await create_timer(0.5).timeout
+		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
 	print("saved history")
 	quit(0)
 

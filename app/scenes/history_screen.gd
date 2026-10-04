@@ -10,6 +10,13 @@ const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 const CHART_POINTS: int = 600
 
+## Inside the start page's tabs: no Back button, no own background.
+var embedded: bool = false:
+	set(value):
+		embedded = value
+		if is_node_ready():
+			_apply_embedded()
+
 var _torqa: TorqaApp
 var _rides: Array = []
 var _imperial: bool = false
@@ -17,13 +24,14 @@ var _list: VBoxContainer = VBoxContainer.new()
 var _selected: int = -1
 var _empty: Label = Label.new()
 var _detail: VBoxContainer = VBoxContainer.new()
-var _title: LineEdit = LineEdit.new()
+var _title: EditableTitle = EditableTitle.new(tr("Rename the ride"))
 var _left: PanelContainer = PanelContainer.new()
 var _summary_caption: Label = UiTheme.caption(tr("Ride summary"))
 var _actions: HBoxContainer = HBoxContainer.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
 ## Showing a single ride's summary after riding it, rather than the history.
 var _summary: bool = false
+var _back: Button = Button.new()
 var _subtitle: Label = Label.new()
 var _stats: GridContainer = GridContainer.new()
 var _climbs: VBoxContainer = VBoxContainer.new()
@@ -94,7 +102,7 @@ func _ready() -> void:
 	left.add_child(left_rows)
 	var header: HBoxContainer = HBoxContainer.new()
 	header.add_theme_constant_override("separation", 14)
-	var back: Button = Button.new()
+	var back: Button = _back
 	back.text = tr("← Back")
 	back.pressed.connect(_close)
 	header.add_child(back)
@@ -123,11 +131,7 @@ func _ready() -> void:
 	var titles: VBoxContainer = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titles.add_child(_summary_caption)
-	_title.add_theme_font_size_override("font_size", 24)
-	_title.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	_title.tooltip_text = tr("Click to rename the ride")
-	_title.text_submitted.connect(func(_text: String) -> void: _title.release_focus())
-	_title.focus_exited.connect(_rename)
+	_title.edit_finished.connect(_rename)
 	titles.add_child(_title)
 	_subtitle.add_theme_color_override("font_color", UiTheme.MUTED)
 	titles.add_child(_subtitle)
@@ -201,6 +205,16 @@ func _ready() -> void:
 	_actions.add_child(done)
 	_actions.hide()
 	_detail.add_child(_actions)
+	_apply_embedded()
+
+
+func _apply_embedded() -> void:
+	_back.visible = not embedded
+	($Background as ColorRect).visible = not embedded
+	if embedded:
+		var margin: MarginContainer = %Margin
+		for side: String in ["left", "top", "right", "bottom"]:
+			margin.add_theme_constant_override("margin_" + side, 0)
 
 
 func _show_ride(index: int) -> void:

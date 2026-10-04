@@ -205,6 +205,10 @@ func _build_some_chunks() -> void:
 	var built: int = 0
 	while _next_chunk < _chunk_count and built < CHUNKS_PER_FRAME:
 		var chunk: Dictionary = _torqa.world_chunk(_next_chunk)
+		# Another course was opened meanwhile: its world replaces this one when ready.
+		if chunk.is_empty():
+			_chunk_count = 0
+			return
 		var center: Vector3 = chunk["center"]
 		var node: Node3D = Node3D.new()
 		node.position = center

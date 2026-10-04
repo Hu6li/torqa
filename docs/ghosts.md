@@ -1,6 +1,6 @@
 # Ghosts and pacers
 
-Pick someone to race under **Race against** on the setup screen. The ghost rides the course
+Pick someone to race under **Race against** on the course page. The ghost rides the course
 as a see-through orange rider next to you, shows as an orange dot on the map and the elevation
 profile, and a panel tells you how far behind or ahead you are — in seconds, comparing when
 each of you passed your current position.

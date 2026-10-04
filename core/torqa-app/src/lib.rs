@@ -42,6 +42,9 @@ const ATTRIBUTION: [&str; 3] = [
     "Terrain: AWS Terrain Tiles",
 ];
 
+/// Points of the thinned track and profile stored with a course for its card.
+const PREVIEW_POINTS: usize = 200;
+
 /// How long the reconnect at start scans for the devices used last.
 const RECONNECT_SCAN: Duration = Duration::from_secs(6);
 
@@ -257,16 +260,20 @@ pub enum TrainerChoice {
 
 enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
-    Route(Result<Box<Imported>, String>),
-    World(Box<World>),
-    Progress(LoadStage, usize, usize),
+    // Loading results carry the load they belong to; those of an abandoned load are dropped.
+    Route(u64, Result<Box<Imported>, String>),
+    World(u64, Box<World>),
+    Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, String>),
+    /// The loaded route was saved as this course.
+    CourseSaved(Result<PathBuf, String>),
     Failed(String),
 }
 
 /// Forwards load progress to the frame loop, at most once per percent per stage.
 struct Reporter {
     tx: mpsc::Sender<JobResult>,
+    load: u64,
     last: Option<(LoadStage, usize)>,
 }
 
@@ -275,7 +282,9 @@ impl Reporter {
         let percent = done * 100 / total.max(1);
         if self.last != Some((stage, percent)) {
             self.last = Some((stage, percent));
-            let _ = self.tx.send(JobResult::Progress(stage, done, total));
+            let _ = self
+                .tx
+                .send(JobResult::Progress(self.load, stage, done, total));
         }
     }
 }
@@ -295,6 +304,14 @@ struct ActiveRide {
     ghost: Option<Ghost>,
 }
 
+/// When the 3D world of a loaded route is built.
+enum WorldPlan {
+    /// Right after the route.
+    Now,
+    /// Once asked for (riding a course), with the route's map data when it is loaded.
+    OnRequest(Option<torqa_osm::MapData>),
+}
+
 /// The application state.
 pub struct App {
     runtime: tokio::runtime::Runtime,
@@ -309,6 +326,16 @@ pub struct App {
     sensor_id: Option<String>,
     /// The running scan was started to reconnect the remembered devices.
     reconnecting: bool,
+    /// The loaded route came from a course file (and is in the library already).
+    from_course: bool,
+    /// Counts loads; results of earlier ones are stale.
+    load: u64,
+    /// When to build the loaded route's world.
+    world_plan: WorldPlan,
+    /// The course file of the loaded route, once it is one.
+    course: Option<PathBuf>,
+    /// The route key of the course being written to the library, until it is there.
+    saving: Option<String>,
     route: Option<Route>,
     world: Option<Arc<World>>,
     offline: bool,
@@ -345,6 +372,11 @@ impl App {
             trainer_id: None,
             sensor_id: None,
             reconnecting: false,
+            from_course: false,
+            load: 0,
+            world_plan: WorldPlan::Now,
+            course: None,
+            saving: None,
             route: None,
             world: None,
             offline: false,
@@ -434,11 +466,13 @@ impl App {
     /// Imports a GPX route with terrain-corrected elevations; reports [`AppEvent::RouteLoaded`].
     pub fn load_route(&mut self, path: PathBuf, offline: bool) {
         let used = self.start_loading(offline);
+        let load = self.load;
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
+                load,
                 last: None,
             };
             let result = import_route(&path, &cache, offline, &used, &mut |stage, done, total| {
@@ -446,19 +480,25 @@ impl App {
             })
             .await
             .map(Box::new);
-            let _ = tx.send(JobResult::Route(result));
+            let _ = tx.send(JobResult::Route(load, result));
         });
     }
 
-    /// Opens a course file: its data goes back into the cache and the course is built offline;
-    /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`].
+    /// Opens a course file: its data goes back into the cache and its route is loaded offline;
+    /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`]. Its 3D world is built only
+    /// when asked for with [`App::build_world`].
     pub fn open_course(&mut self, path: PathBuf) {
         let used = self.start_loading(true);
+        let load = self.load;
+        self.from_course = true;
+        self.world_plan = WorldPlan::OnRequest(None);
+        self.course = Some(path.clone());
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
         self.runtime.spawn(async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
+                load,
                 last: None,
             };
             reporter.report(LoadStage::Route, 0, 1);
@@ -485,7 +525,7 @@ impl App {
                 }),
                 Err(message) => Err(message),
             };
-            let _ = tx.send(JobResult::Route(result));
+            let _ = tx.send(JobResult::Route(load, result));
         });
     }
 
@@ -510,7 +550,24 @@ impl App {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
             attribution: ATTRIBUTION.map(ToOwned::to_owned).to_vec(),
+            route_key: Some(route.key()),
+            track: thin(&view::track(route, PREVIEW_POINTS)),
+            profile: thin(&view::elevation_profile(route, PREVIEW_POINTS)),
         };
+        // Preparing the same course again must not fill the library with copies; one still
+        // being written reports itself when done.
+        if manifest.route_key.is_some() && manifest.route_key == self.saving {
+            return Ok(());
+        }
+        if let Some(existing) = self
+            .courses()
+            .into_iter()
+            .find(|c| c.manifest.route_key == manifest.route_key)
+        {
+            let _ = self.jobs_tx.send(JobResult::CourseSaved(Ok(existing.path)));
+            return Ok(());
+        }
+        self.saving.clone_from(&manifest.route_key);
         let gpx = gpx.clone();
         let data = self.used.paths();
         let cache = self.cache_dir.clone();
@@ -524,8 +581,62 @@ impl App {
                     course::write(&path, &manifest, &gpx, &cache, &data).map(|()| path)
                 })
                 .map_err(|e| format!("cannot save course: {e}"));
-            let _ = tx.send(JobResult::CourseAdded(result));
+            let _ = tx.send(JobResult::CourseSaved(result));
         });
+        Ok(())
+    }
+
+    /// Builds the 3D world of a course opened with [`App::open_course`], now or as soon as its
+    /// route is loaded; reports [`AppEvent::WorldReady`]. True if the world is ready already.
+    pub fn build_world(&mut self) -> bool {
+        if self.world.is_some() {
+            return true;
+        }
+        if let WorldPlan::OnRequest(map) = std::mem::replace(&mut self.world_plan, WorldPlan::Now)
+            && let (Some(route), Some(map)) = (self.route.clone(), map)
+        {
+            self.generate_world(route, map);
+        }
+        false
+    }
+
+    /// The course file of the loaded route: the opened course, or the one a GPX import was
+    /// saved as.
+    #[must_use]
+    pub fn loaded_course(&self) -> Option<&Path> {
+        self.course.as_deref()
+    }
+
+    /// Renames the course at `path`; blank names are refused.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the name is blank or the file cannot be rewritten.
+    pub fn rename_course(&mut self, path: &Path, name: &str) -> Result<(), AppError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(AppError::Storage("a course needs a name".to_owned()));
+        }
+        let storage = |e: course::CourseError| AppError::Storage(e.to_string());
+        let mut manifest = course::read_manifest(path).map_err(storage)?;
+        name.clone_into(&mut manifest.name);
+        course::rewrite_manifest(path, &manifest).map_err(storage)?;
+        if self.course.as_deref() == Some(path)
+            && let Some((loaded, _)) = &mut self.loaded
+        {
+            name.clone_into(loaded);
+        }
+        Ok(())
+    }
+
+    /// Deletes the course at `path` from the library; rides on it stay in the history.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the file cannot be deleted.
+    pub fn delete_course(&mut self, path: &Path) -> Result<(), AppError> {
+        std::fs::remove_file(path).map_err(|e| AppError::Storage(e.to_string()))?;
+        if self.course.as_deref() == Some(path) {
+            self.course = None;
+        }
         Ok(())
     }
 
@@ -578,7 +689,12 @@ impl App {
 
     /// Forgets the current route and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        self.load += 1;
         self.offline = offline;
+        self.world_plan = WorldPlan::Now;
+        self.course = None;
+        // Opening a course sets this; a GPX import goes into the library when ready.
+        self.from_course = false;
         self.world = None;
         self.route = None;
         self.loaded = None;
@@ -589,6 +705,7 @@ impl App {
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
+        let load = self.load;
         let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"))
             .recording(self.used.clone());
         if self.offline {
@@ -597,13 +714,14 @@ impl App {
         self.runtime.spawn(async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
+                load,
                 last: None,
             };
             let world = torqa_world::generate(&route, &mut terrain, &map, &mut |done, total| {
                 reporter.report(LoadStage::World, done, total);
             })
             .await;
-            let _ = tx.send(JobResult::World(Box::new(world)));
+            let _ = tx.send(JobResult::World(load, Box::new(world)));
         });
     }
 
@@ -1220,7 +1338,11 @@ impl App {
                         }
                     }
                 }
-                JobResult::Route(Ok(imported)) => {
+                JobResult::Route(load, _)
+                | JobResult::World(load, _)
+                | JobResult::Progress(load, ..)
+                    if load != self.load => {}
+                JobResult::Route(_, Ok(imported)) => {
                     let Imported {
                         route,
                         map,
@@ -1235,26 +1357,45 @@ impl App {
                         max_grade: route.max_grade().0,
                         elevation_source: route.elevation_source(),
                     }));
-                    self.generate_world(route.clone(), map);
+                    if let WorldPlan::OnRequest(waiting) = &mut self.world_plan {
+                        *waiting = Some(map);
+                    } else {
+                        self.generate_world(route.clone(), map);
+                    }
                     self.route = Some(route);
                 }
-                JobResult::Progress(stage, done, total) => {
+                JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
-                JobResult::World(world) => {
+                JobResult::World(_, world) => {
                     events.push(AppEvent::WorldReady {
                         chunks: world.chunks.len(),
                         fallback_samples: world.fallback_samples,
                     });
                     self.world = Some(Arc::from(world));
+                    // A prepared GPX goes into the course library (R39).
+                    if !self.from_course
+                        && let Err(error) = self.save_course()
+                    {
+                        warn!(%error, "cannot add the course to the library");
+                    }
                 }
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
+                JobResult::CourseSaved(Ok(path)) => {
+                    self.saving = None;
+                    self.course = Some(path.clone());
+                    events.push(AppEvent::CourseAdded(path));
+                }
+                JobResult::CourseSaved(Err(message)) => {
+                    self.saving = None;
+                    events.push(AppEvent::Error(message));
+                }
                 JobResult::Scan(Err(message)) if std::mem::take(&mut self.reconnecting) => {
                     // No Bluetooth (or no permission): the rider sees it when scanning.
                     warn!(%message, "cannot reconnect the devices used last");
                 }
                 JobResult::Scan(Err(message))
-                | JobResult::Route(Err(message))
+                | JobResult::Route(_, Err(message))
                 | JobResult::CourseAdded(Err(message))
                 | JobResult::Failed(message) => {
                     events.push(AppEvent::Error(message));
@@ -1324,6 +1465,12 @@ impl App {
             }
         }
     }
+}
+
+/// Single-precision points for course previews, which need no more precision.
+#[allow(clippy::cast_possible_truncation)] // metres in a course fit f32 easily
+fn thin(points: &[(f64, f64)]) -> Vec<[f32; 2]> {
+    points.iter().map(|&(a, b)| [a as f32, b as f32]).collect()
 }
 
 /// The fastest time on `climb` among `records`.
@@ -1542,6 +1689,10 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].manifest.name, "Test loop");
         assert!((listed[0].manifest.length_m - 400.0).abs() < 1.0);
+        // Prepared once, listed once — the import added it, saving again found it — and with a
+        // preview for its card.
+        assert!(listed[0].manifest.track.len() > 2);
+        assert!(listed[0].manifest.profile.len() > 2);
 
         let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
         other.import_course(file.clone());
@@ -1551,14 +1702,79 @@ mod tests {
         };
         assert!(imported.starts_with(dir.join("b/data/courses")));
         other.open_course(imported.clone());
-        let events = run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+        let events = run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
 
-        let summary = events.iter().find_map(|e| match e {
-            AppEvent::RouteLoaded(summary) => Some(summary),
-            _ => None,
-        });
-        assert!(summary.is_some_and(|s| s.name == "Test loop" && (s.length - 400.0).abs() < 1.0));
+        let Some(AppEvent::RouteLoaded(summary)) = events.last() else {
+            unreachable!()
+        };
+        assert!(summary.name == "Test loop" && (summary.length - 400.0).abs() < 1.0);
+        assert_eq!(other.loaded_course(), Some(imported.as_path()));
+        // Looking at a course does not build its world; riding it does.
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(16));
+            other.update(Duration::from_millis(16));
+        }
+        assert!(other.world().is_none());
+        assert!(!other.build_world());
+        run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
         assert!(other.world().is_some());
+        assert!(other.build_world());
+    }
+
+    #[test]
+    fn opening_another_course_drops_the_one_still_loading() {
+        let dir = temp_dir("switch");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(course)) = events.last() else {
+            unreachable!()
+        };
+        assert_eq!(app.loaded_course(), Some(course.as_path()));
+
+        // Back and forth quickly, as when leaving and re-entering a course page.
+        app.open_course(course.clone());
+        app.build_world();
+        app.open_course(course.clone());
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, AppEvent::RouteLoaded(_)))
+                .count(),
+            1,
+            "{events:?}"
+        );
+        assert!(app.world().is_none(), "the abandoned load built its world");
+    }
+
+    #[test]
+    fn courses_can_be_renamed_and_deleted() {
+        let dir = temp_dir("rename-course");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(course)) = events.last() else {
+            unreachable!()
+        };
+
+        app.rename_course(course, "  Evening loop ").unwrap();
+        assert!(app.rename_course(course, "  ").is_err());
+        assert_eq!(app.courses()[0].manifest.name, "Evening loop");
+        app.open_course(course.clone());
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(
+            matches!(events.last(), Some(AppEvent::RouteLoaded(s)) if s.name == "Evening loop")
+        );
+
+        app.delete_course(course).unwrap();
+        assert_eq!(app.courses().len(), 0);
+        assert_eq!(app.loaded_course(), None);
     }
 
     #[test]
