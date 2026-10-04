@@ -188,6 +188,8 @@ Built in rideable steps:
   — CC0 ground textures (grass, forest floor, soil, rock, snow) tinted by land cover, triplanar
   rock, textured asphalt with worn, anti-aliased markings ✅; gravel roads and verges to come
 - [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
+  — grass tufts and flower clumps along the road, swaying with weather-driven wind, range and
+  shadows by preset ✅; realistic trees, bushes and impostors still to come
 - [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
   visual target (R44)

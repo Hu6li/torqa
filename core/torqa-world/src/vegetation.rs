@@ -1,4 +1,4 @@
-//! Trees in forests.
+//! Trees in forests, and grass and flowers along the road (R45).
 
 use torqa_osm::LandCover;
 
@@ -14,6 +14,12 @@ const FAR_SPACING: f64 = 20.0;
 const NEAR_DISTANCE: f64 = 300.0;
 /// Trees keep this distance from the road centre.
 const ROAD_CLEARANCE: f64 = 8.0;
+/// Grass grows within this distance of the road centre, where riders see it up close.
+const GRASS_DISTANCE: f64 = 30.0;
+/// Grass keeps off the road: half its width and a little more.
+const GRASS_CLEARANCE: f64 = 3.6;
+/// Spacing of grass tufts, jittered.
+const GRASS_SPACING: f64 = 1.1;
 
 /// Trees of one chunk as Godot `MultiMesh` transform buffers (12 floats per tree), relative to
 /// the chunk origin.
@@ -23,10 +29,14 @@ pub struct Trees {
     pub conifers: Vec<f32>,
     /// Broadleaf trees.
     pub broadleaves: Vec<f32>,
+    /// Grass tufts along the road.
+    pub grass: Vec<f32>,
+    /// Flower clumps in meadows along the road.
+    pub flowers: Vec<f32>,
 }
 
 impl Trees {
-    /// Number of trees.
+    /// Number of trees (grass and flowers not counted).
     #[must_use]
     pub fn len(&self) -> usize {
         (self.conifers.len() + self.broadleaves.len()) / 12
@@ -87,6 +97,77 @@ pub(crate) fn place(
         north += NEAR_SPACING;
     }
     trees
+}
+
+/// Places grass tufts and flower clumps along the road within the square `[origin, origin +
+/// size]` into `plants`: on open ground (meadows, farmland verges, orchards, lawns), sparse on
+/// the forest floor, never on the road, in water or on rock.
+pub(crate) fn place_grass(
+    plants: &mut Trees,
+    origin: (f64, f64),
+    size: f64,
+    heights: &HeightGrid,
+    land: &LandIndex,
+    road: &RoadIndex,
+    chunk_origin: [f64; 3],
+) {
+    let mut north = (origin.1 / GRASS_SPACING).floor() * GRASS_SPACING;
+    while north < origin.1 + size {
+        let mut east = (origin.0 / GRASS_SPACING).floor() * GRASS_SPACING;
+        while east < origin.0 + size {
+            let seed = grass_seed(east, north);
+            let (e, n) = (
+                east + (crate::hash(seed) - 0.5) * GRASS_SPACING,
+                north + (crate::hash(seed ^ 0x2c1b) - 0.5) * GRASS_SPACING,
+            );
+            east += GRASS_SPACING;
+            let inside =
+                e >= origin.0 && e < origin.0 + size && n >= origin.1 && n < origin.1 + size;
+            let Some((distance, _, _)) = road.nearest(e, n, GRASS_DISTANCE) else {
+                continue;
+            };
+            if !inside || distance < GRASS_CLEARANCE {
+                continue;
+            }
+            let cover = land.cover_at(e, n);
+            let (density, flowery) = match cover {
+                Some(LandCover::Water | LandCover::Rock) => (0.0, false),
+                Some(LandCover::Forest) => (0.25, false),
+                Some(LandCover::Meadow) | None => (1.0, true),
+                Some(LandCover::Farmland | LandCover::Orchard | LandCover::Residential) => {
+                    (0.8, false)
+                }
+            };
+            // Thinner towards the edge of the strip, so it does not end in a hard line.
+            let fade = 1.0 - ((distance - GRASS_DISTANCE * 0.6) / (GRASS_DISTANCE * 0.4)).max(0.0);
+            if crate::hash(seed ^ 0x51ed) > density * fade {
+                continue;
+            }
+            let height = heights.at(e, n);
+            let scale = 0.7 + crate::hash(seed ^ 0x0dd5) * 0.7;
+            let yaw = crate::hash(seed ^ 0x3a7c) * std::f64::consts::TAU;
+            let target = if flowery && crate::hash(seed ^ 0x6b43) < FLOWER_SHARE {
+                &mut plants.flowers
+            } else {
+                &mut plants.grass
+            };
+            push_transform(target, [e, height, n], scale, yaw, chunk_origin);
+        }
+        north += GRASS_SPACING;
+    }
+}
+
+/// Share of meadow grass spots that are flower clumps instead.
+const FLOWER_SHARE: f64 = 0.12;
+
+/// A stable seed per grass cell.
+fn grass_seed(east: f64, north: f64) -> i64 {
+    #[allow(clippy::cast_possible_truncation)] // cell indices are small
+    let (e, n) = (
+        (east / GRASS_SPACING).round() as i64,
+        (north / GRASS_SPACING).round() as i64,
+    );
+    e.wrapping_mul(83_492_791) ^ n.wrapping_mul(2_654_435_761)
 }
 
 /// A stable seed per grid cell.

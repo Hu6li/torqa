@@ -1061,7 +1061,8 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, conifers, broadleaves}`. `terrain`
+    /// World chunk `index`: `{center, terrain, buildings, conifers, broadleaves, grass,
+    /// flowers}`. `terrain`
     /// and `buildings` are mesh arrays (`{vertices, normals, uvs, colors, indices}`), the tree
     /// entries `MultiMesh` transform buffers. Geometry is relative to `center`, in Godot
     /// coordinates (x east, y up, −z north, metres from the route start).
@@ -1079,12 +1080,16 @@ impl TorqaApp {
         let [x, y, z] = chunk.center;
         let conifers = PackedFloat32Array::from(chunk.trees.conifers.as_slice());
         let broadleaves = PackedFloat32Array::from(chunk.trees.broadleaves.as_slice());
+        let grass = PackedFloat32Array::from(chunk.trees.grass.as_slice());
+        let flowers = PackedFloat32Array::from(chunk.trees.flowers.as_slice());
         vdict! {
             "center" => Vector3::new(x, y, z),
             "terrain" => &mesh_arrays(&chunk.mesh),
             "buildings" => &mesh_arrays(&chunk.buildings),
             "conifers" => &conifers,
             "broadleaves" => &broadleaves,
+            "grass" => &grass,
+            "flowers" => &flowers,
         }
     }
 

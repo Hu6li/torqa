@@ -310,6 +310,66 @@ async fn forests_get_trees_but_not_on_the_road() {
 }
 
 #[tokio::test]
+async fn grass_and_flowers_line_the_road_but_not_lakes_or_the_road_itself() {
+    // A pond beside the road at 300 m, a forest beside it at 700 m; open ground elsewhere.
+    let pond = Area {
+        cover: LandCover::Water,
+        outer: vec![square(15.0, 300.0, 8.0)],
+        inner: vec![],
+    };
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(15.0, 700.0, 60.0)],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![pond, forest],
+        ..MapData::default()
+    })
+    .await;
+    let positions = |pick: fn(&crate::Trees) -> &Vec<f32>| -> Vec<[f32; 2]> {
+        world
+            .chunks
+            .iter()
+            .flat_map(|c| {
+                pick(&c.trees)
+                    .as_chunks::<12>()
+                    .0
+                    .iter()
+                    .map(move |t| [t[3] + c.center[0], t[11] + c.center[2]])
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let grass = positions(|t| &t.grass);
+    let flowers = positions(|t| &t.flowers);
+
+    assert!(grass.len() > 1000, "{} tufts", grass.len());
+    assert_ne!(flowers.len(), 0);
+    for [x, z] in grass.iter().chain(&flowers) {
+        // Beside the road (it runs north for 1 km); past its ends the distance is to its end.
+        let beside = (0.0..=1000.0).contains(&-z);
+        assert!(x.abs() <= 30.0, "plant {x} m from the road");
+        assert!(!beside || x.abs() >= 3.6, "plant on the road at {x}, {z}");
+        let in_pond = (x - 15.0).abs() < 8.0 && (z + 300.0).abs() < 8.0;
+        assert!(!in_pond, "grass in the pond at {x}, {z}");
+    }
+    // The forest floor is sparse next to open ground of the same size.
+    let count = |north: f32| {
+        grass
+            .iter()
+            .filter(|[x, z]| *x > 3.6 && *x < 30.0 && (z + north).abs() < 50.0)
+            .count()
+    };
+    assert!(
+        count(700.0) * 2 < count(500.0),
+        "{} vs {}",
+        count(700.0),
+        count(500.0)
+    );
+}
+
+#[tokio::test]
 async fn buildings_stand_on_the_ground_with_walls_facing_out() {
     let house = Building {
         id: 42,

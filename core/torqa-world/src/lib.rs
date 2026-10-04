@@ -146,11 +146,22 @@ pub async fn generate<M: ElevationModel>(
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
+        let mut trees =
+            vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin);
+        vegetation::place_grass(
+            &mut trees,
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            &land,
+            &road,
+            origin,
+        );
         world.chunks.push(TerrainChunk {
             center,
             mesh: heights.mesh(&land, origin),
             buildings: building_mesh,
-            trees: vegetation::place(heights.origin, CHUNK_SIZE, &heights, &land, &road, origin),
+            trees,
         });
         progress(done + 1, total);
     }

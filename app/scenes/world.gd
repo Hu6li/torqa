@@ -58,6 +58,8 @@ const JUMP_M: float = 50.0
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
+		"grass_range": 0.0,
+		"grass_shadows": false,
 		"ground_detail": 0,
 		"shadow_atlas": 2048,
 		"shadow_distance": 180.0,
@@ -77,6 +79,8 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"medium":
 	{
+		"grass_range": 60.0,
+		"grass_shadows": false,
 		"ground_detail": 1,
 		"shadow_atlas": 4096,
 		"shadow_distance": 300.0,
@@ -96,6 +100,8 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"high":
 	{
+		"grass_range": 100.0,
+		"grass_shadows": true,
 		"ground_detail": 2,
 		"shadow_atlas": 4096,
 		"shadow_distance": 500.0,
@@ -115,6 +121,8 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"ultra":
 	{
+		"grass_range": 150.0,
+		"grass_shadows": true,
 		"ground_detail": 2,
 		"shadow_atlas": 8192,
 		"shadow_distance": 800.0,
@@ -165,6 +173,9 @@ var _water_material: ShaderMaterial = ShaderMaterial.new()
 var _building_material: ShaderMaterial = ShaderMaterial.new()
 var _structure_material: StandardMaterial3D = StandardMaterial3D.new()
 var _conifer_mesh: ArrayMesh
+var _grass_mesh: ArrayMesh = _plant_mesh(false)
+var _flower_mesh: ArrayMesh = _plant_mesh(true)
+var _plant_material: ShaderMaterial = ShaderMaterial.new()
 var _broadleaf_mesh: ArrayMesh
 
 @onready var _terrain: Node3D = $Terrain
@@ -243,6 +254,8 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 			fog = 0.0012
 			cover = 1.0
 	_overcast = overcast
+	var wind: Dictionary[String, float] = {"Clear": 0.08, "Cloudy": 0.14, "Hazy": 0.04, "Rain": 0.2}
+	_plant_material.set_shader_parameter("wind_strength", wind.get(weather, 0.08))
 	var grey: Color = Color(0.6, 0.62, 0.65)
 	var sky_top: Color = top.lerp(grey * 0.8, overcast)
 	var sky_horizon: Color = horizon.lerp(grey, overcast)
@@ -342,6 +355,7 @@ func _ready() -> void:
 	_environment.sky.sky_material = _sky
 	# Haze towards distant terrain takes the sky's colour (R45).
 	_environment.fog_aerial_perspective = 0.6
+	_plant_material.shader = preload("res://shaders/plants.gdshader")
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -406,6 +420,12 @@ func _build_some_chunks() -> void:
 				continue
 			var mesh: ArrayMesh = _conifer_mesh if kind == "conifers" else _broadleaf_mesh
 			node.add_child(_trees(buffer, mesh))
+		var grass_range: float = _quality["grass_range"]
+		if grass_range > 0.0:
+			for kind: String in ["grass", "flowers"]:
+				var plants: PackedFloat32Array = chunk.get(kind, PackedFloat32Array())
+				if not plants.is_empty():
+					node.add_child(_plants(plants, kind == "flowers", grass_range))
 		_next_chunk += 1
 		built += 1
 
@@ -431,6 +451,72 @@ func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
 	instance.visibility_range_end_margin = 300.0
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return instance
+
+
+## Grass or flowers of a chunk, drawn near the camera only.
+func _plants(buffer: PackedFloat32Array, flowers: bool, range_m: float) -> MultiMeshInstance3D:
+	var instance: MultiMeshInstance3D = _trees(buffer, _flower_mesh if flowers else _grass_mesh)
+	instance.material_override = _plant_material
+	instance.visibility_range_end = range_m
+	instance.visibility_range_end_margin = range_m * 0.25
+	var shadows: bool = _quality["grass_shadows"]
+	instance.cast_shadow = (
+		GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if shadows
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	)
+	return instance
+
+
+## A grass tuft (blades leaning out from the root) or a flower clump (stems with heads),
+## about half a metre high. UV.y runs from root to tip for the wind; normals point up so the
+## plants light like the ground; flower heads have vertex alpha 0 for the shader to colour.
+static func _plant_mesh(flower: bool) -> ArrayMesh:
+	var tool: SurfaceTool = SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	tool.set_normal(Vector3.UP)
+	var blades: int = 3 if flower else 12
+	for i: int in range(blades):
+		var angle: float = TAU * float(i) / float(blades) + fmod(float(i) * 2.39, 1.0)
+		var out: Vector3 = Vector3(cos(angle), 0.0, sin(angle))
+		var side: Vector3 = Vector3(-out.z, 0.0, out.x)
+		var height: float = (0.55 if flower else 0.32) + fmod(float(i) * 0.137, 0.2)
+		var width: float = 0.012 if flower else 0.035
+		var root: Vector3 = out * (0.04 if flower else 0.06 + fmod(float(i) * 0.31, 0.08))
+		var tip: Vector3 = root + out * height * 0.35 + Vector3.UP * height
+		# Close to the grass texture's tones, so tufts blend into the ground they grow from.
+		var base_color: Color = Color(0.15, 0.24, 0.08)
+		var tip_color: Color = Color(0.34, 0.46, 0.17) if not flower else Color(0.28, 0.42, 0.15)
+		_add_blade(tool, root, tip, side * width, base_color, tip_color)
+		if flower:
+			# A head: two crossed petals' quads at the tip, marked by alpha 0.
+			var head: Color = Color(1, 1, 1, 0)
+			for axis: Vector3 in [side, out]:
+				_add_quad(tool, tip - axis * 0.045, tip + axis * 0.045, Vector3.UP * 0.05, head)
+	return tool.commit()
+
+
+static func _add_blade(
+	tool: SurfaceTool, root: Vector3, tip: Vector3, half: Vector3, base: Color, top: Color
+) -> void:
+	for vertex: Array in [
+		[root - half, base, 0.0],
+		[root + half, base, 0.0],
+		[tip, top, 1.0],
+	]:
+		var color: Color = vertex[1]
+		var along: float = vertex[2]
+		tool.set_color(color)
+		tool.set_uv(Vector2(0.5, along))
+		var position: Vector3 = vertex[0]
+		tool.add_vertex(position)
+
+
+static func _add_quad(tool: SurfaceTool, a: Vector3, b: Vector3, up: Vector3, color: Color) -> void:
+	for position: Vector3 in [a, b, b + up, a, b + up, a + up]:
+		tool.set_color(color)
+		tool.set_uv(Vector2(0.5, 1.0))
+		tool.add_vertex(position)
 
 
 func _follow_ride(state: Dictionary, delta: float) -> void:

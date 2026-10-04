@@ -50,8 +50,8 @@ A sped-up or jumped ride is saved, but counts towards no personal records.
 | Preset | For | What it adds |
 |---|---|---|
 | Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds, plain-coloured ground |
-| Medium | MacBook with M1 (60 fps) | textured ground and asphalt, ambient occlusion, soft-edged shadows, lit clouds, haze |
-| High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, 35 % more view distance |
+| Medium | MacBook with M1 (60 fps) | textured ground and asphalt, grass and flowers swaying in the wind (60 m), ambient occlusion, soft-edged shadows, lit clouds, haze |
+| High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, grass to 100 m with shadows, 35 % more view distance |
 | Ultra | fast GPUs | global illumination (SDFGI), larger shadow maps, 70 % more view distance |
 
 If a ride stays well below 60 fps, Torqa suggests a lower preset once.
