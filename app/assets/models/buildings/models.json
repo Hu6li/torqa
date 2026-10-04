@@ -1,0 +1,227 @@
+{
+ "models": {
+  "chalet_2_m": {
+   "kind": "chalet",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.5,
+   "eaves": 6.35,
+   "height": 9.619,
+   "storeys": 2
+  },
+  "chalet_2_s": {
+   "kind": "chalet",
+   "roof": "gable",
+   "length": 10.0,
+   "width": 8.0,
+   "eaves": 6.35,
+   "height": 9.398,
+   "storeys": 2
+  },
+  "chalet_3_l": {
+   "kind": "chalet",
+   "roof": "gable",
+   "length": 16.0,
+   "width": 12.0,
+   "eaves": 9.25,
+   "height": 12.903,
+   "storeys": 3
+  },
+  "chalet_3_m": {
+   "kind": "chalet",
+   "roof": "gable",
+   "length": 13.0,
+   "width": 10.5,
+   "eaves": 9.25,
+   "height": 12.721,
+   "storeys": 3
+  },
+  "chapel_m": {
+   "kind": "chapel",
+   "roof": "gable",
+   "length": 11.0,
+   "width": 7.0,
+   "eaves": 5.4,
+   "height": 17.121
+  },
+  "chapel_s": {
+   "kind": "chapel",
+   "roof": "gable",
+   "length": 8.0,
+   "width": 5.5,
+   "eaves": 4.8,
+   "height": 15.627
+  },
+  "church_needle_l": {
+   "kind": "church",
+   "roof": "gable",
+   "length": 39.45,
+   "width": 13.0,
+   "eaves": 10.0,
+   "height": 46.15,
+   "tower": 7.0,
+   "spire": "needle"
+  },
+  "church_needle_m": {
+   "kind": "church",
+   "roof": "gable",
+   "length": 28.3,
+   "width": 10.0,
+   "eaves": 8.4,
+   "height": 36.25,
+   "tower": 5.5,
+   "spire": "needle"
+  },
+  "church_saddle_m": {
+   "kind": "church",
+   "roof": "gable",
+   "length": 31.35,
+   "width": 11.0,
+   "eaves": 8.4,
+   "height": 27.751,
+   "tower": 6.0,
+   "spire": "saddle"
+  },
+  "farmhouse_l": {
+   "kind": "farmhouse",
+   "roof": "gable",
+   "length": 24.0,
+   "width": 16.0,
+   "eaves": 4.2,
+   "height": 13.106,
+   "storeys": 1
+  },
+  "farmhouse_m": {
+   "kind": "farmhouse",
+   "roof": "gable",
+   "length": 18.0,
+   "width": 13.0,
+   "eaves": 4.2,
+   "height": 11.88,
+   "storeys": 1
+  },
+  "farmhouse_xl": {
+   "kind": "farmhouse",
+   "roof": "gable",
+   "length": 30.0,
+   "width": 18.0,
+   "eaves": 4.2,
+   "height": 13.484,
+   "storeys": 1
+  },
+  "garage_m": {
+   "kind": "shed",
+   "roof": "gable",
+   "length": 6.5,
+   "width": 4.2,
+   "eaves": 2.5,
+   "height": 3.196
+  },
+  "house_gable_1_m": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 11.0,
+   "width": 8.5,
+   "eaves": 3.45,
+   "height": 8.95,
+   "storeys": 1
+  },
+  "house_gable_1_s": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 9.0,
+   "width": 7.5,
+   "eaves": 3.45,
+   "height": 8.45,
+   "storeys": 1
+  },
+  "house_gable_2_l": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 15.0,
+   "width": 10.5,
+   "eaves": 6.35,
+   "height": 11.702,
+   "storeys": 2
+  },
+  "house_gable_2_m": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 6.35,
+   "height": 11.376,
+   "storeys": 2
+  },
+  "house_gable_2_s": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 9.5,
+   "width": 8.0,
+   "eaves": 6.35,
+   "height": 11.202,
+   "storeys": 2
+  },
+  "house_gable_3_l": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 16.0,
+   "width": 11.5,
+   "eaves": 9.25,
+   "height": 14.678,
+   "storeys": 3
+  },
+  "house_gable_3_m": {
+   "kind": "house",
+   "roof": "gable",
+   "length": 13.0,
+   "width": 10.0,
+   "eaves": 9.25,
+   "height": 14.406,
+   "storeys": 3
+  },
+  "house_hipped_2_l": {
+   "kind": "house",
+   "roof": "hipped",
+   "length": 15.0,
+   "width": 12.0,
+   "eaves": 6.35,
+   "height": 11.349,
+   "storeys": 2
+  },
+  "house_hipped_2_m": {
+   "kind": "house",
+   "roof": "hipped",
+   "length": 12.0,
+   "width": 10.0,
+   "eaves": 6.35,
+   "height": 10.973,
+   "storeys": 2
+  },
+  "house_hipped_3_l": {
+   "kind": "house",
+   "roof": "hipped",
+   "length": 16.0,
+   "width": 13.0,
+   "eaves": 9.25,
+   "height": 14.253,
+   "storeys": 3
+  },
+  "shed_m": {
+   "kind": "shed",
+   "roof": "gable",
+   "length": 5.0,
+   "width": 3.6,
+   "eaves": 2.3,
+   "height": 3.277
+  },
+  "shed_s": {
+   "kind": "shed",
+   "roof": "gable",
+   "length": 3.2,
+   "width": 2.6,
+   "eaves": 2.3,
+   "height": 3.075
+  }
+ }
+}

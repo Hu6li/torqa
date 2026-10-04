@@ -34,3 +34,19 @@ humans are hard to model from scratch; mechanical parts like a bike are easy to 
 - The container image grows by Blender (~hundreds of MB).
 - Art direction needs human review of rendered previews; scripts make iterations cheap.
 - Committed `.glb` files grow the repository; large binaries may move to Git LFS if needed.
+
+## Amendment — 2026-10-04: Blender in its own container; buildings first
+
+- Blender publishes Linux builds for x86-64 only, while the devcontainer runs natively on
+  Apple Silicon (arm64). Unofficial arm64 builds are not used. Instead Blender (official 5.2.2
+  LTS, checksum-verified) lives in a separate **art container** (`art/Dockerfile`, run with
+  `scripts/art.sh`) built for linux/amd64; on Apple Silicon Docker runs it emulated, which
+  scripted modelling tolerates (a full build of the building models takes seconds). The
+  devcontainer stays lean. MPFB2 is added when the rider work starts.
+- The first models are **buildings** (`art/buildings`): houses, chalets, Bernese farmhouses,
+  churches, chapels, sheds and garages in several sizes. The files carry shape, texture
+  coordinates in metres and material **names** only; the app gives each name its look
+  (`app/scenes/building_models.gd`), and varies plaster, roof and shutter colours per
+  building. `models.json` beside the models lists their footprints and heights, which the
+  world uses to fit them to map outlines.
+- `scripts/render-models.sh` renders every model as the world draws it, for review.

@@ -192,7 +192,9 @@ Built in rideable steps:
   roofs, materials and details, built as shells ✅; Blender-made models placed where they fit
   still to come
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
-  docs
+  docs — Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted building
+  models with an in-game preview renderer (`scripts/render-models.sh`) ✅; MPFB2 with the
+  rider still to come
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
