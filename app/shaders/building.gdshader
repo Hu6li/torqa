@@ -93,7 +93,7 @@ void fragment() {
 		vec3 pane_color = linear(glass) * (0.8 + 0.5 * smoothstep(1.4, 2.3, in_row));
 		color = mix(color, linear(frame), casing - pane);
 		color = mix(color, linear(vec3(0.75, 0.74, 0.7)), sill);
-		color = mix(color, shutter * (0.9 + 0.1 * step(0.5, fract(in_row * 12.0))), shutters);
+		color = mix(color, shutter, shutters);
 		color = mix(color, pane_color, pane);
 		average = mix(average, linear(glass), 0.15 * lowest);
 		pane *= detail;

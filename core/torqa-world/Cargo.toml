@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 torqa-routes.workspace = true
 torqa-osm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

@@ -602,31 +602,86 @@ impl Face {
     }
 }
 
-/// The building faces of a world within `radius` metres of (east, north), checking on the way
-/// that every chunk's building mesh is valid and faces its normals.
+/// The building shells of a world within `radius` metres of (east, north), modelled buildings'
+/// included (their shells are drawn in the distance), checking on the way that every mesh is
+/// valid and faces its normals.
 fn building_faces(world: &World, (east, north): (f32, f32), radius: f32) -> Vec<Face> {
     let mut faces = Vec::new();
     for chunk in &world.chunks {
-        let mesh = &chunk.buildings;
-        assert_valid(mesh);
-        assert_faces_follow_normals(mesh);
-        for t in mesh.indices.as_chunks::<3>().0 {
-            let corners = t.map(|k| {
-                let v = mesh.vertices[k as usize];
-                [v[0] + chunk.center[0], v[1], v[2] + chunk.center[2]]
-            });
-            let face = Face {
-                corners,
-                normal: mesh.normals[t[0] as usize],
-                color: mesh.colors[t[0] as usize],
-            };
-            let middle = face.middle();
-            if (middle[0] - east).hypot(-middle[2] - north) < radius {
-                faces.push(face);
-            }
+        let shells =
+            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        for mesh in shells {
+            faces.extend(shell_faces(chunk, mesh, (east, north), radius));
         }
     }
     faces
+}
+
+fn shell_faces(
+    chunk: &TerrainChunk,
+    mesh: &MeshData,
+    (east, north): (f32, f32),
+    radius: f32,
+) -> Vec<Face> {
+    assert_valid(mesh);
+    assert_faces_follow_normals(mesh);
+    let mut faces = Vec::new();
+    for t in mesh.indices.as_chunks::<3>().0 {
+        let corners = t.map(|k| {
+            let v = mesh.vertices[k as usize];
+            [v[0] + chunk.center[0], v[1], v[2] + chunk.center[2]]
+        });
+        let face = Face {
+            corners,
+            normal: mesh.normals[t[0] as usize],
+            color: mesh.colors[t[0] as usize],
+        };
+        let middle = face.middle();
+        if (middle[0] - east).hypot(-middle[2] - north) < radius {
+            faces.push(face);
+        }
+    }
+    faces
+}
+
+/// A model instance read back from a `MultiMesh` buffer, in absolute coordinates.
+struct Placed {
+    model: String,
+    origin: [f32; 3],
+    /// The model's x axis (its length, scaled) and z axis (its width, scaled).
+    x: [f32; 3],
+    z: [f32; 3],
+    plaster: [f32; 4],
+}
+
+fn placed(world: &World) -> Vec<Placed> {
+    let mut all = Vec::new();
+    for chunk in &world.chunks {
+        for cell in &chunk.modelled {
+            assert_valid(&cell.shells);
+            for (model, buffer) in &cell.models {
+                assert_eq!(buffer.len() % 20, 0);
+                for b in buffer.as_chunks::<20>().0 {
+                    all.push(Placed {
+                        model: model.clone(),
+                        origin: [
+                            b[3] + chunk.center[0],
+                            b[7] + chunk.center[1],
+                            b[11] + chunk.center[2],
+                        ],
+                        x: [b[0], b[4], b[8]],
+                        z: [b[2], b[6], b[10]],
+                        plaster: [b[12], b[13], b[14], b[15]],
+                    });
+                }
+            }
+        }
+    }
+    all
+}
+
+fn length(v: [f32; 3]) -> f32 {
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
 fn highest(faces: &[Face]) -> f32 {
@@ -899,6 +954,153 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
             to_arm((60.0, 80.0), (400.0, 410.0)).min(to_arm((60.0, 70.0), (400.0, 420.0)));
         assert!(outside < 1.25, "{c:?} is {outside} m out");
     }
+}
+
+#[tokio::test]
+async fn rectangular_houses_become_models_with_shells_for_the_distance() {
+    // A 12 × 9 m house with its long side north–south, and an L-shaped farmhouse.
+    let house = Building {
+        id: 21,
+        outline: rectangle(60.0, 500.0, 4.5, 6.0),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let l_shape = [
+        (60.0, 700.0),
+        (80.0, 700.0),
+        (80.0, 710.0),
+        (70.0, 710.0),
+        (70.0, 720.0),
+        (60.0, 720.0),
+        (60.0, 700.0),
+    ];
+    let farmhouse = Building {
+        id: 22,
+        outline: l_shape.iter().map(|&(e, n)| at(e, n)).collect(),
+        ..house.clone()
+    };
+    let world = world(&MapData {
+        buildings: vec![house, farmhouse],
+        ..MapData::default()
+    })
+    .await;
+
+    let models = placed(&world);
+    assert_eq!(models.len(), 1, "only the rectangular house");
+    let house = &models[0];
+    assert!(house.model.starts_with("house_"), "{}", house.model);
+    // Standing on its footprint's centre, at the highest ground (65 m east), stretched by no
+    // more than a quarter, its length along the outline's.
+    assert!((house.origin[0] - 60.0).abs() < 0.01 && (house.origin[2] + 500.0).abs() < 0.01);
+    assert!(
+        (house.origin[1] - slope_at(64.5)).abs() < 0.01,
+        "{}",
+        house.origin[1]
+    );
+    assert!(
+        house.x[0].abs() < 0.01 && house.z[2].abs() < 0.01,
+        "length runs north"
+    );
+    let (along, across) = (length(house.x), length(house.z));
+    assert!((0.8..=1.25).contains(&along) && (0.8..=1.25).contains(&across));
+    assert!(house.plaster[3] == 1.0 && house.plaster[..3].iter().all(|&c| c > 0.3));
+    // Both still have shells: the house's for the distance, the farmhouse's always.
+    assert!(!building_faces(&world, (60.0, 500.0), 12.0).is_empty());
+    assert!(!building_faces(&world, (70.0, 710.0), 15.0).is_empty());
+    let unmodelled: usize = world
+        .chunks
+        .iter()
+        .map(|c| c.buildings.vertices.len())
+        .sum();
+    assert!(unmodelled > 0, "the farmhouse is drawn as its shell");
+}
+
+/// Terrain sloping down eastwards by `grade`, 1300 m at the route start: mountains.
+struct Valley {
+    grade: f64,
+}
+
+impl ElevationModel for Valley {
+    fn elevation(
+        &mut self,
+        _lat: f64,
+        lon: f64,
+    ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+        let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+        std::future::ready(Ok(1300.0 - self.grade * east))
+    }
+}
+
+#[tokio::test]
+async fn chalets_show_their_front_to_the_valley_and_churches_their_choir_to_the_east() {
+    // A chalet with its long side east–west on ground falling eastwards, and a church
+    // likewise, each the other way round in the map.
+    let chalet = Building {
+        id: 31,
+        outline: rectangle(80.0, 400.0, 6.0, 4.75),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let church = Building {
+        id: 32,
+        outline: [
+            (-95.0, 600.0),
+            (-95.0, 610.5),
+            (-67.0, 610.5),
+            (-67.0, 600.0),
+            (-95.0, 600.0),
+        ]
+        .iter()
+        .map(|&(e, n)| at(e, n))
+        .collect(),
+        ..chalet.clone()
+    };
+    let map = MapData {
+        buildings: vec![chalet, church],
+        churches: vec![at(-80.0, 605.0)],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Valley { grade: 0.05 }, &map, &mut |_, _| {}).await;
+
+    let models = placed(&world);
+    let chalet = models
+        .iter()
+        .find(|p| p.model.starts_with("chalet"))
+        .expect("a chalet model");
+    assert!(
+        chalet.x[0] > 0.0,
+        "the balconies face east, down the valley"
+    );
+    let church = models
+        .iter()
+        .find(|p| p.model.starts_with("church"))
+        .expect("a church model");
+    assert!(church.x[0] > 0.0, "the choir is in the east");
+}
+
+#[tokio::test]
+async fn houses_on_steep_slopes_keep_their_shells() {
+    // A 30 % slope: the downhill side of a 12 m house lies 3.6 m lower, more than a model's
+    // basement walls reach.
+    let house = Building {
+        id: 41,
+        outline: rectangle(80.0, 400.0, 6.0, 4.5),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let map = MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Valley { grade: 0.3 }, &map, &mut |_, _| {}).await;
+
+    assert!(placed(&world).is_empty());
+    assert!(!building_faces(&world, (80.0, 400.0), 12.0).is_empty());
 }
 
 #[tokio::test]

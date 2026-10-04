@@ -14,7 +14,7 @@ mod structures;
 mod vegetation;
 mod water;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use torqa_osm::{LandCover, MapData};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
@@ -94,14 +94,28 @@ pub struct TerrainChunk {
     pub center: [f32; 3],
     /// Ground, coloured by land cover.
     pub mesh: MeshData,
-    /// Buildings standing in the chunk.
+    /// Buildings standing in the chunk that no model fits, built as shells.
     pub buildings: MeshData,
+    /// Buildings drawn as Blender-made models up close, by cell.
+    pub modelled: Vec<BuildingCell>,
     /// Paved streets of the map around the route (not the road ridden), on this chunk's ground.
     pub streets: MeshData,
     /// Unpaved tracks and paths of the map, likewise.
     pub tracks: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
+}
+
+/// Buildings drawn as Blender-made models (`app/assets/models/buildings`) up close, in one cell
+/// of a chunk; each cell switches to the shells by its own distance.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BuildingCell {
+    /// Instances by model name, as Godot `MultiMesh` buffers of 20 floats each: the transform
+    /// relative to the chunk centre (row-major 3×4), the plaster colour (sRGB, alpha 1) as
+    /// instance colour, and the roof colour (sRGB) with a variant in 0–1 as custom data.
+    pub models: BTreeMap<String, Vec<f32>>,
+    /// The same buildings as shells, for the distance.
+    pub shells: MeshData,
 }
 
 /// The generated world.
@@ -160,9 +174,9 @@ pub async fn generate<M: ElevationModel>(
             0.0,
             -(heights.origin.1 + CHUNK_SIZE / 2.0),
         ];
-        let mut building_mesh = MeshData::default();
+        let mut chunk_buildings = buildings::ChunkBuildings::default();
         for plot in buildings.get(&(cx, cn)).into_iter().flatten() {
-            buildings::add(&mut building_mesh, plot, &heights, origin);
+            buildings::add(&mut chunk_buildings, plot, &heights, origin);
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
@@ -185,7 +199,8 @@ pub async fn generate<M: ElevationModel>(
         world.chunks.push(TerrainChunk {
             center,
             mesh: heights.mesh(&land, origin, &road),
-            buildings: building_mesh,
+            buildings: chunk_buildings.shells,
+            modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
             tracks: unpaved,
             trees,

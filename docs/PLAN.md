@@ -187,10 +187,10 @@ Built in rideable steps:
 - [x] Other streets from the map drawn in 3D: asphalt streets, gravel tracks and paths, draped
   on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them;
   ways for pedestrians only (footways, sidewalks, steps) left out
-- [ ] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
+- [x] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
   — kinds inferred from the map (places of worship, land use, size, elevation) with their own
   roofs, materials and details, built as shells ✅; Blender-made models placed where they fit
-  still to come
+  (chalets facing the valley, choirs east), shells in the distance and for odd outlines ✅
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs — Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted building
   models with an in-game preview renderer (`scripts/render-models.sh`) ✅; MPFB2 with the

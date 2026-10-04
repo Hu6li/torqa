@@ -5,12 +5,16 @@
 //! towns, sheds from their size, and houses otherwise. Each kind gets its own proportions,
 //! roof, materials and details.
 
+mod models;
 mod parts;
 mod shape;
 
+use std::collections::BTreeMap;
+
 use torqa_osm::Building;
 
-use crate::{HeightGrid, MeshData, hash};
+use crate::{BuildingCell, HeightGrid, MeshData, hash};
+use models::{Fit, Wanted};
 use parts::{Builder, Paint, Pitch, RoofPaint, Style};
 pub(crate) use shape::{Point, centroid, contains, footprint, signed_area, triangulate};
 use shape::{Rect, distance};
@@ -32,6 +36,14 @@ const CHALETS_ONLY: f64 = 1100.0;
 /// A church point mapped on church grounds rather than the church marks the largest
 /// building this close.
 const CHURCH_REACH: f64 = 30.0;
+/// Churches smaller than this are chapels.
+const CHAPEL_AREA: f64 = 150.0;
+/// Models' walls reach 3 m below their ground floor; on plots falling more than this they
+/// would float, so those buildings keep their shells.
+const MODEL_BASEMENT: f64 = 2.8;
+/// Modelled buildings are grouped in cells this size, so that each cell switches between
+/// models up close and shells far away by its own distance.
+const CELL: f64 = 120.0;
 
 /// Plaster (sRGB): cream, beige, sand, white, light grey, ochre, pale yellow, salmon, sage.
 const PLASTER: [[f32; 3]; 9] = [
@@ -156,8 +168,18 @@ pub(crate) fn mark_churches(plots: &mut [Plot], churches: &[Point]) {
     }
 }
 
-/// Adds a building standing on `heights` to a chunk mesh centred at `origin`.
-pub(crate) fn add(mesh: &mut MeshData, plot: &Plot, heights: &HeightGrid, origin: [f64; 3]) {
+/// A chunk's buildings.
+#[derive(Debug, Default)]
+pub(crate) struct ChunkBuildings {
+    /// Shells of the buildings no model fits.
+    pub(crate) shells: MeshData,
+    /// Buildings drawn as models, by cell.
+    pub(crate) cells: BTreeMap<(i64, i64), BuildingCell>,
+}
+
+/// Adds a building standing on `heights` to a chunk centred at `origin`: as a model where one
+/// fits its footprint (with its shell for the distance), else as a shell.
+pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid, origin: [f64; 3]) {
     let footprint = &plot.footprint;
     if footprint.len() < 3 {
         return;
@@ -166,7 +188,7 @@ pub(crate) fn add(mesh: &mut MeshData, plot: &Plot, heights: &HeightGrid, origin
     // go down to the lowest like a basement.
     let grounds: Vec<f64> = footprint.iter().map(|&(e, n)| heights.at(e, n)).collect();
     let ground = grounds.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let footing = grounds.iter().copied().fold(f64::INFINITY, f64::min) - FOUNDATION;
+    let lowest = grounds.iter().copied().fold(f64::INFINITY, f64::min);
     let area = signed_area(footprint);
     let dice = Dice(plot.building.id);
     let kind = kind(plot, area, ground, &dice);
@@ -176,18 +198,191 @@ pub(crate) fn add(mesh: &mut MeshData, plot: &Plot, heights: &HeightGrid, origin
         RECTANGULAR
     };
     let rect = Rect::around(footprint).filter(|r| area / r.area() >= fill);
+    let design = (kind != Kind::Church).then(|| design(kind, plot.building, rect.is_some(), &dice));
+    let fit = rect
+        .filter(|_| ground - lowest < MODEL_BASEMENT)
+        .and_then(|rect| {
+            let wanted = Wanted {
+                kind,
+                chapel: area < CHAPEL_AREA,
+                storeys: design
+                    .as_ref()
+                    .filter(|d| d.windows)
+                    .map(|d| storeys_of(wall_height(plot.building, rise(d, &rect), d))),
+                hipped: design.as_ref().is_some_and(|d| d.roof == Roof::Hipped),
+            };
+            models::fitting(&rect, wanted, &dice).map(|fit| (rect, fit))
+        });
+    let footing = lowest - FOUNDATION;
+    let Some((rect, fit)) = fit else {
+        let mut builder = Builder {
+            mesh: &mut chunk.shells,
+            origin,
+            ground,
+            footing,
+        };
+        shell(&mut builder, plot, area, rect, design.as_ref(), &dice, None);
+        return;
+    };
+
+    #[allow(clippy::cast_possible_truncation)] // world coordinates are far below 2^63 cells
+    let cell = (
+        (rect.centre.0 / CELL).floor() as i64,
+        (rect.centre.1 / CELL).floor() as i64,
+    );
+    let cell = chunk.cells.entry(cell).or_default();
+    let (plaster, roof) = colours(plot.building, design.as_ref(), &dice);
+    // Chalets and farmhouses show their front gable to the valley; churches have their choir
+    // in the east; the rest face either way.
+    let front = rect.point(rect.half_length, 0.0);
+    let back = rect.point(-rect.half_length, 0.0);
+    let turn = match kind {
+        Kind::Chalet | Kind::Farmhouse => heights.at(front.0, front.1) > heights.at(back.0, back.1),
+        Kind::Church => rect.axis.0 < 0.0,
+        _ => dice.roll(51) < 0.5,
+    };
+    let instance = Instance {
+        rect: &rect,
+        fit,
+        turn,
+        ground,
+        plaster,
+        roof,
+        variant: dice.roll(50),
+    };
+    instance.push(
+        cell.models.entry(fit.model.name.clone()).or_default(),
+        origin,
+    );
     let mut builder = Builder {
-        mesh,
+        mesh: &mut cell.shells,
         origin,
         ground,
         footing,
     };
-    if kind == Kind::Church {
-        church(&mut builder, plot, area, rect, &dice);
-    } else {
-        let design = design(kind, plot.building, rect.is_some(), &dice);
-        build(&mut builder, footprint, rect, &design, plot.building, &dice);
+    shell(
+        &mut builder,
+        plot,
+        area,
+        Some(rect),
+        design.as_ref(),
+        &dice,
+        Some(fit),
+    );
+}
+
+/// A building of the map, built as a shell; `fit` makes it match the model drawn up close.
+fn shell(
+    b: &mut Builder,
+    plot: &Plot,
+    area: f64,
+    rect: Option<Rect>,
+    design: Option<&Design>,
+    dice: &Dice,
+    fit: Option<Fit>,
+) {
+    let Some(design) = design else {
+        church(b, plot, area, rect, dice);
+        return;
+    };
+    match fit {
+        Some(fit) => {
+            let mut matched = design.clone();
+            matched.roof = if fit.model.roof == "hipped" {
+                Roof::Hipped
+            } else {
+                Roof::Gable
+            };
+            if let Some(pitch) = fit.model.pitch {
+                matched.pitch_degrees = pitch;
+            }
+            let walls = Some(fit.model.eaves);
+            build(
+                b,
+                &plot.footprint,
+                rect,
+                &matched,
+                plot.building,
+                walls,
+                dice,
+            );
+        }
+        None => build(b, &plot.footprint, rect, design, plot.building, None, dice),
     }
+}
+
+/// One model instance and how it stands.
+struct Instance<'a> {
+    rect: &'a Rect,
+    fit: Fit,
+    /// Turned round: the model's front towards the rectangle's back.
+    turn: bool,
+    ground: f64,
+    plaster: [f32; 3],
+    roof: [f32; 3],
+    variant: f64,
+}
+
+impl Instance<'_> {
+    /// Appends the instance in Godot `MultiMesh` buffer layout: transform (row-major 3×4,
+    /// relative to `origin`), instance colour (plaster) and custom data (roof colour, variant).
+    #[allow(clippy::cast_possible_truncation)] // stored as f32 for the GPU
+    fn push(&self, buffer: &mut Vec<f32>, origin: [f64; 3]) {
+        let sign = if self.turn { -1.0 } else { 1.0 };
+        let (east, north) = (self.rect.axis.0 * sign, self.rect.axis.1 * sign);
+        let (along, across) = self.fit.scale;
+        let position = [
+            self.rect.centre.0 - origin[0],
+            self.ground - origin[1],
+            -self.rect.centre.1 - origin[2],
+        ];
+        // The model's x runs along the rectangle, its z (Blender's −y) across it.
+        buffer.extend(
+            [
+                east * along,
+                0.0,
+                north * across,
+                position[0],
+                0.0,
+                1.0,
+                0.0,
+                position[1],
+                -north * along,
+                0.0,
+                east * across,
+                position[2],
+            ]
+            .map(|v| v as f32),
+        );
+        buffer.extend([self.plaster[0], self.plaster[1], self.plaster[2], 1.0]);
+        buffer.extend([
+            self.roof[0],
+            self.roof[1],
+            self.roof[2],
+            self.variant as f32,
+        ]);
+    }
+}
+
+/// The plaster and roof colours of a building (sRGB), for its model.
+fn colours(building: &Building, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32; 3]) {
+    if let Some(design) = design {
+        (
+            design.base.unwrap_or(design.wall).rgb,
+            design.roof_paint.top.rgb,
+        )
+    } else {
+        let (wall, roof) = church_paints(building, dice);
+        (wall.rgb, roof.rgb)
+    }
+}
+
+/// Storeys of walls this high.
+fn storeys_of(walls: f64) -> u32 {
+    // Small whole numbers.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let count = ((walls - EAVES_MARGIN) / STOREY).round().max(1.0) as u32;
+    count
 }
 
 /// What a building is, from its surroundings, size, mapped height and elevation.
@@ -268,6 +463,7 @@ enum Roof {
 }
 
 /// How a building is built.
+#[derive(Debug, Clone)]
 struct Design {
     kind: Kind,
     /// Wall height when the map gives none.
@@ -534,13 +730,15 @@ impl Recipe<'_> {
     }
 }
 
-/// Walls, roof and details of every kind but churches.
+/// Walls, roof and details of every kind but churches; `walls`, if given, is the height of the
+/// walls instead of what the map and the design say.
 fn build(
     b: &mut Builder,
     footprint: &[Point],
     rect: Option<Rect>,
     design: &Design,
     building: &Building,
+    walls: Option<f64>,
     dice: &Dice,
 ) {
     let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
@@ -548,16 +746,12 @@ fn build(
         Roof::Flat { parapet } => Some(parapet),
         Roof::Gable | Roof::Hipped => None,
     };
-    let mut angle = design.pitch_degrees.to_radians();
-    let rise = match (parapet, rect) {
-        (Some(_), _) => 0.0,
-        (None, Some(rect)) => {
-            angle = angle.min((design.max_rise / rect.half_width).atan());
-            rect.half_width * angle.tan()
-        }
-        (None, None) => 2.0,
+    let (angle, rise) = match (parapet, rect) {
+        (Some(_), _) => (design.pitch_degrees.to_radians(), 0.0),
+        (None, Some(rect)) => pitch_over(design, &rect),
+        (None, None) => (design.pitch_degrees.to_radians(), 2.0),
     };
-    let walls = wall_height(building, rise, design);
+    let walls = walls.unwrap_or_else(|| wall_height(building, rise, design));
     let ground = b.ground;
     let eaves = ground + walls;
     let wall_top = eaves + parapet.unwrap_or(0.0);
@@ -627,6 +821,41 @@ fn build(
             false,
         );
     }
+}
+
+/// The slope of a design's roof over `rect`, flatter on wide buildings so it rises no more
+/// than the design allows, and how high it rises.
+fn pitch_over(design: &Design, rect: &Rect) -> (f64, f64) {
+    let angle = design
+        .pitch_degrees
+        .to_radians()
+        .min((design.max_rise / rect.half_width).atan());
+    (angle, rect.half_width * angle.tan())
+}
+
+/// How high a design's roof rises over `rect`.
+fn rise(design: &Design, rect: &Rect) -> f64 {
+    match design.roof {
+        Roof::Flat { .. } => 0.0,
+        Roof::Gable | Roof::Hipped => pitch_over(design, rect).1,
+    }
+}
+
+/// A church's walls (the mapped colour if there is one) and roof.
+fn church_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+    let wall = Paint::new(
+        dice.tint(
+            building
+                .color
+                .unwrap_or_else(|| dice.pick(1, &LIGHT_PLASTER)),
+        ),
+        Style::Church,
+    );
+    let roof = Paint::new(
+        dice.pick(2, &[TILES[3], TILES[4], TILES[2], TILES[1]]),
+        Style::Tiles,
+    );
+    (wall, roof)
 }
 
 /// Height of the walls above the ground, from the map if it knows (counting half of a
@@ -733,19 +962,8 @@ fn balcony(b: &mut Builder, rect: &Rect, walls: f64, wood: [f32; 3], dice: &Dice
 /// turret on the roof of a chapel.
 fn church(b: &mut Builder, plot: &Plot, area: f64, rect: Option<Rect>, dice: &Dice) {
     let building = plot.building;
-    let chapel = area < 150.0;
-    let wall = Paint::new(
-        dice.tint(
-            building
-                .color
-                .unwrap_or_else(|| dice.pick(1, &LIGHT_PLASTER)),
-        ),
-        Style::Church,
-    );
-    let roof = Paint::new(
-        dice.pick(2, &[TILES[3], TILES[4], TILES[2], TILES[1]]),
-        Style::Tiles,
-    );
+    let chapel = area < CHAPEL_AREA;
+    let (wall, roof) = church_paints(building, dice);
     let blank = wall.with(Style::Blank);
     let paint = RoofPaint {
         top: roof,

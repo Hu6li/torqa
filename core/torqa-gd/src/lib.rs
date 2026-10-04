@@ -1061,11 +1061,13 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, streets, tracks, conifers,
-    /// broadleaves, grass, flowers}`. `terrain`
-    /// and `buildings` are mesh arrays (`{vertices, normals, uvs, colors, indices}`), the tree
-    /// entries `MultiMesh` transform buffers. Geometry is relative to `center`, in Godot
-    /// coordinates (x east, y up, −z north, metres from the route start).
+    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, conifers,
+    /// broadleaves, grass, flowers}`. `terrain` and `buildings` are mesh arrays (`{vertices,
+    /// normals, uvs, colors, indices}`), the tree entries `MultiMesh` transform buffers.
+    /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
+    /// `models` mapping model names to `MultiMesh` buffers (transform, colour, custom data)
+    /// and `shells` the mesh arrays to draw in the distance instead. Geometry is relative to
+    /// `center`, in Godot coordinates (x east, y up, −z north, metres from the route start).
     #[func]
     fn world_chunk(&self, index: i64) -> VarDictionary {
         let chunk = self
@@ -1082,10 +1084,22 @@ impl TorqaApp {
         let broadleaves = PackedFloat32Array::from(chunk.trees.broadleaves.as_slice());
         let grass = PackedFloat32Array::from(chunk.trees.grass.as_slice());
         let flowers = PackedFloat32Array::from(chunk.trees.flowers.as_slice());
+        let modelled: VarArray = chunk
+            .modelled
+            .iter()
+            .map(|cell| {
+                let mut models = VarDictionary::new();
+                for (name, buffer) in &cell.models {
+                    models.set(name.as_str(), &PackedFloat32Array::from(buffer.as_slice()));
+                }
+                vdict! { "models" => &models, "shells" => &mesh_arrays(&cell.shells) }.to_variant()
+            })
+            .collect();
         vdict! {
             "center" => Vector3::new(x, y, z),
             "terrain" => &mesh_arrays(&chunk.mesh),
             "buildings" => &mesh_arrays(&chunk.buildings),
+            "modelled" => &modelled,
             "streets" => &mesh_arrays(&chunk.streets),
             "tracks" => &mesh_arrays(&chunk.tracks),
             "conifers" => &conifers,

@@ -43,6 +43,8 @@ const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
+## Buildings switch between their models and their shells over this distance.
+const MODEL_FADE: float = 40.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
 const CAMERA_SMOOTHING: float = 6.0
@@ -58,6 +60,7 @@ const JUMP_M: float = 50.0
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
+		"model_range": 200.0,
 		"grass_range": 0.0,
 		"grass_shadows": false,
 		"ground_detail": 0,
@@ -79,6 +82,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"medium":
 	{
+		"model_range": 400.0,
 		"grass_range": 60.0,
 		"grass_shadows": false,
 		"ground_detail": 1,
@@ -100,6 +104,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"high":
 	{
+		"model_range": 550.0,
 		"grass_range": 100.0,
 		"grass_shadows": true,
 		"ground_detail": 2,
@@ -121,6 +126,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"ultra":
 	{
+		"model_range": 750.0,
 		"grass_range": 150.0,
 		"grass_shadows": true,
 		"ground_detail": 2,
@@ -436,6 +442,9 @@ func _build_some_chunks() -> void:
 		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
 		buildings.visibility_range_end = DETAIL_RANGE * _distance
 		node.add_child(buildings)
+		var modelled: Array = chunk.get("modelled", [])
+		for cell: Dictionary in modelled:
+			_add_modelled(node, cell)
 		for kind: String in ["conifers", "broadleaves"]:
 			var buffer: PackedFloat32Array = chunk[kind]
 			if buffer.is_empty():
@@ -450,6 +459,34 @@ func _build_some_chunks() -> void:
 					node.add_child(_plants(plants, kind == "flowers", grass_range))
 		_next_chunk += 1
 		built += 1
+
+
+## Buildings drawn as Blender-made models up close and as shells beyond `model_range`, the two
+## crossfading.
+func _add_modelled(node: Node3D, cell: Dictionary) -> void:
+	var model_range: float = _quality["model_range"]
+	var models: Dictionary = cell["models"]
+	for model: String in models:
+		var multimesh: MultiMesh = MultiMesh.new()
+		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.use_colors = true
+		multimesh.use_custom_data = true
+		multimesh.mesh = BuildingModels.mesh(model)
+		var buffer: PackedFloat32Array = models[model]
+		multimesh.instance_count = buffer.size() / 20
+		multimesh.buffer = buffer
+		var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+		instance.multimesh = multimesh
+		instance.visibility_range_end = model_range
+		instance.visibility_range_end_margin = MODEL_FADE
+		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		node.add_child(instance)
+	var shell_arrays: Dictionary = cell["shells"]
+	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material)
+	shells.visibility_range_begin = model_range
+	shells.visibility_range_begin_margin = MODEL_FADE
+	shells.visibility_range_end = DETAIL_RANGE * _distance
+	node.add_child(shells)
 
 
 func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
