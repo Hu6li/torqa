@@ -77,19 +77,22 @@ class Mesh:
             if name not in skip:
                 self.facing(points, normal, material)
 
-    def beam(self, start, end, width, height, material, up=UP, caps=True):
-        """A box from `start` to `end` with a `width` × `height` cross-section; `up` tilts it."""
+    def beam(self, start, end, width, height, material, up=UP, caps=True, top=True):
+        """A box from `start` to `end` with a `width` × `height` cross-section; `up` tilts it.
+        `top=False` leaves out the side facing `up`, for beams under a roof."""
         start, end = Vector(start), Vector(end)
         along = (end - start).normalized()
         side = along.cross(Vector(up)).normalized()
         if side.length < 1e-6:
             side = along.cross(Vector((1.0, 0.0, 0.0))).normalized()
-        top = side.cross(along).normalized()
-        w, h = side * (width / 2.0), top * (height / 2.0)
+        upward = side.cross(along).normalized()
+        w, h = side * (width / 2.0), upward * (height / 2.0)
         ring = [-w - h, w - h, w + h, -w + h]
         for i in range(4):
             a, b = ring[i], ring[(i + 1) % 4]
             outward = (a + b).normalized()
+            if not top and outward.dot(upward) > 0.9:
+                continue
             self.facing([start + a, start + b, end + b, end + a], outward, material)
         if caps:
             self.facing([start + r for r in ring], -along, material)
@@ -289,20 +292,13 @@ def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=
         normal = facade.along * toward.x + UP * toward.z
         mesh.facing([p(a, b, front), p(c, e, front), p(c, e, glass), p(a, b, glass)],
                     normal, frame)
+    # The glass draws its glazing bars where its texture coordinates cross whole numbers, so
+    # they span the panes; leaded glass has dark bars, the rest white ones.
+    columns, rows = panes
     mesh.facing([p(inner[0], inner[2], glass), p(inner[1], inner[2], glass),
                  p(inner[1], inner[3], glass), p(inner[0], inner[3], glass)],
-                facade.out, "glass", uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
-    # Glazing bars.
-    columns, rows = panes
-    bar = 0.045
-    for c in range(1, columns):
-        u = inner[0] + (inner[1] - inner[0]) * c / columns
-        mesh.beam(p(u, inner[2], glass - 0.025), p(u, inner[3], glass - 0.025), bar, 0.04,
-                  frame, up=facade.out)
-    for r in range(1, rows):
-        z = inner[2] + (inner[3] - inner[2]) * (0.62 if rows == 2 else r / rows)
-        mesh.beam(p(inner[0], z, glass - 0.025), p(inner[1], z, glass - 0.025), 0.04, bar,
-                  frame, up=UP)
+                facade.out, "leaded" if frame == "metal" else "glass",
+                uvs=[(0, 0), (columns, 0), (columns, rows), (0, rows)])
     if sill:
         mesh_sill(mesh, facade, o, sill)
     else:
@@ -310,8 +306,9 @@ def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=
                     frame)
     if shutters:
         width = o.width / 2.0
-        for u0, u1 in ((o.u0 - width - 0.03, o.u0 - 0.03), (o.u1 + 0.03, o.u1 + width + 0.03)):
-            shutter(mesh, facade, u0, u1, o.z0, o.z1, shutters)
+        for u0, u1, side in ((o.u0 - width - 0.03, o.u0 - 0.03, -1.0),
+                             (o.u1 + 0.03, o.u1 + width + 0.03, 1.0)):
+            shutter(mesh, facade, u0, u1, o.z0, o.z1, shutters, side)
     if flowers:
         flower_box(mesh, facade, o)
 
@@ -325,25 +322,20 @@ def mesh_sill(mesh, facade, o, material):
     mesh.facing(corners_top, UP + facade.out * 0.1, material)
     mesh.facing([p(u0, bottom, out), p(u1, bottom, out), p(u1, top - 0.02, out), p(u0, top - 0.02, out)],
                 facade.out, material)
-    mesh.facing([p(u0, bottom, out), p(u0, bottom, 0.0), p(u1, bottom, 0.0), p(u1, bottom, out)],
-                -UP, material)
-    for u, side in ((u0, -1.0), (u1, 1.0)):
-        mesh.facing([p(u, bottom, out), p(u, top - 0.02, out), p(u, top, 0.0), p(u, bottom, 0.0)],
-                    facade.along * side, material)
 
 
-def shutter(mesh, facade, u0, u1, z0, z1, material):
-    """A shutter folded back against the wall; slats are drawn by its material."""
+def shutter(mesh, facade, u0, u1, z0, z1, material, side):
+    """A shutter folded back against the wall, left (`side` −1) or right (1) of its window;
+    slats are drawn by its material."""
     p = facade.point
     near, far = -0.02, -0.055
     corners = [(u0, z0), (u1, z0), (u1, z1), (u0, z1)]
     mesh.facing([p(u, z, far) for u, z in corners], facade.out, material,
                 uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
-    for i in range(4):
-        (a, b), (c, e) = corners[i], corners[(i + 1) % 4]
-        mid = Vector(((a + c) / 2 - (u0 + u1) / 2, 0.0, (b + e) / 2 - (z0 + z1) / 2))
-        normal = facade.along * mid.x + UP * mid.z
-        mesh.facing([p(a, b, near), p(c, e, near), p(c, e, far), p(a, b, far)], normal, material)
+    # Its thickness only shows on the side away from the window.
+    outer = u0 if side < 0 else u1
+    mesh.facing([p(outer, z0, near), p(outer, z0, far), p(outer, z1, far), p(outer, z1, near)],
+                facade.along * side, material)
 
 
 def flower_box(mesh, facade, o):
@@ -363,7 +355,7 @@ def flower_box(mesh, facade, o):
     plants(mesh, p(u0 + 0.04, z + 0.04, -0.17), p(u1 - 0.04, z + 0.04, -0.17), facade.out)
 
 
-def plants(mesh, start, end, out, spacing=0.16):
+def plants(mesh, start, end, out, spacing=0.24):
     """Geraniums along a box from `start` to `end`: a strip of leaves dotted with blossoms."""
     start, end = Vector(start), Vector(end)
     mesh.beam(start, end, 0.22, 0.2, "leaves")
@@ -374,7 +366,7 @@ def plants(mesh, start, end, out, spacing=0.16):
         t = (k + 0.5) / count
         lean = out.normalized() * (0.06 if k % 2 else -0.04)
         lift = UP * (0.12 + 0.04 * ((k * 7) % 3) / 2.0)
-        mesh.sphere(start + along * t + lean + lift, 0.075, "flowers", rings=2, segments=4)
+        mesh.sphere(start + along * t + lean + lift, 0.09, "flowers", rings=2, segments=3)
 
 
 def door(mesh, facade, o, leaf="door", step="stone", canopy=None):
@@ -456,7 +448,7 @@ def gable_roof(mesh, rect, eaves, pitch_deg, overhang, verge, roof="tiles", unde
                 start = Vector((x, side * (w - 0.05), eaves - 0.02))
                 end_point = Vector((x, side * (w + overhang - 0.08), edge + 0.03))
                 mesh.beam(start - Vector((0, 0, 0.09)), end_point - Vector((0, 0, 0.09)),
-                          0.1, 0.16, "wood_dark", caps=True)
+                          0.1, 0.16, "wood_dark", caps=False, top=False)
         if gutters:
             gutter(mesh, Vector((-reach, y + side * 0.06, edge - 0.02)),
                    Vector((reach, y + side * 0.06, edge - 0.02)), out)
@@ -530,7 +522,8 @@ def hipped_roof(mesh, rect, eaves, pitch_deg, overhang, roof="tiles", under="woo
             for k in range(1, count):
                 x = -l + 2 * l * k / count
                 mesh.beam((x, side * (w - 0.05), eaves - 0.11),
-                          (x, side * (wr - 0.08), edge - 0.06), 0.1, 0.16, "wood_dark")
+                          (x, side * (wr - 0.08), edge - 0.06), 0.1, 0.16, "wood_dark",
+                          caps=False, top=False)
     # Ridge and hip caps.
     if half_ridge > 1e-3:
         mesh.beam((-half_ridge, 0.0, ridge + t + 0.03), (half_ridge, 0.0, ridge + t + 0.03), 0.28,
@@ -616,7 +609,7 @@ def half_hipped_roof(mesh, rect, eaves, pitch_deg, overhang, verge, kink=0.6, ro
         for k in range(count + 1):
             x = -l + 2 * l * k / count
             mesh.beam((x, side * (w - 0.05), eaves - 0.11), (x, side * (w + overhang - 0.08),
-                      edge - 0.06), 0.1, 0.16, "wood_dark")
+                      edge - 0.06), 0.1, 0.16, "wood_dark", caps=False, top=False)
     mesh.beam((-ridge_end, 0.0, ridge + t + 0.03), (ridge_end, 0.0, ridge + t + 0.03), 0.28,
               0.12, roof)
     for end in (-1.0, 1.0):

@@ -23,6 +23,7 @@ const int LEAVES = 13;
 const int CLOCK = 14;
 const int SHEET = 15;
 const int GARAGE = 16;
+const int LEADED = 17;
 
 uniform int pattern = 0;
 uniform vec3 color : source_color = vec3(0.8);
@@ -109,13 +110,19 @@ void fragment() {
 		albedo = base * tone * (0.85 + 0.25 * grain) * mix(1.0, 0.5, joint);
 		average = base * 0.86;
 		slope.y = (smoothstep(0.0, 0.1, fract(boards)) - smoothstep(0.9, 1.0, fract(boards))) * 0.4;
-	} else if (pattern == GLASS) {
-		// Panes reflect the sky; a curtain or the room behind shows faintly.
+	} else if (pattern == GLASS || pattern == LEADED) {
+		// Panes reflect the sky; a curtain shows faintly behind some. UV counts panes, so
+		// glazing bars run where it crosses whole numbers: white, or dark lead in churches.
+		// (Along the frame the bars merge into it.)
+		vec2 pane = fract(uv);
+		float bars = 1.0 - band(pane.x, 0.04, 0.96, fwidth(uv.x)) * band(pane.y, 0.03, 0.97, fwidth(uv.y));
 		float curtain = step(0.5, hash(floor(world_position.xz * 0.7)))
-			* band(uv.x, 0.0, 0.28, 0.02) * (1.0 - step(0.95, uv.y));
-		albedo = mix(base, linear(vec3(0.75, 0.72, 0.66)), curtain * 0.5);
-		average = albedo;
-		rough = 0.06;
+			* band(pane.x, 0.0, 0.28, 0.02) * (1.0 - step(0.95, pane.y));
+		vec3 glass = mix(base, linear(vec3(0.75, 0.72, 0.66)), curtain * 0.5);
+		vec3 bar = pattern == LEADED ? linear(vec3(0.12, 0.12, 0.13)) : linear(vec3(0.93, 0.93, 0.91));
+		albedo = mix(glass, bar, bars);
+		average = mix(glass, bar, 0.12);
+		rough = mix(0.06, 0.5, bars);
 	} else if (pattern == SHUTTER) {
 		// Louvred shutters in the building's colour; some buildings have none.
 		if (variant < 0.25) {

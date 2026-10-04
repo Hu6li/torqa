@@ -118,6 +118,8 @@ def main():
         manifest[spec["name"]] = {"kind": spec["kind"], "roof": spec.get("roof", "gable"),
                                   **{k: round(v, 3) if isinstance(v, float) else v
                                      for k, v in shape.items()}}
+        if "pitch" in spec:
+            manifest[spec["name"]]["pitch"] = spec["pitch"]
         print(f"built {spec['name']}: {len(mesh.faces)} faces")
     path = os.path.join(OUT, "models.json")
     if wanted and os.path.exists(path):

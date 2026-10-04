@@ -15,8 +15,9 @@ from kit import (
 STOREY = 2.9
 # The ground floor sits this far above the ground.
 FLOOR = 0.3
-# Walls reach this far below the ground, so slopes never show a gap.
-BASEMENT = 1.5
+# Walls reach this far below the ground, so slopes never show a gap (the world places models
+# at the highest ground of their plot and keeps shells on steeper plots).
+BASEMENT = 3.0
 # Walls end this far above the top storey's floor plus its height.
 PLATE = 0.25
 

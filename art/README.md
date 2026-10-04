@@ -32,19 +32,23 @@ scripts/dev.sh sh -c 'MODELS="chalet_2_m" scripts/render-models.sh'
   rafters, gutters and downpipes, spires and clocks.
 
 Models use metres with x along the building, y across it and z up; the origin is the centre of
-the footprint at ground level, and walls reach 1.5 m below it for slopes. Texture coordinates
+the footprint at ground level, and walls reach 3 m below it for slopes. Texture coordinates
 are metres on each surface (walls: along and up; roofs: along the eaves and up the slope).
 
 The files carry no textures: each face has a material **name**, and the app gives every name
 its look in `app/scenes/building_models.gd` and `app/shaders/building_model.gdshader`. New
-names need an entry there.
+names need an entry there. Fine detail is drawn rather than modelled where that saves many
+triangles: glass gets its texture coordinates spanning its panes (2 × 2 panes: 0–2 × 0–2) and
+draws glazing bars where they cross whole numbers; shutters draw their slats. Keep the models
+lean: towns place thousands of them.
 
 | Name | Used for |
 |---|---|
 | `plaster` | rendered walls; the colour varies per building |
 | `stone` | plinths, sills, quoins |
 | `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and rafters; the Ründi |
-| `frame`, `glass`, `shutter`, `door`, `garage` | windows, shutters (colour varies per building), doors |
+| `frame`, `glass`, `leaded` | window frames; glass with white or (in churches) lead glazing bars |
+| `shutter`, `door`, `garage` | shutters (colour varies per building), doors |
 | `tiles`, `slate`, `sheet` | roofs: tiles in the building's roof colour, slate, sheet metal |
 | `metal`, `copper` | gutters, caps, finials; spires |
 | `flowers`, `leaves` | geraniums in boxes and on balconies |
