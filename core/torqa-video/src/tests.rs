@@ -234,3 +234,62 @@ fn slower_and_faster_sound_keeps_its_pitch() {
     }
     std::fs::remove_file(path).unwrap();
 }
+
+fn fixture(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../fixtures")
+        .join(name)
+}
+
+/// Mean of each colour over a frame, to compare frames that should be the same picture.
+fn colour(frame: &Frame) -> [f64; 3] {
+    let mut sum = [0.0; 3];
+    for pixel in frame.rgba.chunks(4) {
+        for (total, value) in sum.iter_mut().zip(pixel) {
+            *total += f64::from(*value);
+        }
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let count = (frame.rgba.len() / 4) as f64;
+    sum.map(|s| s / count)
+}
+
+#[test]
+fn av1_videos_play_forwards_backwards_and_after_jumps() {
+    // A 2 s, 10 fps test pattern in AV1 (8-bit 4:2:0), as Van Gestel's route videos are.
+    let mut video = Video::open(&fixture("av1-8bit.mp4")).unwrap();
+    let info = video.info();
+    assert_eq!((info.width, info.height), (64, 48));
+    assert!((info.duration.as_secs_f64() - 2.0).abs() < 0.15, "{info:?}");
+    assert!((info.frame_rate - 10.0).abs() < 1e-6, "{info:?}");
+
+    let in_order: Vec<[f64; 3]> = (0..20)
+        .map(|i| {
+            let frame = video.frame_at(Duration::from_millis(i * 100 + 50)).unwrap();
+            assert_eq!(frame.time, Duration::from_millis(i * 100), "frame {i}");
+            colour(frame)
+        })
+        .collect();
+    // A moving pattern, not one colour throughout.
+    assert!(in_order.windows(2).any(|w| (w[0][0] - w[1][0]).abs() > 0.5));
+    for (seconds, index) in [(1.55, 15), (0.0, 0), (1.95, 19), (0.75, 7)] {
+        let frame = video.frame_at(Duration::from_secs_f64(seconds)).unwrap();
+        let (got, wanted) = (colour(frame), in_order[index]);
+        assert!(
+            got.iter().zip(wanted).all(|(a, b)| (a - b).abs() < 0.5),
+            "at {seconds} s: {got:?} vs frame {index} {wanted:?}"
+        );
+    }
+}
+
+#[test]
+fn deeper_av1_videos_play_too() {
+    let mut video = Video::open(&fixture("av1-10bit.mp4")).unwrap();
+    let frame = video.frame_at(Duration::from_millis(500)).unwrap();
+    assert_eq!(frame.time, Duration::from_millis(500));
+    assert!(
+        colour(frame).iter().any(|c| *c > 20.0),
+        "{:?}",
+        colour(frame)
+    );
+}

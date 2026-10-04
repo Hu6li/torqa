@@ -76,4 +76,5 @@ Route videos belong to whoever filmed them; the free ones are usually for person
 (e.g. CC BY-NC-SA). Torqa does not ship or redistribute any videos — share courses together
 with their videos only where the video's licence allows it.
 
-Video is decoded with FFmpeg (LGPL), see [ADR 0010](adr/0010-video-decoding.md).
+Video is decoded with FFmpeg (LGPL); AV1 videos (common for downloadable route videos) with
+rav1d (BSD-2-Clause). See [ADR 0010](adr/0010-video-decoding.md).

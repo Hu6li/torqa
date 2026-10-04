@@ -45,3 +45,20 @@ Options considered:
 - Transcoding down on import (R17) needs an encoder: VideoToolbox on macOS; until then frames
   are scaled while decoding. Whether software decoding keeps up with 4K on an M1 is to be
   measured; hardware decoding is the next step if not.
+
+## Amendment (2026-10-04): AV1 with rav1d (#39)
+
+Route-video libraries such as Van Gestel's are AV1. FFmpeg's own AV1 decoder only drives
+hardware decoders, which M1/M2 Macs lack, so those videos showed nothing.
+
+- AV1 is decoded with **rav1d**, the Rust port of dav1d (BSD-2-Clause); FFmpeg still reads the
+  file and converts the pictures. rav1d publishes only dav1d's C interface, so `torqa-video`'s
+  `av1` module is its one place with `unsafe` code: small FFI wrappers with documented safety.
+- The crate is **`re_rav1d` 0.1.3** (rerun's publish of rav1d): rav1d 1.1.0's package leaves out
+  the headers its ARM assembly needs, which would make it slow on Apple Silicon. To switch back
+  to `rav1d` once a release includes them (tracked in an issue).
+- Its assembly is enabled except on Linux/ARM, where it cannot be linked into the GDExtension
+  (a shared library); there the pure Rust decoder is used — still ~145 fps at 1080p in the dev
+  container, ~250 fps with assembly.
+- rav1d depends on `paste`, a finished compile-time macro flagged unmaintained
+  (RUSTSEC-2024-0436); `deny.toml` ignores that advisory, and allows `CC0-1.0` (`to_method`).
