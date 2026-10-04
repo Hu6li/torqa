@@ -54,11 +54,10 @@ hardware decoders, which M1/M2 Macs lack, so those videos showed nothing.
 - AV1 is decoded with **rav1d**, the Rust port of dav1d (BSD-2-Clause); FFmpeg still reads the
   file and converts the pictures. rav1d publishes only dav1d's C interface, so `torqa-video`'s
   `av1` module is its one place with `unsafe` code: small FFI wrappers with documented safety.
-- The crate is **`re_rav1d` 0.1.3** (rerun's publish of rav1d): rav1d 1.1.0's package leaves out
-  the headers its ARM assembly needs, which would make it slow on Apple Silicon. To switch back
-  to `rav1d` once a release includes them (tracked in an issue).
-- Its assembly is enabled except on Linux/ARM, where it cannot be linked into the GDExtension
-  (a shared library); there the pure Rust decoder is used — still ~145 fps at 1080p in the dev
-  container, ~250 fps with assembly.
+- The crate is the official **`rav1d` 1.1.0**, **without its assembly**: the package leaves out
+  the headers its ARM assembly needs, and the pure Rust decoder is fast enough — ~145 fps at
+  1080p (decoding and scaling) in the dev container, ~250 fps with assembly. rerun's
+  `re_rav1d`, which packages the headers, was tried and dropped: its repository is archived.
+  Assembly can be enabled once a rav1d release ships the headers (tracked in an issue).
 - rav1d depends on `paste`, a finished compile-time macro flagged unmaintained
   (RUSTSEC-2024-0436); `deny.toml` ignores that advisory, and allows `CC0-1.0` (`to_method`).

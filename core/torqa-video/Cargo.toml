@@ -13,11 +13,6 @@ quick-xml.workspace = true
 rav1d.workspace = true
 thiserror.workspace = true
 
-# rav1d's assembly, for speed: everywhere but Linux on ARM, where it cannot be linked into a
-# shared library (the GDExtension); there the pure Rust decoder is used.
-[target.'cfg(not(all(target_os = "linux", target_arch = "aarch64")))'.dependencies]
-rav1d = { workspace = true, features = ["asm", "asm_arm64_dotprod", "asm_arm64_i8mm"] }
-
 [features]
 # Test videos for other crates' tests.
 testing = []
