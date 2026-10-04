@@ -312,6 +312,8 @@ struct ActiveRide {
     ghost: Option<Ghost>,
     /// Plays the video of a video course along the ride.
     player: Option<video::VideoPlayer>,
+    /// And its sound (R26), if it has any.
+    sound: Option<video::SoundPlayer>,
 }
 
 /// When the 3D world of a loaded route is built.
@@ -761,6 +763,29 @@ impl App {
             .flatten()
     }
 
+    /// The next stereo samples of the video's sound during a ride on a video course, at most
+    /// `max`; at [`App::video_sound_rate`] samples per second. Empty without sound.
+    pub fn video_sound(&mut self, max: usize) -> Vec<torqa_video::audio::Stereo> {
+        self.ride
+            .as_ref()
+            .and_then(|active| active.sound.as_ref())
+            .map_or_else(Vec::new, |sound| sound.pull(max))
+    }
+
+    /// Samples per second of [`App::video_sound`]; `None` while riding without the video's
+    /// sound.
+    #[must_use]
+    pub fn video_sound_rate(&self) -> Option<u32> {
+        Some(self.ride.as_ref()?.sound.as_ref()?.rate())
+    }
+
+    /// Plays the video's sound during this ride or not (R26, a ride option).
+    pub fn set_video_sound(&mut self, on: bool) {
+        if let Some(sound) = self.ride.as_ref().and_then(|a| a.sound.as_ref()) {
+            sound.set_on(on);
+        }
+    }
+
     /// Saves the loaded route with everything needed to ride it offline as a course in the
     /// library; reports [`AppEvent::CourseAdded`].
     ///
@@ -1096,6 +1121,13 @@ impl App {
             .map(|v| video::VideoPlayer::open(&v.video))
             .transpose()
             .map_err(AppError::Video)?;
+        // A ride without the video's sound is still a ride.
+        let sound = self.video.as_ref().and_then(|v| {
+            video::SoundPlayer::open(&v.video)
+                .inspect_err(|error| warn!(%error, "no sound for the video"))
+                .ok()
+                .flatten()
+        });
         let config = RideConfig {
             setup: RiderSetup {
                 mass: self.profile.profile.system_mass(),
@@ -1116,6 +1148,7 @@ impl App {
             summary: (0, RideSummary::default()),
             ghost,
             player,
+            sound,
         });
         Ok(())
     }
@@ -1509,10 +1542,14 @@ impl App {
                 events.push(AppEvent::RideFinished);
             }
         }
-        if let (Some(active), Some(video)) = (&self.ride, &self.video)
-            && let Some(player) = &active.player
-        {
-            player.show(video.time_at(active.ride.state().distance));
+        if let (Some(active), Some(video)) = (&self.ride, &self.video) {
+            let time = video.time_at(active.ride.state().distance);
+            if let Some(player) = &active.player {
+                player.show(time);
+            }
+            if let Some(sound) = &active.sound {
+                sound.follow(time);
+            }
         }
         events
     }
@@ -2416,6 +2453,66 @@ mod tests {
         assert!(course::read_manifest(file).unwrap().video.is_none());
         assert!(!app.build_world());
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+    }
+
+    #[test]
+    fn the_videos_sound_plays_along_at_its_pitch_and_can_be_switched_off() {
+        let dir = temp_dir("sound");
+        let video = video_in(&dir, &torqa_video::testing::sound_video("app"), "Ride.mov");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(file)) = events.last() else {
+            unreachable!()
+        };
+        app.open_course(file.clone());
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        // Most of the video on the first 40 m: at 6 m/s it plays at about half its speed.
+        app.add_video(&video, &marks(&[(0.0, 0.0), (40.0, 3.6), (400.0, 3.95)]))
+            .unwrap();
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(0.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        assert_eq!(app.video_sound_rate(), Some(48_000));
+
+        let ride = |app: &mut App, frames: usize| {
+            let mut heard = Vec::new();
+            for _ in 0..frames {
+                std::thread::sleep(Duration::from_millis(16));
+                app.update(Duration::from_millis(16));
+                heard.extend(app.video_sound(4_096));
+            }
+            heard
+        };
+        let heard = ride(&mut app, 240);
+
+        // Sound keeps up with real time once it runs (≈ 48 000 samples a second).
+        assert!(heard.len() > 48_000 * 3, "{} samples", heard.len());
+        let last: Vec<f32> = heard[heard.len() - 9_600..].iter().map(|s| s[0]).collect();
+        let loudness = last.iter().map(|v| v.abs()).fold(0.0_f32, f32::max);
+        assert!(loudness > 0.05, "silent while riding: {loudness}");
+        #[allow(clippy::cast_precision_loss)]
+        let hertz = last
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count() as f32
+            / 2.0
+            / 0.2;
+        assert!((hertz - 440.0).abs() < 30.0, "pitch {hertz} Hz");
+
+        app.set_video_sound(false);
+        let heard = ride(&mut app, 60);
+        let tail = &heard[heard.len().saturating_sub(4_800)..];
+        assert!(
+            tail.iter().flatten().all(|v| v.abs() < 1e-4),
+            "still audible"
+        );
+        app.abort_ride();
+        assert_eq!(app.video_sound_rate(), None);
     }
 
     #[test]

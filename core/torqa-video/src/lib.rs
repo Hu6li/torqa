@@ -5,6 +5,7 @@
 //! therefore hands out the frame for any moment, decoding forward when that is cheap and
 //! seeking otherwise, scaled down to at most [`MAX_WIDTH`] for display.
 
+pub mod audio;
 pub mod gpmf;
 pub mod incyclist;
 #[cfg(any(test, feature = "testing"))]
@@ -371,7 +372,7 @@ fn iso_time(seconds: f64) -> String {
 }
 
 /// Sets up FFmpeg once per process.
-fn init() {
+pub(crate) fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let _ = ffmpeg::init();
@@ -390,7 +391,7 @@ fn display_size(width: u32, height: u32) -> (u32, u32) {
 }
 
 #[allow(clippy::cast_precision_loss)] // timestamps far below 2^52
-fn f64_from(value: i64) -> f64 {
+pub(crate) fn f64_from(value: i64) -> f64 {
     value as f64
 }
 

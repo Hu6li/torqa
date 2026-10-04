@@ -78,7 +78,12 @@ func _ride_settings() -> void:
 	var options: RideOptions = RideOptions.new()
 	root.add_child(options)
 	var wanted: Dictionary = {
-		"camera": 2, "difficulty": 75.0, "flat_descents": true, "time": "Evening", "weather": "Rain"
+		"camera": 2,
+		"difficulty": 75.0,
+		"flat_descents": true,
+		"time": "Evening",
+		"weather": "Rain",
+		"video_sound": false,
 	}
 	options.set_options(wanted)
 	_check(options.options() == wanted, "options round trip: %s" % options.options())
@@ -90,7 +95,7 @@ func _ride_settings() -> void:
 		if caption.visible:
 			shown.append(caption.text)
 	_check(
-		shown == PackedStringArray(["Trainer difficulty", "Descents"]),
+		shown == PackedStringArray(["Trainer difficulty", "Descents", "Sound"]),
 		"video course options: %s" % shown
 	)
 	_check(options.options() == wanted, "hidden options keep their values")

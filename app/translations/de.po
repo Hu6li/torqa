@@ -703,3 +703,9 @@ msgstr "Start"
 
 msgid "Sync points"
 msgstr "Synchronisationspunkte"
+
+msgid "Sound"
+msgstr "Ton"
+
+msgid "Play the video's sound"
+msgstr "Ton des Videos abspielen"

@@ -3,14 +3,16 @@
 //! hand (where the route starts and ends in it). The rider's distance decides the moment of the
 //! video, through the same matching used for ghosts (R20).
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use torqa_domain::units::Meters;
 use torqa_routes::Route;
 use torqa_session::ghost::Ghost;
+use torqa_video::audio::{Audio, Stereo, Stretcher};
 use torqa_video::{Frame, Video, gps_track, gpx_from_track, incyclist};
 
 /// File extensions of the videos Torqa reads directly (GoPro and similar).
@@ -337,5 +339,224 @@ impl Drop for VideoPlayer {
 impl std::fmt::Debug for VideoPlayer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("VideoPlayer").finish_non_exhaustive()
+    }
+}
+
+/// Sound queued ahead of playback, in seconds: enough to ride out a slow frame, little enough
+/// to follow the rider's speed closely.
+const SOUND_AHEAD_S: f64 = 0.12;
+/// Below this speed of the video the sound fades out (standing still is silent); it is fully
+/// there from `SOUND_FULL_SPEED` on.
+const SOUND_SILENT_SPEED: f64 = 0.2;
+const SOUND_FULL_SPEED: f64 = 0.5;
+/// How far the sound may drift from the picture before it jumps rather than catching up.
+const SOUND_MAX_DRIFT_S: f64 = 0.5;
+
+/// The sound of a video course during a ride (R26), on its own thread: it follows the moment
+/// of the video ([`SoundPlayer::follow`]) at the speed the rider makes it play, stretched to
+/// keep its pitch, and is pulled by the front end ([`SoundPlayer::pull`]).
+pub struct SoundPlayer {
+    shared: Arc<(Mutex<SoundState>, Condvar)>,
+    thread: Option<JoinHandle<()>>,
+    rate: u32,
+}
+
+struct SoundState {
+    /// The moment of the video shown last, and when.
+    target: Option<(Duration, Instant)>,
+    /// Video seconds played per second, estimated from the targets.
+    speed: f64,
+    on: bool,
+    queue: VecDeque<Stereo>,
+    stop: bool,
+}
+
+impl SoundPlayer {
+    /// Opens the sound of `video`; `None` if it has none.
+    ///
+    /// # Errors
+    /// A readable message if the video cannot be read.
+    pub fn open(video: &Path) -> Result<Option<Self>, String> {
+        let shared = Arc::new((
+            Mutex::new(SoundState {
+                target: None,
+                speed: 0.0,
+                on: true,
+                queue: VecDeque::new(),
+                stop: false,
+            }),
+            Condvar::new(),
+        ));
+        let state = Arc::clone(&shared);
+        let path = video.to_owned();
+        let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+        // Like the picture, the decoder stays on its thread.
+        let thread = std::thread::Builder::new()
+            .name("video sound".to_owned())
+            .spawn(move || {
+                let audio = match Audio::open(&path) {
+                    Ok(Some(audio)) => {
+                        let _ = opened_tx.send(Ok(Some(audio.rate())));
+                        audio
+                    }
+                    Ok(None) => {
+                        let _ = opened_tx.send(Ok(None));
+                        return;
+                    }
+                    Err(error) => {
+                        let _ =
+                            opened_tx.send(Err(format!("cannot open {}: {error}", path.display())));
+                        return;
+                    }
+                };
+                play(audio, &state);
+            })
+            .map_err(|e| e.to_string())?;
+        let rate = opened_rx
+            .recv()
+            .map_err(|_| "the sound player stopped".to_owned())??;
+        Ok(rate.map(|rate| Self {
+            shared,
+            thread: Some(thread),
+            rate,
+        }))
+    }
+
+    /// Samples per second of [`SoundPlayer::pull`].
+    #[must_use]
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    /// The moment of the video shown now; called every frame.
+    pub fn follow(&self, time: Duration) {
+        let now = Instant::now();
+        let (lock, _) = &*self.shared;
+        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((before, at)) = s.target {
+            let elapsed = now.duration_since(at).as_secs_f64();
+            if elapsed > 0.0 {
+                let speed = (time.as_secs_f64() - before.as_secs_f64()) / elapsed;
+                // Frames come unevenly; smooth over a few of them.
+                s.speed += (speed.clamp(0.0, 8.0) - s.speed) * 0.2;
+            }
+        }
+        s.target = Some((time, now));
+    }
+
+    /// Switches the sound on or off (it fades).
+    pub fn set_on(&self, on: bool) {
+        let (lock, _) = &*self.shared;
+        lock.lock().unwrap_or_else(PoisonError::into_inner).on = on;
+    }
+
+    /// Up to `max` stereo samples to play next.
+    #[must_use]
+    pub fn pull(&self, max: usize) -> Vec<Stereo> {
+        let (lock, wake) = &*self.shared;
+        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let count = max.min(s.queue.len());
+        let samples = s.queue.drain(..count).collect();
+        wake.notify_one();
+        samples
+    }
+}
+
+/// The sound thread: keeps the queue filled with the stretched sound around the moment shown.
+fn play(mut audio: Audio, state: &Arc<(Mutex<SoundState>, Condvar)>) {
+    let rate = f64::from(audio.rate());
+    let mut stretcher = Stretcher::new(audio.rate());
+    let hop = stretcher.hop();
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation
+    )]
+    let ahead = (SOUND_AHEAD_S * rate) as usize;
+    let mut position: Option<f64> = None;
+    let mut gain = 0.0_f32;
+    let (lock, wake) = &**state;
+    loop {
+        let (target, speed, on, queued) = {
+            let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            while !s.stop && (s.target.is_none() || s.queue.len() >= ahead) {
+                s = wake
+                    .wait_timeout(s, Duration::from_millis(10))
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
+            }
+            if s.stop {
+                return;
+            }
+            let Some(target) = s.target else { continue };
+            (target, s.speed, s.on, s.queue.len())
+        };
+        // Where the picture will be when this hop is heard, after what is queued already.
+        #[allow(clippy::cast_precision_loss)]
+        let lead = target.1.elapsed().as_secs_f64() + queued as f64 / rate;
+        let expected = (target.0.as_secs_f64() + lead * speed) * rate;
+        #[allow(clippy::cast_precision_loss)]
+        let step = hop as f64 * speed;
+        let at = match position {
+            Some(at) if (expected - at).abs() < SOUND_MAX_DRIFT_S * rate => {
+                // Catch up gently rather than jump, which would be heard.
+                at + step + (expected - at) * 0.05
+            }
+            _ => {
+                stretcher.reset();
+                expected
+            }
+        };
+        position = Some(at);
+        #[allow(clippy::cast_possible_truncation)]
+        let wanted = if on {
+            ((speed - SOUND_SILENT_SPEED) / (SOUND_FULL_SPEED - SOUND_SILENT_SPEED)).clamp(0.0, 1.0)
+                as f32
+        } else {
+            0.0
+        };
+        let samples = if gain <= 0.0 && wanted <= 0.0 {
+            vec![[0.0; 2]; hop]
+        } else {
+            #[allow(clippy::cast_possible_truncation)]
+            let mut samples = stretcher
+                .step(&mut audio, at as i64)
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "cannot decode the video's sound");
+                    vec![[0.0; 2]; hop]
+                });
+            // Fade over a few hops so that switching or stopping does not click.
+            #[allow(clippy::cast_precision_loss)]
+            let change = (wanted - gain).clamp(-0.1, 0.1) / hop as f32;
+            for sample in &mut samples {
+                gain = (gain + change).clamp(0.0, 1.0);
+                sample[0] *= gain;
+                sample[1] *= gain;
+            }
+            samples
+        };
+        lock.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .queue
+            .extend(samples);
+    }
+}
+
+impl Drop for SoundPlayer {
+    fn drop(&mut self) {
+        let (lock, wake) = &*self.shared;
+        lock.lock().unwrap_or_else(PoisonError::into_inner).stop = true;
+        wake.notify_one();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl std::fmt::Debug for SoundPlayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SoundPlayer")
+            .field("rate", &self.rate)
+            .finish_non_exhaustive()
     }
 }

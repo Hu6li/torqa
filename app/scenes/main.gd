@@ -34,6 +34,8 @@ func _on_ride_started(options: Dictionary) -> void:
 		_world.reset_view()
 		_world.show()
 	else:
+		var video_sound: bool = options.get("video_sound", true)
+		_torqa.set_video_sound(video_sound)
 		_video.begin(_torqa)
 		_video.show()
 	_ride.begin(options)

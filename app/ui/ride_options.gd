@@ -3,7 +3,8 @@ extends GridContainer
 ## The options of a ride that can be set before and changed during it (R48): camera, trainer
 ## difficulty, descents, time of day and weather. The same control serves the course page and
 ## the in-ride settings, so options are set the same way in both places. On video courses
-## the video is the view, so camera, time of day and weather are hidden (R17).
+## the video is the view, so camera, time of day and weather are hidden (R17) and the video's
+## sound can be switched instead (R26).
 
 ## The rider changed an option; read them with `options()`.
 signal changed
@@ -18,8 +19,10 @@ var _difficulty_label: Label = Label.new()
 var _flat_descents: CheckBox = CheckBox.new()
 var _time: OptionButton = OptionButton.new()
 var _weather: OptionButton = OptionButton.new()
-## The controls of the options that only change the 3D world.
+var _video_sound: CheckBox = CheckBox.new()
+## The controls of the options that only change the 3D world, and of those of video courses.
 var _world_rows: Array[Control] = []
+var _video_rows: Array[Control] = []
 
 
 func _init() -> void:
@@ -45,16 +48,21 @@ func _init() -> void:
 	_row("Descents", _flat_descents, null)
 	_row("Time of day", _time, null, true)
 	_row("Weather", _weather, null, true)
+	_row("Sound", _video_sound, null, false, true)
 	# i18n-end
 	for option: OptionButton in [_camera, _time, _weather]:
 		option.item_selected.connect(func(_index: int) -> void: _changed())
 	_difficulty.value_changed.connect(func(_value: float) -> void: _changed())
 	_flat_descents.toggled.connect(func(_on: bool) -> void: _changed())
+	_video_sound.text = tr("Play the video's sound")
+	_video_sound.button_pressed = true
+	_video_sound.toggled.connect(func(_on: bool) -> void: _changed())
+	show_world_options(true)
 	_update_labels()
 
 
-## The current options: `{camera, difficulty, flat_descents, time, weather}`; `time` and
-## `weather` are names known to `RideWorld`.
+## The current options: `{camera, difficulty, flat_descents, time, weather, video_sound}`;
+## `time` and `weather` are names known to `RideWorld`.
 func options() -> Dictionary:
 	return {
 		"camera": _camera.selected,
@@ -62,6 +70,7 @@ func options() -> Dictionary:
 		"flat_descents": _flat_descents.button_pressed,
 		"time": _time.get_item_text(_time.selected),
 		"weather": _weather.get_item_text(_weather.selected),
+		"video_sound": _video_sound.button_pressed,
 	}
 
 
@@ -72,18 +81,22 @@ func set_options(options: Dictionary) -> void:
 	var flat_descents: bool = options.get("flat_descents", false)
 	var time: String = options.get("time", "Midday")
 	var weather: String = options.get("weather", "Clear")
+	var video_sound: bool = options.get("video_sound", true)
 	_camera.select(camera_mode)
 	_difficulty.set_value_no_signal(difficulty)
 	_flat_descents.set_pressed_no_signal(flat_descents)
 	_select_text(_time, time)
 	_select_text(_weather, weather)
+	_video_sound.set_pressed_no_signal(video_sound)
 	_update_labels()
 
 
-## Shows or hides the options of the 3D world: hidden for video courses.
+## Shows the options of the 3D world, or (`shown` false) those of a video course instead.
 func show_world_options(shown: bool) -> void:
 	for control: Control in _world_rows:
 		control.visible = shown
+	for control: Control in _video_rows:
+		control.visible = not shown
 
 
 func _changed() -> void:
@@ -95,7 +108,9 @@ func _update_labels() -> void:
 	_difficulty_label.text = "%d %%" % roundi(_difficulty.value)
 
 
-func _row(caption: String, field: Control, extra: Control, world: bool = false) -> void:
+func _row(
+	caption: String, field: Control, extra: Control, world: bool = false, video: bool = false
+) -> void:
 	var label: Label = Label.new()
 	label.text = caption
 	label.custom_minimum_size = Vector2(CAPTION_WIDTH, 0)
@@ -107,6 +122,8 @@ func _row(caption: String, field: Control, extra: Control, world: bool = false) 
 	add_child(third)
 	if world:
 		_world_rows.append_array([label, field, third])
+	if video:
+		_video_rows.append_array([label, field, third])
 
 
 static func _select_text(option: OptionButton, text: String) -> void:

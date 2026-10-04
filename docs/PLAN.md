@@ -126,8 +126,8 @@ Built in rideable steps:
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
-- [ ] Audio (R26): music app control ✅; ambient sound dropped for now (synthesised version
-  did not sound right); original video sound is in Phase 5
+- [ ] Audio (R26): music app control ✅, original video sound ✅ (Phase 5); ambient sound
+  dropped for now (synthesised version did not sound right)
 - [x] i18n: all texts translatable, German translation, language per rider (R24)
 
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
@@ -140,7 +140,8 @@ Built in rideable steps:
   and end marks in the video with frame previews; movable or removable later
 - [x] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
-- [ ] Original video sound (R26)
+- [x] Original video sound (R26): pitch-keeping time stretch (WSOLA) at the rider's speed,
+  fades out when slow, switchable per ride
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)
 - **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 

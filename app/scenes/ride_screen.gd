@@ -165,6 +165,8 @@ func _on_options_changed(options: Dictionary) -> void:
 	var difficulty: float = options["difficulty"]
 	var flat_descents: bool = options["flat_descents"]
 	_torqa.adjust_ride(difficulty, flat_descents)
+	var video_sound: bool = options.get("video_sound", true)
+	_torqa.set_video_sound(video_sound)
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:

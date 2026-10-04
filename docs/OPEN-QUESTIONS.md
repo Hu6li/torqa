@@ -6,6 +6,10 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Needs your hardware
 
+- **Video sound** (R26): please listen on a real ride. The sound is time-stretched to your
+  speed with its pitch kept (WSOLA, 40 ms grains); tests check pitch and loudness, but not how
+  it *sounds* — wind noise and voices may warble at very low speeds. It fades out below 0.2×
+  the video's speed and is full from 0.5×; tell me if those feel wrong.
 - **Video ride on the Mac**: please import a GoPro recording with GPS (or an Incyclist route
   video, choose its `.xml`) and ride it. Decoding runs on the CPU for now; 1080p should keep up
   on M1, 4K is scaled down per frame and may not. If it stutters, hardware decoding
@@ -31,7 +35,6 @@ Things to review or decide together. Newest first; remove entries once settled.
   Music; macOS asks once for permission ("Torqa wants to control Spotify"). The usage text is
   in the export preset now. Please try M / . / , during a ride with Spotify or Music playing.
   Windows (media keys) and Linux (`playerctl`) are untested too.
-- **Video audio** (R26, original video sound) is a Phase 5 item now that video mode exists.
 
 - **German translation** (i18n PR): please read over `app/translations/de.po` — I used Swiss
   spelling (ss, "Velo") and informal "du". Error messages from the core (e.g. file or network

@@ -301,6 +301,38 @@ impl TorqaApp {
         }
     }
 
+    /// The next samples of the video's sound during a ride on a video course, at most `max`,
+    /// as stereo frames (x left, y right) for an `AudioStreamGenerator` at
+    /// `video_sound_rate()`; empty without sound.
+    #[func]
+    fn video_sound(&mut self, max: i64) -> PackedVector2Array {
+        let max = usize::try_from(max).unwrap_or(0);
+        self.app
+            .as_mut()
+            .map(|app| app.video_sound(max))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|[left, right]| Vector2::new(left, right))
+            .collect()
+    }
+
+    /// Samples per second of `video_sound`; 0 while riding without the video's sound.
+    #[func]
+    fn video_sound_rate(&self) -> i64 {
+        self.app
+            .as_ref()
+            .and_then(App::video_sound_rate)
+            .map_or(0, i64::from)
+    }
+
+    /// Plays the video's sound during this ride or not (R26).
+    #[func]
+    fn set_video_sound(&mut self, on: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_video_sound(on);
+        }
+    }
+
     /// Opens a course file from the library or elsewhere; emits `route_loaded` like
     /// `load_route`. Its 3D world is built by `build_world`.
     #[func]

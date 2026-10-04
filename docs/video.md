@@ -45,6 +45,10 @@ screen, with your figures, map and elevation profile on top. Where you are on th
 decides the moment of the video: it plays at the speed you ride, stands still when you stop,
 and blends smoothly from frame to frame even when you crawl up a steep climb.
 
+The video's own **sound** plays along at the same speed, without sounding higher or deeper:
+it is stretched, not sped up like a tape. It fades out when you slow to a crawl or stop.
+Switch it off under **Sound** in the ride options (course page or **Settings** while riding).
+
 Videos are decoded on the processor for now. 1080p is the target; larger videos are scaled
 down while playing, which may not keep up — hardware decoding is planned.
 

@@ -1,7 +1,8 @@
 class_name VideoView
 extends TextureRect
 ## The ride view of a video course (R17): the video at the rider's position on the route,
-## blended from one frame to the next so that it stays smooth at any speed.
+## blended from one frame to the next so that it stays smooth at any speed, with the video's
+## sound (R26), stretched by the core to the rider's speed.
 
 const SHADER: Shader = preload("res://shaders/video_blend.gdshader")
 
@@ -12,6 +13,8 @@ var _previous: ImageTexture
 var _current: ImageTexture
 var _previous_s: float = 0.0
 var _current_s: float = 0.0
+var _sound: AudioStreamPlayer = AudioStreamPlayer.new()
+var _playback: AudioStreamGeneratorPlayback
 
 
 func _init() -> void:
@@ -22,6 +25,8 @@ func _init() -> void:
 	_material.shader = SHADER
 	material = _material
 	visible = false
+	add_child(_sound)
+	visibility_changed.connect(_on_visibility_changed)
 
 
 ## Starts showing the video of the ride on `torqa`'s video course.
@@ -30,6 +35,17 @@ func begin(torqa: TorqaApp) -> void:
 	_previous = null
 	_current = null
 	texture = null
+	_sound.stop()
+	_playback = null
+	var rate: int = torqa.video_sound_rate()
+	if rate > 0:
+		var generator: AudioStreamGenerator = AudioStreamGenerator.new()
+		generator.mix_rate = rate
+		# The core keeps sound queued too; together they ride out a slow frame.
+		generator.buffer_length = 0.2
+		_sound.stream = generator
+		_sound.play()
+		_playback = _sound.get_stream_playback()
 
 
 ## Takes the decoded frame for video time `time_s` as the one to blend towards.
@@ -67,3 +83,13 @@ func _process(_delta: float) -> void:
 		take(image, time_s)
 	if _current != null:
 		_material.set_shader_parameter("blend", blend_at(_torqa.video_time()))
+	if _playback != null:
+		var frames: int = _playback.get_frames_available()
+		if frames > 0:
+			_playback.push_buffer(_torqa.video_sound(frames))
+
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		_sound.stop()
+		_playback = null

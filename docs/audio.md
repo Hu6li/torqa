@@ -1,4 +1,11 @@
-# Music
+# Sound
+
+## Video sound
+
+On video courses the video's own sound plays along at your speed, keeping its pitch; switch
+it off under **Sound** in the ride options ([video.md](video.md)).
+
+## Music
 
 While riding, control the music app you listen to:
 

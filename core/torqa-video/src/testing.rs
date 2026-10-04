@@ -77,6 +77,118 @@ pub fn test_video(name: &str, width: u32, height: u32) -> PathBuf {
     path
 }
 
+/// Sample rate of [`sound_video`].
+pub const SOUND_RATE: i32 = 48_000;
+/// The tones of [`sound_video`], left and right, in hertz.
+pub const TONES: [f64; 2] = [440.0, 660.0];
+/// Samples per frame written by [`sound_video`].
+const SOUND_CHUNK: usize = 1024;
+
+/// A 4 s, 10 fps video like [`test_video`] (64 × 48, MOV) with sound: a steady tone on each
+/// channel ([`TONES`]) whose loudness rises from silence to full over the 4 s, so read samples
+/// tell their moment (loudness) and pitch.
+#[must_use]
+pub fn sound_video(name: &str) -> PathBuf {
+    use ffmpeg::ChannelLayout;
+    use ffmpeg::format::Sample;
+    use ffmpeg::format::sample::Type;
+
+    init();
+    let path = std::env::temp_dir().join(format!("torqa-sound-{name}-{}.mov", std::process::id()));
+    let video_codec = ffmpeg::encoder::find(codec::Id::MPEG4).unwrap();
+    let audio_codec = ffmpeg::encoder::find(codec::Id::PCM_S16LE).unwrap();
+    let mut output = ffmpeg::format::output_as(&path, "mov").unwrap();
+    let mut video = output.add_stream(video_codec).unwrap();
+    let mut encoder = codec::context::Context::new_with_codec(video_codec)
+        .encoder()
+        .video()
+        .unwrap();
+    encoder.set_width(64);
+    encoder.set_height(48);
+    encoder.set_format(Pixel::YUV420P);
+    encoder.set_time_base((1, FPS));
+    encoder.set_flags(codec::Flags::GLOBAL_HEADER);
+    let mut encoder = encoder.open_as(video_codec).unwrap();
+    video.set_parameters(&encoder);
+    video.set_time_base((1, FPS));
+    let mut audio = output.add_stream(audio_codec).unwrap();
+    let mut sound = codec::context::Context::new_with_codec(audio_codec)
+        .encoder()
+        .audio()
+        .unwrap();
+    sound.set_rate(SOUND_RATE);
+    sound.set_format(Sample::I16(Type::Packed));
+    sound.set_channel_layout(ChannelLayout::STEREO);
+    sound.set_time_base((1, SOUND_RATE));
+    let mut sound = sound.open_as(audio_codec).unwrap();
+    audio.set_parameters(&sound);
+    audio.set_time_base((1, SOUND_RATE));
+    output.write_header().unwrap();
+    let video_tb = output.stream(0).unwrap().time_base();
+    let audio_tb = output.stream(1).unwrap().time_base();
+
+    let mut packet = ffmpeg::Packet::empty();
+    for i in 0..FRAMES {
+        let mut frame = ffmpeg::frame::Video::new(Pixel::YUV420P, 64, 48);
+        frame.data_mut(0).fill(u8::try_from(40 + 4 * i).unwrap());
+        frame.data_mut(1).fill(128);
+        frame.data_mut(2).fill(128);
+        frame.set_pts(Some(i64::from(i)));
+        encoder.send_frame(&frame).unwrap();
+        while encoder.receive_packet(&mut packet).is_ok() {
+            packet.set_stream(0);
+            packet.set_duration(1);
+            packet.rescale_ts((1, FPS), video_tb);
+            packet.write_interleaved(&mut output).unwrap();
+        }
+    }
+    encoder.send_eof().unwrap();
+    while encoder.receive_packet(&mut packet).is_ok() {
+        packet.set_stream(0);
+        packet.set_duration(1);
+        packet.rescale_ts((1, FPS), video_tb);
+        packet.write_interleaved(&mut output).unwrap();
+    }
+
+    let total = usize::try_from(SOUND_RATE).unwrap() * usize::try_from(FRAMES / FPS).unwrap();
+    let rate = f64::from(SOUND_RATE);
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    for first in (0..total).step_by(SOUND_CHUNK) {
+        let mut frame = ffmpeg::frame::Audio::new(
+            Sample::I16(Type::Packed),
+            SOUND_CHUNK,
+            ChannelLayout::STEREO,
+        );
+        frame.set_rate(u32::try_from(SOUND_RATE).unwrap());
+        let data = frame.data_mut(0);
+        for i in 0..SOUND_CHUNK {
+            let t = (first + i) as f64 / rate;
+            let loudness = (first + i) as f64 / total as f64;
+            for (channel, tone) in TONES.iter().enumerate() {
+                let value =
+                    (loudness * 0.8 * (std::f64::consts::TAU * tone * t).sin() * 32_767.0) as i16;
+                let at = (i * 2 + channel) * 2;
+                data[at..at + 2].copy_from_slice(&value.to_ne_bytes());
+            }
+        }
+        frame.set_pts(Some(i64::try_from(first).unwrap()));
+        sound.send_frame(&frame).unwrap();
+        while sound.receive_packet(&mut packet).is_ok() {
+            packet.set_stream(1);
+            packet.rescale_ts((1, SOUND_RATE), audio_tb);
+            packet.write_interleaved(&mut output).unwrap();
+        }
+    }
+    sound.send_eof().unwrap();
+    while sound.receive_packet(&mut packet).is_ok() {
+        packet.set_stream(1);
+        packet.rescale_ts((1, SOUND_RATE), audio_tb);
+        packet.write_interleaved(&mut output).unwrap();
+    }
+    output.write_trailer().unwrap();
+    path
+}
+
 /// Parameters of a GoPro metadata track. `ffmpeg-next` has no setter for the codec tag the
 /// MP4 muxer needs, so this test fixture sets the field directly.
 #[allow(unsafe_code)] // test fixture only: writes one plain integer field of owned parameters
