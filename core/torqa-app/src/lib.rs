@@ -585,22 +585,6 @@ impl App {
         self.load_video_from(offline, move || video::source(&path));
     }
 
-    /// Prepares a video course from a video without GPS placed on the GPX route at `gpx` by
-    /// hand: the route starts at `start` and ends at `end` in the video, which is spread
-    /// evenly between them. Reports like [`App::load_video`].
-    pub fn load_aligned_video(
-        &mut self,
-        video: PathBuf,
-        gpx: PathBuf,
-        start: Duration,
-        end: Duration,
-        offline: bool,
-    ) {
-        self.load_video_from(offline, move || {
-            video::aligned_source(&video, &gpx, start, end)
-        });
-    }
-
     fn load_video_from(
         &mut self,
         offline: bool,
@@ -644,6 +628,68 @@ impl App {
         self.video.as_ref()
     }
 
+    /// Adds a video to the loaded course (a GPX course from the library), placed on its route
+    /// by hand: the route starts at `start` and ends at `end` in the video, which follows the
+    /// rider's distance evenly in between. The course becomes a video course; its file refers
+    /// to the video.
+    ///
+    /// # Errors
+    /// [`AppError::Video`] if no course is loaded, it has a video already, or the video does
+    /// not fit the marks; [`AppError::Storage`] if the course file cannot be updated.
+    pub fn add_video(
+        &mut self,
+        video: &Path,
+        start: Duration,
+        end: Duration,
+    ) -> Result<(), AppError> {
+        let (Some(route), Some(path), Some((name, gpx))) =
+            (&self.route, &self.course, &self.loaded)
+        else {
+            return Err(AppError::Video("open a course first".to_owned()));
+        };
+        if self.video.is_some() {
+            return Err(AppError::Video(
+                "this course has a video already".to_owned(),
+            ));
+        }
+        let source = video::VideoSource {
+            video: video.to_owned(),
+            name: name.clone(),
+            gpx: gpx.clone(),
+            offset: start,
+            end: Some(end),
+        };
+        let added = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
+        let reference = video_reference(&added);
+        update_manifest(path, |manifest| manifest.video = Some(reference))?;
+        self.video = Some(added);
+        // The video is the view now: no 3D world to build.
+        self.world_plan = WorldPlan::Now;
+        self.world = Some(Arc::new(World::default()));
+        Ok(())
+    }
+
+    /// Takes a video added with [`App::add_video`] off the loaded course, which is ridden in
+    /// 3D again; the course is reopened (reports [`AppEvent::RouteLoaded`]). Videos a course
+    /// was made from (with GPS) stay.
+    ///
+    /// # Errors
+    /// [`AppError::Video`] if the loaded course has no video added by hand,
+    /// [`AppError::Storage`] if the course file cannot be updated.
+    pub fn remove_video(&mut self) -> Result<(), AppError> {
+        let (Some(video), Some(path)) = (&self.video, self.course.clone()) else {
+            return Err(AppError::Video("this course has no video".to_owned()));
+        };
+        if !video.aligned_by_hand() {
+            return Err(AppError::Video(
+                "this course was made from its video and keeps it".to_owned(),
+            ));
+        }
+        update_manifest(&path, |manifest| manifest.video = None)?;
+        self.open_course(path);
+        Ok(())
+    }
+
     /// Moves where the route starts and ends in the loaded video course's video, for videos
     /// placed on the route by hand; the course file keeps the new marks.
     ///
@@ -670,13 +716,8 @@ impl App {
         };
         let aligned = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         if let Some(path) = &self.course {
-            let storage = |e: course::CourseError| AppError::Storage(e.to_string());
-            let mut manifest = course::read_manifest(path).map_err(storage)?;
-            if let Some(reference) = &mut manifest.video {
-                reference.offset_s = start.as_secs_f64();
-                reference.end_s = Some(end.as_secs_f64());
-            }
-            course::rewrite_manifest(path, &manifest).map_err(storage)?;
+            let reference = video_reference(&aligned);
+            update_manifest(path, |manifest| manifest.video = Some(reference))?;
         }
         self.video = Some(aligned);
         Ok(())
@@ -748,17 +789,7 @@ impl App {
             route_key: Some(route.key()),
             track: thin(&view::track(route, PREVIEW_POINTS)),
             profile: thin(&view::elevation_profile(route, PREVIEW_POINTS)),
-            video: self.video.as_ref().map(|v| course::VideoReference {
-                path: v.video.display().to_string(),
-                file_name: v
-                    .video
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
-                size: std::fs::metadata(&v.video).map_or(0, |m| m.len()),
-                offset_s: v.offset.as_secs_f64(),
-                end_s: v.end.map(|e| e.as_secs_f64()),
-            }),
+            video: self.video.as_ref().map(video_reference),
         };
         // Preparing the same course again must not fill the library with copies; one still
         // being written reports itself when done.
@@ -822,10 +853,7 @@ impl App {
         if name.is_empty() {
             return Err(AppError::Storage("a course needs a name".to_owned()));
         }
-        let storage = |e: course::CourseError| AppError::Storage(e.to_string());
-        let mut manifest = course::read_manifest(path).map_err(storage)?;
-        name.clone_into(&mut manifest.name);
-        course::rewrite_manifest(path, &manifest).map_err(storage)?;
+        update_manifest(path, |manifest| name.clone_into(&mut manifest.name))?;
         if self.course.as_deref() == Some(path)
             && let Some((loaded, _)) = &mut self.loaded
         {
@@ -1791,6 +1819,29 @@ fn initial_profile(data_dir: &Path) -> StoredProfile {
 }
 
 /// A free file name in `library` for a course called `name`.
+/// How a course file refers to its video.
+fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
+    course::VideoReference {
+        path: video.video.display().to_string(),
+        file_name: video
+            .video
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        size: std::fs::metadata(&video.video).map_or(0, |m| m.len()),
+        offset_s: video.offset.as_secs_f64(),
+        end_s: video.end.map(|e| e.as_secs_f64()),
+    }
+}
+
+/// Changes the manifest of the course file at `path`.
+fn update_manifest(path: &Path, change: impl FnOnce(&mut Manifest)) -> Result<(), AppError> {
+    let storage = |e: course::CourseError| AppError::Storage(e.to_string());
+    let mut manifest = course::read_manifest(path).map_err(storage)?;
+    change(&mut manifest);
+    course::rewrite_manifest(path, &manifest).map_err(storage)
+}
+
 fn unique_course_path(library: &Path, name: &str) -> PathBuf {
     let slug = torqa_storage::slug(name, "course");
     let mut path = library.join(format!("{slug}.{}", course::EXTENSION));
@@ -2242,33 +2293,34 @@ mod tests {
     }
 
     #[test]
-    fn a_video_without_gps_is_placed_on_a_route_by_its_start_and_end() {
+    fn a_video_without_gps_is_added_to_a_gpx_course_by_its_start_and_end() {
         let dir = temp_dir("aligned");
         let video = video_in(
             &dir,
             &torqa_video::testing::test_video("aligned", 64, 48),
             "Commute.mp4",
         );
-        let gpx = write_timed_route(&dir);
         let probe = video::probe(&video).unwrap();
         assert!(!probe.has_gps);
         assert!((probe.duration.as_secs_f64() - 4.0).abs() < 0.15);
         let mut app = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
-
-        app.load_aligned_video(
-            video.clone(),
-            gpx,
-            Duration::from_secs(1),
-            Duration::from_secs(3),
-            true,
+        // Only a course can take a video.
+        assert!(
+            app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+                .is_err()
         );
-        let events = run_until(&mut app, |e| {
-            matches!(e, AppEvent::CourseAdded(_) | AppEvent::Error(_))
-        });
-
+        // The GPX course, as imported on the Courses tab and opened on its page.
+        app.load_route(write_timed_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
         let Some(AppEvent::CourseAdded(file)) = events.last() else {
-            panic!("{events:?}")
+            unreachable!()
         };
+        app.open_course(file.clone());
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+
+        app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+            .unwrap();
+
         let length = app.route().unwrap().length().0;
         let at = |app: &App, m: f64| app.video().unwrap().time_at(Meters(m)).as_secs_f64();
         // Evenly between the marks — the GPX's own minutes apart are ignored.
@@ -2276,8 +2328,14 @@ mod tests {
         assert!((at(&app, length / 2.0) - 2.0).abs() < 0.01);
         assert!((at(&app, length) - 3.0).abs() < 0.01);
         assert!(app.video().unwrap().aligned_by_hand());
+        // Ridden along the video: nothing to build.
+        assert!(app.build_world());
+        assert!(
+            app.add_video(&video, Duration::ZERO, Duration::from_secs(1))
+                .is_err()
+        );
 
-        // Moved later, on the course page: the course file keeps the new marks.
+        // Moved later: the course file keeps the new marks.
         app.align_video(Duration::from_millis(500), Duration::from_millis(3500))
             .unwrap();
         assert!((at(&app, 0.0) - 0.5).abs() < 0.01);
@@ -2298,6 +2356,14 @@ mod tests {
         run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert!((at(&other, 0.0) - 0.5).abs() < 0.01);
         assert!((at(&other, length) - 3.5).abs() < 0.01);
+
+        // Removed again: a 3D course, as before.
+        app.remove_video().unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(app.video().is_none());
+        assert!(course::read_manifest(file).unwrap().video.is_none());
+        assert!(!app.build_world());
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
     }
 
     #[test]
@@ -2317,6 +2383,7 @@ mod tests {
             app.align_video(Duration::ZERO, Duration::from_secs(2))
                 .is_err()
         );
+        assert!(app.remove_video().is_err());
     }
 
     #[test]

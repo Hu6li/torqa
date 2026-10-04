@@ -203,7 +203,7 @@ impl TorqaApp {
     }
 
     /// A video about to be imported: `{duration_s, has_gps}`; empty (and `failed`) if it
-    /// cannot be read. Without GPS it is placed on a GPX with `load_aligned_video`.
+    /// cannot be read. Without GPS it is added to a GPX course with `add_video`.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn video_probe(&mut self, path: GString) -> VarDictionary {
@@ -221,27 +221,21 @@ impl TorqaApp {
         }
     }
 
-    /// Prepares a video course from a video without GPS placed on the GPX route `gpx`: the
-    /// route starts `start_s` and ends `end_s` seconds into the video. Emits like `load_video`.
+    /// Adds a video (e.g. one without GPS) to the loaded GPX course: the route starts `start_s`
+    /// and ends `end_s` seconds into it. The course becomes a video course; emits `failed` if
+    /// that is not possible.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn load_aligned_video(
-        &mut self,
-        video: GString,
-        gpx: GString,
-        start_s: f64,
-        end_s: f64,
-        offline: bool,
-    ) {
-        if let Some(app) = self.app.as_mut() {
-            app.load_aligned_video(
-                PathBuf::from(video.to_string()),
-                PathBuf::from(gpx.to_string()),
-                seconds(start_s),
-                seconds(end_s),
-                offline,
-            );
-        }
+    fn add_video(&mut self, video: GString, start_s: f64, end_s: f64) -> bool {
+        let video = PathBuf::from(video.to_string());
+        self.command(|app| app.add_video(&video, seconds(start_s), seconds(end_s)))
+    }
+
+    /// Takes a video added with `add_video` off the loaded course, which is reopened as a 3D
+    /// course (emits `route_loaded`).
+    #[func]
+    fn remove_video(&mut self) -> bool {
+        self.command(App::remove_video)
     }
 
     /// Moves where the route starts and ends in the loaded video course's video (only for

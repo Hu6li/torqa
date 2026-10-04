@@ -10,7 +10,8 @@ it slows down, sprint and it speeds up. The 3D world is not used on video course
 - **Your own videos with GPS** — GoPro recordings (`.mp4`, `.mov`; `.m4v` and `.mkv` are
   read too) carry their GPS track inside the file (GPMF). Torqa reads it, builds the route
   from it and pairs every moment of the video with a position on it.
-- **Any other video, placed on a GPX route** — see below.
+- **Any other video** is added to the course of its GPX route — see below. Importing a video
+  without GPS here shows these steps instead.
 - **Route videos made for Incyclist** — a folder with a video, a `.gpx` route and an `.xml`
   control file. Choose the **`.xml` file**. Many free route videos are published in this format,
   for example the library by Van Gestel offered from within Incyclist. Keep the three files
@@ -21,15 +22,19 @@ added to your library, marked **Video** on its card.
 
 ## Videos without GPS
 
-Choose the video; Torqa notices it has no GPS and asks for the **GPX route** it shows. Then
-**Align video with route** opens: set the **route start** and the **route end** — the moments
-in the video where the route's first and last points are — with the sliders and the ±1 s /
-±0.1 s buttons, checking the frame shown above each. Between the two marks the video follows
-your distance evenly, so it works best for footage at a fairly steady speed; the GPX's own
-timestamps are not used (they come from another recording).
+A video without GPS cannot tell where it was filmed, so it is added to a course:
 
-To fine-tune later, open the course and press **Align video…**; the course file keeps the new
-marks. Videos with GPS follow their GPS and have nothing to align.
+1. Import the **GPX route** of the ride shown in the video (Courses tab).
+2. Open that course and press **Add video…**, then choose the video.
+3. **Align video with route** opens: set the **route start** and the **route end** — the
+   moments in the video where the route's first and last points are — with the sliders and
+   the ±1 s / ±0.1 s buttons, checking the frame shown above each.
+
+The course is now ridden along the video. Between the two marks the video follows your
+distance evenly, so it works best for footage at a fairly steady speed; the GPX's own
+timestamps are not used (they come from another recording). **Align video…** moves the marks
+later, **Remove video** turns it back into a 3D course; the course file keeps the change.
+Courses made from a video with GPS follow their GPS and have nothing to align.
 
 ## Riding a video course
 

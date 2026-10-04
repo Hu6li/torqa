@@ -63,8 +63,8 @@ scripts/                   container helpers: checks, GDExtension build, screens
 - **Video**: FFmpeg (LGPL, built from source) in the Rust core
   ([ADR 0010](adr/0010-video-decoding.md)); software decoding on a background thread; the
   rider's distance sets the video time (matched like ghosts); Godot blends the previous and
-  next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video placed on a
-  GPX by its start and end marks.
+  next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video added to a
+  GPX course by its start and end marks.
 - **Street imagery** (later): Street View Static API + Mapillary API v4, crossfade shader.
 - **Development environment**: everything runs in Docker / devcontainer. Docker on macOS has no
   Bluetooth or Metal, so macOS builds come from GitHub Actions macOS runners and only the
@@ -136,8 +136,8 @@ Built in rideable steps:
 - [x] Distance↔video-time sync; video courses (`.tqc` referencing the video)
 - [x] Import Incyclist route videos (`.xml` + GPX + video, e.g. the free Van Gestel library)
 - [x] Video ride view: playback following the rider's speed, frame blending, HUD on top
-- [x] Videos without GPS placed on a GPX: route start and end marks in the video, with frame
-  previews; movable later on the course page
+- [x] Videos without GPS added to a GPX course ("Add video…" on the course page): route start
+  and end marks in the video with frame previews; movable or removable later
 - [ ] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
 - [ ] Original video sound (R26)

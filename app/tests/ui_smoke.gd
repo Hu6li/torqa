@@ -142,6 +142,14 @@ func _video_alignment() -> void:
 	dialog.confirmed.emit()
 	_check(results == [[12.5, 48.0]], "aligned with the chosen marks: %s" % [results])
 	dialog.free()
+	# Importing a video without GPS explains how to add it to its course instead.
+	var courses: CoursesTab = CoursesTab.new()
+	var steps: String = courses.no_gps_steps("ride.mp4")
+	_check(
+		steps.begins_with("ride.mp4 has no GPS") and steps.contains("Add video…"),
+		"steps for a video without GPS: %s" % steps
+	)
+	courses.free()
 
 
 ## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.

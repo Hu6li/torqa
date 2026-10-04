@@ -1,6 +1,6 @@
 //! Video courses (R17): a route ridden along a video — a GoPro recording with its own GPS, an
-//! Incyclist route video (control file + GPX + video), or any video placed on a GPX by hand
-//! (where the route starts and ends in it). The rider's distance decides the moment of the
+//! Incyclist route video (control file + GPX + video), or any video added to a GPX course by
+//! hand (where the route starts and ends in it). The rider's distance decides the moment of the
 //! video, through the same matching used for ghosts (R20).
 
 use std::path::{Path, PathBuf};
@@ -30,32 +30,6 @@ pub struct VideoSource {
     /// Where the route's last point sits in the video, for videos aligned by hand: the video
     /// is spread evenly between `offset` and this. `None` when timestamps pair them.
     pub end: Option<Duration>,
-}
-
-/// A video without GPS placed on the GPX route at `gpx` by hand: the route starts at `start`
-/// and ends at `end` in the video. The GPX's own timestamps, from another recording, are not
-/// used.
-///
-/// # Errors
-/// A readable message if the GPX cannot be read.
-pub fn aligned_source(
-    video: &Path,
-    gpx: &Path,
-    start: Duration,
-    end: Duration,
-) -> Result<VideoSource, String> {
-    let xml =
-        std::fs::read_to_string(gpx).map_err(|e| format!("cannot read {}: {e}", gpx.display()))?;
-    let name = video
-        .file_stem()
-        .map_or_else(|| "Video".to_owned(), |s| s.to_string_lossy().into_owned());
-    Ok(VideoSource {
-        video: video.to_owned(),
-        name,
-        gpx: xml,
-        offset: start,
-        end: Some(end),
-    })
 }
 
 /// What the import needs to know about a video first: its length, and whether it carries GPS
@@ -111,7 +85,7 @@ pub fn source(path: &Path) -> Result<VideoSource, String> {
     let track = gps_track(path).map_err(|e| unreadable(&e))?;
     if track.len() < 2 {
         return Err(format!(
-            "{} has no GPS track — place it on a GPX route instead",
+            "{} has no GPS track — import its GPX route, then add the video on the course page",
             path.display()
         ));
     }

@@ -586,8 +586,8 @@ msgstr "Routen, Videos und Strecken"
 msgid "GPX routes"
 msgstr "GPX-Routen"
 
-msgid "Videos, Incyclist route videos (.xml)"
-msgstr "Videos, Incyclist-Streckenvideos (.xml)"
+msgid "Videos with GPS, Incyclist route videos (.xml)"
+msgstr "Videos mit GPS, Incyclist-Streckenvideos (.xml)"
 
 msgid "Torqa courses"
 msgstr "Torqa-Strecken"
@@ -625,9 +625,6 @@ msgstr "Die Datei wird gelöscht; deine Fahrten darauf bleiben erhalten."
 msgid "Align video…"
 msgstr "Video ausrichten …"
 
-msgid "Choose the route of this video"
-msgstr "Route zu diesem Video wählen"
-
 msgid "Align"
 msgstr "Ausrichten"
 
@@ -651,3 +648,36 @@ msgstr "Die Route muss nach ihrem Start enden."
 
 msgid "Align video with route"
 msgstr "Video auf Route ausrichten"
+
+msgid "Video without GPS"
+msgstr "Video ohne GPS"
+
+msgid "Add video…"
+msgstr "Video hinzufügen …"
+
+msgid "Video added: this course is ridden along it now."
+msgstr "Video hinzugefügt: Diese Strecke fährst du jetzt mit dem Video."
+
+msgid "Videos"
+msgstr "Videos"
+
+msgid "Ride this course along a video of it"
+msgstr "Diese Strecke mit einem Video davon fahren"
+
+msgid "Remove video"
+msgstr "Video entfernen"
+
+msgid "1. Import the GPX route of the ride shown in the video."
+msgstr "1. Importiere die GPX-Route der Fahrt im Video."
+
+msgid "%s has no GPS, so it cannot become a course by itself."
+msgstr "%s hat kein GPS und kann darum nicht allein zur Strecke werden."
+
+msgid "3. Press Add video…, choose the video and set where the route starts and ends."
+msgstr "3. Drücke «Video hinzufügen …», wähle das Video und lege fest, wo die Route beginnt und endet."
+
+msgid "2. Open that course."
+msgstr "2. Öffne diese Strecke."
+
+msgid "Choose a video of this course"
+msgstr "Video dieser Strecke wählen"
