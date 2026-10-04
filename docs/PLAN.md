@@ -185,6 +185,8 @@ Built in rideable steps:
   — sky with lit procedural clouds, aerial haze, PCSS shadows, SSIL/SDFGI and volumetric fog by
   preset ✅; true volumetric (raymarched 3D) clouds still to come
 - [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
+  — CC0 ground textures (grass, forest floor, soil, rock, snow) tinted by land cover, triplanar
+  rock, textured asphalt with worn, anti-aliased markings ✅; gravel roads and verges to come
 - [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
 - [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the

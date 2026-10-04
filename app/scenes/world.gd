@@ -58,6 +58,7 @@ const JUMP_M: float = 50.0
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
+		"ground_detail": 0,
 		"shadow_atlas": 2048,
 		"shadow_distance": 180.0,
 		"shadow_splits": 2,
@@ -76,6 +77,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"medium":
 	{
+		"ground_detail": 1,
 		"shadow_atlas": 4096,
 		"shadow_distance": 300.0,
 		"shadow_splits": 2,
@@ -94,6 +96,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"high":
 	{
+		"ground_detail": 2,
 		"shadow_atlas": 4096,
 		"shadow_distance": 500.0,
 		"shadow_splits": 4,
@@ -112,6 +115,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	},
 	"ultra":
 	{
+		"ground_detail": 2,
 		"shadow_atlas": 8192,
 		"shadow_distance": 800.0,
 		"shadow_splits": 4,
@@ -294,6 +298,11 @@ func apply_quality(name: String) -> void:
 	)
 	var distance: float = _quality["distance"]
 	_set_distance(distance)
+	# Ground textures (R45): plain colours on Low, more detail and reach higher up.
+	_terrain_material.set_shader_parameter("detail", _quality["ground_detail"])
+	_terrain_material.set_shader_parameter("detail_distance", 450.0 * distance)
+	var ground_detail: int = _quality["ground_detail"]
+	_road_material.set_shader_parameter("detail", mini(ground_detail, 1))
 
 
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
@@ -312,7 +321,18 @@ func reset_view() -> void:
 
 func _ready() -> void:
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
+	for ground: String in ["grass", "forest_floor", "soil", "rock", "snow"]:
+		var uniform: String = "forest" if ground == "forest_floor" else ground
+		var folder: String = "res://assets/textures/%s/" % ground
+		_terrain_material.set_shader_parameter(uniform + "_albedo", load(folder + "albedo.jpg"))
+		_terrain_material.set_shader_parameter(uniform + "_normal", load(folder + "normal.jpg"))
 	_road_material.shader = preload("res://shaders/road.gdshader")
+	_road_material.set_shader_parameter(
+		"asphalt_albedo", load("res://assets/textures/asphalt/albedo.jpg")
+	)
+	_road_material.set_shader_parameter(
+		"asphalt_normal", load("res://assets/textures/asphalt/normal.jpg")
+	)
 	_water_material.shader = preload("res://shaders/water.gdshader")
 	_building_material.shader = preload("res://shaders/building.gdshader")
 	_structure_material.vertex_color_use_as_albedo = true

@@ -49,8 +49,8 @@ A sped-up or jumped ride is saved, but counts towards no personal records.
 
 | Preset | For | What it adds |
 |---|---|---|
-| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds |
-| Medium | MacBook with M1 (60 fps) | ambient occlusion, soft-edged shadows, lit clouds, haze |
+| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds, plain-coloured ground |
+| Medium | MacBook with M1 (60 fps) | textured ground and asphalt, ambient occlusion, soft-edged shadows, lit clouds, haze |
 | High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, 35 % more view distance |
 | Ultra | fast GPUs | global illumination (SDFGI), larger shadow maps, 70 % more view distance |
 

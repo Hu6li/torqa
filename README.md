@@ -76,6 +76,7 @@ Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.
 
 Contributor conventions: [CLAUDE.md](CLAUDE.md). Architecture decisions: [docs/adr/](docs/adr/).
+Third-party assets and their licences: [docs/CREDITS.md](docs/CREDITS.md).
 
 ## License
 
