@@ -127,7 +127,7 @@ pub async fn import_gpx(
         total: track.len(),
         progress: &mut *progress,
     };
-    let route = Route::from_gpx_with(&xml, Some(&mut counting), &map.structures)
+    let route = Route::from_gpx_with(&xml, Some(&mut counting), &map)
         .await
         .map_err(|e| e.to_string())?;
     progress(LoadStage::Elevation, track.len(), track.len());

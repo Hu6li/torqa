@@ -1,7 +1,7 @@
 //! A flat map of the corridor for the minimap, in a dark palette matching the HUD: land cover, water, roads and buildings as one
 //! coloured triangle list in metres east/north of the route start.
 
-use torqa_osm::{LandCover, MapData};
+use torqa_osm::{LandCover, MapData, RoadClass};
 use torqa_routes::LocalProjection;
 
 use crate::CORRIDOR;
@@ -69,8 +69,10 @@ pub(crate) fn build(map: &MapData, projection: &LocalProjection, road: &RoadInde
         );
     }
     for minor_first in [false, true] {
-        for street in map.roads.iter().filter(|r| r.major == minor_first) {
-            let (width, color) = if street.major {
+        // Paths would clutter the small map.
+        let drawn = map.roads.iter().filter(|r| r.class != RoadClass::Path);
+        for street in drawn.filter(|r| r.major() == minor_first) {
+            let (width, color) = if street.major() {
                 (9.0, MAJOR_ROAD)
             } else {
                 (5.0, MINOR_ROAD)

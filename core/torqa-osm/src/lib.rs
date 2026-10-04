@@ -96,10 +96,33 @@ pub struct Waterway {
 /// A road for the minimap.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Road {
-    /// Through roads (primary, secondary, ...) rather than local streets and tracks.
-    pub major: bool,
+    /// What kind of way it is.
+    pub class: RoadClass,
     /// Centre line.
     pub line: Vec<LatLon>,
+}
+
+impl Road {
+    /// Through roads (primary, secondary, ...) rather than local streets, tracks and paths.
+    #[must_use]
+    pub fn major(&self) -> bool {
+        self.class == RoadClass::Major
+    }
+}
+
+/// Kinds of ways, widest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoadClass {
+    /// Motorways, trunk, primary and secondary roads.
+    Major,
+    /// Tertiary roads and local streets.
+    Street,
+    /// Service roads: driveways, car parks, farm access.
+    Service,
+    /// Farm and forest tracks.
+    Track,
+    /// Footpaths and cycleways.
+    Path,
 }
 
 /// Whether a road is carried over or under the ground.

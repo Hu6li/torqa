@@ -177,6 +177,10 @@ Built in rideable steps:
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
 ### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
+- [x] Route on the real road: GPX snapped to the OpenStreetMap roads and paths it rides
+  (bends between sparse points restored, GPS wander removed); record keys unchanged
+- [ ] Other streets from the map drawn in 3D
+- [ ] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
   docs
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower

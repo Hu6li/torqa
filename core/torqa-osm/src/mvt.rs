@@ -9,8 +9,8 @@ use mvt_reader::Reader;
 use mvt_reader::feature::Value;
 
 use crate::{
-    Area, Building, LandCover, LatLon, MapData, OsmError, Road, Structure, StructureKind, Waterway,
-    ZOOM,
+    Area, Building, LandCover, LatLon, MapData, OsmError, Road, RoadClass, Structure,
+    StructureKind, Waterway, ZOOM,
 };
 
 /// Adds the features of tile (x, y) to `data`. Buildings crossing tile borders appear in each
@@ -148,9 +148,15 @@ fn add_road(
     geometry: &Geometry<f64>,
     projection: &TileProjection,
 ) {
-    let class = tags.text("class");
-    let major = matches!(class, "motorway" | "trunk" | "primary" | "secondary");
-    let drawn = major || matches!(class, "tertiary" | "minor" | "service" | "track");
+    let class = match tags.text("class") {
+        "motorway" | "trunk" | "primary" | "secondary" => Some(RoadClass::Major),
+        "tertiary" | "minor" => Some(RoadClass::Street),
+        "service" => Some(RoadClass::Service),
+        "track" => Some(RoadClass::Track),
+        // Cycleways among them: routes often follow them.
+        "path" => Some(RoadClass::Path),
+        _ => None,
+    };
     let kind = match tags.text("brunnel") {
         "bridge" => Some(StructureKind::Bridge),
         "tunnel" => Some(StructureKind::Tunnel),
@@ -167,8 +173,8 @@ fn add_road(
                 line: line.clone(),
             });
         }
-        if drawn {
-            data.roads.push(Road { major, line });
+        if let Some(class) = class {
+            data.roads.push(Road { class, line });
         }
     }
 }
@@ -285,7 +291,7 @@ mod tests {
 
         assert!(data.areas.iter().any(|a| a.cover == LandCover::Forest));
         assert!(data.areas.iter().any(|a| a.cover == LandCover::Residential));
-        assert!(data.roads.iter().any(|r| !r.major));
+        assert!(data.roads.iter().any(|r| !r.major()));
         assert!(
             !data.waterways.is_empty() || data.areas.iter().any(|a| a.cover == LandCover::Water)
         );

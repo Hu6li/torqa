@@ -66,7 +66,11 @@ async fn route_north(structures: &[Structure]) -> Route {
         );
     }
     xml.push_str("</trkseg></trk></gpx>");
-    Route::from_gpx_with::<EastwardSlope>(&xml, None, structures)
+    let map = MapData {
+        structures: structures.to_vec(),
+        ..MapData::default()
+    };
+    Route::from_gpx_with::<EastwardSlope>(&xml, None, &map)
         .await
         .unwrap()
 }

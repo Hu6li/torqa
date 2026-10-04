@@ -4,13 +4,14 @@
 pub mod climbs;
 mod gpx;
 mod projection;
+mod snap;
 mod structures;
 
 pub use climbs::{Climb, ClimbCategory};
 pub use projection::LocalProjection;
 
 use torqa_domain::units::{GradePercent, Meters};
-use torqa_osm::Structure;
+use torqa_osm::MapData;
 use torqa_terrain::Terrain;
 use tracing::warn;
 
@@ -140,6 +141,8 @@ pub struct RoutePosition {
 /// A route ready to ride: evenly resampled, with smoothed elevations.
 #[derive(Debug, Clone)]
 pub struct Route {
+    /// Fingerprint of the track as recorded (see [`Route::key`]).
+    key: String,
     name: Option<String>,
     points: Vec<RoutePoint>,
     elevation_source: ElevationSource,
@@ -155,22 +158,27 @@ impl Route {
     /// # Errors
     /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
     pub async fn from_gpx(xml: &str, terrain: Option<&mut Terrain>) -> Result<Self, RouteError> {
-        Self::from_gpx_with(xml, terrain, &[]).await
+        Self::from_gpx_with(xml, terrain, &MapData::default()).await
     }
 
-    /// Like [`Route::from_gpx`], with any [`ElevationModel`] and the road `structures`
-    /// (bridges, tunnels) along the route: there the elevation runs straight from one end to the
-    /// other instead of following the ground (or water) below or the mountain above.
+    /// Like [`Route::from_gpx`], with any [`ElevationModel`] and the `map` around the route:
+    /// the track is put onto the roads it rides (GPS wander and corners cut between sparse
+    /// points removed), and on bridges and tunnels the elevation runs straight from one end to
+    /// the other instead of following the ground (or water) below or the mountain above.
     ///
     /// # Errors
     /// [`RouteError`] if the file is invalid, too short, or no elevations are available.
     pub async fn from_gpx_with<M: ElevationModel>(
         xml: &str,
         model: Option<&mut M>,
-        structures: &[Structure],
+        map: &MapData,
     ) -> Result<Self, RouteError> {
         let gpx = gpx::parse(xml)?;
-        let mut track = dedup(gpx.points);
+        let recorded = dedup(gpx.points);
+        // From the track as recorded: rides and records on a file keep matching as the map
+        // (and the matching) changes.
+        let key = key_of(&resample(&recorded)?);
+        let mut track = dedup(snap::to_roads(&recorded, &map.roads));
 
         // The model is sampled only at the file's points, which lie on the road. Between
         // sparse points a straight line can cut across a hillside, so elevations there are
@@ -194,7 +202,7 @@ impl Route {
             None => return Err(RouteError::NoElevation),
         };
         let mut points = resample(&track)?;
-        let surfaces = structures::surfaces(&points, structures);
+        let surfaces = structures::surfaces(&points, &map.structures);
         structures::bridge_elevations(&mut points, &surfaces);
 
         let window = match source {
@@ -229,6 +237,7 @@ impl Route {
 
         let points: Vec<RoutePoint> = points;
         Ok(Self {
+            key,
             name: gpx.name,
             climbs: climbs::detect(&points),
             points,
@@ -264,21 +273,7 @@ impl Route {
     /// GPX file or course), so rides on it can be compared. Ignores name and elevations.
     #[must_use]
     pub fn key(&self) -> String {
-        // FNV-1a over the position every 100 m, rounded to about 10 m.
-        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-        let mut feed = |value: i64| {
-            for byte in value.to_le_bytes() {
-                hash ^= u64::from(byte);
-                hash = hash.wrapping_mul(0x0100_0000_01b3);
-            }
-        };
-        #[allow(clippy::cast_possible_truncation)] // degrees × 10⁴ fit easily
-        for point in self.points.iter().step_by(10) {
-            feed((point.lat * 1e4).round() as i64);
-            feed((point.lon * 1e4).round() as i64);
-        }
-        feed(i64::try_from(self.points.len()).unwrap_or(i64::MAX));
-        format!("{hash:016x}")
+        self.key.clone()
     }
 
     /// Total length.
@@ -347,6 +342,24 @@ fn heading(a: &RoutePoint, b: &RoutePoint) -> f64 {
 }
 
 /// Removes consecutive points closer than 10 cm, which would create zero-length segments.
+/// FNV-1a over the position every 100 m (of points every 10 m), rounded to about 10 m.
+fn key_of(points: &[RawPoint]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |value: i64| {
+        for byte in value.to_le_bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    #[allow(clippy::cast_possible_truncation)] // degrees × 10⁴ fit easily
+    for point in points.iter().step_by(10) {
+        feed((point.lat * 1e4).round() as i64);
+        feed((point.lon * 1e4).round() as i64);
+    }
+    feed(i64::try_from(points.len()).unwrap_or(i64::MAX));
+    format!("{hash:016x}")
+}
+
 fn dedup(points: Vec<RawPoint>) -> Vec<RawPoint> {
     let mut result: Vec<RawPoint> = Vec::with_capacity(points.len());
     for point in points {
@@ -495,6 +508,46 @@ mod tests {
 
     use super::*;
 
+    #[tokio::test]
+    async fn snapping_to_the_map_keeps_the_routes_key() {
+        // GPS wandering a few metres east of a road due north.
+        let mut xml = String::from("<gpx><trk><trkseg>");
+        for i in 0..=60 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let lon = 7.0 + f64::from(i % 3) * 4.0 / 77_000.0;
+            let _ = write!(
+                xml,
+                r#"<trkpt lat="{lat}" lon="{lon}"><ele>500</ele></trkpt>"#
+            );
+        }
+        xml.push_str("</trkseg></trk></gpx>");
+        let road = torqa_osm::Road {
+            class: torqa_osm::RoadClass::Street,
+            line: vec![(45.999, 7.0), (46.01, 7.0)],
+        };
+        let map = MapData {
+            roads: vec![road],
+            ..MapData::default()
+        };
+
+        let plain = Route::from_gpx(&xml, None).await.unwrap();
+        let snapped = Route::from_gpx_with::<Terrain>(&xml, None, &map)
+            .await
+            .unwrap();
+
+        // On the road the zig-zag is gone, so the route is shorter; it is the same route.
+        assert!(snapped.length().0 < plain.length().0 - 1.0);
+        assert!(snapped.points().iter().all(|p| (p.lon - 7.0).abs() < 1e-6));
+        assert_eq!(snapped.key(), plain.key());
+    }
+
+    fn map_with(structure: torqa_osm::Structure) -> MapData {
+        MapData {
+            structures: vec![structure],
+            ..MapData::default()
+        }
+    }
+
     /// A straight track due north with the given elevations, `step` metres apart.
     fn gpx_north(elevations: &[Option<f64>], step: f64) -> String {
         let degrees_per_meter = 1.0 / (EARTH_RADIUS.to_radians());
@@ -641,7 +694,7 @@ mod tests {
             <trkpt lat="46.0" lon="7.0"/><trkpt lat="46.009" lon="7.0"/>
         </trkseg></trk></gpx>"#;
 
-        let route = Route::from_gpx_with(xml, Some(&mut Ridge), &[])
+        let route = Route::from_gpx_with(xml, Some(&mut Ridge), &MapData::default())
             .await
             .unwrap();
 
@@ -703,14 +756,15 @@ mod tests {
 
     #[tokio::test]
     async fn bridges_carry_the_road_straight_across_valleys() {
-        let bridge = Structure {
+        let bridge = torqa_osm::Structure {
             kind: torqa_osm::StructureKind::Bridge,
             line: line_north(280.0, 720.0, 7.0),
         };
 
-        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[bridge])
-            .await
-            .unwrap();
+        let route =
+            Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &map_with(bridge))
+                .await
+                .unwrap();
 
         assert!(route.max_grade().0 < 1.0, "{:?}", route.max_grade());
         assert_eq!(route.position(Meters(500.0)).elevation, Meters(500.0));
@@ -725,9 +779,10 @@ mod tests {
 
     #[tokio::test]
     async fn without_the_bridge_the_route_dips_into_the_valley() {
-        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[])
-            .await
-            .unwrap();
+        let route =
+            Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &MapData::default())
+                .await
+                .unwrap();
 
         assert!(route.position(Meters(500.0)).elevation.0 < 450.0);
     }
@@ -735,7 +790,7 @@ mod tests {
     #[tokio::test]
     async fn roads_crossing_above_are_not_the_route() {
         // A bridge running east-west over the route.
-        let crossing = Structure {
+        let crossing = torqa_osm::Structure {
             kind: torqa_osm::StructureKind::Bridge,
             line: vec![
                 (46.0 + 500.0 / 111_195.0, 6.999),
@@ -743,9 +798,10 @@ mod tests {
             ],
         };
 
-        let route = Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &[crossing])
-            .await
-            .unwrap();
+        let route =
+            Route::from_gpx_with(&dense_track_north(), Some(&mut Valley), &map_with(crossing))
+                .await
+                .unwrap();
 
         assert!(route.points().iter().all(|p| p.surface == Surface::Ground));
     }
