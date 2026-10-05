@@ -1003,6 +1003,51 @@ async fn churches_get_a_tower_and_chapels_a_turret() {
 }
 
 #[tokio::test]
+async fn walls_show_whole_windows_only() {
+    // A block of odd size: no wall is a whole number of window spacings long.
+    let block = Building {
+        id: 7,
+        outline: rectangle(80.0, 500.0, 11.85, 5.65),
+        height: Some(15.0),
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![block],
+        ..MapData::default()
+    })
+    .await;
+
+    let mut walls = 0;
+    for chunk in &world.chunks {
+        let shells =
+            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        for mesh in shells {
+            for (k, color) in mesh.colors.iter().enumerate() {
+                // Windowed walls: plaster and timber every 3.2 m, churches every 4.5 m.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // style codes
+                let spacing = match (color[3] * 9.0).round() as u8 {
+                    0 | 2 => 3.2,
+                    4 => 4.5,
+                    _ => continue,
+                };
+                if mesh.normals[k][1].abs() > 0.01 {
+                    continue;
+                }
+                // Each wall spans whole windows: its ends fall on the grid.
+                let windows = mesh.uvs[k][0] / spacing;
+                assert!(
+                    (windows - windows.round()).abs() < 1e-3,
+                    "a wall ending {windows} windows along"
+                );
+                walls += 1;
+            }
+        }
+    }
+    assert!(walls > 8, "{walls} wall corners checked");
+}
+
+#[tokio::test]
 async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
     let block = Building {
         id: 5,

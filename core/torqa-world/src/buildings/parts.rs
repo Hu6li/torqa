@@ -9,6 +9,10 @@ use super::shape::{Point, Rect, distance, offset, perimeter, signed_area, triang
 const ROOF_THICKNESS: f64 = 0.22;
 /// Windows stand this far out of their wall, so they never flicker into it.
 const WINDOW_RELIEF: f64 = 0.04;
+/// Windows repeat this often along plastered and timber walls, and church windows this often
+/// (`app/shaders/building.gdshader`: `window_spacing`, and the church's 4.5 m).
+const WINDOW_SPACING: f64 = 3.2;
+const CHURCH_WINDOW_SPACING: f64 = 4.5;
 
 /// How the building shader draws a surface. Stored in the vertex colour's alpha as
 /// code / `Style::LAST`; `app/shaders/building.gdshader` uses the same codes.
@@ -38,6 +42,15 @@ pub(crate) enum Style {
 
 impl Style {
     const LAST: f32 = 9.0;
+
+    /// How often windows repeat along a wall of this style, if they do.
+    fn window_spacing(self) -> Option<f64> {
+        match self {
+            Self::Plaster | Self::Timber => Some(WINDOW_SPACING),
+            Self::Church => Some(CHURCH_WINDOW_SPACING),
+            _ => None,
+        }
+    }
 
     fn alpha(self) -> f32 {
         f32::from(self as u8) / Self::LAST
@@ -116,22 +129,27 @@ impl Builder<'_> {
         self.walls_facing(outline, bottom, top, paint, 1.0);
     }
 
-    /// Walls facing out (`side` 1) or in (−1).
+    /// Walls facing out (`side` 1) or in (−1). Each wall holds whole windows only: its own grid
+    /// from corner to corner, stretched a little to a whole number of them, and none on walls
+    /// too short for one.
     fn walls_facing(&mut self, outline: &[Point], bottom: f64, top: f64, paint: Paint, side: f64) {
-        let mut along = 0.0;
         for i in 0..outline.len() {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
             let length = distance(a, b);
             if length < 0.01 {
                 continue;
             }
+            let span = match paint.style.window_spacing() {
+                Some(spacing) => (length / spacing).round() * spacing,
+                None => length,
+            };
             // Counter-clockwise outline: the outside is to the right of travel.
             let out = ((b.1 - a.1) / length * side, (a.0 - b.0) / length * side);
             let uvs = [
-                self.wall_uv(along, bottom),
-                self.wall_uv(along + length, bottom),
-                self.wall_uv(along + length, top),
-                self.wall_uv(along, top),
+                self.wall_uv(0.0, bottom),
+                self.wall_uv(span, bottom),
+                self.wall_uv(span, top),
+                self.wall_uv(0.0, top),
             ];
             self.upright(
                 &[(a, bottom), (b, bottom), (b, top), (a, top)],
@@ -139,7 +157,6 @@ impl Builder<'_> {
                 out,
                 paint,
             );
-            along += length;
         }
     }
 
