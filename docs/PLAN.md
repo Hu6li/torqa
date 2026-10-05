@@ -251,7 +251,9 @@ the realistic look's textures and patterns are being replaced step by step.
       so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
-      (none cut at corners and edges)
+      (none cut at corners and edges). Done: whole windows; blocks in coloured or light
+      plaster with contrasting trim (a ground storey of its own, string course, cornice),
+      stacked balconies and rooftop units. Open: shops with awnings, more kinds
     - [ ] Bridges and viaducts as models: stone arches, concrete beams on piers, railway
       viaducts, instead of plain decks
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the

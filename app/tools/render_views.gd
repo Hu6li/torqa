@@ -16,6 +16,7 @@ const VIEWS: Dictionary[String, Array] = {
 	"lake-drone": ["bielersee", 5000.0, 2, "Midday", "Clear"],
 	"lake-rain": ["bielersee", 3000.0, 0, "Midday", "Rain"],
 	"lakeside-village": ["bielersee", 5150.0, 0, "Midday", "Clear"],
+	"block-chase": ["bielersee", 4960.0, 0, "Midday", "Clear"],
 	"bridge-chase": ["kirchenfeldbruecke", 200.0, 0, "Midday", "Clear"],
 }
 ## Frames to let the world stream in around a new place; software rendering is slow.
