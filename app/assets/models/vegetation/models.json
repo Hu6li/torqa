@@ -1,0 +1,32 @@
+{
+ "models": {
+  "broadleaf_cluster": {
+   "kind": "broadleaf",
+   "height": 8.97
+  },
+  "broadleaf_round": {
+   "kind": "broadleaf",
+   "height": 8.91
+  },
+  "bush": {
+   "kind": "bush",
+   "height": 1.46
+  },
+  "conifer_broad": {
+   "kind": "conifer",
+   "height": 10.4
+  },
+  "conifer_tall": {
+   "kind": "conifer",
+   "height": 14.0
+  },
+  "rock_block": {
+   "kind": "rock",
+   "height": 1.23
+  },
+  "rock_pair": {
+   "kind": "rock",
+   "height": 1.02
+  }
+ }
+}
