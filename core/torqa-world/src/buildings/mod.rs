@@ -10,10 +10,11 @@ mod parts;
 mod shape;
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 use torqa_osm::Building;
 
-use crate::{BuildingCell, HeightGrid, MeshData, hash};
+use crate::{BuildingCell, HeightGrid, MeshData, hash, palette};
 use models::{Fit, Wanted};
 use parts::{Builder, Paint, Pitch, RoofPaint, Style};
 pub(crate) use shape::{Point, centroid, contains, footprint, signed_area, triangulate};
@@ -45,63 +46,48 @@ const MODEL_BASEMENT: f64 = 2.8;
 /// models up close and shells far away by its own distance.
 const CELL: f64 = 120.0;
 
-/// Plaster (sRGB): cream, beige, sand, white, light grey, ochre, pale yellow, salmon, sage.
-const PLASTER: [[f32; 3]; 9] = [
-    [0.93, 0.89, 0.80],
-    [0.88, 0.83, 0.74],
-    [0.84, 0.76, 0.63],
-    [0.94, 0.93, 0.90],
-    [0.78, 0.78, 0.76],
-    [0.86, 0.72, 0.55],
-    [0.93, 0.87, 0.66],
-    [0.90, 0.74, 0.66],
-    [0.80, 0.84, 0.78],
-];
-/// Plaster of blocks, churches and masonry ground floors: white, light grey, off-white,
-/// pale beige.
-const LIGHT_PLASTER: [[f32; 3]; 4] = [
-    [0.95, 0.95, 0.93],
-    [0.84, 0.84, 0.83],
-    [0.92, 0.90, 0.85],
-    [0.88, 0.85, 0.78],
-];
-/// Wood: dark brown, brown, weathered grey-brown, honey.
-const WOOD: [[f32; 3]; 4] = [
-    [0.36, 0.23, 0.13],
-    [0.47, 0.31, 0.18],
-    [0.42, 0.36, 0.30],
-    [0.62, 0.44, 0.25],
-];
-/// Roof tiles: terracotta, brown, red-brown, anthracite, slate.
-const TILES: [[f32; 3]; 5] = [
-    [0.60, 0.29, 0.20],
-    [0.44, 0.27, 0.20],
-    [0.52, 0.24, 0.18],
-    [0.24, 0.25, 0.27],
-    [0.36, 0.37, 0.40],
-];
-/// Mountain roofs: dark grey, slate, brown shingles.
-const MOUNTAIN_ROOFS: [[f32; 3]; 3] = [[0.22, 0.22, 0.23], [0.34, 0.35, 0.37], [0.36, 0.28, 0.22]];
-/// Metal cladding: light grey, silver, white, blue-grey, beige, dark grey.
-const CLADDING: [[f32; 3]; 6] = [
-    [0.70, 0.71, 0.72],
-    [0.80, 0.81, 0.82],
-    [0.90, 0.90, 0.89],
-    [0.45, 0.52, 0.60],
-    [0.78, 0.74, 0.66],
-    [0.38, 0.39, 0.40],
-];
-/// Metal roofs: grey, dark grey, light grey.
-const SHEET: [[f32; 3]; 3] = [[0.50, 0.51, 0.52], [0.30, 0.31, 0.32], [0.66, 0.67, 0.68]];
-/// Flat roofs: gravel, membrane, light gravel.
-const FLAT: [[f32; 3]; 3] = [[0.45, 0.44, 0.42], [0.35, 0.35, 0.36], [0.55, 0.54, 0.50]];
-/// Spires: slate, copper green, red tiles.
-const SPIRES: [[f32; 3]; 3] = [[0.28, 0.29, 0.32], [0.36, 0.56, 0.48], [0.55, 0.26, 0.19]];
-/// Window frames: white; stone around church openings; chimney caps.
-const WHITE: [f32; 3] = [0.93, 0.93, 0.90];
-const STONE: [f32; 3] = [0.72, 0.71, 0.68];
-const SOOT: [f32; 3] = [0.20, 0.20, 0.21];
-const BRICK: [f32; 3] = [0.55, 0.27, 0.20];
+/// Building colours from the palette (sRGB, ADR 0011), read once.
+type Colours = LazyLock<Vec<[f32; 3]>>;
+
+/// Plaster of houses: cream, sand, peach, dusty rose, pale ochre, pale sage.
+static PLASTER: Colours = LazyLock::new(|| palette::list("buildings.walls"));
+/// Plaster of blocks, churches and masonry ground floors: creams and off-whites.
+static LIGHT_PLASTER: Colours = LazyLock::new(|| palette::list("buildings.light_walls"));
+/// Timber: browns of the palette.
+static WOOD: Colours = LazyLock::new(|| palette::list("buildings.timber"));
+/// Roof tiles: coral, terracotta, brick, then two slate greys.
+static TILES: Colours = LazyLock::new(|| palette::list("buildings.tiles"));
+/// Mountain roofs: slate greys, brown shingles.
+static MOUNTAIN_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.mountain_roofs"));
+/// Metal cladding of halls: pale greys and creams, blue-grey.
+static CLADDING: Colours = LazyLock::new(|| palette::list("buildings.cladding"));
+/// Metal roofs: blue-greys.
+static SHEET: Colours = LazyLock::new(|| palette::list("buildings.sheet"));
+/// Flat roofs: gravel tones.
+static FLAT: Colours = LazyLock::new(|| palette::list("buildings.flat_roofs"));
+/// Spires: slate, copper green, coral tiles.
+static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
+/// Window frames; stone around church openings; chimneys and their caps.
+static WHITE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.frame"));
+static STONE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.stone"));
+static SOOT: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.soot"));
+static BRICK: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.chimney"));
+
+/// The palette colour nearest to a colour from the map: a mapped colour keeps its idea (red,
+/// white, yellow) but fits the look.
+fn nearest(mapped: [f32; 3], palette: &[[f32; 3]]) -> [f32; 3] {
+    let distance = |c: &[f32; 3]| (0..3).map(|k| (c[k] - mapped[k]).powi(2)).sum::<f32>();
+    palette
+        .iter()
+        .copied()
+        .min_by(|a, b| distance(a).total_cmp(&distance(b)))
+        .unwrap_or(mapped)
+}
+
+fn rgb(path: &str) -> [f32; 3] {
+    let [r, g, b, _] = palette::srgb(path, 1.0);
+    [r, g, b]
+}
 
 /// What a building is, as far as the map lets us tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -520,10 +506,10 @@ impl Recipe<'_> {
 
     /// The main walls' paint: the mapped colour if there is one.
     fn facade(&self, palette: &[[f32; 3]], style: Style) -> Paint {
-        let rgb = self
-            .building
-            .color
-            .unwrap_or_else(|| self.dice.pick(1, palette));
+        let rgb = self.building.color.map_or_else(
+            || self.dice.pick(1, palette),
+            |mapped| nearest(mapped, palette),
+        );
         Paint::new(self.dice.tint(rgb), style)
     }
 
@@ -568,7 +554,7 @@ impl Recipe<'_> {
                 },
             },
             chimney: self.dice.roll(10) < 0.6,
-            gable_windows: Some(WHITE),
+            gable_windows: Some(*WHITE),
             balcony: false,
         }
     }
@@ -596,7 +582,7 @@ impl Recipe<'_> {
                 gables: wood.with(Style::Boards),
             },
             chimney: self.dice.roll(10) < 0.5,
-            gable_windows: Some(WHITE),
+            gable_windows: Some(*WHITE),
             balcony: true,
         }
     }
@@ -624,7 +610,7 @@ impl Recipe<'_> {
                 gables: wood.with(Style::Boards),
             },
             chimney: self.dice.roll(10) < 0.4,
-            gable_windows: Some(WHITE),
+            gable_windows: Some(*WHITE),
             balcony: false,
         }
     }
@@ -844,11 +830,10 @@ fn rise(design: &Design, rect: &Rect) -> f64 {
 /// A church's walls (the mapped colour if there is one) and roof.
 fn church_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     let wall = Paint::new(
-        dice.tint(
-            building
-                .color
-                .unwrap_or_else(|| dice.pick(1, &LIGHT_PLASTER)),
-        ),
+        dice.tint(building.color.map_or_else(
+            || dice.pick(1, &LIGHT_PLASTER),
+            |mapped| nearest(mapped, &LIGHT_PLASTER),
+        )),
         Style::Church,
     );
     let roof = Paint::new(
@@ -886,7 +871,7 @@ fn chimney(b: &mut Builder, rect: &Rect, design: &Design, pitch: Pitch, top: f64
     let roof = pitch.eaves + (inset - half) * slope;
     let stack = Rect::square(rect.point(along, across), rect.axis, half);
     let sides = if dice.roll(22) < 0.3 {
-        Paint::new(BRICK, Style::Blank)
+        Paint::new(*BRICK, Style::Blank)
     } else {
         design.wall.with(Style::Blank)
     };
@@ -894,7 +879,7 @@ fn chimney(b: &mut Builder, rect: &Rect, design: &Design, pitch: Pitch, top: f64
         &stack,
         (roof - 0.1, top + 0.6),
         sides,
-        Paint::new(SOOT, Style::Flat),
+        Paint::new(*SOOT, Style::Flat),
         false,
     );
 }
@@ -1123,7 +1108,7 @@ fn belfry(b: &mut Builder, tower: &Rect, top: f64) {
                 tower.centre.0 + out.0 * half + along.0 * offset,
                 tower.centre.1 + out.1 * half + along.1 * offset,
             );
-            b.window(centre, out, 0.32, (top - 3.4, top - 1.0), STONE);
+            b.window(centre, out, 0.32, (top - 3.4, top - 1.0), *STONE);
         }
     }
 }

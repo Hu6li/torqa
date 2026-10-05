@@ -1413,3 +1413,39 @@ async fn lakes_get_a_flat_surface_at_the_water_level() {
         "flat at the lake level"
     );
 }
+
+#[tokio::test]
+async fn mapped_building_colours_turn_into_palette_colours() {
+    // A house mapped in dark grey: it keeps a wall colour of the light pastel palette.
+    let house = Building {
+        id: 5,
+        outline: square(60.0, 500.0, 5.0),
+        height: None,
+        levels: Some(2.0),
+        color: Some([0.15, 0.15, 0.17]),
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+
+    // Plastered walls carry style code 0 in their alpha.
+    let walls: Vec<[f32; 4]> = world
+        .chunks
+        .iter()
+        .flat_map(|c| {
+            c.modelled
+                .iter()
+                .flat_map(|cell| cell.shells.colors.iter())
+                .chain(c.buildings.colors.iter())
+        })
+        .filter(|colour| colour[3] == 0.0)
+        .copied()
+        .collect();
+    assert_ne!(walls.len(), 0, "no plastered walls");
+    for [r, g, b, _] in walls {
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        assert!(luminance > 0.6, "dark wall {r} {g} {b}");
+    }
+}
