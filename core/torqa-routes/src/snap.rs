@@ -42,6 +42,16 @@ const MAX_SHIFT_M: f64 = 2.5;
 /// Pairs of smoothing passes; each pair shrinks and re-inflates the line (Taubin), which takes
 /// out kinks and jitter but keeps long bends as they are.
 const SMOOTHING_PAIRS: usize = 8;
+/// Short excursions to one side and back are ridden straight. Where a street splits around a
+/// traffic island the map draws a one-way branch either side, and the track follows one of
+/// them out and back: a kink no rider rides. An excursion is at most this long...
+const EXCURSION_MAX_M: f64 = 80.0;
+/// ...leaves the line by this much at most (wider ones are real roads)...
+const EXCURSION_OFFSET_M: f64 = 8.0;
+/// ...leaves and rejoins it in its direction, within this angle (radians)...
+const EXCURSION_ALIGNED: f64 = 0.06;
+/// ...and turns away by at least this much on the way (gentle bends never do).
+const EXCURSION_TURN: f64 = 0.15;
 /// Spatial index cell size.
 const CELL_M: f64 = 50.0;
 
@@ -151,7 +161,9 @@ pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Snapped {
             on_road: matches[i].is_some(),
         });
     }
-    let nodes = smooth(&densify(&nodes));
+    let mut nodes = densify(&nodes);
+    straighten_excursions(&mut nodes);
+    let nodes = smooth(&nodes);
 
     let mut used: Vec<usize> = matches.iter().flatten().map(|m| m.road).collect();
     used.sort_unstable();
@@ -472,6 +484,75 @@ fn densify(nodes: &[Node]) -> Vec<Node> {
     out
 }
 
+/// Puts short excursions to one side and back (see `EXCURSION_MAX_M`) onto the line they leave
+/// and rejoin.
+fn straighten_excursions(nodes: &mut [Node]) {
+    // Points this far before and after an excursion give the line's direction there.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // small constants
+    let (lead, reach) = (
+        (15.0 / STEP_M).ceil() as usize,
+        (EXCURSION_MAX_M / STEP_M).ceil() as usize,
+    );
+    let mut start = lead;
+    while start + lead < nodes.len() {
+        let last = (start + reach).min(nodes.len() - 1 - lead);
+        // The longest excursion from here, so it is taken out as a whole.
+        let end = (start + 2..=last)
+            .rev()
+            .find(|&end| is_excursion(nodes, start, end, lead));
+        let Some(end) = end else {
+            start += 1;
+            continue;
+        };
+        let (a, b) = (nodes[start].at, nodes[end].at);
+        for node in &mut nodes[start + 1..end] {
+            let (on_line, _) = project(node.at, a, b);
+            node.at = on_line;
+            node.anchor = on_line;
+        }
+        start = end;
+    }
+}
+
+/// Whether the line leaves the chord from point `start` to point `end` to one side and comes
+/// back to it, as an excursion does.
+fn is_excursion(nodes: &[Node], start: usize, end: usize, lead: usize) -> bool {
+    let direction = |a: (f64, f64), b: (f64, f64)| (b.0 - a.0).atan2(b.1 - a.1);
+    let apart = |x: f64, y: f64| {
+        (x - y + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI
+    };
+    let (a, b) = (nodes[start].at, nodes[end].at);
+    let length = distance(a, b);
+    if !(15.0..=EXCURSION_MAX_M).contains(&length) {
+        return false;
+    }
+    let chord = direction(a, b);
+    let before = direction(nodes[start - lead].at, a);
+    let after = direction(b, nodes[end + lead].at);
+    if apart(before, chord).abs() > EXCURSION_ALIGNED
+        || apart(after, chord).abs() > EXCURSION_ALIGNED
+    {
+        return false;
+    }
+    let inside = &nodes[start + 1..end];
+    // Off-road stretches keep the course they were recorded on.
+    if inside.iter().any(|n| !n.on_road) {
+        return false;
+    }
+    let (ux, uy) = ((b.0 - a.0) / length, (b.1 - a.1) / length);
+    let offsets: Vec<f64> = inside
+        .iter()
+        .map(|n| (n.at.0 - a.0) * uy - (n.at.1 - a.1) * ux)
+        .collect();
+    let widest = offsets.iter().fold(0.0_f64, |m, o| m.max(o.abs()));
+    let one_side = offsets.iter().all(|&o| o >= -0.2) || offsets.iter().all(|&o| o <= 0.2);
+    let turned = nodes[start..end]
+        .windows(2)
+        .map(|w| apart(direction(w[0].at, w[1].at), chord).abs())
+        .fold(0.0, f64::max);
+    one_side && (1.0..=EXCURSION_OFFSET_M).contains(&widest) && turned >= EXCURSION_TURN
+}
+
 /// Rounds corners and takes out jitter, keeping every point within `MAX_SHIFT_M` of where it
 /// was put; the ends stay.
 fn smooth(nodes: &[Node]) -> Vec<Node> {
@@ -725,6 +806,53 @@ mod tests {
             "{}",
             sharpest_turn(&snapped)
         );
+    }
+
+    #[test]
+    fn excursions_round_traffic_islands_are_ridden_straight() {
+        // A street north splitting round a traffic island 60 m long, its one-way branches 5 m
+        // either side (as the map draws them), ridden straight through.
+        let roads = [
+            road(&[(0.0, 0.0), (0.0, 200.0)]),
+            road(&[(0.0, 200.0), (5.0, 215.0), (5.0, 245.0), (0.0, 260.0)]),
+            road(&[(0.0, 200.0), (-5.0, 215.0), (-5.0, 245.0), (0.0, 260.0)]),
+            road(&[(0.0, 260.0), (0.0, 500.0)]),
+        ];
+        let track: Vec<RawPoint> = (0..=50).map(|i| point(0.5, f64::from(i) * 10.0)).collect();
+
+        let snapped = xy(&to_roads(&track, &roads).track);
+
+        for &(x, y) in &snapped {
+            assert!(x.abs() < 0.5, "{x} m aside at {y} m");
+        }
+        assert!(sharpest_turn(&snapped) < 3.0, "{}", sharpest_turn(&snapped));
+    }
+
+    #[test]
+    fn a_road_stepping_aside_keeps_its_course() {
+        // A real dog-leg: the road moves 20 m east and goes on there; not an excursion.
+        let dogleg = [(0.0, 0.0), (0.0, 200.0), (20.0, 240.0), (20.0, 500.0)];
+        let track: Vec<RawPoint> = (0..=50)
+            .map(|i| {
+                let y = f64::from(i) * 10.0;
+                point(
+                    if y < 200.0 {
+                        0.5
+                    } else if y < 240.0 {
+                        (y - 200.0) / 2.0
+                    } else {
+                        20.5
+                    },
+                    y,
+                )
+            })
+            .collect();
+
+        let snapped = xy(&to_roads(&track, &[road(&dogleg)]).track);
+
+        for &p in &snapped {
+            assert!(off(&dogleg, p) <= MAX_SHIFT_M + 1e-6, "{p:?}");
+        }
     }
 
     #[test]
