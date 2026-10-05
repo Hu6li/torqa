@@ -219,7 +219,7 @@ msgstr ""
 msgid "Choose a video of this course"
 msgstr ""
 
-#: app/scenes/world.gd:39
+#: app/scenes/world.gd:43
 msgid "Clear"
 msgstr ""
 
@@ -263,7 +263,7 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
-#: app/scenes/world.gd:39
+#: app/scenes/world.gd:43
 msgid "Cloudy"
 msgstr ""
 
@@ -343,7 +343,7 @@ msgstr ""
 msgid "Endurance"
 msgstr ""
 
-#: app/scenes/world.gd:29
+#: app/scenes/world.gd:32
 msgid "Evening"
 msgstr ""
 
@@ -391,7 +391,7 @@ msgstr ""
 msgid "Found %d device(s)"
 msgstr ""
 
-#: app/scenes/world.gd:153
+#: app/scenes/world.gd:145
 msgid "Free"
 msgstr ""
 
@@ -431,7 +431,7 @@ msgstr ""
 msgid "Hard"
 msgstr ""
 
-#: app/scenes/world.gd:39
+#: app/scenes/world.gd:43
 msgid "Hazy"
 msgstr ""
 
@@ -543,7 +543,7 @@ msgstr ""
 msgid "Metric (km, kg)"
 msgstr ""
 
-#: app/scenes/world.gd:20
+#: app/scenes/world.gd:22
 msgid "Midday"
 msgstr ""
 
@@ -555,7 +555,7 @@ msgstr ""
 msgid "Mon"
 msgstr ""
 
-#: app/scenes/world.gd:11
+#: app/scenes/world.gd:12
 msgid "Morning"
 msgstr ""
 
@@ -703,7 +703,7 @@ msgstr ""
 msgid "Race against a recorded activity"
 msgstr ""
 
-#: app/scenes/world.gd:39
+#: app/scenes/world.gd:43
 msgid "Rain"
 msgstr ""
 

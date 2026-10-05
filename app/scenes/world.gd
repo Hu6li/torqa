@@ -5,35 +5,39 @@ extends Node3D
 enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 
 # i18n-begin: time-of-day and weather names are shown in the setup screen.
-## Sun elevation and azimuth (degrees, azimuth clockwise from north), colour and energy, and
-## sky top/horizon colours per time of day.
+## Sun elevation and azimuth (degrees, azimuth clockwise from north), sun and sky light energy
+## per time of day, with the palette's names of its sun and sky colours. A low sun gets more sky
+## light, so mornings and evenings stay bright and pastel.
 const TIMES: Dictionary[String, Dictionary] = {
 	"Morning":
 	{
 		"elevation": 14.0,
 		"azimuth": 110.0,
-		"sun": Color(1.0, 0.82, 0.66),
-		"energy": 0.95,
-		"top": Color(0.36, 0.55, 0.82),
-		"horizon": Color(0.92, 0.78, 0.66),
+		"energy": 0.75,
+		"ambient": 0.68,
+		"sun": "light.morning_sun",
+		"top": "sky.morning_top",
+		"horizon": "sky.morning_horizon",
 	},
 	"Midday":
 	{
 		"elevation": 55.0,
 		"azimuth": 190.0,
-		"sun": Color(1.0, 0.98, 0.94),
-		"energy": 1.2,
-		"top": Color(0.32, 0.52, 0.82),
-		"horizon": Color(0.68, 0.78, 0.88),
+		"energy": 0.8,
+		"ambient": 0.55,
+		"sun": "light.sun",
+		"top": "sky.top",
+		"horizon": "sky.horizon",
 	},
 	"Evening":
 	{
-		"elevation": 9.0,
+		"elevation": 12.0,
 		"azimuth": 265.0,
-		"sun": Color(1.0, 0.62, 0.38),
-		"energy": 0.85,
-		"top": Color(0.28, 0.36, 0.62),
-		"horizon": Color(0.98, 0.62, 0.42),
+		"energy": 0.75,
+		"ambient": 0.72,
+		"sun": "light.evening_sun",
+		"top": "sky.evening_top",
+		"horizon": "sky.evening_horizon",
 	},
 }
 const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
@@ -63,7 +67,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"model_range": 200.0,
 		"grass_range": 0.0,
 		"grass_shadows": false,
-		"ground_detail": 0,
 		"shadow_atlas": 2048,
 		"shadow_distance": 180.0,
 		"shadow_splits": 2,
@@ -76,8 +79,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"msaa": Viewport.MSAA_DISABLED,
 		"fxaa": true,
 		"render_scale": 0.77,
-		"cloud_octaves": 3,
-		"cloud_light_steps": 0,
 		"distance": 0.65,
 	},
 	"medium":
@@ -85,7 +86,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"model_range": 400.0,
 		"grass_range": 60.0,
 		"grass_shadows": false,
-		"ground_detail": 1,
 		"shadow_atlas": 4096,
 		"shadow_distance": 300.0,
 		"shadow_splits": 2,
@@ -98,8 +98,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
-		"cloud_octaves": 4,
-		"cloud_light_steps": 1,
 		"distance": 1.0,
 	},
 	"high":
@@ -107,7 +105,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"model_range": 550.0,
 		"grass_range": 100.0,
 		"grass_shadows": true,
-		"ground_detail": 2,
 		"shadow_atlas": 4096,
 		"shadow_distance": 500.0,
 		"shadow_splits": 4,
@@ -120,8 +117,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
-		"cloud_octaves": 5,
-		"cloud_light_steps": 3,
 		"distance": 1.35,
 	},
 	"ultra":
@@ -129,7 +124,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"model_range": 750.0,
 		"grass_range": 150.0,
 		"grass_shadows": true,
-		"ground_detail": 2,
 		"shadow_atlas": 8192,
 		"shadow_distance": 800.0,
 		"shadow_splits": 4,
@@ -142,8 +136,6 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
-		"cloud_octaves": 6,
-		"cloud_light_steps": 5,
 		"distance": 1.7,
 	},
 }
@@ -242,10 +234,14 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var azimuth: float = time["azimuth"]
 	# The light shines along its −z axis: from the sun's direction towards the ground.
 	_sun.rotation = Vector3(deg_to_rad(-elevation), deg_to_rad(180.0 - azimuth), 0.0)
-	var top: Color = time["top"]
-	var horizon: Color = time["horizon"]
-	var sun_color: Color = time["sun"]
+	var top_name: String = time["top"]
+	var horizon_name: String = time["horizon"]
+	var sun_name: String = time["sun"]
+	var top: Color = Palette.color(top_name)
+	var horizon: Color = Palette.color(horizon_name)
+	var sun_color: Color = Palette.color(sun_name)
 	var energy: float = time["energy"]
+	var ambient: float = time["ambient"]
 	var overcast: float = 0.0
 	var fog: float = 0.00035
 	# Fair-weather clouds even on clear days: a bare gradient looked artificial.
@@ -265,17 +261,17 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_overcast = overcast
 	var wind: Dictionary[String, float] = {"Clear": 0.08, "Cloudy": 0.14, "Hazy": 0.04, "Rain": 0.2}
 	_plant_material.set_shader_parameter("wind_strength", wind.get(weather, 0.08))
-	var grey: Color = Color(0.6, 0.62, 0.65)
-	var sky_top: Color = top.lerp(grey * 0.8, overcast)
-	var sky_horizon: Color = horizon.lerp(grey, overcast)
+	# Grey weather stays pastel (ADR 0011): soft grey-blue instead of dull grey.
+	var sky_top: Color = top.lerp(Palette.color("sky.overcast_top"), overcast)
+	var sky_horizon: Color = horizon.lerp(Palette.color("sky.overcast_horizon"), overcast)
 	_sky.set_shader_parameter("top_color", sky_top)
 	_sky.set_shader_parameter("horizon_color", sky_horizon)
 	_sky.set_shader_parameter("cloud_cover", cover)
-	_sky.set_shader_parameter("cloud_darkness", lerpf(0.25, 0.6, overcast))
+	_sky.set_shader_parameter("cloud_darkness", overcast)
 	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
-	_sun.light_energy = energy * lerpf(1.0, 0.35, overcast)
+	_sun.light_energy = energy * lerpf(1.0, 0.25, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
-	_environment.ambient_light_energy = lerpf(0.9, 1.25, overcast)
+	_environment.ambient_light_energy = lerpf(ambient, 0.85, overcast)
 	_environment.fog_density = fog
 	_environment.fog_light_color = sky_horizon
 	_apply_fog_volume()
@@ -313,20 +309,12 @@ func apply_quality(name: String) -> void:
 		Viewport.SCALING_3D_MODE_FSR if render_scale < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
 	)
 	viewport.scaling_3d_scale = render_scale
-	_sky.set_shader_parameter("cloud_octaves", _quality["cloud_octaves"])
-	_sky.set_shader_parameter("light_steps", _quality["cloud_light_steps"])
 	# Lighter presets refresh the sky's light over several frames.
 	_environment.sky.process_mode = (
 		Sky.PROCESS_MODE_INCREMENTAL if name in ["low", "medium"] else Sky.PROCESS_MODE_AUTOMATIC
 	)
 	var distance: float = _quality["distance"]
 	_set_distance(distance)
-	# Ground textures (R45): plain colours on Low, more detail and reach higher up.
-	_terrain_material.set_shader_parameter("detail", _quality["ground_detail"])
-	_terrain_material.set_shader_parameter("detail_distance", 450.0 * distance)
-	var ground_detail: int = _quality["ground_detail"]
-	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
-		material.set_shader_parameter("detail", mini(ground_detail, 1))
 
 
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
@@ -344,38 +332,42 @@ func reset_view() -> void:
 
 
 func _ready() -> void:
+	# Flat palette colours everywhere (ADR 0011); the shaders facet what they draw.
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
-	for ground: String in ["grass", "forest_floor", "soil", "rock", "snow"]:
-		var uniform: String = "forest" if ground == "forest_floor" else ground
-		var folder: String = "res://assets/textures/%s/" % ground
-		_terrain_material.set_shader_parameter(uniform + "_albedo", load(folder + "albedo.jpg"))
-		_terrain_material.set_shader_parameter(uniform + "_normal", load(folder + "normal.jpg"))
+	_terrain_material.set_shader_parameter("rock_color", Palette.color("ground.rock"))
+	_terrain_material.set_shader_parameter("snow_color", Palette.color("ground.snow"))
 	_road_material.shader = preload("res://shaders/road.gdshader")
-	_road_material.set_shader_parameter(
-		"asphalt_albedo", load("res://assets/textures/asphalt/albedo.jpg")
-	)
-	_road_material.set_shader_parameter(
-		"asphalt_normal", load("res://assets/textures/asphalt/normal.jpg")
-	)
+	_road_material.set_shader_parameter("asphalt_color", Palette.color("road.asphalt"))
+	_road_material.set_shader_parameter("marking_color", Palette.color("road.marking"))
+	_road_material.set_shader_parameter("shoulder_color", Palette.color("road.shoulder"))
 	_water_material.shader = preload("res://shaders/water.gdshader")
+	_water_material.set_shader_parameter("deep_color", Palette.color("water.deep"))
+	_water_material.set_shader_parameter("shallow_color", Palette.color("water.shallow"))
 	_building_material.shader = preload("res://shaders/building.gdshader")
 	_structure_material.vertex_color_use_as_albedo = true
 	_structure_material.vertex_color_is_srgb = true
 	_structure_material.roughness = 0.9
 	_sky.shader = preload("res://shaders/sky.gdshader")
+	_sky.set_shader_parameter("ground_color", Palette.color("ground.meadow"))
+	_sky.set_shader_parameter("cloud_color", Palette.color("sky.cloud"))
+	_sky.set_shader_parameter("cloud_shade_color", Palette.color("sky.cloud_shade"))
 	_environment.sky.sky_material = _sky
+	# Tone mapping is linear (world.tscn) and the light balanced so a sunlit facet shows about its
+	# palette colour; a warm white mixed into the sky's light keeps shadows bright, lightly tinted.
+	_environment.ambient_light_color = Palette.color("light.ambient")
 	# Haze towards distant terrain takes the sky's colour (R45).
 	_environment.fog_aerial_perspective = 0.6
 	_plant_material.shader = preload("res://shaders/plants.gdshader")
-	for surface: Array in [[_street_material, "asphalt"], [_track_material, "gravel"]]:
+	_plant_material.set_shader_parameter("flower_colors", Palette.colors("plants.flowers"))
+	for surface: Array in [
+		[_street_material, "road.asphalt", 0.0], [_track_material, "road.gravel", 1.0]
+	]:
 		var material: ShaderMaterial = surface[0]
-		var folder: String = "res://assets/textures/%s/" % surface[1]
+		var color: String = surface[1]
 		material.shader = preload("res://shaders/street.gdshader")
-		material.set_shader_parameter("surface_albedo", load(folder + "albedo.jpg"))
-		material.set_shader_parameter("surface_normal", load(folder + "normal.jpg"))
-	_track_material.set_shader_parameter("tint", Color(0.5, 0.46, 0.4))
-	_track_material.set_shader_parameter("middle_grass", 1.0)
-	_track_material.set_shader_parameter("roughness", 0.95)
+		material.set_shader_parameter("surface_color", Palette.color(color))
+		material.set_shader_parameter("grass_color", Palette.color("ground.meadow"))
+		material.set_shader_parameter("middle_grass", surface[2])
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -543,9 +535,9 @@ static func _plant_mesh(flower: bool) -> ArrayMesh:
 		var width: float = 0.012 if flower else 0.035
 		var root: Vector3 = out * (0.04 if flower else 0.06 + fmod(float(i) * 0.31, 0.08))
 		var tip: Vector3 = root + out * height * 0.35 + Vector3.UP * height
-		# Close to the grass texture's tones, so tufts blend into the ground they grow from.
-		var base_color: Color = Color(0.15, 0.24, 0.08)
-		var tip_color: Color = Color(0.34, 0.46, 0.17) if not flower else Color(0.28, 0.42, 0.15)
+		# The meadow's tones, so tufts blend into the ground they grow from.
+		var base_color: Color = Palette.color("plants.grass_base")
+		var tip_color: Color = Palette.color("plants.grass_tip")
 		_add_blade(tool, root, tip, side * width, base_color, tip_color)
 		if flower:
 			# A head: two crossed petals' quads at the tip, marked by alpha 0.
@@ -753,7 +745,7 @@ func _tree_mesh(conifer: bool) -> ArrayMesh:
 	trunk.height = 3.0
 	trunk.radial_segments = 6
 	trunk.rings = 1
-	_add_surface(mesh, trunk, Vector3(0, 1.5, 0), _material(Color(0.33, 0.24, 0.17)))
+	_add_surface(mesh, trunk, Vector3(0, 1.5, 0), _faceted(Palette.color("plants.trunk")))
 	if conifer:
 		var crown: CylinderMesh = CylinderMesh.new()
 		crown.top_radius = 0.0
@@ -761,14 +753,14 @@ func _tree_mesh(conifer: bool) -> ArrayMesh:
 		crown.height = 10.0
 		crown.radial_segments = 8
 		crown.rings = 1
-		_add_surface(mesh, crown, Vector3(0, 7.0, 0), _material(Color(0.1, 0.24, 0.13)))
+		_add_surface(mesh, crown, Vector3(0, 7.0, 0), _faceted(Palette.color("plants.conifer")))
 	else:
 		var crown: SphereMesh = SphereMesh.new()
 		crown.radius = 3.0
 		crown.height = 5.5
 		crown.radial_segments = 8
 		crown.rings = 4
-		_add_surface(mesh, crown, Vector3(0, 5.5, 0), _material(Color(0.2, 0.36, 0.14)))
+		_add_surface(mesh, crown, Vector3(0, 5.5, 0), _faceted(Palette.color("plants.broadleaf")))
 	return mesh
 
 
@@ -784,8 +776,8 @@ func _add_surface(
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 
 
-static func _material(color: Color) -> StandardMaterial3D:
-	var material: StandardMaterial3D = StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.7
+static func _faceted(color: Color) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = preload("res://shaders/faceted.gdshader")
+	material.set_shader_parameter("albedo", color)
 	return material

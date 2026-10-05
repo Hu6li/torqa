@@ -1,15 +1,13 @@
 // Grass tufts and flower clumps (R45): swaying in the wind — tips more than bases, in gusts
 // that travel across the field — lit like the ground they grow from (their normals point up)
-// with some light shining through. Flower heads take one of a few colours per clump.
+// with some light shining through. Flower heads take one of the palette's flower colours per
+// clump.
 shader_type spatial;
 render_mode cull_disabled;
 
 uniform float wind_strength : hint_range(0.0, 1.0) = 0.12;
 uniform vec2 wind_direction = vec2(1.0, 0.35);
-// Buttercup yellow, daisy white, clover purple, poppy red (sRGB).
-const vec3 FLOWER_COLORS[4] = vec3[4](
-	vec3(0.98, 0.9, 0.35), vec3(0.97, 0.97, 0.94), vec3(0.62, 0.45, 0.85), vec3(0.9, 0.3, 0.3)
-);
+uniform vec4 flower_colors[4] : source_color;
 
 varying vec3 tint;
 
@@ -30,7 +28,7 @@ void vertex() {
 	// Flower heads (alpha 0) take a colour per clump.
 	vec3 color = pow(COLOR.rgb, vec3(2.2));
 	if (COLOR.a < 0.5) {
-		color = pow(FLOWER_COLORS[int(hash(float(INSTANCE_ID)) * 3.999)], vec3(2.2));
+		color = flower_colors[int(hash(float(INSTANCE_ID)) * 3.999)].rgb;
 	}
 	tint = color * (0.85 + hash(float(INSTANCE_ID) + 7.0) * 0.3);
 }
