@@ -58,6 +58,11 @@ with the user:
   grey-blue light and closer haze.
 - The palette is `app/assets/palette.json`, read by `core/torqa-world` (`palette.rs`) and by the app
   (`app/scenes/palette.gd`).
+- **Riders' bodies** come from Blender Studio's CC0 *Human Base Meshes* (the stylized
+  "primitive" bodies, faceted at their base level, arms lengthened and heads made smaller for
+  natural proportions); kit, helmet, sunglasses and hair are scripted on top, so "both ways"
+  meets in one rider. The **bike** is scripted in Blender and sized to each rider. The rider
+  is chosen per profile (R46).
 
 ## Consequences
 
