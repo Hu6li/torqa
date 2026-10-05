@@ -38,6 +38,20 @@ const GROUND_STEP: f64 = 2.0;
 const TUNNEL_RADIUS: f64 = 5.0;
 const ARCH_SEGMENTS: usize = 12;
 
+/// Geometry of the bridges and tunnels of several centre lines (the road's, the railways'), in
+/// route coordinates.
+pub(crate) async fn build_all<M: ElevationModel>(
+    lines: &[&RoadIndex],
+    projection: &LocalProjection,
+    model: &mut M,
+) -> MeshData {
+    let mut mesh = MeshData::default();
+    for line in lines {
+        mesh.append(build(line, projection, model).await);
+    }
+    mesh
+}
+
 /// Geometry of all bridges and tunnels, in route coordinates.
 pub(crate) async fn build<M: ElevationModel>(
     road: &RoadIndex,
