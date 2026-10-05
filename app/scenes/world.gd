@@ -54,7 +54,8 @@ const DETAIL_RANGE: float = 1800.0
 ## Bushes and rocks are smaller still.
 const SMALL_PLANT_RANGE: float = 600.0
 const CAMERA_SMOOTHING: float = 6.0
-const HEADING_SMOOTHING: float = 4.0
+## Leaning in and out of bends takes a moment (1 / seconds).
+const LEAN_SMOOTHING: float = 3.0
 ## The free camera of simulated rides (#53): metres per second, and radians per pixel of mouse.
 const FREE_SPEED: float = 25.0
 const FREE_LOOK: float = 0.004
@@ -161,7 +162,9 @@ var _distance: float = 1.0
 ## Flying freely instead of following the rider (simulated rides only).
 var _free: bool = false
 var _free_speed: float = 1.0
-var _heading: float = 0.0
+## How far the rider and the ghost lean into the bend (radians, positive to the right).
+var _lean: float = 0.0
+var _ghost_lean: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _ghost: RiderAvatar = RiderAvatar.new()
@@ -607,11 +610,14 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var cadence: Variant = state["cadence"]
 	var cadence_rpm: float = cadence if cadence != null else 0.0
 	_avatar.animate(delta, cadence_rpm, speed_kmh)
-	var weight: float = 1.0 - exp(-delta * HEADING_SMOOTHING)
-	_heading = heading if not _placed else lerp_angle(_heading, heading, weight)
+	var curvature: float = state["curvature"]
+	_lean = _leaning(_lean, TorqaApp.lean_angle(speed_kmh, curvature), delta)
+	# Bike and rider lean about where the tyres touch the road; the camera stays level.
+	_avatar.transform = Transform3D(Basis(Vector3.FORWARD, _lean), Vector3.ZERO)
 
 	# Godot looks along −z (north); headings run clockwise from north, rotations anticlockwise.
-	var yaw: Basis = Basis(Vector3.UP, -_heading)
+	# The heading is the road's own direction, so the rider turns with the bend.
+	var yaw: Basis = Basis(Vector3.UP, -heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	var position: Vector3 = Vector3(east, elevation, -north)
 	# A jump (simulated rides): no gliding across the whole way.
@@ -715,12 +721,24 @@ func _place_ghost(ghost: Variant, delta: float) -> void:
 		else 0.0
 	)
 	_ghost_distance = distance_m
+	var curvature: float = info["curvature"]
+	_ghost_lean = _leaning(_ghost_lean, TorqaApp.lean_angle(speed_kmh, curvature), delta)
 	var yaw: Basis = Basis(Vector3.UP, -heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
+	var roll: Basis = Basis(Vector3.FORWARD, _ghost_lean)
 	var left: Vector3 = yaw * Vector3.LEFT
-	_ghost.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north) + left * 1.1)
+	_ghost.transform = Transform3D(
+		yaw * pitch * roll, Vector3(east, elevation, -north) + left * 1.1
+	)
 	_ghost.animate(delta, 85.0 if speed_kmh > 1.0 else 0.0, speed_kmh)
 	_ghost.show()
+
+
+## Eases a lean towards `target` over a moment, at once after a jump.
+func _leaning(lean: float, target: float, delta: float) -> float:
+	if not _placed:
+		return target
+	return lerpf(lean, target, 1.0 - exp(-delta * LEAN_SMOOTHING))
 
 
 func _camera_target(rider: Transform3D) -> Transform3D:

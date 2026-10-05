@@ -245,6 +245,41 @@ fn ground_at(world: &World, x: f32, z: f32) -> Option<f32> {
 }
 
 #[tokio::test]
+async fn riders_ride_on_the_road_drawn_through_bends() {
+    // North, a hairpin of 15 m radius, back south: the road is a smooth curve there.
+    let mut xml = String::from("<gpx><trk><trkseg>");
+    let mut points: Vec<(f64, f64)> = (0..=10).map(|i| (0.0, f64::from(i) * 10.0)).collect();
+    points.extend((1..12).map(|k| {
+        let angle = std::f64::consts::PI * f64::from(k) / 12.0;
+        (15.0 - 15.0 * angle.cos(), 100.0 + 15.0 * angle.sin())
+    }));
+    points.extend((0..=10).rev().map(|i| (30.0, f64::from(i) * 10.0)));
+    for &(east, north) in &points {
+        let (lat, lon) = at(east, north);
+        let _ = write!(
+            xml,
+            r#"<trkpt lat="{lat}" lon="{lon}"><ele>500</ele></trkpt>"#
+        );
+    }
+    xml.push_str("</trkseg></trk></gpx>");
+    let route = Route::from_gpx(&xml, None).await.unwrap();
+    let projection = LocalProjection::for_route(&route);
+    let road = road::RoadIndex::new(&route, &projection);
+
+    let length = route.length().0;
+    let mut along = route.length();
+    along.0 = 0.0;
+    while along.0 < length {
+        let rider = route.position(along);
+        let (east, north) = projection.project(rider.lat, rider.lon);
+        let (off, _, _) = road.nearest(east, north, 5.0).expect("the road nearby");
+        // The road is drawn in straight pieces of a few metres along the curve.
+        assert!(off < 0.05, "{off} m off the road's middle at {} m", along.0);
+        along.0 += 0.5;
+    }
+}
+
+#[tokio::test]
 async fn no_ground_covers_the_road_on_a_hillside_with_a_hairpin() {
     // Terrain rising 30 % to the east; the road climbs north along it, turns in a hairpin of
     // 15 m radius and comes back 30 m further up the slope, cut into the hillside.

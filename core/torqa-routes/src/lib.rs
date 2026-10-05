@@ -2,13 +2,17 @@
 //! elevation and gradient lookup along the route.
 
 pub mod climbs;
+mod curve;
 mod gpx;
 mod projection;
 mod snap;
 mod structures;
 
 pub use climbs::{Climb, ClimbCategory};
+pub use curve::catmull_rom;
 pub use projection::LocalProjection;
+
+use std::f64::consts::{PI, TAU};
 
 use torqa_domain::units::{GradePercent, Meters};
 use torqa_osm::MapData;
@@ -24,6 +28,9 @@ const TERRAIN_SMOOTHING: f64 = 40.0;
 /// Moving-average window for recorded elevations, which are noisy (GPS, barometer drift).
 const GPX_SMOOTHING: f64 = 100.0;
 const EARTH_RADIUS: f64 = 6_371_000.0;
+/// How far either side of a position the curve is looked at for its direction and bend: short
+/// against the 10 m between points, long enough to be steady.
+const CURVE_STEP_M: f64 = 2.0;
 
 /// Errors while importing a route.
 #[derive(Debug, thiserror::Error)]
@@ -134,8 +141,12 @@ pub struct RoutePosition {
     pub elevation: Meters,
     /// Gradient of the road at this point.
     pub grade: GradePercent,
-    /// Direction of travel in radians, clockwise from north.
+    /// Direction of travel in radians, clockwise from north: the road's own direction, which
+    /// turns smoothly through bends.
     pub heading: f64,
+    /// How sharply the road bends here, in radians per metre (1 / radius): positive in bends
+    /// to the right, negative to the left, 0 on the straight.
+    pub curvature: f64,
 }
 
 /// A route ready to ride: evenly resampled, with smoothed elevations.
@@ -307,11 +318,50 @@ impl Route {
         GradePercent(steepest * 100.0)
     }
 
-    /// Position, elevation and gradient at a distance from the start (clamped to the route).
+    /// Position, elevation, gradient, heading and curvature at a distance from the start
+    /// (clamped to the route). The position lies on the smooth curve through the route's points
+    /// that the road is drawn along ([`catmull_rom`]).
     #[must_use]
     pub fn position(&self, distance: Meters) -> RoutePosition {
         let along = distance.0.clamp(0.0, self.length().0);
-        // Index of the segment containing `along`; the route always has at least two points.
+        let (index, fraction) = self.segment_at(along);
+        let (start, end) = (&self.points[index], &self.points[index + 1]);
+        let span = end.distance.0 - start.distance.0;
+        let rise = end.elevation.0 - start.elevation.0;
+        let projection = LocalProjection::for_route(self);
+        let here = self.curve_point(&projection, along);
+        let (lat, lon) = projection.unproject(here.0, here.1);
+        // The curve a little either side gives the direction and how it changes.
+        let behind = self.curve_point(&projection, along - CURVE_STEP_M);
+        let ahead = self.curve_point(&projection, along + CURVE_STEP_M);
+        let direction = |a: (f64, f64), b: (f64, f64)| {
+            ((b.0 - a.0).hypot(b.1 - a.1) > 1e-9).then(|| (b.0 - a.0).atan2(b.1 - a.1))
+        };
+        let heading = direction(behind, ahead).unwrap_or_else(|| heading(start, end));
+        let curvature = match (direction(behind, here), direction(here, ahead)) {
+            (Some(before), Some(after)) => {
+                let turn = (after - before + PI).rem_euclid(TAU) - PI;
+                turn / f64::midpoint(
+                    distance_between(behind, here),
+                    distance_between(here, ahead),
+                )
+            }
+            _ => 0.0,
+        };
+        RoutePosition {
+            lat,
+            lon,
+            elevation: Meters(start.elevation.0 + rise * fraction),
+            grade: GradePercent(if span > 0.0 { rise / span * 100.0 } else { 0.0 }),
+            heading,
+            curvature,
+        }
+    }
+
+    /// The segment containing `along` metres (clamped to the route) and how far along it.
+    fn segment_at(&self, along: f64) -> (usize, f64) {
+        let along = along.clamp(0.0, self.length().0);
+        // The route always has at least two points.
         let index = self
             .points
             .partition_point(|p| p.distance.0 <= along)
@@ -324,15 +374,29 @@ impl Route {
         } else {
             0.0
         };
-        let rise = end.elevation.0 - start.elevation.0;
-        RoutePosition {
-            lat: start.lat + (end.lat - start.lat) * fraction,
-            lon: start.lon + (end.lon - start.lon) * fraction,
-            elevation: Meters(start.elevation.0 + rise * fraction),
-            grade: GradePercent(if span > 0.0 { rise / span * 100.0 } else { 0.0 }),
-            heading: heading(start, end),
-        }
+        (index, fraction)
     }
+
+    /// The point `along` metres from the start on the curve through the route's points, in
+    /// `projection`'s metres.
+    fn curve_point(&self, projection: &LocalProjection, along: f64) -> (f64, f64) {
+        let (index, fraction) = self.segment_at(along);
+        let last = self.points.len() - 1;
+        let at = |i: usize| projection.project(self.points[i].lat, self.points[i].lon);
+        catmull_rom(
+            [
+                at(index.saturating_sub(1)),
+                at(index),
+                at(index + 1),
+                at((index + 2).min(last)),
+            ],
+            fraction,
+        )
+    }
+}
+
+fn distance_between(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (b.0 - a.0).hypot(b.1 - a.1)
 }
 
 /// Direction from `a` to `b` in radians, clockwise from north (flat-earth approximation,
@@ -738,6 +802,80 @@ mod tests {
         let north = import(&gpx_north(&[Some(0.0), Some(0.0)], 100.0)).await;
 
         assert!(north.position(Meters(50.0)).heading.abs() < 1e-6);
+    }
+
+    /// A track through points given in metres east and north of 46° N 7° E.
+    fn gpx_through(points: &[(f64, f64)]) -> String {
+        let degrees_per_meter = 1.0 / (EARTH_RADIUS.to_radians());
+        let mut xml = String::new();
+        for &(east, north) in points {
+            let lat = 46.0 + north * degrees_per_meter;
+            let lon = 7.0 + east * degrees_per_meter / 46f64.to_radians().cos();
+            let _ = write!(
+                xml,
+                r#"<trkpt lat="{lat}" lon="{lon}"><ele>500</ele></trkpt>"#
+            );
+        }
+        format!("<gpx><trk><trkseg>{xml}</trkseg></trk></gpx>")
+    }
+
+    /// Half a circle of `radius` metres from west of the centre over the north to the east
+    /// (a bend to the right), or the other way round.
+    fn half_circle(radius: f64, to_the_right: bool) -> Vec<(f64, f64)> {
+        (0..=90)
+            .map(|k| {
+                let angle = PI * f64::from(k) / 90.0;
+                let east = -radius * angle.cos();
+                (
+                    if to_the_right { east } else { -east },
+                    radius * angle.sin(),
+                )
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn the_heading_turns_smoothly_through_a_corner() {
+        // 200 m north, then a right-angled corner and 200 m east.
+        let mut corner: Vec<(f64, f64)> = (0..=20).map(|i| (0.0, f64::from(i) * 10.0)).collect();
+        corner.extend((1..=20).map(|i| (f64::from(i) * 10.0, 200.0)));
+        let route = import(&gpx_through(&corner)).await;
+
+        // From well before the corner to well after it (import smooths tracks over 100 m).
+        let headings: Vec<f64> = (0..=1200)
+            .map(|step| {
+                route
+                    .position(Meters(50.0 + f64::from(step) * 0.25))
+                    .heading
+            })
+            .collect();
+        let biggest_step = headings
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f64::max);
+        // On the polygon the heading would jump by 90° at the corner; on the curve it turns
+        // over metres (no tighter than a 2.5 m radius: 0.1 rad per 0.25 m).
+        assert!(biggest_step < 0.1, "heading jumps by {biggest_step} rad");
+        assert!(headings[0].abs() < 1e-3, "north before: {}", headings[0]);
+        let after = headings[1200];
+        assert!(
+            (after - std::f64::consts::FRAC_PI_2).abs() < 1e-3,
+            "east after: {after}"
+        );
+    }
+
+    #[tokio::test]
+    async fn curvature_is_one_over_the_radius_and_signed_by_the_side() {
+        let right = import(&gpx_through(&half_circle(50.0, true))).await;
+        let left = import(&gpx_through(&half_circle(50.0, false))).await;
+        let straight = import(&gpx_north(&[Some(0.0), Some(0.0)], 100.0)).await;
+        let middle = Meters(right.length().0 / 2.0);
+
+        let bend = right.position(middle).curvature;
+        assert!((bend - 1.0 / 50.0).abs() < 0.002, "right bend: {bend}");
+        let bend = left.position(middle).curvature;
+        assert!((bend + 1.0 / 50.0).abs() < 0.002, "left bend: {bend}");
+        assert!(straight.position(Meters(50.0)).curvature.abs() < 1e-6);
     }
 
     /// A valley 60 m deep in the middle of a 1 km route due north at 500 m.

@@ -19,8 +19,10 @@ use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
 use torqa_domain::profile::{Avatar, Profile, UnitSystem};
-use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Percent, Rpm, Watts};
-use torqa_physics::DescentMode;
+use torqa_domain::units::{
+    BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
+};
+use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
 
 mod log;
@@ -805,6 +807,16 @@ impl TorqaApp {
         }
     }
 
+    /// How far a rider at `speed_kmh` leans into a bend of `curvature` (1 / radius, positive to
+    /// the right, as in `ride_state()`): radians, positive to the right (R46).
+    #[func]
+    fn lean_angle(speed_kmh: f64, curvature: f64) -> f64 {
+        lean_angle(
+            MetersPerSecond::from_kilometers_per_hour(speed_kmh),
+            curvature,
+        )
+    }
+
     /// Switches to another rider.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
@@ -885,11 +897,12 @@ impl TorqaApp {
     }
 
     /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
-    /// heading, power, cadence, heart_rate, watts_per_kg, power_zone, heart_rate_zone, metrics,
-    /// ghost, climb}`; sensor
+    /// heading, curvature, power, cadence, heart_rate, watts_per_kg, power_zone,
+    /// heart_rate_zone, metrics, ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when
     /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
-    /// is the direction of travel in radians clockwise from north.
+    /// is the direction of travel in radians clockwise from north, `curvature` how sharply the
+    /// road bends there (1 / radius, positive to the right).
     #[func]
     fn ride_state(&self) -> VarDictionary {
         let Some(app) = self.app.as_ref() else {
@@ -915,6 +928,7 @@ impl TorqaApp {
             "x" => x,
             "y" => y,
             "heading" => state.position.heading,
+            "curvature" => state.position.curvature,
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
             "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),
@@ -932,6 +946,7 @@ impl TorqaApp {
                     "y" => gy,
                     "elevation_m" => at.elevation.0,
                     "heading" => at.heading,
+                    "curvature" => at.curvature,
                     "grade" => at.grade.0,
                     "gap_s" => &optional(g.gap),
                 }
