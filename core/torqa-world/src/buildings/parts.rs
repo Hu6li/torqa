@@ -11,7 +11,7 @@ const ROOF_THICKNESS: f64 = 0.22;
 const WINDOW_RELIEF: f64 = 0.04;
 /// Windows repeat this often along plastered and timber walls, and church windows this often
 /// (`app/shaders/building.gdshader`: `window_spacing`, and the church's 4.5 m).
-const WINDOW_SPACING: f64 = 3.2;
+pub(crate) const WINDOW_SPACING: f64 = 3.2;
 const CHURCH_WINDOW_SPACING: f64 = 4.5;
 
 /// How the building shader draws a surface. Stored in the vertex colour's alpha as
@@ -433,6 +433,35 @@ impl Builder<'_> {
         self.walls(&outer, edge, edge + t, paint.under);
         self.flat(&inner, top + t, paint.top.with(Style::Flat), true);
         Some(top + t)
+    }
+
+    /// A band standing `out` metres out of the walls of a counter-clockwise `outline`, from
+    /// `bottom` to `top`: a cornice or string course. Nothing where the outline cannot be
+    /// widened (sharp corners).
+    pub(crate) fn band(
+        &mut self,
+        outline: &[Point],
+        (bottom, top): (f64, f64),
+        out: f64,
+        paint: Paint,
+    ) {
+        let Some(outer) = offset(outline, -out) else {
+            return;
+        };
+        self.walls(&outer, bottom, top, paint);
+        self.ring(outline, &outer, top, paint, true);
+        self.ring(outline, &outer, bottom, paint, false);
+    }
+
+    /// The level ring between `inner` and `outer` (corresponding points) at `height`, facing up
+    /// or down.
+    fn ring(&mut self, inner: &[Point], outer: &[Point], height: f64, paint: Paint, upper: bool) {
+        let normal = [0.0, if upper { 1.0 } else { -1.0 }, 0.0];
+        for i in 0..inner.len() {
+            let j = (i + 1) % inner.len();
+            let corners = [inner[i], inner[j], outer[j], outer[i]].map(|p| self.at(p, height));
+            quad_uv(self.mesh, corners, [[0.0; 2]; 4], normal, paint.rgba());
+        }
     }
 
     /// A box on `rect` from `bottom` to `top`: chimneys, towers, balconies.
