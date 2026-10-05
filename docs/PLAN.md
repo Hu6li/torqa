@@ -224,6 +224,39 @@ the realistic look's textures and patterns are being replaced step by step.
     profile
   - [ ] Polish: low-poly clouds, stylized rain and fog, a shore band at lakes, presets tuned
     to the new look
+- [ ] Feedback round after the riders (issues #74–#79), in this order:
+  - [ ] Nicer riders (#76): real hair (the female rider is bald under the helmet but for a
+    ponytail cone; short hair for the male); helmets shaped from the head they sit on instead
+    of an ellipse from its bounds; shoulders that do not read as pads; wraparound band →
+    sunglasses with two lenses, a bridge and arms; in curves the rider turns with the road and
+    leans in (lean from speed and radius) instead of only following the line
+  - [ ] Free camera (#78): Shift + arrows look around, arrows alone move (the Shift speed boost
+    goes; the mouse wheel sets the speed); find out why Shift + mouse never reaches the world on
+    macOS (UI over the 3D view taking the motion?) and fix it or drop it from the hint
+  - [ ] Nicer roads (#74):
+    - [ ] Other streets never cut by the ground: no grass islands on the asphalt, no streets
+      half under a slope (flatten the ground under them as under the road ridden)
+    - [ ] Junctions joined cleanly where streets meet the road ridden (no jagged polygons, no
+      kerb walls across the mouths); roundabouts as rings round an island
+    - [ ] The road's edge as a low bevel, not a step that reads as a wall
+    - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)
+    - [ ] Water under roads, never over them: streams and rivers stop at road crossings
+      (culverts, bridges)
+  - [ ] Nicer environment (#75):
+    - [ ] Water lies in the ground, never floating above it; better meeting of water, banks and
+      bridges (with the shore band of Polish)
+    - [ ] Railways: tracks on ballast, level crossings, railway bridges and tunnels (railways
+      are dropped from the map data today)
+    - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
+      so the edge of the map never shows
+    - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
+      awnings, rooftop details) and more kinds and colours; whole windows only on shells
+      (none cut at corners and edges)
+    - [ ] Bridges and viaducts as models: stone arches, concrete beams on piers, railway
+      viaducts, instead of plain decks
+  - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
+    realistic look), the building gallery in art/README, review images only PRs use, the
+    realism risk below, MPFB2 in ADR 0009, feature docs describing the old look
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
   references (R44)
 
