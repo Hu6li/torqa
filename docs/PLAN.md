@@ -200,17 +200,20 @@ the realistic look's textures and patterns are being replaced step by step.
   models, an in-game preview renderer (`scripts/render-models.sh`), agent skills for the look,
   the pipeline and render review (`.claude/skills`)
 - [ ] Stylized look, step by step (ADR 0011):
-  - [ ] Foundation: one palette for core and shaders; a look-dev scene rendered for review
-  - [ ] Ground, water, roads and sky: faceted ground coloured by land cover, flat water with
-    a shore band, clean roads and tracks, warm soft light, ambient occlusion, gradient sky and
-    haze; photo textures retired
+  - [x] Foundation: one palette for core and shaders (`app/assets/palette.json`); standard
+    views rendered before and after every visual change (`scripts/render-views.sh`)
+  - [x] Ground, water, roads and sky: faceted ground coloured by land cover (rock on steep
+    facets), faceted water, clean roads and tracks, warm soft light balanced for linear tone
+    mapping, pastel gradient sky with crisp clouds, pastel evening and rain; photo textures
+    retired
   - [ ] Vegetation: faceted conifers, broadleaf trees, bushes, rocks and flowers made in
     Blender, placed like today's trees and grass
   - [ ] Buildings restyled: chunkier models with flat palette colours, lean triangle counts;
     shells to match
   - [ ] Rider & bike: faceted female and male riders (scripted and from CC0 stylized bases),
     a stylized bike, cadence-driven pedalling
-  - [ ] Polish: low-poly clouds, stylized rain and fog, presets tuned to the new look
+  - [ ] Polish: low-poly clouds, stylized rain and fog, a shore band at lakes, presets tuned
+    to the new look
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
   references (R44)
 

@@ -45,6 +45,20 @@ Decisions (user, 2026-10-05):
 - **Review.** Every visual step is checked in renders (`torqa-render-review`) against the
   references, starting with a small look-dev scene.
 
+### Settled with previews (2026-10-05)
+
+Mock-ups of the look (chase and drone views, the kit, riders, facet sizes, weather) were reviewed
+with the user:
+
+- **Riders** keep natural ("heroic") proportions: long legs, a head of normal size. The toy-like
+  variant with a large head and short limbs was dropped.
+- **Facet size**: the ground keeps the terrain grid it has (finer near the road, coarser further
+  out); no extra-large facets, so the real terrain still reads.
+- **Weather and time of day** stay pastel: a lilac-to-peach evening with plum shadows, rain as soft
+  grey-blue light and closer haze.
+- The palette is `app/assets/palette.json`, read by `core/torqa-world` (`palette.rs`) and by the app
+  (`app/scenes/palette.gd`).
+
 ## Consequences
 
 - Most of the realistic work of Phase 9 is restyled rather than extended: ground, roads,
