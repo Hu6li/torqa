@@ -7,6 +7,7 @@
 
 mod buildings;
 mod drape;
+mod horizon;
 mod landcover;
 mod minimap;
 mod palette;
@@ -23,13 +24,14 @@ use torqa_osm::{LandCover, MapData};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
+pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{BACKGROUND as MINIMAP_BACKGROUND, FlatMap};
 use road::RoadIndex;
 pub use vegetation::Trees;
 
 /// Edge length of a terrain chunk.
-const CHUNK_SIZE: f64 = 480.0;
+pub(crate) const CHUNK_SIZE: f64 = 480.0;
 /// Distance between terrain vertices.
 const GRID: f64 = 16.0;
 /// Terrain (and map data) is used up to this far from the route.
@@ -136,6 +138,9 @@ pub struct World {
     pub road: MeshData,
     /// Bridges and tunnels.
     pub structures: MeshData,
+    /// The land beyond the corridor, from [`horizon`] (empty until it is made: it needs a coarse
+    /// terrain model of its own).
+    pub horizon: Horizon,
     /// Flat map of the corridor for the minimap.
     pub minimap: FlatMap,
     /// Terrain samples that had no elevation data and followed the road instead.
@@ -305,7 +310,7 @@ fn chunk_of(east: f64, north: f64) -> (i32, i32) {
 }
 
 /// Chunk grid cells (east, north) within the corridor of any part of the route.
-fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
+pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
     let mut cells = BTreeSet::new();
     let reach = CORRIDOR + CHUNK_SIZE / 2.0 * std::f64::consts::SQRT_2;
     // Sampling the road every half chunk is enough to touch every chunk in reach.

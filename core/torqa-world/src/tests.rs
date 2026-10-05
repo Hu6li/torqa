@@ -348,6 +348,76 @@ async fn railways_lie_on_the_ground_or_bridges_and_keep_the_forest_off() {
 }
 
 #[tokio::test]
+async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
+    // Land rising eastwards, and beyond 6 km east a lake whose surface the model reads at 600 m.
+    struct Far;
+    impl ElevationModel for Far {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if east > 6000.0 {
+                600.0
+            } else {
+                500.0 + 0.01 * east.abs()
+            }))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Far, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Far).await;
+
+    assert_valid(&land.ground);
+    assert_valid(&land.water);
+    let detailed = |x: f32, z: f32| {
+        world.chunks.iter().any(|c| {
+            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
+                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
+        })
+    };
+    for cell in land.ground.vertices.as_chunks::<4>().0 {
+        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+        assert!(
+            !detailed(middle[0], middle[1]),
+            "land over the detailed ground at {middle:?}"
+        );
+    }
+    // Out to the horizon, west and east, at the land's height (a little lower).
+    let reach = land
+        .ground
+        .vertices
+        .iter()
+        .map(|v| v[0])
+        .fold(0.0_f32, f32::min);
+    assert!(
+        reach < -(HORIZON as f32) + 1000.0,
+        "the land ends at {reach} m"
+    );
+    for v in &land.ground.vertices {
+        let measured = 500.0 + 0.01 * v[0].abs();
+        // On the shore the model may read the lake already.
+        let shore = (v[0] - 6000.0).abs() < 1.0 && (v[1] - 598.0).abs() < 0.5;
+        assert!(
+            shore || (v[1] - (measured - 2.0)).abs() < 0.5,
+            "land at {} at {}",
+            v[1],
+            v[0]
+        );
+    }
+    // The lake far east is water, at its level.
+    assert_ne!(land.water.vertices.len(), 0);
+    assert!(
+        land.water
+            .vertices
+            .iter()
+            .all(|v| v[0] >= 6000.0 && (v[1] - 600.02).abs() < 0.01)
+    );
+    assert!(land.ground.vertices.iter().all(|v| v[0] <= 6240.0));
+}
+
+#[tokio::test]
 async fn the_road_bevels_gently_down_to_a_level_verge() {
     let world = world(&MapData::default()).await;
 

@@ -47,6 +47,9 @@ const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
+## The land beyond the corridor reaches 12 km from the route (`torqa_world::HORIZON`); the
+## camera sees that far, the haze hides its end.
+const HORIZON_RANGE: float = 14000.0
 ## Buildings switch between their models and their shells over this distance.
 const MODEL_FADE: float = 40.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
@@ -171,6 +174,9 @@ var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _ghost: RiderAvatar = RiderAvatar.new()
 var _ghost_distance: float = 0.0
+## The land beyond the corridor: ground and lakes.
+var _horizon_ground: MeshInstance3D = MeshInstance3D.new()
+var _horizon_water: MeshInstance3D = MeshInstance3D.new()
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
@@ -385,6 +391,10 @@ func _ready() -> void:
 	_rail_material.set_shader_parameter("ballast_color", Palette.color("road.ballast"))
 	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
 	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
+	for land: MeshInstance3D in [_horizon_ground, _horizon_water]:
+		# Far away: its shadows would not show.
+		land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(land)
 	_rider.add_child(_avatar)
 	_ghost.accent = UiTheme.GHOST_COLOR
 	_ghost.ghostly = true
@@ -419,6 +429,13 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
 	_road.material_override = _road_material
+	var land: Dictionary = _torqa.horizon_meshes()
+	var ground: Dictionary = land["ground"]
+	var lakes: Dictionary = land["water"]
+	_horizon_ground.mesh = _mesh_from(ground)
+	_horizon_ground.material_override = _terrain_material
+	_horizon_water.mesh = _mesh_from(lakes)
+	_horizon_water.material_override = _water_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
 	_structures.material_override = _structure_material
 
@@ -713,7 +730,7 @@ func _set_distance(factor: float) -> void:
 		var geometry: GeometryInstance3D = node as GeometryInstance3D
 		if geometry.visibility_range_end > 0.0:
 			geometry.visibility_range_end *= change
-	_camera.far = VISIBILITY_RANGE * factor * 1.6
+	_camera.far = maxf(VISIBILITY_RANGE * factor * 1.6, HORIZON_RANGE)
 
 
 ## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never

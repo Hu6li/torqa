@@ -1089,6 +1089,21 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
+    /// The land beyond the corridor: `{ground, water}` as mesh arrays in route coordinates,
+    /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes.
+    #[func]
+    fn horizon_meshes(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| {
+                vdict! {
+                    "ground" => &mesh_arrays(&world.horizon.ground),
+                    "water" => &mesh_arrays(&world.horizon.water),
+                }
+            })
+    }
+
     /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, water,
     /// railways, plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks`, `water`
     /// (lakes, rivers and streams) and `railways` are mesh arrays (`{vertices, normals, uvs,
