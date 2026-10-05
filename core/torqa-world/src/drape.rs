@@ -117,37 +117,52 @@ pub(crate) fn drape(
                 (distance_a + (distance_b - distance_a) * along / length) as f32,
             ]
         };
-        let low = quad
-            .iter()
-            .fold((f64::MAX, f64::MAX), |m, p| (m.0.min(p.0), m.1.min(p.1)));
-        let high = quad
-            .iter()
-            .fold((f64::MIN, f64::MIN), |m, p| (m.0.max(p.0), m.1.max(p.1)));
-        for triangle in heights.triangles(low, high) {
-            let piece = inside_triangle(&quad, &triangle);
-            if piece.len() < 3 {
-                continue;
-            }
-            let normal = plane_normal(&triangle, heights);
-            let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
-            for &(east, north) in &piece {
-                mesh.vertices.push([
-                    (east - origin[0]) as f32,
-                    (heights.at(east, north) + lift - origin[1]) as f32,
-                    (-north - origin[2]) as f32,
-                ]);
-                mesh.normals.push(normal);
-                mesh.uvs.push(uv((east, north)));
-            }
-            for k in 1..piece.len() - 1 {
-                let (first, second, third) = (piece[0], piece[k], piece[k + 1]);
-                let area = (second.0 - first.0) * (third.1 - first.1)
-                    - (second.1 - first.1) * (third.0 - first.0);
-                // Slivers along an edge add nothing.
-                if area.abs() > 1e-6 {
-                    let corner = base + u32::try_from(k).expect("small");
-                    mesh.indices.extend([base, corner, corner + 1]);
-                }
+        drape_polygon(mesh, &quad, lift, heights, origin, &uv);
+    }
+}
+
+/// A convex `polygon` (corners in metres east/north, clockwise seen from above) laid on the
+/// ground `lift` above it: cut along the ground's triangles, each piece in the plane of the
+/// triangle under it. `uv` gives each corner's texture coordinates.
+#[allow(clippy::cast_possible_truncation)] // f32 GPU data
+pub(crate) fn drape_polygon(
+    mesh: &mut MeshData,
+    polygon: &[(f64, f64)],
+    lift: f64,
+    heights: &HeightGrid,
+    origin: [f64; 3],
+    uv: &dyn Fn((f64, f64)) -> [f32; 2],
+) {
+    let low = polygon
+        .iter()
+        .fold((f64::MAX, f64::MAX), |m, p| (m.0.min(p.0), m.1.min(p.1)));
+    let high = polygon
+        .iter()
+        .fold((f64::MIN, f64::MIN), |m, p| (m.0.max(p.0), m.1.max(p.1)));
+    for triangle in heights.triangles(low, high) {
+        let piece = inside_triangle(polygon, &triangle);
+        if piece.len() < 3 {
+            continue;
+        }
+        let normal = plane_normal(&triangle, heights);
+        let base = u32::try_from(mesh.vertices.len()).expect("draped meshes fit u32");
+        for &(east, north) in &piece {
+            mesh.vertices.push([
+                (east - origin[0]) as f32,
+                (heights.at(east, north) + lift - origin[1]) as f32,
+                (-north - origin[2]) as f32,
+            ]);
+            mesh.normals.push(normal);
+            mesh.uvs.push(uv((east, north)));
+        }
+        for k in 1..piece.len() - 1 {
+            let (first, second, third) = (piece[0], piece[k], piece[k + 1]);
+            let area = (second.0 - first.0) * (third.1 - first.1)
+                - (second.1 - first.1) * (third.0 - first.0);
+            // Slivers along an edge add nothing.
+            if area.abs() > 1e-6 {
+                let corner = base + u32::try_from(k).expect("small");
+                mesh.indices.extend([base, corner, corner + 1]);
             }
         }
     }

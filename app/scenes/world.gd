@@ -187,7 +187,6 @@ var _rail_material: ShaderMaterial = ShaderMaterial.new()
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
-@onready var _water: MeshInstance3D = $Water
 @onready var _structures: MeshInstance3D = $Structures
 @onready var _rider: Node3D = $Rider
 @onready var _camera: Camera3D = $Camera
@@ -420,8 +419,6 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
 	_road.material_override = _road_material
-	_water.mesh = _mesh_from(_torqa.water_mesh())
-	_water.material_override = _water_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
 	_structures.material_override = _structure_material
 

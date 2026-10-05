@@ -106,7 +106,8 @@ pub struct TerrainChunk {
     pub streets: MeshData,
     /// Unpaved tracks and paths of the map, likewise.
     pub tracks: MeshData,
-    /// Streams and rivers of the map, likewise; they pass under streets and the road.
+    /// Lakes, ponds, rivers and streams of the map, likewise; they pass under streets and the
+    /// road.
     pub water: MeshData,
     /// Railways of the map, likewise (`u` across the bed of ballast, `v` metres along).
     pub railways: MeshData,
@@ -133,9 +134,6 @@ pub struct World {
     pub chunks: Vec<TerrainChunk>,
     /// The road along the route.
     pub road: MeshData,
-    /// Lakes, ponds and wide rivers mapped as areas (streams and rivers mapped as lines are in
-    /// the chunks).
-    pub water: MeshData,
     /// Bridges and tunnels.
     pub structures: MeshData,
     /// Flat map of the corridor for the minimap.
@@ -165,9 +163,9 @@ pub async fn generate<M: ElevationModel>(
     let railways = railways::lines(map, &projection, &road, model).await;
     let clearance = streets::Clearance::new(&streets, &railways);
     let streams = water::streams(&map.waterways, &projection, &road);
+    let pools = water::pools(&map.areas, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
-        water: water::surfaces(&map.areas, &projection, &road, model).await,
         structures: structures::build(&road, &projection, model).await,
         minimap: minimap::build(map, &projection, &road),
         ..World::default()
@@ -218,7 +216,14 @@ pub async fn generate<M: ElevationModel>(
             modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
             tracks: unpaved,
-            water: water::stream_mesh(&streams, heights.origin, CHUNK_SIZE, &heights, origin),
+            water: water::mesh(
+                &streams,
+                &pools,
+                heights.origin,
+                CHUNK_SIZE,
+                &heights,
+                origin,
+            ),
             railways: railways::mesh(&railways, heights.origin, CHUNK_SIZE, &heights, origin),
             trees,
         });
