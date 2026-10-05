@@ -31,11 +31,11 @@ msgstr ""
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:25 app/scenes/ride_screen.gd:411
+#: app/scenes/devices_tab.gd:25 app/scenes/ride_screen.gd:413
 msgid "%s connected"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:415
+#: app/scenes/ride_screen.gd:417
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
@@ -73,6 +73,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd:173
 msgid "A course named “%s” exists already. Replace it, or keep both?"
+msgstr ""
+
+#: app/ui/ghost_picker.gd:18
+msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
 msgstr ""
 
 #: app/ui/ghost_picker.gd:27
@@ -159,7 +163,7 @@ msgstr ""
 msgid "Avg speed"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:438
+#: app/scenes/ride_screen.gd:440
 msgid "Back"
 msgstr ""
 
@@ -187,7 +191,7 @@ msgstr ""
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:401
+#: app/scenes/ride_screen.gd:403
 msgid "Camera: %s"
 msgstr ""
 
@@ -219,8 +223,8 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:377
-msgid "Click the map or profile to jump · + / − speed · C: free camera"
+#: app/scenes/ride_screen.gd:378
+msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + mouse to look"
 msgstr ""
 
 #: app/scenes/minimap.gd:27
@@ -619,7 +623,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:437
+#: app/scenes/ride_screen.gd:439
 msgid "Nothing recorded."
 msgstr ""
 
@@ -783,7 +787,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:450
+#: app/scenes/ride_screen.gd:452
 msgid "Saved %s"
 msgstr ""
 
@@ -815,7 +819,7 @@ msgstr ""
 msgid "Simulation"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:395
+#: app/scenes/ride_screen.gd:397
 msgid "Simulation: %d×"
 msgstr ""
 
@@ -959,7 +963,7 @@ msgstr ""
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd:452 app/scenes/ride_screen.tscn:132
+#: app/scenes/ride_screen.gd:454 app/scenes/ride_screen.tscn:132
 msgid "View summary"
 msgstr ""
 

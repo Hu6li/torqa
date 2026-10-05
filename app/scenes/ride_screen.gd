@@ -374,7 +374,9 @@ func _build_simulation_panel() -> void:
 		_speed_buttons.append(button)
 	rows.add_child(speeds)
 	var hint: Label = Label.new()
-	hint.text = tr("Click the map or profile to jump · + / − speed · C: free camera")
+	hint.text = tr(
+		"Click the map or profile to jump · + / − speed · C: free camera, Shift + mouse to look"
+	)
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", UiTheme.MUTED)
 	rows.add_child(hint)

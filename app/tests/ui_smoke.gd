@@ -16,6 +16,7 @@ func _run() -> void:
 	_video_view()
 	_video_alignment()
 	_translations()
+	_free_camera()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -266,3 +267,24 @@ func _check(condition: bool, what: String) -> void:
 	if not condition:
 		push_error("UI SMOKE TEST FAILED: " + what)
 		_failed = true
+
+
+## The free camera turns with the mouse while Shift is held, and not without (#66).
+func _free_camera() -> void:
+	var world: Node3D = (load("res://scenes/world.tscn") as PackedScene).instantiate()
+	root.add_child(world)
+	world.set("_free", true)
+	var camera: Camera3D = world.get("_camera")
+	var before: Vector3 = camera.rotation
+
+	var hovering: InputEventMouseMotion = InputEventMouseMotion.new()
+	hovering.relative = Vector2(50.0, 20.0)
+	world.call("_unhandled_input", hovering)
+	_check(camera.rotation.is_equal_approx(before), "plain mouse moves leave the view")
+
+	var looking: InputEventMouseMotion = InputEventMouseMotion.new()
+	looking.relative = Vector2(50.0, 20.0)
+	looking.shift_pressed = true
+	world.call("_unhandled_input", looking)
+	_check(camera.rotation.y < before.y and camera.rotation.x < before.x, "Shift turns the view")
+	world.free()
