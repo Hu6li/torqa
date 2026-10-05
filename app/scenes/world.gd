@@ -174,6 +174,9 @@ var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _ghost: RiderAvatar = RiderAvatar.new()
 var _ghost_distance: float = 0.0
+var _clouds: CloudLayer = CloudLayer.new()
+## Whether the clouds are over the land of the current world yet.
+var _clouds_settled: bool = false
 ## The land beyond the corridor: ground and lakes.
 var _horizon_ground: MeshInstance3D = MeshInstance3D.new()
 var _horizon_water: MeshInstance3D = MeshInstance3D.new()
@@ -279,9 +282,13 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var sky_horizon: Color = horizon.lerp(Palette.color("sky.overcast_horizon"), overcast)
 	_sky.set_shader_parameter("top_color", sky_top)
 	_sky.set_shader_parameter("horizon_color", sky_horizon)
-	_sky.set_shader_parameter("cloud_cover", cover)
+	# The sky paints a thin high layer; the low-poly clouds below carry the cover.
+	_sky.set_shader_parameter("cloud_cover", cover * 0.3)
 	_sky.set_shader_parameter("cloud_darkness", overcast)
+	_clouds.cover = cover
 	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
+	# The light shines along its −z axis: its +z points towards the sun.
+	_clouds.light(_sun.global_transform.basis.z, _sun.light_color, sky_horizon, overcast)
 	_sun.light_energy = energy * lerpf(1.0, 0.25, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
 	_environment.ambient_light_energy = lerpf(ambient, 0.85, overcast)
@@ -391,6 +398,7 @@ func _ready() -> void:
 	_rail_material.set_shader_parameter("ballast_color", Palette.color("road.ballast"))
 	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
 	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
+	add_child(_clouds)
 	for land: MeshInstance3D in [_horizon_ground, _horizon_water]:
 		# Far away: its shadows would not show.
 		land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -419,6 +427,7 @@ func _process(delta: float) -> void:
 
 
 func _on_world_ready(_info: Dictionary) -> void:
+	_clouds_settled = false
 	# The rider's own avatar (R46); the ghost rides the same one.
 	var avatar: String = _torqa.profile().get("avatar", RiderAvatar.RIDERS[0])
 	_avatar.rider = avatar
@@ -646,6 +655,9 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var yaw: Basis = Basis(Vector3.UP, -heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	var position: Vector3 = Vector3(east, elevation, -north)
+	if not _clouds_settled:
+		_clouds.settle(elevation)
+		_clouds_settled = true
 	# A jump (simulated rides): no gliding across the whole way.
 	if _rider.position.distance_to(position) > JUMP_M:
 		_placed = false
