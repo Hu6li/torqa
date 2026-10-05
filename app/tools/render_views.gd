@@ -18,6 +18,7 @@ const VIEWS: Dictionary[String, Array] = {
 	"lakeside-village": ["bielersee", 5150.0, 0, "Midday", "Clear"],
 	"junction-chase": ["bielersee", 1500.0, 0, "Midday", "Clear"],
 	"junction-drone": ["bielersee", 1380.0, 2, "Midday", "Clear"],
+	"river-drone": ["kirchenfeldbruecke", 90.0, 2, "Midday", "Clear"],
 	"bridge-chase": ["kirchenfeldbruecke", 200.0, 0, "Midday", "Clear"],
 	"roundabout-drone": ["kirchenfeldbruecke", 170.0, 2, "Midday", "Clear"],
 }

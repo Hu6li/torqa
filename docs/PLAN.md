@@ -245,9 +245,10 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Water under roads, never over them: streams and rivers laid on the ground just
       below every street and the road, so they pass under them; culverts left out
   - [ ] Nicer environment (#75):
-    - [ ] Water lies in the ground, never floating above it (streams and rivers done: laid on
-      the ground); lakes still float where the ground at their shore is lower; better meeting
-      of water, banks and bridges (with the shore band of Polish)
+    - [x] Water lies in the land, never floating above it or buried: lakes, rivers and
+      streams are laid on the ground (whose height the terrain model measures at the water's
+      surface), so lakes lie level and rivers slope with their course (a shore band remains
+      for Polish)
     - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
       bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
       off them (level crossings: the street lies over the bed)
