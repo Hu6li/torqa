@@ -10,6 +10,7 @@ use torqa_routes::{ElevationModel, LocalProjection};
 use crate::drape;
 use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
+use crate::water::{self, Pool};
 use crate::{HeightGrid, MeshData, ROAD_HALF_WIDTH};
 
 /// Distance between the points of a street: short enough to tell where it runs along the road
@@ -241,7 +242,7 @@ fn ribbon(
 /// Street points with their half widths, by index cell.
 type StreetCells = std::collections::HashMap<(i64, i64), Vec<(f64, f64, f64)>>;
 
-/// Where the map's streets and railways are, to keep trees and grass off them.
+/// Where the map's streets, railways and shores are, to keep trees and grass off them.
 pub(crate) struct Clearance {
     cells: StreetCells,
 }
@@ -250,12 +251,13 @@ pub(crate) struct Clearance {
 const CLEARANCE_CELL_M: f64 = 10.0;
 
 impl Clearance {
-    pub(crate) fn new(streets: &[Street], railways: &[Railway]) -> Self {
+    pub(crate) fn new(streets: &[Street], railways: &[Railway], pools: &[Pool]) -> Self {
         let mut cells = StreetCells::new();
         let lines = streets
             .iter()
             .map(|s| (&s.points, width(s.class) / 2.0))
-            .chain(railways.iter().map(|r| (&r.points, railways::BED_M / 2.0)));
+            .chain(railways.iter().map(|r| (&r.points, railways::BED_M / 2.0)))
+            .chain(pools.iter().map(|p| (&p.shore, water::SHORE_M / 2.0)));
         for (points, half) in lines {
             for &(e, n) in points {
                 cells

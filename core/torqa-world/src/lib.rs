@@ -166,9 +166,9 @@ pub async fn generate<M: ElevationModel>(
     let buildings = buildings_by_chunk(map, &projection, &road, &land);
     let streets = streets::lines(map, &projection, model).await;
     let railways = railways::lines(map, &projection, &road, model).await;
-    let clearance = streets::Clearance::new(&streets, &railways);
     let streams = water::streams(&map.waterways, &projection, &road);
     let pools = water::pools(&map.areas, &projection, &road);
+    let clearance = streets::Clearance::new(&streets, &railways, &pools);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
         structures: structures::build(&road, &projection, model).await,
@@ -206,7 +206,7 @@ pub async fn generate<M: ElevationModel>(
         };
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
-        let (paved, unpaved) = streets::meshes(
+        let (paved, mut unpaved) = streets::meshes(
             &streets,
             heights.origin,
             CHUNK_SIZE,
@@ -214,6 +214,13 @@ pub async fn generate<M: ElevationModel>(
             &road,
             origin,
         );
+        unpaved.append(water::shore_mesh(
+            &pools,
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            origin,
+        ));
         world.chunks.push(TerrainChunk {
             center,
             mesh: heights.mesh(&land, origin, &road),

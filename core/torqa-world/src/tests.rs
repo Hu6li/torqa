@@ -1802,6 +1802,60 @@ async fn minimap_draws_map_features_near_the_route_only() {
 }
 
 #[tokio::test]
+async fn lakes_are_edged_by_a_band_of_gravel_the_forest_keeps_off() {
+    // A pond 100 m square east of the route, in a forest.
+    let pond = Area {
+        cover: LandCover::Water,
+        outer: vec![square(300.0, 500.0, 50.0)],
+        inner: vec![],
+    };
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(300.0, 500.0, 120.0)],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![forest, pond],
+        ..MapData::default()
+    })
+    .await;
+    let band_at = |x: f32, z: f32| height_on(&world, |c| &c.tracks, x, z);
+
+    // All round, just outside the shore, on the ground; none out in the water.
+    let mut checked = 0;
+    for step in 0..=40 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let along = 255.0 + step as f32 * 2.25;
+        for (x, z) in [
+            (along, -448.5),
+            (along, -551.5),
+            (248.5, -(along + 200.0)),
+            (351.5, -(along + 200.0)),
+        ] {
+            let band = band_at(x, z).unwrap_or_else(|| panic!("no shore at {x}, {z}"));
+            let ground = ground_at(&world, x, z).expect("ground");
+            assert!(
+                band > ground && band - ground < 0.03,
+                "{band} on {ground} at {x}, {z}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 150);
+    assert!(band_at(300.0, -500.0).is_none() && band_at(300.0, -453.0).is_none());
+    // Trees grow up to the band, not on it.
+    let trees = plants_of(&world, &["conifer", "broadleaf"]);
+    assert!(trees.len() > 50);
+    for [x, _, z] in &trees {
+        let outside = (x - 300.0).abs().max((z + 500.0).abs()) - 50.0;
+        assert!(
+            outside > 3.0 || outside < 0.0,
+            "a tree on the shore at {x}, {z}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn lakes_lie_level_in_the_land() {
     // A lake east of the road whose surface the terrain model reports at 429 m.
     struct Lake;
