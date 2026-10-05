@@ -105,13 +105,17 @@ scripts/dev.sh scripts/render-riders.sh   # side, front, chase and face views in
 - **Bodies** come from Blender Studio's CC0 *Human Base Meshes*: the stylized "primitive"
   bodies, extracted into `sources/human-base-meshes/` (see its `SOURCE.md` and `extract.py`).
   They are parts with their origins at the joints. The script keeps them at their base level
-  (faceted, no subdivision), drops fingers, toes and eyes, thins nose and ears, lengthens arms,
-  hands and feet and makes the heads smaller (natural proportions, ADR 0011), and dresses the
-  parts: shorts to above the knee, short sleeves, gloves, shoes; helmet, sunglasses and, for the
-  female rider, a ponytail are built on the head.
+  (faceted, no subdivision), drops fingers and toes, thins nose and ears, lengthens arms,
+  hands and feet, makes the heads and shoulder caps smaller (natural proportions, ADR 0011) and
+  dresses the parts: shorts to above the knee, short sleeves, gloves, shoes.
+- **Head:** fitted to the head's own shape. Hair is a shell over the scalp (to the nape and
+  over the ears for her, short for him), the helmet a shell over the hair, drawn out to the
+  back, with vent slots laid on top; sunglasses are two lenses following the face over the
+  eyes, a bridge and arms back to the ears; she has a ponytail with a hair tie.
 - **Seat:** the hips go on the seat tube's line where the knee bends 30° with the pedal at the
   bottom (a usual bike fit); the torso bends forward until the hands, elbows a little bent,
-  reach hoods at least 0.5 m ahead of the bottom bracket.
+  reach hoods at least 0.5 m ahead of the bottom bracket; the shoulders turn half the way with
+  the arms.
 - **Bike:** built around those contact points (saddle under the pelvis, hoods under the hands):
   frame of six-sided tubes, fork, stem, drop bar with hoods, saddle, 18-sided wheels with eight
   spokes, chainring and cranks.
@@ -125,14 +129,14 @@ and aims the legs at the pedals (inverse kinematics).
 
 | Name | Used for |
 |---|---|
-| `skin`, `hair` | skin; the ponytail |
+| `skin`, `hair` | skin; hair and ponytail |
 | `jersey`, `sleeve`, `shorts`, `gloves`, `shoes` | the kit |
-| `helmet`, `glasses` | helmet, sunglasses |
+| `helmet`, `vents`, `glasses` | helmet and its vent slots, sunglasses |
 | `frame` | the frame and fork |
 | `tyre`, `rim`, `metal`, `saddle`, `bar` | the bike's other parts |
 
 Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` there too) and
-`bike` for the bike's other parts. A rider about 3,600–4,400 triangles, a bike about 1,400.
+`bike` for the bike's other parts. A rider about 4,400–5,300 triangles, a bike about 1,400.
 
 | | |
 |---|---|

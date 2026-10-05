@@ -5,12 +5,12 @@ Run in the art container:
 
 Each rider starts from Blender Studio's CC0 stylized "primitive" body (art/sources/
 human-base-meshes): a mannequin of parts with their origins at the joints. The script keeps the
-parts at their base level (no subdivision), so they are faceted and lean; drops fingers, toes
-and eyes; brings the proportions closer to natural ones (longer arms, smaller heads); dresses
-the parts by material name; and adds a helmet, sunglasses and, for the female rider, a
-ponytail. It then seats the rider: the hips where the legs reach the pedals almost straight,
-the torso bent forward until the hands reach the hoods of a bike sized to fit. The bike is
-built around those contact points, so each rider gets their own.
+parts at their base level (no subdivision), so they are faceted and lean; drops fingers and
+toes; brings the proportions closer to natural ones (longer arms, smaller heads); dresses the
+parts by material name; and fits hair, a helmet and sunglasses to the head's own shape (and a
+ponytail for the female rider). It then seats the rider: the hips where the legs reach the
+pedals almost straight, the torso bent forward until the hands reach the hoods of a bike sized
+to fit. The bike is built around those contact points, so each rider gets their own.
 
 `rider_<sex>.glb` holds these nodes, in Godot's axes (x right, y up, −z forward; metres, the
 origin on the ground between the wheels):
@@ -34,15 +34,18 @@ import os
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCE = os.path.normpath(
     os.path.join(HERE, "..", "sources", "human-base-meshes", "primitive_stylized_bodies.blend"))
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
-# Parts too small to show at riding distance, or hidden behind sunglasses.
-DROP = ("finger", "thumb", "toe", "eye")
+# Parts too small to show at riding distance; the eyes, hidden behind sunglasses, go once the
+# sunglasses are fitted to them.
+DROP = ("finger", "thumb", "toe")
+EYES = ("eye",)
 # Parts with many small facets for their size: thinned to this share of their faces.
 THIN = {"nose": 0.3, "nose_bridge": 0.45, "ear": 0.35}
 # The cycling kit, by part; the rest is skin.
@@ -55,10 +58,12 @@ LEGS = ("leg_upper", "leg_lower", "foot")
 LEG_NODES = {"leg_upper": "thigh", "leg_lower": "shin", "foot": "foot"}
 # The stylized bodies have short arms, a short torso (female) and big heads; Torqa's riders
 # have natural proportions (ADR 0011). Arms, hands (standing in for the dropped fingers) and
-# feet are lengthened by these factors, the torso by metres, the head scaled.
+# feet are lengthened by these factors, the torso by metres, head and shoulder caps scaled.
 PROPORTIONS = {
-    "female": {"arms": 1.3, "hands": 1.35, "feet": 1.2, "torso": 0.07, "head": 0.86},
-    "male": {"arms": 1.22, "hands": 1.35, "feet": 1.2, "torso": 0.0, "head": 0.86},
+    "female": {"arms": 1.3, "hands": 1.35, "feet": 1.2, "torso": 0.07, "head": 0.86,
+               "shoulders": 0.88},
+    "male": {"arms": 1.22, "hands": 1.35, "feet": 1.2, "torso": 0.0, "head": 0.86,
+             "shoulders": 0.88},
 }
 
 # The bike, in Blender's axes: x right, y forward, z up. Built with the bottom bracket at
@@ -94,6 +99,7 @@ PREVIEW = {
     "skin": (0.74, 0.53, 0.47), "jersey": (0.94, 0.71, 0.8), "sleeve": (0.81, 0.35, 0.65),
     "shorts": (0.18, 0.24, 0.48), "gloves": (0.38, 0.26, 0.4), "shoes": (0.22, 0.35, 0.63),
     "helmet": (0.96, 0.76, 0.43), "glasses": (0.29, 0.18, 0.27), "hair": (0.38, 0.26, 0.4),
+    "vents": (0.29, 0.18, 0.27),
     "frame": (0.89, 0.44, 0.37), "tyre": (0.29, 0.18, 0.27), "rim": (0.95, 0.92, 0.85),
     "metal": (0.56, 0.58, 0.61), "saddle": (0.38, 0.26, 0.4), "bar": (0.38, 0.26, 0.4),
 }
@@ -305,6 +311,8 @@ def proportion(parts, sex):
         stretch(hand, origin(hand), forearm, change["hands"])
         foot = parts[f"foot.{side}"]
         stretch(foot, origin(foot), Vector((0, -1, 0)), change["feet"])
+        # Smaller shoulder caps (the mesh alone: the arm hanging from it stays).
+        parts[f"shoulder.{side}"].data.transform(Matrix.Scale(change["shoulders"], 4))
     head = parts["head"]
     transform(head, Matrix.Scale(change["head"], 3), origin(head))
 
@@ -365,61 +373,219 @@ def shoulders(parts):
     return middle(origin(parts["arm_upper.L"]), origin(parts["arm_upper.R"]))
 
 
-def headgear(head, sex):
-    """Helmet, sunglasses and (female) ponytail on the upright head facing +y, parented to it."""
+# Hair and helmet: how far they stand off the scalp, and where the hair ends (metres from the
+# eyes' height: at the back, at the sides).
+HAIR = {"female": {"thickness": 0.014, "back": -0.085, "sides": -0.035},
+        "male": {"thickness": 0.006, "back": -0.05, "sides": -0.005}}
+# The helmet sits this far off the scalp (pressing the hair under it flat) and is this thick.
+HELMET_GAP = 0.007
+HELMET_SHELL = 0.02
+
+
+def scalp(head, keep, rim=None):
+    """The head's faces whose centre `keep` accepts, in world coordinates: points, their
+    normals and the faces as lists of point indices. `rim(point)` gives the height the open
+    edge is evened out to."""
+    mesh = bmesh.new()
+    mesh.from_mesh(head.data)
+    mesh.transform(head.matrix_world)
+    mesh.normal_update()
+    chosen = [f for f in mesh.faces if keep(f.calc_center_median())]
+    used = sorted({v.index for f in chosen for v in f.verts})
+    mesh.verts.ensure_lookup_table()
+    index = {v: k for k, v in enumerate(used)}
+    points = [mesh.verts[v].co.copy() for v in used]
+    normals = [mesh.verts[v].normal.copy() for v in used]
+    faces = [[index[v.index] for v in f.verts] for f in chosen]
+    mesh.free()
+    if rim is not None:
+        for k in edge_points(faces):
+            points[k].z = rim(points[k])
+    return points, normals, faces
+
+
+def edge_points(faces):
+    """The points on the open edge of a patch of faces."""
+    count = {}
+    for face in faces:
+        for a, b in zip(face, face[1:] + face[:1]):
+            key = (min(a, b), max(a, b))
+            count[key] = count.get(key, 0) + 1
+    return {k for (a, b), n in count.items() if n == 1 for k in (a, b)}
+
+
+def shell(gear, patch, inner, outer, material_name, shape=None):
+    """A solid shell over a patch of the scalp, from `inner` to `outer` metres off it (`outer`
+    may depend on the scalp's point), closed at its edge; `shape(point)` reshapes the outer
+    surface."""
+    points, normals, faces = patch
+    thickness = outer if callable(outer) else (lambda point: outer)
+    low = [p + n * inner for p, n in zip(points, normals)]
+    high = [p + n * thickness(p) for p, n in zip(points, normals)]
+    if shape is not None:
+        high = [shape(p) for p in high]
+    count = {}
+    for face in faces:
+        middle_point = sum((points[k] for k in face), Vector()) / len(face)
+        gear.add([high[k] for k in face], material_name, middle_point)
+        gear.add([low[k] for k in reversed(face)], material_name)
+        for a, b in zip(face, face[1:] + face[:1]):
+            key = (min(a, b), max(a, b))
+            count[key] = count.get(key, 0) + 1
+    for face in faces:
+        middle_point = sum((points[k] for k in face), Vector()) / len(face)
+        for a, b in zip(face, face[1:] + face[:1]):
+            if count[(min(a, b), max(a, b))] == 1:
+                gear.add([low[a], low[b], high[b], high[a]], material_name, middle_point)
+
+
+def tube_along(gear, spine, radii, material_name, sides=6):
+    """A faceted tube along a spine of points with a radius at each, closed at both ends (a
+    radius of 0 ends in a point)."""
+    rings = []
+    for k, (point, radius) in enumerate(zip(spine, radii)):
+        ahead = spine[min(k + 1, len(spine) - 1)] - spine[max(k - 1, 0)]
+        axis = ahead.normalized()
+        side = axis.cross(Vector((0, 0, 1))).normalized() if abs(axis.z) < 0.95 else Vector((1, 0, 0))
+        across = axis.cross(side)
+        # Every other ring turned half a step: facets, not stripes.
+        turn = math.pi / sides * (k % 2)
+        rings.append([point + radius * (math.cos(2 * math.pi * j / sides + turn) * side
+                                        + math.sin(2 * math.pi * j / sides + turn) * across)
+                      for j in range(sides)])
+    for k, (a, b) in enumerate(zip(rings, rings[1:])):
+        inside = middle(spine[k], spine[k + 1])
+        for j in range(sides):
+            n = (j + 1) % sides
+            gear.add([a[j], a[n], b[n], b[j]], material_name, inside)
+    gear.add(rings[0], material_name, spine[1])
+    gear.add(rings[-1], material_name, spine[-2])
+
+
+def headgear(parts, sex):
+    """Hair, helmet and sunglasses on the upright head facing +y, fitted to its shape and
+    parented to it."""
+    head = parts["head"]
     low, high = bounds(head)
     centre = middle(low, high)
-    half_x, half_y = (high.x - low.x) / 2.0, (high.y - low.y) / 2.0
-    eyes = low.z + 0.48 * (high.z - low.z)
+    half_y = (high.y - low.y) / 2.0
+    eyes_l, eyes_r = origin(parts["eye.L"]), origin(parts["eye.R"])
+    eyes = middle(eyes_l, eyes_r).z
+    hair = HAIR[sex]
+
+    def ahead(point):
+        """Front (+1) to back (−1) of the head."""
+        return max(-1.0, min(1.0, (point.y - centre.y) / half_y))
+
+    def face(point):
+        return ahead(point) > 0.25 and point.z < eyes + 0.065
+
+    def hairline(point):
+        back = max(-ahead(point), 0.0)
+        return eyes + hair["sides"] + (hair["back"] - hair["sides"]) * back
+
+    def helmet_rim(point):
+        # Above the brow in front, above the ears at the sides, lower at the back.
+        return eyes + 0.012 + 0.025 * ahead(point)
+
+    def hair_thickness(point):
+        # Full where it shows below the helmet, flat under it.
+        return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else HELMET_GAP * 0.5
+
     gear = Faces()
-    # Helmet: a dome of facets, longer than wide, drawn out at the back.
-    base, top = eyes + 0.035, high.z + 0.03
-    segments = 10
-    layers = []
-    for lift, spread in ((0.0, 1.0), (0.45, 0.93), (0.8, 0.62)):
-        layer = []
-        for k in range(segments):
-            a = 2 * math.pi * k / segments
-            back = 1.2 if math.cos(a) < 0.0 else 1.0
-            layer.append(Vector((centre.x + half_x * 1.18 * spread * math.sin(a),
-                                 centre.y - 0.01 + half_y * 1.12 * back * spread * math.cos(a),
-                                 base + (top - base) * lift)))
-        layers.append(layer)
-    inside = Vector((centre.x, centre.y, base - 0.05))
-    for lower, upper in zip(layers, layers[1:]):
-        for k in range(segments):
-            j = (k + 1) % segments
-            gear.add([lower[k], lower[j], upper[j], upper[k]], "helmet", inside)
-    crown = Vector((centre.x, centre.y - 0.02, top))
-    for k in range(segments):
-        gear.add([layers[-1][k], layers[-1][(k + 1) % segments], crown], "helmet", inside)
-    # Sunglasses: wraparound lenses in front, thin arms back to the ears.
-    rim = []
-    for k in range(11):
-        a = -1.5 + 3.0 * k / 10
-        lens = abs(a) < 0.8
-        point = Vector((centre.x + half_x * 1.05 * math.sin(a),
-                        centre.y + half_y * 1.07 * math.cos(a), eyes))
-        rim.append((point - Vector((0, 0, 0.02 if lens else 0.005)),
-                    point + Vector((0, 0, 0.015 if lens else 0.005))))
-    inside = Vector((centre.x, centre.y, eyes))
-    for (a_low, a_high), (b_low, b_high) in zip(rim, rim[1:]):
-        gear.add([a_low, b_low, b_high, a_high], "glasses", inside)
+    shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
+          0.0, hair_thickness, "hair")
+
+    def streamline(point):
+        # Drawn out to a point at the back: a road helmet, not a bowl.
+        back = max(-ahead(point), 0.0)
+        return point + Vector((0.0, -0.035 * back ** 3, 0.004))
+
+    before = len(gear.faces)
+    shell(gear, scalp(head, lambda c: c.z > helmet_rim(c), helmet_rim),
+          HELMET_GAP, HELMET_GAP + HELMET_SHELL, "helmet", streamline)
+    # Vents: long slots from front to back, laid on the helmet's top.
+    helmet = [points for points, _ in gear.faces[before:]]
+    corners = [p for face in helmet for p in face]
+    polygons, start = [], 0
+    for face in helmet:
+        polygons.append(list(range(start, start + len(face))))
+        start += len(face)
+    top = BVHTree.FromPolygons(corners, polygons)
+    half_x = (high.x - low.x) / 2.0
+    for across in (-0.52, -0.18, 0.18, 0.52):
+        length = 0.85 - abs(across) * 0.5
+        rows = []
+        for k in range(7):
+            along = 0.55 - (0.55 + length) * k / 6
+            edge = []
+            for side in (-0.1, 0.1):
+                x = centre.x + (across + side) * half_x
+                y = centre.y + along * half_y
+                hit = top.ray_cast(Vector((x, y, high.z + 0.5)), Vector((0, 0, -1)))[0]
+                edge.append(hit + Vector((0, 0, 0.0015)) if hit is not None else None)
+            rows.append(edge)
+        for (a, b), (c, d) in zip(rows, rows[1:]):
+            if None not in (a, b, c, d):
+                gear.add([a, b, d, c], "vents", middle(a, d) - Vector((0, 0, 0.02)))
+
+    # Sunglasses on the face: lenses over the eyes following its curve, a bridge over the nose
+    # and arms back over the ears.
+    surface = [head] + [parts[p] for p in ("nose", "nose_bridge")]
+    points, polygons = [], []
+    for obj in surface:
+        base = len(points)
+        points.extend(world_vertices(obj))
+        polygons.extend([[base + v for v in p.vertices] for p in obj.data.polygons])
+    tree = BVHTree.FromPolygons(points, polygons)
+
+    def on_face(x, z, stand_off=0.01):
+        hit = tree.ray_cast(Vector((x, centre.y + 0.5, z)), Vector((0, -1, 0)))[0]
+        return hit + Vector((0.0, stand_off, 0.0))
+
+    tops = []
+    for eye in (eyes_l, eyes_r):
+        out = 1.0 if eye.x > centre.x else -1.0
+        columns = [eye.x - out * 0.026, eye.x, eye.x + out * 0.032]
+        rows = [eye.z - 0.02, eye.z, eye.z + 0.016]
+        grid = [[on_face(x, z) for x in columns] for z in rows]
+        # The outer lower corner rounded off.
+        grid[0][2] = on_face(columns[2], rows[0] + 0.008)
+        inside = Vector((eye.x, centre.y, eye.z))
+        for r in range(2):
+            for c in range(2):
+                gear.add([grid[r][c], grid[r][c + 1], grid[r + 1][c + 1], grid[r + 1][c]],
+                         "glasses", inside)
+        tops.append((grid[2][0], grid[2][2]))
+        ear = origin(parts[f"ear.{'L' if eye is eyes_l else 'R'}"]) + Vector((0, 0, 0.02))
+        temple = Vector((ear.x + out * 0.006, middle(grid[2][2], ear).y, eye.z + 0.012))
+        hit = tree.ray_cast(temple + Vector((out * 0.3, 0, 0)), Vector((-out, 0, 0)))[0]
+        if hit is not None:
+            temple = hit + Vector((out * 0.006, 0, 0))
+        for a, b in ((grid[2][2] - Vector((0, 0, 0.004)), temple), (temple, ear)):
+            gear.tube(a, b, 0.0035, "glasses", sides=4)
+    (left_inner, _), (right_inner, _) = tops
+    gear.add([left_inner - Vector((0, 0, 0.007)), right_inner - Vector((0, 0, 0.007)),
+              right_inner, left_inner], "glasses",
+             Vector((centre.x, centre.y, eyes)))
+
     if sex == "female":
-        start = Vector((centre.x, centre.y - half_y * 1.08, eyes + 0.02))
-        tip = start + Vector((0.0, -0.13, -0.15))
-        axis = (tip - start).normalized()
-        side = axis.cross(Vector((1, 0, 0))).normalized()
-        across = axis.cross(side)
-        around = [start + 0.04 * (math.cos(2 * math.pi * k / 6) * side
-                                  + math.sin(2 * math.pi * k / 6) * across) for k in range(6)]
-        inside = middle(start, tip)
-        for k in range(6):
-            gear.add([around[k], around[(k + 1) % 6], tip], "hair", inside)
-        gear.add(around, "hair", inside)
+        # A ponytail from under the back of the helmet, with a hair tie in the kit's colour.
+        nape = tree.ray_cast(Vector((centre.x, centre.y - 0.5, eyes - 0.005)),
+                             Vector((0, 1, 0)))[0]
+        spine = [nape + Vector(offset) for offset in (
+            (0, 0.01, 0), (0, -0.03, -0.012), (0, -0.065, -0.05), (0, -0.085, -0.105),
+            (0, -0.088, -0.16), (0, -0.08, -0.21), (0, -0.07, -0.25))]
+        tube_along(gear, spine, (0.022, 0.026, 0.03, 0.028, 0.022, 0.014, 0.0), "hair")
+        tie = spine[0] + (spine[1] - spine[0]) * 0.55
+        gear.tube(tie - (spine[1] - spine[0]).normalized() * 0.007,
+                  tie + (spine[1] - spine[0]).normalized() * 0.007, 0.027, "sleeve")
+
     obj = gear.to_object("headgear", origin(head))
     obj.parent = head
     obj.matrix_parent_inverse = head.matrix_world.inverted()
+    for part in [p for p in parts if p.startswith(EYES)]:
+        bpy.data.objects.remove(parts.pop(part))
     update()
 
 
@@ -475,11 +641,19 @@ def reach_hoods(parts, hoods):
     """Puts the hands on the hoods, elbows bent out and down."""
     for side, sign in (("L", -1.0), ("R", 1.0)):
         upper, lower, hand = (parts[f"{p}.{side}"] for p in ("arm_upper", "arm_lower", "hand"))
-        shoulder = origin(upper)
         wrist = Vector((sign * HOODS_HALF_WIDTH, hoods.y, hoods.z)) + WRIST_ON_HOOD
-        first = (origin(lower) - shoulder).length
+        first = (origin(lower) - origin(upper)).length
         second = (origin(hand) - origin(lower)).length
-        elbow = two_bone(shoulder, wrist, first, second, Vector((sign * 0.5, -0.3, -1.0)))
+        pole = Vector((sign * 0.5, -0.3, -1.0))
+        # The shoulder turns half the way with the arm, as a deltoid does; left in place it
+        # sticks up like a pad.
+        shoulder = origin(upper)
+        elbow = two_bone(shoulder, wrist, first, second, pole)
+        turn = (origin(lower) - shoulder).rotation_difference(elbow - shoulder)
+        deltoid = parts[f"shoulder.{side}"]
+        transform(deltoid, Quaternion().slerp(turn, 0.5).to_matrix(), origin(deltoid))
+        shoulder = origin(upper)
+        elbow = two_bone(shoulder, wrist, first, second, pole)
         turn = (origin(lower) - shoulder).rotation_difference(elbow - shoulder)
         transform(upper, turn.to_matrix(), shoulder)
         start = origin(lower)
@@ -712,7 +886,7 @@ def build(sex):
         obj.parent = None
         obj.matrix_world = world
     update()
-    headgear(parts["head"], sex)
+    headgear(parts, sex)
     saddle_top, hoods, torso_angle = lean(parts, arm)
     reach_hoods(parts, hoods)
     saddle = Vector((0.0, pelvis_bottom(parts).y, saddle_top))

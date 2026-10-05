@@ -3,13 +3,16 @@ extends SceneTree
 ## views and at a few crank angles, into $OUT_DIR/<rider>-<view>.png for review (ADR 0009). Run
 ## it with scripts/render-riders.sh. Light and colours are the world's (ADR 0011).
 
-## Name, camera position and target (rider's local axes: −z forward), crank angle in degrees.
+## Name, camera position and target (rider's local axes: −z forward), crank angle in degrees
+## and whether the rider leans into a bend (40 km/h, 40 m radius, to the right).
 const VIEWS: Array = [
 	["side", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0],
 	["side-down", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 90.0],
 	["front", Vector3(1.6, 1.5, -2.6), Vector3(0.0, 0.9, 0.0), 30.0],
 	["chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 200.0],
 	["face", Vector3(0.7, 1.4, -1.6), Vector3(0.0, 1.25, -0.35), 120.0],
+	["head", Vector3(-0.75, 1.55, 0.45), Vector3(0.0, 1.3, -0.4), 160.0],
+	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
 ]
 
 var _camera: Camera3D = Camera3D.new()
@@ -36,6 +39,9 @@ func _run() -> void:
 			# At 60 rpm the cranks turn a full turn per second: on to the wanted angle in one step.
 			avatar.animate(fposmod(deg_to_rad(crank) - turned, TAU) / TAU, 60.0, 0.0)
 			turned = deg_to_rad(crank)
+			var leaning: bool = view.size() > 4 and view[4]
+			var lean: float = TorqaApp.lean_angle(40.0, 1.0 / 40.0) if leaning else 0.0
+			avatar.transform = Transform3D(Basis(Vector3.FORWARD, lean), Vector3.ZERO)
 			_camera.look_at_from_position(eye, target, Vector3.UP)
 			for frame: int in range(12):
 				await process_frame
