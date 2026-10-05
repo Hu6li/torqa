@@ -1565,7 +1565,7 @@ async fn houses_on_steep_slopes_keep_their_shells() {
 }
 
 #[tokio::test]
-async fn streams_lie_on_the_ground_and_pass_under_roads_and_streets() {
+async fn streams_run_in_channels_and_pass_under_roads_and_streets() {
     use torqa_osm::{Road, RoadClass};
 
     // A river crossing the route at 500 m, and a street crossing the river east of the route.
@@ -1603,11 +1603,22 @@ async fn streams_lie_on_the_ground_and_pass_under_roads_and_streets() {
             let (Some(water), Some(ground)) = (water_at(x, z), ground_at(&world, x, z)) else {
                 continue;
             };
-            // In the land: a little above the ground, never floating, never sunk.
+            // In a channel (#93): over its bed, half a metre below the land beside it (rising
+            // 0.1 m per metre east), never floating over the land.
+            let land = 500.0 + 0.1 * x;
+            // Where the road and the street cross on the ground, the stream runs through a
+            // culvert, under the ground.
+            let culvert = x.abs() < 12.0 || (x - 100.0).abs() < 9.0;
             assert!(
-                water > ground && water - ground < 0.05,
-                "water {water} on ground {ground} at {x}, {z}"
+                culvert || water > ground,
+                "water {water} under ground {ground} at {x}, {z}"
             );
+            if x.abs() > LEVEL_REACH as f32 {
+                assert!(
+                    (water - (land - 0.48)).abs() < 0.05,
+                    "water {water} by land at {land} at {x}, {z}"
+                );
+            }
             if x.abs() < ROAD_HALF_WIDTH as f32 {
                 assert!(
                     water < 500.0 - 0.05,
@@ -1746,8 +1757,8 @@ async fn short_low_bridges_are_stone_arches() {
     // The piers and walls reach down into the gully.
     let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
     assert!(
-        (lowest - 491.0).abs() < 0.1,
-        "down to the gully's floor: {lowest}"
+        (lowest - 489.5).abs() < 0.1,
+        "below the gully's floor: {lowest}"
     );
 }
 
@@ -1781,8 +1792,8 @@ async fn bridges_have_a_deck_and_pillars_down_to_the_valley() {
     assert_faces_follow_normals(mesh);
     let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
     assert!(
-        (lowest - 469.0).abs() < 0.1,
-        "pillars reach the valley floor: {lowest}"
+        (lowest - 467.5).abs() < 0.1,
+        "pillars reach below the valley floor: {lowest}"
     );
     let highest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
     assert!(
@@ -1976,6 +1987,69 @@ async fn lakes_are_edged_by_a_band_of_gravel_the_forest_keeps_off() {
 }
 
 #[tokio::test]
+async fn streams_cut_natural_channels_and_run_on_under_bridges() {
+    // A stream 4 m wide crossing the route at 500 m, where the route crosses on a bridge.
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 480.0), at(0.0, 520.0)],
+    };
+    let route = route_north(&[bridge]).await;
+    let map = MapData {
+        waterways: vec![Waterway {
+            width: 4.0,
+            line: vec![at(-400.0, 500.0), at(400.0, 500.0)],
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    // Across the stream, 200 m east of the route: the bed deepest in the middle, the banks
+    // rising to the land without a wall, the land untouched a few metres out.
+    let x = 200.0_f32;
+    let land = 500.0 + 0.1 * x;
+    let water = height_on(&world, |c| &c.water, x, -500.0).expect("water");
+    let profile: Vec<(f32, f32)> = (0..=24)
+        .map(|k| {
+            #[allow(clippy::cast_precision_loss)] // small steps
+            let off = k as f32 * 0.5;
+            (
+                off,
+                ground_at(&world, x, -500.0 - off).expect("ground") - land,
+            )
+        })
+        .collect();
+    assert!(
+        water - land < -0.4,
+        "the water {} m below the land",
+        water - land
+    );
+    assert!(
+        profile[0].1 < water - land - 0.2,
+        "the bed {} m below the land, the water {}",
+        profile[0].1,
+        water - land
+    );
+    for pair in profile.windows(2) {
+        let ((a, low), (b, high)) = (pair[0], pair[1]);
+        assert!(
+            high >= low - 0.01,
+            "the bank falls again at {b} m: {profile:?}"
+        );
+        assert!((high - low) / (b - a) < 1.0, "a wall at {b} m: {profile:?}");
+    }
+    let (out, top) = profile[profile.len() - 1];
+    assert!(top.abs() < 0.02, "the land {top} m off at {out} m");
+    // Under the bridge the channel runs on: the ground there lies below the ground under the
+    // bridge away from the stream.
+    let under = ground_at(&world, 1.0, -500.0).expect("ground under the bridge");
+    let beside = ground_at(&world, 1.0, -488.0).expect("ground under the bridge");
+    assert!(
+        under < beside - 0.5,
+        "no channel under the bridge: {under} by {beside}"
+    );
+}
+
+#[tokio::test]
 async fn lakes_lie_level_in_the_land() {
     // A lake east of the road whose surface the terrain model reports at 429 m.
     struct Lake;
@@ -2005,22 +2079,24 @@ async fn lakes_lie_level_in_the_land() {
         assert_valid(&chunk.water);
         assert_faces_follow_normals(&chunk.water);
     }
-    // All over the lake, level at its surface (and the water's lift above it).
+    // All over the lake, level half a metre below its shore (#93), over its bed.
     for x in (110..=690).step_by(20) {
         for north in (210..=790).step_by(20) {
             #[allow(clippy::cast_precision_loss)] // small numbers
             let (x, z) = (x as f32, -(north as f32));
             let water = height_on(&world, |c| &c.water, x, z).expect("water over the lake");
             assert!(
-                (water - 429.02).abs() < 0.01,
+                (water - 428.52).abs() < 0.01,
                 "water at {water} at {x}, {z}"
             );
+            let bed = ground_at(&world, x, z).expect("a bed");
+            assert!(bed < water - 0.2, "the bed at {bed} under water at {water}");
         }
     }
 }
 
 #[tokio::test]
-async fn rivers_slope_with_their_course_never_floating_or_sunk() {
+async fn rivers_slope_with_their_course_in_their_channel() {
     // A river 40 m wide running east, where the land rises 0.1 m per metre: its surface,
     // which the terrain model measures, falls 130 m along it.
     let river = Area {
@@ -2051,9 +2127,15 @@ async fn rivers_slope_with_their_course_never_floating_or_sunk() {
             ) else {
                 continue;
             };
+            // In its channel (#93): over its bed, half a metre below the land beside it.
+            let land = 500.0 + 0.1 * x;
             assert!(
-                water > ground && water - ground < 0.05,
-                "water at {water} on ground {ground} at {x}, {z}"
+                water > ground,
+                "water at {water} under ground {ground} at {x}, {z}"
+            );
+            assert!(
+                (water - (land - 0.48)).abs() < 0.05,
+                "water at {water} by land at {land} at {x}, {z}"
             );
             checked += 1;
         }

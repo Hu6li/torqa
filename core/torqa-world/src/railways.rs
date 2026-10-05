@@ -6,7 +6,7 @@
 use torqa_osm::MapData;
 use torqa_routes::{ElevationModel, LocalProjection};
 
-use crate::{CORRIDOR, HeightGrid, MeshData, drape, road::RoadIndex};
+use crate::{CORRIDOR, HeightGrid, MeshData, On, drape, road::RoadIndex};
 
 /// Width of a track's bed of ballast.
 pub(crate) const BED_M: f64 = 3.2;
@@ -24,6 +24,13 @@ pub(crate) struct Railway {
     max: (f64, f64),
     /// For bridges: the deck's height at both ends (the ground's there).
     deck: Option<(f64, f64)>,
+}
+
+impl Railway {
+    /// Whether it is a bridge.
+    pub(crate) fn on_bridge(&self) -> bool {
+        self.deck.is_some()
+    }
 }
 
 /// The map's railways within the corridor around the road, densified, with bridge decks' end
@@ -114,7 +121,14 @@ pub(crate) fn mesh(
                     chunk_origin,
                 );
             } else {
-                drape::drape(&mut mesh, &piece, BED_M / 2.0, LIFT, heights, chunk_origin);
+                drape::drape(
+                    &mut mesh,
+                    &piece,
+                    BED_M / 2.0,
+                    (On::Ground, LIFT),
+                    heights,
+                    chunk_origin,
+                );
             }
         }
     }

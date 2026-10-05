@@ -2,7 +2,7 @@
 //! so each piece lies in the plane of the triangle under it and the ground can never show
 //! through, however it folds.
 
-use crate::{HeightGrid, MeshData};
+use crate::{HeightGrid, MeshData, On};
 
 /// Draped, a straight strip needs no points between its bends but these, at most this far
 /// apart; the ground's triangles add the rest...
@@ -74,7 +74,7 @@ pub(crate) fn pieces(
     pieces
 }
 
-/// A strip of `half` width along `run`, `lift` above the ground, cut along the ground's
+/// A strip of `half` width along `run`, `lift` above what it lies `on`, cut along the ground's
 /// triangles: each piece lies in the plane of the triangle under it, so the ground can never
 /// rise through the strip, however it folds.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
@@ -82,7 +82,7 @@ pub(crate) fn drape(
     mesh: &mut MeshData,
     run: &[((f64, f64), f64)],
     half: f64,
-    lift: f64,
+    (on, lift): (On, f64),
     heights: &HeightGrid,
     origin: [f64; 3],
 ) {
@@ -124,18 +124,18 @@ pub(crate) fn drape(
                 (distance_a + (distance_b - distance_a) * along / length) as f32,
             ]
         };
-        drape_polygon(mesh, &quad, lift, heights, origin, &uv);
+        drape_polygon(mesh, &quad, (on, lift), heights, origin, &uv);
     }
 }
 
-/// A convex `polygon` (corners in metres east/north, clockwise seen from above) laid on the
-/// ground `lift` above it: cut along the ground's triangles, each piece in the plane of the
+/// A convex `polygon` (corners in metres east/north, clockwise seen from above) laid `lift`
+/// above what it lies `on`: cut along the ground's triangles, each piece in the plane of the
 /// triangle under it. `uv` gives each corner's texture coordinates.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
 pub(crate) fn drape_polygon(
     mesh: &mut MeshData,
     polygon: &[(f64, f64)],
-    lift: f64,
+    (on, lift): (On, f64),
     heights: &HeightGrid,
     origin: [f64; 3],
     uv: &dyn Fn((f64, f64)) -> [f32; 2],
@@ -151,12 +151,12 @@ pub(crate) fn drape_polygon(
         if piece.len() < 3 {
             continue;
         }
-        let normal = plane_normal(&triangle, heights);
+        let normal = plane_normal(&triangle, heights, on);
         let base = u32::try_from(mesh.vertices.len()).expect("draped meshes fit u32");
         for &(east, north) in &piece {
             mesh.vertices.push([
                 (east - origin[0]) as f32,
-                (heights.at(east, north) + lift - origin[1]) as f32,
+                (heights.level(on, east, north) + lift - origin[1]) as f32,
                 (-north - origin[2]) as f32,
             ]);
             mesh.normals.push(normal);
@@ -233,7 +233,7 @@ fn inside_triangle(subject: &[(f64, f64)], triangle: &[(f64, f64); 3]) -> Vec<(f
 
 /// The upward normal of the ground's triangle, as the mesh would light it.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
-fn plane_normal(triangle: &[(f64, f64); 3], heights: &HeightGrid) -> [f32; 3] {
+fn plane_normal(triangle: &[(f64, f64); 3], heights: &HeightGrid, on: On) -> [f32; 3] {
     // Just inside the corners, so each height comes from this very triangle.
     let middle = (
         (triangle[0].0 + triangle[1].0 + triangle[2].0) / 3.0,
@@ -241,7 +241,7 @@ fn plane_normal(triangle: &[(f64, f64); 3], heights: &HeightGrid) -> [f32; 3] {
     );
     let point = |p: (f64, f64)| {
         let q = (p.0 + (middle.0 - p.0) * 0.01, p.1 + (middle.1 - p.1) * 0.01);
-        [q.0, heights.at(q.0, q.1), -q.1]
+        [q.0, heights.level(on, q.0, q.1), -q.1]
     };
     let corners = triangle.map(point);
     let edge = |k: usize| {

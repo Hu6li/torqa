@@ -9,7 +9,7 @@ use torqa_routes::LocalProjection;
 use crate::buildings::{signed_area, triangulate};
 use crate::minimap::simplify;
 use crate::road::RoadIndex;
-use crate::{CORRIDOR, HeightGrid, MeshData, drape};
+use crate::{CORRIDOR, HeightGrid, MeshData, On, drape};
 
 /// Shores are simplified to this tolerance in metres.
 const SHORE_SIMPLIFY: f64 = 3.0;
@@ -32,6 +32,18 @@ pub(crate) struct Stream {
     points: Vec<(f64, f64)>,
     min: (f64, f64),
     max: (f64, f64),
+}
+
+impl Stream {
+    /// Its centre line.
+    pub(crate) fn points(&self) -> &[(f64, f64)] {
+        &self.points
+    }
+
+    /// Its width in metres.
+    pub(crate) fn width(&self) -> f64 {
+        self.width
+    }
 }
 
 /// The map's streams and rivers, their stretches within the corridor around the road.
@@ -84,10 +96,19 @@ pub(crate) fn streams(
 /// clockwise seen from above) with their bounds for quick chunk tests.
 pub(crate) struct Pool {
     triangles: Vec<[(f64, f64); 3]>,
+    /// Its shore, counter-clockwise.
+    outline: Vec<(f64, f64)>,
     /// The middle of its shore band (see `SHORE_M`), all round, a point every few metres.
     pub(crate) shore: Vec<(f64, f64)>,
     min: (f64, f64),
     max: (f64, f64),
+}
+
+impl Pool {
+    /// Its shore, counter-clockwise.
+    pub(crate) fn outline(&self) -> &[(f64, f64)] {
+        &self.outline
+    }
 }
 
 /// The map's water areas that reach into the corridor around the road, triangulated.
@@ -127,6 +148,7 @@ pub(crate) fn pools(areas: &[Area], projection: &LocalProjection, road: &RoadInd
             pools.push(Pool {
                 triangles,
                 shore: shore_line(&outline),
+                outline: outline.clone(),
                 min: (min.0 - SHORE_M, min.1 - SHORE_M),
                 max: (max.0 + SHORE_M, max.1 + SHORE_M),
             });
@@ -158,9 +180,14 @@ pub(crate) fn mesh(
                 max = (max.0.max(e), max.1.max(n));
             }
             if !outside(min, max) {
-                drape::drape_polygon(&mut mesh, triangle, LIFT, heights, chunk_origin, &|_| {
-                    [0.0, 0.0]
-                });
+                drape::drape_polygon(
+                    &mut mesh,
+                    triangle,
+                    (On::Water, LIFT),
+                    heights,
+                    chunk_origin,
+                    &|_| [0.0, 0.0],
+                );
             }
         }
     }
@@ -192,7 +219,7 @@ fn stream_mesh(
                 &mut mesh,
                 &piece,
                 stream.width / 2.0,
-                LIFT,
+                (On::Water, LIFT),
                 heights,
                 chunk_origin,
             );
@@ -251,7 +278,7 @@ pub(crate) fn shore_mesh(
                 &mut mesh,
                 &piece,
                 SHORE_M / 2.0,
-                SHORE_LIFT,
+                (On::Ground, SHORE_LIFT),
                 heights,
                 chunk_origin,
             );
