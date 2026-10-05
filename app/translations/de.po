@@ -799,3 +799,12 @@ msgstr "Alles an, auch globale Beleuchtung: für schnelle Grafikkarten."
 
 msgid "Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother."
 msgstr "Unter 60 fps: Eine tiefere Grafikqualität (Geräte & Einstellungen) läuft flüssiger."
+
+msgid "Rider on the bike"
+msgstr "Figur auf dem Velo"
+
+msgid "Female rider"
+msgstr "Fahrerin"
+
+msgid "Male rider"
+msgstr "Fahrer"

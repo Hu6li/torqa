@@ -103,6 +103,7 @@ func _show_summary(profile: Dictionary) -> void:
 		["FTP", "%d W  ·  %.1f W/kg" % [roundi(ftp), ftp / maxf(weight, 1.0)]],
 		["Max heart rate", "%d bpm" % roundi(max_hr)],
 		["Units", "Imperial (mi, lb)" if imperial else "Metric (km, kg)"],
+		["Rider on the bike", "Male rider" if profile.get("avatar") == "male" else "Female rider"],
 	]
 	# i18n-end
 	for row: Array in rows:

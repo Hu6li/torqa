@@ -71,6 +71,9 @@ Riders:
 | Darks | plum `#614367`, aubergine `#4b2e44` |
 | Skin | `#bd8877`, `#a4665a`, `#834a40` and lighter tones |
 
+The riders' kits are palette sections of their own (`rider_female`, `rider_male`, by material
+name: jersey, sleeve, shorts, …, frame), the rest of the bike is `bike`.
+
 The palette lives in one file, `app/assets/palette.json`: `core/torqa-world/src/palette.rs`
 reads it for vertex colours (`palette::srgb("ground.meadow", alpha)`), `app/scenes/palette.gd`
 for shader uniforms (`Palette.color("sky.top")`). Add a colour there and use it by name; never

@@ -91,3 +91,50 @@ The app gives each name its look in `app/scenes/vegetation_models.gd` and
 `app/shaders/vegetation.gdshader` (trees sway a little in the wind). `models.json` lists each
 model's `kind` and `height`; the world (`core/torqa-world/src/vegetation.rs`) picks one model
 of the kind it wants per plant.
+
+## Riders (`riders/`)
+
+`build.py` makes a female and a male rider, each on their own bike, into
+`app/assets/models/riders/rider_<sex>.glb`:
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/riders/build.py
+scripts/dev.sh scripts/render-riders.sh   # side, front, chase and face views in screenshots/riders/
+```
+
+- **Bodies** come from Blender Studio's CC0 *Human Base Meshes*: the stylized "primitive"
+  bodies, extracted into `sources/human-base-meshes/` (see its `SOURCE.md` and `extract.py`).
+  They are parts with their origins at the joints. The script keeps them at their base level
+  (faceted, no subdivision), drops fingers, toes and eyes, thins nose and ears, lengthens arms,
+  hands and feet and makes the heads smaller (natural proportions, ADR 0011), and dresses the
+  parts: shorts to above the knee, short sleeves, gloves, shoes; helmet, sunglasses and, for the
+  female rider, a ponytail are built on the head.
+- **Seat:** the hips go on the seat tube's line where the knee bends 30° with the pedal at the
+  bottom (a usual bike fit); the torso bends forward until the hands, elbows a little bent,
+  reach hoods at least 0.5 m ahead of the bottom bracket.
+- **Bike:** built around those contact points (saddle under the pelvis, hoods under the hands):
+  frame of six-sided tubes, fork, stem, drop bar with hoods, saddle, 18-sided wheels with eight
+  spokes, chainring and cranks.
+
+Each file holds `body` (the rider's posed upper body), the legs as `thigh_l`, `shin_l`,
+`foot_l`, `thigh_r`, `shin_r`, `foot_r` (origins at hip, knee and ankle), `frame`,
+`wheel_front`, `wheel_rear`, `crankset` (right crank forward) and `pedal_l`, `pedal_r`.
+`riders.json` holds each rider's fit: hips, thigh and shin lengths, where the ankle sits over
+the pedal, hubs, bottom bracket and cranks. `app/scenes/rider_avatar.gd` turns wheels and cranks
+and aims the legs at the pedals (inverse kinematics).
+
+| Name | Used for |
+|---|---|
+| `skin`, `hair` | skin; the ponytail |
+| `jersey`, `sleeve`, `shorts`, `gloves`, `shoes` | the kit |
+| `helmet`, `glasses` | helmet, sunglasses |
+| `frame` | the frame and fork |
+| `tyre`, `rim`, `metal`, `saddle`, `bar` | the bike's other parts |
+
+Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` there too) and
+`bike` for the bike's other parts. A rider about 3,600–4,400 triangles, a bike about 1,400.
+
+| | |
+|---|---|
+| ![Female rider](../docs/images/riders/female-side.jpg) | ![Male rider](../docs/images/riders/male-side.jpg) |
+| ![Female rider from the front](../docs/images/riders/female-front.jpg) | ![Male rider from behind](../docs/images/riders/male-chase.jpg) |

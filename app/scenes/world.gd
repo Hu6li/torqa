@@ -400,6 +400,10 @@ func _process(delta: float) -> void:
 
 
 func _on_world_ready(_info: Dictionary) -> void:
+	# The rider's own avatar (R46); the ghost rides the same one.
+	var avatar: String = _torqa.profile().get("avatar", RiderAvatar.RIDERS[0])
+	_avatar.rider = avatar
+	_ghost.rider = avatar
 	for chunk: Node in _terrain.get_children():
 		chunk.queue_free()
 	_chunk_count = _torqa.world_chunk_count()

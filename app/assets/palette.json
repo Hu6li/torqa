@@ -83,9 +83,35 @@
     "chimney": "#bf9282",
     "soot": "#614367"
   },
-  "rider": {
-    "kit": ["#efb5cc", "#ce5aa5", "#f4c16e", "#5b97c8", "#3959a0", "#2e3e7a"],
-    "darks": ["#614367", "#4b2e44"],
-    "skin": ["#bd8877", "#a4665a", "#834a40"]
+  "rider_female": {
+    "jersey": "#efb5cc",
+    "sleeve": "#ce5aa5",
+    "shorts": "#2e3e7a",
+    "gloves": "#614367",
+    "shoes": "#3959a0",
+    "helmet": "#f4c16e",
+    "glasses": "#4b2e44",
+    "hair": "#614367",
+    "skin": "#bd8877",
+    "frame": "#e2705e"
+  },
+  "rider_male": {
+    "jersey": "#5b97c8",
+    "sleeve": "#f4c16e",
+    "shorts": "#2e3e7a",
+    "gloves": "#614367",
+    "shoes": "#614367",
+    "helmet": "#ce5aa5",
+    "glasses": "#4b2e44",
+    "hair": "#614367",
+    "skin": "#a4665a",
+    "frame": "#f4c16e"
+  },
+  "bike": {
+    "tyre": "#4b2e44",
+    "rim": "#f2ebd9",
+    "metal": "#8e959b",
+    "saddle": "#614367",
+    "bar": "#614367"
   }
 }

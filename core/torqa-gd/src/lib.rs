@@ -18,7 +18,7 @@ use torqa_app::view;
 use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
-use torqa_domain::profile::{Profile, UnitSystem};
+use torqa_domain::profile::{Avatar, Profile, UnitSystem};
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Percent, Rpm, Watts};
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, LocalProjection};
@@ -778,8 +778,8 @@ impl TorqaApp {
     }
 
     /// The active rider: `{id, name, rider_mass_kg, bike_mass_kg, ftp_w, max_heart_rate_bpm,
-    /// units, language}` with `units` either `"metric"` or `"imperial"` and `language` a locale
-    /// code, empty for the system language.
+    /// units, language, avatar}` with `units` either `"metric"` or `"imperial"`, `language` a
+    /// locale code, empty for the system language, and `avatar` either `"female"` or `"male"`.
     #[func]
     fn profile(&self) -> VarDictionary {
         let Some(stored) = self.app.as_ref().map(App::profile) else {
@@ -798,6 +798,10 @@ impl TorqaApp {
                 UnitSystem::Imperial => "imperial",
             },
             "language" => p.language.as_str(),
+            "avatar" => match p.avatar {
+                Avatar::Female => "female",
+                Avatar::Male => "male",
+            },
         }
     }
 
@@ -841,6 +845,15 @@ impl TorqaApp {
                 UnitSystem::Imperial
             } else {
                 UnitSystem::Metric
+            },
+            avatar: if data
+                .get("avatar")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .is_some_and(|a| a == "male")
+            {
+                Avatar::Male
+            } else {
+                Avatar::Female
             },
         };
         let id = id.to_string();
