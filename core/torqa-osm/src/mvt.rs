@@ -9,8 +9,8 @@ use mvt_reader::Reader;
 use mvt_reader::feature::Value;
 
 use crate::{
-    Area, Building, LandCover, LatLon, MapData, OsmError, Road, RoadClass, StructureKind, Waterway,
-    ZOOM,
+    Area, Building, LandCover, LatLon, MapData, OsmError, Railway, Road, RoadClass, StructureKind,
+    Waterway, ZOOM,
 };
 
 /// Adds the features of tile (x, y) to `data`.
@@ -225,10 +225,18 @@ fn add_road(
         "tunnel" => Some(StructureKind::Tunnel),
         _ => None,
     };
+    let railway = drawn_railway(tags.text("class"), tags.text("subclass"))
+        && kind != Some(StructureKind::Tunnel);
     for line in lines(geometry) {
         let line = projection.line(line);
         if line.len() < 2 {
             continue;
+        }
+        if railway {
+            data.railways.push(Railway {
+                line: line.clone(),
+                bridge: kind == Some(StructureKind::Bridge),
+            });
         }
         if let Some(class) = class {
             data.roads.push(Road {
@@ -244,6 +252,16 @@ fn add_road(
 /// `bicycle` access. `None` for railways, ferries and ways for pedestrians only: footways and
 /// mapped sidewalks, pedestrian zones, steps, platforms and paths closed to bikes. Those carry
 /// no ride and do not belong among the streets drawn; footways open to bikes stay as paths.
+/// Whether a transportation feature is a railway drawn in the world: main lines, narrow gauge,
+/// funiculars and light rail; trams run in the streets, subways underground.
+fn drawn_railway(class: &str, subclass: &str) -> bool {
+    match class {
+        "rail" => subclass != "subway",
+        "transit" => matches!(subclass, "light_rail" | "monorail"),
+        _ => false,
+    }
+}
+
 fn road_class(class: &str, subclass: &str, bicycle: &str) -> Option<RoadClass> {
     let bikes = matches!(bicycle, "yes" | "designated" | "permissive");
     match (class, subclass) {
@@ -429,6 +447,8 @@ mod tests {
         assert!(
             !data.waterways.is_empty() || data.areas.iter().any(|a| a.cover == LandCover::Water)
         );
+        // The Gürbetal line runs through Wabern.
+        assert_ne!(data.railways.len(), 0, "no railways");
     }
 
     #[test]
@@ -486,6 +506,58 @@ mod tests {
             2,
             "open streams and aqueducts are drawn"
         );
+    }
+
+    #[test]
+    fn railways_are_kept_but_not_trams_subways_or_tunnels() {
+        let projection = TileProjection {
+            x: 8531.0,
+            y: 5767.0,
+            extent: 4096.0,
+        };
+        let line = Geometry::LineString(LineString::from(vec![(100.0, 100.0), (200.0, 100.0)]));
+        let tags = |class: &str, subclass: &str, brunnel: &str| {
+            Tags(HashMap::from([
+                ("class".to_owned(), Value::String(class.to_owned())),
+                ("subclass".to_owned(), Value::String(subclass.to_owned())),
+                ("brunnel".to_owned(), Value::String(brunnel.to_owned())),
+            ]))
+        };
+        let mut data = MapData::default();
+        for (class, subclass, brunnel) in [
+            ("rail", "rail", ""),
+            ("rail", "narrow_gauge", "bridge"),
+            ("rail", "funicular", ""),
+            ("transit", "light_rail", ""),
+        ] {
+            add_road(
+                &mut data,
+                &tags(class, subclass, brunnel),
+                &line,
+                &projection,
+            );
+        }
+        assert_eq!(data.railways.len(), 4);
+        assert_eq!(data.railways.iter().filter(|r| r.bridge).count(), 1);
+        for (class, subclass, brunnel) in [
+            ("transit", "tram", ""),
+            ("transit", "subway", ""),
+            ("rail", "rail", "tunnel"),
+            ("minor", "", ""),
+        ] {
+            add_road(
+                &mut data,
+                &tags(class, subclass, brunnel),
+                &line,
+                &projection,
+            );
+        }
+        assert_eq!(
+            data.railways.len(),
+            4,
+            "trams, subways, tunnels and roads are no railways"
+        );
+        assert_eq!(data.roads.len(), 1);
     }
 
     #[test]
