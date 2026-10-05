@@ -193,6 +193,8 @@ var _plant_material: ShaderMaterial = ShaderMaterial.new()
 var _street_material: ShaderMaterial = ShaderMaterial.new()
 var _track_material: ShaderMaterial = ShaderMaterial.new()
 var _rail_material: ShaderMaterial = ShaderMaterial.new()
+## The railways near the route, on their own lines like the road (#85).
+var _railways: MeshInstance3D = MeshInstance3D.new()
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -399,6 +401,7 @@ func _ready() -> void:
 	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
 	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
 	add_child(_clouds)
+	add_child(_railways)
 	for land: MeshInstance3D in [_horizon_ground, _horizon_water]:
 		# Far away: its shadows would not show.
 		land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -445,6 +448,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_horizon_ground.material_override = _terrain_material
 	_horizon_water.mesh = _mesh_from(lakes)
 	_horizon_water.material_override = _water_material
+	_railways.mesh = _mesh_from(_torqa.railways_mesh())
+	_railways.material_override = _rail_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
 	_structures.material_override = _structure_material
 
@@ -467,10 +472,7 @@ func _build_some_chunks() -> void:
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
 		for surface: Array in [
-			["streets", _street_material],
-			["tracks", _track_material],
-			["water", _water_material],
-			["railways", _rail_material],
+			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
 		]:
 			var arrays: Dictionary = chunk.get(surface[0], {})
 			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())

@@ -278,72 +278,90 @@ async fn where_streets_join_the_road_its_edge_is_road_not_shoulder() {
     }
 }
 
+/// The railways' bed along its middle, as the mesh has it: (x, height, z) per point.
+fn rail_bed(world: &World) -> Vec<[f32; 3]> {
+    world
+        .railways
+        .vertices
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|ring| [0, 1, 2].map(|k| f32::midpoint(ring[2][k], ring[3][k])))
+        .collect()
+}
+
+/// A railway of the map through `points` (metres east/north).
+fn railway(points: &[(f64, f64)], structure: Option<StructureKind>) -> torqa_osm::Railway {
+    torqa_osm::Railway {
+        line: points.iter().map(|&(e, n)| at(e, n)).collect(),
+        structure,
+        funicular: false,
+    }
+}
+
 #[tokio::test]
-async fn railways_lie_on_the_ground_or_bridges_and_keep_the_forest_off() {
-    use torqa_osm::Railway;
-
-    // A line across a forest east of the route, and a bridge further north.
-    let forest = Area {
-        cover: LandCover::Forest,
-        outer: vec![square(150.0, 600.0, 100.0)],
-        inner: vec![],
-    };
-    let world = world(&MapData {
-        areas: vec![forest],
-        railways: vec![
-            Railway {
-                line: vec![at(60.0, 600.0), at(400.0, 600.0)],
-                bridge: false,
-            },
-            Railway {
-                line: vec![at(100.0, 900.0), at(300.0, 900.0)],
-                bridge: true,
-            },
-        ],
-        ..MapData::default()
-    })
-    .await;
-    let rail_at = |x: f32, z: f32| height_on(&world, |c| &c.railways, x, z);
-
-    let mut checked = 0;
-    for step in 70..390 {
-        #[allow(clippy::cast_precision_loss)] // small steps
-        let x = step as f32;
-        for z in [-601.5, -600.0, -598.5] {
-            let (Some(rail), Some(ground)) = (rail_at(x, z), ground_at(&world, x, z)) else {
-                continue;
-            };
-            assert!(
-                rail > ground && rail - ground < 0.06,
-                "the bed at {rail} on ground {ground} at {x}, {z}"
-            );
-            checked += 1;
+async fn railways_run_smoothly_level_across_and_keep_the_forest_off() {
+    // Bumpy land rising eastwards; a line due north across it, through a forest.
+    struct Bumpy;
+    impl ElevationModel for Bumpy {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + 0.1 * east + 3.0 * (north / 25.0).sin()))
         }
     }
-    assert!(checked > 900, "{checked} points checked");
-    // The bridge's deck runs straight between the ground at its ends (sloping 0.1 m per metre
-    // east here), so it stands clear of nothing below but is not draped.
-    for x in [120.0_f32, 200.0, 280.0] {
-        let deck = rail_at(x, -900.0).expect("a deck");
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(300.0, 500.0, 120.0)],
+        inner: vec![],
+    };
+    let map = MapData {
+        areas: vec![forest],
+        railways: vec![railway(&[(300.0, 100.0), (300.0, 900.0)], None)],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Bumpy, &map, &mut |_, _| {}).await;
+
+    let bed = rail_bed(&world);
+    assert!(bed.len() > 100, "{} points of track", bed.len());
+    // Gentle grades, no bumps: the terrain's 3 m waves are gone.
+    for pair in bed.windows(2) {
+        let run = (pair[1][2] - pair[0][2]).abs().max(1.0);
+        let grade = (pair[1][1] - pair[0][1]).abs() / run;
+        assert!(grade < 0.041, "a {grade} grade at {:?}", pair[0]);
+    }
+    // Level across, the ground shaped just below the bed beside it.
+    for ring in world.railways.vertices.as_chunks::<6>().0 {
         assert!(
-            (deck - (500.0 + 0.1 * x)).abs() < 0.2,
-            "deck at {deck} at {x}"
+            (ring[2][1] - ring[3][1]).abs() < 0.01,
+            "a tilted bed at {:?}",
+            ring[2]
         );
     }
-    // The forest grows up to the line, never on it.
+    for point in bed.iter().step_by(10) {
+        for side in [-2.5_f32, 2.5] {
+            let ground = ground_at(&world, point[0] + side, point[2]).expect("ground");
+            assert!(
+                ground < point[1] && point[1] - ground < 0.5,
+                "ground at {ground} beside the bed at {point:?}"
+            );
+        }
+    }
+    // The forest grows beside the line, never on it.
     let trees = plants_of(&world, &["conifer", "broadleaf"]);
     assert!(
         trees
             .iter()
-            .filter(|[x, _, z]| x.abs() > 60.0 && (z + 600.0).abs() < 90.0)
+            .filter(|t| (t[0] - 300.0).abs() < 100.0)
             .count()
             > 50
     );
     for [x, _, z] in &trees {
-        assert!(
-            (z + 600.0).abs() > 1.6 || *x < 60.0,
-            "a tree on the railway at {x}, {z}"
-        );
+        assert!((x - 300.0).abs() > 1.6, "a tree on the railway at {x}, {z}");
     }
 }
 
@@ -513,6 +531,89 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
         })
         .count();
     assert!(kerb >= 40, "{kerb} kerb faces");
+}
+
+#[tokio::test]
+async fn railways_tunnel_through_hills_rather_than_climb_them() {
+    // A hill 40 m high in the line's way.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (40.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let map = MapData {
+        railways: vec![railway(&[(300.0, 100.0), (300.0, 900.0)], None)],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Hill, &map, &mut |_, _| {}).await;
+
+    // The track stays low...
+    let top = rail_bed(&world)
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(top < 520.0, "the track climbs to {top}");
+    // ...under the hill, which stays as it is, in a tunnel.
+    let hill = ground_at(&world, 300.0, -500.0).expect("ground");
+    assert!(hill > 535.0, "the hill cut down to {hill}");
+    let tube = world
+        .structures
+        .vertices
+        .iter()
+        .filter(|v| (v[0] - 300.0).abs() < 6.0 && (v[2] + 500.0).abs() < 20.0)
+        .count();
+    assert!(tube > 10, "no tunnel under the hill");
+}
+
+#[tokio::test]
+async fn railway_bridges_clear_the_road_and_meet_their_track() {
+    // A line crossing the route at 500 m, on a bridge 60 m long over it.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 500.0), (-30.0, 500.0)], None),
+            railway(
+                &[(-30.0, 500.0), (30.0, 500.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(30.0, 500.0), (300.0, 500.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let world = world(&map).await;
+
+    let bed = rail_bed(&world);
+    let at_x = |x: f32| {
+        bed.iter()
+            .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
+            .map(|p| p[1])
+            .expect("track")
+    };
+    // Over the road (500 m), high enough to pass under.
+    assert!(
+        at_x(0.0) > 500.0 + 5.5,
+        "the bridge at {} over the road",
+        at_x(0.0)
+    );
+    // One line: no step anywhere, the approaches ramping up gently.
+    for pair in bed.windows(2) {
+        let run = (pair[1][0] - pair[0][0]).abs().max(1.0);
+        let grade = (pair[1][1] - pair[0][1]).abs() / run;
+        assert!(grade < 0.041, "a {grade} step at {:?}", pair[0]);
+    }
+    // The bridge is a structure, standing on the ground beside the road.
+    let deck = world
+        .structures
+        .vertices
+        .iter()
+        .filter(|v| v[0].abs() < 30.0 && (v[2] + 500.0).abs() < 5.0)
+        .count();
+    assert!(deck > 10, "no bridge over the road");
 }
 
 #[tokio::test]

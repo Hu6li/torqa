@@ -150,13 +150,15 @@ pub struct Structure {
 }
 
 /// A railway line: main lines, narrow gauge, funiculars and light rail (not trams, which run
-/// in the streets, nor subways and tunnels, which run underground).
+/// in the streets, nor subways, which run underground).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Railway {
     /// Centre line.
     pub line: Vec<LatLon>,
-    /// On a bridge here.
-    pub bridge: bool,
+    /// Carried over or under the ground here, if it is.
+    pub structure: Option<StructureKind>,
+    /// A funicular, which may climb far more steeply than other railways.
+    pub funicular: bool,
 }
 
 /// Map features around a route.
