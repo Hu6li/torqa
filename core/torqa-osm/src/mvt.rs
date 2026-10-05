@@ -225,8 +225,8 @@ fn add_road(
         "tunnel" => Some(StructureKind::Tunnel),
         _ => None,
     };
-    let railway = drawn_railway(tags.text("class"), tags.text("subclass"))
-        && kind != Some(StructureKind::Tunnel);
+    let railway = drawn_railway(tags.text("class"), tags.text("subclass"));
+    let funicular = tags.text("subclass") == "funicular";
     for line in lines(geometry) {
         let line = projection.line(line);
         if line.len() < 2 {
@@ -235,7 +235,8 @@ fn add_road(
         if railway {
             data.railways.push(Railway {
                 line: line.clone(),
-                bridge: kind == Some(StructureKind::Bridge),
+                structure: kind,
+                funicular,
             });
         }
         if let Some(class) = class {
@@ -509,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn railways_are_kept_but_not_trams_subways_or_tunnels() {
+    fn railways_are_kept_with_their_bridges_and_tunnels_but_not_trams_or_subways() {
         let projection = TileProjection {
             x: 8531.0,
             y: 5767.0,
@@ -527,6 +528,7 @@ mod tests {
         for (class, subclass, brunnel) in [
             ("rail", "rail", ""),
             ("rail", "narrow_gauge", "bridge"),
+            ("rail", "rail", "tunnel"),
             ("rail", "funicular", ""),
             ("transit", "light_rail", ""),
         ] {
@@ -537,12 +539,23 @@ mod tests {
                 &projection,
             );
         }
-        assert_eq!(data.railways.len(), 4);
-        assert_eq!(data.railways.iter().filter(|r| r.bridge).count(), 1);
+        let structures: Vec<Option<StructureKind>> =
+            data.railways.iter().map(|r| r.structure).collect();
+        assert_eq!(
+            structures,
+            [
+                None,
+                Some(StructureKind::Bridge),
+                Some(StructureKind::Tunnel),
+                None,
+                None
+            ]
+        );
+        let funiculars: Vec<bool> = data.railways.iter().map(|r| r.funicular).collect();
+        assert_eq!(funiculars, [false, false, false, true, false]);
         for (class, subclass, brunnel) in [
             ("transit", "tram", ""),
             ("transit", "subway", ""),
-            ("rail", "rail", "tunnel"),
             ("minor", "", ""),
         ] {
             add_road(
@@ -554,8 +567,8 @@ mod tests {
         }
         assert_eq!(
             data.railways.len(),
-            4,
-            "trams, subways, tunnels and roads are no railways"
+            5,
+            "trams, subways and roads are no railways"
         );
         assert_eq!(data.roads.len(), 1);
     }
