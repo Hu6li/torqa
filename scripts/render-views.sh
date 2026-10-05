@@ -11,6 +11,13 @@ out="${OUT_DIR:-$root/screenshots/views}"
 mkdir -p "$out"
 "$root/scripts/build-gdext.sh" debug >/dev/null
 godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
+# A script that does not compile leaves Godot waiting for the world forever: find out now.
+errors="$(godot --headless --path "$root/app" --quit-after 2 2>&1 \
+    | grep -A3 "SCRIPT ERROR\|SHADER ERROR" || true)"
+if [ -n "$errors" ]; then
+    echo "$errors" >&2
+    exit 1
+fi
 status=0
 # One Godot run per route: each loads its route and rides it to the views on it.
 for route in gurtenstrasse bielersee kirchenfeldbruecke; do

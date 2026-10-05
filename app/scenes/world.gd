@@ -51,6 +51,8 @@ const VISIBILITY_RANGE: float = 4500.0
 const MODEL_FADE: float = 40.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
+## Bushes and rocks are smaller still.
+const SMALL_PLANT_RANGE: float = 600.0
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
 ## The free camera of simulated rides (#53): metres per second, and radians per pixel of mouse.
@@ -170,14 +172,12 @@ var _road_material: ShaderMaterial = ShaderMaterial.new()
 var _water_material: ShaderMaterial = ShaderMaterial.new()
 var _building_material: ShaderMaterial = ShaderMaterial.new()
 var _structure_material: StandardMaterial3D = StandardMaterial3D.new()
-var _conifer_mesh: ArrayMesh
 var _grass_mesh: ArrayMesh = _plant_mesh(false)
 var _flower_mesh: ArrayMesh = _plant_mesh(true)
 var _plant_material: ShaderMaterial = ShaderMaterial.new()
 ## Other streets of the map (asphalt) and tracks and paths (gravel).
 var _street_material: ShaderMaterial = ShaderMaterial.new()
 var _track_material: ShaderMaterial = ShaderMaterial.new()
-var _broadleaf_mesh: ArrayMesh
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -260,7 +260,9 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 			cover = 1.0
 	_overcast = overcast
 	var wind: Dictionary[String, float] = {"Clear": 0.08, "Cloudy": 0.14, "Hazy": 0.04, "Rain": 0.2}
-	_plant_material.set_shader_parameter("wind_strength", wind.get(weather, 0.08))
+	var wind_strength: float = wind.get(weather, 0.08)
+	_plant_material.set_shader_parameter("wind_strength", wind_strength)
+	VegetationModels.set_wind(wind_strength)
 	# Grey weather stays pastel (ADR 0011): soft grey-blue instead of dull grey.
 	var sky_top: Color = top.lerp(Palette.color("sky.overcast_top"), overcast)
 	var sky_horizon: Color = horizon.lerp(Palette.color("sky.overcast_horizon"), overcast)
@@ -368,8 +370,6 @@ func _ready() -> void:
 		material.set_shader_parameter("surface_color", Palette.color(color))
 		material.set_shader_parameter("grass_color", Palette.color("ground.meadow"))
 		material.set_shader_parameter("middle_grass", surface[2])
-	_conifer_mesh = _tree_mesh(true)
-	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
 	_ghost.accent = UiTheme.GHOST_COLOR
 	_ghost.ghostly = true
@@ -437,18 +437,16 @@ func _build_some_chunks() -> void:
 		var modelled: Array = chunk.get("modelled", [])
 		for cell: Dictionary in modelled:
 			_add_modelled(node, cell)
-		for kind: String in ["conifers", "broadleaves"]:
-			var buffer: PackedFloat32Array = chunk[kind]
-			if buffer.is_empty():
-				continue
-			var mesh: ArrayMesh = _conifer_mesh if kind == "conifers" else _broadleaf_mesh
-			node.add_child(_trees(buffer, mesh))
+		var plants: Dictionary = chunk.get("plants", {})
+		for model: String in plants:
+			var buffer: PackedFloat32Array = plants[model]
+			node.add_child(_vegetation(model, buffer))
 		var grass_range: float = _quality["grass_range"]
 		if grass_range > 0.0:
 			for kind: String in ["grass", "flowers"]:
-				var plants: PackedFloat32Array = chunk.get(kind, PackedFloat32Array())
-				if not plants.is_empty():
-					node.add_child(_plants(plants, kind == "flowers", grass_range))
+				var tufts: PackedFloat32Array = chunk.get(kind, PackedFloat32Array())
+				if not tufts.is_empty():
+					node.add_child(_plants(tufts, kind == "flowers", grass_range))
 		_next_chunk += 1
 		built += 1
 
@@ -490,7 +488,26 @@ func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
 	return instance
 
 
-func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
+## Trees, bushes or rocks of one model in a chunk (`world_chunk()["plants"]`: transform and
+## colour per plant). Bushes and rocks are small: they are drawn less far than trees.
+func _vegetation(model: String, buffer: PackedFloat32Array) -> MultiMeshInstance3D:
+	var multimesh: MultiMesh = MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.use_colors = true
+	multimesh.mesh = VegetationModels.mesh(model)
+	multimesh.instance_count = buffer.size() / 16
+	multimesh.buffer = buffer
+	var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	var small: bool = model.begins_with("bush") or model.begins_with("rock")
+	instance.visibility_range_end = (SMALL_PLANT_RANGE if small else DETAIL_RANGE) * _distance
+	instance.visibility_range_end_margin = 100.0 if small else 300.0
+	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	return instance
+
+
+## Instances of `mesh` from a transform buffer (12 floats each): grass tufts or flower clumps.
+func _scatter(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.mesh = mesh
@@ -506,7 +523,7 @@ func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
 
 ## Grass or flowers of a chunk, drawn near the camera only.
 func _plants(buffer: PackedFloat32Array, flowers: bool, range_m: float) -> MultiMeshInstance3D:
-	var instance: MultiMeshInstance3D = _trees(buffer, _flower_mesh if flowers else _grass_mesh)
+	var instance: MultiMeshInstance3D = _scatter(buffer, _flower_mesh if flowers else _grass_mesh)
 	instance.material_override = _plant_material
 	instance.visibility_range_end = range_m
 	instance.visibility_range_end_margin = range_m * 0.25
@@ -734,50 +751,3 @@ func _mesh_from(arrays: Dictionary) -> ArrayMesh:
 	if not vertices.is_empty():
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
 	return mesh
-
-
-## A low-poly tree standing on its origin: a trunk with a cone (conifer) or ball crown.
-func _tree_mesh(conifer: bool) -> ArrayMesh:
-	var mesh: ArrayMesh = ArrayMesh.new()
-	var trunk: CylinderMesh = CylinderMesh.new()
-	trunk.top_radius = 0.15
-	trunk.bottom_radius = 0.25
-	trunk.height = 3.0
-	trunk.radial_segments = 6
-	trunk.rings = 1
-	_add_surface(mesh, trunk, Vector3(0, 1.5, 0), _faceted(Palette.color("plants.trunk")))
-	if conifer:
-		var crown: CylinderMesh = CylinderMesh.new()
-		crown.top_radius = 0.0
-		crown.bottom_radius = 2.3
-		crown.height = 10.0
-		crown.radial_segments = 8
-		crown.rings = 1
-		_add_surface(mesh, crown, Vector3(0, 7.0, 0), _faceted(Palette.color("plants.conifer")))
-	else:
-		var crown: SphereMesh = SphereMesh.new()
-		crown.radius = 3.0
-		crown.height = 5.5
-		crown.radial_segments = 8
-		crown.rings = 4
-		_add_surface(mesh, crown, Vector3(0, 5.5, 0), _faceted(Palette.color("plants.broadleaf")))
-	return mesh
-
-
-func _add_surface(
-	mesh: ArrayMesh, shape: PrimitiveMesh, offset: Vector3, material: Material
-) -> void:
-	var arrays: Array = shape.get_mesh_arrays()
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	for i: int in range(vertices.size()):
-		vertices[i] += offset
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
-
-
-static func _faceted(color: Color) -> ShaderMaterial:
-	var material: ShaderMaterial = ShaderMaterial.new()
-	material.shader = preload("res://shaders/faceted.gdshader")
-	material.set_shader_parameter("albedo", color)
-	return material
