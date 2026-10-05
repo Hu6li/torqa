@@ -110,6 +110,7 @@ pub(crate) fn mesh(
                     ends,
                     LIFT,
                     total,
+                    heights,
                     chunk_origin,
                 );
             } else {

@@ -223,6 +223,7 @@ fn ribbon(
             ends,
             lift(street.class, street.index),
             total,
+            heights,
             origin,
         );
     } else {

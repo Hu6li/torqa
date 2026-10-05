@@ -11,8 +11,15 @@ const PIECE_M: f64 = 30.0;
 const TURN: f64 = 0.03;
 /// Bridge decks are this thick at their edges.
 const DECK_DEPTH_M: f64 = 0.7;
-/// Vertices per point of a deck: left and right edge, and the bottoms of its sides.
-const DECK_POINTS: usize = 4;
+/// Vertices per point of a deck: left and right edge, and each side's top and bottom.
+const DECK_POINTS: usize = 6;
+/// Piers stand under decks this far apart, at the same places along the line in every chunk,
+/// where the ground lies at least `DECK_PIER_MIN` below the deck.
+const DECK_PIER_SPACING: f64 = 20.0;
+const DECK_PIER_MIN: f64 = 2.0;
+/// A deck's piers are this long, and as wide as this share of the deck.
+const DECK_PIER_HALF_LENGTH: f64 = 0.6;
+const DECK_PIER_WIDTH: f64 = 0.7;
 
 /// Points along `line` at most `step` metres apart.
 pub(crate) fn densify(line: &[(f64, f64)], step: f64) -> Vec<(f64, f64)> {
@@ -293,6 +300,7 @@ fn normalize([x, y, z]: [f64; 3]) -> [f64; 3] {
 /// A bridge deck of `half` width along `run` (points with their distance along a line `total`
 /// long): straight between the heights of its ends, `lift` above them, with its sides.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn deck(
     mesh: &mut MeshData,
     run: &[((f64, f64), f64)],
@@ -300,11 +308,14 @@ pub(crate) fn deck(
     (start, end): (f64, f64),
     lift: f64,
     total: f64,
+    heights: &HeightGrid,
     origin: [f64; 3],
 ) {
     if run.len() < 2 {
         return;
     }
+    let top_at = |distance: f64| start + (end - start) * (distance / total.max(1e-6)) + lift;
+    deck_piers(mesh, run, half, &top_at, heights, origin);
     let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
     for (i, &((east, north), distance)) in run.iter().enumerate() {
         let (before, after) = (
@@ -315,38 +326,35 @@ pub(crate) fn deck(
         let length = de.hypot(dn).max(1e-6);
         // Right of travel is the direction turned clockwise by 90°.
         let (re, rn) = (dn / length, -de / length);
-        let top = start + (end - start) * (distance / total.max(1e-6)) + lift;
-        for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
+        let top = top_at(distance);
+        let mut push = |side: f64, height: f64, normal: [f64; 3], u: f32| {
             let (e, n) = (east + re * half * side, north + rn * half * side);
             mesh.vertices.push([
                 (e - origin[0]) as f32,
-                (top - origin[1]) as f32,
+                (height - origin[1]) as f32,
                 (-n - origin[2]) as f32,
             ]);
-            mesh.normals.push([0.0, 1.0, 0.0]);
+            mesh.normals.push(normal.map(|c| c as f32));
             mesh.uvs.push([u, distance as f32]);
-        }
-        for side in [-1.0, 1.0] {
-            let (e, n) = (east + re * half * side, north + rn * half * side);
-            mesh.vertices.push([
-                (e - origin[0]) as f32,
-                (top - DECK_DEPTH_M - origin[1]) as f32,
-                (-n - origin[2]) as f32,
-            ]);
-            mesh.normals
-                .push([(re * side) as f32, 0.0, (-rn * side) as f32]);
-            // Dark like the verge.
-            mesh.uvs
-                .push([if side < 0.0 { 0.0 } else { 1.0 }, distance as f32]);
+        };
+        // The deck's edges, then each side's top and bottom with their own normals.
+        push(-1.0, top, [0.0, 1.0, 0.0], 0.0);
+        push(1.0, top, [0.0, 1.0, 0.0], 1.0);
+        for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
+            let out = [re * side, 0.0, -rn * side];
+            push(side, top, out, u);
+            push(side, top - DECK_DEPTH_M, out, u);
         }
         if i > 0 {
             let step = u32::try_from(DECK_POINTS).expect("small");
             let at = base + u32::try_from(i * DECK_POINTS).expect("streets fit u32");
             let previous = at - step;
             let (left_0, right_0, left_1, right_1) = (previous, previous + 1, at, at + 1);
-            // The deck, and its sides facing out.
-            let (bottom_left_0, bottom_right_0) = (previous + 2, previous + 3);
-            let (bottom_left_1, bottom_right_1) = (at + 2, at + 3);
+            // The sides facing out.
+            let (side_left_0, bottom_left_0) = (previous + 2, previous + 3);
+            let (side_right_0, bottom_right_0) = (previous + 4, previous + 5);
+            let (side_left_1, bottom_left_1) = (at + 2, at + 3);
+            let (side_right_1, bottom_right_1) = (at + 4, at + 5);
             mesh.indices.extend([
                 left_0,
                 left_1,
@@ -354,19 +362,105 @@ pub(crate) fn deck(
                 left_0,
                 right_1,
                 right_0,
-                left_0,
+                side_left_0,
                 bottom_left_0,
                 bottom_left_1,
-                left_0,
+                side_left_0,
                 bottom_left_1,
-                left_1,
-                right_0,
-                right_1,
+                side_left_1,
+                side_right_0,
+                side_right_1,
                 bottom_right_1,
-                right_0,
+                side_right_0,
                 bottom_right_1,
                 bottom_right_0,
             ]);
         }
     }
+}
+
+/// Piers under a deck along `run`, down to the ground wherever it lies low enough. Their
+/// texture coordinates are those of the deck's edge (`u` 0), so they take its plain colour.
+#[allow(clippy::cast_possible_truncation)] // f32 GPU data
+fn deck_piers(
+    mesh: &mut MeshData,
+    run: &[((f64, f64), f64)],
+    half: f64,
+    top_at: &dyn Fn(f64) -> f64,
+    heights: &HeightGrid,
+    origin: [f64; 3],
+) {
+    let (first, last) = (run[0].1, run[run.len() - 1].1);
+    let mut along = ((first / DECK_PIER_SPACING).floor() + 0.5) * DECK_PIER_SPACING;
+    while along <= last {
+        let segment = run
+            .windows(2)
+            .position(|w| w[0].1 <= along && along <= w[1].1);
+        if let Some(index) = segment.filter(|_| along >= first) {
+            let ((from, from_d), (to, to_d)) = (run[index], run[index + 1]);
+            let share = ((along - from_d) / (to_d - from_d).max(1e-9)).clamp(0.0, 1.0);
+            let (east, north) = (
+                from.0 + (to.0 - from.0) * share,
+                from.1 + (to.1 - from.1) * share,
+            );
+            let length = (to.0 - from.0).hypot(to.1 - from.1).max(1e-9);
+            let ahead = ((to.0 - from.0) / length, (to.1 - from.1) / length);
+            let top = top_at(along) - DECK_DEPTH_M;
+            let ground = heights.at(east, north);
+            if top - ground >= DECK_PIER_MIN {
+                let right = (ahead.1, -ahead.0);
+                let (long, wide) = (DECK_PIER_HALF_LENGTH, half * DECK_PIER_WIDTH);
+                let corner = |forth: f64, aside: f64, height: f64| {
+                    [
+                        east + ahead.0 * forth + right.0 * aside - origin[0],
+                        height - origin[1],
+                        -(north + ahead.1 * forth + right.1 * aside) - origin[2],
+                    ]
+                };
+                for ([(x0, y0), (x1, y1)], (ne, nn)) in [
+                    ([(long, -wide), (long, wide)], ahead),
+                    ([(-long, wide), (-long, -wide)], (-ahead.0, -ahead.1)),
+                    ([(-long, wide), (long, wide)], right),
+                    ([(long, -wide), (-long, -wide)], (-right.0, -right.1)),
+                ] {
+                    let corners = [
+                        corner(x0, y0, ground - 0.5),
+                        corner(x1, y1, ground - 0.5),
+                        corner(x1, y1, top),
+                        corner(x0, y0, top),
+                    ];
+                    upright(mesh, corners, [ne, 0.0, -nn], along as f32);
+                }
+            }
+        }
+        along += DECK_PIER_SPACING;
+    }
+}
+
+/// An upright quad (corners around its edge) facing `normal`, wound clockwise seen from that
+/// side as Godot's front faces are, with texture coordinates `u` 0 and `v` as given.
+#[allow(clippy::cast_possible_truncation)] // f32 GPU data
+fn upright(mesh: &mut MeshData, corners: [[f64; 3]; 4], normal: [f64; 3], v: f32) {
+    let edge = |k: usize| [0, 1, 2].map(|c| corners[k][c] - corners[0][c]);
+    let (first, second) = (edge(1), edge(2));
+    let cross = [
+        first[1] * second[2] - first[2] * second[1],
+        first[2] * second[0] - first[0] * second[2],
+        first[0] * second[1] - first[1] * second[0],
+    ];
+    // Clockwise seen from the front: the right-hand normal points away from the viewer.
+    let order = if cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2] > 0.0 {
+        [0, 3, 2, 1]
+    } else {
+        [0, 1, 2, 3]
+    };
+    let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
+    let length = normal[0].hypot(normal[2]).max(1e-9);
+    for k in order {
+        mesh.vertices.push(corners[k].map(|c| c as f32));
+        mesh.normals.push(normal.map(|c| (c / length) as f32));
+        mesh.uvs.push([0.0, v]);
+    }
+    mesh.indices
+        .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
 }
