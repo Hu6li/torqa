@@ -1,6 +1,6 @@
 # ADR 0009 — 3D asset pipeline and asset licensing
 
-- Status: accepted
+- Status: accepted; the realism target and MPFB2 superseded by [ADR 0011](0011-stylized-look.md)
 - Date: 2026-10-03
 
 ## Context
