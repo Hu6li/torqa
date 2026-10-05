@@ -22,7 +22,7 @@ const VIEWS: Dictionary[String, Array] = {
 	"river-drone": ["kirchenfeldbruecke", 90.0, 2, "Midday", "Clear"],
 	"bridge-chase": ["kirchenfeldbruecke", 200.0, 0, "Midday", "Clear"],
 	"roundabout-drone": ["kirchenfeldbruecke", 170.0, 2, "Midday", "Clear"],
-	"bridge-side": ["kirchenfeldbruecke", 160.0, 0, "Midday", "Clear", Vector3(140.0, -22.0, 0.0)],
+	"bridge-side": ["kirchenfeldbruecke", 380.0, 0, "Midday", "Clear", Vector3(140.0, -22.0, 0.0)],
 }
 ## Frames to let the world stream in around a new place; software rendering is slow.
 const SETTLE_FRAMES: int = 240
@@ -74,9 +74,11 @@ func _run() -> void:
 		torqa.jump_to_distance(distance)
 		world.set_camera(camera)
 		world.apply_conditions(time, weather)
-		for frame: int in range(SETTLE_FRAMES):
-			await process_frame
 		if spec.size() > 5:
+			# A camera aside stands where the rider was just after the jump and stays there
+			# while the world settles; the rider rides on meanwhile.
+			for frame: int in range(10):
+				await process_frame
 			var aside: Vector3 = spec[5]
 			var rider: Node3D = world.get_node("Rider")
 			var camera_node: Camera3D = world.get("_camera")
@@ -84,8 +86,8 @@ func _run() -> void:
 			camera_node.look_at_from_position(
 				rider.transform * aside, rider.position + Vector3.UP * 2.0, Vector3.UP
 			)
-			for frame: int in range(10):
-				await process_frame
+		for frame: int in range(SETTLE_FRAMES):
+			await process_frame
 		root.get_texture().get_image().save_png(out.path_join(view + ".png"))
 		print("saved %s" % view)
 	quit(0)

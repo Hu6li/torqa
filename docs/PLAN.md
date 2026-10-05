@@ -250,6 +250,10 @@ the realistic look's textures and patterns are being replaced step by step.
       streams are laid on the ground (whose height the terrain model measures at the water's
       surface), so lakes lie level and rivers slope with their course (a shore band remains
       for Polish)
+    - [x] Water in channels (#93): streams, rivers and lakes lie half a metre below the land
+      beside them, the ground carved into natural banks and a bed; under bridges the channel
+      runs on, where roads, streets and railways cross on the ground it stops short of them
+      (a culvert)
     - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
       bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
       off them (level crossings: the street lies over the bed)
