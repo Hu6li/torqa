@@ -12,6 +12,12 @@ Torqa — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
   by GitHub Actions macOS runners. Locally, only the portable Godot editor `.app` and downloaded
   Torqa builds run natively, for 3D and real-trainer testing.
 
+## Skills
+
+Project skills live in `.claude/skills/` (see its README): the art direction (`torqa-look`),
+the Blender pipeline (`torqa-art-pipeline`), render review (`torqa-render-review`) and imported
+Blender references. Use them for any visual or model work.
+
 ## Architecture boundary
 
 - All logic lives in Rust (`core/`). Godot (`app/`) is presentation only — no physics, device or
