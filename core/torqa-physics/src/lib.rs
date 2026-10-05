@@ -88,6 +88,19 @@ pub fn trainer_grade(road: GradePercent, difficulty: Percent) -> GradePercent {
     GradePercent(road.0 * difficulty.0.clamp(0.0, 100.0) / 100.0)
 }
 
+/// Riders lean no further than this, however tight the bend (radians, 45°).
+const MAX_LEAN: f64 = std::f64::consts::FRAC_PI_4;
+
+/// How far a rider leans into a bend (R46): in a steady turn gravity and the centripetal force
+/// balance when `tan φ = v²·κ / g`. `curvature` is 1 / radius, positive in bends to the right,
+/// as is the result (radians, at most 45° either way).
+#[must_use]
+pub fn lean_angle(speed: MetersPerSecond, curvature: f64) -> f64 {
+    (speed.0 * speed.0 * curvature / GRAVITY)
+        .atan()
+        .clamp(-MAX_LEAN, MAX_LEAN)
+}
+
 /// The virtual rider's motion along the road.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Motion {
@@ -262,5 +275,21 @@ mod tests {
 
         assert!((parameters.cw.0 - 0.196).abs() < 1e-9);
         assert_eq!(parameters.grade, GradePercent(3.0));
+    }
+
+    #[test]
+    fn riders_lean_into_bends_as_balance_demands() {
+        // 36 km/h through a bend of 50 m radius: tan φ = 100 / (9.81 · 50), about 11.5°.
+        let fast = MetersPerSecond::from_kilometers_per_hour(36.0);
+        let lean = lean_angle(fast, 1.0 / 50.0).to_degrees();
+        assert!((lean - 11.5).abs() < 0.1, "{lean}°");
+        // To the left the other way; on the straight or standing still upright.
+        assert!((lean_angle(fast, -1.0 / 50.0).to_degrees() + lean).abs() < 1e-9);
+        assert!(lean_angle(fast, 0.0).abs() < 1e-12);
+        assert!(lean_angle(MetersPerSecond(0.0), 1.0 / 10.0).abs() < 1e-12);
+        // Twice as fast leans much further, but never past 45°.
+        assert!(lean_angle(MetersPerSecond(20.0), 1.0 / 50.0) > 2.0 * lean.to_radians());
+        let hairpin = lean_angle(MetersPerSecond(20.0), 1.0 / 5.0).to_degrees();
+        assert!((hairpin - 45.0).abs() < 1e-9, "{hairpin}°");
     }
 }

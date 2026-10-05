@@ -225,11 +225,11 @@ the realistic look's textures and patterns are being replaced step by step.
   - [ ] Polish: low-poly clouds, stylized rain and fog, a shore band at lakes, presets tuned
     to the new look
 - [ ] Feedback round after the riders (issues #74–#79), in this order:
-  - [ ] Nicer riders (#76): real hair (the female rider is bald under the helmet but for a
-    ponytail cone; short hair for the male); helmets shaped from the head they sit on instead
-    of an ellipse from its bounds; shoulders that do not read as pads; wraparound band →
-    sunglasses with two lenses, a bridge and arms; in curves the rider turns with the road and
-    leans in (lean from speed and radius) instead of only following the line
+  - [x] Nicer riders (#76): hair over the scalp (to the nape for her, short for him) and a
+    longer ponytail; helmets shaped from the head they sit on, drawn out at the back, with vent
+    slots; shoulder caps smaller and turning with the arms; sunglasses with two lenses following
+    the face, a bridge and arms; in bends the rider follows the road's own curve (the one it is
+    drawn along), turns with it and leans in by speed and radius
   - [ ] Free camera (#78): Shift + arrows look around, arrows alone move (the Shift speed boost
     goes; the mouse wheel sets the speed); find out why Shift + mouse never reaches the world on
     macOS (UI over the 3D view taking the motion?) and fix it or drop it from the hint

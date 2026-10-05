@@ -10,6 +10,7 @@ const VIEWS: Dictionary[String, Array] = {
 	"village-chase": ["gurtenstrasse", 150.0, 0, "Midday", "Clear"],
 	"climb-chase": ["gurtenstrasse", 1840.0, 0, "Midday", "Clear"],
 	"hairpin-drone": ["gurtenstrasse", 1240.0, 2, "Midday", "Clear"],
+	"hairpin-chase": ["gurtenstrasse", 1290.0, 0, "Midday", "Clear"],
 	"village-evening": ["gurtenstrasse", 150.0, 0, "Evening", "Clear"],
 	"lake-chase": ["bielersee", 3000.0, 0, "Midday", "Clear"],
 	"lake-drone": ["bielersee", 5000.0, 2, "Midday", "Clear"],
