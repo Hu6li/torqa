@@ -53,7 +53,7 @@ a synced ride video, or street-level imagery.
 
 | ID | Requirement |
 |---|---|
-| R16 | **3D world (MVP)**: semi-realistic style. World source user-selectable, default **hybrid** (real DEM + OpenStreetMap when available, procedural fallback). Weather/time-of-day presets. Cameras: first person, chase, drone — user's choice. Optional cadence-synced avatar. 60 fps on an M1 integrated GPU. *(Performance superseded by R43; visual target extended by R44–R47.)* |
+| R16 | **3D world (MVP)**: semi-realistic style *(now stylized, R44)*. World source user-selectable, default **hybrid** (real DEM + OpenStreetMap when available, procedural fallback). Weather/time-of-day presets. Cameras: first person, chase, drone — user's choice. Optional cadence-synced avatar. 60 fps on an M1 integrated GPU. *(Performance superseded by R43; visual target extended by R44–R47.)* |
 | R17 | **Video**: own GoPro/Insta360 footage, downloaded videos, and plain videos without GPS, and Tacx RLV courses (`.rlv` + `.pgmf`, added by #42). Auto-sync from embedded GPS (GoPro GPMF) with manual sync-point fallback. 1080p target; higher resolutions transcoded down on import. Variable playback speed with frame blending. |
 | R18 | **Street imagery**: Google Street View (online only, user's API key, no caching per Google ToS) and Mapillary. Smooth crossfade/zoom transitions between panoramas. |
 | R19 | Overlays: 2D minimap (OpenStreetMap tiles, cached for offline) and elevation profile with current position. |
@@ -115,10 +115,10 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | ID | Requirement |
 |---|---|
 | R43 | Supersedes the R16 performance target. **Quality presets** Low / Medium / High / Ultra. An M1 (base) integrated GPU holds **60 fps on Medium**; High/Ultra target stronger Apple GPUs and, later, discrete GPUs on Windows/Linux. |
-| R44 | **Visual target**: at least Zwift, ideally MyWhoosh-level realism for terrain and rider — believable, not a faithful replica of the real place. No racing UI or racing accessories (banners, arches, crowds). |
-| R45 | Realism priorities, all four: **vegetation** (dense trees, bushes, grass and flowers moving in the wind); **terrain & road surface** (PBR ground materials blended by slope, height and land cover; detailed asphalt and gravel roads, verges); **lighting & atmosphere** (global illumination, soft shadows, volumetric clouds and fog, haze toward distant terrain); **rider & bike**. |
-| R46 | **Rider**: realistic female or male rider (user's choice) with natural, cadence-driven pedaling and body motion on a detailed bike. Customization (bikes, kits, …) may follow; the rider and bike are kept modular for it. |
-| R47 | **Assets** must stay redistributable as open source with the GPL-3.0 project: own work, CC0, CC-BY or CC-BY-SA, credited in a credits file. Models are produced by documented Blender Python scripts (MakeHuman/MPFB2 for riders); scripts and exported models are both committed. See ADR 0009. |
+| R44 | **Visual target** *(revised 2026-10-05, [ADR 0011](adr/0011-stylized-look.md): stylized instead of realistic)*: a **stylized, faceted low-poly** world and riders in a **soft pastel palette** — a bright, toy-like diorama of the real place (real terrain, roads and buildings), not a photograph. No racing UI or racing accessories (banners, arches, crowds). |
+| R45 | Look priorities, all four: **vegetation** (faceted trees and bushes, grass and flowers moving in the wind); **terrain & road** (faceted ground coloured by land cover, clean roads and tracks, verges); **lighting & atmosphere** (warm soft sun, soft shadows, ambient occlusion, pastel gradient sky, low-poly clouds, haze toward distant terrain); **rider & bike**. |
+| R46 | **Rider**: stylized, faceted female or male rider (user's choice) with natural, cadence-driven pedaling and body motion on a stylized bike. Customization (bikes, kits, …) may follow; the rider and bike are kept modular for it. |
+| R47 | **Assets** must stay redistributable as open source with the GPL-3.0 project: own work, CC0, CC-BY or CC-BY-SA, credited in a credits file. Models are produced by documented Blender Python scripts (riders scripted from scratch and from CC0 stylized bases); scripts and exported models are both committed. See ADR 0009 and ADR 0011. |
 
 ## Workouts & overlay
 

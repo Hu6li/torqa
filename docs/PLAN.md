@@ -176,7 +176,10 @@ Built in rideable steps:
   summaries; no text bloat on course load, dialogs that reflow when resized (R52–R53)
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
-### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
+### Phase 9 — Graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md), [ADR 0011](adr/0011-stylized-look.md))
+Since 2026-10-05 the target is a **stylized, faceted, pastel** look (ADR 0011) instead of realism;
+the realistic look's textures and patterns are being replaced step by step.
+
 - [x] Route on the real road: GPX snapped to the OpenStreetMap roads and paths it rides
   (bends between sparse points restored, GPS wander removed); record keys unchanged — roads
   chosen for the whole track (no hops onto side streets, sidewalks or parallel roads), turns
@@ -188,27 +191,28 @@ Built in rideable steps:
   on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them;
   ways for pedestrians only (footways, sidewalks, steps) left out
 - [x] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
-  — kinds inferred from the map (places of worship, land use, size, elevation) with their own
-  roofs, materials and details, built as shells ✅; Blender-made models placed where they fit
-  (chalets facing the valley, choirs east), shells in the distance and for odd outlines ✅
-- [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
-  docs — Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted building
-  models with an in-game preview renderer (`scripts/render-models.sh`) ✅; MPFB2 with the
-  rider still to come
+  — kinds inferred from the map (places of worship, land use, size, elevation), Blender-made
+  models placed where they fit (chalets facing the valley, choirs east), shells in the
+  distance and for odd outlines
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
-- [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
-  — sky with lit procedural clouds, aerial haze, PCSS shadows, SSIL/SDFGI and volumetric fog by
-  preset ✅; true volumetric (raymarched 3D) clouds still to come
-- [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
-  — CC0 ground textures (grass, forest floor, soil, rock, snow) tinted by land cover, triplanar
-  rock, textured asphalt with worn, anti-aliased markings ✅; gravel roads and verges to come
-- [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
-  — grass tufts and flower clumps along the road, swaying with weather-driven wind, range and
-  shadows by preset ✅; realistic trees, bushes and impostors still to come
-- [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
+- [x] Asset pipeline: Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted
+  models, an in-game preview renderer (`scripts/render-models.sh`), agent skills for the look,
+  the pipeline and render review (`.claude/skills`)
+- [ ] Stylized look, step by step (ADR 0011):
+  - [ ] Foundation: one palette for core and shaders; a look-dev scene rendered for review
+  - [ ] Ground, water, roads and sky: faceted ground coloured by land cover, flat water with
+    a shore band, clean roads and tracks, warm soft light, ambient occlusion, gradient sky and
+    haze; photo textures retired
+  - [ ] Vegetation: faceted conifers, broadleaf trees, bushes, rocks and flowers made in
+    Blender, placed like today's trees and grass
+  - [ ] Buildings restyled: chunkier models with flat palette colours, lean triangle counts;
+    shells to match
+  - [ ] Rider & bike: faceted female and male riders (scripted and from CC0 stylized bases),
+    a stylized bike, cadence-driven pedalling
+  - [ ] Polish: low-poly clouds, stylized rain and fog, presets tuned to the new look
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
-  visual target (R44)
+  references (R44)
 
 ### Phase 10 — Workout modes & overlay (R55–R56)
 - [ ] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
