@@ -69,7 +69,7 @@ pub(crate) fn streams(
             .map(|&(lat, lon)| projection.project(lat, lon))
             .collect();
         let mut run = Vec::new();
-        for (east, north) in densify(&line) {
+        for (east, north) in drape::densify(&line, STEP) {
             if road.nearest(east, north, CORRIDOR).is_some() {
                 run.push((east, north));
             } else {
@@ -197,24 +197,4 @@ async fn surface_level<M: ElevationModel>(
     }
     heights.sort_by(f64::total_cmp);
     heights.get(heights.len() / 2).copied()
-}
-
-/// Points along the line at most [`STEP`] apart.
-fn densify(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let mut points = Vec::new();
-    for pair in line.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let length = (b.0 - a.0).hypot(b.1 - a.1);
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let steps = (length / STEP).ceil().max(1.0) as usize;
-        for k in 0..steps {
-            #[allow(clippy::cast_precision_loss)]
-            let t = k as f64 / steps as f64;
-            points.push((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
-        }
-    }
-    if let Some(&last) = line.last() {
-        points.push(last);
-    }
-    points
 }

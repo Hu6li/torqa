@@ -8,16 +8,13 @@ use torqa_osm::{MapData, RoadClass, StructureKind};
 use torqa_routes::{ElevationModel, LocalProjection};
 
 use crate::drape;
+use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
 use crate::{HeightGrid, MeshData, ROAD_HALF_WIDTH};
 
 /// Distance between the points of a street: short enough to tell where it runs along the road
 /// ridden and to keep plants off it.
 const STEP_M: f64 = 3.0;
-/// Bridge decks are this thick at their edges.
-const DECK_DEPTH_M: f64 = 0.7;
-/// Vertices per point of a deck: left and right edge, and the bottoms of its sides.
-const DECK_POINTS: usize = 4;
 
 /// How far a street lies above the ground: bigger roads above smaller ones, so where they
 /// overlap at junctions the bigger one shows, and a little more for every street (up to 1 cm)
@@ -83,7 +80,7 @@ pub(crate) async fn lines<M: ElevationModel>(
             .iter()
             .map(|&(lat, lon)| projection.project(lat, lon))
             .collect();
-        let points = densify(&line);
+        let points = drape::densify(&line, STEP_M);
         let Some(&first) = points.first() else {
             continue;
         };
@@ -207,24 +204,6 @@ fn local_direction(points: &[(f64, f64)], i: usize) -> (f64, f64) {
     (de / length, dn / length)
 }
 
-/// Points along `line` at most `STEP_M` apart.
-fn densify(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let mut points = Vec::new();
-    for pair in line.windows(2) {
-        let ((e0, n0), (e1, n1)) = (pair[0], pair[1]);
-        let length = (e1 - e0).hypot(n1 - n0);
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // short segments
-        let steps = (length / STEP_M).ceil().max(1.0) as usize;
-        for step in 0..steps {
-            #[allow(clippy::cast_precision_loss)]
-            let t = step as f64 / steps as f64;
-            points.push((e0 + (e1 - e0) * t, n0 + (n1 - n0) * t));
-        }
-    }
-    points.extend(line.last());
-    points
-}
-
 /// A strip of `half` width along `run` (points with their distance along the street): draped
 /// on the ground, or for a bridge a deck straight between its ends' heights, with its sides.
 fn ribbon(
@@ -236,8 +215,16 @@ fn ribbon(
     heights: &HeightGrid,
     origin: [f64; 3],
 ) {
-    if street.deck.is_some() {
-        deck(mesh, run, half, street, total, origin);
+    if let Some(ends) = street.deck {
+        drape::deck(
+            mesh,
+            run,
+            half,
+            ends,
+            lift(street.class, street.index),
+            total,
+            origin,
+        );
     } else {
         drape::drape(
             mesh,
@@ -250,94 +237,10 @@ fn ribbon(
     }
 }
 
-/// A bridge deck of `half` width along `run`: straight between its ends' heights, with its
-/// sides.
-#[allow(clippy::cast_possible_truncation)] // f32 GPU data
-fn deck(
-    mesh: &mut MeshData,
-    run: &[((f64, f64), f64)],
-    half: f64,
-    street: &Street,
-    total: f64,
-    origin: [f64; 3],
-) {
-    let Some((start, end)) = street.deck else {
-        return;
-    };
-    if run.len() < 2 {
-        return;
-    }
-    let lift = lift(street.class, street.index);
-    let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
-    for (i, &((east, north), distance)) in run.iter().enumerate() {
-        let (before, after) = (
-            run[i.saturating_sub(1)].0,
-            run[(i + 1).min(run.len() - 1)].0,
-        );
-        let (de, dn) = (after.0 - before.0, after.1 - before.1);
-        let length = de.hypot(dn).max(1e-6);
-        // Right of travel is the direction turned clockwise by 90°.
-        let (re, rn) = (dn / length, -de / length);
-        let top = start + (end - start) * (distance / total.max(1e-6)) + lift;
-        for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
-            let (e, n) = (east + re * half * side, north + rn * half * side);
-            mesh.vertices.push([
-                (e - origin[0]) as f32,
-                (top - origin[1]) as f32,
-                (-n - origin[2]) as f32,
-            ]);
-            mesh.normals.push([0.0, 1.0, 0.0]);
-            mesh.uvs.push([u, distance as f32]);
-        }
-        for side in [-1.0, 1.0] {
-            let (e, n) = (east + re * half * side, north + rn * half * side);
-            mesh.vertices.push([
-                (e - origin[0]) as f32,
-                (top - DECK_DEPTH_M - origin[1]) as f32,
-                (-n - origin[2]) as f32,
-            ]);
-            mesh.normals
-                .push([(re * side) as f32, 0.0, (-rn * side) as f32]);
-            // Dark like the verge.
-            mesh.uvs
-                .push([if side < 0.0 { 0.0 } else { 1.0 }, distance as f32]);
-        }
-        if i > 0 {
-            let step = u32::try_from(DECK_POINTS).expect("small");
-            let at = base + u32::try_from(i * DECK_POINTS).expect("streets fit u32");
-            let previous = at - step;
-            let (left_0, right_0, left_1, right_1) = (previous, previous + 1, at, at + 1);
-            // The deck, and its sides facing out.
-            let (bottom_left_0, bottom_right_0) = (previous + 2, previous + 3);
-            let (bottom_left_1, bottom_right_1) = (at + 2, at + 3);
-            mesh.indices.extend([
-                left_0,
-                left_1,
-                right_1,
-                left_0,
-                right_1,
-                right_0,
-                left_0,
-                bottom_left_0,
-                bottom_left_1,
-                left_0,
-                bottom_left_1,
-                left_1,
-                right_0,
-                right_1,
-                bottom_right_1,
-                right_0,
-                bottom_right_1,
-                bottom_right_0,
-            ]);
-        }
-    }
-}
-
 /// Street points with their half widths, by index cell.
 type StreetCells = std::collections::HashMap<(i64, i64), Vec<(f64, f64, f64)>>;
 
-/// Where the map's streets are, to keep trees and grass off them.
+/// Where the map's streets and railways are, to keep trees and grass off them.
 pub(crate) struct Clearance {
     cells: StreetCells,
 }
@@ -346,11 +249,14 @@ pub(crate) struct Clearance {
 const CLEARANCE_CELL_M: f64 = 10.0;
 
 impl Clearance {
-    pub(crate) fn new(streets: &[Street]) -> Self {
+    pub(crate) fn new(streets: &[Street], railways: &[Railway]) -> Self {
         let mut cells = StreetCells::new();
-        for street in streets {
-            let half = width(street.class) / 2.0;
-            for &(e, n) in &street.points {
+        let lines = streets
+            .iter()
+            .map(|s| (&s.points, width(s.class) / 2.0))
+            .chain(railways.iter().map(|r| (&r.points, railways::BED_M / 2.0)));
+        for (points, half) in lines {
+            for &(e, n) in points {
                 cells
                     .entry(clearance_cell(e, n))
                     .or_default()

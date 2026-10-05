@@ -10,6 +10,7 @@ mod drape;
 mod landcover;
 mod minimap;
 mod palette;
+mod railways;
 mod road;
 mod streets;
 mod structures;
@@ -107,6 +108,8 @@ pub struct TerrainChunk {
     pub tracks: MeshData,
     /// Streams and rivers of the map, likewise; they pass under streets and the road.
     pub water: MeshData,
+    /// Railways of the map, likewise (`u` across the bed of ballast, `v` metres along).
+    pub railways: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
 }
@@ -159,7 +162,8 @@ pub async fn generate<M: ElevationModel>(
     let land = LandIndex::new(&map.areas, &projection);
     let buildings = buildings_by_chunk(map, &projection, &road, &land);
     let streets = streets::lines(map, &projection, model).await;
-    let clearance = streets::Clearance::new(&streets);
+    let railways = railways::lines(map, &projection, &road, model).await;
+    let clearance = streets::Clearance::new(&streets, &railways);
     let streams = water::streams(&map.waterways, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
@@ -215,6 +219,7 @@ pub async fn generate<M: ElevationModel>(
             streets: paved,
             tracks: unpaved,
             water: water::stream_mesh(&streams, heights.origin, CHUNK_SIZE, &heights, origin),
+            railways: railways::mesh(&railways, heights.origin, CHUNK_SIZE, &heights, origin),
             trees,
         });
         progress(done + 1, total);

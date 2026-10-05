@@ -1090,8 +1090,8 @@ impl TorqaApp {
     }
 
     /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, water,
-    /// plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks` and `water`
-    /// (streams and rivers) are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
+    /// railways, plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks`, `water`
+    /// (streams and rivers) and `railways` are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
     /// `plants` maps vegetation model names (trees, bushes, rocks) to
     /// `MultiMesh` buffers (transform and colour), `grass` and `flowers` are transform buffers.
     /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
@@ -1135,6 +1135,7 @@ impl TorqaApp {
             "streets" => &mesh_arrays(&chunk.streets),
             "tracks" => &mesh_arrays(&chunk.tracks),
             "water" => &mesh_arrays(&chunk.water),
+            "railways" => &mesh_arrays(&chunk.railways),
             "plants" => &plants,
             "grass" => &grass,
             "flowers" => &flowers,

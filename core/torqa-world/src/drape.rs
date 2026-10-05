@@ -9,6 +9,28 @@ use crate::{HeightGrid, MeshData};
 const PIECE_M: f64 = 30.0;
 /// ...and bends this sharp (radians) keep their points.
 const TURN: f64 = 0.03;
+/// Bridge decks are this thick at their edges.
+const DECK_DEPTH_M: f64 = 0.7;
+/// Vertices per point of a deck: left and right edge, and the bottoms of its sides.
+const DECK_POINTS: usize = 4;
+
+/// Points along `line` at most `step` metres apart.
+pub(crate) fn densify(line: &[(f64, f64)], step: f64) -> Vec<(f64, f64)> {
+    let mut points = Vec::new();
+    for pair in line.windows(2) {
+        let ((e0, n0), (e1, n1)) = (pair[0], pair[1]);
+        let length = (e1 - e0).hypot(n1 - n0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // short segments
+        let steps = (length / step).ceil().max(1.0) as usize;
+        for k in 0..steps {
+            #[allow(clippy::cast_precision_loss)]
+            let t = k as f64 / steps as f64;
+            points.push((e0 + (e1 - e0) * t, n0 + (n1 - n0) * t));
+        }
+    }
+    points.extend(line.last());
+    points
+}
 
 /// A line cut exactly at the edges of the square `low`–`high` (a chunk), so the neighbour's
 /// piece starts where this one ends: the pieces inside, as points with their distance along
@@ -251,4 +273,85 @@ fn clip(a: (f64, f64), b: (f64, f64), low: (f64, f64), high: (f64, f64)) -> Opti
 fn normalize([x, y, z]: [f64; 3]) -> [f64; 3] {
     let length = (x * x + y * y + z * z).sqrt().max(1e-9);
     [x / length, y / length, z / length]
+}
+
+/// A bridge deck of `half` width along `run` (points with their distance along a line `total`
+/// long): straight between the heights of its ends, `lift` above them, with its sides.
+#[allow(clippy::cast_possible_truncation)] // f32 GPU data
+pub(crate) fn deck(
+    mesh: &mut MeshData,
+    run: &[((f64, f64), f64)],
+    half: f64,
+    (start, end): (f64, f64),
+    lift: f64,
+    total: f64,
+    origin: [f64; 3],
+) {
+    if run.len() < 2 {
+        return;
+    }
+    let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
+    for (i, &((east, north), distance)) in run.iter().enumerate() {
+        let (before, after) = (
+            run[i.saturating_sub(1)].0,
+            run[(i + 1).min(run.len() - 1)].0,
+        );
+        let (de, dn) = (after.0 - before.0, after.1 - before.1);
+        let length = de.hypot(dn).max(1e-6);
+        // Right of travel is the direction turned clockwise by 90°.
+        let (re, rn) = (dn / length, -de / length);
+        let top = start + (end - start) * (distance / total.max(1e-6)) + lift;
+        for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
+            let (e, n) = (east + re * half * side, north + rn * half * side);
+            mesh.vertices.push([
+                (e - origin[0]) as f32,
+                (top - origin[1]) as f32,
+                (-n - origin[2]) as f32,
+            ]);
+            mesh.normals.push([0.0, 1.0, 0.0]);
+            mesh.uvs.push([u, distance as f32]);
+        }
+        for side in [-1.0, 1.0] {
+            let (e, n) = (east + re * half * side, north + rn * half * side);
+            mesh.vertices.push([
+                (e - origin[0]) as f32,
+                (top - DECK_DEPTH_M - origin[1]) as f32,
+                (-n - origin[2]) as f32,
+            ]);
+            mesh.normals
+                .push([(re * side) as f32, 0.0, (-rn * side) as f32]);
+            // Dark like the verge.
+            mesh.uvs
+                .push([if side < 0.0 { 0.0 } else { 1.0 }, distance as f32]);
+        }
+        if i > 0 {
+            let step = u32::try_from(DECK_POINTS).expect("small");
+            let at = base + u32::try_from(i * DECK_POINTS).expect("streets fit u32");
+            let previous = at - step;
+            let (left_0, right_0, left_1, right_1) = (previous, previous + 1, at, at + 1);
+            // The deck, and its sides facing out.
+            let (bottom_left_0, bottom_right_0) = (previous + 2, previous + 3);
+            let (bottom_left_1, bottom_right_1) = (at + 2, at + 3);
+            mesh.indices.extend([
+                left_0,
+                left_1,
+                right_1,
+                left_0,
+                right_1,
+                right_0,
+                left_0,
+                bottom_left_0,
+                bottom_left_1,
+                left_0,
+                bottom_left_1,
+                left_1,
+                right_0,
+                right_1,
+                bottom_right_1,
+                right_0,
+                bottom_right_1,
+                bottom_right_0,
+            ]);
+        }
+    }
 }

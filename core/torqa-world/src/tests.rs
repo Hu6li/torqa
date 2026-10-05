@@ -279,6 +279,75 @@ async fn where_streets_join_the_road_its_edge_is_road_not_shoulder() {
 }
 
 #[tokio::test]
+async fn railways_lie_on_the_ground_or_bridges_and_keep_the_forest_off() {
+    use torqa_osm::Railway;
+
+    // A line across a forest east of the route, and a bridge further north.
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(150.0, 600.0, 100.0)],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![forest],
+        railways: vec![
+            Railway {
+                line: vec![at(60.0, 600.0), at(400.0, 600.0)],
+                bridge: false,
+            },
+            Railway {
+                line: vec![at(100.0, 900.0), at(300.0, 900.0)],
+                bridge: true,
+            },
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let rail_at = |x: f32, z: f32| height_on(&world, |c| &c.railways, x, z);
+
+    let mut checked = 0;
+    for step in 70..390 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let x = step as f32;
+        for z in [-601.5, -600.0, -598.5] {
+            let (Some(rail), Some(ground)) = (rail_at(x, z), ground_at(&world, x, z)) else {
+                continue;
+            };
+            assert!(
+                rail > ground && rail - ground < 0.06,
+                "the bed at {rail} on ground {ground} at {x}, {z}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 900, "{checked} points checked");
+    // The bridge's deck runs straight between the ground at its ends (sloping 0.1 m per metre
+    // east here), so it stands clear of nothing below but is not draped.
+    for x in [120.0_f32, 200.0, 280.0] {
+        let deck = rail_at(x, -900.0).expect("a deck");
+        assert!(
+            (deck - (500.0 + 0.1 * x)).abs() < 0.2,
+            "deck at {deck} at {x}"
+        );
+    }
+    // The forest grows up to the line, never on it.
+    let trees = plants_of(&world, &["conifer", "broadleaf"]);
+    assert!(
+        trees
+            .iter()
+            .filter(|[x, _, z]| x.abs() > 60.0 && (z + 600.0).abs() < 90.0)
+            .count()
+            > 50
+    );
+    for [x, _, z] in &trees {
+        assert!(
+            (z + 600.0).abs() > 1.6 || *x < 60.0,
+            "a tree on the railway at {x}, {z}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn the_road_bevels_gently_down_to_a_level_verge() {
     let world = world(&MapData::default()).await;
 

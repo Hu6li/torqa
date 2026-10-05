@@ -183,6 +183,7 @@ var _plant_material: ShaderMaterial = ShaderMaterial.new()
 ## Other streets of the map (asphalt) and tracks and paths (gravel).
 var _street_material: ShaderMaterial = ShaderMaterial.new()
 var _track_material: ShaderMaterial = ShaderMaterial.new()
+var _rail_material: ShaderMaterial = ShaderMaterial.new()
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -381,6 +382,10 @@ func _ready() -> void:
 		material.set_shader_parameter("surface_color", Palette.color(color))
 		material.set_shader_parameter("grass_color", Palette.color("ground.meadow"))
 		material.set_shader_parameter("middle_grass", surface[2])
+	_rail_material.shader = preload("res://shaders/rail.gdshader")
+	_rail_material.set_shader_parameter("ballast_color", Palette.color("road.ballast"))
+	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
+	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
 	_rider.add_child(_avatar)
 	_ghost.accent = UiTheme.GHOST_COLOR
 	_ghost.ghostly = true
@@ -439,7 +444,10 @@ func _build_some_chunks() -> void:
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
 		for surface: Array in [
-			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
+			["streets", _street_material],
+			["tracks", _track_material],
+			["water", _water_material],
+			["railways", _rail_material],
 		]:
 			var arrays: Dictionary = chunk.get(surface[0], {})
 			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
