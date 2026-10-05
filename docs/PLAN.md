@@ -252,8 +252,9 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
       bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
       off them (level crossings: the street lies over the bed)
-    - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
-      so the edge of the map never shows
+    - [x] A wider view in the mountains: coarse land (240 m facets, from zoom-10 terrain tiles)
+      beyond the 1.5 km corridor out to 12 km, coloured by its shape (meadow, forest, lakes;
+      rock and snow by the shader), fading into the haze, so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
       (none cut at corners and edges)
