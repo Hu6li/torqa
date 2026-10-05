@@ -10,11 +10,21 @@ use crate::MeshData;
 const CELL: f64 = 100.0;
 /// The road is drawn as a smooth curve through the route's points, sampled this often.
 const DRAW_STEP: f64 = 2.0;
-/// Skirts hang this far down from the road's edges, so wherever the ground falls away the
-/// road shows an edge rather than a gap below it...
+/// The road's edges bevel this far out and down, a little below the level ground beside it
+/// (`ROAD_SINK`): a low, soft edge rather than a kerb...
+const BEVEL_REACH: f64 = 0.4;
+const BEVEL_DROP: f64 = 0.25;
+/// ...and skirts hang on from there this far down and out, so wherever the ground falls away the
+/// road shows an edge rather than a gap below it.
 const SKIRT_DEPTH: f64 = 1.2;
-/// ...and reach this far out.
-const SKIRT_REACH: f64 = 0.6;
+const SKIRT_REACH: f64 = 0.8;
+
+/// Vertices across the road: skirt, bevel and edge on either side.
+const RING: usize = 6;
+
+/// Where another street meets the road: distance along the road, side (1 right of travel, −1
+/// left) and the street's half width.
+pub(crate) type Mouth = (f64, f64, f64);
 
 #[derive(Debug, Clone, Copy)]
 struct Segment {
@@ -183,6 +193,37 @@ impl RoadIndex {
         best
     }
 
+    /// The nearest point of the road within `reach` of (`east`, `north`): the distance to it,
+    /// how far along the road it is and on which side the point lies (1 right of travel, −1
+    /// left).
+    pub(crate) fn locate(&self, east: f64, north: f64, reach: f64) -> Option<(f64, f64, f64)> {
+        let (low_e, low_n) = cell_of(east - reach, north - reach);
+        let (high_e, high_n) = cell_of(east + reach, north + reach);
+        let mut best: Option<(f64, f64, f64)> = None;
+        for ce in low_e..=high_e {
+            for cn in low_n..=high_n {
+                for &index in self.cells.get(&(ce, cn)).into_iter().flatten() {
+                    let segment = &self.segments[index];
+                    let (de, dn) = (segment.b.0 - segment.a.0, segment.b.1 - segment.a.1);
+                    let length_squared = (de * de + dn * dn).max(1e-12);
+                    let t = (((east - segment.a.0) * de + (north - segment.a.1) * dn)
+                        / length_squared)
+                        .clamp(0.0, 1.0);
+                    let (pe, pn) = (segment.a.0 + de * t, segment.a.1 + dn * t);
+                    let distance = (east - pe).hypot(north - pn);
+                    if distance <= reach && best.is_none_or(|b| distance < b.0) {
+                        // Right of travel is where the direction turns clockwise.
+                        let cross = de * (north - segment.a.1) - dn * (east - segment.a.0);
+                        let along =
+                            segment.distance_a + (segment.distance_b - segment.distance_a) * t;
+                        best = Some((distance, along, if cross > 0.0 { -1.0 } else { 1.0 }));
+                    }
+                }
+            }
+        }
+        best
+    }
+
     /// Points along the road roughly every `spacing` metres, in metres east/north.
     pub(crate) fn samples(&self, spacing: f64) -> Vec<(f64, f64)> {
         let mut samples = Vec::new();
@@ -222,11 +263,12 @@ impl RoadIndex {
         runs
     }
 
-    /// A ribbon `2 × half_width` wide along the centre line, with skirts hanging from its
-    /// edges. Texture coordinates: `u` 0–1 across the road (below 0 and above 1 on the
-    /// skirts), `v` the distance in metres.
+    /// A ribbon `2 × half_width` wide along the centre line, its edges bevelled down to the
+    /// ground and skirts hanging on below. Texture coordinates: `u` 0–1 across the road (below
+    /// 0 and above 1 on bevels and skirts, which are shoulders — except where another street
+    /// meets the road, `mouths`, where the bevel is road too), `v` the distance in metres.
     #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-    pub(crate) fn mesh(&self, half_width: f64) -> MeshData {
+    pub(crate) fn mesh(&self, half_width: f64, mouths: &[Mouth]) -> MeshData {
         let mut mesh = MeshData::default();
         let Some(last) = self.segments.last() else {
             return mesh;
@@ -237,6 +279,11 @@ impl RoadIndex {
             .map(|s| (s.a, s.elevation_a, s.distance_a))
             .chain([(last.b, last.elevation_b, last.distance_b)])
             .collect();
+        let joined = |distance: f64, side: f64| {
+            mouths
+                .iter()
+                .any(|&(along, at, half)| at * side > 0.0 && (along - distance).abs() <= half + 1.0)
+        };
         for (index, &((east, north), elevation, distance)) in centres.iter().enumerate() {
             // Across the road square to the curve: halfway between the pieces either side.
             let before = self.segments[index.saturating_sub(1)];
@@ -253,17 +300,30 @@ impl RoadIndex {
                     (-(north + rn * across)) as f32,
                 ]
             };
-            let reach = half_width + SKIRT_REACH;
-            // Left skirt, left edge, right edge, right skirt.
+            let (bevel, skirt) = (half_width + BEVEL_REACH, half_width + SKIRT_REACH);
+            let left = if joined(distance, -1.0) { 0.0 } else { -0.08 };
+            let right = if joined(distance, 1.0) { 1.0 } else { 1.08 };
+            let tilt = BEVEL_DROP / BEVEL_REACH;
+            // Left skirt, left bevel, left edge, right edge, right bevel, right skirt.
             let ring = [
                 (
-                    at(-reach, SKIRT_DEPTH),
+                    at(-skirt, SKIRT_DEPTH),
                     [-re as f32, 0.5, rn as f32],
                     -0.2_f32,
                 ),
+                (
+                    at(-bevel, BEVEL_DROP),
+                    [(-re * tilt) as f32, 1.0, (rn * tilt) as f32],
+                    left,
+                ),
                 (at(-half_width, 0.0), [0.0, 1.0, 0.0], 0.0),
                 (at(half_width, 0.0), [0.0, 1.0, 0.0], 1.0),
-                (at(reach, SKIRT_DEPTH), [re as f32, 0.5, -rn as f32], 1.2),
+                (
+                    at(bevel, BEVEL_DROP),
+                    [(re * tilt) as f32, 1.0, (-rn * tilt) as f32],
+                    right,
+                ),
+                (at(skirt, SKIRT_DEPTH), [re as f32, 0.5, -rn as f32], 1.2),
             ];
             for (vertex, normal, u) in ring {
                 mesh.vertices.push(vertex);
@@ -273,9 +333,9 @@ impl RoadIndex {
                 mesh.uvs.push([u, distance as f32]);
             }
             if index > 0 {
-                let base = u32::try_from(index * 4).expect("road fits u32");
-                let previous = base - 4;
-                for k in 0..3 {
+                let base = u32::try_from(index * RING).expect("road fits u32");
+                let previous = base - u32::try_from(RING).expect("small");
+                for k in 0..u32::try_from(RING - 1).expect("small") {
                     let (a0, b0, a1, b1) = (previous + k, previous + k + 1, base + k, base + k + 1);
                     mesh.indices.extend([a0, a1, b1, a0, b1, b0]);
                 }

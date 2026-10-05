@@ -203,7 +203,83 @@ async fn terrain_follows_the_model_away_from_the_road() {
 }
 
 #[tokio::test]
-async fn the_verge_is_level_just_below_the_road() {
+async fn streets_lie_on_the_ground_however_it_folds() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A wide street crossing the route on the hillside: through the cutting into it, over the
+    // cutting's sharp top edge and on up the natural slope.
+    let world = world(&MapData {
+        roads: vec![Road {
+            class: RoadClass::Major,
+            line: vec![at(-150.0, 300.0), at(150.0, 300.0)],
+            structure: None,
+        }],
+        ..MapData::default()
+    })
+    .await;
+
+    let mut checked = 0;
+    for step in 0..1200 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let x = -150.0 + step as f32 * 0.25;
+        for offset in [-3.3_f32, -1.5, 0.0, 1.5, 3.3] {
+            let z = -300.0 + offset;
+            let (Some(ground), Some(street)) = (ground_at(&world, x, z), street_at(&world, x, z))
+            else {
+                continue;
+            };
+            assert!(
+                street > ground,
+                "the ground through the street at {x}, {z}: {ground} over {street}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 5000, "{checked} points checked");
+}
+
+#[tokio::test]
+async fn where_streets_join_the_road_its_edge_is_road_not_shoulder() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A street joining from the west at 300 m, none from the east.
+    let world = world(&MapData {
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(-150.0, 300.0), at(0.0, 300.0)],
+            structure: None,
+        }],
+        ..MapData::default()
+    })
+    .await;
+
+    let road = &world.road;
+    let rings = road.uvs.as_chunks::<6>().0;
+    let bevels = |near: f32| -> Vec<(f32, f32)> {
+        rings
+            .iter()
+            .filter(|ring| (ring[1][1] - near).abs() < 1.0)
+            .map(|ring| (ring[1][0], ring[4][0]))
+            .collect()
+    };
+    for (left, right) in bevels(300.0) {
+        // Road (u within 0–1) on the left where the street joins, shoulder on the right.
+        assert!(
+            (0.0..=1.0).contains(&left),
+            "left bevel {left} at the junction"
+        );
+        assert!(right > 1.0, "right bevel {right} at the junction");
+    }
+    for (left, right) in bevels(600.0) {
+        assert!(
+            left < 0.0 && right > 1.0,
+            "bevels {left}, {right} away from junctions"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_road_bevels_gently_down_to_a_level_verge() {
     let world = world(&MapData::default()).await;
 
     let near_road: Vec<_> = terrain_vertices(&world)
@@ -211,28 +287,51 @@ async fn the_verge_is_level_just_below_the_road() {
         .collect();
     assert!(near_road.len() > 100);
     for v in near_road {
-        assert!((v[1] - (500.0 - 0.25)).abs() < 0.01, "{v:?}");
+        assert!((v[1] - (500.0 - ROAD_SINK as f32)).abs() < 0.01, "{v:?}");
+        // Just below the road: a low step, never a wall.
+        assert!(500.0 - v[1] < 0.16, "{v:?}");
     }
-    // The road's surface (between its skirts) is at the route's 500 m.
-    assert!(
-        world
-            .road
-            .vertices
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .all(|s| (s[1][1] - 500.0).abs() < 0.01 && (s[2][1] - 500.0).abs() < 0.01)
-    );
+    // The road's surface is at the route's 500 m; from its edges a bevel runs down, gentler
+    // than 45°, to below the verge.
+    for ring in world.road.vertices.as_chunks::<6>().0 {
+        let (bevel, edge) = (ring[1], ring[2]);
+        assert!((ring[2][1] - 500.0).abs() < 0.01 && (ring[3][1] - 500.0).abs() < 0.01);
+        let drop = edge[1] - bevel[1];
+        let out = (edge[0] - bevel[0]).hypot(edge[2] - bevel[2]);
+        assert!(
+            drop > ROAD_SINK as f32,
+            "the bevel ends above the verge: {drop}"
+        );
+        assert!(
+            drop < out,
+            "a bevel steeper than 45°: {drop} m over {out} m"
+        );
+    }
 }
 
 /// The terrain's height at (`x`, `z`) as its mesh has it.
 fn ground_at(world: &World, x: f32, z: f32) -> Option<f32> {
+    height_on(world, |c| &c.mesh, x, z)
+}
+
+/// The height at (`x`, `z`) of the other streets, as their meshes have it.
+fn street_at(world: &World, x: f32, z: f32) -> Option<f32> {
+    height_on(world, |c| &c.streets, x, z)
+}
+
+/// The height at (`x`, `z`) of a chunk mesh `pick` chooses.
+fn height_on(
+    world: &World,
+    pick: fn(&crate::TerrainChunk) -> &MeshData,
+    x: f32,
+    z: f32,
+) -> Option<f32> {
     let chunk = world.chunks.iter().find(|c| {
         (x - c.center[0]).abs() <= CHUNK_SIZE as f32 / 2.0
             && (z - c.center[2]).abs() <= CHUNK_SIZE as f32 / 2.0
     })?;
     let (px, pz) = (x - chunk.center[0], z - chunk.center[2]);
-    triangles(&chunk.mesh).find_map(|[a, b, c]| {
+    triangles(pick(chunk)).find_map(|[a, b, c]| {
         let det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
         if det.abs() < 1e-9 {
             return None;
@@ -323,8 +422,8 @@ async fn no_ground_covers_the_road_on_a_hillside_with_a_hairpin() {
     // Every edge of the road, and its middle, lies above the ground there.
     let road = &world.road.vertices;
     let mut checked = 0;
-    for section in road.as_chunks::<4>().0 {
-        let (left, right) = (section[1], section[2]);
+    for section in road.as_chunks::<6>().0 {
+        let (left, right) = (section[2], section[3]);
         let middle = [0, 1, 2].map(|k| f32::midpoint(left[k], right[k]));
         for point in [left, middle, right] {
             let ground = ground_at(&world, point[0], point[2]).expect("ground under the road");
@@ -1486,7 +1585,10 @@ async fn ground_never_covers_a_bridge_deck() {
         .collect();
     assert!(under.len() > 50);
     for v in under {
-        assert!(v[1] <= 500.0 - 0.25 + 0.01, "terrain above the deck: {v:?}");
+        assert!(
+            v[1] <= 500.0 - ROAD_SINK as f32 + 0.01,
+            "terrain above the deck: {v:?}"
+        );
     }
 }
 

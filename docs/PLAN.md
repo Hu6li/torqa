@@ -234,11 +234,13 @@ the realistic look's textures and patterns are being replaced step by step.
     is gone; the mouse wheel sets the speed); Shift + mouse works again: the app's root control
     took every mouse move over the 3D view, now it lets them through
   - [ ] Nicer roads (#74):
-    - [ ] Other streets never cut by the ground: no grass islands on the asphalt, no streets
-      half under a slope (flatten the ground under them as under the road ridden)
-    - [ ] Junctions joined cleanly where streets meet the road ridden (no jagged polygons, no
-      kerb walls across the mouths); roundabouts as rings round an island
-    - [ ] The road's edge as a low bevel, not a step that reads as a wall
+    - [x] Other streets never cut by the ground: draped along the ground's own triangles, so
+      no grass shows through the asphalt and no street sinks into a slope
+    - [ ] Junctions joined cleanly where streets meet the road ridden: no kerb walls across the
+      mouths (done: the road's edge is road there) and no jagged polygons; roundabouts as rings
+      round an island
+    - [x] The road's edge as a low bevel, not a step that reads as a wall (15 cm instead of
+      25 cm, sloping gentler than 45°)
     - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)
     - [ ] Water under roads, never over them: streams and rivers stop at road crossings
       (culverts, bridges)
