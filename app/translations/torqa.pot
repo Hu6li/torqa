@@ -171,7 +171,7 @@ msgstr ""
 msgid "Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother."
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:54 app/scenes/profile_tab.gd:102
+#: app/scenes/profile_dialog.gd:58 app/scenes/profile_tab.gd:102
 msgid "Bike weight"
 msgstr ""
 
@@ -351,7 +351,7 @@ msgstr ""
 msgid "Everything on, including global illumination: for fast GPUs."
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:55 app/scenes/profile_tab.gd:103
+#: app/scenes/profile_dialog.gd:59 app/scenes/profile_tab.gd:103
 msgid "FTP"
 msgstr ""
 
@@ -361,6 +361,10 @@ msgstr ""
 
 #: app/scenes/history_screen.gd:402
 msgid "Feb"
+msgstr ""
+
+#: app/scenes/profile_dialog.gd:46 app/scenes/profile_tab.gd:106
+msgid "Female rider"
 msgstr ""
 
 #: app/scenes/ride_settings_dialog.gd:31
@@ -419,7 +423,7 @@ msgstr ""
 msgid "HC"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:67 app/scenes/ride_settings_dialog.gd:25
+#: app/scenes/profile_dialog.gd:72 app/scenes/ride_settings_dialog.gd:25
 msgid "HUD"
 msgstr ""
 
@@ -455,7 +459,7 @@ msgstr ""
 msgid "How do you want to ride?"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:43 app/scenes/profile_tab.gd:105
+#: app/scenes/profile_dialog.gd:44 app/scenes/profile_tab.gd:105
 msgid "Imperial (mi, lb)"
 msgstr ""
 
@@ -495,7 +499,7 @@ msgstr ""
 msgid "Keep both"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:58
+#: app/scenes/profile_dialog.gd:62
 msgid "Language"
 msgstr ""
 
@@ -515,11 +519,15 @@ msgstr ""
 msgid "Low"
 msgstr ""
 
+#: app/scenes/profile_dialog.gd:47 app/scenes/profile_tab.gd:106
+msgid "Male rider"
+msgstr ""
+
 #: app/scenes/history_screen.gd:402
 msgid "Mar"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:56 app/scenes/profile_tab.gd:104
+#: app/scenes/profile_dialog.gd:60 app/scenes/profile_tab.gd:104
 msgid "Max heart rate"
 msgstr ""
 
@@ -539,7 +547,7 @@ msgstr ""
 msgid "Medium"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:42 app/scenes/profile_tab.gd:105
+#: app/scenes/profile_dialog.gd:43 app/scenes/profile_tab.gd:105
 msgid "Metric (km, kg)"
 msgstr ""
 
@@ -571,7 +579,7 @@ msgstr ""
 msgid "Music: previous track"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:52
+#: app/scenes/profile_dialog.gd:56
 msgid "Name"
 msgstr ""
 
@@ -583,7 +591,7 @@ msgstr ""
 msgid "Neuromuscular"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:91
+#: app/scenes/profile_dialog.gd:98
 msgid "New rider"
 msgstr ""
 
@@ -687,7 +695,7 @@ msgstr ""
 msgid "Power zone"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:32 app/scenes/start_page.gd:54
+#: app/scenes/profile_dialog.gd:33 app/scenes/start_page.gd:54
 msgid "Profile"
 msgstr ""
 
@@ -763,11 +771,15 @@ msgstr ""
 msgid "Ride this course along a video of it"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:103 app/scenes/profile_tab.gd:47
+#: app/scenes/profile_dialog.gd:110 app/scenes/profile_tab.gd:47
 msgid "Rider"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:27 app/scenes/profile_dialog.gd:91
+#: app/scenes/profile_dialog.gd:63 app/scenes/profile_tab.gd:106
+msgid "Rider on the bike"
+msgstr ""
+
+#: app/scenes/profile_dialog.gd:28 app/scenes/profile_dialog.gd:98
 msgid "Rider settings"
 msgstr ""
 
@@ -783,7 +795,7 @@ msgstr ""
 msgid "Sat"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:28
+#: app/scenes/profile_dialog.gd:29
 msgid "Save"
 msgstr ""
 
@@ -923,7 +935,7 @@ msgstr ""
 msgid "Ultra"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:57 app/scenes/profile_tab.gd:105
+#: app/scenes/profile_dialog.gd:61 app/scenes/profile_tab.gd:105
 msgid "Units"
 msgstr ""
 
@@ -987,7 +999,7 @@ msgstr ""
 msgid "Wed"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:53 app/scenes/profile_tab.gd:101
+#: app/scenes/profile_dialog.gd:57 app/scenes/profile_tab.gd:101
 msgid "Weight"
 msgstr ""
 

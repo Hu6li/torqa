@@ -12,6 +12,16 @@ pub enum UnitSystem {
     Imperial,
 }
 
+/// The rider shown on the bike in the 3D world (R46).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Avatar {
+    /// The female rider.
+    #[default]
+    Female,
+    /// The male rider.
+    Male,
+}
+
 /// One rider of an installation; several riders can share it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Profile {
@@ -29,6 +39,8 @@ pub struct Profile {
     pub units: UnitSystem,
     /// User interface language as a locale code (e.g. `de`); empty for the system language.
     pub language: String,
+    /// The rider shown on the bike.
+    pub avatar: Avatar,
 }
 
 impl Default for Profile {
@@ -41,6 +53,7 @@ impl Default for Profile {
             max_heart_rate: BeatsPerMinute(185.0),
             units: UnitSystem::Metric,
             language: String::new(),
+            avatar: Avatar::Female,
         }
     }
 }

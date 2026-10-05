@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use torqa_domain::profile::{Profile, UnitSystem};
+use torqa_domain::profile::{Avatar, Profile, UnitSystem};
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Watts};
 
 const PROFILES: &str = "profiles";
@@ -48,6 +48,7 @@ struct ProfileFile {
     max_heart_rate_bpm: f64,
     units: Units,
     language: String,
+    avatar: AvatarFile,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -55,6 +56,13 @@ struct ProfileFile {
 enum Units {
     Metric,
     Imperial,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum AvatarFile {
+    Female,
+    Male,
 }
 
 impl Default for ProfileFile {
@@ -76,6 +84,10 @@ impl From<&Profile> for ProfileFile {
                 UnitSystem::Imperial => Units::Imperial,
             },
             language: p.language.clone(),
+            avatar: match p.avatar {
+                Avatar::Female => AvatarFile::Female,
+                Avatar::Male => AvatarFile::Male,
+            },
         }
     }
 }
@@ -93,6 +105,10 @@ impl From<ProfileFile> for Profile {
                 Units::Imperial => UnitSystem::Imperial,
             },
             language: f.language,
+            avatar: match f.avatar {
+                AvatarFile::Female => Avatar::Female,
+                AvatarFile::Male => Avatar::Male,
+            },
         }
     }
 }
@@ -388,6 +404,7 @@ mod tests {
             ftp: Watts(310.0),
             units: UnitSystem::Imperial,
             language: "de".to_owned(),
+            avatar: Avatar::Male,
             ..Profile::default()
         };
         let anna = Profile {
@@ -426,6 +443,7 @@ mod tests {
         assert_eq!(profile.name, "Old");
         assert_eq!(profile.ftp, Watts(180.0));
         assert_eq!(profile.rider_mass, Profile::default().rider_mass);
+        assert_eq!(profile.avatar, Profile::default().avatar);
         std::fs::remove_dir_all(data).unwrap();
     }
 
