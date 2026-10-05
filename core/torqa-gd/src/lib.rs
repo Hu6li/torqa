@@ -1090,10 +1090,10 @@ impl TorqaApp {
     }
 
     /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, water,
-    /// railways, plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks`, `water`
-    /// (lakes, rivers and streams) and `railways` are mesh arrays (`{vertices, normals, uvs,
-    /// colors, indices}`); `plants` maps vegetation model names (trees, bushes, rocks) to
-    /// `MultiMesh` buffers (transform and colour), `grass` and `flowers` are transform buffers.
+    /// plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks` and `water` (lakes,
+    /// rivers and streams) are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
+    /// `plants` maps vegetation model names (trees, bushes, rocks) to `MultiMesh` buffers
+    /// (transform and colour), `grass` and `flowers` are transform buffers.
     /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
     /// `models` mapping model names to `MultiMesh` buffers (transform, colour, custom data)
     /// and `shells` the mesh arrays to draw in the distance instead. Geometry is relative to
@@ -1135,7 +1135,6 @@ impl TorqaApp {
             "streets" => &mesh_arrays(&chunk.streets),
             "tracks" => &mesh_arrays(&chunk.tracks),
             "water" => &mesh_arrays(&chunk.water),
-            "railways" => &mesh_arrays(&chunk.railways),
             "plants" => &plants,
             "grass" => &grass,
             "flowers" => &flowers,
@@ -1176,6 +1175,16 @@ impl TorqaApp {
             "colors" => &colors,
             "background" => Color::from_rgba(r, g, b, a),
         }
+    }
+
+    /// The railways near the route as mesh arrays, in route coordinates (`u` across the bed of
+    /// ballast, `v` metres along).
+    #[func]
+    fn railways_mesh(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::world)
+            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.railways))
     }
 
     /// The road as mesh arrays `{vertices, normals, uvs, indices}`; `uv.y` is the distance

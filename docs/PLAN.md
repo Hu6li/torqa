@@ -249,9 +249,12 @@ the realistic look's textures and patterns are being replaced step by step.
       streams are laid on the ground (whose height the terrain model measures at the water's
       surface), so lakes lie level and rivers slope with their course (a shore band remains
       for Polish)
-    - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
-      bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
-      off them (level crossings: the street lies over the bed)
+    - [x] Railways: main lines, narrow gauge, funiculars and light rail, each on a smooth line
+      of its own (railway grades, bridges and tunnels straight between their ends, tunnels
+      where the hill rises far above the track, viaducts where the ground falls far below it,
+      clear of the road ridden where they cross), shaping the ground like the road and
+      carrying its kind of bridges and tunnels; a bed of ballast with sleepers and rails;
+      plants keep off them
     - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
       so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
