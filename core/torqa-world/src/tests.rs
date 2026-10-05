@@ -1,7 +1,8 @@
-// Test geometry compares f32 GPU data with exact, small reference values, and reads small
-// non-negative style codes from colours.
+// Test geometry compares f32 GPU data with exact, small reference values, reads small
+// non-negative style codes from colours, and turns small counts into densities.
 #![allow(
     clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::float_cmp
 )]
@@ -388,7 +389,7 @@ async fn land_cover_colours_the_ground() {
 
 #[tokio::test]
 async fn forests_get_trees_but_not_on_the_road() {
-    // A forest across the road.
+    // A forest across the road; open meadow around it.
     let forest = Area {
         cover: LandCover::Forest,
         outer: vec![square(0.0, 500.0, 100.0)],
@@ -400,32 +401,99 @@ async fn forests_get_trees_but_not_on_the_road() {
     })
     .await;
 
-    let trees: Vec<[f32; 3]> = world
-        .chunks
-        .iter()
-        .flat_map(|c| {
-            c.trees
-                .conifers
-                .as_chunks::<12>()
-                .0
-                .iter()
-                .chain(c.trees.broadleaves.as_chunks::<12>().0.iter())
-                .map(move |t| [t[3] + c.center[0], t[7], t[11] + c.center[2]])
-        })
-        .collect();
-    assert!(trees.len() > 200, "{} trees", trees.len());
+    let trees = plants_of(&world, &["conifer", "broadleaf"]);
+    let in_forest = |[x, _, z]: &[f32; 3]| (-610.0..=-390.0).contains(z) && x.abs() <= 110.0;
+    let forest_trees = trees.iter().filter(|t| in_forest(t)).count();
+    assert!(forest_trees > 200, "{forest_trees} trees in the forest");
+    // Outside it, in the meadows within 300 m of the road, only now and then a tree on its own.
+    let lone = (trees.len() - forest_trees) as f64;
+    let forest_density = forest_trees as f64 / (200.0 * 200.0);
+    let meadow_density = lone / (1600.0 * 600.0 - 200.0 * 200.0);
+    assert!(
+        meadow_density < forest_density / 20.0,
+        "{lone} trees outside the forest"
+    );
     for [x, y, z] in &trees {
-        assert!(x.abs() >= 8.0, "tree on the road at {x}");
-        assert!(
-            (-610.0..=-390.0).contains(z) && x.abs() <= 110.0,
-            "tree outside forest"
-        );
+        // Past the road's ends the open ground is free.
+        let beside = (0.0..=1000.0).contains(&-z);
+        assert!(!beside || x.abs() >= 8.0, "tree on the road at {x}");
         // Beyond the ground levelled for the road, trees stand on the natural terrain.
         assert!(
             x.abs() < LEVEL_REACH as f32 || (y - (500.0 + 0.1 * x)).abs() < 1.0,
             "tree not on the ground: {y}"
         );
     }
+    let colours: BTreeSet<[u32; 3]> = world
+        .chunks
+        .iter()
+        .flat_map(|c| c.trees.models.values())
+        .flat_map(|buffer| buffer.as_chunks::<16>().0.iter())
+        .map(|plant| [plant[12], plant[13], plant[14]].map(f32::to_bits))
+        .collect();
+    assert!(colours.len() > 3, "trees vary in colour: {colours:?}");
+}
+
+#[tokio::test]
+async fn rocks_lie_on_rocky_ground_off_the_road_and_out_of_buildings() {
+    // Scree beside the road, a house on it; the gentle slope elsewhere has no rocks.
+    let scree = Area {
+        cover: LandCover::Rock,
+        outer: vec![square(60.0, 400.0, 50.0)],
+        inner: vec![],
+    };
+    let house = Building {
+        id: 7,
+        outline: rectangle(60.0, 400.0, 6.0, 5.0),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let world = world(&MapData {
+        areas: vec![scree],
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+
+    let rocks = plants_of(&world, &["rock"]);
+    assert!(rocks.len() > 10, "{} rocks", rocks.len());
+    for [x, _, z] in &rocks {
+        assert!(
+            (5.0..=115.0).contains(x) && (-455.0..=-345.0).contains(z),
+            "rock off the scree at {x}, {z}"
+        );
+        assert!(
+            (x - 60.0).hypot(z + 400.0) > 7.0,
+            "rock in the house at {x}, {z}"
+        );
+    }
+    for [x, _, z] in plants_of(&world, &["bush", "broadleaf", "conifer"]) {
+        let beside = (0.0..=1000.0).contains(&-z);
+        assert!(!beside || x.abs() >= 5.0, "plant on the road at {x}, {z}");
+    }
+}
+
+/// Positions (absolute) of the plants of the given model kinds.
+fn plants_of(world: &World, kinds: &[&str]) -> Vec<[f32; 3]> {
+    world
+        .chunks
+        .iter()
+        .flat_map(|c| {
+            c.trees
+                .models
+                .iter()
+                .filter(|(name, _)| {
+                    vegetation::kind_of(name).is_some_and(|kind| kinds.contains(&kind))
+                })
+                .flat_map(move |(_, buffer)| {
+                    buffer
+                        .as_chunks::<16>()
+                        .0
+                        .iter()
+                        .map(move |t| [t[3] + c.center[0], t[7], t[11] + c.center[2]])
+                })
+        })
+        .collect()
 }
 
 #[tokio::test]

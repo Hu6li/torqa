@@ -45,8 +45,10 @@
     "tunnel": "#a9a196"
   },
   "plants": {
-    "conifer": "#87895e",
-    "broadleaf": "#a5b56a",
+    "conifers": ["#87895e", "#7b7f44", "#95a05c"],
+    "broadleaves": ["#a5b56a", "#b2c178", "#98a95e", "#bfc67f"],
+    "bushes": ["#87895e", "#98a95e", "#a5b56a"],
+    "rocks": ["#c3bbb4", "#b5aca4", "#cfc8bf"],
     "trunk": "#7a5755",
     "grass_base": "#87895e",
     "grass_tip": "#b2c178",

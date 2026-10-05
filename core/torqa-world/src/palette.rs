@@ -22,6 +22,20 @@ pub(crate) fn srgb(path: &str, alpha: f32) -> [f32; 4] {
     [r, g, b, alpha]
 }
 
+/// The `index`-th colour of the list `section.name`, wrapping around.
+///
+/// # Panics
+/// If the palette has no such list.
+pub(crate) fn pick(path: &str, index: usize, alpha: f32) -> [f32; 4] {
+    let list = entry(path)
+        .as_array()
+        .filter(|list| !list.is_empty())
+        .unwrap_or_else(|| panic!("palette entry {path} is not a list of colours"));
+    let [r, g, b] = hex(list[index % list.len()].as_str().unwrap_or_default())
+        .unwrap_or_else(|| panic!("palette list {path} holds a colour that is not #rrggbb"));
+    [r, g, b, alpha]
+}
+
 fn entry(path: &str) -> &'static Value {
     let (section, name) = path.split_once('.').unwrap_or((path, ""));
     PALETTE
@@ -72,5 +86,7 @@ mod tests {
         assert_eq!(hex("#ff8000"), Some([1.0, 128.0 / 255.0, 0.0]));
         assert_eq!(hex("ff8000"), None);
         assert!((srgb("ground.meadow", 0.5)[3] - 0.5).abs() < f32::EPSILON);
+        let first = pick("plants.flowers", 0, 1.0);
+        assert_eq!(pick("plants.flowers", 4, 1.0), first, "lists wrap around");
     }
 }

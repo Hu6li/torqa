@@ -1061,9 +1061,10 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, conifers,
-    /// broadleaves, grass, flowers}`. `terrain` and `buildings` are mesh arrays (`{vertices,
-    /// normals, uvs, colors, indices}`), the tree entries `MultiMesh` transform buffers.
+    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, plants,
+    /// grass, flowers}`. `terrain` and `buildings` are mesh arrays (`{vertices, normals, uvs,
+    /// colors, indices}`); `plants` maps vegetation model names (trees, bushes, rocks) to
+    /// `MultiMesh` buffers (transform and colour), `grass` and `flowers` are transform buffers.
     /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
     /// `models` mapping model names to `MultiMesh` buffers (transform, colour, custom data)
     /// and `shells` the mesh arrays to draw in the distance instead. Geometry is relative to
@@ -1080,8 +1081,10 @@ impl TorqaApp {
             return VarDictionary::new();
         };
         let [x, y, z] = chunk.center;
-        let conifers = PackedFloat32Array::from(chunk.trees.conifers.as_slice());
-        let broadleaves = PackedFloat32Array::from(chunk.trees.broadleaves.as_slice());
+        let mut plants = VarDictionary::new();
+        for (name, buffer) in &chunk.trees.models {
+            plants.set(name.as_str(), &PackedFloat32Array::from(buffer.as_slice()));
+        }
         let grass = PackedFloat32Array::from(chunk.trees.grass.as_slice());
         let flowers = PackedFloat32Array::from(chunk.trees.flowers.as_slice());
         let modelled: VarArray = chunk
@@ -1102,8 +1105,7 @@ impl TorqaApp {
             "modelled" => &modelled,
             "streets" => &mesh_arrays(&chunk.streets),
             "tracks" => &mesh_arrays(&chunk.tracks),
-            "conifers" => &conifers,
-            "broadleaves" => &broadleaves,
+            "plants" => &plants,
             "grass" => &grass,
             "flowers" => &flowers,
         }
