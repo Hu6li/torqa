@@ -19,6 +19,7 @@ const VIEWS: Dictionary[String, Array] = {
 	"junction-chase": ["bielersee", 1500.0, 0, "Midday", "Clear"],
 	"junction-drone": ["bielersee", 1380.0, 2, "Midday", "Clear"],
 	"bridge-chase": ["kirchenfeldbruecke", 200.0, 0, "Midday", "Clear"],
+	"roundabout-drone": ["kirchenfeldbruecke", 170.0, 2, "Midday", "Clear"],
 }
 ## Frames to let the world stream in around a new place; software rendering is slow.
 const SETTLE_FRAMES: int = 240
