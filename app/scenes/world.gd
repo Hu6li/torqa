@@ -56,9 +56,11 @@ const SMALL_PLANT_RANGE: float = 600.0
 const CAMERA_SMOOTHING: float = 6.0
 ## Leaning in and out of bends takes a moment (1 / seconds).
 const LEAN_SMOOTHING: float = 3.0
-## The free camera of simulated rides (#53): metres per second, and radians per pixel of mouse.
+## The free camera of simulated rides (#53): metres per second, radians per pixel of mouse and
+## radians per second with Shift + arrows.
 const FREE_SPEED: float = 25.0
 const FREE_LOOK: float = 0.004
+const FREE_TURN: float = 1.2
 ## A rider moving further than this between frames jumped: the camera follows at once.
 const JUMP_M: float = 50.0
 ## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
@@ -638,9 +640,9 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 		_placed = true
 
 
-## Free camera: arrow keys move, R/F rise and sink, Shift is faster, the mouse wheel sets
-## the speed; move the mouse or trackpad with Shift held (or drag with the right button) to
-## look around (#66).
+## Free camera: arrow keys move, R/F rise and sink, the mouse wheel sets the speed; Shift +
+## arrows look around, as does moving the mouse or trackpad with Shift held (or dragging with the
+## right button) (#66, #78). The interface lets the mouse through to here (main.tscn).
 func _unhandled_input(event: InputEvent) -> void:
 	if not _free or not visible:
 		return
@@ -661,23 +663,28 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _fly(delta: float) -> void:
-	var move: Vector3 = Vector3.ZERO
-	for binding: Array in [
-		[KEY_UP, Vector3.FORWARD],
-		[KEY_DOWN, Vector3.BACK],
-		[KEY_LEFT, Vector3.LEFT],
-		[KEY_RIGHT, Vector3.RIGHT],
-		[KEY_R, Vector3.UP],
-		[KEY_F, Vector3.DOWN],
-	]:
-		var key: Key = binding[0]
-		if Input.is_physical_key_pressed(key):
-			var direction: Vector3 = binding[1]
-			move += direction
+	var looking: bool = Input.is_key_pressed(KEY_SHIFT)
+	if looking:
+		# Look around: left and right turn, up and down tilt.
+		var turned: Vector3 = _camera.rotation
+		turned.y += (_held(KEY_LEFT) - _held(KEY_RIGHT)) * FREE_TURN * delta
+		turned.x = clampf(
+			turned.x + (_held(KEY_UP) - _held(KEY_DOWN)) * FREE_TURN * delta, -1.5, 1.5
+		)
+		turned.z = 0.0
+		_camera.rotation = turned
+	var move: Vector3 = Vector3(0.0, _held(KEY_R) - _held(KEY_F), 0.0)
+	if not looking:
+		move.x = _held(KEY_RIGHT) - _held(KEY_LEFT)
+		move.z = _held(KEY_DOWN) - _held(KEY_UP)
 	if move == Vector3.ZERO:
 		return
-	var boost: float = 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0
-	_camera.position += _camera.basis * move.normalized() * FREE_SPEED * _free_speed * boost * delta
+	_camera.position += _camera.basis * move.normalized() * FREE_SPEED * _free_speed * delta
+
+
+## 1 while `key` is held, else 0.
+static func _held(key: Key) -> float:
+	return 1.0 if Input.is_physical_key_pressed(key) else 0.0
 
 
 ## Volumetric fog on the presets that afford it, thicker in haze and rain.

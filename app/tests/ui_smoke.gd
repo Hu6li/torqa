@@ -16,7 +16,7 @@ func _run() -> void:
 	_video_view()
 	_video_alignment()
 	_translations()
-	_free_camera()
+	await _free_camera()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -270,21 +270,58 @@ func _check(condition: bool, what: String) -> void:
 
 
 ## The free camera turns with the mouse while Shift is held, and not without (#66).
+## The free camera (#66, #78) with input as it arrives in the running app: through the
+## interface, which must let the mouse through to the world.
 func _free_camera() -> void:
-	var world: Node3D = (load("res://scenes/world.tscn") as PackedScene).instantiate()
-	root.add_child(world)
+	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	root.add_child(main)
+	await process_frame
+	(main.get_node("StartPage") as Control).hide()
+	(main.get_node("RideScreen") as Control).show()
+	var world: RideWorld = main.get_node("World")
+	world.show()
 	world.set("_free", true)
 	var camera: Camera3D = world.get("_camera")
-	var before: Vector3 = camera.rotation
+	var middle: Vector2 = Vector2(root.size) / 2.0
 
 	var hovering: InputEventMouseMotion = InputEventMouseMotion.new()
+	hovering.position = middle
 	hovering.relative = Vector2(50.0, 20.0)
-	world.call("_unhandled_input", hovering)
+	var before: Vector3 = camera.rotation
+	root.push_input(hovering)
 	_check(camera.rotation.is_equal_approx(before), "plain mouse moves leave the view")
 
-	var looking: InputEventMouseMotion = InputEventMouseMotion.new()
-	looking.relative = Vector2(50.0, 20.0)
+	var looking: InputEventMouseMotion = hovering.duplicate()
 	looking.shift_pressed = true
-	world.call("_unhandled_input", looking)
-	_check(camera.rotation.y < before.y and camera.rotation.x < before.x, "Shift turns the view")
-	world.free()
+	root.push_input(looking)
+	_check(
+		camera.rotation.y < before.y and camera.rotation.x < before.x,
+		"Shift + mouse over the ride screen turns the view"
+	)
+
+	before = camera.rotation
+	var place: Vector3 = camera.position
+	await _hold([KEY_SHIFT, KEY_LEFT])
+	_check(camera.rotation.y > before.y, "Shift + left turns the view left")
+	_check(camera.position.is_equal_approx(place), "Shift + arrows only look")
+
+	before = camera.rotation
+	await _hold([KEY_LEFT])
+	var moved: Vector3 = camera.position - place
+	_check(moved.dot(camera.basis.x) < -0.01, "left alone moves left: %s" % moved)
+	_check(camera.rotation.is_equal_approx(before), "arrows alone do not turn")
+	main.free()
+
+
+## Holds `keys` for a few frames, then lets them go.
+func _hold(keys: Array[Key]) -> void:
+	for pressed: bool in [true, false]:
+		for key: Key in keys:
+			var event: InputEventKey = InputEventKey.new()
+			event.keycode = key
+			event.physical_keycode = key
+			event.pressed = pressed
+			event.shift_pressed = pressed and keys.has(KEY_SHIFT)
+			Input.parse_input_event(event)
+		for frame: int in range(5):
+			await process_frame

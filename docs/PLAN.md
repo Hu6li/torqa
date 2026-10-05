@@ -230,9 +230,9 @@ the realistic look's textures and patterns are being replaced step by step.
     slots; shoulder caps smaller and turning with the arms; sunglasses with two lenses following
     the face, a bridge and arms; in bends the rider follows the road's own curve (the one it is
     drawn along), turns with it and leans in by speed and radius
-  - [ ] Free camera (#78): Shift + arrows look around, arrows alone move (the Shift speed boost
-    goes; the mouse wheel sets the speed); find out why Shift + mouse never reaches the world on
-    macOS (UI over the 3D view taking the motion?) and fix it or drop it from the hint
+  - [x] Free camera (#78): Shift + arrows look around, arrows alone move (the Shift speed boost
+    is gone; the mouse wheel sets the speed); Shift + mouse works again: the app's root control
+    took every mouse move over the 3D view, now it lets them through
   - [ ] Nicer roads (#74):
     - [ ] Other streets never cut by the ground: no grass islands on the asphalt, no streets
       half under a slope (flatten the ground under them as under the road ridden)
