@@ -1306,28 +1306,65 @@ async fn houses_on_steep_slopes_keep_their_shells() {
 }
 
 #[tokio::test]
-async fn rivers_become_water_ribbons_near_the_route() {
-    let river = Waterway {
-        width: 12.0,
-        line: vec![at(-3000.0, 500.0), at(3000.0, 500.0)],
-    };
+async fn streams_lie_on_the_ground_and_pass_under_roads_and_streets() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A river crossing the route at 500 m, and a street crossing the river east of the route.
     let world = world(&MapData {
-        waterways: vec![river],
+        waterways: vec![Waterway {
+            width: 12.0,
+            line: vec![at(-3000.0, 500.0), at(3000.0, 500.0)],
+        }],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(100.0, 300.0), at(100.0, 700.0)],
+            structure: None,
+        }],
         ..MapData::default()
     })
     .await;
+    let water_at = |x: f32, z: f32| height_on(&world, |c| &c.water, x, z);
 
-    assert_valid(&world.water);
-    assert_ne!(world.water.vertices.len(), 0);
-    assert!(world.water.colors.iter().all(|c| c[3] == 1.0));
-    // Only within the corridor.
-    assert!(
-        world
-            .water
-            .vertices
-            .iter()
-            .all(|v| v[0].abs() <= CORRIDOR as f32 + 10.0)
-    );
+    for chunk in &world.chunks {
+        assert_valid(&chunk.water);
+        // Only within the corridor.
+        assert!(
+            chunk
+                .water
+                .vertices
+                .iter()
+                .all(|v| (v[0] + chunk.center[0]).abs() <= CORRIDOR as f32 + 10.0)
+        );
+    }
+    let mut checked = 0;
+    for step in -1400..=1400 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let x = step as f32;
+        for z in [-505.0, -500.0, -495.0] {
+            let (Some(water), Some(ground)) = (water_at(x, z), ground_at(&world, x, z)) else {
+                continue;
+            };
+            // In the land: a little above the ground, never floating, never sunk.
+            assert!(
+                water > ground && water - ground < 0.05,
+                "water {water} on ground {ground} at {x}, {z}"
+            );
+            if x.abs() < ROAD_HALF_WIDTH as f32 {
+                assert!(
+                    water < 500.0 - 0.05,
+                    "water over the road ridden: {water} at {x}, {z}"
+                );
+            }
+            if let Some(street) = street_at(&world, x, z) {
+                assert!(
+                    water < street,
+                    "water over the street: {water} over {street} at {x}, {z}"
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 6000, "{checked} points checked");
 }
 
 /// Every triangle is clockwise seen from the side its normal points to (Godot's front face):

@@ -1,4 +1,5 @@
-//! Rivers and streams.
+//! Water: lakes and wide rivers mapped as areas, flat at their level; streams and rivers mapped
+//! as lines, laid on the ground of each chunk.
 
 use std::sync::LazyLock;
 
@@ -8,9 +9,9 @@ use torqa_routes::{ElevationModel, LocalProjection};
 use crate::buildings::{signed_area, triangulate};
 use crate::minimap::simplify;
 use crate::road::RoadIndex;
-use crate::{CORRIDOR, MeshData, palette};
+use crate::{CORRIDOR, HeightGrid, MeshData, drape, palette};
 
-/// Water sits this far above the terrain sample, hiding the coarse terrain below it.
+/// Lakes sit this far above the terrain sample, hiding the coarse terrain below them.
 const SURFACE_OFFSET: f64 = 0.3;
 /// Lake outlines are simplified to this tolerance in metres.
 const SHORE_SIMPLIFY: f64 = 3.0;
@@ -21,37 +22,95 @@ const STEP: f64 = 10.0;
 /// Colour of water; alpha 1 marks water for the shader.
 static WATER: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("water.deep", 1.0));
 
-/// Ribbons for the waterways' parts within the corridor around the road.
-#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-pub(crate) async fn ribbons<M: ElevationModel>(
+/// Streams and rivers lie this far above the ground: below every street and the road ridden
+/// (`streets::lift`, `ROAD_SINK`), so where they cross one they pass under it.
+const STREAM_LIFT: f64 = 0.02;
+
+/// A stream or river of the map near the route, in metres east/north, with its bounds for
+/// quick chunk tests.
+pub(crate) struct Stream {
+    width: f64,
+    points: Vec<(f64, f64)>,
+    min: (f64, f64),
+    max: (f64, f64),
+}
+
+/// The map's streams and rivers, their stretches within the corridor around the road.
+pub(crate) fn streams(
     waterways: &[Waterway],
     projection: &LocalProjection,
     road: &RoadIndex,
-    model: &mut M,
-) -> MeshData {
-    let mut mesh = MeshData::default();
+) -> Vec<Stream> {
+    let mut streams = Vec::new();
+    let mut add = |points: &mut Vec<(f64, f64)>, width: f64| {
+        let taken = std::mem::take(points);
+        let Some(&first) = taken.first() else {
+            return;
+        };
+        if taken.len() < 2 {
+            return;
+        }
+        let (mut min, mut max) = (first, first);
+        for &(e, n) in &taken {
+            min = (min.0.min(e), min.1.min(n));
+            max = (max.0.max(e), max.1.max(n));
+        }
+        streams.push(Stream {
+            width,
+            points: taken,
+            min,
+            max,
+        });
+    };
     for waterway in waterways {
         let line: Vec<(f64, f64)> = waterway
             .line
             .iter()
             .map(|&(lat, lon)| projection.project(lat, lon))
             .collect();
-        let mut run: Vec<(f64, f64, f64)> = Vec::new();
+        let mut run = Vec::new();
         for (east, north) in densify(&line) {
-            if road.nearest(east, north, CORRIDOR).is_none() {
-                add_ribbon(&mut mesh, &run, waterway.width);
-                run.clear();
-                continue;
+            if road.nearest(east, north, CORRIDOR).is_some() {
+                run.push((east, north));
+            } else {
+                add(&mut run, waterway.width);
             }
-            let (lat, lon) = projection.unproject(east, north);
-            let Ok(height) = model.elevation(lat, lon).await else {
-                add_ribbon(&mut mesh, &run, waterway.width);
-                run.clear();
-                continue;
-            };
-            run.push((east, north, height + SURFACE_OFFSET));
         }
-        add_ribbon(&mut mesh, &run, waterway.width);
+        add(&mut run, waterway.width);
+    }
+    streams
+}
+
+/// The streams within the chunk square `[origin, origin + size]`, relative to `chunk_origin`,
+/// laid on the chunk's ground (see `drape`): water lies in the land, never floating above it
+/// or sunk below it.
+pub(crate) fn stream_mesh(
+    streams: &[Stream],
+    origin: (f64, f64),
+    size: f64,
+    heights: &HeightGrid,
+    chunk_origin: [f64; 3],
+) -> MeshData {
+    let mut mesh = MeshData::default();
+    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
+    for stream in streams {
+        if stream.max.0 < low.0
+            || stream.min.0 > high.0
+            || stream.max.1 < low.1
+            || stream.min.1 > high.1
+        {
+            continue;
+        }
+        for piece in drape::pieces(&stream.points, low, high) {
+            drape::drape(
+                &mut mesh,
+                &piece,
+                stream.width / 2.0,
+                STREAM_LIFT,
+                heights,
+                chunk_origin,
+            );
+        }
     }
     mesh
 }
@@ -158,32 +217,4 @@ fn densify(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
         points.push(last);
     }
     points
-}
-
-#[allow(clippy::cast_possible_truncation)]
-fn add_ribbon(mesh: &mut MeshData, run: &[(f64, f64, f64)], width: f64) {
-    if run.len() < 2 {
-        return;
-    }
-    let half = width / 2.0;
-    for (i, &(east, north, height)) in run.iter().enumerate() {
-        let (from, to) = (run[i.saturating_sub(1)], run[(i + 1).min(run.len() - 1)]);
-        let (de, dn) = (to.0 - from.0, to.1 - from.1);
-        let length = de.hypot(dn).max(f64::EPSILON);
-        // Right of the flow direction.
-        let (re, rn) = (dn / length, -de / length);
-        for side in [-1.0, 1.0] {
-            let (e, n) = (east + re * half * side, north + rn * half * side);
-            mesh.vertices.push([e as f32, height as f32, -n as f32]);
-            mesh.normals.push([0.0, 1.0, 0.0]);
-            mesh.uvs.push([0.0, 0.0]);
-            mesh.colors.push(*WATER);
-        }
-        if i > 0 {
-            let base = u32::try_from(mesh.vertices.len() - 4).expect("water mesh fits u32");
-            let (left_0, right_0, left_1, right_1) = (base, base + 1, base + 2, base + 3);
-            mesh.indices
-                .extend([left_0, left_1, right_1, left_0, right_1, right_0]);
-        }
-    }
 }

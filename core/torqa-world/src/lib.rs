@@ -6,6 +6,7 @@
 //! Triangles wind clockwise seen from their front, Godot's front-face order.
 
 mod buildings;
+mod drape;
 mod landcover;
 mod minimap;
 mod palette;
@@ -104,6 +105,8 @@ pub struct TerrainChunk {
     pub streets: MeshData,
     /// Unpaved tracks and paths of the map, likewise.
     pub tracks: MeshData,
+    /// Streams and rivers of the map, likewise; they pass under streets and the road.
+    pub water: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
 }
@@ -127,7 +130,8 @@ pub struct World {
     pub chunks: Vec<TerrainChunk>,
     /// The road along the route.
     pub road: MeshData,
-    /// Rivers and streams.
+    /// Lakes, ponds and wide rivers mapped as areas (streams and rivers mapped as lines are in
+    /// the chunks).
     pub water: MeshData,
     /// Bridges and tunnels.
     pub structures: MeshData,
@@ -156,14 +160,10 @@ pub async fn generate<M: ElevationModel>(
     let buildings = buildings_by_chunk(map, &projection, &road, &land);
     let streets = streets::lines(map, &projection, model).await;
     let clearance = streets::Clearance::new(&streets);
+    let streams = water::streams(&map.waterways, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
-        water: {
-            let mut water = water::surfaces(&map.areas, &projection, &road, model).await;
-            let rivers = water::ribbons(&map.waterways, &projection, &road, model).await;
-            water.append(rivers);
-            water
-        },
+        water: water::surfaces(&map.areas, &projection, &road, model).await,
         structures: structures::build(&road, &projection, model).await,
         minimap: minimap::build(map, &projection, &road),
         ..World::default()
@@ -214,6 +214,7 @@ pub async fn generate<M: ElevationModel>(
             modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
             tracks: unpaved,
+            water: water::stream_mesh(&streams, heights.origin, CHUNK_SIZE, &heights, origin),
             trees,
         });
         progress(done + 1, total);

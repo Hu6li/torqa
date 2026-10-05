@@ -438,7 +438,9 @@ func _build_some_chunks() -> void:
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
-		for surface: Array in [["streets", _street_material], ["tracks", _track_material]]:
+		for surface: Array in [
+			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
+		]:
 			var arrays: Dictionary = chunk.get(surface[0], {})
 			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
 			if not vertices.is_empty():

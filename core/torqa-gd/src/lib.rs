@@ -1089,9 +1089,10 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, plants,
-    /// grass, flowers}`. `terrain` and `buildings` are mesh arrays (`{vertices, normals, uvs,
-    /// colors, indices}`); `plants` maps vegetation model names (trees, bushes, rocks) to
+    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, water,
+    /// plants, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks` and `water`
+    /// (streams and rivers) are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
+    /// `plants` maps vegetation model names (trees, bushes, rocks) to
     /// `MultiMesh` buffers (transform and colour), `grass` and `flowers` are transform buffers.
     /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
     /// `models` mapping model names to `MultiMesh` buffers (transform, colour, custom data)
@@ -1133,6 +1134,7 @@ impl TorqaApp {
             "modelled" => &modelled,
             "streets" => &mesh_arrays(&chunk.streets),
             "tracks" => &mesh_arrays(&chunk.tracks),
+            "water" => &mesh_arrays(&chunk.water),
             "plants" => &plants,
             "grass" => &grass,
             "flowers" => &flowers,
@@ -1175,7 +1177,8 @@ impl TorqaApp {
         }
     }
 
-    /// Rivers and streams as mesh arrays, in route coordinates.
+    /// Lakes, ponds and wide rivers mapped as areas, as mesh arrays in route coordinates
+    /// (streams and rivers mapped as lines come with the chunks, `world_chunk()`).
     #[func]
     fn water_mesh(&self) -> VarDictionary {
         self.app
