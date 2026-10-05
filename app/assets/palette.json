@@ -1,0 +1,65 @@
+{
+  "about": "Torqa's colour palette (ADR 0011, skill torqa-look): sRGB, read by the Rust core (core/torqa-world/src/palette.rs) and the app (app/scenes/palette.gd). Change colours here only.",
+  "sky": {
+    "top": "#b5dbce",
+    "horizon": "#d6ece4",
+    "morning_top": "#bcd3e0",
+    "morning_horizon": "#f6dcc6",
+    "evening_top": "#b9b2d8",
+    "evening_horizon": "#f4c9b0",
+    "overcast_top": "#a9b3c1",
+    "overcast_horizon": "#d0d5dc",
+    "cloud": "#fbf7ee",
+    "cloud_shade": "#c7d3d2"
+  },
+  "light": {
+    "sun": "#fff1dc",
+    "morning_sun": "#ffe0c2",
+    "evening_sun": "#ffc49a",
+    "ambient": "#fff4e8"
+  },
+  "water": {
+    "deep": "#628388",
+    "shallow": "#9fcfc4",
+    "foam": "#f2ebd9",
+    "bed": "#7c8f7e"
+  },
+  "ground": {
+    "meadow": "#b2c178",
+    "farmland": "#bfc67f",
+    "orchard": "#a5b56a",
+    "forest": "#7b7f44",
+    "town": "#c2c49a",
+    "industrial": "#c9c3b4",
+    "rock": "#c3bbb4",
+    "snow": "#f2ebd9"
+  },
+  "road": {
+    "asphalt": "#8e959b",
+    "marking": "#f2ebd9",
+    "shoulder": "#c3bbb4",
+    "gravel": "#d6c5a2"
+  },
+  "structure": {
+    "concrete": "#ddd6ca",
+    "tunnel": "#a9a196"
+  },
+  "plants": {
+    "conifer": "#87895e",
+    "broadleaf": "#a5b56a",
+    "trunk": "#7a5755",
+    "grass_base": "#87895e",
+    "grass_tip": "#b2c178",
+    "flowers": ["#f4c16e", "#f2ebd9", "#efb5cc", "#e2705e"]
+  },
+  "buildings": {
+    "walls": ["#f2ebd9", "#efcaa8", "#e8a788", "#bf9282"],
+    "roofs": ["#e2705e", "#a57369", "#6b3231"],
+    "timber": "#7a5755"
+  },
+  "rider": {
+    "kit": ["#efb5cc", "#ce5aa5", "#f4c16e", "#5b97c8", "#3959a0", "#2e3e7a"],
+    "darks": ["#614367", "#4b2e44"],
+    "skin": ["#bd8877", "#a4665a", "#834a40"]
+  }
+}

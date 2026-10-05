@@ -8,6 +8,7 @@
 mod buildings;
 mod landcover;
 mod minimap;
+mod palette;
 mod road;
 mod streets;
 mod structures;
