@@ -8,7 +8,8 @@ Sources:
 - scenes: text, tooltip_text, title, ok_button_text and placeholder_text properties;
 - app/translations/extra-msgids.txt for texts built at run time.
 
-With --check, fails if the template is outdated or a translation misses texts.
+With --check, fails if the template is outdated, or a translation misses texts or has texts
+the template does not.
 """
 
 import pathlib
@@ -51,8 +52,14 @@ def collect() -> dict[str, list[str]]:
         if ".godot" in path.parts or "target" in path.parts or "tests" in path.parts:
             continue
         rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".gd":
+            # Over the whole file: formatters put long texts on the line after `tr(`.
+            for match in TR_CALL.finditer(text):
+                number = text.count("\n", 0, match.start(1)) + 1
+                add(unescape(match.group(1)), f"{rel}:{number}")
         in_region = False
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(text.splitlines(), 1):
             if "i18n-begin" in line:
                 in_region = True
                 continue
@@ -60,9 +67,6 @@ def collect() -> dict[str, list[str]]:
                 in_region = False
                 continue
             where = f"{rel}:{number}"
-            if path.suffix == ".gd":
-                for match in TR_CALL.finditer(line):
-                    add(unescape(match.group(1)), where)
             if in_region and not line.lstrip().startswith(("#", "//")):
                 for match in STRING.finditer(line):
                     value = unescape(match.group(1))
@@ -133,6 +137,11 @@ def main() -> int:
         missing = [m for m in found if not entries.get(m)]
         if missing:
             problems.append(f"{po.name} lacks {len(missing)} texts, e.g. {missing[:3]}")
+        # Translations of texts no longer in the template: stale, or a text the extraction
+        # does not see.
+        stale = [m for m in entries if m not in found]
+        if stale:
+            problems.append(f"{po.name} has {len(stale)} texts not in the template, e.g. {stale[:3]}")
         for msgid, msgstr in entries.items():
             if msgid in found and sorted(re.findall(r"%[-0-9.]*[a-z%]", msgid)) != sorted(
                 re.findall(r"%[-0-9.]*[a-z%]", msgstr)

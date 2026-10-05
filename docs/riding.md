@@ -56,7 +56,8 @@ out (#53):
 - **Jump**: click the map or the elevation profile to put the rider there (the map's corner
   caption still switches between close view and whole route).
 - **Free camera**: **C** past the drone view; arrow keys move, **R** / **F** rise and sink,
-  **Shift** is faster, the mouse wheel sets the speed, drag with the right button to look.
+  **Shift** is faster, the mouse wheel sets the speed. To look around, move the mouse or
+  trackpad with **Shift** held (or drag with the right button).
 
 A sped-up or jumped ride is saved, but counts towards no personal records.
 

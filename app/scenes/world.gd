@@ -614,12 +614,13 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 
 
 ## Free camera: arrow keys move, R/F rise and sink, Shift is faster, the mouse wheel sets
-## the speed; drag with the right mouse button to look around.
+## the speed; move the mouse or trackpad with Shift held (or drag with the right button) to
+## look around (#66).
 func _unhandled_input(event: InputEvent) -> void:
 	if not _free or not visible:
 		return
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
-	if motion != null and motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+	if motion != null and (motion.shift_pressed or motion.button_mask & MOUSE_BUTTON_MASK_RIGHT):
 		var turned: Vector3 = _camera.rotation
 		turned.y -= motion.relative.x * FREE_LOOK
 		turned.x = clampf(turned.x - motion.relative.y * FREE_LOOK, -1.5, 1.5)

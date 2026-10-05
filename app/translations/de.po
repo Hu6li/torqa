@@ -25,6 +25,9 @@ msgstr "noch %s  ·  %.1f %%"
 msgid "(best %s)"
 msgstr "(Bestzeit %s)"
 
+msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
+msgstr "Ein Schattenfahrer auf der Strasse: deine Bestzeit, ein Tempomacher oder eine aufgezeichnete Fahrt"
+
 msgid "A recorded activity…"
 msgstr "Eine aufgezeichnete Fahrt …"
 
@@ -749,8 +752,8 @@ msgstr "Klicken: dorthin springen"
 msgid "Simulation"
 msgstr "Simulation"
 
-msgid "Click the map or profile to jump · + / − speed · C: free camera"
-msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera"
+msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + mouse to look"
+msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera, Shift + Maus zum Umsehen"
 
 msgid "Click: jump there · corner: close view / whole route"
 msgstr "Klicken: dorthin springen · Ecke: Nahansicht / ganze Route"
