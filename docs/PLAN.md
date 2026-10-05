@@ -211,8 +211,10 @@ the realistic look's textures and patterns are being replaced step by step.
     before, now with bushes under the trees near the road, a few solitary trees and bushes in
     meadows and gardens, rocks on scree and steep slopes, nothing in buildings; grass and
     flowers stay procedural
-  - [ ] Buildings restyled: chunkier models with flat palette colours, lean triangle counts;
-    shells to match
+  - [x] Buildings restyled: flat palette colours (walls, roofs, shutters, flowers per building;
+    mapped colours turned into their nearest palette colour), faceted, no drawn patterns;
+    chunkier models without gutters, downpipes, rafters or glazing bars (20–50 % fewer faces);
+    shells with clean window rectangles only
   - [ ] Rider & bike: faceted female and male riders (scripted and from CC0 stylized bases),
     a stylized bike, cadence-driven pedalling
   - [ ] Polish: low-poly clouds, stylized rain and fog, a shore band at lakes, presets tuned

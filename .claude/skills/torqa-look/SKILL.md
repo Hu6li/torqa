@@ -31,9 +31,10 @@ Two pictures the user chose (not in the repo; copyrighted):
 - **Facets, not smoothness.** One normal per face. No smooth shading, no normal maps, no
   subdivision look. Fewer, bigger facets read better than many small ones.
 - **Colour, not texture.** No photo textures, no grime, weathering, noise or fine patterns
-  (roof tile rows, wood grain, window grids drawn per pixel). Variation comes from picking
+  (roof tile rows, wood grain, glazing bars, shutter slats). Variation comes from picking
   palette colours per object or instance and from light, at most a very soft large-scale tint
-  gradient (e.g. darker at the foot of a tree).
+  gradient (e.g. darker at the foot of a wall). The one drawn shape allowed: clean window
+  rectangles on building shells (frame and glass), where modelling them would cost too much.
 - **Simple, chunky silhouettes.** Exaggerate what identifies a thing (a chalet's big roof and
   balcony, a church tower, a conifer's spikiness); leave out what does not show at riding
   distance (gutters, glazing bars, flower pots smaller than a hand).
