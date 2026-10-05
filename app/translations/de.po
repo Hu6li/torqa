@@ -752,8 +752,8 @@ msgstr "Klicken: dorthin springen"
 msgid "Simulation"
 msgstr "Simulation"
 
-msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + mouse to look"
-msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera, Shift + Maus zum Umsehen"
+msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + arrows or mouse to look"
+msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera, Shift + Pfeiltasten oder Maus zum Umsehen"
 
 msgid "Click: jump there · corner: close view / whole route"
 msgstr "Klicken: dorthin springen · Ecke: Nahansicht / ganze Route"

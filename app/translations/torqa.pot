@@ -224,7 +224,7 @@ msgid "Clear"
 msgstr ""
 
 #: app/scenes/ride_screen.gd:378
-msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + mouse to look"
+msgid "Click the map or profile to jump · + / − speed · C: free camera, Shift + arrows or mouse to look"
 msgstr ""
 
 #: app/scenes/minimap.gd:27
@@ -395,7 +395,7 @@ msgstr ""
 msgid "Found %d device(s)"
 msgstr ""
 
-#: app/scenes/world.gd:148
+#: app/scenes/world.gd:150
 msgid "Free"
 msgstr ""
 

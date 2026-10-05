@@ -55,11 +55,21 @@ out (#53):
 - **Speed**: 1×, 2×, 5×, 10× or 20× in the bar at the bottom, or **+** / **−**.
 - **Jump**: click the map or the elevation profile to put the rider there (the map's corner
   caption still switches between close view and whole route).
-- **Free camera**: **C** past the drone view; arrow keys move, **R** / **F** rise and sink,
-  **Shift** is faster, the mouse wheel sets the speed. To look around, move the mouse or
-  trackpad with **Shift** held (or drag with the right button).
+- **Free camera**: **C** past the drone view lets the camera fly on its own (**C** again goes
+  back to the chase camera); see the controls below.
 
 A sped-up or jumped ride is saved, but counts towards no personal records.
+
+### Free camera controls
+
+| Keys or mouse | What it does |
+|---|---|
+| **↑** / **↓** / **←** / **→** | Move forward, back, left and right |
+| **Shift** + **←** / **→** | Turn left and right |
+| **Shift** + **↑** / **↓** | Tilt up and down |
+| **R** / **F** | Rise and sink |
+| **Shift** + move the mouse or trackpad, or drag with the right button | Look around |
+| Mouse wheel | Fly slower or faster |
 
 ## Graphics quality
 
