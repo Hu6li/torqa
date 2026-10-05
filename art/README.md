@@ -68,3 +68,25 @@ Rendered with `scripts/render-models.sh` (three variants per model; colours vary
 | ![Chalet](../docs/images/buildings/chalet_3_m-close.jpg) | ![Bernese farmhouse](../docs/images/buildings/farmhouse_l-close.jpg) |
 | ![Church with needle spires](../docs/images/buildings/church_needle_l-close.jpg) | ![Churches with saddle roofs](../docs/images/buildings/church_saddle_m.jpg) |
 | ![Chapels](../docs/images/buildings/chapel_m.jpg) | |
+
+## Vegetation (`vegetation/`)
+
+`build.py` holds the catalogue and the kinds in one file: `conifer` (a trunk under stacked
+cones, each turned a little), `broadleaf` (a trunk under one or more chunky 20-facet blobs),
+`bush` and `rock`. Shapes are faceted (one normal per face) and lean — 20 to 70 triangles —
+since forests place thousands; random shapes use fixed seeds, so rebuilds give the same files.
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/vegetation/build.py
+```
+
+| Name | Used for |
+|---|---|
+| `leaves` | crowns and bushes; the colour varies per plant (palette `plants.conifers`, `plants.broadleaves`, `plants.bushes`) |
+| `trunk` | trunks (palette `plants.trunk`) |
+| `rock` | rocks; the colour varies per rock (palette `plants.rocks`) |
+
+The app gives each name its look in `app/scenes/vegetation_models.gd` and
+`app/shaders/vegetation.gdshader` (trees sway a little in the wind). `models.json` lists each
+model's `kind` and `height`; the world (`core/torqa-world/src/vegetation.rs`) picks one model
+of the kind it wants per plant.

@@ -206,8 +206,11 @@ the realistic look's textures and patterns are being replaced step by step.
     facets), faceted water, clean roads and tracks, warm soft light balanced for linear tone
     mapping, pastel gradient sky with crisp clouds, pastel evening and rain; photo textures
     retired
-  - [ ] Vegetation: faceted conifers, broadleaf trees, bushes, rocks and flowers made in
-    Blender, placed like today's trees and grass
+  - [x] Vegetation: faceted conifers, broadleaf trees, bushes and rocks made in Blender
+    (`art/vegetation`), coloured per plant from the palette and swaying in the wind; forests as
+    before, now with bushes under the trees near the road, a few solitary trees and bushes in
+    meadows and gardens, rocks on scree and steep slopes, nothing in buildings; grass and
+    flowers stay procedural
   - [ ] Buildings restyled: chunkier models with flat palette colours, lean triangle counts;
     shells to match
   - [ ] Rider & bike: faceted female and male riders (scripted and from CC0 stylized bases),

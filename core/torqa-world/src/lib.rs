@@ -181,11 +181,20 @@ pub async fn generate<M: ElevationModel>(
         }
         #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
         let center = [origin[0] as f32, 0.0, origin[2] as f32];
+        // Buildings of this chunk and its neighbours: plants near a border keep out of those
+        // across it too.
+        let footprints: Vec<vegetation::Footprint> = (-1..=1)
+            .flat_map(|de| (-1..=1).map(move |dn| (cx + de, cn + dn)))
+            .filter_map(|key| buildings.get(&key))
+            .flatten()
+            .map(|plot| vegetation::Footprint::around(&plot.footprint))
+            .collect();
         let ground = vegetation::Ground {
             heights: &heights,
             land: &land,
             road: &road,
             streets: &clearance,
+            buildings: &footprints,
         };
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);

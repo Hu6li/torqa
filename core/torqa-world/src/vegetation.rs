@@ -1,35 +1,125 @@
-//! Trees in forests, and grass and flowers along the road (R45).
+//! Trees, bushes and rocks (Blender models, `art/vegetation`), and grass and flowers along the
+//! road (R45, ADR 0011).
 
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
+
+use serde::Deserialize;
 use torqa_osm::LandCover;
 
 use crate::HeightGrid;
+use crate::buildings::Point;
 use crate::landcover::LandIndex;
+use crate::palette;
 use crate::road::RoadIndex;
 use crate::streets::Clearance;
 
-/// Tree spacing close to the road, where they are seen up close.
+/// The manifest the vegetation build writes next to the models.
+const MANIFEST: &str = include_str!("../../../app/assets/models/vegetation/models.json");
+
+/// Plant spacing close to the road, where they are seen up close.
 const NEAR_SPACING: f64 = 7.0;
 /// Tree spacing further away, where the forest colour on the ground does most of the work.
 const FAR_SPACING: f64 = 20.0;
-/// Within this distance of the road trees use the near spacing.
+/// Within this distance of the road trees use the near spacing, and other plants grow at all.
 const NEAR_DISTANCE: f64 = 300.0;
-/// Trees keep this distance from the road centre.
-const ROAD_CLEARANCE: f64 = 8.0;
+/// Bushes grow under the trees within this distance of the road.
+const UNDERSTOREY_DISTANCE: f64 = 60.0;
+/// A slope steeper than this (rise over run) shows rocks.
+const ROCKY_SLOPE: f64 = 0.7;
 /// Grass grows within this distance of the road centre, where riders see it up close.
 const GRASS_DISTANCE: f64 = 30.0;
 /// Grass keeps off the road: half its width and a little more.
 const GRASS_CLEARANCE: f64 = 3.6;
 /// Spacing of grass tufts, jittered.
 const GRASS_SPACING: f64 = 1.1;
+/// Floats per plant in a `MultiMesh` buffer: transform (12) and colour (4).
+pub(crate) const PLANT_FLOATS: usize = 16;
 
-/// Trees of one chunk as Godot `MultiMesh` transform buffers (12 floats per tree), relative to
-/// the chunk origin.
+/// What grows: each kind has its models, its palette colours and its distance from the road.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Plant {
+    Conifer,
+    Broadleaf,
+    Bush,
+    Rock,
+}
+
+impl Plant {
+    fn kind(self) -> &'static str {
+        match self {
+            Self::Conifer => "conifer",
+            Self::Broadleaf => "broadleaf",
+            Self::Bush => "bush",
+            Self::Rock => "rock",
+        }
+    }
+
+    fn colours(self) -> &'static str {
+        match self {
+            Self::Conifer => "plants.conifers",
+            Self::Broadleaf => "plants.broadleaves",
+            Self::Bush => "plants.bushes",
+            Self::Rock => "plants.rocks",
+        }
+    }
+
+    /// Distance kept from the road centre: the road's half width and the plant's reach.
+    fn clearance(self) -> f64 {
+        match self {
+            Self::Conifer | Self::Broadleaf => 8.0,
+            Self::Bush => 5.0,
+            Self::Rock => 4.5,
+        }
+    }
+
+    /// Random size: a factor on the model.
+    fn scale(self, dice: f64) -> f64 {
+        match self {
+            Self::Conifer | Self::Broadleaf => 0.75 + dice * 0.6,
+            Self::Bush => 0.7 + dice * 0.7,
+            Self::Rock => 0.6 + dice * 1.4,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct Entry {
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct Manifest {
+    models: BTreeMap<String, Entry>,
+}
+
+/// Model names by kind, in name order.
+static MODELS: LazyLock<BTreeMap<String, Vec<String>>> = LazyLock::new(|| {
+    let manifest: Manifest =
+        serde_json::from_str(MANIFEST).expect("the committed vegetation models.json is valid");
+    let mut by_kind: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (name, entry) in manifest.models {
+        by_kind.entry(entry.kind).or_default().push(name);
+    }
+    by_kind
+});
+
+/// The kind (`conifer`, `broadleaf`, `bush`, `rock`) of a vegetation model.
+#[cfg(test)]
+pub(crate) fn kind_of(model: &str) -> Option<&'static str> {
+    MODELS
+        .iter()
+        .find(|(_, names)| names.iter().any(|name| name == model))
+        .map(|(kind, _)| kind.as_str())
+}
+
+/// Plants of one chunk, relative to the chunk origin: trees, bushes and rocks as Godot
+/// `MultiMesh` buffers per model (transform and colour, `PLANT_FLOATS` per plant), grass and
+/// flowers as transform buffers (12 floats each).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Trees {
-    /// Conifers.
-    pub conifers: Vec<f32>,
-    /// Broadleaf trees.
-    pub broadleaves: Vec<f32>,
+    /// Trees, bushes and rocks by vegetation model name.
+    pub models: BTreeMap<String, Vec<f32>>,
     /// Grass tufts along the road.
     pub grass: Vec<f32>,
     /// Flower clumps in meadows along the road.
@@ -37,30 +127,106 @@ pub struct Trees {
 }
 
 impl Trees {
-    /// Number of trees (grass and flowers not counted).
+    /// Number of trees, bushes and rocks (grass and flowers not counted).
     #[must_use]
     pub fn len(&self) -> usize {
-        (self.conifers.len() + self.broadleaves.len()) / 12
+        self.models.values().map(Vec::len).sum::<usize>() / PLANT_FLOATS
     }
 
-    /// Whether there are no trees.
+    /// Whether there are no trees, bushes or rocks.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Adds a plant of `kind` standing at `position`: one of its models and palette colours,
+    /// size and heading chosen by `seed`.
+    fn add(&mut self, kind: Plant, position: [f64; 3], seed: i64, chunk_origin: [f64; 3]) {
+        let Some(models) = MODELS.get(kind.kind()).filter(|m| !m.is_empty()) else {
+            return;
+        };
+        let pick = |salt: i64, count: usize| {
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::cast_precision_loss
+            )] // a small count; the product lies in [0, count)
+            let index = (crate::hash(seed ^ salt) * count as f64) as usize;
+            index.min(count - 1)
+        };
+        let model = &models[pick(0x2b7e, models.len())];
+        let colour = palette::pick(kind.colours(), pick(0x6c8f, 64), 1.0);
+        let scale = kind.scale(crate::hash(seed ^ 0x1234));
+        let yaw = crate::hash(seed ^ 0x4321) * std::f64::consts::TAU;
+        let buffer = self.models.entry(model.clone()).or_default();
+        push_transform(buffer, position, scale, yaw, chunk_origin);
+        buffer.extend(colour);
+    }
 }
 
-/// What plants are placed on: the chunk's ground, its land cover, the road ridden and the
-/// map's other streets.
+/// A building's footprint as a circle around it, which plants keep out of.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Footprint {
+    east: f64,
+    north: f64,
+    radius: f64,
+}
+
+impl Footprint {
+    pub(crate) fn around(outline: &[Point]) -> Self {
+        #[allow(clippy::cast_precision_loss)] // few corners
+        let count = outline.len().max(1) as f64;
+        let east = outline.iter().map(|p| p.0).sum::<f64>() / count;
+        let north = outline.iter().map(|p| p.1).sum::<f64>() / count;
+        let radius = outline
+            .iter()
+            .map(|p| (p.0 - east).hypot(p.1 - north))
+            .fold(0.0, f64::max);
+        Self {
+            east,
+            north,
+            radius,
+        }
+    }
+}
+
+/// What plants are placed on: the chunk's ground, its land cover, the road ridden, the map's
+/// other streets and the buildings around.
 #[derive(Clone, Copy)]
 pub(crate) struct Ground<'a> {
     pub(crate) heights: &'a HeightGrid,
     pub(crate) land: &'a LandIndex,
     pub(crate) road: &'a RoadIndex,
     pub(crate) streets: &'a Clearance,
+    pub(crate) buildings: &'a [Footprint],
 }
 
-/// Places trees in forests within the square `[origin, origin + size]` (metres east/north).
+impl Ground<'_> {
+    /// Whether something of `reach` metres standing at a point would touch a building.
+    fn by_building(&self, east: f64, north: f64, reach: f64) -> bool {
+        self.buildings
+            .iter()
+            .any(|b| (b.east - east).hypot(b.north - north) < b.radius + reach)
+    }
+
+    /// The ground's steepest rise over run at a point.
+    fn slope(&self, east: f64, north: f64) -> f64 {
+        let step = 2.0;
+        let east_slope = (self.heights.at(east + step, north)
+            - self.heights.at(east - step, north))
+            / (2.0 * step);
+        let north_slope = (self.heights.at(east, north + step)
+            - self.heights.at(east, north - step))
+            / (2.0 * step);
+        east_slope.hypot(north_slope)
+    }
+}
+
+/// Places trees, bushes and rocks within the square `[origin, origin + size]` (metres
+/// east/north): forests of conifers and broadleaf trees (conifers higher up) with bushes under
+/// them near the road; near the road also a few solitary trees and bushes in meadows and
+/// gardens, and rocks on rocky ground and steep slopes. Nothing on the road or streets, in
+/// water or in buildings.
 pub(crate) fn place(
     origin: (f64, f64),
     size: f64,
@@ -72,6 +238,7 @@ pub(crate) fn place(
         land,
         road,
         streets,
+        ..
     } = *ground;
     let mut trees = Trees::default();
     let mut north = origin.1;
@@ -86,32 +253,82 @@ pub(crate) fn place(
                 north + (crate::hash(seed ^ 0x5bd1) - 0.5) * NEAR_SPACING,
             );
             east += NEAR_SPACING;
-            if land.cover_at(e, n) != Some(LandCover::Forest) {
-                continue;
-            }
+            let cover = land.cover_at(e, n);
             let road_distance = road.nearest(e, n, NEAR_DISTANCE).map(|(d, _, _)| d);
-            if road_distance.is_some_and(|d| d < ROAD_CLEARANCE) || streets.blocked(e, n, 2.0) {
+            let Some(kind) = choose(cover, road_distance, heights.at(e, n), seed, ground, e, n)
+            else {
                 continue;
-            }
-            let keep = (NEAR_SPACING / FAR_SPACING).powi(2);
-            if road_distance.is_none() && crate::hash(seed ^ 0x9e37) > keep {
-                continue;
-            }
-            let height = heights.at(e, n);
-            let scale = 0.75 + crate::hash(seed ^ 0x1234) * 0.6;
-            let yaw = crate::hash(seed ^ 0x4321) * std::f64::consts::TAU;
-            // Conifers dominate higher up.
-            let conifer_share = ((height - 600.0) / 800.0).clamp(0.3, 0.9);
-            let target = if crate::hash(seed ^ 0x7777) < conifer_share {
-                &mut trees.conifers
-            } else {
-                &mut trees.broadleaves
             };
-            push_transform(target, [e, height, n], scale, yaw, chunk_origin);
+            let too_close = road_distance.is_some_and(|d| d < kind.clearance());
+            if too_close || streets.blocked(e, n, 2.0) || ground.by_building(e, n, 2.0) {
+                continue;
+            }
+            trees.add(kind, [e, heights.at(e, n), n], seed, chunk_origin);
         }
         north += NEAR_SPACING;
     }
     trees
+}
+
+/// What grows at a spot, if anything: by its land cover, its distance from the road (`None`
+/// beyond `NEAR_DISTANCE`), its height and slope, and dice from `seed`.
+fn choose(
+    cover: Option<LandCover>,
+    road_distance: Option<f64>,
+    height: f64,
+    seed: i64,
+    ground: &Ground,
+    east: f64,
+    north: f64,
+) -> Option<Plant> {
+    let dice = |salt: i64| crate::hash(seed ^ salt);
+    if cover == Some(LandCover::Water) {
+        return None;
+    }
+    let near = road_distance.is_some();
+    if near && (cover == Some(LandCover::Rock) || ground.slope(east, north) > ROCKY_SLOPE) {
+        let share = if cover == Some(LandCover::Rock) {
+            0.2
+        } else {
+            0.1
+        };
+        return (dice(0x0dc5) < share).then_some(Plant::Rock);
+    }
+    match cover {
+        Some(LandCover::Forest) => {
+            if road_distance.is_some_and(|d| d < UNDERSTOREY_DISTANCE) && dice(0x3b9a) < 0.12 {
+                return Some(Plant::Bush);
+            }
+            let keep = (NEAR_SPACING / FAR_SPACING).powi(2);
+            if !near && dice(0x9e37) > keep {
+                return None;
+            }
+            // Conifers dominate higher up.
+            let conifer_share = ((height - 600.0) / 800.0).clamp(0.3, 0.9);
+            Some(if dice(0x7777) < conifer_share {
+                Plant::Conifer
+            } else {
+                Plant::Broadleaf
+            })
+        }
+        // Open land near the road: now and then a tree on its own, or a bush.
+        Some(LandCover::Meadow | LandCover::Residential) | None if near => {
+            let (tree, shrub) = if cover == Some(LandCover::Residential) {
+                (0.03, 0.04)
+            } else {
+                (0.006, 0.015)
+            };
+            let roll = dice(0x51a3);
+            if roll < tree {
+                Some(Plant::Broadleaf)
+            } else if roll < tree + shrub {
+                Some(Plant::Bush)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Places grass tufts and flower clumps along the road within the square `[origin, origin +
@@ -129,6 +346,7 @@ pub(crate) fn place_grass(
         land,
         road,
         streets,
+        ..
     } = *ground;
     let mut north = (origin.1 / GRASS_SPACING).floor() * GRASS_SPACING;
     while north < origin.1 + size {
@@ -229,4 +447,29 @@ fn push_transform(
         ]
         .map(|v| v as f32),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn every_plant_has_models_with_files_and_palette_colours() {
+        let directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app/assets/models/vegetation");
+        for plant in [Plant::Conifer, Plant::Broadleaf, Plant::Bush, Plant::Rock] {
+            let models = MODELS.get(plant.kind()).map_or(&[][..], Vec::as_slice);
+            assert!(!models.is_empty(), "no {} models", plant.kind());
+            for name in models {
+                assert!(
+                    directory.join(format!("{name}.glb")).is_file(),
+                    "{name} is missing"
+                );
+            }
+            // Panics if the palette lacks the plant's colours.
+            palette::pick(plant.colours(), 0, 1.0);
+        }
+    }
 }
