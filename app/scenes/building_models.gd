@@ -1,33 +1,33 @@
 class_name BuildingModels
 extends RefCounted
 ## The building models made in Blender (art/buildings, R45): loads them and gives their
-## materials the look their names ask for (app/shaders/building_model.gdshader). Every
-## building of a chunk is an instance of a MultiMesh: the instance colour is its plaster,
-## the custom data its roof colour (rgb) and variant (a, 0–1).
+## materials the flat palette colours their names ask for (app/shaders/building_model.gdshader,
+## ADR 0011). Every building of a chunk is an instance of a MultiMesh: the instance colour is
+## its plaster, the custom data its roof colour (rgb) and variant (a, 0–1).
 
 const DIRECTORY: String = "res://assets/models/buildings/"
 
-## Shader pattern, colour (sRGB) and surface of each material name.
-const LOOKS: Dictionary = {
-	"plaster": [0, Color(0.86, 0.83, 0.77), 0.92, 0.0],
-	"stone": [1, Color(0.6, 0.58, 0.55), 0.9, 0.0],
-	"wood": [2, Color(0.5, 0.34, 0.2), 0.85, 0.0],
-	"wood_dark": [3, Color(0.3, 0.19, 0.11), 0.85, 0.0],
-	"frame": [4, Color(0.93, 0.93, 0.91), 0.45, 0.0],
-	"glass": [5, Color(0.1, 0.12, 0.14), 0.06, 0.0],
-	"leaded": [17, Color(0.12, 0.13, 0.15), 0.06, 0.0],
-	"shutter": [6, Color(0.22, 0.38, 0.26), 0.7, 0.0],
-	"door": [7, Color(0.4, 0.25, 0.14), 0.7, 0.0],
-	"tiles": [8, Color(0.55, 0.26, 0.17), 0.8, 0.0],
-	"slate": [9, Color(0.25, 0.26, 0.29), 0.7, 0.0],
-	"metal": [10, Color(0.56, 0.57, 0.59), 0.45, 0.6],
-	"copper": [11, Color(0.36, 0.56, 0.48), 0.6, 0.2],
-	"flowers": [12, Color(0.85, 0.08, 0.1), 0.8, 0.0],
-	"leaves": [13, Color(0.14, 0.33, 0.1), 0.85, 0.0],
-	"clock": [14, Color(0.1, 0.1, 0.1), 0.4, 0.0],
-	"sheet": [15, Color(0.45, 0.46, 0.48), 0.45, 0.5],
-	"garage": [16, Color(0.82, 0.82, 0.8), 0.5, 0.2],
-	"wood_light": [2, Color(0.74, 0.6, 0.42), 0.85, 0.0],
+## Shader pattern and palette colour of each material name.
+const LOOKS: Dictionary[String, Array] = {
+	"plaster": [0, "buildings.light_walls"],
+	"stone": [1, "buildings.stone"],
+	"wood": [2, "buildings.timber"],
+	"wood_dark": [3, "buildings.wood_dark"],
+	"wood_light": [2, "buildings.wood_light"],
+	"frame": [4, "buildings.frame"],
+	"glass": [5, "buildings.glass"],
+	"leaded": [17, "buildings.stained_glass"],
+	"shutter": [6, "buildings.shutters"],
+	"door": [7, "buildings.door"],
+	"tiles": [8, "buildings.tiles"],
+	"slate": [9, "buildings.slate"],
+	"metal": [10, "buildings.metal"],
+	"copper": [11, "buildings.copper"],
+	"flowers": [12, "buildings.flowers"],
+	"leaves": [13, "buildings.leaves"],
+	"clock": [14, "buildings.clock"],
+	"sheet": [15, "buildings.sheet"],
+	"garage": [16, "buildings.garage"],
 }
 
 static var _materials: Dictionary = {}
@@ -54,14 +54,23 @@ static func material(name: String) -> Material:
 	if _materials.has(name):
 		return _materials[name]
 	var look: Array = LOOKS.get(name, LOOKS["plaster"])
+	var colour_name: String = look[1]
 	var shader_material: ShaderMaterial = ShaderMaterial.new()
 	shader_material.shader = preload("res://shaders/building_model.gdshader")
 	shader_material.set_shader_parameter("pattern", look[0])
-	shader_material.set_shader_parameter("color", look[1])
-	shader_material.set_shader_parameter("roughness", look[2])
-	shader_material.set_shader_parameter("metallic", look[3])
+	shader_material.set_shader_parameter("color", _first(colour_name))
+	shader_material.set_shader_parameter("shutter_colors", Palette.colors("buildings.shutters"))
+	shader_material.set_shader_parameter("flower_colors", Palette.colors("buildings.flowers"))
+	shader_material.set_shader_parameter("gold", Palette.color("buildings.gold"))
 	_materials[name] = shader_material
 	return shader_material
+
+
+## A palette colour, or the first of a palette list.
+static func _first(path: String) -> Color:
+	if Palette.is_list(path):
+		return Palette.colors(path)[0]
+	return Palette.color(path)
 
 
 static func _find_mesh(node: Node) -> MeshInstance3D:

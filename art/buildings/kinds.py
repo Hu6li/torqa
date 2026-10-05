@@ -107,8 +107,8 @@ def house(spec):
 
 def chalet(spec):
     """A mountain chalet: a plastered ground floor with log-built storeys above, log ends at
-    the corners, balconies with geraniums across the front gable, a shallow roof with deep
-    eaves and purlins."""
+    the corners, balconies with geraniums across the front gable and flower boxes below it, a
+    shallow roof with deep eaves and purlins."""
     rect = Rect(spec["length"], spec["width"])
     storeys = spec["storeys"]
     eaves = eaves_height(storeys)
@@ -118,7 +118,7 @@ def chalet(spec):
     width, height, sill = 0.9, 1.25, 0.8
     for facade in (south, east, north, west):
         front = facade is east
-        centres = columns(facade.length, 1.9 if front else 2.5, 1.2)
+        centres = columns(facade.length, 2.1 if front else 3.0, 1.2)
         lower, upper, glazed, doors = [], [], [], []
         for storey in range(storeys):
             floor = FLOOR + storey * STOREY
@@ -138,12 +138,13 @@ def chalet(spec):
         wall(mesh, facade, -BASEMENT, FLOOR, "stone")
         wall(mesh, facade, FLOOR, base, "plaster", lower + doors)
         wall(mesh, facade, base, eaves, "wood", upper + glazed)
+        # Geraniums on the front's ground floor; above, the balconies carry them.
         for o in lower:
-            window(mesh, facade, o, shutters="shutter", flowers=True)
+            window(mesh, facade, o, shutters="shutter", flowers=front)
         for o in upper:
-            window(mesh, facade, o, sill="wood", shutters="shutter", flowers=not front)
+            window(mesh, facade, o, sill="wood", shutters="shutter")
         for o in glazed:
-            window(mesh, facade, o, sill=None, panes=(2, 3))
+            window(mesh, facade, o, sill=None)
         for o in doors:
             door(mesh, facade, o)
     log_corners(mesh, rect, base, eaves)
@@ -211,7 +212,7 @@ def farmhouse(spec):
             if gate:
                 door(mesh, facade, o, leaf="wood_dark", step="stone")
             else:
-                window(mesh, facade, o, sill="wood", panes=(1, 1))
+                window(mesh, facade, o, sill="wood")
     front_openings = window_band(east.length, 0.0, FLOOR + 0.85)
     wall(mesh, east, -BASEMENT, FLOOR, "stone")
     wall(mesh, east, FLOOR, eaves, "plaster", front_openings)
@@ -268,10 +269,10 @@ def church(spec):
         wall(nave, facade, -BASEMENT, 0.4, "stone")
         wall(nave, facade, 0.4, eaves, "plaster", openings)
         for o in openings:
-            window(nave, facade, o, frame="metal", sill="stone", panes=(2, 5))
+            window(nave, facade, o, frame="metal", sill="stone")
     ridge = gable_roof(nave, rect, eaves, spec.get("pitch", 52.0), overhang=0.45, verge=0.35,
                        roof=spec.get("cover", "tiles"), under="plaster", fascia="plaster",
-                       gable="plaster", rafters=False)
+                       gable="plaster")
     mesh.add(nave, (nave_x, 0.0, 0.0))
 
     # Choir: narrower and lower, a hipped roof against the nave.
@@ -287,9 +288,9 @@ def church(spec):
         wall(choir, facade, -BASEMENT, 0.4, "stone")
         wall(choir, facade, 0.4, choir_eaves, "plaster", openings)
         for o in openings:
-            window(choir, facade, o, frame="metal", sill="stone", panes=(2, 4))
+            window(choir, facade, o, frame="metal", sill="stone")
     hipped_roof(choir, choir_rect, choir_eaves, 50.0, overhang=0.4,
-                roof=spec.get("cover", "tiles"), under="plaster", fascia="plaster", rafters=False)
+                roof=spec.get("cover", "tiles"), under="plaster", fascia="plaster")
     mesh.add(choir, (choir_x, 0.0, 0.0))
 
     # Tower.
@@ -312,7 +313,7 @@ def church(spec):
         if doorway:
             door(tower, facade, openings[1], leaf="door", step="stone")
         else:
-            window(tower, facade, openings[1], frame="metal", sill=None, panes=(1, 2))
+            window(tower, facade, openings[1], frame="metal", sill=None)
         clock(tower, facade, half, clock_z, min(1.0, half * 0.45))
     # Quoins: stone corner strips standing a little proud of the walls.
     for sx in (-1.0, 1.0):
@@ -333,8 +334,7 @@ def church(spec):
         saddle = Mesh()
         roof_top = gable_roof(saddle, Rect(side, side), tower_top, 58.0, overhang=0.35,
                               verge=0.35, roof=spec.get("spire_cover", "tiles"),
-                              under="plaster", fascia="plaster", gable="plaster", rafters=False,
-                              gutters=False)
+                              under="plaster", fascia="plaster", gable="plaster")
         tower.add(saddle, turn=90.0)
         # The ridge runs across the nave once turned.
         finial(tower, (0.0, half - 0.4, roof_top))
@@ -369,12 +369,12 @@ def chapel(spec):
             if o.z0 < 1.0:
                 door(mesh, facade, o)
             else:
-                window(mesh, facade, o, frame="metal", sill="stone", panes=(2, 3))
+                window(mesh, facade, o, frame="metal", sill="stone")
     pitch = spec.get("pitch", 50.0)
     slope = math.tan(math.radians(pitch))
     ridge = gable_roof(mesh, rect, eaves, pitch, overhang=0.4, verge=0.3,
                        roof=spec.get("cover", "slate"), under="plaster", fascia="plaster",
-                       gable="plaster", rafters=False)
+                       gable="plaster")
     # Ridge turret near the front.
     x = -rect.length / 2.0 + 1.4
     half = 0.7
@@ -412,9 +412,8 @@ def shed(spec):
             if o.z0 < 0.5:
                 door(mesh, facade, o, leaf="garage" if garage else "wood_dark", step="stone")
             else:
-                window(mesh, facade, o, sill="wood", panes=(1, 1))
+                window(mesh, facade, o, sill="wood")
     pitch = spec.get("pitch", 22.0)
     ridge = gable_roof(mesh, rect, eaves, pitch, overhang=0.35, verge=0.3,
-                       roof=spec.get("cover", "sheet"), gable=material, rafters=not garage,
-                       gutters=garage)
+                       roof=spec.get("cover", "sheet"), gable=material)
     return mesh, footprint(rect.length, rect.width, eaves, ridge)

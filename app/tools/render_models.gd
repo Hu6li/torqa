@@ -2,14 +2,11 @@ extends SceneTree
 ## Renders every building model (app/assets/models/buildings) as the world draws it, in three
 ## variants side by side and close up, into $OUT_DIR/<name>.png and <name>-close.png for review
 ## (ADR 0009). Run it with scripts/render-models.sh; $MODELS (space-separated names) limits it
-## to some.
+## to some. Light and colours are the world's (ADR 0011).
 
-## Plaster, roof colour (sRGB) and variant (shutters below 0.25, flowers above 0.65 hidden).
-const VARIANTS: Array = [
-	[Color(0.93, 0.89, 0.8), Color(0.6, 0.29, 0.2), 0.5],
-	[Color(0.86, 0.72, 0.55), Color(0.36, 0.37, 0.4), 0.3],
-	[Color(0.95, 0.95, 0.93), Color(0.44, 0.27, 0.2), 0.9],
-]
+## Plaster and roof colour (indices into the palette's walls and tiles) and variant (shutters
+## below 0.25, flowers above 0.65 hidden).
+const VARIANTS: Array = [[0, 0, 0.5], [2, 1, 0.3], [1, 2, 0.9]]
 
 var _camera: Camera3D = Camera3D.new()
 var _row: MultiMeshInstance3D = MultiMeshInstance3D.new()
@@ -47,13 +44,18 @@ func _stage() -> void:
 	var environment: Environment = Environment.new()
 	var sky: Sky = Sky.new()
 	var sky_material: ProceduralSkyMaterial = ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color(0.32, 0.5, 0.78)
-	sky_material.sky_horizon_color = Color(0.72, 0.8, 0.88)
-	sky_material.ground_horizon_color = Color(0.6, 0.66, 0.6)
+	sky_material.sky_top_color = Palette.color("sky.top")
+	sky_material.sky_horizon_color = Palette.color("sky.horizon")
+	sky_material.ground_horizon_color = Palette.color("sky.horizon")
+	sky_material.ground_bottom_color = Palette.color("ground.meadow")
 	sky.sky_material = sky_material
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# As in the world (world.tscn, RideWorld.TIMES): linear tone mapping, a warm sky light.
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_color = Palette.color("light.ambient")
+	environment.ambient_light_sky_contribution = 0.55
+	environment.ambient_light_energy = 0.55
 	environment.ssao_enabled = true
 	var world: WorldEnvironment = WorldEnvironment.new()
 	world.environment = environment
@@ -62,7 +64,8 @@ func _stage() -> void:
 	var sun: DirectionalLight3D = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-38.0, -35.0, 0.0)
 	sun.shadow_enabled = true
-	sun.light_energy = 1.1
+	sun.light_color = Palette.color("light.sun")
+	sun.light_energy = 0.8
 	sun.directional_shadow_max_distance = 150.0
 	root.add_child(sun)
 
@@ -70,7 +73,7 @@ func _stage() -> void:
 	var plane: PlaneMesh = PlaneMesh.new()
 	plane.size = Vector2(600.0, 600.0)
 	var grass: StandardMaterial3D = StandardMaterial3D.new()
-	grass.albedo_color = Color(0.3, 0.42, 0.2)
+	grass.albedo_color = Palette.color("ground.meadow")
 	grass.roughness = 0.95
 	plane.material = grass
 	ground.mesh = plane
@@ -96,9 +99,9 @@ func _show(mesh: Mesh) -> void:
 		var variant: Array = VARIANTS[i]
 		var offset: float = (i - (VARIANTS.size() - 1) / 2.0) * spacing
 		multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(offset, 0.0, 0.0)))
-		var plaster: Color = variant[0]
+		var plaster: Color = Palette.colors("buildings.walls")[variant[0]]
 		multimesh.set_instance_color(i, plaster)
-		var roof: Color = variant[1]
+		var roof: Color = Palette.colors("buildings.tiles")[variant[1]]
 		var custom: float = variant[2]
 		multimesh.set_instance_custom_data(i, Color(roof.r, roof.g, roof.b, custom))
 	_row.multimesh = multimesh

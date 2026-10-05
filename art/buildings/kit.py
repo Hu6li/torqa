@@ -1,9 +1,10 @@
 """Building blocks for the scripted building models.
 
 A `Mesh` collects faces with named materials; texture coordinates are metres on each surface
-(walls: along and up; roofs: along the eaves and up the slope), so tiling textures keep their
-real size. Walls get recessed openings with windows, doors, sills and shutters; roofs get
-thickness, soffits, fascia, rafters, gutters and ridge caps.
+(walls: along and up; roofs: along the eaves and up the slope). Walls get recessed openings
+with windows, doors, sills and shutters; roofs get thickness, soffits, fascia and ridge caps.
+Parts are chunky and few (ADR 0011): nothing that does not show at riding distance — no
+gutters, downpipes, rafters or glazing bars.
 
 Coordinates are metres: x along the building, y across it, z up, the origin at the centre of
 the footprint at ground-floor level. Faces wind counter-clockwise seen from the front (the
@@ -267,10 +268,9 @@ def spandrels(mesh, facade, o, material, segments=8):
             )
 
 
-def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=False,
-           panes=(2, 2)):
-    """A window in opening `o`: a frame with glazing bars, glass, a sill outside and, if
-    `shutters` names a material, shutters folded back against the wall."""
+def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=False):
+    """A window in opening `o`: a frame, glass, a sill outside and, if `shutters` names a
+    material, shutters folded back against the wall."""
     p = facade.point
     fw, d = 0.07, o.depth
     inner = (o.u0 + fw, o.u1 - fw, o.z0 + fw, o.z1 - fw)
@@ -292,13 +292,10 @@ def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=
         normal = facade.along * toward.x + UP * toward.z
         mesh.facing([p(a, b, front), p(c, e, front), p(c, e, glass), p(a, b, glass)],
                     normal, frame)
-    # The glass draws its glazing bars where its texture coordinates cross whole numbers, so
-    # they span the panes; leaded glass has dark bars, the rest white ones.
-    columns, rows = panes
+    # Church windows (metal frames) have stained glass of their own colour.
     mesh.facing([p(inner[0], inner[2], glass), p(inner[1], inner[2], glass),
                  p(inner[1], inner[3], glass), p(inner[0], inner[3], glass)],
-                facade.out, "leaded" if frame == "metal" else "glass",
-                uvs=[(0, 0), (columns, 0), (columns, rows), (0, rows)])
+                facade.out, "leaded" if frame == "metal" else "glass")
     if sill:
         mesh_sill(mesh, facade, o, sill)
     else:
@@ -355,7 +352,7 @@ def flower_box(mesh, facade, o):
     plants(mesh, p(u0 + 0.04, z + 0.04, -0.17), p(u1 - 0.04, z + 0.04, -0.17), facade.out)
 
 
-def plants(mesh, start, end, out, spacing=0.24):
+def plants(mesh, start, end, out, spacing=0.4):
     """Geraniums along a box from `start` to `end`: a strip of leaves dotted with blossoms."""
     start, end = Vector(start), Vector(end)
     mesh.beam(start, end, 0.22, 0.2, "leaves")
@@ -418,7 +415,7 @@ class Rect:
 
 def gable_roof(mesh, rect, eaves, pitch_deg, overhang, verge, roof="tiles", under="wood",
                fascia="wood", gable="plaster", gable_openings=(), gable_window=None,
-               rafters=True, gutters=True, purlins=False, thickness=0.25):
+               purlins=False, thickness=0.25):
     """A gable roof with its ridge along x over walls `rect` ending at height `eaves`.
     Returns the ridge height. `gable_window` builds what goes into the gable openings."""
     l, w = rect.length / 2.0, rect.width / 2.0
@@ -441,21 +438,6 @@ def gable_roof(mesh, rect, eaves, pitch_deg, overhang, verge, roof="tiles", unde
             x = end * reach
             mesh.facing([(x, y, edge), (x, 0.0, ridge), (x, 0.0, ridge + t), (x, y, edge + t)],
                          Vector((end, 0.0, 0.0)), fascia)
-        if rafters:
-            count = int(2 * l / 0.9)
-            for k in range(count + 1):
-                x = -l + 2 * l * k / count
-                start = Vector((x, side * (w - 0.05), eaves - 0.02))
-                end_point = Vector((x, side * (w + overhang - 0.08), edge + 0.03))
-                mesh.beam(start - Vector((0, 0, 0.09)), end_point - Vector((0, 0, 0.09)),
-                          0.1, 0.16, "wood_dark", caps=False, top=False)
-        if gutters:
-            gutter(mesh, Vector((-reach, y + side * 0.06, edge - 0.02)),
-                   Vector((reach, y + side * 0.06, edge - 0.02)), out)
-            for end in (-1.0, 1.0):
-                x = end * (l - 0.15)
-                downpipe(mesh, Vector((x, y + side * 0.06, edge - 0.1)),
-                         Vector((x, side * (w + 0.08), 0.0)))
     # Ridge cap.
     mesh.beam((-reach - 0.02, 0.0, ridge + t + 0.03), (reach + 0.02, 0.0, ridge + t + 0.03),
               0.28, 0.12, roof)
@@ -481,7 +463,7 @@ def gable_roof(mesh, rect, eaves, pitch_deg, overhang, verge, roof="tiles", unde
 
 
 def hipped_roof(mesh, rect, eaves, pitch_deg, overhang, roof="tiles", under="wood",
-                fascia="wood", rafters=True, gutters=True, thickness=0.25):
+                fascia="wood", thickness=0.25):
     """A hipped roof over walls `rect`: four slopes up to a ridge along x. Returns its height."""
     l, w = rect.length / 2.0, rect.width / 2.0
     slope = math.tan(math.radians(pitch_deg))
@@ -507,23 +489,6 @@ def hipped_roof(mesh, rect, eaves, pitch_deg, overhang, roof="tiles", under="woo
         out = Vector(((y1 - y0), -(x1 - x0), 0.0)).normalized()
         mesh.facing([(x0, y0, edge), (x1, y1, edge), (x1, y1, edge + t), (x0, y0, edge + t)],
                      out, fascia)
-        if gutters:
-            shift = out * 0.06
-            gutter(mesh, Vector((x0, y0, edge - 0.02)) + shift,
-                   Vector((x1, y1, edge - 0.02)) + shift, out)
-    if gutters:
-        for x, y in corners:
-            sx, sy = math.copysign(1.0, x), math.copysign(1.0, y)
-            downpipe(mesh, Vector((x + sx * 0.06 - sx * overhang * 0.15, y + sy * 0.06, edge - 0.1)),
-                     Vector((sx * (l - 0.15), sy * (w + 0.08), 0.0)))
-    if rafters:
-        for side in (-1.0, 1.0):
-            count = int(2 * l / 0.9)
-            for k in range(1, count):
-                x = -l + 2 * l * k / count
-                mesh.beam((x, side * (w - 0.05), eaves - 0.11),
-                          (x, side * (wr - 0.08), edge - 0.06), 0.1, 0.16, "wood_dark",
-                          caps=False, top=False)
     # Ridge and hip caps.
     if half_ridge > 1e-3:
         mesh.beam((-half_ridge, 0.0, ridge + t + 0.03), (half_ridge, 0.0, ridge + t + 0.03), 0.28,
@@ -533,26 +498,6 @@ def hipped_roof(mesh, rect, eaves, pitch_deg, overhang, roof="tiles", under="woo
             mesh.beam((sx * lr, sy * wr, edge + t + 0.03), (sx * half_ridge, 0.0, ridge + t + 0.03),
                       0.24, 0.1, roof)
     return ridge + t
-
-
-def gutter(mesh, start, end, out):
-    """A gutter along the eaves: a trough open to the sky."""
-    along = (end - start).normalized()
-    out = out.normalized()
-    r = 0.07
-    profile = [out * r - UP * 0.0, out * r * 0.7 - UP * r * 0.8, -out * r * 0.7 - UP * r * 0.8,
-               -out * r]
-    for a, b in zip(profile, profile[1:]):
-        normal = (a + b) / 2.0
-        mesh.facing([start + a, end + a, end + b, start + b], normal, "metal", smooth=True)
-        mesh.facing([start + a, start + b, end + b, end + a], -normal, "metal", smooth=True)
-
-
-def downpipe(mesh, top, bottom):
-    """A downpipe from the gutter at `top` down the wall to `bottom`."""
-    knee = Vector((bottom.x, bottom.y, top.z - 0.35))
-    mesh.cylinder(top, knee, 0.045, 6, "metal")
-    mesh.cylinder(knee, bottom, 0.045, 6, "metal")
 
 
 def chimney(mesh, x, y, base, top, size=0.6, material="plaster"):
@@ -595,21 +540,12 @@ def half_hipped_roof(mesh, rect, eaves, pitch_deg, overhang, verge, kink=0.6, ro
         y = side * (w + overhang)
         mesh.facing([(-reach, y, edge), (reach, y, edge), (reach, y, edge + t),
                      (-reach, y, edge + t)], Vector((0.0, side, 0.0)), fascia)
-        gutter(mesh, Vector((-reach, y + side * 0.06, edge - 0.02)),
-               Vector((reach, y + side * 0.06, edge - 0.02)), Vector((0.0, side, 0.0)))
         for end in (-1.0, 1.0):
             x = end * reach
             mesh.facing([(x, y, edge), (x, side * wk, knee), (x, side * wk, knee + t),
                          (x, y, edge + t)], Vector((end, 0.0, 0.0)), fascia)
             mesh.facing([(x, -wk, knee), (x, wk, knee), (x, wk, knee + t), (x, -wk, knee + t)],
                          Vector((end, 0.0, 0.0)), fascia)
-            downpipe(mesh, Vector((end * (l - 0.2), y + side * 0.06, edge - 0.1)),
-                     Vector((end * (l - 0.2), side * (w + 0.08), 0.0)))
-        count = int(2 * l / 0.9)
-        for k in range(count + 1):
-            x = -l + 2 * l * k / count
-            mesh.beam((x, side * (w - 0.05), eaves - 0.11), (x, side * (w + overhang - 0.08),
-                      edge - 0.06), 0.1, 0.16, "wood_dark", caps=False, top=False)
     mesh.beam((-ridge_end, 0.0, ridge + t + 0.03), (ridge_end, 0.0, ridge + t + 0.03), 0.28,
               0.12, roof)
     for end in (-1.0, 1.0):
@@ -724,47 +660,45 @@ def balcony(mesh, facade, u0, u1, floor, depth=1.3, rail=1.0, flowers=True):
     for u, side in ((u0, -1.0), (u1, 1.0)):
         mesh.facing([p(u, bottom, 0.0), p(u, bottom, out), p(u, floor, out), p(u, floor, 0.0)],
                     facade.along * side, "wood_dark")
-    # Balustrade boards along the front and the two sides.
-    board, gap = 0.13, 0.05
+    # A boarded balustrade along the front and the two sides, as solid panels: single boards
+    # would not show at riding distance.
     front = out + 0.05
-    count = int((u1 - u0) / (board + gap))
-    for k in range(count):
-        u = u0 + (k + 0.5) * (u1 - u0) / count
-        a = p(u, floor, front) - facade.along * board / 2
-        b = p(u, floor, front) + facade.along * board / 2
-        mesh.facing([a, b, b + UP * rail, a + UP * rail], facade.out, "wood")
-        mesh.facing([b, a, a + UP * rail, b + UP * rail], -facade.out, "wood")
+    top = floor + rail
+    mesh.facing([p(u0, floor, front), p(u1, floor, front), p(u1, top, front), p(u0, top, front)],
+                facade.out, "wood")
+    mesh.facing([p(u0, floor, front + 0.06), p(u1, floor, front + 0.06),
+                 p(u1, top, front + 0.06), p(u0, top, front + 0.06)], -facade.out, "wood")
     for u in (u0 + 0.05, u1 - 0.05):
-        side_count = int(depth / (board + gap))
-        for k in range(side_count):
-            d = -(k + 0.5) * depth / side_count
-            a = p(u, floor, d - board / 2)
-            b = p(u, floor, d + board / 2)
-            mesh.facing([a, b, b + UP * rail, a + UP * rail], facade.along, "wood")
-            mesh.facing([b, a, a + UP * rail, b + UP * rail], -facade.along, "wood")
+        for face in (-1.0, 1.0):
+            mesh.facing([p(u, floor, 0.0), p(u, floor, front), p(u, top, front), p(u, top, 0.0)],
+                        facade.along * face, "wood")
     mesh.beam(p(u0, floor + rail, front), p(u1, floor + rail, front), 0.12, 0.08, "wood_dark")
     for u in (u0 + 0.05, u1 - 0.05):
         mesh.beam(p(u, floor + rail, 0.0), p(u, floor + rail, front), 0.12, 0.08, "wood_dark")
     if flowers:
         plants(mesh, p(u0 + 0.1, floor + rail + 0.12, front - 0.12),
-               p(u1 - 0.1, floor + rail + 0.12, front - 0.12), facade.out, spacing=0.2)
+               p(u1 - 0.1, floor + rail + 0.12, front - 0.12), facade.out)
         mesh.facing([p(u0, floor + rail - 0.2, front - 0.25), p(u1, floor + rail - 0.2, front - 0.25),
                      p(u1, floor + rail + 0.05, front - 0.25), p(u0, floor + rail + 0.05, front - 0.25)],
                     facade.out, "wood")
 
 
-def log_corners(mesh, rect, z0, z1, step=0.4, reach=0.3):
-    """Log ends crossing at the corners of a log-built storey."""
+def log_corners(mesh, rect, z0, z1, step=0.5, reach=0.35):
+    """Log ends crossing at the corners of a log-built storey: chunky blocks, alternately
+    along and across."""
     l, w = rect.length / 2.0, rect.width / 2.0
     z = z0 + 0.1
-    while z + 0.22 < z1:
+    level = 0
+    while z + 0.3 < z1:
         for sx in (-1.0, 1.0):
             for sy in (-1.0, 1.0):
                 x, y = sx * l, sy * w
-                mesh.box((min(x, x + sx * reach), min(y - sy * 0.08, y + sy * 0.08), z),
-                         (max(x, x + sx * reach), max(y - sy * 0.08, y + sy * 0.08), z + 0.18),
-                         "wood_dark", skip=())
-                mesh.box((min(x - sx * 0.08, x + sx * 0.08), min(y, y + sy * reach), z + 0.2),
-                         (max(x - sx * 0.08, x + sx * 0.08), max(y, y + sy * reach), z + 0.38),
-                         "wood_dark", skip=())
-        z += step * 2
+                if level % 2 == 0:
+                    low = (min(x, x + sx * reach), min(y - sy * 0.12, y + sy * 0.12), z)
+                    high = (max(x, x + sx * reach), max(y - sy * 0.12, y + sy * 0.12), z + 0.3)
+                else:
+                    low = (min(x - sx * 0.12, x + sx * 0.12), min(y, y + sy * reach), z)
+                    high = (max(x - sx * 0.12, x + sx * 0.12), max(y, y + sy * reach), z + 0.3)
+                mesh.box(low, high, "wood_dark", skip=())
+        z += step
+        level += 1

@@ -36,6 +36,23 @@ pub(crate) fn pick(path: &str, index: usize, alpha: f32) -> [f32; 4] {
     [r, g, b, alpha]
 }
 
+/// The colours of the list `section.name` as sRGB.
+///
+/// # Panics
+/// If the palette has no such list.
+pub(crate) fn list(path: &str) -> Vec<[f32; 3]> {
+    let list = entry(path)
+        .as_array()
+        .filter(|list| !list.is_empty())
+        .unwrap_or_else(|| panic!("palette entry {path} is not a list of colours"));
+    list.iter()
+        .map(|value| {
+            hex(value.as_str().unwrap_or_default())
+                .unwrap_or_else(|| panic!("palette list {path} holds a colour that is not #rrggbb"))
+        })
+        .collect()
+}
+
 fn entry(path: &str) -> &'static Value {
     let (section, name) = path.split_once('.').unwrap_or((path, ""));
     PALETTE
