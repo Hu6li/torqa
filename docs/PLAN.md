@@ -248,8 +248,9 @@ the realistic look's textures and patterns are being replaced step by step.
     - [ ] Water lies in the ground, never floating above it (streams and rivers done: laid on
       the ground); lakes still float where the ground at their shore is lower; better meeting
       of water, banks and bridges (with the shore band of Polish)
-    - [ ] Railways: tracks on ballast, level crossings, railway bridges and tunnels (railways
-      are dropped from the map data today)
+    - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
+      bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
+      off them (level crossings: the street lies over the bed)
     - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
       so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
