@@ -43,15 +43,130 @@ const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
+## Buildings switch between their models and their shells over this distance.
+const MODEL_FADE: float = 40.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
 const CAMERA_SMOOTHING: float = 6.0
 const HEADING_SMOOTHING: float = 4.0
+## The free camera of simulated rides (#53): metres per second, and radians per pixel of mouse.
+const FREE_SPEED: float = 25.0
+const FREE_LOOK: float = 0.004
+## A rider moving further than this between frames jumped: the camera follows at once.
+const JUMP_M: float = 50.0
+## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
+## scales how far terrain and details are drawn. MSAA stays at 2×: at 4× a few distant pixels
+## broke and the glow spread them into bright blobs.
+const QUALITY: Dictionary[String, Dictionary] = {
+	"low":
+	{
+		"model_range": 200.0,
+		"grass_range": 0.0,
+		"grass_shadows": false,
+		"ground_detail": 0,
+		"shadow_atlas": 2048,
+		"shadow_distance": 180.0,
+		"shadow_splits": 2,
+		"soft_shadows": 0.0,
+		"ssao": false,
+		"ssil": false,
+		"sdfgi": false,
+		"volumetric_fog": false,
+		"glow": false,
+		"msaa": Viewport.MSAA_DISABLED,
+		"fxaa": true,
+		"render_scale": 0.77,
+		"cloud_octaves": 3,
+		"cloud_light_steps": 0,
+		"distance": 0.65,
+	},
+	"medium":
+	{
+		"model_range": 400.0,
+		"grass_range": 60.0,
+		"grass_shadows": false,
+		"ground_detail": 1,
+		"shadow_atlas": 4096,
+		"shadow_distance": 300.0,
+		"shadow_splits": 2,
+		"soft_shadows": 0.0,
+		"ssao": true,
+		"ssil": false,
+		"sdfgi": false,
+		"volumetric_fog": false,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 4,
+		"cloud_light_steps": 1,
+		"distance": 1.0,
+	},
+	"high":
+	{
+		"model_range": 550.0,
+		"grass_range": 100.0,
+		"grass_shadows": true,
+		"ground_detail": 2,
+		"shadow_atlas": 4096,
+		"shadow_distance": 500.0,
+		"shadow_splits": 4,
+		"soft_shadows": 0.5,
+		"ssao": true,
+		"ssil": true,
+		"sdfgi": false,
+		"volumetric_fog": true,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 5,
+		"cloud_light_steps": 3,
+		"distance": 1.35,
+	},
+	"ultra":
+	{
+		"model_range": 750.0,
+		"grass_range": 150.0,
+		"grass_shadows": true,
+		"ground_detail": 2,
+		"shadow_atlas": 8192,
+		"shadow_distance": 800.0,
+		"shadow_splits": 4,
+		"soft_shadows": 0.7,
+		"ssao": true,
+		"ssil": true,
+		"sdfgi": true,
+		"volumetric_fog": true,
+		"glow": true,
+		"msaa": Viewport.MSAA_2X,
+		"fxaa": false,
+		"render_scale": 1.0,
+		"cloud_octaves": 6,
+		"cloud_light_steps": 5,
+		"distance": 1.7,
+	},
+}
+## How fast the clouds drift, in cloud-layer units per second.
+const CLOUD_DRIFT: Vector2 = Vector2(0.004, 0.0015)
+# i18n-begin
+const FREE_CAMERA: String = "Free"
+# i18n-end
 
 var _torqa: TorqaApp
 var _chunk_count: int = 0
 var _next_chunk: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
+var _sky: ShaderMaterial = ShaderMaterial.new()
+var _cloud_offset: Vector2 = Vector2.ZERO
+## The current weather's cloudiness (0 clear, 1 overcast), for the fog of the preset.
+var _overcast: float = 0.0
+var _quality: Dictionary = QUALITY["medium"]
+## Draw-distance factor of the current preset.
+var _distance: float = 1.0
+## Flying freely instead of following the rider (simulated rides only).
+var _free: bool = false
+var _free_speed: float = 1.0
 var _heading: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
@@ -64,6 +179,12 @@ var _water_material: ShaderMaterial = ShaderMaterial.new()
 var _building_material: ShaderMaterial = ShaderMaterial.new()
 var _structure_material: StandardMaterial3D = StandardMaterial3D.new()
 var _conifer_mesh: ArrayMesh
+var _grass_mesh: ArrayMesh = _plant_mesh(false)
+var _flower_mesh: ArrayMesh = _plant_mesh(true)
+var _plant_material: ShaderMaterial = ShaderMaterial.new()
+## Other streets of the map (asphalt) and tracks and paths (gravel).
+var _street_material: ShaderMaterial = ShaderMaterial.new()
+var _track_material: ShaderMaterial = ShaderMaterial.new()
 var _broadleaf_mesh: ArrayMesh
 
 @onready var _terrain: Node3D = $Terrain
@@ -82,9 +203,14 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.world_ready.connect(_on_world_ready)
 
 
-## Cycles chase → first person → drone and returns the new mode's name.
+## Cycles chase → first person → drone (→ free in simulated rides) and returns the new
+## mode's name.
 func cycle_camera() -> String:
-	set_camera((_camera_mode + 1) % CameraMode.size())
+	if not _free and _camera_mode == CameraMode.DRONE and _torqa != null and _torqa.simulating():
+		_free = true
+		_avatar.show_rider(true)
+		return FREE_CAMERA
+	set_camera(CameraMode.CHASE if _free else (_camera_mode + 1) % CameraMode.size())
 	return camera_names()[_camera_mode]
 
 
@@ -103,6 +229,7 @@ func camera() -> int:
 
 ## Switches to camera `mode` (`CameraMode`).
 func set_camera(mode: int) -> void:
+	_free = false
 	_camera_mode = clampi(mode, 0, CameraMode.size() - 1) as CameraMode
 	# From the rider's own eyes only the bike is visible.
 	_avatar.show_rider(_camera_mode != CameraMode.FIRST_PERSON)
@@ -115,35 +242,91 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var azimuth: float = time["azimuth"]
 	# The light shines along its −z axis: from the sun's direction towards the ground.
 	_sun.rotation = Vector3(deg_to_rad(-elevation), deg_to_rad(180.0 - azimuth), 0.0)
-	var sky: ProceduralSkyMaterial = _environment.sky.sky_material as ProceduralSkyMaterial
 	var top: Color = time["top"]
 	var horizon: Color = time["horizon"]
 	var sun_color: Color = time["sun"]
 	var energy: float = time["energy"]
 	var overcast: float = 0.0
 	var fog: float = 0.00035
+	# Fair-weather clouds even on clear days: a bare gradient looked artificial.
+	var cover: float = 0.3
 	match weather:
 		"Cloudy":
 			overcast = 0.75
+			cover = 0.8
 		"Hazy":
 			overcast = 0.3
 			fog = 0.0016
+			cover = 0.45
 		"Rain":
 			overcast = 1.0
 			fog = 0.0012
+			cover = 1.0
+	_overcast = overcast
+	var wind: Dictionary[String, float] = {"Clear": 0.08, "Cloudy": 0.14, "Hazy": 0.04, "Rain": 0.2}
+	_plant_material.set_shader_parameter("wind_strength", wind.get(weather, 0.08))
 	var grey: Color = Color(0.6, 0.62, 0.65)
-	sky.sky_top_color = top.lerp(grey * 0.8, overcast)
-	sky.sky_horizon_color = horizon.lerp(grey, overcast)
-	sky.ground_horizon_color = sky.sky_horizon_color
-	sky.sun_angle_max = lerpf(25.0, 0.0, overcast)
+	var sky_top: Color = top.lerp(grey * 0.8, overcast)
+	var sky_horizon: Color = horizon.lerp(grey, overcast)
+	_sky.set_shader_parameter("top_color", sky_top)
+	_sky.set_shader_parameter("horizon_color", sky_horizon)
+	_sky.set_shader_parameter("cloud_cover", cover)
+	_sky.set_shader_parameter("cloud_darkness", lerpf(0.25, 0.6, overcast))
 	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
 	_sun.light_energy = energy * lerpf(1.0, 0.35, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
 	_environment.ambient_light_energy = lerpf(0.9, 1.25, overcast)
 	_environment.fog_density = fog
-	_environment.fog_light_color = sky.sky_horizon_color
+	_environment.fog_light_color = sky_horizon
+	_apply_fog_volume()
 	_rain.emitting = weather == "Rain"
-	_road_material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
+		material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+
+
+## Applies a graphics preset (`QUALITY` key, as `TorqaApp.graphics_quality()` names it).
+func apply_quality(name: String) -> void:
+	_quality = QUALITY.get(name, QUALITY["medium"])
+	var shadow_atlas: int = _quality["shadow_atlas"]
+	RenderingServer.directional_shadow_atlas_set_size(shadow_atlas, true)
+	_sun.directional_shadow_max_distance = _quality["shadow_distance"]
+	var splits: int = _quality["shadow_splits"]
+	_sun.directional_shadow_mode = (
+		DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		if splits == 4
+		else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	)
+	# A sun of real size casts soft shadows (PCSS): softer further from the caster.
+	_sun.light_angular_distance = _quality["soft_shadows"]
+	_environment.ssao_enabled = _quality["ssao"]
+	_environment.ssil_enabled = _quality["ssil"]
+	_environment.sdfgi_enabled = _quality["sdfgi"]
+	_environment.glow_enabled = _quality["glow"]
+	_apply_fog_volume()
+	var viewport: Viewport = get_viewport()
+	viewport.msaa_3d = _quality["msaa"]
+	viewport.screen_space_aa = (
+		Viewport.SCREEN_SPACE_AA_FXAA if _quality["fxaa"] else Viewport.SCREEN_SPACE_AA_DISABLED
+	)
+	var render_scale: float = _quality["render_scale"]
+	viewport.scaling_3d_mode = (
+		Viewport.SCALING_3D_MODE_FSR if render_scale < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+	)
+	viewport.scaling_3d_scale = render_scale
+	_sky.set_shader_parameter("cloud_octaves", _quality["cloud_octaves"])
+	_sky.set_shader_parameter("light_steps", _quality["cloud_light_steps"])
+	# Lighter presets refresh the sky's light over several frames.
+	_environment.sky.process_mode = (
+		Sky.PROCESS_MODE_INCREMENTAL if name in ["low", "medium"] else Sky.PROCESS_MODE_AUTOMATIC
+	)
+	var distance: float = _quality["distance"]
+	_set_distance(distance)
+	# Ground textures (R45): plain colours on Low, more detail and reach higher up.
+	_terrain_material.set_shader_parameter("detail", _quality["ground_detail"])
+	_terrain_material.set_shader_parameter("detail_distance", 450.0 * distance)
+	var ground_detail: int = _quality["ground_detail"]
+	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
+		material.set_shader_parameter("detail", mini(ground_detail, 1))
 
 
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
@@ -162,12 +345,37 @@ func reset_view() -> void:
 
 func _ready() -> void:
 	_terrain_material.shader = preload("res://shaders/terrain.gdshader")
+	for ground: String in ["grass", "forest_floor", "soil", "rock", "snow"]:
+		var uniform: String = "forest" if ground == "forest_floor" else ground
+		var folder: String = "res://assets/textures/%s/" % ground
+		_terrain_material.set_shader_parameter(uniform + "_albedo", load(folder + "albedo.jpg"))
+		_terrain_material.set_shader_parameter(uniform + "_normal", load(folder + "normal.jpg"))
 	_road_material.shader = preload("res://shaders/road.gdshader")
+	_road_material.set_shader_parameter(
+		"asphalt_albedo", load("res://assets/textures/asphalt/albedo.jpg")
+	)
+	_road_material.set_shader_parameter(
+		"asphalt_normal", load("res://assets/textures/asphalt/normal.jpg")
+	)
 	_water_material.shader = preload("res://shaders/water.gdshader")
 	_building_material.shader = preload("res://shaders/building.gdshader")
 	_structure_material.vertex_color_use_as_albedo = true
 	_structure_material.vertex_color_is_srgb = true
 	_structure_material.roughness = 0.9
+	_sky.shader = preload("res://shaders/sky.gdshader")
+	_environment.sky.sky_material = _sky
+	# Haze towards distant terrain takes the sky's colour (R45).
+	_environment.fog_aerial_perspective = 0.6
+	_plant_material.shader = preload("res://shaders/plants.gdshader")
+	for surface: Array in [[_street_material, "asphalt"], [_track_material, "gravel"]]:
+		var material: ShaderMaterial = surface[0]
+		var folder: String = "res://assets/textures/%s/" % surface[1]
+		material.shader = preload("res://shaders/street.gdshader")
+		material.set_shader_parameter("surface_albedo", load(folder + "albedo.jpg"))
+		material.set_shader_parameter("surface_normal", load(folder + "normal.jpg"))
+	_track_material.set_shader_parameter("tint", Color(0.5, 0.46, 0.4))
+	_track_material.set_shader_parameter("middle_grass", 1.0)
+	_track_material.set_shader_parameter("roughness", 0.95)
 	_conifer_mesh = _tree_mesh(true)
 	_broadleaf_mesh = _tree_mesh(false)
 	_rider.add_child(_avatar)
@@ -180,6 +388,11 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_build_some_chunks()
+	if visible:
+		_cloud_offset += CLOUD_DRIFT * delta
+		_sky.set_shader_parameter("cloud_offset", _cloud_offset)
+	if _free and visible:
+		_fly(delta)
 	if not visible or _torqa == null:
 		return
 	var state: Dictionary = _torqa.ride_state()
@@ -216,19 +429,64 @@ func _build_some_chunks() -> void:
 		var terrain_arrays: Dictionary = chunk["terrain"]
 		var building_arrays: Dictionary = chunk["buildings"]
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
-		ground.visibility_range_end = VISIBILITY_RANGE
+		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
+		for surface: Array in [["streets", _street_material], ["tracks", _track_material]]:
+			var arrays: Dictionary = chunk.get(surface[0], {})
+			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+			if not vertices.is_empty():
+				var material: ShaderMaterial = surface[1]
+				var way: MeshInstance3D = _mesh_instance(arrays, material)
+				way.visibility_range_end = VISIBILITY_RANGE * _distance
+				node.add_child(way)
 		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
-		buildings.visibility_range_end = DETAIL_RANGE
+		buildings.visibility_range_end = DETAIL_RANGE * _distance
 		node.add_child(buildings)
+		var modelled: Array = chunk.get("modelled", [])
+		for cell: Dictionary in modelled:
+			_add_modelled(node, cell)
 		for kind: String in ["conifers", "broadleaves"]:
 			var buffer: PackedFloat32Array = chunk[kind]
 			if buffer.is_empty():
 				continue
 			var mesh: ArrayMesh = _conifer_mesh if kind == "conifers" else _broadleaf_mesh
 			node.add_child(_trees(buffer, mesh))
+		var grass_range: float = _quality["grass_range"]
+		if grass_range > 0.0:
+			for kind: String in ["grass", "flowers"]:
+				var plants: PackedFloat32Array = chunk.get(kind, PackedFloat32Array())
+				if not plants.is_empty():
+					node.add_child(_plants(plants, kind == "flowers", grass_range))
 		_next_chunk += 1
 		built += 1
+
+
+## Buildings drawn as Blender-made models up close and as shells beyond `model_range`, the two
+## crossfading.
+func _add_modelled(node: Node3D, cell: Dictionary) -> void:
+	var model_range: float = _quality["model_range"]
+	var models: Dictionary = cell["models"]
+	for model: String in models:
+		var multimesh: MultiMesh = MultiMesh.new()
+		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.use_colors = true
+		multimesh.use_custom_data = true
+		multimesh.mesh = BuildingModels.mesh(model)
+		var buffer: PackedFloat32Array = models[model]
+		multimesh.instance_count = buffer.size() / 20
+		multimesh.buffer = buffer
+		var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+		instance.multimesh = multimesh
+		instance.visibility_range_end = model_range
+		instance.visibility_range_end_margin = MODEL_FADE
+		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		node.add_child(instance)
+	var shell_arrays: Dictionary = cell["shells"]
+	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material)
+	shells.visibility_range_begin = model_range
+	shells.visibility_range_begin_margin = MODEL_FADE
+	shells.visibility_range_end = DETAIL_RANGE * _distance
+	node.add_child(shells)
 
 
 func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
@@ -248,10 +506,76 @@ func _trees(buffer: PackedFloat32Array, mesh: ArrayMesh) -> MultiMeshInstance3D:
 	multimesh.buffer = buffer
 	var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	instance.multimesh = multimesh
-	instance.visibility_range_end = DETAIL_RANGE
+	instance.visibility_range_end = DETAIL_RANGE * _distance
 	instance.visibility_range_end_margin = 300.0
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return instance
+
+
+## Grass or flowers of a chunk, drawn near the camera only.
+func _plants(buffer: PackedFloat32Array, flowers: bool, range_m: float) -> MultiMeshInstance3D:
+	var instance: MultiMeshInstance3D = _trees(buffer, _flower_mesh if flowers else _grass_mesh)
+	instance.material_override = _plant_material
+	instance.visibility_range_end = range_m
+	instance.visibility_range_end_margin = range_m * 0.25
+	var shadows: bool = _quality["grass_shadows"]
+	instance.cast_shadow = (
+		GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if shadows
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	)
+	return instance
+
+
+## A grass tuft (blades leaning out from the root) or a flower clump (stems with heads),
+## about half a metre high. UV.y runs from root to tip for the wind; normals point up so the
+## plants light like the ground; flower heads have vertex alpha 0 for the shader to colour.
+static func _plant_mesh(flower: bool) -> ArrayMesh:
+	var tool: SurfaceTool = SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	tool.set_normal(Vector3.UP)
+	var blades: int = 3 if flower else 12
+	for i: int in range(blades):
+		var angle: float = TAU * float(i) / float(blades) + fmod(float(i) * 2.39, 1.0)
+		var out: Vector3 = Vector3(cos(angle), 0.0, sin(angle))
+		var side: Vector3 = Vector3(-out.z, 0.0, out.x)
+		var height: float = (0.55 if flower else 0.32) + fmod(float(i) * 0.137, 0.2)
+		var width: float = 0.012 if flower else 0.035
+		var root: Vector3 = out * (0.04 if flower else 0.06 + fmod(float(i) * 0.31, 0.08))
+		var tip: Vector3 = root + out * height * 0.35 + Vector3.UP * height
+		# Close to the grass texture's tones, so tufts blend into the ground they grow from.
+		var base_color: Color = Color(0.15, 0.24, 0.08)
+		var tip_color: Color = Color(0.34, 0.46, 0.17) if not flower else Color(0.28, 0.42, 0.15)
+		_add_blade(tool, root, tip, side * width, base_color, tip_color)
+		if flower:
+			# A head: two crossed petals' quads at the tip, marked by alpha 0.
+			var head: Color = Color(1, 1, 1, 0)
+			for axis: Vector3 in [side, out]:
+				_add_quad(tool, tip - axis * 0.045, tip + axis * 0.045, Vector3.UP * 0.05, head)
+	return tool.commit()
+
+
+static func _add_blade(
+	tool: SurfaceTool, root: Vector3, tip: Vector3, half: Vector3, base: Color, top: Color
+) -> void:
+	for vertex: Array in [
+		[root - half, base, 0.0],
+		[root + half, base, 0.0],
+		[tip, top, 1.0],
+	]:
+		var color: Color = vertex[1]
+		var along: float = vertex[2]
+		tool.set_color(color)
+		tool.set_uv(Vector2(0.5, along))
+		var position: Vector3 = vertex[0]
+		tool.add_vertex(position)
+
+
+static func _add_quad(tool: SurfaceTool, a: Vector3, b: Vector3, up: Vector3, color: Color) -> void:
+	for position: Vector3 in [a, b, b + up, a, b + up, a + up]:
+		tool.set_color(color)
+		tool.set_uv(Vector2(0.5, 1.0))
+		tool.add_vertex(position)
 
 
 func _follow_ride(state: Dictionary, delta: float) -> void:
@@ -270,9 +594,15 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	# Godot looks along −z (north); headings run clockwise from north, rotations anticlockwise.
 	var yaw: Basis = Basis(Vector3.UP, -_heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
-	_rider.transform = Transform3D(yaw * pitch, Vector3(east, elevation, -north))
+	var position: Vector3 = Vector3(east, elevation, -north)
+	# A jump (simulated rides): no gliding across the whole way.
+	if _rider.position.distance_to(position) > JUMP_M:
+		_placed = false
+	_rider.transform = Transform3D(yaw * pitch, position)
 	_place_ghost(state["ghost"], delta)
 
+	if _free:
+		return
 	var target: Transform3D = _camera_target(_rider.transform)
 	# First person is fixed to the head; smoothing its position would trail behind the rider.
 	if _placed and _camera_mode != CameraMode.FIRST_PERSON:
@@ -281,6 +611,69 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	else:
 		_camera.transform = target
 		_placed = true
+
+
+## Free camera: arrow keys move, R/F rise and sink, Shift is faster, the mouse wheel sets
+## the speed; drag with the right mouse button to look around.
+func _unhandled_input(event: InputEvent) -> void:
+	if not _free or not visible:
+		return
+	var motion: InputEventMouseMotion = event as InputEventMouseMotion
+	if motion != null and motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+		var turned: Vector3 = _camera.rotation
+		turned.y -= motion.relative.x * FREE_LOOK
+		turned.x = clampf(turned.x - motion.relative.y * FREE_LOOK, -1.5, 1.5)
+		turned.z = 0.0
+		_camera.rotation = turned
+		get_viewport().set_input_as_handled()
+	var wheel: InputEventMouseButton = event as InputEventMouseButton
+	if wheel != null and wheel.pressed:
+		if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_free_speed = minf(_free_speed * 1.25, 20.0)
+		elif wheel.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_free_speed = maxf(_free_speed / 1.25, 0.1)
+
+
+func _fly(delta: float) -> void:
+	var move: Vector3 = Vector3.ZERO
+	for binding: Array in [
+		[KEY_UP, Vector3.FORWARD],
+		[KEY_DOWN, Vector3.BACK],
+		[KEY_LEFT, Vector3.LEFT],
+		[KEY_RIGHT, Vector3.RIGHT],
+		[KEY_R, Vector3.UP],
+		[KEY_F, Vector3.DOWN],
+	]:
+		var key: Key = binding[0]
+		if Input.is_physical_key_pressed(key):
+			var direction: Vector3 = binding[1]
+			move += direction
+	if move == Vector3.ZERO:
+		return
+	var boost: float = 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0
+	_camera.position += _camera.basis * move.normalized() * FREE_SPEED * _free_speed * boost * delta
+
+
+## Volumetric fog on the presets that afford it, thicker in haze and rain.
+func _apply_fog_volume() -> void:
+	var volumetric: bool = _quality["volumetric_fog"]
+	_environment.volumetric_fog_enabled = volumetric
+	if volumetric:
+		# Extinction per metre: a light veil on clear days, thick in rain.
+		_environment.volumetric_fog_density = lerpf(0.0006, 0.004, _overcast)
+		_environment.volumetric_fog_albedo = _environment.fog_light_color
+		_environment.volumetric_fog_length = 300.0
+
+
+## Scales how far terrain and details are drawn, for the chunks built already too.
+func _set_distance(factor: float) -> void:
+	var change: float = factor / _distance
+	_distance = factor
+	for node: Node in _terrain.find_children("*", "GeometryInstance3D", true, false):
+		var geometry: GeometryInstance3D = node as GeometryInstance3D
+		if geometry.visibility_range_end > 0.0:
+			geometry.visibility_range_end *= change
+	_camera.far = VISIBILITY_RANGE * factor * 1.6
 
 
 ## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never

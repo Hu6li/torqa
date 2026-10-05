@@ -16,3 +16,4 @@
 !.vscode/extensions.json
 .idea/
 /screenshots/
+__pycache__/

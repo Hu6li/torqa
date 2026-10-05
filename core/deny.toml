@@ -6,6 +6,11 @@ all-features = true
 [advisories]
 unmaintained = "all"
 yanked = "deny"
+ignore = [
+    # `paste`, a finished compile-time macro, used by every release of rav1d (the AV1 decoder,
+    # ADR 0010); unmaintained, not vulnerable. Revisit when rav1d drops it.
+    { id = "RUSTSEC-2024-0436", reason = "compile-time macro of rav1d, unmaintained but finished" },
+]
 
 [licenses]
 confidence-threshold = 0.9
@@ -26,6 +31,8 @@ allow = [
     "CDLA-Permissive-2.0",
     # FFmpeg's Rust bindings (ffmpeg-next, ffmpeg-sys-next); permissive, GPL-compatible (FSF).
     "WTFPL",
+    # Public-domain dedication (to_method, via rav1d); GPL-compatible (FSF).
+    "CC0-1.0",
 ]
 
 [licenses.private]

@@ -8,6 +8,13 @@ use crate::MeshData;
 
 /// Size of the index cells.
 const CELL: f64 = 100.0;
+/// The road is drawn as a smooth curve through the route's points, sampled this often.
+const DRAW_STEP: f64 = 2.0;
+/// Skirts hang this far down from the road's edges, so wherever the ground falls away the
+/// road shows an edge rather than a gap below it...
+const SKIRT_DEPTH: f64 = 1.2;
+/// ...and reach this far out.
+const SKIRT_REACH: f64 = 0.6;
 
 #[derive(Debug, Clone, Copy)]
 struct Segment {
@@ -24,7 +31,17 @@ struct Segment {
     surface: Surface,
 }
 
-/// The route's centre line in local coordinates, indexed for nearest-point queries.
+/// A point of the route's centre line.
+#[derive(Debug, Clone, Copy)]
+struct Centre {
+    position: (f64, f64),
+    elevation: f64,
+    distance: f64,
+    surface: Surface,
+}
+
+/// The route's centre line in local coordinates, indexed for nearest-point queries. It is a
+/// smooth curve through the route's points, so bends look like a road's, not a polygon's.
 pub(crate) struct RoadIndex {
     segments: Vec<Segment>,
     cells: HashMap<(i64, i64), Vec<usize>>,
@@ -32,38 +49,38 @@ pub(crate) struct RoadIndex {
 
 impl RoadIndex {
     pub(crate) fn new(route: &Route, projection: &LocalProjection) -> Self {
-        let local: Vec<_> = route
+        let points: Vec<Centre> = route
             .points()
             .iter()
-            .map(|p| {
-                (
-                    projection.project(p.lat, p.lon),
-                    p.elevation.0,
-                    p.distance.0,
-                    p.surface,
-                )
+            .map(|p| Centre {
+                position: projection.project(p.lat, p.lon),
+                elevation: p.elevation.0,
+                distance: p.distance.0,
+                surface: p.surface,
             })
             .collect();
+        let local = smooth_curve(&points);
         let segments: Vec<Segment> = local
             .windows(2)
             .map(|w| Segment {
-                a: w[0].0,
-                b: w[1].0,
-                elevation_a: w[0].1,
-                elevation_b: w[1].1,
-                distance_a: w[0].2,
-                distance_b: w[1].2,
+                a: w[0].position,
+                b: w[1].position,
+                elevation_a: w[0].elevation,
+                elevation_b: w[1].elevation,
+                distance_a: w[0].distance,
+                distance_b: w[1].distance,
                 // A segment touching a bridge or tunnel belongs to it.
-                surface: if w[0].3 == Surface::Ground {
-                    w[1].3
+                surface: if w[0].surface == Surface::Ground {
+                    w[1].surface
                 } else {
-                    w[0].3
+                    w[0].surface
                 },
             })
             .collect();
         let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
         for (index, segment) in segments.iter().enumerate() {
-            // Segments are 10 m long, far shorter than a cell: both end cells cover them.
+            // Segments are a few metres long, far shorter than a cell: both end cells cover
+            // them.
             for point in [segment.a, segment.b] {
                 let list = cells.entry(cell_of(point.0, point.1)).or_default();
                 if list.last() != Some(&index) {
@@ -72,6 +89,61 @@ impl RoadIndex {
             }
         }
         Self { segments, cells }
+    }
+
+    /// Whether a way through (`east`, `north`) heading in `direction` (unit) runs along the road
+    /// within `reach` there, rather than joining or crossing it.
+    pub(crate) fn runs_along(
+        &self,
+        east: f64,
+        north: f64,
+        reach: f64,
+        direction: (f64, f64),
+    ) -> bool {
+        let (low_e, low_n) = cell_of(east - reach, north - reach);
+        let (high_e, high_n) = cell_of(east + reach, north + reach);
+        (low_e..=high_e).any(|ce| {
+            (low_n..=high_n).any(|cn| {
+                self.cells
+                    .get(&(ce, cn))
+                    .into_iter()
+                    .flatten()
+                    .any(|&index| {
+                        let segment = &self.segments[index];
+                        let (d, _, _) = closest_on_segment(segment, east, north);
+                        let (de, dn) = self::direction(segment);
+                        d <= reach && (de * direction.0 + dn * direction.1).abs() > 0.8
+                    })
+            })
+        })
+    }
+
+    /// Every piece of road within `reach`: its distance, the road's elevation there and what
+    /// carries it. Where the road passes a place more than once (hairpins), each pass is there.
+    pub(crate) fn near(&self, east: f64, north: f64, reach: f64) -> Vec<(f64, f64, Surface)> {
+        let (low_e, low_n) = cell_of(east - reach, north - reach);
+        let (high_e, high_n) = cell_of(east + reach, north + reach);
+        let mut found = Vec::new();
+        for ce in low_e..=high_e {
+            for cn in low_n..=high_n {
+                for &index in self.cells.get(&(ce, cn)).into_iter().flatten() {
+                    let segment = &self.segments[index];
+                    // Listed in both its ends' cells: look at it from the first one in range.
+                    let first = cell_of(segment.a.0, segment.a.1);
+                    let in_range = |(e, n): (i64, i64)| {
+                        (low_e..=high_e).contains(&e) && (low_n..=high_n).contains(&n)
+                    };
+                    if first != (ce, cn) && in_range(first) {
+                        continue;
+                    }
+                    let candidate = closest_on_segment(segment, east, north);
+                    if candidate.0 <= reach {
+                        found.push(candidate);
+                    }
+                }
+            }
+        }
+        found
     }
 
     /// Distance to the closest point of the road within `max_distance`, the road's elevation
@@ -150,40 +222,126 @@ impl RoadIndex {
         runs
     }
 
-    /// A ribbon `2 × half_width` wide along the centre line.
+    /// A ribbon `2 × half_width` wide along the centre line, with skirts hanging from its
+    /// edges. Texture coordinates: `u` 0–1 across the road (below 0 and above 1 on the
+    /// skirts), `v` the distance in metres.
     #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
     pub(crate) fn mesh(&self, half_width: f64) -> MeshData {
         let mut mesh = MeshData::default();
         let Some(last) = self.segments.last() else {
             return mesh;
         };
-        // Centre points with their direction; the last point reuses the last segment's.
-        let centres = self
+        let centres: Vec<((f64, f64), f64, f64)> = self
             .segments
             .iter()
-            .map(|s| (s.a, s.elevation_a, s.distance_a, direction(s)))
-            .chain([(last.b, last.elevation_b, last.distance_b, direction(last))]);
-        for (index, ((east, north), elevation, distance, (de, dn))) in centres.enumerate() {
+            .map(|s| (s.a, s.elevation_a, s.distance_a))
+            .chain([(last.b, last.elevation_b, last.distance_b)])
+            .collect();
+        for (index, &((east, north), elevation, distance)) in centres.iter().enumerate() {
+            // Across the road square to the curve: halfway between the pieces either side.
+            let before = self.segments[index.saturating_sub(1)];
+            let after = self.segments[index.min(self.segments.len() - 1)];
+            let (d1, d2) = (direction(&before), direction(&after));
+            let (de, dn) = (d1.0 + d2.0, d1.1 + d2.1);
+            let length = de.hypot(dn).max(f64::EPSILON);
             // Right of travel is the direction turned clockwise by 90°.
-            let (re, rn) = (dn, -de);
-            for (side, u) in [(-1.0, 0.0), (1.0, 1.0)] {
-                let (e, n) = (
-                    east + re * half_width * side,
-                    north + rn * half_width * side,
-                );
-                mesh.vertices.push([e as f32, elevation as f32, -n as f32]);
-                mesh.normals.push([0.0, 1.0, 0.0]);
+            let (re, rn) = (dn / length, -de / length);
+            let at = |across: f64, drop: f64| {
+                [
+                    (east + re * across) as f32,
+                    (elevation - drop) as f32,
+                    (-(north + rn * across)) as f32,
+                ]
+            };
+            let reach = half_width + SKIRT_REACH;
+            // Left skirt, left edge, right edge, right skirt.
+            let ring = [
+                (
+                    at(-reach, SKIRT_DEPTH),
+                    [-re as f32, 0.5, rn as f32],
+                    -0.2_f32,
+                ),
+                (at(-half_width, 0.0), [0.0, 1.0, 0.0], 0.0),
+                (at(half_width, 0.0), [0.0, 1.0, 0.0], 1.0),
+                (at(reach, SKIRT_DEPTH), [re as f32, 0.5, -rn as f32], 1.2),
+            ];
+            for (vertex, normal, u) in ring {
+                mesh.vertices.push(vertex);
+                let length =
+                    (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+                mesh.normals.push(normal.map(|v| v / length));
                 mesh.uvs.push([u, distance as f32]);
             }
             if index > 0 {
-                let base = u32::try_from(index * 2).expect("road fits u32");
-                let (left_0, right_0, left_1, right_1) = (base - 2, base - 1, base, base + 1);
-                mesh.indices
-                    .extend([left_0, left_1, right_1, left_0, right_1, right_0]);
+                let base = u32::try_from(index * 4).expect("road fits u32");
+                let previous = base - 4;
+                for k in 0..3 {
+                    let (a0, b0, a1, b1) = (previous + k, previous + k + 1, base + k, base + k + 1);
+                    mesh.indices.extend([a0, a1, b1, a0, b1, b0]);
+                }
             }
         }
         mesh
     }
+}
+
+/// A smooth curve through the route's points (centripetal Catmull-Rom), every `DRAW_STEP`
+/// metres or so. Elevation and distance change linearly between the points, so the road's
+/// profile stays as smoothed on import.
+fn smooth_curve(points: &[Centre]) -> Vec<Centre> {
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let mut out = Vec::with_capacity(points.len() * 5);
+    for i in 0..points.len() - 1 {
+        let (p1, p2) = (points[i], points[i + 1]);
+        let p0 = points[i.saturating_sub(1)];
+        let p3 = points[(i + 2).min(points.len() - 1)];
+        let length = distance(p1.position, p2.position);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // short segments
+        let pieces = ((length / DRAW_STEP).ceil() as usize).max(1);
+        for k in 0..pieces {
+            #[allow(clippy::cast_precision_loss)] // few pieces
+            let u = k as f64 / pieces as f64;
+            out.push(Centre {
+                position: catmull_rom([p0.position, p1.position, p2.position, p3.position], u),
+                elevation: p1.elevation + (p2.elevation - p1.elevation) * u,
+                distance: p1.distance + (p2.distance - p1.distance) * u,
+                // Between a structure's point and the ground, the piece belongs to the
+                // structure, as the route's segments do.
+                surface: if u == 0.0 || p1.surface != Surface::Ground {
+                    p1.surface
+                } else {
+                    p2.surface
+                },
+            });
+        }
+    }
+    out.extend(points.last());
+    out
+}
+
+/// The point `u` (0–1) of the way from `p[1]` to `p[2]` on a centripetal Catmull-Rom spline.
+fn catmull_rom(p: [(f64, f64); 4], u: f64) -> (f64, f64) {
+    let knot = |a: (f64, f64), b: (f64, f64)| distance(a, b).sqrt().max(1e-6);
+    let t1 = knot(p[0], p[1]);
+    let t2 = t1 + knot(p[1], p[2]);
+    let t3 = t2 + knot(p[2], p[3]);
+    let t = t1 + (t2 - t1) * u;
+    let mix = |a: (f64, f64), b: (f64, f64), from: f64, to: f64| {
+        let w = (t - from) / (to - from);
+        (a.0 + (b.0 - a.0) * w, a.1 + (b.1 - a.1) * w)
+    };
+    let a1 = mix(p[0], p[1], 0.0, t1);
+    let a2 = mix(p[1], p[2], t1, t2);
+    let a3 = mix(p[2], p[3], t2, t3);
+    let b1 = mix(a1, a2, 0.0, t2);
+    let b2 = mix(a2, a3, t1, t3);
+    mix(b1, b2, t1, t2)
+}
+
+fn distance(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (b.0 - a.0).hypot(b.1 - a.1)
 }
 
 /// A point on the road's centre line with its direction of travel.

@@ -78,23 +78,28 @@ func _ride_settings() -> void:
 	var options: RideOptions = RideOptions.new()
 	root.add_child(options)
 	var wanted: Dictionary = {
-		"camera": 2, "difficulty": 75.0, "flat_descents": true, "time": "Evening", "weather": "Rain"
+		"camera": 2,
+		"difficulty": 75.0,
+		"flat_descents": true,
+		"time": "Evening",
+		"weather": "Rain",
+		"video_sound": false,
 	}
 	options.set_options(wanted)
 	_check(options.options() == wanted, "options round trip: %s" % options.options())
 	# Video courses: only the trainer's options are shown; the others keep their values.
-	options.show_world_options(false)
+	options.show_option_groups(false, true)
 	var shown: PackedStringArray = PackedStringArray()
 	for i: int in range(0, options.get_child_count(), options.columns):
 		var caption: Label = options.get_child(i) as Label
 		if caption.visible:
 			shown.append(caption.text)
 	_check(
-		shown == PackedStringArray(["Trainer difficulty", "Descents"]),
+		shown == PackedStringArray(["Trainer difficulty", "Descents", "Sound"]),
 		"video course options: %s" % shown
 	)
 	_check(options.options() == wanted, "hidden options keep their values")
-	options.show_world_options(true)
+	options.show_option_groups(true, false)
 	options.free()
 
 	var dialog: RideSettingsDialog = RideSettingsDialog.new()
@@ -139,21 +144,43 @@ func _video_view() -> void:
 func _video_alignment() -> void:
 	var dialog: VideoAlignDialog = VideoAlignDialog.new()
 	root.add_child(dialog)
-	var results: Array = []
-	dialog.aligned.connect(
-		func(start_s: float, end_s: float) -> void: results.append([start_s, end_s])
+	var results: Array[PackedVector2Array] = []
+	dialog.aligned.connect(func(marks: PackedVector2Array) -> void: results.append(marks))
+	var profile: PackedVector2Array = [Vector2(0, 500), Vector2(2000, 600)]
+	dialog.edit(null, "", 60.0, 2000.0, profile, PackedVector2Array())
+	_check(
+		dialog.marks() == PackedVector2Array([Vector2(0, 0), Vector2(2000, 60)]),
+		"start and end span the whole video and route: %s" % [dialog.marks()]
 	)
-	dialog.edit(null, "", 60.0, 0.0, 60.0)
-	_check(dialog.marks() == [0.0, 60.0], "marks span the whole video: %s" % [dialog.marks()])
 	_check(not dialog.get_ok_button().disabled, "the whole video is a valid alignment")
 	var sliders: Array[Node] = dialog.find_children("*", "HSlider", true, false)
-	(sliders[0] as HSlider).value = 12.5
-	(sliders[1] as HSlider).value = 10.0
-	_check(dialog.get_ok_button().disabled, "an end before the start cannot be confirmed")
-	(sliders[1] as HSlider).value = 48.0
-	_check(not dialog.get_ok_button().disabled, "valid again once the end is after the start")
+	var time_slider: HSlider = sliders[0]
+	var distance_slider: HSlider = sliders[1]
+	_check(not distance_slider.editable, "the start stays at the route's start")
+	dialog.add_point()
+	_check(
+		dialog.marks()[1] == Vector2(1000, 30), "a point halfway in between: %s" % [dialog.marks()]
+	)
+	_check(distance_slider.editable, "points in between move along the route")
+	distance_slider.value = 500.0
+	time_slider.value = 40.0
+	_check(dialog.marks()[1] == Vector2(500, 40), "the point moved: %s" % [dialog.marks()])
+	dialog.select(2)
+	time_slider.value = 35.0
+	_check(dialog.get_ok_button().disabled, "the end before a point cannot be confirmed")
+	time_slider.value = 55.0
+	_check(not dialog.get_ok_button().disabled, "valid again once in order")
 	dialog.confirmed.emit()
-	_check(results == [[12.5, 48.0]], "aligned with the chosen marks: %s" % [results])
+	_check(
+		results == [PackedVector2Array([Vector2(0, 0), Vector2(500, 40), Vector2(2000, 55)])],
+		"aligned with the chosen points: %s" % [results]
+	)
+	dialog.select(1)
+	dialog.remove_point()
+	_check(dialog.marks().size() == 2, "a point removed: %s" % [dialog.marks()])
+	dialog.select(0)
+	dialog.remove_point()
+	_check(dialog.marks().size() == 2, "the start stays")
 	dialog.free()
 	# Importing a video without GPS explains how to add it to its course instead.
 	var courses: CoursesTab = CoursesTab.new()

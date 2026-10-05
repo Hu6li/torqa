@@ -105,6 +105,24 @@ pub struct VideoReference {
     /// timestamps pair them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_s: Option<f64>,
+    /// All marks of a video aligned by hand, `[distance m, video s]` from the route's start to
+    /// its end (the first and last are `offset_s` and `end_s`); empty for courses with only
+    /// those two.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<[f64; 2]>,
+    /// Whether the route is a real place; `false` for courses known only by distance and
+    /// slope (Tacx RLV), which are ridden along their video only.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub located: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes the field by reference
+fn is_yes(value: &bool) -> bool {
+    *value
 }
 
 impl VideoReference {
@@ -400,6 +418,8 @@ mod tests {
             size: 10,
             offset_s: 0.0,
             end_s: None,
+            marks: Vec::new(),
+            located: true,
         };
 
         assert_eq!(reference.locate(&dir.join("ride.tqc")), Some(video.clone()));

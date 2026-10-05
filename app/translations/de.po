@@ -571,8 +571,8 @@ msgstr "Geräte"
 msgid "Devices & Settings"
 msgstr "Geräte & Einstellungen"
 
-msgid "Import route, video or course…"
-msgstr "Route, Video oder Strecke importieren …"
+msgid "GPX routes, videos with GPS, route videos and course files"
+msgstr "GPX-Routen, Videos mit GPS, Streckenvideos und Streckendateien"
 
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr "Noch keine Strecken. Importiere eine GPX-Route oder ein Video, um deine erste Strecke vorzubereiten."
@@ -586,8 +586,8 @@ msgstr "Routen, Videos und Strecken"
 msgid "GPX routes"
 msgstr "GPX-Routen"
 
-msgid "Videos with GPS, Incyclist route videos (.xml)"
-msgstr "Videos mit GPS, Incyclist-Streckenvideos (.xml)"
+msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
+msgstr "Videos mit GPS, Streckenvideos (Incyclist .xml, Tacx .rlv)"
 
 msgid "Torqa courses"
 msgstr "Torqa-Strecken"
@@ -631,20 +631,12 @@ msgstr "Ausrichten"
 msgid "Video aligned with the route."
 msgstr "Video auf die Route ausgerichtet."
 
-msgid "Route start"
-msgstr "Start der Route"
 
-msgid "Route end"
-msgstr "Ende der Route"
 
-msgid "Pick where the route starts and ends in the video."
-msgstr "Wähle, wo die Route im Video beginnt und endet."
 
 msgid "In between, the video follows your distance evenly."
 msgstr "Dazwischen folgt das Video gleichmässig deiner Distanz."
 
-msgid "The route must end after it starts."
-msgstr "Die Route muss nach ihrem Start enden."
 
 msgid "Align video with route"
 msgstr "Video auf Route ausrichten"
@@ -681,3 +673,126 @@ msgstr "2. Öffne diese Strecke."
 
 msgid "Choose a video of this course"
 msgstr "Video dieser Strecke wählen"
+
+msgid "Point"
+msgstr "Punkt"
+
+msgid "Points must follow each other on the route and in the video."
+msgstr "Die Punkte müssen auf der Route und im Video aufeinander folgen."
+
+msgid "Position on the route"
+msgstr "Ort auf der Route"
+
+msgid "Remove point"
+msgstr "Punkt entfernen"
+
+msgid "Add points where the footage stops or changes speed."
+msgstr "Füge Punkte hinzu, wo das Video anhält oder das Tempo wechselt."
+
+msgid "Pair moments of the video with places on the route."
+msgstr "Ordne Momente im Video Orten auf der Route zu."
+
+msgid "End"
+msgstr "Ende"
+
+msgid "Add point"
+msgstr "Punkt hinzufügen"
+
+msgid "Start"
+msgstr "Start"
+
+msgid "Sync points"
+msgstr "Synchronisationspunkte"
+
+msgid "Sound"
+msgstr "Ton"
+
+msgid "Play the video's sound"
+msgstr "Ton des Videos abspielen"
+
+msgid "This course has a video. Ride along it, or in the 3D world?"
+msgstr "Diese Strecke hat ein Video. Mit dem Video fahren oder in der 3D-Welt?"
+
+msgid "How do you want to ride?"
+msgstr "Wie möchtest du fahren?"
+
+msgid "Video removed: this course is ridden in 3D."
+msgstr "Video entfernt: Diese Strecke fährst du in 3D."
+
+msgid "In 3D"
+msgstr "In 3D"
+
+msgid "Along the video"
+msgstr "Mit dem Video"
+
+msgid "Course name in use"
+msgstr "Streckenname bereits vergeben"
+
+msgid "Name the course"
+msgstr "Strecke benennen"
+
+msgid "Keep both"
+msgstr "Beide behalten"
+
+msgid "Import"
+msgstr "Importieren"
+
+msgid "A course named “%s” exists already. Replace it, or keep both?"
+msgstr "Eine Strecke namens «%s» gibt es schon. Ersetzen oder beide behalten?"
+
+msgid "Replace"
+msgstr "Ersetzen"
+
+msgid "Click: jump there"
+msgstr "Klicken: dorthin springen"
+
+msgid "Simulation"
+msgstr "Simulation"
+
+msgid "Click the map or profile to jump · + / − speed · C: free camera"
+msgstr "Karte oder Profil anklicken zum Springen · + / − Tempo · C: freie Kamera"
+
+msgid "Click: jump there · corner: close view / whole route"
+msgstr "Klicken: dorthin springen · Ecke: Nahansicht / ganze Route"
+
+msgid "Simulation: %d×"
+msgstr "Simulation: %d×"
+
+msgid "Free"
+msgstr "Frei"
+
+msgid "Graphics"
+msgstr "Grafik"
+
+msgid "Quality"
+msgstr "Qualität"
+
+msgid "Low"
+msgstr "Niedrig"
+
+msgid "Medium"
+msgstr "Mittel"
+
+msgid "High"
+msgstr "Hoch"
+
+msgid "Ultra"
+msgstr "Ultra"
+
+msgid "Applies from the next ride."
+msgstr "Gilt ab der nächsten Fahrt."
+
+msgid "For weaker computers: shorter view, simpler shadows and sky."
+msgstr "Für schwächere Computer: kürzere Sicht, einfachere Schatten und Himmel."
+
+msgid "60 fps on a MacBook with M1: soft light, shadows and haze."
+msgstr "60 fps auf einem MacBook mit M1: weiches Licht, Schatten und Dunst."
+
+msgid "For stronger GPUs: softer shadows, bounced light, light fog, more distance."
+msgstr "Für stärkere Grafikkarten: weichere Schatten, indirektes Licht, leichter Nebel, mehr Sichtweite."
+
+msgid "Everything on, including global illumination: for fast GPUs."
+msgstr "Alles an, auch globale Beleuchtung: für schnelle Grafikkarten."
+
+msgid "Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother."
+msgstr "Unter 60 fps: Eine tiefere Grafikqualität (Geräte & Einstellungen) läuft flüssiger."

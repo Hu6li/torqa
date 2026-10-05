@@ -58,6 +58,18 @@ impl LandIndex {
         Self { polygons, cells }
     }
 
+    /// Whether an area of `cover` contains the point, whatever else covers it too.
+    pub(crate) fn has(&self, east: f64, north: f64, cover: LandCover) -> bool {
+        self.cells
+            .get(&cell_of(east, north))
+            .is_some_and(|indices| {
+                indices
+                    .iter()
+                    .map(|&i| &self.polygons[i])
+                    .any(|polygon| polygon.cover == cover && contains(&polygon.rings, east, north))
+            })
+    }
+
     /// The land cover at a point; where areas overlap, the most specific one wins.
     pub(crate) fn cover_at(&self, east: f64, north: f64) -> Option<LandCover> {
         self.cells
@@ -78,7 +90,7 @@ fn priority(cover: LandCover) -> u8 {
         LandCover::Forest => 4,
         LandCover::Orchard => 3,
         LandCover::Farmland => 2,
-        LandCover::Residential => 1,
+        LandCover::Residential | LandCover::Industrial => 1,
         LandCover::Meadow => 0,
     }
 }
@@ -111,6 +123,7 @@ pub(crate) fn color(cover: Option<LandCover>) -> [f32; 4] {
         Some(LandCover::Farmland) => [0.55, 0.53, 0.30, 0.0],
         Some(LandCover::Orchard) => [0.38, 0.48, 0.22, 0.0],
         Some(LandCover::Residential) => [0.42, 0.45, 0.38, 0.0],
+        Some(LandCover::Industrial) => [0.44, 0.45, 0.41, 0.0],
         Some(LandCover::Rock) => [0.45, 0.43, 0.40, 0.0],
         Some(LandCover::Water) => [0.10, 0.22, 0.30, 1.0],
     }

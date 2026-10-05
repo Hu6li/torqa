@@ -38,6 +38,9 @@ var _video_dialog: FileDialog = FileDialog.new()
 var _align_dialog: VideoAlignDialog = VideoAlignDialog.new()
 ## The video being added, while its alignment is set; empty when moving the marks.
 var _adding_video: String = ""
+## Courses with a video are ridden along it or in 3D, as chosen when riding (#44).
+var _view_dialog: AcceptDialog = AcceptDialog.new()
+var _along_video: bool = false
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -86,7 +89,8 @@ func ride_options() -> Dictionary:
 
 ## Builds the course's 3D world for riding; `ready_to_ride` follows, at once if it is built.
 func build() -> void:
-	if _torqa.build_world():
+	_torqa.ride_along_video(_along_video)
+	if _along_video or _torqa.build_world():
 		ready_to_ride.emit()
 		return
 	_building = true
@@ -169,9 +173,7 @@ func _init() -> void:
 	_ride_button.custom_minimum_size = Vector2(0, 56)
 	_ride_button.add_theme_font_size_override("font_size", 22)
 	_ride_button.add_theme_stylebox_override("normal", UiTheme.accent_button())
-	_ride_button.pressed.connect(
-		func() -> void: ride_requested.emit(_options.options(), _ghost.choice())
-	)
+	_ride_button.pressed.connect(_on_ride_pressed)
 	right.add_child(_ride_button)
 	panel.add_child(right)
 	add_child(panel)
@@ -181,6 +183,13 @@ func _init() -> void:
 	_confirm_delete.ok_button_text = tr("Delete")
 	_confirm_delete.confirmed.connect(_delete)
 	add_child(_confirm_delete)
+	_view_dialog.title = tr("How do you want to ride?")
+	_view_dialog.dialog_text = tr("This course has a video. Ride along it, or in the 3D world?")
+	_view_dialog.ok_button_text = tr("Along the video")
+	_view_dialog.add_button(tr("In 3D"), false, "world")
+	_view_dialog.confirmed.connect(func() -> void: _ride(true))
+	_view_dialog.custom_action.connect(_on_view_action)
+	add_child(_view_dialog)
 	_align_dialog.aligned.connect(_on_aligned)
 	add_child(_align_dialog)
 	_video_dialog.title = tr("Choose a video of this course")
@@ -188,7 +197,7 @@ func _init() -> void:
 	_video_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	var videos: PackedStringArray = PackedStringArray()
 	for extension: String in TorqaApp.video_extensions():
-		if extension != "xml":
+		if not extension in ["xml", "rlv"]:
 			videos.append("*." + extension)
 	_video_dialog.filters = PackedStringArray([", ".join(videos) + " ; " + tr("Videos")])
 	_video_dialog.use_native_dialog = true
@@ -281,11 +290,34 @@ func _on_failed(message: String) -> void:
 
 func _show_video_buttons() -> void:
 	var video: Dictionary = _torqa.video()
-	_options.show_world_options(video.is_empty())
-	var by_hand: bool = video.get("aligned_by_hand", false)
+	# A video course is ridden either way, unless it has no place (Tacx RLV): then only along
+	# its video, which it keeps.
+	var located: bool = video.get("located", true)
+	_options.show_option_groups(located, not video.is_empty())
 	_add_video_button.visible = video.is_empty()
-	_align_button.visible = by_hand
-	_remove_video_button.visible = by_hand
+	_align_button.visible = video.get("aligned_by_hand", false)
+	_remove_video_button.visible = not video.is_empty() and located
+
+
+func _on_ride_pressed() -> void:
+	var video: Dictionary = _torqa.video()
+	if video.is_empty():
+		_ride(false)
+	elif not video.get("located", true):
+		_ride(true)
+	else:
+		_view_dialog.popup_centered()
+
+
+func _on_view_action(action: StringName) -> void:
+	_view_dialog.hide()
+	if action == &"world":
+		_ride(false)
+
+
+func _ride(along_video: bool) -> void:
+	_along_video = along_video
+	ride_requested.emit(_options.options(), _ghost.choice())
 
 
 func _on_video_chosen(path: String) -> void:
@@ -294,7 +326,7 @@ func _on_video_chosen(path: String) -> void:
 		return
 	_adding_video = path
 	var duration_s: float = probe["duration_s"]
-	_align_dialog.edit(_torqa, path, duration_s, 0.0, duration_s)
+	_edit_alignment(path, duration_s, PackedVector2Array())
 
 
 func _open_alignment() -> void:
@@ -304,28 +336,32 @@ func _open_alignment() -> void:
 	_adding_video = ""
 	var path: String = video["path"]
 	var duration_s: float = video["duration_s"]
-	var start_s: float = video["offset_s"]
-	var end_s: float = video["end_s"]
-	_align_dialog.edit(_torqa, path, duration_s, start_s, end_s)
+	var marks: PackedVector2Array = video["marks"]
+	_edit_alignment(path, duration_s, marks)
 
 
-func _on_aligned(start_s: float, end_s: float) -> void:
+func _edit_alignment(path: String, duration_s: float, marks: PackedVector2Array) -> void:
+	var profile: PackedVector2Array = _torqa.elevation_profile(600)
+	var length_m: float = profile[profile.size() - 1].x if not profile.is_empty() else 0.0
+	var imperial: bool = _torqa.profile().get("units", "metric") == "imperial"
+	_align_dialog.edit(_torqa, path, duration_s, length_m, profile, marks, imperial)
+
+
+func _on_aligned(marks: PackedVector2Array) -> void:
 	if _adding_video.is_empty():
-		if _torqa.align_video(start_s, end_s):
+		if _torqa.align_video(marks):
 			_status.text = tr("Video aligned with the route.")
 		return
-	if _torqa.add_video(_adding_video, start_s, end_s):
+	if _torqa.add_video(_adding_video, marks):
 		_status.text = tr("Video added: this course is ridden along it now.")
 		_show_video_buttons()
 		course_changed.emit()
 	_adding_video = ""
 
 
-## Back to riding the course in 3D; the course reloads.
+## Back to riding the course in 3D only.
 func _remove_video() -> void:
 	if _torqa.remove_video():
-		_loading_route = true
-		_ride_button.disabled = true
-		for button: Button in [_add_video_button, _align_button, _remove_video_button]:
-			button.hide()
+		_status.text = tr("Video removed: this course is ridden in 3D.")
+		_show_video_buttons()
 		course_changed.emit()

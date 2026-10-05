@@ -3,11 +3,22 @@ extends Control
 ## The route's elevation profile as a clean area chart: ridden part in the accent colour, the
 ## rest light, a crisp outline and the rider's position.
 
+## A simulated ride's rider should jump to `distance_m` along the route (#53).
+signal jump_requested(distance_m: float)
+
 const PADDING: float = 2.0
 ## The smallest elevation range drawn, so flat routes do not look mountainous.
 const MIN_RANGE_M: float = 40.0
 const AHEAD: Color = Color(1, 1, 1, 0.13)
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
+
+## Clicks jump the rider there (simulated rides).
+var jumpable: bool = false:
+	set(value):
+		jumpable = value
+		mouse_filter = MOUSE_FILTER_STOP if value else MOUSE_FILTER_IGNORE
+		tooltip_text = tr("Click: jump there") if value else ""
+		mouse_default_cursor_shape = CURSOR_POINTING_HAND if value else CURSOR_ARROW
 
 ## `(distance m, elevation m)` points.
 var _profile: PackedVector2Array = PackedVector2Array()
@@ -101,6 +112,16 @@ func _elevation_at(distance_m: float) -> float:
 			var t: float = (distance_m - a.x) / maxf(b.x - a.x, 0.001)
 			return lerpf(a.y, b.y, clampf(t, 0.0, 1.0))
 	return _profile[_profile.size() - 1].y
+
+
+func _gui_input(event: InputEvent) -> void:
+	var click: InputEventMouseButton = event as InputEventMouseButton
+	if not jumpable or _profile.size() < 2 or click == null or not click.pressed:
+		return
+	if click.button_index == MOUSE_BUTTON_LEFT:
+		var length: float = _profile[_profile.size() - 1].x
+		jump_requested.emit(clampf(click.position.x / maxf(size.x, 1.0), 0.0, 1.0) * length)
+		accept_event()
 
 
 func _to_screen(point: Vector2) -> Vector2:

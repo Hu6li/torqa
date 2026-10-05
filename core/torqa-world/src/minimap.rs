@@ -1,7 +1,7 @@
 //! A flat map of the corridor for the minimap, in a dark palette matching the HUD: land cover, water, roads and buildings as one
 //! coloured triangle list in metres east/north of the route start.
 
-use torqa_osm::{LandCover, MapData};
+use torqa_osm::{LandCover, MapData, RoadClass};
 use torqa_routes::LocalProjection;
 
 use crate::CORRIDOR;
@@ -69,8 +69,10 @@ pub(crate) fn build(map: &MapData, projection: &LocalProjection, road: &RoadInde
         );
     }
     for minor_first in [false, true] {
-        for street in map.roads.iter().filter(|r| r.major == minor_first) {
-            let (width, color) = if street.major {
+        // Paths would clutter the small map.
+        let drawn = map.roads.iter().filter(|r| r.class != RoadClass::Path);
+        for street in drawn.filter(|r| r.major() == minor_first) {
+            let (width, color) = if street.major() {
                 (9.0, MAJOR_ROAD)
             } else {
                 (5.0, MINOR_ROAD)
@@ -92,7 +94,7 @@ fn layer(cover: LandCover) -> u8 {
     match cover {
         LandCover::Meadow => 0,
         LandCover::Farmland => 1,
-        LandCover::Residential => 2,
+        LandCover::Residential | LandCover::Industrial => 2,
         LandCover::Orchard => 3,
         LandCover::Forest => 4,
         LandCover::Rock => 5,
@@ -104,7 +106,7 @@ fn cover_color(cover: LandCover) -> [f32; 4] {
     match cover {
         LandCover::Meadow => [0.17, 0.21, 0.17, 1.0],
         LandCover::Farmland => [0.21, 0.21, 0.17, 1.0],
-        LandCover::Residential => [0.20, 0.20, 0.22, 1.0],
+        LandCover::Residential | LandCover::Industrial => [0.20, 0.20, 0.22, 1.0],
         LandCover::Orchard => [0.18, 0.22, 0.16, 1.0],
         LandCover::Forest => [0.12, 0.20, 0.14, 1.0],
         LandCover::Rock => [0.25, 0.25, 0.25, 1.0],

@@ -13,6 +13,9 @@ var _scan_label: Label = Label.new()
 var _trainer: OptionButton = OptionButton.new()
 var _heart_rate: OptionButton = OptionButton.new()
 var _status: Label = Label.new()
+## How detailed the 3D world is drawn on this computer (R43).
+var _quality: OptionButton = OptionButton.new()
+var _quality_note: Label = Label.new()
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -23,6 +26,11 @@ func bind(torqa: TorqaApp) -> void:
 	)
 	_torqa.remembered_missing.connect(_on_remembered_missing)
 	_torqa.failed.connect(func(_message: String) -> void: _scan_button.disabled = false)
+	var current: String = _torqa.graphics_quality()
+	for i: int in range(_quality.item_count):
+		if _quality.get_item_metadata(i) == current:
+			_quality.select(i)
+	_show_quality_note()
 	# The trainer and strap used last reconnect in the background (R41).
 	if _torqa.reconnect_remembered():
 		_scan_button.disabled = true
@@ -83,6 +91,7 @@ func _init() -> void:
 	_status.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
 	add_child(_status)
 	_reset_options()
+	_build_graphics()
 
 
 func _notification(what: int) -> void:
@@ -126,6 +135,55 @@ func _on_devices_found(devices: Array) -> void:
 			var index: int = option.get_item_metadata(i)
 			if remembered.has(index):
 				option.select(i)
+
+
+func _build_graphics() -> void:
+	var heading: Label = Label.new()
+	heading.text = tr("Graphics")
+	heading.add_theme_font_size_override("font_size", 22)
+	add_child(heading)
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var caption: Label = Label.new()
+	caption.text = tr("Quality")
+	caption.custom_minimum_size = Vector2(180, 0)
+	row.add_child(caption)
+	# i18n-begin
+	for preset: Array in [
+		["low", "Low"], ["medium", "Medium"], ["high", "High"], ["ultra", "Ultra"]
+	]:
+		# i18n-end
+		var key: String = preset[0]
+		var label: String = preset[1]
+		_quality.add_item(tr(label))
+		_quality.set_item_metadata(_quality.item_count - 1, key)
+	_quality.custom_minimum_size = Vector2(240, 0)
+	_quality.item_selected.connect(_on_quality_selected)
+	row.add_child(_quality)
+	add_child(row)
+	_quality_note.add_theme_color_override("font_color", UiTheme.MUTED)
+	_quality_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(_quality_note)
+
+
+func _on_quality_selected(index: int) -> void:
+	var key: String = _quality.get_item_metadata(index)
+	_torqa.set_graphics_quality(key)
+	_show_quality_note()
+
+
+func _show_quality_note() -> void:
+	# i18n-begin
+	var notes: Dictionary[String, String] = {
+		"low": "For weaker computers: shorter view, simpler shadows and sky.",
+		"medium": "60 fps on a MacBook with M1: soft light, shadows and haze.",
+		"high": "For stronger GPUs: softer shadows, bounced light, light fog, more distance.",
+		"ultra": "Everything on, including global illumination: for fast GPUs.",
+	}
+	# i18n-end
+	var key: String = _torqa.graphics_quality() if _torqa != null else "medium"
+	var note: String = notes.get(key, notes["medium"])
+	_quality_note.text = tr(note) + " " + tr("Applies from the next ride.")
 
 
 ## The reconnect at start missed some devices (R41): ask the rider to wake them.

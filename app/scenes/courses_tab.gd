@@ -25,6 +25,12 @@ var _loading_label: Label = Label.new()
 var _status: Label = Label.new()
 var _file_dialog: FileDialog = FileDialog.new()
 var _no_gps_dialog: AcceptDialog = AcceptDialog.new()
+## Every import is named by the rider; a name in use asks before replacing that course (#40).
+var _name_dialog: ConfirmationDialog = ConfirmationDialog.new()
+var _name_edit: LineEdit = LineEdit.new()
+var _replace_dialog: ConfirmationDialog = ConfirmationDialog.new()
+## The file waiting for its course name.
+var _pending: String = ""
 ## What the running import is: "" none, "gpx" a route or "video" a video course being
 ## prepared, "tqc" a course file, "probe" a video being looked at.
 var _importing: String = ""
@@ -59,8 +65,9 @@ func _init() -> void:
 	heading.add_theme_font_size_override("font_size", 22)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
-	_import_button.text = tr("Import route, video or course…")
-	_import_button.custom_minimum_size = Vector2(260, 44)
+	_import_button.text = tr("Import")
+	_import_button.tooltip_text = tr("GPX routes, videos with GPS, route videos and course files")
+	_import_button.custom_minimum_size = Vector2(160, 44)
 	_import_button.pressed.connect(func() -> void: _file_dialog.popup_centered_ratio(0.7))
 	header.add_child(_import_button)
 	add_child(header)
@@ -101,13 +108,34 @@ func _init() -> void:
 		[
 			"*.gpx, *.tqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
 			"*.gpx ; " + tr("GPX routes"),
-			"%s ; %s" % [", ".join(videos), tr("Videos with GPS, Incyclist route videos (.xml)")],
+			(
+				"%s ; %s"
+				% [
+					", ".join(videos),
+					tr("Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)")
+				]
+			),
 			"*.tqc ; " + tr("Torqa courses"),
 		]
 	)
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	add_child(_file_dialog)
+	_name_dialog.title = tr("Name the course")
+	_name_dialog.ok_button_text = tr("Import")
+	_name_edit.custom_minimum_size = Vector2(420, 0)
+	_name_edit.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_name_dialog.add_child(_name_edit)
+	_name_dialog.register_text_enter(_name_edit)
+	_name_dialog.confirmed.connect(_on_name_confirmed)
+	add_child(_name_dialog)
+	_replace_dialog.title = tr("Course name in use")
+	_replace_dialog.ok_button_text = tr("Replace")
+	_replace_dialog.add_button(tr("Keep both"), false, "keep")
+	_replace_dialog.confirmed.connect(func() -> void: _import(true))
+	_replace_dialog.custom_action.connect(_on_replace_action)
+	_replace_dialog.canceled.connect(func() -> void: _name_dialog.popup_centered())
+	add_child(_replace_dialog)
 	_no_gps_dialog.title = tr("Video without GPS")
 	_no_gps_dialog.dialog_autowrap = true
 	_no_gps_dialog.min_size = Vector2i(560, 0)
@@ -116,30 +144,59 @@ func _init() -> void:
 
 func _on_file_selected(path: String) -> void:
 	_status.hide()
-	if path.get_extension().to_lower() == "tqc":
-		_importing = "tqc"
-		_torqa.import_course(path)
-		return
 	var extension: String = path.get_extension().to_lower()
-	if extension == "gpx":
-		_start_loading("gpx", path)
-		_torqa.load_route(path, false)
-	elif extension == "xml":
-		_start_loading("video", path)
-		_torqa.load_video(path, false)
-	else:
+	if not extension in ["tqc", "gpx", "xml", "rlv"]:
 		# Set so that a video that cannot be read is reported like a failed import.
 		_importing = "probe"
 		var probe: Dictionary = _torqa.video_probe(path)
 		if probe.is_empty():
 			return
 		_importing = ""
-		if probe["has_gps"]:
-			_start_loading("video", path)
-			_torqa.load_video(path, false)
-		else:
+		if not probe["has_gps"]:
 			_no_gps_dialog.dialog_text = no_gps_steps(path.get_file())
 			_no_gps_dialog.popup_centered()
+			return
+	_pending = path
+	_name_edit.text = TorqaApp.suggested_course_name(path)
+	_name_dialog.popup_centered()
+	_name_edit.grab_focus()
+	_name_edit.select_all()
+
+
+func _on_name_confirmed() -> void:
+	var name: String = _name_edit.text.strip_edges()
+	if name.is_empty():
+		_name_dialog.popup_centered.call_deferred()
+		return
+	if _torqa.course_exists(name):
+		_replace_dialog.dialog_text = (
+			tr("A course named “%s” exists already. Replace it, or keep both?") % name
+		)
+		_replace_dialog.popup_centered()
+	else:
+		_import(false)
+
+
+func _on_replace_action(action: StringName) -> void:
+	_replace_dialog.hide()
+	if action == &"keep":
+		_import(false)
+
+
+## Imports the pending file as the course named in the name dialog.
+func _import(replace: bool) -> void:
+	_torqa.name_next_import(_name_edit.text.strip_edges(), replace)
+	var path: String = _pending
+	match path.get_extension().to_lower():
+		"tqc":
+			_importing = "tqc"
+			_torqa.import_course(path)
+		"gpx":
+			_start_loading("gpx", path)
+			_torqa.load_route(path, false)
+		_:
+			_start_loading("video", path)
+			_torqa.load_video(path, false)
 
 
 ## What to do with a video without GPS: it rides on the course of its GPX route.

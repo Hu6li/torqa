@@ -120,14 +120,15 @@ Built in rideable steps:
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [x] Customizable HUD (R23)
+- [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
-- [ ] Audio (R26): music app control ✅; ambient sound dropped for now (synthesised version
-  did not sound right); original video sound is in Phase 5
+- [ ] Audio (R26): music app control ✅, original video sound ✅ (Phase 5); ambient sound
+  dropped for now (synthesised version did not sound right)
 - [x] i18n: all texts translatable, German translation, language per rider (R24)
 
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
@@ -138,9 +139,14 @@ Built in rideable steps:
 - [x] Video ride view: playback following the rider's speed, frame blending, HUD on top
 - [x] Videos without GPS added to a GPX course ("Add video…" on the course page): route start
   and end marks in the video with frame previews; movable or removable later
-- [ ] More sync points between start and end (stops, speed changes in the footage)
+- [x] More sync points between start and end (stops, speed changes in the footage)
 - [ ] Hardware decoding (VideoToolbox); transcode above 1080p on import; Insta360 GPS
-- [ ] Original video sound (R26)
+- [x] Video courses ridden along the video or in 3D, chosen when riding (#44); videos can be
+  removed from any course
+- [x] Tacx RLV import (`.rlv` + `.pgmf` + video, #42): ridden along the video by distance
+  and slope, no 3D
+- [x] Original video sound (R26): pitch-keeping time stretch (WSOLA) at the rider's speed,
+  fades out when slow, switchable per ride
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)
 - **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 
@@ -171,12 +177,35 @@ Built in rideable steps:
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
 ### Phase 9 — Realistic graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md))
+- [x] Route on the real road: GPX snapped to the OpenStreetMap roads and paths it rides
+  (bends between sparse points restored, GPS wander removed); record keys unchanged — roads
+  chosen for the whole track (no hops onto side streets, sidewalks or parallel roads), turns
+  through junctions, corners rounded; bridges and tunnels only from the roads ridden and where
+  the terrain bears them out
+- [x] Natural road in its landscape: a smooth curve with its verge, cuttings into hillsides
+  and embankments down to valleys (finer ground near the road), never covered by the ground
+- [x] Other streets from the map drawn in 3D: asphalt streets, gravel tracks and paths, draped
+  on the ground and joined to the road ridden, bridges as decks; trees and grass kept off them;
+  ways for pedestrians only (footways, sidewalks, steps) left out
+- [x] Building types: churches, chalets, farmhouses, apartment blocks, industrial halls
+  — kinds inferred from the map (places of worship, land use, size, elevation) with their own
+  roofs, materials and details, built as shells ✅; Blender-made models placed where they fit
+  (chalets facing the valley, choirs east), shells in the distance and for odd outlines ✅
 - [ ] Asset pipeline: Blender + MPFB2 in the devcontainer, `art/` scripts → `.glb`, credits file,
-  docs
-- [ ] Quality presets Low–Ultra in settings, frame-time budget per preset
+  docs — Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted building
+  models with an in-game preview renderer (`scripts/render-models.sh`) ✅; MPFB2 with the
+  rider still to come
+- [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
+  preset is suggested when a ride stays below)
 - [ ] Lighting & atmosphere: global illumination, soft shadows, volumetric clouds and fog, haze
+  — sky with lit procedural clouds, aerial haze, PCSS shadows, SSIL/SDFGI and volumetric fog by
+  preset ✅; true volumetric (raymarched 3D) clouds still to come
 - [ ] Terrain & road: PBR materials blended by slope/height/land cover, asphalt and gravel, verges
+  — CC0 ground textures (grass, forest floor, soil, rock, snow) tinted by land cover, triplanar
+  rock, textured asphalt with worn, anti-aliased markings ✅; gravel roads and verges to come
 - [ ] Vegetation: realistic trees and bushes, wind-animated grass and flowers, LOD/impostors
+  — grass tufts and flower clumps along the road, swaying with weather-driven wind, range and
+  shadows by preset ✅; realistic trees, bushes and impostors still to come
 - [ ] Rider & bike: parametric bike, female/male MPFB2 rider, cadence-driven pedaling
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
   visual target (R44)

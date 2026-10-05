@@ -5,8 +5,11 @@
 //! therefore hands out the frame for any moment, decoding forward when that is cheap and
 //! seeking otherwise, scaled down to at most [`MAX_WIDTH`] for display.
 
+pub mod audio;
+mod av1;
 pub mod gpmf;
 pub mod incyclist;
+pub mod tacx;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
@@ -35,6 +38,9 @@ pub enum VideoError {
     /// No frame could be decoded at all.
     #[error("the video has no frames")]
     Empty,
+    /// The AV1 decoder failed.
+    #[error("{0}")]
+    Av1(String),
 }
 
 /// What a video is like.
@@ -67,8 +73,10 @@ pub struct Frame {
 pub struct Video {
     input: ffmpeg::format::context::Input,
     stream: usize,
-    decoder: ffmpeg::decoder::Video,
-    scaler: scaling::Context,
+    decoder: Decoder,
+    /// Converts decoded pictures to RGBA at the display size; made for the first picture's
+    /// format and remade if it changes.
+    scaler: Option<Scaler>,
     /// Seconds per unit of the stream's timestamps.
     time_base: f64,
     info: VideoInfo,
@@ -77,6 +85,23 @@ pub struct Video {
     /// A frame decoded beyond the one requested, kept for the next request.
     ahead: Option<Frame>,
     ended: bool,
+}
+
+/// What decodes the stream: FFmpeg, or rav1d for AV1 (#39).
+enum Decoder {
+    Ffmpeg(ffmpeg::decoder::Video),
+    Av1 {
+        decoder: av1::Av1,
+        /// The stream's sequence header, sent again after opening and seeking.
+        config: Vec<u8>,
+        send_config: bool,
+        ready: std::collections::VecDeque<av1::Picture>,
+    },
+}
+
+struct Scaler {
+    from: (Pixel, u32, u32),
+    context: scaling::Context,
 }
 
 impl Video {
@@ -107,23 +132,26 @@ impl Video {
                 f64_from(input.duration().max(0)) / f64::from(ffmpeg::ffi::AV_TIME_BASE),
             )
         };
-        let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
-        let decoder = context.decoder().video()?;
-        let (width, height) = display_size(decoder.width(), decoder.height());
-        let scaler = scaling::Context::get(
-            decoder.format(),
-            decoder.width(),
-            decoder.height(),
-            Pixel::RGBA,
-            width,
-            height,
-            scaling::Flags::BILINEAR,
-        )?;
+        let parameters = stream.parameters();
+        let (coded_width, coded_height) = av1::size(&parameters);
+        // FFmpeg's own AV1 decoder only drives hardware decoders, which most Macs lack.
+        let decoder = if parameters.id() == ffmpeg::codec::Id::AV1 {
+            Decoder::Av1 {
+                decoder: av1::Av1::new()?,
+                config: av1::config_obus(&parameters),
+                send_config: true,
+                ready: std::collections::VecDeque::new(),
+            }
+        } else {
+            let context = ffmpeg::codec::context::Context::from_parameters(parameters)?;
+            Decoder::Ffmpeg(context.decoder().video()?)
+        };
+        let (width, height) = display_size(coded_width, coded_height);
         Ok(Self {
             input,
             stream: index,
             decoder,
-            scaler,
+            scaler: None,
             time_base,
             info: VideoInfo {
                 duration,
@@ -178,7 +206,19 @@ impl Video {
         let target = time.as_micros() as i64;
         // The keyframe at or before `target`: nothing later than it.
         self.input.seek(target, ..target + 1)?;
-        self.decoder.flush();
+        match &mut self.decoder {
+            Decoder::Ffmpeg(decoder) => decoder.flush(),
+            Decoder::Av1 {
+                decoder,
+                send_config,
+                ready,
+                ..
+            } => {
+                decoder.flush();
+                ready.clear();
+                *send_config = true;
+            }
+        }
         self.current = None;
         self.ahead = None;
         self.ended = false;
@@ -187,10 +227,16 @@ impl Video {
 
     /// The next frame of the stream, or `None` at its end.
     fn decode_next(&mut self) -> Result<Option<Frame>, VideoError> {
-        let mut decoded = ffmpeg::frame::Video::empty();
+        if matches!(self.decoder, Decoder::Av1 { .. }) {
+            return self.decode_next_av1();
+        }
+        let mut picture = ffmpeg::frame::Video::empty();
         loop {
-            match self.decoder.receive_frame(&mut decoded) {
-                Ok(()) => return Ok(Some(self.convert(&decoded)?)),
+            let Decoder::Ffmpeg(decoder) = &mut self.decoder else {
+                unreachable!("checked above")
+            };
+            match decoder.receive_frame(&mut picture) {
+                Ok(()) => return Ok(Some(self.convert(&picture)?)),
                 Err(ffmpeg::Error::Eof) => return Ok(None),
                 Err(ffmpeg::Error::Other {
                     errno: ffmpeg::error::EAGAIN,
@@ -204,22 +250,84 @@ impl Video {
             let mut fed = false;
             for (stream, packet) in self.input.packets() {
                 if stream.index() == self.stream {
-                    self.decoder.send_packet(&packet)?;
+                    decoder.send_packet(&packet)?;
                     fed = true;
                     break;
                 }
             }
             if !fed {
-                self.decoder.send_eof()?;
+                decoder.send_eof()?;
                 self.ended = true;
             }
         }
     }
 
+    /// [`Video::decode_next`] for AV1: packets go to rav1d, pictures through FFmpeg's scaler.
+    fn decode_next_av1(&mut self) -> Result<Option<Frame>, VideoError> {
+        loop {
+            let Decoder::Av1 {
+                decoder,
+                config,
+                send_config,
+                ready,
+            } = &mut self.decoder
+            else {
+                unreachable!("only called for AV1")
+            };
+            if let Some(picture) = ready.pop_front() {
+                let frame = picture_frame(&picture)?;
+                return self.convert(&frame).map(Some);
+            }
+            if self.ended {
+                return Ok(None);
+            }
+            let mut pictures = Vec::new();
+            let mut fed = false;
+            for (stream, packet) in self.input.packets() {
+                if stream.index() != self.stream {
+                    continue;
+                }
+                let data = packet.data().unwrap_or_default();
+                let timestamp = packet.pts().or(packet.dts()).unwrap_or(0);
+                if std::mem::take(send_config) && !config.is_empty() {
+                    let mut with_config = config.clone();
+                    with_config.extend_from_slice(data);
+                    decoder.decode(&with_config, timestamp, &mut pictures)?;
+                } else {
+                    decoder.decode(data, timestamp, &mut pictures)?;
+                }
+                fed = true;
+                break;
+            }
+            if !fed {
+                decoder.pictures(&mut pictures)?;
+                self.ended = true;
+            }
+            ready.extend(pictures);
+        }
+    }
+
     fn convert(&mut self, decoded: &ffmpeg::frame::Video) -> Result<Frame, VideoError> {
-        let mut rgba = ffmpeg::frame::Video::empty();
-        self.scaler.run(decoded, &mut rgba)?;
         let (width, height) = (self.info.width, self.info.height);
+        let from = (decoded.format(), decoded.width(), decoded.height());
+        if self.scaler.as_ref().is_none_or(|s| s.from != from) {
+            self.scaler = Some(Scaler {
+                from,
+                context: scaling::Context::get(
+                    from.0,
+                    from.1,
+                    from.2,
+                    Pixel::RGBA,
+                    width,
+                    height,
+                    scaling::Flags::BILINEAR,
+                )?,
+            });
+        }
+        let mut rgba = ffmpeg::frame::Video::empty();
+        if let Some(scaler) = &mut self.scaler {
+            scaler.context.run(decoded, &mut rgba)?;
+        }
         let row = width as usize * 4;
         let stride = rgba.stride(0);
         let data = rgba.data(0);
@@ -236,6 +344,59 @@ impl Video {
             rgba: pixels,
         })
     }
+}
+
+/// A picture from rav1d as an FFmpeg frame, for the scaler: its planes copied row by row.
+fn picture_frame(picture: &av1::Picture) -> Result<ffmpeg::frame::Video, VideoError> {
+    use av1::Layout;
+
+    let (width, height) = (picture.width(), picture.height());
+    let deep = picture.bits() > 8;
+    let format = match (picture.layout(), picture.bits()) {
+        (Layout::I400, 8) => Pixel::GRAY8,
+        (Layout::I400, 10) => Pixel::GRAY10LE,
+        (Layout::I400, _) => Pixel::GRAY12LE,
+        (Layout::I420, 8) => Pixel::YUV420P,
+        (Layout::I420, 10) => Pixel::YUV420P10LE,
+        (Layout::I420, _) => Pixel::YUV420P12LE,
+        (Layout::I422, 8) => Pixel::YUV422P,
+        (Layout::I422, 10) => Pixel::YUV422P10LE,
+        (Layout::I422, _) => Pixel::YUV422P12LE,
+        (Layout::I444, 8) => Pixel::YUV444P,
+        (Layout::I444, 10) => Pixel::YUV444P10LE,
+        (Layout::I444, _) => Pixel::YUV444P12LE,
+    };
+    let mut frame = ffmpeg::frame::Video::new(format, width, height);
+    let (chroma_width, chroma_height) = match picture.layout() {
+        Layout::I400 => (0, 0),
+        Layout::I420 => (width.div_ceil(2), height.div_ceil(2)),
+        Layout::I422 => (width.div_ceil(2), height),
+        Layout::I444 => (width, height),
+    };
+    let planes = if picture.layout() == Layout::I400 {
+        1
+    } else {
+        3
+    };
+    for plane in 0..planes {
+        let (columns, rows) = if plane == 0 {
+            (width, height)
+        } else {
+            (chroma_width, chroma_height)
+        };
+        let row_bytes = columns as usize * if deep { 2 } else { 1 };
+        let (source, source_stride) = picture
+            .plane(plane, rows as usize, row_bytes)
+            .ok_or_else(|| VideoError::Av1("an AV1 picture lacks a plane".to_owned()))?;
+        let target_stride = frame.stride(plane);
+        let target = frame.data_mut(plane);
+        for row in 0..rows as usize {
+            target[row * target_stride..row * target_stride + row_bytes]
+                .copy_from_slice(&source[row * source_stride..row * source_stride + row_bytes]);
+        }
+    }
+    frame.set_pts(Some(picture.timestamp()));
+    Ok(frame)
 }
 
 /// A camera position with the moment of the video it belongs to.
@@ -371,7 +532,7 @@ fn iso_time(seconds: f64) -> String {
 }
 
 /// Sets up FFmpeg once per process.
-fn init() {
+pub(crate) fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let _ = ffmpeg::init();
@@ -390,7 +551,7 @@ fn display_size(width: u32, height: u32) -> (u32, u32) {
 }
 
 #[allow(clippy::cast_precision_loss)] // timestamps far below 2^52
-fn f64_from(value: i64) -> f64 {
+pub(crate) fn f64_from(value: i64) -> f64 {
     value as f64
 }
 

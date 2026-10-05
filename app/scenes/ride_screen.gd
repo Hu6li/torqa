@@ -16,6 +16,12 @@ const MUSIC_KEYS: Dictionary[Key, Array] = {
 }
 # i18n-end
 const TOAST_SECONDS: float = 4.0
+## The frame-time budget of every preset (R43): 60 fps, with some slack; held below it this
+## long, a lower preset is suggested once per ride.
+const FRAME_BUDGET_S: float = 1.0 / 60.0 * 1.15
+const SLOW_FOR_S: float = 10.0
+## Speeds of a simulated ride (#53).
+const TIME_SCALES: Array[float] = [1.0, 2.0, 5.0, 10.0, 20.0]
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 
@@ -38,6 +44,13 @@ var _ghost_gap: Label = UiTheme.value(20)
 var _finished: bool = false
 var _saved: bool = false
 var _toast_left: float = 0.0
+## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
+var _simulation: PanelContainer = PanelContainer.new()
+var _speed_buttons: Array[Button] = []
+var _time_scale: float = 1.0
+var _frame_time: float = 0.0
+var _slow_for: float = 0.0
+var _budget_noted: bool = false
 
 @onready var _hud: HudPanel = %Metrics
 @onready var _minimap: Minimap = %Minimap
@@ -83,6 +96,14 @@ func begin(options: Dictionary) -> void:
 	_hud.show_layout(_torqa.hud_layout())
 	if not _torqa.trainer_connected():
 		_show_toast(tr("Waiting for the trainer…"))
+	var simulating: bool = _torqa.simulating()
+	_simulation.visible = simulating
+	_minimap.jumpable = simulating
+	_profile.jumpable = simulating
+	_set_time_scale(1.0)
+	_frame_time = 0.0
+	_slow_for = 0.0
+	_budget_noted = false
 
 
 func _ready() -> void:
@@ -94,6 +115,13 @@ func _ready() -> void:
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_climb_panel()
 	_build_ghost_panel()
+	_build_simulation_panel()
+	_minimap.jump_requested.connect(
+		func(position_m: Vector2) -> void: _torqa.jump_near(position_m.x, position_m.y)
+	)
+	_profile.jump_requested.connect(
+		func(distance_m: float) -> void: _torqa.jump_to_distance(distance_m)
+	)
 	add_child(_settings_dialog)
 	_settings_dialog.options_changed.connect(_on_options_changed)
 	_settings_dialog.hud_changed.connect(_on_hud_changed)
@@ -114,6 +142,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cycle_camera()
 	elif key.keycode == KEY_S and not _finished:
 		_open_settings()
+	elif _simulation.visible and key.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
+		_step_time_scale(1)
+	elif _simulation.visible and key.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
+		_step_time_scale(-1)
 	elif MUSIC_KEYS.has(key.keycode):
 		var command: String = MUSIC_KEYS[key.keycode][0]
 		var message: String = MUSIC_KEYS[key.keycode][1]
@@ -131,6 +163,7 @@ func _process(delta: float) -> void:
 			_toast.hide()
 	if not visible or _finished:
 		return
+	_watch_frame_time(delta)
 	var state: Dictionary = _torqa.ride_state()
 	if state.is_empty():
 		return
@@ -154,7 +187,8 @@ func _process(delta: float) -> void:
 
 func _open_settings() -> void:
 	_options["camera"] = _world.camera()
-	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial, _torqa.video().is_empty())
+	var world: bool = not _torqa.riding_along_video()
+	_settings_dialog.edit(_options, _torqa.hud_layout(), _imperial, world)
 
 
 ## Applies changed ride options at once: camera, conditions and sound in the world, difficulty
@@ -165,6 +199,8 @@ func _on_options_changed(options: Dictionary) -> void:
 	var difficulty: float = options["difficulty"]
 	var flat_descents: bool = options["flat_descents"]
 	_torqa.adjust_ride(difficulty, flat_descents)
+	var video_sound: bool = options.get("video_sound", true)
+	_torqa.set_video_sound(video_sound)
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:
@@ -301,8 +337,66 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 	return " " + TranslationServer.translate("(best %s)") % UiTheme.duration(previous_best_s)
 
 
+## Suggests a lower graphics preset when the ride stays below 60 fps (R43). Simulated rides
+## are left alone: they are for trying courses out.
+func _watch_frame_time(delta: float) -> void:
+	if _budget_noted or _simulation.visible or _torqa.riding_along_video():
+		return
+	_frame_time = lerpf(_frame_time if _frame_time > 0.0 else delta, delta, 0.05)
+	_slow_for = _slow_for + delta if _frame_time > FRAME_BUDGET_S else 0.0
+	if _slow_for > SLOW_FOR_S and _torqa.graphics_quality() != "low":
+		_budget_noted = true
+		_show_toast(
+			tr("Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother.")
+		)
+
+
+func _build_simulation_panel() -> void:
+	_simulation.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_simulation.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_simulation.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_simulation.position.y -= 20.0
+	_simulation.mouse_filter = Control.MOUSE_FILTER_STOP
+	var rows: VBoxContainer = VBoxContainer.new()
+	var speeds: HBoxContainer = HBoxContainer.new()
+	speeds.add_theme_constant_override("separation", 6)
+	speeds.add_child(UiTheme.caption(tr("Simulation")))
+	var group: ButtonGroup = ButtonGroup.new()
+	for scale: float in TIME_SCALES:
+		var button: Button = Button.new()
+		button.text = "%d×" % roundi(scale)
+		button.toggle_mode = true
+		button.button_group = group
+		button.focus_mode = Control.FOCUS_NONE
+		button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		button.pressed.connect(_set_time_scale.bind(scale))
+		speeds.add_child(button)
+		_speed_buttons.append(button)
+	rows.add_child(speeds)
+	var hint: Label = Label.new()
+	hint.text = tr("Click the map or profile to jump · + / − speed · C: free camera")
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", UiTheme.MUTED)
+	rows.add_child(hint)
+	_simulation.add_child(rows)
+	_simulation.hide()
+	add_child(_simulation)
+
+
+func _set_time_scale(scale: float) -> void:
+	_time_scale = _torqa.set_time_scale(scale) if _torqa != null else 1.0
+	for i: int in range(_speed_buttons.size()):
+		_speed_buttons[i].set_pressed_no_signal(is_equal_approx(TIME_SCALES[i], _time_scale))
+
+
+func _step_time_scale(step: int) -> void:
+	var index: int = TIME_SCALES.find(_time_scale)
+	_set_time_scale(TIME_SCALES[clampi(index + step, 0, TIME_SCALES.size() - 1)])
+	_show_toast(tr("Simulation: %d×") % roundi(_time_scale))
+
+
 func _cycle_camera() -> void:
-	if not _torqa.video().is_empty():
+	if _torqa.riding_along_video():
 		return
 	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
 

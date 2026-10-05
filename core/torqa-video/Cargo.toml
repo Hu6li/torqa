@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 ffmpeg-next.workspace = true
 quick-xml.workspace = true
+rav1d.workspace = true
 thiserror.workspace = true
 
 [features]

@@ -1,0 +1,29 @@
+{
+  "models": [
+    {"name": "house_gable_1_s", "kind": "house", "roof": "gable", "storeys": 1, "length": 9.0, "width": 7.5, "pitch": 45},
+    {"name": "house_gable_1_m", "kind": "house", "roof": "gable", "storeys": 1, "length": 11.0, "width": 8.5, "pitch": 45},
+    {"name": "house_gable_2_s", "kind": "house", "roof": "gable", "storeys": 2, "length": 9.5, "width": 8.0, "pitch": 42},
+    {"name": "house_gable_2_m", "kind": "house", "roof": "gable", "storeys": 2, "length": 12.0, "width": 9.0, "pitch": 40},
+    {"name": "house_gable_2_l", "kind": "house", "roof": "gable", "storeys": 2, "length": 15.0, "width": 10.5, "pitch": 38},
+    {"name": "house_gable_3_m", "kind": "house", "roof": "gable", "storeys": 3, "length": 13.0, "width": 10.0, "pitch": 38},
+    {"name": "house_gable_3_l", "kind": "house", "roof": "gable", "storeys": 3, "length": 16.0, "width": 11.5, "pitch": 36},
+    {"name": "house_hipped_2_m", "kind": "house", "roof": "hipped", "storeys": 2, "length": 12.0, "width": 10.0, "pitch": 34},
+    {"name": "house_hipped_2_l", "kind": "house", "roof": "hipped", "storeys": 2, "length": 15.0, "width": 12.0, "pitch": 32},
+    {"name": "house_hipped_3_l", "kind": "house", "roof": "hipped", "storeys": 3, "length": 16.0, "width": 13.0, "pitch": 30},
+    {"name": "chalet_2_s", "kind": "chalet", "storeys": 2, "length": 10.0, "width": 8.0, "pitch": 23, "cover": "slate"},
+    {"name": "chalet_2_m", "kind": "chalet", "storeys": 2, "length": 12.0, "width": 9.5, "pitch": 22, "cover": "tiles"},
+    {"name": "chalet_3_m", "kind": "chalet", "storeys": 3, "length": 13.0, "width": 10.5, "pitch": 22, "cover": "slate"},
+    {"name": "chalet_3_l", "kind": "chalet", "storeys": 3, "length": 16.0, "width": 12.0, "pitch": 21, "cover": "slate"},
+    {"name": "farmhouse_m", "kind": "farmhouse", "roof": "hipped", "length": 18.0, "width": 13.0, "pitch": 45},
+    {"name": "farmhouse_l", "kind": "farmhouse", "roof": "hipped", "length": 24.0, "width": 16.0, "pitch": 44},
+    {"name": "farmhouse_xl", "kind": "farmhouse", "roof": "hipped", "length": 30.0, "width": 18.0, "pitch": 42},
+    {"name": "church_needle_m", "kind": "church", "length": 18.0, "width": 10.0, "tower": 5.5, "tower_height": 20.0, "spire": "needle", "spire_cover": "copper"},
+    {"name": "church_needle_l", "kind": "church", "length": 26.0, "width": 13.0, "tower": 7.0, "tower_height": 26.0, "spire": "needle", "spire_cover": "slate", "eaves": 10.0, "cover": "slate"},
+    {"name": "church_saddle_m", "kind": "church", "length": 20.0, "width": 11.0, "tower": 6.0, "tower_height": 21.0, "spire": "saddle", "spire_cover": "tiles"},
+    {"name": "chapel_s", "kind": "chapel", "length": 8.0, "width": 5.5},
+    {"name": "chapel_m", "kind": "chapel", "length": 11.0, "width": 7.0, "eaves": 5.4, "cover": "tiles"},
+    {"name": "shed_s", "kind": "shed", "length": 3.2, "width": 2.6},
+    {"name": "shed_m", "kind": "shed", "length": 5.0, "width": 3.6, "cover": "tiles"},
+    {"name": "garage_m", "kind": "shed", "length": 6.5, "width": 4.2, "garage": true, "pitch": 12}
+  ]
+}

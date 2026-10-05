@@ -7,7 +7,7 @@
 
 mod mvt;
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -54,6 +54,8 @@ pub enum LandCover {
     Orchard,
     /// Built-up areas.
     Residential,
+    /// Industrial, commercial and retail land: halls, warehouses, shops.
+    Industrial,
     /// Lakes, rivers, ponds.
     Water,
     /// Rock, scree, glaciers, sand.
@@ -82,6 +84,8 @@ pub struct Building {
     pub height: Option<f64>,
     /// Number of floors, if known.
     pub levels: Option<f64>,
+    /// Façade colour as mapped (sRGB, 0–1), if known.
+    pub color: Option<[f32; 3]>,
 }
 
 /// A river, stream or canal centre line.
@@ -96,10 +100,35 @@ pub struct Waterway {
 /// A road for the minimap.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Road {
-    /// Through roads (primary, secondary, ...) rather than local streets and tracks.
-    pub major: bool,
+    /// What kind of way it is.
+    pub class: RoadClass,
     /// Centre line.
     pub line: Vec<LatLon>,
+    /// Carried over or under the ground here, if it is.
+    pub structure: Option<StructureKind>,
+}
+
+impl Road {
+    /// Through roads (primary, secondary, ...) rather than local streets, tracks and paths.
+    #[must_use]
+    pub fn major(&self) -> bool {
+        self.class == RoadClass::Major
+    }
+}
+
+/// Kinds of ways, widest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoadClass {
+    /// Motorways, trunk, primary and secondary roads.
+    Major,
+    /// Tertiary roads and local streets.
+    Street,
+    /// Service roads: driveways, car parks, farm access.
+    Service,
+    /// Farm and forest tracks.
+    Track,
+    /// Footpaths and cycleways.
+    Path,
 }
 
 /// Whether a road is carried over or under the ground.
@@ -111,7 +140,7 @@ pub enum StructureKind {
     Tunnel,
 }
 
-/// A road bridge or tunnel.
+/// A road bridge or tunnel: a road the route rides, where it is one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Structure {
     /// Bridge or tunnel.
@@ -129,10 +158,10 @@ pub struct MapData {
     pub areas: Vec<Area>,
     /// Rivers and streams.
     pub waterways: Vec<Waterway>,
-    /// Road bridges and tunnels.
-    pub structures: Vec<Structure>,
     /// Roads.
     pub roads: Vec<Road>,
+    /// Churches and chapels, as points on or near their building.
+    pub churches: Vec<LatLon>,
 }
 
 /// Downloads and caches map tiles.
@@ -204,8 +233,8 @@ impl Osm {
         let mut downloads = stream::iter(tiles)
             .map(|tile| async move { (tile, self.tile(tile, template).await) })
             .buffer_unordered(PARALLEL_DOWNLOADS);
-        // Download in parallel, but merge in tile order: which copy of a building crossing a
-        // tile border is kept must not depend on download timing.
+        // Download in parallel, but merge in tile order so the data does not depend on
+        // download timing.
         let mut results = Vec::with_capacity(total);
         while let Some(result) = downloads.next().await {
             results.push(result);
@@ -213,11 +242,10 @@ impl Osm {
         }
         results.sort_by_key(|(tile, _)| *tile);
         let mut data = MapData::default();
-        let mut buildings_seen = HashSet::new();
         let mut loaded = 0;
         let mut last_error = None;
         for (tile, result) in results {
-            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data, &mut buildings_seen)) {
+            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data)) {
                 Ok(()) => loaded += 1,
                 Err(error) => {
                     warn!(tile = %tile_name(tile), %error, "map tile unavailable");
@@ -412,15 +440,16 @@ mod tests {
             .await
             .unwrap();
 
+        let structures = data.roads.iter().filter(|r| r.structure.is_some()).count();
         println!(
-            "{:?}: {} buildings, {} areas, {} waterways, {} structures, {} roads",
+            "{:?}: {} buildings, {} areas, {} waterways, {} roads ({} bridges or tunnels)",
             started.elapsed(),
             data.buildings.len(),
             data.areas.len(),
             data.waterways.len(),
-            data.structures.len(),
-            data.roads.len()
+            data.roads.len(),
+            structures
         );
-        assert!(!data.buildings.is_empty() && !data.structures.is_empty());
+        assert!(!data.buildings.is_empty() && structures > 0);
     }
 }

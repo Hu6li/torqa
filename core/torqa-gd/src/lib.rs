@@ -19,9 +19,11 @@ use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::FakeRider;
 use torqa_domain::profile::{Profile, UnitSystem};
-use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Rpm, Watts};
+use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Percent, Rpm, Watts};
 use torqa_physics::DescentMode;
 use torqa_routes::{ElevationSource, LocalProjection};
+
+mod log;
 
 struct TorqaExtension;
 
@@ -58,6 +60,8 @@ impl INode for TorqaApp {
         let app = if Engine::singleton().is_editor_hint() {
             None
         } else {
+            // Set once per process; a second node keeps the first one's.
+            let _ = tracing::subscriber::set_global_default(log::StderrLog);
             App::new(paths::data_dir(), paths::cache_dir())
                 .inspect_err(|error| {
                     godot_error!("Torqa: {error}");
@@ -175,18 +179,21 @@ impl TorqaApp {
         }
     }
 
-    /// File extensions `load_video` accepts, for file dialogs: videos and Incyclist's `xml`.
+    /// File extensions `load_video` accepts, for file dialogs: videos, Incyclist's `xml` and
+    /// Tacx's `rlv`.
     #[func]
     fn video_extensions() -> PackedStringArray {
         torqa_app::video::VIDEO_EXTENSIONS
             .iter()
-            .chain(&["xml"])
+            .chain(&["xml", "rlv"])
             .map(|e| GString::from(*e))
             .collect()
     }
 
-    /// The loaded video course: `{path, duration_s, offset_s, end_s, aligned_by_hand}`;
-    /// `end_s` is -1 unless the video was placed on the route by hand. Empty for other courses.
+    /// The loaded video course: `{path, duration_s, offset_s, aligned_by_hand, located, marks}`;
+    /// `located` is false for courses without a place (Tacx RLV), ridden along the video only;
+    /// `marks` (x metres along the route, y seconds into the video) are those of a video
+    /// placed on the route by hand, from the route's start to its end. Empty for other courses.
     #[func]
     fn video(&self) -> VarDictionary {
         let Some(video) = self.app.as_ref().and_then(App::video) else {
@@ -197,8 +204,13 @@ impl TorqaApp {
             "path" => path.as_str(),
             "duration_s" => video.duration.as_secs_f64(),
             "offset_s" => video.offset.as_secs_f64(),
-            "end_s" => video.end.map_or(-1.0, |e| e.as_secs_f64()),
             "aligned_by_hand" => video.aligned_by_hand(),
+            "located" => video.located,
+            "marks" => &video
+                .marks
+                .iter()
+                .map(|m| vector2(m.distance.0, m.time.as_secs_f64()))
+                .collect::<PackedVector2Array>(),
         }
     }
 
@@ -221,28 +233,45 @@ impl TorqaApp {
         }
     }
 
-    /// Adds a video (e.g. one without GPS) to the loaded GPX course: the route starts `start_s`
-    /// and ends `end_s` seconds into it. The course becomes a video course; emits `failed` if
-    /// that is not possible.
+    /// Adds a video (e.g. one without GPS) to the loaded GPX course, placed by `marks` (x
+    /// metres along the route, y seconds into the video, from the route's start to its end).
+    /// The course becomes a video course; emits `failed` if that is not possible.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn add_video(&mut self, video: GString, start_s: f64, end_s: f64) -> bool {
+    fn add_video(&mut self, video: GString, marks: PackedVector2Array) -> bool {
         let video = PathBuf::from(video.to_string());
-        self.command(|app| app.add_video(&video, seconds(start_s), seconds(end_s)))
+        let marks = sync_marks(&marks);
+        self.command(|app| app.add_video(&video, &marks))
     }
 
-    /// Takes a video added with `add_video` off the loaded course, which is reopened as a 3D
-    /// course (emits `route_loaded`).
+    /// Takes the video off the loaded course, which is ridden in 3D only from then on.
     #[func]
     fn remove_video(&mut self) -> bool {
         self.command(App::remove_video)
     }
 
-    /// Moves where the route starts and ends in the loaded video course's video (only for
-    /// videos aligned by hand); emits `failed` if the marks do not fit.
+    /// How the next ride on a video course is shown: along its video, or in 3D (then call
+    /// `build_world` first). Courses without a video are always ridden in 3D.
     #[func]
-    fn align_video(&mut self, start_s: f64, end_s: f64) -> bool {
-        self.command(|app| app.align_video(seconds(start_s), seconds(end_s)))
+    fn ride_along_video(&mut self, along: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.ride_along_video(along);
+        }
+    }
+
+    /// Whether the current ride plays the course's video.
+    #[func]
+    fn riding_along_video(&self) -> bool {
+        self.app.as_ref().is_some_and(App::riding_along_video)
+    }
+
+    /// Replaces the marks of the loaded video course (see `add_video`); emits `failed` if they
+    /// do not fit.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn align_video(&mut self, marks: PackedVector2Array) -> bool {
+        let marks = sync_marks(&marks);
+        self.command(|app| app.align_video(&marks))
     }
 
     /// The frame of the video at `path` shown `time_s` seconds in, e.g. to align it; `null`
@@ -290,6 +319,38 @@ impl TorqaApp {
         vdict! {
             "time_s" => time_s,
             "image" => &image,
+        }
+    }
+
+    /// The next samples of the video's sound during a ride on a video course, at most `max`,
+    /// as stereo frames (x left, y right) for an `AudioStreamGenerator` at
+    /// `video_sound_rate()`; empty without sound.
+    #[func]
+    fn video_sound(&mut self, max: i64) -> PackedVector2Array {
+        let max = usize::try_from(max).unwrap_or(0);
+        self.app
+            .as_mut()
+            .map(|app| app.video_sound(max))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|[left, right]| Vector2::new(left, right))
+            .collect()
+    }
+
+    /// Samples per second of `video_sound`; 0 while riding without the video's sound.
+    #[func]
+    fn video_sound_rate(&self) -> i64 {
+        self.app
+            .as_ref()
+            .and_then(App::video_sound_rate)
+            .map_or(0, i64::from)
+    }
+
+    /// Plays the video's sound during this ride or not (R26).
+    #[func]
+    fn set_video_sound(&mut self, on: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_video_sound(on);
         }
     }
 
@@ -349,6 +410,32 @@ impl TorqaApp {
     #[func]
     fn save_course(&mut self) -> bool {
         self.command(App::save_course)
+    }
+
+    /// Names the course the next import adds (`load_route`, `load_video`, `import_course`):
+    /// `name`, replacing the course of that name with `replace`, else kept next to it.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn name_next_import(&mut self, name: GString, replace: bool) {
+        if let Some(app) = self.app.as_mut() {
+            app.name_next_import(&name.to_string(), replace);
+        }
+    }
+
+    /// Whether the library has a course named `name` (ignoring case).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn course_exists(&self, name: GString) -> bool {
+        self.app
+            .as_ref()
+            .is_some_and(|app| app.course_named(&name.to_string()).is_some())
+    }
+
+    /// A name for the course imported from `path`, for the rider to confirm.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn suggested_course_name(path: GString) -> GString {
+        GString::from(App::suggested_course_name(&PathBuf::from(path.to_string())).as_str())
     }
 
     /// Copies a course file into the library (emits `course_added` or `failed`).
@@ -495,6 +582,65 @@ impl TorqaApp {
     fn delete_ride(&mut self, path: GString) -> bool {
         let path = PathBuf::from(path.to_string());
         self.command(|app| app.delete_ride(&path))
+    }
+
+    /// The graphics presets, lightest first: `low`, `medium`, `high`, `ultra` (R43).
+    #[func]
+    fn graphics_qualities() -> PackedStringArray {
+        torqa_app::GraphicsQuality::ALL
+            .iter()
+            .map(|q| GString::from(q.name()))
+            .collect()
+    }
+
+    /// The graphics preset chosen on this computer.
+    #[func]
+    fn graphics_quality(&self) -> GString {
+        let quality = self
+            .app
+            .as_ref()
+            .map(App::graphics_quality)
+            .unwrap_or_default();
+        GString::from(quality.name())
+    }
+
+    /// Chooses the graphics preset for this computer; false for unknown names.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn set_graphics_quality(&mut self, name: GString) -> bool {
+        let Some(quality) = torqa_app::GraphicsQuality::from_name(&name.to_string()) else {
+            return false;
+        };
+        self.command(|app| app.set_graphics_quality(quality))
+    }
+
+    /// Whether rides are simulated (fake trainer): they can be sped up and jumped (#53).
+    #[func]
+    fn simulating(&self) -> bool {
+        self.app.as_ref().is_some_and(App::simulating)
+    }
+
+    /// Speeds the simulated ride up, 1 to 20 times; returns the speed in effect.
+    #[func]
+    fn set_time_scale(&mut self, scale: f64) -> f64 {
+        self.app
+            .as_mut()
+            .map_or(1.0, |app| app.set_time_scale(scale))
+    }
+
+    /// Moves the simulated ride's rider to `distance_m` along the route.
+    #[func]
+    fn jump_to_distance(&mut self, distance_m: f64) -> bool {
+        self.app
+            .as_mut()
+            .is_some_and(|app| app.jump_to(Meters(distance_m)))
+    }
+
+    /// Moves the simulated ride's rider to the route's point nearest `x`/`y` (metres east and
+    /// north of the start, as on the map).
+    #[func]
+    fn jump_near(&mut self, x: f64, y: f64) -> bool {
+        self.app.as_mut().is_some_and(|app| app.jump_near(x, y))
     }
 
     /// Whether the trainer is connected now (rides start at once then).
@@ -915,10 +1061,13 @@ impl TorqaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, conifers, broadleaves}`. `terrain`
-    /// and `buildings` are mesh arrays (`{vertices, normals, uvs, colors, indices}`), the tree
-    /// entries `MultiMesh` transform buffers. Geometry is relative to `center`, in Godot
-    /// coordinates (x east, y up, −z north, metres from the route start).
+    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, conifers,
+    /// broadleaves, grass, flowers}`. `terrain` and `buildings` are mesh arrays (`{vertices,
+    /// normals, uvs, colors, indices}`), the tree entries `MultiMesh` transform buffers.
+    /// `modelled` lists cells of buildings drawn as models up close: `{models, shells}`, with
+    /// `models` mapping model names to `MultiMesh` buffers (transform, colour, custom data)
+    /// and `shells` the mesh arrays to draw in the distance instead. Geometry is relative to
+    /// `center`, in Godot coordinates (x east, y up, −z north, metres from the route start).
     #[func]
     fn world_chunk(&self, index: i64) -> VarDictionary {
         let chunk = self
@@ -933,12 +1082,30 @@ impl TorqaApp {
         let [x, y, z] = chunk.center;
         let conifers = PackedFloat32Array::from(chunk.trees.conifers.as_slice());
         let broadleaves = PackedFloat32Array::from(chunk.trees.broadleaves.as_slice());
+        let grass = PackedFloat32Array::from(chunk.trees.grass.as_slice());
+        let flowers = PackedFloat32Array::from(chunk.trees.flowers.as_slice());
+        let modelled: VarArray = chunk
+            .modelled
+            .iter()
+            .map(|cell| {
+                let mut models = VarDictionary::new();
+                for (name, buffer) in &cell.models {
+                    models.set(name.as_str(), &PackedFloat32Array::from(buffer.as_slice()));
+                }
+                vdict! { "models" => &models, "shells" => &mesh_arrays(&cell.shells) }.to_variant()
+            })
+            .collect();
         vdict! {
             "center" => Vector3::new(x, y, z),
             "terrain" => &mesh_arrays(&chunk.mesh),
             "buildings" => &mesh_arrays(&chunk.buildings),
+            "modelled" => &modelled,
+            "streets" => &mesh_arrays(&chunk.streets),
+            "tracks" => &mesh_arrays(&chunk.tracks),
             "conifers" => &conifers,
             "broadleaves" => &broadleaves,
+            "grass" => &grass,
+            "flowers" => &flowers,
         }
     }
 
@@ -1248,4 +1415,16 @@ fn image(frame: torqa_app::Frame) -> Option<Gd<Image>> {
 /// Seconds from Godot as a duration; negative or invalid values count as zero.
 fn seconds(value: f64) -> Duration {
     Duration::try_from_secs_f64(value.max(0.0)).unwrap_or_default()
+}
+
+/// Sync marks from Godot: x metres along the route, y seconds into the video.
+fn sync_marks(marks: &PackedVector2Array) -> Vec<torqa_app::SyncMark> {
+    marks
+        .as_slice()
+        .iter()
+        .map(|m| torqa_app::SyncMark {
+            distance: Meters(f64::from(m.x)),
+            time: seconds(f64::from(m.y)),
+        })
+        .collect()
 }

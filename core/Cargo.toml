@@ -33,6 +33,9 @@ image-webp = "0.2.4"
 mvt-reader = "2.5.0"
 png = "0.18.1"
 quick-xml = "0.42.0"
+# Without its assembly: the 1.1.0 package leaves out the headers its ARM assembly needs, and
+# the pure Rust decoder is fast enough (~145 fps at 1080p in the dev container).
+rav1d = { version = "1.1.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
 reqwest = "0.13.5"
 rustyfit = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }

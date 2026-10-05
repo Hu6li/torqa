@@ -26,5 +26,50 @@ and ghost panels on the right, and one **Settings** button (or key **S**).
 Keys: **C** switches the camera, **S** opens the settings, **M** / **.** / **,** control your
 music ([audio.md](audio.md)).
 
-On video courses the video is the view: the course page and the ride settings only offer
-trainer difficulty and descents, and **C** does nothing.
+On video courses the video is the view: the course page and the ride settings offer trainer
+difficulty, descents and the video's **Sound** instead, and **C** does nothing.
+
+## The 3D world
+
+The world is built from the map around the course (OpenStreetMap): the road you ride follows the
+mapped road, other streets, tracks and paths lie beside it, and buildings stand where they are
+mapped. The map rarely says what a building is, so Torqa infers it from where it stands and its
+size. That gives:
+
+- churches with a tower, and chapels with a turret on the roof;
+- chalets with timber walls and deep eaves in the mountains;
+- farmhouses under big roofs in the countryside;
+- apartment blocks, and metal-clad halls on industrial land;
+- houses and sheds everywhere else.
+
+Mapped heights and façade colours are used where the map has them. Close to you, buildings whose
+outline suits one are detailed models (made in Blender): recessed windows with shutters,
+balconies with geraniums, rafters, gutters, clock towers. Further away, and for unusual outlines,
+they are drawn more simply.
+
+## Simulation (fake trainer)
+
+With the simulated trainer (*Devices & Settings*), a ride is a simulation for trying courses
+out (#53):
+
+- **Speed**: 1×, 2×, 5×, 10× or 20× in the bar at the bottom, or **+** / **−**.
+- **Jump**: click the map or the elevation profile to put the rider there (the map's corner
+  caption still switches between close view and whole route).
+- **Free camera**: **C** past the drone view; arrow keys move, **R** / **F** rise and sink,
+  **Shift** is faster, the mouse wheel sets the speed, drag with the right button to look.
+
+A sped-up or jumped ride is saved, but counts towards no personal records.
+
+## Graphics quality
+
+**Devices & Settings → Graphics** sets how detailed the 3D world is drawn on this computer
+(R43); it applies from the next ride:
+
+| Preset | For | What it adds |
+|---|---|---|
+| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds, plain-coloured ground, detailed buildings within 200 m |
+| Medium | MacBook with M1 (60 fps) | textured ground and asphalt, grass and flowers swaying in the wind (60 m), detailed buildings within 400 m, ambient occlusion, soft-edged shadows, lit clouds, haze |
+| High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, grass to 100 m with shadows, detailed buildings within 550 m, 35 % more view distance |
+| Ultra | fast GPUs | global illumination (SDFGI), larger shadow maps, detailed buildings within 750 m, 70 % more view distance |
+
+If a ride stays well below 60 fps, Torqa suggests a lower preset once.

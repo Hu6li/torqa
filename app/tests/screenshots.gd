@@ -33,6 +33,12 @@ func _run() -> void:
 	# Import the route as a new course, as the Courses tab's import does.
 	var courses: CoursesTab = start.find_children("*", "CoursesTab", true, false)[0]
 	courses.call("_on_file_selected", route)
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("import-name.png"))
+	# The course is named as suggested (#40); confirming closes the dialog.
+	var name_dialog: ConfirmationDialog = courses.get("_name_dialog")
+	name_dialog.hide()
+	courses.call("_on_name_confirmed")
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
 	# The rider settings with the HUD editor.
@@ -55,6 +61,10 @@ func _run() -> void:
 	var hud: String = OS.get_environment("SCREENSHOT_HUD")
 	if not hud.is_empty():
 		torqa.set_hud_layout(PackedStringArray(hud.split(",")))
+	# A graphics preset, e.g. SCREENSHOT_QUALITY=ultra (R43).
+	var quality: String = OS.get_environment("SCREENSHOT_QUALITY")
+	if not quality.is_empty():
+		_check(torqa.set_graphics_quality(quality), "graphics quality %s" % quality)
 	_check(torqa.connect_fake_trainer(250.0, 90.0), "fake trainer")
 	# A pacer to race, e.g. SCREENSHOT_GHOST=300 (watts).
 	var ghost: Dictionary = {"kind": "none"}

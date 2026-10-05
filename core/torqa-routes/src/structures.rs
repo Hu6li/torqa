@@ -5,8 +5,9 @@ use torqa_osm::{Structure, StructureKind};
 use crate::Surface;
 use crate::gpx::RawPoint;
 
-/// A structure belongs to the route if its centre line is this close to a route point.
-const MATCH_DISTANCE: f64 = 8.0;
+/// A structure of a road the route was put on belongs to the route where its centre line is
+/// this close to a route point (the route is smoothed a little off the map's lines).
+const MATCH_DISTANCE: f64 = 4.0;
 /// ...and runs in the same direction within this angle, so roads passing above or below the
 /// route are not mistaken for it.
 const MAX_ANGLE_DEGREES: f64 = 30.0;
@@ -39,6 +40,70 @@ pub(crate) fn surfaces(points: &[RawPoint], structures: &[Structure]) -> Vec<Sur
                 })
         })
         .collect()
+}
+
+/// Bridges and tunnels shorter than this many route points are not built: a structure barely
+/// touched (a crossing, a corner of it) would become a short tube or deck on the open road.
+const MIN_POINTS: usize = 2;
+/// With terrain data, a tunnel needs at least this much ground above its road...
+const TUNNEL_COVER: f64 = 4.0;
+/// ...and a bridge at least this much clearance above the ground below its deck; elsewhere
+/// the map's structure is an underpass, a culvert or a gallery and the road stays on the
+/// ground, which looks right.
+const BRIDGE_CLEARANCE: f64 = 2.0;
+
+/// Turns bridges and tunnels back into ground where they are too short, or where `terrain`
+/// elevations (the ground's, before `bridge_elevations`) do not bear them out.
+pub(crate) fn keep_real(points: &[RawPoint], surfaces: &mut [Surface], terrain: bool) {
+    let mut i = 0;
+    while i < points.len() {
+        let kind = surfaces[i];
+        if kind == Surface::Ground {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < points.len() && surfaces[i] == kind {
+            i += 1;
+        }
+        let long_enough = i - start >= MIN_POINTS;
+        let borne_out = !terrain || ground_bears_out(points, start, i, kind);
+        if !long_enough || !borne_out {
+            surfaces[start..i].fill(Surface::Ground);
+        }
+    }
+}
+
+/// Whether the ground along points `start..end` lies far enough above (tunnel) or below
+/// (bridge) the straight road between the points on either side.
+fn ground_bears_out(points: &[RawPoint], start: usize, end: usize, kind: Surface) -> bool {
+    // A structure at the route's start or end has no outer end to compare with.
+    let (Some(before), Some(after)) = (start.checked_sub(1), (end < points.len()).then_some(end))
+    else {
+        return true;
+    };
+    let (Some(from), Some(to)) = (points[before].elevation, points[after].elevation) else {
+        return true;
+    };
+    #[allow(clippy::cast_precision_loss)] // indices are far below 2^52
+    let span = (after - before) as f64;
+    let deepest = points[start..end]
+        .iter()
+        .enumerate()
+        .filter_map(|(offset, point)| {
+            #[allow(clippy::cast_precision_loss)]
+            let road = from + (to - from) * (offset + 1) as f64 / span;
+            point.elevation.map(|ground| match kind {
+                Surface::Tunnel => ground - road,
+                _ => road - ground,
+            })
+        })
+        .fold(f64::NEG_INFINITY, f64::max);
+    deepest
+        >= match kind {
+            Surface::Tunnel => TUNNEL_COVER,
+            _ => BRIDGE_CLEARANCE,
+        }
 }
 
 /// Replaces elevations on bridges and in tunnels by a straight line between their ends.

@@ -23,13 +23,14 @@ use torqa_domain::profile::Profile;
 use torqa_domain::recording::{RideSummary, Sample};
 use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup};
-use torqa_routes::{Climb, ElevationSource, Route};
+use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
     effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
 use torqa_session::ghost::Ghost;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
+pub use torqa_storage::profiles::GraphicsQuality;
 use torqa_storage::profiles::{self, StoredProfile};
 use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
@@ -37,6 +38,7 @@ pub use torqa_video::Frame;
 use torqa_video::Video;
 use torqa_world::World;
 use tracing::warn;
+pub use video::SyncMark;
 
 /// Credits for the data a course bundles, stored in course files (ODbL, CC BY).
 const ATTRIBUTION: [&str; 3] = [
@@ -311,6 +313,30 @@ struct ActiveRide {
     ghost: Option<Ghost>,
     /// Plays the video of a video course along the ride.
     player: Option<video::VideoPlayer>,
+    /// And its sound (R26), if it has any.
+    sound: Option<video::SoundPlayer>,
+    /// Whether the video shows: a ride along a blank screen must say why.
+    video_watch: VideoWatch,
+    /// Ride time per real time, with the fake trainer (#53).
+    time_scale: f64,
+    /// Sped up or jumped: its times are not real, so it counts towards no records.
+    simulated: bool,
+}
+
+/// The name the rider gave the course being imported.
+#[derive(Debug)]
+struct Naming {
+    name: String,
+    replace: bool,
+}
+
+/// How a ride is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum View {
+    /// In the generated 3D world.
+    World,
+    /// Along the course's video.
+    Video,
 }
 
 /// When the 3D world of a loaded route is built.
@@ -320,6 +346,22 @@ enum WorldPlan {
     /// Once asked for (riding a course), with the route's map data when it is loaded.
     OnRequest(Option<torqa_osm::MapData>),
 }
+
+/// Frames of the video handed out during a ride, and whether a problem was reported.
+#[derive(Debug)]
+struct VideoWatch {
+    since: std::time::Instant,
+    frames: usize,
+    reported: bool,
+}
+
+/// The longest step a ride advances by at once, also when sped up.
+const MAX_RIDE_STEP: Duration = Duration::from_millis(50);
+/// How far a simulated ride can be sped up (#53).
+const MAX_TIME_SCALE: f64 = 20.0;
+
+/// How long a video course may show no picture before the rider is told.
+const NO_PICTURE_AFTER: Duration = Duration::from_secs(5);
 
 /// The application state.
 pub struct App {
@@ -348,8 +390,12 @@ pub struct App {
     course: Option<PathBuf>,
     /// The route key of the course being written to the library, until it is there.
     saving: Option<String>,
+    /// How the rider named the course being imported.
+    naming: Option<Naming>,
     /// The loaded course's video, for video courses (R17).
     video: Option<video::VideoCourse>,
+    /// How the next ride is shown.
+    view: View,
     /// A video open for preview frames, e.g. while aligning it to a route.
     preview: Option<(PathBuf, Video)>,
     route: Option<Route>,
@@ -394,7 +440,9 @@ impl App {
             world_plan: WorldPlan::Now,
             course: None,
             saving: None,
+            naming: None,
             video: None,
+            view: View::World,
             preview: None,
             route: None,
             world: None,
@@ -509,6 +557,7 @@ impl App {
     pub fn open_course(&mut self, path: PathBuf) {
         let used = self.start_loading(true);
         let load = self.load;
+        self.naming = None;
         self.from_course = true;
         self.world_plan = WorldPlan::OnRequest(None);
         self.course = Some(path.clone());
@@ -551,7 +600,8 @@ impl App {
                     name: unpacked.manifest.name.clone(),
                     gpx: unpacked.gpx.clone(),
                     offset: Duration::from_secs_f64(reference.offset_s.max(0.0)),
-                    end: reference.end_s.map(|e| Duration::from_secs_f64(e.max(0.0))),
+                    marks: video_marks(reference),
+                    located: reference.located,
                 });
             }
             let imported = import_gpx(
@@ -610,7 +660,9 @@ impl App {
                     source.gpx.clone(),
                     &source.name,
                     &cache,
-                    offline,
+                    // A course without a place keeps its own elevations: terrain data from
+                    // wherever its drawn line lies would only spoil them.
+                    offline || !source.located,
                     &used,
                     &mut |stage, done, total| reporter.report(stage, done, total),
                 )
@@ -629,19 +681,14 @@ impl App {
     }
 
     /// Adds a video to the loaded course (a GPX course from the library), placed on its route
-    /// by hand: the route starts at `start` and ends at `end` in the video, which follows the
-    /// rider's distance evenly in between. The course becomes a video course; its file refers
+    /// by hand: `marks` say where route positions sit in the video, from the route's start to
+    /// its end; the video follows the rider's distance evenly between neighbouring marks. The course becomes a video course; its file refers
     /// to the video.
     ///
     /// # Errors
     /// [`AppError::Video`] if no course is loaded, it has a video already, or the video does
     /// not fit the marks; [`AppError::Storage`] if the course file cannot be updated.
-    pub fn add_video(
-        &mut self,
-        video: &Path,
-        start: Duration,
-        end: Duration,
-    ) -> Result<(), AppError> {
+    pub fn add_video(&mut self, video: &Path, marks: &[SyncMark]) -> Result<(), AppError> {
         let (Some(route), Some(path), Some((name, gpx))) =
             (&self.route, &self.course, &self.loaded)
         else {
@@ -656,47 +703,64 @@ impl App {
             video: video.to_owned(),
             name: name.clone(),
             gpx: gpx.clone(),
-            offset: start,
-            end: Some(end),
+            offset: Duration::ZERO,
+            marks: marks.to_vec(),
+            located: true,
         };
         let added = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         let reference = video_reference(&added);
         update_manifest(path, |manifest| manifest.video = Some(reference))?;
         self.video = Some(added);
-        // The video is the view now: no 3D world to build.
-        self.world_plan = WorldPlan::Now;
-        self.world = Some(Arc::new(World::default()));
+        self.view = View::Video;
         Ok(())
     }
 
-    /// Takes a video added with [`App::add_video`] off the loaded course, which is ridden in
-    /// 3D again; the course is reopened (reports [`AppEvent::RouteLoaded`]). Videos a course
-    /// was made from (with GPS) stay.
+    /// Takes the video off the loaded course, which is ridden in 3D only from then on; the
+    /// route stays as it is.
     ///
     /// # Errors
-    /// [`AppError::Video`] if the loaded course has no video added by hand,
-    /// [`AppError::Storage`] if the course file cannot be updated.
+    /// [`AppError::Video`] if the loaded course has no video, [`AppError::Storage`] if the
+    /// course file cannot be updated.
     pub fn remove_video(&mut self) -> Result<(), AppError> {
-        let (Some(video), Some(path)) = (&self.video, self.course.clone()) else {
+        let (Some(video), Some(path)) = (&self.video, &self.course) else {
             return Err(AppError::Video("this course has no video".to_owned()));
         };
-        if !video.aligned_by_hand() {
+        if !video.located {
             return Err(AppError::Video(
-                "this course was made from its video and keeps it".to_owned(),
+                "this course is known only along its video and keeps it".to_owned(),
             ));
         }
-        update_manifest(&path, |manifest| manifest.video = None)?;
-        self.open_course(path);
+        update_manifest(path, |manifest| manifest.video = None)?;
+        self.video = None;
+        self.view = View::World;
         Ok(())
     }
 
-    /// Moves where the route starts and ends in the loaded video course's video, for videos
-    /// placed on the route by hand; the course file keeps the new marks.
+    /// How the next ride on a video course is shown: along its video, or in 3D (#44).
+    /// Courses without a video are always ridden in 3D, courses without a place (Tacx RLV)
+    /// always along their video.
+    pub fn ride_along_video(&mut self, along: bool) {
+        let unlocated = self.video.as_ref().is_some_and(|v| !v.located);
+        self.view = if (along || unlocated) && self.video.is_some() {
+            View::Video
+        } else {
+            View::World
+        };
+    }
+
+    /// Whether the current ride plays the course's video.
+    #[must_use]
+    pub fn riding_along_video(&self) -> bool {
+        self.ride.as_ref().is_some_and(|ride| ride.player.is_some())
+    }
+
+    /// Replaces the marks of the loaded video course's video (see [`App::add_video`]), for
+    /// videos placed on the route by hand; the course file keeps the new marks.
     ///
     /// # Errors
     /// [`AppError::Video`] if the loaded course is not aligned by hand or the marks do not fit
     /// the video, [`AppError::Storage`] if the course file cannot be updated.
-    pub fn align_video(&mut self, start: Duration, end: Duration) -> Result<(), AppError> {
+    pub fn align_video(&mut self, marks: &[SyncMark]) -> Result<(), AppError> {
         let (Some(route), Some(current), Some((name, gpx))) =
             (&self.route, &self.video, &self.loaded)
         else {
@@ -711,8 +775,9 @@ impl App {
             video: current.video.clone(),
             name: name.clone(),
             gpx: gpx.clone(),
-            offset: start,
-            end: Some(end),
+            offset: Duration::ZERO,
+            marks: marks.to_vec(),
+            located: current.located,
         };
         let aligned = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         if let Some(path) = &self.course {
@@ -757,12 +822,55 @@ impl App {
     /// The newest video frame decoded for the ride on a video course, once; it follows the
     /// moment of [`App::video_time`], so the view can blend from the frame before.
     pub fn video_frame(&mut self) -> Option<torqa_video::Frame> {
-        let player = self.ride.as_ref()?.player.as_ref()?;
-        player
-            .frame()
-            .inspect_err(|error| warn!(%error, "cannot decode the video"))
-            .ok()
-            .flatten()
+        let active = self.ride.as_mut()?;
+        let frame = active.player.as_ref()?.frame()?;
+        active.video_watch.frames += 1;
+        Some(frame)
+    }
+
+    /// Reports once if the ride's video cannot be decoded or shows no picture.
+    fn watch_video(&mut self, events: &mut Vec<AppEvent>) {
+        let Some(active) = &mut self.ride else { return };
+        let Some(player) = &active.player else { return };
+        if active.video_watch.reported {
+            return;
+        }
+        let problem = player
+            .error()
+            .map(|error| format!("cannot play the video: {error}"))
+            .or_else(|| {
+                (active.video_watch.frames == 0
+                    && active.video_watch.since.elapsed() > NO_PICTURE_AFTER)
+                    .then(|| "the video shows no picture yet — see the log for why".to_owned())
+            });
+        if let Some(message) = problem {
+            warn!(%message, "video course");
+            active.video_watch.reported = true;
+            events.push(AppEvent::Error(message));
+        }
+    }
+
+    /// The next stereo samples of the video's sound during a ride on a video course, at most
+    /// `max`; at [`App::video_sound_rate`] samples per second. Empty without sound.
+    pub fn video_sound(&mut self, max: usize) -> Vec<torqa_video::audio::Stereo> {
+        self.ride
+            .as_ref()
+            .and_then(|active| active.sound.as_ref())
+            .map_or_else(Vec::new, |sound| sound.pull(max))
+    }
+
+    /// Samples per second of [`App::video_sound`]; `None` while riding without the video's
+    /// sound.
+    #[must_use]
+    pub fn video_sound_rate(&self) -> Option<u32> {
+        Some(self.ride.as_ref()?.sound.as_ref()?.rate())
+    }
+
+    /// Plays the video's sound during this ride or not (R26, a ride option).
+    pub fn set_video_sound(&mut self, on: bool) {
+        if let Some(sound) = self.ride.as_ref().and_then(|a| a.sound.as_ref()) {
+            sound.set_on(on);
+        }
     }
 
     /// Saves the loaded route with everything needed to ride it offline as a course in the
@@ -771,10 +879,18 @@ impl App {
     /// # Errors
     /// [`AppError::CourseNotReady`] until the route's world has been built.
     pub fn save_course(&mut self) -> Result<(), AppError> {
-        let (Some(route), Some(_), Some((name, gpx))) = (&self.route, &self.world, &self.loaded)
-        else {
+        // A GPX course is complete with the data of its world; a video course rides along
+        // its video and builds the world on demand.
+        let (Some(route), Some((name, gpx))) = (&self.route, &self.loaded) else {
             return Err(AppError::CourseNotReady);
         };
+        if self.world.is_none() && self.video.is_none() {
+            return Err(AppError::CourseNotReady);
+        }
+        let naming = self.naming.take();
+        let name = naming
+            .as_ref()
+            .map_or_else(|| name.clone(), |n| n.name.clone());
         let manifest = Manifest {
             format: course::FORMAT_VERSION,
             generator: format!("Torqa {}", torqa_domain::version()),
@@ -792,20 +908,27 @@ impl App {
             video: self.video.as_ref().map(video_reference),
         };
         // Preparing the same course again must not fill the library with copies; one still
-        // being written reports itself when done.
-        if manifest.route_key.is_some() && manifest.route_key == self.saving {
-            return Ok(());
+        // being written reports itself when done. A course named on import is the rider's
+        // choice: saved as asked. A video course is not the GPX course of its route (#40).
+        if naming.is_none() {
+            if manifest.route_key.is_some() && manifest.route_key == self.saving {
+                return Ok(());
+            }
+            let video_file = |m: &Manifest| m.video.as_ref().map(|v| v.file_name.clone());
+            if let Some(existing) = self.courses().into_iter().find(|c| {
+                c.manifest.route_key == manifest.route_key
+                    && video_file(&c.manifest) == video_file(&manifest)
+            }) {
+                let _ = self.jobs_tx.send(JobResult::CourseSaved(Ok(existing.path)));
+                return Ok(());
+            }
         }
-        if let Some(existing) = self
-            .courses()
-            .into_iter()
-            .find(|c| c.manifest.route_key == manifest.route_key)
-        {
-            let _ = self.jobs_tx.send(JobResult::CourseSaved(Ok(existing.path)));
-            return Ok(());
+        let replacing = self.import_target(naming.as_ref());
+        let gpx = gpx.clone();
+        if let Some((loaded, _)) = &mut self.loaded {
+            loaded.clone_from(&name);
         }
         self.saving.clone_from(&manifest.route_key);
-        let gpx = gpx.clone();
         let data = self.used.paths();
         let cache = self.cache_dir.clone();
         let library = self.courses_dir();
@@ -814,8 +937,13 @@ impl App {
             let result = std::fs::create_dir_all(&library)
                 .map_err(course::CourseError::from)
                 .and_then(|()| {
-                    let path = unique_course_path(&library, &manifest.name);
-                    course::write(&path, &manifest, &gpx, &cache, &data).map(|()| path)
+                    let path =
+                        replacing.unwrap_or_else(|| unique_course_path(&library, &manifest.name));
+                    // Written aside first: a replaced course stays whole if writing fails.
+                    let partial = path.with_extension("part");
+                    course::write(&partial, &manifest, &gpx, &cache, &data)?;
+                    std::fs::rename(&partial, &path)?;
+                    Ok(path)
                 })
                 .map_err(|e| format!("cannot save course: {e}"));
             let _ = tx.send(JobResult::CourseSaved(result));
@@ -828,6 +956,11 @@ impl App {
     pub fn build_world(&mut self) -> bool {
         if self.world.is_some() {
             return true;
+        }
+        // A video course's file holds the data of its route only, as no world was built when
+        // it was saved: the world fetches the rest when online.
+        if self.video.is_some() {
+            self.offline = false;
         }
         if let WorldPlan::OnRequest(map) = std::mem::replace(&mut self.world_plan, WorldPlan::Now)
             && let (Some(route), Some(map)) = (self.route.clone(), map)
@@ -874,17 +1007,54 @@ impl App {
         Ok(())
     }
 
+    /// Names the course the next import adds to the library ([`App::load_route`],
+    /// [`App::load_video`] or [`App::import_course`]): saved as `name`, replacing a course of
+    /// that name with `replace`, else next to it (#40).
+    pub fn name_next_import(&mut self, name: &str, replace: bool) {
+        self.naming = Some(Naming {
+            name: name.trim().to_owned(),
+            replace,
+        });
+    }
+
+    /// The library's course named `name` (ignoring case and surrounding spaces), if any.
+    #[must_use]
+    pub fn course_named(&self, name: &str) -> Option<PathBuf> {
+        let name = name.trim();
+        self.courses()
+            .into_iter()
+            .find(|c| c.manifest.name.trim().eq_ignore_ascii_case(name))
+            .map(|c| c.path)
+    }
+
+    /// Where the course from the next import goes: next to others, or over the one of that name.
+    fn import_target(&self, naming: Option<&Naming>) -> Option<PathBuf> {
+        naming
+            .filter(|n| n.replace)
+            .and_then(|n| self.course_named(&n.name))
+    }
+
     /// Copies a course file into the library; reports [`AppEvent::CourseAdded`].
     pub fn import_course(&mut self, path: PathBuf) {
         let library = self.courses_dir();
         let tx = self.jobs_tx.clone();
+        let naming = self.naming.take();
+        let replacing = self.import_target(naming.as_ref());
         self.runtime.spawn_blocking(move || {
             let result = course::read_manifest(&path)
-                .and_then(|manifest| {
+                .and_then(|mut manifest| {
                     std::fs::create_dir_all(&library)?;
-                    let target = unique_course_path(&library, &manifest.name);
-                    let partial = target.with_extension("part");
+                    if let Some(naming) = &naming {
+                        manifest.name.clone_from(&naming.name);
+                    }
+                    let target =
+                        replacing.unwrap_or_else(|| unique_course_path(&library, &manifest.name));
+                    // Not `.part`: renaming rewrites the copy through a `.part` file itself.
+                    let partial = target.with_extension("import");
                     std::fs::copy(&path, &partial)?;
+                    if naming.is_some() {
+                        course::rewrite_manifest(&partial, &manifest)?;
+                    }
                     std::fs::rename(&partial, &target)?;
                     Ok(target)
                 })
@@ -915,6 +1085,30 @@ impl App {
         courses
     }
 
+    /// A name for the course imported from `path`, for the rider to confirm: a GPX file's
+    /// route name, an Incyclist video's title, a course file's name, else the file name.
+    #[must_use]
+    pub fn suggested_course_name(path: &Path) -> String {
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let read = || std::fs::read_to_string(path).ok();
+        let named = match extension.as_str() {
+            "gpx" => read().and_then(|xml| torqa_routes::route_name(&xml)),
+            "xml" => read()
+                .and_then(|xml| torqa_video::incyclist::parse(&xml).ok())
+                .map(|route| route.title),
+            "tqc" => course::read_manifest(path).ok().map(|m| m.name),
+            "rlv" => video::tacx_course_name(path),
+            _ => None,
+        };
+        named.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
+            path.file_stem()
+                .map_or_else(|| "Course".to_owned(), |s| s.to_string_lossy().into_owned())
+        })
+    }
+
     /// The course library: `courses/` in the data directory (R34).
     #[must_use]
     pub fn courses_dir(&self) -> PathBuf {
@@ -930,6 +1124,7 @@ impl App {
         // Opening a course sets this; a GPX import goes into the library when ready.
         self.from_course = false;
         self.video = None;
+        self.view = View::World;
         self.world = None;
         self.route = None;
         self.loaded = None;
@@ -958,6 +1153,88 @@ impl App {
             .await;
             let _ = tx.send(JobResult::World(load, Box::new(world)));
         });
+    }
+
+    /// How detailed the 3D world is drawn on this computer (R43).
+    #[must_use]
+    pub fn graphics_quality(&self) -> profiles::GraphicsQuality {
+        profiles::graphics_quality(&self.data_dir)
+    }
+
+    /// Chooses how detailed the 3D world is drawn on this computer (R43).
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the choice cannot be saved.
+    pub fn set_graphics_quality(
+        &mut self,
+        quality: profiles::GraphicsQuality,
+    ) -> Result<(), AppError> {
+        profiles::set_graphics_quality(&self.data_dir, quality)
+            .map_err(|e| AppError::Storage(e.to_string()))
+    }
+
+    /// Whether rides are simulated: with the fake trainer, which can be sped up and jumped
+    /// along the route (#53).
+    #[must_use]
+    pub fn simulating(&self) -> bool {
+        self.trainer.is_some() && self.trainer_id.is_none()
+    }
+
+    /// Speeds the simulated ride up (or back down to 1): ride time per real time, from 1 to
+    /// 20; returns the speed in effect. Without a simulated ride, 1.
+    pub fn set_time_scale(&mut self, scale: f64) -> f64 {
+        let simulating = self.simulating();
+        let Some(active) = self.ride.as_mut().filter(|_| simulating) else {
+            return 1.0;
+        };
+        active.time_scale = if scale.is_finite() {
+            scale.clamp(1.0, MAX_TIME_SCALE)
+        } else {
+            1.0
+        };
+        if active.time_scale > 1.0 {
+            active.simulated = true;
+        }
+        active.time_scale
+    }
+
+    /// Moves the simulated ride's rider to `distance` along the route; false without one.
+    pub fn jump_to(&mut self, distance: Meters) -> bool {
+        let simulating = self.simulating();
+        let Some(active) = self.ride.as_mut().filter(|_| simulating) else {
+            return false;
+        };
+        active.ride.jump_to(distance);
+        active.simulated = true;
+        // Climbs passed by jumping are not timed; the next one counts from where it starts.
+        let distance = active.ride.state().distance;
+        active.next_climb = active
+            .ride
+            .route()
+            .climbs()
+            .iter()
+            .position(|c| c.start.0 >= distance.0)
+            .unwrap_or(active.ride.route().climbs().len());
+        true
+    }
+
+    /// Moves the simulated ride's rider to the route's point nearest to `x`/`y` (metres east
+    /// and north of the start, as on the map); false without a simulated ride.
+    pub fn jump_near(&mut self, x: f64, y: f64) -> bool {
+        let Some(route) = self.ride.as_ref().map(|a| a.ride.route()) else {
+            return false;
+        };
+        let projection = LocalProjection::for_route(route);
+        let nearest = route
+            .points()
+            .iter()
+            .map(|p| {
+                let (px, py) = projection.project(p.lat, p.lon);
+                ((px - x).hypot(py - y), p.distance)
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, distance)| distance);
+        nearest.is_some_and(|distance| self.jump_to(distance))
     }
 
     /// Whether the trainer is connected now.
@@ -1094,12 +1371,18 @@ impl App {
             return Err(AppError::NoTrainer);
         }
         let ghost = self.ghost_for(&route, descent, ghost)?;
-        let player = self
-            .video
-            .as_ref()
+        let along = self.video.as_ref().filter(|_| self.view == View::Video);
+        let player = along
             .map(|v| video::VideoPlayer::open(&v.video))
             .transpose()
             .map_err(AppError::Video)?;
+        // A ride without the video's sound is still a ride.
+        let sound = along.and_then(|v| {
+            video::SoundPlayer::open(&v.video)
+                .inspect_err(|error| warn!(%error, "no sound for the video"))
+                .ok()
+                .flatten()
+        });
         let config = RideConfig {
             setup: RiderSetup {
                 mass: self.profile.profile.system_mass(),
@@ -1120,6 +1403,14 @@ impl App {
             summary: (0, RideSummary::default()),
             ghost,
             player,
+            sound,
+            video_watch: VideoWatch {
+                since: std::time::Instant::now(),
+                frames: 0,
+                reported: false,
+            },
+            time_scale: 1.0,
+            simulated: false,
         });
         Ok(())
     }
@@ -1162,6 +1453,9 @@ impl App {
             let finished = samples
                 .last()
                 .is_some_and(|s| s.distance.0 >= route.length().0 - 1.0);
+            // A simulated ride's times are not real: like a ride known only from its FIT file,
+            // it counts towards no records.
+            let real = !active.simulated;
             let record = RideRecord {
                 route: self
                     .loaded
@@ -1169,14 +1463,15 @@ impl App {
                     .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
                 start,
                 summary: summarize(samples, self.profile.profile.ftp),
-                route_key: Some(route.key()),
-                route_time: finished
+                route_key: real.then(|| route.key()),
+                route_time: (finished && real)
                     .then(|| effort(samples, Meters(0.0), route.length()))
                     .flatten()
                     .map(|e| e.elapsed),
                 climbs: route
                     .climbs()
                     .iter()
+                    .filter(|_| real)
                     .filter_map(|c| {
                         effort(samples, c.start, c.end).map(|e| ClimbTime {
                             start: c.start,
@@ -1477,7 +1772,16 @@ impl App {
             && active.started.is_some()
             && !active.finished
         {
-            if let Some(control) = active.ride.tick(dt)
+            // Sped up, the ride advances in small steps all the same, so its physics and
+            // one-second samples stay as exact as at real speed.
+            let mut left = dt.mul_f64(active.time_scale);
+            let mut control = None;
+            while !left.is_zero() {
+                let step = left.min(MAX_RIDE_STEP);
+                left -= step;
+                control = active.ride.tick(step).or(control);
+            }
+            if let Some(control) = control
                 && let Some(trainer) = &self.trainer
                 && let Err(error) = trainer.try_control(control)
             {
@@ -1513,11 +1817,16 @@ impl App {
                 events.push(AppEvent::RideFinished);
             }
         }
-        if let (Some(active), Some(video)) = (&self.ride, &self.video)
-            && let Some(player) = &active.player
-        {
-            player.show(video.time_at(active.ride.state().distance));
+        if let (Some(active), Some(video)) = (&self.ride, &self.video) {
+            let time = video.time_at(active.ride.state().distance);
+            if let Some(player) = &active.player {
+                player.show(time);
+            }
+            if let Some(sound) = &active.sound {
+                sound.follow(time);
+            }
         }
+        self.watch_video(&mut events);
         events
     }
 
@@ -1613,13 +1922,11 @@ impl App {
                     match video::VideoCourse::new(&imported.route, &source) {
                         Ok(course) => {
                             self.video = Some(course);
+                            self.view = View::Video;
+                            let map = imported.map.clone();
                             self.route_loaded(imported, events);
-                            // No 3D world: the video is the view.
-                            self.world = Some(Arc::new(World::default()));
-                            events.push(AppEvent::WorldReady {
-                                chunks: 0,
-                                fallback_samples: 0,
-                            });
+                            // Ridden along the video, or in 3D once asked for (#44).
+                            self.world_plan = WorldPlan::OnRequest(Some(map));
                             if !self.from_course
                                 && let Err(error) = self.save_course()
                             {
@@ -1830,8 +2137,29 @@ fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
             .unwrap_or_default(),
         size: std::fs::metadata(&video.video).map_or(0, |m| m.len()),
         offset_s: video.offset.as_secs_f64(),
-        end_s: video.end.map(|e| e.as_secs_f64()),
+        end_s: video.marks.last().map(|m| m.time.as_secs_f64()),
+        marks: video
+            .marks
+            .iter()
+            .map(|m| [m.distance.0, m.time.as_secs_f64()])
+            .collect(),
+        located: video.located,
     }
+}
+
+/// The marks of a video course from its file, older files with a start and end only included.
+fn video_marks(reference: &course::VideoReference) -> Vec<SyncMark> {
+    let mark = |distance: f64, time: f64| SyncMark {
+        distance: Meters(distance),
+        time: Duration::try_from_secs_f64(time.max(0.0)).unwrap_or_default(),
+    };
+    if !reference.marks.is_empty() {
+        return reference.marks.iter().map(|&[d, t]| mark(d, t)).collect();
+    }
+    // The route's end is placed when the course is paired with its route.
+    reference.end_s.map_or_else(Vec::new, |end| {
+        vec![mark(0.0, reference.offset_s), mark(0.0, end)]
+    })
 }
 
 /// Changes the manifest of the course file at `path`.
@@ -1938,6 +2266,60 @@ mod tests {
         let state = app.ride_state().unwrap();
         assert!(state.distance.0 > 1.0, "rider should be moving: {state:?}");
         assert!(app.trainer_connected());
+        app.shutdown();
+    }
+
+    #[test]
+    fn simulated_rides_speed_up_and_jump_but_set_no_records() {
+        let dir = temp_dir("simulation");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_climb_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(!app.simulating());
+        assert_eq!(app.set_time_scale(10.0), 1.0, "nothing to speed up");
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(300.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        assert!(app.simulating());
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        assert_eq!(app.set_time_scale(100.0), 20.0);
+        assert_eq!(app.set_time_scale(10.0), 10.0);
+
+        // One real second at 10×: ten seconds of riding, sampled every ride second.
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+        let state = app.ride_state().unwrap();
+        assert!(state.elapsed > Duration::from_secs(8), "{state:?}");
+        let samples = app.ride.as_ref().unwrap().ride.samples().len();
+        let seconds = usize::try_from(state.elapsed.as_secs()).unwrap();
+        assert!(
+            samples.abs_diff(seconds) <= 1,
+            "{samples} samples in {seconds} s"
+        );
+
+        // Jumps: by distance, and to the route's point nearest a spot on the map.
+        assert!(app.jump_to(Meters(150.0)));
+        assert!((app.ride_state().unwrap().distance.0 - 150.0).abs() < 1.0);
+        let route = app.route().unwrap().clone();
+        let target = route.position(Meters(80.0));
+        let (x, y) = LocalProjection::for_route(&route).project(target.lat, target.lon);
+        assert!(app.jump_near(x + 3.0, y - 2.0));
+        assert!((app.ride_state().unwrap().distance.0 - 80.0).abs() < 12.0);
+
+        let saved = app.finish_ride();
+        let Some(AppEvent::RideSaved(fit)) = saved.first() else {
+            panic!("{saved:?}")
+        };
+        let record = &app.history()[0].record;
+        assert_eq!(app.history()[0].fit, *fit);
+        assert_eq!(record.route_key, None, "a simulated ride sets no records");
+        assert_eq!(record.climbs.len(), 0);
         app.shutdown();
     }
 
@@ -2142,11 +2524,8 @@ mod tests {
                 .any(|e| matches!(e, AppEvent::RouteLoaded(s) if s.name == "Ride")),
             "{events:?}"
         );
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, AppEvent::WorldReady { chunks: 0, .. }))
-        );
+        // Ridden along the video unless the rider asks for 3D: no world built for it.
+        assert!(app.world().is_none());
         let course = app.video().unwrap();
         assert_eq!(course.video, video);
         // 10 m every quarter second: the video is 2.5 s in after 100 m.
@@ -2227,7 +2606,7 @@ mod tests {
 
         std::fs::rename(aside.join("Gurten.mov"), shared.join("Gurten.mov")).unwrap();
         other.open_course(shared.join("gurten.tqc"));
-        run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
+        run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert_eq!(other.video().unwrap().video, shared.join("Gurten.mov"));
         // Opened, not prepared: nothing is added to that machine's library.
         assert_eq!(other.courses().len(), 0);
@@ -2276,6 +2655,17 @@ mod tests {
         assert!((course.time_at(Meters(40.0)).as_secs_f64() - 1.4).abs() < 0.1);
     }
 
+    /// Sync marks from `(distance m, video s)` pairs.
+    fn marks(pairs: &[(f64, f64)]) -> Vec<SyncMark> {
+        pairs
+            .iter()
+            .map(|&(d, t)| SyncMark {
+                distance: Meters(d),
+                time: Duration::from_secs_f64(t),
+            })
+            .collect()
+    }
+
     /// 200 m north, 10 m per point, with timestamps of another day's recording.
     fn write_timed_route(dir: &Path) -> PathBuf {
         let mut gpx = String::from("<gpx><trk><trkseg>");
@@ -2306,7 +2696,7 @@ mod tests {
         let mut app = App::new(dir.join("a/data"), dir.join("a/cache")).unwrap();
         // Only a course can take a video.
         assert!(
-            app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+            app.add_video(&video, &marks(&[(0.0, 1.0), (1.0, 3.0)]))
                 .is_err()
         );
         // The GPX course, as imported on the Courses tab and opened on its page.
@@ -2318,7 +2708,8 @@ mod tests {
         app.open_course(file.clone());
         run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
 
-        app.add_video(&video, Duration::from_secs(1), Duration::from_secs(3))
+        // Start and end only; the end mark is put at the route's end whatever its distance.
+        app.add_video(&video, &marks(&[(0.0, 1.0), (0.0, 3.0)]))
             .unwrap();
 
         let length = app.route().unwrap().length().0;
@@ -2328,42 +2719,267 @@ mod tests {
         assert!((at(&app, length / 2.0) - 2.0).abs() < 0.01);
         assert!((at(&app, length) - 3.0).abs() < 0.01);
         assert!(app.video().unwrap().aligned_by_hand());
-        // Ridden along the video: nothing to build.
-        assert!(app.build_world());
         assert!(
-            app.add_video(&video, Duration::ZERO, Duration::from_secs(1))
+            app.add_video(&video, &marks(&[(0.0, 0.0), (0.0, 1.0)]))
                 .is_err()
         );
 
-        // Moved later: the course file keeps the new marks.
-        app.align_video(Duration::from_millis(500), Duration::from_millis(3500))
+        // Moved later, with a point in between where the footage slows down: a quarter of the
+        // route takes two seconds of video, the rest one.
+        let quarter = length / 4.0;
+        app.align_video(&marks(&[(0.0, 0.5), (quarter, 2.5), (length, 3.5)]))
             .unwrap();
         assert!((at(&app, 0.0) - 0.5).abs() < 0.01);
-        assert!(
-            app.align_video(Duration::from_secs(3), Duration::from_secs(2))
-                .is_err()
-        );
-        assert!(
-            app.align_video(Duration::from_secs(1), Duration::from_secs(60))
-                .is_err()
-        );
+        assert!((at(&app, quarter / 2.0) - 1.5).abs() < 0.01);
+        assert!((at(&app, quarter) - 2.5).abs() < 0.01);
+        assert!((at(&app, quarter + (length - quarter) / 2.0) - 3.0).abs() < 0.01);
+        // Points must follow each other on the route and in the video, within it.
+        for wrong in [
+            vec![(0.0, 3.0), (quarter, 2.5), (length, 3.5)],
+            vec![
+                (0.0, 0.5),
+                (quarter, 2.0),
+                (quarter / 2.0, 2.5),
+                (length, 3.5),
+            ],
+            vec![(0.0, 0.5), (length + 10.0, 2.5), (length, 3.5)],
+            vec![(0.0, 1.0), (quarter, 2.0), (length, 60.0)],
+        ] {
+            assert!(app.align_video(&marks(&wrong)).is_err(), "{wrong:?}");
+        }
         let reference = course::read_manifest(file).unwrap().video.unwrap();
         assert!((reference.offset_s - 0.5).abs() < 1e-9);
         assert_eq!(reference.end_s, Some(3.5));
+        assert_eq!(reference.marks.len(), 3);
 
         let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
         other.open_course(file.clone());
         run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert!((at(&other, 0.0) - 0.5).abs() < 0.01);
+        assert!((at(&other, quarter) - 2.5).abs() < 0.01);
         assert!((at(&other, length) - 3.5).abs() < 0.01);
+
+        // Course files with only a start and an end (before points in between) still open.
+        update_manifest(file, |m| {
+            let video = m.video.as_mut().unwrap();
+            video.marks.clear();
+            video.end_s = Some(3.0);
+        })
+        .unwrap();
+        other.open_course(file.clone());
+        run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!((at(&other, length / 2.0) - 1.75).abs() < 0.01);
 
         // Removed again: a 3D course, as before.
         app.remove_video().unwrap();
-        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert!(app.video().is_none());
         assert!(course::read_manifest(file).unwrap().video.is_none());
         assert!(!app.build_world());
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+    }
+
+    #[test]
+    fn the_videos_sound_plays_along_at_its_pitch_and_can_be_switched_off() {
+        let dir = temp_dir("sound");
+        let video = video_in(&dir, &torqa_video::testing::sound_video("app"), "Ride.mov");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(file)) = events.last() else {
+            unreachable!()
+        };
+        app.open_course(file.clone());
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        // Most of the video on the first 40 m: at 6 m/s it plays at about half its speed.
+        app.add_video(&video, &marks(&[(0.0, 0.0), (40.0, 3.6), (400.0, 3.95)]))
+            .unwrap();
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(0.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        assert_eq!(app.video_sound_rate(), Some(48_000));
+
+        let ride = |app: &mut App, frames: usize| {
+            let mut heard = Vec::new();
+            for _ in 0..frames {
+                std::thread::sleep(Duration::from_millis(16));
+                app.update(Duration::from_millis(16));
+                heard.extend(app.video_sound(4_096));
+            }
+            heard
+        };
+        let heard = ride(&mut app, 240);
+
+        // Sound keeps up with real time once it runs (≈ 48 000 samples a second).
+        assert!(heard.len() > 48_000 * 3, "{} samples", heard.len());
+        let last: Vec<f32> = heard[heard.len() - 9_600..].iter().map(|s| s[0]).collect();
+        let loudness = last.iter().map(|v| v.abs()).fold(0.0_f32, f32::max);
+        assert!(loudness > 0.05, "silent while riding: {loudness}");
+        #[allow(clippy::cast_precision_loss)]
+        let hertz = last
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count() as f32
+            / 2.0
+            / 0.2;
+        assert!((hertz - 440.0).abs() < 30.0, "pitch {hertz} Hz");
+
+        app.set_video_sound(false);
+        let heard = ride(&mut app, 60);
+        let tail = &heard[heard.len().saturating_sub(4_800)..];
+        assert!(
+            tail.iter().flatten().all(|v| v.abs() < 1e-4),
+            "still audible"
+        );
+        app.abort_ride();
+        assert_eq!(app.video_sound_rate(), None);
+    }
+
+    #[test]
+    fn a_video_showing_no_picture_is_reported_once() {
+        let dir = temp_dir("no-picture");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::gopro_video("no-picture"),
+            "Ride.MOV",
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        loaded_video(&mut app, video);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        let ride = |app: &mut App, take_frames: bool| {
+            app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+                .unwrap();
+            let mut problems = Vec::new();
+            for _ in 0..360 {
+                std::thread::sleep(Duration::from_millis(16));
+                for event in app.update(Duration::from_millis(16)) {
+                    if let AppEvent::Error(message) = event {
+                        problems.push(message);
+                    }
+                }
+                if take_frames {
+                    let _ = app.video_frame();
+                }
+            }
+            app.abort_ride();
+            problems
+        };
+
+        // Shown as it should: nothing to report.
+        assert_eq!(ride(&mut app, true), Vec::<String>::new());
+        // Never shown (as on a front end that cannot display it): said once, not every frame.
+        let problems = ride(&mut app, false);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("no picture"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_video_course_is_ridden_along_its_video_or_in_3d() {
+        let dir = temp_dir("video-or-3d");
+        let video = video_in(
+            &dir,
+            &torqa_video::testing::gopro_video("or-3d"),
+            "Ride.MOV",
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        loaded_video(&mut app, video);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        let start = |app: &mut App| {
+            app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+                .unwrap();
+        };
+
+        // In 3D: the route's world is built, the video stays off.
+        app.ride_along_video(false);
+        assert!(!app.build_world());
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        start(&mut app);
+        assert!(!app.riding_along_video());
+        assert!(app.video_frame().is_none());
+        app.abort_ride();
+
+        // Along the video, as before.
+        app.ride_along_video(true);
+        start(&mut app);
+        assert!(app.riding_along_video());
+        app.abort_ride();
+
+        // Without its video, a course is ridden in 3D only.
+        app.remove_video().unwrap();
+        app.ride_along_video(true);
+        start(&mut app);
+        assert!(!app.riding_along_video());
+    }
+
+    #[test]
+    fn a_tacx_real_life_video_rides_along_its_video_by_distance_and_slope() {
+        use torqa_video::testing::{pgmf_bytes, rlv_bytes, test_video};
+
+        let dir = temp_dir("rlv");
+        video_in(&dir, &test_video("rlv", 64, 48), "stelvio.mp4");
+        std::fs::write(
+            dir.join("Stelvio.rlv"),
+            rlv_bytes(r"C:\Tacx\Videos\STELVIO.MP4"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("Stelvio.PGMF"), pgmf_bytes("Passo dello Stelvio")).unwrap();
+        assert_eq!(
+            App::suggested_course_name(&dir.join("Stelvio.rlv")),
+            "Stelvio"
+        );
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_video(dir.join("Stelvio.rlv"), false);
+        let file = added(&mut app);
+
+        let route = app.route().unwrap();
+        assert!(
+            (route.length().0 - 30.0).abs() < 0.5,
+            "{}",
+            route.length().0
+        );
+        // The elevations are the course's own (from 500 m, up then down), not terrain data's
+        // from wherever its drawn line happens to lie.
+        assert_eq!(route.elevation_source(), ElevationSource::File);
+        assert!(route.elevation_gain().0 > 0.3);
+        let course = app.video().unwrap();
+        assert!(!course.located);
+        let at = |m: f64| course.time_at(Meters(m)).as_secs_f64();
+        // 1 m per frame for 20 m, then 0.5 m: 2 s at 20 m, 3 s at 25 m.
+        assert!((at(20.0) - 2.0).abs() < 0.05, "{}", at(20.0));
+        assert!((at(25.0) - 3.0).abs() < 0.05, "{}", at(25.0));
+        // The PGMF's 17-character name field cut "Passo dello Stelvio" short: the RLV's
+        // file name is used instead.
+        assert_eq!(course::read_manifest(&file).unwrap().name, "Stelvio");
+
+        // Only along its video: it has no place for a 3D world, and keeps its video.
+        app.ride_along_video(false);
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(200.0),
+            cadence: Rpm(90.0),
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        assert!(app.riding_along_video());
+        app.abort_ride();
+        assert!(app.remove_video().is_err());
+
+        // Opened again from its file: still a course without a place.
+        app.open_course(file);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert!(!app.video().unwrap().located);
     }
 
     #[test]
@@ -2379,11 +2995,7 @@ mod tests {
         loaded_video(&mut app, video);
 
         assert!(!app.video().unwrap().aligned_by_hand());
-        assert!(
-            app.align_video(Duration::ZERO, Duration::from_secs(2))
-                .is_err()
-        );
-        assert!(app.remove_video().is_err());
+        assert!(app.align_video(&marks(&[(0.0, 0.0), (0.0, 2.0)])).is_err());
     }
 
     #[test]
@@ -2428,6 +3040,112 @@ mod tests {
         );
         assert!(app.video().is_none());
         assert_eq!(app.courses().len(), 0);
+    }
+
+    /// An Incyclist route video in `dir` for `video` (copied there), on a 200 m GPX.
+    fn write_incyclist(dir: &Path, video: &Path) {
+        std::fs::copy(video, dir.join("climb.mp4")).unwrap();
+        let mut gpx = String::from("<gpx><trk><trkseg>");
+        for i in 0..=20 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let _ = write!(
+                gpx,
+                r#"<trkpt lat="{lat}" lon="7"><ele>500</ele><time>2024-06-01T08:00:{:06.3}Z</time></trkpt>"#,
+                f64::from(i) / 10.0
+            );
+        }
+        gpx.push_str("</trkseg></trk></gpx>");
+        std::fs::write(dir.join("climb.gpx"), gpx).unwrap();
+        std::fs::write(
+            dir.join("climb.xml"),
+            "<gpx-import><title>Col &amp; Climb</title><video-file-path>climb.mp4</video-file-path>\
+             <gpx-file-path>climb.gpx</gpx-file-path><framerate>10</framerate>\
+             <start-frame>1</start-frame></gpx-import>",
+        )
+        .unwrap();
+    }
+
+    fn added(app: &mut App) -> PathBuf {
+        let events = run_until(app, |e| {
+            matches!(e, AppEvent::CourseAdded(_) | AppEvent::Error(_))
+        });
+        match events.last() {
+            Some(AppEvent::CourseAdded(path)) => path.clone(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_route_video_of_an_imported_gpx_is_a_course_of_its_own() {
+        let dir = temp_dir("same-gpx");
+        write_incyclist(&dir, &torqa_video::testing::test_video("same-gpx", 64, 48));
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+
+        app.load_route(dir.join("climb.gpx"), true);
+        let gpx_course = added(&mut app);
+        app.load_video(dir.join("climb.xml"), true);
+        let video_course = added(&mut app);
+
+        assert_ne!(gpx_course, video_course);
+        let courses = app.courses();
+        assert_eq!(courses.len(), 2);
+        assert_eq!(
+            courses
+                .iter()
+                .filter(|c| c.manifest.video.is_some())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn imported_courses_get_the_name_given_and_replace_only_when_asked() {
+        let dir = temp_dir("naming");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let route = write_route(&dir);
+
+        app.name_next_import("  Evening loop ", false);
+        let first = added_after(&mut app, |app| app.load_route(route.clone(), true));
+        assert_eq!(course::read_manifest(&first).unwrap().name, "Evening loop");
+        assert_eq!(app.course_named("evening LOOP"), Some(first.clone()));
+        // Same name, kept next to it.
+        app.name_next_import("Evening loop", false);
+        let second = added_after(&mut app, |app| app.load_route(route.clone(), true));
+        assert_ne!(first, second);
+        assert_eq!(app.courses().len(), 2);
+        // Replacing: the course of that name is the new one, nothing added.
+        app.name_next_import("Evening loop", true);
+        write_incyclist(&dir, &torqa_video::testing::test_video("naming", 64, 48));
+        let replaced = added_after(&mut app, |app| app.load_video(dir.join("climb.xml"), true));
+        assert_eq!(app.courses().len(), 2);
+        assert!(replaced == first || replaced == second);
+        assert!(course::read_manifest(&replaced).unwrap().video.is_some());
+        // Course files too.
+        app.name_next_import("Shared", false);
+        let copied = added_after(&mut app, |app| app.import_course(replaced.clone()));
+        assert_eq!(course::read_manifest(&copied).unwrap().name, "Shared");
+        assert_eq!(app.courses().len(), 3);
+    }
+
+    fn added_after(app: &mut App, import: impl FnOnce(&mut App)) -> PathBuf {
+        import(app);
+        added(app)
+    }
+
+    #[test]
+    fn imports_suggest_the_name_the_files_give() {
+        let dir = temp_dir("suggest");
+        write_incyclist(&dir, &torqa_video::testing::test_video("suggest", 64, 48));
+        let named = dir.join("named.gpx");
+        std::fs::write(&named, r#"<gpx><trk><name>Gurten</name><trkseg><trkpt lat="46" lon="7"/></trkseg></trk></gpx>"#).unwrap();
+
+        assert_eq!(App::suggested_course_name(&named), "Gurten");
+        assert_eq!(App::suggested_course_name(&dir.join("climb.gpx")), "climb");
+        assert_eq!(
+            App::suggested_course_name(&dir.join("climb.xml")),
+            "Col & Climb"
+        );
+        assert_eq!(App::suggested_course_name(&dir.join("Ride.MOV")), "Ride");
     }
 
     #[test]

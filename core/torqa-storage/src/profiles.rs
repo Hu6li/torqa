@@ -107,6 +107,46 @@ struct Settings {
     trainer: Option<RememberedDevice>,
     /// The heart-rate sensor connected last.
     heart_rate: Option<RememberedDevice>,
+    /// How detailed the 3D world is drawn on this computer (R43).
+    graphics_quality: Option<GraphicsQuality>,
+}
+
+/// How detailed the 3D world is drawn (R43): more detail needs a stronger GPU. Medium holds
+/// 60 fps on a base M1.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphicsQuality {
+    /// For weak integrated GPUs.
+    Low,
+    /// The default: 60 fps on a base M1.
+    #[default]
+    Medium,
+    /// For stronger Apple GPUs and discrete GPUs.
+    High,
+    /// Everything on, including global illumination.
+    Ultra,
+}
+
+impl GraphicsQuality {
+    /// All presets, from the lightest.
+    pub const ALL: [Self; 4] = [Self::Low, Self::Medium, Self::High, Self::Ultra];
+
+    /// The name stored and passed to the front end.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Ultra => "ultra",
+        }
+    }
+
+    /// The preset called `name`, if any.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|q| q.name() == name)
+    }
 }
 
 /// A Bluetooth device to reconnect at start (R41).
@@ -244,6 +284,22 @@ pub fn remember_device(
     save_settings(data_dir, &settings)
 }
 
+/// The graphics quality chosen on this installation; Medium until one is chosen.
+#[must_use]
+pub fn graphics_quality(data_dir: &Path) -> GraphicsQuality {
+    settings(data_dir).graphics_quality.unwrap_or_default()
+}
+
+/// Remembers the graphics quality for this installation.
+///
+/// # Errors
+/// On file system errors.
+pub fn set_graphics_quality(data_dir: &Path, quality: GraphicsQuality) -> Result<(), ProfileError> {
+    let mut settings = settings(data_dir);
+    settings.graphics_quality = Some(quality);
+    save_settings(data_dir, &settings)
+}
+
 fn settings(data_dir: &Path) -> Settings {
     std::fs::read_to_string(data_dir.join(SETTINGS_FILE))
         .ok()
@@ -292,6 +348,36 @@ mod tests {
             std::env::temp_dir().join(format!("torqa-profiles-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn graphics_quality_is_kept_with_the_other_settings() {
+        let dir = temp_dir("quality");
+        assert_eq!(graphics_quality(&dir), GraphicsQuality::Medium);
+        remember_device(
+            &dir,
+            true,
+            RememberedDevice {
+                id: "kickr".to_owned(),
+                name: "KICKR".to_owned(),
+            },
+        )
+        .unwrap();
+
+        set_graphics_quality(&dir, GraphicsQuality::Ultra).unwrap();
+
+        assert_eq!(graphics_quality(&dir), GraphicsQuality::Ultra);
+        assert!(remembered_devices(&dir).trainer.is_some());
+        assert!(
+            std::fs::read_to_string(dir.join(SETTINGS_FILE))
+                .unwrap()
+                .contains(r#"graphics_quality = "ultra""#)
+        );
+        assert_eq!(
+            GraphicsQuality::from_name("high"),
+            Some(GraphicsQuality::High)
+        );
+        assert_eq!(GraphicsQuality::from_name("epic"), None);
     }
 
     #[test]
