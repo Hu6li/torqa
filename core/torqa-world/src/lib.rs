@@ -52,8 +52,9 @@ const FILL_SLOPE: f64 = 0.6;
 /// `REACH_FADE` metres the shaped ground blends into the natural.
 pub(crate) const LEVEL_REACH: f64 = 45.0;
 const REACH_FADE: f64 = 12.0;
-/// Level ground sits this far below the road surface, so the two never flicker.
-const ROAD_SINK: f64 = 0.25;
+/// Level ground sits this far below the road surface, so the two never flicker; the road's edge
+/// bevels down to it (road.rs). Other streets lie between the two where they join the road.
+const ROAD_SINK: f64 = 0.15;
 /// Without terrain data, heights follow the road found within this distance.
 const FALLBACK_RADIUS: f64 = 400.0;
 
@@ -156,7 +157,7 @@ pub async fn generate<M: ElevationModel>(
     let streets = streets::lines(map, &projection, model).await;
     let clearance = streets::Clearance::new(&streets);
     let mut world = World {
-        road: road.mesh(ROAD_HALF_WIDTH),
+        road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
         water: {
             let mut water = water::surfaces(&map.areas, &projection, &road, model).await;
             let rivers = water::ribbons(&map.waterways, &projection, &road, model).await;
@@ -456,6 +457,52 @@ impl HeightGrid {
     }
 
     /// Shaped height at a grid vertex; `i`/`j` may be −1 or `side` (the border).
+    /// The ground's triangles (corners in metres east/north) overlapping the rectangle
+    /// `low`–`high`, as the mesh draws them: cells, or their fine pieces near the road, split
+    /// along the south-west to north-east diagonal, clockwise seen from above.
+    pub(crate) fn triangles(&self, low: (f64, f64), high: (f64, f64)) -> Vec<[(f64, f64); 3]> {
+        // Cells (or pieces) of `size` from `start` that `from`–`to` touches, of `count`.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped, small grid
+        let touched = |from: f64, to: f64, start: f64, size: f64, count: usize| {
+            let first = (((from - start) / size).floor().max(0.0) as usize).min(count - 1);
+            let last = (((to - start) / size).floor().max(0.0) as usize).min(count - 1);
+            first..=last
+        };
+        let cells = self.side - 1;
+        let mut triangles = Vec::new();
+        for j in touched(low.1, high.1, self.origin.1, GRID, cells) {
+            for i in touched(low.0, high.0, self.origin.0, GRID, cells) {
+                #[allow(clippy::cast_precision_loss)] // small grid
+                let corner = (
+                    self.origin.0 + i as f64 * GRID,
+                    self.origin.1 + j as f64 * GRID,
+                );
+                let (size, count) = if self.fine.contains_key(&(i, j)) {
+                    (FINE, SUB)
+                } else {
+                    (GRID, 1)
+                };
+                for row in touched(low.1, high.1, corner.1, size, count) {
+                    for column in touched(low.0, high.0, corner.0, size, count) {
+                        #[allow(clippy::cast_precision_loss)] // a few pieces
+                        let sw = (
+                            corner.0 + column as f64 * size,
+                            corner.1 + row as f64 * size,
+                        );
+                        let (se, nw, ne) = (
+                            (sw.0 + size, sw.1),
+                            (sw.0, sw.1 + size),
+                            (sw.0 + size, sw.1 + size),
+                        );
+                        triangles.push([sw, nw, ne]);
+                        triangles.push([sw, ne, se]);
+                    }
+                }
+            }
+        }
+        triangles
+    }
+
     fn vertex(&self, i: isize, j: isize) -> f64 {
         self.heights[self.slot(i, j)]
     }
