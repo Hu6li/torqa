@@ -1,12 +1,14 @@
 //! Rivers and streams.
 
+use std::sync::LazyLock;
+
 use torqa_osm::{Area, LandCover, Waterway};
 use torqa_routes::{ElevationModel, LocalProjection};
 
 use crate::buildings::{signed_area, triangulate};
 use crate::minimap::simplify;
 use crate::road::RoadIndex;
-use crate::{CORRIDOR, MeshData};
+use crate::{CORRIDOR, MeshData, palette};
 
 /// Water sits this far above the terrain sample, hiding the coarse terrain below it.
 const SURFACE_OFFSET: f64 = 0.3;
@@ -17,7 +19,7 @@ const LEVEL_SAMPLES: usize = 24;
 /// Waterway lines are sampled this often.
 const STEP: f64 = 10.0;
 /// Colour of water; alpha 1 marks water for the shader.
-const WATER: [f32; 4] = [0.10, 0.22, 0.30, 1.0];
+static WATER: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("water.deep", 1.0));
 
 /// Ribbons for the waterways' parts within the corridor around the road.
 #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
@@ -97,7 +99,7 @@ pub(crate) async fn surfaces<M: ElevationModel>(
                     .push([east as f32, (level + SURFACE_OFFSET) as f32, -north as f32]);
                 mesh.normals.push([0.0, 1.0, 0.0]);
                 mesh.uvs.push([0.0, 0.0]);
-                mesh.colors.push(WATER);
+                mesh.colors.push(*WATER);
             }
             for [a, b, c] in triangles {
                 // Counter-clockwise outline seen from above; Godot's front faces are clockwise.
@@ -175,7 +177,7 @@ fn add_ribbon(mesh: &mut MeshData, run: &[(f64, f64, f64)], width: f64) {
             mesh.vertices.push([e as f32, height as f32, -n as f32]);
             mesh.normals.push([0.0, 1.0, 0.0]);
             mesh.uvs.push([0.0, 0.0]);
-            mesh.colors.push(WATER);
+            mesh.colors.push(*WATER);
         }
         if i > 0 {
             let base = u32::try_from(mesh.vertices.len() - 4).expect("water mesh fits u32");

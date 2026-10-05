@@ -1,9 +1,12 @@
 //! What covers the ground at a point, from OpenStreetMap areas.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use torqa_osm::{Area, LandCover};
 use torqa_routes::LocalProjection;
+
+use crate::palette;
 
 /// Size of the index cells.
 const CELL: f64 = 250.0;
@@ -114,17 +117,78 @@ fn cell_of(east: f64, north: f64) -> (i64, i64) {
     ((east / CELL).floor() as i64, (north / CELL).floor() as i64)
 }
 
-/// Terrain tint for a land cover; alpha 1 marks water for the shader.
+/// Ground colours of the land covers, read from the palette once (it is asked per vertex).
+struct Ground {
+    meadow: [f32; 4],
+    forest: [f32; 4],
+    farmland: [f32; 4],
+    orchard: [f32; 4],
+    town: [f32; 4],
+    industrial: [f32; 4],
+    rock: [f32; 4],
+    bed: [f32; 4],
+}
+
+static GROUND: LazyLock<Ground> = LazyLock::new(|| Ground {
+    meadow: palette::srgb("ground.meadow", 0.0),
+    forest: palette::srgb("ground.forest", 0.0),
+    farmland: palette::srgb("ground.farmland", 0.0),
+    orchard: palette::srgb("ground.orchard", 0.0),
+    town: palette::srgb("ground.town", 0.0),
+    industrial: palette::srgb("ground.industrial", 0.0),
+    rock: palette::srgb("ground.rock", 0.0),
+    bed: palette::srgb("water.bed", 1.0),
+});
+
+/// Ground colour (sRGB) for a land cover; alpha 1 marks the bed under water for the shader.
 pub(crate) fn color(cover: Option<LandCover>) -> [f32; 4] {
+    let ground = &*GROUND;
     match cover {
-        None => [0.30, 0.46, 0.20, 0.0],
-        Some(LandCover::Meadow) => [0.36, 0.52, 0.22, 0.0],
-        Some(LandCover::Forest) => [0.13, 0.24, 0.10, 0.0],
-        Some(LandCover::Farmland) => [0.55, 0.53, 0.30, 0.0],
-        Some(LandCover::Orchard) => [0.38, 0.48, 0.22, 0.0],
-        Some(LandCover::Residential) => [0.42, 0.45, 0.38, 0.0],
-        Some(LandCover::Industrial) => [0.44, 0.45, 0.41, 0.0],
-        Some(LandCover::Rock) => [0.45, 0.43, 0.40, 0.0],
-        Some(LandCover::Water) => [0.10, 0.22, 0.30, 1.0],
+        None | Some(LandCover::Meadow) => ground.meadow,
+        Some(LandCover::Forest) => ground.forest,
+        Some(LandCover::Farmland) => ground.farmland,
+        Some(LandCover::Orchard) => ground.orchard,
+        Some(LandCover::Residential) => ground.town,
+        Some(LandCover::Industrial) => ground.industrial,
+        Some(LandCover::Rock) => ground.rock,
+        Some(LandCover::Water) => ground.bed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const COVERS: [Option<LandCover>; 9] = [
+        None,
+        Some(LandCover::Forest),
+        Some(LandCover::Meadow),
+        Some(LandCover::Farmland),
+        Some(LandCover::Orchard),
+        Some(LandCover::Residential),
+        Some(LandCover::Industrial),
+        Some(LandCover::Water),
+        Some(LandCover::Rock),
+    ];
+
+    #[test]
+    fn every_cover_has_a_palette_colour_and_only_water_is_marked() {
+        for cover in COVERS {
+            let colour = color(cover);
+            assert_eq!(
+                colour[3] > 0.5,
+                cover == Some(LandCover::Water),
+                "{cover:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn forests_read_darker_than_open_land() {
+        let luminance = |c: [f32; 4]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        let forest = luminance(color(Some(LandCover::Forest)));
+        for open in [None, Some(LandCover::Meadow), Some(LandCover::Farmland)] {
+            assert!(forest < luminance(color(open)) - 0.1, "{open:?}");
+        }
     }
 }

@@ -1,12 +1,14 @@
 //! Bridges (deck, parapets, pillars) and tunnels (an arched tube) along the road.
 
+use std::sync::LazyLock;
+
 use torqa_routes::{ElevationModel, LocalProjection, Surface};
 
-use crate::MeshData;
 use crate::road::{CentrePoint, RoadIndex};
+use crate::{MeshData, palette};
 
-const CONCRETE: [f32; 4] = [0.62, 0.61, 0.58, 0.0];
-const TUNNEL_WALL: [f32; 4] = [0.38, 0.37, 0.35, 0.0];
+static CONCRETE: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.concrete", 0.0));
+static TUNNEL_WALL: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.tunnel", 0.0));
 
 /// Half the deck width: the road plus a narrow kerb.
 const DECK_HALF_WIDTH: f64 = 3.6;
@@ -58,7 +60,7 @@ async fn bridge<M: ElevationModel>(
                 -DECK_THICKNESS,
                 PARAPET_HEIGHT,
                 outward,
-                CONCRETE,
+                *CONCRETE,
             );
             // Parapet: inner face and top.
             wall(
@@ -69,9 +71,9 @@ async fn bridge<M: ElevationModel>(
                 0.0,
                 PARAPET_HEIGHT,
                 outward.map(|v| -v),
-                CONCRETE,
+                *CONCRETE,
             );
-            flat(mesh, a, b, inner, outer, PARAPET_HEIGHT, 1.0, CONCRETE);
+            flat(mesh, a, b, inner, outer, PARAPET_HEIGHT, 1.0, *CONCRETE);
         }
         flat(
             mesh,
@@ -81,7 +83,7 @@ async fn bridge<M: ElevationModel>(
             DECK_HALF_WIDTH,
             -DECK_THICKNESS,
             -1.0,
-            CONCRETE,
+            *CONCRETE,
         );
     }
 
@@ -124,9 +126,9 @@ fn tunnel(mesh: &mut MeshData, run: &[CentrePoint]) {
             let right = right(a);
             // Facing the axis, seen from inside the tunnel...
             let inward = [-right[0] * cos, -sin, -right[2] * cos];
-            quad(mesh, corners, inward, TUNNEL_WALL);
+            quad(mesh, corners, inward, *TUNNEL_WALL);
             // ...and the outside, visible at the portals.
-            quad(mesh, corners, inward.map(|v| -v), CONCRETE);
+            quad(mesh, corners, inward.map(|v| -v), *CONCRETE);
         }
     }
 }
@@ -206,7 +208,7 @@ fn pillar(
             corner(along + u, across + v, top),
             corner(along - u, across - v, top),
         ];
-        quad(mesh, corners, normal, CONCRETE);
+        quad(mesh, corners, normal, *CONCRETE);
     }
 }
 
