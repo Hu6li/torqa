@@ -192,6 +192,10 @@ fn add_waterway(
     geometry: &Geometry<f64>,
     projection: &TileProjection,
 ) {
+    // Culverts and tunnels carry the water underground, under roads and towns.
+    if tags.text("brunnel") == "tunnel" {
+        return;
+    }
     let width = match tags.text("class") {
         "river" => 12.0,
         "canal" => 8.0,
@@ -455,6 +459,33 @@ mod tests {
         // next tile.
         assert_eq!(data.churches.len(), 2);
         assert!(data.buildings.iter().any(|b| b.color.is_some()));
+    }
+
+    #[test]
+    fn streams_in_culverts_and_tunnels_are_left_out() {
+        let projection = TileProjection {
+            x: 8531.0,
+            y: 5767.0,
+            extent: 4096.0,
+        };
+        let stream = Geometry::LineString(LineString::from(vec![(100.0, 100.0), (200.0, 100.0)]));
+        let tags = |brunnel: &str| {
+            Tags(HashMap::from([
+                ("class".to_owned(), Value::String("stream".to_owned())),
+                ("brunnel".to_owned(), Value::String(brunnel.to_owned())),
+            ]))
+        };
+        let mut data = MapData::default();
+
+        add_waterway(&mut data, &tags("tunnel"), &stream, &projection);
+        assert!(data.waterways.is_empty(), "culvert drawn");
+        add_waterway(&mut data, &tags("bridge"), &stream, &projection);
+        add_waterway(&mut data, &tags(""), &stream, &projection);
+        assert_eq!(
+            data.waterways.len(),
+            2,
+            "open streams and aqueducts are drawn"
+        );
     }
 
     #[test]
