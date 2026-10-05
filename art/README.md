@@ -27,31 +27,32 @@ scripts/dev.sh sh -c 'MODELS="chalet_2_m" scripts/render-models.sh'
 - `kinds.py` builds each kind: `house`, `chalet`, `farmhouse` (Bernese, with the Ründi arch),
   `church` (nave, choir, tower with clocks and a needle spire or saddle roof), `chapel`
   (with a roof turret) and `shed` (also garages).
-- `kit.py` holds the pieces: walls with recessed openings, windows with frames, glazing bars,
-  sills and shutters, doors, balconies, flower boxes, gable, hipped and half-hipped roofs with
-  rafters, gutters and downpipes, spires and clocks.
+- `kit.py` holds the pieces: walls with recessed openings, windows with frames, sills and
+  shutters, doors, balconies with solid balustrades, flower boxes, gable, hipped and
+  half-hipped roofs with thick edges, spires and clocks. Parts are chunky and few (ADR 0011):
+  no gutters, downpipes, rafters or glazing bars, nothing that does not show at riding
+  distance.
 
 Models use metres with x along the building, y across it and z up; the origin is the centre of
 the footprint at ground level, and walls reach 3 m below it for slopes. Texture coordinates
 are metres on each surface (walls: along and up; roofs: along the eaves and up the slope).
 
 The files carry no textures: each face has a material **name**, and the app gives every name
-its look in `app/scenes/building_models.gd` and `app/shaders/building_model.gdshader`. New
-names need an entry there. Fine detail is drawn rather than modelled where that saves many
-triangles: glass gets its texture coordinates spanning its panes (2 × 2 panes: 0–2 × 0–2) and
-draws glazing bars where they cross whole numbers; shutters draw their slats. Keep the models
-lean: towns place thousands of them.
+a flat palette colour (`buildings.*` in `app/assets/palette.json`) in
+`app/scenes/building_models.gd` and `app/shaders/building_model.gdshader`. New names need an
+entry there. Keep the models lean — a house 300–1,200 faces, a chalet or farmhouse up to about
+2,000 — since towns place thousands of them; `build.py` prints the counts.
 
 | Name | Used for |
 |---|---|
 | `plaster` | rendered walls; the colour varies per building |
 | `stone` | plinths, sills, quoins |
-| `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and rafters; the Ründi |
-| `frame`, `glass`, `leaded` | window frames; glass with white or (in churches) lead glazing bars |
-| `shutter`, `door`, `garage` | shutters (colour varies per building), doors |
+| `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and log ends; the Ründi |
+| `frame`, `glass`, `leaded` | window frames; glass, and stained glass in churches |
+| `shutter`, `door`, `garage` | shutters (colour varies per building, some have none), doors |
 | `tiles`, `slate`, `sheet` | roofs: tiles in the building's roof colour, slate, sheet metal |
-| `metal`, `copper` | gutters, caps, finials; spires |
-| `flowers`, `leaves` | geraniums in boxes and on balconies |
+| `metal`, `copper` | caps, finials; spires |
+| `flowers`, `leaves` | geraniums in boxes and on balconies (one colour per box) |
 | `clock` | clock dials |
 
 The build also writes `models.json` next to the models: each model's kind, roof, the footprint
