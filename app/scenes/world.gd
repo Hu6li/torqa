@@ -346,6 +346,12 @@ func _ready() -> void:
 	_water_material.set_shader_parameter("deep_color", Palette.color("water.deep"))
 	_water_material.set_shader_parameter("shallow_color", Palette.color("water.shallow"))
 	_building_material.shader = preload("res://shaders/building.gdshader")
+	_building_material.set_shader_parameter("glass", Palette.color("buildings.glass"))
+	_building_material.set_shader_parameter("frame", Palette.color("buildings.frame"))
+	_building_material.set_shader_parameter(
+		"stained_glass", Palette.color("buildings.stained_glass")
+	)
+	_building_material.set_shader_parameter("stone", Palette.color("buildings.stone"))
 	_structure_material.vertex_color_use_as_albedo = true
 	_structure_material.vertex_color_is_srgb = true
 	_structure_material.roughness = 0.9

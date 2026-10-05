@@ -23,6 +23,11 @@ static func colors(path: String) -> PackedColorArray:
 	return result
 
 
+## Whether `section.name` is a list of colours rather than one.
+static func is_list(path: String) -> bool:
+	return _entry(path) is Array
+
+
 static func _entry(path: String) -> Variant:
 	if _sections.is_empty():
 		var json: JSON = load(SOURCE)
