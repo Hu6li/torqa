@@ -58,13 +58,16 @@ ground; walls reach 3 m below ground for slopes. glTF/Godot turn Blender's y int
 - Exports are deterministic: rebuilding unchanged scripts must give byte-identical `.glb`s.
   If a rebuild changes files you did not touch, find out why before committing.
 
-## Rigged models (riders)
+## Riders (`art/riders`)
 
-- Armature in Blender (`blender-animation-rigging`), exported in the same `.glb`; Godot imports
-  it as `Skeleton3D`. Keep bone names stable — Godot code drives them (pedalling: hips, knees and
-  ankles follow the crank, by IK or a baked cycle sampled by crank angle).
-- Faceted characters: low-poly body with flat shading, the `torqa-look` rider palette for kit.
-- Male and female riders share the rig and the kit's material names.
+- No armature: the bodies are rigid parts (Human Base Meshes' primitive bodies), so the build
+  poses them by turning parts about their joints and exports the posed upper body as one node
+  (`body`) and each leg part as its own node with its origin at its joint. Godot aims the leg
+  nodes at the pedals by two-bone IK (`app/scenes/rider_avatar.gd`); `riders.json` carries the
+  fit. Keep node names stable — the app finds them by name.
+- Faceted characters: base-level bodies (no SubSurf) with flat shading, kit by material name
+  coloured from the rider's palette section.
+- Male and female riders share node and material names; each has their own bike, sized to them.
 
 ## Third-party bases (CC0 characters and the like)
 
