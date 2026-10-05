@@ -12,6 +12,11 @@ shots, run them in the background, and read the PNGs with the Read tool. Output 
 
 ## Ready-made
 
+- `scripts/dev.sh scripts/render-views.sh` — the **standard views** (`app/tools/render_views.gd`):
+  fixed shots on the fixture routes (village, climb, hairpin, lake, rain, evening, bridge) into
+  `screenshots/views/`. Render them before a visual change (`OUT_DIR=…/views-before`, pass it inside
+  `sh -c '…'`) and after, and compare pairs; `VIEWS="village-chase lake-drone"` limits it.
+
 - `scripts/dev.sh scripts/screenshots.sh` — the standard ride screenshots (`app/tests/
   screenshots.gd`).
 - `scripts/dev.sh scripts/render-models.sh` — every model of `app/assets/models/buildings` as

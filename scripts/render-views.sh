@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+# Renders the standard views (app/tools/render_views.gd: fixed shots on the fixture routes) into
+# screenshots/views/ with software Vulkan, to compare a visual change before and after (ADR 0011).
+# Runs inside the dev container: scripts/dev.sh scripts/render-views.sh
+# VIEWS="village-chase lake-drone" renders only some; OUT_DIR changes the folder, QUALITY the
+# graphics preset (medium by default).
+set -eu
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+out="${OUT_DIR:-$root/screenshots/views}"
+mkdir -p "$out"
+"$root/scripts/build-gdext.sh" debug >/dev/null
+godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
+status=0
+# One Godot run per route: each loads its route and rides it to the views on it.
+for route in gurtenstrasse bielersee kirchenfeldbruecke; do
+    # A script error leaves Godot waiting for the world forever, hence the timeout.
+    output="$(ROUTE="$route" OUT_DIR="$out" timeout 1800 xvfb-run -a -s "-screen 0 1600x900x24" \
+        godot --path "$root/app" --rendering-driver vulkan --resolution 1280x720 \
+        -s res://tools/render_views.gd 2>&1)" || status=1
+    echo "$output" | grep -E "^saved" || true
+    if echo "$output" | grep -q "SCRIPT ERROR\|SHADER ERROR"; then
+        echo "$output" | grep -A3 "SCRIPT ERROR\|SHADER ERROR" >&2
+        status=1
+    fi
+done
+exit "$status"
