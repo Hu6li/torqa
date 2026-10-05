@@ -2,18 +2,16 @@
 //! banks, not on the ground. Along streams and rivers and round lakes the ground is carved: the
 //! water's edge half a metre down, banks sloping out from it, the bed deepening towards the
 //! middle. The water's surface lies at the uncarved ground less that half metre
-//! (`HeightGrid::level`). Where the road ridden, a street or a railway crosses on the ground,
+//! (`HeightGrid::level`). Where the road ridden, a railway or a street crosses on the ground,
 //! the channel stops short of it, as at a culvert; under bridges it runs on.
 
 use std::collections::HashMap;
 
 use torqa_routes::Surface;
 
-use crate::VERGE;
-use crate::railways::Railway;
-use crate::road::RoadIndex;
 use crate::streets::Street;
 use crate::water::{Pool, Stream};
+use crate::{Shapers, VERGE};
 
 /// The water's surface lies this far below the land beside it...
 pub(crate) const DROP: f64 = 0.5;
@@ -25,8 +23,8 @@ const INSET: f64 = BANK_WIDTH * (1.0 - DROP / BANK);
 /// Towards the middle the bed deepens by this share of the distance, at most `DEEPEST` more.
 const DEEPENING: f64 = 0.5;
 const DEEPEST: f64 = 1.0;
-/// Channels stop this far short of the road ridden's verge and of streets and railways
-/// crossing on the ground, rising to the land over `BANK_WIDTH`.
+/// Channels stop this far short of the verges of the road ridden and the railways, and of
+/// streets crossing on the ground, rising to the land over `BANK_WIDTH`.
 const CROSSING_MARGIN: f64 = 0.5;
 /// Index cell size; larger than the reach of any channel.
 const CELL: f64 = 50.0;
@@ -49,12 +47,7 @@ struct Edge {
 }
 
 impl Channels {
-    pub(crate) fn new(
-        streams: &[Stream],
-        pools: &[Pool],
-        streets: &[Street],
-        railways: &[Railway],
-    ) -> Self {
+    pub(crate) fn new(streams: &[Stream], pools: &[Pool], streets: &[Street]) -> Self {
         let mut edges = Vec::new();
         for stream in streams {
             for pair in stream.points().windows(2) {
@@ -94,18 +87,10 @@ impl Channels {
                 }
             }
         }
-        // Streets and railways on the ground, by their points and half widths.
+        // Streets on the ground, by their points and half widths.
         let mut crossings = Vec::new();
         for street in streets.iter().filter(|s| !s.on_bridge()) {
             crossings.extend(street.points().iter().map(|&p| (p, street.half_width())));
-        }
-        for railway in railways.iter().filter(|r| !r.on_bridge()) {
-            crossings.extend(
-                railway
-                    .points
-                    .iter()
-                    .map(|&p| (p, crate::railways::BED_M / 2.0)),
-            );
         }
         let mut crossing_cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
         for (index, &((e, n), _)) in crossings.iter().enumerate() {
@@ -130,7 +115,7 @@ impl Channels {
 
     /// How far the ground at (`east`, `north`) lies below the land because of channels; 0 away
     /// from water. `inside` says whether the point lies in a lake or river mapped as an area.
-    pub(crate) fn depth(&self, east: f64, north: f64, inside: bool, road: &RoadIndex) -> f64 {
+    pub(crate) fn depth(&self, east: f64, north: f64, inside: bool, shapers: &Shapers<'_>) -> f64 {
         let distance = match self.signed_distance(east, north, Some(inside)) {
             Some(distance) => distance,
             // Deep inside a lake, far from its shores.
@@ -143,7 +128,7 @@ impl Channels {
         if carve <= 0.0 {
             return 0.0;
         }
-        carve * self.open(east, north, road)
+        carve * self.open(east, north, shapers)
     }
 
     /// The distance from (`east`, `north`) to the water's edge, negative in the water, if the
@@ -164,11 +149,11 @@ impl Channels {
         best
     }
 
-    /// 1 where a channel may cut the ground, 0 at the road ridden and at streets and railways
+    /// 1 where a channel may cut the ground, 0 at the road ridden, the railways and streets
     /// crossing on the ground, in between over `BANK_WIDTH`.
-    fn open(&self, east: f64, north: f64, road: &RoadIndex) -> f64 {
+    fn open(&self, east: f64, north: f64, shapers: &Shapers<'_>) -> f64 {
         let reach = VERGE + CROSSING_MARGIN + BANK_WIDTH;
-        let road_gap = road
+        let road_gap = shapers
             .near(east, north, reach)
             .into_iter()
             .filter(|r| r.2 == Surface::Ground)

@@ -1,136 +1,424 @@
-//! The railways of the map around the route (#75): a bed of ballast with sleepers and two rails
-//! (drawn by the app's rail shader), laid on the ground of each chunk like the streets
-//! (`drape`), or on bridges a straight deck between the ground at their ends. Tunnels are left
-//! out (`torqa_osm`); plants keep off the tracks (`streets::Clearance`).
+//! The railways of the map around the route (#75, #85). A railway runs on a smooth line of
+//! its own, not over every bump of the ground: each line is sampled along the terrain, smoothed
+//! and held to a railway's gentle grades; tunnels and bridges run straight between their ends;
+//! where the hill rises far above the track it goes into a tunnel, where the ground falls far
+//! below it onto a viaduct. The lines then shape the ground like the road ridden does — level
+//! across the bed, cuttings into hillsides, embankments down to valleys — carry bridges and
+//! tunnels like it (`structures`), and are drawn as a bed of ballast with sleepers and rails
+//! (the app's rail shader) at their own height. Plants keep off the tracks
+//! (`streets::Clearance`).
 
-use torqa_osm::MapData;
-use torqa_routes::{ElevationModel, LocalProjection};
+use std::collections::HashMap;
 
-use crate::{CORRIDOR, HeightGrid, MeshData, On, drape, road::RoadIndex};
+use torqa_osm::{MapData, StructureKind};
+use torqa_routes::{ElevationModel, LocalProjection, Surface};
+
+use crate::road::{Centre, RoadIndex};
+use crate::{CORRIDOR, ROAD_HALF_WIDTH, drape};
 
 /// Width of a track's bed of ballast.
 pub(crate) const BED_M: f64 = 3.2;
-/// The bed lies this far above the ground: below every street, which crosses it at level
-/// crossings (`streets::lift`), above streams.
-const LIFT: f64 = 0.03;
-/// Points of a line at most this far apart: close enough to keep plants off it.
-const STEP_M: f64 = 3.0;
+/// Points of a line this far apart.
+const STEP_M: f64 = 5.0;
+/// Ends of pieces this close are joined into one line.
+const JOIN_M: f64 = 0.5;
+/// The terrain is smoothed over this far either side of each point...
+const SMOOTHING_M: f64 = 80.0;
+/// ...and the line held to this grade (rise per metre), funiculars excepted.
+const MAX_GRADE: f64 = 0.04;
+/// Where the hill rises this far above the track it runs in a tunnel...
+const TUNNEL_COVER: f64 = 8.0;
+/// ...where the ground lies this far below it, on a viaduct...
+const VIADUCT_HEIGHT: f64 = 12.0;
+/// ...for this long at least.
+const SHORTEST_STRUCTURE: f64 = 25.0;
+/// Over the road ridden a railway bridge clears it by this much, under a road bridge the track
+/// lies this far below the road; at a level crossing it lies just under the road's surface.
+const OVER_ROAD: f64 = 6.0;
+const UNDER_ROAD: f64 = 7.0;
+const AT_ROAD: f64 = 0.03;
 
-/// A railway of the map near the route, in metres east/north, with its bounds for quick chunk
-/// tests.
+/// A railway near the route: its points a few metres apart, to keep plants off it.
 pub(crate) struct Railway {
     pub(crate) points: Vec<(f64, f64)>,
-    min: (f64, f64),
-    max: (f64, f64),
-    /// For bridges: the deck's height at both ends (the ground's there).
-    deck: Option<(f64, f64)>,
 }
 
-impl Railway {
-    /// Whether it is a bridge.
-    pub(crate) fn on_bridge(&self) -> bool {
-        self.deck.is_some()
-    }
+/// The railways near the route: as centre lines to shape the ground and carry structures, and
+/// as lines of points.
+pub(crate) struct Network {
+    pub(crate) index: RoadIndex,
+    pub(crate) railways: Vec<Railway>,
 }
 
-/// The map's railways within the corridor around the road, densified, with bridge decks' end
-/// heights from `model`.
-pub(crate) async fn lines<M: ElevationModel>(
+/// A piece of a railway as the map has it: its line and what carries it.
+type Piece = (Vec<(f64, f64)>, Surface);
+
+/// A point of a railway being laid out.
+#[derive(Debug, Clone, Copy)]
+struct Point {
+    position: (f64, f64),
+    surface: Surface,
+    /// The terrain's height here, if known.
+    terrain: Option<f64>,
+}
+
+/// The map's railways near the route, laid out (see the module).
+pub(crate) async fn network<M: ElevationModel>(
     map: &MapData,
     projection: &LocalProjection,
     road: &RoadIndex,
     model: &mut M,
-) -> Vec<Railway> {
+) -> Network {
+    let mut lines = Vec::new();
     let mut railways = Vec::new();
-    for railway in &map.railways {
-        let line: Vec<(f64, f64)> = railway
-            .line
-            .iter()
-            .map(|&(lat, lon)| projection.project(lat, lon))
-            .collect();
-        let points = drape::densify(&line, STEP_M);
-        if !points
-            .iter()
-            .any(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some())
-        {
+    for (pieces, funicular) in chains(map, projection, road) {
+        let mut points = Vec::new();
+        for (line, surface) in pieces {
+            let dense = drape::densify(&line, STEP_M);
+            // Joined pieces share their end points.
+            let skip = usize::from(!points.is_empty());
+            points.extend(dense.into_iter().skip(skip).map(|position| Point {
+                position,
+                surface,
+                terrain: None,
+            }));
+        }
+        if points.len() < 2 {
             continue;
         }
-        let Some(&first) = points.first() else {
+        for point in &mut points {
+            let (lat, lon) = projection.unproject(point.position.0, point.position.1);
+            point.terrain = model.elevation(lat, lon).await.ok();
+        }
+        let Some(line) = lay_out(&points, funicular, road) else {
             continue;
         };
-        let deck = if railway.bridge {
-            let mut end = async |(lat, lon): (f64, f64)| model.elevation(lat, lon).await.ok();
-            let (start, finish) = (railway.line[0], railway.line[railway.line.len() - 1]);
-            match (end(start).await, end(finish).await) {
-                (Some(a), Some(b)) => Some((a, b)),
-                // Without the ground's heights a deck cannot be placed.
-                _ => continue,
-            }
-        } else {
-            None
-        };
-        let (mut min, mut max) = (first, first);
-        for &(e, n) in &points {
-            min = (min.0.min(e), min.1.min(n));
-            max = (max.0.max(e), max.1.max(n));
-        }
         railways.push(Railway {
-            points,
-            min,
-            max,
-            deck,
+            points: line.iter().map(|c| c.position).collect(),
         });
+        lines.push(line);
     }
-    railways
+    Network {
+        index: RoadIndex::from_lines(&lines),
+        railways,
+    }
 }
 
-/// The railways within the chunk square `[origin, origin + size]`, relative to `chunk_origin`.
-/// Texture coordinates: `u` 0–1 across the bed, `v` metres along the line.
-pub(crate) fn mesh(
-    railways: &[Railway],
-    origin: (f64, f64),
-    size: f64,
-    heights: &HeightGrid,
-    chunk_origin: [f64; 3],
-) -> MeshData {
-    let mut mesh = MeshData::default();
-    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
-    for railway in railways {
-        if railway.max.0 < low.0
-            || railway.min.0 > high.0
-            || railway.max.1 < low.1
-            || railway.min.1 > high.1
-        {
+/// The railways near the route joined into continuous lines where their pieces meet end to end
+/// (not at switches, where three meet): each line as its pieces with what carries them, and
+/// whether it is a funicular.
+fn chains(
+    map: &MapData,
+    projection: &LocalProjection,
+    road: &RoadIndex,
+) -> Vec<(Vec<Piece>, bool)> {
+    let pieces: Vec<(Piece, bool)> = map
+        .railways
+        .iter()
+        .map(|railway| {
+            let line: Vec<(f64, f64)> = railway
+                .line
+                .iter()
+                .map(|&(lat, lon)| projection.project(lat, lon))
+                .collect();
+            let surface = match railway.structure {
+                Some(StructureKind::Bridge) => Surface::Bridge,
+                Some(StructureKind::Tunnel) => Surface::Tunnel,
+                None => Surface::Ground,
+            };
+            ((line, surface), railway.funicular)
+        })
+        .filter(|((line, _), _)| {
+            line.len() >= 2
+                && line
+                    .iter()
+                    .any(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some())
+        })
+        .collect();
+    #[allow(clippy::cast_possible_truncation)] // local metres stay far below 2^63
+    let key = |(e, n): (f64, f64)| ((e / JOIN_M).round() as i64, (n / JOIN_M).round() as i64);
+    // Which pieces end at each place.
+    let mut ends: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (index, ((line, _), _)) in pieces.iter().enumerate() {
+        for end in [line[0], line[line.len() - 1]] {
+            ends.entry(key(end)).or_default().push(index);
+        }
+    }
+    let mut used = vec![false; pieces.len()];
+    let mut chains = Vec::new();
+    for start in 0..pieces.len() {
+        if used[start] {
             continue;
         }
-        let total: f64 = railway
-            .points
-            .windows(2)
-            .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
-            .sum();
-        for piece in drape::pieces(&railway.points, low, high) {
-            if let Some(ends) = railway.deck {
-                drape::deck(
-                    &mut mesh,
-                    &piece,
-                    BED_M / 2.0,
-                    ends,
-                    LIFT,
-                    total,
-                    heights,
-                    chunk_origin,
-                );
-            } else {
-                drape::drape(
-                    &mut mesh,
-                    &piece,
-                    BED_M / 2.0,
-                    (On::Ground, LIFT),
-                    heights,
-                    chunk_origin,
-                );
+        used[start] = true;
+        let mut funicular = pieces[start].1;
+        let mut chain: Vec<Piece> = vec![pieces[start].0.clone()];
+        // Grow the line at its end, then at its start, as long as exactly two pieces meet.
+        for forward in [true, false] {
+            loop {
+                let at = if forward {
+                    let line = &chain[chain.len() - 1].0;
+                    line[line.len() - 1]
+                } else {
+                    chain[0].0[0]
+                };
+                let here = &ends[&key(at)];
+                if here.len() != 2 {
+                    break;
+                }
+                let Some(other) = here.iter().copied().find(|&o| !used[o]) else {
+                    break;
+                };
+                used[other] = true;
+                let ((mut line, surface), steep) = pieces[other].clone();
+                funicular |= steep;
+                // Oriented to run on from `at`.
+                if (key(line[0]) == key(at)) != forward {
+                    line.reverse();
+                }
+                if forward {
+                    chain.push((line, surface));
+                } else {
+                    chain.insert(0, (line, surface));
+                }
+            }
+        }
+        chains.push((chain, funicular));
+    }
+    chains
+}
+
+/// A railway's centre line: heights from the terrain, smoothed and held to its grades, bridges
+/// and tunnels straight between their ends, tunnels and viaducts where the ground lies far off,
+/// and its crossings with the road ridden. `None` without any terrain height.
+fn lay_out(points: &[Point], funicular: bool, road: &RoadIndex) -> Option<Vec<Centre>> {
+    let mut along = vec![0.0];
+    for pair in points.windows(2) {
+        let (a, b) = (pair[0].position, pair[1].position);
+        along.push(along[along.len() - 1] + (b.0 - a.0).hypot(b.1 - a.1));
+    }
+    // On the ground the terrain's heights; over and under structures nothing yet.
+    let known: Vec<Option<f64>> = points
+        .iter()
+        .map(|p| p.terrain.filter(|_| p.surface == Surface::Ground))
+        .collect();
+    let mut heights = fill_between(&known, &along)?;
+    heights = smooth(&heights, &along, SMOOTHING_M);
+    let mut surfaces: Vec<Surface> = points.iter().map(|p| p.surface).collect();
+    let pins = crossings(points, &surfaces, road);
+    hold_grades(&mut heights, &along, &pins, funicular);
+    // Tunnels where the hill rises far above the track, viaducts where the ground falls far
+    // below it.
+    for (k, point) in points.iter().enumerate() {
+        if surfaces[k] != Surface::Ground {
+            continue;
+        }
+        if let Some(terrain) = point.terrain {
+            if terrain - heights[k] > TUNNEL_COVER {
+                surfaces[k] = Surface::Tunnel;
+            } else if heights[k] - terrain > VIADUCT_HEIGHT {
+                surfaces[k] = Surface::Bridge;
             }
         }
     }
-    mesh
+    drop_short_structures(
+        &mut surfaces,
+        &along,
+        &points.iter().map(|p| p.surface).collect::<Vec<_>>(),
+    );
+    Some(
+        points
+            .iter()
+            .enumerate()
+            .map(|(k, p)| Centre {
+                position: p.position,
+                elevation: heights[k],
+                distance: along[k],
+                surface: surfaces[k],
+            })
+            .collect(),
+    )
+}
+
+/// Heights everywhere from those known: straight between known ones, level beyond the first
+/// and last. `None` if none is known.
+fn fill_between(known: &[Option<f64>], along: &[f64]) -> Option<Vec<f64>> {
+    let first = known.iter().position(Option::is_some)?;
+    let last = known.iter().rposition(Option::is_some)?;
+    let mut heights = vec![0.0; known.len()];
+    let mut previous = first;
+    for k in 0..known.len() {
+        heights[k] = if k <= first {
+            known[first].unwrap_or_default()
+        } else if k >= last {
+            known[last].unwrap_or_default()
+        } else if let Some(h) = known[k] {
+            previous = k;
+            h
+        } else {
+            let next = (k..=last).find(|&j| known[j].is_some()).unwrap_or(last);
+            let (a, b) = (
+                known[previous].unwrap_or_default(),
+                known[next].unwrap_or_default(),
+            );
+            let share = (along[k] - along[previous]) / (along[next] - along[previous]).max(1e-9);
+            a + (b - a) * share
+        };
+    }
+    Some(heights)
+}
+
+/// Each height the mean of those within `reach` metres along the line.
+fn smooth(heights: &[f64], along: &[f64], reach: f64) -> Vec<f64> {
+    let (mut from, mut to) = (0, 0);
+    let mut sum = 0.0;
+    let mut smoothed = Vec::with_capacity(heights.len());
+    for k in 0..heights.len() {
+        while to < heights.len() && along[to] <= along[k] + reach {
+            sum += heights[to];
+            to += 1;
+        }
+        while along[from] < along[k] - reach {
+            sum -= heights[from];
+            from += 1;
+        }
+        #[allow(clippy::cast_precision_loss)] // a few dozen points
+        smoothed.push(sum / (to - from) as f64);
+    }
+    smoothed
+}
+
+/// Where the line crosses the road ridden: the heights it must keep there (point, height and
+/// whether that is a least, a most or an exact height).
+fn crossings(points: &[Point], surfaces: &[Surface], road: &RoadIndex) -> Vec<(usize, f64, Pin)> {
+    let reach = ROAD_HALF_WIDTH + BED_M / 2.0 + 1.0;
+    let mut pins = Vec::new();
+    for (k, point) in points.iter().enumerate() {
+        let (e, n) = point.position;
+        let Some((_, road_height, road_surface)) = road.nearest(e, n, reach) else {
+            continue;
+        };
+        let pin = match (surfaces[k], road_surface) {
+            (Surface::Tunnel, _) | (_, Surface::Tunnel) => continue,
+            (Surface::Bridge, _) => (k, road_height + OVER_ROAD, Pin::AtLeast),
+            (_, Surface::Bridge) => (k, road_height - UNDER_ROAD, Pin::AtMost),
+            _ => (k, road_height - AT_ROAD, Pin::Exactly),
+        };
+        pins.push(pin);
+    }
+    pins
+}
+
+/// How a crossing holds the line's height.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pin {
+    AtLeast,
+    AtMost,
+    Exactly,
+}
+
+/// Keeps the line's grades within `MAX_GRADE` (funiculars excepted) while it keeps its heights
+/// at the crossings.
+fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], funicular: bool) {
+    let apply = |heights: &mut [f64]| {
+        for &(k, height, pin) in pins {
+            heights[k] = match pin {
+                Pin::AtLeast => heights[k].max(height),
+                Pin::AtMost => heights[k].min(height),
+                Pin::Exactly => height,
+            };
+        }
+    };
+    apply(heights);
+    if funicular {
+        return;
+    }
+    let pinned: Vec<bool> = (0..heights.len())
+        .map(|k| pins.iter().any(|p| p.0 == k))
+        .collect();
+    for _ in 0..4 {
+        for k in 1..heights.len() {
+            let room = MAX_GRADE * (along[k] - along[k - 1]);
+            if !pinned[k] {
+                heights[k] = heights[k].clamp(heights[k - 1] - room, heights[k - 1] + room);
+            }
+        }
+        for k in (0..heights.len() - 1).rev() {
+            let room = MAX_GRADE * (along[k + 1] - along[k]);
+            if !pinned[k] {
+                heights[k] = heights[k].clamp(heights[k + 1] - room, heights[k + 1] + room);
+            }
+        }
+        apply(heights);
+    }
+}
+
+/// Turns tunnels and viaducts found from the ground's shape back into track where they would be
+/// shorter than `SHORTEST_STRUCTURE`; those the map has stay.
+fn drop_short_structures(surfaces: &mut [Surface], along: &[f64], mapped: &[Surface]) {
+    let mut k = 0;
+    while k < surfaces.len() {
+        let kind = surfaces[k];
+        let start = k;
+        while k < surfaces.len() && surfaces[k] == kind {
+            k += 1;
+        }
+        let length = along[k - 1] - along[start];
+        if kind != Surface::Ground && length < SHORTEST_STRUCTURE {
+            for j in start..k {
+                if mapped[j] == Surface::Ground {
+                    surfaces[j] = Surface::Ground;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn grade_at(heights: &[f64], along: &[f64]) -> f64 {
+        heights
+            .windows(2)
+            .zip(along.windows(2))
+            .map(|(h, a)| (h[1] - h[0]).abs() / (a[1] - a[0]))
+            .fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn lines_keep_gentle_grades_and_their_crossings() {
+        // A steep, bumpy hillside 1 km long; a level crossing at 500 m.
+        let along: Vec<f64> = (0..=200).map(|k| f64::from(k) * 5.0).collect();
+        let mut heights: Vec<f64> = along
+            .iter()
+            .map(|a| 500.0 + 0.12 * a + 3.0 * (a / 15.0).sin())
+            .collect();
+        let pins = [(100, 520.0, Pin::Exactly)];
+        hold_grades(&mut heights, &along, &pins, false);
+
+        assert!(grade_at(&heights, &along) <= MAX_GRADE + 1e-9);
+        assert!((heights[100] - 520.0).abs() < 1e-9);
+        // A funicular keeps its slope.
+        let mut steep: Vec<f64> = along.iter().map(|a| 500.0 + 0.3 * a).collect();
+        hold_grades(&mut steep, &along, &[], true);
+        assert!(grade_at(&steep, &along) > 0.29);
+    }
+
+    #[test]
+    fn short_structures_from_the_ground_s_shape_are_dropped() {
+        let along: Vec<f64> = (0..10).map(|k| f64::from(k) * 5.0).collect();
+        let mapped = [Surface::Ground; 10];
+        let mut found = mapped;
+        found[3] = Surface::Tunnel;
+        found[4] = Surface::Tunnel;
+        drop_short_structures(&mut found, &along, &mapped);
+        assert_eq!(found, mapped);
+        // A mapped bridge stays, however short.
+        let mut mapped_bridge = mapped;
+        mapped_bridge[5] = Surface::Bridge;
+        let mut kept = mapped_bridge;
+        drop_short_structures(&mut kept, &along, &mapped_bridge);
+        assert_eq!(kept, mapped_bridge);
+    }
 }

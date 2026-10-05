@@ -254,9 +254,12 @@ the realistic look's textures and patterns are being replaced step by step.
       beside them, the ground carved into natural banks and a bed; under bridges the channel
       runs on, where roads, streets and railways cross on the ground it stops short of them
       (a culvert)
-    - [x] Railways: main lines, narrow gauge, funiculars and light rail laid on the ground as a
-      bed of ballast with sleepers and rails, bridges as decks, tunnels left out; plants keep
-      off them (level crossings: the street lies over the bed)
+    - [x] Railways: main lines, narrow gauge, funiculars and light rail, each on a smooth line
+      of its own (railway grades, bridges and tunnels straight between their ends, tunnels
+      where the hill rises far above the track, viaducts where the ground falls far below it,
+      clear of the road ridden where they cross), shaping the ground like the road and
+      carrying its kind of bridges and tunnels; a bed of ballast with sleepers and rails;
+      plants keep off them
     - [x] A wider view in the mountains: coarse land (240 m facets, from zoom-10 terrain tiles)
       beyond the 1.5 km corridor out to 12 km, coloured by its shape (meadow, forest, lakes;
       rock and snow by the shader), fading into the haze, so the edge of the map never shows
