@@ -184,6 +184,21 @@ func _workout_screens(torqa: TorqaApp, start: StartPage) -> void:
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("workout-settings.png"))
 	print("saved workout")
+	for dialog: Node in ride_screen.find_children("*", "RideSettingsDialog", true, false):
+		(dialog as Window).hide()
+	# The overlay (R55): the window shrinks to the HUD, on top and see-through.
+	ride_screen.overlay_requested.emit(true)
+	await create_timer(1.5).timeout
+	var window: Window = root
+	print(
+		(
+			"overlay window: %s, borderless %s, on top %s, transparent %s"
+			% [window.size, window.borderless, window.always_on_top, window.transparent]
+		)
+	)
+	root.get_texture().get_image().save_png(out_dir.path_join("overlay.png"))
+	ride_screen.overlay_requested.emit(false)
+	await create_timer(0.5).timeout
 	torqa.finish_ride()
 
 

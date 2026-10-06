@@ -15,6 +15,7 @@ var _options: WorkoutOptions = WorkoutOptions.new()
 var _where: OptionButton = OptionButton.new()
 ## The course of each entry of `_where` after the first ("on its own").
 var _course_paths: PackedStringArray = PackedStringArray()
+var _overlay: CheckBox = CheckBox.new()
 var _start_button: Button = Button.new()
 var _loading_bar: ProgressBar = ProgressBar.new()
 var _status: Label = Label.new()
@@ -55,6 +56,11 @@ func refresh() -> void:
 ## The chosen course's file, or "" to ride on its own.
 func course_path() -> String:
 	return _course_paths[_where.selected - 1] if _where.selected > 0 else ""
+
+
+## Whether the workout starts as the overlay (R57), only the HUD over other windows.
+func start_as_overlay() -> bool:
+	return _overlay.button_pressed
 
 
 ## The workout chosen here, as `start_requested` hands it out.
@@ -115,6 +121,9 @@ func _init() -> void:
 		"On a course, the trainer holds the workout's power while you ride through its 3D world"
 	)
 	right.add_child(_where)
+	_overlay.text = tr("Start as overlay")
+	_overlay.tooltip_text = tr("Only the HUD, on top of other windows, e.g. over a video")
+	right.add_child(_overlay)
 	var fill: Control = Control.new()
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(fill)

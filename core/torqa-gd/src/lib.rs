@@ -619,6 +619,42 @@ impl TorqaApp {
         self.command(|app| app.set_graphics_quality(quality))
     }
 
+    /// Where the overlay was last on screen (R55), in screen pixels; empty before its first use.
+    #[func]
+    fn overlay_window(&self) -> Rect2i {
+        self.app
+            .as_ref()
+            .and_then(App::overlay_window)
+            .map_or(Rect2i::default(), |w| {
+                Rect2i::new(
+                    Vector2i::new(w.x, w.y),
+                    Vector2i::new(
+                        i32::try_from(w.width).unwrap_or(i32::MAX),
+                        i32::try_from(w.height).unwrap_or(i32::MAX),
+                    ),
+                )
+            })
+    }
+
+    /// Remembers where the overlay is on screen; ignores empty rectangles.
+    #[func]
+    fn set_overlay_window(&mut self, rect: Rect2i) {
+        let (Ok(width), Ok(height)) = (u32::try_from(rect.size.x), u32::try_from(rect.size.y))
+        else {
+            return;
+        };
+        if width == 0 || height == 0 {
+            return;
+        }
+        let window = torqa_app::OverlayWindow {
+            x: rect.position.x,
+            y: rect.position.y,
+            width,
+            height,
+        };
+        self.command(|app| app.set_overlay_window(window));
+    }
+
     /// Whether rides are simulated (fake trainer): they can be sped up and jumped (#53).
     #[func]
     fn simulating(&self) -> bool {

@@ -37,7 +37,8 @@ set it to something you can ride easily.
   speed; the world looks as last set on the course page. The ride ends at the finish.
 
 **Start** connects the trainer chosen under Devices & Settings, builds the course's world if
-needed, and starts.
+needed, and starts. With **Start as overlay** ticked, Torqa then shrinks to just the HUD on top
+of your other windows, e.g. over a video ([overlay.md](overlay.md)).
 
 ## During the workout
 

@@ -31,8 +31,8 @@ use torqa_session::ghost::Ghost;
 use torqa_session::workout::Workout;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
-pub use torqa_storage::profiles::GraphicsQuality;
 use torqa_storage::profiles::{self, StoredProfile};
+pub use torqa_storage::profiles::{GraphicsQuality, OverlayWindow};
 use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
 pub use torqa_video::Frame;
@@ -1183,6 +1183,21 @@ impl App {
         quality: profiles::GraphicsQuality,
     ) -> Result<(), AppError> {
         profiles::set_graphics_quality(&self.data_dir, quality)
+            .map_err(|e| AppError::Storage(e.to_string()))
+    }
+
+    /// Where the overlay was last on screen (R55); `None` before it was first used.
+    #[must_use]
+    pub fn overlay_window(&self) -> Option<profiles::OverlayWindow> {
+        profiles::overlay_window(&self.data_dir)
+    }
+
+    /// Remembers where the overlay is on screen.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if it cannot be saved.
+    pub fn set_overlay_window(&mut self, window: profiles::OverlayWindow) -> Result<(), AppError> {
+        profiles::set_overlay_window(&self.data_dir, window)
             .map_err(|e| AppError::Storage(e.to_string()))
     }
 

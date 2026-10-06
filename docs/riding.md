@@ -12,7 +12,9 @@ makes that one the remembered device.
 
 The ride screen keeps the road in view — the 3D world, or the video on video courses
 ([video.md](video.md)): your figures on the left, map, elevation profile, climb
-and ghost panels on the right, and one **Settings** button (or key **S**).
+and ghost panels on the right, and the **Settings** button (or key **S**). **Overlay** (or **O**)
+shrinks Torqa to just your figures on top of other windows, e.g. to watch a video while you
+ride ([overlay.md](overlay.md)).
 
 **Settings** opens the ride settings; changes apply at once and the ride keeps going:
 
@@ -21,13 +23,14 @@ and ghost panels on the right, and one **Settings** button (or key **S**).
   fog lying in the valleys, which you climb out of; haze and rain thicken it. In rain, faceted
   drops fall, roads and streets turn darker with a soft sheen, and puddles stand where they are
   level.
+- **Workout** (in workouts): change what the workout asks for ([workouts.md](workouts.md)).
 - **HUD**: arrange your figures (see [hud.md](hud.md)).
 - **Finish & save** ends the ride, saves it and shows its summary (name it there; see
   [history.md](history.md)).
 - **Abort without saving** ends the ride after asking once; nothing is saved.
 
-Keys: **C** switches the camera, **S** opens the settings, **M** / **.** / **,** control your
-music ([audio.md](audio.md)).
+Keys: **C** switches the camera, **S** opens the settings, **O** the overlay, **M** / **.** /
+**,** control your music ([audio.md](audio.md)).
 
 On video courses the video is the view: the course page and the ride settings offer trainer
 difficulty, descents and the video's **Sound** instead, and **C** does nothing.
