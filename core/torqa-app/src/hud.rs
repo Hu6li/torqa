@@ -166,25 +166,28 @@ pub fn sanitize(layout: &[String]) -> Vec<String> {
 }
 
 /// Live value of every metric, in metric display units (km/h, km, m, s); `None` where unknown,
-/// e.g. heart rate without a strap. `summary` summarises the samples so far.
+/// e.g. heart rate without a strap, or the road without a route. `summary` summarises the
+/// samples so far.
 #[must_use]
 pub fn values(
     state: &RideState,
     samples: &[Sample],
     summary: &RideSummary,
-    route: &Route,
+    route: Option<&Route>,
     profile: &Profile,
 ) -> Vec<(&'static str, Option<f64>)> {
     let t = state.telemetry;
     let power = t.power;
-    let ahead = (state.distance.0 + LOOK_AHEAD_M).min(route.length().0);
-    let upcoming = (ahead > state.distance.0).then(|| {
-        let here = route.position(state.distance).elevation.0;
-        let there = route
-            .position(torqa_domain::units::Meters(ahead))
-            .elevation
-            .0;
-        (there - here) / (ahead - state.distance.0) * 100.0
+    let upcoming = route.and_then(|route| {
+        let ahead = (state.distance.0 + LOOK_AHEAD_M).min(route.length().0);
+        (ahead > state.distance.0).then(|| {
+            let here = route.position(state.distance).elevation.0;
+            let there = route
+                .position(torqa_domain::units::Meters(ahead))
+                .elevation
+                .0;
+            (there - here) / (ahead - state.distance.0) * 100.0
+        })
     });
     METRICS
         .iter()
@@ -203,11 +206,11 @@ pub fn values(
                 "speed" => Some(state.speed.as_kilometers_per_hour()),
                 "avg_speed" => Some(summary.avg_speed.as_kilometers_per_hour()),
                 "distance" => Some(state.distance.0 / 1000.0),
-                "remaining" => Some(state.remaining.0 / 1000.0),
+                "remaining" => state.remaining.map(|r| r.0 / 1000.0),
                 "elapsed" => Some(state.elapsed.as_secs_f64()),
-                "elevation" => Some(state.position.elevation.0),
-                "elevation_gain" => Some(summary.elevation_gain.0),
-                "grade" => Some(state.position.grade.0),
+                "elevation" => state.position.map(|p| p.elevation.0),
+                "elevation_gain" => route.map(|_| summary.elevation_gain.0),
+                "grade" => state.position.map(|p| p.grade.0),
                 "upcoming_grade" => upcoming,
                 "intensity" => summary.intensity_factor,
                 "training_stress" => summary.training_stress,
@@ -236,7 +239,7 @@ fn recent_power(samples: &[Sample], seconds: usize) -> Option<f64> {
 mod tests {
     use std::time::Duration;
 
-    use torqa_domain::units::{GradePercent, Meters, MetersPerSecond, Watts};
+    use torqa_domain::units::{Meters, MetersPerSecond, Watts};
 
     use super::*;
 
@@ -273,12 +276,9 @@ mod tests {
             .enumerate()
             .map(|(i, &watts)| Sample {
                 elapsed: Duration::from_secs(i as u64),
-                lat: 46.0,
-                lon: 7.0,
-                elevation: Meters(0.0),
+                location: None,
                 distance: Meters(0.0),
                 speed: MetersPerSecond(0.0),
-                grade: GradePercent(0.0),
                 power: Some(Watts(watts)),
                 cadence: None,
                 heart_rate: None,

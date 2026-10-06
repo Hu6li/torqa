@@ -1,24 +1,29 @@
 //! The ride engine: moves the virtual rider along a route from measured power, tells the
-//! trainer which gradient to simulate and records the ride.
+//! trainer which gradient to simulate — or, in a workout, which power to hold — and records
+//! the ride.
 //!
 //! It is pure logic driven by [`Ride::tick`], independent of devices, threads and rendering, so
 //! the same engine runs headless in the CLI, in tests and behind the 3D world.
 
 pub mod analysis;
 pub mod ghost;
+pub mod workout;
 
 use std::time::Duration;
 
-use torqa_domain::recording::Sample;
+use torqa_domain::recording::{Location, Sample};
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
 use torqa_domain::units::{GradePercent, Meters, MetersPerSecond, Percent, Watts};
 use torqa_physics::{DescentMode, Motion, RiderSetup, trainer_grade};
 use torqa_routes::{Route, RoutePosition};
+use workout::{Workout, WorkoutControl, WorkoutState};
 
-/// Trainers need time to change resistance; more frequent grade updates only add traffic.
-const GRADE_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
+/// Trainers need time to change resistance; more frequent updates only add traffic.
+const CONTROL_INTERVAL: Duration = Duration::from_secs(1);
 /// Grade changes smaller than this are not worth a trainer update.
 const GRADE_UPDATE_THRESHOLD: f64 = 0.1;
+/// Nor are smaller changes of the target power (ERG targets are whole watts).
+const POWER_UPDATE_THRESHOLD: f64 = 1.0;
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Settings for one ride.
@@ -50,20 +55,23 @@ pub struct RideState {
     pub elapsed: Duration,
     /// Distance covered.
     pub distance: Meters,
-    /// Distance left to the finish.
-    pub remaining: Meters,
+    /// Distance left to the finish; `None` without a route.
+    pub remaining: Option<Meters>,
     /// Virtual speed.
     pub speed: MetersPerSecond,
-    /// Where the rider is.
-    pub position: RoutePosition,
+    /// Where the rider is on the route; `None` without one.
+    pub position: Option<RoutePosition>,
     /// Latest measurements.
     pub telemetry: Telemetry,
+    /// What the workout asks for, in a workout.
+    pub workout: Option<WorkoutState>,
 }
 
-/// A ride along a route.
+/// A ride along a route, or a workout on a flat road without one.
 #[derive(Debug, Clone)]
 pub struct Ride {
-    route: Route,
+    route: Option<Route>,
+    workout: Option<WorkoutControl>,
     config: RideConfig,
     motion: Motion,
     distance: Meters,
@@ -71,15 +79,29 @@ pub struct Ride {
     telemetry: Telemetry,
     samples: Vec<Sample>,
     next_sample: Duration,
-    last_grade: Option<(GradePercent, Duration)>,
+    /// The control sent last and when; `None` sends the next one at once.
+    last_control: Option<(TrainerControl, Duration)>,
 }
 
 impl Ride {
-    /// Starts a ride at the beginning of `route`.
+    /// Starts a ride at the beginning of `route`; the trainer follows its gradient.
     #[must_use]
     pub fn new(route: Route, config: RideConfig) -> Self {
+        Self::start(Some(route), None, config)
+    }
+
+    /// Starts a workout without a route (R56): the trainer holds the power the workout asks
+    /// for, and the rider's speed and distance are those on a flat road. It goes on until the
+    /// rider ends it.
+    #[must_use]
+    pub fn workout(workout: Workout, config: RideConfig) -> Self {
+        Self::start(None, Some(WorkoutControl::new(workout)), config)
+    }
+
+    fn start(route: Option<Route>, workout: Option<WorkoutControl>, config: RideConfig) -> Self {
         Self {
             route,
+            workout,
             config,
             motion: Motion::default(),
             distance: Meters(0.0),
@@ -87,7 +109,7 @@ impl Ride {
             telemetry: Telemetry::default(),
             samples: Vec::new(),
             next_sample: Duration::ZERO,
-            last_grade: None,
+            last_control: None,
         }
     }
 
@@ -105,7 +127,7 @@ impl Ride {
     }
 
     /// Advances the ride by `dt`. Returns a control for the trainer when the simulated gradient
-    /// should change.
+    /// or the workout's power should change.
     pub fn tick(&mut self, dt: Duration) -> Option<TrainerControl> {
         if self.is_finished() {
             return None;
@@ -121,14 +143,20 @@ impl Ride {
         let covered = self
             .motion
             .step(&self.config.setup, power, grade, MetersPerSecond(0.0), dt);
-        self.distance = Meters((self.distance.0 + covered.0).min(self.route.length().0));
+        self.distance = Meters(self.distance.0 + covered.0);
+        if let Some(route) = &self.route {
+            self.distance = Meters(self.distance.0.min(route.length().0));
+        }
         self.elapsed += dt;
+        if let Some(workout) = &mut self.workout {
+            workout.update(self.telemetry.heart_rate, dt);
+        }
 
         if self.is_finished() {
             self.record();
             return None;
         }
-        self.grade_update()
+        self.control_update()
     }
 
     /// Changes trainer difficulty and descent mode during the ride (R48); the trainer gets the
@@ -136,20 +164,33 @@ impl Ride {
     pub fn adjust(&mut self, difficulty: Percent, descent: DescentMode) {
         self.config.difficulty = difficulty;
         self.config.descent = descent;
-        self.last_grade = None;
+        self.last_control = None;
+    }
+
+    /// Changes the workout during a workout, e.g. a new target power or heart rate; the
+    /// trainer hears of it on the next tick. A ride along a route is left as it is.
+    pub fn change_workout(&mut self, workout: Workout) {
+        if let Some(control) = &mut self.workout {
+            control.change(workout);
+            self.last_control = None;
+        }
     }
 
     /// Moves the rider to `distance` along the route, keeping their speed — for simulated
     /// rides (#53). The trainer gets the gradient there on the next tick.
     pub fn jump_to(&mut self, distance: Meters) {
-        self.distance = Meters(distance.0.clamp(0.0, self.route.length().0));
-        self.last_grade = None;
+        let end = self.route.as_ref().map_or(f64::INFINITY, |r| r.length().0);
+        self.distance = Meters(distance.0.clamp(0.0, end));
+        self.last_control = None;
     }
 
-    /// Whether the rider has reached the end of the route.
+    /// Whether the rider has reached the end of the route; a workout without one is never
+    /// finished by itself.
     #[must_use]
     pub fn is_finished(&self) -> bool {
-        self.distance.0 >= self.route.length().0
+        self.route
+            .as_ref()
+            .is_some_and(|route| self.distance.0 >= route.length().0)
     }
 
     /// Current state for display.
@@ -158,17 +199,21 @@ impl Ride {
         RideState {
             elapsed: self.elapsed,
             distance: self.distance,
-            remaining: Meters(self.route.length().0 - self.distance.0),
+            remaining: self
+                .route
+                .as_ref()
+                .map(|route| Meters(route.length().0 - self.distance.0)),
             speed: self.motion.speed(),
-            position: self.route.position(self.distance),
+            position: self.route.as_ref().map(|r| r.position(self.distance)),
             telemetry: self.telemetry,
+            workout: self.workout.as_ref().map(WorkoutControl::state),
         }
     }
 
-    /// The route being ridden.
+    /// The route being ridden; `None` in a workout without one.
     #[must_use]
-    pub fn route(&self) -> &Route {
-        &self.route
+    pub fn route(&self) -> Option<&Route> {
+        self.route.as_ref()
     }
 
     /// The recorded samples, one per second.
@@ -177,41 +222,52 @@ impl Ride {
         &self.samples
     }
 
-    /// The gradient used for physics: the road, adjusted for the descent mode.
+    /// The gradient used for physics: the road, adjusted for the descent mode; flat without a
+    /// route.
     fn road_grade(&self) -> GradePercent {
-        self.config
-            .descent
-            .apply(self.route.position(self.distance).grade)
+        self.route.as_ref().map_or(GradePercent(0.0), |route| {
+            self.config
+                .descent
+                .apply(route.position(self.distance).grade)
+        })
     }
 
-    fn grade_update(&mut self) -> Option<TrainerControl> {
-        let target = trainer_grade(self.road_grade(), self.config.difficulty);
-        let due = match self.last_grade {
+    fn control_update(&mut self) -> Option<TrainerControl> {
+        let control = if let Some(workout) = &self.workout {
+            TrainerControl::TargetPower(workout.power())
+        } else {
+            let grade = trainer_grade(self.road_grade(), self.config.difficulty);
+            TrainerControl::Simulation(self.config.setup.simulation_parameters(grade))
+        };
+        let due = match &self.last_control {
             None => true,
             Some((sent, at)) => {
-                self.elapsed.saturating_sub(at) >= GRADE_UPDATE_INTERVAL
-                    && (target.0 - sent.0).abs() >= GRADE_UPDATE_THRESHOLD
+                self.elapsed.saturating_sub(*at) >= CONTROL_INTERVAL
+                    && worth_sending(sent, &control)
             }
         };
         if !due {
             return None;
         }
-        self.last_grade = Some((target, self.elapsed));
-        Some(TrainerControl::Simulation(
-            self.config.setup.simulation_parameters(target),
-        ))
+        self.last_control = Some((control, self.elapsed));
+        Some(control)
     }
 
     fn record(&mut self) {
-        let position = self.route.position(self.distance);
+        let location = self.route.as_ref().map(|route| {
+            let position = route.position(self.distance);
+            Location {
+                lat: position.lat,
+                lon: position.lon,
+                elevation: position.elevation,
+                grade: position.grade,
+            }
+        });
         self.samples.push(Sample {
             elapsed: self.elapsed,
-            lat: position.lat,
-            lon: position.lon,
-            elevation: position.elevation,
+            location,
             distance: self.distance,
             speed: self.motion.speed(),
-            grade: position.grade,
             power: self.telemetry.power,
             cadence: self.telemetry.cadence,
             heart_rate: self.telemetry.heart_rate,
@@ -219,11 +275,28 @@ impl Ride {
     }
 }
 
+/// Whether `next` differs enough from the control `sent` last to be sent.
+fn worth_sending(sent: &TrainerControl, next: &TrainerControl) -> bool {
+    match (sent, next) {
+        (TrainerControl::Simulation(a), TrainerControl::Simulation(b)) => {
+            (a.grade.0 - b.grade.0).abs() >= GRADE_UPDATE_THRESHOLD
+        }
+        (TrainerControl::TargetPower(a), TrainerControl::TargetPower(b)) => {
+            (a.0 - b.0).abs() >= POWER_UPDATE_THRESHOLD
+        }
+        _ => sent != next,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
 
-    use torqa_domain::units::Rpm;
+    use torqa_devices::DeviceEvent;
+    use torqa_devices::fake::{self, FakeHeart, FakeRider, SimulatedHeart};
+    use torqa_domain::profile::Profile;
+    use torqa_domain::units::{BeatsPerMinute, Rpm};
+    use workout::HeartRateHold;
 
     use super::*;
 
@@ -377,7 +450,7 @@ mod tests {
         pedal(&mut ride, 300.0, 120);
 
         assert!(ride.is_finished());
-        assert!((ride.state().distance.0 - ride.route().length().0).abs() < 1e-9);
+        assert!((ride.state().distance.0 - ride.route().unwrap().length().0).abs() < 1e-9);
         let recorded = ride.samples().len();
         pedal(&mut ride, 300.0, 5);
         assert_eq!(
@@ -398,6 +471,203 @@ mod tests {
         }
 
         assert!(ride.state().speed.0 < 1.0, "{:?}", ride.state().speed);
+    }
+
+    #[test]
+    fn a_constant_power_workout_holds_its_power_on_a_flat_road() {
+        let mut ride = Ride::workout(Workout::ConstantPower(Watts(250.0)), RideConfig::default());
+
+        // The rider's own power is what the trainer holds in ERG.
+        let controls = pedal(&mut ride, 250.0, 120);
+
+        assert_eq!(controls, [TrainerControl::TargetPower(Watts(250.0))]);
+        // As far as 250 W carry on the flat: about 1.2 km in two minutes.
+        let state = ride.state();
+        assert!((1100.0..1300.0).contains(&state.distance.0), "{state:?}");
+        assert_eq!(state.remaining, None);
+        assert_eq!(state.position, None);
+        assert_eq!(state.workout.map(|w| w.target_power), Some(Watts(250.0)));
+        assert!(!ride.is_finished(), "goes on until the rider ends it");
+        assert!(ride.samples().iter().all(|s| s.location.is_none()));
+    }
+
+    #[test]
+    fn a_changed_workout_reaches_the_trainer_at_once() {
+        let mut ride = Ride::workout(Workout::ConstantPower(Watts(200.0)), RideConfig::default());
+        pedal(&mut ride, 200.0, 10);
+
+        ride.change_workout(Workout::ConstantPower(Watts(230.0)));
+        let controls = pedal(&mut ride, 230.0, 1);
+
+        assert_eq!(controls, [TrainerControl::TargetPower(Watts(230.0))]);
+    }
+
+    /// A rider whose heart rate the controller estimates from a 200 W FTP and 185 bpm maximum.
+    fn rider() -> Profile {
+        Profile {
+            ftp: Watts(200.0),
+            max_heart_rate: BeatsPerMinute(185.0),
+            ..Profile::default()
+        }
+    }
+
+    /// Rides a heart-rate hold for `minutes` against a simulated heart that beats to the
+    /// power the trainer is asked for, as in ERG. Its rate arrives 10 s late, as straps
+    /// average over several beats. Returns heart rate and power each second.
+    fn hold_against(heart: FakeHeart, hold: HeartRateHold, minutes: u64) -> Vec<(f64, f64)> {
+        let mut ride = Ride::workout(Workout::HeartRate(hold), RideConfig::default());
+        let mut simulated = SimulatedHeart::new(heart);
+        let mut power = Watts(0.0);
+        let mut beats = std::collections::VecDeque::new();
+        let mut trace = Vec::new();
+        for _ in 0..minutes * 60 {
+            beats.push_back(simulated.step(power, Duration::from_secs(1)));
+            let heart_rate = if beats.len() > 10 {
+                beats.pop_front().unwrap()
+            } else {
+                beats[0]
+            };
+            ride.on_telemetry(&Telemetry {
+                power: Some(power),
+                cadence: Some(Rpm(90.0)),
+                heart_rate: Some(heart_rate),
+                ..Telemetry::default()
+            });
+            for _ in 0..4 {
+                if let Some(TrainerControl::TargetPower(target)) =
+                    ride.tick(Duration::from_millis(250))
+                {
+                    power = target;
+                }
+            }
+            trace.push((heart_rate.0, power.0));
+        }
+        trace
+    }
+
+    /// Checks what R56 asks of a heart-rate hold: power within the limits and changing
+    /// gently, heart rate settled at the target within `settle` minutes and not swinging past
+    /// it on the way.
+    fn assert_holds(trace: &[(f64, f64)], hold: &HeartRateHold, settle: usize) {
+        let target = hold.target.0;
+        for (second, &(heart_rate, power)) in trace.iter().enumerate() {
+            assert!(
+                (hold.min_power.0..=hold.max_power.0).contains(&power),
+                "{power} W at {second} s"
+            );
+            assert!(
+                heart_rate <= target + 2.0,
+                "overshoot: {heart_rate} bpm at {second} s"
+            );
+            if second >= settle * 60 {
+                assert!(
+                    (heart_rate - target).abs() <= 3.0,
+                    "{heart_rate} bpm at {second} s, target {target}"
+                );
+            }
+        }
+        for minute in trace.windows(61) {
+            let change = (minute[60].1 - minute[0].1).abs();
+            assert!(change <= 31.0, "{change} W in a minute");
+        }
+    }
+
+    #[test]
+    fn a_heart_rate_hold_settles_in_the_middle_of_the_zone() {
+        let hold = HeartRateHold::zone(&rider(), 3, Watts(100.0), Watts(250.0));
+
+        let trace = hold_against(FakeHeart::default(), hold, 30);
+
+        assert_holds(&trace, &hold, 8);
+    }
+
+    #[test]
+    fn a_heart_rate_hold_settles_for_hearts_unlike_the_estimate() {
+        let hold = HeartRateHold::zone(&rider(), 3, Watts(50.0), Watts(350.0));
+        let hearts = [
+            // Reacting more strongly and faster than estimated…
+            (0.8, 30),
+            // …or weaker and slower.
+            (0.3, 60),
+        ];
+        for (per_watt, lag) in hearts {
+            let heart = FakeHeart {
+                per_watt,
+                lag: Duration::from_secs(lag),
+                ..FakeHeart::default()
+            };
+
+            let trace = hold_against(heart, hold, 40);
+
+            assert_holds(&trace, &hold, 15);
+        }
+    }
+
+    #[test]
+    fn a_heart_rate_hold_follows_cardiac_drift_by_easing_off() {
+        let hold = HeartRateHold::zone(&rider(), 2, Watts(50.0), Watts(250.0));
+        let heart = FakeHeart {
+            drift_per_hour: BeatsPerMinute(12.0),
+            ..FakeHeart::default()
+        };
+
+        let trace = hold_against(heart, hold, 90);
+
+        assert_holds(&trace, &hold, 10);
+        let eased = trace[15 * 60].1 - trace[89 * 60].1;
+        // 12 bpm an hour at 0.5 bpm per watt: about 30 W less over 74 minutes.
+        assert!((26.0..34.0).contains(&eased), "{eased} W");
+    }
+
+    #[test]
+    fn a_heart_rate_hold_stays_within_limits_it_cannot_reach_the_target_in() {
+        let hold = HeartRateHold::zone(&rider(), 4, Watts(100.0), Watts(140.0));
+
+        let trace = hold_against(FakeHeart::default(), hold, 20);
+
+        assert!(trace.iter().all(|&(_, power)| power <= 140.0));
+        // Held at the top: targets go out in whole watts.
+        assert!(trace.last().unwrap().1 > 139.0, "{:?}", trace.last());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_heart_rate_hold_settles_with_the_fake_trainer() {
+        let tick = Duration::from_millis(250);
+        let mut trainer = fake::spawn(
+            FakeRider {
+                power: Watts(150.0),
+                cadence: Rpm(90.0),
+                heart: Some(FakeHeart::default()),
+            },
+            tick,
+        );
+        let hold = HeartRateHold::zone(&rider(), 3, Watts(100.0), Watts(250.0));
+        let mut ride = Ride::workout(Workout::HeartRate(hold), RideConfig::default());
+        let mut heart_rates = Vec::new();
+
+        for _ in 0..20 * 60 * 4 {
+            tokio::time::sleep(tick).await;
+            while let Ok(Some(event)) = trainer.try_next_event() {
+                if let DeviceEvent::Telemetry(telemetry) = event {
+                    ride.on_telemetry(&telemetry);
+                }
+            }
+            if let Some(control) = ride.tick(tick) {
+                trainer.control(control).await.unwrap();
+            }
+            heart_rates.extend(ride.state().telemetry.heart_rate);
+        }
+
+        let last_ten_minutes = &heart_rates[heart_rates.len() - 10 * 60 * 4..];
+        assert!(
+            last_ten_minutes
+                .iter()
+                .all(|h| (h.0 - hold.target.0).abs() <= 3.0),
+            "{last_ten_minutes:?}"
+        );
+        // Recorded like any ride, from the trainer's power and heart rate.
+        let last = ride.samples().last().unwrap();
+        assert!(last.power.is_some() && last.heart_rate.is_some());
     }
 
     #[tokio::test]

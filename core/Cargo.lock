@@ -2484,6 +2484,7 @@ name = "torqa-session"
 version = "0.1.0"
 dependencies = [
  "tokio",
+ "torqa-devices",
  "torqa-domain",
  "torqa-physics",
  "torqa-routes",

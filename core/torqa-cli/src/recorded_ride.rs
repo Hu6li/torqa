@@ -1,30 +1,20 @@
-//! Riding a GPX route: the trainer follows the road gradient and the ride is saved as FIT.
+//! Recorded rides, saved as FIT: along a GPX route the trainer follows the road gradient, in a
+//! workout it holds the power the workout asks for.
 
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use torqa_app::paths;
 use torqa_devices::DeviceEvent;
-use torqa_domain::units::{Kilograms, MetersPerSecond, Percent};
-use torqa_physics::RiderSetup;
-use torqa_routes::Route;
-use torqa_session::{Ride, RideConfig, RideState};
+use torqa_domain::units::MetersPerSecond;
+use torqa_session::{Ride, RideState};
 
 use crate::RideArgs;
 use crate::devices::{Devices, field, next_event, stdin_lines};
 
 const TICK: Duration = Duration::from_millis(250);
 
-pub(crate) async fn run(route: Route, args: &RideArgs, devices: &mut Devices) -> Result<()> {
-    let config = RideConfig {
-        setup: RiderSetup {
-            mass: Kilograms(args.mass),
-            ..RiderSetup::default()
-        },
-        difficulty: Percent(args.difficulty),
-        descent: args.descent.into(),
-    };
-    let mut ride = Ride::new(route, config);
+pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) -> Result<()> {
     let mut input = stdin_lines();
     let mut ticker = tokio::time::interval(TICK);
     let mut display = tokio::time::interval(Duration::from_secs(1));
@@ -101,20 +91,36 @@ fn save(ride: &Ride, start: SystemTime, output: Option<&std::path::Path>) -> Res
 }
 
 fn format_state(state: &RideState) -> String {
-    let total = (state.distance.0 + state.remaining.0) / 1000.0;
     let t = state.telemetry;
-    format!(
-        "{:>6.2}/{total:.2} km  {:>+5.1} %  {}  {}  {}  {}  {:>5.0} m",
-        state.distance.0 / 1000.0,
-        state.position.grade.0,
+    let readings = [
         field(
             Some(MetersPerSecond::as_kilometers_per_hour(state.speed)),
             "km/h",
-            1
+            1,
         ),
         field(t.power.map(|p| p.0), "W", 0),
         field(t.cadence.map(|c| c.0), "rpm", 0),
         field(t.heart_rate.map(|h| h.0), "bpm", 0),
-        state.position.elevation.0,
-    )
+    ]
+    .join("  ");
+    let km = state.distance.0 / 1000.0;
+    match (state.position, state.remaining, state.workout) {
+        (Some(position), Some(remaining), _) => format!(
+            "{km:>6.2}/{:.2} km  {:>+5.1} %  {readings}  {:>5.0} m",
+            km + remaining.0 / 1000.0,
+            position.grade.0,
+            position.elevation.0,
+        ),
+        (_, _, Some(workout)) => {
+            let heart_rate = workout
+                .target_heart_rate
+                .map(|h| format!(" for {:.0} bpm", h.0))
+                .unwrap_or_default();
+            format!(
+                "{km:>6.2} km  {readings}  target {:.0} W{heart_rate}",
+                workout.target_power.0
+            )
+        }
+        _ => format!("{km:>6.2} km  {readings}"),
+    }
 }

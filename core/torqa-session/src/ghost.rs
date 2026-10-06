@@ -175,7 +175,7 @@ impl Ghost {
 mod tests {
     use std::fmt::Write as _;
 
-    use torqa_domain::units::{GradePercent, Kilograms};
+    use torqa_domain::units::Kilograms;
 
     use super::*;
 
@@ -194,12 +194,9 @@ mod tests {
         (0..=seconds)
             .map(|s| Sample {
                 elapsed: Duration::from_secs(u64::from(s)),
-                lat: 46.0,
-                lon: 7.0,
-                elevation: Meters(500.0),
+                location: None,
                 distance: Meters(speed * f64::from(s)),
                 speed: MetersPerSecond(speed),
-                grade: GradePercent(0.0),
                 power: None,
                 cadence: None,
                 heart_rate: None,

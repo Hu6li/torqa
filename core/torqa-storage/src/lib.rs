@@ -37,7 +37,7 @@ use embedded_io_adapters::std::FromStd;
 use rustyfit::profile::{mesgdef, typedef};
 use rustyfit::proto::{FIT, Message};
 use rustyfit::{Decoder, Encoder};
-use torqa_domain::recording::Sample;
+use torqa_domain::recording::{Location, Sample};
 use torqa_domain::units::{BeatsPerMinute, GradePercent, Meters, MetersPerSecond, Rpm, Watts};
 
 /// FIT export or import failed.
@@ -78,14 +78,20 @@ pub fn decode_fit(bytes: &[u8]) -> Result<(SystemTime, Vec<Sample>), FitError> {
         .iter()
         .filter_map(|r| {
             let at = r.timestamp.unix_timestamp()?;
+            let location =
+                r.position_lat_degrees()
+                    .zip(r.position_long_degrees())
+                    .map(|(lat, lon)| Location {
+                        lat,
+                        lon,
+                        elevation: Meters(r.altitude_scaled().unwrap_or(0.0)),
+                        grade: GradePercent(r.grade_scaled().unwrap_or(0.0)),
+                    });
             Some(Sample {
                 elapsed: Duration::from_secs(u64::try_from(at - start).unwrap_or(0)),
-                lat: r.position_lat_degrees().unwrap_or(0.0),
-                lon: r.position_long_degrees().unwrap_or(0.0),
-                elevation: Meters(r.altitude_scaled().unwrap_or(0.0)),
+                location,
                 distance: Meters(r.distance_scaled().unwrap_or(0.0)),
                 speed: MetersPerSecond(r.speed_scaled().unwrap_or(0.0)),
-                grade: GradePercent(r.grade_scaled().unwrap_or(0.0)),
                 power: (r.power != u16::MAX).then(|| Watts(f64::from(r.power))),
                 cadence: (r.cadence != u8::MAX).then(|| Rpm(f64::from(r.cadence))),
                 heart_rate: (r.heart_rate != u8::MAX)
@@ -99,8 +105,8 @@ pub fn decode_fit(bytes: &[u8]) -> Result<(SystemTime, Vec<Sample>), FitError> {
 
 /// Encodes a recorded ride as a FIT activity file.
 ///
-/// The session is tagged as a virtual cycling activity, so platforms such as Strava file it
-/// as a virtual ride.
+/// A ride along a route is tagged as a virtual cycling activity, so platforms such as Strava
+/// file it as a virtual ride; one without positions (a workout, R56) as indoor cycling.
 ///
 /// # Errors
 /// [`FitError::Empty`] without samples, [`FitError::Encode`] if encoding fails.
@@ -133,8 +139,17 @@ pub fn encode_fit(start: SystemTime, samples: &[Sample]) -> Result<Vec<u8>, FitE
         end_time,
         typedef::EventType::STOP_ALL,
     )));
-    messages.push(Message::from(lap(start_time, end_time, &summary)));
-    messages.push(Message::from(session(start_time, end_time, &summary)));
+    let sub_sport = if samples.iter().any(|s| s.location.is_some()) {
+        typedef::SubSport::VIRTUAL_ACTIVITY
+    } else {
+        typedef::SubSport::INDOOR_CYCLING
+    };
+    messages.push(Message::from(lap(
+        start_time, end_time, &summary, sub_sport,
+    )));
+    messages.push(Message::from(session(
+        start_time, end_time, &summary, sub_sport,
+    )));
     messages.push(Message::from(activity(end_time, &summary)));
 
     let mut fit = FIT {
@@ -191,7 +206,8 @@ impl Summary {
             distance: last.distance.0,
             ascent: samples
                 .windows(2)
-                .map(|w| (w[1].elevation.0 - w[0].elevation.0).max(0.0))
+                .filter_map(|w| Some((w[0].location?, w[1].location?)))
+                .map(|(a, b)| (b.elevation.0 - a.elevation.0).max(0.0))
                 .sum(),
             avg_speed: if elapsed > 0.0 {
                 last.distance.0 / elapsed
@@ -245,12 +261,14 @@ fn timer_event(at: typedef::DateTime, event_type: typedef::EventType) -> mesgdef
 fn record(at: typedef::DateTime, sample: &Sample) -> mesgdef::Record {
     let mut record = mesgdef::Record::new();
     record.timestamp = at;
-    record.position_lat = semicircles(sample.lat);
-    record.position_long = semicircles(sample.lon);
-    record.set_altitude_scaled(sample.elevation.0);
+    if let Some(location) = sample.location {
+        record.position_lat = semicircles(location.lat);
+        record.position_long = semicircles(location.lon);
+        record.set_altitude_scaled(location.elevation.0);
+        record.set_grade_scaled(location.grade.0);
+    }
     record.set_distance_scaled(sample.distance.0);
     record.set_speed_scaled(sample.speed.0);
-    record.set_grade_scaled(sample.grade.0);
     if let Some(power) = sample.power {
         record.power = to_u16(power.0);
     }
@@ -263,7 +281,12 @@ fn record(at: typedef::DateTime, sample: &Sample) -> mesgdef::Record {
     record
 }
 
-fn lap(start: typedef::DateTime, end: typedef::DateTime, s: &Summary) -> mesgdef::Lap {
+fn lap(
+    start: typedef::DateTime,
+    end: typedef::DateTime,
+    s: &Summary,
+    sub_sport: typedef::SubSport,
+) -> mesgdef::Lap {
     let mut lap = mesgdef::Lap::new();
     lap.message_index = typedef::MessageIndex(0);
     lap.timestamp = end;
@@ -272,7 +295,7 @@ fn lap(start: typedef::DateTime, end: typedef::DateTime, s: &Summary) -> mesgdef
     lap.event_type = typedef::EventType::STOP;
     lap.lap_trigger = typedef::LapTrigger::SESSION_END;
     lap.sport = typedef::Sport::CYCLING;
-    lap.sub_sport = typedef::SubSport::VIRTUAL_ACTIVITY;
+    lap.sub_sport = sub_sport;
     lap.set_total_elapsed_time_scaled(s.elapsed)
         .set_total_timer_time_scaled(s.elapsed)
         .set_total_distance_scaled(s.distance)
@@ -297,7 +320,12 @@ fn lap(start: typedef::DateTime, end: typedef::DateTime, s: &Summary) -> mesgdef
     lap
 }
 
-fn session(start: typedef::DateTime, end: typedef::DateTime, s: &Summary) -> mesgdef::Session {
+fn session(
+    start: typedef::DateTime,
+    end: typedef::DateTime,
+    s: &Summary,
+    sub_sport: typedef::SubSport,
+) -> mesgdef::Session {
     let mut session = mesgdef::Session::new();
     session.message_index = typedef::MessageIndex(0);
     session.timestamp = end;
@@ -305,7 +333,7 @@ fn session(start: typedef::DateTime, end: typedef::DateTime, s: &Summary) -> mes
     session.event = typedef::Event::SESSION;
     session.event_type = typedef::EventType::STOP;
     session.sport = typedef::Sport::CYCLING;
-    session.sub_sport = typedef::SubSport::VIRTUAL_ACTIVITY;
+    session.sub_sport = sub_sport;
     session.first_lap_index = 0;
     session.num_laps = 1;
     session
@@ -352,12 +380,14 @@ mod tests {
         (0..count)
             .map(|i| Sample {
                 elapsed: Duration::from_secs(u64::from(i)),
-                lat: 46.9 + f64::from(i) * 1e-4,
-                lon: 7.4,
-                elevation: Meters(500.0 + f64::from(i)),
+                location: Some(Location {
+                    lat: 46.9 + f64::from(i) * 1e-4,
+                    lon: 7.4,
+                    elevation: Meters(500.0 + f64::from(i)),
+                    grade: GradePercent(1.0),
+                }),
                 distance: Meters(f64::from(i) * 10.0),
                 speed: MetersPerSecond(10.0),
-                grade: GradePercent(1.0),
                 power: Some(Watts(200.0 + f64::from(i % 2) * 100.0)),
                 cadence: Some(Rpm(90.0)),
                 heart_rate: (i > 0).then_some(BeatsPerMinute(140.0)),
@@ -428,12 +458,40 @@ mod tests {
         assert_eq!(b.power, a.power);
         assert_eq!(b.cadence, a.cadence);
         assert_eq!(b.heart_rate, a.heart_rate);
-        assert!((b.lat - a.lat).abs() < 1e-6);
-        assert!((b.elevation.0 - a.elevation.0).abs() < 0.2);
+        let (at, back) = (a.location.unwrap(), b.location.unwrap());
+        assert!((back.lat - at.lat).abs() < 1e-6);
+        assert!((back.elevation.0 - at.elevation.0).abs() < 0.2);
         assert!((b.distance.0 - a.distance.0).abs() < 0.01);
         assert!((b.speed.0 - a.speed.0).abs() < 0.001);
         // The first sample had no heart-rate strap yet.
         assert_eq!(read[0].heart_rate, None);
+    }
+
+    #[test]
+    fn a_workout_without_a_route_is_indoor_cycling_without_positions() {
+        let workout: Vec<Sample> = samples(30)
+            .into_iter()
+            .map(|s| Sample {
+                location: None,
+                ..s
+            })
+            .collect();
+
+        let start = UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        let bytes = encode_fit(start, &workout).unwrap();
+        let fit = decode(&bytes);
+
+        let of = |num| fit.messages.iter().filter(move |m| m.num == num);
+        let session = mesgdef::Session::from(of(typedef::MesgNum::SESSION).next().unwrap());
+        assert_eq!(session.sub_sport, typedef::SubSport::INDOOR_CYCLING);
+        assert_eq!(session.total_ascent, 0);
+        assert_eq!(session.total_distance, 290 * 100);
+        let record = mesgdef::Record::from(of(typedef::MesgNum::RECORD).next().unwrap());
+        assert_eq!(record.position_lat_degrees(), None);
+        assert_eq!(record.altitude_scaled(), None);
+        let (_, read) = decode_fit(&bytes).unwrap();
+        assert!(read.iter().all(|s| s.location.is_none()));
+        assert_eq!(read[20].power, workout[20].power);
     }
 
     #[test]

@@ -1217,20 +1217,18 @@ impl App {
         active.simulated = true;
         // Climbs passed by jumping are not timed; the next one counts from where it starts.
         let distance = active.ride.state().distance;
-        active.next_climb = active
-            .ride
-            .route()
-            .climbs()
+        let climbs = active.ride.route().map_or(&[][..], Route::climbs);
+        active.next_climb = climbs
             .iter()
             .position(|c| c.start.0 >= distance.0)
-            .unwrap_or(active.ride.route().climbs().len());
+            .unwrap_or(climbs.len());
         true
     }
 
     /// Moves the simulated ride's rider to the route's point nearest to `x`/`y` (metres east
     /// and north of the start, as on the map); false without a simulated ride.
     pub fn jump_near(&mut self, x: f64, y: f64) -> bool {
-        let Some(route) = self.ride.as_ref().map(|a| a.ride.route()) else {
+        let Some(route) = self.ride.as_ref().and_then(|a| a.ride.route()) else {
             return false;
         };
         let projection = LocalProjection::for_route(route);
@@ -1259,8 +1257,12 @@ impl App {
     pub fn connect_trainer(&mut self, choice: TrainerChoice) -> Result<(), AppError> {
         let _runtime = self.runtime.enter();
         let handle = match choice {
-            TrainerChoice::Fake(rider) => {
+            TrainerChoice::Fake(mut rider) => {
                 self.trainer_id = None;
+                // A real strap's heart rate is the one to use.
+                if self.sensor.is_some() {
+                    rider.heart = None;
+                }
                 fake::spawn(rider, Duration::from_millis(250))
             }
             TrainerChoice::Discovered(index) => {
@@ -1461,9 +1463,10 @@ impl App {
             let route = active.ride.route();
             let finished = samples
                 .last()
-                .is_some_and(|s| s.distance.0 >= route.length().0 - 1.0);
+                .zip(route)
+                .is_some_and(|(s, route)| s.distance.0 >= route.length().0 - 1.0);
             // A simulated ride's times are not real: like a ride known only from its FIT file,
-            // it counts towards no records.
+            // it counts towards no records; neither does a workout without a route.
             let real = !active.simulated;
             let record = RideRecord {
                 route: self
@@ -1472,13 +1475,13 @@ impl App {
                     .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
                 start,
                 summary: summarize(samples, self.profile.profile.ftp),
-                route_key: real.then(|| route.key()),
-                route_time: (finished && real)
-                    .then(|| effort(samples, Meters(0.0), route.length()))
-                    .flatten()
+                route_key: route.filter(|_| real).map(Route::key),
+                route_time: route
+                    .filter(|_| finished && real)
+                    .and_then(|route| effort(samples, Meters(0.0), route.length()))
                     .map(|e| e.elapsed),
                 climbs: route
-                    .climbs()
+                    .map_or(&[][..], Route::climbs)
                     .iter()
                     .filter(|_| real)
                     .filter_map(|c| {
@@ -1691,7 +1694,7 @@ impl App {
         let state = active.ride.state();
         let (index, climb) = active
             .ride
-            .route()
+            .route()?
             .climbs()
             .iter()
             .enumerate()
@@ -1801,7 +1804,7 @@ impl App {
                 active.summary = (samples.len(), summarize(samples, self.profile.profile.ftp));
             }
             // Samples arrive once a second, so a climb is timed once a sample lies past its top.
-            let climbs = active.ride.route().climbs();
+            let climbs = active.ride.route().map_or(&[][..], Route::climbs);
             while let Some(climb) = climbs.get(active.next_climb)
                 && let Some(done) = effort(active.ride.samples(), climb.start, climb.end)
             {
@@ -2095,10 +2098,13 @@ fn activity_points(path: &Path) -> Result<Vec<torqa_routes::TimedPoint>, String>
             .map_or(0.0, |d| d.as_secs_f64());
         return Ok(samples
             .iter()
-            .map(|s| torqa_routes::TimedPoint {
-                lat: s.lat,
-                lon: s.lon,
-                time: start + s.elapsed.as_secs_f64(),
+            .filter_map(|s| {
+                let location = s.location?;
+                Some(torqa_routes::TimedPoint {
+                    lat: location.lat,
+                    lon: location.lon,
+                    time: start + s.elapsed.as_secs_f64(),
+                })
             })
             .collect());
     }
@@ -2299,6 +2305,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
@@ -2327,6 +2334,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(300.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         assert!(app.simulating());
@@ -2380,6 +2388,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
@@ -2595,6 +2604,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(300.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
@@ -2843,6 +2853,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(400.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(0.0), DescentMode::Coast, &GhostChoice::None)
@@ -2898,6 +2909,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         let ride = |app: &mut App, take_frames: bool| {
@@ -2940,6 +2952,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         let start = |app: &mut App| {
@@ -3015,6 +3028,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(200.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
@@ -3269,6 +3283,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(400.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(50.0), DescentMode::Coast, ghost)
@@ -3412,6 +3427,7 @@ mod tests {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
             cadence: Rpm(90.0),
+            heart: None,
         }))
         .unwrap();
         app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)

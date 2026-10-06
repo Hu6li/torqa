@@ -2,7 +2,7 @@
 
 mod devices;
 mod free_ride;
-mod route_ride;
+mod recorded_ride;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -11,8 +11,12 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use torqa_app::paths;
 use torqa_devices::ble::Bluetooth;
-use torqa_physics::DescentMode;
+use torqa_domain::profile::Profile;
+use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Watts};
+use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{ElevationSource, Route};
+use torqa_session::workout::{HeartRateHold, Workout};
+use torqa_session::{Ride, RideConfig};
 use tracing_subscriber::EnvFilter;
 
 use devices::DeviceArgs;
@@ -36,7 +40,7 @@ enum Command {
         #[arg(long, default_value_t = 5)]
         seconds: u64,
     },
-    /// Ride a GPX route, or control the trainer from the keyboard without one.
+    /// Ride a GPX route or a workout, or control the trainer from the keyboard.
     Ride(RideArgs),
     /// Show length, climbing and elevation source of a GPX route.
     Route(RouteArgs),
@@ -46,9 +50,11 @@ enum Command {
 struct RideArgs {
     #[command(flatten)]
     devices: DeviceArgs,
-    /// GPX route to ride; without it, resistance is set from the keyboard.
+    /// GPX route to ride; without it or a workout, resistance is set from the keyboard.
     #[arg(long)]
     route: Option<PathBuf>,
+    #[command(flatten)]
+    workout: WorkoutArgs,
     /// Trainer difficulty in percent: how much of the road gradient you feel.
     #[arg(long, default_value_t = 50.0)]
     difficulty: f64,
@@ -64,9 +70,59 @@ struct RideArgs {
     /// Where to save the FIT activity (default: torqa-<date>-<time>.fit).
     #[arg(long)]
     output: Option<PathBuf>,
-    /// Runs simulated time faster, for testing routes quickly with the fake trainer.
-    #[arg(long, default_value_t = 1.0, requires = "fake")]
+    /// Runs simulated time faster, for testing routes quickly with the fake trainer. Not for
+    /// heart-rate workouts: the simulated heart beats in real time.
+    #[arg(long, default_value_t = 1.0, requires = "fake", conflicts_with_all = ["hr_zone", "hr_target"])]
     time_scale: f64,
+}
+
+/// Workouts without a route (R56): the trainer holds a power (ERG).
+#[derive(Args)]
+struct WorkoutArgs {
+    /// Constant-power workout: the trainer holds this many watts.
+    #[arg(long, conflicts_with_all = ["route", "hr_zone", "hr_target"])]
+    power: Option<f64>,
+    /// Heart-rate workout holding the middle of this heart-rate zone (1–5).
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=5),
+          conflicts_with_all = ["route", "hr_target"])]
+    hr_zone: Option<u8>,
+    /// Heart-rate workout holding this heart rate, in bpm.
+    #[arg(long, conflicts_with = "route")]
+    hr_target: Option<f64>,
+    /// The least power a heart-rate workout asks for, in watts; it starts there.
+    #[arg(long, default_value_t = 100.0)]
+    min_power: f64,
+    /// The most power a heart-rate workout asks for, in watts.
+    #[arg(long, default_value_t = 250.0)]
+    max_power: f64,
+    /// Your FTP in watts: how much power a beat off target is worth.
+    #[arg(long, default_value_t = 200.0)]
+    ftp: f64,
+    /// Your maximum heart rate in bpm: the base of the heart-rate zones.
+    #[arg(long, default_value_t = 185.0)]
+    max_hr: f64,
+}
+
+impl WorkoutArgs {
+    fn workout(&self) -> Option<Workout> {
+        let rider = Profile {
+            ftp: Watts(self.ftp),
+            max_heart_rate: BeatsPerMinute(self.max_hr),
+            ..Profile::default()
+        };
+        let (min, max) = (Watts(self.min_power), Watts(self.max_power));
+        if let Some(power) = self.power {
+            Some(Workout::ConstantPower(Watts(power)))
+        } else if let Some(zone) = self.hr_zone {
+            Some(Workout::HeartRate(HeartRateHold::zone(
+                &rider, zone, min, max,
+            )))
+        } else {
+            self.hr_target.map(|bpm| {
+                Workout::HeartRate(HeartRateHold::bpm(&rider, BeatsPerMinute(bpm), min, max))
+            })
+        }
+    }
 }
 
 #[derive(Args)]
@@ -145,10 +201,26 @@ async fn ride(args: RideArgs) -> Result<()> {
         None => None,
     };
 
+    let workout = args.workout.workout();
+    if matches!(workout, Some(Workout::HeartRate(_))) && !args.devices.heart_rate() {
+        println!("A heart-rate workout needs a heart rate: add --hr for your strap.");
+    }
+
     let mut devices = devices::connect(&args.devices).await?;
-    let result = match route {
-        Some(route) => route_ride::run(route, &args, &mut devices).await,
-        None => free_ride::run(&mut devices).await,
+    let config = RideConfig {
+        setup: RiderSetup {
+            mass: Kilograms(args.mass),
+            ..RiderSetup::default()
+        },
+        difficulty: Percent(args.difficulty),
+        descent: args.descent.into(),
+    };
+    let result = match (route, workout) {
+        (Some(route), _) => recorded_ride::run(Ride::new(route, config), &args, &mut devices).await,
+        (None, Some(workout)) => {
+            recorded_ride::run(Ride::workout(workout, config), &args, &mut devices).await
+        }
+        (None, None) => free_ride::run(&mut devices).await,
     };
     devices.close().await;
     result
@@ -263,6 +335,39 @@ mod tests {
     fn cli_definition_is_valid() {
         use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn workouts_ride_without_a_route_one_at_a_time() {
+        let parse = |args: &[&str]| Cli::try_parse_from([&["torqa-cli", "ride"], args].concat());
+
+        assert!(parse(&["--power", "200"]).is_ok());
+        assert!(parse(&["--hr-zone", "3", "--min-power", "120", "--max-power", "220"]).is_ok());
+        assert!(parse(&["--hr-target", "140", "--max-hr", "190"]).is_ok());
+        assert!(parse(&["--hr-zone", "6"]).is_err());
+        assert!(parse(&["--power", "200", "--hr-zone", "3"]).is_err());
+        assert!(parse(&["--power", "200", "--route", "a.gpx"]).is_err());
+        assert!(parse(&["--fake", "--hr-zone", "3", "--time-scale", "10"]).is_err());
+        assert!(parse(&["--fake", "--power", "200", "--time-scale", "10"]).is_ok());
+    }
+
+    #[test]
+    fn a_zone_workout_holds_the_middle_of_the_zone() {
+        let Ok(Cli {
+            command: Command::Ride(args),
+        }) = Cli::try_parse_from(["torqa-cli", "ride", "--hr-zone", "3", "--max-hr", "200"])
+        else {
+            panic!("valid arguments");
+        };
+
+        let Some(Workout::HeartRate(hold)) = args.workout.workout() else {
+            panic!("a heart-rate workout");
+        };
+        assert!((hold.target.0 - 150.0).abs() < 1e-9);
+        assert_eq!(
+            (hold.min_power, hold.max_power),
+            (Watts(100.0), Watts(250.0))
+        );
     }
 
     #[test]
