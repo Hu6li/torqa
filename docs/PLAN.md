@@ -222,8 +222,9 @@ the realistic look's textures and patterns are being replaced step by step.
     each seated on a scripted bike sized to their legs and reach (`art/riders`); cadence-driven
     pedalling (legs by inverse kinematics, ankling, a little sway); the rider chosen per
     profile
-  - [ ] Polish: low-poly clouds, stylized rain and fog, presets tuned to the new look (done:
-    a band of gravel along the shores of lakes and rivers)
+  - [ ] Polish: stylized rain and fog, presets tuned to the new look (done: a band of gravel
+    along the shores of lakes and rivers; low-poly clouds made in Blender, lit by the sun and
+    the weather, more, bigger and lower as it clouds over)
 - [ ] Feedback round after the riders (issues #74–#79), in this order:
   - [x] Nicer riders (#76): hair over the scalp (to the nape for her, short for him) and a
     longer ponytail; helmets shaped from the head they sit on, drawn out at the back, with vent

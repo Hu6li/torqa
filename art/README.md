@@ -142,3 +142,15 @@ Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` 
 |---|---|
 | ![Female rider](../docs/images/riders/female-side.jpg) | ![Male rider](../docs/images/riders/male-side.jpg) |
 | ![Female rider from the front](../docs/images/riders/female-front.jpg) | ![Male rider from behind](../docs/images/riders/male-chase.jpg) |
+
+## Clouds (`clouds/`)
+
+`build.py` makes four low-poly clouds into `app/assets/models/clouds/`: small, puffy, long and
+a towering one, each a few rough balls of 20 facets flattened underneath, 60–120 faces, about
+10 m long (the app scales them up). One material, `cloud`; `app/shaders/cloud.gdshader` lights
+them by the sun and the weather and fades them into the horizon, and `app/scenes/cloud_layer.gd`
+spreads them round the camera, more, bigger and lower as the weather clouds over.
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/clouds/build.py
+```

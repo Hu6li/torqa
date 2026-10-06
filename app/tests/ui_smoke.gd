@@ -17,6 +17,7 @@ func _run() -> void:
 	_video_alignment()
 	_translations()
 	await _free_camera()
+	_clouds()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -311,6 +312,40 @@ func _free_camera() -> void:
 	_check(moved.dot(camera.basis.x) < -0.01, "left alone moves left: %s" % moved)
 	_check(camera.rotation.is_equal_approx(before), "arrows alone do not turn")
 	main.free()
+
+
+## The low-poly clouds (ADR 0011) follow the weather: more and bigger ones as it clouds over,
+## always high over the land and round the camera.
+func _clouds() -> void:
+	var eye: Vector3 = Vector3(5000.0, 600.0, -3000.0)
+	var layer: CloudLayer = CloudLayer.new()
+	root.add_child(layer)
+	layer.settle(500.0)
+	var counts: Array[int] = []
+	var sizes: Array[float] = []
+	for cover: float in [0.0, 0.3, 1.0]:
+		layer.cover = cover
+		var count: int = 0
+		var size: float = 0.0
+		for transforms: Array in layer.placements(eye):
+			for placed: Transform3D in transforms:
+				_check(
+					placed.origin.y > 500.0 + 400.0,
+					"clouds high over the land: %.0f m at cover %.1f" % [placed.origin.y, cover]
+				)
+				var from_eye: Vector2 = Vector2(placed.origin.x - eye.x, placed.origin.z - eye.z)
+				_check(
+					absf(from_eye.x) <= CloudLayer.SPREAD and absf(from_eye.y) <= CloudLayer.SPREAD,
+					"clouds round the camera: %s" % from_eye
+				)
+				size += placed.basis.get_scale().x
+				count += 1
+		counts.append(count)
+		sizes.append(size / maxf(count, 1.0))
+	_check(counts[0] == 0, "no clouds on a clear day: %d" % counts[0])
+	_check(counts[1] < counts[2], "more clouds as it clouds over: %s" % [counts])
+	_check(sizes[1] < sizes[2], "bigger clouds as it clouds over: %s" % [sizes])
+	layer.free()
 
 
 ## Holds `keys` for a few frames, then lets them go.
