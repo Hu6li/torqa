@@ -607,8 +607,8 @@ impl App {
             let imported = import_gpx(
                 unpacked.gpx,
                 &unpacked.manifest.name,
-                &cache,
-                true,
+                (&cache, true),
+                video.is_some(),
                 &used,
                 &mut |stage, done, total| reporter.report(stage, done, total),
             )
@@ -659,10 +659,10 @@ impl App {
                 Ok(source) => import_gpx(
                     source.gpx.clone(),
                     &source.name,
-                    &cache,
                     // A course without a place keeps its own elevations: terrain data from
                     // wherever its drawn line lies would only spoil them.
-                    offline || !source.located,
+                    (&cache, offline || !source.located),
+                    true,
                     &used,
                     &mut |stage, done, total| reporter.report(stage, done, total),
                 )
@@ -708,7 +708,7 @@ impl App {
             located: true,
         };
         let added = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
-        let reference = video_reference(&added);
+        let reference = video_reference(&added, route);
         update_manifest(path, |manifest| manifest.video = Some(reference))?;
         self.video = Some(added);
         self.view = View::Video;
@@ -781,7 +781,7 @@ impl App {
         };
         let aligned = video::VideoCourse::new(route, &source).map_err(AppError::Video)?;
         if let Some(path) = &self.course {
-            let reference = video_reference(&aligned);
+            let reference = video_reference(&aligned, route);
             update_manifest(path, |manifest| manifest.video = Some(reference))?;
         }
         self.video = Some(aligned);
@@ -905,7 +905,7 @@ impl App {
             route_key: Some(route.key()),
             track: thin(&view::track(route, PREVIEW_POINTS)),
             profile: thin(&view::elevation_profile(route, PREVIEW_POINTS)),
-            video: self.video.as_ref().map(video_reference),
+            video: self.video.as_ref().map(|v| video_reference(v, route)),
         };
         // Preparing the same course again must not fill the library with copies; one still
         // being written reports itself when done. A course named on import is the rider's
@@ -2136,7 +2136,10 @@ fn initial_profile(data_dir: &Path) -> StoredProfile {
 
 /// A free file name in `library` for a course called `name`.
 /// How a course file refers to its video.
-fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
+/// How the course file refers to its video. Its marks are kept along the track as recorded,
+/// which the course is loaded along as a video course: placed on a route ridden in 3D, they
+/// move on by its turns in place taken out.
+fn video_reference(video: &video::VideoCourse, route: &Route) -> course::VideoReference {
     course::VideoReference {
         path: video.video.display().to_string(),
         file_name: video
@@ -2150,7 +2153,7 @@ fn video_reference(video: &video::VideoCourse) -> course::VideoReference {
         marks: video
             .marks
             .iter()
-            .map(|m| [m.distance.0, m.time.as_secs_f64()])
+            .map(|m| [route.recorded_distance(m.distance).0, m.time.as_secs_f64()])
             .collect(),
         located: video.located,
     }
@@ -2232,6 +2235,41 @@ mod tests {
             }
         }
         panic!("timed out; events so far: {seen:?}");
+    }
+
+    #[tokio::test]
+    async fn courses_ridden_in_3d_lose_their_turns_in_place_videos_keep_them() {
+        // North 300 m, back down 100 m and north again to 500 m: a zig-zag (#101).
+        let dir = temp_dir("turns");
+        let mut xml = String::from("<gpx><trk><trkseg>");
+        let norths = (0..=30).chain((20..30).rev()).chain(21..=50);
+        for north in norths {
+            let lat = 46.0 + f64::from(north) * 10.0 / 111_195.0;
+            let _ = write!(xml, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
+        }
+        xml.push_str("</trkseg></trk></gpx>");
+        let length = async |video| {
+            import_gpx(
+                xml.clone(),
+                "zig-zag",
+                (&dir, true),
+                video,
+                &UsedFiles::default(),
+                &mut |_, _, _| {},
+            )
+            .await
+            .unwrap()
+            .route
+            .length()
+            .0
+        };
+
+        let (ridden, recorded) = (length(false).await, length(true).await);
+        assert!((ridden - 500.0).abs() < 10.0, "ridden in 3D: {ridden} m");
+        assert!(
+            (recorded - 700.0).abs() < 10.0,
+            "along a video: {recorded} m"
+        );
     }
 
     #[test]
