@@ -51,7 +51,7 @@ type Colours = LazyLock<Vec<[f32; 3]>>;
 
 /// Plaster of houses: cream, sand, peach, dusty rose, pale ochre, pale sage.
 static PLASTER: Colours = LazyLock::new(|| palette::list("buildings.walls"));
-/// Plaster of blocks, churches and masonry ground floors: creams and off-whites.
+/// Plaster of light blocks, churches and masonry ground floors: creams and off-whites.
 static LIGHT_PLASTER: Colours = LazyLock::new(|| palette::list("buildings.light_walls"));
 /// Timber: browns of the palette.
 static WOOD: Colours = LazyLock::new(|| palette::list("buildings.timber"));
@@ -67,9 +67,12 @@ static SHEET: Colours = LazyLock::new(|| palette::list("buildings.sheet"));
 static FLAT: Colours = LazyLock::new(|| palette::list("buildings.flat_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
+/// Accents: the shutters' sage, teal, dusty rose and plum, also the trim of light blocks.
+static SHUTTERS: Colours = LazyLock::new(|| palette::list("buildings.shutters"));
 /// Window frames; stone around church openings; chimneys and their caps.
 static WHITE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.frame"));
 static STONE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.stone"));
+static METAL: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.metal"));
 static SOOT: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.soot"));
 static BRICK: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.chimney"));
 
@@ -471,6 +474,18 @@ struct Design {
     /// Frame colour of windows in the gables.
     gable_windows: Option<[f32; 3]>,
     balcony: bool,
+    /// Blocks: a cornice under the roof line (or round the top of the parapet), a string
+    /// course over the ground storey, stacked balconies and units on a flat roof.
+    trim: Option<Trim>,
+}
+
+/// The finish of a block (#75): light trim against the walls, as in its references.
+#[derive(Debug, Clone, Copy)]
+struct Trim {
+    /// Cornice and string course.
+    band: Paint,
+    /// Balconies on the long sides, if any.
+    balconies: Option<Paint>,
 }
 
 fn design(kind: Kind, building: &Building, rectangular: bool, dice: &Dice) -> Design {
@@ -556,6 +571,7 @@ impl Recipe<'_> {
             chimney: self.dice.roll(10) < 0.6,
             gable_windows: Some(*WHITE),
             balcony: false,
+            trim: None,
         }
     }
 
@@ -584,6 +600,7 @@ impl Recipe<'_> {
             chimney: self.dice.roll(10) < 0.5,
             gable_windows: Some(*WHITE),
             balcony: true,
+            trim: None,
         }
     }
 
@@ -612,6 +629,7 @@ impl Recipe<'_> {
             chimney: self.dice.roll(10) < 0.4,
             gable_windows: Some(*WHITE),
             balcony: false,
+            trim: None,
         }
     }
 
@@ -648,11 +666,32 @@ impl Recipe<'_> {
             chimney: false,
             gable_windows: None,
             balcony: false,
+            trim: None,
         }
     }
 
     fn block(&self) -> Design {
-        let wall = self.facade(&LIGHT_PLASTER, Style::Plaster);
+        // Coloured or light walls, and trim that stands out against them, as in the
+        // references (#75): white on colour, an accent colour on light walls.
+        let palette: &[[f32; 3]] = if self.dice.roll(13) < 0.6 {
+            &PLASTER
+        } else {
+            &LIGHT_PLASTER
+        };
+        let wall = self.facade(palette, Style::Plaster);
+        let light = luminance(wall.rgb) > 0.85;
+        let accent = if light {
+            self.paint(&SHUTTERS, 14, Style::Blank)
+        } else {
+            Paint::new(*WHITE, Style::Blank)
+        };
+        let base = if self.dice.roll(15) < 0.5 {
+            Paint::new(*STONE, Style::Plaster)
+        } else {
+            accent.with(Style::Plaster)
+        };
+        let band = accent;
+        let balconies = (self.dice.roll(16) < 0.7).then_some(accent);
         let walls = storeys(4.0 + (self.dice.roll(3) * 3.0).floor());
         // Tall blocks are modern and flat-roofed; lower ones are as often hipped.
         let tall = mapped_height(self.building).unwrap_or(walls) >= 15.0;
@@ -671,7 +710,7 @@ impl Recipe<'_> {
             overhang: 0.6,
             verge: 0.6,
             wall,
-            base: None,
+            base: Some(base),
             roof_paint: RoofPaint {
                 top: if flat {
                     self.paint(&FLAT, 8, Style::Flat)
@@ -684,6 +723,7 @@ impl Recipe<'_> {
             chimney: false,
             gable_windows: None,
             balcony: false,
+            trim: Some(Trim { band, balconies }),
         }
     }
 
@@ -712,6 +752,7 @@ impl Recipe<'_> {
             chimney: false,
             gable_windows: None,
             balcony: false,
+            trim: None,
         }
     }
 }
@@ -777,6 +818,18 @@ fn build(
         }),
     };
 
+    if let Some(trim) = design.trim {
+        finish(
+            b,
+            &outline,
+            rect.as_ref(),
+            (ground, eaves, wall_top),
+            design.base.is_some(),
+            trim,
+            dice,
+        );
+    }
+
     let Some(rect) = rect else {
         return;
     };
@@ -806,6 +859,108 @@ fn build(
             Paint::new(FLAT[1], Style::Flat),
             false,
         );
+    }
+}
+
+/// A block's trim (#75): a string course over a ground storey of its own (`base`), a cornice
+/// round the top of its walls, and on rectangular blocks balconies and, on a flat roof, units
+/// for ventilation and cooling.
+fn finish(
+    b: &mut Builder,
+    outline: &[Point],
+    rect: Option<&Rect>,
+    (ground, eaves, wall_top): (f64, f64, f64),
+    base: bool,
+    trim: Trim,
+    dice: &Dice,
+) {
+    if base && ground + STOREY < eaves {
+        let floor = ground + STOREY;
+        b.band(outline, (floor - 0.12, floor + 0.12), 0.08, trim.band);
+    }
+    b.band(
+        outline,
+        (wall_top - CORNICE_DEPTH, wall_top + CORNICE_RISE),
+        CORNICE_OUT,
+        trim.band,
+    );
+    let Some(rect) = rect else {
+        return;
+    };
+    if let Some(paint) = trim.balconies {
+        balconies(b, rect, (ground, eaves), paint, dice);
+    }
+    if wall_top > eaves {
+        let units = if dice.roll(17) < 0.4 {
+            1
+        } else if dice.roll(17) < 0.8 {
+            2
+        } else {
+            3
+        };
+        let metal = Paint::new(*METAL, Style::Blank);
+        for k in 0..units {
+            let unit = Rect {
+                centre: rect.point(
+                    (dice.roll(18 + k) - 0.5) * 1.4 * rect.half_length,
+                    (dice.roll(22 + k) - 0.5) * rect.half_width,
+                ),
+                half_length: 0.6,
+                half_width: 0.4,
+                ..*rect
+            };
+            b.cuboid(&unit, (eaves, eaves + 0.7), metal, metal, false);
+        }
+    }
+}
+
+/// The cornice: how far it reaches down the walls, rises over their top (or the parapet's),
+/// capping them, and stands out of them.
+const CORNICE_DEPTH: f64 = 0.6;
+const CORNICE_RISE: f64 = 0.08;
+const CORNICE_OUT: f64 = 0.25;
+
+/// Relative luminance of an sRGB colour (roughly: its channels weighted as the eye does).
+fn luminance([r, g, b]: [f32; 3]) -> f32 {
+    0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/// Balconies stand this far out of the wall.
+const BALCONY_DEPTH: f64 = 1.2;
+
+/// Stacked balconies on a block's long sides, one storey over another from the first floor up,
+/// in every other column of windows (never the outermost), each a solid box: slab and
+/// balustrade in one, below its window.
+fn balconies(b: &mut Builder, rect: &Rect, (ground, eaves): (f64, f64), paint: Paint, dice: &Dice) {
+    let length = 2.0 * rect.half_length;
+    // The windows' columns, as the walls lay them out (whole windows, `walls_facing`).
+    let columns = (length / parts::WINDOW_SPACING).round();
+    let floors = ((eaves - ground) / STOREY).round() - 1.0;
+    if columns < 3.0 || floors < 2.0 {
+        return;
+    }
+    let spacing = length / columns;
+    let parity = i64::from(dice.roll(19) < 0.5);
+    #[allow(clippy::cast_possible_truncation)] // a few dozen columns and storeys
+    for column in 1..columns as i64 - 1 {
+        if (column + parity) % 2 != 0 {
+            continue;
+        }
+        #[allow(clippy::cast_precision_loss)] // small numbers
+        let along = -rect.half_length + (column as f64 + 0.5) * spacing;
+        for side in [-1.0, 1.0] {
+            let balcony = Rect {
+                centre: rect.point(along, side * (rect.half_width + BALCONY_DEPTH / 2.0)),
+                half_length: spacing * 0.42,
+                half_width: BALCONY_DEPTH / 2.0,
+                ..*rect
+            };
+            for floor in 1..=floors as i64 {
+                #[allow(clippy::cast_precision_loss)] // a few storeys
+                let level = ground + floor as f64 * STOREY;
+                b.cuboid(&balcony, (level - 0.15, level + 1.0), paint, paint, true);
+            }
+        }
     }
 }
 

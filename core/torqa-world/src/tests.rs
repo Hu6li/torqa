@@ -1408,6 +1408,72 @@ async fn walls_show_whole_windows_only() {
 }
 
 #[tokio::test]
+async fn blocks_have_a_cornice_and_stacked_balconies() {
+    // Six blocks of six storeys, 30 m long east-west and 12 m deep.
+    let middles: Vec<(f64, f64)> = (0..6)
+        .map(|k| {
+            (
+                80.0 + 70.0 * f64::from(k % 3),
+                300.0 + 200.0 * f64::from(k / 3),
+            )
+        })
+        .collect();
+    let blocks = middles
+        .iter()
+        .zip(20..)
+        .map(|(&(east, north), id)| Building {
+            id,
+            outline: rectangle(east, north, 15.0, 6.0),
+            height: Some(18.0),
+            levels: None,
+            color: None,
+        })
+        .collect();
+    let world = world(&MapData {
+        buildings: blocks,
+        ..MapData::default()
+    })
+    .await;
+
+    let mut with_balconies = 0;
+    for &(east, north) in &middles {
+        #[allow(clippy::cast_possible_truncation)] // small coordinates
+        let (east, north) = (east as f32, north as f32);
+        let faces = building_faces(&world, (east, north), 25.0);
+        let off_north = |f: &Face| (-f.middle()[2] - north).abs() - 6.0;
+        let off_east = |f: &Face| (f.middle()[0] - east).abs() - 15.0;
+        // A cornice stands a quarter metre out of every wall (string courses and balconies
+        // stand out less and more).
+        let cornice = faces.iter().filter(|f| {
+            f.normal[1].abs() < 0.01 && (off_north(f).max(off_east(f)) - 0.25).abs() < 0.05
+        });
+        assert!(cornice.count() >= 8, "no cornice round the block at {east}");
+        // Balconies, if any: level tops 1.2 m out of the long walls, one per storey above the
+        // ground floor, 3 m apart.
+        let mut tops: Vec<f32> = faces
+            .iter()
+            .filter(|f| f.normal[1] > 0.99 && off_north(f) > 0.5 && off_east(f) < 0.0)
+            .map(|f| f.middle()[1])
+            .collect();
+        tops.sort_by(f32::total_cmp);
+        tops.dedup_by(|a, b| (*a - *b).abs() < 0.1);
+        if tops.is_empty() {
+            continue;
+        }
+        with_balconies += 1;
+        assert_eq!(tops.len(), 5, "balconies at {tops:?}");
+        assert!(
+            tops.windows(2).all(|w| (w[1] - w[0] - 3.0).abs() < 0.01),
+            "{tops:?}"
+        );
+    }
+    assert!(
+        with_balconies >= 2,
+        "{with_balconies} of six blocks have balconies"
+    );
+}
+
+#[tokio::test]
 async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
     let block = Building {
         id: 5,
@@ -1423,12 +1489,12 @@ async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
     .await;
 
     let faces = building_faces(&world, (80.0, 500.0), 30.0);
-    // Six storeys of 3 m make the mapped 18 m above the highest corner; a parapet and perhaps
-    // a stair housing top them.
+    // Six storeys of 3 m make the mapped 18 m above the highest corner; a parapet capped by
+    // its cornice, and perhaps a stair housing, top them.
     let eaves = slope_at(90.0) + 6.0 * 3.0 + 0.4;
     let top = highest(&faces);
     assert!(
-        (top - (eaves + 0.8)).abs() < 0.01 || (top - (eaves + 2.6)).abs() < 0.01,
+        (top - (eaves + 0.88)).abs() < 0.01 || (top - (eaves + 2.6)).abs() < 0.01,
         "top {top}"
     );
     // Nothing slopes: faces are upright or level.
