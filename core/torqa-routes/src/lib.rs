@@ -8,6 +8,7 @@ mod passes;
 mod projection;
 mod snap;
 mod structures;
+mod turns;
 
 pub use climbs::{Climb, ClimbCategory};
 pub use curve::catmull_rom;
@@ -159,6 +160,8 @@ pub struct Route {
     points: Vec<RoutePoint>,
     elevation_source: ElevationSource,
     climbs: Vec<Climb>,
+    /// Stretches taken out (see [`Route::without_turns_in_place`]).
+    cuts: Vec<turns::Cut>,
 }
 
 impl Route {
@@ -257,7 +260,34 @@ impl Route {
             climbs: climbs::detect(&points),
             points,
             elevation_source: source,
+            cuts: Vec::new(),
         })
+    }
+
+    /// The route without its turns in place, for riding in 3D (#101): where the track runs a
+    /// few dozen metres into a side road or past a junction and straight back, it rides on
+    /// instead. Longer turns back stay as planned. Videos keep the track as recorded: they show
+    /// what was ridden.
+    #[must_use]
+    pub fn without_turns_in_place(mut self) -> Self {
+        let cuts = turns::straighten(&mut self.points);
+        if !cuts.is_empty() {
+            self.climbs = climbs::detect(&self.points);
+        }
+        self.cuts.extend(cuts);
+        self
+    }
+
+    /// The distance along the track as recorded of a place `distance` along this route: further
+    /// on by the turns in place taken out before it.
+    #[must_use]
+    pub fn recorded_distance(&self, distance: Meters) -> Meters {
+        Meters(self.cuts.iter().rev().fold(
+            distance.0,
+            |d, cut| {
+                if d > cut.at { d + cut.length } else { d }
+            },
+        ))
     }
 
     /// Name from the file, if any.
@@ -706,6 +736,66 @@ mod tests {
             middle.elevation
         );
         assert!((route.elevation_gain().0 - 100.0).abs() < 2.0);
+    }
+
+    #[tokio::test]
+    async fn turns_in_place_are_taken_out_for_riding_in_3d() {
+        // North, 40 m into a side road and straight back out; on north, up 300 m, back down and
+        // up again; on, 30 m back and forth on the spot (#101); then 400 m up a dead end to a
+        // summit and back, and on north.
+        let track = gpx_through(&[
+            (0.0, 0.0),
+            (0.0, 500.0),
+            (40.0, 500.0),
+            (0.0, 500.0),
+            (0.0, 1300.0),
+            (0.0, 1000.0),
+            (0.0, 1800.0),
+            (0.0, 1770.0),
+            (0.0, 2000.0),
+            (400.0, 2000.0),
+            (0.0, 2000.0),
+            (0.0, 2400.0),
+        ]);
+        let recorded = import(&track).await;
+        let route = recorded.clone().without_turns_in_place();
+
+        // The side road and the steps back and forth are gone: 80 m and 60 m shorter...
+        assert!((recorded.length().0 - 3940.0).abs() < 5.0);
+        assert!(
+            (route.length().0 - 3800.0).abs() < 10.0,
+            "{} m long",
+            route.length().0
+        );
+        let metres = |p: &RoutePoint| {
+            let scale = EARTH_RADIUS.to_radians();
+            (
+                (p.lon - 7.0) * scale * 46f64.to_radians().cos(),
+                (p.lat - 46.0) * scale,
+            )
+        };
+        assert!(
+            route
+                .points()
+                .iter()
+                .map(metres)
+                .all(|(east, north)| east < 5.0 || north > 1900.0)
+        );
+        // ...the long way down and up again and the summit stay (planned so)...
+        assert!(
+            route
+                .points()
+                .iter()
+                .map(metres)
+                .any(|(east, _)| east > 390.0)
+        );
+        // ...and places on it are where they were on the track: 1500 m on, the track had come
+        // 80 m further, 3000 m on 140 m.
+        for (along, on_track) in [(1500.0, 1580.0), (3000.0, 3140.0)] {
+            let found = route.recorded_distance(Meters(along)).0;
+            assert!((found - on_track).abs() < 10.0, "{along} m: {found} m");
+        }
+        assert_eq!(route.recorded_distance(Meters(400.0)).0, 400.0);
     }
 
     #[tokio::test]

@@ -283,6 +283,9 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Parallel tracks under one bridge or in one tunnel (#99), at one height
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
+    - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
+      metres into a side road or past a junction and straight back rides on; longer turns back
+      and turns at roundabouts stay; video courses keep their track
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look

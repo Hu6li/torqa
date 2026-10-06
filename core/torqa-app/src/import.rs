@@ -79,7 +79,7 @@ pub async fn import_route(
     let fallback = path
         .file_stem()
         .map_or_else(|| "Route".to_owned(), |s| s.to_string_lossy().into_owned());
-    import_gpx(xml, &fallback, cache_dir, offline, used, progress)
+    import_gpx(xml, &fallback, (cache_dir, offline), false, used, progress)
         .await
         .map_err(|e| format!("cannot import {}: {e}", path.display()))
 }
@@ -87,15 +87,16 @@ pub async fn import_route(
 /// Imports a GPX track: fetches map data along it (bridges and tunnels shape the elevation
 /// profile) and corrects elevations with the terrain model. Downloads are cached under
 /// `cache_dir` and every cached file used is recorded in `used`; `offline` uses the caches
-/// only.
+/// only. Without a `video`, the route is ridden in 3D and loses its turns in place
+/// ([`Route::without_turns_in_place`]); a video keeps the track it was recorded along.
 ///
 /// # Errors
 /// A readable message if the track cannot be imported.
 pub async fn import_gpx(
     xml: String,
     fallback_name: &str,
-    cache_dir: &Path,
-    offline: bool,
+    (cache_dir, offline): (&Path, bool),
+    video: bool,
     used: &UsedFiles,
     progress: Progress<'_>,
 ) -> Result<Imported, String> {
@@ -127,9 +128,12 @@ pub async fn import_gpx(
         total: track.len(),
         progress: &mut *progress,
     };
-    let route = Route::from_gpx_with(&xml, Some(&mut counting), &map)
+    let mut route = Route::from_gpx_with(&xml, Some(&mut counting), &map)
         .await
         .map_err(|e| e.to_string())?;
+    if !video {
+        route = route.without_turns_in_place();
+    }
     progress(LoadStage::Elevation, track.len(), track.len());
     let name = route
         .name()
