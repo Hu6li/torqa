@@ -51,15 +51,19 @@ from the flywheel, so it may read 0 for the first seconds or at very low power.
 ## Ride a route
 
 ```sh
-./torqa-cli route my-ride.gpx                     # length, climbing, elevation source
+./torqa-cli route my-ride.gpx                     # length, climbing, elevation source, map
+./torqa-cli route my-ride.gpx --world             # also build its 3D world: size and timings
 ./torqa-cli ride --route my-ride.gpx --hr         # ride it; the trainer follows the gradient
 ./torqa-cli ride --route my-ride.gpx --difficulty 100 --descent flat --mass 90
 ./torqa-cli ride --route my-ride.gpx --fake --time-scale 50   # quick simulated test ride
 ```
 
-Elevations come from a terrain model (corrected and smoothed), downloaded once and cached, so a
-route you have imported before also works offline (`--offline` forces cache-only). Without
-terrain data, the GPX elevations are used.
+Like an import in the app, the track is put onto the roads it rides (OpenStreetMap) and its
+elevations come from a terrain model (corrected and smoothed); bridges and tunnels of the roads
+ridden run straight between their ends. Map and terrain data are downloaded once and cached, so
+a route you have imported before also works offline (`--offline` forces cache-only). Without
+terrain data, the GPX elevations are used; without map data, the track stays as recorded and
+bridges and tunnels follow the ground (short dips or humps).
 
 | Option | Meaning |
 |---|---|
@@ -70,9 +74,6 @@ terrain data, the GPX elevations are used.
 
 The ride starts when the trainer connects and ends at the finish or with `q` / Ctrl+C; the FIT
 file can be uploaded to Strava, intervals.icu, Garmin Connect and others as a virtual ride.
-
-Known limitation: terrain models are bare-earth, so bridges and tunnels show up as short dips
-or humps.
 
 Map data: © [OpenFreeMap](https://openfreemap.org) © [OpenMapTiles](https://openmaptiles.org),
 data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
