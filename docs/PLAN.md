@@ -278,8 +278,8 @@ the realistic look's textures and patterns are being replaced step by step.
     - [ ] Railway bridges give way to roads (#98): no pier or wall on a road, street or
       track below
     - [ ] Parallel tracks under one bridge or in one tunnel (#99), at one height
-    - [ ] The same road ridden twice is one road at one height (#101), and sharp turns are
-      round, not pointed
+    - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
+      turns are round, not pointed
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look

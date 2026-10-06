@@ -739,6 +739,50 @@ async fn riders_ride_on_the_road_drawn_through_bends() {
 }
 
 #[tokio::test]
+async fn turning_back_the_same_way_the_road_ends_round() {
+    // 100 m north and straight back (#101).
+    let mut xml = String::from("<gpx><trk><trkseg>");
+    for i in (0..=10).chain((0..10).rev()) {
+        let (lat, lon) = at(0.0, f64::from(i) * 10.0);
+        let _ = write!(
+            xml,
+            r#"<trkpt lat="{lat}" lon="{lon}"><ele>500</ele></trkpt>"#
+        );
+    }
+    xml.push_str("</trkseg></trk></gpx>");
+    let route = Route::from_gpx(&xml, None).await.unwrap();
+    let projection = LocalProjection::for_route(&route);
+    let mesh = road::RoadIndex::new(&route, &projection).mesh(ROAD_HALF_WIDTH, &[]);
+    assert_valid(&mesh);
+
+    // The road's surface reaches round the turning point as far as its half width, rather than
+    // to a point straight ahead.
+    let surface: Vec<[[f32; 3]; 3]> = triangles(&mesh)
+        .filter(|t| t.iter().all(|v| (v[1] - 500.0).abs() < 0.01))
+        .collect();
+    let layers = |east: f32, north: f32| {
+        surface
+            .iter()
+            .filter(|t| {
+                let side = |a: [f32; 3], b: [f32; 3]| {
+                    (b[0] - a[0]) * (-north - a[2]) - (b[2] - a[2]) * (east - a[0])
+                };
+                let sides = [side(t[0], t[1]), side(t[1], t[2]), side(t[2], t[0])];
+                sides.iter().all(|&s| s >= 0.0) || sides.iter().all(|&s| s <= 0.0)
+            })
+            .count()
+    };
+    let reach = 0.8 * ROAD_HALF_WIDTH as f32;
+    for degrees in (-80..=80).step_by(10) {
+        let angle = (degrees as f32).to_radians();
+        let (east, north) = (reach * angle.sin(), 100.0 + reach * angle.cos());
+        assert!(layers(east, north) > 0, "no road at {east:.1}, {north:.1}");
+    }
+    // Ridden twice, the road is drawn once: its markings are not doubled.
+    assert_eq!(layers(1.1, 50.3), 1);
+}
+
+#[tokio::test]
 async fn no_ground_covers_the_road_on_a_hillside_with_a_hairpin() {
     // Terrain rising 30 % to the east; the road climbs north along it, turns in a hairpin of
     // 15 m radius and comes back 30 m further up the slope, cut into the hillside.

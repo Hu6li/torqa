@@ -4,6 +4,7 @@
 pub mod climbs;
 mod curve;
 mod gpx;
+mod passes;
 mod projection;
 mod snap;
 mod structures;
@@ -226,7 +227,8 @@ impl Route {
             .iter()
             .map(|p| p.elevation.unwrap_or_default())
             .collect();
-        let smoothed = smooth(&raw, window);
+        let mut smoothed = smooth(&raw, window);
+        passes::join(&points, &surfaces, &mut smoothed);
 
         let mut distance = 0.0;
         let points = points
@@ -704,6 +706,40 @@ mod tests {
             middle.elevation
         );
         assert!((route.elevation_gain().0 - 100.0).abs() < 2.0);
+    }
+
+    #[tokio::test]
+    async fn the_same_road_ridden_twice_lies_at_one_height() {
+        // 600 m north at 2 % and back the same way, the file's heights 6 m higher on the way
+        // back (#101).
+        let degrees_per_meter = 1.0 / EARTH_RADIUS.to_radians();
+        let mut points = String::new();
+        for i in 0..=120 {
+            let k = if i <= 60 { i } else { 120 - i };
+            let lat = 46.0 + f64::from(k) * 10.0 * degrees_per_meter;
+            let ele = 500.0 + f64::from(k) * 0.2 + if i > 60 { 6.0 } else { 0.0 };
+            let _ = write!(
+                points,
+                r#"<trkpt lat="{lat}" lon="7.0"><ele>{ele}</ele></trkpt>"#
+            );
+        }
+        let route = import(&format!("<gpx><trk><trkseg>{points}</trkseg></trk></gpx>")).await;
+
+        // Wherever the way back passes, it lies at the height of the way out...
+        for k in 1..=11 {
+            let at = f64::from(k) * 50.0;
+            let out = route.position(Meters(at)).elevation.0;
+            let back = route.position(Meters(1200.0 - at)).elevation.0;
+            assert!(
+                (out - back).abs() < 0.05,
+                "{at} m out at {out}, back at {back}"
+            );
+        }
+        // ...with no step anywhere.
+        for k in 0..240 {
+            let grade = route.position(Meters(f64::from(k) * 5.0)).grade.0;
+            assert!(grade.abs() < 5.0, "{grade} % at {} m", k * 5);
+        }
     }
 
     #[tokio::test]
