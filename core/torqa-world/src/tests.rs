@@ -616,6 +616,160 @@ async fn railway_bridges_clear_the_road_and_meet_their_track() {
     assert!(deck > 10, "no bridge over the road");
 }
 
+/// The triangles of a chunked mesh in absolute coordinates.
+fn chunk_triangles<'a>(
+    world: &'a World,
+    mesh: impl Fn(&'a TerrainChunk) -> &'a MeshData + 'a,
+) -> impl Iterator<Item = [[f32; 3]; 3]> + 'a {
+    world.chunks.iter().flat_map(move |chunk| {
+        triangles(mesh(chunk))
+            .map(|t| t.map(|v| [v[0] + chunk.center[0], v[1], v[2] + chunk.center[2]]))
+    })
+}
+
+#[tokio::test]
+async fn bridges_over_the_road_keep_it_clear() {
+    // The road in a valley, shallow but for a deep stretch at 800 m; crossing it, a short, low
+    // railway bridge at 300 m whose arches' pier would stand on it, a long one at 600 m whose
+    // pier would, and at 800 m a street bridge whose pier would (#98).
+    struct Valley;
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            let slope = if (north - 800.0).abs() < 60.0 {
+                0.5
+            } else {
+                0.15
+            };
+            std::future::ready(Ok(500.0 + slope * east.abs()))
+        }
+    }
+    let line = |from: f64, to: f64, north: f64| {
+        vec![
+            railway(&[(-300.0, north), (from, north)], None),
+            railway(&[(from, north), (to, north)], Some(StructureKind::Bridge)),
+            railway(&[(to, north), (300.0, north)], None),
+        ]
+    };
+    let map = MapData {
+        railways: [line(-13.0, 27.0, 300.0), line(-75.0, 45.0, 600.0)].concat(),
+        roads: vec![torqa_osm::Road {
+            class: torqa_osm::RoadClass::Street,
+            line: vec![at(-30.0, 800.0), at(20.0, 800.0)],
+            structure: Some(StructureKind::Bridge),
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Valley, &map, &mut |_, _| {}).await;
+
+    // Nothing reaches down onto the road: no pier, wall or arch.
+    let on_road = |t: &[[f32; 3]; 3]| {
+        let middle = (t[0][0] + t[1][0] + t[2][0]) / 3.0;
+        middle.abs() < ROAD_HALF_WIDTH as f32 && t.iter().any(|v| v[1] < 502.0)
+    };
+    let structures: Vec<_> = triangles(&world.structures).collect();
+    for north in [300.0_f32, 600.0] {
+        let bridge: Vec<_> = structures
+            .iter()
+            .filter(|t| (t[0][2] + north).abs() < 10.0)
+            .collect();
+        assert!(bridge.len() > 20, "no bridge at {north} m");
+        assert!(
+            !bridge.iter().any(|t| on_road(t)),
+            "the bridge at {north} m stands on the road"
+        );
+        // It still stands on piers either side.
+        assert!(
+            bridge.iter().any(|t| t.iter().any(|v| v[1] < 502.0)),
+            "the bridge at {north} m has no piers"
+        );
+    }
+    let street_piers: Vec<_> = chunk_triangles(&world, |c| &c.streets)
+        .filter(|t| (t[0][2] + 800.0).abs() < 10.0 && t.iter().any(|v| v[1] < 502.0))
+        .collect();
+    assert!(!street_piers.is_empty(), "the street bridge has no piers");
+    assert!(
+        !street_piers.iter().any(on_road),
+        "the street bridge stands on the road"
+    );
+}
+
+#[tokio::test]
+async fn parallel_tracks_share_one_tunnel_and_one_bridge() {
+    // Two tracks 4.5 m apart, mapped each on its own, through a hill at 300 m and over a
+    // bridge across a valley at 700 m (#99).
+    struct HillAndValley;
+    impl ElevationModel for HillAndValley {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            let hill = (40.0 - 0.3 * (north - 300.0).abs()).max(0.0);
+            let valley = (15.0 - 0.3 * (north - 700.0).abs()).max(0.0);
+            std::future::ready(Ok(500.0 + hill - valley))
+        }
+    }
+    let track = |east: f64| {
+        vec![
+            railway(&[(east, 0.0), (east, 650.0)], None),
+            railway(&[(east, 650.0), (east, 750.0)], Some(StructureKind::Bridge)),
+            railway(&[(east, 750.0), (east, 1000.0)], None),
+        ]
+    };
+    let map = MapData {
+        railways: [track(300.0), track(304.5)].concat(),
+        ..MapData::default()
+    };
+    let world = generate(
+        &route_north(&[]).await,
+        &mut HillAndValley,
+        &map,
+        &mut |_, _| {},
+    )
+    .await;
+
+    // One height: the tracks lie level with each other.
+    let bed = rail_bed(&world);
+    let height = |east: f32, north: f32| {
+        bed.iter()
+            .filter(|p| (p[0] - east).abs() < 1.0)
+            .min_by(|a, b| (a[2] + north).abs().total_cmp(&(b[2] + north).abs()))
+            .map(|p| p[1])
+            .expect("track")
+    };
+    for k in 1..20 {
+        let north = k as f32 * 50.0;
+        let (a, b) = (height(300.0, north), height(304.5, north));
+        assert!(
+            (a - b).abs() < 0.05,
+            "at {north} m the tracks lie at {a} and {b}"
+        );
+    }
+    // A tunnel and a bridge, neither standing on a track: no wall or parapet between them.
+    let structures: Vec<_> = triangles(&world.structures).collect();
+    for north in [300.0_f32, 700.0] {
+        let here: Vec<_> = structures
+            .iter()
+            .filter(|t| (t[0][2] + north).abs() < 20.0)
+            .collect();
+        assert!(here.len() > 20, "no structure at {north} m");
+        let track = height(300.0, north);
+        let on_a_track = here.iter().any(|t| {
+            let middle = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
+            let beside = |east: f32| (middle[0] - east).abs() < railways::BED_M as f32 / 2.0 + 0.3;
+            (beside(300.0) || beside(304.5)) && (track - 0.5..track + 3.0).contains(&middle[1])
+        });
+        assert!(!on_a_track, "the structure at {north} m stands on a track");
+    }
+}
+
 #[tokio::test]
 async fn the_road_bevels_gently_down_to_a_level_verge() {
     let world = world(&MapData::default()).await;

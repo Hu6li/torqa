@@ -37,6 +37,9 @@ const SHORTEST_STRUCTURE: f64 = 25.0;
 const OVER_ROAD: f64 = 6.0;
 const UNDER_ROAD: f64 = 7.0;
 const AT_ROAD: f64 = 0.03;
+/// A track this close alongside one laid out before runs with it — at its height, on its
+/// bridges and in its tunnels — as parallel tracks do (#99).
+const PARALLEL_M: f64 = 7.0;
 
 /// A railway near the route: its points a few metres apart, to keep plants off it.
 pub(crate) struct Railway {
@@ -90,7 +93,8 @@ pub(crate) async fn network<M: ElevationModel>(
             let (lat, lon) = projection.unproject(point.position.0, point.position.1);
             point.terrain = model.elevation(lat, lon).await.ok();
         }
-        let Some(line) = lay_out(&points, funicular, road) else {
+        let laid = RoadIndex::from_lines(&lines);
+        let Some(line) = lay_out(&points, funicular, road, &laid) else {
             continue;
         };
         railways.push(Railway {
@@ -190,8 +194,14 @@ fn chains(
 
 /// A railway's centre line: heights from the terrain, smoothed and held to its grades, bridges
 /// and tunnels straight between their ends, tunnels and viaducts where the ground lies far off,
-/// and its crossings with the road ridden. `None` without any terrain height.
-fn lay_out(points: &[Point], funicular: bool, road: &RoadIndex) -> Option<Vec<Centre>> {
+/// its crossings with the road ridden, and alongside the tracks `laid` out before it, with them.
+/// `None` without any terrain height.
+fn lay_out(
+    points: &[Point],
+    funicular: bool,
+    road: &RoadIndex,
+    laid: &RoadIndex,
+) -> Option<Vec<Centre>> {
     let mut along = vec![0.0];
     for pair in points.windows(2) {
         let (a, b) = (pair[0].position, pair[1].position);
@@ -205,7 +215,25 @@ fn lay_out(points: &[Point], funicular: bool, road: &RoadIndex) -> Option<Vec<Ce
     let mut heights = fill_between(&known, &along)?;
     heights = smooth(&heights, &along, SMOOTHING_M);
     let mut surfaces: Vec<Surface> = points.iter().map(|p| p.surface).collect();
-    let pins = crossings(points, &surfaces, road);
+    let mut pins = crossings(points, &surfaces, road);
+    let beside: Vec<Option<(f64, Surface)>> = (0..points.len())
+        .map(|k| {
+            let (a, b) = (
+                points[k.saturating_sub(1)].position,
+                points[(k + 1).min(points.len() - 1)].position,
+            );
+            let length = (b.0 - a.0).hypot(b.1 - a.1).max(1e-9);
+            let way = ((b.0 - a.0) / length, (b.1 - a.1) / length);
+            let (east, north) = points[k].position;
+            laid.alongside(east, north, way, PARALLEL_M)
+        })
+        .collect();
+    pins.extend(
+        beside
+            .iter()
+            .enumerate()
+            .filter_map(|(k, b)| b.map(|(height, _)| (k, height, Pin::Exactly))),
+    );
     hold_grades(&mut heights, &along, &pins, funicular);
     // Tunnels where the hill rises far above the track, viaducts where the ground falls far
     // below it.
@@ -221,11 +249,21 @@ fn lay_out(points: &[Point], funicular: bool, road: &RoadIndex) -> Option<Vec<Ce
             }
         }
     }
-    drop_short_structures(
-        &mut surfaces,
-        &along,
-        &points.iter().map(|p| p.surface).collect::<Vec<_>>(),
-    );
+    // Alongside, the structures the map has on this track stay; else it takes the other's.
+    let kept: Vec<Surface> = points
+        .iter()
+        .zip(&beside)
+        .map(|(p, b)| match b {
+            Some((_, other)) if p.surface == Surface::Ground => *other,
+            _ => p.surface,
+        })
+        .collect();
+    for (k, &surface) in kept.iter().enumerate() {
+        if beside[k].is_some() {
+            surfaces[k] = surface;
+        }
+    }
+    drop_short_structures(&mut surfaces, &along, &kept);
     Some(
         points
             .iter()

@@ -188,6 +188,24 @@ pub struct World {
     pub fallback_samples: usize,
 }
 
+/// The parts of the world built whole rather than by chunk: the road ridden, the bridges and
+/// tunnels, the railways and the map.
+async fn whole<M: ElevationModel>(
+    map: &MapData,
+    projection: &LocalProjection,
+    (road, ways, below): (&RoadIndex, &Ways, &structures::Below<'_>),
+    model: &mut M,
+) -> World {
+    let rails = &ways.network.index;
+    World {
+        road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&ways.streets, road)),
+        structures: structures::build_all(road, rails, below, projection, model).await,
+        railways: rails.mesh(railways::BED_M / 2.0, &[]),
+        minimap: minimap::build(map, projection, road),
+        ..World::default()
+    }
+}
+
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
 /// `progress` is called with (chunks done, chunks total).
@@ -216,13 +234,8 @@ pub async fn generate<M: ElevationModel>(
         road: &road,
         rails: &ways.network.index,
     };
-    let mut world = World {
-        road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(streets, &road)),
-        structures: structures::build_all(&[&road, &ways.network.index], &projection, model).await,
-        railways: ways.network.index.mesh(railways::BED_M / 2.0, &[]),
-        minimap: minimap::build(map, &projection, &road),
-        ..World::default()
-    };
+    let below = structures::Below::new(&road, &ways.network.index, streets);
+    let mut world = whole(map, &projection, (&road, &ways, &below), model).await;
 
     for (done, (cx, cn)) in cells.into_iter().enumerate() {
         let heights = HeightGrid::sample(
@@ -263,8 +276,14 @@ pub async fn generate<M: ElevationModel>(
         };
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
-        let (paved, mut unpaved) =
-            streets::meshes(streets, heights.origin, CHUNK_SIZE, &heights, &road, origin);
+        let (paved, mut unpaved) = streets::meshes(
+            streets,
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            &below,
+            origin,
+        );
         unpaved.append(water::shore_mesh(
             pools,
             heights.origin,

@@ -2,6 +2,7 @@
 //! so each piece lies in the plane of the triangle under it and the ground can never show
 //! through, however it folds.
 
+use crate::structures::Below;
 use crate::{HeightGrid, MeshData, On};
 
 /// Draped, a straight strip needs no points between its bends but these, at most this far
@@ -308,14 +309,14 @@ pub(crate) fn deck(
     (start, end): (f64, f64),
     lift: f64,
     total: f64,
-    heights: &HeightGrid,
+    (heights, below): (&HeightGrid, &Below),
     origin: [f64; 3],
 ) {
     if run.len() < 2 {
         return;
     }
     let top_at = |distance: f64| start + (end - start) * (distance / total.max(1e-6)) + lift;
-    deck_piers(mesh, run, half, &top_at, heights, origin);
+    deck_piers(mesh, run, half, &top_at, (heights, below), origin);
     let base = u32::try_from(mesh.vertices.len()).expect("streets fit u32");
     for (i, &((east, north), distance)) in run.iter().enumerate() {
         let (before, after) = (
@@ -379,37 +380,61 @@ pub(crate) fn deck(
     }
 }
 
-/// Piers under a deck along `run`, down to the ground wherever it lies low enough. Their
-/// texture coordinates are those of the deck's edge (`u` 0), so they take its plain colour.
+/// Piers under a deck along `run`, down to the ground wherever it lies low enough; one that
+/// would stand on a way below moves along the deck off it, or is left out (#98). Their texture
+/// coordinates are those of the deck's edge (`u` 0), so they take its plain colour.
 #[allow(clippy::cast_possible_truncation)] // f32 GPU data
 fn deck_piers(
     mesh: &mut MeshData,
     run: &[((f64, f64), f64)],
     half: f64,
     top_at: &dyn Fn(f64) -> f64,
-    heights: &HeightGrid,
+    (heights, below): (&HeightGrid, &Below),
     origin: [f64; 3],
 ) {
     let (first, last) = (run[0].1, run[run.len() - 1].1);
-    let mut along = ((first / DECK_PIER_SPACING).floor() + 0.5) * DECK_PIER_SPACING;
-    while along <= last {
-        let segment = run
+    // The deck's line at `along`: where, and which way it runs.
+    let line_at = |along: f64| {
+        let index = run
             .windows(2)
-            .position(|w| w[0].1 <= along && along <= w[1].1);
-        if let Some(index) = segment.filter(|_| along >= first) {
-            let ((from, from_d), (to, to_d)) = (run[index], run[index + 1]);
-            let share = ((along - from_d) / (to_d - from_d).max(1e-9)).clamp(0.0, 1.0);
-            let (east, north) = (
+            .position(|w| w[0].1 <= along && along <= w[1].1)?;
+        let ((from, from_d), (to, to_d)) = (run[index], run[index + 1]);
+        let share = ((along - from_d) / (to_d - from_d).max(1e-9)).clamp(0.0, 1.0);
+        let length = (to.0 - from.0).hypot(to.1 - from.1).max(1e-9);
+        Some((
+            (
                 from.0 + (to.0 - from.0) * share,
                 from.1 + (to.1 - from.1) * share,
-            );
-            let length = (to.0 - from.0).hypot(to.1 - from.1).max(1e-9);
-            let ahead = ((to.0 - from.0) / length, (to.1 - from.1) / length);
-            let top = top_at(along) - DECK_DEPTH_M;
+            ),
+            ((to.0 - from.0) / length, (to.1 - from.1) / length),
+        ))
+    };
+    let wide = half * DECK_PIER_WIDTH;
+    let clear = |along: f64| {
+        let Some(((east, north), ahead)) = line_at(along) else {
+            return false;
+        };
+        let top = top_at(along) - DECK_DEPTH_M;
+        [-wide, 0.0, wide].iter().all(|&aside| {
+            let at = (east + ahead.1 * aside, north - ahead.0 * aside);
+            !below.blocked(at, DECK_PIER_HALF_LENGTH + 1.0, top, heights.at(at.0, at.1))
+        })
+    };
+    let mut along = ((first / DECK_PIER_SPACING).floor() + 0.5) * DECK_PIER_SPACING;
+    while along <= last {
+        let spot = (0..=10)
+            .map(f64::from)
+            .flat_map(|shift| [along + shift, along - shift])
+            .filter(|&at| at >= first && at <= last)
+            .find(|&at| clear(at));
+        if let Some((at, ((east, north), ahead))) =
+            spot.and_then(|at| line_at(at).map(|line| (at, line)))
+        {
+            let top = top_at(at) - DECK_DEPTH_M;
             let ground = heights.at(east, north);
             if top - ground >= DECK_PIER_MIN {
                 let right = (ahead.1, -ahead.0);
-                let (long, wide) = (DECK_PIER_HALF_LENGTH, half * DECK_PIER_WIDTH);
+                let long = DECK_PIER_HALF_LENGTH;
                 let corner = |forth: f64, aside: f64, height: f64| {
                     [
                         east + ahead.0 * forth + right.0 * aside - origin[0],
@@ -429,7 +454,7 @@ fn deck_piers(
                         corner(x1, y1, top),
                         corner(x0, y0, top),
                     ];
-                    upright(mesh, corners, [ne, 0.0, -nn], along as f32);
+                    upright(mesh, corners, [ne, 0.0, -nn], at as f32);
                 }
             }
         }
