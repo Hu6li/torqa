@@ -176,6 +176,8 @@ pub struct MapData {
     pub railways: Vec<Railway>,
     /// Churches and chapels, as points on or near their building.
     pub churches: Vec<LatLon>,
+    /// Shops, cafés, restaurants and the like, as points in or by their building.
+    pub shops: Vec<LatLon>,
 }
 
 /// Downloads and caches map tiles.
