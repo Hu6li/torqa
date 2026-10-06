@@ -10,7 +10,8 @@
     "overcast_top": "#a9b3c1",
     "overcast_horizon": "#d0d5dc",
     "cloud": "#fbf7ee",
-    "cloud_shade": "#c7d3d2"
+    "cloud_shade": "#c7d3d2",
+    "rain": "#e3edf0"
   },
   "light": {
     "sun": "#fff1dc",
