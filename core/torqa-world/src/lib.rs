@@ -305,17 +305,43 @@ fn buildings_by_chunk<'a>(
     road: &RoadIndex,
     land: &LandIndex,
 ) -> HashMap<(i32, i32), Vec<buildings::Plot<'a>>> {
+    let project = |points: &[(f64, f64)]| -> Vec<(f64, f64)> {
+        points
+            .iter()
+            .map(|&(lat, lon)| projection.project(lat, lon))
+            .collect()
+    };
+    let streets = map
+        .roads
+        .iter()
+        .filter(|r| {
+            r.structure.is_none()
+                && matches!(
+                    r.class,
+                    RoadClass::Major | RoadClass::Street | RoadClass::Service
+                )
+        })
+        .flat_map(|r| drape::densify(&project(&r.line), 3.0))
+        .chain(road.samples(3.0));
+    let frontage = buildings::Frontage::new(streets);
     let mut plots = Vec::new();
     for building in &map.buildings {
         let footprint = buildings::footprint(building, projection);
         let Some(&(east, north)) = footprint.first() else {
             continue;
         };
-        // Buildings mapped across the road (e.g. bad data) would block it.
-        let on_road = footprint
+        // Roads stay clear (#100): buildings mapped across them (e.g. bad data) are left out,
+        // those reaching into the road ridden by a corner or a wall, and those a street runs
+        // through.
+        let mut outline = footprint.clone();
+        outline.push((east, north));
+        let on_road = drape::densify(&outline, 2.0)
             .iter()
             .any(|&(e, n)| road.nearest(e, n, ROAD_HALF_WIDTH + 1.0).is_some());
-        if on_road || road.nearest(east, north, CORRIDOR).is_none() {
+        if on_road
+            || frontage.runs_through(&footprint)
+            || road.nearest(east, north, CORRIDOR).is_none()
+        {
             continue;
         }
         let (e, n) = buildings::centroid(&footprint);
@@ -334,26 +360,7 @@ fn buildings_by_chunk<'a>(
             shop: None,
         });
     }
-    let project = |points: &[(f64, f64)]| -> Vec<(f64, f64)> {
-        points
-            .iter()
-            .map(|&(lat, lon)| projection.project(lat, lon))
-            .collect()
-    };
     buildings::mark_churches(&mut plots, &project(&map.churches));
-    // Shops face the paved streets and the road ridden.
-    let streets = map
-        .roads
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.class,
-                RoadClass::Major | RoadClass::Street | RoadClass::Service
-            )
-        })
-        .flat_map(|r| drape::densify(&project(&r.line), 5.0))
-        .chain(road.samples(5.0));
-    let frontage = buildings::Frontage::new(streets);
     buildings::mark_shops(&mut plots, &project(&map.shops), &frontage);
 
     let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
