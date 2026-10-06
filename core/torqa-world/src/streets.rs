@@ -11,7 +11,7 @@ use crate::drape;
 use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
 use crate::water::{self, Pool};
-use crate::{HeightGrid, MeshData, ROAD_HALF_WIDTH};
+use crate::{HeightGrid, MeshData, On, ROAD_HALF_WIDTH};
 
 /// Distance between the points of a street: short enough to tell where it runs along the road
 /// ridden and to keep plants off it.
@@ -43,6 +43,23 @@ pub(crate) struct Street {
     /// For bridges: the deck's height at both ends (the ground's there).
     deck: Option<(f64, f64)>,
     index: usize,
+}
+
+impl Street {
+    /// Its points, a few metres apart.
+    pub(crate) fn points(&self) -> &[(f64, f64)] {
+        &self.points
+    }
+
+    /// Half its width in metres.
+    pub(crate) fn half_width(&self) -> f64 {
+        width(self.class) / 2.0
+    }
+
+    /// Whether it is a bridge.
+    pub(crate) fn on_bridge(&self) -> bool {
+        self.deck.is_some()
+    }
 }
 
 /// Width in metres by kind of way.
@@ -232,7 +249,7 @@ fn ribbon(
             mesh,
             run,
             half,
-            lift(street.class, street.index),
+            (On::Ground, lift(street.class, street.index)),
             heights,
             origin,
         );

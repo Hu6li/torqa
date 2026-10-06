@@ -5,7 +5,7 @@
 use torqa_osm::{LandCover, MapData, RoadClass};
 use torqa_routes::LocalProjection;
 
-use crate::{HeightGrid, MeshData, drape, landcover, streets};
+use crate::{HeightGrid, MeshData, On, drape, landcover, streets};
 
 /// Rings this small and large (radius to the road's middle, metres) are roundabouts.
 const RADIUS: (f64, f64) = (6.0, 45.0);
@@ -126,7 +126,7 @@ pub(crate) fn mesh(
             drape::drape_polygon(
                 &mut mesh,
                 &[middle, b, a],
-                ISLAND_HEIGHT,
+                (On::Ground, ISLAND_HEIGHT),
                 heights,
                 chunk_origin,
                 &|p| [(p.0 / 16.0) as f32, (p.1 / 16.0) as f32],

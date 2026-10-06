@@ -35,6 +35,8 @@ const ARCH_CROWN: f64 = 0.5;
 const ARCH_PIECES: usize = 10;
 /// The ground under a bridge is looked at this often.
 const GROUND_STEP: f64 = 2.0;
+/// Piers and walls reach this far below the natural ground: channels may cut it (`channels`).
+const FOOTING: f64 = 2.5;
 const TUNNEL_RADIUS: f64 = 5.0;
 const ARCH_SEGMENTS: usize = 12;
 
@@ -168,7 +170,7 @@ fn piers(mesh: &mut MeshData, path: &Path, ground_at: &dyn Fn(f64) -> Option<f64
                 mesh,
                 point,
                 (PIER_HALF_LENGTH, DECK_HALF_WIDTH - PIER_INSET),
-                (ground - 1.0, deck),
+                (ground - FOOTING, deck),
                 *CONCRETE,
             );
         }
@@ -196,7 +198,7 @@ fn arches(mesh: &mut MeshData, path: &Path, ground_at: &dyn Fn(f64) -> Option<f6
             }
             along += GROUND_STEP;
         }
-        (low < f64::MAX).then_some(low - 1.0)
+        (low < f64::MAX).then_some(low - FOOTING)
     };
     // Piers at both ends (abutments, half as thick) and between the spans.
     for k in 0..=spans {
