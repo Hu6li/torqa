@@ -116,8 +116,8 @@ impl Road {
     }
 }
 
-/// Kinds of ways, widest first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Kinds of ways, widest first (and ordered so: `Major < Street < … < Path`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RoadClass {
     /// Motorways, trunk, primary and secondary roads.
     Major,
