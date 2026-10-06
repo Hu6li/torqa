@@ -1,14 +1,18 @@
 //! Workouts (R56, R21, R22): the trainer holds a target power (ERG) that the workout sets
 //! instead of following the road — a constant power, one adjusted continuously to hold the
-//! rider's heart rate, the steps of a structured workout, or the rising steps of an FTP test.
+//! rider's heart rate, the steps of a structured workout, or one of the FTP tests.
 
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
+use torqa_domain::recording::Sample;
 use torqa_domain::telemetry::Telemetry;
 use torqa_domain::units::{BeatsPerMinute, Rpm, Watts};
-use torqa_domain::workout::{Plan, Target};
+use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target};
+
+use crate::analysis::{effort_test_ftp, ramp_test_ftp};
 
 /// The heart-rate hold adjusts the power this often; straps report about once a second.
 const STEP: Duration = Duration::from_secs(1);
@@ -32,6 +36,10 @@ const FAILING_CADENCE: f64 = 50.0;
 /// …for this long means the rider cannot hold the step any more: the test is over. In ERG the
 /// trainer holds the power whatever the cadence, so the cadence is what gives way.
 const FAILING_FOR: Duration = Duration::from_secs(10);
+/// Easy pedalling between the parts of an FTP test, as a share of FTP (40–50 %).
+const EASY: f64 = 0.45;
+/// The cool-down after an FTP test: very easy.
+const COOL_DOWN: f64 = 0.4;
 
 /// What a workout asks of the rider.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +58,8 @@ pub enum Workout {
     },
     /// An FTP test (R22): power rising step by step until the rider cannot hold it.
     RampTest(RampTest),
+    /// An FTP test (R22, #125) of one or two all-out efforts: 20 minutes, or twice 8.
+    EffortTest(EffortTest),
 }
 
 /// A ramp test (R22): after a warm-up the power rises every minute until the rider's cadence
@@ -96,6 +106,141 @@ impl RampTest {
                 Watts(self.start.0 + self.step.0 * steps)
             }
         }
+    }
+}
+
+/// An FTP test of all-out efforts (R22, #125): after a warm-up, 20 minutes or twice 8 minutes
+/// as hard as the rider can hold. The trainer holds the powers of the warm-up and the rests
+/// (ERG) and leaves the efforts to the rider, who paces them with gears and cadence on a flat
+/// road. A share of the efforts' average power is then their FTP (see
+/// [`crate::analysis::effort_test_ftp`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffortTest {
+    /// Warm-up, efforts, rests and cool-down; the efforts and other all-out parts are free
+    /// steps.
+    pub plan: Arc<Plan>,
+    /// The FTP the other steps' powers are set for.
+    pub ftp: Watts,
+    /// Which of the plan's steps are the efforts the FTP is taken from.
+    pub efforts: Vec<usize>,
+    /// The share of the efforts' average power the rider can hold for an hour.
+    pub share: f64,
+}
+
+impl EffortTest {
+    /// The 20-minute test for a rider whose FTP is about `ftp`: 15 minutes of warm-up, a
+    /// minute each at 90, 100, 110 and 120 % and all out with a minute's rest between, 5 easy
+    /// minutes, then 20 minutes all out and 10 minutes of cool-down: an hour in all. FTP is
+    /// 95 % of the 20 minutes' average.
+    #[must_use]
+    pub fn twenty_minutes(ftp: Watts) -> Self {
+        let mut test = Self::warmed_up(ftp, 0.95);
+        // i18n-begin
+        test.cue("Activation: a minute each at 90, 100, 110 and 120 %, then one all out");
+        for share in [0.9, 1.0, 1.1, 1.2] {
+            test.steady(1, share);
+            test.steady(1, EASY);
+        }
+        test.cue("One minute all out!");
+        test.all_out(1, false);
+        test.cue("Easy for 5 minutes before the test");
+        test.steady(5, EASY);
+        test.cue("20 minutes all out: start controlled, give everything in the second half");
+        test.all_out(20, true);
+        test.cue("Done! Cool down easy");
+        // i18n-end
+        test.steady(10, COOL_DOWN);
+        test
+    }
+
+    /// The 2 × 8-minute test for a rider whose FTP is about `ftp`: 15 minutes of warm-up,
+    /// 8 minutes all out, 10 easy minutes, 8 minutes all out again and 10 minutes of
+    /// cool-down: 51 minutes in all. FTP is 90 % of the two efforts' average.
+    #[must_use]
+    pub fn two_by_eight(ftp: Watts) -> Self {
+        let mut test = Self::warmed_up(ftp, 0.9);
+        // i18n-begin
+        test.cue("8 minutes all out: as hard as you can hold to the end");
+        test.all_out(8, true);
+        test.cue("Easy for 10 minutes");
+        test.steady(10, EASY);
+        test.cue("The second 8 minutes all out");
+        test.all_out(8, true);
+        test.cue("Done! Cool down easy");
+        // i18n-end
+        test.steady(10, COOL_DOWN);
+        test
+    }
+
+    /// When the efforts are, from the start of the test.
+    #[must_use]
+    pub fn effort_times(&self) -> Vec<Range<Duration>> {
+        let mut start = Duration::ZERO;
+        let mut times = Vec::new();
+        for (index, step) in self.plan.steps.iter().enumerate() {
+            let end = start + step.duration;
+            if self.efforts.contains(&index) {
+                times.push(start..end);
+            }
+            start = end;
+        }
+        times
+    }
+
+    /// The start of every test: 10 minutes rising from 50 to 65 % of FTP, then 5 minutes at
+    /// 72 % (the "medium" 70–75 %).
+    fn warmed_up(ftp: Watts, share: f64) -> Self {
+        let mut test = Self {
+            plan: Arc::new(Plan {
+                name: "FTP test".to_owned(),
+                ..Plan::default()
+            }),
+            ftp,
+            efforts: Vec::new(),
+            share,
+        };
+        // i18n-begin
+        test.cue("Warm-up: easy at first, then a little harder");
+        test.step(
+            10,
+            Target::Power {
+                from: Intensity::Ftp(0.5),
+                to: Intensity::Ftp(0.65),
+            },
+        );
+        test.cue("Find the cadence you will hold in the test");
+        // i18n-end
+        test.steady(5, 0.72);
+        test
+    }
+
+    fn step(&mut self, minutes: u64, target: Target) {
+        Arc::make_mut(&mut self.plan).steps.push(Step {
+            duration: Duration::from_mins(minutes),
+            target,
+            cadence: None,
+        });
+    }
+
+    fn steady(&mut self, minutes: u64, share: f64) {
+        self.step(minutes, Target::steady(Intensity::Ftp(share)));
+    }
+
+    /// A free step ridden all out; `counts` if the FTP is taken from it.
+    fn all_out(&mut self, minutes: u64, counts: bool) {
+        if counts {
+            self.efforts.push(self.plan.steps.len());
+        }
+        self.step(minutes, Target::Free);
+    }
+
+    /// A message at the start of the next step.
+    fn cue(&mut self, text: &str) {
+        let at = self.plan.duration();
+        Arc::make_mut(&mut self.plan).cues.push(Cue {
+            at,
+            text: text.to_owned(),
+        });
     }
 }
 
@@ -185,6 +330,8 @@ pub struct Progress {
     pub next: Option<NextStep>,
     /// A message of the workout to show now.
     pub cue: Option<String>,
+    /// This step is ridden all out: a free step of an FTP test (#125).
+    pub all_out: bool,
 }
 
 /// The step coming up in a structured workout.
@@ -194,6 +341,8 @@ pub struct NextStep {
     pub power: Option<Watts>,
     /// How long it lasts.
     pub duration: Duration,
+    /// It is ridden all out, as in [`Progress::all_out`].
+    pub all_out: bool,
 }
 
 /// A workout under way: works out the power for the trainer as the ride goes on.
@@ -218,7 +367,7 @@ impl WorkoutControl {
         let power = match &workout {
             Workout::ConstantPower(power) => power.0.max(0.0),
             Workout::HeartRate(hold) => hold.limits().0,
-            Workout::Structured { .. } => 0.0,
+            Workout::Structured { .. } | Workout::EffortTest(_) => 0.0,
             Workout::RampTest(test) => test.warm_up_power.0,
         };
         Self {
@@ -253,25 +402,29 @@ impl WorkoutControl {
     pub(crate) fn power(&self) -> Option<Watts> {
         match &self.workout {
             Workout::Structured { plan, ftp } => plan.at(self.elapsed, *ftp)?.power,
+            Workout::EffortTest(test) => test.plan.at(self.elapsed, test.ftp)?.power,
             Workout::RampTest(test) => Some(test.power_at(self.elapsed)),
             _ => Some(Watts(self.power)),
         }
     }
 
-    /// Whether a structured workout has run its last step, or the rider gave way in an FTP
-    /// test; the others go on until stopped.
+    /// Whether a structured workout or an FTP test of efforts has run its last step, or the
+    /// rider gave way in a ramp test; the others go on until stopped.
     pub(crate) fn is_finished(&self) -> bool {
         match &self.workout {
             Workout::Structured { plan, .. } => self.elapsed >= plan.duration(),
+            Workout::EffortTest(test) => self.elapsed >= test.plan.duration(),
             Workout::RampTest(_) => self.gave_way,
             _ => false,
         }
     }
 
-    /// The FTP test under way, if this is one.
-    pub(crate) fn ramp_test(&self) -> Option<&RampTest> {
+    /// The FTP an FTP test (R22) shows from the ride's `samples`; `None` for other workouts
+    /// and for a test left too early.
+    pub(crate) fn ftp_estimate(&self, samples: &[Sample]) -> Option<Watts> {
         match &self.workout {
-            Workout::RampTest(test) => Some(test),
+            Workout::RampTest(_) => ramp_test_ftp(samples),
+            Workout::EffortTest(test) => effort_test_ftp(samples, &test.effort_times(), test.share),
             _ => None,
         }
     }
@@ -284,7 +437,8 @@ impl WorkoutControl {
                 _ => None,
             },
             progress: match &self.workout {
-                Workout::Structured { plan, ftp } => self.progress(plan, *ftp),
+                Workout::Structured { plan, ftp } => self.progress(plan, *ftp, false),
+                Workout::EffortTest(test) => self.progress(&test.plan, test.ftp, true),
                 Workout::RampTest(test) => Some(self.ramp_progress(test)),
                 _ => None,
             },
@@ -314,12 +468,16 @@ impl WorkoutControl {
             next: Some(NextStep {
                 power: Some(test.power_at(self.elapsed + step_left)),
                 duration: test.step_duration,
+                all_out: false,
             }),
             cue: None,
+            all_out: false,
         }
     }
 
-    fn progress(&self, plan: &Plan, ftp: Watts) -> Option<Progress> {
+    /// Where a structured workout stands; in an FTP test (`test`) its free steps are ridden
+    /// all out.
+    fn progress(&self, plan: &Plan, ftp: Watts, test: bool) -> Option<Progress> {
         let at = plan.at(self.elapsed, ftp)?;
         let next = plan.steps.get(at.step + 1).map(|step| NextStep {
             power: match step.target {
@@ -327,6 +485,7 @@ impl WorkoutControl {
                 Target::Free => None,
             },
             duration: step.duration,
+            all_out: test && step.target == Target::Free,
         });
         Some(Progress {
             step: at.step,
@@ -338,6 +497,7 @@ impl WorkoutControl {
             cue: plan
                 .cue_at(self.elapsed, CUE_SHOWS)
                 .map(|cue| cue.text.clone()),
+            all_out: test && plan.steps[at.step].target == Target::Free,
         })
     }
 

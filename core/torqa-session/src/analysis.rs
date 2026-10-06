@@ -1,6 +1,7 @@
 //! Ride analysis (R31): summary figures and time in training zones, computed from the 1 Hz
 //! samples of a recorded ride.
 
+use std::ops::Range;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
@@ -102,6 +103,40 @@ const RAMP_TEST_SHARE: f64 = 0.75;
 pub fn ramp_test_ftp(samples: &[Sample]) -> Option<Watts> {
     best_average_power(samples, Duration::from_mins(1))
         .map(|best| Watts((best.0 * RAMP_TEST_SHARE).round()))
+}
+
+/// The FTP an FTP test of all-out efforts (R22, #125) shows: `share` of the efforts' average
+/// power, each effort a stretch of time from the start of the ride (seconds without power
+/// count as 0 W). `None` unless the ride lasted through the last effort.
+#[must_use]
+pub fn effort_test_ftp(
+    samples: &[Sample],
+    efforts: &[Range<Duration>],
+    share: f64,
+) -> Option<Watts> {
+    let last = samples.last()?.elapsed;
+    let mut averages = Vec::with_capacity(efforts.len());
+    for effort in efforts {
+        if last + SAMPLE_TIME < effort.end {
+            return None;
+        }
+        let powers: Vec<f64> = samples
+            .iter()
+            .filter(|s| effort.contains(&s.elapsed))
+            .map(|s| s.power.map_or(0.0, |p| p.0))
+            .collect();
+        #[allow(clippy::cast_precision_loss)] // seconds of a test
+        let count = powers.len() as f64;
+        averages.push(powers.iter().sum::<f64>() / count);
+    }
+    if averages.is_empty() || averages.iter().any(|a| a.is_nan()) {
+        return None;
+    }
+    #[allow(clippy::cast_precision_loss)] // one or two efforts
+    let count = averages.len() as f64;
+    Some(Watts(
+        (averages.iter().sum::<f64>() / count * share).round(),
+    ))
 }
 
 /// The rider's time and power over one stretch of the route, e.g. a climb.
@@ -253,6 +288,38 @@ mod tests {
         assert!((best.0 - 300.0).abs() < 1e-9, "{best:?}");
         assert_eq!(ramp_test_ftp(&samples), Some(Watts(225.0)));
         assert_eq!(ramp_test_ftp(&samples[..59]), None, "shorter than a minute");
+    }
+
+    #[test]
+    fn an_effort_tests_ftp_is_a_share_of_its_efforts_average() {
+        // Two efforts of 8 minutes, at 300 and 280 W, between easy riding at 150 W.
+        let mut powers: Vec<Option<f64>> = vec![Some(150.0); 60];
+        powers.extend(std::iter::repeat_n(Some(300.0), 480));
+        powers.extend(std::iter::repeat_n(Some(150.0), 600));
+        powers.extend(std::iter::repeat_n(Some(280.0), 480));
+        powers.extend(std::iter::repeat_n(Some(150.0), 60));
+        let samples = ride(&powers);
+        let efforts = [
+            Duration::from_mins(1)..Duration::from_mins(9),
+            Duration::from_mins(19)..Duration::from_mins(27),
+        ];
+
+        assert_eq!(
+            effort_test_ftp(&samples, &efforts, 0.9),
+            Some(Watts(261.0)),
+            "90 % of 290 W"
+        );
+        assert_eq!(
+            effort_test_ftp(&samples, &efforts[..1], 0.95),
+            Some(Watts(285.0)),
+            "95 % of one effort"
+        );
+        assert_eq!(
+            effort_test_ftp(&samples[..1500], &efforts, 0.9),
+            None,
+            "left during the second effort"
+        );
+        assert_eq!(effort_test_ftp(&samples, &[], 0.9), None, "no efforts");
     }
 
     #[test]

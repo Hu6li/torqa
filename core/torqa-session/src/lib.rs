@@ -268,12 +268,11 @@ impl Ride {
         }
     }
 
-    /// Whether this is an FTP test (R22), whose best minute shows the rider's FTP.
+    /// The FTP this ride shows if it is an FTP test (R22), from its samples so far; `None` for
+    /// other rides and for a test left before its efforts were done.
     #[must_use]
-    pub fn is_ftp_test(&self) -> bool {
-        self.workout
-            .as_ref()
-            .is_some_and(|w| w.ramp_test().is_some())
+    pub fn ftp_estimate(&self) -> Option<Watts> {
+        self.workout.as_ref()?.ftp_estimate(&self.samples)
     }
 
     /// The route being ridden; `None` in a workout without one.
@@ -715,6 +714,84 @@ mod tests {
         assert_eq!(progress.step_left, Duration::from_secs(30));
         assert_eq!(progress.next.and_then(|n| n.power), Some(Watts(275.0)));
         assert!(ride.is_finished(), "over once the rider gives way");
+    }
+
+    #[test]
+    fn the_twenty_minute_test_leaves_its_effort_to_the_rider_and_takes_95_percent() {
+        let test = workout::EffortTest::twenty_minutes(Watts(250.0));
+        assert_eq!(
+            test.plan.duration(),
+            Duration::from_mins(59),
+            "an hour in all"
+        );
+        assert_eq!(
+            test.effort_times(),
+            vec![Duration::from_mins(29)..Duration::from_mins(49)]
+        );
+        let mut ride = Ride::workout(Workout::EffortTest(test), RideConfig::default());
+
+        let warm_up = pedal(&mut ride, 150.0, 15 * 60 + 30);
+        let activation = ride.state().workout.unwrap().target_power;
+        pedal(&mut ride, 150.0, 8 * 60);
+        let max_minute = ride.state().workout.unwrap();
+        // From a second before the test to a second before its end: a tick's control is for
+        // where it ends.
+        pedal(&mut ride, 150.0, 5 * 60 + 29);
+        let test_part = pedal(&mut ride, 260.0, 20 * 60);
+        pedal(&mut ride, 260.0, 1);
+        pedal(&mut ride, 100.0, 10 * 60 + 5);
+
+        assert!(
+            matches!(warm_up[0], TrainerControl::TargetPower(w) if (w.0 - 125.0).abs() < 1.0),
+            "from half of FTP: {:?}",
+            warm_up[0]
+        );
+        assert_eq!(activation, Some(Watts(225.0)), "the first minute at 90 %");
+        assert!(
+            max_minute.target_power.is_none() && max_minute.progress.as_ref().unwrap().all_out,
+            "a minute all out: {max_minute:?}"
+        );
+        assert!(
+            !test_part.is_empty()
+                && test_part
+                    .iter()
+                    .all(|c| matches!(c, TrainerControl::Simulation(_))),
+            "the rider sets the power in the test: {:?}",
+            test_part.first()
+        );
+        assert!(ride.is_finished(), "over after the cool-down");
+        assert_eq!(ride.ftp_estimate(), Some(Watts(247.0)), "95 % of 260 W");
+    }
+
+    #[test]
+    fn the_two_by_eight_minute_test_takes_90_percent_of_both_efforts() {
+        let test = workout::EffortTest::two_by_eight(Watts(250.0));
+        assert_eq!(test.plan.duration(), Duration::from_mins(51));
+        assert_eq!(
+            test.effort_times(),
+            vec![
+                Duration::from_mins(15)..Duration::from_mins(23),
+                Duration::from_mins(33)..Duration::from_mins(41)
+            ]
+        );
+        let mut ride = Ride::workout(Workout::EffortTest(test), RideConfig::default());
+
+        pedal(&mut ride, 150.0, 15 * 60);
+        pedal(&mut ride, 300.0, 8 * 60);
+        pedal(&mut ride, 120.0, 9 * 60);
+        let resting = ride.state().workout.unwrap().progress.unwrap();
+        let before_the_second = ride.ftp_estimate();
+        pedal(&mut ride, 120.0, 60);
+        pedal(&mut ride, 280.0, 8 * 60);
+        pedal(&mut ride, 100.0, 10 * 60 + 5);
+
+        assert!(
+            !resting.all_out && resting.next.is_some_and(|n| n.all_out),
+            "resting before the second effort: {resting:?}"
+        );
+        assert_eq!(before_the_second, None, "no FTP from half a test");
+        assert!(ride.is_finished());
+        assert_eq!(ride.ftp_estimate(), Some(Watts(261.0)), "90 % of 290 W");
     }
 
     /// Rides on at the power held so far, but at `cadence`.

@@ -1,7 +1,8 @@
 class_name WorkoutOptions
 extends GridContainer
-## What a workout asks of the rider (R56, R21): a constant power, a heart rate (a zone's middle
-## or a bpm) held between a lowest and highest power, or a structured workout from the library.
+## What a workout asks of the rider (R56, R21, R22): a constant power, a heart rate (a zone's
+## middle or a bpm) held between a lowest and highest power, a structured workout from the
+## library, or one of the FTP tests.
 ## The same control serves the Workouts tab and the in-ride settings, so a workout is set the
 ## same way before and during it.
 
@@ -13,6 +14,8 @@ signal import_requested
 enum Kind { POWER, ZONE, BPM, PLAN, FTP_TEST }
 
 const KINDS: Array[String] = ["power", "zone", "bpm", "plan", "ftp_test"]
+## The FTP tests (#125), as `TorqaApp.start_workout()` takes them.
+const FTP_TESTS: Array[String] = ["ramp", "twenty_minutes", "two_by_eight"]
 
 var _kind: OptionButton = OptionButton.new()
 var _power: SpinBox = SpinBox.new()
@@ -21,6 +24,7 @@ var _bpm: SpinBox = SpinBox.new()
 var _min_power: SpinBox = SpinBox.new()
 var _max_power: SpinBox = SpinBox.new()
 var _plan: OptionButton = OptionButton.new()
+var _ftp_test: OptionButton = OptionButton.new()
 var _import: Button = Button.new()
 ## The structured workouts to choose from (`TorqaApp.workouts()`).
 var _plans: Array = []
@@ -42,6 +46,10 @@ func _init() -> void:
 	]:
 		# i18n-end
 		_kind.add_item(tr(kind))
+	# i18n-begin
+	for test: String in ["Ramp test", "20-minute test", "2 × 8-minute test"]:
+		# i18n-end
+		_ftp_test.add_item(tr(test))
 	_watts(_power, 30.0)
 	_watts(_min_power, 0.0)
 	_watts(_max_power, 30.0)
@@ -51,6 +59,7 @@ func _init() -> void:
 	_kind.item_selected.connect(func(_index: int) -> void: _changed())
 	_zone.item_selected.connect(func(_index: int) -> void: _changed())
 	_plan.item_selected.connect(func(_index: int) -> void: _changed())
+	_ftp_test.item_selected.connect(func(_index: int) -> void: _changed())
 	# Workout names are the authors' own.
 	_plan.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_import.text = tr("Import…")
@@ -66,6 +75,7 @@ func _init() -> void:
 	_row("Lowest power", _min_power, [Kind.ZONE, Kind.BPM])
 	_row("Highest power", _max_power, [Kind.ZONE, Kind.BPM])
 	_row("Plan", _plan, [Kind.PLAN], _import)
+	_row("Test", _ftp_test, [Kind.FTP_TEST])
 	# i18n-end
 	_show_rows()
 
@@ -134,6 +144,7 @@ func workout() -> Dictionary:
 		"min_w": minf(_min_power.value, _max_power.value),
 		"max_w": maxf(_min_power.value, _max_power.value),
 		"id": _plan_id(),
+		"test": FTP_TESTS[maxi(_ftp_test.selected, 0)],
 	}
 
 
@@ -144,6 +155,8 @@ func set_workout(workout: Dictionary) -> void:
 	var zone: int = workout.get("zone", 2)
 	if _zone.item_count > 0:
 		_zone.select(clampi(zone - 1, 0, _zone.item_count - 1))
+	var test: String = workout.get("test", FTP_TESTS[0])
+	_ftp_test.select(maxi(FTP_TESTS.find(test), 0))
 	var id: String = workout.get("id", "")
 	for i: int in range(_plans.size()):
 		var plan_entry: Dictionary = _plans[i]
@@ -171,9 +184,17 @@ func title() -> String:
 			var plan_name: String = plan().get("name", tr("Structured workout"))
 			return plan_name
 		Kind.FTP_TEST:
-			return tr("FTP test")
+			return _ftp_test_title()
 		_:
 			return tr("Constant power %d W") % roundi(_power.value)
+
+
+func _ftp_test_title() -> String:
+	var titles: Dictionary = {
+		"twenty_minutes": tr("FTP test · 20 minutes"),
+		"two_by_eight": tr("FTP test · 2 × 8 minutes"),
+	}
+	return titles.get(FTP_TESTS[maxi(_ftp_test.selected, 0)], tr("FTP test"))
 
 
 func _changed() -> void:

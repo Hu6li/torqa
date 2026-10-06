@@ -192,18 +192,27 @@ func _init() -> void:
 	add_child(panel)
 
 
-## The FTP test's steps as far as most riders get, to show it before and behind it while
-## riding: the test itself goes on until the rider gives way.
+## The chosen FTP test's steps, to show it before and behind it while riding; for the ramp
+## test as far as most riders get, as it goes on until the rider gives way.
 func _ftp_test_plan() -> Dictionary:
-	var steps: Array = _torqa.ftp_test_steps()
+	var test: String = _options.workout()["test"]
+	var steps: Array = _torqa.ftp_test_steps(test)
 	var duration: float = 0.0
 	for step: Dictionary in steps:
 		var seconds: float = step["duration_s"]
 		duration += seconds
+	var description: String = tr(
+		"Power rises each minute until you give way. FTP: 75 % of your best minute."
+	)
+	if test == "twenty_minutes":
+		description = tr(
+			"Warm-up and activation, then 20 minutes all out. FTP: 95 % of their average."
+		)
+	elif test == "two_by_eight":
+		description = tr("Twice 8 minutes all out, 10 easy between. FTP: 90 % of their average.")
 	return {
-		"name": tr("FTP test"),
-		"description":
-		tr("Power rises each minute until you give way. FTP: 75 % of your best minute."),
+		"name": _options.title(),
+		"description": description,
 		"steps": steps,
 		"duration_s": duration,
 	}

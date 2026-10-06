@@ -26,7 +26,7 @@ use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup, VirtualGears};
 use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
-    effort, ramp_test_ftp, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
+    effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
 use torqa_session::ghost::Ghost;
 use torqa_session::workout::Workout;
@@ -1652,11 +1652,7 @@ impl App {
                     })
                     .collect(),
                 name: None,
-                ftp_estimate: active
-                    .ride
-                    .is_ftp_test()
-                    .then(|| ramp_test_ftp(samples))
-                    .flatten(),
+                ftp_estimate: active.ride.ftp_estimate(),
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
