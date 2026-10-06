@@ -67,8 +67,10 @@ const FREE_TURN: float = 1.2
 ## A rider moving further than this between frames jumped: the camera follows at once.
 const JUMP_M: float = 50.0
 ## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
-## scales how far terrain and details are drawn. MSAA stays at 2×: at 4× a few distant pixels
-## broke and the glow spread them into bright blobs.
+## scales how far terrain and details are drawn, `rain` is the number of raindrops. MSAA stays
+## at 2×: at 4× a few distant pixels broke and the glow spread them into bright blobs. Flat
+## colours gain nothing from global illumination (SSIL, SDFGI) or volumetric fog, which only
+## greyed them (#103); what they cost goes to grass, models and shadows further out.
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
@@ -80,14 +82,12 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"shadow_splits": 2,
 		"soft_shadows": 0.0,
 		"ssao": false,
-		"ssil": false,
-		"sdfgi": false,
-		"volumetric_fog": false,
 		"glow": false,
 		"msaa": Viewport.MSAA_DISABLED,
 		"fxaa": true,
 		"render_scale": 0.77,
 		"distance": 0.65,
+		"rain": 1200,
 	},
 	"medium":
 	{
@@ -99,54 +99,69 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"shadow_splits": 2,
 		"soft_shadows": 0.0,
 		"ssao": true,
-		"ssil": false,
-		"sdfgi": false,
-		"volumetric_fog": false,
 		"glow": true,
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
 		"distance": 1.0,
+		"rain": 2500,
 	},
 	"high":
 	{
-		"model_range": 550.0,
-		"grass_range": 100.0,
+		"model_range": 600.0,
+		"grass_range": 120.0,
 		"grass_shadows": true,
 		"shadow_atlas": 4096,
-		"shadow_distance": 500.0,
+		"shadow_distance": 600.0,
 		"shadow_splits": 4,
 		"soft_shadows": 0.5,
 		"ssao": true,
-		"ssil": true,
-		"sdfgi": false,
-		"volumetric_fog": true,
 		"glow": true,
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
-		"distance": 1.35,
+		"distance": 1.4,
+		"rain": 4000,
 	},
 	"ultra":
 	{
-		"model_range": 750.0,
-		"grass_range": 150.0,
+		"model_range": 900.0,
+		"grass_range": 180.0,
 		"grass_shadows": true,
 		"shadow_atlas": 8192,
-		"shadow_distance": 800.0,
+		"shadow_distance": 900.0,
 		"shadow_splits": 4,
 		"soft_shadows": 0.7,
 		"ssao": true,
-		"ssil": true,
-		"sdfgi": true,
-		"volumetric_fog": true,
 		"glow": true,
 		"msaa": Viewport.MSAA_2X,
 		"fxaa": false,
 		"render_scale": 1.0,
-		"distance": 1.7,
+		"distance": 1.8,
+		"rain": 6000,
 	},
 }
+## Haze over the distance (density per metre) per weather: pastel, the colour of the horizon.
+const HAZE: Dictionary[String, float] = {
+	"Clear": 0.00035, "Cloudy": 0.0005, "Hazy": 0.0016, "Rain": 0.0012
+}
+## Low sun hazes the distance more: mornings most, evenings a little.
+const HAZE_BY_TIME: Dictionary[String, float] = {"Morning": 2.2, "Midday": 1.0, "Evening": 1.4}
+## Fog lying in low ground (#103): how thick, per time of day and per weather, and how high it
+## reaches over the route's lowest ground (metres).
+const VALLEY_FOG_BY_TIME: Dictionary[String, float] = {
+	"Morning": 1.0, "Midday": 0.1, "Evening": 0.4
+}
+const VALLEY_FOG_BY_WEATHER: Dictionary[String, float] = {
+	"Clear": 0.5, "Cloudy": 0.7, "Hazy": 1.0, "Rain": 0.9
+}
+const VALLEY_FOG_DEPTH: float = 30.0
+## Density gained per metre below the valley fog's top at full thickness. Godot's height fog
+## hangs on height alone, not distance: seen from above the valleys fill with it, and down in
+## it everything is veiled alike, so it stays light at the bottom.
+const VALLEY_FOG_DENSITY: float = 0.02
+## Raindrops fall around the camera from this far above it.
+const RAIN_ABOVE: float = 9.0
 ## How fast the clouds drift, in cloud-layer units per second.
 const CLOUD_DRIFT: Vector2 = Vector2(0.004, 0.0015)
 # i18n-begin
@@ -159,9 +174,11 @@ var _next_chunk: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
 var _sky: ShaderMaterial = ShaderMaterial.new()
 var _cloud_offset: Vector2 = Vector2.ZERO
-## The current weather's cloudiness (0 clear, 1 overcast), for the fog of the preset.
-var _overcast: float = 0.0
 var _quality: Dictionary = QUALITY["medium"]
+## The route's lowest ground (metres), where valley fog lies.
+var _low_ground: float = 0.0
+var _time_of_day: String = "Midday"
+var _weather: String = "Clear"
 ## Draw-distance factor of the current preset.
 var _distance: float = 1.0
 ## Flying freely instead of following the rider (simulated rides only).
@@ -258,8 +275,9 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var sun_color: Color = Palette.color(sun_name)
 	var energy: float = time["energy"]
 	var ambient: float = time["ambient"]
+	_time_of_day = time_of_day
+	_weather = weather
 	var overcast: float = 0.0
-	var fog: float = 0.00035
 	# Fair-weather clouds even on clear days: a bare gradient looked artificial.
 	var cover: float = 0.3
 	match weather:
@@ -268,13 +286,10 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 			cover = 0.8
 		"Hazy":
 			overcast = 0.3
-			fog = 0.0016
 			cover = 0.45
 		"Rain":
 			overcast = 1.0
-			fog = 0.0012
 			cover = 1.0
-	_overcast = overcast
 	var wind: Dictionary[String, float] = {"Clear": 0.08, "Cloudy": 0.14, "Hazy": 0.04, "Rain": 0.2}
 	var wind_strength: float = wind.get(weather, 0.08)
 	_plant_material.set_shader_parameter("wind_strength", wind_strength)
@@ -294,12 +309,19 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_sun.light_energy = energy * lerpf(1.0, 0.25, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
 	_environment.ambient_light_energy = lerpf(ambient, 0.85, overcast)
-	_environment.fog_density = fog
+	_environment.fog_density = (
+		HAZE.get(weather, HAZE["Clear"]) * HAZE_BY_TIME.get(time_of_day, 1.0)
+	)
 	_environment.fog_light_color = sky_horizon
-	_apply_fog_volume()
-	_rain.emitting = weather == "Rain"
+	# A low sun lights the haze from its side.
+	_environment.fog_sun_scatter = 0.2 if elevation < 20.0 else 0.0
+	_apply_valley_fog()
+	var raining: float = 1.0 if weather == "Rain" else 0.0
+	_rain.emitting = raining > 0.0
 	for material: ShaderMaterial in [_road_material, _street_material, _track_material]:
-		material.set_shader_parameter("wetness", 1.0 if weather == "Rain" else 0.0)
+		material.set_shader_parameter("wetness", raining)
+		material.set_shader_parameter("puddles", raining)
+		material.set_shader_parameter("puddle_color", sky_horizon)
 
 
 ## Applies a graphics preset (`QUALITY` key, as `TorqaApp.graphics_quality()` names it).
@@ -317,10 +339,8 @@ func apply_quality(name: String) -> void:
 	# A sun of real size casts soft shadows (PCSS): softer further from the caster.
 	_sun.light_angular_distance = _quality["soft_shadows"]
 	_environment.ssao_enabled = _quality["ssao"]
-	_environment.ssil_enabled = _quality["ssil"]
-	_environment.sdfgi_enabled = _quality["sdfgi"]
 	_environment.glow_enabled = _quality["glow"]
-	_apply_fog_volume()
+	_rain.amount = _quality["rain"]
 	var viewport: Viewport = get_viewport()
 	viewport.msaa_3d = _quality["msaa"]
 	viewport.screen_space_aa = (
@@ -411,11 +431,15 @@ func _ready() -> void:
 	_ghost.ghostly = true
 	_ghost.hide()
 	add_child(_ghost)
+	_make_rain()
 	apply_conditions("Midday", "Clear")
 
 
 func _process(delta: float) -> void:
 	_build_some_chunks()
+	if _rain.emitting:
+		# Round the camera, falling straight whichever way it looks.
+		_rain.global_position = _camera.global_position + Vector3.UP * RAIN_ABOVE
 	if visible:
 		_cloud_offset += CLOUD_DRIFT * delta
 		_sky.set_shader_parameter("cloud_offset", _cloud_offset)
@@ -431,6 +455,7 @@ func _process(delta: float) -> void:
 
 func _on_world_ready(_info: Dictionary) -> void:
 	_clouds_settled = false
+	_find_low_ground()
 	# The rider's own avatar (R46); the ghost rides the same one.
 	var avatar: String = _torqa.profile().get("avatar", RiderAvatar.RIDERS[0])
 	_avatar.rider = avatar
@@ -725,15 +750,41 @@ static func _held(key: Key) -> float:
 	return 1.0 if Input.is_physical_key_pressed(key) else 0.0
 
 
-## Volumetric fog on the presets that afford it, thicker in haze and rain.
-func _apply_fog_volume() -> void:
-	var volumetric: bool = _quality["volumetric_fog"]
-	_environment.volumetric_fog_enabled = volumetric
-	if volumetric:
-		# Extinction per metre: a light veil on clear days, thick in rain.
-		_environment.volumetric_fog_density = lerpf(0.0006, 0.004, _overcast)
-		_environment.volumetric_fog_albedo = _environment.fog_light_color
-		_environment.volumetric_fog_length = 300.0
+## Faceted raindrops (#103): slim four-sided diamonds in the pale sky colour; the emitter
+## stands free of the camera's turn so the rain falls straight down.
+func _make_rain() -> void:
+	var drop: SphereMesh = SphereMesh.new()
+	drop.radius = 0.022
+	drop.height = 0.36
+	drop.radial_segments = 4
+	drop.rings = 2
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = preload("res://shaders/rain.gdshader")
+	material.set_shader_parameter("color", Palette.color("sky.rain"))
+	drop.material = material
+	_rain.draw_pass_1 = drop
+	_rain.top_level = true
+
+
+## Fog lying in the low ground of the route (#103): thick on mornings, a trace at midday, and
+## thicker in haze and rain; the rider climbs out of it.
+func _apply_valley_fog() -> void:
+	var thickness: float = (
+		VALLEY_FOG_BY_TIME.get(_time_of_day, 0.0) * VALLEY_FOG_BY_WEATHER.get(_weather, 0.0)
+	)
+	_environment.fog_height = _low_ground + VALLEY_FOG_DEPTH
+	_environment.fog_height_density = VALLEY_FOG_DENSITY * thickness
+
+
+## The route's lowest ground, from its elevation profile.
+func _find_low_ground() -> void:
+	var profile: PackedVector2Array = _torqa.elevation_profile(256)
+	if profile.is_empty():
+		return
+	_low_ground = INF
+	for point: Vector2 in profile:
+		_low_ground = minf(_low_ground, point.y)
+	_apply_valley_fog()
 
 
 ## Scales how far terrain and details are drawn, for the chunks built already too.
