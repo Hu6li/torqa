@@ -20,9 +20,11 @@ var _flat_descents: CheckBox = CheckBox.new()
 var _time: OptionButton = OptionButton.new()
 var _weather: OptionButton = OptionButton.new()
 var _video_sound: CheckBox = CheckBox.new()
-## The controls of the options that only change the 3D world, and of those of video courses.
+## The controls of the options that only change the 3D world, of those of video courses, and
+## of trainer difficulty, which a workout's ERG power leaves no part in.
 var _world_rows: Array[Control] = []
 var _video_rows: Array[Control] = []
+var _trainer_rows: Array[Control] = []
 
 
 func _init() -> void:
@@ -44,7 +46,7 @@ func _init() -> void:
 		_weather.add_item(weather)
 	# i18n-begin
 	_row("Camera", _camera, null, true)
-	_row("Trainer difficulty", _difficulty, _difficulty_label)
+	_row("Trainer difficulty", _difficulty, _difficulty_label, false, false, true)
 	_row("Descents", _flat_descents, null)
 	_row("Time of day", _time, null, true)
 	_row("Weather", _weather, null, true)
@@ -91,12 +93,15 @@ func set_options(options: Dictionary) -> void:
 	_update_labels()
 
 
-## Shows the options of the 3D world and those of a video course (sound), each or not.
-func show_option_groups(world: bool, video: bool) -> void:
+## Shows the options of the 3D world and those of a video course (sound), each or not, and
+## trainer difficulty unless riding a workout.
+func show_option_groups(world: bool, video: bool, trainer: bool = true) -> void:
 	for control: Control in _world_rows:
 		control.visible = world
 	for control: Control in _video_rows:
 		control.visible = video
+	for control: Control in _trainer_rows:
+		control.visible = trainer
 
 
 func _changed() -> void:
@@ -109,7 +114,12 @@ func _update_labels() -> void:
 
 
 func _row(
-	caption: String, field: Control, extra: Control, world: bool = false, video: bool = false
+	caption: String,
+	field: Control,
+	extra: Control,
+	world: bool = false,
+	video: bool = false,
+	trainer: bool = false
 ) -> void:
 	var label: Label = Label.new()
 	label.text = caption
@@ -124,6 +134,8 @@ func _row(
 		_world_rows.append_array([label, field, third])
 	if video:
 		_video_rows.append_array([label, field, third])
+	if trainer:
+		_trainer_rows.append_array([label, field, third])
 
 
 static func _select_text(option: OptionButton, text: String) -> void:

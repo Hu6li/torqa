@@ -64,6 +64,8 @@ func _run() -> void:
 	var power_chart: PackedVector2Array = detail.get("power", PackedVector2Array())
 	_check(not power_chart.is_empty(), "power chart: %s" % detail)
 
+	await _workout()
+
 	_torqa.open_course(course_path)
 	var reopened: Array = await _wait_for(_torqa.route_loaded)
 	var reopened_route: Dictionary = reopened[0]
@@ -78,9 +80,44 @@ func _run() -> void:
 	_torqa.build_world()
 	await _wait_for(_torqa.world_ready)
 	_check(_torqa.world_chunk_count() > 0, "world of the course opened last")
+	# A workout on the course (R58): the trainer holds its power along the route.
+	_check(_torqa.start_workout({"kind": "power", "power_w": 180.0}, true, false), "on a course")
+	await create_timer(1.0).timeout
+	var on_course: Dictionary = _torqa.ride_state()
+	_check(
+		on_course.has("x") and on_course.get("workout") != null, "rides the course: %s" % on_course
+	)
+	var held: float = on_course.get("power", 0.0)
+	_check(is_equal_approx(held, 180.0), "holds 180 W: %s" % on_course)
+	_torqa.abort_ride()
 	DirAccess.remove_absolute(course_path)
 	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
 	quit(0)
+
+
+## A heart-rate workout on its own (R56, R58): the fake trainer's simulated heart, no route.
+func _workout() -> void:
+	var workout: Dictionary = {
+		"kind": "zone", "zone": 2, "min_w": 120.0, "max_w": 200.0, "name": "Smoke zone 2"
+	}
+	_check(_torqa.start_workout(workout, false, false), "workout started")
+	await create_timer(2.0).timeout
+	var state: Dictionary = _torqa.ride_state()
+	_check(not state.has("x"), "no place on a route: %s" % state)
+	var info: Dictionary = state.get("workout", {})
+	var target: float = info.get("target_power_w", 0.0)
+	_check(target >= 120.0 and target < 125.0, "starts at the lowest power: %s" % info)
+	_check(info.get("target_heart_rate") != null, "holds a heart rate: %s" % info)
+	_check(state.get("heart_rate") != null, "the fake rider's heart beats: %s" % state)
+	var chart: Dictionary = _torqa.ride_chart(100)
+	var power: PackedVector2Array = chart["power"]
+	_check(not power.is_empty(), "live chart: %s" % chart)
+	_saved_path = ""
+	_torqa.finish_ride()
+	_check(_saved_path.ends_with(".fit"), "workout saved")
+	var newest: Dictionary = _torqa.history()[0]
+	var route: String = newest["route"]
+	_check(route == "Smoke zone 2", "in the history by its name: %s" % newest)
 
 
 ## Waits for a signal and returns its arguments, failing after TIMEOUT_S.

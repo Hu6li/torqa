@@ -70,6 +70,11 @@ out (#53):
 
 A sped-up or jumped ride is saved, but counts towards no personal records.
 
+The simulated rider also has a heart rate (unless a real strap is connected): it rises with the
+power, follows it with a lag of about 40 s and creeps up over a long ride, so heart-rate
+workouts can be tried without a strap ([workouts.md](workouts.md)). Workouts are not sped up,
+since that heart beats in real time.
+
 ### Free camera controls
 
 | Keys or mouse | What it does |
