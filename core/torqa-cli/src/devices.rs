@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use tokio::sync::mpsc;
 use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
-use torqa_devices::fake::{self, FakeRider};
+use torqa_devices::fake::{self, FakeHeart, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::units::{Rpm, Watts};
 
@@ -34,6 +34,13 @@ pub(crate) struct DeviceArgs {
     scan_seconds: u64,
 }
 
+impl DeviceArgs {
+    /// Whether a heart rate is asked for: from a strap, or the fake rider's simulated heart.
+    pub(crate) fn heart_rate(&self) -> bool {
+        self.fake || self.hr.is_some()
+    }
+}
+
 /// The connected trainer and optional heart-rate sensor.
 pub(crate) struct Devices {
     pub(crate) trainer: DeviceHandle,
@@ -57,6 +64,8 @@ pub(crate) async fn connect(args: &DeviceArgs) -> Result<Devices> {
             FakeRider {
                 power: Watts(args.fake_power),
                 cadence: Rpm(args.fake_cadence),
+                // A real strap's heart rate is the one to use.
+                heart: args.hr.is_none().then(FakeHeart::default),
             },
             Duration::from_millis(250),
         ),

@@ -17,7 +17,7 @@ use torqa_app::media::MediaCommand;
 use torqa_app::view;
 use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
-use torqa_devices::fake::FakeRider;
+use torqa_devices::fake::{FakeHeart, FakeRider};
 use torqa_domain::profile::{Avatar, Profile, UnitSystem};
 use torqa_domain::units::{
     BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
@@ -563,7 +563,7 @@ impl TorqaApp {
             "heart_rate" => &series(|s| s.heart_rate.map(|h| h.0)),
             "cadence" => &series(|s| s.cadence.map(|c| c.0)),
             "speed_kmh" => &series(|s| Some(s.speed.as_kilometers_per_hour())),
-            "elevation_m" => &series(|s| Some(s.elevation.0)),
+            "elevation_m" => &series(|s| s.location.map(|l| l.elevation.0)),
             "power_zones" => &seconds(&detail.power_zones),
             "heart_rate_zones" => &seconds(&detail.heart_rate_zones),
         }
@@ -651,12 +651,13 @@ impl TorqaApp {
         self.app.as_ref().is_some_and(App::trainer_connected)
     }
 
-    /// Connects the simulated trainer.
+    /// Connects the simulated trainer, with a simulated heart rate.
     #[func]
     fn connect_fake_trainer(&mut self, power: f64, cadence: f64) -> bool {
         let choice = TrainerChoice::Fake(FakeRider {
             power: Watts(power),
             cadence: Rpm(cadence),
+            heart: Some(FakeHeart::default()),
         });
         self.command(|app| app.connect_trainer(choice))
     }
@@ -911,8 +912,10 @@ impl TorqaApp {
         let (Some(state), Some(route)) = (app.ride_state(), app.route()) else {
             return VarDictionary::new();
         };
-        let (x, y) =
-            LocalProjection::for_route(route).project(state.position.lat, state.position.lon);
+        let Some(position) = state.position else {
+            return VarDictionary::new();
+        };
+        let (x, y) = LocalProjection::for_route(route).project(position.lat, position.lon);
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
         let t = state.telemetry;
         let rider = &app.profile().profile;
@@ -921,14 +924,14 @@ impl TorqaApp {
         vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "distance_m" => state.distance.0,
-            "remaining_m" => state.remaining.0,
+            "remaining_m" => state.remaining.map_or(0.0, |r| r.0),
             "speed_kmh" => state.speed.as_kilometers_per_hour(),
-            "grade" => state.position.grade.0,
-            "elevation_m" => state.position.elevation.0,
+            "grade" => position.grade.0,
+            "elevation_m" => position.elevation.0,
             "x" => x,
             "y" => y,
-            "heading" => state.position.heading,
-            "curvature" => state.position.curvature,
+            "heading" => position.heading,
+            "curvature" => position.curvature,
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
             "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),

@@ -301,8 +301,10 @@ the realistic look's textures and patterns were replaced step by step.
   the references (R44)
 
 ### Phase 10 — Workout modes & overlay (R55–R56)
-- [ ] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
-  ramping) in the core, tested with the fake trainer and a simulated heart rate
+- [x] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
+  ramping) in the core, tested with the fake trainer and a simulated heart rate; rides without
+  a route (flat road, FIT as indoor cycling without positions); `torqa-cli ride --power` /
+  `--hr-zone` / `--hr-target`
 - [ ] Overlay window: transparent, borderless, always on top, movable and resizable, shows the
   rider's HUD; workout selection only; recorded as a ride
 - [ ] Overlay over full-screen apps on macOS (native window level / Spaces behaviour)

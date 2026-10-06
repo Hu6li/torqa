@@ -50,7 +50,8 @@ pub fn summarize(samples: &[Sample], ftp: Watts) -> RideSummary {
         elevation_gain: Meters(
             samples
                 .windows(2)
-                .map(|w| (w[1].elevation.0 - w[0].elevation.0).max(0.0))
+                .filter_map(|w| Some((w[0].location?, w[1].location?)))
+                .map(|(a, b)| (b.elevation.0 - a.elevation.0).max(0.0))
                 .sum(),
         ),
         avg_speed: MetersPerSecond(if seconds > 0.0 {
@@ -175,6 +176,7 @@ fn maximum(values: &[f64]) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use torqa_domain::recording::Location;
     use torqa_domain::units::GradePercent;
 
     use super::*;
@@ -189,12 +191,14 @@ mod tests {
                 let at = i as f64;
                 Sample {
                     elapsed: Duration::from_secs(i as u64),
-                    lat: 46.0,
-                    lon: 7.0,
-                    elevation: Meters(500.0 + at),
+                    location: Some(Location {
+                        lat: 46.0,
+                        lon: 7.0,
+                        elevation: Meters(500.0 + at),
+                        grade: GradePercent(1.0),
+                    }),
                     distance: Meters(8.0 * at),
                     speed: MetersPerSecond(8.0),
-                    grade: GradePercent(1.0),
                     power: power.map(Watts),
                     cadence: Some(Rpm(90.0)),
                     heart_rate: Some(BeatsPerMinute(140.0)),

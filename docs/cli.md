@@ -41,7 +41,7 @@ the electrodes) and while not connected to a watch or phone.
 |---|---|
 | `--trainer kickr` | Trainer by name (part of it, any case); default the strongest signal |
 | `--hr [name]` | Also connect a heart-rate strap, by name or the strongest |
-| `--fake` | The simulated trainer instead of Bluetooth (with `--hr`, a real strap still connects) |
+| `--fake` | The simulated trainer instead of Bluetooth, with a simulated heart rate (with `--hr`, a real strap connects instead) |
 | `--fake-power 200`, `--fake-cadence 90` | What the simulated rider pedals, in W and rpm |
 | `--scan-seconds 5` | How long to scan for the trainer and strap |
 
@@ -91,6 +91,35 @@ Map data: © [OpenFreeMap](https://openfreemap.org) © [OpenMapTiles](https://op
 data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 Terrain data: [Mapterhorn](https://mapterhorn.com/attribution) (CC BY 4.0) and
 [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
+
+## Ride a workout
+
+```sh
+./torqa-cli ride --power 200 --hr                    # hold 200 W (ERG) as long as you like
+./torqa-cli ride --hr-zone 3 --hr --max-hr 190 --ftp 250   # hold the middle of heart-rate zone 3
+./torqa-cli ride --hr-target 135 --hr --min-power 120 --max-power 220
+./torqa-cli ride --fake --hr-zone 2                  # try it with the simulated rider's heart
+```
+
+A workout needs no route: the trainer holds a power (ERG mode) and you ride a flat road, so speed
+and distance come from your power. A **heart-rate workout** adjusts that power continuously so
+your heart rate settles at the target: it starts at the minimum power, rises by at most 30 W a
+minute (heart rate lags power by 30–60 s, so faster changes would overshoot), never leaves the
+limits you set, and eases off as your heart rate drifts up during a long ride. Expect the target
+to be reached after about 5–10 minutes. Without a heart rate (strap off, or dropped out) the power
+stays where it is until the heart rate is back.
+
+| Option | Meaning |
+|---|---|
+| `--power 200` | Constant-power workout: hold this many watts |
+| `--hr-zone 3` | Heart-rate workout: hold the middle of this zone (1–5, e.g. 75 % of your maximum for zone 3) |
+| `--hr-target 140` | Heart-rate workout: hold this heart rate in bpm |
+| `--min-power 100`, `--max-power 250` | The least and most a heart-rate workout asks for, in W |
+| `--ftp 200`, `--max-hr 185` | Your FTP and maximum heart rate: the zones, and how much power a beat off target is worth |
+
+Live readings show the target power (and heart rate). End the workout with `q` or Ctrl+C; it is
+saved as a FIT file like a route ride, as indoor cycling without positions. `--mass`,
+`--output` and (for constant power only) `--time-scale` apply as for routes.
 
 ## Connection
 

@@ -84,17 +84,14 @@ mod tests {
     #[test]
     fn ride_series_averages_buckets_and_skips_gaps() {
         use std::time::Duration;
-        use torqa_domain::units::{GradePercent, Meters, MetersPerSecond, Watts};
+        use torqa_domain::units::{Meters, MetersPerSecond, Watts};
 
         let samples: Vec<Sample> = (0..10u32)
             .map(|i| Sample {
                 elapsed: Duration::from_secs(u64::from(i)),
-                lat: 46.0,
-                lon: 7.0,
-                elevation: Meters(0.0),
+                location: None,
                 distance: Meters(0.0),
                 speed: MetersPerSecond(0.0),
-                grade: GradePercent(0.0),
                 power: (i < 6).then(|| Watts(f64::from(i) * 10.0)),
                 cadence: None,
                 heart_rate: None,

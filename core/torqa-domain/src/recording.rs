@@ -9,24 +9,32 @@ use crate::units::{BeatsPerMinute, GradePercent, Joules, Meters, MetersPerSecond
 pub struct Sample {
     /// Time since the start of the ride.
     pub elapsed: Duration,
-    /// Latitude in degrees (WGS84).
-    pub lat: f64,
-    /// Longitude in degrees (WGS84).
-    pub lon: f64,
-    /// Elevation.
-    pub elevation: Meters,
+    /// Where on the road the rider was; `None` on rides without a route, such as workouts
+    /// (R56), and in activities recorded without positions.
+    pub location: Option<Location>,
     /// Distance from the start.
     pub distance: Meters,
     /// Virtual speed.
     pub speed: MetersPerSecond,
-    /// Road gradient.
-    pub grade: GradePercent,
     /// Power, if a power source is connected.
     pub power: Option<Watts>,
     /// Cadence, if known.
     pub cadence: Option<Rpm>,
     /// Heart rate, if a sensor is connected.
     pub heart_rate: Option<BeatsPerMinute>,
+}
+
+/// Where on the road a sample was taken.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Location {
+    /// Latitude in degrees (WGS84).
+    pub lat: f64,
+    /// Longitude in degrees (WGS84).
+    pub lon: f64,
+    /// Elevation.
+    pub elevation: Meters,
+    /// Road gradient.
+    pub grade: GradePercent,
 }
 
 /// Key figures of a recorded ride, for the history and its analysis (R31).
