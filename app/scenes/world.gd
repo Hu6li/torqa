@@ -183,6 +183,9 @@ var _plant_material: ShaderMaterial = ShaderMaterial.new()
 ## Other streets of the map (asphalt) and tracks and paths (gravel).
 var _street_material: ShaderMaterial = ShaderMaterial.new()
 var _track_material: ShaderMaterial = ShaderMaterial.new()
+var _rail_material: ShaderMaterial = ShaderMaterial.new()
+## The railways near the route, on their own lines like the road (#85).
+var _railways: MeshInstance3D = MeshInstance3D.new()
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -381,6 +384,11 @@ func _ready() -> void:
 		material.set_shader_parameter("surface_color", Palette.color(color))
 		material.set_shader_parameter("grass_color", Palette.color("ground.meadow"))
 		material.set_shader_parameter("middle_grass", surface[2])
+	_rail_material.shader = preload("res://shaders/rail.gdshader")
+	_rail_material.set_shader_parameter("ballast_color", Palette.color("road.ballast"))
+	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
+	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
+	add_child(_railways)
 	_rider.add_child(_avatar)
 	_ghost.accent = UiTheme.GHOST_COLOR
 	_ghost.ghostly = true
@@ -415,6 +423,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
 	_road.material_override = _road_material
+	_railways.mesh = _mesh_from(_torqa.railways_mesh())
+	_railways.material_override = _rail_material
 	_water.mesh = _mesh_from(_torqa.water_mesh())
 	_water.material_override = _water_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
@@ -438,7 +448,9 @@ func _build_some_chunks() -> void:
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
-		for surface: Array in [["streets", _street_material], ["tracks", _track_material]]:
+		for surface: Array in [
+			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
+		]:
 			var arrays: Dictionary = chunk.get(surface[0], {})
 			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
 			if not vertices.is_empty():

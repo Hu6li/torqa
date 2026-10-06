@@ -242,13 +242,18 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] The road's edge as a low bevel, not a step that reads as a wall (15 cm instead of
       25 cm, sloping gentler than 45°)
     - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)
-    - [ ] Water under roads, never over them: streams and rivers stop at road crossings
-      (culverts, bridges)
+    - [x] Water under roads, never over them: streams and rivers laid on the ground just
+      below every street and the road, so they pass under them; culverts left out
   - [ ] Nicer environment (#75):
-    - [ ] Water lies in the ground, never floating above it; better meeting of water, banks and
-      bridges (with the shore band of Polish)
-    - [ ] Railways: tracks on ballast, level crossings, railway bridges and tunnels (railways
-      are dropped from the map data today)
+    - [ ] Water lies in the ground, never floating above it (streams and rivers done: laid on
+      the ground); lakes still float where the ground at their shore is lower; better meeting
+      of water, banks and bridges (with the shore band of Polish)
+    - [x] Railways: main lines, narrow gauge, funiculars and light rail, each on a smooth line
+      of its own (railway grades, bridges and tunnels straight between their ends, tunnels
+      where the hill rises far above the track, viaducts where the ground falls far below it,
+      clear of the road ridden where they cross), shaping the ground like the road and
+      carrying its kind of bridges and tunnels; a bed of ballast with sleepers and rails;
+      plants keep off them
     - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
       so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
