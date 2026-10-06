@@ -234,15 +234,18 @@ the realistic look's textures and patterns are being replaced step by step.
   - [x] Free camera (#78): Shift + arrows look around, arrows alone move (the Shift speed boost
     is gone; the mouse wheel sets the speed); Shift + mouse works again: the app's root control
     took every mouse move over the 3D view, now it lets them through
-  - [ ] Nicer roads (#74):
+  - [x] Nicer roads (#74):
     - [x] Other streets never cut by the ground: draped along the ground's own triangles, so
       no grass shows through the asphalt and no street sinks into a slope
-    - [ ] Junctions joined cleanly where streets meet the road ridden: no kerb walls across the
-      mouths (done: the road's edge is road there), roundabouts as rings round a raised island
-      with a kerb (done); open: no jagged polygons where streets overlap at junctions
+    - [x] Junctions joined cleanly where streets meet the road ridden: no kerb walls across the
+      mouths (the road's edge is road there), roundabouts as rings round a raised island with a
+      kerb; streets meet each other and the road ridden with rounded kerbs in the corners, end
+      round and bend round, so no jagged polygons where they overlap
     - [x] The road's edge as a low bevel, not a step that reads as a wall (15 cm instead of
       25 cm, sloping gentler than 45°)
-    - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)
+    - [x] Kinks of the snapped route smoothed (S-bends where the track jumps between roads):
+      service roads, cycle paths and side streets right beside a bigger road are taken only
+      where the track clearly follows them, so the route no longer hops on and off them
     - [x] Water under roads, never over them: streams and rivers laid on the ground just
       below every street and the road, so they pass under them; culverts left out
   - [ ] Nicer environment (#75):

@@ -5,8 +5,9 @@
 //! Looking natural matters more than lying exactly on the map's lines.
 //!
 //! The road of every point is chosen for the whole track at once (the cheapest sequence, as in
-//! a hidden Markov model): near roads are cheap, roads running across the track and footpaths
-//! cost extra, and so does changing to another road unless the two meet.
+//! a hidden Markov model): near roads are cheap, roads running across the track, footpaths and
+//! lesser roads right beside bigger ones cost extra, and so does changing to another road unless
+//! the two meet.
 
 use std::collections::HashMap;
 
@@ -27,6 +28,14 @@ const HOP_COST: f64 = 60.0;
 const TURN_COST: f64 = 1.0;
 /// Extra cost of a road running across the track rather than along it, at right angles.
 const CROSSING_COST: f64 = 14.0;
+/// Extra cost of a lesser road (a service road, track or path) running alongside a bigger one
+/// within `SIDE_REACH_M`: frontage roads, car park aisles and cycle paths are mapped right
+/// beside the road, GPS wanders onto them, and every hop on and off draws an S-bend (#74). Only
+/// a track clearly following the lesser road takes it.
+const SIDE_ROAD_COST: f64 = 5.0;
+const SIDE_REACH_M: f64 = 15.0;
+/// Roads within this angle (cosine) of each other run alongside.
+const ALONGSIDE: f64 = 0.9;
 /// A road detour between two points much longer than the straight line is not what was ridden
 /// (e.g. a loop of the road between them): then the points are joined straight.
 const MAX_DETOUR: f64 = 2.5;
@@ -267,17 +276,24 @@ impl<'a> Network<'a> {
             .enumerate()
             .map(|(i, &point)| {
                 let heading = heading(positions, i);
+                let candidates: Vec<(Match, (f64, f64))> = self
+                    .candidates(point)
+                    .into_iter()
+                    .map(|m| (m, self.direction(m)))
+                    .collect();
                 let mut options = vec![(None, OFF_ROAD_COST)];
-                for m in self.candidates(point) {
-                    let line = &self.lines[m.road];
-                    let (a, b) = (line[m.segment], line[m.segment + 1]);
-                    let length = distance(a, b).max(1e-9);
-                    let direction = ((b.0 - a.0) / length, (b.1 - a.1) / length);
+                for &(m, direction) in &candidates {
                     let across = heading.map_or(0.0, |h| {
                         CROSSING_COST * (1.0 - (h.0 * direction.0 + h.1 * direction.1).abs())
                     });
-                    let cost =
-                        distance(m.at, point) + class_cost(self.roads[m.road].class) + across;
+                    let class = self.roads[m.road].class;
+                    let beside_bigger = candidates.iter().any(|&(other, way)| {
+                        self.roads[other.road].class < class
+                            && distance(other.at, m.at) < SIDE_REACH_M
+                            && (way.0 * direction.0 + way.1 * direction.1).abs() > ALONGSIDE
+                    });
+                    let side = if beside_bigger { SIDE_ROAD_COST } else { 0.0 };
+                    let cost = distance(m.at, point) + class_cost(class) + across + side;
                     options.push((Some(m), cost));
                 }
                 options
@@ -374,6 +390,14 @@ impl<'a> Network<'a> {
             }
         }
         best.map(|(_, found)| found)
+    }
+
+    /// The unit direction of the road's segment at `m`.
+    fn direction(&self, m: Match) -> (f64, f64) {
+        let line = &self.lines[m.road];
+        let (a, b) = (line[m.segment], line[m.segment + 1]);
+        let length = distance(a, b).max(1e-9);
+        ((b.0 - a.0) / length, (b.1 - a.1) / length)
     }
 
     fn closest_on(&self, road: usize, point: (f64, f64)) -> Option<Match> {
@@ -751,6 +775,64 @@ mod tests {
         let snapped = xy(&to_roads(&track, &[street, sidewalk]).track);
 
         assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
+    }
+
+    /// A main road north, and a service road branching off it at 100 m that runs 7.5 m beside
+    /// it and joins it again at 320 m, as frontage roads and car park aisles are mapped.
+    fn main_road_and_frontage() -> [Road; 2] {
+        [
+            road_of(RoadClass::Major, &[(0.0, -10.0), (0.0, 510.0)]),
+            road_of(
+                RoadClass::Service,
+                &[(0.0, 100.0), (7.5, 120.0), (7.5, 300.0), (0.0, 320.0)],
+            ),
+        ]
+    }
+
+    #[test]
+    fn a_service_road_alongside_does_not_pull_the_route_over() {
+        // GPS between them along the service road, a little nearer to it (#74).
+        let track: Vec<RawPoint> = (0..=50)
+            .map(|i| {
+                let y = f64::from(i) * 10.0;
+                point(
+                    if (130.0..=290.0).contains(&y) {
+                        4.0
+                    } else {
+                        1.0
+                    },
+                    y,
+                )
+            })
+            .collect();
+
+        let snapped = xy(&to_roads(&track, &main_road_and_frontage()).track);
+
+        assert!(snapped.iter().all(|(x, _)| x.abs() < 0.01), "{snapped:?}");
+    }
+
+    #[test]
+    fn a_service_road_clearly_ridden_is_kept() {
+        // GPS right on the service road along it.
+        let track: Vec<RawPoint> = (0..=50)
+            .map(|i| {
+                let y = f64::from(i) * 10.0;
+                point(
+                    if (130.0..=290.0).contains(&y) {
+                        7.2
+                    } else {
+                        0.5
+                    },
+                    y,
+                )
+            })
+            .collect();
+
+        let snapped = xy(&to_roads(&track, &main_road_and_frontage()).track);
+
+        for &(x, y) in snapped.iter().filter(|(_, y)| (150.0..=270.0).contains(y)) {
+            assert!((x - 7.5).abs() < 0.5, "{x} m east at {y} m");
+        }
     }
 
     #[test]

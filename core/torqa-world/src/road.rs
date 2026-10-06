@@ -316,6 +316,49 @@ impl RoadIndex {
         best
     }
 
+    /// The nearest point of the road within `reach` of (`east`, `north`) and the road's
+    /// direction there (unit, the way the route rides it).
+    pub(crate) fn heading(
+        &self,
+        east: f64,
+        north: f64,
+        reach: f64,
+    ) -> Option<((f64, f64), (f64, f64))> {
+        let (low_e, low_n) = cell_of(east - reach, north - reach);
+        let (high_e, high_n) = cell_of(east + reach, north + reach);
+        // Distance, segment and share along it.
+        let mut best: Option<(f64, usize, f64)> = None;
+        for ce in low_e..=high_e {
+            for cn in low_n..=high_n {
+                for &index in self.cells.get(&(ce, cn)).into_iter().flatten() {
+                    let segment = &self.segments[index];
+                    let (de, dn) = (segment.b.0 - segment.a.0, segment.b.1 - segment.a.1);
+                    let length_squared = de * de + dn * dn;
+                    if length_squared < 1e-12 {
+                        continue;
+                    }
+                    let t = (((east - segment.a.0) * de + (north - segment.a.1) * dn)
+                        / length_squared)
+                        .clamp(0.0, 1.0);
+                    let d = (east - segment.a.0 - de * t).hypot(north - segment.a.1 - dn * t);
+                    if d <= reach && best.is_none_or(|b| d < b.0) {
+                        best = Some((d, index, t));
+                    }
+                }
+            }
+        }
+        best.map(|(_, index, t)| {
+            let segment = &self.segments[index];
+            (
+                (
+                    segment.a.0 + (segment.b.0 - segment.a.0) * t,
+                    segment.a.1 + (segment.b.1 - segment.a.1) * t,
+                ),
+                direction(segment),
+            )
+        })
+    }
+
     /// Points along the road roughly every `spacing` metres, in metres east/north.
     pub(crate) fn samples(&self, spacing: f64) -> Vec<(f64, f64)> {
         let mut samples = Vec::new();

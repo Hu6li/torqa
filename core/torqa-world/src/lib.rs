@@ -9,6 +9,7 @@ mod buildings;
 mod channels;
 mod drape;
 mod horizon;
+mod junctions;
 mod landcover;
 mod minimap;
 mod palette;
@@ -102,6 +103,8 @@ struct Ways {
     network: railways::Network,
     streams: Vec<water::Stream>,
     pools: Vec<water::Pool>,
+    /// The rounded corners where streets meet.
+    corners: Vec<junctions::Corner>,
     /// Where plants keep off.
     clearance: streets::Clearance,
     /// Roundabouts' islands.
@@ -121,8 +124,10 @@ impl Ways {
         let network = railways::network(map, projection, road, model).await;
         let streams = water::streams(&map.waterways, projection, road);
         let pools = water::pools(&map.areas, projection, road);
+        let corners = junctions::corners(&streets, road);
         Self {
-            clearance: streets::Clearance::new(&streets, &network.railways, &pools),
+            clearance: streets::Clearance::new(&streets, &corners, &network.railways, &pools),
+            corners,
             islands: roundabouts::islands(map, projection),
             channels: channels::Channels::new(&streams, &pools, &streets),
             streets,
@@ -277,7 +282,7 @@ pub async fn generate<M: ElevationModel>(
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
         let (paved, mut unpaved) = streets::meshes(
-            streets,
+            (streets, &ways.corners),
             heights.origin,
             CHUNK_SIZE,
             &heights,
