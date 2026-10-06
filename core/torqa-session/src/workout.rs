@@ -1,11 +1,13 @@
-//! Workouts (R56): the trainer holds a target power (ERG) that the workout sets instead of
-//! following the road — a constant power, or one adjusted continuously to hold the rider's
-//! heart rate.
+//! Workouts (R56, R21): the trainer holds a target power (ERG) that the workout sets instead of
+//! following the road — a constant power, one adjusted continuously to hold the rider's heart
+//! rate, or the steps of a structured workout.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
-use torqa_domain::units::{BeatsPerMinute, Watts};
+use torqa_domain::units::{BeatsPerMinute, Rpm, Watts};
+use torqa_domain::workout::{Plan, Target};
 
 /// The heart-rate hold adjusts the power this often; straps report about once a second.
 const STEP: Duration = Duration::from_secs(1);
@@ -22,14 +24,24 @@ const MAX_RAMP: f64 = 0.5;
 /// From rest to threshold power (FTP) the heart rate rises by about this share of its maximum
 /// (from about 35 % to about 90 %).
 const REST_TO_THRESHOLD: f64 = 0.55;
+/// A structured workout's text cue shows this long.
+const CUE_SHOWS: Duration = Duration::from_secs(10);
 
 /// What a workout asks of the rider.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Workout {
     /// ERG at a fixed power, e.g. 200 W.
     ConstantPower(Watts),
     /// Power adjusted continuously so the heart rate settles at a target.
     HeartRate(HeartRateHold),
+    /// A structured workout (R21): each step's power for a rider with `ftp`. Free steps leave
+    /// the trainer simulating the road; without a route the ride ends after the last step.
+    Structured {
+        /// The steps.
+        plan: Arc<Plan>,
+        /// The rider's FTP, for steps given as a share of it.
+        ftp: Watts,
+    },
 }
 
 /// Holding a heart rate (R56). Heart rate lags power by 30–60 s, so the power ramps gently and
@@ -91,12 +103,42 @@ impl HeartRateHold {
 }
 
 /// What a workout asks for right now, for display.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkoutState {
-    /// The power the trainer is asked to hold.
-    pub target_power: Watts,
+    /// The power the trainer is asked to hold; `None` in a free step or after the last one.
+    pub target_power: Option<Watts>,
     /// The heart rate being held, in a heart-rate workout.
     pub target_heart_rate: Option<BeatsPerMinute>,
+    /// Where a structured workout stands.
+    pub progress: Option<Progress>,
+}
+
+/// Where a structured workout stands.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Progress {
+    /// Index of the step under way, and how many there are.
+    pub step: usize,
+    /// Number of steps.
+    pub steps: usize,
+    /// Time left in this step.
+    pub step_left: Duration,
+    /// Time left in the whole workout.
+    pub left: Duration,
+    /// The cadence this step asks for.
+    pub cadence: Option<Rpm>,
+    /// The step after this one.
+    pub next: Option<NextStep>,
+    /// A message of the workout to show now.
+    pub cue: Option<String>,
+}
+
+/// The step coming up in a structured workout.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NextStep {
+    /// The power it starts at; `None` for a free step.
+    pub power: Option<Watts>,
+    /// How long it lasts.
+    pub duration: Duration,
 }
 
 /// A workout under way: works out the power for the trainer as the ride goes on.
@@ -108,19 +150,23 @@ pub(crate) struct WorkoutControl {
     last_heart_rate: Option<f64>,
     /// Time since the last adjustment.
     pending: Duration,
+    /// Time since the workout started.
+    elapsed: Duration,
 }
 
 impl WorkoutControl {
     pub(crate) fn new(workout: Workout) -> Self {
-        let power = match workout {
+        let power = match &workout {
             Workout::ConstantPower(power) => power.0.max(0.0),
             Workout::HeartRate(hold) => hold.limits().0,
+            Workout::Structured { .. } => 0.0,
         };
         Self {
             workout,
             power,
             last_heart_rate: None,
             pending: Duration::ZERO,
+            elapsed: Duration::ZERO,
         }
     }
 
@@ -128,32 +174,78 @@ impl WorkoutControl {
     /// current power rather than starting over.
     pub(crate) fn change(&mut self, workout: Workout) {
         let current = self.power;
+        let carry_on = match &workout {
+            Workout::HeartRate(hold) => {
+                let (low, high) = hold.limits();
+                Some(current.clamp(low, high))
+            }
+            _ => None,
+        };
         *self = Self::new(workout);
-        if let Workout::HeartRate(hold) = workout {
-            let (low, high) = hold.limits();
-            self.power = current.clamp(low, high);
+        if let Some(power) = carry_on {
+            self.power = power;
         }
     }
 
-    pub(crate) fn power(&self) -> Watts {
-        Watts(self.power)
+    /// The power for the trainer now; `None` lets it simulate the road.
+    pub(crate) fn power(&self) -> Option<Watts> {
+        match &self.workout {
+            Workout::Structured { plan, ftp } => plan.at(self.elapsed, *ftp)?.power,
+            _ => Some(Watts(self.power)),
+        }
+    }
+
+    /// Whether a structured workout has run its last step; the others go on until stopped.
+    pub(crate) fn is_finished(&self) -> bool {
+        match &self.workout {
+            Workout::Structured { plan, .. } => self.elapsed >= plan.duration(),
+            _ => false,
+        }
     }
 
     pub(crate) fn state(&self) -> WorkoutState {
         WorkoutState {
             target_power: self.power(),
-            target_heart_rate: match self.workout {
-                Workout::ConstantPower(_) => None,
+            target_heart_rate: match &self.workout {
                 Workout::HeartRate(hold) => Some(hold.target),
+                _ => None,
+            },
+            progress: match &self.workout {
+                Workout::Structured { plan, ftp } => self.progress(plan, *ftp),
+                _ => None,
             },
         }
     }
 
+    fn progress(&self, plan: &Plan, ftp: Watts) -> Option<Progress> {
+        let at = plan.at(self.elapsed, ftp)?;
+        let next = plan.steps.get(at.step + 1).map(|step| NextStep {
+            power: match step.target {
+                Target::Power { from, .. } => Some(from.watts(ftp)),
+                Target::Free => None,
+            },
+            duration: step.duration,
+        });
+        Some(Progress {
+            step: at.step,
+            steps: plan.steps.len(),
+            step_left: at.left,
+            left: plan.duration().saturating_sub(self.elapsed),
+            cadence: plan.steps[at.step].cadence,
+            next,
+            cue: plan
+                .cue_at(self.elapsed, CUE_SHOWS)
+                .map(|cue| cue.text.clone()),
+        })
+    }
+
     /// Advances by `dt` with the latest heart rate.
     pub(crate) fn update(&mut self, heart_rate: Option<BeatsPerMinute>, dt: Duration) {
-        let Workout::HeartRate(hold) = self.workout else {
+        self.elapsed += dt;
+        let Workout::HeartRate(hold) = &self.workout else {
             return;
         };
+        let hold = *hold;
         self.pending += dt;
         while self.pending >= STEP {
             self.pending -= STEP;
@@ -212,7 +304,7 @@ mod tests {
 
         control.update(Some(BeatsPerMinute(180.0)), Duration::from_secs(60));
 
-        assert_eq!(control.power(), Watts(200.0));
+        assert_eq!(control.power(), Some(Watts(200.0)));
         assert_eq!(control.state().target_heart_rate, None);
     }
 
@@ -221,13 +313,13 @@ mod tests {
         let mut hold = HeartRateHold::zone(&rider(), 2, Watts(220.0), Watts(120.0));
         assert_eq!(
             WorkoutControl::new(Workout::HeartRate(hold)).power(),
-            Watts(120.0)
+            Some(Watts(120.0))
         );
 
         hold.min_power = Watts(-50.0);
         assert_eq!(
             WorkoutControl::new(Workout::HeartRate(hold)).power(),
-            Watts(0.0)
+            Some(Watts(0.0))
         );
     }
 
@@ -249,12 +341,12 @@ mod tests {
         let mut control = WorkoutControl::new(Workout::ConstantPower(Watts(180.0)));
 
         control.change(Workout::HeartRate(hold));
-        assert_eq!(control.power(), Watts(180.0));
+        assert_eq!(control.power(), Some(Watts(180.0)));
 
         control.change(Workout::HeartRate(HeartRateHold {
             max_power: Watts(150.0),
             ..hold
         }));
-        assert_eq!(control.power(), Watts(150.0), "within the new limits");
+        assert_eq!(control.power(), Some(Watts(150.0)), "within the new limits");
     }
 }

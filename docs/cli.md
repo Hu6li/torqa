@@ -115,9 +115,12 @@ stays where it is until the heart rate is back.
 | `--hr-zone 3` | Heart-rate workout: hold the middle of this zone (1–5, e.g. 75 % of your maximum for zone 3) |
 | `--hr-target 140` | Heart-rate workout: hold this heart rate in bpm |
 | `--min-power 100`, `--max-power 250` | The least and most a heart-rate workout asks for, in W |
-| `--ftp 200`, `--max-hr 185` | Your FTP and maximum heart rate: the zones, and how much power a beat off target is worth |
+| `--workout file.zwo` | Structured workout: a ZWO, ERG, MRC or FIT workout file, or `builtin:<name>` |
+| `--ftp 200`, `--max-hr 185` | Your FTP and maximum heart rate: the zones, how much power a beat off target is worth, and the watts of structured workouts |
 
-Live readings show the target power (and heart rate). End the workout with `q` or Ctrl+C; it is
+Live readings show the target power (and heart rate, or the step of a structured workout and its
+messages). `./torqa-cli workout builtins` lists the built-in workouts and
+`./torqa-cli workout my.zwo --ftp 250` shows a file's steps as Torqa reads them. End the workout with `q` or Ctrl+C; it is
 saved as a FIT file like a route ride, as indoor cycling without positions. `--mass`,
 `--output` and (for constant power only) `--time-scale` apply as for routes.
 

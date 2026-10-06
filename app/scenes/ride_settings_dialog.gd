@@ -30,7 +30,7 @@ func _ready() -> void:
 	_hud.name = tr("HUD")
 	_tabs.add_child(_hud)
 	add_child(_tabs)
-	_workout.changed.connect(func() -> void: workout_changed.emit(_workout.workout()))
+	_workout.changed.connect(_on_workout_changed)
 	_options.changed.connect(func() -> void: options_changed.emit(_options.options()))
 	_hud.layout_changed.connect(func(layout: PackedStringArray) -> void: hud_changed.emit(layout))
 	add_button(tr("Abort without saving"), true, "abort")
@@ -44,9 +44,12 @@ func _ready() -> void:
 	add_child(_confirm_abort)
 
 
-## The rider's heart-rate zones and FTP, for changing a workout (see `WorkoutOptions`).
-func configure_workout(zones: PackedVector2Array, ftp_w: float) -> void:
+## The rider's heart-rate zones, FTP and structured workouts, for changing a workout (see
+## `WorkoutOptions`); files are imported before a ride, not during it.
+func configure_workout(zones: PackedVector2Array, ftp_w: float, plans: Array) -> void:
 	_workout.configure(zones, ftp_w)
+	_workout.set_plans(plans)
+	_workout.allow_import(false)
 
 
 ## Opens the dialog showing the ride's current `options` and HUD `layout`; `world_options`
@@ -67,6 +70,12 @@ func edit(
 	_options.show_option_groups(world_options, not world_options, workout.is_empty())
 	_hud.edit(layout, imperial)
 	popup_centered(Vector2i(960, 600))
+
+
+func _on_workout_changed() -> void:
+	var workout: Dictionary = _workout.workout()
+	workout["plan"] = _workout.plan()
+	workout_changed.emit(workout)
 
 
 func _on_action(action: StringName) -> void:

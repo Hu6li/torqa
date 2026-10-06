@@ -1,8 +1,9 @@
 class_name WorkoutsTab
 extends HBoxContainer
-## The Workouts tab (R58): a constant power or a heart rate to hold (R56), ridden on its own
-## (the HUD only) or on a course in its 3D world → Start. A course's world is built once Start
-## is pressed, as on the course page.
+## The Workouts tab (R58): a constant power or a heart rate to hold (R56), or a structured
+## workout from the library (R21) with its steps shown, ridden on its own (the HUD only) or on
+## a course in its 3D world → Start. A course's world is built once Start is pressed, as on the
+## course page. Workout files are imported into the library here.
 
 ## Start was pressed for `workout` (`WorkoutOptions.workout()` with its `name`), on the course
 ## at `course_path` or on its own if empty.
@@ -12,6 +13,10 @@ signal ready_to_start
 
 var _torqa: TorqaApp
 var _options: WorkoutOptions = WorkoutOptions.new()
+## The structured workout chosen: what it is about and its steps.
+var _about: Label = Label.new()
+var _plan_chart: WorkoutChart = WorkoutChart.new()
+var _import_dialog: FileDialog = FileDialog.new()
 var _where: OptionButton = OptionButton.new()
 ## The course of each entry of `_where` after the first ("on its own").
 var _course_paths: PackedStringArray = PackedStringArray()
@@ -37,6 +42,8 @@ func bind(torqa: TorqaApp) -> void:
 func refresh() -> void:
 	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
 	_options.configure(_torqa.heart_rate_zones(), ftp)
+	_options.set_plans(_torqa.workouts())
+	_show_plan()
 	var chosen: String = course_path()
 	_where.clear()
 	_course_paths.clear()
@@ -63,10 +70,13 @@ func start_as_overlay() -> bool:
 	return _overlay.button_pressed
 
 
-## The workout chosen here, as `start_requested` hands it out.
+## The workout chosen here, as `start_requested` hands it out: `WorkoutOptions.workout()` with
+## its `name` (for the history and on screen) and, for a structured workout, its `plan`
+## (`TorqaApp.workouts()` entry).
 func workout() -> Dictionary:
 	var chosen: Dictionary = _options.workout()
 	chosen["name"] = _options.title()
+	chosen["plan"] = _options.plan()
 	return chosen
 
 
@@ -101,14 +111,36 @@ func _init() -> void:
 	heading.add_theme_font_size_override("font_size", 26)
 	left.add_child(heading)
 	var intro: Label = Label.new()
-	intro.text = tr("Hold a power, or a heart rate: Torqa then sets the power, changing it gently.")
+	intro.text = tr("Hold a power or a heart rate, or ride a structured workout step by step.")
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.add_theme_color_override("font_color", UiTheme.MUTED)
 	left.add_child(intro)
 	var options_panel: PanelContainer = PanelContainer.new()
-	options_panel.add_child(_options)
+	var options_rows: VBoxContainer = VBoxContainer.new()
+	options_rows.add_theme_constant_override("separation", 12)
+	options_rows.add_child(_options)
+	_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_about.add_theme_color_override("font_color", UiTheme.MUTED)
+	# Descriptions are the authors' own.
+	_about.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	options_rows.add_child(_about)
+	_plan_chart.custom_minimum_size = Vector2(0, 140)
+	options_rows.add_child(_plan_chart)
+	options_panel.add_child(options_rows)
 	left.add_child(options_panel)
 	add_child(left)
+	_options.changed.connect(_show_plan)
+	_options.import_requested.connect(func() -> void: _import_dialog.popup_centered_ratio(0.7))
+	_import_dialog.title = tr("Choose a workout file")
+	_import_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_import_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	var patterns: PackedStringArray = PackedStringArray()
+	for extension: String in TorqaApp.workout_extensions():
+		patterns.append("*." + extension)
+	_import_dialog.filters = PackedStringArray([", ".join(patterns) + " ; " + tr("Workouts")])
+	_import_dialog.use_native_dialog = true
+	_import_dialog.file_selected.connect(_import)
+	add_child(_import_dialog)
 
 	var panel: PanelContainer = PanelContainer.new()
 	panel.custom_minimum_size = Vector2(520, 0)
@@ -143,6 +175,29 @@ func _init() -> void:
 	right.add_child(_start_button)
 	panel.add_child(right)
 	add_child(panel)
+
+
+## The chosen structured workout's description and steps; nothing for the other kinds.
+func _show_plan() -> void:
+	var plan: Dictionary = _options.plan()
+	_about.visible = not plan.is_empty()
+	_plan_chart.visible = not plan.is_empty()
+	if plan.is_empty():
+		return
+	var description: String = plan["description"]
+	_about.text = description
+	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
+	var steps: Array = plan["steps"]
+	_plan_chart.set_steps(steps, ftp)
+
+
+func _import(path: String) -> void:
+	var id: String = _torqa.import_workout(path)
+	if id.is_empty():
+		return
+	_options.set_plans(_torqa.workouts(), id)
+	_show_plan()
+	_status.text = tr("Added to your workouts.")
 
 
 func _on_start_pressed() -> void:

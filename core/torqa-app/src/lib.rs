@@ -87,6 +87,9 @@ pub enum AppError {
     /// The video of a video course cannot be played.
     #[error("{0}")]
     Video(String),
+    /// A workout file cannot be read.
+    #[error("{0}")]
+    Workout(String),
 }
 
 /// Who to race against (R20).
@@ -1451,6 +1454,34 @@ impl App {
         Ok(())
     }
 
+    /// The workouts to choose from (R21): the built-in ones, then the library's files.
+    #[must_use]
+    pub fn workouts(&self) -> Vec<torqa_workouts::Entry> {
+        torqa_workouts::library(&torqa_workouts::library_dir(&self.data_dir))
+    }
+
+    /// Adds a workout file (ZWO, ERG, MRC or FIT) to the library; returns its id.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] if it is no workout Torqa understands or cannot be copied.
+    pub fn import_workout(&mut self, file: &Path) -> Result<String, AppError> {
+        torqa_workouts::import(&torqa_workouts::library_dir(&self.data_dir), file)
+            .map(|path| path.display().to_string())
+            .map_err(|e| AppError::Workout(e.to_string()))
+    }
+
+    /// A structured workout by its id (see [`App::workouts`]), for the active rider's FTP.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] if it cannot be read.
+    pub fn structured_workout(&self, id: &str) -> Result<Workout, AppError> {
+        let plan = torqa_workouts::load(id).map_err(|e| AppError::Workout(e.to_string()))?;
+        Ok(Workout::Structured {
+            plan: Arc::new(plan),
+            ftp: self.profile.profile.ftp,
+        })
+    }
+
     /// Changes the workout of the current workout, e.g. its target power or heart rate.
     pub fn change_workout(&mut self, workout: Workout) {
         if let Some(active) = &mut self.ride {
@@ -2436,7 +2467,10 @@ mod tests {
         );
         app.change_workout(Workout::ConstantPower(Watts(240.0)));
         assert_eq!(
-            app.ride_state().unwrap().workout.map(|w| w.target_power),
+            app.ride_state()
+                .unwrap()
+                .workout
+                .and_then(|w| w.target_power),
             Some(Watts(240.0))
         );
         let saved = app.finish_ride();
@@ -2507,6 +2541,37 @@ mod tests {
             "named after the course"
         );
         app.shutdown();
+    }
+
+    #[test]
+    fn workouts_come_built_in_and_from_imported_files() {
+        let dir = temp_dir("workout-library");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let file = dir.join("Tempo.erg");
+        std::fs::write(
+            &file,
+            "[COURSE HEADER]\nMINUTES WATTS\n[END COURSE HEADER]\n\
+             [COURSE DATA]\n0\t180\n20\t180\n[END COURSE DATA]\n",
+        )
+        .unwrap();
+        let builtin = app.workouts().len();
+
+        let id = app.import_workout(&file).unwrap();
+
+        let library = app.workouts();
+        assert_eq!(library.len(), builtin + 1);
+        assert_eq!(library.last().unwrap().id, id);
+        let Workout::Structured { plan, ftp } = app.structured_workout(&id).unwrap() else {
+            panic!("a structured workout");
+        };
+        assert_eq!(
+            (plan.name.as_str(), ftp),
+            ("Tempo", app.profile().profile.ftp)
+        );
+        assert!(matches!(
+            app.import_workout(&dir.join("missing.zwo")),
+            Err(AppError::Workout(_))
+        ));
     }
 
     #[test]

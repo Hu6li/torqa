@@ -2389,6 +2389,7 @@ dependencies = [
  "torqa-storage",
  "torqa-terrain",
  "torqa-video",
+ "torqa-workouts",
  "torqa-world",
  "tracing",
 ]
@@ -2408,6 +2409,7 @@ dependencies = [
  "torqa-session",
  "torqa-storage",
  "torqa-terrain",
+ "torqa-workouts",
  "torqa-world",
  "tracing-subscriber",
 ]
@@ -2439,6 +2441,7 @@ dependencies = [
  "torqa-physics",
  "torqa-routes",
  "torqa-session",
+ "torqa-workouts",
  "torqa-world",
  "tracing",
 ]
@@ -2525,6 +2528,17 @@ dependencies = [
  "quick-xml",
  "rav1d",
  "thiserror",
+]
+
+[[package]]
+name = "torqa-workouts"
+version = "0.1.0"
+dependencies = [
+ "embedded-io-adapters",
+ "quick-xml",
+ "rustyfit",
+ "torqa-domain",
+ "tracing",
 ]
 
 [[package]]

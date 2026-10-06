@@ -5,6 +5,7 @@ pub mod profile;
 pub mod recording;
 pub mod telemetry;
 pub mod units;
+pub mod workout;
 
 /// Human-readable application name.
 pub const APP_NAME: &str = "Torqa";

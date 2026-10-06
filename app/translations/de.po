@@ -839,8 +839,8 @@ msgstr "Tiefste Leistung"
 msgid "Highest power"
 msgstr "Höchste Leistung"
 
-msgid "Hold a power, or a heart rate: Torqa then sets the power, changing it gently."
-msgstr "Halte eine Leistung oder einen Puls: Torqa stellt dann die Leistung ein und ändert sie sanft."
+msgid "Hold a power or a heart rate, or ride a structured workout step by step."
+msgstr "Halte eine Leistung oder einen Puls, oder fahre ein strukturiertes Workout Schritt für Schritt."
 
 msgid "Where"
 msgstr "Wo"
@@ -880,3 +880,33 @@ msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video (O)"
 
 msgid "Start as overlay"
 msgstr "Als Overlay starten"
+
+msgid "Structured workout"
+msgstr "Strukturiertes Workout"
+
+msgid "Plan"
+msgstr "Plan"
+
+msgid "Import…"
+msgstr "Importieren…"
+
+msgid "Add a ZWO, ERG, MRC or FIT workout file"
+msgstr "Eine ZWO-, ERG-, MRC- oder FIT-Workout-Datei hinzufügen"
+
+msgid "Choose a workout file"
+msgstr "Workout-Datei wählen"
+
+msgid "Added to your workouts."
+msgstr "Zu deinen Workouts hinzugefügt."
+
+msgid "Free ride"
+msgstr "Frei fahren"
+
+msgid "Step %d of %d  ·  %s left"
+msgstr "Schritt %d von %d  ·  noch %s"
+
+msgid "Next: %d W for %s"
+msgstr "Danach: %d W während %s"
+
+msgid "Next: free ride for %s"
+msgstr "Danach: frei fahren während %s"

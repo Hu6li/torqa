@@ -63,6 +63,8 @@ var _backdrop: ColorRect = ColorRect.new()
 var _chart_panel: PanelContainer = PanelContainer.new()
 var _chart: RideChart = RideChart.new()
 var _chart_left: float = 0.0
+## A structured workout's steps above the chart, the part done dimmed.
+var _plan_chart: WorkoutChart = WorkoutChart.new()
 ## The overlay (R55): only the HUD and the workout, the rest of the screen hidden meanwhile.
 var _overlay_hud: OverlayHud = OverlayHud.new()
 var _overlay_button: Button = Button.new()
@@ -119,7 +121,8 @@ func begin(options: Dictionary) -> void:
 	_workout_panel.show_workout(_workout)
 	var rider: Dictionary = _torqa.profile()
 	var ftp: float = rider.get("ftp_w", 200.0)
-	_settings_dialog.configure_workout(_torqa.heart_rate_zones(), ftp)
+	_settings_dialog.configure_workout(_torqa.heart_rate_zones(), ftp, _torqa.workouts())
+	_show_plan(ftp)
 	_minimap.set_track(_torqa.track(2000))
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
@@ -236,6 +239,7 @@ func _process(delta: float) -> void:
 		_chart_left -= delta
 		if _chart_left <= 0.0:
 			_chart_left = CHART_EVERY_S
+			_plan_chart.progress_s = state["elapsed_s"]
 			var chart: Dictionary = _torqa.ride_chart(600)
 			var power: PackedVector2Array = chart["power"]
 			var heart_rate: PackedVector2Array = chart["heart_rate"]
@@ -323,6 +327,23 @@ func _on_workout_changed(workout: Dictionary) -> void:
 	_options["workout"] = workout
 	_torqa.change_workout(workout)
 	_workout_panel.show_workout(workout)
+	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
+	_show_plan(ftp)
+
+
+## A structured workout's steps over the chart, its time axis as long as the workout.
+func _show_plan(ftp: float) -> void:
+	var plan: Dictionary = _workout.get("plan", {})
+	_plan_chart.visible = not plan.is_empty()
+	_chart.min_duration = CHART_MIN_S
+	_chart.power_range = Vector2.ZERO
+	if plan.is_empty():
+		return
+	var steps: Array = plan["steps"]
+	_plan_chart.set_steps(steps, ftp)
+	var duration: float = plan["duration_s"]
+	_chart.min_duration = duration
+	_chart.power_range = Vector2(0.0, _plan_chart.top_w())
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:
@@ -370,8 +391,15 @@ func _build_backdrop() -> void:
 		caption.add_theme_color_override("font_color", color)
 		legend.add_child(caption)
 	rows.add_child(legend)
-	_chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	rows.add_child(_chart)
+	# A structured workout's steps lie behind the power and heart rate, on the same scales.
+	var area: Control = Control.new()
+	area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for chart: Control in [_plan_chart, _chart]:
+		chart.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		area.add_child(chart)
+	_plan_chart.modulate = Color(1, 1, 1, 0.4)
+	_plan_chart.hide()
+	rows.add_child(area)
 	_chart_panel.add_child(rows)
 	_chart_panel.hide()
 	add_child(_chart_panel)

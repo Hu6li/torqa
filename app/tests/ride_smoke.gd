@@ -119,6 +119,23 @@ func _workout() -> void:
 	var route: String = newest["route"]
 	_check(route == "Smoke zone 2", "in the history by its name: %s" % newest)
 
+	# A structured workout from the library (R21): its steps and their progress.
+	var plans: Array = _torqa.workouts()
+	_check(not plans.is_empty(), "built-in workouts")
+	var plan: Dictionary = plans[0]
+	var structured: Dictionary = {"kind": "plan", "id": plan["id"], "name": plan["name"]}
+	_check(_torqa.start_workout(structured, false, false), "structured workout started")
+	await create_timer(1.5).timeout
+	var progress: Variant = _torqa.ride_state()["workout"]["progress"]
+	_check(progress != null, "its progress: %s" % _torqa.ride_state()["workout"])
+	var steps: int = progress["steps"]
+	var plan_steps: Array = plan["steps"]
+	_check(steps == plan_steps.size(), "as many steps as listed: %s" % progress)
+	_check(
+		not _torqa.start_workout({"kind": "plan", "id": "builtin:none"}, false, false), "unknown"
+	)
+	_torqa.abort_ride()
+
 
 ## Waits for a signal and returns its arguments, failing after TIMEOUT_S.
 func _wait_for(sig: Signal) -> Array:

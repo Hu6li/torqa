@@ -16,6 +16,7 @@ torqa-routes.workspace = true
 torqa-session.workspace = true
 torqa-storage.workspace = true
 torqa-terrain.workspace = true
+torqa-workouts.workspace = true
 torqa-video.workspace = true
 torqa-world.workspace = true
 thiserror.workspace = true

@@ -22,6 +22,7 @@ use torqa_domain::profile::{Avatar, Profile, UnitSystem};
 use torqa_domain::units::{
     BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
 };
+use torqa_domain::workout::Target;
 use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
 use torqa_session::workout::{HeartRateHold, Workout};
@@ -758,11 +759,12 @@ impl TorqaApp {
         self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
     }
 
-    /// Starts a workout (R56) as the active rider: `{kind, power_w, zone, bpm, min_w, max_w,
-    /// name}` with `kind` one of `power` (hold `power_w`), `zone` (hold the middle of heart-rate
-    /// zone `zone`, 1–5) or `bpm` (hold `bpm`), the heart-rate ones between `min_w` and
-    /// `max_w`. On the loaded course in 3D if `on_course` (R58), else on its own, going into
-    /// the history as `name`. Emits `failed` and returns false if it cannot start.
+    /// Starts a workout (R56, R21) as the active rider: `{kind, power_w, zone, bpm, min_w,
+    /// max_w, id, name}` with `kind` one of `power` (hold `power_w`), `zone` (hold the middle of
+    /// heart-rate zone `zone`, 1–5), `bpm` (hold `bpm`) — the heart-rate ones between `min_w`
+    /// and `max_w` — or `plan` (the structured workout `id` from `workouts()`). On the loaded
+    /// course in 3D if `on_course` (R58), else on its own, going into the history as `name`.
+    /// Emits `failed` and returns false if it cannot start.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn start_workout(
@@ -771,10 +773,9 @@ impl TorqaApp {
         on_course: bool,
         flat_descents: bool,
     ) -> bool {
-        let Some(app) = self.app.as_ref() else {
+        let Some(parsed) = self.workout_of(&workout) else {
             return false;
         };
-        let parsed = workout_from(&workout, &app.profile().profile);
         let name = workout
             .get("name")
             .and_then(|v| v.try_to::<GString>().ok())
@@ -792,9 +793,107 @@ impl TorqaApp {
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn change_workout(&mut self, workout: VarDictionary) {
-        if let Some(app) = self.app.as_mut() {
-            let parsed = workout_from(&workout, &app.profile().profile);
+        if let Some(parsed) = self.workout_of(&workout)
+            && let Some(app) = self.app.as_mut()
+        {
             app.change_workout(parsed);
+        }
+    }
+
+    /// The structured workouts to choose from (R21): `[{id, name, description, duration_s,
+    /// builtin, steps}]`, the built-in ones first. `steps` are `[{duration_s, from_w, to_w}]`
+    /// for the active rider's FTP, the power `null` in free steps.
+    #[func]
+    fn workouts(&self) -> VarArray {
+        let Some(app) = self.app.as_ref() else {
+            return VarArray::new();
+        };
+        let ftp = app.profile().profile.ftp;
+        let mut array = VarArray::new();
+        for entry in app.workouts() {
+            let mut steps = VarArray::new();
+            for step in &entry.plan.steps {
+                let (from, to) = match step.target {
+                    Target::Power { from, to } => {
+                        (from.watts(ftp).0.to_variant(), to.watts(ftp).0.to_variant())
+                    }
+                    Target::Free => (Variant::nil(), Variant::nil()),
+                };
+                steps.push(
+                    &vdict! {
+                        "duration_s" => step.duration.as_secs_f64(),
+                        "from_w" => &from,
+                        "to_w" => &to,
+                    }
+                    .to_variant(),
+                );
+            }
+            array.push(
+                &vdict! {
+                    "id" => entry.id.as_str(),
+                    "name" => entry.plan.name.as_str(),
+                    "description" => entry.plan.description.as_str(),
+                    "duration_s" => entry.plan.duration().as_secs_f64(),
+                    "builtin" => entry.id.starts_with(torqa_workouts::BUILTIN),
+                    "steps" => &steps,
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// The extensions of workout files, for file dialogs.
+    #[func]
+    fn workout_extensions() -> PackedStringArray {
+        torqa_workouts::extensions()
+            .into_iter()
+            .map(GString::from)
+            .collect()
+    }
+
+    /// Adds a workout file to the library; returns its id, or "" (and emits `failed`).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn import_workout(&mut self, path: GString) -> GString {
+        let Some(app) = self.app.as_mut() else {
+            return GString::new();
+        };
+        match app.import_workout(std::path::Path::new(&path.to_string())) {
+            Ok(id) => GString::from(id.as_str()),
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                GString::new()
+            }
+        }
+    }
+
+    /// The workout a `start_workout()` dictionary describes; `None` (and `failed`) if its
+    /// structured workout cannot be read.
+    fn workout_of(&mut self, workout: &VarDictionary) -> Option<Workout> {
+        let app = self.app.as_ref()?;
+        let text = |key: &str| {
+            workout
+                .get(key)
+                .and_then(|v| v.try_to::<GString>().ok())
+                .map(|k| k.to_string())
+                .unwrap_or_default()
+        };
+        if text("kind") != "plan" {
+            return Some(workout_from(workout, &app.profile().profile));
+        }
+        match app.structured_workout(&text("id")) {
+            Ok(parsed) => Some(parsed),
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                None
+            }
         }
     }
 
@@ -1013,8 +1112,10 @@ impl TorqaApp {
     /// watts_per_kg, power_zone, heart_rate_zone, metrics, workout}`, and on a route also
     /// `{remaining_m, grade, elevation_m, x, y, heading, curvature, ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when not riding.
-    /// `workout` is `{target_power_w, target_heart_rate}` in a workout (the heart rate `null`
-    /// at constant power), else `null`. `x`/`y` are metres east/north of the route start, as in
+    /// `workout` is `{target_power_w, target_heart_rate, progress}` in a workout, else `null`:
+    /// the power `null` in a free step, the heart rate `null` but in a heart-rate hold, and
+    /// `progress` of a structured workout `{step, steps, step_left_s, left_s, cadence, next:
+    /// {power_w, duration_s}, cue}` (`next` `null` in the last step), else `null`. `x`/`y` are metres east/north of the route start, as in
     /// `track()`; `heading` is the direction of travel in radians clockwise from north,
     /// `curvature` how sharply the road bends there (1 / radius, positive to the right).
     #[func]
@@ -1041,10 +1142,28 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
-            "workout" => &state.workout.map_or_else(Variant::nil, |w| {
+            "workout" => &state.workout.as_ref().map_or_else(Variant::nil, |w| {
                 vdict! {
-                    "target_power_w" => w.target_power.0,
+                    "target_power_w" => &optional(w.target_power.map(|p| p.0)),
                     "target_heart_rate" => &optional(w.target_heart_rate.map(|h| h.0)),
+                    "progress" => &w.progress.as_ref().map_or_else(Variant::nil, |p| {
+                        vdict! {
+                            "step" => i64::try_from(p.step).unwrap_or(0),
+                            "steps" => i64::try_from(p.steps).unwrap_or(0),
+                            "step_left_s" => p.step_left.as_secs_f64(),
+                            "left_s" => p.left.as_secs_f64(),
+                            "cadence" => &optional(p.cadence.map(|c| c.0)),
+                            "next" => &p.next.map_or_else(Variant::nil, |n| {
+                                vdict! {
+                                    "power_w" => &optional(n.power.map(|w| w.0)),
+                                    "duration_s" => n.duration.as_secs_f64(),
+                                }
+                                .to_variant()
+                            }),
+                            "cue" => p.cue.as_deref().unwrap_or_default(),
+                        }
+                        .to_variant()
+                    }),
                 }
                 .to_variant()
             }),
