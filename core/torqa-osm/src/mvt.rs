@@ -52,10 +52,17 @@ pub(crate) fn merge(
                         }
                     }
                 }
-                "poi" if shop(tags.text("class")) => {
+                "poi" => {
+                    let list = match tags.text("class") {
+                        class if shop(class) => &mut data.shops,
+                        "lodging" if hotel(tags.text("subclass")) => &mut data.hotels,
+                        "office" => &mut data.offices,
+                        class if public(class, tags.text("subclass")) => &mut data.public,
+                        _ => continue,
+                    };
                     for point in points(geometry) {
                         if projection.owns(point) {
-                            data.shops.push(projection.point(point.0, point.1));
+                            list.push(projection.point(point.0, point.1));
                         }
                     }
                 }
@@ -97,6 +104,22 @@ fn shop(class: &str) -> bool {
             | "ice_cream"
             | "bank"
     )
+}
+
+/// Whether lodging of this subclass is a hotel-like building (not a chalet or a campsite).
+fn hotel(subclass: &str) -> bool {
+    matches!(subclass, "hotel" | "guest_house" | "hostel" | "motel")
+}
+
+/// Whether a point of interest marks a public building: a school, hospital, town hall and the
+/// like.
+fn public(class: &str, subclass: &str) -> bool {
+    match class {
+        "school" | "college" | "library" | "police" | "fire_station" | "town_hall" => true,
+        "hospital" => subclass == "hospital",
+        "post" => subclass == "post_office",
+        _ => false,
+    }
 }
 
 /// Feature properties.
@@ -325,7 +348,11 @@ fn land_cover(layer: &str, class: &str) -> Option<LandCover> {
         ("landcover", "farmland") => Some(LandCover::Farmland),
         ("landcover", "rock" | "ice" | "sand") => Some(LandCover::Rock),
         ("landuse", "residential" | "suburb") => Some(LandCover::Residential),
-        ("landuse", "commercial" | "industrial" | "retail") => Some(LandCover::Industrial),
+        ("landuse", "industrial") => Some(LandCover::Industrial),
+        ("landuse", "commercial" | "retail") => Some(LandCover::Commercial),
+        ("landuse", "school" | "college" | "university" | "kindergarten" | "hospital") => {
+            Some(LandCover::Public)
+        }
         ("water", _) => Some(LandCover::Water),
         _ => None,
     }
@@ -476,6 +503,55 @@ mod tests {
         }
         assert_eq!(road_class("minor", "", ""), Some(RoadClass::Street));
         assert_eq!(road_class("rail", "rail", ""), None);
+    }
+
+    #[test]
+    fn hotels_offices_and_public_buildings_are_told_apart() {
+        for subclass in ["hotel", "guest_house", "hostel", "motel"] {
+            assert!(hotel(subclass), "{subclass}");
+        }
+        // Chalets and campsites to rent are no hotel buildings.
+        assert!(!hotel("chalet") && !hotel("camp_site"));
+        for (class, subclass) in [
+            ("school", "school"),
+            ("school", "kindergarten"),
+            ("college", "university"),
+            ("hospital", "hospital"),
+            ("town_hall", "townhall"),
+            ("police", "police"),
+            ("post", "post_office"),
+            ("library", "library"),
+            ("fire_station", "fire_station"),
+        ] {
+            assert!(public(class, subclass), "{class} / {subclass}");
+        }
+        // Clinics and post boxes are not.
+        assert!(!public("hospital", "clinic") && !public("post", "post_box"));
+        assert!(!public("office", "company"));
+    }
+
+    #[test]
+    fn commercial_and_public_land_are_told_from_industrial() {
+        assert_eq!(
+            land_cover("landuse", "industrial"),
+            Some(LandCover::Industrial)
+        );
+        for class in ["commercial", "retail"] {
+            assert_eq!(land_cover("landuse", class), Some(LandCover::Commercial));
+        }
+        for class in [
+            "school",
+            "college",
+            "university",
+            "kindergarten",
+            "hospital",
+        ] {
+            assert_eq!(
+                land_cover("landuse", class),
+                Some(LandCover::Public),
+                "{class}"
+            );
+        }
     }
 
     #[test]

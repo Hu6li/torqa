@@ -344,7 +344,7 @@ enum WorldPlan {
     /// Right after the route.
     Now,
     /// Once asked for (riding a course), with the route's map data when it is loaded.
-    OnRequest(Option<torqa_osm::MapData>),
+    OnRequest(Option<Box<torqa_osm::MapData>>),
 }
 
 /// Frames of the video handed out during a ride, and whether a problem was reported.
@@ -965,7 +965,7 @@ impl App {
         if let WorldPlan::OnRequest(map) = std::mem::replace(&mut self.world_plan, WorldPlan::Now)
             && let (Some(route), Some(map)) = (self.route.clone(), map)
         {
-            self.generate_world(route, map);
+            self.generate_world(route, *map);
         }
         false
     }
@@ -1921,7 +1921,7 @@ impl App {
                     let map = imported.map.clone();
                     self.route_loaded(*imported, events);
                     if let WorldPlan::OnRequest(waiting) = &mut self.world_plan {
-                        *waiting = Some(map);
+                        *waiting = Some(Box::new(map));
                     } else if let Some(route) = self.route.clone() {
                         self.generate_world(route, map);
                     }
@@ -1935,7 +1935,7 @@ impl App {
                             let map = imported.map.clone();
                             self.route_loaded(imported, events);
                             // Ridden along the video, or in 3D once asked for (#44).
-                            self.world_plan = WorldPlan::OnRequest(Some(map));
+                            self.world_plan = WorldPlan::OnRequest(Some(Box::new(map)));
                             if !self.from_course
                                 && let Err(error) = self.save_course()
                             {

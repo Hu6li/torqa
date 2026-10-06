@@ -40,6 +40,11 @@ size. That gives:
 - chalets with timber walls and deep eaves in the mountains;
 - farmhouses under big roofs in the countryside;
 - apartment blocks, and metal-clad halls on industrial land;
+- offices with bands of glass on commercial land or where the map has offices;
+- hotels with balconies all along their fronts, where the map has a hotel or guest house;
+- schools, town halls, hospitals and the like, where the map has them or on school and
+  hospital grounds: an entrance bay under a canopy and a flag, classic under a hipped roof or
+  modern with bands of colour at every floor;
 - houses and sheds everywhere else;
 - shops, cafés and restaurants with a glazed front and an awning onto their street, where the map
   has one.

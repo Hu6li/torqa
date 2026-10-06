@@ -28,7 +28,7 @@ func _run() -> void:
 		if not wanted.is_empty() and not wanted.has(model):
 			continue
 		var mesh: Mesh = BuildingModels.mesh(model)
-		_show(mesh)
+		_show(mesh, model)
 		for frame: int in range(20):
 			await process_frame
 		root.get_texture().get_image().save_png(out.path_join(model + ".png"))
@@ -85,8 +85,9 @@ func _stage() -> void:
 	_camera.make_current()
 
 
-## Three instances of `mesh` in a row, the camera framing them from the front corner.
-func _show(mesh: Mesh) -> void:
+## Three instances of `mesh` (model `model`) in a row, the camera framing them from the front
+## corner.
+func _show(mesh: Mesh, model: String) -> void:
 	var size: Vector3 = mesh.get_aabb().size
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -99,9 +100,17 @@ func _show(mesh: Mesh) -> void:
 		var variant: Array = VARIANTS[i]
 		var offset: float = (i - (VARIANTS.size() - 1) / 2.0) * spacing
 		multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(offset, 0.0, 0.0)))
-		var plaster: Color = Palette.colors("buildings.walls")[variant[0]]
+		# Offices, hotels and flat-roofed public buildings: modern walls, an accent colour.
+		var modern: bool = (
+			model.begins_with("office")
+			or model.begins_with("hotel")
+			or model.begins_with("public_flat")
+		)
+		var walls: String = "buildings.modern_walls" if modern else "buildings.walls"
+		var plaster: Color = Palette.colors(walls)[variant[0]]
 		multimesh.set_instance_color(i, plaster)
-		var roof: Color = Palette.colors("buildings.tiles")[variant[1]]
+		var roofs: String = "buildings.accents" if modern else "buildings.tiles"
+		var roof: Color = Palette.colors(roofs)[variant[1]]
 		var custom: float = variant[2]
 		multimesh.set_instance_custom_data(i, Color(roof.r, roof.g, roof.b, custom))
 	_row.multimesh = multimesh

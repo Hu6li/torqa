@@ -43,10 +43,12 @@ pub(crate) enum Style {
     /// A shop front on the ground floor: big panes over a low base, a fascia above; the colour
     /// is the frame's.
     Shop = 10,
+    /// Offices: a band of glass along every storey between plain spandrels.
+    Ribbon = 11,
 }
 
 impl Style {
-    const LAST: f32 = 10.0;
+    const LAST: f32 = 11.0;
 
     /// How often windows repeat along a wall of this style, if they do.
     fn window_spacing(self) -> Option<f64> {
@@ -59,6 +61,15 @@ impl Style {
 
     fn alpha(self) -> f32 {
         f32::from(self as u8) / Self::LAST
+    }
+
+    /// The style code stored in a vertex colour's alpha.
+    #[cfg(test)]
+    pub(crate) fn code(alpha: f32) -> u8 {
+        // A small non-negative code.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let code = (alpha * Self::LAST).round() as u8;
+        code
     }
 }
 

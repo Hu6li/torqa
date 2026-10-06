@@ -366,6 +366,10 @@ fn buildings_by_chunk<'a>(
         let (e, n) = buildings::centroid(&footprint);
         let setting = if land.has(e, n, LandCover::Industrial) {
             buildings::Setting::Industrial
+        } else if land.has(e, n, LandCover::Commercial) {
+            buildings::Setting::Commercial
+        } else if land.has(e, n, LandCover::Public) {
+            buildings::Setting::Public
         } else if land.has(e, n, LandCover::Residential) {
             buildings::Setting::Town
         } else {
@@ -377,9 +381,17 @@ fn buildings_by_chunk<'a>(
             setting,
             church: false,
             shop: None,
+            purpose: None,
         });
     }
     buildings::mark_churches(&mut plots, &project(&map.churches));
+    for (points, purpose) in [
+        (&map.offices, buildings::Purpose::Office),
+        (&map.hotels, buildings::Purpose::Hotel),
+        (&map.public, buildings::Purpose::Public),
+    ] {
+        buildings::mark_purpose(&mut plots, &project(points), purpose);
+    }
     buildings::mark_shops(&mut plots, &project(&map.shops), &frontage);
 
     let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();

@@ -1,9 +1,10 @@
 //! Buildings from OpenStreetMap footprints (R45). The map rarely says more than the outline
-//! and sometimes a height, so what a building is gets guessed from where it stands and its
-//! size: churches from places of worship, halls on industrial land, chalets in the mountains,
-//! farmhouses as large buildings in the countryside, blocks from their height or size in
-//! towns, sheds from their size, and houses otherwise. Each kind gets its own proportions,
-//! roof, materials and details.
+//! and sometimes a height, so what a building is gets guessed from where it stands, what is in
+//! it and its size: churches from places of worship, hotels, offices and public buildings
+//! (schools, hospitals, town halls) from the points of interest in them or the land they stand
+//! on, halls on industrial land, chalets in the mountains, farmhouses as large buildings in the
+//! countryside, blocks from their height or size in towns, sheds from their size, and houses
+//! otherwise. Each kind gets its own proportions, roof, materials and details.
 
 mod models;
 mod parts;
@@ -16,7 +17,8 @@ use torqa_osm::Building;
 
 use crate::{BuildingCell, HeightGrid, MeshData, hash, palette};
 use models::{Fit, Wanted};
-use parts::{Builder, Paint, Pitch, RoofPaint, Style};
+pub(crate) use parts::Style;
+use parts::{Builder, Paint, Pitch, RoofPaint};
 pub(crate) use shape::{Point, centroid, contains, footprint, signed_area, triangulate};
 use shape::{Rect, distance};
 
@@ -39,6 +41,13 @@ const CHALETS_ONLY: f64 = 1100.0;
 const CHURCH_REACH: f64 = 30.0;
 /// Churches smaller than this are chapels.
 const CHAPEL_AREA: f64 = 150.0;
+/// Public buildings, hotels and offices are at least this large; smaller ones are what their
+/// size says (a kindergarten in a house, a guest house).
+const PUBLIC_AREA: f64 = 250.0;
+const HOTEL_AREA: f64 = 150.0;
+const OFFICE_AREA: f64 = 150.0;
+/// Larger low buildings on commercial land are stores, built as halls.
+const STORE_AREA: f64 = 2500.0;
 /// Models' walls reach 3 m below their ground floor; on plots falling more than this they
 /// would float, so those buildings keep their shells.
 const MODEL_BASEMENT: f64 = 2.8;
@@ -53,6 +62,11 @@ type Colours = LazyLock<Vec<[f32; 3]>>;
 static PLASTER: Colours = LazyLock::new(|| palette::list("buildings.walls"));
 /// Plaster of light blocks, churches and masonry ground floors: creams and off-whites.
 static LIGHT_PLASTER: Colours = LazyLock::new(|| palette::list("buildings.light_walls"));
+/// Walls of offices, hotels and public buildings, and some blocks (#75): cream, pale yellow,
+/// pale blue, pale sage, off-white, brick.
+static MODERN: Colours = LazyLock::new(|| palette::list("buildings.modern_walls"));
+/// Their trim, bands and canopies: coral, teal, blue, plum, yellow, sage.
+static ACCENTS: Colours = LazyLock::new(|| palette::list("buildings.accents"));
 /// Timber: browns of the palette.
 static WOOD: Colours = LazyLock::new(|| palette::list("buildings.timber"));
 /// Roof tiles: coral, terracotta, brick, then two slate greys.
@@ -112,6 +126,12 @@ pub(crate) enum Kind {
     Hall,
     /// A church with a tower, or a chapel with a turret on its roof.
     Church,
+    /// Offices: bands of glass between plain spandrels over a glazed ground floor.
+    Office,
+    /// A school, hospital, town hall and the like: wide, symmetrical, with a marked entrance.
+    Public,
+    /// A hotel: balconies all along its fronts, an entrance under a canopy.
+    Hotel,
 }
 
 /// Where a building stands.
@@ -119,8 +139,12 @@ pub(crate) enum Kind {
 pub(crate) enum Setting {
     /// In a residential area.
     Town,
-    /// On industrial, commercial or retail land.
+    /// On industrial land.
     Industrial,
+    /// On commercial or retail land.
+    Commercial,
+    /// On the grounds of a school, college, university or hospital.
+    Public,
     /// Anywhere else.
     Countryside,
 }
@@ -135,6 +159,17 @@ pub(crate) struct Plot<'a> {
     pub(crate) church: bool,
     /// A shop, café or the like is in it: the point of the street its front faces.
     pub(crate) shop: Option<Point>,
+    /// What the points of interest in or by it say it is used for.
+    pub(crate) purpose: Option<Purpose>,
+}
+
+/// What a building is used for, from the points of interest in or by it; later ones win over
+/// earlier ones where a building has several.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Purpose {
+    Office,
+    Hotel,
+    Public,
 }
 
 /// Shop fronts are this high, their awnings reach this far out.
@@ -143,6 +178,8 @@ const AWNING_REACH: f64 = 1.4;
 
 /// Shop points this far from a building's outline still belong to it (mapped by the door).
 const SHOP_REACH: f64 = 8.0;
+/// So do hotel, office and public points (mapped by the entrance or on the grounds).
+const PURPOSE_REACH: f64 = 12.0;
 /// A shop's street lies at most this far from its building's middle.
 const STREET_REACH: f64 = 40.0;
 /// Index cell size of [`Frontage`].
@@ -235,6 +272,27 @@ pub(crate) fn mark_shops(plots: &mut [Plot], shops: &[Point], frontage: &Frontag
             continue;
         }
         plot.shop = frontage.nearest(centroid(&plot.footprint), STREET_REACH);
+    }
+}
+
+/// Marks the plots the `points` (hotels, offices or public buildings) lie in or by as used for
+/// `purpose`.
+pub(crate) fn mark_purpose(plots: &mut [Plot], points: &[Point], purpose: Purpose) {
+    for &point in points {
+        let inside = plots.iter().position(|p| contains(&p.footprint, point));
+        let nearby = || {
+            plots
+                .iter()
+                .enumerate()
+                .map(|(k, p)| (k, outline_distance(&p.footprint, point)))
+                .filter(|&(_, d)| d < PURPOSE_REACH)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(k, _)| k)
+        };
+        if let Some(index) = inside.or_else(nearby) {
+            let plot = &mut plots[index];
+            plot.purpose = plot.purpose.max(Some(purpose));
+        }
     }
 }
 
@@ -397,10 +455,14 @@ fn shell(
     };
     if let Some(fit) = fit {
         let mut matched = design.clone();
-        matched.roof = if fit.model.roof == "hipped" {
-            Roof::Hipped
-        } else {
-            Roof::Gable
+        matched.roof = match fit.model.roof.as_str() {
+            "hipped" => Roof::Hipped,
+            // Flat-roofed models end in a parapet as their designs do.
+            "flat" => match design.roof {
+                Roof::Flat { parapet } => Roof::Flat { parapet },
+                Roof::Gable | Roof::Hipped => Roof::Flat { parapet: 0.7 },
+            },
+            _ => Roof::Gable,
         };
         if let Some(pitch) = fit.model.pitch {
             matched.pitch_degrees = pitch;
@@ -507,9 +569,18 @@ impl Instance<'_> {
     }
 }
 
-/// The plaster and roof colours of a building (sRGB), for its model.
+/// The plaster and roof colours of a building (sRGB), for its model. Flat-roofed offices,
+/// hotels and public buildings have their accent colour in place of the roof's.
 fn colours(building: &Building, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32; 3]) {
-    if let Some(design) = design {
+    if let Some(design) = design
+        && matches!(design.kind, Kind::Office | Kind::Public | Kind::Hotel)
+    {
+        let accent = match (design.roof, design.trim) {
+            (Roof::Flat { .. }, Some(trim)) => trim.band.rgb,
+            _ => design.roof_paint.top.rgb,
+        };
+        (design.wall.rgb, accent)
+    } else if let Some(design) = design {
         (
             design.base.unwrap_or(design.wall).rgb,
             design.roof_paint.top.rgb,
@@ -528,7 +599,8 @@ fn storeys_of(walls: f64) -> u32 {
     count
 }
 
-/// What a building is, from its surroundings, size, mapped height and elevation.
+/// What a building is, from what is in it, its surroundings, size, mapped height and
+/// elevation.
 fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     if plot.church {
         return Kind::Church;
@@ -537,13 +609,29 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     if area < 30.0 && height.is_none_or(|h| h < 5.0) {
         return Kind::Shed;
     }
+    // Guest houses in a house, a doctor's office or a post office in a shop stay what they
+    // look like.
+    match plot.purpose {
+        Some(Purpose::Public) if area >= PUBLIC_AREA => return Kind::Public,
+        Some(Purpose::Hotel) if area >= HOTEL_AREA => return Kind::Hotel,
+        Some(Purpose::Office) if area >= OFFICE_AREA => return Kind::Office,
+        _ => {}
+    }
     if height.is_some_and(|h| h >= 12.0) {
-        return Kind::Block;
+        return if plot.setting == Setting::Commercial {
+            Kind::Office
+        } else {
+            Kind::Block
+        };
     }
     let alpine = dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     match plot.setting {
-        Setting::Industrial if area < 80.0 => Kind::Shed,
+        Setting::Industrial | Setting::Commercial if area < 80.0 => Kind::Shed,
         Setting::Industrial => Kind::Hall,
+        // Big low buildings on commercial land are stores, the rest offices.
+        Setting::Commercial if area > STORE_AREA && height.is_none_or(|h| h < 10.0) => Kind::Hall,
+        Setting::Commercial if area >= OFFICE_AREA => Kind::Office,
+        Setting::Public if area >= PUBLIC_AREA => Kind::Public,
         Setting::Town if area > 400.0 => Kind::Block,
         Setting::Countryside if area > 1500.0 => Kind::Hall,
         _ if alpine => Kind::Chalet,
@@ -633,13 +721,18 @@ struct Design {
     trim: Option<Trim>,
 }
 
-/// The finish of a block (#75): light trim against the walls, as in its references.
+/// The finish of a block, office, hotel or public building (#75): trim that stands out
+/// against the walls, as in its references.
 #[derive(Debug, Clone, Copy)]
 struct Trim {
     /// Cornice and string course.
     band: Paint,
     /// Balconies on the long sides, if any.
     balconies: Option<Paint>,
+    /// A band at every floor, not only over the ground storey.
+    floors: bool,
+    /// Balconies in every column of windows rather than every other.
+    every_column: bool,
 }
 
 fn design(kind: Kind, building: &Building, rectangular: bool, dice: &Dice) -> Design {
@@ -655,6 +748,9 @@ fn design(kind: Kind, building: &Building, rectangular: bool, dice: &Dice) -> De
         Kind::Farmhouse => recipe.farmhouse(),
         Kind::Shed => recipe.shed(),
         Kind::Block => recipe.block(),
+        Kind::Office => recipe.office(),
+        Kind::Public => recipe.public(),
+        Kind::Hotel => recipe.hotel(),
         // `church` builds churches; none get here.
         Kind::Hall | Kind::Church => recipe.hall(),
     }
@@ -827,10 +923,10 @@ impl Recipe<'_> {
     fn block(&self) -> Design {
         // Coloured or light walls, and trim that stands out against them, as in the
         // references (#75): white on colour, an accent colour on light walls.
-        let palette: &[[f32; 3]] = if self.dice.roll(13) < 0.6 {
-            &PLASTER
-        } else {
-            &LIGHT_PLASTER
+        let palette: &[[f32; 3]] = match self.dice.roll(13) {
+            r if r < 0.45 => &PLASTER,
+            r if r < 0.75 => &LIGHT_PLASTER,
+            _ => &MODERN,
         };
         let wall = self.facade(palette, Style::Plaster);
         let light = luminance(wall.rgb) > 0.85;
@@ -877,8 +973,112 @@ impl Recipe<'_> {
             chimney: false,
             gable_windows: None,
             balcony: false,
-            trim: Some(Trim { band, balconies }),
+            trim: Some(Trim {
+                band,
+                balconies,
+                floors: false,
+                every_column: false,
+            }),
         }
+    }
+
+    /// Flat-roofed, with a cornice in an accent colour and machinery on the roof.
+    fn modern(&self, wall: Paint, base: Paint, trim: Trim, walls: f64) -> Design {
+        Design {
+            kind: self.kind,
+            walls,
+            windows: true,
+            roof: Roof::Flat { parapet: 0.7 },
+            pitch_degrees: 25.0,
+            max_rise: 4.0,
+            overhang: 0.5,
+            verge: 0.5,
+            wall,
+            base: Some(base),
+            roof_paint: RoofPaint {
+                top: self.paint(&FLAT, 8, Style::Flat),
+                under: wall.with(Style::Blank),
+                gables: wall.with(Style::Blank),
+            },
+            chimney: false,
+            gable_windows: None,
+            balcony: false,
+            trim: Some(trim),
+        }
+    }
+
+    fn office(&self) -> Design {
+        // Bands of glass between plain spandrels, over a glazed ground floor framed in the
+        // accent colour.
+        let wall = self.facade(&MODERN[..5], Style::Ribbon);
+        let accent = self.paint(&ACCENTS, 14, Style::Blank);
+        let trim = Trim {
+            band: accent,
+            balconies: None,
+            floors: false,
+            every_column: false,
+        };
+        let walls = storeys(3.0 + (self.dice.roll(3) * 4.0).floor());
+        self.modern(wall, accent.with(Style::Shop), trim, walls)
+    }
+
+    fn public(&self) -> Design {
+        // Either classic — light plaster over a stone ground floor under a hipped roof, white
+        // trim — or modern like most schools and hospitals: flat-roofed, a band of colour at
+        // every floor.
+        let classic = self.rectangular && self.dice.roll(4) < 0.45;
+        let walls = storeys(2.0 + (self.dice.roll(3) * 3.0).floor());
+        if !classic {
+            let wall = self.facade(&MODERN[..5], Style::Plaster);
+            let trim = Trim {
+                band: self.paint(&ACCENTS, 14, Style::Blank),
+                balconies: None,
+                floors: true,
+                every_column: false,
+            };
+            return self.modern(wall, wall, trim, walls);
+        }
+        let wall = self.facade(&LIGHT_PLASTER, Style::Plaster);
+        Design {
+            kind: self.kind,
+            walls,
+            windows: true,
+            roof: Roof::Hipped,
+            pitch_degrees: 26.0 + 6.0 * self.dice.roll(6),
+            max_rise: 5.0,
+            overhang: 0.6,
+            verge: 0.6,
+            wall,
+            base: Some(Paint::new(*STONE, Style::Plaster)),
+            roof_paint: RoofPaint {
+                top: self.paint(&TILES, 8, Style::Tiles),
+                under: wall.with(Style::Blank),
+                gables: wall.with(Style::Blank),
+            },
+            chimney: false,
+            gable_windows: None,
+            balcony: false,
+            trim: Some(Trim {
+                band: Paint::new(*WHITE, Style::Blank),
+                balconies: None,
+                floors: false,
+                every_column: false,
+            }),
+        }
+    }
+
+    fn hotel(&self) -> Design {
+        // Balconies in every column in the accent colour, a glazed ground floor.
+        let wall = self.facade(&MODERN, Style::Plaster);
+        let accent = self.paint(&ACCENTS, 14, Style::Blank);
+        let trim = Trim {
+            band: accent,
+            balconies: Some(accent),
+            floors: false,
+            every_column: true,
+        };
+        let walls = storeys(3.0 + (self.dice.roll(3) * 4.0).floor());
+        self.modern(wall, accent.with(Style::Shop), trim, walls)
     }
 
     fn hall(&self) -> Design {
@@ -998,7 +1198,11 @@ fn build(
             balcony(b, &rect, walls, design.wall.rgb, dice);
         }
     }
-    if design.kind == Kind::Block && parapet.is_some() && dice.roll(11) < 0.6 {
+    let tall_kind = matches!(
+        design.kind,
+        Kind::Block | Kind::Office | Kind::Public | Kind::Hotel
+    );
+    if tall_kind && parapet.is_some() && dice.roll(11) < 0.6 {
         // Stairs and lift machinery on the roof.
         let housing = Rect {
             centre: rect.point((dice.roll(12) - 0.5) * rect.half_length, 0.0),
@@ -1028,7 +1232,14 @@ fn finish(
     trim: Trim,
     dice: &Dice,
 ) {
-    if base && ground + STOREY < eaves {
+    if trim.floors {
+        // A band at every floor up to the top storey's.
+        let mut floor = ground + STOREY;
+        while floor < eaves - STOREY / 2.0 {
+            b.band(outline, (floor - 0.2, floor + 0.2), 0.1, trim.band);
+            floor += STOREY;
+        }
+    } else if base && ground + STOREY < eaves {
         let floor = ground + STOREY;
         b.band(outline, (floor - 0.12, floor + 0.12), 0.08, trim.band);
     }
@@ -1042,7 +1253,7 @@ fn finish(
         return;
     };
     if let Some(paint) = trim.balconies {
-        balconies(b, rect, (ground, eaves), paint, dice);
+        balconies(b, rect, (ground, eaves), (paint, trim.every_column), dice);
     }
     if wall_top > eaves {
         let units = if dice.roll(17) < 0.4 {
@@ -1083,9 +1294,15 @@ fn luminance([r, g, b]: [f32; 3]) -> f32 {
 const BALCONY_DEPTH: f64 = 1.2;
 
 /// Stacked balconies on a block's long sides, one storey over another from the first floor up,
-/// in every other column of windows (never the outermost), each a solid box: slab and
-/// balustrade in one, below its window.
-fn balconies(b: &mut Builder, rect: &Rect, (ground, eaves): (f64, f64), paint: Paint, dice: &Dice) {
+/// in every other column of windows or `every` one (never the outermost), each a solid box:
+/// slab and balustrade in one, below its window.
+fn balconies(
+    b: &mut Builder,
+    rect: &Rect,
+    (ground, eaves): (f64, f64),
+    (paint, every): (Paint, bool),
+    dice: &Dice,
+) {
     let length = 2.0 * rect.half_length;
     // The windows' columns, as the walls lay them out (whole windows, `walls_facing`).
     let columns = (length / parts::WINDOW_SPACING).round();
@@ -1097,7 +1314,7 @@ fn balconies(b: &mut Builder, rect: &Rect, (ground, eaves): (f64, f64), paint: P
     let parity = i64::from(dice.roll(19) < 0.5);
     #[allow(clippy::cast_possible_truncation)] // a few dozen columns and storeys
     for column in 1..columns as i64 - 1 {
-        if (column + parity) % 2 != 0 {
+        if !every && (column + parity) % 2 != 0 {
             continue;
         }
         #[allow(clippy::cast_precision_loss)] // small numbers
@@ -1433,6 +1650,7 @@ mod tests {
             setting,
             church,
             shop: None,
+            purpose: None,
         }
     }
 
@@ -1507,6 +1725,76 @@ mod tests {
             kind(&plot(&house, Setting::Town, true), 300.0, 450.0, &dice),
             Kind::Church
         );
+    }
+
+    #[test]
+    fn what_is_in_a_building_sets_its_kind() {
+        let building = untagged(4);
+        let with = |purpose, area| {
+            let plot = Plot {
+                purpose: Some(purpose),
+                ..plot(&building, Setting::Town, false)
+            };
+            kind(&plot, area, 450.0, &Dice(4))
+        };
+
+        assert_eq!(with(Purpose::Hotel, 400.0), Kind::Hotel);
+        assert_eq!(with(Purpose::Office, 400.0), Kind::Office);
+        assert_eq!(with(Purpose::Public, 600.0), Kind::Public);
+        // A guest house or a doctor's office in a family house stays a house.
+        assert_eq!(with(Purpose::Hotel, 110.0), Kind::House);
+        assert_eq!(with(Purpose::Office, 110.0), Kind::House);
+        // Churches stay churches, whatever else is mapped in them.
+        let church = Plot {
+            purpose: Some(Purpose::Public),
+            ..plot(&building, Setting::Town, true)
+        };
+        assert_eq!(kind(&church, 600.0, 450.0, &Dice(4)), Kind::Church);
+    }
+
+    #[test]
+    fn commercial_land_has_offices_and_stores_and_public_land_public_buildings() {
+        let all = |kinds: Vec<Kind>, expected: Kind| kinds.iter().all(|&k| k == expected);
+
+        assert!(all(kinds(Setting::Commercial, 600.0, 450.0), Kind::Office));
+        assert!(all(kinds(Setting::Commercial, 4000.0, 450.0), Kind::Hall));
+        assert!(all(kinds(Setting::Commercial, 50.0, 450.0), Kind::Shed));
+        assert!(all(kinds(Setting::Public, 800.0, 450.0), Kind::Public));
+        // A caretaker's house on the school grounds.
+        assert!(all(kinds(Setting::Public, 120.0, 450.0), Kind::House));
+    }
+
+    #[test]
+    fn points_mark_the_building_they_lie_in_or_beside() {
+        let (a, b) = (untagged(1), untagged(2));
+        let square = |east: f64| {
+            vec![
+                (east, 0.0),
+                (east + 10.0, 0.0),
+                (east + 10.0, 10.0),
+                (east, 10.0),
+            ]
+        };
+        let mut plots = vec![
+            Plot {
+                footprint: square(0.0),
+                ..plot(&a, Setting::Town, false)
+            },
+            Plot {
+                footprint: square(50.0),
+                ..plot(&b, Setting::Town, false)
+            },
+        ];
+
+        // An office inside the first, a hotel at the second's door; nothing for one far off.
+        mark_purpose(&mut plots, &[(5.0, 5.0)], Purpose::Office);
+        mark_purpose(&mut plots, &[(55.0, -4.0), (55.0, -60.0)], Purpose::Hotel);
+        assert_eq!(plots[0].purpose, Some(Purpose::Office));
+        assert_eq!(plots[1].purpose, Some(Purpose::Hotel));
+        // A public building wins over an office in the same building, whichever comes first.
+        mark_purpose(&mut plots, &[(5.0, 5.0)], Purpose::Public);
+        mark_purpose(&mut plots, &[(5.0, 5.0)], Purpose::Office);
+        assert_eq!(plots[0].purpose, Some(Purpose::Public));
     }
 
     #[test]

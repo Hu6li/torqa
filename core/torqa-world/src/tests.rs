@@ -1358,7 +1358,7 @@ impl Face {
     }
 
     fn style(&self) -> u8 {
-        (self.color[3] * 10.0).round() as u8
+        buildings::Style::code(self.color[3])
     }
 }
 
@@ -1584,7 +1584,7 @@ async fn walls_show_whole_windows_only() {
             for (k, color) in mesh.colors.iter().enumerate() {
                 // Windowed walls: plaster and timber every 3.2 m, churches every 4.5 m.
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // style codes
-                let spacing = match (color[3] * 10.0).round() as u8 {
+                let spacing = match buildings::Style::code(color[3]) {
                     0 | 2 => 3.2,
                     4 => 4.5,
                     _ => continue,
@@ -1730,6 +1730,66 @@ async fn halls_on_industrial_land_are_low_and_clad_in_metal() {
     let walls = faces.iter().filter(|f| f.normal[1].abs() < 0.1);
     assert!(walls.clone().any(|f| f.style() == 5), "metal cladding");
     assert!(walls.clone().all(|f| f.style() != 0), "no house windows");
+}
+
+#[tokio::test]
+async fn offices_hotels_and_public_buildings_come_from_the_map() {
+    // Long sides north–south, so the eastward slope falls little across them.
+    let building = |id: i64, east: f64, north: f64, half_east: f64, half_north: f64| Building {
+        id,
+        outline: rectangle(east, north, half_east, half_north),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let land = |cover: LandCover, east: f64, north: f64| Area {
+        cover,
+        outer: vec![square(east, north, 45.0)],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            // On commercial land.
+            building(1, 200.0, 300.0, 8.0, 15.0),
+            // A hotel and a town hall marked by their points.
+            building(2, -150.0, 450.0, 6.5, 12.0),
+            building(3, -150.0, 600.0, 7.0, 13.0),
+            // On a school's grounds.
+            building(4, 200.0, 700.0, 8.0, 19.0),
+            // A guest house in a family house stays a house.
+            building(5, -150.0, 800.0, 5.0, 6.0),
+        ],
+        areas: vec![
+            land(LandCover::Commercial, 200.0, 300.0),
+            land(LandCover::Public, 200.0, 700.0),
+        ],
+        hotels: vec![at(-150.0, 450.0), at(-151.0, 805.0)],
+        public: vec![at(-152.0, 600.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let placed = placed(&world);
+    let model_at = |east: f32, north: f32| {
+        placed
+            .iter()
+            .find(|p| (p.origin[0] - east).hypot(-p.origin[2] - north) < 3.0)
+            .map(|p| p.model.clone())
+            .unwrap_or_default()
+    };
+    for (east, north, kind) in [
+        (200.0, 300.0, "office"),
+        (-150.0, 450.0, "hotel"),
+        (-150.0, 600.0, "public"),
+        (200.0, 700.0, "public"),
+        (-150.0, 800.0, "house"),
+    ] {
+        let model = model_at(east, north);
+        assert!(
+            model.starts_with(kind),
+            "{model} at {east}, {north}, not {kind}"
+        );
+    }
 }
 
 #[tokio::test]
