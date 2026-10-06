@@ -17,7 +17,10 @@ and ghost panels on the right, and one **Settings** button (or key **S**).
 **Settings** opens the ride settings; changes apply at once and the ride keeps going:
 
 - **Ride**: camera (chase, first person, drone), trainer difficulty, descents ridden like flat
-  roads, time of day and weather — the same options as on the course page.
+  roads, time of day and weather — the same options as on the course page. Mornings bring
+  fog lying in the valleys, which you climb out of; haze and rain thicken it. In rain, faceted
+  drops fall, roads and streets turn darker with a soft sheen, and puddles stand where they are
+  level.
 - **HUD**: arrange your figures (see [hud.md](hud.md)).
 - **Finish & save** ends the ride, saves it and shows its summary (name it there; see
   [history.md](history.md)).
@@ -85,9 +88,9 @@ A sped-up or jumped ride is saved, but counts towards no personal records.
 
 | Preset | For | What it adds |
 |---|---|---|
-| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds, plain-coloured ground, detailed buildings within 200 m |
-| Medium | MacBook with M1 (60 fps) | textured ground and asphalt, grass and flowers swaying in the wind (60 m), detailed buildings within 400 m, ambient occlusion, soft-edged shadows, lit clouds, haze |
-| High | stronger GPUs | bounced light (SSIL), sun-sized soft shadows, light volumetric fog, grass to 100 m with shadows, detailed buildings within 550 m, 35 % more view distance |
-| Ultra | fast GPUs | global illumination (SDFGI), larger shadow maps, detailed buildings within 750 m, 70 % more view distance |
+| Low | weaker computers | rendered at reduced resolution and sharpened (FSR), shorter view, simpler shadows and clouds, detailed buildings within 200 m, fewer raindrops |
+| Medium | MacBook with M1 (60 fps) | grass and flowers swaying in the wind (60 m), detailed buildings within 400 m, ambient occlusion, soft-edged shadows, lit clouds, haze |
+| High | stronger GPUs | sun-sized soft shadows to 600 m, grass to 120 m with shadows, detailed buildings within 600 m, 40 % more view distance |
+| Ultra | fast GPUs | larger shadow maps to 900 m, grass to 180 m, detailed buildings within 900 m, 80 % more view distance |
 
 If a ride stays well below 60 fps, Torqa suggests a lower preset once.

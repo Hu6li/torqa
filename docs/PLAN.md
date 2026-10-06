@@ -201,7 +201,7 @@ the realistic look's textures and patterns are being replaced step by step.
 - [x] Asset pipeline: Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted
   models, an in-game preview renderer (`scripts/render-models.sh`), agent skills for the look,
   the pipeline and render review (`.claude/skills`)
-- [ ] Stylized look, step by step (ADR 0011):
+- [x] Stylized look, step by step (ADR 0011):
   - [x] Foundation: one palette for core and shaders (`app/assets/palette.json`); standard
     views rendered before and after every visual change (`scripts/render-views.sh`)
   - [x] Ground, water, roads and sky: faceted ground coloured by land cover (rock on steep
@@ -222,9 +222,12 @@ the realistic look's textures and patterns are being replaced step by step.
     each seated on a scripted bike sized to their legs and reach (`art/riders`); cadence-driven
     pedalling (legs by inverse kinematics, ankling, a little sway); the rider chosen per
     profile
-  - [ ] Polish (#103): stylized rain and fog, presets tuned to the new look (done: a band of gravel
-    along the shores of lakes and rivers; low-poly clouds made in Blender, lit by the sun and
-    the weather, more, bigger and lower as it clouds over)
+  - [x] Polish (#103): a band of gravel along the shores of lakes and rivers; low-poly clouds
+    made in Blender, lit by the sun and the weather, more, bigger and lower as it clouds over;
+    faceted raindrops falling straight round the camera, wet roads and streets with polygonal
+    puddles where they are level; pastel haze thicker in low sun, fog lying in the route's low
+    ground (thick on mornings); presets without SSIL, SDFGI or volumetric fog, their budget
+    given to grass, models and shadows further out, raindrops per preset
 - [ ] Feedback round after the riders (issues #74–#79), in this order:
   - [x] Nicer riders (#76): hair over the scalp (to the nape for her, short for him) and a
     longer ponytail; helmets shaped from the head they sit on, drawn out at the back, with vent
@@ -293,8 +296,8 @@ the realistic look's textures and patterns are being replaced step by step.
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look
-- **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
-  references (R44)
+- **Exit:** a long hilly course at 60 fps on M1 base at Medium (#111); screenshots reviewed against
+  the references (R44)
 
 ### Phase 10 — Workout modes & overlay (R55–R56)
 - [ ] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
