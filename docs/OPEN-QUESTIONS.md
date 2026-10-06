@@ -2,6 +2,36 @@
 
 Things to review or decide together. Newest first; remove entries once settled.
 
+## 2026-10-06 — Phases 7 and 10: workouts, overlay, extras
+
+### Needs your hardware
+
+- **Heart-rate hold on the KICKR** (#114, #118): Workouts → Heart-rate zone, with your strap.
+  The controller is tuned on simulated hearts (settles in 5–10 min, no overshoot, at most
+  30 W a minute); how much power a beat is worth comes from your FTP and maximum heart rate.
+  Tell me if it swings around the target, takes too long, or ramps too fast for comfort.
+- **Overlay on the Mac** (overlay PR): please try moving it by its bar, resizing it by the
+  corner grip, clicking beside it (should reach the window below), and whether it stays on top
+  of a browser playing a video while Torqa is not the active app. **Full view** should bring
+  the window back as it was, full screen included. Allowing see-through windows is a project
+  setting now; check that a normal 3D ride keeps its frame rate.
+
+### Decisions I took (say if you want them otherwise)
+
+- **Workouts on a course count for the course's records**: ERG holds the power, but it is
+  still your power that moves you along. The summary and records treat them like any ride.
+- **Workout names in the history** (e.g. "Heart-rate zone 3") are in the interface language
+  of the moment the workout was ridden, like course names they are data, not translated later.
+- **Overlay from course rides too** (R57): "button in ride/workout mode" read as any ride; a
+  course ride in the overlay keeps following its gradient with the world hidden.
+
+### Needs a decision
+
+- **Per-computer settings in the synced data folder**: the overlay's place and the graphics
+  quality are per computer, but live in `settings.toml` of the data directory, which may be
+  synced (R30). With two computers sharing it, the last one to save wins. Move them to a
+  per-computer config file (next to the cache)?
+
 ## 2026-10-03 — Phase 5: video courses
 
 ### Needs your hardware

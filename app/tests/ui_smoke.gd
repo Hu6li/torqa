@@ -2,6 +2,8 @@ extends SceneTree
 ## Headless checks of UI behaviour that needs no ride: the HUD editor (R51).
 ## Run: godot --headless --path app -s res://tests/ui_smoke.gd
 
+const MAIN_SCENE: String = "res://scenes/main.tscn"
+
 var _failed: bool = false
 
 
@@ -18,6 +20,7 @@ func _run() -> void:
 	_video_alignment()
 	_translations()
 	await _free_camera()
+	await _overlay()
 	_clouds()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -371,7 +374,7 @@ func _check(condition: bool, what: String) -> void:
 ## The free camera (#66, #78) with input as it arrives in the running app: through the
 ## interface, which must let the mouse through to the world.
 func _free_camera() -> void:
-	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()
 	root.add_child(main)
 	await process_frame
 	(main.get_node("StartPage") as Control).hide()
@@ -408,6 +411,52 @@ func _free_camera() -> void:
 	var moved: Vector3 = camera.position - place
 	_check(moved.dot(camera.basis.x) < -0.01, "left alone moves left: %s" % moved)
 	_check(camera.rotation.is_equal_approx(before), "arrows alone do not turn")
+	main.free()
+
+
+## The overlay (R55, R57): the window turns into the HUD alone, on top, and back as it was.
+func _overlay() -> void:
+	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()
+	root.add_child(main)
+	await process_frame
+	(main.get_node("StartPage") as Control).hide()
+	var ride: RideScreen = main.get_node("RideScreen")
+	ride.begin({"workout": {"kind": "zone", "zone": 3}, "on_course": false})
+	ride.show()
+	var metrics: Control = main.get_node("RideScreen/MetricsPanel")
+	var window: Window = root
+	var scale_before: Vector2i = window.content_scale_size
+
+	ride.overlay_requested.emit(true)
+	for i: int in range(3):
+		await process_frame
+	_check(ride.is_overlay() and not metrics.visible, "only the overlay shows")
+	# Headless, the window has no flags of its own: they are checked on a real display.
+	var flags: bool = window.borderless and window.always_on_top and window.transparent
+	_check(
+		window.disable_3d and (flags or DisplayServer.get_name() == "headless"),
+		"a borderless window on top, see-through, no world drawn"
+	)
+	var base: Vector2 = ride.overlay_content_size()
+	_check(
+		base.x >= OverlayHud.HUD_WIDTH and window.content_scale_size == Vector2i(base.ceil()),
+		"the content scales with the window: %s, %s" % [base, window.content_scale_size]
+	)
+	_check(window.mouse_passthrough_polygon.size() == 4, "clicks beside it go through")
+
+	var back: InputEventKey = InputEventKey.new()
+	back.keycode = KEY_O
+	back.pressed = true
+	root.push_input(back)
+	await process_frame
+	_check(not ride.is_overlay() and metrics.visible, "O brings the whole screen back")
+	_check(
+		not window.borderless and not window.always_on_top and not window.disable_3d,
+		"the window as it was"
+	)
+	_check(window.content_scale_size == scale_before, "the scale as it was")
+	var torqa: TorqaApp = main.get_node("Torqa")
+	_check(torqa.overlay_window().size != Vector2i.ZERO, "the overlay's place is remembered")
 	main.free()
 
 

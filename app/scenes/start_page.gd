@@ -137,6 +137,7 @@ func _start_workout() -> void:
 	if _torqa.start_workout(workout, _workout_on_course, flat_descents):
 		options["workout"] = workout
 		options["on_course"] = _workout_on_course
+		options["overlay"] = _workouts.start_as_overlay()
 		ride_started.emit(options)
 
 

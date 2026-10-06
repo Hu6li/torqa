@@ -856,3 +856,27 @@ msgstr "Strecke wird geladen"
 
 msgid "for %d bpm  ·  now %s"
 msgstr "für %d bpm  ·  jetzt %s"
+
+msgid "Overlay"
+msgstr "Overlay"
+
+msgid "Full view"
+msgstr "Ganze Ansicht"
+
+msgid "Back to the whole ride screen (O or Esc)"
+msgstr "Zurück zur ganzen Fahransicht (O oder Esc)"
+
+msgid "Drag to move the overlay"
+msgstr "Ziehen, um das Overlay zu verschieben"
+
+msgid "Drag to resize the overlay"
+msgstr "Ziehen, um die Grösse des Overlays zu ändern"
+
+msgid "Only the HUD, on top of other windows, e.g. over a video"
+msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video"
+
+msgid "Only the HUD, on top of other windows, e.g. over a video (O)"
+msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video (O)"
+
+msgid "Start as overlay"
+msgstr "Als Overlay starten"

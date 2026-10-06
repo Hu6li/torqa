@@ -8,6 +8,8 @@ extends Control
 signal closed
 ## The ride was saved to `path`; show its summary (R42).
 signal summary_requested(path: String)
+## The rider wants the overlay (R55), or the whole screen back.
+signal overlay_requested(on: bool)
 
 ## Keys during the ride: C camera; M play/pause music, "." next and "," previous track.
 # i18n-begin
@@ -55,15 +57,16 @@ var _simulation: PanelContainer = PanelContainer.new()
 var _speed_buttons: Array[Button] = []
 ## The workout being ridden (`WorkoutsTab.workout()`), empty on a plain ride.
 var _workout: Dictionary = {}
-var _workout_panel: PanelContainer = PanelContainer.new()
-var _workout_title: Label = UiTheme.caption("")
-var _workout_target: Label = UiTheme.value(28)
-var _workout_heart: Label = Label.new()
+var _workout_panel: WorkoutPanel = WorkoutPanel.new()
 ## A workout on its own: no world behind the screen, a chart instead of map and profile.
 var _backdrop: ColorRect = ColorRect.new()
 var _chart_panel: PanelContainer = PanelContainer.new()
 var _chart: RideChart = RideChart.new()
 var _chart_left: float = 0.0
+## The overlay (R55): only the HUD and the workout, the rest of the screen hidden meanwhile.
+var _overlay_hud: OverlayHud = OverlayHud.new()
+var _overlay_button: Button = Button.new()
+var _hidden_by_overlay: Array[Control] = []
 var _time_scale: float = 1.0
 var _frame_time: float = 0.0
 var _slow_for: float = 0.0
@@ -113,7 +116,7 @@ func begin(options: Dictionary) -> void:
 	for panel: Control in [$RightColumn/MapPanel, $RightColumn/ProfilePanel]:
 		panel.visible = not on_its_own
 	_workout_panel.visible = not _workout.is_empty()
-	_show_workout_title()
+	_workout_panel.show_workout(_workout)
 	var rider: Dictionary = _torqa.profile()
 	var ftp: float = rider.get("ftp_w", 200.0)
 	_settings_dialog.configure_workout(_torqa.heart_rate_zones(), ftp)
@@ -170,13 +173,32 @@ func _ready() -> void:
 		button.add_theme_stylebox_override("normal", UiTheme.hud_button())
 	_settings_button.pressed.connect(_open_settings)
 	_finish_button.pressed.connect(_on_finish_pressed)
+	_overlay_button.text = tr("Overlay")
+	_overlay_button.tooltip_text = tr(
+		"Only the HUD, on top of other windows, e.g. over a video (O)"
+	)
+	_overlay_button.focus_mode = Control.FOCUS_NONE
+	_overlay_button.add_theme_stylebox_override("normal", UiTheme.hud_button())
+	_overlay_button.pressed.connect(func() -> void: overlay_requested.emit(true))
+	_settings_button.add_sibling(_overlay_button)
+	_overlay_hud.hide()
+	_overlay_hud.leave_requested.connect(func() -> void: overlay_requested.emit(false))
+	add_child(_overlay_hud)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
 	if not visible or key == null or not key.pressed or key.echo:
 		return
-	if key.keycode == KEY_C:
+	if is_overlay():
+		# The overlay is too small for dialogs; it only goes back.
+		if key.keycode in [KEY_O, KEY_ESCAPE]:
+			overlay_requested.emit(false)
+			get_viewport().set_input_as_handled()
+		return
+	if key.keycode == KEY_O and not _finished:
+		overlay_requested.emit(true)
+	elif key.keycode == KEY_C:
 		_cycle_camera()
 	elif key.keycode == KEY_S and not _finished:
 		_open_settings()
@@ -205,9 +227,11 @@ func _process(delta: float) -> void:
 	var state: Dictionary = _torqa.ride_state()
 	if state.is_empty():
 		return
+	if is_overlay():
+		_overlay_hud.show_state(state)
 	var metrics: Dictionary = state["metrics"]
 	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
-	_show_workout(state["workout"], state["heart_rate"])
+	_chart.heart_rate_target = _workout_panel.show_state(state["workout"], state["heart_rate"])
 	if _chart_panel.visible:
 		_chart_left -= delta
 		if _chart_left <= 0.0:
@@ -232,6 +256,43 @@ func _process(delta: float) -> void:
 	_show_climb(state["climb"])
 	_show_ghost(state["ghost"])
 	_profile.set_rider_distance(distance_m)
+
+
+## Whether the screen shows as the overlay.
+func is_overlay() -> bool:
+	return _overlay_hud.visible
+
+
+## Shows only the HUD and the workout, for the overlay window (R55), or the whole screen again.
+func set_overlay(on: bool) -> void:
+	if on == is_overlay():
+		return
+	if on:
+		_overlay_hud.begin(_torqa.hud_layout(), _imperial, _workout)
+		_hidden_by_overlay.clear()
+		for child: Node in get_children():
+			var control: Control = child as Control
+			if control != null and control != _overlay_hud and control.visible:
+				control.hide()
+				_hidden_by_overlay.append(control)
+		_overlay_hud.show()
+	else:
+		_overlay_hud.hide()
+		for control: Control in _hidden_by_overlay:
+			# A message whose time ran out meanwhile stays gone.
+			if control != _toast or _toast_left > 0.0:
+				control.show()
+		_hidden_by_overlay.clear()
+
+
+## The size the overlay's content needs, in interface units.
+func overlay_content_size() -> Vector2:
+	return _overlay_hud.content_size()
+
+
+## The outline of the overlay's content in window pixels.
+func overlay_outline() -> PackedVector2Array:
+	return _overlay_hud.clickable_outline()
 
 
 func _open_settings() -> void:
@@ -261,7 +322,7 @@ func _on_workout_changed(workout: Dictionary) -> void:
 	_workout = workout
 	_options["workout"] = workout
 	_torqa.change_workout(workout)
-	_show_workout_title()
+	_workout_panel.show_workout(workout)
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:
@@ -318,51 +379,10 @@ func _build_backdrop() -> void:
 
 
 func _build_workout_panel() -> void:
-	var rows: VBoxContainer = VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 2)
-	rows.add_child(_workout_title)
-	rows.add_child(_workout_target)
-	_workout_heart.add_theme_font_size_override("font_size", 14)
-	_workout_heart.add_theme_color_override("font_color", UiTheme.MUTED)
-	rows.add_child(_workout_heart)
-	_workout_panel.add_child(rows)
 	_workout_panel.hide()
 	var column: VBoxContainer = $RightColumn
 	column.add_child(_workout_panel)
 	column.move_child(_workout_panel, 0)
-
-
-func _show_workout_title() -> void:
-	var kind: String = _workout.get("kind", "power")
-	var title: String = tr("Constant power")
-	if kind == "zone":
-		var zone: int = _workout.get("zone", 1)
-		title = tr("Heart-rate zone %d") % zone
-	elif kind == "bpm":
-		title = tr("Heart rate")
-	_workout_title.text = title.to_upper()
-
-
-## What the workout asks for (`ride_state()["workout"]`): the power the trainer holds and, for
-## a heart-rate hold, the heart rate it aims at next to the current one.
-func _show_workout(workout: Variant, heart_rate: Variant) -> void:
-	if workout == null:
-		return
-	var info: Dictionary = workout
-	var target: float = info["target_power_w"]
-	_workout_target.text = "%d W" % roundi(target)
-	if info["target_heart_rate"] == null:
-		_workout_heart.hide()
-		_chart.heart_rate_target = 0.0
-		return
-	var target_bpm: float = info["target_heart_rate"]
-	_chart.heart_rate_target = target_bpm
-	var now: String = "--"
-	if heart_rate != null:
-		var bpm: float = heart_rate
-		now = str(roundi(bpm))
-	_workout_heart.text = tr("for %d bpm  ·  now %s") % [roundi(target_bpm), now]
-	_workout_heart.show()
 
 
 func _build_ghost_panel() -> void:
@@ -550,7 +570,9 @@ func _cycle_camera() -> void:
 
 func _show_toast(message: String) -> void:
 	_toast_label.text = message
-	_toast.show()
+	# The overlay has no room for messages.
+	if not is_overlay():
+		_toast.show()
 	_toast_left = TOAST_SECONDS
 
 
@@ -563,7 +585,8 @@ func _on_device_disconnected(device_name: String) -> void:
 
 
 func _on_ride_finished() -> void:
-	# The finish toast with the time comes from `route_completed`.
+	# The finish toast with the time comes from `route_completed`; the whole screen shows it.
+	overlay_requested.emit(false)
 	_torqa.finish_ride()
 
 
