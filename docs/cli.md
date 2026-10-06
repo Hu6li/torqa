@@ -34,9 +34,18 @@ the electrodes) and while not connected to a watch or phone.
 ./torqa-cli ride --trainer kickr --hr  # trainer by name + strongest heart-rate strap
 ./torqa-cli ride --hr polar            # heart-rate strap by name
 ./torqa-cli ride --fake                # simulated trainer, no hardware
+./torqa-cli ride --fake --fake-power 250 --fake-cadence 95   # the simulated rider's output
 ```
 
-Live readings are printed every second. Type a command and press Enter:
+| Option | Meaning |
+|---|---|
+| `--trainer kickr` | Trainer by name (part of it, any case); default the strongest signal |
+| `--hr [name]` | Also connect a heart-rate strap, by name or the strongest |
+| `--fake` | The simulated trainer instead of Bluetooth (with `--hr`, a real strap still connects) |
+| `--fake-power 200`, `--fake-cadence 90` | What the simulated rider pedals, in W and rpm |
+| `--scan-seconds 5` | How long to scan for the trainer and strap |
+
+Live readings are printed every second. Without a route, type a command and press Enter:
 
 | Command | Effect |
 |---|---|
@@ -71,8 +80,11 @@ bridges and tunnels follow the ground (short dips or humps).
 | `--descent coast\|flat` | Coast: gravity builds speed downhill. Flat: descents ride like flat roads |
 | `--mass 83` | Rider plus bike in kg |
 | `--output ride.fit` | Where to save the activity (default `torqa-<date>-<time>.fit`) |
+| `--offline` | Use cached map and terrain data only (also for `route`) |
+| `--time-scale 50` | Run simulated time faster; only with `--fake` |
 
-The ride starts when the trainer connects and ends at the finish or with `q` / Ctrl+C; the FIT
+On a route the trainer follows the gradient, so `g`, `p` and `r` do not apply: the ride starts
+when the trainer connects and ends at the finish or with `q` / Ctrl+C; the FIT
 file can be uploaded to Strava, intervals.icu, Garmin Connect and others as a virtual ride.
 
 Map data: © [OpenFreeMap](https://openfreemap.org) © [OpenMapTiles](https://openmaptiles.org),
