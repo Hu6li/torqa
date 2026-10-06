@@ -1,30 +1,23 @@
-//! Water: lakes and wide rivers mapped as areas, flat at their level; streams and rivers mapped
-//! as lines, laid on the ground of each chunk.
-
-use std::sync::LazyLock;
+//! Water: lakes, ponds and rivers mapped as areas, and streams and rivers mapped as lines, laid
+//! on the ground of each chunk just above it (see `drape`). The terrain model measures the
+//! water's surface where there is water, so laid on the ground lakes lie level, rivers slope
+//! with their course, and neither floats above the land nor sinks below it.
 
 use torqa_osm::{Area, LandCover, Waterway};
-use torqa_routes::{ElevationModel, LocalProjection};
+use torqa_routes::LocalProjection;
 
 use crate::buildings::{signed_area, triangulate};
 use crate::minimap::simplify;
 use crate::road::RoadIndex;
-use crate::{CORRIDOR, HeightGrid, MeshData, drape, palette};
+use crate::{CORRIDOR, HeightGrid, MeshData, drape};
 
-/// Lakes sit this far above the terrain sample, hiding the coarse terrain below them.
-const SURFACE_OFFSET: f64 = 0.3;
-/// Lake outlines are simplified to this tolerance in metres.
+/// Shores are simplified to this tolerance in metres.
 const SHORE_SIMPLIFY: f64 = 3.0;
-/// Interior samples used to find a lake's surface level.
-const LEVEL_SAMPLES: usize = 24;
 /// Waterway lines are sampled this often.
 const STEP: f64 = 10.0;
-/// Colour of water; alpha 1 marks water for the shader.
-static WATER: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("water.deep", 1.0));
-
-/// Streams and rivers lie this far above the ground: below every street and the road ridden
-/// (`streets::lift`, `ROAD_SINK`), so where they cross one they pass under it.
-const STREAM_LIFT: f64 = 0.02;
+/// Water lies this far above the ground: below every street and the road ridden
+/// (`streets::lift`, `ROAD_SINK`), so where it meets one it passes under it.
+const LIFT: f64 = 0.02;
 
 /// A stream or river of the map near the route, in metres east/north, with its bounds for
 /// quick chunk tests.
@@ -81,52 +74,17 @@ pub(crate) fn streams(
     streams
 }
 
-/// The streams within the chunk square `[origin, origin + size]`, relative to `chunk_origin`,
-/// laid on the chunk's ground (see `drape`): water lies in the land, never floating above it
-/// or sunk below it.
-pub(crate) fn stream_mesh(
-    streams: &[Stream],
-    origin: (f64, f64),
-    size: f64,
-    heights: &HeightGrid,
-    chunk_origin: [f64; 3],
-) -> MeshData {
-    let mut mesh = MeshData::default();
-    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
-    for stream in streams {
-        if stream.max.0 < low.0
-            || stream.min.0 > high.0
-            || stream.max.1 < low.1
-            || stream.min.1 > high.1
-        {
-            continue;
-        }
-        for piece in drape::pieces(&stream.points, low, high) {
-            drape::drape(
-                &mut mesh,
-                &piece,
-                stream.width / 2.0,
-                STREAM_LIFT,
-                heights,
-                chunk_origin,
-            );
-        }
-    }
-    mesh
+/// A lake, pond or river mapped as an area near the route: triangles (metres east/north,
+/// clockwise seen from above) with their bounds for quick chunk tests.
+pub(crate) struct Pool {
+    triangles: Vec<[(f64, f64); 3]>,
+    min: (f64, f64),
+    max: (f64, f64),
 }
 
-/// Flat water surfaces for lakes, ponds and wide rivers mapped as areas near the road.
-///
-/// The terrain model measures the water surface itself, so the level is the median of samples
-/// inside the area (shore samples would include banks).
-#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-pub(crate) async fn surfaces<M: ElevationModel>(
-    areas: &[Area],
-    projection: &LocalProjection,
-    road: &RoadIndex,
-    model: &mut M,
-) -> MeshData {
-    let mut mesh = MeshData::default();
+/// The map's water areas that reach into the corridor around the road, triangulated.
+pub(crate) fn pools(areas: &[Area], projection: &LocalProjection, road: &RoadIndex) -> Vec<Pool> {
+    let mut pools = Vec::new();
     for area in areas.iter().filter(|a| a.cover == LandCover::Water) {
         for ring in &area.outer {
             let projected: Vec<(f64, f64)> = ring
@@ -148,53 +106,88 @@ pub(crate) async fn surfaces<M: ElevationModel>(
             if signed_area(&outline) < 0.0 {
                 outline.reverse();
             }
-            let triangles = triangulate(&outline);
-            let Some(level) = surface_level(&outline, &triangles, projection, model).await else {
-                continue;
-            };
-            let base = u32::try_from(mesh.vertices.len()).expect("water mesh fits u32");
-            for &(east, north) in &outline {
-                mesh.vertices
-                    .push([east as f32, (level + SURFACE_OFFSET) as f32, -north as f32]);
-                mesh.normals.push([0.0, 1.0, 0.0]);
-                mesh.uvs.push([0.0, 0.0]);
-                mesh.colors.push(*WATER);
+            // Counter-clockwise outline, so counter-clockwise triangles: turned clockwise.
+            let triangles: Vec<[(f64, f64); 3]> = triangulate(&outline)
+                .into_iter()
+                .map(|[a, b, c]| [c, b, a].map(|k| outline[k as usize]))
+                .collect();
+            let (mut min, mut max) = (outline[0], outline[0]);
+            for &(e, n) in &outline {
+                min = (min.0.min(e), min.1.min(n));
+                max = (max.0.max(e), max.1.max(n));
             }
-            for [a, b, c] in triangles {
-                // Counter-clockwise outline seen from above; Godot's front faces are clockwise.
-                mesh.indices.extend([base + c, base + b, base + a]);
+            pools.push(Pool {
+                triangles,
+                min,
+                max,
+            });
+        }
+    }
+    pools
+}
+
+/// The water within the chunk square `[origin, origin + size]`, relative to `chunk_origin`:
+/// streams and pools laid on the chunk's ground.
+pub(crate) fn mesh(
+    streams: &[Stream],
+    pools: &[Pool],
+    origin: (f64, f64),
+    size: f64,
+    heights: &HeightGrid,
+    chunk_origin: [f64; 3],
+) -> MeshData {
+    let mut mesh = stream_mesh(streams, origin, size, heights, chunk_origin);
+    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
+    let outside = |min: (f64, f64), max: (f64, f64)| {
+        max.0 < low.0 || min.0 > high.0 || max.1 < low.1 || min.1 > high.1
+    };
+    for pool in pools.iter().filter(|p| !outside(p.min, p.max)) {
+        for triangle in &pool.triangles {
+            let (mut min, mut max) = (triangle[0], triangle[0]);
+            for &(e, n) in triangle {
+                min = (min.0.min(e), min.1.min(n));
+                max = (max.0.max(e), max.1.max(n));
+            }
+            if !outside(min, max) {
+                drape::drape_polygon(&mut mesh, triangle, LIFT, heights, chunk_origin, &|_| {
+                    [0.0, 0.0]
+                });
             }
         }
     }
     mesh
 }
 
-/// Median terrain height at the centroids of the largest triangles.
-async fn surface_level<M: ElevationModel>(
-    outline: &[(f64, f64)],
-    triangles: &[[u32; 3]],
-    projection: &LocalProjection,
-    model: &mut M,
-) -> Option<f64> {
-    let mut by_size: Vec<([f64; 2], f64)> = triangles
-        .iter()
-        .map(|t| {
-            let corners = t.map(|i| outline[i as usize]);
-            let centroid = [
-                (corners[0].0 + corners[1].0 + corners[2].0) / 3.0,
-                (corners[0].1 + corners[1].1 + corners[2].1) / 3.0,
-            ];
-            (centroid, signed_area(&corners).abs())
-        })
-        .collect();
-    by_size.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let mut heights = Vec::new();
-    for ([east, north], _) in by_size.into_iter().take(LEVEL_SAMPLES) {
-        let (lat, lon) = projection.unproject(east, north);
-        if let Ok(height) = model.elevation(lat, lon).await {
-            heights.push(height);
+/// The streams within the chunk square `[origin, origin + size]`, relative to `chunk_origin`,
+/// laid on the chunk's ground (see `drape`): water lies in the land, never floating above it
+/// or sunk below it.
+fn stream_mesh(
+    streams: &[Stream],
+    origin: (f64, f64),
+    size: f64,
+    heights: &HeightGrid,
+    chunk_origin: [f64; 3],
+) -> MeshData {
+    let mut mesh = MeshData::default();
+    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
+    for stream in streams {
+        if stream.max.0 < low.0
+            || stream.min.0 > high.0
+            || stream.max.1 < low.1
+            || stream.min.1 > high.1
+        {
+            continue;
+        }
+        for piece in drape::pieces(&stream.points, low, high) {
+            drape::drape(
+                &mut mesh,
+                &piece,
+                stream.width / 2.0,
+                LIFT,
+                heights,
+                chunk_origin,
+            );
         }
     }
-    heights.sort_by(f64::total_cmp);
-    heights.get(heights.len() / 2).copied()
+    mesh
 }

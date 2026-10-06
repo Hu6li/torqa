@@ -1768,7 +1768,7 @@ async fn minimap_draws_map_features_near_the_route_only() {
 }
 
 #[tokio::test]
-async fn lakes_get_a_flat_surface_at_the_water_level() {
+async fn lakes_lie_level_in_the_land() {
     // A lake east of the road whose surface the terrain model reports at 429 m.
     struct Lake;
     impl ElevationModel for Lake {
@@ -1793,14 +1793,69 @@ async fn lakes_get_a_flat_surface_at_the_water_level() {
     };
     let world = generate(&route, &mut Lake, &map, &mut |_, _| {}).await;
 
-    let water = &world.water;
-    assert_valid(water);
-    assert_faces_follow_normals(water);
-    assert_ne!(water.vertices.len(), 0);
-    assert!(
-        water.vertices.iter().all(|v| (v[1] - 429.3).abs() < 0.01),
-        "flat at the lake level"
+    for chunk in &world.chunks {
+        assert_valid(&chunk.water);
+        assert_faces_follow_normals(&chunk.water);
+    }
+    // All over the lake, level at its surface (and the water's lift above it).
+    for x in (110..=690).step_by(20) {
+        for north in (210..=790).step_by(20) {
+            #[allow(clippy::cast_precision_loss)] // small numbers
+            let (x, z) = (x as f32, -(north as f32));
+            let water = height_on(&world, |c| &c.water, x, z).expect("water over the lake");
+            assert!(
+                (water - 429.02).abs() < 0.01,
+                "water at {water} at {x}, {z}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn rivers_slope_with_their_course_never_floating_or_sunk() {
+    // A river 40 m wide running east, where the land rises 0.1 m per metre: its surface,
+    // which the terrain model measures, falls 130 m along it.
+    let river = Area {
+        cover: LandCover::Water,
+        outer: vec![vec![
+            at(100.0, 480.0),
+            at(1400.0, 480.0),
+            at(1400.0, 520.0),
+            at(100.0, 520.0),
+            at(100.0, 480.0),
+        ]],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![river],
+        ..MapData::default()
+    })
+    .await;
+
+    let mut checked = 0;
+    for x in (110..=1390).step_by(5) {
+        #[allow(clippy::cast_precision_loss)] // small numbers
+        let x = x as f32;
+        for z in [-485.0, -500.0, -515.0] {
+            let (Some(water), Some(ground)) = (
+                height_on(&world, |c| &c.water, x, z),
+                ground_at(&world, x, z),
+            ) else {
+                continue;
+            };
+            assert!(
+                water > ground && water - ground < 0.05,
+                "water at {water} on ground {ground} at {x}, {z}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 500, "{checked} points checked");
+    let (low, high) = (
+        height_on(&world, |c| &c.water, 150.0, -500.0).expect("water"),
+        height_on(&world, |c| &c.water, 1350.0, -500.0).expect("water"),
     );
+    assert!(high - low > 100.0, "the river runs level: {low} to {high}");
 }
 
 #[tokio::test]

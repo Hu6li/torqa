@@ -106,7 +106,8 @@ pub struct TerrainChunk {
     pub streets: MeshData,
     /// Unpaved tracks and paths of the map, likewise.
     pub tracks: MeshData,
-    /// Streams and rivers of the map, likewise; they pass under streets and the road.
+    /// Lakes, ponds, rivers and streams of the map, likewise; they pass under streets and the
+    /// road.
     pub water: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
@@ -131,9 +132,6 @@ pub struct World {
     pub chunks: Vec<TerrainChunk>,
     /// The road along the route.
     pub road: MeshData,
-    /// Lakes, ponds and wide rivers mapped as areas (streams and rivers mapped as lines are in
-    /// the chunks).
-    pub water: MeshData,
     /// Bridges and tunnels, of the road and the railways.
     pub structures: MeshData,
     /// The railways of the map near the route, in route coordinates (`u` across the bed of
@@ -170,9 +168,9 @@ pub async fn generate<M: ElevationModel>(
         rails: &network.index,
     };
     let streams = water::streams(&map.waterways, &projection, &road);
+    let pools = water::pools(&map.areas, &projection, &road);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
-        water: water::surfaces(&map.areas, &projection, &road, model).await,
         structures: {
             let mut structures = structures::build(&road, &projection, model).await;
             structures.append(structures::build(&network.index, &projection, model).await);
@@ -228,7 +226,14 @@ pub async fn generate<M: ElevationModel>(
             modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
             tracks: unpaved,
-            water: water::stream_mesh(&streams, heights.origin, CHUNK_SIZE, &heights, origin),
+            water: water::mesh(
+                &streams,
+                &pools,
+                heights.origin,
+                CHUNK_SIZE,
+                &heights,
+                origin,
+            ),
             trees,
         });
         progress(done + 1, total);
