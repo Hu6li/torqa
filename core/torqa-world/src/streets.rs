@@ -46,7 +46,7 @@ pub(crate) struct Street {
 }
 
 /// Width in metres by kind of way.
-fn width(class: RoadClass) -> f64 {
+pub(crate) fn width(class: RoadClass) -> f64 {
     match class {
         RoadClass::Major => 7.0,
         RoadClass::Street => 5.5,

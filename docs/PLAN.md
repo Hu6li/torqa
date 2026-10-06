@@ -238,8 +238,8 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Other streets never cut by the ground: draped along the ground's own triangles, so
       no grass shows through the asphalt and no street sinks into a slope
     - [ ] Junctions joined cleanly where streets meet the road ridden: no kerb walls across the
-      mouths (done: the road's edge is road there) and no jagged polygons; roundabouts as rings
-      round an island
+      mouths (done: the road's edge is road there), roundabouts as rings round a raised island
+      with a kerb (done); open: no jagged polygons where streets overlap at junctions
     - [x] The road's edge as a low bevel, not a step that reads as a wall (15 cm instead of
       25 cm, sloping gentler than 45°)
     - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)

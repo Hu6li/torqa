@@ -436,6 +436,104 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
 }
 
 #[tokio::test]
+async fn roundabouts_get_a_raised_island_with_a_kerb() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A roundabout of 20 m radius east of the route; a long thin loop, a road round a square
+    // block and a footpath round a pond (no roundabouts).
+    let ring: Vec<(f64, f64)> = (0..=24)
+        .map(|k| {
+            let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
+            at(200.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
+        })
+        .collect();
+    let loop_ = vec![
+        at(150.0, 800.0),
+        at(250.0, 800.0),
+        at(250.0, 806.0),
+        at(200.0, 807.0),
+        at(150.0, 806.0),
+        at(150.0, 800.0),
+    ];
+    // The block's road has a point every 10 m, as mapped roads do.
+    let block: Vec<(f64, f64)> = (0..=20)
+        .map(|k| {
+            let (side, step) = (k / 5, f64::from(k % 5) * 10.0);
+            let (east, north) = match side {
+                0 => (-25.0 + step, -25.0),
+                1 => (25.0, -25.0 + step),
+                2 => (25.0 - step, 25.0),
+                3 => (-25.0, 25.0 - step),
+                _ => (-25.0, -25.0),
+            };
+            at(200.0 + east, 300.0 + north)
+        })
+        .collect();
+    let path: Vec<(f64, f64)> = (0..=24)
+        .map(|k| {
+            let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
+            at(200.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
+        })
+        .collect();
+    let world = world(&MapData {
+        roads: [
+            (RoadClass::Street, ring),
+            (RoadClass::Street, loop_),
+            (RoadClass::Service, block),
+            (RoadClass::Path, path),
+        ]
+        .into_iter()
+        .map(|(class, line)| Road {
+            class,
+            line,
+            structure: None,
+        })
+        .collect(),
+        ..MapData::default()
+    })
+    .await;
+    // How far the topmost ground lies over the natural slope (0.1 m per metre east).
+    let lift = |x: f32, z: f32| top_of_ground(&world, x, z).map(|top| top - (500.0 + 0.1 * x));
+
+    // Inside the ring, the island stands 20 cm up; on the ring and outside, the ground is as
+    // it was.
+    for (x, z) in [
+        (200.0, -500.0),
+        (210.0, -505.0),
+        (190.0, -492.0),
+        (214.0, -500.0),
+    ] {
+        let up = lift(x, z).expect("ground");
+        assert!((up - 0.2).abs() < 0.02, "island at {up} m at {x}, {z}");
+    }
+    for (x, z) in [
+        (220.0, -500.0),
+        (230.0, -500.0),
+        (200.0, -525.0),
+        (200.0, -803.0),
+        (200.0, -300.0),
+        (210.0, -290.0),
+        (200.0, -650.0),
+    ] {
+        let up = lift(x, z).expect("ground");
+        assert!(up.abs() < 0.02, "ground raised by {up} m at {x}, {z}");
+    }
+    // Its kerb: upright faces all round the island.
+    let kerb = world
+        .chunks
+        .iter()
+        .flat_map(|c| triangles(&c.mesh).map(move |t| (t, c.center)))
+        .filter(|(t, centre)| {
+            let normal = face_normal(*t);
+            let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
+            let (x, z) = (middle[0] + centre[0], middle[1] + centre[2]);
+            normal[1].abs() < 0.01 && ((x - 200.0).hypot(z + 500.0) - 16.6).abs() < 1.0
+        })
+        .count();
+    assert!(kerb >= 40, "{kerb} kerb faces");
+}
+
+#[tokio::test]
 async fn railways_tunnel_through_hills_rather_than_climb_them() {
     // A hill 40 m high in the line's way.
     struct Hill;
@@ -547,6 +645,28 @@ async fn the_road_bevels_gently_down_to_a_level_verge() {
             "a bevel steeper than 45°: {drop} m over {out} m"
         );
     }
+}
+
+/// The height of the topmost ground at (`x`, `z`): roundabouts' islands lie over the plain
+/// ground.
+fn top_of_ground(world: &World, x: f32, z: f32) -> Option<f32> {
+    let chunk = world.chunks.iter().find(|c| {
+        (x - c.center[0]).abs() <= CHUNK_SIZE as f32 / 2.0
+            && (z - c.center[2]).abs() <= CHUNK_SIZE as f32 / 2.0
+    })?;
+    let (px, pz) = (x - chunk.center[0], z - chunk.center[2]);
+    triangles(&chunk.mesh)
+        .filter_map(|[a, b, c]| {
+            let det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+            if det.abs() < 1e-9 {
+                return None;
+            }
+            let wa = ((b[2] - c[2]) * (px - c[0]) + (c[0] - b[0]) * (pz - c[2])) / det;
+            let wb = ((c[2] - a[2]) * (px - c[0]) + (a[0] - c[0]) * (pz - c[2])) / det;
+            let wc = 1.0 - wa - wb;
+            (wa >= -1e-4 && wb >= -1e-4 && wc >= -1e-4).then(|| wa * a[1] + wb * b[1] + wc * c[1])
+        })
+        .reduce(f32::max)
 }
 
 /// The terrain's height at (`x`, `z`) as its mesh has it.

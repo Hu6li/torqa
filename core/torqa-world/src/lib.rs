@@ -13,6 +13,7 @@ mod minimap;
 mod palette;
 mod railways;
 mod road;
+mod roundabouts;
 mod streets;
 mod structures;
 mod vegetation;
@@ -174,6 +175,7 @@ pub async fn generate<M: ElevationModel>(
     let streams = water::streams(&map.waterways, &projection, &road);
     let pools = water::pools(&map.areas, &projection, &road);
     let clearance = streets::Clearance::new(&streets, &network.railways, &pools);
+    let islands = roundabouts::islands(map, &projection);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
         structures: structures::build_all(&[&road, &network.index], &projection, model).await,
@@ -229,7 +231,7 @@ pub async fn generate<M: ElevationModel>(
         ));
         world.chunks.push(TerrainChunk {
             center,
-            mesh: heights.mesh(&land, origin, &shapers),
+            mesh: heights.mesh(&land, origin, &shapers, &islands),
             buildings: chunk_buildings.shells,
             modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
@@ -625,9 +627,29 @@ impl HeightGrid {
         unit([-slope_east, 1.0, slope_north])
     }
 
+    /// The ground mesh relative to `origin`, coloured by land cover, with the roundabouts'
+    /// `islands` raised on it.
+    fn mesh(
+        &self,
+        land: &LandIndex,
+        origin: [f64; 3],
+        shapers: &Shapers<'_>,
+        islands: &[roundabouts::Island],
+    ) -> MeshData {
+        let mut mesh = self.plain_mesh(land, origin, shapers);
+        mesh.append(roundabouts::mesh(
+            islands,
+            self.origin,
+            CHUNK_SIZE,
+            self,
+            origin,
+        ));
+        mesh
+    }
+
     /// The ground mesh relative to `origin`, coloured by land cover.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // f32 GPU data; small grid
-    fn mesh(&self, land: &LandIndex, origin: [f64; 3], shapers: &Shapers<'_>) -> MeshData {
+    fn plain_mesh(&self, land: &LandIndex, origin: [f64; 3], shapers: &Shapers<'_>) -> MeshData {
         let side = self.side;
         let mut mesh = MeshData::default();
         let push = |mesh: &mut MeshData, east: f64, north: f64, height: f64| {
