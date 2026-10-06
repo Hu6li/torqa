@@ -118,7 +118,7 @@ func _run() -> void:
 			var tabs: TabContainer = (
 				settings_dialog.find_children("*", "TabContainer", true, false)[0]
 			)
-			tabs.current_tab = 1
+			tabs.current_tab = tabs.get_tab_count() - 1
 			await process_frame
 			# Hover a figure over the HUD's grid, so the drop indicator shows.
 			var preview: HudPanel = settings_dialog.find_children("*", "HudPanel", true, false)[0]
@@ -160,7 +160,31 @@ func _run() -> void:
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
 	print("saved history")
+	await _workout_screens(torqa, start)
 	quit(0)
+
+
+## The Workouts tab (R58) and a heart-rate workout on its own (R56), with its settings.
+func _workout_screens(torqa: TorqaApp, start: StartPage) -> void:
+	var out_dir: String = OS.get_environment("SCREENSHOT_DIR")
+	var start_tabs: TabContainer = start.find_children("*", "TabContainer", true, false)[0]
+	start_tabs.current_tab = StartPage.Tab.WORKOUTS
+	var tab: WorkoutsTab = start.find_children("*", "WorkoutsTab", true, false)[0]
+	var options: WorkoutOptions = tab.find_children("*", "WorkoutOptions", true, false)[0]
+	options.set_workout({"kind": "zone", "zone": 3})
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-workouts.png"))
+	var workout: Dictionary = tab.workout()
+	_check(torqa.start_workout(workout, false, false), "workout started")
+	start.ride_started.emit({"workout": workout, "on_course": false, "difficulty": 50.0})
+	await create_timer(maxf(OS.get_environment("SCREENSHOT_WORKOUT_S").to_float(), 20.0)).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("workout.png"))
+	var ride_screen: RideScreen = _main.get_node("RideScreen")
+	ride_screen.call("_open_settings")
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("workout-settings.png"))
+	print("saved workout")
+	torqa.finish_ride()
 
 
 func _wait_for(sig: Signal) -> void:

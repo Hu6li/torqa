@@ -1,6 +1,6 @@
 # Start page
 
-Torqa opens on the start page with four tabs:
+Torqa opens on the start page with five tabs:
 
 - **Courses** — your course library as cards: each shows the route in blue on black, then
   length, climbing and steepest gradient; video courses are marked **Video**. **Import**
@@ -12,6 +12,8 @@ Torqa opens on the start page with four tabs:
   world is built when you press **Ride**, so looking around the library stays quick.
   **Rename** and **Delete course** are on the course page; deleting keeps your rides on it.
   **Add video…** there rides the course along a video of it ([video.md](video.md)).
+- **Workouts** — hold a power, or a heart rate that Torqa holds for you by setting the power,
+  on its own or on a course in 3D ([workouts.md](workouts.md)).
 - **History** — your rides ([history.md](history.md)).
 - **Profile** — who rides, their figures, editing them and their HUD, new riders
   ([riders.md](riders.md), [hud.md](hud.md)).

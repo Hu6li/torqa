@@ -1,7 +1,9 @@
 class_name RideScreen
 extends Control
 ## The live ride HUD: a compact metrics column, the map with the elevation profile below it,
-## status toasts and one settings button (R48) — the rest of the screen is the ride.
+## status toasts and one settings button (R48) — the rest of the screen is the ride. A workout
+## (R56) adds its targets; on its own (R58) it has no map or world, but a chart of power and
+## heart rate over its own backdrop.
 
 signal closed
 ## The ride was saved to `path`; show its summary (R42).
@@ -24,6 +26,10 @@ const SLOW_FOR_S: float = 10.0
 const TIME_SCALES: Array[float] = [1.0, 2.0, 5.0, 10.0, 20.0]
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
+## How often the workout chart is redrawn: samples come once a second.
+const CHART_EVERY_S: float = 1.0
+## The workout chart spans at least this long at first, so its start is not stretched.
+const CHART_MIN_S: float = 600.0
 
 var _torqa: TorqaApp
 var _world: RideWorld
@@ -47,6 +53,17 @@ var _toast_left: float = 0.0
 ## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
 var _simulation: PanelContainer = PanelContainer.new()
 var _speed_buttons: Array[Button] = []
+## The workout being ridden (`WorkoutsTab.workout()`), empty on a plain ride.
+var _workout: Dictionary = {}
+var _workout_panel: PanelContainer = PanelContainer.new()
+var _workout_title: Label = UiTheme.caption("")
+var _workout_target: Label = UiTheme.value(28)
+var _workout_heart: Label = Label.new()
+## A workout on its own: no world behind the screen, a chart instead of map and profile.
+var _backdrop: ColorRect = ColorRect.new()
+var _chart_panel: PanelContainer = PanelContainer.new()
+var _chart: RideChart = RideChart.new()
+var _chart_left: float = 0.0
 var _time_scale: float = 1.0
 var _frame_time: float = 0.0
 var _slow_for: float = 0.0
@@ -83,6 +100,23 @@ func begin(options: Dictionary) -> void:
 	_summary_when_saved = false
 	_settings_button.show()
 	_finish_button.hide()
+	_workout = options.get("workout", {})
+	var on_its_own: bool = not _workout.is_empty() and not options.get("on_course", false)
+	_backdrop.visible = on_its_own
+	_chart_panel.visible = on_its_own
+	_chart.set_series(PackedVector2Array(), PackedVector2Array(), PackedVector2Array())
+	_chart_left = 0.0
+	# Heart-rate zones span half the maximum to the maximum: the chart shows all of them.
+	var max_heart_rate: float = _torqa.profile().get("max_heart_rate_bpm", 185.0)
+	_chart.heart_rate_range = Vector2(max_heart_rate * 0.5, max_heart_rate)
+	(get_node("Attribution") as Control).visible = not on_its_own
+	for panel: Control in [$RightColumn/MapPanel, $RightColumn/ProfilePanel]:
+		panel.visible = not on_its_own
+	_workout_panel.visible = not _workout.is_empty()
+	_show_workout_title()
+	var rider: Dictionary = _torqa.profile()
+	var ftp: float = rider.get("ftp_w", 200.0)
+	_settings_dialog.configure_workout(_torqa.heart_rate_zones(), ftp)
 	_minimap.set_track(_torqa.track(2000))
 	_minimap.set_map(_torqa.minimap_mesh())
 	_profile.set_profile(_torqa.elevation_profile(600))
@@ -96,7 +130,8 @@ func begin(options: Dictionary) -> void:
 	_hud.show_layout(_torqa.hud_layout())
 	if not _torqa.trainer_connected():
 		_show_toast(tr("Waiting for the trainer…"))
-	var simulating: bool = _torqa.simulating()
+	# Workouts are not sped up: a simulated heart beats in real time.
+	var simulating: bool = _torqa.simulating() and _workout.is_empty()
 	_simulation.visible = simulating
 	_minimap.jumpable = simulating
 	_profile.jumpable = simulating
@@ -113,6 +148,8 @@ func _ready() -> void:
 	var opaque: StyleBoxFlat = UiTheme.panel()
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
+	_build_backdrop()
+	_build_workout_panel()
 	_build_climb_panel()
 	_build_ghost_panel()
 	_build_simulation_panel()
@@ -124,6 +161,7 @@ func _ready() -> void:
 	)
 	add_child(_settings_dialog)
 	_settings_dialog.options_changed.connect(_on_options_changed)
+	_settings_dialog.workout_changed.connect(_on_workout_changed)
 	_settings_dialog.hud_changed.connect(_on_hud_changed)
 	_settings_dialog.finish_requested.connect(_on_finish_requested)
 	_settings_dialog.abort_requested.connect(_on_abort_requested)
@@ -167,14 +205,25 @@ func _process(delta: float) -> void:
 	var state: Dictionary = _torqa.ride_state()
 	if state.is_empty():
 		return
+	var metrics: Dictionary = state["metrics"]
+	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
+	_show_workout(state["workout"], state["heart_rate"])
+	if _chart_panel.visible:
+		_chart_left -= delta
+		if _chart_left <= 0.0:
+			_chart_left = CHART_EVERY_S
+			var chart: Dictionary = _torqa.ride_chart(600)
+			var power: PackedVector2Array = chart["power"]
+			var heart_rate: PackedVector2Array = chart["heart_rate"]
+			_chart.set_series(PackedVector2Array(), power, heart_rate)
+	if not state.has("x"):
+		return
 	var grade: float = state["grade"]
 	var elevation: float = state["elevation_m"]
 	var distance_m: float = state["distance_m"]
 	var x_m: float = state["x"]
 	var y_m: float = state["y"]
 	var heading: float = state["heading"]
-	var metrics: Dictionary = state["metrics"]
-	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
 	if _imperial:
 		_profile_info.text = "%d ft  ·  %+.1f %%" % [roundi(elevation / METERS_PER_FOOT), grade]
 	else:
@@ -194,6 +243,9 @@ func _open_settings() -> void:
 ## Applies changed ride options at once: camera, conditions and sound in the world, difficulty
 ## and descents on the trainer.
 func _on_options_changed(options: Dictionary) -> void:
+	for key: String in ["workout", "on_course"]:
+		if _options.has(key):
+			options[key] = _options[key]
 	_options = options
 	_world.apply_options(options)
 	var difficulty: float = options["difficulty"]
@@ -201,6 +253,15 @@ func _on_options_changed(options: Dictionary) -> void:
 	_torqa.adjust_ride(difficulty, flat_descents)
 	var video_sound: bool = options.get("video_sound", true)
 	_torqa.set_video_sound(video_sound)
+
+
+## A changed workout reaches the trainer at once; the ride keeps the name it started with.
+func _on_workout_changed(workout: Dictionary) -> void:
+	workout["name"] = _workout.get("name", "")
+	_workout = workout
+	_options["workout"] = workout
+	_torqa.change_workout(workout)
+	_show_workout_title()
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:
@@ -218,6 +279,90 @@ func _on_abort_requested() -> void:
 	_torqa.abort_ride()
 	_finished = true
 	closed.emit()
+
+
+func _build_backdrop() -> void:
+	_backdrop.color = Color(0.07, 0.08, 0.1)
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_backdrop.hide()
+	add_child(_backdrop)
+	move_child(_backdrop, 0)
+	# Between the HUD and the workout panel, from the top down to the buttons.
+	_chart_panel.anchor_right = 1.0
+	_chart_panel.anchor_bottom = 1.0
+	_chart_panel.offset_left = 308.0
+	_chart_panel.offset_right = -348.0
+	_chart_panel.offset_top = 24.0
+	_chart_panel.offset_bottom = -92.0
+	_chart.min_duration = CHART_MIN_S
+	_chart_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rows: VBoxContainer = VBoxContainer.new()
+	var legend: HBoxContainer = HBoxContainer.new()
+	legend.add_theme_constant_override("separation", 16)
+	# i18n-begin
+	for entry: Array in [["Power", UiTheme.POWER_COLOR], ["Heart rate", UiTheme.HEART_RATE_COLOR]]:
+		# i18n-end
+		var text: String = entry[0]
+		var color: Color = entry[1]
+		var caption: Label = UiTheme.caption(text)
+		caption.add_theme_color_override("font_color", color)
+		legend.add_child(caption)
+	rows.add_child(legend)
+	_chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rows.add_child(_chart)
+	_chart_panel.add_child(rows)
+	_chart_panel.hide()
+	add_child(_chart_panel)
+	move_child(_chart_panel, 1)
+
+
+func _build_workout_panel() -> void:
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 2)
+	rows.add_child(_workout_title)
+	rows.add_child(_workout_target)
+	_workout_heart.add_theme_font_size_override("font_size", 14)
+	_workout_heart.add_theme_color_override("font_color", UiTheme.MUTED)
+	rows.add_child(_workout_heart)
+	_workout_panel.add_child(rows)
+	_workout_panel.hide()
+	var column: VBoxContainer = $RightColumn
+	column.add_child(_workout_panel)
+	column.move_child(_workout_panel, 0)
+
+
+func _show_workout_title() -> void:
+	var kind: String = _workout.get("kind", "power")
+	var title: String = tr("Constant power")
+	if kind == "zone":
+		var zone: int = _workout.get("zone", 1)
+		title = tr("Heart-rate zone %d") % zone
+	elif kind == "bpm":
+		title = tr("Heart rate")
+	_workout_title.text = title.to_upper()
+
+
+## What the workout asks for (`ride_state()["workout"]`): the power the trainer holds and, for
+## a heart-rate hold, the heart rate it aims at next to the current one.
+func _show_workout(workout: Variant, heart_rate: Variant) -> void:
+	if workout == null:
+		return
+	var info: Dictionary = workout
+	var target: float = info["target_power_w"]
+	_workout_target.text = "%d W" % roundi(target)
+	if info["target_heart_rate"] == null:
+		_workout_heart.hide()
+		_chart.heart_rate_target = 0.0
+		return
+	var target_bpm: float = info["target_heart_rate"]
+	_chart.heart_rate_target = target_bpm
+	var now: String = "--"
+	if heart_rate != null:
+		var bpm: float = heart_rate
+		now = str(roundi(bpm))
+	_workout_heart.text = tr("for %d bpm  ·  now %s") % [roundi(target_bpm), now]
+	_workout_heart.show()
 
 
 func _build_ghost_panel() -> void:
@@ -340,7 +485,7 @@ static func _record_text(elapsed_s: float, previous_best_s: float) -> String:
 ## Suggests a lower graphics preset when the ride stays below 60 fps (R43). Simulated rides
 ## are left alone: they are for trying courses out.
 func _watch_frame_time(delta: float) -> void:
-	if _budget_noted or _simulation.visible or _torqa.riding_along_video():
+	if _budget_noted or _simulation.visible or _torqa.riding_along_video() or _backdrop.visible:
 		return
 	_frame_time = lerpf(_frame_time if _frame_time > 0.0 else delta, delta, 0.05)
 	_slow_for = _slow_for + delta if _frame_time > FRAME_BUDGET_S else 0.0
@@ -398,7 +543,7 @@ func _step_time_scale(step: int) -> void:
 
 
 func _cycle_camera() -> void:
-	if _torqa.riding_along_video():
+	if _torqa.riding_along_video() or _backdrop.visible:
 		return
 	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
 

@@ -30,7 +30,10 @@ func _ready() -> void:
 
 func _on_ride_started(options: Dictionary) -> void:
 	_start.hide()
-	if not _torqa.riding_along_video():
+	var on_its_own: bool = options.has("workout") and not options.get("on_course", false)
+	if on_its_own:
+		pass  # A workout on its own (R58) is the ride screen alone, over its own backdrop.
+	elif not _torqa.riding_along_video():
 		_world.apply_quality(_torqa.graphics_quality())
 		_world.apply_options(options)
 		_world.reset_view()

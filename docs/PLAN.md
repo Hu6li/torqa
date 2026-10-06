@@ -305,8 +305,12 @@ the realistic look's textures and patterns were replaced step by step.
   ramping) in the core, tested with the fake trainer and a simulated heart rate; rides without
   a route (flat road, FIT as indoor cycling without positions); `torqa-cli ride --power` /
   `--hr-zone` / `--hr-target`
+- [x] Workouts in the app (R58): a Workouts tab after Courses; a workout on its own (HUD, its
+  targets and a live chart of power and heart rate) or on a course in 3D; changed during the
+  ride from the settings dialog; in the history by its name
 - [ ] Overlay window: transparent, borderless, always on top, movable and resizable, shows the
-  rider's HUD; workout selection only; recorded as a ride
+  rider's HUD; entered from a button during any ride or workout, or by starting a workout as
+  an overlay (R57); recorded as a ride
 - [ ] ~~Overlay over full-screen apps on macOS~~ — dropped (R57): it would need native window
   code and a new dependency; the overlay stays on top of normal windows
 - [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)

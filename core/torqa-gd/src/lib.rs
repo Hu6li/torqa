@@ -24,6 +24,7 @@ use torqa_domain::units::{
 };
 use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
+use torqa_session::workout::{HeartRateHold, Workout};
 
 mod log;
 
@@ -474,6 +475,8 @@ impl TorqaApp {
                     "track" => &points(&course.manifest.track),
                     "profile" => &points(&course.manifest.profile),
                     "video" => video,
+                    // Tacx RLV courses are known only by distance and slope: no 3D world.
+                    "located" => course.manifest.video.as_ref().is_none_or(|v| v.located),
                 }
                 .to_variant(),
             );
@@ -719,6 +722,79 @@ impl TorqaApp {
         self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
     }
 
+    /// Starts a workout (R56) as the active rider: `{kind, power_w, zone, bpm, min_w, max_w,
+    /// name}` with `kind` one of `power` (hold `power_w`), `zone` (hold the middle of heart-rate
+    /// zone `zone`, 1–5) or `bpm` (hold `bpm`), the heart-rate ones between `min_w` and
+    /// `max_w`. On the loaded course in 3D if `on_course` (R58), else on its own, going into
+    /// the history as `name`. Emits `failed` and returns false if it cannot start.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn start_workout(
+        &mut self,
+        workout: VarDictionary,
+        on_course: bool,
+        flat_descents: bool,
+    ) -> bool {
+        let Some(app) = self.app.as_ref() else {
+            return false;
+        };
+        let parsed = workout_from(&workout, &app.profile().profile);
+        let name = workout
+            .get("name")
+            .and_then(|v| v.try_to::<GString>().ok())
+            .map(|n| n.to_string())
+            .unwrap_or_default();
+        let descent = if flat_descents {
+            DescentMode::Flat
+        } else {
+            DescentMode::Coast
+        };
+        self.command(|app| app.start_workout(parsed, on_course, descent, &name))
+    }
+
+    /// Changes the current workout, given as for `start_workout()`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn change_workout(&mut self, workout: VarDictionary) {
+        if let Some(app) = self.app.as_mut() {
+            let parsed = workout_from(&workout, &app.profile().profile);
+            app.change_workout(parsed);
+        }
+    }
+
+    /// The active rider's heart-rate zones 1–5 as `(lowest, highest)` bpm.
+    #[func]
+    fn heart_rate_zones(&self) -> PackedVector2Array {
+        let Some(app) = self.app.as_ref() else {
+            return PackedVector2Array::new();
+        };
+        let profile = &app.profile().profile;
+        (1..=5)
+            .map(|zone| {
+                let (low, high) = profile.heart_rate_zone_range(zone);
+                vector2(low.0, high.0)
+            })
+            .collect()
+    }
+
+    /// The current ride so far as `(elapsed_s, value)` points, for a live chart: `power` and
+    /// `heart_rate`, at most `max_points` each.
+    #[func]
+    fn ride_chart(&self, max_points: i64) -> VarDictionary {
+        let samples = self.app.as_ref().map_or(&[][..], App::ride_samples);
+        let max_points = usize::try_from(max_points).unwrap_or(200);
+        let series = |value: fn(&torqa_domain::recording::Sample) -> Option<f64>| {
+            view::ride_series(samples, max_points, value)
+                .into_iter()
+                .map(|(a, b)| vector2(a, b))
+                .collect::<PackedVector2Array>()
+        };
+        vdict! {
+            "power" => &series(|s| s.power.map(|p| p.0)),
+            "heart_rate" => &series(|s| s.heart_rate.map(|h| h.0)),
+        }
+    }
+
     /// Controls the rider's music app: `play_pause`, `next` or `previous` (emits `failed` if
     /// no player reacts).
     #[func]
@@ -897,41 +973,31 @@ impl TorqaApp {
         }
     }
 
-    /// The ride state: `{elapsed_s, distance_m, remaining_m, speed_kmh, grade, elevation_m, x, y,
-    /// heading, curvature, power, cadence, heart_rate, watts_per_kg, power_zone,
-    /// heart_rate_zone, metrics, ghost, climb}`; sensor
-    /// values and what derives from them are `null` when unknown. Empty when
-    /// not riding. `x`/`y` are metres east/north of the route start, as in `track()`; `heading`
-    /// is the direction of travel in radians clockwise from north, `curvature` how sharply the
-    /// road bends there (1 / radius, positive to the right).
+    /// The ride state: `{elapsed_s, distance_m, speed_kmh, power, cadence, heart_rate,
+    /// watts_per_kg, power_zone, heart_rate_zone, metrics, workout}`, and on a route also
+    /// `{remaining_m, grade, elevation_m, x, y, heading, curvature, ghost, climb}`; sensor
+    /// values and what derives from them are `null` when unknown. Empty when not riding.
+    /// `workout` is `{target_power_w, target_heart_rate}` in a workout (the heart rate `null`
+    /// at constant power), else `null`. `x`/`y` are metres east/north of the route start, as in
+    /// `track()`; `heading` is the direction of travel in radians clockwise from north,
+    /// `curvature` how sharply the road bends there (1 / radius, positive to the right).
     #[func]
     fn ride_state(&self) -> VarDictionary {
         let Some(app) = self.app.as_ref() else {
             return VarDictionary::new();
         };
-        let (Some(state), Some(route)) = (app.ride_state(), app.route()) else {
+        let Some(state) = app.ride_state() else {
             return VarDictionary::new();
         };
-        let Some(position) = state.position else {
-            return VarDictionary::new();
-        };
-        let (x, y) = LocalProjection::for_route(route).project(position.lat, position.lon);
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
         let t = state.telemetry;
         let rider = &app.profile().profile;
         let zone =
             |value: Option<u8>| value.map_or_else(Variant::nil, |z| i64::from(z).to_variant());
-        vdict! {
+        let mut dict = vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "distance_m" => state.distance.0,
-            "remaining_m" => state.remaining.map_or(0.0, |r| r.0),
             "speed_kmh" => state.speed.as_kilometers_per_hour(),
-            "grade" => position.grade.0,
-            "elevation_m" => position.elevation.0,
-            "x" => x,
-            "y" => y,
-            "heading" => position.heading,
-            "curvature" => position.curvature,
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
             "heart_rate" => &optional(t.heart_rate.map(|h| h.0)),
@@ -939,37 +1005,63 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
-            "ghost" => &app.ghost_state().map_or_else(Variant::nil, |g| {
-                let at = route.position(g.distance);
-                let (gx, gy) = LocalProjection::for_route(route).project(at.lat, at.lon);
+            "workout" => &state.workout.map_or_else(Variant::nil, |w| {
                 vdict! {
-                    "name" => g.name.as_str(),
-                    "distance_m" => g.distance.0,
-                    "x" => gx,
-                    "y" => gy,
-                    "elevation_m" => at.elevation.0,
-                    "heading" => at.heading,
-                    "curvature" => at.curvature,
-                    "grade" => at.grade.0,
-                    "gap_s" => &optional(g.gap),
+                    "target_power_w" => w.target_power.0,
+                    "target_heart_rate" => &optional(w.target_heart_rate.map(|h| h.0)),
                 }
                 .to_variant()
             }),
-            "climb" => &app.current_climb().map_or_else(Variant::nil, |c| {
-                let count = i64::try_from(route.climbs().len()).unwrap_or(0);
-                vdict! {
-                    "index" => i64::try_from(c.index).unwrap_or(0),
-                    "count" => count,
-                    "category" => c.climb.category.label(),
-                    "length_m" => c.climb.length().0,
-                    "ridden_m" => c.ridden.0,
-                    "grade" => c.climb.average_grade.0,
-                    "elapsed_s" => c.elapsed.as_secs_f64(),
-                    "best_s" => &optional(c.best.map(|b| b.as_secs_f64())),
-                }
-                .to_variant()
-            }),
-        }
+        };
+        // A ride without a route (a workout on its own) has no place: the loaded route, if
+        // any, is not the one ridden.
+        let (Some(position), Some(route)) = (state.position, app.route()) else {
+            return dict;
+        };
+        let (x, y) = LocalProjection::for_route(route).project(position.lat, position.lon);
+        dict.extend_dictionary(
+            &vdict! {
+                "remaining_m" => state.remaining.map_or(0.0, |r| r.0),
+                "grade" => position.grade.0,
+                "elevation_m" => position.elevation.0,
+                "x" => x,
+                "y" => y,
+                "heading" => position.heading,
+                "curvature" => position.curvature,
+                "ghost" => &app.ghost_state().map_or_else(Variant::nil, |g| {
+                    let at = route.position(g.distance);
+                    let (gx, gy) = LocalProjection::for_route(route).project(at.lat, at.lon);
+                    vdict! {
+                        "name" => g.name.as_str(),
+                        "distance_m" => g.distance.0,
+                        "x" => gx,
+                        "y" => gy,
+                        "elevation_m" => at.elevation.0,
+                        "heading" => at.heading,
+                        "curvature" => at.curvature,
+                        "grade" => at.grade.0,
+                        "gap_s" => &optional(g.gap),
+                    }
+                    .to_variant()
+                }),
+                "climb" => &app.current_climb().map_or_else(Variant::nil, |c| {
+                    let count = i64::try_from(route.climbs().len()).unwrap_or(0);
+                    vdict! {
+                        "index" => i64::try_from(c.index).unwrap_or(0),
+                        "count" => count,
+                        "category" => c.climb.category.label(),
+                        "length_m" => c.climb.length().0,
+                        "ridden_m" => c.ridden.0,
+                        "grade" => c.climb.average_grade.0,
+                        "elapsed_s" => c.elapsed.as_secs_f64(),
+                        "best_s" => &optional(c.best.map(|b| b.as_secs_f64())),
+                    }
+                    .to_variant()
+                }),
+            },
+            true,
+        );
+        dict
     }
 
     /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind, sample}]`, with `kind` one of
@@ -1364,6 +1456,41 @@ fn hud_values(app: &App) -> VarDictionary {
 }
 
 /// Preview points as Godot vectors.
+/// A workout as `start_workout()` takes it; heart-rate holds use `profile`'s zones and figures.
+fn workout_from(workout: &VarDictionary, profile: &Profile) -> Workout {
+    // GDScript hands whole numbers (e.g. the zone) over as ints.
+    let number = |key: &str| {
+        workout
+            .get(key)
+            .and_then(|v| {
+                v.try_to::<f64>()
+                    .ok()
+                    .or_else(|| v.try_to::<i32>().ok().map(f64::from))
+            })
+            .unwrap_or(0.0)
+    };
+    let kind = workout
+        .get("kind")
+        .and_then(|v| v.try_to::<GString>().ok())
+        .map(|k| k.to_string())
+        .unwrap_or_default();
+    let (min, max) = (Watts(number("min_w")), Watts(number("max_w")));
+    match kind.as_str() {
+        "zone" => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // zones are 1–5
+            let zone = number("zone").clamp(1.0, 5.0) as u8;
+            Workout::HeartRate(HeartRateHold::zone(profile, zone, min, max))
+        }
+        "bpm" => Workout::HeartRate(HeartRateHold::bpm(
+            profile,
+            BeatsPerMinute(number("bpm")),
+            min,
+            max,
+        )),
+        _ => Workout::ConstantPower(Watts(number("power_w"))),
+    }
+}
+
 fn points(points: &[[f32; 2]]) -> PackedVector2Array {
     points.iter().map(|&[x, y]| Vector2::new(x, y)).collect()
 }

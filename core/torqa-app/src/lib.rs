@@ -28,6 +28,7 @@ use torqa_session::analysis::{
     effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
 use torqa_session::ghost::Ghost;
+use torqa_session::workout::Workout;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
 pub use torqa_storage::profiles::GraphicsQuality;
@@ -300,6 +301,9 @@ impl Reporter {
 
 struct ActiveRide {
     ride: Ride,
+    /// The name it goes into the history by, for a workout without a course; rides on a course
+    /// are named after it.
+    name: Option<String>,
     /// Wall-clock start, set when the trainer first connects.
     started: Option<SystemTime>,
     finished: bool,
@@ -1394,17 +1398,73 @@ impl App {
                 .ok()
                 .flatten()
         });
-        let config = RideConfig {
+        let records = self.records_for(&route);
+        let ride = Ride::new(route, self.ride_config(difficulty, descent));
+        self.begin(ride, None, records, ghost, (player, sound));
+        Ok(())
+    }
+
+    /// Starts `workout` as the active rider (R56, R58): on the loaded course in its 3D world
+    /// if `on_course` (the gradient then sets only the speed), otherwise on its own on a flat
+    /// road, going into the history as `name`. The clock starts once the trainer is connected.
+    ///
+    /// # Errors
+    /// [`AppError::NoTrainer`] without a trainer, [`AppError::NoRoute`] if `on_course` but no
+    /// course is loaded.
+    pub fn start_workout(
+        &mut self,
+        workout: Workout,
+        on_course: bool,
+        descent: DescentMode,
+        name: &str,
+    ) -> Result<(), AppError> {
+        if self.trainer.is_none() {
+            return Err(AppError::NoTrainer);
+        }
+        let config = self.ride_config(Percent(100.0), descent);
+        if on_course {
+            let route = self.route.clone().ok_or(AppError::NoRoute)?;
+            self.view = View::World;
+            let records = self.records_for(&route);
+            let ride = Ride::new(route, config).with_workout(workout);
+            self.begin(ride, None, records, None, (None, None));
+        } else {
+            let ride = Ride::workout(workout, config);
+            let records = RouteRecords::default();
+            self.begin(ride, Some(name.to_owned()), records, None, (None, None));
+        }
+        Ok(())
+    }
+
+    /// Changes the workout of the current workout, e.g. its target power or heart rate.
+    pub fn change_workout(&mut self, workout: Workout) {
+        if let Some(active) = &mut self.ride {
+            active.ride.change_workout(workout);
+        }
+    }
+
+    fn ride_config(&self, difficulty: Percent, descent: DescentMode) -> RideConfig {
+        RideConfig {
             setup: RiderSetup {
                 mass: self.profile.profile.system_mass(),
                 ..RiderSetup::default()
             },
             difficulty,
             descent,
-        };
-        let records = self.records_for(&route);
+        }
+    }
+
+    fn begin(
+        &mut self,
+        ride: Ride,
+        name: Option<String>,
+        records: RouteRecords,
+        ghost: Option<Ghost>,
+        (player, sound): (Option<video::VideoPlayer>, Option<video::SoundPlayer>),
+    ) {
         self.ride = Some(ActiveRide {
-            ride: Ride::new(route, config),
+            ride,
+            name,
             // With the trainer connected already (e.g. while the world was built), the ride
             // starts now; otherwise when it connects.
             started: self.trainer_connected.map(|_| SystemTime::now()),
@@ -1423,7 +1483,6 @@ impl App {
             time_scale: 1.0,
             simulated: false,
         });
-        Ok(())
     }
 
     /// Changes trainer difficulty and descent mode of the current ride (R48).
@@ -1469,10 +1528,11 @@ impl App {
             // it counts towards no records; neither does a workout without a route.
             let real = !active.simulated;
             let record = RideRecord {
-                route: self
-                    .loaded
-                    .as_ref()
-                    .map_or_else(|| "Ride".to_owned(), |(name, _)| name.clone()),
+                route: active
+                    .name
+                    .clone()
+                    .or_else(|| self.loaded.as_ref().map(|(name, _)| name.clone()))
+                    .unwrap_or_else(|| "Ride".to_owned()),
                 start,
                 summary: summarize(samples, self.profile.profile.ftp),
                 route_key: route.filter(|_| real).map(Route::key),
@@ -1840,6 +1900,14 @@ impl App {
         }
         self.watch_video(&mut events);
         events
+    }
+
+    /// The current ride's samples so far, one per second, e.g. for a live chart.
+    #[must_use]
+    pub fn ride_samples(&self) -> &[Sample] {
+        self.ride
+            .as_ref()
+            .map_or(&[], |active| active.ride.samples())
     }
 
     /// The current ride's state, if riding.
@@ -2320,6 +2388,109 @@ mod tests {
         let state = app.ride_state().unwrap();
         assert!(state.distance.0 > 1.0, "rider should be moving: {state:?}");
         assert!(app.trainer_connected());
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_workout_on_its_own_rides_a_flat_road_and_lands_in_the_history_by_its_name() {
+        let dir = temp_dir("workout");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(150.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+
+        let workout = Workout::ConstantPower(Watts(220.0));
+        app.start_workout(workout, false, DescentMode::Coast, "Constant power 220 W")
+            .unwrap();
+        for _ in 0..150 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+
+        let state = app.ride_state().unwrap();
+        assert!(state.distance.0 > 1.0, "{state:?}");
+        assert_eq!(state.position, None);
+        assert_eq!(
+            state.telemetry.power,
+            Some(Watts(220.0)),
+            "ERG holds the target"
+        );
+        app.change_workout(Workout::ConstantPower(Watts(240.0)));
+        assert_eq!(
+            app.ride_state().unwrap().workout.map(|w| w.target_power),
+            Some(Watts(240.0))
+        );
+        let saved = app.finish_ride();
+        assert!(
+            matches!(saved.as_slice(), [AppEvent::RideSaved(_)]),
+            "{saved:?}"
+        );
+        let history = app.history();
+        assert_eq!(history[0].record.route, "Constant power 220 W");
+        assert_eq!(
+            history[0].record.route_key, None,
+            "no records without a course"
+        );
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_workout_on_a_course_rides_along_it() {
+        let dir = temp_dir("workout-course");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert!(matches!(
+            app.start_workout(
+                Workout::ConstantPower(Watts(200.0)),
+                true,
+                DescentMode::Coast,
+                "x"
+            ),
+            Err(AppError::NoTrainer)
+        ));
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(150.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        assert!(matches!(
+            app.start_workout(
+                Workout::ConstantPower(Watts(200.0)),
+                true,
+                DescentMode::Coast,
+                "x"
+            ),
+            Err(AppError::NoRoute)
+        ));
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+
+        app.start_workout(
+            Workout::ConstantPower(Watts(200.0)),
+            true,
+            DescentMode::Coast,
+            "x",
+        )
+        .unwrap();
+        for _ in 0..150 {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+
+        let state = app.ride_state().unwrap();
+        assert!(state.position.is_some() && state.remaining.is_some());
+        assert!(state.workout.is_some());
+        assert!(!app.riding_along_video());
+        app.finish_ride();
+        assert_eq!(
+            app.history()[0].record.route,
+            "Test loop",
+            "named after the course"
+        );
         app.shutdown();
     }
 

@@ -808,3 +808,51 @@ msgstr "Fahrerin"
 
 msgid "Male rider"
 msgstr "Fahrer"
+
+msgid "Workouts"
+msgstr "Workouts"
+
+msgid "Workout"
+msgstr "Workout"
+
+msgid "Constant power"
+msgstr "Konstante Leistung"
+
+msgid "Constant power %d W"
+msgstr "Konstante Leistung %d W"
+
+msgid "Heart-rate zone %d"
+msgstr "Pulszone %d"
+
+msgid "Heart rate %d bpm"
+msgstr "Puls %d bpm"
+
+msgid "Zone"
+msgstr "Zone"
+
+msgid "Zone %d  ·  %d–%d bpm"
+msgstr "Zone %d  ·  %d–%d bpm"
+
+msgid "Lowest power"
+msgstr "Tiefste Leistung"
+
+msgid "Highest power"
+msgstr "Höchste Leistung"
+
+msgid "Hold a power, or a heart rate: Torqa then sets the power, changing it gently."
+msgstr "Halte eine Leistung oder einen Puls: Torqa stellt dann die Leistung ein und ändert sie sanft."
+
+msgid "Where"
+msgstr "Wo"
+
+msgid "On its own (HUD only)"
+msgstr "Ohne Strecke (nur HUD)"
+
+msgid "On a course, the trainer holds the workout's power while you ride through its 3D world"
+msgstr "Auf einer Strecke hält der Trainer die Leistung des Workouts, während du durch ihre 3D-Welt fährst"
+
+msgid "Loading the course"
+msgstr "Strecke wird geladen"
+
+msgid "for %d bpm  ·  now %s"
+msgstr "für %d bpm  ·  jetzt %s"

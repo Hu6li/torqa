@@ -12,6 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_hud_editor()
 	_ride_settings()
+	_workout_settings()
 	_course_cards()
 	_video_view()
 	_video_alignment()
@@ -122,6 +123,102 @@ func _ride_settings() -> void:
 	confirm.confirmed.emit()
 	_check(events == ["finish", "abort"], "abort once confirmed: %s" % [events])
 	dialog.free()
+
+
+## Workouts are set the same way on the Workouts tab and during them (R56, R58).
+func _workout_settings() -> void:
+	var options: WorkoutOptions = WorkoutOptions.new()
+	root.add_child(options)
+	var zones: PackedVector2Array = PackedVector2Array(
+		[
+			Vector2(95, 114),
+			Vector2(114, 133),
+			Vector2(133, 152),
+			Vector2(152, 171),
+			Vector2(171, 190)
+		]
+	)
+	options.configure(zones, 250.0)
+	var fresh: Dictionary = options.workout()
+	_check(
+		(
+			_number(fresh, "power_w") == 175.0
+			and _number(fresh, "min_w") == 100.0
+			and _number(fresh, "max_w") == 225.0
+		),
+		"starting values from the FTP: %s" % fresh
+	)
+	_check(_number(fresh, "bpm") == 124.0, "heart rate from zone 2: %s" % fresh)
+	var wanted: Dictionary = {
+		"kind": "zone", "power_w": 200.0, "zone": 3, "bpm": 140.0, "min_w": 120.0, "max_w": 220.0
+	}
+	options.set_workout(wanted)
+	_check(options.workout() == wanted, "workout round trip: %s" % options.workout())
+	_check(options.title() == "Heart-rate zone 3", "named for the history: %s" % options.title())
+	_expect(
+		_visible_captions(options),
+		["Workout", "Zone", "Lowest power", "Highest power"],
+		"zone rows"
+	)
+	options.set_workout({"kind": "power", "power_w": 210.0})
+	_expect(_visible_captions(options), ["Workout", "Power"], "constant power rows")
+	_check(options.title() == "Constant power 210 W", "power title: %s" % options.title())
+	# Limits typed the wrong way round still make a range.
+	options.set_workout({"kind": "bpm", "min_w": 230.0, "max_w": 110.0})
+	var swapped: Dictionary = options.workout()
+	_check(
+		_number(swapped, "min_w") == 110.0 and _number(swapped, "max_w") == 230.0,
+		"limits ordered: %s" % swapped
+	)
+	# The same rider keeps their values; another rider gets their own.
+	options.configure(zones, 250.0)
+	_check(_number(options.workout(), "max_w") == 230.0, "values kept for the same rider")
+	options.configure(zones, 300.0)
+	_check(_number(options.workout(), "max_w") == 270.0, "another rider's values")
+	options.free()
+
+	var dialog: RideSettingsDialog = RideSettingsDialog.new()
+	root.add_child(dialog)
+	dialog.configure_workout(zones, 250.0)
+	var changes: Array[Dictionary] = []
+	dialog.workout_changed.connect(func(workout: Dictionary) -> void: changes.append(workout))
+	var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+	var ride_options: Dictionary = {"difficulty": 50.0, "workout": wanted, "on_course": false}
+	dialog.edit(ride_options, PackedStringArray(["power"]), false, false)
+	_check(tabs.current_tab == 0 and not tabs.is_tab_hidden(0), "the workout shows first")
+	_check(tabs.is_tab_hidden(1), "a workout on its own has no ride options")
+	var in_dialog: WorkoutOptions = dialog.find_children("*", "WorkoutOptions", true, false)[0]
+	_check(in_dialog.workout() == wanted, "the workout being ridden: %s" % in_dialog.workout())
+	in_dialog.changed.emit()
+	_check(
+		changes.size() == 1 and _number(changes[0], "zone") == 3.0,
+		"changes reach the ride: %s" % [changes]
+	)
+	ride_options["on_course"] = true
+	dialog.edit(ride_options, PackedStringArray(["power"]), false)
+	_check(not tabs.is_tab_hidden(1), "on a course, the world's options too")
+	var ride: RideOptions = dialog.find_children("*", "RideOptions", true, false)[0]
+	_check(not "Trainer difficulty" in _visible_captions(ride), "ERG leaves difficulty no part")
+	dialog.edit({"difficulty": 50.0}, PackedStringArray(["power"]), false)
+	_check(tabs.is_tab_hidden(0) and tabs.current_tab == 1, "a plain ride has no workout")
+	_check("Trainer difficulty" in _visible_captions(ride), "a plain ride has difficulty")
+	dialog.free()
+
+
+## A number in a workout, typed for comparing.
+static func _number(workout: Dictionary, key: String) -> float:
+	var number: float = workout[key]
+	return number
+
+
+## The captions of a three-column options grid whose rows show.
+static func _visible_captions(grid: GridContainer) -> PackedStringArray:
+	var shown: PackedStringArray = PackedStringArray()
+	for i: int in range(0, grid.get_child_count(), grid.columns):
+		var caption: Label = grid.get_child(i) as Label
+		if caption.visible:
+			shown.append(caption.text)
+	return shown
 
 
 ## The video view blends from frame to frame by video time (R17).
