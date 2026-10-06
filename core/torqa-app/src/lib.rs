@@ -2239,10 +2239,10 @@ mod tests {
 
     #[tokio::test]
     async fn courses_ridden_in_3d_lose_their_turns_in_place_videos_keep_them() {
-        // North 300 m, back down 100 m and north again to 500 m: a zig-zag (#101).
+        // North 300 m, 30 m back and north again to 500 m: steps back and forth (#101).
         let dir = temp_dir("turns");
         let mut xml = String::from("<gpx><trk><trkseg>");
-        let norths = (0..=30).chain((20..30).rev()).chain(21..=50);
+        let norths = (0..=30).chain((27..30).rev()).chain(28..=50);
         for north in norths {
             let lat = 46.0 + f64::from(north) * 10.0 / 111_195.0;
             let _ = write!(xml, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
@@ -2267,7 +2267,7 @@ mod tests {
         let (ridden, recorded) = (length(false).await, length(true).await);
         assert!((ridden - 500.0).abs() < 10.0, "ridden in 3D: {ridden} m");
         assert!(
-            (recorded - 700.0).abs() < 10.0,
+            (recorded - 560.0).abs() < 10.0,
             "along a video: {recorded} m"
         );
     }

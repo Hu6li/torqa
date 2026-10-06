@@ -281,8 +281,8 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
     - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
-      metres into a side road and back, or zig-zagging down a road and up it again, rides on;
-      real out-and-backs and turns at roundabouts stay; video courses keep their track
+      metres into a side road or past a junction and straight back rides on; longer turns back
+      and turns at roundabouts stay; video courses keep their track
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look

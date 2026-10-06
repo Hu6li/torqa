@@ -1,7 +1,7 @@
-//! Turns in place (#101): a planned track sometimes runs a few dozen metres into a side road and
-//! straight back out, or zig-zags — back down a road it has just climbed and up it again. A
-//! rider would not; riding in 3D, those stretches are taken out, so the rider stays on the road.
-//! A real out and back, up a dead end to a summit and down again, stays.
+//! Turns in place (#101): a planned track sometimes runs a few dozen metres into a side road or
+//! past a junction and straight back, or back and forth on the spot. A rider would not; riding
+//! in 3D, those stretches are taken out, so the rider stays on the road. Longer turns back stay
+//! as planned: an out and back up a dead end, or down a road and up it again.
 
 use crate::{EARTH_RADIUS, RoutePoint};
 
@@ -9,9 +9,8 @@ use crate::{EARTH_RADIUS, RoutePoint};
 const RETRACE: f64 = 5.0;
 /// ...after turning by more than this (radians, about 100°) over a few points.
 const TURN: f64 = 1.75;
-/// Turning back from at most this far is turning in place, and so is turning back towards a
-/// turn just made, however far.
-const SHORT: f64 = 100.0;
+/// Turning back from at most this far is turning in place.
+const SHORT: f64 = 50.0;
 /// Turns at most this many points apart are the same.
 const NEAR: usize = 2;
 /// At most this many stretches are taken out of a route.
@@ -41,12 +40,6 @@ pub(crate) fn straighten(points: &mut Vec<RoutePoint>) -> Vec<Cut> {
             }
             let (from, to) = (apex - back, apex + back);
             let short = points[apex].distance.0 - points[from].distance.0 <= SHORT;
-            // Turning back at the other end too, rather than at a junction: a zig-zag.
-            let zigzag = turns.iter().any(|&other| {
-                other.abs_diff(turn) > NEAR
-                    && (other.abs_diff(from) <= NEAR || other.abs_diff(to) <= NEAR)
-                    && retrace(&local, other) > NEAR
-            });
             // On from `from` where the track went on from `to`, at the same place...
             let mut next = to + 1;
             while next + 1 < local.len() && distance(local[from], local[next]) < RETRACE {
@@ -59,7 +52,7 @@ pub(crate) fn straighten(points: &mut Vec<RoutePoint>) -> Vec<Cut> {
                 heading(&local, next, next + 1),
             );
             let onwards = arriving.0 * leaving.0 + arriving.1 * leaving.1;
-            ((short || zigzag) && onwards > -0.5).then_some((from, next))
+            (short && onwards > -0.5).then_some((from, next))
         });
         let Some((from, next)) = found else {
             break;
