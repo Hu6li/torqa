@@ -21,6 +21,13 @@ const SKIRT_REACH: f64 = 0.8;
 
 /// Vertices across the road: skirt, bevel and edge on either side.
 const RING: usize = 6;
+/// Where the road turns more than this at a point (radians), it turns in a fan of rings this
+/// far apart.
+const FAN_STEP: f64 = 0.4;
+/// A stretch this close to an earlier one of the route rides the same road again, if it comes
+/// back the other way (past the turn) or this far further on (as in `torqa_routes`).
+const SAME_ROAD: f64 = 3.0;
+const APART: f64 = 40.0;
 
 /// Where another street meets the road: distance along the road, side (1 right of travel, −1
 /// left) and the street's half width.
@@ -39,6 +46,8 @@ struct Segment {
     distance_b: f64,
     /// What carries the road on this segment.
     surface: Surface,
+    /// The route rides this stretch of road a second time: it is drawn by the first pass.
+    repeat: bool,
 }
 
 /// A point of a centre line.
@@ -73,7 +82,42 @@ impl RoadIndex {
                 surface: p.surface,
             })
             .collect();
-        Self::from_lines(&[smooth_curve(&points)])
+        let mut index = Self::from_lines(&[smooth_curve(&points)]);
+        index.mark_repeats();
+        index
+    }
+
+    /// Marks the segments where the route rides the same road again (#101), as
+    /// `torqa_routes` finds them to give them one height: the road is drawn once.
+    fn mark_repeats(&mut self) {
+        for i in 0..self.segments.len() {
+            let segment = self.segments[i];
+            let middle = (
+                f64::midpoint(segment.a.0, segment.b.0),
+                f64::midpoint(segment.a.1, segment.b.1),
+            );
+            let way = direction(&segment);
+            let (low, high) = (
+                cell_of(middle.0 - SAME_ROAD, middle.1 - SAME_ROAD),
+                cell_of(middle.0 + SAME_ROAD, middle.1 + SAME_ROAD),
+            );
+            let repeat = (low.0..=high.0)
+                .flat_map(|x| (low.1..=high.1).map(move |y| (x, y)))
+                .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+                .any(|&j| {
+                    let earlier = &self.segments[j];
+                    let gap = segment.distance_a - earlier.distance_b;
+                    let back = {
+                        let other = direction(earlier);
+                        way.0 * other.0 + way.1 * other.1 < -0.7
+                    };
+                    j < i
+                        && earlier.surface == segment.surface
+                        && (gap >= APART || (back && gap >= 2.0 * SAME_ROAD))
+                        && closest_on_segment(earlier, middle.0, middle.1).0 < SAME_ROAD
+                });
+            self.segments[i].repeat = repeat;
+        }
     }
 
     /// An index of several centre lines, each a list of points a few metres apart.
@@ -89,6 +133,7 @@ impl RoadIndex {
                 elevation_b: w[1].elevation,
                 distance_a: w[0].distance,
                 distance_b: w[1].distance,
+                repeat: false,
                 // A segment touching a bridge or tunnel belongs to it.
                 surface: if w[0].surface == Surface::Ground {
                     w[1].surface
@@ -291,10 +336,37 @@ impl RoadIndex {
     pub(crate) fn mesh(&self, half_width: f64, mouths: &[Mouth]) -> MeshData {
         let mut mesh = MeshData::default();
         for line in &self.lines {
-            mesh.append(line_mesh(&self.segments[line.clone()], half_width, mouths));
+            for run in drawn(&self.segments[line.clone()]) {
+                mesh.append(line_mesh(run, half_width, mouths));
+            }
         }
         mesh
     }
+}
+
+/// The stretches of a line's segments to draw: all but those ridden a second time, each
+/// reaching a few metres into them so it meets the road drawn by the first pass without a gap.
+fn drawn(segments: &[Segment]) -> Vec<&[Segment]> {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few segments
+    let overlap = (2.0 * SAME_ROAD / DRAW_STEP).ceil() as usize;
+    let mut runs: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut k = 0;
+    while k < segments.len() {
+        if segments[k].repeat {
+            k += 1;
+            continue;
+        }
+        let start = k;
+        while k < segments.len() && !segments[k].repeat {
+            k += 1;
+        }
+        let run = start.saturating_sub(overlap)..(k + overlap).min(segments.len());
+        match runs.last_mut() {
+            Some(last) if last.end >= run.start => last.end = run.end,
+            _ => runs.push(run),
+        }
+    }
+    runs.into_iter().map(|run| &segments[run]).collect()
 }
 
 /// The ribbon of [`RoadIndex::mesh`] along one line's segments.
@@ -314,64 +386,106 @@ fn line_mesh(segments: &[Segment], half_width: f64, mouths: &[Mouth]) -> MeshDat
             .iter()
             .any(|&(along, at, half)| at * side > 0.0 && (along - distance).abs() <= half + 1.0)
     };
+    let mut rings: u32 = 0;
     for (index, &((east, north), elevation, distance)) in centres.iter().enumerate() {
-        // Across the road square to the curve: halfway between the pieces either side.
+        // Across the road square to the curve: halfway between the pieces either side. Sharp
+        // corners get a fan of rings turning from the one piece to the other, so they are
+        // round rather than pointed, and a turn back the same way ends round (#101).
         let before = segments[index.saturating_sub(1)];
         let after = segments[index.min(segments.len() - 1)];
         let (d1, d2) = (direction(&before), direction(&after));
-        let (de, dn) = (d1.0 + d2.0, d1.1 + d2.1);
-        let length = de.hypot(dn).max(f64::EPSILON);
-        // Right of travel is the direction turned clockwise by 90°.
-        let (re, rn) = (dn / length, -de / length);
-        let at = |across: f64, drop: f64| {
-            [
-                (east + re * across) as f32,
-                (elevation - drop) as f32,
-                (-(north + rn * across)) as f32,
-            ]
+        let turn = (d1.0 * d2.1 - d1.1 * d2.0).atan2(d1.0 * d2.0 + d1.1 * d2.1);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few rings
+        let fan = (turn.abs() / FAN_STEP).ceil() as usize;
+        let ways: Vec<(f64, f64)> = if fan <= 1 {
+            let (de, dn) = (d1.0 + d2.0, d1.1 + d2.1);
+            let length = de.hypot(dn).max(f64::EPSILON);
+            vec![(de / length, dn / length)]
+        } else {
+            (0..=fan)
+                .map(|k| {
+                    #[allow(clippy::cast_precision_loss)] // a few rings
+                    let (sin, cos) = (turn * k as f64 / fan as f64).sin_cos();
+                    (d1.0 * cos - d1.1 * sin, d1.0 * sin + d1.1 * cos)
+                })
+                .collect()
         };
-        let (bevel, skirt) = (half_width + BEVEL_REACH, half_width + SKIRT_REACH);
-        let left = if joined(distance, -1.0) { 0.0 } else { -0.08 };
-        let right = if joined(distance, 1.0) { 1.0 } else { 1.08 };
-        let tilt = BEVEL_DROP / BEVEL_REACH;
-        // Left skirt, left bevel, left edge, right edge, right bevel, right skirt.
-        let ring = [
-            (
-                at(-skirt, SKIRT_DEPTH),
-                [-re as f32, 0.5, rn as f32],
-                -0.2_f32,
-            ),
-            (
-                at(-bevel, BEVEL_DROP),
-                [(-re * tilt) as f32, 1.0, (rn * tilt) as f32],
-                left,
-            ),
-            (at(-half_width, 0.0), [0.0, 1.0, 0.0], 0.0),
-            (at(half_width, 0.0), [0.0, 1.0, 0.0], 1.0),
-            (
-                at(bevel, BEVEL_DROP),
-                [(re * tilt) as f32, 1.0, (-rn * tilt) as f32],
-                right,
-            ),
-            (at(skirt, SKIRT_DEPTH), [re as f32, 0.5, -rn as f32], 1.2),
-        ];
-        for (vertex, normal, u) in ring {
-            mesh.vertices.push(vertex);
-            let length =
-                (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-            mesh.normals.push(normal.map(|v| v / length));
-            mesh.uvs.push([u, distance as f32]);
-        }
-        if index > 0 {
-            let base = u32::try_from(index * RING).expect("road fits u32");
-            let previous = base - u32::try_from(RING).expect("small");
-            for k in 0..u32::try_from(RING - 1).expect("small") {
-                let (a0, b0, a1, b1) = (previous + k, previous + k + 1, base + k, base + k + 1);
-                mesh.indices.extend([a0, a1, b1, a0, b1, b0]);
-            }
+        for (de, dn) in ways {
+            // Right of travel is the direction turned clockwise by 90°.
+            let (re, rn) = (dn, -de);
+            ring(
+                &mut mesh,
+                rings,
+                ((east, north), elevation, distance),
+                (re, rn),
+                half_width,
+                (joined(distance, -1.0), joined(distance, 1.0)),
+            );
+            rings += 1;
         }
     }
     mesh
+}
+
+/// Ring `index` of vertices across the road at a centre point (its position, elevation and
+/// distance along), square to the unit vector right of travel and joined to the ring before
+/// it; the last argument says whether streets meet the road on its left and right there.
+#[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
+fn ring(
+    mesh: &mut MeshData,
+    index: u32,
+    ((east, north), elevation, distance): ((f64, f64), f64, f64),
+    (re, rn): (f64, f64),
+    half_width: f64,
+    (joined_left, joined_right): (bool, bool),
+) {
+    let at = |across: f64, drop: f64| {
+        [
+            (east + re * across) as f32,
+            (elevation - drop) as f32,
+            (-(north + rn * across)) as f32,
+        ]
+    };
+    let (bevel, skirt) = (half_width + BEVEL_REACH, half_width + SKIRT_REACH);
+    let left = if joined_left { 0.0 } else { -0.08 };
+    let right = if joined_right { 1.0 } else { 1.08 };
+    let tilt = BEVEL_DROP / BEVEL_REACH;
+    // Left skirt, left bevel, left edge, right edge, right bevel, right skirt.
+    let ring = [
+        (
+            at(-skirt, SKIRT_DEPTH),
+            [-re as f32, 0.5, rn as f32],
+            -0.2_f32,
+        ),
+        (
+            at(-bevel, BEVEL_DROP),
+            [(-re * tilt) as f32, 1.0, (rn * tilt) as f32],
+            left,
+        ),
+        (at(-half_width, 0.0), [0.0, 1.0, 0.0], 0.0),
+        (at(half_width, 0.0), [0.0, 1.0, 0.0], 1.0),
+        (
+            at(bevel, BEVEL_DROP),
+            [(re * tilt) as f32, 1.0, (-rn * tilt) as f32],
+            right,
+        ),
+        (at(skirt, SKIRT_DEPTH), [re as f32, 0.5, -rn as f32], 1.2),
+    ];
+    for (vertex, normal, u) in ring {
+        mesh.vertices.push(vertex);
+        let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        mesh.normals.push(normal.map(|v| v / length));
+        mesh.uvs.push([u, distance as f32]);
+    }
+    if index > 0 {
+        let size = u32::try_from(RING).expect("small");
+        let base = index * size;
+        let previous = base - size;
+        for k in 0..size - 1 {
+            let (a0, b0, a1, b1) = (previous + k, previous + k + 1, base + k, base + k + 1);
+            mesh.indices.extend([a0, a1, b1, a0, b1, b0]);
+        }
+    }
 }
 
 /// A smooth curve through the route's points (centripetal Catmull-Rom), every `DRAW_STEP`
