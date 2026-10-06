@@ -147,8 +147,12 @@ const SHOP_REACH: f64 = 8.0;
 const STREET_REACH: f64 = 40.0;
 /// Index cell size of [`Frontage`].
 const FRONTAGE_CELL: f64 = 25.0;
+/// A street's middle this far inside a building's outline runs through it (#100); less is
+/// taken for the map's inaccuracy.
+const THROUGH_DEPTH: f64 = 1.0;
 
-/// Where shops can face: points every few metres along the paved streets and the road ridden.
+/// The paved streets on the ground and the road ridden, as points every few metres: shops face
+/// them, and buildings keep off them.
 pub(crate) struct Frontage {
     cells: HashMap<(i64, i64), Vec<Point>>,
 }
@@ -179,6 +183,26 @@ impl Frontage {
             }
         }
         best.map(|b| b.1)
+    }
+
+    /// Whether a street runs through the building with this footprint.
+    pub(crate) fn runs_through(&self, footprint: &[Point]) -> bool {
+        let Some(&first) = footprint.first() else {
+            return false;
+        };
+        let (low, high) = footprint.iter().fold((first, first), |(low, high), p| {
+            (
+                (low.0.min(p.0), low.1.min(p.1)),
+                (high.0.max(p.0), high.1.max(p.1)),
+            )
+        });
+        let ((low_e, low_n), (high_e, high_n)) = (frontage_cell(low), frontage_cell(high));
+        (low_e..=high_e)
+            .flat_map(|x| (low_n..=high_n).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .any(|&point| {
+                contains(footprint, point) && outline_distance(footprint, point) > THROUGH_DEPTH
+            })
     }
 }
 

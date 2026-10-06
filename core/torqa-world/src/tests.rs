@@ -1696,6 +1696,51 @@ async fn shops_get_a_front_and_an_awning_onto_their_street() {
 }
 
 #[tokio::test]
+async fn roads_stay_clear_of_buildings() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A 60 × 20 m block across the road ridden (its corners far from it), a 40 × 12 m block
+    // a street runs through, and a house beside each.
+    let building = |id: i64, outline| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(3.0),
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            building(41, rectangle(0.0, 300.0, 30.0, 10.0)),
+            building(42, rectangle(20.0, 400.0, 6.0, 4.5)),
+            building(43, rectangle(100.0, 600.0, 20.0, 6.0)),
+            building(44, rectangle(100.0, 615.0, 6.0, 4.0)),
+        ],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(40.0, 600.0), at(200.0, 600.0)],
+            structure: None,
+        }],
+        ..MapData::default()
+    })
+    .await;
+
+    let models = placed(&world);
+    let stands = |(east, north): (f32, f32), radius: f32| {
+        !building_faces(&world, (east, north), radius).is_empty()
+            || models
+                .iter()
+                .any(|m| (m.origin[0] - east).hypot(-m.origin[2] - north) < radius)
+    };
+    assert!(!stands((0.0, 300.0), 25.0), "a block stands on the road");
+    assert!(!stands((100.0, 600.0), 8.0), "a block stands on the street");
+    assert!(stands((20.0, 400.0), 5.0), "the house by the road is gone");
+    assert!(
+        stands((100.0, 615.0), 3.0),
+        "the house by the street is gone"
+    );
+}
+
+#[tokio::test]
 async fn rectangular_houses_become_models_with_shells_for_the_distance() {
     // A 12 × 9 m house with its long side north–south, and an L-shaped farmhouse.
     let house = Building {
