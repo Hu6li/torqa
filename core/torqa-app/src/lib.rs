@@ -25,7 +25,7 @@ use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
-    effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
+    effort, ramp_test_ftp, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
 use torqa_session::ghost::Ghost;
 use torqa_session::workout::Workout;
@@ -87,6 +87,9 @@ pub enum AppError {
     /// The video of a video course cannot be played.
     #[error("{0}")]
     Video(String),
+    /// A workout file cannot be read.
+    #[error("{0}")]
+    Workout(String),
 }
 
 /// Who to race against (R20).
@@ -1451,6 +1454,45 @@ impl App {
         Ok(())
     }
 
+    /// The workouts to choose from (R21): the built-in ones, then the library's files.
+    #[must_use]
+    pub fn workouts(&self) -> Vec<torqa_workouts::Entry> {
+        torqa_workouts::library(&torqa_workouts::library_dir(&self.data_dir))
+    }
+
+    /// Adds a workout file (ZWO, ERG, MRC or FIT) to the library; returns its id.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] if it is no workout Torqa understands or cannot be copied.
+    pub fn import_workout(&mut self, file: &Path) -> Result<String, AppError> {
+        torqa_workouts::import(&torqa_workouts::library_dir(&self.data_dir), file)
+            .map(|path| path.display().to_string())
+            .map_err(|e| AppError::Workout(e.to_string()))
+    }
+
+    /// A structured workout by its id (see [`App::workouts`]), for the active rider's FTP.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] if it cannot be read.
+    pub fn structured_workout(&self, id: &str) -> Result<Workout, AppError> {
+        let plan = torqa_workouts::load(id).map_err(|e| AppError::Workout(e.to_string()))?;
+        Ok(Workout::Structured {
+            plan: Arc::new(plan),
+            ftp: self.profile.profile.ftp,
+        })
+    }
+
+    /// Makes `ftp` the active rider's FTP, e.g. from an FTP test (R22).
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the profile cannot be saved.
+    pub fn set_ftp(&mut self, ftp: Watts) -> Result<(), AppError> {
+        let mut profile = self.profile.profile.clone();
+        profile.ftp = ftp;
+        let id = self.profile.id.clone();
+        self.save_profile(Some(&id), profile).map(|_| ())
+    }
+
     /// Changes the workout of the current workout, e.g. its target power or heart rate.
     pub fn change_workout(&mut self, workout: Workout) {
         if let Some(active) = &mut self.ride {
@@ -1569,6 +1611,11 @@ impl App {
                     })
                     .collect(),
                 name: None,
+                ftp_estimate: active
+                    .ride
+                    .is_ftp_test()
+                    .then(|| ramp_test_ftp(samples))
+                    .flatten(),
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
@@ -1841,6 +1888,7 @@ impl App {
             route_time: None,
             climbs: Vec::new(),
             name: None,
+            ftp_estimate: None,
         };
         if let Err(error) = rides::save(fit, &record) {
             warn!(%error, "cannot save rebuilt ride metadata");
@@ -2287,6 +2335,7 @@ mod tests {
     use std::fmt::Write as _;
 
     use torqa_domain::units::{Rpm, Watts};
+    use torqa_session::workout::RampTest;
 
     use super::*;
 
@@ -2436,7 +2485,10 @@ mod tests {
         );
         app.change_workout(Workout::ConstantPower(Watts(240.0)));
         assert_eq!(
-            app.ride_state().unwrap().workout.map(|w| w.target_power),
+            app.ride_state()
+                .unwrap()
+                .workout
+                .and_then(|w| w.target_power),
             Some(Watts(240.0))
         );
         let saved = app.finish_ride();
@@ -2506,6 +2558,97 @@ mod tests {
             "Test loop",
             "named after the course"
         );
+        app.shutdown();
+    }
+
+    #[test]
+    fn workouts_come_built_in_and_from_imported_files() {
+        let dir = temp_dir("workout-library");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let file = dir.join("Tempo.erg");
+        std::fs::write(
+            &file,
+            "[COURSE HEADER]\nMINUTES WATTS\n[END COURSE HEADER]\n\
+             [COURSE DATA]\n0\t180\n20\t180\n[END COURSE DATA]\n",
+        )
+        .unwrap();
+        let builtin = app.workouts().len();
+
+        let id = app.import_workout(&file).unwrap();
+
+        let library = app.workouts();
+        assert_eq!(library.len(), builtin + 1);
+        assert_eq!(library.last().unwrap().id, id);
+        let Workout::Structured { plan, ftp } = app.structured_workout(&id).unwrap() else {
+            panic!("a structured workout");
+        };
+        assert_eq!(
+            (plan.name.as_str(), ftp),
+            ("Tempo", app.profile().profile.ftp)
+        );
+        assert!(matches!(
+            app.import_workout(&dir.join("missing.zwo")),
+            Err(AppError::Workout(_))
+        ));
+    }
+
+    #[test]
+    fn an_ftp_test_ends_when_the_rider_gives_way_and_its_ftp_can_be_kept() {
+        let dir = temp_dir("ftp-test");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(150.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        let test = RampTest::for_ftp(app.profile().profile.ftp);
+        app.start_workout(
+            Workout::RampTest(test),
+            false,
+            DescentMode::Coast,
+            "FTP test",
+        )
+        .unwrap();
+        // Through the warm-up and a few steps at once; the fake rider holds every step.
+        let active = app.ride.as_mut().unwrap();
+        for _ in 0..(10 * 60 * 20) {
+            active
+                .ride
+                .on_telemetry(&torqa_domain::telemetry::Telemetry {
+                    power: Some(Watts(200.0)),
+                    cadence: Some(Rpm(90.0)),
+                    ..Default::default()
+                });
+            active.ride.tick(Duration::from_millis(50));
+        }
+        // Then the legs give way.
+        for _ in 0..(15 * 20) {
+            active
+                .ride
+                .on_telemetry(&torqa_domain::telemetry::Telemetry {
+                    cadence: Some(Rpm(20.0)),
+                    ..Default::default()
+                });
+            active.ride.tick(Duration::from_millis(50));
+        }
+        assert!(active.ride.is_finished(), "over once the rider gives way");
+
+        let saved = app.finish_ride();
+
+        assert!(
+            matches!(saved.as_slice(), [AppEvent::RideSaved(_)]),
+            "{saved:?}"
+        );
+        let test = &app.history()[0].record;
+        assert_eq!(
+            test.ftp_estimate,
+            Some(Watts(150.0)),
+            "75 % of the best minute at 200 W"
+        );
+        app.set_ftp(Watts(150.0)).unwrap();
+        assert_eq!(app.profile().profile.ftp, Watts(150.0));
         app.shutdown();
     }
 

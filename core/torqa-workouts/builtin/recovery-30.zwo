@@ -1,0 +1,13 @@
+<workout_file>
+    <author>Torqa</author>
+    <name>Recovery 30</name>
+    <description>Thirty easy minutes to spin the legs out the day after a hard effort.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.40" PowerHigh="0.50"/>
+        <SteadyState Duration="1200" Power="0.50" Cadence="90">
+            <textevent timeoffset="0" message="Easy does it: keep it light and spin."/>
+        </SteadyState>
+        <Cooldown Duration="300" PowerLow="0.50" PowerHigh="0.40"/>
+    </workout>
+</workout_file>

@@ -17,6 +17,7 @@ torqa-domain.workspace = true
 torqa-physics.workspace = true
 torqa-routes.workspace = true
 torqa-session.workspace = true
+torqa-workouts.workspace = true
 torqa-world.workspace = true
 godot.workspace = true
 tracing.workspace = true

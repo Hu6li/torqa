@@ -157,7 +157,13 @@ Built in rideable steps:
 
 ### Phase 7 — Extras
 - [ ] Virtual gears + Zwift Click / OpenBikeControl / keyboard
-- [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test
+- [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
+  - [x] Structured workouts (R21): ZWO, ERG/MRC and FIT workout files behind `WorkoutParser`
+    (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their
+    own or on a course; steps, ramps, free steps, cadence targets and messages
+  - [x] FTP test (R22): a ramp test from the rider's FTP, over when the cadence gives way;
+    75 % of the best minute, kept with the ride and taken into the profile from the summary
+  - [ ] Workout editor
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds
 - [x] Logo (orca on a bike, `docs/brand/`), app icon and boot splash
 

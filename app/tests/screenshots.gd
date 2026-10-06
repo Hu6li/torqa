@@ -201,6 +201,29 @@ func _workout_screens(torqa: TorqaApp, start: StartPage) -> void:
 	await create_timer(0.5).timeout
 	torqa.finish_ride()
 
+	# A structured workout (R21): the plan on the tab, then ridden on its own.
+	(_main.get_node("RideScreen") as Control).hide()
+	start.show()
+	start_tabs.current_tab = StartPage.Tab.WORKOUTS
+	options.set_workout({"kind": "plan", "id": "builtin:threshold-2x15"})
+	options.changed.emit()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-structured.png"))
+	var structured: Dictionary = tab.workout()
+	_check(torqa.start_workout(structured, false, false), "structured workout started")
+	start.ride_started.emit({"workout": structured, "on_course": false, "difficulty": 50.0})
+	await create_timer(25.0).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("structured.png"))
+	print("saved structured workout")
+	torqa.finish_ride()
+	# The FTP test (R22) on the tab.
+	(_main.get_node("RideScreen") as Control).hide()
+	start.show()
+	options.set_workout({"kind": "ftp_test"})
+	options.changed.emit()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-ftp-test.png"))
+
 
 func _wait_for(sig: Signal) -> void:
 	var received: Array[bool] = [false]

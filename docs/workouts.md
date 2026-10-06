@@ -7,12 +7,56 @@ the trainer holds a power (ERG mode).
 - **Heart-rate zone** — Torqa holds your heart rate in the middle of a zone (zone 3 of a 185 bpm
   maximum: 139 bpm) by setting the power for you.
 - **Heart rate** — the same for a heart rate you choose, in bpm.
+- **Structured workout** — steps of set power one after the other (R21): a built-in one, or a
+  workout file you import (see below).
+- **FTP test** — finds your FTP (R22), see below.
 
 ![The Workouts tab](images/workouts/tab.png)
 
 The zones are your rider's (from their maximum heart rate, [riders.md](riders.md)); new values
 start from your FTP. A heart-rate workout needs a heart rate: a strap, or the fake trainer's
 simulated one ([riding.md](riding.md)).
+
+## Structured workouts
+
+Choose **Structured workout** and a plan: its description and its steps show below, coloured by
+power zone for your FTP (free steps grey). Five come built in — Recovery 30, Endurance 60,
+Sweet spot 3 × 10, Threshold 2 × 15 and VO2max 5 × 3 — and **Import…** adds workout files:
+
+| File | From | What Torqa reads |
+|---|---|---|
+| `.zwo` | Zwift, whatsonzwift.com, many coaches | Warm-ups, cool-downs, ramps, steady steps, intervals, free rides and max efforts; cadence targets; text messages |
+| `.erg`, `.mrc` | TrainerRoad, Golden Cheetah, older tools | Points in watts (ERG) or % of FTP (MRC) joined by ramps; text messages |
+| `.fit` | Garmin Connect, TrainingPeaks, intervals.icu | Steps by time with a power range (its middle is held), power zone or none; repeats; step names as messages |
+
+![A structured workout on the Workouts tab](images/workouts/structured-tab.png)
+
+Imported files are copied into `workouts/` in your data folder, shared by all riders like the
+courses. Power given as a share of FTP follows the rider's FTP; ERG files in watts stay in
+watts. Not supported (the file is refused with a message): steps by distance or until the lap
+button, running workouts.
+
+During the workout the panel shows the step (with its time left and cadence), what comes next,
+and the workout's messages. Free steps ("free ride", "max effort") let the trainer simulate the
+road instead of holding a power. On its own, the ride ends after the last step and is saved
+under the workout's name; on a course you ride on freely after it until the finish.
+
+## FTP test
+
+A ramp test: after 5 minutes of warm-up at 40 % of your FTP, the power starts at half of it and
+rises by 6 % of it every minute — until you cannot hold it. Pedal at your usual cadence; when
+it stays below 50 rpm for 10 seconds, the test is over and saved (you can also finish it
+yourself from the settings). Most riders give way after 15–25 minutes in all, and it needs no
+pacing: just hold on as long as you can.
+
+![The FTP test on the Workouts tab](images/workouts/ftp-test.png)
+
+Your FTP is then **75 % of your best minute**. The summary shows it next to your current FTP,
+with a button to use it: your power zones, heart-rate holds and structured workouts follow at
+once. The estimate stays with the ride in the history.
+
+The test starts from the FTP in your profile; if that is far off, the steps are too small or
+too big, but the result is still good — test again with the new value for the best steps.
 
 ## Holding a heart rate
 

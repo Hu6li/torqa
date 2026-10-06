@@ -153,7 +153,13 @@ func _workout_settings() -> void:
 	)
 	_check(_number(fresh, "bpm") == 124.0, "heart rate from zone 2: %s" % fresh)
 	var wanted: Dictionary = {
-		"kind": "zone", "power_w": 200.0, "zone": 3, "bpm": 140.0, "min_w": 120.0, "max_w": 220.0
+		"kind": "zone",
+		"power_w": 200.0,
+		"zone": 3,
+		"bpm": 140.0,
+		"min_w": 120.0,
+		"max_w": 220.0,
+		"id": "",
 	}
 	options.set_workout(wanted)
 	_check(options.workout() == wanted, "workout round trip: %s" % options.workout())
@@ -173,6 +179,25 @@ func _workout_settings() -> void:
 		_number(swapped, "min_w") == 110.0 and _number(swapped, "max_w") == 230.0,
 		"limits ordered: %s" % swapped
 	)
+	# Structured workouts (R21) come from the library; their name names the ride.
+	var plans: Array = [
+		{"id": "builtin:a", "name": "Sweet spot", "duration_s": 3600.0, "steps": []},
+		{"id": "/w/b.zwo", "name": "Tempo", "duration_s": 1800.0, "steps": []},
+	]
+	options.set_plans(plans)
+	options.set_workout({"kind": "plan", "id": "/w/b.zwo"})
+	var chosen_id: String = options.workout()["id"]
+	_check(chosen_id == "/w/b.zwo", "the chosen plan: %s" % options.workout())
+	_check(options.title() == "Tempo", "named after the plan: %s" % options.title())
+	_expect(_visible_captions(options), ["Workout", "Plan"], "plan rows")
+	options.set_plans(plans, "builtin:a")
+	var chosen_name: String = options.plan()["name"]
+	_check(chosen_name == "Sweet spot", "an imported plan is chosen at once")
+	options.set_workout({"kind": "bpm"})
+	_check(options.plan().is_empty(), "no plan for other kinds")
+	options.set_workout({"kind": "ftp_test"})
+	_check(options.title() == "FTP test", "the FTP test (R22): %s" % options.title())
+	_expect(_visible_captions(options), ["Workout"], "the FTP test needs no settings")
 	# The same rider keeps their values; another rider gets their own.
 	options.configure(zones, 250.0)
 	_check(_number(options.workout(), "max_w") == 230.0, "values kept for the same rider")
@@ -182,7 +207,7 @@ func _workout_settings() -> void:
 
 	var dialog: RideSettingsDialog = RideSettingsDialog.new()
 	root.add_child(dialog)
-	dialog.configure_workout(zones, 250.0)
+	dialog.configure_workout(zones, 250.0, [])
 	var changes: Array[Dictionary] = []
 	dialog.workout_changed.connect(func(workout: Dictionary) -> void: changes.append(workout))
 	var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]

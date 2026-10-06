@@ -13,6 +13,7 @@ use torqa_app::paths;
 use torqa_devices::ble::Bluetooth;
 use torqa_domain::profile::Profile;
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Watts};
+use torqa_domain::workout::Target;
 use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::workout::{HeartRateHold, Workout};
@@ -41,9 +42,17 @@ enum Command {
         seconds: u64,
     },
     /// Ride a GPX route or a workout, or control the trainer from the keyboard.
-    Ride(RideArgs),
+    Ride(Box<RideArgs>),
     /// Show length, climbing and elevation source of a GPX route.
     Route(RouteArgs),
+    /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
+    Workout {
+        /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
+        workout: String,
+        /// Your FTP in watts, for steps given as a share of it.
+        #[arg(long, default_value_t = 200.0)]
+        ftp: f64,
+    },
 }
 
 #[derive(Args)]
@@ -89,6 +98,9 @@ struct WorkoutArgs {
     /// Heart-rate workout holding this heart rate, in bpm.
     #[arg(long, conflicts_with = "route")]
     hr_target: Option<f64>,
+    /// Structured workout: a ZWO, ERG, MRC or FIT workout file, or `builtin:<name>`.
+    #[arg(long, conflicts_with_all = ["route", "power", "hr_zone", "hr_target"])]
+    workout: Option<String>,
     /// The least power a heart-rate workout asks for, in watts; it starts there.
     #[arg(long, default_value_t = 100.0)]
     min_power: f64,
@@ -104,24 +116,36 @@ struct WorkoutArgs {
 }
 
 impl WorkoutArgs {
-    fn workout(&self) -> Option<Workout> {
+    fn workout(&self) -> Result<Option<Workout>> {
         let rider = Profile {
             ftp: Watts(self.ftp),
             max_heart_rate: BeatsPerMinute(self.max_hr),
             ..Profile::default()
         };
         let (min, max) = (Watts(self.min_power), Watts(self.max_power));
-        if let Some(power) = self.power {
+        Ok(if let Some(power) = self.power {
             Some(Workout::ConstantPower(Watts(power)))
         } else if let Some(zone) = self.hr_zone {
             Some(Workout::HeartRate(HeartRateHold::zone(
                 &rider, zone, min, max,
             )))
-        } else {
-            self.hr_target.map(|bpm| {
-                Workout::HeartRate(HeartRateHold::bpm(&rider, BeatsPerMinute(bpm), min, max))
+        } else if let Some(bpm) = self.hr_target {
+            Some(Workout::HeartRate(HeartRateHold::bpm(
+                &rider,
+                BeatsPerMinute(bpm),
+                min,
+                max,
+            )))
+        } else if let Some(id) = &self.workout {
+            let plan = torqa_workouts::load(id)?;
+            println!("{}: {}", plan.name, recorded_ride::clock(plan.duration()));
+            Some(Workout::Structured {
+                plan: std::sync::Arc::new(plan),
+                ftp: rider.ftp,
             })
-        }
+        } else {
+            None
+        })
     }
 }
 
@@ -165,8 +189,9 @@ async fn main() -> Result<()> {
 
     match Cli::parse().command {
         Command::Scan { seconds } => scan(seconds).await,
-        Command::Ride(args) => ride(args).await,
+        Command::Ride(args) => ride(*args).await,
         Command::Route(args) => route_info(&args).await,
+        Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
     }
 }
 
@@ -201,7 +226,7 @@ async fn ride(args: RideArgs) -> Result<()> {
         None => None,
     };
 
-    let workout = args.workout.workout();
+    let workout = args.workout.workout()?;
     if matches!(workout, Some(Workout::HeartRate(_))) && !args.devices.heart_rate() {
         println!("A heart-rate workout needs a heart rate: add --hr for your strap.");
     }
@@ -224,6 +249,49 @@ async fn ride(args: RideArgs) -> Result<()> {
     };
     devices.close().await;
     result
+}
+
+fn workout_info(id: &str, ftp: Watts) -> Result<()> {
+    if id == "builtins" {
+        for entry in torqa_workouts::builtins() {
+            println!(
+                "{:<28} {:>6}  {}",
+                entry.id,
+                recorded_ride::clock(entry.plan.duration()),
+                entry.plan.name
+            );
+        }
+        return Ok(());
+    }
+    let plan = torqa_workouts::load(id)?;
+    println!("{} ({})", plan.name, recorded_ride::clock(plan.duration()));
+    if !plan.description.is_empty() {
+        println!("{}", plan.description);
+    }
+    let mut start = std::time::Duration::ZERO;
+    for step in &plan.steps {
+        let target = match step.target {
+            Target::Power { from, to } if from == to => format!("{:.0} W", from.watts(ftp).0),
+            Target::Power { from, to } => {
+                format!("{:.0} → {:.0} W", from.watts(ftp).0, to.watts(ftp).0)
+            }
+            Target::Free => "free".to_owned(),
+        };
+        let cadence = step
+            .cadence
+            .map(|c| format!(" at {:.0} rpm", c.0))
+            .unwrap_or_default();
+        println!(
+            "{:>6}  {:>6}  {target}{cadence}",
+            recorded_ride::clock(start),
+            recorded_ride::clock(step.duration)
+        );
+        start += step.duration;
+    }
+    for cue in &plan.cues {
+        println!("{:>6}  “{}”", recorded_ride::clock(cue.at), cue.text);
+    }
+    Ok(())
 }
 
 async fn route_info(args: &RouteArgs) -> Result<()> {
@@ -349,6 +417,8 @@ mod tests {
         assert!(parse(&["--power", "200", "--route", "a.gpx"]).is_err());
         assert!(parse(&["--fake", "--hr-zone", "3", "--time-scale", "10"]).is_err());
         assert!(parse(&["--fake", "--power", "200", "--time-scale", "10"]).is_ok());
+        assert!(parse(&["--workout", "builtin:vo2max-5x3"]).is_ok());
+        assert!(parse(&["--workout", "a.zwo", "--power", "200"]).is_err());
     }
 
     #[test]
@@ -360,7 +430,7 @@ mod tests {
             panic!("valid arguments");
         };
 
-        let Some(Workout::HeartRate(hold)) = args.workout.workout() else {
+        let Ok(Some(Workout::HeartRate(hold))) = args.workout.workout() else {
             panic!("a heart-rate workout");
         };
         assert!((hold.target.0 - 150.0).abs() < 1e-9);

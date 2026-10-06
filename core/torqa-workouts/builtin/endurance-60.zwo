@@ -1,0 +1,14 @@
+<workout_file>
+    <author>Torqa</author>
+    <name>Endurance 60</name>
+    <description>An hour of steady endurance riding in zone 2, the base of everything else.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.68"/>
+        <SteadyState Duration="2700" Power="0.68">
+            <textevent timeoffset="0" message="Settle in: you could talk in full sentences."/>
+            <textevent timeoffset="1350" message="Halfway. Drink something."/>
+        </SteadyState>
+        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.40"/>
+    </workout>
+</workout_file>

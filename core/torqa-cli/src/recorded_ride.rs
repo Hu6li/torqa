@@ -82,6 +82,12 @@ pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) 
     }
 }
 
+/// `m:ss`, for time left.
+pub(crate) fn clock(time: Duration) -> String {
+    let seconds = time.as_secs();
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
 fn save(ride: &Ride, start: SystemTime, output: Option<&std::path::Path>) -> Result<()> {
     let path = output.map_or_else(|| paths::activity_file_name(start), ToOwned::to_owned);
     let fit = torqa_storage::encode_fit(start, ride.samples())?;
@@ -104,7 +110,7 @@ fn format_state(state: &RideState) -> String {
     ]
     .join("  ");
     let km = state.distance.0 / 1000.0;
-    match (state.position, state.remaining, state.workout) {
+    match (state.position, state.remaining, state.workout.clone()) {
         (Some(position), Some(remaining), _) => format!(
             "{km:>6.2}/{:.2} km  {:>+5.1} %  {readings}  {:>5.0} m",
             km + remaining.0 / 1000.0,
@@ -112,14 +118,26 @@ fn format_state(state: &RideState) -> String {
             position.elevation.0,
         ),
         (_, _, Some(workout)) => {
+            let target = workout
+                .target_power
+                .map_or_else(|| "free".to_owned(), |p| format!("{:.0} W", p.0));
             let heart_rate = workout
                 .target_heart_rate
                 .map(|h| format!(" for {:.0} bpm", h.0))
                 .unwrap_or_default();
-            format!(
-                "{km:>6.2} km  {readings}  target {:.0} W{heart_rate}",
-                workout.target_power.0
-            )
+            let step = workout
+                .progress
+                .map(|p| {
+                    let cue = p.cue.map(|c| format!("  “{c}”")).unwrap_or_default();
+                    format!(
+                        "  step {}/{}, {} left{cue}",
+                        p.step + 1,
+                        p.steps,
+                        clock(p.step_left)
+                    )
+                })
+                .unwrap_or_default();
+            format!("{km:>6.2} km  {readings}  target {target}{heart_rate}{step}")
         }
         _ => format!("{km:>6.2} km  {readings}"),
     }

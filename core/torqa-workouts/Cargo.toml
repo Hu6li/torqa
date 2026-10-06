@@ -1,0 +1,18 @@
+[package]
+name = "torqa-workouts"
+description = "Structured workouts for Torqa: ZWO, ERG/MRC and FIT workout files, built-in workouts and the workout library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+torqa-domain.workspace = true
+embedded-io-adapters.workspace = true
+quick-xml.workspace = true
+rustyfit.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

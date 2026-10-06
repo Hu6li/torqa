@@ -1,0 +1,13 @@
+<workout_file>
+    <author>Torqa</author>
+    <name>VO2max 5 × 3</name>
+    <description>Five 3-minute efforts at 115 % of FTP with as long to recover after each.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.75"/>
+        <IntervalsT Repeat="5" OnDuration="180" OffDuration="180" OnPower="1.15" OffPower="0.50" Cadence="100">
+            <textevent timeoffset="0" message="Five times three minutes: hard but even."/>
+        </IntervalsT>
+        <Cooldown Duration="600" PowerLow="0.60" PowerHigh="0.40"/>
+    </workout>
+</workout_file>

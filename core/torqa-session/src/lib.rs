@@ -49,7 +49,7 @@ impl Default for RideConfig {
 }
 
 /// A snapshot for display.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RideState {
     /// Time since the start.
     pub elapsed: Duration,
@@ -92,7 +92,7 @@ impl Ride {
 
     /// Starts a workout without a route (R56): the trainer holds the power the workout asks
     /// for, and the rider's speed and distance are those on a flat road. It goes on until the
-    /// rider ends it.
+    /// rider ends it, or a structured workout (R21) has run its last step.
     #[must_use]
     pub fn workout(workout: Workout, config: RideConfig) -> Self {
         Self::start(None, Some(WorkoutControl::new(workout)), config)
@@ -159,7 +159,7 @@ impl Ride {
         }
         self.elapsed += dt;
         if let Some(workout) = &mut self.workout {
-            workout.update(self.telemetry.heart_rate, dt);
+            workout.update(&self.telemetry, dt);
         }
 
         if self.is_finished() {
@@ -194,13 +194,17 @@ impl Ride {
         self.last_control = None;
     }
 
-    /// Whether the rider has reached the end of the route; a workout without one is never
-    /// finished by itself.
+    /// Whether the rider has reached the end of the route; without one, whether a structured
+    /// workout has run its last step (other workouts are never finished by themselves).
     #[must_use]
     pub fn is_finished(&self) -> bool {
-        self.route
-            .as_ref()
-            .is_some_and(|route| self.distance.0 >= route.length().0)
+        match &self.route {
+            Some(route) => self.distance.0 >= route.length().0,
+            None => self
+                .workout
+                .as_ref()
+                .is_some_and(WorkoutControl::is_finished),
+        }
     }
 
     /// Current state for display.
@@ -218,6 +222,14 @@ impl Ride {
             telemetry: self.telemetry,
             workout: self.workout.as_ref().map(WorkoutControl::state),
         }
+    }
+
+    /// Whether this is an FTP test (R22), whose best minute shows the rider's FTP.
+    #[must_use]
+    pub fn is_ftp_test(&self) -> bool {
+        self.workout
+            .as_ref()
+            .is_some_and(|w| w.ramp_test().is_some())
     }
 
     /// The route being ridden; `None` in a workout without one.
@@ -243,8 +255,9 @@ impl Ride {
     }
 
     fn control_update(&mut self) -> Option<TrainerControl> {
-        let control = if let Some(workout) = &self.workout {
-            TrainerControl::TargetPower(workout.power())
+        // A free step of a structured workout simulates the road like a ride without one.
+        let control = if let Some(power) = self.workout.as_ref().and_then(WorkoutControl::power) {
+            TrainerControl::TargetPower(power)
         } else {
             let grade = trainer_grade(self.road_grade(), self.config.difficulty);
             TrainerControl::Simulation(self.config.setup.simulation_parameters(grade))
@@ -302,10 +315,13 @@ fn worth_sending(sent: &TrainerControl, next: &TrainerControl) -> bool {
 mod tests {
     use std::fmt::Write as _;
 
+    use std::sync::Arc;
     use torqa_devices::DeviceEvent;
     use torqa_devices::fake::{self, FakeHeart, FakeRider, SimulatedHeart};
     use torqa_domain::profile::Profile;
+
     use torqa_domain::units::{BeatsPerMinute, Rpm};
+    use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target};
     use workout::HeartRateHold;
 
     use super::*;
@@ -496,7 +512,10 @@ mod tests {
         assert!((1100.0..1300.0).contains(&state.distance.0), "{state:?}");
         assert_eq!(state.remaining, None);
         assert_eq!(state.position, None);
-        assert_eq!(state.workout.map(|w| w.target_power), Some(Watts(250.0)));
+        assert_eq!(
+            state.workout.and_then(|w| w.target_power),
+            Some(Watts(250.0))
+        );
         assert!(!ride.is_finished(), "goes on until the rider ends it");
         assert!(ride.samples().iter().all(|s| s.location.is_none()));
     }
@@ -505,7 +524,7 @@ mod tests {
     async fn a_workout_on_a_route_holds_its_power_while_the_road_sets_the_speed() {
         let route = route(&[0.0, 8.0], 1000.0).await;
         let workout = Workout::ConstantPower(Watts(250.0));
-        let mut flat = Ride::workout(workout, RideConfig::default());
+        let mut flat = Ride::workout(workout.clone(), RideConfig::default());
         let mut hilly = Ride::new(route, RideConfig::default()).with_workout(workout);
 
         pedal(&mut flat, 250.0, 300);
@@ -517,6 +536,145 @@ mod tests {
         assert!(hilly.state().position.is_some() && hilly.state().workout.is_some());
         pedal(&mut hilly, 250.0, 600);
         assert!(hilly.is_finished(), "ends at the finish");
+    }
+
+    /// A minute at half of FTP, half a minute from 100 W to 160 W, a free minute.
+    fn plan() -> Arc<Plan> {
+        Arc::new(Plan {
+            steps: vec![
+                Step {
+                    duration: Duration::from_mins(1),
+                    target: Target::steady(Intensity::Ftp(0.5)),
+                    cadence: Some(Rpm(85.0)),
+                },
+                Step {
+                    duration: Duration::from_secs(30),
+                    target: Target::Power {
+                        from: Intensity::Watts(Watts(100.0)),
+                        to: Intensity::Watts(Watts(160.0)),
+                    },
+                    cadence: None,
+                },
+                Step {
+                    duration: Duration::from_mins(1),
+                    target: Target::Free,
+                    cadence: None,
+                },
+            ],
+            cues: vec![Cue {
+                at: Duration::from_secs(65),
+                text: "Ramp".to_owned(),
+            }],
+            ..Plan::default()
+        })
+    }
+
+    #[test]
+    fn a_structured_workout_follows_its_steps_and_ends_after_the_last() {
+        let workout = Workout::Structured {
+            plan: plan(),
+            ftp: Watts(240.0),
+        };
+        let mut ride = Ride::workout(workout, RideConfig::default());
+
+        let first = pedal(&mut ride, 150.0, 70);
+        let progress = ride.state().workout.and_then(|w| w.progress).unwrap();
+        let rest = pedal(&mut ride, 150.0, 120);
+
+        assert_eq!(
+            first[0],
+            TrainerControl::TargetPower(Watts(120.0)),
+            "half of 240 W"
+        );
+        // Ten seconds into the ramp: a third of the way from 100 to 160 W, rising each second.
+        let power = ride_power(first.last().unwrap());
+        assert!((117.0..=121.0).contains(&power), "{first:?}");
+        assert_eq!((progress.step, progress.steps), (1, 3));
+        assert_eq!(progress.step_left, Duration::from_secs(20));
+        assert_eq!(progress.left, Duration::from_secs(80));
+        assert_eq!(
+            progress.next.map(|n| n.power),
+            Some(None),
+            "a free step next"
+        );
+        assert_eq!(progress.cue.as_deref(), Some("Ramp"));
+        // The free step lets the trainer simulate the flat road.
+        assert!(
+            matches!(rest.last(), Some(TrainerControl::Simulation(p)) if p.grade.0 == 0.0),
+            "{rest:?}"
+        );
+        assert!(ride.is_finished(), "over after its last step");
+        let recorded = ride.samples().last().unwrap().elapsed;
+        assert!((Duration::from_secs(150)..Duration::from_secs(152)).contains(&recorded));
+    }
+
+    #[tokio::test]
+    async fn a_structured_workout_on_a_route_rides_on_to_the_finish() {
+        let workout = Workout::Structured {
+            plan: plan(),
+            ftp: Watts(240.0),
+        };
+        let mut ride = Ride::new(route(&[0.0, 6.0], 1000.0).await, RideConfig::default())
+            .with_workout(workout);
+
+        let controls = pedal(&mut ride, 200.0, 200);
+
+        assert!(!ride.is_finished(), "2 km take longer than the workout");
+        assert!(ride.state().workout.and_then(|w| w.target_power).is_none());
+        // Back to the road: the 6 % climb at the default 50 % difficulty.
+        assert!(
+            matches!(controls.last(), Some(TrainerControl::Simulation(p)) if p.grade.0 > 1.0),
+            "{controls:?}"
+        );
+    }
+
+    fn ride_power(control: &TrainerControl) -> f64 {
+        match control {
+            TrainerControl::TargetPower(p) => p.0,
+            other => panic!("not ERG: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_ramp_test_rises_every_minute_until_the_cadence_gives_way() {
+        let test = workout::RampTest::for_ftp(Watts(250.0));
+        assert_eq!(
+            (test.warm_up_power, test.start, test.step),
+            (Watts(100.0), Watts(125.0), Watts(15.0))
+        );
+        let mut ride = Ride::workout(Workout::RampTest(test), RideConfig::default());
+
+        // Five minutes of warm-up and nine and a half steps, pedalling at 90 rpm.
+        let controls = pedal(&mut ride, 200.0, 14 * 60 + 30);
+        let state = ride.state().workout.unwrap();
+        // A few seconds below 50 rpm is no failure yet…
+        spin(&mut ride, 30.0, 5);
+        assert!(!ride.is_finished());
+        // …ten seconds is.
+        spin(&mut ride, 30.0, 11);
+
+        assert_eq!(controls[0], TrainerControl::TargetPower(Watts(100.0)));
+        assert_eq!(
+            controls.last(),
+            Some(&TrainerControl::TargetPower(Watts(125.0 + 9.0 * 15.0))),
+            "the tenth step"
+        );
+        let progress = state.progress.unwrap();
+        assert_eq!((progress.step, progress.steps), (10, 0), "open-ended");
+        assert_eq!(progress.step_left, Duration::from_secs(30));
+        assert_eq!(progress.next.and_then(|n| n.power), Some(Watts(275.0)));
+        assert!(ride.is_finished(), "over once the rider gives way");
+    }
+
+    /// Rides on at the power held so far, but at `cadence`.
+    fn spin(ride: &mut Ride, cadence: f64, seconds: u32) {
+        ride.on_telemetry(&Telemetry {
+            cadence: Some(Rpm(cadence)),
+            ..Telemetry::default()
+        });
+        for _ in 0..seconds * 4 {
+            ride.tick(Duration::from_millis(250));
+        }
     }
 
     #[test]

@@ -17,6 +17,12 @@ var heart_rate_target: float = 0.0:
 	set(value):
 		heart_rate_target = value
 		queue_redraw()
+## Power drawn from `x` to `y` watts instead of from zero to above its highest value; zero for
+## that. A structured workout's steps drawn behind share it.
+var power_range: Vector2 = Vector2.ZERO:
+	set(value):
+		power_range = value
+		queue_redraw()
 ## The time axis spans at least this many seconds, so a live chart does not stretch its start.
 var min_duration: float = 1.0
 
@@ -63,7 +69,10 @@ func _draw() -> void:
 	if _heart_rate.size() >= 2:
 		draw_polyline(_scaled(_heart_rate, heart_range), UiTheme.HEART_RATE_COLOR, 1.5, true)
 	if _power.size() >= 2:
-		draw_polyline(_scaled(_power, _range(_power, 50.0, true)), UiTheme.POWER_COLOR, 1.5, true)
+		var watts_range: Vector2 = (
+			power_range if power_range != Vector2.ZERO else _range(_power, 50.0, true)
+		)
+		draw_polyline(_scaled(_power, watts_range), UiTheme.POWER_COLOR, 2.0, true)
 
 
 ## The value range of a series, at least `min_range` so flat data stays flat. Power reads best
