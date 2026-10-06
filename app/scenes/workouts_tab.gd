@@ -17,6 +17,9 @@ var _options: WorkoutOptions = WorkoutOptions.new()
 var _about: Label = Label.new()
 var _plan_chart: WorkoutChart = WorkoutChart.new()
 var _import_dialog: FileDialog = FileDialog.new()
+var _editor: WorkoutEditor = WorkoutEditor.new()
+var _plan_buttons: HBoxContainer = HBoxContainer.new()
+var _edit_button: Button = Button.new()
 var _where: OptionButton = OptionButton.new()
 ## The course of each entry of `_where` after the first ("on its own").
 var _course_paths: PackedStringArray = PackedStringArray()
@@ -35,6 +38,7 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.loading_progress.connect(_on_loading_progress)
 	_torqa.world_ready.connect(_on_world_ready)
 	_torqa.failed.connect(_on_failed)
+	_editor.bind(torqa)
 	refresh()
 
 
@@ -126,6 +130,17 @@ func _init() -> void:
 	options_rows.add_child(_about)
 	_plan_chart.custom_minimum_size = Vector2(0, 140)
 	options_rows.add_child(_plan_chart)
+	_plan_buttons.add_theme_constant_override("separation", 8)
+	_edit_button.pressed.connect(func() -> void: _editor.edit(_options.plan(), _ftp()))
+	_plan_buttons.add_child(_edit_button)
+	var new_button: Button = Button.new()
+	new_button.text = tr("New workout…")
+	new_button.pressed.connect(func() -> void: _editor.edit({}, _ftp()))
+	_plan_buttons.add_child(new_button)
+	options_rows.add_child(_plan_buttons)
+	_editor.saved.connect(_on_saved)
+	_editor.deleted.connect(func() -> void: refresh())
+	add_child(_editor)
 	options_panel.add_child(options_rows)
 	left.add_child(options_panel)
 	add_child(left)
@@ -200,6 +215,11 @@ func _show_plan() -> void:
 	var plan: Dictionary = workout()["plan"]
 	_about.visible = not plan.is_empty()
 	_plan_chart.visible = not plan.is_empty()
+	var kind: String = _options.workout()["kind"]
+	_plan_buttons.visible = kind == "plan"
+	var builtin: bool = plan.get("builtin", false)
+	_edit_button.text = tr("Edit a copy…") if builtin else tr("Edit…")
+	_edit_button.visible = not plan.is_empty()
 	if plan.is_empty():
 		return
 	var description: String = plan["description"]
@@ -207,6 +227,17 @@ func _show_plan() -> void:
 	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
 	var steps: Array = plan["steps"]
 	_plan_chart.set_steps(steps, ftp)
+
+
+func _ftp() -> float:
+	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
+	return ftp
+
+
+func _on_saved(id: String) -> void:
+	_options.set_plans(_torqa.workouts(), id)
+	_show_plan()
+	_status.text = tr("Saved to your workouts.")
 
 
 func _import(path: String) -> void:

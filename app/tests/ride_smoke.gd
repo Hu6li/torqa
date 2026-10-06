@@ -147,6 +147,24 @@ func _workout() -> void:
 	_check(preview.size() > 10, "a preview of its steps: %d" % preview.size())
 	_torqa.abort_ride()
 
+	# Workouts from the editor (R21): saved into the library, replaced, deleted.
+	var made: Dictionary = {
+		"name": "Smoke & tempo",
+		"description": "",
+		"steps": [{"duration_s": 60.0, "from_pct": 80.0, "to_pct": 80.0, "free": false}],
+	}
+	var id: String = _torqa.save_workout(made, "")
+	_check(id.ends_with(".zwo"), "saved as ZWO: %s" % id)
+	var again: String = _torqa.save_workout(made, id)
+	_check(again == id, "edited in place")
+	var found: bool = false
+	for entry: Dictionary in _torqa.workouts():
+		found = found or (entry["id"] == id and entry["name"] == "Smoke & tempo")
+	_check(found, "in the library by its name")
+	_check(_torqa.delete_workout(id), "deleted")
+	_check(not _torqa.delete_workout("builtin:recovery-30"), "built-ins stay")
+	_failure = ""
+
 
 ## Waits for a signal and returns its arguments, failing after TIMEOUT_S.
 func _wait_for(sig: Signal) -> Array:

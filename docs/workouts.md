@@ -36,6 +36,24 @@ courses. Power given as a share of FTP follows the rider's FTP; ERG files in wat
 watts. Not supported (the file is refused with a message): steps by distance or until the lap
 button, running workouts.
 
+### Making your own
+
+**New workout…** opens the editor; **Edit…** edits the chosen workout of your library, and
+**Edit a copy…** a built-in one (saved as a new workout). Each step is:
+
+- **Steady** (one power), **Ramp** (from one power to another) or **Free ride** (no power set);
+- a **duration** as minutes:seconds (`1:30`) or seconds (`90`);
+- **power** in percent of FTP, so the workout fits every rider;
+- an optional **cadence** (0 = none) and a **message** shown when the step starts.
+
+![The workout editor on a copy of Threshold 2 × 15](images/workouts/editor.png)
+
+↑ and ↓ move a step, ✕ removes it. **+ Step** adds one; **Intervals** adds a block at once,
+e.g. 5 × 1:00 at 120 % then 1:00 at 50 %. The chart below shows the workout as it will be
+ridden, with its total time. **Save** writes a ZWO file into your `workouts/` folder (an
+edited file of your own is replaced; imported ERG and FIT files are kept and saved anew);
+**Delete** removes a workout of your own.
+
 During the workout the panel shows the step (with its time left and cadence), what comes next,
 and the workout's messages. Free steps ("free ride", "max effort") let the trainer simulate the
 road instead of holding a power. On its own, the ride ends after the last step and is saved

@@ -33,6 +33,8 @@ Things to review or decide together. Newest first; remove entries once settled.
   - FIT steps with a heart-rate target are ridden free (no power set); they could become
     heart-rate holds later. Steps by distance or the lap button are refused.
   - On a course, once the workout's last step is done you ride on in slope mode to the finish.
+- **Workout editor**: messages are kept per step (at its start); a message in the middle of a
+  step of an imported file moves to the step's start once the workout is edited and saved.
 - **FTP test** (R22 PR): a ramp test (as Zwift's and TrainerRoad's) rather than 20 minutes all
   out — shorter and needs no pacing. It ends when the cadence stays below 50 rpm for 10 s; with
   the KICKR in ERG that is when your legs give way. Steps are 6 % of your FTP a minute.

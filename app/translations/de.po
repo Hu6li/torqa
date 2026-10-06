@@ -931,3 +931,75 @@ msgstr "Einfahren  ·  noch %s"
 
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr "Deine FTP ist jetzt %d W: Zonen und Workouts richten sich danach."
+
+msgid "Workout editor"
+msgstr "Workout-Editor"
+
+msgid "New workout…"
+msgstr "Neues Workout…"
+
+msgid "Edit a copy…"
+msgstr "Kopie bearbeiten…"
+
+msgid "Saved to your workouts."
+msgstr "In deinen Workouts gespeichert."
+
+msgid "%s (copy)"
+msgstr "%s (Kopie)"
+
+msgid "%d steps  ·  %s"
+msgstr "%d Schritte  ·  %s"
+
+msgid "+ Step"
+msgstr "+ Schritt"
+
+msgid "Add"
+msgstr "Hinzufügen"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Delete workout?"
+msgstr "Workout löschen?"
+
+msgid "Its file is deleted from your workouts."
+msgstr "Seine Datei wird aus deinen Workouts gelöscht."
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Duration"
+msgstr "Dauer"
+
+msgid "Intervals"
+msgstr "Intervalle"
+
+msgid "Message"
+msgstr "Nachricht"
+
+msgid "Message at the start of the step"
+msgstr "Nachricht zu Beginn des Schritts"
+
+msgid "Move up"
+msgstr "Nach oben"
+
+msgid "Move down"
+msgstr "Nach unten"
+
+msgid "Ramp"
+msgstr "Rampe"
+
+msgid "Ramp to"
+msgstr "Rampe bis"
+
+msgid "Remove the step"
+msgstr "Schritt entfernen"
+
+msgid "Steady"
+msgstr "Gleichmässig"
+
+msgid "Step"
+msgstr "Schritt"
+
+msgid "The cadence to keep; 0 for none"
+msgstr "Die zu haltende Trittfrequenz; 0 für keine"
