@@ -255,8 +255,9 @@ the realistic look's textures and patterns are being replaced step by step.
       clear of the road ridden where they cross), shaping the ground like the road and
       carrying its kind of bridges and tunnels; a bed of ballast with sleepers and rails;
       plants keep off them
-    - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
-      so the edge of the map never shows
+    - [x] A wider view in the mountains: coarse land (240 m facets, from zoom-10 terrain tiles)
+      beyond the 1.5 km corridor out to 12 km, coloured by its shape (meadow, forest, lakes;
+      rock and snow by the shader), fading into the haze, so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
       (none cut at corners and edges)

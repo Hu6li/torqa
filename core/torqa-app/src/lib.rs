@@ -1136,21 +1136,30 @@ impl App {
     fn generate_world(&mut self, route: Route, map: torqa_osm::MapData) {
         let tx = self.jobs_tx.clone();
         let load = self.load;
-        let mut terrain = Terrain::new(TileSource::defaults(), self.cache_dir.join("terrain"))
-            .recording(self.used.clone());
-        if self.offline {
-            terrain = terrain.offline();
-        }
+        let terrain = |sources| {
+            let terrain =
+                Terrain::new(sources, self.cache_dir.join("terrain")).recording(self.used.clone());
+            if self.offline {
+                terrain.offline()
+            } else {
+                terrain
+            }
+        };
+        let mut detailed = terrain(TileSource::defaults());
+        // The land beyond the corridor needs only coarse tiles, a few for the whole view.
+        let mut distant = terrain(TileSource::distant());
         self.runtime.spawn(async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
                 last: None,
             };
-            let world = torqa_world::generate(&route, &mut terrain, &map, &mut |done, total| {
-                reporter.report(LoadStage::World, done, total);
-            })
-            .await;
+            let mut world =
+                torqa_world::generate(&route, &mut detailed, &map, &mut |done, total| {
+                    reporter.report(LoadStage::World, done, total);
+                })
+                .await;
+            world.horizon = torqa_world::horizon(&route, &mut distant).await;
             let _ = tx.send(JobResult::World(load, Box::new(world)));
         });
     }
