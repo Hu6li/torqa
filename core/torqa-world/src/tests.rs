@@ -1160,7 +1160,7 @@ impl Face {
     }
 
     fn style(&self) -> u8 {
-        (self.color[3] * 9.0).round() as u8
+        (self.color[3] * 10.0).round() as u8
     }
 }
 
@@ -1386,7 +1386,7 @@ async fn walls_show_whole_windows_only() {
             for (k, color) in mesh.colors.iter().enumerate() {
                 // Windowed walls: plaster and timber every 3.2 m, churches every 4.5 m.
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // style codes
-                let spacing = match (color[3] * 9.0).round() as u8 {
+                let spacing = match (color[3] * 10.0).round() as u8 {
                     0 | 2 => 3.2,
                     4 => 4.5,
                     _ => continue,
@@ -1627,6 +1627,72 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
             to_arm((60.0, 80.0), (400.0, 410.0)).min(to_arm((60.0, 70.0), (400.0, 420.0)));
         assert!(outside < 1.25, "{c:?} is {outside} m out");
     }
+}
+
+#[tokio::test]
+async fn shops_get_a_front_and_an_awning_onto_their_street() {
+    use torqa_osm::{Road, RoadClass};
+
+    // Two 12 × 9 m houses along a street to their south; a bakery in the western one.
+    let house = |id: i64, east: f64| Building {
+        id,
+        outline: rectangle(east, 500.0, 6.0, 4.5),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house(31, 80.0), house(32, 120.0)],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(40.0, 489.0), at(160.0, 489.0)],
+            structure: None,
+        }],
+        shops: vec![at(81.0, 501.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    // Drawn by the world itself, so the front shows up close too.
+    assert!(
+        placed(&world)
+            .iter()
+            .all(|m| (m.origin[0] - 80.0).abs() > 1.0),
+        "the shop became a model"
+    );
+    let shop = building_faces(&world, (80.0, 500.0), 9.0);
+    let fronts: Vec<&Face> = shop.iter().filter(|f| f.style() == 10).collect();
+    assert!(!fronts.is_empty(), "no shop front");
+    let ground = slope_at(86.0);
+    for front in &fronts {
+        // On the ground floor of the south wall, facing the street (Godot's +z).
+        assert!(front.normal[2] > 0.99, "a front facing {:?}", front.normal);
+        assert!(
+            (-front.middle()[2] - 495.5).abs() < 0.2,
+            "a front at {:?}",
+            front.middle()
+        );
+        assert!(front.corners.iter().all(|c| c[1] < ground + 3.0));
+    }
+    // The awning reaches out over the pavement, above the front.
+    let awnings = palette::list("buildings.awnings");
+    let awning: Vec<&Face> = shop
+        .iter()
+        .filter(|f| awnings.contains(&[f.color[0], f.color[1], f.color[2]]))
+        .collect();
+    assert!(awning.len() >= 4, "{} awning faces", awning.len());
+    let reach = awning
+        .iter()
+        .flat_map(|f| f.corners)
+        .map(|c| -c[2])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        (495.5 - reach - 1.4).abs() < 0.15,
+        "the awning reaches to {reach}"
+    );
+    // The neighbour has no shop.
+    let neighbour = building_faces(&world, (120.0, 500.0), 9.0);
+    assert!(neighbour.iter().all(|f| f.style() != 10));
 }
 
 #[tokio::test]

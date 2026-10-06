@@ -52,11 +52,51 @@ pub(crate) fn merge(
                         }
                     }
                 }
+                "poi" if shop(tags.text("class")) => {
+                    for point in points(geometry) {
+                        if projection.owns(point) {
+                            data.shops.push(projection.point(point.0, point.1));
+                        }
+                    }
+                }
                 _ => {}
             }
         }
     }
     Ok(())
+}
+
+/// Whether a point of interest of this class is a shop, café, restaurant or the like: a
+/// business with a front onto the street.
+fn shop(class: &str) -> bool {
+    matches!(
+        class,
+        "shop"
+            | "grocery"
+            | "bakery"
+            | "butcher"
+            | "clothing_store"
+            | "shoe"
+            | "jewelry"
+            | "books"
+            | "music"
+            | "toys"
+            | "gift"
+            | "florist"
+            | "optician"
+            | "pharmacy"
+            | "hairdresser"
+            | "laundry"
+            | "bicycle"
+            | "alcohol_shop"
+            | "beer"
+            | "restaurant"
+            | "cafe"
+            | "bar"
+            | "fast_food"
+            | "ice_cream"
+            | "bank"
+    )
 }
 
 /// Feature properties.
@@ -473,12 +513,14 @@ mod tests {
     }
 
     #[test]
-    fn decodes_churches_and_mapped_colours() {
+    fn decodes_churches_shops_and_mapped_colours() {
         let data = test_tile();
 
         // Kirche Wabern and St. Michael; the Petruskirche in the tile's margin belongs to the
         // next tile.
         assert_eq!(data.churches.len(), 2);
+        // Wabern's restaurants, supermarkets, bakeries, hairdressers and the like.
+        assert!(data.shops.len() > 30, "{} shops", data.shops.len());
         assert!(data.buildings.iter().any(|b| b.color.is_some()));
     }
 

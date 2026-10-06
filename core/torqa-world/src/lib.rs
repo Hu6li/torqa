@@ -22,7 +22,7 @@ mod water;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use torqa_osm::{LandCover, MapData};
+use torqa_osm::{LandCover, MapData, RoadClass};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
@@ -331,14 +331,30 @@ fn buildings_by_chunk<'a>(
             footprint,
             setting,
             church: false,
+            shop: None,
         });
     }
-    let churches: Vec<_> = map
-        .churches
+    let project = |points: &[(f64, f64)]| -> Vec<(f64, f64)> {
+        points
+            .iter()
+            .map(|&(lat, lon)| projection.project(lat, lon))
+            .collect()
+    };
+    buildings::mark_churches(&mut plots, &project(&map.churches));
+    // Shops face the paved streets and the road ridden.
+    let streets = map
+        .roads
         .iter()
-        .map(|&(lat, lon)| projection.project(lat, lon))
-        .collect();
-    buildings::mark_churches(&mut plots, &churches);
+        .filter(|r| {
+            matches!(
+                r.class,
+                RoadClass::Major | RoadClass::Street | RoadClass::Service
+            )
+        })
+        .flat_map(|r| drape::densify(&project(&r.line), 5.0))
+        .chain(road.samples(5.0));
+    let frontage = buildings::Frontage::new(streets);
+    buildings::mark_shops(&mut plots, &project(&map.shops), &frontage);
 
     let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
     for plot in plots {

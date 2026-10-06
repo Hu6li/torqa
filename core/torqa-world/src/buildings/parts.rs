@@ -7,8 +7,10 @@ use super::shape::{Point, Rect, distance, offset, perimeter, signed_area, triang
 
 /// Roofs are this thick at their edges.
 const ROOF_THICKNESS: f64 = 0.22;
-/// Windows stand this far out of their wall, so they never flicker into it.
+/// Windows stand this far out of their wall, so they never flicker into it; shop fronts a
+/// little more.
 const WINDOW_RELIEF: f64 = 0.04;
+const SHOP_RELIEF: f64 = 0.08;
 /// Windows repeat this often along plastered and timber walls, and church windows this often
 /// (`app/shaders/building.gdshader`: `window_spacing`, and the church's 4.5 m).
 pub(crate) const WINDOW_SPACING: f64 = 3.2;
@@ -38,15 +40,18 @@ pub(crate) enum Style {
     Sheet = 8,
     /// Flat roof: gravel or membrane.
     Flat = 9,
+    /// A shop front on the ground floor: big panes over a low base, a fascia above; the colour
+    /// is the frame's.
+    Shop = 10,
 }
 
 impl Style {
-    const LAST: f32 = 9.0;
+    const LAST: f32 = 10.0;
 
     /// How often windows repeat along a wall of this style, if they do.
     fn window_spacing(self) -> Option<f64> {
         match self {
-            Self::Plaster | Self::Timber => Some(WINDOW_SPACING),
+            Self::Plaster | Self::Timber | Self::Shop => Some(WINDOW_SPACING),
             Self::Church => Some(CHURCH_WINDOW_SPACING),
             _ => None,
         }
@@ -461,6 +466,79 @@ impl Builder<'_> {
             let j = (i + 1) % inner.len();
             let corners = [inner[i], inner[j], outer[j], outer[i]].map(|p| self.at(p, height));
             quad_uv(self.mesh, corners, [[0.0; 2]; 4], normal, paint.rgba());
+        }
+    }
+
+    /// A shop front along the wall from `a` to `b` (counter-clockwise outline, so the street is
+    /// to its right), standing a little out of it from `ground` up `height`, under an awning
+    /// reaching `reach` out and sloping down to its front, a little narrower than the front.
+    pub(crate) fn shop_front(
+        &mut self,
+        (a, b): (Point, Point),
+        (ground, height): (f64, f64),
+        reach: f64,
+        (front, awning): (Paint, Paint),
+    ) {
+        let length = distance(a, b);
+        let along = ((b.0 - a.0) / length, (b.1 - a.1) / length);
+        let out = (along.1, -along.0);
+        let off = |p: Point, by: f64| (p.0 + out.0 * by, p.1 + out.1 * by);
+        let (fa, fb) = (off(a, SHOP_RELIEF), off(b, SHOP_RELIEF));
+        let top = ground + height;
+        // Whole bays from corner to corner, as the walls' windows (`walls_facing`).
+        let span = (length / WINDOW_SPACING).round().max(1.0) * WINDOW_SPACING;
+        self.upright(
+            &[(fa, ground), (fb, ground), (fb, top), (fa, top)],
+            &[
+                self.wall_uv(0.0, ground),
+                self.wall_uv(span, ground),
+                self.wall_uv(span, top),
+                self.wall_uv(0.0, top),
+            ],
+            out,
+            front,
+        );
+        // The awning: from the wall over the front, sloping down to a valance.
+        let inset = 0.3_f64.min(length / 4.0);
+        let (sa, sb) = (
+            (a.0 + along.0 * inset, a.1 + along.1 * inset),
+            (b.0 - along.0 * inset, b.1 - along.1 * inset),
+        );
+        let (oa, ob) = (off(sa, reach), off(sb, reach));
+        let (high, low) = (top + 0.45, top + 0.45 - reach * 0.4);
+        let valance = low - 0.3;
+        let uv = [[0.0_f32, 0.0]; 4];
+        self.slope(
+            &[(sa, high), (sb, high), (ob, low), (oa, low)],
+            &uv,
+            awning,
+            true,
+        );
+        self.slope(
+            &[
+                (sa, high - 0.05),
+                (sb, high - 0.05),
+                (ob, low - 0.05),
+                (oa, low - 0.05),
+            ],
+            &uv,
+            awning,
+            false,
+        );
+        self.upright(
+            &[(oa, valance), (ob, valance), (ob, low), (oa, low)],
+            &uv,
+            out,
+            awning,
+        );
+        let ends = [(sa, oa, (-along.0, -along.1)), (sb, ob, along)];
+        for (wall, edge, side) in ends {
+            self.upright(
+                &[(wall, high), (edge, low), (edge, valance)],
+                &[[0.0, 0.0]; 3],
+                side,
+                awning,
+            );
         }
     }
 

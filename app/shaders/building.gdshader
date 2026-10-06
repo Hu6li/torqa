@@ -1,7 +1,7 @@
 shader_type spatial;
 // Building shells (R45, ADR 0011): buildings drawn by the world itself — far away, and up close
 // where no model fits. Flat palette colours, faceted, with clean window rectangles and nothing
-// finer. Each surface's style arrives in the vertex colour's alpha as code / 9 and its colour in
+// finer. Each surface's style arrives in the vertex colour's alpha as code / 10 and its colour in
 // RGB (sRGB); the codes are those of `Style` in core/torqa-world/src/buildings/parts.rs. Walls
 // carry metres along the wall and above the ground in UV, roofs metres along the eaves and up
 // the slope, single windows 0–1 across. Windows give way to their average colour where they
@@ -24,6 +24,7 @@ const int WINDOW = 6;
 const int TILES = 7;
 const int SHEET = 8;
 const int FLAT = 9;
+const int SHOP = 10;
 
 // 1 inside [from, to], edges softened over `soft`.
 float band(float x, float from, float to, float soft) {
@@ -36,7 +37,7 @@ vec3 to_linear(vec3 srgb) {
 
 void fragment() {
 	NORMAL = normalize(cross(dFdy(VERTEX), dFdx(VERTEX)));
-	int style = int(round(COLOR.a * 9.0));
+	int style = int(round(COLOR.a * 10.0));
 	vec3 base = to_linear(COLOR.rgb);
 	vec2 uv = UV;
 	float soft = max(max(fwidth(uv.x), fwidth(uv.y)) * 0.5, 1e-4);
@@ -84,6 +85,14 @@ void fragment() {
 		color = mix(color, stone, plinth);
 		color = mix(color, glass, strip);
 		average = base;
+	} else if (style == SHOP) {
+		// A shop front: in each bay a big pane over a low base, a fascia above; the frame
+		// in the shop's colour (`base`).
+		float in_column = fract(uv.x / window_spacing) * window_spacing;
+		float pane = band(in_column, 0.18, window_spacing - 0.18, soft) * band(uv.y, 0.45, 2.55, soft);
+		color = mix(base, glass, pane);
+		average = mix(base, glass, 0.55);
+		roughness = mix(0.9, 0.35, pane);
 	} else if (style == WINDOW) {
 		// UV spans the window: a frame round the glass.
 		float pane = band(uv.x, 0.12, 0.88, soft) * band(uv.y, 0.1, 0.9, soft);
