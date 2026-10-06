@@ -156,7 +156,10 @@ Built in rideable steps:
 - [ ] Google Street View (user key) + Mapillary with crossfades
 
 ### Phase 7 — Extras
-- [ ] Virtual gears + Zwift Click / OpenBikeControl / keyboard
+- [ ] Virtual gears + Zwift Click / OpenBikeControl / keyboard:
+  - [x] Virtual gears on a single cog (24 gears, the road scaled for the trainer, ADR 0003)
+    and the keyboard (↑ / ↓) behind `ShiftInput`; the drivetrain per rider
+  - [ ] OpenBikeControl controllers over Bluetooth (BikeControl bridges the Zwift Click)
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
   - [x] Structured workouts (R21): ZWO, ERG/MRC and FIT workout files behind `WorkoutParser`
     (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their

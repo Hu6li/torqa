@@ -19,10 +19,11 @@ use torqa_devices::ble::{Bluetooth, DeviceKind, DiscoveredDevice};
 use torqa_devices::fake::{self, FakeRider};
 use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
-use torqa_domain::profile::Profile;
+use torqa_domain::profile::{Drivetrain, Profile};
 use torqa_domain::recording::{RideSummary, Sample};
+use torqa_domain::shifting::{Shift, ShiftInput};
 use torqa_domain::units::{Meters, Percent, Watts};
-use torqa_physics::{DescentMode, RiderSetup};
+use torqa_physics::{DescentMode, RiderSetup, VirtualGears};
 use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
     effort, ramp_test_ftp, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
@@ -413,6 +414,10 @@ pub struct App {
     /// Cached files the loaded route and its world were built from.
     used: UsedFiles,
     ride: Option<ActiveRide>,
+    /// Inputs that shift the virtual gears (R7): the keyboard, …
+    shift_inputs: Vec<Box<dyn ShiftInput>>,
+    /// The keyboard's keys, pressed through [`App::shift`].
+    keys: torqa_devices::shift::KeyboardKeys,
     profile: StoredProfile,
     data_dir: PathBuf,
     cache_dir: PathBuf,
@@ -430,6 +435,7 @@ impl App {
             .enable_all()
             .build()?;
         let (jobs_tx, jobs_rx) = mpsc::channel();
+        let (keys, keyboard) = torqa_devices::shift::keyboard();
         Ok(Self {
             runtime,
             jobs_tx,
@@ -457,6 +463,8 @@ impl App {
             loaded: None,
             used: UsedFiles::default(),
             ride: None,
+            shift_inputs: vec![Box::new(keyboard)],
+            keys,
             profile: initial_profile(&data_dir),
             data_dir,
             cache_dir,
@@ -1532,7 +1540,16 @@ impl App {
             },
             difficulty,
             descent,
+            gears: match self.profile.profile.drivetrain {
+                Drivetrain::SingleCog { chainring, cog } => Some(VirtualGears::new(chainring, cog)),
+                Drivetrain::Cassette => None,
+            },
         }
+    }
+
+    /// A shift key was pressed (R7); the ride shifts on the next update.
+    pub fn shift(&mut self, shift: Shift) {
+        self.keys.press(shift);
     }
 
     fn begin(
@@ -1926,6 +1943,13 @@ impl App {
         self.poll_jobs(&mut events);
         self.poll_trainer(&mut events);
         self.poll_sensor(&mut events);
+        for input in &mut self.shift_inputs {
+            for shift in input.poll() {
+                if let Some(active) = &mut self.ride {
+                    active.ride.shift(shift);
+                }
+            }
+        }
 
         if let Some(active) = &mut self.ride
             && active.started.is_some()
@@ -2673,6 +2697,36 @@ mod tests {
         );
         app.set_ftp(Watts(150.0)).unwrap();
         assert_eq!(app.profile().profile.ftp, Watts(150.0));
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_single_cog_rides_virtual_gears_shifted_from_the_keyboard() {
+        let dir = temp_dir("gears");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let mut profile = app.profile().profile.clone();
+        profile.drivetrain = Drivetrain::SingleCog {
+            chainring: 50,
+            cog: 14,
+        };
+        let id = app.profile().id.clone();
+        app.save_profile(Some(&id), profile).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(200.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        let before = app.ride_state().unwrap().gear.unwrap().number;
+
+        app.shift(Shift::Up);
+        app.update(Duration::from_millis(16));
+
+        assert_eq!(app.ride_state().unwrap().gear.unwrap().number, before + 1);
         app.shutdown();
     }
 

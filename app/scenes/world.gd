@@ -228,6 +228,11 @@ func bind(torqa: TorqaApp) -> void:
 	_torqa.world_ready.connect(_on_world_ready)
 
 
+## Whether the free camera flies (its arrows move it).
+func is_free_camera() -> bool:
+	return _free
+
+
 ## Cycles chase → first person → drone (→ free in simulated rides) and returns the new
 ## mode's name.
 func cycle_camera() -> String:

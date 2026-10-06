@@ -8,6 +8,7 @@ extends ConfirmationDialog
 signal profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedStringArray)
 
 const UNITS: Array[String] = ["metric", "imperial"]
+const DRIVETRAINS: Array[String] = ["cassette", "single_cog"]
 ## Interface languages: locale code and name in that language; "" follows the system.
 const LANGUAGES: Array[Array] = [["", "System language"], ["en", "English"], ["de", "Deutsch"]]
 
@@ -20,6 +21,11 @@ var _max_heart_rate: SpinBox = _spin(100.0, 230.0, 1.0, " bpm")
 var _units: OptionButton = OptionButton.new()
 var _language: OptionButton = OptionButton.new()
 var _avatar: OptionButton = OptionButton.new()
+## A cassette, or a single cog with virtual gears (R9): its chainring and cog then.
+var _drivetrain: OptionButton = OptionButton.new()
+var _chainring: SpinBox = _spin(20.0, 60.0, 1.0, " T")
+var _cog: SpinBox = _spin(9.0, 36.0, 1.0, " T")
+var _teeth_rows: Array[Control] = []
 var _hud: HudEditor = HudEditor.new()
 
 
@@ -37,7 +43,17 @@ func _ready() -> void:
 	_name_edit.custom_minimum_size = Vector2(260, 0)
 	# The fields grow with the dialog rather than staying fixed in the middle (R53).
 	for field: Control in [
-		_name_edit, _rider_mass, _bike_mass, _ftp, _max_heart_rate, _units, _language, _avatar
+		_name_edit,
+		_rider_mass,
+		_bike_mass,
+		_ftp,
+		_max_heart_rate,
+		_units,
+		_language,
+		_avatar,
+		_drivetrain,
+		_chainring,
+		_cog,
 	]:
 		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_units.add_item(tr("Metric (km, kg)"))
@@ -45,6 +61,13 @@ func _ready() -> void:
 	# In the order of RiderAvatar.RIDERS.
 	_avatar.add_item(tr("Female rider"))
 	_avatar.add_item(tr("Male rider"))
+	# In the order of DRIVETRAINS.
+	_drivetrain.add_item(tr("Cassette: shift on the bike"))
+	_drivetrain.add_item(tr("Single cog: virtual gears"))
+	_drivetrain.tooltip_text = tr(
+		"On a single cog such as the Zwift Cog, Torqa shifts 24 virtual gears: ↑ and ↓ while riding"
+	)
+	_drivetrain.item_selected.connect(func(_index: int) -> void: _show_teeth())
 	# Language names stay in their own language; only "System language" is translated.
 	_language.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	for language: Array in LANGUAGES:
@@ -61,6 +84,9 @@ func _ready() -> void:
 		["Units", _units],
 		["Language", _language],
 		["Rider on the bike", _avatar],
+		["Drivetrain", _drivetrain],
+		["Chainring", _chainring],
+		["Cog", _cog],
 	]:
 		# i18n-end
 		var caption: Label = Label.new()
@@ -68,6 +94,8 @@ func _ready() -> void:
 		var field: Control = row[1]
 		grid.add_child(caption)
 		grid.add_child(field)
+		if field in [_chainring, _cog]:
+			_teeth_rows.append_array([caption, field])
 	tabs.add_child(grid)
 	_hud.name = tr("HUD")
 	tabs.add_child(_hud)
@@ -94,6 +122,11 @@ func edit(profile: Dictionary, hud_layout: PackedStringArray) -> void:
 			_language.select(i)
 	var avatar: String = profile.get("avatar", RiderAvatar.RIDERS[0])
 	_avatar.select(maxi(RiderAvatar.RIDERS.find(avatar), 0))
+	var drivetrain: String = profile.get("drivetrain", "cassette")
+	_drivetrain.select(maxi(DRIVETRAINS.find(drivetrain), 0))
+	_chainring.value = profile.get("chainring", 50)
+	_cog.value = profile.get("cog", 14)
+	_show_teeth()
 	_hud.edit(hud_layout, UNITS[_units.selected] == "imperial")
 	title = tr("New rider") if _id.is_empty() else tr("Rider settings")
 	popup_centered(Vector2i(960, 600))
@@ -115,10 +148,18 @@ func _on_confirmed() -> void:
 				"units": UNITS[_units.selected],
 				"language": LANGUAGES[_language.selected][0],
 				"avatar": RiderAvatar.RIDERS[_avatar.selected],
+				"drivetrain": DRIVETRAINS[_drivetrain.selected],
+				"chainring": _chainring.value,
+				"cog": _cog.value,
 			},
 			_hud.layout()
 		)
 	)
+
+
+func _show_teeth() -> void:
+	for control: Control in _teeth_rows:
+		control.visible = DRIVETRAINS[_drivetrain.selected] == "single_cog"
 
 
 static func _spin(low: float, high: float, step: float, suffix: String) -> SpinBox:

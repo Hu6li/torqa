@@ -93,6 +93,7 @@ pub const METRICS: &[Metric] = &[
         3.0,
     ),
     metric("cadence", "Cadence", "rpm", 0, MetricKind::Number, 88.0),
+    metric("gear", "Gear", "", 0, MetricKind::Number, 12.0),
     metric("speed", "Speed", "", 1, MetricKind::Speed, 31.4),
     metric("avg_speed", "Avg speed", "", 1, MetricKind::Speed, 29.8),
     metric("distance", "Distance", "", 2, MetricKind::Distance, 12.4),
@@ -203,6 +204,8 @@ pub fn values(
                 "heart_rate" => t.heart_rate.map(|h| h.0),
                 "heart_rate_zone" => t.heart_rate.map(|h| f64::from(profile.heart_rate_zone(h))),
                 "cadence" => t.cadence.map(|c| c.0),
+                #[allow(clippy::cast_precision_loss)] // a gear number
+                "gear" => state.gear.map(|g| g.number as f64),
                 "speed" => Some(state.speed.as_kilometers_per_hour()),
                 "avg_speed" => Some(summary.avg_speed.as_kilometers_per_hour()),
                 "distance" => Some(state.distance.0 / 1000.0),

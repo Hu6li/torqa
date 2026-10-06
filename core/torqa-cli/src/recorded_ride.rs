@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Context, Result};
 use torqa_app::paths;
 use torqa_devices::DeviceEvent;
+use torqa_domain::shifting::Shift;
 use torqa_domain::units::MetersPerSecond;
 use torqa_session::{Ride, RideState};
 
@@ -63,8 +64,12 @@ pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) 
             }
             _ = display.tick(), if started.is_some() => println!("{}", format_state(&ride.state())),
             line = input.recv() => {
-                if line.as_deref().is_none_or(|l| l.trim() == "q") {
-                    break;
+                match line.as_deref().map(str::trim) {
+                    None | Some("q") => break,
+                    // Virtual gears (R9): u / d shift up and down.
+                    Some("u" | "+") => ride.shift(Shift::Up),
+                    Some("d" | "-") => ride.shift(Shift::Down),
+                    Some(_) => {}
                 }
             }
             _ = tokio::signal::ctrl_c() => break,
@@ -109,6 +114,10 @@ fn format_state(state: &RideState) -> String {
         field(t.heart_rate.map(|h| h.0), "bpm", 0),
     ]
     .join("  ");
+    let readings = match state.gear {
+        Some(gear) => format!("{readings}  gear {:>2}/{}", gear.number, gear.of),
+        None => readings,
+    };
     let km = state.distance.0 / 1000.0;
     match (state.position, state.remaining, state.workout.clone()) {
         (Some(position), Some(remaining), _) => format!(

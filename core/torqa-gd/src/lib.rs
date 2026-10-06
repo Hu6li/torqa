@@ -18,7 +18,8 @@ use torqa_app::view;
 use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::{FakeHeart, FakeRider};
-use torqa_domain::profile::{Avatar, Profile, UnitSystem};
+use torqa_domain::profile::{Avatar, Drivetrain, Profile, UnitSystem};
+use torqa_domain::shifting::Shift;
 use torqa_domain::units::{
     BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
 };
@@ -1030,6 +1031,18 @@ impl TorqaApp {
         }
     }
 
+    /// Shifts the virtual gears (R9): `direction` 1 up (harder), -1 down; nothing without them.
+    #[func]
+    fn shift(&mut self, direction: i64) {
+        if let Some(app) = self.app.as_mut() {
+            app.shift(if direction > 0 {
+                Shift::Up
+            } else {
+                Shift::Down
+            });
+        }
+    }
+
     /// Changes difficulty and descent mode of the current ride.
     #[func]
     fn adjust_ride(&mut self, difficulty: f64, flat_descents: bool) {
@@ -1101,6 +1114,18 @@ impl TorqaApp {
                 Avatar::Female => "female",
                 Avatar::Male => "male",
             },
+            "drivetrain" => match p.drivetrain {
+                Drivetrain::Cassette => "cassette",
+                Drivetrain::SingleCog { .. } => "single_cog",
+            },
+            "chainring" => match p.drivetrain {
+                Drivetrain::SingleCog { chainring, .. } => i64::from(chainring),
+                Drivetrain::Cassette => 50,
+            },
+            "cog" => match p.drivetrain {
+                Drivetrain::SingleCog { cog, .. } => i64::from(cog),
+                Drivetrain::Cassette => 14,
+            },
         }
     }
 
@@ -1163,6 +1188,23 @@ impl TorqaApp {
                 Avatar::Male
             } else {
                 Avatar::Female
+            },
+            drivetrain: if data
+                .get("drivetrain")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .is_some_and(|d| d == "single_cog")
+            {
+                let teeth = |key: &str, default: f64| {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped
+                    let teeth = number(key, default).round().clamp(1.0, 99.0) as u8;
+                    teeth
+                };
+                Drivetrain::SingleCog {
+                    chainring: teeth("chainring", 50.0),
+                    cog: teeth("cog", 14.0),
+                }
+            } else {
+                Drivetrain::Cassette
             },
         };
         let id = id.to_string();
@@ -1227,31 +1269,15 @@ impl TorqaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(app),
-            "workout" => &state.workout.as_ref().map_or_else(Variant::nil, |w| {
+            "gear" => &state.gear.map_or_else(Variant::nil, |g| {
                 vdict! {
-                    "target_power_w" => &optional(w.target_power.map(|p| p.0)),
-                    "target_heart_rate" => &optional(w.target_heart_rate.map(|h| h.0)),
-                    "progress" => &w.progress.as_ref().map_or_else(Variant::nil, |p| {
-                        vdict! {
-                            "step" => i64::try_from(p.step).unwrap_or(0),
-                            "steps" => i64::try_from(p.steps).unwrap_or(0),
-                            "step_left_s" => p.step_left.as_secs_f64(),
-                            "left_s" => p.left.as_secs_f64(),
-                            "cadence" => &optional(p.cadence.map(|c| c.0)),
-                            "next" => &p.next.map_or_else(Variant::nil, |n| {
-                                vdict! {
-                                    "power_w" => &optional(n.power.map(|w| w.0)),
-                                    "duration_s" => n.duration.as_secs_f64(),
-                                }
-                                .to_variant()
-                            }),
-                            "cue" => p.cue.as_deref().unwrap_or_default(),
-                        }
-                        .to_variant()
-                    }),
+                    "number" => i64::try_from(g.number).unwrap_or(0),
+                    "of" => i64::try_from(g.of).unwrap_or(0),
+                    "ratio" => g.ratio,
                 }
                 .to_variant()
             }),
+            "workout" => &state.workout.as_ref().map_or_else(Variant::nil, workout_state),
         };
         // A ride without a route (a workout on its own) has no place: the loaded route, if
         // any, is not the one ridden.
@@ -1696,6 +1722,34 @@ fn hud_values(app: &App) -> VarDictionary {
 }
 
 /// Preview points as Godot vectors.
+/// A workout's state for `ride_state()`.
+fn workout_state(w: &torqa_session::workout::WorkoutState) -> Variant {
+    let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+    vdict! {
+        "target_power_w" => &optional(w.target_power.map(|p| p.0)),
+        "target_heart_rate" => &optional(w.target_heart_rate.map(|h| h.0)),
+        "progress" => &w.progress.as_ref().map_or_else(Variant::nil, |p| {
+            vdict! {
+                "step" => i64::try_from(p.step).unwrap_or(0),
+                "steps" => i64::try_from(p.steps).unwrap_or(0),
+                "step_left_s" => p.step_left.as_secs_f64(),
+                "left_s" => p.left.as_secs_f64(),
+                "cadence" => &optional(p.cadence.map(|c| c.0)),
+                "next" => &p.next.map_or_else(Variant::nil, |n| {
+                    vdict! {
+                        "power_w" => &optional(n.power.map(|w| w.0)),
+                        "duration_s" => n.duration.as_secs_f64(),
+                    }
+                    .to_variant()
+                }),
+                "cue" => p.cue.as_deref().unwrap_or_default(),
+            }
+            .to_variant()
+        }),
+    }
+    .to_variant()
+}
+
 /// A workout from the editor, as `save_workout()` takes it.
 fn plan_from(workout: &VarDictionary) -> Plan {
     let text = |dict: &VarDictionary, key: &str| {

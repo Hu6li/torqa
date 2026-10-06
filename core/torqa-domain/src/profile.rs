@@ -22,6 +22,21 @@ pub enum Avatar {
     Male,
 }
 
+/// What the rider shifts with on the trainer (R9, ADR 0003).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Drivetrain {
+    /// A cassette: the rider shifts on the bike and the trainer follows the road.
+    #[default]
+    Cassette,
+    /// A single cog (e.g. the Zwift Cog): Torqa shifts virtual gears.
+    SingleCog {
+        /// Teeth of the chainring ridden.
+        chainring: u8,
+        /// Teeth of the cog on the trainer.
+        cog: u8,
+    },
+}
+
 /// One rider of an installation; several riders can share it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Profile {
@@ -41,6 +56,8 @@ pub struct Profile {
     pub language: String,
     /// The rider shown on the bike.
     pub avatar: Avatar,
+    /// What the rider shifts with.
+    pub drivetrain: Drivetrain,
 }
 
 impl Default for Profile {
@@ -54,6 +71,7 @@ impl Default for Profile {
             units: UnitSystem::Metric,
             language: String::new(),
             avatar: Avatar::Female,
+            drivetrain: Drivetrain::Cassette,
         }
     }
 }

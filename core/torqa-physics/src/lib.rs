@@ -88,6 +88,68 @@ pub fn trainer_grade(road: GradePercent, difficulty: Percent) -> GradePercent {
     GradePercent(road.0 * difficulty.0.clamp(0.0, 100.0) / 100.0)
 }
 
+/// Number of virtual gears (R9, ADR 0003).
+pub const GEARS: usize = 24;
+/// The easiest and hardest virtual gear, as chainring over cog: a mountain-bike low to a road
+/// sprint gear. The gears between step by the same factor (about 9 %).
+const LOWEST_RATIO: f64 = 0.75;
+const HIGHEST_RATIO: f64 = 5.5;
+/// The largest rolling resistance and wind coefficient FTMS slope simulation can carry.
+const MAX_CRR: f64 = 0.0255;
+const MAX_CW: f64 = 2.55;
+
+/// Virtual gears on a single cog (R9, ADR 0003). In slope simulation the trainer brakes its
+/// flywheel, turning at the speed of the real gear, as the road would at that speed. In a
+/// virtual gear `r` times as long, the same cadence means `r` times the speed: the road's force
+/// at that speed, times `r` for the leverage. Scaling the grade and rolling resistance by `r`
+/// and the wind coefficient by `r³` makes the trainer brake exactly so.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VirtualGears {
+    real_ratio: f64,
+}
+
+impl VirtualGears {
+    /// Gears for a bike with a `chainring` on a trainer with a `cog`.
+    #[must_use]
+    pub fn new(chainring: u8, cog: u8) -> Self {
+        Self {
+            real_ratio: f64::from(chainring.max(1)) / f64::from(cog.max(1)),
+        }
+    }
+
+    /// The gear (index from 0) closest to the real one: where a ride starts, as it feels on the
+    /// bike.
+    #[must_use]
+    pub fn neutral(&self) -> usize {
+        (0..GEARS)
+            .min_by(|&a, &b| {
+                let off = |gear: usize| (self.ratio(gear) / self.real_ratio).ln().abs();
+                off(a).total_cmp(&off(b))
+            })
+            .unwrap_or(0)
+    }
+
+    /// The ratio of `gear` (index from 0, clamped), as chainring over cog.
+    #[must_use]
+    pub fn ratio(&self, gear: usize) -> f64 {
+        let steps = u32::try_from(GEARS - 1).map_or(1.0, f64::from);
+        let index = u32::try_from(gear.min(GEARS - 1)).map_or(0.0, f64::from);
+        LOWEST_RATIO * (HIGHEST_RATIO / LOWEST_RATIO).powf(index / steps)
+    }
+
+    /// The road as the trainer must simulate it in `gear`, for the rider to feel that gear.
+    #[must_use]
+    pub fn in_gear(&self, road: SimulationParameters, gear: usize) -> SimulationParameters {
+        let r = self.ratio(gear) / self.real_ratio;
+        SimulationParameters {
+            grade: GradePercent(road.grade.0 * r),
+            wind_speed: road.wind_speed,
+            crr: (road.crr * r).min(MAX_CRR),
+            cw: KilogramsPerMeter((road.cw.0 * r.powi(3)).min(MAX_CW)),
+        }
+    }
+}
+
 /// Riders lean no further than this, however tight the bend (radians, 45°).
 const MAX_LEAN: f64 = std::f64::consts::FRAC_PI_4;
 
@@ -162,6 +224,62 @@ impl Motion {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn virtual_gears_step_evenly_from_low_to_high() {
+        let gears = VirtualGears::new(50, 14);
+
+        assert!((gears.ratio(0) - 0.75).abs() < 1e-9);
+        assert!((gears.ratio(GEARS - 1) - 5.5).abs() < 1e-9);
+        let step = gears.ratio(1) / gears.ratio(0);
+        for gear in 1..GEARS {
+            assert!((gears.ratio(gear) / gears.ratio(gear - 1) - step).abs() < 1e-9);
+        }
+        // 50/14 = 3.57: the gear nearest to it.
+        let neutral = gears.neutral();
+        assert!((gears.ratio(neutral) / (50.0 / 14.0)).ln().abs() < step.ln() / 2.0);
+    }
+
+    #[test]
+    fn a_virtual_gear_brakes_the_flywheel_as_the_road_would_in_that_gear() {
+        let gears = VirtualGears::new(50, 14);
+        let road = RiderSetup::default().simulation_parameters(GradePercent(4.0));
+        // What a trainer brakes in slope simulation at flywheel speed `v` (small grades).
+        let mass = 83.0;
+        let force = |p: SimulationParameters, v: f64| {
+            mass * GRAVITY * (p.grade.0 / 100.0 + p.crr) + p.cw.0 * v * v
+        };
+        let v = 8.0;
+        for gear in [3, gears.neutral(), 16] {
+            let r = gears.ratio(gear) / (50.0 / 14.0);
+
+            let trainer = force(gears.in_gear(road, gear), v);
+
+            // The road's force at the gear's speed, times its leverage.
+            let expected = r * force(road, r * v);
+            assert!(
+                (trainer - expected).abs() < 1e-6,
+                "gear {gear}: {trainer} vs {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hardest_gears_stay_within_what_ftms_can_send() {
+        let gears = VirtualGears::new(34, 14);
+        let road = RiderSetup::default().simulation_parameters(GradePercent(8.0));
+
+        let hardest = gears.in_gear(road, GEARS - 1);
+
+        assert!(
+            hardest.crr <= MAX_CRR && hardest.cw.0 <= MAX_CW,
+            "{hardest:?}"
+        );
+        assert!(
+            hardest.grade.0 > 8.0,
+            "the grade itself is the trainer's to limit"
+        );
+    }
 
     /// Rides for two minutes at constant conditions and returns the settled speed in km/h.
     fn settled_kmh(power: f64, grade: f64) -> f64 {

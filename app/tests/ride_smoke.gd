@@ -90,6 +90,26 @@ func _run() -> void:
 	var held: float = on_course.get("power", 0.0)
 	_check(is_equal_approx(held, 180.0), "holds 180 W: %s" % on_course)
 	_torqa.abort_ride()
+
+	# Virtual gears (R9): a rider on a single cog shifts from the keyboard.
+	var rider: Dictionary = _torqa.profile()
+	var id: String = rider["id"]
+	var on_cog: Dictionary = rider.duplicate()
+	on_cog["drivetrain"] = "single_cog"
+	_check(_torqa.save_profile(id, on_cog) == id, "rider on a single cog")
+	_check(_torqa.start_ride(50.0, false, {"kind": "none"}), "ride with virtual gears")
+	await process_frame
+	var gear: Dictionary = _torqa.ride_state().get("gear", {})
+	var first_gear: int = gear.get("number", 0)
+	_torqa.shift(1)
+	await process_frame
+	var shifted: Dictionary = _torqa.ride_state().get("gear", {})
+	var second_gear: int = shifted.get("number", 0)
+	_check(
+		first_gear > 0 and second_gear == first_gear + 1, "shifted up: %s → %s" % [gear, shifted]
+	)
+	_torqa.abort_ride()
+	_torqa.save_profile(id, rider)
 	DirAccess.remove_absolute(course_path)
 	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
 	quit(0)

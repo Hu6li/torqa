@@ -29,8 +29,18 @@ ride ([overlay.md](overlay.md)).
   [history.md](history.md)).
 - **Abort without saving** ends the ride after asking once; nothing is saved.
 
-Keys: **C** switches the camera, **S** opens the settings, **O** the overlay, **M** / **.** /
-**,** control your music ([audio.md](audio.md)).
+Keys: **C** switches the camera, **S** opens the settings, **O** the overlay, **↑** / **↓**
+shift the virtual gears, **M** / **.** / **,** control your music ([audio.md](audio.md)).
+
+### Virtual gears
+
+With a single cog set as your drivetrain ([riders.md](riders.md)), Torqa shifts for you: 24
+gears from a mountain-bike low (0.75) to a sprint gear (5.5, chainring over cog), about 9 %
+apart. A ride starts in the gear nearest to your real one; **↑** shifts harder, **↓** easier,
+and the trainer feels the new gear at once. The gear shows briefly when it changes, and as the
+**Gear** figure if you add it to your HUD. In a bigger gear the same cadence means more speed,
+so the trainer brakes harder — exactly as the road would in that gear. Workouts in ERG hold
+their power in any gear.
 
 On video courses the video is the view: the course page and the ride settings offer trainer
 difficulty, descents and the video's **Sound** instead, and **C** does nothing.

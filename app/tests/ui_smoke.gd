@@ -16,6 +16,7 @@ func _run() -> void:
 	_ride_settings()
 	_workout_settings()
 	_workout_editor()
+	_rider_drivetrain()
 	_course_cards()
 	_video_view()
 	_video_alignment()
@@ -307,6 +308,32 @@ func _workout_editor() -> void:
 	var fresh: Array = editor.workout()["steps"]
 	_check(fresh.size() == 3, "a new workout starts with a warm-up, a block and a cool-down")
 	editor.free()
+
+
+## The rider's drivetrain (R9): chainring and cog only for a single cog.
+func _rider_drivetrain() -> void:
+	var dialog: ProfileDialog = ProfileDialog.new()
+	root.add_child(dialog)
+	var confirmed: Array[Dictionary] = []
+	dialog.profile_confirmed.connect(
+		func(_id: String, profile: Dictionary, _hud: PackedStringArray) -> void:
+			confirmed.append(profile)
+	)
+	dialog.edit(
+		{"id": "r", "name": "R", "drivetrain": "single_cog", "chainring": 46, "cog": 14},
+		PackedStringArray(["power"])
+	)
+	var spins: Array[Node] = dialog.find_children("*", "SpinBox", true, false)
+	var cog: SpinBox = spins[spins.size() - 1]
+	_check(cog.visible, "chainring and cog for a single cog")
+	dialog.confirmed.emit()
+	var saved: Dictionary = confirmed[0]
+	var drivetrain: String = saved["drivetrain"]
+	var chainring: float = saved["chainring"]
+	_check(drivetrain == "single_cog" and chainring == 46.0, "saved: %s" % saved)
+	dialog.edit({"id": "r", "name": "R"}, PackedStringArray(["power"]))
+	_check(not cog.visible, "a cassette needs no teeth")
+	dialog.free()
 
 
 ## The captions of a three-column options grid whose rows show.

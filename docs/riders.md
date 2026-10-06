@@ -10,6 +10,9 @@ profile, *New rider…* in the list adds one.
   Anaerobic ≤ 150 %, Neuromuscular above), together with watts per kilogram.
 - **Maximum heart rate** sets five heart-rate zones (≤ 60, 70, 80, 90 % and above).
 - **Units** switch speed, distance and elevation between km/h, km, m and mph, mi, ft.
+- **Drivetrain**: with a **cassette** you shift on the bike as outdoors. On a **single cog**
+  (e.g. the Zwift Cog) Torqa gives you 24 **virtual gears** (R9): set your chainring and the
+  cog's teeth, and shift with **↑** and **↓** while riding (see [riding.md](riding.md)).
 
 Profiles are stored in the data directory as `profiles/<rider>/profile.toml` and can be edited by
 hand; each rider's activities are saved in `profiles/<rider>/rides/`. Courses are shared by all

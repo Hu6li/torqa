@@ -10,6 +10,7 @@ pub mod fake;
 pub mod ftms;
 mod handle;
 pub mod heart_rate;
+pub mod shift;
 
 pub use bytes::ParseError;
 pub use handle::{DeviceError, DeviceEvent, DeviceHandle};

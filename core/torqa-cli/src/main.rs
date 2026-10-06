@@ -14,7 +14,7 @@ use torqa_devices::ble::Bluetooth;
 use torqa_domain::profile::Profile;
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Percent, Watts};
 use torqa_domain::workout::Target;
-use torqa_physics::{DescentMode, RiderSetup};
+use torqa_physics::{DescentMode, RiderSetup, VirtualGears};
 use torqa_routes::{ElevationSource, Route};
 use torqa_session::workout::{HeartRateHold, Workout};
 use torqa_session::{Ride, RideConfig};
@@ -79,6 +79,10 @@ struct RideArgs {
     /// Where to save the FIT activity (default: torqa-<date>-<time>.fit).
     #[arg(long)]
     output: Option<PathBuf>,
+    /// Virtual gears for a single cog, as chainring x cog teeth (e.g. 50x14): type u / d and
+    /// Enter to shift up and down. Without it you shift on the bike.
+    #[arg(long, value_parser = parse_gears)]
+    gears: Option<(u8, u8)>,
     /// Runs simulated time faster, for testing routes quickly with the fake trainer. Not for
     /// heart-rate workouts: the simulated heart beats in real time.
     #[arg(long, default_value_t = 1.0, requires = "fake", conflicts_with_all = ["hr_zone", "hr_target"])]
@@ -239,6 +243,9 @@ async fn ride(args: RideArgs) -> Result<()> {
         },
         difficulty: Percent(args.difficulty),
         descent: args.descent.into(),
+        gears: args
+            .gears
+            .map(|(chainring, cog)| VirtualGears::new(chainring, cog)),
     };
     let result = match (route, workout) {
         (Some(route), _) => recorded_ride::run(Ride::new(route, config), &args, &mut devices).await,
@@ -249,6 +256,21 @@ async fn ride(args: RideArgs) -> Result<()> {
     };
     devices.close().await;
     result
+}
+
+/// `50x14`: chainring and cog teeth.
+fn parse_gears(text: &str) -> Result<(u8, u8), String> {
+    let (chainring, cog) = text
+        .split_once(['x', 'X', '/'])
+        .ok_or_else(|| "chainring x cog, e.g. 50x14".to_owned())?;
+    let teeth = |t: &str| {
+        t.trim()
+            .parse::<u8>()
+            .ok()
+            .filter(|&n| n > 0)
+            .ok_or_else(|| format!("{t:?} is not a number of teeth"))
+    };
+    Ok((teeth(chainring)?, teeth(cog)?))
 }
 
 fn workout_info(id: &str, ftp: Watts) -> Result<()> {
@@ -419,6 +441,9 @@ mod tests {
         assert!(parse(&["--fake", "--power", "200", "--time-scale", "10"]).is_ok());
         assert!(parse(&["--workout", "builtin:vo2max-5x3"]).is_ok());
         assert!(parse(&["--workout", "a.zwo", "--power", "200"]).is_err());
+        assert!(parse(&["--gears", "50x14"]).is_ok());
+        assert!(parse(&["--gears", "50"]).is_err());
+        assert_eq!(parse_gears("34/14"), Ok((34, 14)));
     }
 
     #[test]
