@@ -3,6 +3,7 @@
 pub mod files;
 pub mod profile;
 pub mod recording;
+pub mod shifting;
 pub mod telemetry;
 pub mod units;
 pub mod workout;

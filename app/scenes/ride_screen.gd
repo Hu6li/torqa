@@ -70,6 +70,8 @@ var _overlay_hud: OverlayHud = OverlayHud.new()
 var _overlay_button: Button = Button.new()
 var _hidden_by_overlay: Array[Control] = []
 var _time_scale: float = 1.0
+## The virtual gear shown last (R9), to tell the rider of a shift; 0 before the first.
+var _gear: int = 0
 var _frame_time: float = 0.0
 var _slow_for: float = 0.0
 var _budget_noted: bool = false
@@ -102,6 +104,7 @@ func begin(options: Dictionary) -> void:
 	_options = options
 	_finished = false
 	_saved = false
+	_gear = 0
 	_summary_when_saved = false
 	_settings_button.show()
 	_finish_button.hide()
@@ -199,7 +202,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			overlay_requested.emit(false)
 			get_viewport().set_input_as_handled()
 		return
-	if key.keycode == KEY_O and not _finished:
+	if key.keycode in [KEY_UP, KEY_DOWN] and not _world.is_free_camera():
+		# Virtual gears (R9); with a cassette the rider shifts on the bike.
+		_torqa.shift(1 if key.keycode == KEY_UP else -1)
+	elif key.keycode == KEY_O and not _finished:
 		overlay_requested.emit(true)
 	elif key.keycode == KEY_C:
 		_cycle_camera()
@@ -232,6 +238,7 @@ func _process(delta: float) -> void:
 		return
 	if is_overlay():
 		_overlay_hud.show_state(state)
+	_show_gear(state["gear"])
 	var metrics: Dictionary = state["metrics"]
 	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
 	_chart.heart_rate_target = _workout_panel.show_state(state["workout"], state["heart_rate"])
@@ -297,6 +304,18 @@ func overlay_content_size() -> Vector2:
 ## The outline of the overlay's content in window pixels.
 func overlay_outline() -> PackedVector2Array:
 	return _overlay_hud.clickable_outline()
+
+
+## Tells the rider of a shift (R9).
+func _show_gear(gear: Variant) -> void:
+	if gear == null:
+		return
+	var info: Dictionary = gear
+	var number: int = info["number"]
+	var of: int = info["of"]
+	if _gear != 0 and number != _gear:
+		_show_toast(tr("Gear %d of %d") % [number, of])
+	_gear = number
 
 
 func _open_settings() -> void:

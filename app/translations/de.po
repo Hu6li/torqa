@@ -1003,3 +1003,27 @@ msgstr "Schritt"
 
 msgid "The cadence to keep; 0 for none"
 msgstr "Die zu haltende Trittfrequenz; 0 für keine"
+
+msgid "Drivetrain"
+msgstr "Antrieb"
+
+msgid "Cassette: shift on the bike"
+msgstr "Kassette: am Velo schalten"
+
+msgid "Single cog: virtual gears"
+msgstr "Ein Ritzel: virtuelle Gänge"
+
+msgid "On a single cog such as the Zwift Cog, Torqa shifts 24 virtual gears: ↑ and ↓ while riding"
+msgstr "Mit einem einzelnen Ritzel wie dem Zwift Cog schaltet Torqa 24 virtuelle Gänge: ↑ und ↓ während der Fahrt"
+
+msgid "Chainring"
+msgstr "Kettenblatt"
+
+msgid "Cog"
+msgstr "Ritzel"
+
+msgid "Gear"
+msgstr "Gang"
+
+msgid "Gear %d of %d"
+msgstr "Gang %d von %d"

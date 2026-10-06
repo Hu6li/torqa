@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use torqa_domain::profile::{Avatar, Profile, UnitSystem};
+use torqa_domain::profile::{Avatar, Drivetrain, Profile, UnitSystem};
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Watts};
 
 const PROFILES: &str = "profiles";
@@ -49,7 +49,21 @@ struct ProfileFile {
     units: Units,
     language: String,
     avatar: AvatarFile,
+    drivetrain: DrivetrainFile,
+    chainring: u8,
+    cog: u8,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DrivetrainFile {
+    Cassette,
+    SingleCog,
+}
+
+/// A common road chainring on the Zwift Cog: the gears a rider sets up first.
+const DEFAULT_CHAINRING: u8 = 50;
+const DEFAULT_COG: u8 = 14;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -88,6 +102,19 @@ impl From<&Profile> for ProfileFile {
                 Avatar::Female => AvatarFile::Female,
                 Avatar::Male => AvatarFile::Male,
             },
+            drivetrain: match p.drivetrain {
+                Drivetrain::Cassette => DrivetrainFile::Cassette,
+                Drivetrain::SingleCog { .. } => DrivetrainFile::SingleCog,
+            },
+            // Kept while riding a cassette, for switching back.
+            chainring: match p.drivetrain {
+                Drivetrain::SingleCog { chainring, .. } => chainring,
+                Drivetrain::Cassette => DEFAULT_CHAINRING,
+            },
+            cog: match p.drivetrain {
+                Drivetrain::SingleCog { cog, .. } => cog,
+                Drivetrain::Cassette => DEFAULT_COG,
+            },
         }
     }
 }
@@ -108,6 +135,13 @@ impl From<ProfileFile> for Profile {
             avatar: match f.avatar {
                 AvatarFile::Female => Avatar::Female,
                 AvatarFile::Male => Avatar::Male,
+            },
+            drivetrain: match f.drivetrain {
+                DrivetrainFile::Cassette => Drivetrain::Cassette,
+                DrivetrainFile::SingleCog => Drivetrain::SingleCog {
+                    chainring: f.chainring.max(1),
+                    cog: f.cog.max(1),
+                },
             },
         }
     }
@@ -454,6 +488,10 @@ mod tests {
             units: UnitSystem::Imperial,
             language: "de".to_owned(),
             avatar: Avatar::Male,
+            drivetrain: Drivetrain::SingleCog {
+                chainring: 46,
+                cog: 14,
+            },
             ..Profile::default()
         };
         let anna = Profile {
@@ -493,6 +531,11 @@ mod tests {
         assert_eq!(profile.ftp, Watts(180.0));
         assert_eq!(profile.rider_mass, Profile::default().rider_mass);
         assert_eq!(profile.avatar, Profile::default().avatar);
+        assert_eq!(
+            profile.drivetrain,
+            Drivetrain::Cassette,
+            "riders shift on the bike"
+        );
         std::fs::remove_dir_all(data).unwrap();
     }
 

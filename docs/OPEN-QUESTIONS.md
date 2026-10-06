@@ -39,8 +39,20 @@ Things to review or decide together. Newest first; remove entries once settled.
   out — shorter and needs no pacing. It ends when the cadence stays below 50 rpm for 10 s; with
   the KICKR in ERG that is when your legs give way. Steps are 6 % of your FTP a minute.
 
+- **Virtual gears** (gears PR): 24 gears from 0.75 to 5.5 (my own table, not Zwift's), 9 %
+  apart; ↑ / ↓ shift. Tell me if the steps feel too big or small on the KICKR, or if you would
+  rather have Zwift's own spacing.
+
 ### Needs a decision
 
+- **Zwift Click**: its Bluetooth protocol is encrypted. BikeControl's author decoded the Click
+  v1 (it needs an elliptic-curve key exchange and AES — new crypto dependencies), and the
+  Click v2 must be unlocked in the Zwift app once a day before it works anywhere else.
+  BikeControl's app code was GPL-3.0 but has reportedly moved to a non-commercial licence, so
+  I did not look at or reuse it. My plan instead: Torqa reads **OpenBikeControl** controllers
+  (open protocol, MIT), and the BikeControl app (phone or desktop) turns the Click into one.
+  Which Click do you have (v1 or v2)? Is going through BikeControl fine, or do you want a
+  direct Click v1 driver (with the crypto dependencies)?
 - **Per-computer settings in the synced data folder**: the overlay's place and the graphics
   quality are per computer, but live in `settings.toml` of the data directory, which may be
   synced (R30). With two computers sharing it, the last one to save wins. Move them to a

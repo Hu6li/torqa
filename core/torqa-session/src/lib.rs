@@ -12,9 +12,10 @@ pub mod workout;
 use std::time::Duration;
 
 use torqa_domain::recording::{Location, Sample};
+use torqa_domain::shifting::Shift;
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
 use torqa_domain::units::{GradePercent, Meters, MetersPerSecond, Percent, Watts};
-use torqa_physics::{DescentMode, Motion, RiderSetup, trainer_grade};
+use torqa_physics::{DescentMode, GEARS, Motion, RiderSetup, VirtualGears, trainer_grade};
 use torqa_routes::{Route, RoutePosition};
 use workout::{Workout, WorkoutControl, WorkoutState};
 
@@ -35,17 +36,32 @@ pub struct RideConfig {
     pub difficulty: Percent,
     /// Descent behaviour (R15).
     pub descent: DescentMode,
+    /// Virtual gears on a single cog (R9); `None` with a cassette.
+    pub gears: Option<VirtualGears>,
 }
 
 impl Default for RideConfig {
-    /// 50 % trainer difficulty, as popular platforms default to, and coasting descents.
+    /// 50 % trainer difficulty, as popular platforms default to, coasting descents and a
+    /// cassette.
     fn default() -> Self {
         Self {
             setup: RiderSetup::default(),
             difficulty: Percent(50.0),
             descent: DescentMode::Coast,
+            gears: None,
         }
     }
+}
+
+/// The virtual gear ridden.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Gear {
+    /// Which, counted from 1.
+    pub number: usize,
+    /// How many there are.
+    pub of: usize,
+    /// Its ratio, as chainring over cog.
+    pub ratio: f64,
 }
 
 /// A snapshot for display.
@@ -65,6 +81,8 @@ pub struct RideState {
     pub telemetry: Telemetry,
     /// What the workout asks for, in a workout.
     pub workout: Option<WorkoutState>,
+    /// The virtual gear, with virtual gears.
+    pub gear: Option<Gear>,
 }
 
 /// A ride along a route, or a workout on a flat road without one.
@@ -81,6 +99,8 @@ pub struct Ride {
     next_sample: Duration,
     /// The control sent last and when; `None` sends the next one at once.
     last_control: Option<(TrainerControl, Duration)>,
+    /// The virtual gear (index from 0), with virtual gears.
+    gear: usize,
 }
 
 impl Ride {
@@ -120,6 +140,7 @@ impl Ride {
             samples: Vec::new(),
             next_sample: Duration::ZERO,
             last_control: None,
+            gear: config.gears.map_or(0, |gears| gears.neutral()),
         }
     }
 
@@ -186,6 +207,24 @@ impl Ride {
         }
     }
 
+    /// Shifts the virtual gears (R9); the trainer feels the new gear at once. Without virtual
+    /// gears, and in ERG (where the trainer holds the power in any gear), nothing changes.
+    pub fn shift(&mut self, shift: Shift) {
+        if self.config.gears.is_none() {
+            return;
+        }
+        let gear = match shift {
+            Shift::Up => self.gear + 1,
+            Shift::Down => self.gear.saturating_sub(1),
+            Shift::To(number) => number.saturating_sub(1),
+        }
+        .min(GEARS - 1);
+        if gear != self.gear {
+            self.gear = gear;
+            self.last_control = None;
+        }
+    }
+
     /// Moves the rider to `distance` along the route, keeping their speed — for simulated
     /// rides (#53). The trainer gets the gradient there on the next tick.
     pub fn jump_to(&mut self, distance: Meters) {
@@ -221,6 +260,11 @@ impl Ride {
             position: self.route.as_ref().map(|r| r.position(self.distance)),
             telemetry: self.telemetry,
             workout: self.workout.as_ref().map(WorkoutControl::state),
+            gear: self.config.gears.map(|gears| Gear {
+                number: self.gear + 1,
+                of: GEARS,
+                ratio: gears.ratio(self.gear),
+            }),
         }
     }
 
@@ -260,7 +304,11 @@ impl Ride {
             TrainerControl::TargetPower(power)
         } else {
             let grade = trainer_grade(self.road_grade(), self.config.difficulty);
-            TrainerControl::Simulation(self.config.setup.simulation_parameters(grade))
+            let road = self.config.setup.simulation_parameters(grade);
+            TrainerControl::Simulation(match self.config.gears {
+                Some(gears) => gears.in_gear(road, self.gear),
+                None => road,
+            })
         };
         let due = match &self.last_control {
             None => true,
@@ -302,7 +350,10 @@ impl Ride {
 fn worth_sending(sent: &TrainerControl, next: &TrainerControl) -> bool {
     match (sent, next) {
         (TrainerControl::Simulation(a), TrainerControl::Simulation(b)) => {
+            // A shift changes the resistance coefficients too, not only the grade.
             (a.grade.0 - b.grade.0).abs() >= GRADE_UPDATE_THRESHOLD
+                || (a.crr - b.crr).abs() > 1e-9
+                || (a.cw.0 - b.cw.0).abs() > 1e-9
         }
         (TrainerControl::TargetPower(a), TrainerControl::TargetPower(b)) => {
             (a.0 - b.0).abs() >= POWER_UPDATE_THRESHOLD
@@ -675,6 +726,56 @@ mod tests {
         for _ in 0..seconds * 4 {
             ride.tick(Duration::from_millis(250));
         }
+    }
+
+    #[tokio::test]
+    async fn virtual_gears_make_the_road_harder_or_easier_at_once() {
+        let config = RideConfig {
+            difficulty: Percent(100.0),
+            gears: Some(VirtualGears::new(50, 14)),
+            ..RideConfig::default()
+        };
+        let mut ride = Ride::new(route(&[4.0], 3000.0).await, config);
+        let first = pedal(&mut ride, 200.0, 5);
+        let start = ride.state().gear.unwrap();
+
+        ride.shift(Shift::Up);
+        ride.shift(Shift::Up);
+        let harder = pedal(&mut ride, 200.0, 1);
+        ride.shift(Shift::To(1));
+        let easiest = pedal(&mut ride, 200.0, 1);
+        ride.shift(Shift::To(99));
+
+        assert_eq!(first.len(), 1, "one control while the road stays the same");
+        assert!(
+            (start.ratio - 50.0 / 14.0).abs() < 0.2,
+            "starts as on the bike: {start:?}"
+        );
+        assert_eq!(harder.len(), 1, "a shift reaches the trainer at once");
+        assert!(
+            grade_of(&harder[0]) > grade_of(&first[0]) * 1.1,
+            "{harder:?} {first:?}"
+        );
+        assert!(
+            grade_of(&easiest[0]) < grade_of(&first[0]) * 0.4,
+            "{easiest:?}"
+        );
+        assert_eq!(
+            ride.state().gear.unwrap().number,
+            GEARS,
+            "no gear beyond the last"
+        );
+    }
+
+    #[tokio::test]
+    async fn with_a_cassette_the_rider_shifts_on_the_bike() {
+        let mut ride = Ride::new(route(&[4.0], 3000.0).await, RideConfig::default());
+        pedal(&mut ride, 200.0, 5);
+
+        ride.shift(Shift::Up);
+
+        assert!(pedal(&mut ride, 200.0, 1).is_empty(), "no new control");
+        assert_eq!(ride.state().gear, None);
     }
 
     #[test]

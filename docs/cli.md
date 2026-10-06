@@ -82,6 +82,7 @@ bridges and tunnels follow the ground (short dips or humps).
 | `--output ride.fit` | Where to save the activity (default `torqa-<date>-<time>.fit`) |
 | `--offline` | Use cached map and terrain data only (also for `route`) |
 | `--time-scale 50` | Run simulated time faster; only with `--fake` |
+| `--gears 50x14` | Virtual gears on a single cog (chainring x cog); type `u` / `d` and Enter to shift |
 
 On a route the trainer follows the gradient, so `g`, `p` and `r` do not apply: the ride starts
 when the trainer connects and ends at the finish or with `q` / Ctrl+C; the FIT
