@@ -1,11 +1,12 @@
-//! Workouts (R56, R21): the trainer holds a target power (ERG) that the workout sets instead of
-//! following the road — a constant power, one adjusted continuously to hold the rider's heart
-//! rate, or the steps of a structured workout.
+//! Workouts (R56, R21, R22): the trainer holds a target power (ERG) that the workout sets
+//! instead of following the road — a constant power, one adjusted continuously to hold the
+//! rider's heart rate, the steps of a structured workout, or the rising steps of an FTP test.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
+use torqa_domain::telemetry::Telemetry;
 use torqa_domain::units::{BeatsPerMinute, Rpm, Watts};
 use torqa_domain::workout::{Plan, Target};
 
@@ -26,6 +27,11 @@ const MAX_RAMP: f64 = 0.5;
 const REST_TO_THRESHOLD: f64 = 0.55;
 /// A structured workout's text cue shows this long.
 const CUE_SHOWS: Duration = Duration::from_secs(10);
+/// In an FTP test, a cadence below this…
+const FAILING_CADENCE: f64 = 50.0;
+/// …for this long means the rider cannot hold the step any more: the test is over. In ERG the
+/// trainer holds the power whatever the cadence, so the cadence is what gives way.
+const FAILING_FOR: Duration = Duration::from_secs(10);
 
 /// What a workout asks of the rider.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +48,55 @@ pub enum Workout {
         /// The rider's FTP, for steps given as a share of it.
         ftp: Watts,
     },
+    /// An FTP test (R22): power rising step by step until the rider cannot hold it.
+    RampTest(RampTest),
+}
+
+/// A ramp test (R22): after a warm-up the power rises every minute until the rider's cadence
+/// gives way; 75 % of their best minute is then their FTP (see
+/// [`crate::analysis::ramp_test_ftp`]). Short and maximal, it needs no pacing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RampTest {
+    /// How long the warm-up lasts.
+    pub warm_up: Duration,
+    /// Its power.
+    pub warm_up_power: Watts,
+    /// The power of the first step.
+    pub start: Watts,
+    /// How much each step adds.
+    pub step: Watts,
+    /// How long each step lasts.
+    pub step_duration: Duration,
+}
+
+impl RampTest {
+    /// A test for a rider whose FTP is about `ftp` (the profile's, or a guess): five minutes
+    /// warming up at 40 %, then from half of it up by 6 % a minute — most riders give way
+    /// after 15–25 minutes in all.
+    #[must_use]
+    pub fn for_ftp(ftp: Watts) -> Self {
+        let round = |watts: f64, to: f64| (watts / to).round() * to;
+        let ftp = ftp.0.max(100.0);
+        Self {
+            warm_up: Duration::from_mins(5),
+            warm_up_power: Watts(round(ftp * 0.4, 5.0)),
+            start: Watts(round(ftp * 0.5, 5.0)),
+            step: Watts(round(ftp * 0.06, 5.0).max(5.0)),
+            step_duration: Duration::from_mins(1),
+        }
+    }
+
+    /// The power `elapsed` into the test.
+    #[must_use]
+    pub fn power_at(&self, elapsed: Duration) -> Watts {
+        match elapsed.checked_sub(self.warm_up) {
+            None => self.warm_up_power,
+            Some(into) => {
+                let steps = (into.as_secs_f64() / self.step_duration.as_secs_f64()).floor();
+                Watts(self.start.0 + self.step.0 * steps)
+            }
+        }
+    }
 }
 
 /// Holding a heart rate (R56). Heart rate lags power by 30–60 s, so the power ramps gently and
@@ -152,6 +207,10 @@ pub(crate) struct WorkoutControl {
     pending: Duration,
     /// Time since the workout started.
     elapsed: Duration,
+    /// How long the cadence has been too low in an FTP test.
+    failing_for: Duration,
+    /// The FTP test has ended: the rider gave way.
+    gave_way: bool,
 }
 
 impl WorkoutControl {
@@ -160,6 +219,7 @@ impl WorkoutControl {
             Workout::ConstantPower(power) => power.0.max(0.0),
             Workout::HeartRate(hold) => hold.limits().0,
             Workout::Structured { .. } => 0.0,
+            Workout::RampTest(test) => test.warm_up_power.0,
         };
         Self {
             workout,
@@ -167,6 +227,8 @@ impl WorkoutControl {
             last_heart_rate: None,
             pending: Duration::ZERO,
             elapsed: Duration::ZERO,
+            failing_for: Duration::ZERO,
+            gave_way: false,
         }
     }
 
@@ -191,15 +253,26 @@ impl WorkoutControl {
     pub(crate) fn power(&self) -> Option<Watts> {
         match &self.workout {
             Workout::Structured { plan, ftp } => plan.at(self.elapsed, *ftp)?.power,
+            Workout::RampTest(test) => Some(test.power_at(self.elapsed)),
             _ => Some(Watts(self.power)),
         }
     }
 
-    /// Whether a structured workout has run its last step; the others go on until stopped.
+    /// Whether a structured workout has run its last step, or the rider gave way in an FTP
+    /// test; the others go on until stopped.
     pub(crate) fn is_finished(&self) -> bool {
         match &self.workout {
             Workout::Structured { plan, .. } => self.elapsed >= plan.duration(),
+            Workout::RampTest(_) => self.gave_way,
             _ => false,
+        }
+    }
+
+    /// The FTP test under way, if this is one.
+    pub(crate) fn ramp_test(&self) -> Option<&RampTest> {
+        match &self.workout {
+            Workout::RampTest(test) => Some(test),
+            _ => None,
         }
     }
 
@@ -212,8 +285,37 @@ impl WorkoutControl {
             },
             progress: match &self.workout {
                 Workout::Structured { plan, ftp } => self.progress(plan, *ftp),
+                Workout::RampTest(test) => Some(self.ramp_progress(test)),
                 _ => None,
             },
+        }
+    }
+
+    /// An FTP test's progress: open-ended, so `steps` is 0 and nothing is left in all; the
+    /// warm-up is step 0.
+    fn ramp_progress(&self, test: &RampTest) -> Progress {
+        let (step, step_left) = match self.elapsed.checked_sub(test.warm_up) {
+            None => (0, test.warm_up.saturating_sub(self.elapsed)),
+            Some(into) => {
+                let length = test.step_duration.as_secs_f64();
+                let done = (into.as_secs_f64() / length).floor();
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // ≥ 0
+                let index = done as usize + 1;
+                let left = Duration::from_secs_f64(length * (done + 1.0)).saturating_sub(into);
+                (index, left)
+            }
+        };
+        Progress {
+            step,
+            steps: 0,
+            step_left,
+            left: Duration::ZERO,
+            cadence: None,
+            next: Some(NextStep {
+                power: Some(test.power_at(self.elapsed + step_left)),
+                duration: test.step_duration,
+            }),
+            cue: None,
         }
     }
 
@@ -239,13 +341,25 @@ impl WorkoutControl {
         })
     }
 
-    /// Advances by `dt` with the latest heart rate.
-    pub(crate) fn update(&mut self, heart_rate: Option<BeatsPerMinute>, dt: Duration) {
+    /// Advances by `dt` with the latest measurements.
+    pub(crate) fn update(&mut self, telemetry: &Telemetry, dt: Duration) {
         self.elapsed += dt;
+        if let Workout::RampTest(test) = &self.workout {
+            // Only the steps count: a slow start in the warm-up is no failure.
+            let pedalling = telemetry.cadence.is_some_and(|c| c.0 >= FAILING_CADENCE);
+            self.failing_for = if self.elapsed > test.warm_up && !pedalling {
+                self.failing_for + dt
+            } else {
+                Duration::ZERO
+            };
+            self.gave_way = self.gave_way || self.failing_for >= FAILING_FOR;
+            return;
+        }
         let Workout::HeartRate(hold) = &self.workout else {
             return;
         };
         let hold = *hold;
+        let heart_rate = telemetry.heart_rate;
         self.pending += dt;
         while self.pending >= STEP {
             self.pending -= STEP;
@@ -280,6 +394,13 @@ impl WorkoutControl {
 mod tests {
     use super::*;
 
+    fn beating(bpm: Option<f64>) -> Telemetry {
+        Telemetry {
+            heart_rate: bpm.map(BeatsPerMinute),
+            ..Telemetry::default()
+        }
+    }
+
     fn rider() -> Profile {
         Profile {
             ftp: Watts(200.0),
@@ -302,7 +423,7 @@ mod tests {
     fn constant_power_asks_for_its_power_whatever_the_heart_rate() {
         let mut control = WorkoutControl::new(Workout::ConstantPower(Watts(200.0)));
 
-        control.update(Some(BeatsPerMinute(180.0)), Duration::from_secs(60));
+        control.update(&beating(Some(180.0)), Duration::from_secs(60));
 
         assert_eq!(control.power(), Some(Watts(200.0)));
         assert_eq!(control.state().target_heart_rate, None);
@@ -327,10 +448,10 @@ mod tests {
     fn without_a_heart_rate_the_power_is_kept() {
         let hold = HeartRateHold::zone(&rider(), 3, Watts(100.0), Watts(250.0));
         let mut control = WorkoutControl::new(Workout::HeartRate(hold));
-        control.update(Some(BeatsPerMinute(100.0)), Duration::from_secs(30));
+        control.update(&beating(Some(100.0)), Duration::from_secs(30));
         let before = control.power();
 
-        control.update(None, Duration::from_secs(120));
+        control.update(&beating(None), Duration::from_secs(120));
 
         assert_eq!(control.power(), before);
     }

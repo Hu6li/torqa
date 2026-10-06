@@ -74,6 +74,36 @@ pub fn summarize(samples: &[Sample], ftp: Watts) -> RideSummary {
     }
 }
 
+/// The best average power over `window` (whole seconds of 1 Hz samples), e.g. the best minute;
+/// seconds without power count as 0 W. `None` if the ride is shorter.
+#[must_use]
+pub fn best_average_power(samples: &[Sample], window: Duration) -> Option<Watts> {
+    let length = usize::try_from(window.as_secs()).ok()?.max(1);
+    let powers: Vec<f64> = samples
+        .iter()
+        .map(|s| s.power.map_or(0.0, |p| p.0))
+        .collect();
+    #[allow(clippy::cast_precision_loss)] // a window of seconds
+    let seconds = length as f64;
+    powers
+        .windows(length)
+        .map(|w| w.iter().sum::<f64>() / seconds)
+        .reduce(f64::max)
+        .map(Watts)
+}
+
+/// Share of the best minute of a ramp test that the rider can hold for an hour: the usual
+/// estimate of FTP from such a test.
+const RAMP_TEST_SHARE: f64 = 0.75;
+
+/// The FTP a ramp test (R22) shows: 75 % of the rider's best minute in it. `None` if it lasted
+/// less than a minute.
+#[must_use]
+pub fn ramp_test_ftp(samples: &[Sample]) -> Option<Watts> {
+    best_average_power(samples, Duration::from_mins(1))
+        .map(|best| Watts((best.0 * RAMP_TEST_SHARE).round()))
+}
+
 /// The rider's time and power over one stretch of the route, e.g. a climb.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Effort {
@@ -205,6 +235,24 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn a_ramp_tests_ftp_is_three_quarters_of_the_best_minute() {
+        // Steps of a minute from 150 W up by 20 W; the last one held for half a minute.
+        let mut powers: Vec<Option<f64>> = (0..8)
+            .flat_map(|step| std::iter::repeat_n(Some(150.0 + 20.0 * f64::from(step)), 60))
+            .collect();
+        powers.extend(std::iter::repeat_n(Some(310.0), 30));
+        powers.extend(std::iter::repeat_n(None, 20));
+
+        let samples = ride(&powers);
+
+        // The best minute: half at 290 W and half at 310 W.
+        let best = best_average_power(&samples, Duration::from_mins(1)).unwrap();
+        assert!((best.0 - 300.0).abs() < 1e-9, "{best:?}");
+        assert_eq!(ramp_test_ftp(&samples), Some(Watts(225.0)));
+        assert_eq!(ramp_test_ftp(&samples[..59]), None, "shorter than a minute");
     }
 
     #[test]

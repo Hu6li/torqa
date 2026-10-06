@@ -9,6 +9,7 @@ the trainer holds a power (ERG mode).
 - **Heart rate** — the same for a heart rate you choose, in bpm.
 - **Structured workout** — steps of set power one after the other (R21): a built-in one, or a
   workout file you import (see below).
+- **FTP test** — finds your FTP (R22), see below.
 
 ![The Workouts tab](images/workouts/tab.png)
 
@@ -39,6 +40,23 @@ During the workout the panel shows the step (with its time left and cadence), wh
 and the workout's messages. Free steps ("free ride", "max effort") let the trainer simulate the
 road instead of holding a power. On its own, the ride ends after the last step and is saved
 under the workout's name; on a course you ride on freely after it until the finish.
+
+## FTP test
+
+A ramp test: after 5 minutes of warm-up at 40 % of your FTP, the power starts at half of it and
+rises by 6 % of it every minute — until you cannot hold it. Pedal at your usual cadence; when
+it stays below 50 rpm for 10 seconds, the test is over and saved (you can also finish it
+yourself from the settings). Most riders give way after 15–25 minutes in all, and it needs no
+pacing: just hold on as long as you can.
+
+![The FTP test on the Workouts tab](images/workouts/ftp-test.png)
+
+Your FTP is then **75 % of your best minute**. The summary shows it next to your current FTP,
+with a button to use it: your power zones, heart-rate holds and structured workouts follow at
+once. The estimate stays with the ride in the history.
+
+The test starts from the FTP in your profile; if that is far off, the steps are too small or
+too big, but the result is still good — test again with the new value for the best steps.
 
 ## Holding a heart rate
 

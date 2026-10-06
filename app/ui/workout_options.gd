@@ -10,9 +10,9 @@ signal changed
 ## Import… was pressed: a workout file to add to the library.
 signal import_requested
 
-enum Kind { POWER, ZONE, BPM, PLAN }
+enum Kind { POWER, ZONE, BPM, PLAN, FTP_TEST }
 
-const KINDS: Array[String] = ["power", "zone", "bpm", "plan"]
+const KINDS: Array[String] = ["power", "zone", "bpm", "plan", "ftp_test"]
 
 var _kind: OptionButton = OptionButton.new()
 var _power: SpinBox = SpinBox.new()
@@ -37,7 +37,9 @@ func _init() -> void:
 	add_theme_constant_override("h_separation", 24)
 	add_theme_constant_override("v_separation", 8)
 	# i18n-begin
-	for kind: String in ["Constant power", "Heart-rate zone", "Heart rate", "Structured workout"]:
+	for kind: String in [
+		"Constant power", "Heart-rate zone", "Heart rate", "Structured workout", "FTP test"
+	]:
 		# i18n-end
 		_kind.add_item(tr(kind))
 	_watts(_power, 30.0)
@@ -168,6 +170,8 @@ func title() -> String:
 		Kind.PLAN:
 			var plan_name: String = plan().get("name", tr("Structured workout"))
 			return plan_name
+		Kind.FTP_TEST:
+			return tr("FTP test")
 		_:
 			return tr("Constant power %d W") % roundi(_power.value)
 

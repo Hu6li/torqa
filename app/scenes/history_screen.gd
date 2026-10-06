@@ -35,6 +35,10 @@ var _back: Button = Button.new()
 var _subtitle: Label = Label.new()
 var _stats: GridContainer = GridContainer.new()
 var _climbs: VBoxContainer = VBoxContainer.new()
+## What an FTP test showed (R22), and taking it as the rider's FTP.
+var _ftp_row: HBoxContainer = HBoxContainer.new()
+var _ftp_text: Label = Label.new()
+var _ftp_button: Button = Button.new()
 var _chart: RideChart = RideChart.new()
 var _power_zones: ZoneBars = ZoneBars.new()
 var _heart_rate_zones: ZoneBars = ZoneBars.new()
@@ -152,6 +156,14 @@ func _ready() -> void:
 	_detail.add_child(_stats)
 	_climbs.add_theme_constant_override("separation", 4)
 	_detail.add_child(_climbs)
+	_ftp_row.add_theme_constant_override("separation", 16)
+	_ftp_text.add_theme_font_size_override("font_size", 18)
+	_ftp_row.add_child(_ftp_text)
+	_ftp_button.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	_ftp_button.pressed.connect(_use_ftp)
+	_ftp_row.add_child(_ftp_button)
+	_ftp_row.hide()
+	_detail.add_child(_ftp_row)
 
 	var legend: HBoxContainer = HBoxContainer.new()
 	legend.add_theme_constant_override("separation", 18)
@@ -228,6 +240,7 @@ func _show_ride(index: int) -> void:
 	_subtitle.text = _date(start)
 	_fill_stats(ride)
 	_fill_climbs(ride)
+	_show_ftp(ride)
 	var detail: Dictionary = _torqa.ride_detail(path, CHART_POINTS)
 	if detail.is_empty():
 		return
@@ -290,6 +303,29 @@ func _fill_stats(ride: Dictionary) -> void:
 		value.text = "%s %s" % [text, unit] if not unit.is_empty() else text
 		cell.add_child(value)
 		_stats.add_child(cell)
+
+
+## What an FTP test (R22) showed, next to the rider's FTP now, with a button to take it.
+func _show_ftp(ride: Dictionary) -> void:
+	var estimate: Variant = ride.get("ftp_estimate_w")
+	_ftp_row.visible = estimate != null
+	if estimate == null:
+		return
+	var estimate_w: float = estimate
+	var current_w: float = _torqa.profile().get("ftp_w", 0.0)
+	_ftp_text.text = (
+		tr("FTP test: your FTP is about %d W (now %d W).") % [roundi(estimate_w), roundi(current_w)]
+	)
+	_ftp_button.text = tr("Use %d W") % roundi(estimate_w)
+	_ftp_button.visible = roundi(estimate_w) != roundi(current_w)
+	_ftp_button.set_meta("watts", estimate_w)
+
+
+func _use_ftp() -> void:
+	var watts: float = _ftp_button.get_meta("watts", 0.0)
+	if watts > 0.0 and _torqa.use_ftp(watts):
+		_ftp_text.text = tr("Your FTP is now %d W: zones and workouts follow it.") % roundi(watts)
+		_ftp_button.hide()
 
 
 ## The ride's times on the route's climbs, records marked.

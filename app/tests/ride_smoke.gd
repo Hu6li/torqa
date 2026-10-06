@@ -136,6 +136,17 @@ func _workout() -> void:
 	)
 	_torqa.abort_ride()
 
+	# The FTP test (R22): a warm-up, then steps until the rider gives way.
+	_check(_torqa.start_workout({"kind": "ftp_test", "name": "FTP test"}, false, false), "test")
+	await create_timer(1.5).timeout
+	var test: Dictionary = _torqa.ride_state()["workout"]
+	var test_progress: Dictionary = test["progress"]
+	var open_ended: int = test_progress["steps"]
+	_check(open_ended == 0, "the FTP test goes on until the rider gives way: %s" % test)
+	var preview: Array = _torqa.ftp_test_steps()
+	_check(preview.size() > 10, "a preview of its steps: %d" % preview.size())
+	_torqa.abort_ride()
+
 
 ## Waits for a signal and returns its arguments, failing after TIMEOUT_S.
 func _wait_for(sig: Signal) -> Array:

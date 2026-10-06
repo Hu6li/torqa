@@ -76,7 +76,7 @@ func start_as_overlay() -> bool:
 func workout() -> Dictionary:
 	var chosen: Dictionary = _options.workout()
 	chosen["name"] = _options.title()
-	chosen["plan"] = _options.plan()
+	chosen["plan"] = _options.plan() if chosen["kind"] != "ftp_test" else _ftp_test_plan()
 	return chosen
 
 
@@ -177,9 +177,27 @@ func _init() -> void:
 	add_child(panel)
 
 
-## The chosen structured workout's description and steps; nothing for the other kinds.
+## The FTP test's steps as far as most riders get, to show it before and behind it while
+## riding: the test itself goes on until the rider gives way.
+func _ftp_test_plan() -> Dictionary:
+	var steps: Array = _torqa.ftp_test_steps()
+	var duration: float = 0.0
+	for step: Dictionary in steps:
+		var seconds: float = step["duration_s"]
+		duration += seconds
+	return {
+		"name": tr("FTP test"),
+		"description":
+		tr("Power rises each minute until you give way. FTP: 75 % of your best minute."),
+		"steps": steps,
+		"duration_s": duration,
+	}
+
+
+## The chosen structured workout's (or FTP test's) description and steps; nothing for the
+## other kinds.
 func _show_plan() -> void:
-	var plan: Dictionary = _options.plan()
+	var plan: Dictionary = workout()["plan"]
 	_about.visible = not plan.is_empty()
 	_plan_chart.visible = not plan.is_empty()
 	if plan.is_empty():

@@ -46,6 +46,8 @@ pub struct RideRecord {
     pub climbs: Vec<ClimbTime>,
     /// The name the rider gave the ride (R50); `None` shows the route and date.
     pub name: Option<String>,
+    /// The FTP an FTP test showed (R22), if the ride was one.
+    pub ftp_estimate: Option<Watts>,
 }
 
 /// The time on one climb of a ride.
@@ -109,6 +111,8 @@ struct RideFile {
     // Added without a format bump: older readers ignore it, newer ones default it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ftp_estimate_w: Option<f64>,
 }
 
 impl From<&RideRecord> for RideFile {
@@ -138,6 +142,7 @@ impl From<&RideRecord> for RideFile {
             ftp_w: s.ftp.0,
             route_key: r.route_key.clone(),
             name: r.name.clone(),
+            ftp_estimate_w: r.ftp_estimate.map(|w| w.0),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
             climbs: r
                 .climbs
@@ -177,6 +182,7 @@ impl From<RideFile> for RideRecord {
             },
             route_key: f.route_key,
             name: f.name,
+            ftp_estimate: f.ftp_estimate_w.map(Watts),
             route_time: f.route_time_s.map(|t| Duration::from_secs_f64(t.max(0.0))),
             climbs: f
                 .climbs
@@ -278,6 +284,7 @@ mod tests {
                 avg_power: Some(Watts(260.0)),
             }],
             name: Some("Morning loop".to_owned()),
+            ftp_estimate: Some(Watts(245.0)),
         }
     }
 

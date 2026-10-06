@@ -25,7 +25,7 @@ use torqa_domain::units::{
 use torqa_domain::workout::Target;
 use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
-use torqa_session::workout::{HeartRateHold, Workout};
+use torqa_session::workout::{HeartRateHold, RampTest, Workout};
 
 mod log;
 
@@ -488,7 +488,8 @@ impl TorqaApp {
     /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
     /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
     /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
-    /// max_heart_rate}]`; values the ride did not record are `null`.
+    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs}]`; values the ride
+    /// did not record are `null`, and `ftp_estimate_w` for all but FTP tests (R22).
     #[func]
     fn history(&self) -> VarArray {
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
@@ -522,6 +523,7 @@ impl TorqaApp {
                     "max_heart_rate" => &optional(s.max_heart_rate.map(|v| v.0)),
                     "route_time_s" => &optional(entry.record.route_time.map(|t| t.as_secs_f64())),
                     "route_record" => entry.route_record,
+                    "ftp_estimate_w" => &optional(entry.record.ftp_estimate.map(|w| w.0)),
                     "climbs" => &climb_times(&entry),
                 }
                 .to_variant(),
@@ -841,6 +843,35 @@ impl TorqaApp {
             );
         }
         array
+    }
+
+    /// The FTP test (R22) as the active rider would ride it, for a preview: its steps as in
+    /// `workouts()`, up to 150 % of their FTP (it goes on until they give way).
+    #[func]
+    fn ftp_test_steps(&self) -> VarArray {
+        let Some(app) = self.app.as_ref() else {
+            return VarArray::new();
+        };
+        let ftp = app.profile().profile.ftp;
+        let test = RampTest::for_ftp(ftp);
+        let step = |seconds: f64, watts: f64| {
+            vdict! { "duration_s" => seconds, "from_w" => watts, "to_w" => watts }.to_variant()
+        };
+        let mut steps = VarArray::new();
+        steps.push(&step(test.warm_up.as_secs_f64(), test.warm_up_power.0));
+        let mut watts = test.start.0;
+        while watts <= ftp.0 * 1.5 {
+            steps.push(&step(test.step_duration.as_secs_f64(), watts));
+            watts += test.step.0;
+        }
+        steps
+    }
+
+    /// Makes `watts` the active rider's FTP, e.g. from an FTP test; false (and `failed`) if
+    /// it cannot be saved.
+    #[func]
+    fn use_ftp(&mut self, watts: f64) -> bool {
+        self.command(|app| app.set_ftp(Watts(watts)))
     }
 
     /// The extensions of workout files, for file dialogs.
@@ -1636,6 +1667,7 @@ fn workout_from(workout: &VarDictionary, profile: &Profile) -> Workout {
             let zone = number("zone").clamp(1.0, 5.0) as u8;
             Workout::HeartRate(HeartRateHold::zone(profile, zone, min, max))
         }
+        "ftp_test" => Workout::RampTest(RampTest::for_ftp(profile.ftp)),
         "bpm" => Workout::HeartRate(HeartRateHold::bpm(
             profile,
             BeatsPerMinute(number("bpm")),

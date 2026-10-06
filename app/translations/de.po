@@ -910,3 +910,24 @@ msgstr "Danach: %d W während %s"
 
 msgid "Next: free ride for %s"
 msgstr "Danach: frei fahren während %s"
+
+msgid "FTP test"
+msgstr "FTP-Test"
+
+msgid "FTP test: your FTP is about %d W (now %d W)."
+msgstr "FTP-Test: Deine FTP liegt bei etwa %d W (bisher %d W)."
+
+msgid "Power rises each minute until you give way. FTP: 75 % of your best minute."
+msgstr "Die Leistung steigt jede Minute, bis du nicht mehr kannst. FTP: 75 % deiner besten Minute."
+
+msgid "Step %d  ·  %s to the next"
+msgstr "Stufe %d  ·  noch %s bis zur nächsten"
+
+msgid "Use %d W"
+msgstr "%d W übernehmen"
+
+msgid "Warm-up  ·  %s left"
+msgstr "Einfahren  ·  noch %s"
+
+msgid "Your FTP is now %d W: zones and workouts follow it."
+msgstr "Deine FTP ist jetzt %d W: Zonen und Workouts richten sich danach."

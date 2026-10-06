@@ -195,6 +195,9 @@ func _workout_settings() -> void:
 	_check(chosen_name == "Sweet spot", "an imported plan is chosen at once")
 	options.set_workout({"kind": "bpm"})
 	_check(options.plan().is_empty(), "no plan for other kinds")
+	options.set_workout({"kind": "ftp_test"})
+	_check(options.title() == "FTP test", "the FTP test (R22): %s" % options.title())
+	_expect(_visible_captions(options), ["Workout"], "the FTP test needs no settings")
 	# The same rider keeps their values; another rider gets their own.
 	options.configure(zones, 250.0)
 	_check(_number(options.workout(), "max_w") == 230.0, "values kept for the same rider")

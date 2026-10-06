@@ -44,6 +44,8 @@ func show_workout(workout: Dictionary) -> void:
 	elif kind == "plan":
 		var plan: Dictionary = workout.get("plan", {})
 		title = plan.get("name", tr("Structured workout"))
+	elif kind == "ftp_test":
+		title = tr("FTP test")
 	_title.text = title.to_upper()
 
 
@@ -86,6 +88,13 @@ func _show_progress(progress: Variant) -> void:
 	var line: String = (
 		tr("Step %d of %d  ·  %s left") % [step + 1, steps, UiTheme.duration(step_left)]
 	)
+	# An FTP test goes on until the rider gives way: its steps are not counted out.
+	if steps == 0:
+		line = (
+			tr("Warm-up  ·  %s left") % UiTheme.duration(step_left)
+			if step == 0
+			else tr("Step %d  ·  %s to the next") % [step, UiTheme.duration(step_left)]
+		)
 	if info["cadence"] != null:
 		var cadence: float = info["cadence"]
 		line += "  ·  %d rpm" % roundi(cadence)

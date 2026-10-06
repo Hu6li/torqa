@@ -159,7 +159,7 @@ impl Ride {
         }
         self.elapsed += dt;
         if let Some(workout) = &mut self.workout {
-            workout.update(self.telemetry.heart_rate, dt);
+            workout.update(&self.telemetry, dt);
         }
 
         if self.is_finished() {
@@ -222,6 +222,14 @@ impl Ride {
             telemetry: self.telemetry,
             workout: self.workout.as_ref().map(WorkoutControl::state),
         }
+    }
+
+    /// Whether this is an FTP test (R22), whose best minute shows the rider's FTP.
+    #[must_use]
+    pub fn is_ftp_test(&self) -> bool {
+        self.workout
+            .as_ref()
+            .is_some_and(|w| w.ramp_test().is_some())
     }
 
     /// The route being ridden; `None` in a workout without one.
@@ -624,6 +632,48 @@ mod tests {
         match control {
             TrainerControl::TargetPower(p) => p.0,
             other => panic!("not ERG: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_ramp_test_rises_every_minute_until_the_cadence_gives_way() {
+        let test = workout::RampTest::for_ftp(Watts(250.0));
+        assert_eq!(
+            (test.warm_up_power, test.start, test.step),
+            (Watts(100.0), Watts(125.0), Watts(15.0))
+        );
+        let mut ride = Ride::workout(Workout::RampTest(test), RideConfig::default());
+
+        // Five minutes of warm-up and nine and a half steps, pedalling at 90 rpm.
+        let controls = pedal(&mut ride, 200.0, 14 * 60 + 30);
+        let state = ride.state().workout.unwrap();
+        // A few seconds below 50 rpm is no failure yet…
+        spin(&mut ride, 30.0, 5);
+        assert!(!ride.is_finished());
+        // …ten seconds is.
+        spin(&mut ride, 30.0, 11);
+
+        assert_eq!(controls[0], TrainerControl::TargetPower(Watts(100.0)));
+        assert_eq!(
+            controls.last(),
+            Some(&TrainerControl::TargetPower(Watts(125.0 + 9.0 * 15.0))),
+            "the tenth step"
+        );
+        let progress = state.progress.unwrap();
+        assert_eq!((progress.step, progress.steps), (10, 0), "open-ended");
+        assert_eq!(progress.step_left, Duration::from_secs(30));
+        assert_eq!(progress.next.and_then(|n| n.power), Some(Watts(275.0)));
+        assert!(ride.is_finished(), "over once the rider gives way");
+    }
+
+    /// Rides on at the power held so far, but at `cadence`.
+    fn spin(ride: &mut Ride, cadence: f64, seconds: u32) {
+        ride.on_telemetry(&Telemetry {
+            cadence: Some(Rpm(cadence)),
+            ..Telemetry::default()
+        });
+        for _ in 0..seconds * 4 {
+            ride.tick(Duration::from_millis(250));
         }
     }
 

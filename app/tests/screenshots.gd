@@ -216,6 +216,13 @@ func _workout_screens(torqa: TorqaApp, start: StartPage) -> void:
 	root.get_texture().get_image().save_png(out_dir.path_join("structured.png"))
 	print("saved structured workout")
 	torqa.finish_ride()
+	# The FTP test (R22) on the tab.
+	(_main.get_node("RideScreen") as Control).hide()
+	start.show()
+	options.set_workout({"kind": "ftp_test"})
+	options.changed.emit()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-ftp-test.png"))
 
 
 func _wait_for(sig: Signal) -> void:
