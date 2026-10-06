@@ -307,10 +307,11 @@ the realistic look's textures and patterns were replaced step by step.
   `--hr-zone` / `--hr-target`
 - [ ] Overlay window: transparent, borderless, always on top, movable and resizable, shows the
   rider's HUD; workout selection only; recorded as a ride
-- [ ] Overlay over full-screen apps on macOS (native window level / Spaces behaviour)
+- [ ] ~~Overlay over full-screen apps on macOS~~ — dropped (R57): it would need native window
+  code and a new dependency; the overlay stays on top of normal windows
 - [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)
-- **Exit:** stream a full-screen video on the Mac while the overlay HUD holds Zone 3 on the KICKR
-  and the session lands in the history as a FIT
+- **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
+  Zone 3 on the KICKR and the session lands in the history as a FIT
 
 ## Risks
 
@@ -320,8 +321,8 @@ the realistic look's textures and patterns were replaced step by step.
 - Detail on an M1 integrated GPU (towns place thousands of buildings, forests thousands of
   trees) → a lean stylized look (ADR 0011: flat colours, chunky faceted models within triangle
   budgets), quality presets (R43); art direction reviewed on rendered previews.
-- Overlay over full-screen apps needs native window settings Godot doesn't expose (macOS Spaces);
-  Wayland has no portable always-on-top → platform code isolated behind the overlay window.
+- Wayland has no portable always-on-top → the overlay may not stay on top there. (Over
+  full-screen apps it would need native macOS window settings Godot doesn't expose; dropped, R57.)
 - Free terrain imagery is limited → the ground is coloured by OSM land cover and slope, no
   imagery needed.
 
