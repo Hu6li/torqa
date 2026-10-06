@@ -167,20 +167,16 @@ pub async fn generate<M: ElevationModel>(
     let buildings = buildings_by_chunk(map, &projection, &road, &land);
     let streets = streets::lines(map, &projection, model).await;
     let network = railways::network(map, &projection, &road, model).await;
-    let clearance = streets::Clearance::new(&streets, &network.railways);
     let shapers = Shapers {
         road: &road,
         rails: &network.index,
     };
     let streams = water::streams(&map.waterways, &projection, &road);
     let pools = water::pools(&map.areas, &projection, &road);
+    let clearance = streets::Clearance::new(&streets, &network.railways, &pools);
     let mut world = World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
-        structures: {
-            let mut structures = structures::build(&road, &projection, model).await;
-            structures.append(structures::build(&network.index, &projection, model).await);
-            structures
-        },
+        structures: structures::build_all(&[&road, &network.index], &projection, model).await,
         railways: network.index.mesh(railways::BED_M / 2.0, &[]),
         minimap: minimap::build(map, &projection, &road),
         ..World::default()
@@ -216,7 +212,7 @@ pub async fn generate<M: ElevationModel>(
         };
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
-        let (paved, unpaved) = streets::meshes(
+        let (paved, mut unpaved) = streets::meshes(
             &streets,
             heights.origin,
             CHUNK_SIZE,
@@ -224,6 +220,13 @@ pub async fn generate<M: ElevationModel>(
             &road,
             origin,
         );
+        unpaved.append(water::shore_mesh(
+            &pools,
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            origin,
+        ));
         world.chunks.push(TerrainChunk {
             center,
             mesh: heights.mesh(&land, origin, &shapers),

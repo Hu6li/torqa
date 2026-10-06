@@ -18,6 +18,12 @@ const STEP: f64 = 10.0;
 /// Water lies this far above the ground: below every street and the road ridden
 /// (`streets::lift`, `ROAD_SINK`), so where it meets one it passes under it.
 const LIFT: f64 = 0.02;
+/// Lakes and rivers are edged by a band of gravel this wide along their shore, outside them...
+pub(crate) const SHORE_M: f64 = 3.0;
+/// ...lying this far above the ground (below streets and the road, which pass over it).
+const SHORE_LIFT: f64 = 0.01;
+/// Points of the shore's line at most this far apart: close enough to keep plants off it.
+const SHORE_STEP: f64 = 3.0;
 
 /// A stream or river of the map near the route, in metres east/north, with its bounds for
 /// quick chunk tests.
@@ -78,6 +84,8 @@ pub(crate) fn streams(
 /// clockwise seen from above) with their bounds for quick chunk tests.
 pub(crate) struct Pool {
     triangles: Vec<[(f64, f64); 3]>,
+    /// The middle of its shore band (see `SHORE_M`), all round, a point every few metres.
+    pub(crate) shore: Vec<(f64, f64)>,
     min: (f64, f64),
     max: (f64, f64),
 }
@@ -118,8 +126,9 @@ pub(crate) fn pools(areas: &[Area], projection: &LocalProjection, road: &RoadInd
             }
             pools.push(Pool {
                 triangles,
-                min,
-                max,
+                shore: shore_line(&outline),
+                min: (min.0 - SHORE_M, min.1 - SHORE_M),
+                max: (max.0 + SHORE_M, max.1 + SHORE_M),
             });
         }
     }
@@ -188,6 +197,68 @@ fn stream_mesh(
                 chunk_origin,
             );
         }
+    }
+    mesh
+}
+
+/// The middle of the shore band round a counter-clockwise `outline`: the outline moved half the
+/// band's width outwards (to the right of its way round), closed, densified.
+fn shore_line(outline: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let count = outline.len();
+    let mut line: Vec<(f64, f64)> = (0..count)
+        .map(|i| {
+            let (before, here, after) = (
+                outline[(i + count - 1) % count],
+                outline[i],
+                outline[(i + 1) % count],
+            );
+            // Outward is to the right of the way round: the edges' normals, averaged.
+            let normal = |a: (f64, f64), b: (f64, f64)| {
+                let length = (b.0 - a.0).hypot(b.1 - a.1).max(1e-9);
+                ((b.1 - a.1) / length, (a.0 - b.0) / length)
+            };
+            let (n1, n2) = (normal(before, here), normal(here, after));
+            let (ne, nn) = (n1.0 + n2.0, n1.1 + n2.1);
+            let length = ne.hypot(nn).max(1e-9);
+            (
+                here.0 + ne / length * SHORE_M / 2.0,
+                here.1 + nn / length * SHORE_M / 2.0,
+            )
+        })
+        .collect();
+    line.extend(line.first().copied());
+    drape::densify(&line, SHORE_STEP)
+}
+
+/// The shore bands within the chunk square `[origin, origin + size]`, relative to
+/// `chunk_origin`, laid on the chunk's ground; plain all across (`u` 0), as tracks' edges are,
+/// for the gravel of the tracks' material.
+pub(crate) fn shore_mesh(
+    pools: &[Pool],
+    origin: (f64, f64),
+    size: f64,
+    heights: &HeightGrid,
+    chunk_origin: [f64; 3],
+) -> MeshData {
+    let mut mesh = MeshData::default();
+    let (low, high) = (origin, (origin.0 + size, origin.1 + size));
+    for pool in pools {
+        if pool.max.0 < low.0 || pool.min.0 > high.0 || pool.max.1 < low.1 || pool.min.1 > high.1 {
+            continue;
+        }
+        for piece in drape::pieces(&pool.shore, low, high) {
+            drape::drape(
+                &mut mesh,
+                &piece,
+                SHORE_M / 2.0,
+                SHORE_LIFT,
+                heights,
+                chunk_origin,
+            );
+        }
+    }
+    for uv in &mut mesh.uvs {
+        uv[0] = 0.0;
     }
     mesh
 }
