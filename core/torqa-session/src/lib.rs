@@ -98,6 +98,16 @@ impl Ride {
         Self::start(None, Some(WorkoutControl::new(workout)), config)
     }
 
+    /// Makes the ride along a route a workout (R58): the trainer holds the workout's power
+    /// instead of following the gradient, which still sets the rider's speed. It ends at the
+    /// finish, as any ride along the route.
+    #[must_use]
+    pub fn with_workout(mut self, workout: Workout) -> Self {
+        self.workout = Some(WorkoutControl::new(workout));
+        self.last_control = None;
+        self
+    }
+
     fn start(route: Option<Route>, workout: Option<WorkoutControl>, config: RideConfig) -> Self {
         Self {
             route,
@@ -489,6 +499,24 @@ mod tests {
         assert_eq!(state.workout.map(|w| w.target_power), Some(Watts(250.0)));
         assert!(!ride.is_finished(), "goes on until the rider ends it");
         assert!(ride.samples().iter().all(|s| s.location.is_none()));
+    }
+
+    #[tokio::test]
+    async fn a_workout_on_a_route_holds_its_power_while_the_road_sets_the_speed() {
+        let route = route(&[0.0, 8.0], 1000.0).await;
+        let workout = Workout::ConstantPower(Watts(250.0));
+        let mut flat = Ride::workout(workout, RideConfig::default());
+        let mut hilly = Ride::new(route, RideConfig::default()).with_workout(workout);
+
+        pedal(&mut flat, 250.0, 300);
+        let controls = pedal(&mut hilly, 250.0, 300);
+
+        assert_eq!(controls, [TrainerControl::TargetPower(Watts(250.0))]);
+        // The same power climbs the 8 % half slower than the flat road goes.
+        assert!(hilly.state().distance.0 < flat.state().distance.0 * 0.9);
+        assert!(hilly.state().position.is_some() && hilly.state().workout.is_some());
+        pedal(&mut hilly, 250.0, 600);
+        assert!(hilly.is_finished(), "ends at the finish");
     }
 
     #[test]

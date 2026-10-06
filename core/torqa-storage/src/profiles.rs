@@ -125,6 +125,21 @@ struct Settings {
     heart_rate: Option<RememberedDevice>,
     /// How detailed the 3D world is drawn on this computer (R43).
     graphics_quality: Option<GraphicsQuality>,
+    /// Where the overlay was last on screen (R55).
+    overlay: Option<OverlayWindow>,
+}
+
+/// Where the overlay window is on screen (R55), in screen pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OverlayWindow {
+    /// Left edge.
+    pub x: i32,
+    /// Top edge.
+    pub y: i32,
+    /// Width.
+    pub width: u32,
+    /// Height.
+    pub height: u32,
 }
 
 /// How detailed the 3D world is drawn (R43): more detail needs a stronger GPU. Medium holds
@@ -316,6 +331,22 @@ pub fn set_graphics_quality(data_dir: &Path, quality: GraphicsQuality) -> Result
     save_settings(data_dir, &settings)
 }
 
+/// Where the overlay was last on screen; `None` before it was first used.
+#[must_use]
+pub fn overlay_window(data_dir: &Path) -> Option<OverlayWindow> {
+    settings(data_dir).overlay
+}
+
+/// Remembers where the overlay is on screen, for the next time (R55).
+///
+/// # Errors
+/// On file system errors.
+pub fn set_overlay_window(data_dir: &Path, window: OverlayWindow) -> Result<(), ProfileError> {
+    let mut settings = settings(data_dir);
+    settings.overlay = Some(window);
+    save_settings(data_dir, &settings)
+}
+
 fn settings(data_dir: &Path) -> Settings {
     std::fs::read_to_string(data_dir.join(SETTINGS_FILE))
         .ok()
@@ -393,6 +424,24 @@ mod tests {
             GraphicsQuality::from_name("high"),
             Some(GraphicsQuality::High)
         );
+    }
+
+    #[test]
+    fn the_overlay_window_is_remembered_with_the_other_settings() {
+        let dir = temp_dir("overlay");
+        assert_eq!(overlay_window(&dir), None);
+        set_graphics_quality(&dir, GraphicsQuality::High).unwrap();
+        let window = OverlayWindow {
+            x: -1200,
+            y: 40,
+            width: 320,
+            height: 480,
+        };
+
+        set_overlay_window(&dir, window).unwrap();
+
+        assert_eq!(overlay_window(&dir), Some(window));
+        assert_eq!(graphics_quality(&dir), GraphicsQuality::High);
         assert_eq!(GraphicsQuality::from_name("epic"), None);
     }
 

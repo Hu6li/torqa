@@ -3,7 +3,8 @@
 Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questions), extended
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
 settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement (R48–R54),
-plus overlay mode and constant-power / heart-rate workouts (R55–R56).
+plus overlay mode and constant-power / heart-rate workouts (R55–R56), refined 2026-10-06: an
+overlay over normal windows only and a Workouts tab (R57–R58).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -97,7 +98,7 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 
 | ID | Requirement |
 |---|---|
-| R38 | A real **start page** separate from the ride view, with a top tab bar: **Courses**, **History**, **Profile**, **Devices & Settings**. The ride view only shows the ride. |
+| R38 | A real **start page** separate from the ride view, with a top tab bar: **Courses**, **History**, **Profile**, **Devices & Settings**. The ride view only shows the ride. *(Workouts tab: R58.)* |
 | R39 | **Courses tab**: gallery overview of the course library (R34) — each card shows the cover or path card, distance, elevation gain, a small map, the course type (3D / video) and other key stats. Importing a GPX / preparing a new course starts here. |
 | R40 | **Course detail page** (opened from a card): screenshot gallery, path card, map, elevation profile, stats, personal records on the course, and the per-ride options (difficulty, descent mode, weather, time of day, camera, ghost) → **Ride**. |
 | R41 | The last-used trainer and sensors **reconnect automatically** in the background at app start; the user is only prompted if that fails when a ride starts. |
@@ -124,8 +125,10 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 
 | ID | Requirement |
 |---|---|
-| R55 | **Overlay mode**: Torqa can be started as an overlay only — a transparent, always-on-top HUD window over any other app, so a video can be streamed full-screen while the rider's HUD (R51) shows on top. It also stays visible over full-screen apps. The overlay can be moved and resized anywhere on screen, and its position and size are remembered. Only workouts can be selected in the overlay (no courses, no 3D world). An overlay session is recorded as a ride (history, FIT). macOS first; Windows and Linux later (on Wayland only where the compositor allows always-on-top). |
+| R55 | **Overlay mode**: Torqa can be started as an overlay only — a transparent, always-on-top HUD window over any other app, so a video can be streamed full-screen while the rider's HUD (R51) shows on top. It also stays visible over full-screen apps. The overlay can be moved and resized anywhere on screen, and its position and size are remembered. Only workouts can be selected in the overlay (no courses, no 3D world). An overlay session is recorded as a ride (history, FIT). macOS first; Windows and Linux later (on Wayland only where the compositor allows always-on-top). *(Refined by R57: no full-screen apps; entered from any ride.)* |
 | R56 | **Constant-power and heart-rate workouts** as additional workout modes (alongside structured workouts, R21): **constant power** (ERG at a target, e.g. 200 W) and **heart-rate hold** — the target is a zone (e.g. Zone 3, aiming at the middle of the zone) or a specific bpm, and the target power is adjusted continuously from the measured heart rate. The controller stays within user-set minimum and maximum power and ramps gently, since heart rate lags power by 30–60 s. |
+| R57 | Refines R55 (2026-10-06): the overlay stays on top of **normal (windowed) apps only**; showing it over full-screen apps would need native macOS window code (a new dependency and unsafe code) and is not done. The overlay is entered with a button during **any ride or workout** (a course ride goes on following its gradient, its world hidden) or by ticking **"start as overlay"** when starting a workout. |
+| R58 | Extends R38 (2026-10-06): a **Workouts** tab on the start page, right after Courses. Workouts (R56, later R21) are started there, either on their own (a flat road, the HUD only) or **on a course in the 3D world** (the trainer holds the workout's power while the world goes by). |
 
 ## MVP definition
 
