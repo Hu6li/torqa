@@ -10,6 +10,7 @@ use torqa_routes::{ElevationModel, LocalProjection};
 use crate::drape;
 use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
+use crate::structures::Below;
 use crate::water::{self, Pool};
 use crate::{HeightGrid, MeshData, On, ROAD_HALF_WIDTH};
 
@@ -139,9 +140,10 @@ pub(crate) fn meshes(
     origin: (f64, f64),
     size: f64,
     heights: &HeightGrid,
-    road: &RoadIndex,
+    below: &Below,
     chunk_origin: [f64; 3],
 ) -> (MeshData, MeshData) {
+    let road = below.road();
     let (mut paved_mesh, mut unpaved_mesh) = (MeshData::default(), MeshData::default());
     let (low, high) = (origin, (origin.0 + size, origin.1 + size));
     for street in streets {
@@ -166,13 +168,29 @@ pub(crate) fn meshes(
                 let direction = local_direction(&points, i);
                 let reach = ROAD_HALF_WIDTH + half + 0.5;
                 if road.runs_along(point.0, point.1, reach, direction) {
-                    ribbon(target, &run, half, street, total, heights, chunk_origin);
+                    ribbon(
+                        target,
+                        &run,
+                        half,
+                        street,
+                        total,
+                        (heights, below),
+                        chunk_origin,
+                    );
                     run.clear();
                 } else {
                     run.push((point, distance));
                 }
             }
-            ribbon(target, &run, half, street, total, heights, chunk_origin);
+            ribbon(
+                target,
+                &run,
+                half,
+                street,
+                total,
+                (heights, below),
+                chunk_origin,
+            );
         }
     }
     (paved_mesh, unpaved_mesh)
@@ -230,7 +248,7 @@ fn ribbon(
     half: f64,
     street: &Street,
     total: f64,
-    heights: &HeightGrid,
+    (heights, below): (&HeightGrid, &Below),
     origin: [f64; 3],
 ) {
     if let Some(ends) = street.deck {
@@ -241,7 +259,7 @@ fn ribbon(
             ends,
             lift(street.class, street.index),
             total,
-            heights,
+            (heights, below),
             origin,
         );
     } else {

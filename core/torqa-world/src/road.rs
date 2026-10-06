@@ -218,6 +218,36 @@ impl RoadIndex {
         found
     }
 
+    /// The nearest stretch of a line within `reach` of (`east`, `north`) running along `way`
+    /// (either way round): its height there and what carries it.
+    pub(crate) fn alongside(
+        &self,
+        east: f64,
+        north: f64,
+        way: (f64, f64),
+        reach: f64,
+    ) -> Option<(f64, Surface)> {
+        let (low_e, low_n) = cell_of(east - reach, north - reach);
+        let (high_e, high_n) = cell_of(east + reach, north + reach);
+        let mut best: Option<(f64, f64, Surface)> = None;
+        for ce in low_e..=high_e {
+            for cn in low_n..=high_n {
+                for &index in self.cells.get(&(ce, cn)).into_iter().flatten() {
+                    let segment = &self.segments[index];
+                    let (de, dn) = direction(segment);
+                    if (de * way.0 + dn * way.1).abs() < 0.9 {
+                        continue;
+                    }
+                    let candidate = closest_on_segment(segment, east, north);
+                    if candidate.0 <= reach && best.is_none_or(|b| candidate.0 < b.0) {
+                        best = Some(candidate);
+                    }
+                }
+            }
+        }
+        best.map(|b| (b.1, b.2))
+    }
+
     /// Distance to the closest point of the road within `max_distance`, the road's elevation
     /// there and what carries the road.
     pub(crate) fn nearest(

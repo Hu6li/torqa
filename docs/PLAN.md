@@ -272,12 +272,12 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Bridges and viaducts: short, low bridges of the road ridden are stone arch bridges
       (arches, the walls over them, vaults), longer and higher ones viaducts on piers as wide
       as the deck; bridges of other streets and railways stand on piers too
-  - [ ] Fixes from a ride round the Bielersee (#98–#101):
+  - [x] Fixes from a ride round the Bielersee (#98–#101):
     - [x] Roads stay clear of buildings (#100): none reaches into the road ridden by a corner
       or a wall, and none stands across a paved street on the ground
-    - [ ] Railway bridges give way to roads (#98): no pier or wall on a road, street or
-      track below
-    - [ ] Parallel tracks under one bridge or in one tunnel (#99), at one height
+    - [x] Railway bridges give way to roads (#98): no pier or wall on a road, street or
+      track below; bridges over them are viaducts, piers moved off the ways
+    - [x] Parallel tracks under one bridge or in one tunnel (#99), at one height
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
