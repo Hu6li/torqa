@@ -294,8 +294,8 @@ the realistic look's textures and patterns were replaced step by step.
     in the stylized look, review images only PRs used removed (PRs now link theirs by commit),
     the realism risk below, MPFB2 and textures in ADR 0009, feature docs describing the old
     look, the CLI doc (bridges and tunnels, `route --world`)
-- **Exit:** a long hilly course at 60 fps on M1 base at Medium; screenshots reviewed against the
-  references (R44)
+- **Exit:** a long hilly course at 60 fps on M1 base at Medium (#111); screenshots reviewed against
+  the references (R44)
 
 ### Phase 10 — Workout modes & overlay (R55–R56)
 - [ ] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
