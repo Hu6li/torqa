@@ -1470,6 +1470,30 @@ impl App {
             .map_err(|e| AppError::Workout(e.to_string()))
     }
 
+    /// Saves a workout made in the editor into the library (over `replace` if that is the
+    /// library's ZWO file being edited); returns its id.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] if it has no steps or cannot be written.
+    pub fn save_workout(
+        &mut self,
+        plan: &torqa_domain::workout::Plan,
+        replace: Option<&str>,
+    ) -> Result<String, AppError> {
+        let dir = torqa_workouts::library_dir(&self.data_dir);
+        torqa_workouts::save(&dir, plan, self.profile.profile.ftp, replace)
+            .map_err(|e| AppError::Workout(e.to_string()))
+    }
+
+    /// Deletes a workout file from the library.
+    ///
+    /// # Errors
+    /// [`AppError::Workout`] for built-ins and files that cannot be deleted.
+    pub fn delete_workout(&mut self, id: &str) -> Result<(), AppError> {
+        torqa_workouts::delete(&torqa_workouts::library_dir(&self.data_dir), id)
+            .map_err(|e| AppError::Workout(e.to_string()))
+    }
+
     /// A structured workout by its id (see [`App::workouts`]), for the active rider's FTP.
     ///
     /// # Errors

@@ -3,11 +3,12 @@
 //! (github.com/h4l/zwift-workout-file-reference) and the files found in the wild.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::time::Duration;
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
-use torqa_domain::units::Rpm;
+use torqa_domain::units::{Rpm, Watts};
 use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target, WorkoutFileError, WorkoutParser};
 
 use crate::zone_share;
@@ -72,6 +73,21 @@ fn parse(xml: &str, fallback_name: &str) -> Result<Plan, WorkoutFileError> {
         }
         match event {
             Event::Text(t) => text.push_str(&t.xml10_content()),
+            // Entities in text (e.g. `&amp;` in a name) come as events of their own.
+            Event::GeneralRef(r) => {
+                if let Ok(Some(c)) = r.resolve_char_ref() {
+                    text.push(c);
+                } else {
+                    text.push_str(match r.to_string().as_str() {
+                        "amp" => "&",
+                        "lt" => "<",
+                        "gt" => ">",
+                        "quot" => "\"",
+                        "apos" => "'",
+                        _ => "",
+                    });
+                }
+            }
             Event::End(_) => {
                 match (path.len(), path.last().map(String::as_str)) {
                     (2, Some("name")) => text.trim().clone_into(&mut plan.name),
@@ -237,4 +253,81 @@ fn attributes(e: &BytesStart<'_>) -> Result<HashMap<String, String>, WorkoutFile
         fields.insert(key, value.into_owned());
     }
     Ok(fields)
+}
+
+/// Writes `plan` as a ZWO file, the format of the workouts the editor makes. Steps in watts
+/// become shares of `ftp`; cues are kept in the step they fall in.
+#[must_use]
+pub fn write(plan: &Plan, ftp: Watts) -> String {
+    let share = |intensity: Intensity| match intensity {
+        Intensity::Ftp(share) => share,
+        Intensity::Watts(watts) => watts.0 / ftp.0.max(1.0),
+    };
+    let mut xml = String::from("<workout_file>\n");
+    let _ = writeln!(xml, "    <author>Torqa</author>");
+    let _ = writeln!(xml, "    <name>{}</name>", escape(&plan.name));
+    let _ = writeln!(
+        xml,
+        "    <description>{}</description>",
+        escape(&plan.description)
+    );
+    xml.push_str("    <sportType>bike</sportType>\n    <workout>\n");
+    let mut start = Duration::ZERO;
+    for (index, step) in plan.steps.iter().enumerate() {
+        let end = start + step.duration;
+        let last = index + 1 == plan.steps.len();
+        let duration = number(step.duration.as_secs_f64());
+        let cadence = step
+            .cadence
+            .map(|c| format!(" Cadence=\"{}\"", number(c.0)))
+            .unwrap_or_default();
+        let element = match step.target {
+            Target::Power { from, to } if from == to => format!(
+                "SteadyState Duration=\"{duration}\" Power=\"{}\"{cadence}",
+                number(share(from))
+            ),
+            Target::Power { from, to } => format!(
+                "Ramp Duration=\"{duration}\" PowerLow=\"{}\" PowerHigh=\"{}\"{cadence}",
+                number(share(from)),
+                number(share(to))
+            ),
+            Target::Free => format!("FreeRide Duration=\"{duration}\"{cadence}"),
+        };
+        let cues: Vec<&Cue> = plan
+            .cues
+            .iter()
+            .filter(|cue| cue.at >= start && (cue.at < end || last))
+            .collect();
+        if cues.is_empty() {
+            let _ = writeln!(xml, "        <{element}/>");
+        } else {
+            let _ = writeln!(xml, "        <{element}>");
+            for cue in cues {
+                let _ = writeln!(
+                    xml,
+                    "            <textevent timeoffset=\"{}\" message=\"{}\"/>",
+                    number(cue.at.saturating_sub(start).as_secs_f64()),
+                    escape(&cue.text)
+                );
+            }
+            let tag = element.split(' ').next().unwrap_or_default();
+            let _ = writeln!(xml, "        </{tag}>");
+        }
+        start = end;
+    }
+    xml.push_str("    </workout>\n</workout_file>\n");
+    xml
+}
+
+/// A number as short as it can be: whole numbers without decimals, others to 3 places.
+fn number(value: f64) -> String {
+    let text = format!("{value:.3}");
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }

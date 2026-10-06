@@ -15,6 +15,7 @@ func _run() -> void:
 	_hud_editor()
 	_ride_settings()
 	_workout_settings()
+	_workout_editor()
 	_course_cards()
 	_video_view()
 	_video_alignment()
@@ -237,6 +238,75 @@ func _workout_settings() -> void:
 static func _number(workout: Dictionary, key: String) -> float:
 	var number: float = workout[key]
 	return number
+
+
+## The workout editor (R21): steps from the library, new ones, intervals, times as m:ss.
+func _workout_editor() -> void:
+	_check(WorkoutEditor.seconds_of("12:30") == 750.0, "m:ss")
+	_check(WorkoutEditor.seconds_of("45") == 45.0, "plain seconds")
+	_check(
+		WorkoutEditor.seconds_of("1:75") < 0.0 and WorkoutEditor.seconds_of("x") < 0.0, "no time"
+	)
+	_check(WorkoutEditor.clock(3725.0) == "62:05", "minutes and seconds")
+	var editor: WorkoutEditor = WorkoutEditor.new()
+	root.add_child(editor)
+	var library_plan: Dictionary = {
+		"id": "/w/tempo.zwo",
+		"name": "Tempo",
+		"description": "Steady",
+		"builtin": false,
+		"steps":
+		[
+			{"duration_s": 600.0, "from_pct": 50.0, "to_pct": 75.0, "cadence": null, "message": ""},
+			{
+				"duration_s": 120.0,
+				"from_pct": null,
+				"to_pct": null,
+				"cadence": 95.0,
+				"message": "Go"
+			},
+		],
+	}
+	editor.edit(library_plan, 250.0)
+	var edited: Dictionary = editor.workout()
+	var steps: Array = edited["steps"]
+	var ramp: Dictionary = steps[0]
+	var free: Dictionary = steps[1]
+	var expected_ramp: Dictionary = {
+		"duration_s": 600.0,
+		"free": false,
+		"from_pct": 50.0,
+		"to_pct": 75.0,
+		"cadence": 0.0,
+		"message": "",
+	}
+	_check(ramp == expected_ramp, "a ramp: %s" % ramp)
+	var expected_free: Dictionary = {
+		"duration_s": 120.0,
+		"free": true,
+		"from_pct": 0.0,
+		"to_pct": 0.0,
+		"cadence": 95.0,
+		"message": "Go",
+	}
+	_check(free == expected_free, "free: %s" % free)
+	editor.add_intervals(3, 60.0, 120.0, 30.0, 50.0)
+	steps = editor.workout()["steps"]
+	_check(steps.size() == 8, "three intervals add six steps: %d" % steps.size())
+	var last: Dictionary = steps[7]
+	var expected_rest: Dictionary = {
+		"duration_s": 30.0,
+		"free": false,
+		"from_pct": 50.0,
+		"to_pct": 50.0,
+		"cadence": 0.0,
+		"message": "",
+	}
+	_check(last == expected_rest, "the last rest: %s" % last)
+	editor.edit({}, 250.0)
+	var fresh: Array = editor.workout()["steps"]
+	_check(fresh.size() == 3, "a new workout starts with a warm-up, a block and a cool-down")
+	editor.free()
 
 
 ## The captions of a three-column options grid whose rows show.

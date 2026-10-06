@@ -6,7 +6,7 @@ use rustyfit::Encoder;
 use rustyfit::profile::{mesgdef, typedef};
 use rustyfit::proto::{FIT, Message};
 use torqa_domain::units::{Rpm, Watts};
-use torqa_domain::workout::{Intensity, Plan, Target, WorkoutParser};
+use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target, WorkoutParser};
 
 use super::*;
 
@@ -311,4 +311,89 @@ fn zones_without_power_hold_their_middle() {
     assert!((zone_share(1.0) - 0.45).abs() < 1e-9);
     assert!((zone_share(4.0) - 0.98).abs() < 1e-9);
     assert!((zone_share(9.0) - 1.6).abs() < 1e-9);
+}
+
+fn edited() -> Plan {
+    Plan {
+        name: "Over & under <3>".to_owned(),
+        description: "Hard \"but\" fair".to_owned(),
+        steps: vec![
+            Step {
+                duration: Duration::from_mins(5),
+                target: Target::steady(Intensity::Ftp(0.5)),
+                cadence: None,
+            },
+            Step {
+                duration: Duration::from_secs(90),
+                target: Target::Power {
+                    from: Intensity::Ftp(0.5),
+                    to: Intensity::Ftp(0.8),
+                },
+                cadence: Some(Rpm(95.0)),
+            },
+            Step {
+                duration: Duration::from_mins(1),
+                target: Target::steady(Intensity::Watts(Watts(300.0))),
+                cadence: None,
+            },
+            Step {
+                duration: Duration::from_mins(2),
+                target: Target::Free,
+                cadence: None,
+            },
+        ],
+        cues: vec![
+            Cue {
+                at: Duration::from_mins(5),
+                text: "Ramp up".to_owned(),
+            },
+            Cue {
+                at: Duration::from_secs(400),
+                text: "Last bit & go".to_owned(),
+            },
+        ],
+    }
+}
+
+#[test]
+fn written_zwo_files_read_back_as_the_workout() {
+    let plan = edited();
+
+    let xml = write_zwo(&plan, Watts(250.0));
+    let back = ZwoParser.parse(xml.as_bytes(), "x").unwrap();
+
+    let mut expected = plan.clone();
+    // Watts are written as a share of the rider's FTP.
+    expected.steps[2].target = Target::steady(Intensity::Ftp(1.2));
+    assert_eq!(back, expected, "{xml}");
+}
+
+#[test]
+fn saved_workouts_replace_only_their_own_zwo_file() {
+    let dir = temp_dir("save");
+    let mut plan = edited();
+    plan.name = "Tempo/Sweet spot".to_owned();
+
+    let first = save(&dir, &plan, Watts(250.0), None).unwrap();
+    plan.description = "Changed".to_owned();
+    let again = save(&dir, &plan, Watts(250.0), Some(&first)).unwrap();
+    let copy = save(&dir, &plan, Watts(250.0), Some("builtin:recovery-30")).unwrap();
+
+    assert_eq!(again, first, "the edited file is replaced");
+    assert!(first.ends_with("Tempo_Sweet spot.zwo"), "{first}");
+    assert_ne!(copy, first, "an edited built-in becomes a file of its own");
+    assert_eq!(load(&first).unwrap().description, "Changed");
+    let empty = Plan {
+        steps: Vec::new(),
+        ..plan
+    };
+    assert!(save(&dir, &empty, Watts(250.0), None).is_err());
+
+    delete(&dir, &copy).unwrap();
+    assert!(!Path::new(&copy).exists());
+    assert!(delete(&dir, "builtin:recovery-30").is_err());
+    assert!(
+        delete(&dir, "/etc/hosts").is_err(),
+        "only files of the library"
+    );
 }

@@ -163,7 +163,8 @@ Built in rideable steps:
     own or on a course; steps, ramps, free steps, cadence targets and messages
   - [x] FTP test (R22): a ramp test from the rider's FTP, over when the cadence gives way;
     75 % of the best minute, kept with the ride and taken into the profile from the summary
-  - [ ] Workout editor
+  - [x] Workout editor: steps (steady, ramp, free) with duration, % of FTP, cadence and a
+    message, intervals added at once, a live chart; saved as ZWO in the library
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds
 - [x] Logo (orca on a bike, `docs/brand/`), app icon and boot splash
 

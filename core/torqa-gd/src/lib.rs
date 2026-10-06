@@ -22,7 +22,7 @@ use torqa_domain::profile::{Avatar, Profile, UnitSystem};
 use torqa_domain::units::{
     BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
 };
-use torqa_domain::workout::Target;
+use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target};
 use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
 use torqa_session::workout::{HeartRateHold, RampTest, Workout};
@@ -803,8 +803,10 @@ impl TorqaApp {
     }
 
     /// The structured workouts to choose from (R21): `[{id, name, description, duration_s,
-    /// builtin, steps}]`, the built-in ones first. `steps` are `[{duration_s, from_w, to_w}]`
-    /// for the active rider's FTP, the power `null` in free steps.
+    /// builtin, steps}]`, the built-in ones first. `steps` are `[{duration_s, from_w, to_w,
+    /// from_pct, to_pct, cadence, message}]`: power in watts for the active rider's FTP and in
+    /// percent of it (`null` in free steps), cadence `null` if none, and the first message of
+    /// the step ("" if none) — what the workout editor works with.
     #[func]
     fn workouts(&self) -> VarArray {
         let Some(app) = self.app.as_ref() else {
@@ -814,21 +816,41 @@ impl TorqaApp {
         let mut array = VarArray::new();
         for entry in app.workouts() {
             let mut steps = VarArray::new();
+            let mut start = Duration::ZERO;
             for step in &entry.plan.steps {
-                let (from, to) = match step.target {
+                let percent = |watts: f64| (watts / ftp.0.max(1.0) * 100.0).to_variant();
+                let (from, to, from_pct, to_pct) = match step.target {
                     Target::Power { from, to } => {
-                        (from.watts(ftp).0.to_variant(), to.watts(ftp).0.to_variant())
+                        let (a, b) = (from.watts(ftp).0, to.watts(ftp).0);
+                        (a.to_variant(), b.to_variant(), percent(a), percent(b))
                     }
-                    Target::Free => (Variant::nil(), Variant::nil()),
+                    Target::Free => (
+                        Variant::nil(),
+                        Variant::nil(),
+                        Variant::nil(),
+                        Variant::nil(),
+                    ),
                 };
+                let end = start + step.duration;
+                let message = entry
+                    .plan
+                    .cues
+                    .iter()
+                    .find(|cue| cue.at >= start && cue.at < end)
+                    .map_or("", |cue| cue.text.as_str());
                 steps.push(
                     &vdict! {
                         "duration_s" => step.duration.as_secs_f64(),
                         "from_w" => &from,
                         "to_w" => &to,
+                        "from_pct" => &from_pct,
+                        "to_pct" => &to_pct,
+                        "cadence" => &step.cadence.map_or_else(Variant::nil, |c| c.0.to_variant()),
+                        "message" => message,
                     }
                     .to_variant(),
                 );
+                start = end;
             }
             array.push(
                 &vdict! {
@@ -872,6 +894,38 @@ impl TorqaApp {
     #[func]
     fn use_ftp(&mut self, watts: f64) -> bool {
         self.command(|app| app.set_ftp(Watts(watts)))
+    }
+
+    /// Saves a workout from the editor: `{name, description, steps: [{duration_s, from_pct,
+    /// to_pct, free, cadence, message}]}` (cadence 0 for none, message "" for none), over
+    /// `replace` if that is the library's ZWO file being edited. Returns its id, or "" (and
+    /// emits `failed`).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn save_workout(&mut self, workout: VarDictionary, replace: GString) -> GString {
+        let plan = plan_from(&workout);
+        let replace = replace.to_string();
+        let Some(app) = self.app.as_mut() else {
+            return GString::new();
+        };
+        match app.save_workout(&plan, Some(replace.as_str()).filter(|r| !r.is_empty())) {
+            Ok(id) => GString::from(id.as_str()),
+            Err(error) => {
+                let message = error.to_string();
+                self.signals()
+                    .failed()
+                    .emit(&GString::from(message.as_str()));
+                GString::new()
+            }
+        }
+    }
+
+    /// Deletes a workout file from the library; false (and `failed`) for built-ins.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn delete_workout(&mut self, id: GString) -> bool {
+        let id = id.to_string();
+        self.command(|app| app.delete_workout(&id))
     }
 
     /// The extensions of workout files, for file dialogs.
@@ -1642,6 +1696,65 @@ fn hud_values(app: &App) -> VarDictionary {
 }
 
 /// Preview points as Godot vectors.
+/// A workout from the editor, as `save_workout()` takes it.
+fn plan_from(workout: &VarDictionary) -> Plan {
+    let text = |dict: &VarDictionary, key: &str| {
+        dict.get(key)
+            .and_then(|v| v.try_to::<GString>().ok())
+            .map(|t| t.to_string())
+            .unwrap_or_default()
+    };
+    let number = |dict: &VarDictionary, key: &str| {
+        dict.get(key)
+            .and_then(|v| {
+                v.try_to::<f64>()
+                    .ok()
+                    .or_else(|| v.try_to::<i32>().ok().map(f64::from))
+            })
+            .unwrap_or(0.0)
+    };
+    let mut plan = Plan {
+        name: text(workout, "name").trim().to_owned(),
+        description: text(workout, "description").trim().to_owned(),
+        ..Plan::default()
+    };
+    let steps = workout
+        .get("steps")
+        .and_then(|v| v.try_to::<VarArray>().ok())
+        .unwrap_or_default();
+    for step in steps.iter_shared() {
+        let Ok(step) = step.try_to::<VarDictionary>() else {
+            continue;
+        };
+        let free = step
+            .get("free")
+            .and_then(|v| v.try_to::<bool>().ok())
+            .unwrap_or(false);
+        let target = if free {
+            Target::Free
+        } else {
+            Target::Power {
+                from: Intensity::Ftp(number(&step, "from_pct") / 100.0),
+                to: Intensity::Ftp(number(&step, "to_pct") / 100.0),
+            }
+        };
+        let message = text(&step, "message").trim().to_owned();
+        if !message.is_empty() {
+            plan.cues.push(Cue {
+                at: plan.duration(),
+                text: message,
+            });
+        }
+        let cadence = number(&step, "cadence");
+        plan.steps.push(Step {
+            duration: Duration::from_secs_f64(number(&step, "duration_s").max(0.0)),
+            target,
+            cadence: (cadence > 0.0).then_some(Rpm(cadence)),
+        });
+    }
+    plan
+}
+
 /// A workout as `start_workout()` takes it; heart-rate holds use `profile`'s zones and figures.
 fn workout_from(workout: &VarDictionary, profile: &Profile) -> Workout {
     // GDScript hands whole numbers (e.g. the zone) over as ints.
