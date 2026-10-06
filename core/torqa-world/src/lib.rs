@@ -6,10 +6,15 @@
 //! Triangles wind clockwise seen from their front, Godot's front-face order.
 
 mod buildings;
+mod channels;
+mod drape;
+mod horizon;
 mod landcover;
 mod minimap;
 mod palette;
+mod railways;
 mod road;
+mod roundabouts;
 mod streets;
 mod structures;
 mod vegetation;
@@ -21,13 +26,14 @@ use torqa_osm::{LandCover, MapData};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
+pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{BACKGROUND as MINIMAP_BACKGROUND, FlatMap};
 use road::RoadIndex;
 pub use vegetation::Trees;
 
 /// Edge length of a terrain chunk.
-const CHUNK_SIZE: f64 = 480.0;
+pub(crate) const CHUNK_SIZE: f64 = 480.0;
 /// Distance between terrain vertices.
 const GRID: f64 = 16.0;
 /// Terrain (and map data) is used up to this far from the route.
@@ -43,7 +49,7 @@ const FINE: f64 = GRID / SUB as f64;
 /// Ground up to this distance from the road centre is level just below the road: the road and
 /// its verge. Wide enough that no triangle of the fine ground touching the road can rise above
 /// it (half the road plus the diagonal of a fine piece, and a little).
-const VERGE: f64 = ROAD_HALF_WIDTH + FINE * std::f64::consts::SQRT_2 + 0.2;
+pub(crate) const VERGE: f64 = ROAD_HALF_WIDTH + FINE * std::f64::consts::SQRT_2 + 0.2;
 /// Beyond the verge the ground climbs to the hillside at most this steeply (a cutting)...
 const CUT_SLOPE: f64 = 1.2;
 /// ...or falls to the valley at most this steeply (an embankment).
@@ -89,6 +95,44 @@ impl MeshData {
     }
 }
 
+/// The ways and water of the map around the route, ready for the chunks.
+struct Ways {
+    streets: Vec<streets::Street>,
+    /// The railways, on their own lines (#85).
+    network: railways::Network,
+    streams: Vec<water::Stream>,
+    pools: Vec<water::Pool>,
+    /// Where plants keep off.
+    clearance: streets::Clearance,
+    /// Roundabouts' islands.
+    islands: Vec<roundabouts::Island>,
+    /// Where water cuts the ground.
+    channels: channels::Channels,
+}
+
+impl Ways {
+    async fn new<M: ElevationModel>(
+        map: &MapData,
+        projection: &LocalProjection,
+        road: &RoadIndex,
+        model: &mut M,
+    ) -> Self {
+        let streets = streets::lines(map, projection, model).await;
+        let network = railways::network(map, projection, road, model).await;
+        let streams = water::streams(&map.waterways, projection, road);
+        let pools = water::pools(&map.areas, projection, road);
+        Self {
+            clearance: streets::Clearance::new(&streets, &network.railways, &pools),
+            islands: roundabouts::islands(map, projection),
+            channels: channels::Channels::new(&streams, &pools, &streets),
+            streets,
+            network,
+            streams,
+            pools,
+        }
+    }
+}
+
 /// A square piece of the world.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerrainChunk {
@@ -104,6 +148,9 @@ pub struct TerrainChunk {
     pub streets: MeshData,
     /// Unpaved tracks and paths of the map, likewise.
     pub tracks: MeshData,
+    /// Lakes, ponds, rivers and streams of the map, likewise; they pass under streets and the
+    /// road.
+    pub water: MeshData,
     /// Trees standing in the chunk.
     pub trees: Trees,
 }
@@ -127,10 +174,14 @@ pub struct World {
     pub chunks: Vec<TerrainChunk>,
     /// The road along the route.
     pub road: MeshData,
-    /// Rivers and streams.
-    pub water: MeshData,
-    /// Bridges and tunnels.
+    /// Bridges and tunnels, of the road and the railways.
     pub structures: MeshData,
+    /// The railways of the map near the route, in route coordinates (`u` across the bed of
+    /// ballast, below 0 and above 1 on its shoulders, `v` metres along).
+    pub railways: MeshData,
+    /// The land beyond the corridor, from [`horizon`] (empty until it is made: it needs a coarse
+    /// terrain model of its own).
+    pub horizon: Horizon,
     /// Flat map of the corridor for the minimap.
     pub minimap: FlatMap,
     /// Terrain samples that had no elevation data and followed the road instead.
@@ -154,23 +205,36 @@ pub async fn generate<M: ElevationModel>(
     progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
     let buildings = buildings_by_chunk(map, &projection, &road, &land);
-    let streets = streets::lines(map, &projection, model).await;
-    let clearance = streets::Clearance::new(&streets);
+    let ways = Ways::new(map, &projection, &road, model).await;
+    let Ways {
+        streets,
+        streams,
+        pools,
+        ..
+    } = &ways;
+    let shapers = Shapers {
+        road: &road,
+        rails: &ways.network.index,
+    };
     let mut world = World {
-        road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&streets, &road)),
-        water: {
-            let mut water = water::surfaces(&map.areas, &projection, &road, model).await;
-            let rivers = water::ribbons(&map.waterways, &projection, &road, model).await;
-            water.append(rivers);
-            water
-        },
-        structures: structures::build(&road, &projection, model).await,
+        road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(streets, &road)),
+        structures: structures::build_all(&[&road, &ways.network.index], &projection, model).await,
+        railways: ways.network.index.mesh(railways::BED_M / 2.0, &[]),
         minimap: minimap::build(map, &projection, &road),
         ..World::default()
     };
 
     for (done, (cx, cn)) in cells.into_iter().enumerate() {
-        let heights = HeightGrid::sample(cx, cn, &projection, &road, model, &mut world).await;
+        let heights = HeightGrid::sample(
+            cx,
+            cn,
+            &projection,
+            &shapers,
+            (&ways.channels, &land),
+            model,
+            &mut world,
+        )
+        .await;
         let origin = [
             heights.origin.0 + CHUNK_SIZE / 2.0,
             0.0,
@@ -194,26 +258,28 @@ pub async fn generate<M: ElevationModel>(
             heights: &heights,
             land: &land,
             road: &road,
-            streets: &clearance,
+            streets: &ways.clearance,
             buildings: &footprints,
         };
         let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
         vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
-        let (paved, unpaved) = streets::meshes(
-            &streets,
+        let (paved, mut unpaved) =
+            streets::meshes(streets, heights.origin, CHUNK_SIZE, &heights, &road, origin);
+        unpaved.append(water::shore_mesh(
+            pools,
             heights.origin,
             CHUNK_SIZE,
             &heights,
-            &road,
             origin,
-        );
+        ));
         world.chunks.push(TerrainChunk {
             center,
-            mesh: heights.mesh(&land, origin, &road),
+            mesh: heights.mesh(&land, origin, &shapers, &ways.islands),
             buildings: chunk_buildings.shells,
             modelled: chunk_buildings.cells.into_values().collect(),
             streets: paved,
             tracks: unpaved,
+            water: water::mesh(streams, pools, heights.origin, CHUNK_SIZE, &heights, origin),
             trees,
         });
         progress(done + 1, total);
@@ -294,7 +360,7 @@ fn chunk_of(east: f64, north: f64) -> (i32, i32) {
 }
 
 /// Chunk grid cells (east, north) within the corridor of any part of the route.
-fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
+pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
     let mut cells = BTreeSet::new();
     let reach = CORRIDOR + CHUNK_SIZE / 2.0 * std::f64::consts::SQRT_2;
     // Sampling the road every half chunk is enough to touch every chunk in reach.
@@ -330,14 +396,27 @@ pub(crate) struct HeightGrid {
     /// Cells split into `SUB` × `SUB` pieces: the shaped heights of their vertices, row by row
     /// from the south-west.
     fine: HashMap<(usize, usize), Vec<f64>>,
+    /// How far channels cut the ground at each vertex (`channels`), coarse and fine as above;
+    /// the heights include it.
+    carve: Vec<f64>,
+    fine_carve: HashMap<(usize, usize), Vec<f64>>,
+}
+
+/// What a strip or area is laid on (`drape`): the ground, or the water's surface in its channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum On {
+    Ground,
+    Water,
 }
 
 impl HeightGrid {
+    #[allow(clippy::too_many_arguments)]
     async fn sample<M: ElevationModel>(
         cx: i32,
         cn: i32,
         projection: &LocalProjection,
-        road: &RoadIndex,
+        shapers: &Shapers<'_>,
+        water: (&channels::Channels, &LandIndex),
         model: &mut M,
         world: &mut World,
     ) -> Self {
@@ -345,7 +424,8 @@ impl HeightGrid {
         let side = (CHUNK_SIZE / GRID).round() as usize + 1;
         let bordered = side + 2;
         let origin = (f64::from(cx) * CHUNK_SIZE, f64::from(cn) * CHUNK_SIZE);
-        let chunk_road_elevation = road
+        let chunk_road_elevation = shapers
+            .road
             .nearest(
                 origin.0 + CHUNK_SIZE / 2.0,
                 origin.1 + CHUNK_SIZE / 2.0,
@@ -355,6 +435,7 @@ impl HeightGrid {
 
         let mut natural = vec![0.0; bordered * bordered];
         let mut heights = vec![0.0; bordered * bordered];
+        let mut carve = vec![0.0; bordered * bordered];
         for j in 0..bordered {
             for i in 0..bordered {
                 #[allow(clippy::cast_precision_loss)] // small grid indices
@@ -367,11 +448,16 @@ impl HeightGrid {
                     height
                 } else {
                     world.fallback_samples += 1;
-                    road.nearest(east, north, FALLBACK_RADIUS)
+                    shapers
+                        .road
+                        .nearest(east, north, FALLBACK_RADIUS)
                         .map_or(chunk_road_elevation, |(_, elevation, _)| elevation)
                 };
+                let cut = carve_at(water, east, north, shapers);
                 natural[j * bordered + i] = height;
-                heights[j * bordered + i] = shape(height, &road.near(east, north, LEVEL_REACH));
+                carve[j * bordered + i] = cut;
+                heights[j * bordered + i] =
+                    shape(height, &shapers.near(east, north, LEVEL_REACH)) - cut;
             }
         }
         let mut grid = Self {
@@ -380,12 +466,17 @@ impl HeightGrid {
             heights,
             natural,
             fine: HashMap::new(),
+            carve,
+            fine_carve: HashMap::new(),
         };
+        let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         for j in 0..side - 1 {
             for i in 0..side - 1 {
-                if grid.needs_detail(i, j, road) {
-                    let fine = grid.detail(i, j, road);
+                let (east, north) = grid.position(i, j, 0.5, 0.5);
+                if grid.needs_detail(i, j, shapers) || water.0.near(east, north, half_diagonal) {
+                    let (fine, cuts) = grid.detail(i, j, shapers, water);
                     grid.fine.insert((i, j), fine);
+                    grid.fine_carve.insert((i, j), cuts);
                 }
             }
         }
@@ -394,10 +485,10 @@ impl HeightGrid {
 
     /// Whether the ground anywhere in cell (`i`, `j`) is shaped around the road. Elsewhere it
     /// is natural, and the plain cell's flat triangles match the neighbours' edges exactly.
-    fn needs_detail(&self, i: usize, j: usize, road: &RoadIndex) -> bool {
+    fn needs_detail(&self, i: usize, j: usize, shapers: &Shapers<'_>) -> bool {
         let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         let (east, north) = self.position(i, j, 0.5, 0.5);
-        let roads: Vec<_> = road
+        let roads: Vec<_> = shapers
             .near(east, north, LEVEL_REACH + half_diagonal)
             .into_iter()
             .filter(|r| r.2 != Surface::Tunnel)
@@ -431,20 +522,32 @@ impl HeightGrid {
     }
 
     /// The shaped heights of cell (`i`, `j`) split into `SUB` × `SUB` pieces.
-    fn detail(&self, i: usize, j: usize, road: &RoadIndex) -> Vec<f64> {
+    /// The shaped and carved heights of a cell's fine pieces' vertices, and the carve.
+    fn detail(
+        &self,
+        i: usize,
+        j: usize,
+        shapers: &Shapers<'_>,
+        water: (&channels::Channels, &LandIndex),
+    ) -> (Vec<f64>, Vec<f64>) {
         let mut fine = Vec::with_capacity((SUB + 1) * (SUB + 1));
+        let mut cuts = Vec::with_capacity((SUB + 1) * (SUB + 1));
         for b in 0..=SUB {
             for a in 0..=SUB {
                 #[allow(clippy::cast_precision_loss)] // small counts
                 let (u, v) = (a as f64 / SUB as f64, b as f64 / SUB as f64);
                 let (east, north) = self.position(i, j, u, v);
-                fine.push(shape(
-                    self.natural_at(east, north),
-                    &road.near(east, north, LEVEL_REACH),
-                ));
+                let cut = carve_at(water, east, north, shapers);
+                fine.push(
+                    shape(
+                        self.natural_at(east, north),
+                        &shapers.near(east, north, LEVEL_REACH),
+                    ) - cut,
+                );
+                cuts.push(cut);
             }
         }
-        fine
+        (fine, cuts)
     }
 
     /// Metres east/north of the point (`u`, `v`) (0–1) of cell (`i`, `j`).
@@ -533,7 +636,32 @@ impl HeightGrid {
 
     /// The ground's height at any point of (or slightly around) the chunk, exactly as the mesh
     /// has it.
+    /// The ground's height at a point, channels cut into it.
     pub(crate) fn at(&self, east: f64, north: f64) -> f64 {
+        self.interpolate(east, north, &self.heights, &self.fine)
+    }
+
+    /// The height of what lies `on` the ground at a point: the ground, or the water's surface
+    /// in its channel (the ground without the channel, less the channel's drop).
+    pub(crate) fn level(&self, on: On, east: f64, north: f64) -> f64 {
+        match on {
+            On::Ground => self.at(east, north),
+            On::Water => {
+                self.at(east, north) + self.interpolate(east, north, &self.carve, &self.fine_carve)
+                    - channels::DROP
+            }
+        }
+    }
+
+    /// A value given at the grid's vertices (`coarse`, and `fine` in detailed cells) at a point,
+    /// on the triangles the mesh draws.
+    fn interpolate(
+        &self,
+        east: f64,
+        north: f64,
+        coarse: &[f64],
+        fine: &HashMap<(usize, usize), Vec<f64>>,
+    ) -> f64 {
         let u = (east - self.origin.0) / GRID;
         let v = (north - self.origin.1) / GRID;
         // Points on the chunk's far edges belong to its last cells, not to the border.
@@ -552,7 +680,7 @@ impl HeightGrid {
         #[allow(clippy::cast_possible_truncation)] // clamped to the small grid by `slot`
         let (i, j) = (i as isize, j as isize);
         if let (Ok(ci), Ok(cj)) = (usize::try_from(i), usize::try_from(j))
-            && let Some(fine) = self.fine.get(&(ci, cj))
+            && let Some(fine) = fine.get(&(ci, cj))
         {
             #[allow(clippy::cast_precision_loss)]
             let (su, sv) = (fu * SUB as f64, fv * SUB as f64);
@@ -573,11 +701,12 @@ impl HeightGrid {
                 pv,
             );
         }
+        let vertex = |i: isize, j: isize| coarse[self.slot(i, j)];
         on_triangles(
-            self.vertex(i, j),
-            self.vertex(i + 1, j),
-            self.vertex(i, j + 1),
-            self.vertex(i + 1, j + 1),
+            vertex(i, j),
+            vertex(i + 1, j),
+            vertex(i, j + 1),
+            vertex(i + 1, j + 1),
             fu,
             fv,
         )
@@ -585,17 +714,38 @@ impl HeightGrid {
 
     /// The ground's normal at a point, from the shaped surface itself, so it is the same on
     /// either side of chunk and cell edges.
-    fn normal_at(&self, east: f64, north: f64, road: &RoadIndex) -> [f32; 3] {
-        let height = |e: f64, n: f64| shape(self.natural_at(e, n), &road.near(e, n, LEVEL_REACH));
+    fn normal_at(&self, east: f64, north: f64, shapers: &Shapers<'_>) -> [f32; 3] {
+        let height =
+            |e: f64, n: f64| shape(self.natural_at(e, n), &shapers.near(e, n, LEVEL_REACH));
         let step = 1.0;
         let slope_east = (height(east + step, north) - height(east - step, north)) / (2.0 * step);
         let slope_north = (height(east, north + step) - height(east, north - step)) / (2.0 * step);
         unit([-slope_east, 1.0, slope_north])
     }
 
+    /// The ground mesh relative to `origin`, coloured by land cover, with the roundabouts'
+    /// `islands` raised on it.
+    fn mesh(
+        &self,
+        land: &LandIndex,
+        origin: [f64; 3],
+        shapers: &Shapers<'_>,
+        islands: &[roundabouts::Island],
+    ) -> MeshData {
+        let mut mesh = self.plain_mesh(land, origin, shapers);
+        mesh.append(roundabouts::mesh(
+            islands,
+            self.origin,
+            CHUNK_SIZE,
+            self,
+            origin,
+        ));
+        mesh
+    }
+
     /// The ground mesh relative to `origin`, coloured by land cover.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // f32 GPU data; small grid
-    fn mesh(&self, land: &LandIndex, origin: [f64; 3], road: &RoadIndex) -> MeshData {
+    fn plain_mesh(&self, land: &LandIndex, origin: [f64; 3], shapers: &Shapers<'_>) -> MeshData {
         let side = self.side;
         let mut mesh = MeshData::default();
         let push = |mesh: &mut MeshData, east: f64, north: f64, height: f64| {
@@ -604,7 +754,7 @@ impl HeightGrid {
                 (height - origin[1]) as f32,
                 (-north - origin[2]) as f32,
             ]);
-            mesh.normals.push(self.normal_at(east, north, road));
+            mesh.normals.push(self.normal_at(east, north, shapers));
             mesh.uvs.push([(east / GRID) as f32, (north / GRID) as f32]);
             mesh.colors
                 .push(landcover::color(land.cover_at(east, north)));
@@ -654,6 +804,20 @@ impl HeightGrid {
     }
 }
 
+/// How far channels cut the ground at a point (`channels::Channels::depth`).
+fn carve_at(
+    (channels, land): (&channels::Channels, &LandIndex),
+    east: f64,
+    north: f64,
+    shapers: &Shapers<'_>,
+) -> f64 {
+    let inside = land.cover_at(east, north) == Some(LandCover::Water);
+    if !inside && !channels.near(east, north, 0.0) {
+        return 0.0;
+    }
+    channels.depth(east, north, inside, shapers)
+}
+
 /// Height at (`u`, `v`) (0–1) of a cell with corner heights south-west, south-east,
 /// north-west and north-east, split into the two triangles the mesh draws (along the
 /// south-west to north-east diagonal).
@@ -662,6 +826,22 @@ fn on_triangles(sw: f64, se: f64, nw: f64, ne: f64, u: f64, v: f64) -> f64 {
         sw + (ne - nw) * u + (nw - sw) * v
     } else {
         sw + (se - sw) * u + (ne - se) * v
+    }
+}
+
+/// What shapes the ground: the road ridden and the railways (`railways`), each level across just
+/// below it, with cuttings and embankments.
+pub(crate) struct Shapers<'a> {
+    pub(crate) road: &'a RoadIndex,
+    pub(crate) rails: &'a RoadIndex,
+}
+
+impl Shapers<'_> {
+    /// Every piece of road or railway within `reach`, as [`RoadIndex::near`] gives them.
+    pub(crate) fn near(&self, east: f64, north: f64, reach: f64) -> Vec<(f64, f64, Surface)> {
+        let mut found = self.road.near(east, north, reach);
+        found.extend(self.rails.near(east, north, reach));
+        found
     }
 }
 

@@ -149,6 +149,18 @@ pub struct Structure {
     pub line: Vec<LatLon>,
 }
 
+/// A railway line: main lines, narrow gauge, funiculars and light rail (not trams, which run
+/// in the streets, nor subways, which run underground).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Railway {
+    /// Centre line.
+    pub line: Vec<LatLon>,
+    /// Carried over or under the ground here, if it is.
+    pub structure: Option<StructureKind>,
+    /// A funicular, which may climb far more steeply than other railways.
+    pub funicular: bool,
+}
+
 /// Map features around a route.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MapData {
@@ -160,6 +172,8 @@ pub struct MapData {
     pub waterways: Vec<Waterway>,
     /// Roads.
     pub roads: Vec<Road>,
+    /// Railways.
+    pub railways: Vec<Railway>,
     /// Churches and chapels, as points on or near their building.
     pub churches: Vec<LatLon>,
 }

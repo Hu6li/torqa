@@ -47,6 +47,9 @@ const WEATHERS: Array[String] = ["Clear", "Cloudy", "Hazy", "Rain"]
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
+## The land beyond the corridor reaches 12 km from the route (`torqa_world::HORIZON`); the
+## camera sees that far, the haze hides its end.
+const HORIZON_RANGE: float = 14000.0
 ## Buildings switch between their models and their shells over this distance.
 const MODEL_FADE: float = 40.0
 ## Trees and buildings are small; beyond this the land-cover colours carry the scene.
@@ -171,6 +174,12 @@ var _placed: bool = false
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _ghost: RiderAvatar = RiderAvatar.new()
 var _ghost_distance: float = 0.0
+var _clouds: CloudLayer = CloudLayer.new()
+## Whether the clouds are over the land of the current world yet.
+var _clouds_settled: bool = false
+## The land beyond the corridor: ground and lakes.
+var _horizon_ground: MeshInstance3D = MeshInstance3D.new()
+var _horizon_water: MeshInstance3D = MeshInstance3D.new()
 
 var _terrain_material: ShaderMaterial = ShaderMaterial.new()
 var _road_material: ShaderMaterial = ShaderMaterial.new()
@@ -183,10 +192,12 @@ var _plant_material: ShaderMaterial = ShaderMaterial.new()
 ## Other streets of the map (asphalt) and tracks and paths (gravel).
 var _street_material: ShaderMaterial = ShaderMaterial.new()
 var _track_material: ShaderMaterial = ShaderMaterial.new()
+var _rail_material: ShaderMaterial = ShaderMaterial.new()
+## The railways near the route, on their own lines like the road (#85).
+var _railways: MeshInstance3D = MeshInstance3D.new()
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
-@onready var _water: MeshInstance3D = $Water
 @onready var _structures: MeshInstance3D = $Structures
 @onready var _rider: Node3D = $Rider
 @onready var _camera: Camera3D = $Camera
@@ -273,9 +284,13 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	var sky_horizon: Color = horizon.lerp(Palette.color("sky.overcast_horizon"), overcast)
 	_sky.set_shader_parameter("top_color", sky_top)
 	_sky.set_shader_parameter("horizon_color", sky_horizon)
-	_sky.set_shader_parameter("cloud_cover", cover)
+	# The sky paints a thin high layer; the low-poly clouds below carry the cover.
+	_sky.set_shader_parameter("cloud_cover", cover * 0.3)
 	_sky.set_shader_parameter("cloud_darkness", overcast)
+	_clouds.cover = cover
 	_sun.light_color = sun_color.lerp(Color.WHITE, overcast * 0.5)
+	# The light shines along its −z axis: its +z points towards the sun.
+	_clouds.light(_sun.global_transform.basis.z, _sun.light_color, sky_horizon, overcast)
 	_sun.light_energy = energy * lerpf(1.0, 0.25, overcast)
 	_sun.shadow_blur = lerpf(1.0, 4.0, overcast)
 	_environment.ambient_light_energy = lerpf(ambient, 0.85, overcast)
@@ -381,6 +396,16 @@ func _ready() -> void:
 		material.set_shader_parameter("surface_color", Palette.color(color))
 		material.set_shader_parameter("grass_color", Palette.color("ground.meadow"))
 		material.set_shader_parameter("middle_grass", surface[2])
+	_rail_material.shader = preload("res://shaders/rail.gdshader")
+	_rail_material.set_shader_parameter("ballast_color", Palette.color("road.ballast"))
+	_rail_material.set_shader_parameter("sleeper_color", Palette.color("road.sleeper"))
+	_rail_material.set_shader_parameter("rail_color", Palette.color("road.rail"))
+	add_child(_clouds)
+	add_child(_railways)
+	for land: MeshInstance3D in [_horizon_ground, _horizon_water]:
+		# Far away: its shadows would not show.
+		land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(land)
 	_rider.add_child(_avatar)
 	_ghost.accent = UiTheme.GHOST_COLOR
 	_ghost.ghostly = true
@@ -405,6 +430,7 @@ func _process(delta: float) -> void:
 
 
 func _on_world_ready(_info: Dictionary) -> void:
+	_clouds_settled = false
 	# The rider's own avatar (R46); the ghost rides the same one.
 	var avatar: String = _torqa.profile().get("avatar", RiderAvatar.RIDERS[0])
 	_avatar.rider = avatar
@@ -415,8 +441,15 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_next_chunk = 0
 	_road.mesh = _mesh_from(_torqa.road_mesh())
 	_road.material_override = _road_material
-	_water.mesh = _mesh_from(_torqa.water_mesh())
-	_water.material_override = _water_material
+	var land: Dictionary = _torqa.horizon_meshes()
+	var ground: Dictionary = land["ground"]
+	var lakes: Dictionary = land["water"]
+	_horizon_ground.mesh = _mesh_from(ground)
+	_horizon_ground.material_override = _terrain_material
+	_horizon_water.mesh = _mesh_from(lakes)
+	_horizon_water.material_override = _water_material
+	_railways.mesh = _mesh_from(_torqa.railways_mesh())
+	_railways.material_override = _rail_material
 	_structures.mesh = _mesh_from(_torqa.structures_mesh())
 	_structures.material_override = _structure_material
 
@@ -438,7 +471,9 @@ func _build_some_chunks() -> void:
 		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
 		ground.visibility_range_end = VISIBILITY_RANGE * _distance
 		node.add_child(ground)
-		for surface: Array in [["streets", _street_material], ["tracks", _track_material]]:
+		for surface: Array in [
+			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
+		]:
 			var arrays: Dictionary = chunk.get(surface[0], {})
 			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
 			if not vertices.is_empty():
@@ -622,6 +657,9 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var yaw: Basis = Basis(Vector3.UP, -heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	var position: Vector3 = Vector3(east, elevation, -north)
+	if not _clouds_settled:
+		_clouds.settle(elevation)
+		_clouds_settled = true
 	# A jump (simulated rides): no gliding across the whole way.
 	if _rider.position.distance_to(position) > JUMP_M:
 		_placed = false
@@ -706,7 +744,7 @@ func _set_distance(factor: float) -> void:
 		var geometry: GeometryInstance3D = node as GeometryInstance3D
 		if geometry.visibility_range_end > 0.0:
 			geometry.visibility_range_end *= change
-	_camera.far = VISIBILITY_RANGE * factor * 1.6
+	_camera.far = maxf(VISIBILITY_RANGE * factor * 1.6, HORIZON_RANGE)
 
 
 ## Puts the ghost rider (`ride_state()["ghost"]`) on the road, a little to the left so it never

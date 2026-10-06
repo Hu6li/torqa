@@ -81,6 +81,30 @@ impl TileSource {
         ]
     }
 
+    /// Sources for the land far beyond the route (`torqa_world::horizon`): coarse tiles, a few
+    /// of which cover the whole view, Mapterhorn first, then AWS.
+    #[must_use]
+    pub fn distant() -> Vec<Self> {
+        vec![
+            Self {
+                zoom: 10,
+                ..Self::mapterhorn()
+            },
+            Self {
+                zoom: 11,
+                ..Self::aws_terrain_tiles()
+            },
+        ]
+    }
+
+    /// Metres per pixel at latitude `lat` (degrees).
+    #[must_use]
+    pub fn resolution(&self, lat: f64) -> f64 {
+        const EQUATOR_M: f64 = 40_075_016.7;
+        EQUATOR_M * lat.to_radians().cos()
+            / (f64::from(1_u32 << self.zoom) * f64::from(self.tile_size))
+    }
+
     pub(crate) fn url(&self, id: TileId) -> String {
         self.url_template
             .replace("{z}", &id.z.to_string())
@@ -97,5 +121,26 @@ impl TileSource {
             .join(id.z.to_string())
             .join(id.x.to_string())
             .join(format!("{}.{extension}", id.y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distant_tiles_are_coarse_but_fine_enough_for_the_horizon() {
+        for source in TileSource::distant() {
+            // Facets of 240 m need a few samples each; a tile covers more than 10 km, so a few
+            // dozen at most cover the land out to the horizon.
+            let resolution = source.resolution(47.0);
+            assert!(
+                (30.0..=80.0).contains(&resolution),
+                "{}: {resolution} m",
+                source.name
+            );
+            assert!(resolution * f64::from(source.tile_size) > 10_000.0);
+        }
+        assert!(TileSource::mapterhorn().resolution(47.0) < 30.0);
     }
 }

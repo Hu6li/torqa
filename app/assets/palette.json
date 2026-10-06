@@ -38,10 +38,14 @@
     "asphalt": "#8e959b",
     "marking": "#f2ebd9",
     "shoulder": "#c3bbb4",
-    "gravel": "#d6c5a2"
+    "gravel": "#d6c5a2",
+    "ballast": "#a8a29c",
+    "sleeper": "#7a5755",
+    "rail": "#614367"
   },
   "structure": {
     "concrete": "#ddd6ca",
+    "stone": "#c9b9a6",
     "tunnel": "#a9a196"
   },
   "plants": {

@@ -222,8 +222,9 @@ the realistic look's textures and patterns are being replaced step by step.
     each seated on a scripted bike sized to their legs and reach (`art/riders`); cadence-driven
     pedalling (legs by inverse kinematics, ankling, a little sway); the rider chosen per
     profile
-  - [ ] Polish: low-poly clouds, stylized rain and fog, a shore band at lakes, presets tuned
-    to the new look
+  - [ ] Polish: stylized rain and fog, presets tuned to the new look (done: a band of gravel
+    along the shores of lakes and rivers; low-poly clouds made in Blender, lit by the sun and
+    the weather, more, bigger and lower as it clouds over)
 - [ ] Feedback round after the riders (issues #74–#79), in this order:
   - [x] Nicer riders (#76): hair over the scalp (to the nape for her, short for him) and a
     longer ponytail; helmets shaped from the head they sit on, drawn out at the back, with vent
@@ -237,27 +238,39 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Other streets never cut by the ground: draped along the ground's own triangles, so
       no grass shows through the asphalt and no street sinks into a slope
     - [ ] Junctions joined cleanly where streets meet the road ridden: no kerb walls across the
-      mouths (done: the road's edge is road there) and no jagged polygons; roundabouts as rings
-      round an island
+      mouths (done: the road's edge is road there), roundabouts as rings round a raised island
+      with a kerb (done); open: no jagged polygons where streets overlap at junctions
     - [x] The road's edge as a low bevel, not a step that reads as a wall (15 cm instead of
       25 cm, sloping gentler than 45°)
     - [ ] Kinks of the snapped route smoothed (S-bends where the track jumps between roads)
-    - [ ] Water under roads, never over them: streams and rivers stop at road crossings
-      (culverts, bridges)
+    - [x] Water under roads, never over them: streams and rivers laid on the ground just
+      below every street and the road, so they pass under them; culverts left out
   - [ ] Nicer environment (#75):
-    - [ ] Water lies in the ground, never floating above it; better meeting of water, banks and
-      bridges (with the shore band of Polish)
-    - [ ] Railways: tracks on ballast, level crossings, railway bridges and tunnels (railways
-      are dropped from the map data today)
-    - [ ] A wider view in the mountains: low-detail terrain beyond the 1.5 km corridor and haze,
-      so the edge of the map never shows
+    - [x] Water lies in the land, never floating above it or buried: lakes, rivers and
+      streams are laid on the ground (whose height the terrain model measures at the water's
+      surface), so lakes lie level and rivers slope with their course (a shore band remains
+      for Polish)
+    - [x] Water in channels (#93): streams, rivers and lakes lie half a metre below the land
+      beside them, the ground carved into natural banks and a bed; under bridges the channel
+      runs on, where roads, streets and railways cross on the ground it stops short of them
+      (a culvert)
+    - [x] Railways: main lines, narrow gauge, funiculars and light rail, each on a smooth line
+      of its own (railway grades, bridges and tunnels straight between their ends, tunnels
+      where the hill rises far above the track, viaducts where the ground falls far below it,
+      clear of the road ridden where they cross), shaping the ground like the road and
+      carrying its kind of bridges and tunnels; a bed of ballast with sleepers and rails;
+      plants keep off them
+    - [x] A wider view in the mountains: coarse land (240 m facets, from zoom-10 terrain tiles)
+      beyond the 1.5 km corridor out to 12 km, coloured by its shape (meadow, forest, lakes;
+      rock and snow by the shader), fading into the haze, so the edge of the map never shows
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
       (none cut at corners and edges). Done: whole windows; blocks in coloured or light
       plaster with contrasting trim (a ground storey of its own, string course, cornice),
       stacked balconies and rooftop units. Open: shops with awnings, more kinds
-    - [ ] Bridges and viaducts as models: stone arches, concrete beams on piers, railway
-      viaducts, instead of plain decks
+    - [x] Bridges and viaducts: short, low bridges of the road ridden are stone arch bridges
+      (arches, the walls over them, vaults), longer and higher ones viaducts on piers as wide
+      as the deck; bridges of other streets and railways stand on piers too
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look

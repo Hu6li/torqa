@@ -5,13 +5,15 @@ extends SceneTree
 ## (space-separated names) limits it to some.
 
 ## View name → [route, distance along it in metres, camera (`RideWorld.CameraMode`), time of
-## day, weather].
+## day, weather], and optionally where a camera standing aside looks at the rider from (metres
+## right, up and back of the rider), e.g. to see a bridge from the side.
 const VIEWS: Dictionary[String, Array] = {
 	"village-chase": ["gurtenstrasse", 150.0, 0, "Midday", "Clear"],
 	"climb-chase": ["gurtenstrasse", 1840.0, 0, "Midday", "Clear"],
 	"hairpin-drone": ["gurtenstrasse", 1240.0, 2, "Midday", "Clear"],
 	"hairpin-chase": ["gurtenstrasse", 1290.0, 0, "Midday", "Clear"],
 	"village-evening": ["gurtenstrasse", 150.0, 0, "Evening", "Clear"],
+	"railway-tunnel-drone": ["bielersee", 1900.0, 2, "Midday", "Clear"],
 	"lake-chase": ["bielersee", 3000.0, 0, "Midday", "Clear"],
 	"lake-drone": ["bielersee", 5000.0, 2, "Midday", "Clear"],
 	"lake-rain": ["bielersee", 3000.0, 0, "Midday", "Rain"],
@@ -19,7 +21,10 @@ const VIEWS: Dictionary[String, Array] = {
 	"block-chase": ["bielersee", 4960.0, 0, "Midday", "Clear"],
 	"junction-chase": ["bielersee", 1500.0, 0, "Midday", "Clear"],
 	"junction-drone": ["bielersee", 1380.0, 2, "Midday", "Clear"],
+	"river-drone": ["kirchenfeldbruecke", 90.0, 2, "Midday", "Clear"],
 	"bridge-chase": ["kirchenfeldbruecke", 200.0, 0, "Midday", "Clear"],
+	"roundabout-drone": ["kirchenfeldbruecke", 170.0, 2, "Midday", "Clear"],
+	"bridge-side": ["kirchenfeldbruecke", 380.0, 0, "Midday", "Clear", Vector3(140.0, -22.0, 0.0)],
 }
 ## Frames to let the world stream in around a new place; software rendering is slow.
 const SETTLE_FRAMES: int = 240
@@ -71,6 +76,18 @@ func _run() -> void:
 		torqa.jump_to_distance(distance)
 		world.set_camera(camera)
 		world.apply_conditions(time, weather)
+		if spec.size() > 5:
+			# A camera aside stands where the rider was just after the jump and stays there
+			# while the world settles; the rider rides on meanwhile.
+			for frame: int in range(10):
+				await process_frame
+			var aside: Vector3 = spec[5]
+			var rider: Node3D = world.get_node("Rider")
+			var camera_node: Camera3D = world.get("_camera")
+			world.set("_free", true)
+			camera_node.look_at_from_position(
+				rider.transform * aside, rider.position + Vector3.UP * 2.0, Vector3.UP
+			)
 		for frame: int in range(SETTLE_FRAMES):
 			await process_frame
 		root.get_texture().get_image().save_png(out.path_join(view + ".png"))

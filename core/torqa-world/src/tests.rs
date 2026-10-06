@@ -278,6 +278,344 @@ async fn where_streets_join_the_road_its_edge_is_road_not_shoulder() {
     }
 }
 
+/// The railways' bed along its middle, as the mesh has it: (x, height, z) per point.
+fn rail_bed(world: &World) -> Vec<[f32; 3]> {
+    world
+        .railways
+        .vertices
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|ring| [0, 1, 2].map(|k| f32::midpoint(ring[2][k], ring[3][k])))
+        .collect()
+}
+
+/// A railway of the map through `points` (metres east/north).
+fn railway(points: &[(f64, f64)], structure: Option<StructureKind>) -> torqa_osm::Railway {
+    torqa_osm::Railway {
+        line: points.iter().map(|&(e, n)| at(e, n)).collect(),
+        structure,
+        funicular: false,
+    }
+}
+
+#[tokio::test]
+async fn railways_run_smoothly_level_across_and_keep_the_forest_off() {
+    // Bumpy land rising eastwards; a line due north across it, through a forest.
+    struct Bumpy;
+    impl ElevationModel for Bumpy {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + 0.1 * east + 3.0 * (north / 25.0).sin()))
+        }
+    }
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(300.0, 500.0, 120.0)],
+        inner: vec![],
+    };
+    let map = MapData {
+        areas: vec![forest],
+        railways: vec![railway(&[(300.0, 100.0), (300.0, 900.0)], None)],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Bumpy, &map, &mut |_, _| {}).await;
+
+    let bed = rail_bed(&world);
+    assert!(bed.len() > 100, "{} points of track", bed.len());
+    // Gentle grades, no bumps: the terrain's 3 m waves are gone.
+    for pair in bed.windows(2) {
+        let run = (pair[1][2] - pair[0][2]).abs().max(1.0);
+        let grade = (pair[1][1] - pair[0][1]).abs() / run;
+        assert!(grade < 0.041, "a {grade} grade at {:?}", pair[0]);
+    }
+    // Level across, the ground shaped just below the bed beside it.
+    for ring in world.railways.vertices.as_chunks::<6>().0 {
+        assert!(
+            (ring[2][1] - ring[3][1]).abs() < 0.01,
+            "a tilted bed at {:?}",
+            ring[2]
+        );
+    }
+    for point in bed.iter().step_by(10) {
+        for side in [-2.5_f32, 2.5] {
+            let ground = ground_at(&world, point[0] + side, point[2]).expect("ground");
+            assert!(
+                ground < point[1] && point[1] - ground < 0.5,
+                "ground at {ground} beside the bed at {point:?}"
+            );
+        }
+    }
+    // The forest grows beside the line, never on it.
+    let trees = plants_of(&world, &["conifer", "broadleaf"]);
+    assert!(
+        trees
+            .iter()
+            .filter(|t| (t[0] - 300.0).abs() < 100.0)
+            .count()
+            > 50
+    );
+    for [x, _, z] in &trees {
+        assert!((x - 300.0).abs() > 1.6, "a tree on the railway at {x}, {z}");
+    }
+}
+
+#[tokio::test]
+async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
+    // Land rising eastwards, and beyond 6 km east a lake whose surface the model reads at 600 m.
+    struct Far;
+    impl ElevationModel for Far {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if east > 6000.0 {
+                600.0
+            } else {
+                500.0 + 0.01 * east.abs()
+            }))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Far, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Far).await;
+
+    assert_valid(&land.ground);
+    assert_valid(&land.water);
+    let detailed = |x: f32, z: f32| {
+        world.chunks.iter().any(|c| {
+            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
+                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
+        })
+    };
+    for cell in land.ground.vertices.as_chunks::<4>().0 {
+        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+        assert!(
+            !detailed(middle[0], middle[1]),
+            "land over the detailed ground at {middle:?}"
+        );
+    }
+    // Out to the horizon, west and east, at the land's height (a little lower).
+    let reach = land
+        .ground
+        .vertices
+        .iter()
+        .map(|v| v[0])
+        .fold(0.0_f32, f32::min);
+    assert!(
+        reach < -(HORIZON as f32) + 1000.0,
+        "the land ends at {reach} m"
+    );
+    for v in &land.ground.vertices {
+        let measured = 500.0 + 0.01 * v[0].abs();
+        // On the shore the model may read the lake already.
+        let shore = (v[0] - 6000.0).abs() < 1.0 && (v[1] - 598.0).abs() < 0.5;
+        assert!(
+            shore || (v[1] - (measured - 2.0)).abs() < 0.5,
+            "land at {} at {}",
+            v[1],
+            v[0]
+        );
+    }
+    // The lake far east is water, at its level.
+    assert_ne!(land.water.vertices.len(), 0);
+    assert!(
+        land.water
+            .vertices
+            .iter()
+            .all(|v| v[0] >= 6000.0 && (v[1] - 600.02).abs() < 0.01)
+    );
+    assert!(land.ground.vertices.iter().all(|v| v[0] <= 6240.0));
+}
+
+#[tokio::test]
+async fn roundabouts_get_a_raised_island_with_a_kerb() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A roundabout of 20 m radius east of the route; a long thin loop, a road round a square
+    // block and a footpath round a pond (no roundabouts).
+    let ring: Vec<(f64, f64)> = (0..=24)
+        .map(|k| {
+            let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
+            at(200.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
+        })
+        .collect();
+    let loop_ = vec![
+        at(150.0, 800.0),
+        at(250.0, 800.0),
+        at(250.0, 806.0),
+        at(200.0, 807.0),
+        at(150.0, 806.0),
+        at(150.0, 800.0),
+    ];
+    // The block's road has a point every 10 m, as mapped roads do.
+    let block: Vec<(f64, f64)> = (0..=20)
+        .map(|k| {
+            let (side, step) = (k / 5, f64::from(k % 5) * 10.0);
+            let (east, north) = match side {
+                0 => (-25.0 + step, -25.0),
+                1 => (25.0, -25.0 + step),
+                2 => (25.0 - step, 25.0),
+                3 => (-25.0, 25.0 - step),
+                _ => (-25.0, -25.0),
+            };
+            at(200.0 + east, 300.0 + north)
+        })
+        .collect();
+    let path: Vec<(f64, f64)> = (0..=24)
+        .map(|k| {
+            let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
+            at(200.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
+        })
+        .collect();
+    let world = world(&MapData {
+        roads: [
+            (RoadClass::Street, ring),
+            (RoadClass::Street, loop_),
+            (RoadClass::Service, block),
+            (RoadClass::Path, path),
+        ]
+        .into_iter()
+        .map(|(class, line)| Road {
+            class,
+            line,
+            structure: None,
+        })
+        .collect(),
+        ..MapData::default()
+    })
+    .await;
+    // How far the topmost ground lies over the natural slope (0.1 m per metre east).
+    let lift = |x: f32, z: f32| top_of_ground(&world, x, z).map(|top| top - (500.0 + 0.1 * x));
+
+    // Inside the ring, the island stands 20 cm up; on the ring and outside, the ground is as
+    // it was.
+    for (x, z) in [
+        (200.0, -500.0),
+        (210.0, -505.0),
+        (190.0, -492.0),
+        (214.0, -500.0),
+    ] {
+        let up = lift(x, z).expect("ground");
+        assert!((up - 0.2).abs() < 0.02, "island at {up} m at {x}, {z}");
+    }
+    for (x, z) in [
+        (220.0, -500.0),
+        (230.0, -500.0),
+        (200.0, -525.0),
+        (200.0, -803.0),
+        (200.0, -300.0),
+        (210.0, -290.0),
+        (200.0, -650.0),
+    ] {
+        let up = lift(x, z).expect("ground");
+        assert!(up.abs() < 0.02, "ground raised by {up} m at {x}, {z}");
+    }
+    // Its kerb: upright faces all round the island.
+    let kerb = world
+        .chunks
+        .iter()
+        .flat_map(|c| triangles(&c.mesh).map(move |t| (t, c.center)))
+        .filter(|(t, centre)| {
+            let normal = face_normal(*t);
+            let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
+            let (x, z) = (middle[0] + centre[0], middle[1] + centre[2]);
+            normal[1].abs() < 0.01 && ((x - 200.0).hypot(z + 500.0) - 16.6).abs() < 1.0
+        })
+        .count();
+    assert!(kerb >= 40, "{kerb} kerb faces");
+}
+
+#[tokio::test]
+async fn railways_tunnel_through_hills_rather_than_climb_them() {
+    // A hill 40 m high in the line's way.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (40.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let map = MapData {
+        railways: vec![railway(&[(300.0, 100.0), (300.0, 900.0)], None)],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Hill, &map, &mut |_, _| {}).await;
+
+    // The track stays low...
+    let top = rail_bed(&world)
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(top < 520.0, "the track climbs to {top}");
+    // ...under the hill, which stays as it is, in a tunnel.
+    let hill = ground_at(&world, 300.0, -500.0).expect("ground");
+    assert!(hill > 535.0, "the hill cut down to {hill}");
+    let tube = world
+        .structures
+        .vertices
+        .iter()
+        .filter(|v| (v[0] - 300.0).abs() < 6.0 && (v[2] + 500.0).abs() < 20.0)
+        .count();
+    assert!(tube > 10, "no tunnel under the hill");
+}
+
+#[tokio::test]
+async fn railway_bridges_clear_the_road_and_meet_their_track() {
+    // A line crossing the route at 500 m, on a bridge 60 m long over it.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 500.0), (-30.0, 500.0)], None),
+            railway(
+                &[(-30.0, 500.0), (30.0, 500.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(30.0, 500.0), (300.0, 500.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let world = world(&map).await;
+
+    let bed = rail_bed(&world);
+    let at_x = |x: f32| {
+        bed.iter()
+            .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
+            .map(|p| p[1])
+            .expect("track")
+    };
+    // Over the road (500 m), high enough to pass under.
+    assert!(
+        at_x(0.0) > 500.0 + 5.5,
+        "the bridge at {} over the road",
+        at_x(0.0)
+    );
+    // One line: no step anywhere, the approaches ramping up gently.
+    for pair in bed.windows(2) {
+        let run = (pair[1][0] - pair[0][0]).abs().max(1.0);
+        let grade = (pair[1][1] - pair[0][1]).abs() / run;
+        assert!(grade < 0.041, "a {grade} step at {:?}", pair[0]);
+    }
+    // The bridge is a structure, standing on the ground beside the road.
+    let deck = world
+        .structures
+        .vertices
+        .iter()
+        .filter(|v| v[0].abs() < 30.0 && (v[2] + 500.0).abs() < 5.0)
+        .count();
+    assert!(deck > 10, "no bridge over the road");
+}
+
 #[tokio::test]
 async fn the_road_bevels_gently_down_to_a_level_verge() {
     let world = world(&MapData::default()).await;
@@ -307,6 +645,28 @@ async fn the_road_bevels_gently_down_to_a_level_verge() {
             "a bevel steeper than 45°: {drop} m over {out} m"
         );
     }
+}
+
+/// The height of the topmost ground at (`x`, `z`): roundabouts' islands lie over the plain
+/// ground.
+fn top_of_ground(world: &World, x: f32, z: f32) -> Option<f32> {
+    let chunk = world.chunks.iter().find(|c| {
+        (x - c.center[0]).abs() <= CHUNK_SIZE as f32 / 2.0
+            && (z - c.center[2]).abs() <= CHUNK_SIZE as f32 / 2.0
+    })?;
+    let (px, pz) = (x - chunk.center[0], z - chunk.center[2]);
+    triangles(&chunk.mesh)
+        .filter_map(|[a, b, c]| {
+            let det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+            if det.abs() < 1e-9 {
+                return None;
+            }
+            let wa = ((b[2] - c[2]) * (px - c[0]) + (c[0] - b[0]) * (pz - c[2])) / det;
+            let wb = ((c[2] - a[2]) * (px - c[0]) + (a[0] - c[0]) * (pz - c[2])) / det;
+            let wc = 1.0 - wa - wb;
+            (wa >= -1e-4 && wb >= -1e-4 && wc >= -1e-4).then(|| wa * a[1] + wb * b[1] + wc * c[1])
+        })
+        .reduce(f32::max)
 }
 
 /// The terrain's height at (`x`, `z`) as its mesh has it.
@@ -1417,28 +1777,76 @@ async fn houses_on_steep_slopes_keep_their_shells() {
 }
 
 #[tokio::test]
-async fn rivers_become_water_ribbons_near_the_route() {
-    let river = Waterway {
-        width: 12.0,
-        line: vec![at(-3000.0, 500.0), at(3000.0, 500.0)],
-    };
+async fn streams_run_in_channels_and_pass_under_roads_and_streets() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A river crossing the route at 500 m, and a street crossing the river east of the route.
     let world = world(&MapData {
-        waterways: vec![river],
+        waterways: vec![Waterway {
+            width: 12.0,
+            line: vec![at(-3000.0, 500.0), at(3000.0, 500.0)],
+        }],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(100.0, 300.0), at(100.0, 700.0)],
+            structure: None,
+        }],
         ..MapData::default()
     })
     .await;
+    let water_at = |x: f32, z: f32| height_on(&world, |c| &c.water, x, z);
 
-    assert_valid(&world.water);
-    assert_ne!(world.water.vertices.len(), 0);
-    assert!(world.water.colors.iter().all(|c| c[3] == 1.0));
-    // Only within the corridor.
-    assert!(
-        world
-            .water
-            .vertices
-            .iter()
-            .all(|v| v[0].abs() <= CORRIDOR as f32 + 10.0)
-    );
+    for chunk in &world.chunks {
+        assert_valid(&chunk.water);
+        // Only within the corridor.
+        assert!(
+            chunk
+                .water
+                .vertices
+                .iter()
+                .all(|v| (v[0] + chunk.center[0]).abs() <= CORRIDOR as f32 + 10.0)
+        );
+    }
+    let mut checked = 0;
+    for step in -1400..=1400 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let x = step as f32;
+        for z in [-505.0, -500.0, -495.0] {
+            let (Some(water), Some(ground)) = (water_at(x, z), ground_at(&world, x, z)) else {
+                continue;
+            };
+            // In a channel (#93): over its bed, half a metre below the land beside it (rising
+            // 0.1 m per metre east), never floating over the land.
+            let land = 500.0 + 0.1 * x;
+            // Where the road and the street cross on the ground, the stream runs through a
+            // culvert, under the ground.
+            let culvert = x.abs() < 12.0 || (x - 100.0).abs() < 9.0;
+            assert!(
+                culvert || water > ground,
+                "water {water} under ground {ground} at {x}, {z}"
+            );
+            if x.abs() > LEVEL_REACH as f32 {
+                assert!(
+                    (water - (land - 0.48)).abs() < 0.05,
+                    "water {water} by land at {land} at {x}, {z}"
+                );
+            }
+            if x.abs() < ROAD_HALF_WIDTH as f32 {
+                assert!(
+                    water < 500.0 - 0.05,
+                    "water over the road ridden: {water} at {x}, {z}"
+                );
+            }
+            if let Some(street) = street_at(&world, x, z) {
+                assert!(
+                    water < street,
+                    "water over the street: {water} over {street} at {x}, {z}"
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 6000, "{checked} points checked");
 }
 
 /// Every triangle is clockwise seen from the side its normal points to (Godot's front face):
@@ -1454,6 +1862,116 @@ fn assert_faces_follow_normals(mesh: &MeshData) {
             "triangle {triangle:?} faces away from {normal:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn bridges_of_other_streets_stand_on_piers() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A street bridge east of the route over a valley 20 m deep.
+    struct Valley;
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if (150.0..250.0).contains(&east) {
+                480.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let route = route_north(&[]).await;
+    let map = MapData {
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(100.0, 600.0), at(300.0, 600.0)],
+            structure: Some(StructureKind::Bridge),
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Valley, &map, &mut |_, _| {}).await;
+
+    let mut piers = 0;
+    for chunk in &world.chunks {
+        assert_valid(&chunk.streets);
+        assert_faces_follow_normals(&chunk.streets);
+        for v in &chunk.streets.vertices {
+            let (x, y) = (v[0] + chunk.center[0], v[1]);
+            if y < 495.0 {
+                // Only in the valley (its sides slope across a cell of the ground), down to
+                // its floor.
+                assert!(
+                    (134.0..=266.0).contains(&x),
+                    "a pier outside the valley at {x}"
+                );
+                assert!(y > 479.0, "a pier under the ground: {y}");
+                if y < 480.0 {
+                    piers += 1;
+                }
+            }
+        }
+    }
+    // Five piers, 20 m apart, four corners each at the bottom.
+    assert!(piers >= 16, "{piers} pier corners on the valley floor");
+}
+
+#[tokio::test]
+async fn short_low_bridges_are_stone_arches() {
+    // A 40 m bridge over a gully 8 m deep.
+    struct Gully;
+    impl ElevationModel for Gully {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(if (305.0..335.0).contains(&north) {
+                492.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 300.0), at(0.0, 340.0)],
+    };
+    let route = route_north(&[bridge]).await;
+    let world = generate(&route, &mut Gully, &MapData::default(), &mut |_, _| {}).await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    assert_faces_follow_normals(mesh);
+    let stone = palette::srgb("structure.stone", 0.0);
+    assert!(mesh.colors.iter().all(|c| *c == stone), "built of stone");
+    // Vaults: faces turned down into the openings, curving from their springing up to just
+    // under the deck.
+    let vault: Vec<f32> = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|t| mesh.normals[t[0] as usize][1] < -0.1)
+        .map(|t| t.iter().map(|&k| mesh.vertices[k as usize][1]).sum::<f32>() / 3.0)
+        .filter(|&y| y < 500.0 - 1.2 - 0.1)
+        .collect();
+    assert!(vault.len() > 10, "{} vault faces", vault.len());
+    let (low, high) = vault
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, h), &y| (l.min(y), h.max(y)));
+    assert!(high - low > 2.0, "the vault curves: {low} to {high}");
+    assert!(high < 500.0 - 1.2 - 0.3, "crowns under the deck: {high}");
+    // The piers and walls reach down into the gully.
+    let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
+    assert!(
+        (lowest - 489.5).abs() < 0.1,
+        "below the gully's floor: {lowest}"
+    );
 }
 
 #[tokio::test]
@@ -1486,8 +2004,8 @@ async fn bridges_have_a_deck_and_pillars_down_to_the_valley() {
     assert_faces_follow_normals(mesh);
     let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
     assert!(
-        (lowest - 469.0).abs() < 0.1,
-        "pillars reach the valley floor: {lowest}"
+        (lowest - 467.5).abs() < 0.1,
+        "pillars reach below the valley floor: {lowest}"
     );
     let highest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
     assert!(
@@ -1627,7 +2145,124 @@ async fn minimap_draws_map_features_near_the_route_only() {
 }
 
 #[tokio::test]
-async fn lakes_get_a_flat_surface_at_the_water_level() {
+async fn lakes_are_edged_by_a_band_of_gravel_the_forest_keeps_off() {
+    // A pond 100 m square east of the route, in a forest.
+    let pond = Area {
+        cover: LandCover::Water,
+        outer: vec![square(300.0, 500.0, 50.0)],
+        inner: vec![],
+    };
+    let forest = Area {
+        cover: LandCover::Forest,
+        outer: vec![square(300.0, 500.0, 120.0)],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![forest, pond],
+        ..MapData::default()
+    })
+    .await;
+    let band_at = |x: f32, z: f32| height_on(&world, |c| &c.tracks, x, z);
+
+    // All round, just outside the shore, on the ground; none out in the water.
+    let mut checked = 0;
+    for step in 0..=40 {
+        #[allow(clippy::cast_precision_loss)] // small steps
+        let along = 255.0 + step as f32 * 2.25;
+        for (x, z) in [
+            (along, -448.5),
+            (along, -551.5),
+            (248.5, -(along + 200.0)),
+            (351.5, -(along + 200.0)),
+        ] {
+            let band = band_at(x, z).unwrap_or_else(|| panic!("no shore at {x}, {z}"));
+            let ground = ground_at(&world, x, z).expect("ground");
+            assert!(
+                band > ground && band - ground < 0.03,
+                "{band} on {ground} at {x}, {z}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 150);
+    assert!(band_at(300.0, -500.0).is_none() && band_at(300.0, -453.0).is_none());
+    // Trees grow up to the band, not on it.
+    let trees = plants_of(&world, &["conifer", "broadleaf"]);
+    assert!(trees.len() > 50);
+    for [x, _, z] in &trees {
+        let outside = (x - 300.0).abs().max((z + 500.0).abs()) - 50.0;
+        assert!(
+            outside > 3.0 || outside < 0.0,
+            "a tree on the shore at {x}, {z}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn streams_cut_natural_channels_and_run_on_under_bridges() {
+    // A stream 4 m wide crossing the route at 500 m, where the route crosses on a bridge.
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 480.0), at(0.0, 520.0)],
+    };
+    let route = route_north(&[bridge]).await;
+    let map = MapData {
+        waterways: vec![Waterway {
+            width: 4.0,
+            line: vec![at(-400.0, 500.0), at(400.0, 500.0)],
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    // Across the stream, 200 m east of the route: the bed deepest in the middle, the banks
+    // rising to the land without a wall, the land untouched a few metres out.
+    let x = 200.0_f32;
+    let land = 500.0 + 0.1 * x;
+    let water = height_on(&world, |c| &c.water, x, -500.0).expect("water");
+    let profile: Vec<(f32, f32)> = (0..=24)
+        .map(|k| {
+            #[allow(clippy::cast_precision_loss)] // small steps
+            let off = k as f32 * 0.5;
+            (
+                off,
+                ground_at(&world, x, -500.0 - off).expect("ground") - land,
+            )
+        })
+        .collect();
+    assert!(
+        water - land < -0.4,
+        "the water {} m below the land",
+        water - land
+    );
+    assert!(
+        profile[0].1 < water - land - 0.2,
+        "the bed {} m below the land, the water {}",
+        profile[0].1,
+        water - land
+    );
+    for pair in profile.windows(2) {
+        let ((a, low), (b, high)) = (pair[0], pair[1]);
+        assert!(
+            high >= low - 0.01,
+            "the bank falls again at {b} m: {profile:?}"
+        );
+        assert!((high - low) / (b - a) < 1.0, "a wall at {b} m: {profile:?}");
+    }
+    let (out, top) = profile[profile.len() - 1];
+    assert!(top.abs() < 0.02, "the land {top} m off at {out} m");
+    // Under the bridge the channel runs on: the ground there lies below the ground under the
+    // bridge away from the stream.
+    let under = ground_at(&world, 1.0, -500.0).expect("ground under the bridge");
+    let beside = ground_at(&world, 1.0, -488.0).expect("ground under the bridge");
+    assert!(
+        under < beside - 0.5,
+        "no channel under the bridge: {under} by {beside}"
+    );
+}
+
+#[tokio::test]
+async fn lakes_lie_level_in_the_land() {
     // A lake east of the road whose surface the terrain model reports at 429 m.
     struct Lake;
     impl ElevationModel for Lake {
@@ -1652,14 +2287,77 @@ async fn lakes_get_a_flat_surface_at_the_water_level() {
     };
     let world = generate(&route, &mut Lake, &map, &mut |_, _| {}).await;
 
-    let water = &world.water;
-    assert_valid(water);
-    assert_faces_follow_normals(water);
-    assert_ne!(water.vertices.len(), 0);
-    assert!(
-        water.vertices.iter().all(|v| (v[1] - 429.3).abs() < 0.01),
-        "flat at the lake level"
+    for chunk in &world.chunks {
+        assert_valid(&chunk.water);
+        assert_faces_follow_normals(&chunk.water);
+    }
+    // All over the lake, level half a metre below its shore (#93), over its bed.
+    for x in (110..=690).step_by(20) {
+        for north in (210..=790).step_by(20) {
+            #[allow(clippy::cast_precision_loss)] // small numbers
+            let (x, z) = (x as f32, -(north as f32));
+            let water = height_on(&world, |c| &c.water, x, z).expect("water over the lake");
+            assert!(
+                (water - 428.52).abs() < 0.01,
+                "water at {water} at {x}, {z}"
+            );
+            let bed = ground_at(&world, x, z).expect("a bed");
+            assert!(bed < water - 0.2, "the bed at {bed} under water at {water}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn rivers_slope_with_their_course_in_their_channel() {
+    // A river 40 m wide running east, where the land rises 0.1 m per metre: its surface,
+    // which the terrain model measures, falls 130 m along it.
+    let river = Area {
+        cover: LandCover::Water,
+        outer: vec![vec![
+            at(100.0, 480.0),
+            at(1400.0, 480.0),
+            at(1400.0, 520.0),
+            at(100.0, 520.0),
+            at(100.0, 480.0),
+        ]],
+        inner: vec![],
+    };
+    let world = world(&MapData {
+        areas: vec![river],
+        ..MapData::default()
+    })
+    .await;
+
+    let mut checked = 0;
+    for x in (110..=1390).step_by(5) {
+        #[allow(clippy::cast_precision_loss)] // small numbers
+        let x = x as f32;
+        for z in [-485.0, -500.0, -515.0] {
+            let (Some(water), Some(ground)) = (
+                height_on(&world, |c| &c.water, x, z),
+                ground_at(&world, x, z),
+            ) else {
+                continue;
+            };
+            // In its channel (#93): over its bed, half a metre below the land beside it.
+            let land = 500.0 + 0.1 * x;
+            assert!(
+                water > ground,
+                "water at {water} under ground {ground} at {x}, {z}"
+            );
+            assert!(
+                (water - (land - 0.48)).abs() < 0.05,
+                "water at {water} by land at {land} at {x}, {z}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 500, "{checked} points checked");
+    let (low, high) = (
+        height_on(&world, |c| &c.water, 150.0, -500.0).expect("water"),
+        height_on(&world, |c| &c.water, 1350.0, -500.0).expect("water"),
     );
+    assert!(high - low > 100.0, "the river runs level: {low} to {high}");
 }
 
 #[tokio::test]
