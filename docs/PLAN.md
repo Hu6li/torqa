@@ -261,8 +261,9 @@ the realistic look's textures and patterns are being replaced step by step.
     - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
       (none cut at corners and edges)
-    - [ ] Bridges and viaducts as models: stone arches, concrete beams on piers, railway
-      viaducts, instead of plain decks
+    - [x] Bridges and viaducts: short, low bridges of the road ridden are stone arch bridges
+      (arches, the walls over them, vaults), longer and higher ones viaducts on piers as wide
+      as the deck; bridges of other streets and railways stand on piers too
   - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
     realistic look), the building gallery in art/README, review images only PRs use, the
     realism risk below, MPFB2 in ADR 0009, feature docs describing the old look

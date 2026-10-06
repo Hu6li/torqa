@@ -45,6 +45,7 @@
   },
   "structure": {
     "concrete": "#ddd6ca",
+    "stone": "#c9b9a6",
     "tunnel": "#a9a196"
   },
   "plants": {

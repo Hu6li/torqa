@@ -1668,6 +1668,116 @@ fn assert_faces_follow_normals(mesh: &MeshData) {
 }
 
 #[tokio::test]
+async fn bridges_of_other_streets_stand_on_piers() {
+    use torqa_osm::{Road, RoadClass};
+
+    // A street bridge east of the route over a valley 20 m deep.
+    struct Valley;
+    impl ElevationModel for Valley {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if (150.0..250.0).contains(&east) {
+                480.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let route = route_north(&[]).await;
+    let map = MapData {
+        roads: vec![Road {
+            class: RoadClass::Street,
+            line: vec![at(100.0, 600.0), at(300.0, 600.0)],
+            structure: Some(StructureKind::Bridge),
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Valley, &map, &mut |_, _| {}).await;
+
+    let mut piers = 0;
+    for chunk in &world.chunks {
+        assert_valid(&chunk.streets);
+        assert_faces_follow_normals(&chunk.streets);
+        for v in &chunk.streets.vertices {
+            let (x, y) = (v[0] + chunk.center[0], v[1]);
+            if y < 495.0 {
+                // Only in the valley (its sides slope across a cell of the ground), down to
+                // its floor.
+                assert!(
+                    (134.0..=266.0).contains(&x),
+                    "a pier outside the valley at {x}"
+                );
+                assert!(y > 479.0, "a pier under the ground: {y}");
+                if y < 480.0 {
+                    piers += 1;
+                }
+            }
+        }
+    }
+    // Five piers, 20 m apart, four corners each at the bottom.
+    assert!(piers >= 16, "{piers} pier corners on the valley floor");
+}
+
+#[tokio::test]
+async fn short_low_bridges_are_stone_arches() {
+    // A 40 m bridge over a gully 8 m deep.
+    struct Gully;
+    impl ElevationModel for Gully {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(if (305.0..335.0).contains(&north) {
+                492.0
+            } else {
+                500.0
+            }))
+        }
+    }
+    let bridge = Structure {
+        kind: StructureKind::Bridge,
+        line: vec![at(0.0, 300.0), at(0.0, 340.0)],
+    };
+    let route = route_north(&[bridge]).await;
+    let world = generate(&route, &mut Gully, &MapData::default(), &mut |_, _| {}).await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    assert_faces_follow_normals(mesh);
+    let stone = palette::srgb("structure.stone", 0.0);
+    assert!(mesh.colors.iter().all(|c| *c == stone), "built of stone");
+    // Vaults: faces turned down into the openings, curving from their springing up to just
+    // under the deck.
+    let vault: Vec<f32> = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|t| mesh.normals[t[0] as usize][1] < -0.1)
+        .map(|t| t.iter().map(|&k| mesh.vertices[k as usize][1]).sum::<f32>() / 3.0)
+        .filter(|&y| y < 500.0 - 1.2 - 0.1)
+        .collect();
+    assert!(vault.len() > 10, "{} vault faces", vault.len());
+    let (low, high) = vault
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, h), &y| (l.min(y), h.max(y)));
+    assert!(high - low > 2.0, "the vault curves: {low} to {high}");
+    assert!(high < 500.0 - 1.2 - 0.3, "crowns under the deck: {high}");
+    // The piers and walls reach down into the gully.
+    let lowest = mesh.vertices.iter().map(|v| v[1]).fold(f32::MAX, f32::min);
+    assert!(
+        (lowest - 491.0).abs() < 0.1,
+        "down to the gully's floor: {lowest}"
+    );
+}
+
+#[tokio::test]
 async fn bridges_have_a_deck_and_pillars_down_to_the_valley() {
     // A 400 m bridge over a valley: the model is 30 m lower under the bridge.
     struct Valley;
