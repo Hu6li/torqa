@@ -2,7 +2,9 @@ extends SceneTree
 ## Renders Torqa's standard views — fixed shots on the fixture routes — into $OUT_DIR/<view>.png,
 ## so every visual change can be compared before and after against the same pictures (ADR 0011).
 ## One run covers the views of route $ROUTE; scripts/render-views.sh runs all routes, and $VIEWS
-## (space-separated names) limits it to some.
+## (space-separated names) limits it to some. A $ROUTE ending in .gpx is any route's file, shot
+## as $SHOTS says: space-separated name:distance:camera, optionally :right,up,back for a camera
+## standing aside.
 
 ## View name → [route, distance along it in metres, camera (`RideWorld.CameraMode`), time of
 ## day, weather], and optionally where a camera standing aside looks at the rider from (metres
@@ -45,9 +47,20 @@ func _run() -> void:
 	var out: String = OS.get_environment("OUT_DIR")
 	DirAccess.make_dir_recursive_absolute(out)
 	var wanted: PackedStringArray = OS.get_environment("VIEWS").split(" ", false)
+	var specs: Dictionary[String, Array] = VIEWS.duplicate()
+	var gpx: String = ProjectSettings.globalize_path("res://../core/fixtures/%s.gpx" % route)
+	if route.ends_with(".gpx"):
+		gpx = route
+		specs.clear()
+		for shot: String in OS.get_environment("SHOTS").split(" ", false):
+			var parts: PackedStringArray = shot.split(":")
+			specs[parts[0]] = [route, float(parts[1]), int(parts[2]), "Midday", "Clear"]
+			if parts.size() > 3:
+				var aside: PackedFloat64Array = parts[3].split_floats(",")
+				specs[parts[0]].append(Vector3(aside[0], aside[1], aside[2]))
 	var views: Array[String] = []
-	for view: String in VIEWS:
-		var spec: Array = VIEWS[view]
+	for view: String in specs:
+		var spec: Array = specs[view]
 		if spec[0] == route and (wanted.is_empty() or wanted.has(view)):
 			views.append(view)
 	if views.is_empty():
@@ -58,7 +71,6 @@ func _run() -> void:
 	var world: RideWorld = _main.get_node("World")
 	var quality: String = OS.get_environment("QUALITY")
 	torqa.set_graphics_quality(quality if not quality.is_empty() else "medium")
-	var gpx: String = ProjectSettings.globalize_path("res://../core/fixtures/%s.gpx" % route)
 	torqa.load_route(gpx, true)
 	var built: Array[bool] = [false]
 	torqa.world_ready.connect(
@@ -70,7 +82,7 @@ func _run() -> void:
 	torqa.start_ride(50.0, false, {"kind": "none"})
 	start.ride_started.emit(start.ride_options())
 	for view: String in views:
-		var spec: Array = VIEWS[view]
+		var spec: Array = specs[view]
 		var distance: float = spec[1]
 		var camera: int = spec[2]
 		var time: String = spec[3]

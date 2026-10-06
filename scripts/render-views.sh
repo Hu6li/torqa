@@ -3,7 +3,9 @@
 # screenshots/views/ with software Vulkan, to compare a visual change before and after (ADR 0011).
 # Runs inside the dev container: scripts/dev.sh scripts/render-views.sh
 # VIEWS="village-chase lake-drone" renders only some; OUT_DIR changes the folder, QUALITY the
-# graphics preset (medium by default).
+# graphics preset (medium by default). GPX=<file> with SHOTS="name:distance:camera ..." renders
+# shots of any route instead (e.g. one from an issue), camera 0 chase, 1 first person, 2 drone,
+# with :right,up,back a camera standing aside (see app/tools/render_views.gd).
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,7 +22,11 @@ if [ -n "$errors" ]; then
 fi
 status=0
 # One Godot run per route: each loads its route and rides it to the views on it.
-for route in gurtenstrasse bielersee kirchenfeldbruecke; do
+routes="gurtenstrasse bielersee kirchenfeldbruecke"
+if [ -n "${GPX:-}" ]; then
+    routes="$(realpath "$GPX")"
+fi
+for route in $routes; do
     # A script error leaves Godot waiting for the world forever, hence the timeout.
     output="$(ROUTE="$route" OUT_DIR="$out" timeout 1800 xvfb-run -a -s "-screen 0 1600x900x24" \
         godot --path "$root/app" --rendering-driver vulkan --resolution 1280x720 \
