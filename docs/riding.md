@@ -32,9 +32,9 @@ difficulty, descents and the video's **Sound** instead, and **C** does nothing.
 ## The 3D world
 
 The world is built from the map around the course (OpenStreetMap): the road you ride follows the
-mapped road, other streets, tracks and paths lie beside it, and buildings stand where they are
-mapped. The map rarely says what a building is, so Torqa infers it from where it stands and its
-size. That gives:
+mapped road, other streets, tracks and paths lie beside it and meet it and each other with
+rounded corners, and buildings stand where they are mapped. The map rarely says what a building
+is, so Torqa infers it from where it stands and its size. That gives:
 
 - churches with a tower, and chapels with a turret on the roof;
 - chalets with timber walls and deep eaves in the mountains;

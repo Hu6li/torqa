@@ -8,6 +8,7 @@ use torqa_osm::{MapData, RoadClass, StructureKind};
 use torqa_routes::{ElevationModel, LocalProjection};
 
 use crate::drape;
+use crate::junctions::{self, Corner};
 use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
 use crate::structures::Below;
@@ -17,6 +18,13 @@ use crate::{HeightGrid, MeshData, On, ROAD_HALF_WIDTH};
 /// Distance between the points of a street: short enough to tell where it runs along the road
 /// ridden and to keep plants off it.
 const STEP_M: f64 = 3.0;
+/// Streets end round, and bend round where they turn more than this (radians) at a point: a
+/// strip alone ends square and leaves a notch outside a sharp bend (#74).
+const JOIN_TURN: f64 = 0.3;
+/// Corners of those round ends and joins.
+const CAP_CORNERS: u32 = 12;
+/// They lie this far below their street, so where they overlap it the street shows.
+const CAP_BELOW_M: f64 = 0.003;
 
 /// How far a street lies above the ground: bigger roads above smaller ones, so where they
 /// overlap at junctions the bigger one shows, and a little more for every street (up to 1 cm)
@@ -60,6 +68,16 @@ impl Street {
     /// Whether it is a bridge.
     pub(crate) fn on_bridge(&self) -> bool {
         self.deck.is_some()
+    }
+
+    /// How far it lies above the ground.
+    pub(crate) fn lift(&self) -> f64 {
+        lift(self.class, self.index)
+    }
+
+    /// Whether it is paved (asphalt) rather than gravel or dirt.
+    pub(crate) fn paved(&self) -> bool {
+        paved(self.class)
     }
 }
 
@@ -132,11 +150,11 @@ pub(crate) async fn lines<M: ElevationModel>(
 }
 
 /// The paved streets and the unpaved tracks and paths within the chunk square `[origin,
-/// origin + size]`, relative to `chunk_origin`. Stretches running along the road ridden are
-/// left out (it is drawn there already, and they are mostly the same road); streets joining or
-/// crossing it run on under it.
+/// origin + size]`, relative to `chunk_origin`, with the `corners` of their junctions.
+/// Stretches running along the road ridden are left out (it is drawn there already, and they
+/// are mostly the same road); streets joining or crossing it run on under it.
 pub(crate) fn meshes(
-    streets: &[Street],
+    (streets, corners): (&[Street], &[Corner]),
     origin: (f64, f64),
     size: f64,
     heights: &HeightGrid,
@@ -192,8 +210,62 @@ pub(crate) fn meshes(
                 chunk_origin,
             );
         }
+        if street.deck.is_none() {
+            for (point, direction) in rounds(&street.points) {
+                let reach = ROAD_HALF_WIDTH + half + 0.5;
+                let outside = point.0 + half < low.0
+                    || point.0 - half > high.0
+                    || point.1 + half < low.1
+                    || point.1 - half > high.1;
+                if outside || road.runs_along(point.0, point.1, reach, direction) {
+                    continue;
+                }
+                let disc: Vec<(f64, f64)> = (0..CAP_CORNERS)
+                    .map(|k| {
+                        // Clockwise seen from above, as the ground's triangles.
+                        let angle = -std::f64::consts::TAU * f64::from(k) / f64::from(CAP_CORNERS);
+                        (point.0 + half * angle.cos(), point.1 + half * angle.sin())
+                    })
+                    .collect();
+                // The street's edge colour (`u` 0): tracks show no grass strip in it.
+                drape::drape_polygon(
+                    target,
+                    &disc,
+                    (On::Ground, street.lift() - CAP_BELOW_M),
+                    heights,
+                    chunk_origin,
+                    &|_| [0.0, 0.0],
+                );
+            }
+        }
     }
+    let (paved_corners, unpaved_corners) =
+        junctions::meshes(corners, origin, size, heights, chunk_origin);
+    paved_mesh.append(paved_corners);
+    unpaved_mesh.append(unpaved_corners);
     (paved_mesh, unpaved_mesh)
+}
+
+/// Where a street is round: its ends and its sharp bends, with its direction there.
+fn rounds(points: &[(f64, f64)]) -> Vec<((f64, f64), (f64, f64))> {
+    let Some(last) = points.len().checked_sub(1) else {
+        return Vec::new();
+    };
+    let mut found = vec![(points[0], local_direction(points, 0))];
+    for i in 1..last {
+        let (a, b, c) = (points[i - 1], points[i], points[i + 1]);
+        let turn = ((b.0 - a.0).atan2(b.1 - a.1) - (c.0 - b.0).atan2(c.1 - b.1)
+            + std::f64::consts::PI)
+            .rem_euclid(std::f64::consts::TAU)
+            - std::f64::consts::PI;
+        if turn.abs() > JOIN_TURN {
+            found.push((b, local_direction(points, i)));
+        }
+    }
+    if last > 0 {
+        found.push((points[last], local_direction(points, last)));
+    }
+    found
 }
 
 /// Where the streets meet the road ridden (see [`Mouth`]): the road's edge is road there, not
@@ -286,8 +358,20 @@ pub(crate) struct Clearance {
 const CLEARANCE_CELL_M: f64 = 10.0;
 
 impl Clearance {
-    pub(crate) fn new(streets: &[Street], railways: &[Railway], pools: &[Pool]) -> Self {
+    pub(crate) fn new(
+        streets: &[Street],
+        corners: &[Corner],
+        railways: &[Railway],
+        pools: &[Pool],
+    ) -> Self {
         let mut cells = StreetCells::new();
+        // Kerbs' outlines and apexes: the corners are filled between them and the streets.
+        for (e, n) in corners.iter().flat_map(Corner::outline) {
+            cells
+                .entry(clearance_cell(e, n))
+                .or_default()
+                .push((e, n, 0.5));
+        }
         let lines = streets
             .iter()
             .map(|s| (&s.points, width(s.class) / 2.0))

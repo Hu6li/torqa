@@ -278,6 +278,82 @@ async fn where_streets_join_the_road_its_edge_is_road_not_shoulder() {
     }
 }
 
+#[tokio::test]
+async fn streets_meet_with_rounded_kerbs_and_end_round() {
+    use torqa_osm::{Road, RoadClass};
+
+    let street = |points: &[(f64, f64)]| Road {
+        class: RoadClass::Street,
+        line: points.iter().map(|&(e, n)| at(e, n)).collect(),
+        structure: None,
+    };
+    // A street east–west at 300 m north, and one from the south ending on it at 160 m east
+    // (sharing its point there, as the map's streets do); 5.5 m wide, away from the route.
+    let world = world(&MapData {
+        roads: vec![
+            street(&[(60.0, 300.0), (160.0, 300.0), (260.0, 300.0)]),
+            street(&[(160.0, 200.0), (160.0, 300.0)]),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let paved = |east: f64, north: f64| street_at(&world, east as f32, -north as f32).is_some();
+
+    // Both corners of the T have a kerb: the corner by the streets' edges (2.75 m out) is
+    // paved, the grass beyond the kerb's curve is not.
+    for side in [-1.0, 1.0] {
+        let edge = 160.0 + side * 2.75;
+        assert!(
+            paved(edge + side * 0.5, 300.0 - 2.75 - 0.5),
+            "corner {side}"
+        );
+        assert!(
+            !paved(edge + side * 2.0, 300.0 - 2.75 - 2.0),
+            "beyond the kerb {side}"
+        );
+    }
+    // None across the street, where nothing joins.
+    assert!(!paved(160.0 + 3.25, 300.0 + 3.25));
+    // The dead end at the south is round, not square.
+    assert!(paved(160.0, 200.0 - 1.5));
+    assert!(!paved(160.0 + 2.5, 200.0 - 2.0));
+}
+
+#[tokio::test]
+async fn streets_meeting_the_road_ridden_get_kerbs_at_its_edge() {
+    use torqa_osm::{Road, RoadClass};
+
+    let street = |points: &[(f64, f64)]| Road {
+        class: RoadClass::Street,
+        line: points.iter().map(|&(e, n)| at(e, n)).collect(),
+        structure: None,
+    };
+    // The road ridden as the map has it, and a street from the west ending on it at 600 m.
+    let world = world(&MapData {
+        roads: vec![
+            street(&[(0.0, -20.0), (0.0, 600.0), (0.0, 1020.0)]),
+            street(&[(-150.0, 600.0), (0.0, 600.0)]),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let paved = |east: f64, north: f64| street_at(&world, east as f32, -north as f32).is_some();
+
+    // The road is 6 m wide: its corners with the street, off its edge, are paved.
+    for side in [-1.0, 1.0] {
+        assert!(
+            paved(-3.0 - 0.6, 600.0 + side * (2.75 + 0.6)),
+            "corner {side}"
+        );
+        assert!(
+            !paved(-3.0 - 2.5, 600.0 + side * (2.75 + 2.5)),
+            "beyond {side}"
+        );
+    }
+    // The other side of the road, where nothing joins, keeps its plain edge.
+    assert!(!paved(3.6, 600.0 + 3.35));
+}
+
 /// The railways' bed along its middle, as the mesh has it: (x, height, z) per point.
 fn rail_bed(world: &World) -> Vec<[f32; 3]> {
     world
