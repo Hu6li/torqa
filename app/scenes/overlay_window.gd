@@ -58,7 +58,9 @@ func leave() -> Rect2i:
 	if not active:
 		return Rect2i()
 	var rect: Rect2i = geometry()
-	_window.mouse_passthrough_polygon = PackedVector2Array()
+	# First: restoring the window resizes it, and a resize while still active would make only
+	# the overlay's old outline clickable again in the whole window (#123).
+	active = false
 	_window.content_scale_size = _saved["scale_size"]
 	_window.content_scale_aspect = _saved["scale_aspect"]
 	_window.disable_3d = _saved["disable_3d"]
@@ -71,7 +73,7 @@ func leave() -> Rect2i:
 	_window.position = _saved["position"]
 	# Last: full screen takes the size it needs.
 	_window.mode = _saved["mode"]
-	active = false
+	_window.mouse_passthrough_polygon = PackedVector2Array()
 	return rect
 
 
