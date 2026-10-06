@@ -23,6 +23,7 @@ func _run() -> void:
 	_translations()
 	await _free_camera()
 	await _overlay()
+	_overlay_size()
 	_clouds()
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
@@ -566,10 +567,18 @@ func _overlay() -> void:
 	)
 	_check(window.mouse_passthrough_polygon.size() == 4, "clicks beside it go through")
 
-	var back: InputEventKey = InputEventKey.new()
-	back.keycode = KEY_O
-	back.pressed = true
-	root.push_input(back)
+	# Larger and smaller from the keyboard and the bar (#124).
+	var entered: Vector2 = Vector2(window.size)
+	_press(KEY_EQUAL)
+	_check(window.size.x > entered.x and window.size.y > entered.y, "+ makes it larger")
+	var smaller: Button = _button_with_text(ride, "A−")
+	for i: int in range(2):
+		smaller.pressed.emit()
+	_check(window.size.x < entered.x and window.size.y < entered.y, "A− makes it smaller")
+	var overlay: OverlayWindow = main.get("_overlay")
+	var chosen: float = overlay.scale
+
+	_press(KEY_O)
 	await process_frame
 	_check(not ride.is_overlay() and metrics.visible, "O brings the whole screen back")
 	_check(
@@ -579,7 +588,36 @@ func _overlay() -> void:
 	_check(window.content_scale_size == scale_before, "the scale as it was")
 	var torqa: TorqaApp = main.get_node("Torqa")
 	_check(torqa.overlay_window().size != Vector2i.ZERO, "the overlay's place is remembered")
+	_check(is_equal_approx(torqa.overlay_scale(), chosen), "and the size the rider chose")
 	main.free()
+
+
+## The overlay's size (#124): large enough to read from the saddle at first, then as the rider
+## makes it, also with the grip.
+func _overlay_size() -> void:
+	var overlay: OverlayWindow = OverlayWindow.new(root)
+	var content: Vector2 = Vector2(300.0, 400.0)
+	var screen_scale: float = DisplayServer.screen_get_scale(root.current_screen)
+	overlay.enter(content, Rect2i(), 0.0)
+	_check(overlay.scale >= OverlayWindow.DEFAULT_SCALE, "larger than the ride screen's HUD")
+	_check(
+		Vector2(root.size).is_equal_approx(content * overlay.scale * screen_scale),
+		"the window fits its content at that size: %s" % root.size
+	)
+	var first: float = overlay.scale
+	overlay.zoom(1)
+	_check(is_equal_approx(overlay.scale, first * OverlayWindow.SCALE_STEP), "one step larger")
+	for i: int in range(30):
+		overlay.zoom(-1)
+	_check(is_equal_approx(overlay.scale, OverlayWindow.MIN_SCALE), "not smaller than legible")
+	root.size = Vector2i(content * 2.0 * screen_scale)
+	overlay.window_resized()
+	_check(is_equal_approx(overlay.scale, 2.0), "the grip sets the size: %.2f" % overlay.scale)
+	overlay.leave()
+
+	overlay.enter(content, Rect2i(), 1.6)
+	_check(is_equal_approx(overlay.scale, 1.6), "the size chosen before comes back")
+	overlay.leave()
 
 
 ## The low-poly clouds (ADR 0011) follow the weather: more and bigger ones as it clouds over,
@@ -614,6 +652,23 @@ func _clouds() -> void:
 	_check(counts[1] < counts[2], "more clouds as it clouds over: %s" % [counts])
 	_check(sizes[1] < sizes[2], "bigger clouds as it clouds over: %s" % [sizes])
 	layer.free()
+
+
+## Presses and releases `key` as the rider would.
+func _press(key: Key) -> void:
+	for pressed: bool in [true, false]:
+		var event: InputEventKey = InputEventKey.new()
+		event.keycode = key
+		event.pressed = pressed
+		root.push_input(event)
+
+
+## The first button under `node` showing `text`.
+func _button_with_text(node: Node, text: String) -> Button:
+	for button: Node in node.find_children("*", "Button", true, false):
+		if (button as Button).text == text:
+			return button
+	return null
 
 
 ## Holds `keys` for a few frames, then lets them go.

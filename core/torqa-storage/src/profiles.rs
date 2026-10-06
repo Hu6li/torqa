@@ -163,8 +163,8 @@ struct Settings {
     overlay: Option<OverlayWindow>,
 }
 
-/// Where the overlay window is on screen (R55), in screen pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Where the overlay window is on screen (R55), in screen pixels, and how large it draws.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct OverlayWindow {
     /// Left edge.
     pub x: i32,
@@ -174,6 +174,10 @@ pub struct OverlayWindow {
     pub width: u32,
     /// Height.
     pub height: u32,
+    /// How large the overlay draws its figures (#124): 1 is one interface unit per point.
+    /// `None` in settings from before it could be chosen, which take the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
 }
 
 /// How detailed the 3D world is drawn (R43): more detail needs a stronger GPU. Medium holds
@@ -470,6 +474,7 @@ mod tests {
             y: 40,
             width: 320,
             height: 480,
+            scale: Some(1.75),
         };
 
         set_overlay_window(&dir, window).unwrap();
@@ -477,6 +482,28 @@ mod tests {
         assert_eq!(overlay_window(&dir), Some(window));
         assert_eq!(graphics_quality(&dir), GraphicsQuality::High);
         assert_eq!(GraphicsQuality::from_name("epic"), None);
+    }
+
+    #[test]
+    fn an_overlay_remembered_before_its_size_could_be_chosen_keeps_its_place() {
+        let dir = temp_dir("overlay-before-scale");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            "[overlay]\nx = 10\ny = 20\nwidth = 300\nheight = 400\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            overlay_window(&dir),
+            Some(OverlayWindow {
+                x: 10,
+                y: 20,
+                width: 300,
+                height: 400,
+                scale: None,
+            })
+        );
     }
 
     #[test]
