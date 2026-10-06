@@ -9,7 +9,7 @@ mod models;
 mod parts;
 mod shape;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
 
 use torqa_osm::Building;
@@ -67,6 +67,9 @@ static SHEET: Colours = LazyLock::new(|| palette::list("buildings.sheet"));
 static FLAT: Colours = LazyLock::new(|| palette::list("buildings.flat_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
+/// Shop fronts' frames, and awnings.
+static SHOPFRONTS: Colours = LazyLock::new(|| palette::list("buildings.shopfronts"));
+static AWNINGS: Colours = LazyLock::new(|| palette::list("buildings.awnings"));
 /// Accents: the shutters' sage, teal, dusty rose and plum, also the trim of light blocks.
 static SHUTTERS: Colours = LazyLock::new(|| palette::list("buildings.shutters"));
 /// Window frames; stone around church openings; chimneys and their caps.
@@ -130,6 +133,99 @@ pub(crate) struct Plot<'a> {
     pub(crate) setting: Setting,
     /// A church point lies in or by it.
     pub(crate) church: bool,
+    /// A shop, café or the like is in it: the point of the street its front faces.
+    pub(crate) shop: Option<Point>,
+}
+
+/// Shop fronts are this high, their awnings reach this far out.
+const SHOP_HEIGHT: f64 = 2.8;
+const AWNING_REACH: f64 = 1.4;
+
+/// Shop points this far from a building's outline still belong to it (mapped by the door).
+const SHOP_REACH: f64 = 8.0;
+/// A shop's street lies at most this far from its building's middle.
+const STREET_REACH: f64 = 40.0;
+/// Index cell size of [`Frontage`].
+const FRONTAGE_CELL: f64 = 25.0;
+
+/// Where shops can face: points every few metres along the paved streets and the road ridden.
+pub(crate) struct Frontage {
+    cells: HashMap<(i64, i64), Vec<Point>>,
+}
+
+impl Frontage {
+    pub(crate) fn new(points: impl IntoIterator<Item = Point>) -> Self {
+        let mut cells: HashMap<(i64, i64), Vec<Point>> = HashMap::new();
+        for point in points {
+            cells.entry(frontage_cell(point)).or_default().push(point);
+        }
+        Self { cells }
+    }
+
+    /// The nearest street point within `reach` of `point`.
+    fn nearest(&self, point: Point, reach: f64) -> Option<Point> {
+        #[allow(clippy::cast_possible_truncation)] // a few cells
+        let span = (reach / FRONTAGE_CELL).ceil() as i64;
+        let (ce, cn) = frontage_cell(point);
+        let mut best: Option<(f64, Point)> = None;
+        for x in ce - span..=ce + span {
+            for y in cn - span..=cn + span {
+                for &candidate in self.cells.get(&(x, y)).into_iter().flatten() {
+                    let d = distance(point, candidate);
+                    if d <= reach && best.is_none_or(|b| d < b.0) {
+                        best = Some((d, candidate));
+                    }
+                }
+            }
+        }
+        best.map(|b| b.1)
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)] // local metres stay far below 2^63 cells
+fn frontage_cell(point: Point) -> (i64, i64) {
+    (
+        (point.0 / FRONTAGE_CELL).floor() as i64,
+        (point.1 / FRONTAGE_CELL).floor() as i64,
+    )
+}
+
+/// Gives the plots with a shop in or by them a front onto their street.
+pub(crate) fn mark_shops(plots: &mut [Plot], shops: &[Point], frontage: &Frontage) {
+    for &point in shops {
+        let inside = plots.iter().position(|p| contains(&p.footprint, point));
+        let nearby = || {
+            plots
+                .iter()
+                .enumerate()
+                .map(|(k, p)| (k, outline_distance(&p.footprint, point)))
+                .filter(|&(_, d)| d < SHOP_REACH)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(k, _)| k)
+        };
+        let Some(index) = inside.or_else(nearby) else {
+            continue;
+        };
+        let plot = &mut plots[index];
+        if plot.church {
+            continue;
+        }
+        plot.shop = frontage.nearest(centroid(&plot.footprint), STREET_REACH);
+    }
+}
+
+/// Distance from `point` to the outline (a closed ring) of a footprint.
+fn outline_distance(footprint: &[Point], point: Point) -> f64 {
+    (0..footprint.len())
+        .map(|k| {
+            let (a, b) = (footprint[k], footprint[(k + 1) % footprint.len()]);
+            let (de, dn) = (b.0 - a.0, b.1 - a.1);
+            let length_squared = (de * de + dn * dn).max(1e-12);
+            let t =
+                (((point.0 - a.0) * de + (point.1 - a.1) * dn) / length_squared).clamp(0.0, 1.0);
+            distance(point, (a.0 + de * t, a.1 + dn * t))
+        })
+        .fold(f64::INFINITY, f64::min)
 }
 
 /// Marks the plots that are churches: the one each church point lies in, or for points
@@ -188,8 +284,9 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     };
     let rect = Rect::around(footprint).filter(|r| area / r.area() >= fill);
     let design = (kind != Kind::Church).then(|| design(kind, plot.building, rect.is_some(), &dice));
+    // A shop's front is drawn on the shell, which shows it up close too.
     let fit = rect
-        .filter(|_| ground - lowest < MODEL_BASEMENT)
+        .filter(|_| ground - lowest < MODEL_BASEMENT && plot.shop.is_none())
         .and_then(|rect| {
             let wanted = Wanted {
                 kind,
@@ -274,30 +371,63 @@ fn shell(
         church(b, plot, area, rect, dice);
         return;
     };
-    match fit {
-        Some(fit) => {
-            let mut matched = design.clone();
-            matched.roof = if fit.model.roof == "hipped" {
-                Roof::Hipped
-            } else {
-                Roof::Gable
-            };
-            if let Some(pitch) = fit.model.pitch {
-                matched.pitch_degrees = pitch;
-            }
-            let walls = Some(fit.model.eaves);
-            build(
-                b,
-                &plot.footprint,
-                rect,
-                &matched,
-                plot.building,
-                walls,
-                dice,
-            );
+    if let Some(fit) = fit {
+        let mut matched = design.clone();
+        matched.roof = if fit.model.roof == "hipped" {
+            Roof::Hipped
+        } else {
+            Roof::Gable
+        };
+        if let Some(pitch) = fit.model.pitch {
+            matched.pitch_degrees = pitch;
         }
-        None => build(b, &plot.footprint, rect, design, plot.building, None, dice),
+        let walls = Some(fit.model.eaves);
+        build(
+            b,
+            &plot.footprint,
+            rect,
+            &matched,
+            plot.building,
+            walls,
+            dice,
+        );
+    } else {
+        build(b, &plot.footprint, rect, design, plot.building, None, dice);
+        if let Some(street) = plot.shop {
+            let outline = rect.map_or_else(|| plot.footprint.clone(), |r| r.corners());
+            shop_front(b, &outline, street, dice);
+        }
     }
+}
+
+/// A shop front with an awning on the ground floor of the wall facing `street`, if one does.
+fn shop_front(b: &mut Builder, outline: &[Point], street: Point, dice: &Dice) {
+    let count = outline.len();
+    let facing = (0..count)
+        .filter_map(|k| {
+            let (a, c) = (outline[k], outline[(k + 1) % count]);
+            let length = distance(a, c);
+            if length < 2.5 {
+                return None;
+            }
+            // Counter-clockwise outline: outward is to the right of the way round.
+            let out = ((c.1 - a.1) / length, (a.0 - c.0) / length);
+            let middle = (f64::midpoint(a.0, c.0), f64::midpoint(a.1, c.1));
+            let to_street = (street.0 - middle.0, street.1 - middle.1);
+            let away = to_street.0.hypot(to_street.1).max(1e-9);
+            let facing = (out.0 * to_street.0 + out.1 * to_street.1) / away;
+            Some((facing, away, (a, c)))
+        })
+        .filter(|f| f.0 > 0.3)
+        .max_by(|x, y| x.0.total_cmp(&y.0));
+    let Some((_, away, edge)) = facing else {
+        return;
+    };
+    let front = Paint::new(dice.pick(60, &SHOPFRONTS), Style::Shop);
+    let awning = Paint::new(dice.pick(61, &AWNINGS), Style::Blank);
+    // The awning keeps clear of the street.
+    let reach = (away - 1.5).clamp(0.6, AWNING_REACH);
+    b.shop_front(edge, (b.ground, SHOP_HEIGHT), reach, (front, awning));
 }
 
 /// One model instance and how it stands.
@@ -1278,6 +1408,7 @@ mod tests {
             footprint: Vec::new(),
             setting,
             church,
+            shop: None,
         }
     }
 

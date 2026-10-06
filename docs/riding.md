@@ -40,7 +40,9 @@ size. That gives:
 - chalets with timber walls and deep eaves in the mountains;
 - farmhouses under big roofs in the countryside;
 - apartment blocks, and metal-clad halls on industrial land;
-- houses and sheds everywhere else.
+- houses and sheds everywhere else;
+- shops, cafés and restaurants with a glazed front and an awning onto their street, where the map
+  has one.
 
 Mapped heights and façade colours are used where the map has them. Close to you, buildings whose
 outline suits one are detailed models (made in Blender): recessed windows with shutters,
