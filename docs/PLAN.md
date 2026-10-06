@@ -180,7 +180,7 @@ Built in rideable steps:
 
 ### Phase 9 — Graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md), [ADR 0011](adr/0011-stylized-look.md))
 Since 2026-10-05 the target is a **stylized, faceted, pastel** look (ADR 0011) instead of realism;
-the realistic look's textures and patterns are being replaced step by step.
+the realistic look's textures and patterns were replaced step by step.
 
 - [x] Route on the real road: GPX snapped to the OpenStreetMap roads and paths it rides
   (bends between sparse points restored, GPS wander removed); record keys unchanged — roads
@@ -293,9 +293,10 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
       metres into a side road or past a junction and straight back rides on; longer turns back
       and turns at roundabouts stay; video courses keep their track
-  - [ ] Stale docs (#79), once the look has settled: the README screenshot (still the
-    realistic look), the building gallery in art/README, review images only PRs use, the
-    realism risk below, MPFB2 in ADR 0009, feature docs describing the old look
+  - [x] Stale docs (#79, #104): the README screenshot and the building gallery in art/README
+    in the stylized look, review images only PRs used removed (PRs now link theirs by commit),
+    the realism risk below, MPFB2 and textures in ADR 0009, feature docs describing the old
+    look, the CLI doc (bridges and tunnels, `route --world`)
 - **Exit:** a long hilly course at 60 fps on M1 base at Medium (#111); screenshots reviewed against
   the references (R44)
 
@@ -314,11 +315,13 @@ the realistic look's textures and patterns are being replaced step by step.
 - Zwift Click protocol is reverse-engineered and may change → isolated behind `ShiftInput`.
 - Garmin / TrainingPeaks / Komoot upload APIs need partner approval.
 - Insta360 GPS extraction is less documented than GoPro GPMF.
-- MyWhoosh-level realism on Godot and an M1 integrated GPU is ambitious → quality presets
-  (R43), lighting first, then vegetation; art direction reviewed on rendered previews.
+- Detail on an M1 integrated GPU (towns place thousands of buildings, forests thousands of
+  trees) → a lean stylized look (ADR 0011: flat colours, chunky faceted models within triangle
+  budgets), quality presets (R43); art direction reviewed on rendered previews.
 - Overlay over full-screen apps needs native window settings Godot doesn't expose (macOS Spaces);
   Wayland has no portable always-on-top → platform code isolated behind the overlay window.
-- Free realistic terrain imagery is limited → procedural texturing by OSM landuse/slope by default.
+- Free terrain imagery is limited → the ground is coloured by OSM land cover and slope, no
+  imagery needed.
 
 ## Verification
 

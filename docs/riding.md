@@ -53,9 +53,9 @@ is, so Torqa infers it from where it stands and its size. That gives:
   has one.
 
 Mapped heights and façade colours are used where the map has them. Close to you, buildings whose
-outline suits one are detailed models (made in Blender): recessed windows with shutters,
-balconies with geraniums, rafters, gutters, clock towers. Further away, and for unusual outlines,
-they are drawn more simply.
+outline suits one are models made in Blender, chunky and faceted in flat pastel colours:
+recessed windows with shutters, balconies with geraniums, cornices, canopies, clock towers.
+Further away, and for unusual outlines, they are drawn more simply.
 
 ## Simulation (fake trainer)
 

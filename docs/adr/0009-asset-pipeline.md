@@ -13,16 +13,20 @@ humans are hard to model from scratch; mechanical parts like a bike are easy to 
 ## Decision
 
 - **Scripted models.** Models are produced by **Blender Python scripts** run headless in the
-  devcontainer (Blender and the MPFB2 add-on are container packages). The scripts are the source
+  devcontainer (Blender and the MPFB2 add-on are container packages; see the amendments: Blender
+  moved to its own container, MPFB2 was never added). The scripts are the source
   of truth; they export glTF (`.glb`) for Godot.
 - **Both are committed**: the scripts and the exported `.glb` files, so the app builds without
   Blender and changes to models are reviewable. Each asset is documented (what it is, how to
   regenerate it, its sources and license).
 - **Riders** (female, male) start from **MakeHuman** base meshes via **MPFB2** (CC0 output,
   rigged); kit materials and the cadence-driven pedaling animation (pedal IK) are scripted.
+  *(Superseded: riders come from Blender Studio's CC0 Human Base Meshes, see the amendment of
+  2026-10-06.)*
 - **Bike**: a parametric model built by script, so other frames and wheels can follow (R46).
 - **Vegetation, rocks**: generated (geometry nodes / Sapling) or taken from free asset libraries.
-- **Textures**: CC0 PBR sets (Poly Haven, ambientCG).
+- **Textures**: CC0 PBR sets (Poly Haven, ambientCG). *(Superseded: no textures, flat palette
+  colours, ADR 0011.)*
 - **Allowed licenses**: own work, CC0, CC-BY, CC-BY-SA (one-way compatible with GPLv3). Every
   third-party asset is listed with author, source and license in a credits file.
 - **Not allowed**: NC or ND licenses, engine-locked assets (Quixel Megascans / Fab — Unreal-only),
@@ -50,3 +54,16 @@ humans are hard to model from scratch; mechanical parts like a bike are easy to 
   building. `models.json` beside the models lists their footprints and heights, which the
   world uses to fit them to map outlines.
 - `scripts/render-models.sh` renders every model as the world draws it, for review.
+
+## Amendment — 2026-10-06: what the stylized look kept
+
+With the stylized look (ADR 0011) the pipeline stays — scripted Blender models in the art
+container, `.glb` files committed, material names styled by the app — but:
+
+- **MPFB2 was never added.** Its humans are realistic; the riders are derived by script from
+  Blender Studio's **Human Base Meshes** (CC0), kept untouched under `art/sources/`.
+- **No textures.** Every model carries material names only and gets flat palette colours
+  (`app/assets/palette.json`); the CC0 texture sets were retired with their credits.
+- **Model groups** are `art/buildings` (houses, chalets, farmhouses, churches, chapels, sheds,
+  offices, hotels, public buildings), `art/vegetation`, `art/clouds` and `art/riders`, each with
+  a `build.py` writing its models and manifest under `app/assets/models/`.

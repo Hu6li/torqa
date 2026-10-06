@@ -71,5 +71,7 @@ and terrain tiles are cached in the container's volumes after the first run.
 
 Look at every image before reporting. For a PR, convert a few to JPEG on the host
 (`sips -s format jpeg -s formatOptions 78 in.png --out docs/images/<topic>/name.jpg`, about
-150 KB each), commit them, and reference them in the PR body as
-`https://raw.githubusercontent.com/bossm8/Torqa/<branch>/docs/images/<topic>/name.jpg`.
+150 KB each), commit them, and reference them in the PR body by the commit that adds them:
+`https://raw.githubusercontent.com/bossm8/Torqa/<commit>/docs/images/<topic>/name.jpg`. A
+commit link keeps working after the branch is deleted and after docs refreshes remove images no
+doc uses (#79); a branch link does not.
