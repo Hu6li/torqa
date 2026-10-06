@@ -54,8 +54,12 @@ pub enum LandCover {
     Orchard,
     /// Built-up areas.
     Residential,
-    /// Industrial, commercial and retail land: halls, warehouses, shops.
+    /// Industrial land: halls and warehouses.
     Industrial,
+    /// Commercial and retail land: offices and stores.
+    Commercial,
+    /// Grounds of schools, colleges, universities and hospitals.
+    Public,
     /// Lakes, rivers, ponds.
     Water,
     /// Rock, scree, glaciers, sand.
@@ -178,6 +182,13 @@ pub struct MapData {
     pub churches: Vec<LatLon>,
     /// Shops, cafés, restaurants and the like, as points in or by their building.
     pub shops: Vec<LatLon>,
+    /// Hotels, guest houses and hostels, as points in or by their building.
+    pub hotels: Vec<LatLon>,
+    /// Offices, as points in or by their building.
+    pub offices: Vec<LatLon>,
+    /// Schools, hospitals, town halls, libraries, post offices, police and fire stations, as
+    /// points in or by their building.
+    pub public: Vec<LatLon>,
 }
 
 /// Downloads and caches map tiles.

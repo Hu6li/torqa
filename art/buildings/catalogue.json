@@ -24,6 +24,18 @@
     {"name": "chapel_m", "kind": "chapel", "length": 11.0, "width": 7.0, "eaves": 5.4, "cover": "tiles"},
     {"name": "shed_s", "kind": "shed", "length": 3.2, "width": 2.6},
     {"name": "shed_m", "kind": "shed", "length": 5.0, "width": 3.6, "cover": "tiles"},
-    {"name": "garage_m", "kind": "shed", "length": 6.5, "width": 4.2, "garage": true, "pitch": 12}
+    {"name": "garage_m", "kind": "shed", "length": 6.5, "width": 4.2, "garage": true, "pitch": 12},
+    {"name": "office_2_xl", "kind": "office", "roof": "flat", "storeys": 2, "length": 44.0, "width": 24.0},
+    {"name": "office_3_m", "kind": "office", "roof": "flat", "storeys": 3, "length": 20.0, "width": 14.0},
+    {"name": "office_4_l", "kind": "office", "roof": "flat", "storeys": 4, "length": 30.0, "width": 16.0},
+    {"name": "office_6_l", "kind": "office", "roof": "flat", "storeys": 6, "length": 34.0, "width": 17.0},
+    {"name": "hotel_3_m", "kind": "hotel", "roof": "flat", "storeys": 3, "length": 18.0, "width": 12.0},
+    {"name": "hotel_4_m", "kind": "hotel", "roof": "flat", "storeys": 4, "length": 24.0, "width": 13.0},
+    {"name": "hotel_6_l", "kind": "hotel", "roof": "flat", "storeys": 6, "length": 32.0, "width": 14.0},
+    {"name": "public_hipped_2_m", "kind": "public", "roof": "hipped", "storeys": 2, "length": 26.0, "width": 13.0, "pitch": 30},
+    {"name": "public_hipped_3_l", "kind": "public", "roof": "hipped", "storeys": 3, "length": 36.0, "width": 15.0, "pitch": 28},
+    {"name": "public_flat_2_l", "kind": "public", "roof": "flat", "storeys": 2, "length": 38.0, "width": 16.0},
+    {"name": "public_flat_3_xl", "kind": "public", "roof": "flat", "storeys": 3, "length": 48.0, "width": 18.0},
+    {"name": "public_flat_4_l", "kind": "public", "roof": "flat", "storeys": 4, "length": 36.0, "width": 17.0}
   ]
 }

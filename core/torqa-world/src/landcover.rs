@@ -93,8 +93,9 @@ fn priority(cover: LandCover) -> u8 {
         LandCover::Forest => 4,
         LandCover::Orchard => 3,
         LandCover::Farmland => 2,
-        LandCover::Residential | LandCover::Industrial => 1,
-        LandCover::Meadow => 0,
+        LandCover::Residential | LandCover::Industrial | LandCover::Commercial => 1,
+        // Schools' and hospitals' grounds are mostly lawns and yards.
+        LandCover::Meadow | LandCover::Public => 0,
     }
 }
 
@@ -144,12 +145,12 @@ static GROUND: LazyLock<Ground> = LazyLock::new(|| Ground {
 pub(crate) fn color(cover: Option<LandCover>) -> [f32; 4] {
     let ground = &*GROUND;
     match cover {
-        None | Some(LandCover::Meadow) => ground.meadow,
+        None | Some(LandCover::Meadow | LandCover::Public) => ground.meadow,
         Some(LandCover::Forest) => ground.forest,
         Some(LandCover::Farmland) => ground.farmland,
         Some(LandCover::Orchard) => ground.orchard,
         Some(LandCover::Residential) => ground.town,
-        Some(LandCover::Industrial) => ground.industrial,
+        Some(LandCover::Industrial | LandCover::Commercial) => ground.industrial,
         Some(LandCover::Rock) => ground.rock,
         Some(LandCover::Water) => ground.bed,
     }

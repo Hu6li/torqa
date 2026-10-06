@@ -702,3 +702,95 @@ def log_corners(mesh, rect, z0, z1, step=0.5, reach=0.35):
                 mesh.box(low, high, "wood_dark", skip=())
         z += step
         level += 1
+
+
+def band(mesh, rect, z0, z1, out, material):
+    """A band round the walls of `rect` from `z0` to `z1`, standing `out` from them: a cornice,
+    a string course or a coloured floor band."""
+    l, w = rect.length / 2.0 + out, rect.width / 2.0 + out
+    cx, cy = rect.centre
+    corners = [(cx - l, cy - w), (cx + l, cy - w), (cx + l, cy + w), (cx - l, cy + w)]
+    for i in range(4):
+        (x0, y0), (x1, y1) = corners[i], corners[(i + 1) % 4]
+        normal = Vector(((y1 - y0), -(x1 - x0), 0.0)).normalized()
+        mesh.facing([(x0, y0, z0), (x1, y1, z0), (x1, y1, z1), (x0, y0, z1)], normal, material)
+    inner = [(cx - l + out, cy - w + out), (cx + l - out, cy - w + out),
+             (cx + l - out, cy + w - out), (cx - l + out, cy + w - out)]
+    for z, normal in ((z1, UP), (z0, -UP)):
+        for i in range(4):
+            a, b = corners[i], corners[(i + 1) % 4]
+            c, d = inner[(i + 1) % 4], inner[i]
+            mesh.facing([(*a, z), (*b, z), (*c, z), (*d, z)], normal, material)
+
+
+def flat_roof(mesh, rect, roof_z, parapet, roof="roof_flat", wall_material="plaster",
+              cap="accent", cap_out=0.25, cap_height=0.35):
+    """A flat roof at `roof_z` behind a parapet `parapet` high (the walls below reach up to
+    it), with a cap round its top standing `cap_out` from the walls. Returns the cap's top."""
+    l, w = rect.length / 2.0, rect.width / 2.0
+    t = 0.3
+    cx, cy = rect.centre
+    top = roof_z + parapet
+    inner = Rect(rect.length - 2 * t, rect.width - 2 * t, rect.centre)
+    il, iw = inner.length / 2.0, inner.width / 2.0
+    mesh.facing([(cx - il, cy - iw, roof_z), (cx + il, cy - iw, roof_z),
+                 (cx + il, cy + iw, roof_z), (cx - il, cy + iw, roof_z)], UP, roof)
+    # The parapet's inner faces, looking into the roof.
+    for facade in inner.facades():
+        a, b = facade.point(0.0, roof_z), facade.point(facade.length, roof_z)
+        mesh.facing([a, b, b + UP * parapet, a + UP * parapet], -facade.out, wall_material)
+    # The cap, its top reaching in over the parapet to the roof's edge.
+    band(mesh, rect, top - cap_height, top, cap_out, cap)
+    outer = [(cx - l, cy - w), (cx + l, cy - w), (cx + l, cy + w), (cx - l, cy + w)]
+    edge = [(cx - il, cy - iw), (cx + il, cy - iw), (cx + il, cy + iw), (cx - il, cy + iw)]
+    for i in range(4):
+        a, b = outer[i], outer[(i + 1) % 4]
+        c, d = edge[(i + 1) % 4], edge[i]
+        mesh.facing([(*a, top), (*b, top), (*c, top), (*d, top)], UP, cap)
+    return top
+
+
+def roof_units(mesh, rect, roof_z, seed, count=2):
+    """Machinery on a flat roof: a plant room and a few air-conditioning units."""
+    l, w = rect.length / 2.0, rect.width / 2.0
+    rl, rw = min(l * 0.3, 3.5), min(w * 0.45, 2.5)
+    x = l * (0.35 if seed % 2 else -0.3)
+    mesh.box((x - rl, -rw, roof_z), (x + rl, rw, roof_z + 2.6), "plaster", skip=("-z",))
+    mesh.box((x - rl - 0.12, -rw - 0.12, roof_z + 2.6), (x + rl + 0.12, rw + 0.12, roof_z + 2.8),
+             "metal", skip=())
+    for k in range(count):
+        ux = -x * 0.8 + (k - (count - 1) / 2.0) * 2.4
+        uy = w * 0.3 * (1 if (seed + k) % 2 else -1)
+        mesh.box((ux - 0.7, uy - 0.5, roof_z), (ux + 0.7, uy + 0.5, roof_z + 0.9), "metal",
+                 skip=("-z",))
+
+
+def canopy(mesh, facade, u0, u1, z, reach, material="accent", posts=True, thickness=0.3):
+    """A flat canopy over an entrance from `u0` to `u1` at height `z`, reaching `reach` out,
+    on two posts at its front corners if `posts`."""
+    p = facade.point
+    out = -reach
+    low, high = z, z + thickness
+    mesh.facing([p(u0, high, 0.0), p(u1, high, 0.0), p(u1, high, out), p(u0, high, out)], UP,
+                material)
+    mesh.facing([p(u0, low, 0.0), p(u0, low, out), p(u1, low, out), p(u1, low, 0.0)], -UP,
+                material)
+    mesh.facing([p(u0, low, out), p(u1, low, out), p(u1, high, out), p(u0, high, out)],
+                facade.out, material)
+    for u, side in ((u0, -1.0), (u1, 1.0)):
+        mesh.facing([p(u, low, 0.0), p(u, low, out), p(u, high, out), p(u, high, 0.0)],
+                    facade.along * side, material)
+    if posts:
+        for u in (u0 + 0.2, u1 - 0.2):
+            mesh.beam(p(u, -0.1, out + 0.2), p(u, low, out + 0.2), 0.22, 0.22, "metal")
+
+
+def flag(mesh, base, height, material="accent"):
+    """A flagpole with its flag, by an entrance."""
+    x, y, z = base
+    mesh.beam((x, y, z), (x, y, z + height), 0.12, 0.12, "metal")
+    mesh.facing([(x, y, z + height - 1.4), (x + 1.9, y, z + height - 1.4),
+                 (x + 1.9, y, z + height - 0.2), (x, y, z + height - 0.2)], (0, -1, 0), material)
+    mesh.facing([(x, y, z + height - 1.4), (x, y, z + height - 0.2),
+                 (x + 1.9, y, z + height - 0.2), (x + 1.9, y, z + height - 1.4)], (0, 1, 0),
+                material)

@@ -312,7 +312,7 @@ fn choose(
             })
         }
         // Open land near the road: now and then a tree on its own, or a bush.
-        Some(LandCover::Meadow | LandCover::Residential) | None if near => {
+        Some(LandCover::Meadow | LandCover::Public | LandCover::Residential) | None if near => {
             let (tree, shrub) = if cover == Some(LandCover::Residential) {
                 (0.03, 0.04)
             } else {
@@ -370,9 +370,9 @@ pub(crate) fn place_grass(
             let (density, flowery) = match cover {
                 Some(LandCover::Water | LandCover::Rock) => (0.0, false),
                 // Yards and car parks: a little grass at the edges.
-                Some(LandCover::Industrial) => (0.2, false),
+                Some(LandCover::Industrial | LandCover::Commercial) => (0.2, false),
                 Some(LandCover::Forest) => (0.25, false),
-                Some(LandCover::Meadow) | None => (1.0, true),
+                Some(LandCover::Meadow | LandCover::Public) | None => (1.0, true),
                 Some(LandCover::Farmland | LandCover::Orchard | LandCover::Residential) => {
                     (0.8, false)
                 }

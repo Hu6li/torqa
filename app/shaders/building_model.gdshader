@@ -2,8 +2,9 @@ shader_type spatial;
 // Materials of the Blender-made building models (R45, ADR 0011, art/buildings): flat palette
 // colours, faceted. `pattern` picks how a material behaves, `color` is its palette colour.
 // Buildings vary per instance: the instance colour (COLOR) is the plaster, INSTANCE_CUSTOM.rgb
-// the roof colour, and INSTANCE_CUSTOM.a picks the shutters' colour and whether a building has
-// shutters and flowers at all.
+// the roof colour (on flat-roofed buildings the accent colour of their trim), and
+// INSTANCE_CUSTOM.a picks the shutters' colour and whether a building has shutters and flowers
+// at all.
 
 const int PLASTER = 0;
 const int STONE = 1;
@@ -23,6 +24,8 @@ const int CLOCK = 14;
 const int SHEET = 15;
 const int GARAGE = 16;
 const int LEADED = 17;
+const int ACCENT = 18;
+const int FLAT_ROOF = 19;
 
 uniform int pattern = 0;
 uniform vec3 color : source_color = vec3(0.8);
@@ -56,7 +59,7 @@ void fragment() {
 
 	if (pattern == PLASTER) {
 		albedo = to_linear(COLOR.rgb);
-	} else if (pattern == TILES) {
+	} else if (pattern == TILES || pattern == ACCENT) {
 		// The building's roof colour; models without one keep the material's.
 		albedo = roof_tint.r + roof_tint.g + roof_tint.b > 0.0 ? to_linear(roof_tint) : color;
 	} else if (pattern == GLASS || pattern == LEADED) {

@@ -3,7 +3,8 @@ extends RefCounted
 ## The building models made in Blender (art/buildings, R45): loads them and gives their
 ## materials the flat palette colours their names ask for (app/shaders/building_model.gdshader,
 ## ADR 0011). Every building of a chunk is an instance of a MultiMesh: the instance colour is
-## its plaster, the custom data its roof colour (rgb) and variant (a, 0–1).
+## its plaster, the custom data its roof colour — or for flat-roofed offices, hotels and public
+## buildings their accent colour — (rgb) and variant (a, 0–1).
 
 const DIRECTORY: String = "res://assets/models/buildings/"
 
@@ -28,6 +29,8 @@ const LOOKS: Dictionary[String, Array] = {
 	"clock": [14, "buildings.clock"],
 	"sheet": [15, "buildings.sheet"],
 	"garage": [16, "buildings.garage"],
+	"accent": [18, "buildings.accents"],
+	"roof_flat": [19, "buildings.flat_roofs"],
 }
 
 static var _materials: Dictionary = {}

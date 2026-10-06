@@ -248,7 +248,7 @@ the realistic look's textures and patterns are being replaced step by step.
       where the track clearly follows them, so the route no longer hops on and off them
     - [x] Water under roads, never over them: streams and rivers laid on the ground just
       below every street and the road, so they pass under them; culverts left out
-  - [ ] Nicer environment (#75):
+  - [x] Nicer environment (#75):
     - [x] Water lies in the land, never floating above it or buried: lakes, rivers and
       streams are laid on the ground (whose height the terrain model measures at the water's
       surface), so lakes lie level and rivers slope with their course (a shore band remains
@@ -266,12 +266,16 @@ the realistic look's textures and patterns are being replaced step by step.
     - [x] A wider view in the mountains: coarse land (240 m facets, from zoom-10 terrain tiles)
       beyond the 1.5 km corridor out to 12 km, coloured by its shape (meadow, forest, lakes;
       rock and snow by the shader), fading into the haze, so the edge of the map never shows
-    - [ ] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
+    - [x] Buildings in the reference style of #75 (cornices, colour bands, parapets, balconies,
       awnings, rooftop details) and more kinds and colours; whole windows only on shells
-      (none cut at corners and edges). Done: whole windows; blocks in coloured or light
-      plaster with contrasting trim (a ground storey of its own, string course, cornice),
-      stacked balconies and rooftop units; shops (mapped shops, cafés, restaurants) with a
-      glazed front and an awning onto their street. Open: more kinds
+      (none cut at corners and edges): blocks in coloured, light or modern (pale yellow, pale
+      blue, sage, brick) plaster with contrasting trim (a ground storey of its own, string
+      course, cornice), stacked balconies and rooftop units; shops (mapped shops, cafés,
+      restaurants) with a glazed front and an awning onto their street; offices (commercial
+      land, mapped offices) with bands of glass, hotels (mapped hotels and guest houses) with
+      balconies in every column, public buildings (schools, hospitals, town halls, libraries,
+      post offices, police and fire stations, and buildings on school and hospital grounds),
+      classic or modern — Blender models where they fit, shells otherwise
     - [x] Bridges and viaducts: short, low bridges of the road ridden are stone arch bridges
       (arches, the walls over them, vaults), longer and higher ones viaducts on piers as wide
       as the deck; bridges of other streets and railways stand on piers too

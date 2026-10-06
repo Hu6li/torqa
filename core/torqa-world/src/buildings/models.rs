@@ -21,7 +21,8 @@ pub(crate) const MAX_STRETCH: f64 = 1.25;
 pub(crate) struct Model {
     #[serde(skip)]
     pub(crate) name: String,
-    /// `house`, `chalet`, `farmhouse`, `church`, `chapel` or `shed`.
+    /// `house`, `chalet`, `farmhouse`, `church`, `chapel`, `shed`, `office`, `public` or
+    /// `hotel`.
     kind: String,
     /// `gable` or `hipped`.
     pub(crate) roof: String,
@@ -80,6 +81,9 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Shed => "shed",
         Kind::Church if wanted.chapel => "chapel",
         Kind::Church => "church",
+        Kind::Office => "office",
+        Kind::Public => "public",
+        Kind::Hotel => "hotel",
         Kind::Block | Kind::Hall => return None,
     };
     let (length, width) = (2.0 * rect.half_length, 2.0 * rect.half_width);
@@ -186,6 +190,34 @@ mod tests {
             };
             let fit = fitting(&rect, wanted, &Dice(11)).expect("a house model");
 
+            assert_eq!(fit.model.storeys, Some(storeys));
+            assert_eq!(fit.model.roof == "hipped", hipped);
+        }
+    }
+
+    #[test]
+    fn offices_hotels_and_public_buildings_get_models_of_their_kind() {
+        for (kind, name, (half_length, half_width), storeys, hipped) in [
+            (Kind::Office, "office", (15.0, 8.0), 4, false),
+            (Kind::Hotel, "hotel", (12.0, 6.5), 4, false),
+            (Kind::Public, "public", (13.0, 6.5), 2, true),
+            (Kind::Public, "public", (19.0, 8.0), 2, false),
+        ] {
+            let rect = Rect {
+                centre: (0.0, 0.0),
+                axis: (1.0, 0.0),
+                half_length,
+                half_width,
+            };
+            let wanted = Wanted {
+                kind,
+                chapel: false,
+                storeys: Some(storeys),
+                hipped,
+            };
+            let fit = fitting(&rect, wanted, &Dice(5)).expect("a model");
+
+            assert_eq!(fit.model.kind, name);
             assert_eq!(fit.model.storeys, Some(storeys));
             assert_eq!(fit.model.roof == "hipped", hipped);
         }

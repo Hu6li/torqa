@@ -125,6 +125,33 @@
    "height": 3.196,
    "pitch": 12
   },
+  "hotel_3_m": {
+   "kind": "hotel",
+   "roof": "flat",
+   "length": 18.0,
+   "width": 12.0,
+   "eaves": 10.35,
+   "height": 13.85,
+   "storeys": 3
+  },
+  "hotel_4_m": {
+   "kind": "hotel",
+   "roof": "flat",
+   "length": 24.0,
+   "width": 13.0,
+   "eaves": 13.25,
+   "height": 16.75,
+   "storeys": 4
+  },
+  "hotel_6_l": {
+   "kind": "hotel",
+   "roof": "flat",
+   "length": 32.0,
+   "width": 14.0,
+   "eaves": 19.05,
+   "height": 22.55,
+   "storeys": 6
+  },
   "house_gable_1_m": {
    "kind": "house",
    "roof": "gable",
@@ -224,6 +251,89 @@
    "height": 14.253,
    "storeys": 3,
    "pitch": 30
+  },
+  "office_2_xl": {
+   "kind": "office",
+   "roof": "flat",
+   "length": 44.0,
+   "width": 24.0,
+   "eaves": 7.95,
+   "height": 11.45,
+   "storeys": 2
+  },
+  "office_3_m": {
+   "kind": "office",
+   "roof": "flat",
+   "length": 20.0,
+   "width": 14.0,
+   "eaves": 11.35,
+   "height": 14.85,
+   "storeys": 3
+  },
+  "office_4_l": {
+   "kind": "office",
+   "roof": "flat",
+   "length": 30.0,
+   "width": 16.0,
+   "eaves": 14.75,
+   "height": 18.25,
+   "storeys": 4
+  },
+  "office_6_l": {
+   "kind": "office",
+   "roof": "flat",
+   "length": 34.0,
+   "width": 17.0,
+   "eaves": 21.55,
+   "height": 25.05,
+   "storeys": 6
+  },
+  "public_flat_2_l": {
+   "kind": "public",
+   "roof": "flat",
+   "length": 38.0,
+   "width": 16.0,
+   "eaves": 6.35,
+   "height": 10.35,
+   "storeys": 2
+  },
+  "public_flat_3_xl": {
+   "kind": "public",
+   "roof": "flat",
+   "length": 48.0,
+   "width": 18.0,
+   "eaves": 9.25,
+   "height": 13.25,
+   "storeys": 3
+  },
+  "public_flat_4_l": {
+   "kind": "public",
+   "roof": "flat",
+   "length": 36.0,
+   "width": 17.0,
+   "eaves": 12.15,
+   "height": 16.15,
+   "storeys": 4
+  },
+  "public_hipped_2_m": {
+   "kind": "public",
+   "roof": "hipped",
+   "length": 26.0,
+   "width": 13.0,
+   "eaves": 6.35,
+   "height": 10.853,
+   "storeys": 2,
+   "pitch": 30
+  },
+  "public_hipped_3_l": {
+   "kind": "public",
+   "roof": "hipped",
+   "length": 36.0,
+   "width": 15.0,
+   "eaves": 9.25,
+   "height": 13.988,
+   "storeys": 3,
+   "pitch": 28
   },
   "shed_m": {
    "kind": "shed",

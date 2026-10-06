@@ -7,8 +7,9 @@ along y), which the app fits to the map's outlines.
 import math
 
 from kit import (
-    Facade, Mesh, Opening, Rect, balcony, chimney, clock, door, finial, gable_roof,
-    half_hipped_roof, hipped_roof, log_corners, louvres, needle, wall, window,
+    UP, Facade, Mesh, Opening, Rect, band, balcony, canopy, chimney, clock, door, finial, flag,
+    flat_roof, gable_roof, half_hipped_roof, hipped_roof, log_corners, louvres, needle,
+    roof_units, wall, window,
 )
 
 # Floor-to-floor height.
@@ -417,3 +418,213 @@ def shed(spec):
     ridge = gable_roof(mesh, rect, eaves, pitch, overhang=0.35, verge=0.3,
                        roof=spec.get("cover", "sheet"), gable=material)
     return mesh, footprint(rect.length, rect.width, eaves, ridge)
+
+
+# Offices and hotels have taller floors than houses; their ground floors are taller still.
+OFFICE_STOREY = 3.4
+LOBBY = 4.0
+# Flat roofs end in a parapet this high (as the world's shells, `Roof::Flat`).
+PARAPET = 0.7
+
+
+def lobby(mesh, facade, z0, z1, entrance=None, piers=4.5):
+    """A glazed ground floor between piers from `z0` to `z1`: big panes in frames, and if
+    `entrance` gives its width, double doors in the middle of the facade."""
+    count = max(1, round((facade.length - 1.2) / piers))
+    bay = (facade.length - 0.6) / count
+    openings, doors = [], []
+    for k in range(count):
+        u0, u1 = 0.3 + k * bay + 0.3, 0.3 + (k + 1) * bay - 0.3
+        middle = abs((u0 + u1) / 2.0 - facade.length / 2.0) < bay / 2.0
+        if entrance and middle:
+            centre = facade.length / 2.0
+            doors.append(Opening(centre - entrance / 2.0, centre + entrance / 2.0, z0,
+                                 z0 + 2.5, depth=0.35))
+            for a, b in ((u0, centre - entrance / 2.0 - 0.3), (centre + entrance / 2.0 + 0.3, u1)):
+                if b - a > 0.8:
+                    openings.append(Opening(a, b, z0 + 0.4, z1 - 0.6, depth=0.3))
+            continue
+        openings.append(Opening(u0, u1, z0 + 0.4, z1 - 0.6, depth=0.3))
+    wall(mesh, facade, z0, z1, "plaster", openings + doors)
+    for o in openings:
+        window(mesh, facade, o, sill=None)
+    for o in doors:
+        door(mesh, facade, o, leaf="glass", step="stone")
+    return doors
+
+
+def office(spec):
+    """An office building: a glazed ground floor between piers, a band of glass along every
+    storey between plain spandrels, a cornice in the accent colour round a flat roof with a
+    plant room, and an entrance canopy."""
+    rect = Rect(spec["length"], spec["width"])
+    storeys = spec["storeys"]
+    mesh = Mesh()
+    ground_top = FLOOR + LOBBY
+    roof_z = ground_top + (storeys - 1) * OFFICE_STOREY + PLATE
+    facades = rect.facades()
+    for facade in facades:
+        wall(mesh, facade, -BASEMENT, FLOOR, "stone")
+        doors = lobby(mesh, facade, FLOOR, ground_top,
+                      entrance=3.2 if facade is facades[0] else None)
+        ribbons = []
+        for storey in range(storeys - 1):
+            floor = ground_top + storey * OFFICE_STOREY
+            ribbons.append(Opening(0.9, facade.length - 0.9, floor + 0.9, floor + 2.6, depth=0.22))
+        wall(mesh, facade, ground_top, roof_z + PARAPET, "plaster", ribbons)
+        for o in ribbons:
+            window(mesh, facade, o, sill=None)
+        for o in doors:
+            canopy(mesh, facade, o.u0 - 1.2, o.u1 + 1.2, o.z1 + 0.35, 2.2, posts=False)
+    band(mesh, rect, ground_top - 0.15, ground_top + 0.2, 0.12, "accent")
+    top = flat_roof(mesh, rect, roof_z, PARAPET)
+    roof_units(mesh, rect, roof_z, storeys, count=2 if rect.length < 30 else 3)
+    return mesh, footprint(rect.length, rect.width, roof_z, top + 2.8, storeys=storeys)
+
+
+def hotel(spec):
+    """A hotel: a glazed lobby with a deep canopy over its entrance, balconies with French
+    windows in every column of the long sides, windows on the ends, a cornice round a flat
+    roof."""
+    rect = Rect(spec["length"], spec["width"])
+    storeys = spec["storeys"]
+    mesh = Mesh()
+    ground_top = FLOOR + LOBBY
+    roof_z = ground_top + (storeys - 1) * STOREY + PLATE
+    south, east, north, west = rect.facades()
+    for facade in (south, east, north, west):
+        long_side = facade in (south, north)
+        wall(mesh, facade, -BASEMENT, FLOOR, "stone")
+        doors = lobby(mesh, facade, FLOOR, ground_top,
+                      entrance=2.8 if facade is south else None)
+        centres = columns(facade.length, 3.2 if long_side else 3.0, 1.6)
+        openings = []
+        for storey in range(storeys - 1):
+            floor = ground_top + storey * STOREY
+            for u in centres:
+                if long_side:
+                    openings.append(Opening(u - 0.7, u + 0.7, floor + 0.1, floor + 2.3))
+                else:
+                    openings.append(Opening(u - 0.6, u + 0.6, floor + 0.85, floor + 2.25))
+        wall(mesh, facade, ground_top, roof_z + PARAPET, "plaster", openings)
+        for o in openings:
+            window(mesh, facade, o, sill=None if long_side else "stone")
+        if long_side:
+            for storey in range(storeys - 1):
+                floor = ground_top + storey * STOREY
+                for u in centres:
+                    slab(mesh, facade, u - 1.3, u + 1.3, floor + 0.1)
+        for o in doors:
+            canopy(mesh, facade, o.u0 - 1.0, o.u1 + 1.0, o.z1 + 0.3, 3.0)
+    band(mesh, rect, ground_top - 0.2, ground_top + 0.15, 0.15, "accent")
+    top = flat_roof(mesh, rect, roof_z, PARAPET)
+    roof_units(mesh, rect, roof_z, storeys + 1, count=2)
+    return mesh, footprint(rect.length, rect.width, roof_z, top + 2.8, storeys=storeys)
+
+
+def slab(mesh, facade, u0, u1, floor, depth=1.3, rail=1.05):
+    """A hotel balcony: a slab with a solid balustrade in the accent colour, as one box."""
+    p = facade.point
+    out = -depth
+    bottom, top = floor - 0.2, floor + rail
+    corners = {
+        "front": [p(u0, bottom, out), p(u1, bottom, out), p(u1, top, out), p(u0, top, out)],
+        "top": [p(u0, top, 0.0), p(u1, top, 0.0), p(u1, top, out), p(u0, top, out)],
+        "bottom": [p(u0, bottom, 0.0), p(u0, bottom, out), p(u1, bottom, out),
+                   p(u1, bottom, 0.0)],
+    }
+    mesh.facing(corners["front"], facade.out, "accent")
+    mesh.facing(corners["top"], UP, "accent")
+    mesh.facing(corners["bottom"], -UP, "accent")
+    for u, side in ((u0, -1.0), (u1, 1.0)):
+        mesh.facing([p(u, bottom, 0.0), p(u, bottom, out), p(u, top, out), p(u, top, 0.0)],
+                    facade.along * side, "accent")
+
+
+def public(spec):
+    """A school, town hall or hospital: symmetrical, with an entrance bay standing out of the
+    front under a canopy on columns, tall windows in rows, and a flag. Classic ones
+    (`roof` hipped) have a stone ground floor, white trim and a hipped roof, the bay its own
+    gable; modern ones (`roof` flat) a band of colour at every floor and a flat roof, the bay
+    rising over it."""
+    rect = Rect(spec["length"], spec["width"])
+    storeys = spec["storeys"]
+    classic = spec["roof"] == "hipped"
+    mesh = Mesh()
+    eaves = eaves_height(storeys)
+    south, east, north, west = rect.facades()
+    # The entrance bay: a box standing out of the front.
+    bay_width = max(6.0, rect.length * 0.22)
+    bay_out = 1.0
+    bay = Rect(bay_width, bay_out * 2.0, (0.0, -rect.width / 2.0))
+    for facade in (south, east, north, west):
+        long_side = facade in (south, north)
+        centres = columns(facade.length, 3.3 if long_side else 3.1, 2.0)
+        openings = []
+        for storey in range(storeys):
+            floor = FLOOR + storey * STOREY
+            for u in centres:
+                if facade is south and abs(u - facade.length / 2.0) < bay_width / 2.0 + 0.6:
+                    continue
+                openings.append(Opening(u - 0.75, u + 0.75, floor + 0.6, floor + 2.45))
+        wall(mesh, facade, -BASEMENT, FLOOR, "stone")
+        top = eaves + (0.0 if classic else PARAPET)
+        if classic:
+            low = [o for o in openings if o.z0 < FLOOR + STOREY]
+            high = [o for o in openings if o.z0 >= FLOOR + STOREY]
+            wall(mesh, facade, FLOOR, FLOOR + STOREY, "stone", low)
+            wall(mesh, facade, FLOOR + STOREY, top, "plaster", high)
+        else:
+            wall(mesh, facade, FLOOR, top, "plaster", openings)
+        for o in openings:
+            window(mesh, facade, o, sill="stone" if classic else None)
+    # The bay: its own walls, windows over the entrance, the door under a canopy.
+    bay_top = eaves + (0.0 if classic else PARAPET + 1.6)
+    bay_south, bay_east, bay_north, bay_west = bay.facades()
+    if not classic:
+        # Where the bay rises over the roof, its back shows.
+        wall(mesh, bay_north, eaves + PARAPET - 0.3, bay_top, "plaster")
+    for facade in (bay_south, bay_east, bay_west):
+        openings, doors = [], []
+        if facade is bay_south:
+            centre = facade.length / 2.0
+            doors.append(Opening(centre - 1.4, centre + 1.4, FLOOR, FLOOR + 2.7, depth=0.3))
+            for storey in range(1, storeys):
+                floor = FLOOR + storey * STOREY
+                for d in (-1.2, 1.2):
+                    openings.append(Opening(centre + d - 0.55, centre + d + 0.55, floor + 0.5,
+                                            floor + 2.55))
+        wall(mesh, facade, -BASEMENT, bay_top, "stone" if classic else "plaster",
+             openings + doors)
+        for o in openings:
+            window(mesh, facade, o, sill="stone" if classic else None)
+        for o in doors:
+            door(mesh, facade, o, leaf="glass" if not classic else "door", step="stone")
+            canopy(mesh, facade, o.u0 - 1.6, o.u1 + 1.6, o.z1 + 0.5, 2.6,
+                   material="frame" if classic else "accent", posts=False)
+            columns_material = "stone" if classic else "metal"
+            for u in (o.u0 - 1.3, o.u1 + 1.3):
+                mesh.beam(facade.point(u, FLOOR, -2.3), facade.point(u, o.z1 + 0.5, -2.3), 0.4,
+                          0.4, columns_material)
+    if classic:
+        band(mesh, rect, FLOOR + STOREY - 0.12, FLOOR + STOREY + 0.18, 0.1, "frame")
+        band(mesh, rect, eaves - 0.35, eaves, 0.12, "frame")
+        ridge = hipped_roof(mesh, rect, eaves, spec.get("pitch", 30.0), overhang=0.6,
+                            under="plaster", fascia="frame")
+        # A pediment over the bay: a small gable roof across the front, its gable facing out.
+        pediment = Mesh()
+        reach = bay_out + 1.0
+        gable_roof(pediment, Rect(2.0 * reach, bay_width), eaves, spec.get("pitch", 30.0),
+                   overhang=0.3, verge=0.3, under="plaster", fascia="frame")
+        mesh.add(pediment, offset=(0.0, -rect.width / 2.0 - bay_out + reach, 0.0), turn=90.0)
+        top = ridge
+    else:
+        for storey in range(1, storeys):
+            z = FLOOR + storey * STOREY
+            band(mesh, rect, z - 0.2, z + 0.2, 0.1, "accent")
+        top = flat_roof(mesh, rect, eaves, PARAPET)
+        flat_roof(mesh, bay, bay_top - PARAPET, PARAPET, cap="accent")
+        roof_units(mesh, rect, eaves, storeys, count=2)
+        top = max(top + 2.8, bay_top)
+    flag(mesh, (bay_width / 2.0 + 2.5, -rect.width / 2.0 - 3.5, 0.0), 8.0)
+    return mesh, footprint(rect.length, rect.width, eaves, top + 0.5, storeys=storeys)

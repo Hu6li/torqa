@@ -92,9 +92,9 @@ pub(crate) fn build(map: &MapData, projection: &LocalProjection, road: &RoadInde
 /// Draw order: general land cover first.
 fn layer(cover: LandCover) -> u8 {
     match cover {
-        LandCover::Meadow => 0,
+        LandCover::Meadow | LandCover::Public => 0,
         LandCover::Farmland => 1,
-        LandCover::Residential | LandCover::Industrial => 2,
+        LandCover::Residential | LandCover::Industrial | LandCover::Commercial => 2,
         LandCover::Orchard => 3,
         LandCover::Forest => 4,
         LandCover::Rock => 5,
@@ -104,9 +104,12 @@ fn layer(cover: LandCover) -> u8 {
 
 fn cover_color(cover: LandCover) -> [f32; 4] {
     match cover {
-        LandCover::Meadow => [0.17, 0.21, 0.17, 1.0],
+        // Schools' and hospitals' grounds are mostly lawns and yards.
+        LandCover::Meadow | LandCover::Public => [0.17, 0.21, 0.17, 1.0],
         LandCover::Farmland => [0.21, 0.21, 0.17, 1.0],
-        LandCover::Residential | LandCover::Industrial => [0.20, 0.20, 0.22, 1.0],
+        LandCover::Residential | LandCover::Industrial | LandCover::Commercial => {
+            [0.20, 0.20, 0.22, 1.0]
+        }
         LandCover::Orchard => [0.18, 0.22, 0.16, 1.0],
         LandCover::Forest => [0.12, 0.20, 0.14, 1.0],
         LandCover::Rock => [0.25, 0.25, 0.25, 1.0],

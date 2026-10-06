@@ -1,7 +1,7 @@
 shader_type spatial;
 // Building shells (R45, ADR 0011): buildings drawn by the world itself — far away, and up close
 // where no model fits. Flat palette colours, faceted, with clean window rectangles and nothing
-// finer. Each surface's style arrives in the vertex colour's alpha as code / 10 and its colour in
+// finer. Each surface's style arrives in the vertex colour's alpha as code / 11 and its colour in
 // RGB (sRGB); the codes are those of `Style` in core/torqa-world/src/buildings/parts.rs. Walls
 // carry metres along the wall and above the ground in UV, roofs metres along the eaves and up
 // the slope, single windows 0–1 across. Windows give way to their average colour where they
@@ -25,6 +25,7 @@ const int TILES = 7;
 const int SHEET = 8;
 const int FLAT = 9;
 const int SHOP = 10;
+const int RIBBON = 11;
 
 // 1 inside [from, to], edges softened over `soft`.
 float band(float x, float from, float to, float soft) {
@@ -37,7 +38,7 @@ vec3 to_linear(vec3 srgb) {
 
 void fragment() {
 	NORMAL = normalize(cross(dFdy(VERTEX), dFdx(VERTEX)));
-	int style = int(round(COLOR.a * 10.0));
+	int style = int(round(COLOR.a * 11.0));
 	vec3 base = to_linear(COLOR.rgb);
 	vec2 uv = UV;
 	float soft = max(max(fwidth(uv.x), fwidth(uv.y)) * 0.5, 1e-4);
@@ -47,7 +48,7 @@ void fragment() {
 	vec3 average = base;
 	float roughness = 0.9;
 	float specular = 0.2;
-	bool wall = style <= CLADDING;
+	bool wall = style <= CLADDING || style == RIBBON;
 
 	if (style == PLASTER || style == TIMBER) {
 		// A grid of windows from the ground floor up: a frame round the glass.
@@ -92,6 +93,17 @@ void fragment() {
 		float pane = band(in_column, 0.18, window_spacing - 0.18, soft) * band(uv.y, 0.45, 2.55, soft);
 		color = mix(base, glass, pane);
 		average = mix(base, glass, 0.55);
+		roughness = mix(0.9, 0.35, pane);
+	} else if (style == RIBBON) {
+		// Offices: a band of glass along every storey from the first floor up, framed above
+		// and below, between plain spandrels.
+		float in_row = fract(uv.y / storey) * storey;
+		float upper = step(storey, uv.y);
+		float pane = band(in_row, 0.95, 2.35, soft) * upper;
+		float casing = band(in_row, 0.85, 2.45, soft) * upper;
+		color = mix(color, frame, casing - pane);
+		color = mix(color, glass, pane);
+		average = mix(base, glass, 0.45 * upper);
 		roughness = mix(0.9, 0.35, pane);
 	} else if (style == WINDOW) {
 		// UV spans the window: a frame round the glass.

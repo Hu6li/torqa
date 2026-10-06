@@ -26,10 +26,15 @@ scripts/dev.sh sh -c 'MODELS="chalet_2_m" scripts/render-models.sh'
 - `catalogue.json` lists the models: kind, size, storeys, roof pitch and cover.
 - `kinds.py` builds each kind: `house`, `chalet`, `farmhouse` (Bernese, with the Ründi arch),
   `church` (nave, choir, tower with clocks and a needle spire or saddle roof), `chapel`
-  (with a roof turret) and `shed` (also garages).
+  (with a roof turret), `shed` (also garages), `office` (glazed ground floor, a band of glass
+  along every storey), `hotel` (balconies in every column, an entrance canopy) and `public`
+  (schools, town halls, hospitals: an entrance bay under a canopy on columns and a flag;
+  classic with a stone ground floor and a hipped roof, or modern, flat-roofed with a band of
+  colour at every floor).
 - `kit.py` holds the pieces: walls with recessed openings, windows with frames, sills and
   shutters, doors, balconies with solid balustrades, flower boxes, gable, hipped and
-  half-hipped roofs with thick edges, spires and clocks. Parts are chunky and few (ADR 0011):
+  half-hipped roofs with thick edges, flat roofs behind a parapet with a cornice, bands round
+  the walls, canopies, roof machinery, flags, spires and clocks. Parts are chunky and few (ADR 0011):
   no gutters, downpipes, rafters or glazing bars, nothing that does not show at riding
   distance.
 
@@ -41,7 +46,8 @@ The files carry no textures: each face has a material **name**, and the app give
 a flat palette colour (`buildings.*` in `app/assets/palette.json`) in
 `app/scenes/building_models.gd` and `app/shaders/building_model.gdshader`. New names need an
 entry there. Keep the models lean — a house 300–1,200 faces, a chalet or farmhouse up to about
-2,000 — since towns place thousands of them; `build.py` prints the counts.
+2,000, the rarer offices, hotels and public buildings up to about 3,000 — since towns place
+thousands of them; `build.py` prints the counts.
 
 | Name | Used for |
 |---|---|
@@ -51,6 +57,8 @@ entry there. Keep the models lean — a house 300–1,200 faces, a chalet or far
 | `frame`, `glass`, `leaded` | window frames; glass, and stained glass in churches |
 | `shutter`, `door`, `garage` | shutters (colour varies per building, some have none), doors |
 | `tiles`, `slate`, `sheet` | roofs: tiles in the building's roof colour, slate, sheet metal |
+| `roof_flat` | flat roofs (gravel) |
+| `accent` | cornices, bands, canopies, balconies and flags of offices, hotels and public buildings; the colour varies per building (their roof colour where they have a pitched roof) |
 | `metal`, `copper` | caps, finials; spires |
 | `flowers`, `leaves` | geraniums in boxes and on balconies (one colour per box) |
 | `clock` | clock dials |
@@ -68,7 +76,9 @@ Rendered with `scripts/render-models.sh` (three variants per model; colours vary
 | ![House](../docs/images/buildings/house_gable_2_m-close.jpg) | ![Apartment house](../docs/images/buildings/house_hipped_3_l-close.jpg) |
 | ![Chalet](../docs/images/buildings/chalet_3_m-close.jpg) | ![Bernese farmhouse](../docs/images/buildings/farmhouse_l-close.jpg) |
 | ![Church with needle spires](../docs/images/buildings/church_needle_l-close.jpg) | ![Churches with saddle roofs](../docs/images/buildings/church_saddle_m.jpg) |
-| ![Chapels](../docs/images/buildings/chapel_m.jpg) | |
+| ![Chapels](../docs/images/buildings/chapel_m.jpg) | ![Offices](../docs/images/buildings/office_3_m.jpg) |
+| ![Hotels](../docs/images/buildings/hotel_4_m-close.jpg) | ![Public buildings, classic](../docs/images/buildings/public_hipped_2_m.jpg) |
+| ![Public buildings, modern](../docs/images/buildings/public_flat_2_l-close.jpg) | |
 
 ## Vegetation (`vegetation/`)
 
