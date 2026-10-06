@@ -1027,3 +1027,21 @@ msgstr "Gang"
 
 msgid "Gear %d of %d"
 msgstr "Gang %d von %d"
+
+msgid "Shifter (Di2)"
+msgstr "Schalter (Di2)"
+
+msgid "Shift up"
+msgstr "Hochschalten"
+
+msgid "Shift down"
+msgstr "Runterschalten"
+
+msgid "D-Fly channel %d"
+msgstr "D-Fly-Kanal %d"
+
+msgid "None (keyboard: ↑ / ↓)"
+msgstr "Keiner (Tastatur: ↑ / ↓)"
+
+msgid "Assign buttons to D-Fly channels in E-TUBE; they shift the virtual gears"
+msgstr "Weise in E-TUBE Tasten den D-Fly-Kanälen zu; sie schalten die virtuellen Gänge"

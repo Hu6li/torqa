@@ -43,6 +43,8 @@ the electrodes) and while not connected to a watch or phone.
 | `--hr [name]` | Also connect a heart-rate strap, by name or the strongest |
 | `--fake` | The simulated trainer instead of Bluetooth, with a simulated heart rate (with `--hr`, a real strap connects instead) |
 | `--fake-power 200`, `--fake-cadence 90` | What the simulated rider pedals, in W and rpm |
+| `--controller [name]` | Also connect a Shimano Di2 shifter, by name or the strongest (e.g. `RDR9250`) |
+| `--up-channel 1`, `--down-channel 2` | The Di2 shifter's D-Fly channels that shift up and down (with `--gears`) |
 | `--scan-seconds 5` | How long to scan for the trainer and strap |
 
 Live readings are printed every second. Without a route, type a command and press Enter:

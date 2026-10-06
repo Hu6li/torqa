@@ -1,1 +1,1 @@
-doc-valid-idents = ["GDExtension", "GDScript", "OpenStreetMap", "OpenFreeMap", "OpenMapTiles", "ODbL", "AppleScript", "FFmpeg", "GoPro", "OpenBikeControl", "BikeControl", ".."]
+doc-valid-idents = ["GDExtension", "GDScript", "OpenStreetMap", "OpenFreeMap", "OpenMapTiles", "ODbL", "AppleScript", "FFmpeg", "GoPro", ".."]

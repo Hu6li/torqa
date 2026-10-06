@@ -6,6 +6,7 @@
 
 pub mod ble;
 mod bytes;
+pub mod di2;
 pub mod fake;
 pub mod ftms;
 mod handle;

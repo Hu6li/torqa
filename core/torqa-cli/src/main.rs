@@ -58,7 +58,7 @@ enum Command {
 #[derive(Args)]
 struct RideArgs {
     #[command(flatten)]
-    devices: DeviceArgs,
+    pub(crate) devices: DeviceArgs,
     /// GPX route to ride; without it or a workout, resistance is set from the keyboard.
     #[arg(long)]
     route: Option<PathBuf>,

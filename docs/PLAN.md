@@ -12,7 +12,7 @@ renders and presents. Rationale in [ADR 0001](adr/0001-stack-godot-rust.md).
 core/                      Rust workspace (tokio + tracing)
   torqa-domain/            newtype units (SI internally), profiles, plugin traits
   torqa-physics/           speed integration, grade scaling, descent modes, virtual gears
-  torqa-devices/           btleplug FTMS + HRM, fake trainer, (later) ANT+ FE-C, Click/OpenBikeControl
+  torqa-devices/           btleplug FTMS + HRM + Shimano Di2 (D-Fly), fake trainer, (later) ANT+ FE-C
   torqa-routes/            GPX import, smoothing, DEM correction, climb detection
   torqa-terrain/           elevation tiles (Mapterhorn, AWS fallback), disk cache, height lookup
   torqa-osm/               OpenStreetMap features from OpenFreeMap vector tiles, tile cache
@@ -156,10 +156,11 @@ Built in rideable steps:
 - [ ] Google Street View (user key) + Mapillary with crossfades
 
 ### Phase 7 — Extras
-- [ ] Virtual gears + Zwift Click / OpenBikeControl / keyboard:
+- [x] Virtual gears + shift inputs (R59: keyboard and Shimano Di2; no Zwift Click):
   - [x] Virtual gears on a single cog (24 gears, the road scaled for the trainer, ADR 0003)
     and the keyboard (↑ / ↓) behind `ShiftInput`; the drivetrain per rider
-  - [ ] OpenBikeControl controllers over Bluetooth (BikeControl bridges the Zwift Click)
+  - [x] Shimano Di2 over Bluetooth: buttons assigned to D-Fly channels shift up and down
+    (channels chosen in Devices & Settings), remembered and reconnected like the trainer
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
   - [x] Structured workouts (R21): ZWO, ERG/MRC and FIT workout files behind `WorkoutParser`
     (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their
