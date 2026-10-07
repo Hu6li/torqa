@@ -2484,10 +2484,13 @@ mod tests {
         path
     }
 
-    /// Calls `update` like a 60 fps frame loop until `done` returns true (or 30 s pass).
+    /// Calls `update` like a 60 fps frame loop until `done` returns true (or 120 s pass).
     fn run_until(app: &mut App, mut done: impl FnMut(&AppEvent) -> bool) -> Vec<AppEvent> {
+        // Generous wall-clock limit: an unoptimized world build under a parallel test run takes
+        // well over 30 s on some machines; the limit only has to catch a hang.
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
         let mut seen = Vec::new();
-        for _ in 0..1800 {
+        while std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(16));
             for event in app.update(Duration::from_millis(16)) {
                 let stop = done(&event);
