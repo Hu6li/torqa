@@ -86,19 +86,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
-      # cl.exe and link.exe for FFmpeg's configure (--toolchain=msvc).
-      - uses: ilammy/msvc-dev-cmd@v1
-      # FFmpeg's build needs a POSIX sh and make (MSYS2 is preinstalled) and nasm.
+      # FFmpeg's build needs a POSIX sh, make and nasm: from the runner's preinstalled MSYS2.
       - name: Install FFmpeg build tools
-        run: |
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils
-          choco install nasm --no-progress -y
-      # MSYS2 goes last on PATH so MSVC's link.exe wins over coreutils' link; Git's own sh and
-      # coreutils come out so the whole FFmpeg build uses one MSYS2 runtime (git.exe stays).
+        run: C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils nasm
+      # The MSVC environment (cl.exe, link.exe, INCLUDE, LIB) for FFmpeg's configure
+      # (--toolchain=msvc) comes from Visual Studio's own dev shell. MSYS2 goes last on PATH so
+      # MSVC's link.exe wins over coreutils' link; Git's own sh and coreutils come out so the
+      # whole FFmpeg build uses one MSYS2 runtime (git.exe stays).
       - name: Build GDExtension and CLI
         run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -property installationPath `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation `
+            -DevCmdArguments '-arch=x64 -host_arch=x64'
           $path = $env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
-          $env:PATH = (@($path) + 'C:\Program Files\NASM' + 'C:\msys64\usr\bin') -join ';'
+          $env:PATH = (@($path) + 'C:\msys64\usr\bin') -join ';'
           sh scripts/build-gdext.sh release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked

@@ -1,0 +1,6 @@
+# ffmpeg-sys-next tunes FFmpeg for the build machine (-march/-mtune=native) unless these are
+# set; empty omits both. Release builds run on CI and must run on any CPU, and MSVC's cl
+# rejects -mtune outright (D8043). FFmpeg picks its SIMD code at runtime anyway.
+[env]
+FFMPEG_MARCH = ""
+FFMPEG_MTUNE = ""
