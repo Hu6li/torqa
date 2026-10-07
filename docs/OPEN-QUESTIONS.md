@@ -15,7 +15,8 @@ Things to review or decide together. Newest first; remove entries once settled.
   old press again, so left mostly cancelled out. Now only a channel whose byte changed counts.
   Please check that each press shifts exactly one gear (a double press two, a held button
   one), and whether the very first press after connecting counts (it does only if the unit
-  lets Torqa read the buttons' state).
+  lets Torqa read the buttons' state). With #139, give a third channel (or a hold) the camera
+  or the music in Devices & Settings and check it acts at once, mid-ride and in the overlay.
 - **Gears you can feel on the flat** (gears PR): on a flat road a gear only changes the
   rolling resistance and wind coefficient sent to the KICKR; whether it honours them is
   unknown. In a free ride at a steady cadence, gear 1 should feel nearly free and gear 24

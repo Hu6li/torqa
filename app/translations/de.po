@@ -1109,5 +1109,29 @@ msgstr "D-Fly-Kanal %d"
 msgid "None (keyboard: ↑ / ↓)"
 msgstr "Keiner (Tastatur: ↑ / ↓)"
 
-msgid "Assign buttons to D-Fly channels in E-TUBE; they shift the virtual gears"
-msgstr "Weise in E-TUBE Tasten den D-Fly-Kanälen zu; sie schalten die virtuellen Gänge"
+msgid "Assign buttons to D-Fly channels in E-TUBE, then choose here what each press does"
+msgstr "Weise in E-TUBE Tasten den D-Fly-Kanälen zu und wähle hier, was jeder Druck bewirkt"
+
+msgid "Press"
+msgstr "Drücken"
+
+msgid "Hold"
+msgstr "Halten"
+
+msgid "Double press"
+msgstr "Doppelt drücken"
+
+msgid "Nothing"
+msgstr "Nichts"
+
+msgid "Shift up two gears"
+msgstr "Zwei Gänge hochschalten"
+
+msgid "Shift down two gears"
+msgstr "Zwei Gänge runterschalten"
+
+msgid "Next camera"
+msgstr "Nächste Kamera"
+
+msgid "Overlay on / off"
+msgstr "Overlay ein / aus"

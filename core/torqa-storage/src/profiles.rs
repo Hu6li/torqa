@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use torqa_domain::profile::{Avatar, Drivetrain, Profile, UnitSystem};
+use torqa_domain::shifting::{ButtonAction, ButtonMap, Control, Press};
 use torqa_domain::units::{BeatsPerMinute, Kilograms, Watts};
 
 const PROFILES: &str = "profiles";
@@ -159,13 +160,111 @@ struct Settings {
     heart_rate: Option<RememberedDevice>,
     /// The controller (shifter) connected last.
     controller: Option<RememberedDevice>,
-    /// The D-Fly channels of a Di2 shifter that shift up and down (R7).
+    /// What the Di2 shifter's buttons do (#139).
+    buttons: Option<ButtonsFile>,
+    /// The D-Fly channels that shifted up and down before buttons could be given other
+    /// controls; they shift until [`Settings::buttons`] is saved.
     shift_up_channel: Option<u8>,
     shift_down_channel: Option<u8>,
     /// How detailed the 3D world is drawn on this computer (R43).
     graphics_quality: Option<GraphicsQuality>,
     /// Where the overlay was last on screen (R55).
     overlay: Option<OverlayWindow>,
+}
+
+/// What the Di2 shifter's buttons do (#139): for each D-Fly channel, the action of each kind
+/// of press by name. A press left out, or with an unknown action, does nothing.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+#[allow(clippy::struct_field_names)] // the D-Fly channels, named as the rider reads them in the file
+struct ButtonsFile {
+    channel_1: PressesFile,
+    channel_2: PressesFile,
+    channel_3: PressesFile,
+    channel_4: PressesFile,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct PressesFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    press: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hold: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    double_press: Option<String>,
+}
+
+impl From<&ButtonMap> for ButtonsFile {
+    fn from(map: &ButtonMap) -> Self {
+        let channel = |button: u8| {
+            let name = |press| {
+                map.action(button, press)
+                    .map(|action| button_action_name(action).to_owned())
+            };
+            PressesFile {
+                press: name(Press::Short),
+                hold: name(Press::Long),
+                double_press: name(Press::Double),
+            }
+        };
+        Self {
+            channel_1: channel(1),
+            channel_2: channel(2),
+            channel_3: channel(3),
+            channel_4: channel(4),
+        }
+    }
+}
+
+impl ButtonsFile {
+    fn map(&self) -> ButtonMap {
+        let mut map = ButtonMap::NONE;
+        let channels = [
+            &self.channel_1,
+            &self.channel_2,
+            &self.channel_3,
+            &self.channel_4,
+        ];
+        for (button, presses) in (1..).zip(channels) {
+            for (press, name) in [
+                (Press::Short, &presses.press),
+                (Press::Long, &presses.hold),
+                (Press::Double, &presses.double_press),
+            ] {
+                map.assign(
+                    button,
+                    press,
+                    name.as_deref().and_then(button_action_from_name),
+                );
+            }
+        }
+        map
+    }
+}
+
+/// The name of a button's `action` (#139), in the settings file and for the front end.
+#[must_use]
+pub fn button_action_name(action: ButtonAction) -> &'static str {
+    match action {
+        ButtonAction::ShiftUp => "shift_up",
+        ButtonAction::ShiftDown => "shift_down",
+        ButtonAction::ShiftUpTwo => "shift_up_two",
+        ButtonAction::ShiftDownTwo => "shift_down_two",
+        ButtonAction::Control(Control::NextCamera) => "next_camera",
+        ButtonAction::Control(Control::Overlay) => "overlay",
+        ButtonAction::Control(Control::PlayPause) => "play_pause",
+        ButtonAction::Control(Control::NextTrack) => "next_track",
+        ButtonAction::Control(Control::PreviousTrack) => "previous_track",
+    }
+}
+
+/// The button action called `name`, if any.
+#[must_use]
+pub fn button_action_from_name(name: &str) -> Option<ButtonAction> {
+    ButtonAction::ALL
+        .into_iter()
+        .find(|&action| button_action_name(action) == name)
 }
 
 /// Where the overlay window is on screen (R55), in screen pixels, and how large it draws.
@@ -373,24 +472,31 @@ pub fn remember_device(
     save_settings(data_dir, &settings)
 }
 
-/// The D-Fly channels (1–4) whose buttons shift up and down; 1 and 2 until chosen.
+/// What the Di2 shifter's buttons do (#139); until that is saved, the channels chosen before
+/// shift up and down (1 and 2 if none were).
 #[must_use]
-pub fn shift_channels(data_dir: &Path) -> (u8, u8) {
+pub fn button_map(data_dir: &Path) -> ButtonMap {
     let settings = settings(data_dir);
-    (
-        settings.shift_up_channel.unwrap_or(1),
-        settings.shift_down_channel.unwrap_or(2),
+    settings.buttons.map_or_else(
+        || {
+            ButtonMap::shifting(
+                settings.shift_up_channel.unwrap_or(1),
+                settings.shift_down_channel.unwrap_or(2),
+            )
+        },
+        |buttons| buttons.map(),
     )
 }
 
-/// Remembers which D-Fly channels shift up and down.
+/// Remembers what the Di2 shifter's buttons do.
 ///
 /// # Errors
 /// On file system errors.
-pub fn set_shift_channels(data_dir: &Path, up: u8, down: u8) -> Result<(), ProfileError> {
+pub fn set_button_map(data_dir: &Path, map: &ButtonMap) -> Result<(), ProfileError> {
     let mut settings = settings(data_dir);
-    settings.shift_up_channel = Some(up);
-    settings.shift_down_channel = Some(down);
+    settings.buttons = Some(ButtonsFile::from(map));
+    settings.shift_up_channel = None;
+    settings.shift_down_channel = None;
     save_settings(data_dir, &settings)
 }
 
@@ -506,13 +612,61 @@ mod tests {
     }
 
     #[test]
-    fn shift_channels_default_to_one_and_two() {
-        let dir = temp_dir("channels");
-        assert_eq!(shift_channels(&dir), (1, 2));
+    fn buttons_shift_on_the_channels_chosen_before_they_could_be_assigned() {
+        let dir = temp_dir("buttons-before");
+        assert_eq!(button_map(&dir), ButtonMap::shifting(1, 2));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            "shift_up_channel = 2\nshift_down_channel = 1\n",
+        )
+        .unwrap();
 
-        set_shift_channels(&dir, 3, 4).unwrap();
+        assert_eq!(button_map(&dir), ButtonMap::shifting(2, 1));
+    }
 
-        assert_eq!(shift_channels(&dir), (3, 4));
+    #[test]
+    fn assigned_buttons_are_kept_by_name() {
+        let dir = temp_dir("buttons");
+        set_graphics_quality(&dir, GraphicsQuality::High).unwrap();
+        let mut map = ButtonMap::shifting(2, 1);
+        map.assign(
+            3,
+            Press::Long,
+            Some(ButtonAction::Control(Control::NextCamera)),
+        );
+        map.assign(1, Press::Double, None);
+
+        set_button_map(&dir, &map).unwrap();
+
+        assert_eq!(button_map(&dir), map);
+        assert_eq!(graphics_quality(&dir), GraphicsQuality::High);
+        let text = std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap();
+        assert!(text.contains(r#"hold = "next_camera""#), "{text}");
+        assert!(!text.contains("shift_up_channel"), "{text}");
+    }
+
+    #[test]
+    fn every_button_action_has_its_own_name_and_unknown_names_do_nothing() {
+        for action in ButtonAction::ALL {
+            assert_eq!(
+                button_action_from_name(button_action_name(action)),
+                Some(action)
+            );
+        }
+        let dir = temp_dir("buttons-unknown");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            "[buttons.channel_1]\npress = \"launch\"\nhold = \"shift_up\"\n",
+        )
+        .unwrap();
+
+        let map = button_map(&dir);
+
+        assert_eq!(map.action(1, Press::Short), None);
+        assert_eq!(map.action(1, Press::Long), Some(ButtonAction::ShiftUp));
+        assert_eq!(map.action(2, Press::Short), None, "not shifting any more");
     }
 
     #[test]

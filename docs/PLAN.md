@@ -161,6 +161,8 @@ Built in rideable steps:
     and the keyboard (↑ / ↓) behind `ShiftInput`; the drivetrain per rider
   - [x] Shimano Di2 over Bluetooth: buttons assigned to D-Fly channels shift up and down
     (channels chosen in Devices & Settings), remembered and reconnected like the trainer
+  - [x] Di2 buttons assignable (#139): each channel's press, hold and double press shift one
+    or two gears, or work the camera, the overlay or the music
 - [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
   - [x] Structured workouts (R21): ZWO, ERG/MRC and FIT workout files behind `WorkoutParser`
     (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their

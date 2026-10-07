@@ -3,9 +3,9 @@
 use std::future::Future;
 use std::time::Duration;
 
-use crate::di2::ButtonPress;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use torqa_domain::shifting::ButtonPress;
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
 
 /// Something a device reports while it is running.
