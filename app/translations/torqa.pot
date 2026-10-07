@@ -39,7 +39,7 @@ msgstr ""
 msgid "%s behind"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:25 app/scenes/ride_screen.gd:636
+#: app/scenes/devices_tab.gd:31 app/scenes/ride_screen.gd:636
 msgid "%s connected"
 msgstr ""
 
@@ -423,7 +423,7 @@ msgstr ""
 msgid "Done! Cool down easy"
 msgstr ""
 
-#: app/scenes/overlay_hud.gd:42
+#: app/scenes/overlay_hud.gd:45
 msgid "Drag to move the overlay"
 msgstr ""
 
@@ -603,7 +603,7 @@ msgstr ""
 msgid "Hazy"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:78 app/scenes/history_screen.gd:173 app/scenes/ride_screen.gd:414 app/ui/workout_options.gd:41 app/ui/workout_options.gd:65 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:81
+#: app/scenes/devices_tab.gd:92 app/scenes/history_screen.gd:173 app/scenes/ride_screen.gd:414 app/ui/workout_options.gd:45 app/ui/workout_options.gd:74 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:81
 msgid "Heart rate"
 msgstr ""
 
@@ -951,7 +951,7 @@ msgstr ""
 msgid "Position on the route"
 msgstr ""
 
-#: app/scenes/history_screen.gd:172 app/scenes/ride_screen.gd:414 app/ui/workout_editor.gd:346 app/ui/workout_options.gd:63 core/torqa-app/src/hud.rs:65
+#: app/scenes/history_screen.gd:172 app/scenes/ride_screen.gd:414 app/ui/workout_editor.gd:346 app/ui/workout_options.gd:72 core/torqa-app/src/hud.rs:65
 msgid "Power"
 msgstr ""
 
@@ -1287,7 +1287,7 @@ msgstr ""
 msgid "Twice 8 minutes all out, 10 easy between. FTP: 90 % of their average."
 msgstr ""
 
-#: app/scenes/devices_tab.gd:153
+#: app/scenes/devices_tab.gd:202
 msgid "Ultra"
 msgstr ""
 
