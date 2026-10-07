@@ -57,30 +57,39 @@ jobs:
       IMAGE: ${{ needs.image.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-      # The build directory and the crate registry carry over between runs, as the devcontainer's
-      # volumes do for a developer: a cold build (FFmpeg from source and the whole workspace)
-      # takes about 20 minutes, a warm one a fraction of that. The Dockerfile is in the key, as
-      # it pins the Rust toolchain that built what is cached.
-      - uses: Swatinem/rust-cache@v2
+      # The build directory, the crate registry and Godot's imports carry over between runs, as
+      # the devcontainer's volumes do for a developer: a cold build (FFmpeg from source and the
+      # whole workspace) takes about 20 minutes, a warm one a fraction of that. The key is what
+      # decides the build: the toolchain (the Dockerfile) and the dependencies (the lock file);
+      # not the runner's own Rust, which rust-cache would mix in and which varies between
+      # runner images. Only a changed key saves: the dependencies are what is worth keeping.
+      - uses: actions/cache@v4
         with:
-          workspaces: core
-          key: ${{ hashFiles('.devcontainer/Dockerfile') }}
-          cache-directories: app/.godot
+          path: |
+            ~/.cargo/registry
+            core/target
+            app/.godot
+          key: checks-${{ hashFiles('.devcontainer/Dockerfile') }}-${{ hashFiles('core/Cargo.lock', '.cargo/config.toml') }}
+          restore-keys: |
+            checks-${{ hashFiles('.devcontainer/Dockerfile') }}-
       - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
           docker pull "$IMAGE" || docker build -t "$IMAGE" .devcontainer
+      # Without incremental compilation: a run compiles each changed crate once, and the build
+      # directory stays small enough to cache.
       - name: fmt, clippy, test, deny, gdlint in the dev container
         run: |
           mkdir -p ~/.cargo/registry core/target app/.godot
           docker run --rm \
+            -e CARGO_INCREMENTAL=0 \
             -v "$PWD:/workspaces/torqa" \
             -v "$HOME/.cargo/registry:/usr/local/cargo/registry" \
             -w /workspaces/torqa \
             "$IMAGE" scripts/check.sh
-      # The container runs as root; the cache step must be able to prune what it saves.
+      # The container runs as root; the cache step must be able to read what it saves.
       - name: Hand the build directory back to the runner's user
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" core/target app/.godot ~/.cargo/registry
