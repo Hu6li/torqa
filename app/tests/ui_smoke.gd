@@ -577,6 +577,8 @@ func _overlay() -> void:
 		"the window as it was"
 	)
 	_check(window.content_scale_size == scale_before, "the scale as it was")
+	# Leaving resizes the window; that must not bring the overlay's outline back (#123).
+	_check(window.mouse_passthrough_polygon.is_empty(), "every click is the app's again")
 	var torqa: TorqaApp = main.get_node("Torqa")
 	_check(torqa.overlay_window().size != Vector2i.ZERO, "the overlay's place is remembered")
 	main.free()
