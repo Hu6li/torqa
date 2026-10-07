@@ -42,8 +42,8 @@ impl Channels {
         )
     }
 
-    /// The shifts `presses` ask for: a short or long press one gear (a held button repeats),
-    /// a double press two; other channels shift nothing.
+    /// The shifts `presses` ask for: a short or long press one gear, a double press two; other
+    /// channels shift nothing.
     #[must_use]
     pub fn shifts(&self, presses: &[ButtonPress]) -> Vec<Shift> {
         let (up, down) = self.get();

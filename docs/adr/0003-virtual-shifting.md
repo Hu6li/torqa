@@ -46,7 +46,11 @@ Implemented in `torqa_physics::VirtualGears`:
   app, `u` / `d` in the CLI) and **Shimano Di2** (R59): the 12-speed Di2 or the EW-WU111
   wireless unit indicates presses of the buttons assigned to D-Fly channels (service
   `0x18EF`, characteristic `0x2AC2` in Shimano's own UUID base; `[counter, ch1…ch4]`, flags
-  for short, long and double presses). Two channels, chosen by the rider, shift up and down.
+  for short, long and double presses). Each channel's byte keeps its last press until the
+  next one (only a long press is released), so a press is a channel whose byte changed, not
+  every flagged channel of a new indication — on a real RD-R8150 that miscounted presses on
+  the other channel. Two channels, chosen by the rider, shift up and down; a press shifts one
+  gear however long it is held, a double press two.
   The Zwift Click is not supported: its protocol is encrypted, the v2 must be unlocked in
   Zwift each day, and the bridge app that offers it (BikeControl) needs a paid subscription.
 - In ERG (workouts) the trainer holds the power in any gear.

@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use btleplug::api::bleuuid::uuid_from_u16;
 use btleplug::api::{
-    Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
-    ValueNotification, WriteType,
+    Central, CentralEvent, CharPropFlags, Characteristic, Manager as _, Peripheral as _,
+    ScanFilter, ValueNotification, WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
@@ -213,8 +213,20 @@ impl Driver {
                             && c.uuid.to_string().starts_with(di2::BUTTONS_PREFIX)
                     })
                     .ok_or(DeviceError::MissingService(di2::SERVICE))?;
-                peripheral.subscribe(&buttons).await?;
                 self.buttons = di2::Buttons::default();
+                // Otherwise the first press after connecting only shows where the channels stand.
+                if buttons.properties.contains(CharPropFlags::READ) {
+                    let name = &self.device.name;
+                    match peripheral.read(&buttons).await {
+                        Ok(value) => {
+                            if let Err(error) = self.buttons.start_from(&value) {
+                                debug!(device = %name, %error, "unreadable D-Fly buttons");
+                            }
+                        }
+                        Err(error) => debug!(device = %name, %error, "cannot read D-Fly buttons"),
+                    }
+                }
+                peripheral.subscribe(&buttons).await?;
                 None
             }
         };
@@ -315,6 +327,7 @@ impl Driver {
                 ..Telemetry::default()
             }))
         } else if uuid.to_string().starts_with(di2::BUTTONS_PREFIX) {
+            debug!(device = %name, ?value, "D-Fly buttons");
             let presses = self
                 .buttons
                 .presses(value)

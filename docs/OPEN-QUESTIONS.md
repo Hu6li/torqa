@@ -10,13 +10,16 @@ Things to review or decide together. Newest first; remove entries once settled.
   The controller is tuned on simulated hearts (settles in 5–10 min, no overshoot, at most
   30 W a minute); how much power a beat is worth comes from your FTP and maximum heart rate.
   Tell me if it swings around the target, takes too long, or ramps too fast for comfort.
-- **Shimano Di2 shifting** (Di2 PR): built from the community's description of the D-Fly
-  protocol (no Shimano spec, no code reused), untested on a real unit. Please assign two hood
-  buttons to D-Fly channels in E-TUBE, scan in Devices & Settings, choose the shifter and its
-  channels, and ride with virtual gears. The unit must be **paired**: macOS should ask the
-  first time Torqa subscribes; if no presses arrive, pair it in the system Bluetooth settings.
-  Tell me what a long press does on yours (I shift one gear per indication, so if the unit
-  repeats while held it keeps shifting) and whether double presses come through.
+- **Shimano Di2 shifting** (Di2 fix PR): on your RD-R8150 presses were miscounted — the
+  unit keeps each channel's last press in its byte, and Torqa counted the other channel's
+  old press again, so left mostly cancelled out. Now only a channel whose byte changed counts.
+  Please check that each press shifts exactly one gear (a double press two, a held button
+  one), and whether the very first press after connecting counts (it does only if the unit
+  lets Torqa read the buttons' state).
+- **Gears you can feel on the flat** (gears PR): on a flat road a gear only changes the
+  rolling resistance and wind coefficient sent to the KICKR; whether it honours them is
+  unknown. In a free ride at a steady cadence, gear 1 should feel nearly free and gear 24
+  hard; if they feel alike, I would send the whole gear as grade instead.
 - **Overlay on the Mac** (overlay PR): please try moving it by its bar, resizing it by the
   corner grip, clicking beside it (should reach the window below), and whether it stays on top
   of a browser playing a video while Torqa is not the active app. **Full view** should bring
