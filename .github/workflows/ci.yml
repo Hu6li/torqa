@@ -105,6 +105,13 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive core/target/release/torqa-cli.exe dist/torqa-cli-windows-x86_64.zip
+      # Cargo only shows configure's summary; the cause of a failed FFmpeg build is in its log.
+      - name: Show FFmpeg configure log
+        if: failure()
+        run: |
+          Get-ChildItem core/target -Recurse -Filter config.log -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'ffbuild' } |
+            ForEach-Object { Write-Output "== $($_.FullName)"; Get-Content $_.FullName -Tail 80 }
       - name: Install Godot and export templates
         run: |
           $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
