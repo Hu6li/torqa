@@ -20,9 +20,9 @@ ride ([overlay.md](overlay.md)).
 
 - **Ride**: camera (chase, first person, drone), trainer difficulty, descents ridden like flat
   roads, time of day and weather — the same options as on the course page. Mornings bring
-  fog lying in the valleys, which you climb out of; haze and rain thicken it. In rain, faceted
-  drops fall, roads and streets turn darker with a soft sheen, and puddles stand where they are
-  level.
+  fog lying in the valleys below you, never around you; haze and rain thicken it, and the
+  distance is a little hazier in low sun. In rain, faceted drops fall, roads and streets turn
+  darker with a soft sheen, and puddles stand where they are level.
 - **Workout** (in workouts): change what the workout asks for ([workouts.md](workouts.md)).
 - **HUD**: arrange your figures (see [hud.md](hud.md)).
 - **Finish & save** ends the ride, saves it and shows its summary (name it there; see
