@@ -16,6 +16,19 @@ xattr -d com.apple.quarantine torqa-cli   # unsigned binary
 On first use macOS asks whether your terminal app may use Bluetooth — allow it
 (System Settings → Privacy & Security → Bluetooth).
 
+## Install (Linux)
+
+Download `torqa-cli-linux-x86_64.tar.gz` (or `-arm64`) from a CI run, then:
+
+```sh
+tar -xzf torqa-cli-linux-x86_64.tar.gz
+./torqa-cli --help
+```
+
+It runs on distributions with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+). Bluetooth goes
+through BlueZ, so its service must be running (`systemctl status bluetooth`) and the adapter
+powered on (`bluetoothctl power on`).
+
 ## Find devices
 
 ```sh

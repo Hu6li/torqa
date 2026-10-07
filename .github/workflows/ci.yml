@@ -157,3 +157,84 @@ jobs:
         with:
           path: dist/torqa-cli-windows-x86_64.zip
           archive: false
+
+  linux:
+    name: Linux app (${{ matrix.arch }})
+    # Built on the oldest supported runner rather than in the dev container (Debian 13): the
+    # binaries need the glibc they were linked against or newer, so 22.04's lets them run on
+    # Ubuntu 22.04+, Debian 12+ and their peers (ADR 0012).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            preset: Linux
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            preset: Linux arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      # The dev container's build packages: BlueZ's D-Bus for btleplug, libclang and nasm for
+      # FFmpeg (ADR 0010), fontconfig for headless Godot.
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libdbus-1-dev pkg-config libclang-dev nasm libfontconfig1
+      - name: Build GDExtension
+        run: scripts/build-gdext.sh release
+      - name: Build CLI
+        run: |
+          cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
+          mkdir -p dist
+          # Artifacts drop the executable bit; a tarball keeps it.
+          tar -czf "dist/torqa-cli-linux-${{ matrix.arch }}.tar.gz" -C core/target/release torqa-cli
+      - name: Install Godot and export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.${{ matrix.arch }}.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.${{ matrix.arch }}" godot
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          templates_dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$templates_dir"
+          unzip -q -j templates.tpz "templates/linux_release.${{ matrix.arch }}" \
+            "templates/version.txt" -d "$templates_dir"
+      - name: Export app
+        run: |
+          ./godot --headless --path app --import
+          mkdir -p dist/Torqa
+          ./godot --headless --path app --export-release "${{ matrix.preset }}" \
+            "$PWD/dist/Torqa/Torqa.${{ matrix.arch }}"
+          test -x "dist/Torqa/Torqa.${{ matrix.arch }}"
+          test -s dist/Torqa/libtorqa_gd.so
+          tar -czf "dist/Torqa-linux-${{ matrix.arch }}.tar.gz" -C dist Torqa
+      # The exported app itself, not the editor: it must start, load the extension and run the
+      # main scene without errors on the oldest glibc it is built for.
+      - name: Smoke test the exported app
+        run: |
+          output="$(dist/Torqa/Torqa.${{ matrix.arch }} --headless --quit-after 10 2>&1)"
+          echo "$output"
+          if echo "$output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
+            echo "Torqa reported errors" >&2
+            exit 1
+          fi
+          echo "$output" | grep -q "^Torqa "
+          core/target/release/torqa-cli --help >/dev/null
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Torqa-linux-${{ matrix.arch }}.tar.gz
+          archive: false
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/torqa-cli-linux-${{ matrix.arch }}.tar.gz
+          archive: false
