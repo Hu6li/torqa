@@ -1,13 +1,16 @@
 class_name WorkoutChart
 extends Control
 ## A structured workout's steps over time (R21): each step's power as a block, coloured by its
-## power zone, free steps as low grey blocks. During the workout the part done is dimmed.
+## power zone, free steps as low grey blocks, and an FTP test's all-out parts (#125) to the
+## top. During the workout the part done is dimmed.
 
 ## Upper bounds of power zones 1–6 as a share of FTP (Coggan), as in the core's profile.
 const ZONE_BOUNDS: Array[float] = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50]
 const FREE_COLOR: Color = Color(1, 1, 1, 0.12)
 ## Free steps show at this share of FTP: low, as they ask nothing.
 const FREE_SHARE: float = 0.3
+## All-out parts ask everything the rider has, but no set power: see-through.
+const ALL_OUT_ALPHA: float = 0.55
 const DONE_SHADE: Color = Color(0, 0, 0, 0.45)
 
 ## Time into the workout, in seconds; the part before it is dimmed. Negative: none.
@@ -60,6 +63,11 @@ func _draw() -> void:
 			from_w = step["from_w"]
 			to_w = step["to_w"]
 			color = _zone_color((from_w + to_w) / 2.0)
+		elif step.get("all_out", false):
+			from_w = top
+			to_w = top
+			color = _zone_color(top)
+			color.a = ALL_OUT_ALPHA
 		var bottom: float = size.y
 		draw_colored_polygon(
 			PackedVector2Array(

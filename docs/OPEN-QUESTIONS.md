@@ -45,6 +45,11 @@ Things to review or decide together. Newest first; remove entries once settled.
 - **FTP test** (R22 PR): a ramp test (as Zwift's and TrainerRoad's) rather than 20 minutes all
   out — shorter and needs no pacing. It ends when the cadence stays below 50 rpm for 10 s; with
   the KICKR in ERG that is when your legs give way. Steps are 6 % of your FTP a minute.
+- **FTP test modes** (#125 PR): the 20-minute and 2 × 8-minute tests follow radmarkt.com. Its
+  ranges became single values (warm-up 50 → 65 % then 72 %, easy parts 45 %, cool-down 40 %).
+  The article gives no rest between the 8-minute efforts; it is 10 minutes, as in the usual
+  (CTS) protocol. The all-out parts, including the activation's last minute, ride like a flat
+  road (no ERG), paced with gears.
 
 - **Virtual gears** (gears PR): 24 gears from 0.75 to 5.5 (my own table, not Zwift's), 9 %
   apart; ↑ / ↓ shift. Tell me if the steps feel too big or small on the KICKR, or if you would

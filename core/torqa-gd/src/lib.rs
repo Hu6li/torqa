@@ -26,7 +26,7 @@ use torqa_domain::units::{
 use torqa_domain::workout::{Cue, Intensity, Plan, Step, Target};
 use torqa_physics::{DescentMode, lean_angle};
 use torqa_routes::{ElevationSource, LocalProjection};
-use torqa_session::workout::{HeartRateHold, RampTest, Workout};
+use torqa_session::workout::{EffortTest, HeartRateHold, RampTest, Workout};
 
 mod log;
 
@@ -776,9 +776,10 @@ impl TorqaApp {
     }
 
     /// Starts a workout (R56, R21) as the active rider: `{kind, power_w, zone, bpm, min_w,
-    /// max_w, id, name}` with `kind` one of `power` (hold `power_w`), `zone` (hold the middle of
-    /// heart-rate zone `zone`, 1–5), `bpm` (hold `bpm`) — the heart-rate ones between `min_w`
-    /// and `max_w` — or `plan` (the structured workout `id` from `workouts()`). On the loaded
+    /// max_w, id, test, name}` with `kind` one of `power` (hold `power_w`), `zone` (hold the
+    /// middle of heart-rate zone `zone`, 1–5), `bpm` (hold `bpm`) — the heart-rate ones between
+    /// `min_w` and `max_w` —, `plan` (the structured workout `id` from `workouts()`) or
+    /// `ftp_test` (R22: `test` `ramp`, `twenty_minutes` or `two_by_eight`). On the loaded
     /// course in 3D if `on_course` (R58), else on its own, going into the history as `name`.
     /// Emits `failed` and returns false if it cannot start.
     #[func]
@@ -818,9 +819,10 @@ impl TorqaApp {
 
     /// The structured workouts to choose from (R21): `[{id, name, description, duration_s,
     /// builtin, steps}]`, the built-in ones first. `steps` are `[{duration_s, from_w, to_w,
-    /// from_pct, to_pct, cadence, message}]`: power in watts for the active rider's FTP and in
-    /// percent of it (`null` in free steps), cadence `null` if none, and the first message of
-    /// the step ("" if none) — what the workout editor works with.
+    /// from_pct, to_pct, cadence, message, all_out}]`: power in watts for the active rider's FTP
+    /// and in percent of it (`null` in free steps), cadence `null` if none, and the first
+    /// message of the step ("" if none) — what the workout editor works with. `all_out` is
+    /// false here, true for the free steps of `ftp_test_steps()`.
     #[func]
     fn workouts(&self) -> VarArray {
         let Some(app) = self.app.as_ref() else {
@@ -829,43 +831,7 @@ impl TorqaApp {
         let ftp = app.profile().profile.ftp;
         let mut array = VarArray::new();
         for entry in app.workouts() {
-            let mut steps = VarArray::new();
-            let mut start = Duration::ZERO;
-            for step in &entry.plan.steps {
-                let percent = |watts: f64| (watts / ftp.0.max(1.0) * 100.0).to_variant();
-                let (from, to, from_pct, to_pct) = match step.target {
-                    Target::Power { from, to } => {
-                        let (a, b) = (from.watts(ftp).0, to.watts(ftp).0);
-                        (a.to_variant(), b.to_variant(), percent(a), percent(b))
-                    }
-                    Target::Free => (
-                        Variant::nil(),
-                        Variant::nil(),
-                        Variant::nil(),
-                        Variant::nil(),
-                    ),
-                };
-                let end = start + step.duration;
-                let message = entry
-                    .plan
-                    .cues
-                    .iter()
-                    .find(|cue| cue.at >= start && cue.at < end)
-                    .map_or("", |cue| cue.text.as_str());
-                steps.push(
-                    &vdict! {
-                        "duration_s" => step.duration.as_secs_f64(),
-                        "from_w" => &from,
-                        "to_w" => &to,
-                        "from_pct" => &from_pct,
-                        "to_pct" => &to_pct,
-                        "cadence" => &step.cadence.map_or_else(Variant::nil, |c| c.0.to_variant()),
-                        "message" => message,
-                    }
-                    .to_variant(),
-                );
-                start = end;
-            }
+            let steps = plan_steps(&entry.plan, ftp, false);
             array.push(
                 &vdict! {
                     "id" => entry.id.as_str(),
@@ -881,26 +847,34 @@ impl TorqaApp {
         array
     }
 
-    /// The FTP test (R22) as the active rider would ride it, for a preview: its steps as in
-    /// `workouts()`, up to 150 % of their FTP (it goes on until they give way).
+    /// An FTP test (R22) as the active rider would ride it, for a preview: `test` as in
+    /// `start_workout()`, its steps as in `workouts()`. The ramp test's go up to 150 % of the
+    /// rider's FTP: it goes on until they give way.
     #[func]
-    fn ftp_test_steps(&self) -> VarArray {
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn ftp_test_steps(&self, test: GString) -> VarArray {
         let Some(app) = self.app.as_ref() else {
             return VarArray::new();
         };
         let ftp = app.profile().profile.ftp;
-        let test = RampTest::for_ftp(ftp);
-        let step = |seconds: f64, watts: f64| {
-            vdict! { "duration_s" => seconds, "from_w" => watts, "to_w" => watts }.to_variant()
-        };
-        let mut steps = VarArray::new();
-        steps.push(&step(test.warm_up.as_secs_f64(), test.warm_up_power.0));
-        let mut watts = test.start.0;
-        while watts <= ftp.0 * 1.5 {
-            steps.push(&step(test.step_duration.as_secs_f64(), watts));
-            watts += test.step.0;
+        match ftp_test(&test.to_string(), ftp) {
+            Workout::EffortTest(test) => plan_steps(&test.plan, test.ftp, true),
+            Workout::RampTest(test) => {
+                let step = |seconds: f64, watts: f64| {
+                    vdict! { "duration_s" => seconds, "from_w" => watts, "to_w" => watts }
+                        .to_variant()
+                };
+                let mut steps = VarArray::new();
+                steps.push(&step(test.warm_up.as_secs_f64(), test.warm_up_power.0));
+                let mut watts = test.start.0;
+                while watts <= ftp.0 * 1.5 {
+                    steps.push(&step(test.step_duration.as_secs_f64(), watts));
+                    watts += test.step.0;
+                }
+                steps
+            }
+            _ => VarArray::new(),
         }
-        steps
     }
 
     /// Makes `watts` the active rider's FTP, e.g. from an FTP test; false (and `failed`) if
@@ -1281,7 +1255,8 @@ impl TorqaApp {
     /// `workout` is `{target_power_w, target_heart_rate, progress}` in a workout, else `null`:
     /// the power `null` in a free step, the heart rate `null` but in a heart-rate hold, and
     /// `progress` of a structured workout `{step, steps, step_left_s, left_s, cadence, next:
-    /// {power_w, duration_s}, cue}` (`next` `null` in the last step), else `null`. `x`/`y` are metres east/north of the route start, as in
+    /// {power_w, duration_s, all_out}, cue, all_out}` (`next` `null` in the last step; `all_out`
+    /// in the free steps of an FTP test), else `null`. `x`/`y` are metres east/north of the route start, as in
     /// `track()`; `heading` is the direction of travel in radians clockwise from north,
     /// `curvature` how sharply the road bends there (1 / radius, positive to the right).
     #[func]
@@ -1778,10 +1753,12 @@ fn workout_state(w: &torqa_session::workout::WorkoutState) -> Variant {
                     vdict! {
                         "power_w" => &optional(n.power.map(|w| w.0)),
                         "duration_s" => n.duration.as_secs_f64(),
+                        "all_out" => n.all_out,
                     }
                     .to_variant()
                 }),
                 "cue" => p.cue.as_deref().unwrap_or_default(),
+                "all_out" => p.all_out,
             }
             .to_variant()
         }),
@@ -1873,7 +1850,14 @@ fn workout_from(workout: &VarDictionary, profile: &Profile) -> Workout {
             let zone = number("zone").clamp(1.0, 5.0) as u8;
             Workout::HeartRate(HeartRateHold::zone(profile, zone, min, max))
         }
-        "ftp_test" => Workout::RampTest(RampTest::for_ftp(profile.ftp)),
+        "ftp_test" => {
+            let test = workout
+                .get("test")
+                .and_then(|v| v.try_to::<GString>().ok())
+                .map(|t| t.to_string())
+                .unwrap_or_default();
+            ftp_test(&test, profile.ftp)
+        }
         "bpm" => Workout::HeartRate(HeartRateHold::bpm(
             profile,
             BeatsPerMinute(number("bpm")),
@@ -1882,6 +1866,59 @@ fn workout_from(workout: &VarDictionary, profile: &Profile) -> Workout {
         )),
         _ => Workout::ConstantPower(Watts(number("power_w"))),
     }
+}
+
+/// The FTP test (R22) called `test` for a rider with `ftp`: `twenty_minutes` or
+/// `two_by_eight` (#125), else the ramp test.
+fn ftp_test(test: &str, ftp: Watts) -> Workout {
+    match test {
+        "twenty_minutes" => Workout::EffortTest(EffortTest::twenty_minutes(ftp)),
+        "two_by_eight" => Workout::EffortTest(EffortTest::two_by_eight(ftp)),
+        _ => Workout::RampTest(RampTest::for_ftp(ftp)),
+    }
+}
+
+/// A plan's steps for the front end, as `workouts()` lists them, for a rider with `ftp`; in an
+/// FTP test (`test`) the free steps are marked `all_out`.
+fn plan_steps(plan: &Plan, ftp: Watts, test: bool) -> VarArray {
+    let mut steps = VarArray::new();
+    let mut start = Duration::ZERO;
+    for step in &plan.steps {
+        let percent = |watts: f64| (watts / ftp.0.max(1.0) * 100.0).to_variant();
+        let (from, to, from_pct, to_pct) = match step.target {
+            Target::Power { from, to } => {
+                let (a, b) = (from.watts(ftp).0, to.watts(ftp).0);
+                (a.to_variant(), b.to_variant(), percent(a), percent(b))
+            }
+            Target::Free => (
+                Variant::nil(),
+                Variant::nil(),
+                Variant::nil(),
+                Variant::nil(),
+            ),
+        };
+        let end = start + step.duration;
+        let message = plan
+            .cues
+            .iter()
+            .find(|cue| cue.at >= start && cue.at < end)
+            .map_or("", |cue| cue.text.as_str());
+        steps.push(
+            &vdict! {
+                "duration_s" => step.duration.as_secs_f64(),
+                "from_w" => &from,
+                "to_w" => &to,
+                "from_pct" => &from_pct,
+                "to_pct" => &to_pct,
+                "cadence" => &step.cadence.map_or_else(Variant::nil, |c| c.0.to_variant()),
+                "message" => message,
+                "all_out" => test && step.target == Target::Free,
+            }
+            .to_variant(),
+        );
+        start = end;
+    }
+    steps
 }
 
 fn points(points: &[[f32; 2]]) -> PackedVector2Array {

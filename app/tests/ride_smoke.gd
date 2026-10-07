@@ -163,8 +163,24 @@ func _workout() -> void:
 	var test_progress: Dictionary = test["progress"]
 	var open_ended: int = test_progress["steps"]
 	_check(open_ended == 0, "the FTP test goes on until the rider gives way: %s" % test)
-	var preview: Array = _torqa.ftp_test_steps()
+	var preview: Array = _torqa.ftp_test_steps("ramp")
 	_check(preview.size() > 10, "a preview of its steps: %d" % preview.size())
+	_torqa.abort_ride()
+
+	# The 20-minute test (#125): counted steps, its 20 minutes left to the rider.
+	var twenty: Dictionary = {"kind": "ftp_test", "test": "twenty_minutes", "name": "FTP test"}
+	_check(_torqa.start_workout(twenty, false, false), "20-minute test")
+	await create_timer(1.5).timeout
+	var counted: Dictionary = _torqa.ride_state()["workout"]["progress"]
+	var counted_steps: int = counted["steps"]
+	_check(counted_steps > 10, "its steps are counted out: %s" % counted)
+	var all_out: bool = false
+	for step: Dictionary in _torqa.ftp_test_steps("twenty_minutes"):
+		var seconds: float = step["duration_s"]
+		var marked: bool = step["all_out"]
+		var free: bool = step["from_w"] == null
+		all_out = all_out or (marked and free and is_equal_approx(seconds, 1200.0))
+	_check(all_out, "20 minutes all out, without a set power")
 	_torqa.abort_ride()
 
 	# Workouts from the editor (R21): saved into the library, replaced, deleted.

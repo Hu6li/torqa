@@ -163,6 +163,7 @@ func _workout_settings() -> void:
 		"min_w": 120.0,
 		"max_w": 220.0,
 		"id": "",
+		"test": "twenty_minutes",
 	}
 	options.set_workout(wanted)
 	_check(options.workout() == wanted, "workout round trip: %s" % options.workout())
@@ -200,7 +201,13 @@ func _workout_settings() -> void:
 	_check(options.plan().is_empty(), "no plan for other kinds")
 	options.set_workout({"kind": "ftp_test"})
 	_check(options.title() == "FTP test", "the FTP test (R22): %s" % options.title())
-	_expect(_visible_captions(options), ["Workout"], "the FTP test needs no settings")
+	var test: String = options.workout()["test"]
+	_check(test == "ramp", "the ramp test unless chosen otherwise")
+	_expect(_visible_captions(options), ["Workout", "Test"], "the FTP test: only which one")
+	options.set_workout({"kind": "ftp_test", "test": "two_by_eight"})
+	test = options.workout()["test"]
+	_check(test == "two_by_eight", "another test (#125)")
+	_check(options.title() == "FTP test · 2 × 8 minutes", "named after it: %s" % options.title())
 	# The same rider keeps their values; another rider gets their own.
 	options.configure(zones, 250.0)
 	_check(_number(options.workout(), "max_w") == 230.0, "values kept for the same rider")

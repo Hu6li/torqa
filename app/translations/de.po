@@ -935,6 +935,66 @@ msgstr "%d W übernehmen"
 msgid "Warm-up  ·  %s left"
 msgstr "Einfahren  ·  noch %s"
 
+msgid "Test"
+msgstr "Test"
+
+msgid "Ramp test"
+msgstr "Rampentest"
+
+msgid "20-minute test"
+msgstr "20-Minuten-Test"
+
+msgid "2 × 8-minute test"
+msgstr "2 × 8-Minuten-Test"
+
+msgid "FTP test · 20 minutes"
+msgstr "FTP-Test · 20 Minuten"
+
+msgid "FTP test · 2 × 8 minutes"
+msgstr "FTP-Test · 2 × 8 Minuten"
+
+msgid "Warm-up and activation, then 20 minutes all out. FTP: 95 % of their average."
+msgstr "Einfahren und Aktivierung, dann 20 Minuten mit vollem Einsatz. FTP: 95 % ihres Durchschnitts."
+
+msgid "Twice 8 minutes all out, 10 easy between. FTP: 90 % of their average."
+msgstr "Zweimal 8 Minuten mit vollem Einsatz, 10 locker dazwischen. FTP: 90 % ihres Durchschnitts."
+
+msgid "All out"
+msgstr "Vollgas"
+
+msgid "Next: all out for %s"
+msgstr "Danach: Vollgas während %s"
+
+msgid "Warm-up: easy at first, then a little harder"
+msgstr "Einfahren: zuerst locker, dann etwas härter"
+
+msgid "Find the cadence you will hold in the test"
+msgstr "Finde die Trittfrequenz, die du im Test halten wirst"
+
+msgid "Activation: a minute each at 90, 100, 110 and 120 %, then one all out"
+msgstr "Aktivierung: je eine Minute mit 90, 100, 110 und 120 %, dann eine mit Vollgas"
+
+msgid "One minute all out!"
+msgstr "Eine Minute Vollgas!"
+
+msgid "Easy for 5 minutes before the test"
+msgstr "5 Minuten locker vor dem Test"
+
+msgid "20 minutes all out: start controlled, give everything in the second half"
+msgstr "20 Minuten mit vollem Einsatz: kontrolliert beginnen, in der zweiten Hälfte alles geben"
+
+msgid "8 minutes all out: as hard as you can hold to the end"
+msgstr "8 Minuten mit vollem Einsatz: so hart, wie du es bis zum Schluss halten kannst"
+
+msgid "Easy for 10 minutes"
+msgstr "10 Minuten locker"
+
+msgid "The second 8 minutes all out"
+msgstr "Die zweiten 8 Minuten mit vollem Einsatz"
+
+msgid "Done! Cool down easy"
+msgstr "Geschafft! Locker ausfahren"
+
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr "Deine FTP ist jetzt %d W: Zonen und Workouts richten sich danach."
 

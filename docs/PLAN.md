@@ -166,7 +166,8 @@ Built in rideable steps:
     (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their
     own or on a course; steps, ramps, free steps, cadence targets and messages
   - [x] FTP test (R22): a ramp test from the rider's FTP, over when the cadence gives way;
-    75 % of the best minute, kept with the ride and taken into the profile from the summary
+    75 % of the best minute, kept with the ride and taken into the profile from the summary;
+    also the 20-minute (95 %) and 2 × 8-minute (90 %) tests, all out in slope mode (#125)
   - [x] Workout editor: steps (steady, ramp, free) with duration, % of FTP, cadence and a
     message, intervals added at once, a live chart; saved as ZWO in the library
 - [ ] Uploaders, ANT+ FE-C, Windows/Linux builds

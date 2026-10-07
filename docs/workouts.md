@@ -61,20 +61,51 @@ under the workout's name; on a course you ride on freely after it until the fini
 
 ## FTP test
 
-A ramp test: after 5 minutes of warm-up at 40 % of your FTP, the power starts at half of it and
-rises by 6 % of it every minute — until you cannot hold it. Pedal at your usual cadence; when
-it stays below 50 rpm for 10 seconds, the test is over and saved (you can also finish it
-yourself from the settings). Most riders give way after 15–25 minutes in all, and it needs no
-pacing: just hold on as long as you can.
+Choose one of three tests under **Test**:
 
-![The FTP test on the Workouts tab](images/workouts/ftp-test.png)
+| Test | How it goes | Your FTP | In all |
+|---|---|---|---|
+| **Ramp test** | The power rises every minute until you give way | 75 % of your best minute | 15–25 min |
+| **20-minute test** | Warm-up and activation, then 20 minutes all out | 95 % of the 20 minutes' average | 59 min |
+| **2 × 8-minute test** | Warm-up, 8 minutes all out, 10 easy, 8 all out | 90 % of both efforts' average | 51 min |
 
-Your FTP is then **75 % of your best minute**. The summary shows it next to your current FTP,
-with a button to use it: your power zones, heart-rate holds and structured workouts follow at
-once. The estimate stays with the ride in the history.
+The summary then shows the FTP the test found next to your current FTP, with a button to use
+it: your power zones, heart-rate holds and structured workouts follow at once. The estimate
+stays with the ride in the history.
 
-The test starts from the FTP in your profile; if that is far off, the steps are too small or
-too big, but the result is still good — test again with the new value for the best steps.
+### Ramp test
+
+After 5 minutes of warm-up at 40 % of your FTP, the power starts at half of it and rises by
+6 % of it every minute, until you cannot hold it. Pedal at your usual cadence. When it stays
+below 50 rpm for 10 seconds, the test is over and saved (you can also finish it yourself from
+the settings). It needs no pacing: just hold on as long as you can. Good for beginners, after
+a break or in hard training weeks.
+
+![The ramp test on the Workouts tab](images/workouts/ftp-test.png)
+
+The test starts from the FTP in your profile. If that is far off, the steps are too small or
+too big, but the result is still good; test again with the new value for the best steps.
+
+### 20-minute and 2 × 8-minute tests
+
+The classic field tests (#125, after
+[radmarkt.com's guide](https://www.radmarkt.com/wiki-radrennen/training-und-vorbereitung/leistungsdiagnostik/ftp-test?lang=en)).
+The trainer holds the warm-up, the activation and the easy parts in ERG. During the all-out
+parts it holds no power: it rides like a flat road, and you set the pace with your gears and
+cadence. The workout panel shows **All out** and tells you what comes next.
+
+- **20-minute test:** a 15-minute warm-up rising from 50 to 65 % of your FTP, then 5 minutes
+  at 72 % (find the cadence you will hold). Then a minute each at 90, 100, 110 and 120 % with
+  an easy minute between, and a minute all out. Then 5 easy minutes, **20 minutes all out** and
+  10 minutes to cool down. Pace it: start controlled and give everything in the second half.
+  It suits most riders.
+- **2 × 8-minute test:** the same 15-minute warm-up, **8 minutes all out**, 10 easy minutes,
+  **8 minutes all out** again and 10 minutes to cool down. Shorter efforts are easier to pace
+  and fit a short session.
+
+![The 20-minute test on the Workouts tab](images/workouts/ftp-test-20.png)
+
+A test finished before its last all-out part is over gives no FTP.
 
 ## Holding a heart rate
 

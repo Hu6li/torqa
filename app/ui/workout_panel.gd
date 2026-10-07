@@ -45,7 +45,7 @@ func show_workout(workout: Dictionary) -> void:
 		var plan: Dictionary = workout.get("plan", {})
 		title = plan.get("name", tr("Structured workout"))
 	elif kind == "ftp_test":
-		title = tr("FTP test")
+		title = workout.get("name", tr("FTP test"))
 	_title.text = title.to_upper()
 
 
@@ -55,8 +55,10 @@ func show_state(workout: Variant, heart_rate: Variant) -> float:
 	if workout == null:
 		return 0.0
 	var info: Dictionary = workout
+	var progress: Dictionary = info["progress"] if info["progress"] != null else {}
 	if info["target_power_w"] == null:
-		_target.text = tr("Free ride")
+		# An FTP test's efforts are free steps too (#125), but meant all out.
+		_target.text = tr("All out") if progress.get("all_out", false) else tr("Free ride")
 	else:
 		var target: float = info["target_power_w"]
 		_target.text = "%d W" % roundi(target)
@@ -101,7 +103,9 @@ func _show_progress(progress: Variant) -> void:
 	if info["next"] != null:
 		var next: Dictionary = info["next"]
 		var next_s: float = next["duration_s"]
-		if next["power_w"] == null:
+		if next["power_w"] == null and next.get("all_out", false):
+			line += "\n" + tr("Next: all out for %s") % UiTheme.duration(next_s)
+		elif next["power_w"] == null:
 			line += "\n" + tr("Next: free ride for %s") % UiTheme.duration(next_s)
 		else:
 			var next_w: float = next["power_w"]
@@ -109,5 +113,6 @@ func _show_progress(progress: Variant) -> void:
 	_step.text = line
 	_step.show()
 	var cue: String = info["cue"]
-	_cue.text = cue
+	# The FTP tests' messages are Torqa's own; a workout file's stay as their author wrote them.
+	_cue.text = tr(cue) if not cue.is_empty() else ""
 	_cue.visible = not cue.is_empty()

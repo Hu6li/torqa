@@ -223,6 +223,11 @@ func _workout_screens(torqa: TorqaApp, start: StartPage) -> void:
 	options.changed.emit()
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("start-ftp-test.png"))
+	# The 20-minute test (#125): its all-out part is a free step.
+	options.set_workout({"kind": "ftp_test", "test": "twenty_minutes"})
+	options.changed.emit()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("start-ftp-test-20.png"))
 	# The workout editor (R21) on a copy of a built-in workout.
 	options.set_workout({"kind": "plan", "id": "builtin:threshold-2x15"})
 	options.changed.emit()
