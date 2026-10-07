@@ -77,6 +77,11 @@ its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
+
+Windows builds come from the `windows` CI job: `Torqa-windows-x86_64.zip` (`Torqa.exe` with
+`torqa_gd.dll` beside it; keep both in one folder) and `torqa-cli-windows-x86_64.zip`, both under
+the run's artifacts. FFmpeg cannot be cross-compiled for Windows from the dev container, so like
+the macOS app it is built natively on the runner (MSVC, with MSYS2's `sh` and `make` for FFmpeg).
 The first build compiles FFmpeg from source (several minutes); later builds reuse it.
 
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.

@@ -15,6 +15,7 @@ esac
 case "$(uname -s)" in
     Linux) lib="libtorqa_gd.so" ;;
     Darwin) lib="libtorqa_gd.dylib" ;;
+    MINGW* | MSYS* | CYGWIN*) lib="torqa_gd.dll" ;;
     *) echo "unsupported OS: $(uname -s)" >&2; exit 1 ;;
 esac
 

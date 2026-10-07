@@ -68,3 +68,75 @@ jobs:
         with:
           path: dist/torqa-cli-macos-arm64.tar.gz
           archive: false
+
+  windows:
+    name: Windows app (x86_64)
+    # FFmpeg's configure rejects the target OS ffmpeg-sys-next passes when cross-compiling
+    # ("windows"), so the extension is built natively with MSVC, like the macOS one.
+    runs-on: windows-latest
+    env:
+      GODOT_VERSION: "4.7.2"
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      # cl.exe and link.exe for FFmpeg's configure (--toolchain=msvc).
+      - uses: ilammy/msvc-dev-cmd@v1
+      # FFmpeg's build needs a POSIX sh and make (MSYS2 is preinstalled) and nasm.
+      - name: Install FFmpeg build tools
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils
+          choco install nasm --no-progress -y
+      # MSYS2 goes last on PATH so MSVC's link.exe wins over coreutils' link; Git's own sh and
+      # coreutils come out so the whole FFmpeg build uses one MSYS2 runtime (git.exe stays).
+      - name: Build GDExtension and CLI
+        run: |
+          $path = $env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
+          $env:PATH = (@($path) + 'C:\Program Files\NASM' + 'C:\msys64\usr\bin') -join ';'
+          sh scripts/build-gdext.sh release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive core/target/release/torqa-cli.exe dist/torqa-cli-windows-x86_64.zip
+      - name: Install Godot and export templates
+        run: |
+          $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
+          curl.exe -fsSL -o godot.zip "$base/Godot_v$env:GODOT_VERSION-stable_win64.exe.zip"
+          Expand-Archive godot.zip -DestinationPath godot
+          curl.exe -fsSL -o templates.zip "$base/Godot_v$env:GODOT_VERSION-stable_export_templates.tpz"
+          $templates = "$env:APPDATA\Godot\export_templates\$env:GODOT_VERSION.stable"
+          New-Item -ItemType Directory -Force $templates | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD\templates.zip")
+          foreach ($name in 'windows_release_x86_64.exe', 'version.txt') {
+            $entry = $zip.GetEntry("templates/$name")
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, "$templates\$name", $true)
+          }
+          $zip.Dispose()
+      # The console build blocks until Godot exits and forwards its output to the log.
+      - name: Export app
+        run: |
+          $godot = "$PWD\godot\Godot_v$env:GODOT_VERSION-stable_win64_console.exe"
+          & $godot --headless --path app --import
+          New-Item -ItemType Directory -Force dist\Torqa | Out-Null
+          & $godot --headless --path app --export-release "Windows Desktop" "$PWD\dist\Torqa\Torqa.exe"
+          if (-not (Test-Path dist\Torqa\Torqa.exe) -or -not (Test-Path dist\Torqa\torqa_gd.dll)) {
+            Get-ChildItem dist\Torqa
+            throw "export is missing Torqa.exe or torqa_gd.dll"
+          }
+          Compress-Archive dist\Torqa\* dist\Torqa-windows-x86_64.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Torqa-windows-x86_64.zip
+          archive: false
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/torqa-cli-windows-x86_64.zip
+          archive: false
