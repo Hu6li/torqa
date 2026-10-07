@@ -74,6 +74,8 @@ jobs:
     # FFmpeg's configure rejects the target OS ffmpeg-sys-next passes when cross-compiling
     # ("windows"), so the extension is built natively with MSVC, like the macOS one.
     runs-on: windows-latest
+    # A cold build (FFmpeg from source plus the workspace) takes about 15 minutes.
+    timeout-minutes: 60
     env:
       GODOT_VERSION: "4.7.2"
       LIBCLANG_PATH: C:\Program Files\LLVM\bin
@@ -86,25 +88,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
-      # cl.exe and link.exe for FFmpeg's configure (--toolchain=msvc).
-      - uses: ilammy/msvc-dev-cmd@v1
-      # FFmpeg's build needs a POSIX sh and make (MSYS2 is preinstalled) and nasm.
+      # FFmpeg's build needs a POSIX sh, make and nasm: from the runner's preinstalled MSYS2.
       - name: Install FFmpeg build tools
-        run: |
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils
-          choco install nasm --no-progress -y
-      # MSYS2 goes last on PATH so MSVC's link.exe wins over coreutils' link; Git's own sh and
-      # coreutils come out so the whole FFmpeg build uses one MSYS2 runtime (git.exe stays).
+        run: C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils nasm
+      # The MSVC environment (cl.exe, link.exe, INCLUDE, LIB) for FFmpeg's configure
+      # (--toolchain=msvc) comes from Visual Studio's own dev shell. PATH order: Visual Studio
+      # first (its link.exe must win over coreutils' link), then MSYS2 (FFmpeg's makefiles need
+      # MSYS2's make, sh and awk; other makes on the image mangle their quoting), then the rest.
+      # Git's own sh and coreutils come out so the build uses one MSYS2 runtime (git.exe stays).
       - name: Build GDExtension and CLI
         run: |
-          $path = $env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
-          $env:PATH = (@($path) + 'C:\Program Files\NASM' + 'C:\msys64\usr\bin') -join ';'
+          $before = $env:PATH -split ';'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -property installationPath `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation `
+            -DevCmdArguments '-arch=x64 -host_arch=x64'
+          $vsPaths = $env:PATH -split ';' | Where-Object { $_ -and $before -notcontains $_ }
+          $rest = $before | Where-Object { $_ -and $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
+          $env:PATH = (@($vsPaths) + 'C:\msys64\usr\bin' + @($rest)) -join ';'
+          Get-Command cl, link, make, sh, awk, nasm | Format-Table Name, Source -AutoSize
           sh scripts/build-gdext.sh release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive core/target/release/torqa-cli.exe dist/torqa-cli-windows-x86_64.zip
+      # Cargo only shows configure's summary; the cause of a failed FFmpeg build is in its log.
+      - name: Show FFmpeg configure log
+        if: failure()
+        run: |
+          Get-ChildItem core/target -Recurse -Filter config.log -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'ffbuild' } |
+            ForEach-Object { Write-Output "== $($_.FullName)"; Get-Content $_.FullName -Tail 80 }
       - name: Install Godot and export templates
         run: |
           $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
