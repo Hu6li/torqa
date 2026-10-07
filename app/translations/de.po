@@ -866,6 +866,12 @@ msgstr "Ganze Ansicht"
 msgid "Back to the whole ride screen (O or Esc)"
 msgstr "Zurück zur ganzen Fahransicht (O oder Esc)"
 
+msgid "Smaller (−)"
+msgstr "Kleiner (−)"
+
+msgid "Larger (+)"
+msgstr "Grösser (+)"
+
 msgid "Drag to move the overlay"
 msgstr "Ziehen, um das Overlay zu verschieben"
 

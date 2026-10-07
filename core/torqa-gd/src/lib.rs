@@ -640,9 +640,21 @@ impl TorqaApp {
             })
     }
 
-    /// Remembers where the overlay is on screen; ignores empty rectangles.
+    /// How large the overlay draws its figures (#124), 1 being one interface unit per point;
+    /// 0 before it was first chosen.
     #[func]
-    fn set_overlay_window(&mut self, rect: Rect2i) {
+    fn overlay_scale(&self) -> f64 {
+        self.app
+            .as_ref()
+            .and_then(App::overlay_window)
+            .and_then(|w| w.scale)
+            .unwrap_or(0.0)
+    }
+
+    /// Remembers where the overlay is on screen and how large it draws (`scale`, as in
+    /// `overlay_scale()`); ignores empty rectangles.
+    #[func]
+    fn set_overlay_window(&mut self, rect: Rect2i, scale: f64) {
         let (Ok(width), Ok(height)) = (u32::try_from(rect.size.x), u32::try_from(rect.size.y))
         else {
             return;
@@ -655,6 +667,7 @@ impl TorqaApp {
             y: rect.position.y,
             width,
             height,
+            scale: (scale > 0.0).then_some(scale),
         };
         self.command(|app| app.set_overlay_window(window));
     }

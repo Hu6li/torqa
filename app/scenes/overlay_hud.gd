@@ -6,6 +6,8 @@ extends Control
 
 ## Full view was asked for.
 signal leave_requested
+## The rider wants the overlay `steps` sizes larger, or smaller if negative (#124).
+signal zoom_requested(steps: int)
 
 ## The HUD keeps the width it has in the ride screen.
 const HUD_WIDTH: float = 260.0
@@ -30,12 +32,13 @@ func _init() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(title)
-	var full: Button = Button.new()
-	full.text = tr("Full view")
-	full.tooltip_text = tr("Back to the whole ride screen (O or Esc)")
-	full.focus_mode = Control.FOCUS_NONE
-	full.add_theme_font_size_override("font_size", 12)
-	full.add_theme_stylebox_override("normal", UiTheme.hud_button())
+	var smaller: Button = _bar_button("A−", tr("Smaller (−)"))
+	smaller.pressed.connect(func() -> void: zoom_requested.emit(-1))
+	bar.add_child(smaller)
+	var larger: Button = _bar_button("A+", tr("Larger (+)"))
+	larger.pressed.connect(func() -> void: zoom_requested.emit(1))
+	bar.add_child(larger)
+	var full: Button = _bar_button(tr("Full view"), tr("Back to the whole ride screen (O or Esc)"))
 	full.pressed.connect(func() -> void: leave_requested.emit())
 	bar.add_child(full)
 	_bar.add_child(bar)
@@ -95,6 +98,16 @@ func clickable_outline() -> PackedVector2Array:
 			to_window * Vector2(0.0, area.y),
 		]
 	)
+
+
+func _bar_button(text: String, tooltip: String) -> Button:
+	var button: Button = Button.new()
+	button.text = text
+	button.tooltip_text = tooltip
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 12)
+	button.add_theme_stylebox_override("normal", UiTheme.hud_button())
+	return button
 
 
 func _on_bar_input(event: InputEvent) -> void:

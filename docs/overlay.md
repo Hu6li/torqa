@@ -21,11 +21,15 @@ a workout, go back to the full view and use *Settings* → *Finish & save*.
 ## Moving and resizing
 
 - Drag the overlay by its top bar (with **Torqa** on it).
+- **A+** and **A−** in the bar, or **+** and **−** while the overlay has the focus, make it a
+  step larger or smaller, text and all. The corner nearest the screen's edge stays put.
 - Drag the grip in the bottom right corner to resize it; the figures grow and shrink with it.
 - Clicks beside the HUD go to the window below.
 
-The overlay opens where it was the last time, also after a restart (if that place is still on
-a screen); the first time at the top right of the screen.
+The overlay opens where it was the last time and as large as you left it, also after a restart
+(if that place is still on a screen). The first time it opens at the top right of the screen,
+as large as the HUD in the full-screen ride view and at least 1.25 times its normal size, to be
+read from the saddle.
 
 ## Limits
 
