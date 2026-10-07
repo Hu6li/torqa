@@ -90,19 +90,23 @@ jobs:
       - name: Install FFmpeg build tools
         run: C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils nasm
       # The MSVC environment (cl.exe, link.exe, INCLUDE, LIB) for FFmpeg's configure
-      # (--toolchain=msvc) comes from Visual Studio's own dev shell. MSYS2 goes last on PATH so
-      # MSVC's link.exe wins over coreutils' link; Git's own sh and coreutils come out so the
-      # whole FFmpeg build uses one MSYS2 runtime (git.exe stays).
+      # (--toolchain=msvc) comes from Visual Studio's own dev shell. PATH order: Visual Studio
+      # first (its link.exe must win over coreutils' link), then MSYS2 (FFmpeg's makefiles need
+      # MSYS2's make, sh and awk; other makes on the image mangle their quoting), then the rest.
+      # Git's own sh and coreutils come out so the build uses one MSYS2 runtime (git.exe stays).
       - name: Build GDExtension and CLI
         run: |
+          $before = $env:PATH -split ';'
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products * -property installationPath `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
           Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation `
             -DevCmdArguments '-arch=x64 -host_arch=x64'
-          $path = $env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
-          $env:PATH = (@($path) + 'C:\msys64\usr\bin') -join ';'
+          $vsPaths = $env:PATH -split ';' | Where-Object { $_ -and $before -notcontains $_ }
+          $rest = $before | Where-Object { $_ -and $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
+          $env:PATH = (@($vsPaths) + 'C:\msys64\usr\bin' + @($rest)) -join ';'
+          Get-Command cl, link, make, sh, awk, nasm | Format-Table Name, Source -AutoSize
           sh scripts/build-gdext.sh release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
