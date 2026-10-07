@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::time::Duration;
 
+use crate::di2::ButtonPress;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
@@ -14,6 +15,8 @@ pub enum DeviceEvent {
     Connected,
     /// New measurements.
     Telemetry(Telemetry),
+    /// Buttons were pressed on a shifter (Shimano Di2 D-Fly channels, R7).
+    Buttons(Vec<ButtonPress>),
     /// The connection was lost; the driver keeps trying to reconnect.
     Disconnected,
 }
@@ -33,6 +36,9 @@ pub enum DeviceError {
     /// The device lacks a characteristic the driver needs.
     #[error("device lacks characteristic {0:#06x}")]
     MissingCharacteristic(u16),
+    /// The device lacks a service the driver needs, by its full UUID.
+    #[error("device lacks service {0}")]
+    MissingService(&'static str),
     /// The Bluetooth stack reported an error.
     #[error("Bluetooth error: {0}")]
     Bluetooth(#[from] btleplug::Error),

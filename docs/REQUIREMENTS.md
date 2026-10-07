@@ -4,7 +4,7 @@ Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questio
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
 settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement (R48–R54),
 plus overlay mode and constant-power / heart-rate workouts (R55–R56), refined 2026-10-06: an
-overlay over normal windows only and a Workouts tab (R57–R58).
+overlay over normal windows only, a Workouts tab and Di2 shifting (R57–R59).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -30,7 +30,7 @@ a synced ride video, or street-level imagery.
 |---|---|
 | R5 | Bluetooth LE **FTMS** (MVP). **ANT+ FE-C** later (no ANT+ dongle available for testing yet). |
 | R6 | Direct-drive trainers first (KICKR Core 2). Architecture generic enough for any FTMS/FE-C trainer and smart bikes. |
-| R7 | Sensors: BLE heart-rate strap. Zwift Click as shift input (no official protocol → reverse-engineered BLE, isolated and optional); also OpenBikeControl and keyboard/gamepad as shift inputs. |
+| R7 | Sensors: BLE heart-rate strap. Zwift Click as shift input (no official protocol → reverse-engineered BLE, isolated and optional); also OpenBikeControl and keyboard/gamepad as shift inputs. *(Shift inputs: R59.)* |
 | R8 | Trainer modes: **SIM** (slope simulation, MVP), **ERG** (target power), **resistance level**; free ride. |
 | R9 | Drivetrain: real cassette (trainer handles shifting naturally) and Zwift Cog (app-side **virtual gears** — resistance offset via FTMS). Post-MVP. See ADR 0003. |
 | R10 | Software **fake trainer** for development and automated tests. |
@@ -129,6 +129,7 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R56 | **Constant-power and heart-rate workouts** as additional workout modes (alongside structured workouts, R21): **constant power** (ERG at a target, e.g. 200 W) and **heart-rate hold** — the target is a zone (e.g. Zone 3, aiming at the middle of the zone) or a specific bpm, and the target power is adjusted continuously from the measured heart rate. The controller stays within user-set minimum and maximum power and ramps gently, since heart rate lags power by 30–60 s. |
 | R57 | Refines R55 (2026-10-06): the overlay stays on top of **normal (windowed) apps only**; showing it over full-screen apps would need native macOS window code (a new dependency and unsafe code) and is not done. The overlay is entered with a button during **any ride or workout** (a course ride goes on following its gradient, its world hidden) or by ticking **"start as overlay"** when starting a workout. |
 | R58 | Extends R38 (2026-10-06): a **Workouts** tab on the start page, right after Courses. Workouts (R56, later R21) are started there, either on their own (a flat road, the HUD only) or **on a course in the 3D world** (the trainer holds the workout's power while the world goes by). |
+| R59 | Supersedes R7's shift inputs (2026-10-06): the virtual gears are shifted from the **keyboard** and from **Shimano Di2** directly over Bluetooth — the buttons the rider assigns to D-Fly channels in E-TUBE shift up and down. No dependency on paid bridge apps (BikeControl needs a subscription on macOS and Android), so no OpenBikeControl-through-BikeControl; the Zwift Click (encrypted, the v2 unlocked daily in Zwift) is not supported. |
 
 ## MVP definition
 

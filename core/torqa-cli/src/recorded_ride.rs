@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Context, Result};
 use torqa_app::paths;
 use torqa_devices::DeviceEvent;
+use torqa_devices::shift::Channels;
 use torqa_domain::shifting::Shift;
 use torqa_domain::units::MetersPerSecond;
 use torqa_session::{Ride, RideState};
@@ -16,6 +17,7 @@ use crate::devices::{Devices, field, next_event, stdin_lines};
 const TICK: Duration = Duration::from_millis(250);
 
 pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) -> Result<()> {
+    let channels = Channels::new(args.devices.up_channel, args.devices.down_channel);
     let mut input = stdin_lines();
     let mut ticker = tokio::time::interval(TICK);
     let mut display = tokio::time::interval(Duration::from_secs(1));
@@ -41,6 +43,7 @@ pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) 
                         ride.on_power_source_lost();
                     }
                     DeviceEvent::Telemetry(telemetry) => ride.on_telemetry(&telemetry),
+                    DeviceEvent::Buttons(_) => {}
                 }
             }
             event = next_event(devices.sensor.as_mut()) => {
@@ -48,6 +51,19 @@ pub(crate) async fn run(mut ride: Ride, args: &RideArgs, devices: &mut Devices) 
                     (_, DeviceEvent::Telemetry(telemetry)) => ride.on_telemetry(&telemetry),
                     (name, DeviceEvent::Connected) => println!("{name}: connected"),
                     (name, DeviceEvent::Disconnected) => println!("{name}: disconnected"),
+                    (_, DeviceEvent::Buttons(_)) => {}
+                }
+            }
+            event = next_event(devices.controller.as_mut()) => {
+                match event.context("controller driver stopped")? {
+                    (_, DeviceEvent::Buttons(presses)) => {
+                        for shift in channels.shifts(&presses) {
+                            ride.shift(shift);
+                        }
+                    }
+                    (name, DeviceEvent::Connected) => println!("{name}: connected"),
+                    (name, DeviceEvent::Disconnected) => println!("{name}: disconnected"),
+                    (_, DeviceEvent::Telemetry(_)) => {}
                 }
             }
             _ = ticker.tick(), if started.is_some() => {

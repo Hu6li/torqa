@@ -1,10 +1,11 @@
 class_name DevicesTab
 extends VBoxContainer
-## Trainer and heart-rate sensor (R5, R41): scanning, choosing, and the devices used last
-## reconnecting at start.
+## Trainer, heart-rate sensor and Di2 shifter (R5, R7, R41): scanning, choosing, the D-Fly
+## channels that shift, and the devices used last reconnecting at start.
 
 const FAKE_TRAINER: int = -1
 const NO_HEART_RATE: int = -1
+const NO_SHIFTER: int = -1
 const SCAN_SECONDS: float = 5.0
 
 var _torqa: TorqaApp
@@ -12,6 +13,11 @@ var _scan_button: Button = Button.new()
 var _scan_label: Label = Label.new()
 var _trainer: OptionButton = OptionButton.new()
 var _heart_rate: OptionButton = OptionButton.new()
+## A Shimano Di2 shifter whose D-Fly buttons shift the virtual gears, and which channels.
+var _shifter: OptionButton = OptionButton.new()
+var _up_channel: OptionButton = OptionButton.new()
+var _down_channel: OptionButton = OptionButton.new()
+var _channel_rows: Array[Control] = []
 var _status: Label = Label.new()
 ## How detailed the 3D world is drawn on this computer (R43).
 var _quality: OptionButton = OptionButton.new()
@@ -31,6 +37,9 @@ func bind(torqa: TorqaApp) -> void:
 		if _quality.get_item_metadata(i) == current:
 			_quality.select(i)
 	_show_quality_note()
+	var channels: Vector2i = _torqa.shift_channels()
+	_up_channel.select(channels.x - 1)
+	_down_channel.select(channels.y - 1)
 	# The trainer and strap used last reconnect in the background (R41).
 	if _torqa.reconnect_remembered():
 		_scan_button.disabled = true
@@ -51,6 +60,9 @@ func connect_selected() -> bool:
 	var heart_rate: int = _heart_rate.get_selected_metadata()
 	if heart_rate != NO_HEART_RATE:
 		_torqa.connect_heart_rate(heart_rate)
+	var shifter: int = _shifter.get_selected_metadata()
+	if shifter != NO_SHIFTER:
+		_torqa.connect_controller(shifter)
 	return true
 
 
@@ -75,7 +87,13 @@ func _init() -> void:
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 10)
 	# i18n-begin
-	for row: Array in [["Trainer", _trainer], ["Heart rate", _heart_rate]]:
+	for row: Array in [
+		["Trainer", _trainer],
+		["Heart rate", _heart_rate],
+		["Shifter (Di2)", _shifter],
+		["Shift up", _up_channel],
+		["Shift down", _down_channel],
+	]:
 		# i18n-end
 		var caption: Label = Label.new()
 		caption.text = row[0]
@@ -86,7 +104,18 @@ func _init() -> void:
 		option.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		option.custom_minimum_size = Vector2(420, 0)
 		grid.add_child(option)
+		if option in [_up_channel, _down_channel]:
+			_channel_rows.append_array([caption, option])
 	add_child(grid)
+	_shifter.tooltip_text = tr(
+		"Assign buttons to D-Fly channels in E-TUBE; they shift the virtual gears"
+	)
+	for channel: int in range(1, 5):
+		for option: OptionButton in [_up_channel, _down_channel]:
+			option.add_item(tr("D-Fly channel %d") % channel)
+	_up_channel.item_selected.connect(func(_index: int) -> void: _on_channels_changed())
+	_down_channel.item_selected.connect(func(_index: int) -> void: _on_channels_changed())
+	_shifter.item_selected.connect(func(_index: int) -> void: _show_channels())
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
 	add_child(_status)
@@ -98,6 +127,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
 		_trainer.set_item_text(0, tr("Fake trainer (200 W, for testing)"))
 		_heart_rate.set_item_text(0, tr("None"))
+		_shifter.set_item_text(0, tr("None (keyboard: ↑ / ↓)"))
+		for i: int in range(4):
+			_up_channel.set_item_text(i, tr("D-Fly channel %d") % (i + 1))
+			_down_channel.set_item_text(i, tr("D-Fly channel %d") % (i + 1))
 
 
 func _on_scan_pressed() -> void:
@@ -119,7 +152,12 @@ func _on_devices_found(devices: Array) -> void:
 		var label: String = device["name"]
 		if device["rssi"] != null:
 			label += "  (%d dBm)" % device["rssi"]
-		var option: OptionButton = _trainer if device["kind"] == "trainer" else _heart_rate
+		var kind: String = device["kind"]
+		var option: OptionButton = _heart_rate
+		if kind == "trainer":
+			option = _trainer
+		elif kind == "controller":
+			option = _shifter
 		option.add_item(label)
 		option.set_item_metadata(option.item_count - 1, index)
 		if device["kind"] == "trainer":
@@ -130,11 +168,22 @@ func _on_devices_found(devices: Array) -> void:
 		_trainer.select(1)
 	if _heart_rate.item_count > 1:
 		_heart_rate.select(1)
-	for option: OptionButton in [_trainer, _heart_rate]:
+	for option: OptionButton in [_trainer, _heart_rate, _shifter]:
 		for i: int in range(option.item_count):
 			var index: int = option.get_item_metadata(i)
 			if remembered.has(index):
 				option.select(i)
+	_show_channels()
+
+
+## The channel rows matter only with a shifter chosen.
+func _show_channels() -> void:
+	for control: Control in _channel_rows:
+		control.visible = _shifter.get_selected_metadata() != NO_SHIFTER
+
+
+func _on_channels_changed() -> void:
+	_torqa.set_shift_channels(_up_channel.selected + 1, _down_channel.selected + 1)
 
 
 func _build_graphics() -> void:
@@ -201,3 +250,7 @@ func _reset_options() -> void:
 	_heart_rate.clear()
 	_heart_rate.add_item(tr("None"))
 	_heart_rate.set_item_metadata(0, NO_HEART_RATE)
+	_shifter.clear()
+	_shifter.add_item(tr("None (keyboard: ↑ / ↓)"))
+	_shifter.set_item_metadata(0, NO_SHIFTER)
+	_show_channels()

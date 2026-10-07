@@ -23,6 +23,15 @@ pub(crate) struct DeviceArgs {
     /// Also connect a heart-rate sensor, optionally selected by name.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     hr: Option<String>,
+    /// Also connect a Shimano Di2 shifter whose D-Fly buttons shift, optionally by name.
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    controller: Option<String>,
+    /// The Di2 shifter's D-Fly channel that shifts up.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=4))]
+    pub(crate) up_channel: u8,
+    /// The Di2 shifter's D-Fly channel that shifts down.
+    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=4))]
+    pub(crate) down_channel: u8,
     /// Power of the fake rider in watts.
     #[arg(long, default_value_t = 200.0)]
     fake_power: f64,
@@ -41,14 +50,15 @@ impl DeviceArgs {
     }
 }
 
-/// The connected trainer and optional heart-rate sensor.
+/// The connected trainer and optional heart-rate sensor and controller.
 pub(crate) struct Devices {
     pub(crate) trainer: DeviceHandle,
     pub(crate) sensor: Option<DeviceHandle>,
+    pub(crate) controller: Option<DeviceHandle>,
 }
 
 pub(crate) async fn connect(args: &DeviceArgs) -> Result<Devices> {
-    let bluetooth = if !args.fake || args.hr.is_some() {
+    let bluetooth = if !args.fake || args.hr.is_some() || args.controller.is_some() {
         let bluetooth = Bluetooth::new().await?;
         println!("Scanning for {} s…", args.scan_seconds);
         let devices = bluetooth
@@ -89,7 +99,23 @@ pub(crate) async fn connect(args: &DeviceArgs) -> Result<Devices> {
         }
         _ => None,
     };
-    Ok(Devices { trainer, sensor })
+    let controller = match (&bluetooth, &args.controller) {
+        (Some((bluetooth, devices)), Some(name)) => {
+            match pick(devices, DeviceKind::Controller, name) {
+                Ok(device) => Some(bluetooth.connect(device)),
+                Err(error) => {
+                    eprintln!("Continuing without a controller: {error:#}");
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    Ok(Devices {
+        trainer,
+        sensor,
+        controller,
+    })
 }
 
 impl Devices {
@@ -100,6 +126,9 @@ impl Devices {
             self.trainer.close(CLOSE_TIMEOUT).await;
             if let Some(sensor) = self.sensor {
                 sensor.close(CLOSE_TIMEOUT).await;
+            }
+            if let Some(controller) = self.controller {
+                controller.close(CLOSE_TIMEOUT).await;
             }
         };
         tokio::select! {
@@ -113,6 +142,7 @@ pub(crate) fn kind_label(kind: DeviceKind) -> &'static str {
     match kind {
         DeviceKind::Trainer => "trainer",
         DeviceKind::HeartRateSensor => "heart rate",
+        DeviceKind::Controller => "controller",
     }
 }
 

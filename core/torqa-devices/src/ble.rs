@@ -1,4 +1,5 @@
-//! Bluetooth LE discovery and drivers for FTMS trainers and heart-rate sensors.
+//! Bluetooth LE discovery and drivers for FTMS trainers, heart-rate sensors and Shimano Di2
+//! shifters.
 
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use tokio::time::sleep;
 use torqa_domain::telemetry::{Telemetry, TrainerControl};
 use tracing::{debug, info, warn};
 
+use crate::di2;
 use crate::ftms::{self, ControlResult, ResistanceRange};
 use crate::handle::{DeviceError, DeviceEvent, DeviceHandle, DriverChannels};
 use crate::heart_rate;
@@ -26,6 +28,8 @@ pub enum DeviceKind {
     Trainer,
     /// A heart-rate sensor.
     HeartRateSensor,
+    /// A shifter whose buttons can shift the virtual gears (Shimano Di2, R7).
+    Controller,
 }
 
 /// A device found by [`Bluetooth::scan`].
@@ -70,18 +74,13 @@ impl Bluetooth {
         Ok(Self { adapter })
     }
 
-    /// Scans for trainers and heart-rate sensors for `duration`.
+    /// Scans for trainers, heart-rate sensors and controllers for `duration`.
     ///
     /// # Errors
     /// Returns the Bluetooth stack's error.
     pub async fn scan(&self, duration: Duration) -> Result<Vec<DiscoveredDevice>, DeviceError> {
-        let filter = ScanFilter {
-            services: vec![
-                uuid_from_u16(ftms::SERVICE),
-                uuid_from_u16(heart_rate::SERVICE),
-            ],
-        };
-        self.adapter.start_scan(filter).await?;
+        // Unfiltered: Di2 units do not always advertise their service (see `kind_of`).
+        self.adapter.start_scan(ScanFilter::default()).await?;
         sleep(duration).await;
         self.adapter.stop_scan().await?;
 
@@ -90,7 +89,11 @@ impl Bluetooth {
             let Some(properties) = peripheral.properties().await? else {
                 continue;
             };
-            // Scan filters are advisory on some platforms, so check the services again.
+            let name = properties
+                .local_name
+                .clone()
+                .or(properties.advertisement_name.clone())
+                .unwrap_or_else(|| "Unnamed device".to_owned());
             let kind = if properties.services.contains(&uuid_from_u16(ftms::SERVICE)) {
                 DeviceKind::Trainer
             } else if properties
@@ -98,13 +101,15 @@ impl Bluetooth {
                 .contains(&uuid_from_u16(heart_rate::SERVICE))
             {
                 DeviceKind::HeartRateSensor
+            } else if properties.services.iter().any(|s| s.to_string() == di2::SERVICE)
+                || properties.manufacturer_data.contains_key(&di2::MANUFACTURER)
+                // Rear derailleurs advertise as their model, e.g. "RDR9250".
+                || name.starts_with("RDR")
+            {
+                DeviceKind::Controller
             } else {
                 continue;
             };
-            let name = properties
-                .local_name
-                .or(properties.advertisement_name)
-                .unwrap_or_else(|| "Unnamed device".to_owned());
             devices.push(DiscoveredDevice {
                 name,
                 kind,
@@ -130,6 +135,7 @@ impl Bluetooth {
                 channels,
                 last_control: None,
                 resistance_range: ResistanceRange::default(),
+                buttons: di2::Buttons::default(),
             }
             .run()
         })
@@ -147,6 +153,8 @@ struct Driver {
     channels: DriverChannels,
     last_control: Option<TrainerControl>,
     resistance_range: ResistanceRange,
+    /// Decodes a shifter's button indications.
+    buttons: di2::Buttons,
 }
 
 impl Driver {
@@ -195,6 +203,20 @@ impl Driver {
                 peripheral.subscribe(&measurement).await?;
                 None
             }
+            DeviceKind::Controller => {
+                // Indications; the system asks to pair the unit first if it is not yet.
+                let buttons = peripheral
+                    .characteristics()
+                    .into_iter()
+                    .find(|c| {
+                        c.service_uuid.to_string() == di2::SERVICE
+                            && c.uuid.to_string().starts_with(di2::BUTTONS_PREFIX)
+                    })
+                    .ok_or(DeviceError::MissingService(di2::SERVICE))?;
+                peripheral.subscribe(&buttons).await?;
+                self.buttons = di2::Buttons::default();
+                None
+            }
         };
         info!(device = %self.device.name, "connected");
         if events.send(DeviceEvent::Connected).await.is_err() {
@@ -207,8 +229,8 @@ impl Driver {
                     let Some(notification) = notification else {
                         return Ok(SessionEnd::Disconnected);
                     };
-                    if let Some(telemetry) = self.decode(&notification)
-                        && events.send(DeviceEvent::Telemetry(telemetry)).await.is_err()
+                    if let Some(event) = self.decode(&notification)
+                        && events.send(event).await.is_err()
                     {
                         return Ok(SessionEnd::HandleDropped);
                     }
@@ -276,21 +298,29 @@ impl Driver {
         Ok(control_point)
     }
 
-    fn decode(&self, notification: &ValueNotification) -> Option<Telemetry> {
+    fn decode(&mut self, notification: &ValueNotification) -> Option<DeviceEvent> {
         let name = &self.device.name;
         let (uuid, value) = (notification.uuid, notification.value.as_slice());
         if uuid == uuid_from_u16(ftms::INDOOR_BIKE_DATA) {
             ftms::parse_indoor_bike_data(value)
                 .inspect_err(|error| warn!(device = %name, %error, "invalid indoor bike data"))
                 .ok()
+                .map(DeviceEvent::Telemetry)
         } else if uuid == uuid_from_u16(heart_rate::MEASUREMENT) {
             let heart_rate = heart_rate::parse_measurement(value)
                 .inspect_err(|error| warn!(device = %name, %error, "invalid heart rate"))
                 .ok()?;
-            Some(Telemetry {
+            Some(DeviceEvent::Telemetry(Telemetry {
                 heart_rate,
                 ..Telemetry::default()
-            })
+            }))
+        } else if uuid.to_string().starts_with(di2::BUTTONS_PREFIX) {
+            let presses = self
+                .buttons
+                .presses(value)
+                .inspect_err(|error| warn!(device = %name, %error, "invalid D-Fly buttons"))
+                .ok()?;
+            (!presses.is_empty()).then_some(DeviceEvent::Buttons(presses))
         } else {
             if uuid == uuid_from_u16(ftms::CONTROL_POINT) {
                 match ftms::parse_control_response(value) {

@@ -42,9 +42,11 @@ Implemented in `torqa_physics::VirtualGears`:
   `r·Crr` and `r³·Cw` gives exactly `r·F_road(r·v)` — so gears change how hard the road feels
   at a cadence, while Torqa's virtual speed still comes from the measured power. Crr and Cw
   are capped at what FTMS can carry (0.0255, 2.55 kg/m); the trainer limits the grade.
-- **Inputs:** behind `ShiftInput` (`torqa_domain::shifting`): the keyboard first (↑ / ↓ in the
-  app, `u` / `d` in the CLI). The Zwift Click speaks an encrypted protocol (and the Click v2
-  must be unlocked in Zwift each day); rather than reverse-engineering it, Torqa reads
-  OpenBikeControl controllers (an open, MIT-licensed protocol), which the BikeControl app
-  provides for the Click, Zwift Play/Ride and others.
+- **Inputs:** behind `ShiftInput` (`torqa_domain::shifting`): the keyboard (↑ / ↓ in the
+  app, `u` / `d` in the CLI) and **Shimano Di2** (R59): the 12-speed Di2 or the EW-WU111
+  wireless unit indicates presses of the buttons assigned to D-Fly channels (service
+  `0x18EF`, characteristic `0x2AC2` in Shimano's own UUID base; `[counter, ch1…ch4]`, flags
+  for short, long and double presses). Two channels, chosen by the rider, shift up and down.
+  The Zwift Click is not supported: its protocol is encrypted, the v2 must be unlocked in
+  Zwift each day, and the bridge app that offers it (BikeControl) needs a paid subscription.
 - In ERG (workouts) the trainer holds the power in any gear.

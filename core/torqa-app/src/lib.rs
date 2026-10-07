@@ -32,7 +32,7 @@ use torqa_session::ghost::Ghost;
 use torqa_session::workout::Workout;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
-use torqa_storage::profiles::{self, StoredProfile};
+use torqa_storage::profiles::{self, DeviceRole, StoredProfile};
 pub use torqa_storage::profiles::{GraphicsQuality, OverlayWindow};
 use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
@@ -416,8 +416,14 @@ pub struct App {
     ride: Option<ActiveRide>,
     /// Inputs that shift the virtual gears (R7): the keyboard, …
     shift_inputs: Vec<Box<dyn ShiftInput>>,
+    /// Whether each of them was connected at the last update, to report changes.
+    shift_inputs_connected: Vec<bool>,
     /// The keyboard's keys, pressed through [`App::shift`].
     keys: torqa_devices::shift::KeyboardKeys,
+    /// Identifier of the connected controller, to avoid reconnecting it.
+    controller_id: Option<String>,
+    /// Which D-Fly channels of a Di2 shifter shift up and down.
+    shift_channels: Arc<torqa_devices::shift::Channels>,
     profile: StoredProfile,
     data_dir: PathBuf,
     cache_dir: PathBuf,
@@ -464,7 +470,13 @@ impl App {
             used: UsedFiles::default(),
             ride: None,
             shift_inputs: vec![Box::new(keyboard)],
+            shift_inputs_connected: vec![true],
             keys,
+            controller_id: None,
+            shift_channels: Arc::new({
+                let (up, down) = profiles::shift_channels(&data_dir);
+                torqa_devices::shift::Channels::new(up, down)
+            }),
             profile: initial_profile(&data_dir),
             data_dir,
             cache_dir,
@@ -1302,7 +1314,7 @@ impl App {
                 if self.trainer.is_some() && self.trainer_id.as_deref() == Some(id.as_str()) {
                     return Ok(());
                 }
-                self.remember(true, &device);
+                self.remember(DeviceRole::Trainer, &device);
                 self.trainer_id = Some(id);
                 self.bluetooth()?.connect(device)
             }
@@ -1318,7 +1330,10 @@ impl App {
     /// without touching Bluetooth, if no device is remembered.
     pub fn reconnect_remembered(&mut self) -> bool {
         let remembered = profiles::remembered_devices(&self.data_dir);
-        if remembered.trainer.is_none() && remembered.heart_rate.is_none() {
+        if remembered.trainer.is_none()
+            && remembered.heart_rate.is_none()
+            && remembered.controller.is_none()
+        {
             return false;
         }
         self.reconnecting = true;
@@ -1326,12 +1341,12 @@ impl App {
         true
     }
 
-    fn remember(&self, trainer: bool, device: &DiscoveredDevice) {
+    fn remember(&self, role: DeviceRole, device: &DiscoveredDevice) {
         let remembered = profiles::RememberedDevice {
             id: device.id(),
             name: device.name.clone(),
         };
-        if let Err(error) = profiles::remember_device(&self.data_dir, trainer, remembered) {
+        if let Err(error) = profiles::remember_device(&self.data_dir, role, remembered) {
             warn!(%error, "cannot remember the device");
         }
     }
@@ -1344,6 +1359,7 @@ impl App {
         for (wanted, kind) in [
             (remembered.trainer, DeviceKind::Trainer),
             (remembered.heart_rate, DeviceKind::HeartRateSensor),
+            (remembered.controller, DeviceKind::Controller),
         ] {
             let Some(wanted) = wanted else { continue };
             let found = self
@@ -1360,6 +1376,7 @@ impl App {
                     self.connect_trainer(TrainerChoice::Discovered(index))
                 }
                 (Some(index), DeviceKind::HeartRateSensor) => self.connect_heart_rate(index),
+                (Some(index), DeviceKind::Controller) => self.connect_controller(index),
                 (None, _) => Err(AppError::UnknownDevice),
             };
             if connected.is_err() {
@@ -1375,6 +1392,7 @@ impl App {
         let wanted = match device.kind {
             DeviceKind::Trainer => remembered.trainer,
             DeviceKind::HeartRateSensor => remembered.heart_rate,
+            DeviceKind::Controller => remembered.controller,
         };
         wanted.is_some_and(|w| w.id == device.id() || w.name == device.name)
     }
@@ -1390,10 +1408,57 @@ impl App {
             return Ok(());
         }
         let _runtime = self.runtime.enter();
-        self.remember(false, &device);
+        self.remember(DeviceRole::HeartRate, &device);
         self.sensor_id = Some(id);
         self.sensor = Some(self.bluetooth()?.connect(device));
         Ok(())
+    }
+
+    /// Connects a Shimano Di2 shifter whose D-Fly buttons shift (R7), replacing any previous
+    /// one; the keyboard keeps shifting too.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownDevice`] if the index is not a controller from the last scan.
+    pub fn connect_controller(&mut self, index: usize) -> Result<(), AppError> {
+        let device = self.discovered_device(index, DeviceKind::Controller)?;
+        let id = device.id();
+        if self.controller_id.as_deref() == Some(id.as_str()) {
+            return Ok(());
+        }
+        let _runtime = self.runtime.enter();
+        self.remember(DeviceRole::Controller, &device);
+        let handle = self.bluetooth()?.connect(device);
+        self.controller_id = Some(id);
+        let channels = Arc::clone(&self.shift_channels);
+        self.add_shift_input(Box::new(torqa_devices::shift::Controller::new(
+            handle, channels,
+        )));
+        Ok(())
+    }
+
+    /// The D-Fly channels (1–4) whose buttons shift up and down.
+    #[must_use]
+    pub fn shift_channels(&self) -> (u8, u8) {
+        self.shift_channels.get()
+    }
+
+    /// Chooses the D-Fly channels that shift up and down, at once and for next time.
+    ///
+    /// # Errors
+    /// [`AppError::Storage`] if the choice cannot be saved.
+    pub fn set_shift_channels(&mut self, up: u8, down: u8) -> Result<(), AppError> {
+        self.shift_channels.set(up, down);
+        profiles::set_shift_channels(&self.data_dir, up, down)
+            .map_err(|e| AppError::Storage(e.to_string()))
+    }
+
+    /// Shifts from `input` from now on, instead of the shifter connected before (R7).
+    pub fn add_shift_input(&mut self, input: Box<dyn ShiftInput>) {
+        // The keyboard stays first; one controller at a time after it.
+        self.shift_inputs.truncate(1);
+        self.shift_inputs_connected.truncate(1);
+        self.shift_inputs_connected.push(false);
+        self.shift_inputs.push(input);
     }
 
     /// Starts riding the loaded route as the active rider, whose profile sets the mass. The
@@ -1943,11 +2008,25 @@ impl App {
         self.poll_jobs(&mut events);
         self.poll_trainer(&mut events);
         self.poll_sensor(&mut events);
-        for input in &mut self.shift_inputs {
+        for (input, was_connected) in self
+            .shift_inputs
+            .iter_mut()
+            .zip(&mut self.shift_inputs_connected)
+        {
             for shift in input.poll() {
                 if let Some(active) = &mut self.ride {
                     active.ride.shift(shift);
                 }
+            }
+            let connected = input.connected();
+            if connected != *was_connected {
+                *was_connected = connected;
+                let name = input.name().to_owned();
+                events.push(if connected {
+                    AppEvent::Connected(name)
+                } else {
+                    AppEvent::Disconnected(name)
+                });
             }
         }
 
@@ -2211,6 +2290,7 @@ impl App {
                         active.ride.on_telemetry(&telemetry);
                     }
                 }
+                Ok(Some(DeviceEvent::Buttons(_))) => {}
                 Ok(None) => break,
                 Err(error) => {
                     events.push(AppEvent::Error(format!("trainer: {error}")));
@@ -2238,6 +2318,7 @@ impl App {
                         active.ride.on_telemetry(&telemetry);
                     }
                 }
+                Ok(Some(DeviceEvent::Buttons(_))) => {}
                 Ok(None) => break,
                 Err(error) => {
                     events.push(AppEvent::Error(format!("heart rate: {error}")));
@@ -2727,6 +2808,65 @@ mod tests {
         app.update(Duration::from_millis(16));
 
         assert_eq!(app.ride_state().unwrap().gear.unwrap().number, before + 1);
+        app.shutdown();
+    }
+
+    /// A shifter that shifts as told and is connected or not.
+    struct Shifter {
+        shifts: Vec<Shift>,
+        connected: bool,
+    }
+
+    impl ShiftInput for Shifter {
+        fn name(&self) -> &'static str {
+            "RDR9250"
+        }
+
+        fn poll(&mut self) -> Vec<Shift> {
+            std::mem::take(&mut self.shifts)
+        }
+
+        fn connected(&self) -> bool {
+            self.connected
+        }
+    }
+
+    #[test]
+    fn a_shifters_shifts_reach_the_ride_and_its_connection_is_told() {
+        let dir = temp_dir("shifter");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let mut profile = app.profile().profile.clone();
+        profile.drivetrain = Drivetrain::SingleCog {
+            chainring: 50,
+            cog: 14,
+        };
+        let id = app.profile().id.clone();
+        app.save_profile(Some(&id), profile).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(200.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        let before = app.ride_state().unwrap().gear.unwrap().number;
+
+        app.add_shift_input(Box::new(Shifter {
+            shifts: vec![Shift::Up, Shift::Up, Shift::Down, Shift::Up],
+            connected: true,
+        }));
+        let events = app.update(Duration::from_millis(16));
+
+        assert!(
+            events.contains(&AppEvent::Connected("RDR9250".to_owned())),
+            "{events:?}"
+        );
+        assert_eq!(app.ride_state().unwrap().gear.unwrap().number, before + 2);
+        app.set_shift_channels(3, 4).unwrap();
+        assert_eq!(app.shift_channels(), (3, 4));
         app.shutdown();
     }
 
