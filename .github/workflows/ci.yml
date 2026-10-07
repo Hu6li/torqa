@@ -74,6 +74,8 @@ jobs:
     # FFmpeg's configure rejects the target OS ffmpeg-sys-next passes when cross-compiling
     # ("windows"), so the extension is built natively with MSVC, like the macOS one.
     runs-on: windows-latest
+    # A cold build (FFmpeg from source plus the workspace) takes about 15 minutes.
+    timeout-minutes: 60
     env:
       GODOT_VERSION: "4.7.2"
       LIBCLANG_PATH: C:\Program Files\LLVM\bin
