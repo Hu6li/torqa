@@ -910,7 +910,7 @@ impl Shapers<'_> {
 /// embankments are, natural again further away. Under bridges the ground is only lowered,
 /// above tunnels never touched. Where the road passes more than once (hairpins), the ground
 /// stays below every pass.
-fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
+pub(crate) fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
     let Some(&(distance, elevation, surface)) = roads
         .iter()
         .filter(|r| r.2 != Surface::Tunnel)
