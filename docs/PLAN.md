@@ -170,7 +170,8 @@ Built in rideable steps:
     also the 20-minute (95 %) and 2 × 8-minute (90 %) tests, all out in slope mode (#125)
   - [x] Workout editor: steps (steady, ramp, free) with duration, % of FTP, cadence and a
     message, intervals added at once, a live chart; saved as ZWO in the library
-- [ ] Uploaders, ANT+ FE-C, Windows/Linux builds
+- [ ] Uploaders, ANT+ FE-C
+- [x] Windows and Linux builds from CI (Linux x86_64 and arm64 on Ubuntu 22.04, ADR 0012)
 - [x] Logo (orca on a bike, `docs/brand/`), app icon and boot splash
 
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)

@@ -13,6 +13,9 @@ Torqa — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
   Torqa builds run natively, for 3D and real-trainer testing.
 - Same for Windows (FFmpeg cannot be cross-compiled from the container): the Windows `.exe` and
   GDExtension are built by the `windows` job on GitHub Actions Windows runners.
+- Linux release builds come from the `linux` job on GitHub Actions `ubuntu-22.04` runners, not
+  the container: its newer glibc would keep them from starting on older distributions (ADR 0012).
+  Linux development and checks still run in the container.
 
 ## Skills
 

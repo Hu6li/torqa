@@ -32,8 +32,8 @@ Working today:
 - FIT export, ride history and analysis, personal records per course and climb
 
 Planned: Street View / Mapillary rides, virtual gears and Zwift Click, workouts, uploads to
-Strava and others, ANT+ FE-C, Windows and Linux builds. See
-[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full list.
+Strava and others, ANT+ FE-C. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full
+list.
 
 ## Using Torqa
 
@@ -83,6 +83,13 @@ Windows builds come from the `windows` CI job: `Torqa-windows-x86_64.zip` (`Torq
 the run's artifacts. FFmpeg cannot be cross-compiled for Windows from the dev container, so like
 the macOS app it is built natively on the runner (MSVC, with MSYS2's `sh` and `make` for FFmpeg).
 The first build compiles FFmpeg from source (several minutes); later builds reuse it.
+
+Linux builds come from the `linux` CI job, for x86_64 and arm64: `Torqa-linux-<arch>.tar.gz`
+(a `Torqa` folder with `Torqa.<arch>` and `libtorqa_gd.so`; keep both together) and
+`torqa-cli-linux-<arch>.tar.gz`. They are built on Ubuntu 22.04 so they run on any distribution
+with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), not only on ones as new as
+the dev container ([ADR 0012](docs/adr/0012-linux-builds.md)). CI starts the exported app
+headless to check that it loads.
 
 Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
 To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.
