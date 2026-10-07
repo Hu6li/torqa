@@ -1639,6 +1639,13 @@ fn belfry(b: &mut Builder, tower: &Rect, top: f64) {
     }
 }
 
+/// The outline a building is drawn on, for keeping the road clear: models and rectangular
+/// shells stand on the rectangle fitted around its footprint, which can reach beyond the
+/// footprint itself (a clipped corner drawn whole), and holds all of it (#138).
+pub(crate) fn drawn_outline(footprint: &[Point]) -> Vec<Point> {
+    Rect::around(footprint).map_or_else(|| footprint.to_vec(), |rect| rect.corners())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

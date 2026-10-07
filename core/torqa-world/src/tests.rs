@@ -1598,6 +1598,43 @@ fn slope_at(east: f32) -> f32 {
 }
 
 #[tokio::test]
+async fn buildings_drawn_into_the_road_are_left_out() {
+    // A square house turned 45° to the road, its corner towards it clipped in the map: the
+    // footprint keeps 4.2 m off the centre line, but the house is drawn on the whole square,
+    // its corner 2.5 m off, on the road (#138). The same house further off stays.
+    let diamond = |east: f64, clip: f64| {
+        let reach = clip - east + 6.0;
+        let points = [
+            (clip, 500.0 - reach),
+            (clip, 500.0 + reach),
+            (east, 506.0),
+            (east + 6.0, 500.0),
+            (east, 494.0),
+            (clip, 500.0 - reach),
+        ];
+        points.iter().map(|&(e, n)| at(e, n)).collect::<Vec<_>>()
+    };
+    let house = |id, outline| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house(1, diamond(8.5, 4.2)), house(2, diamond(30.0, 25.7))],
+        ..MapData::default()
+    })
+    .await;
+
+    assert!(
+        building_faces(&world, (8.5, 500.0), 7.0).is_empty(),
+        "a house drawn on the road"
+    );
+    assert!(!building_faces(&world, (30.0, 500.0), 7.0).is_empty());
+}
+
+#[tokio::test]
 async fn buildings_stand_on_the_ground_with_walls_facing_out() {
     // A 10 × 10 m house of two storeys on ground rising eastwards.
     let house = Building {

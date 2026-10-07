@@ -355,10 +355,10 @@ fn buildings_by_chunk<'a>(
             continue;
         };
         // Roads stay clear (#100): buildings mapped across them (e.g. bad data) are left out,
-        // those reaching into the road ridden by a corner or a wall, and those a street runs
-        // through.
-        let mut outline = footprint.clone();
-        outline.push((east, north));
+        // those reaching into the road ridden by a corner or a wall as drawn (#138), and those
+        // a street runs through.
+        let mut outline = buildings::drawn_outline(&footprint);
+        outline.push(outline[0]);
         let on_road = drape::densify(&outline, 2.0)
             .iter()
             .any(|&(e, n)| road.nearest(e, n, ROAD_HALF_WIDTH + 1.0).is_some());
