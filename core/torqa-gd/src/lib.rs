@@ -640,9 +640,21 @@ impl TorqaApp {
             })
     }
 
-    /// Remembers where the overlay is on screen; ignores empty rectangles.
+    /// How large the overlay draws its figures (#124), 1 being one interface unit per point;
+    /// 0 before it was first chosen.
     #[func]
-    fn set_overlay_window(&mut self, rect: Rect2i) {
+    fn overlay_scale(&self) -> f64 {
+        self.app
+            .as_ref()
+            .and_then(App::overlay_window)
+            .and_then(|w| w.scale)
+            .unwrap_or(0.0)
+    }
+
+    /// Remembers where the overlay is on screen and how large it draws (`scale`, as in
+    /// `overlay_scale()`); ignores empty rectangles.
+    #[func]
+    fn set_overlay_window(&mut self, rect: Rect2i, scale: f64) {
         let (Ok(width), Ok(height)) = (u32::try_from(rect.size.x), u32::try_from(rect.size.y))
         else {
             return;
@@ -655,6 +667,7 @@ impl TorqaApp {
             y: rect.position.y,
             width,
             height,
+            scale: (scale > 0.0).then_some(scale),
         };
         self.command(|app| app.set_overlay_window(window));
     }
@@ -1003,6 +1016,32 @@ impl TorqaApp {
         if let Some(app) = self.app.as_mut() {
             app.control_music(command);
         }
+    }
+
+    /// Connects a scanned Shimano Di2 shifter by its index: its D-Fly buttons shift (R7).
+    #[func]
+    fn connect_controller(&mut self, index: i64) -> bool {
+        let Ok(index) = usize::try_from(index) else {
+            return false;
+        };
+        self.command(|app| app.connect_controller(index))
+    }
+
+    /// The D-Fly channels shifting up (`x`) and down (`y`), 1–4.
+    #[func]
+    fn shift_channels(&self) -> Vector2i {
+        let (up, down) = self
+            .app
+            .as_ref()
+            .map_or((1, 2), torqa_app::App::shift_channels);
+        Vector2i::new(i32::from(up), i32::from(down))
+    }
+
+    /// Chooses the D-Fly channels that shift up and down (1–4).
+    #[func]
+    fn set_shift_channels(&mut self, up: i64, down: i64) -> bool {
+        let channel = |c: i64| u8::try_from(c.clamp(1, 4)).unwrap_or(1);
+        self.command(|app| app.set_shift_channels(channel(up), channel(down)))
     }
 
     /// Shifts the virtual gears (R9): `direction` 1 up (harder), -1 down; nothing without them.
@@ -1893,6 +1932,7 @@ fn device_array(devices: Vec<torqa_app::DeviceInfo>) -> VarArray {
         let kind = match device.kind {
             DeviceKind::Trainer => "trainer",
             DeviceKind::HeartRateSensor => "heart_rate",
+            DeviceKind::Controller => "controller",
         };
         let rssi = device
             .rssi

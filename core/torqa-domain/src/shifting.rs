@@ -1,5 +1,5 @@
 //! Shifting (R7, R9): inputs that shift the virtual gears, behind the [`ShiftInput`] plugin
-//! interface — the keyboard, OpenBikeControl controllers and, later, others.
+//! interface — the keyboard, Shimano Di2 buttons and, later, others.
 
 /// What a shift input asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,4 +19,9 @@ pub trait ShiftInput: Send {
 
     /// The shifts asked for since the last call, oldest first.
     fn poll(&mut self) -> Vec<Shift>;
+
+    /// Whether it can shift now: a wireless controller may drop out; a keyboard always can.
+    fn connected(&self) -> bool {
+        true
+    }
 }

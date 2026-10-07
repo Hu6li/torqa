@@ -10,6 +10,13 @@ Things to review or decide together. Newest first; remove entries once settled.
   The controller is tuned on simulated hearts (settles in 5–10 min, no overshoot, at most
   30 W a minute); how much power a beat is worth comes from your FTP and maximum heart rate.
   Tell me if it swings around the target, takes too long, or ramps too fast for comfort.
+- **Shimano Di2 shifting** (Di2 PR): built from the community's description of the D-Fly
+  protocol (no Shimano spec, no code reused), untested on a real unit. Please assign two hood
+  buttons to D-Fly channels in E-TUBE, scan in Devices & Settings, choose the shifter and its
+  channels, and ride with virtual gears. The unit must be **paired**: macOS should ask the
+  first time Torqa subscribes; if no presses arrive, pair it in the system Bluetooth settings.
+  Tell me what a long press does on yours (I shift one gear per indication, so if the unit
+  repeats while held it keeps shifting) and whether double presses come through.
 - **Overlay on the Mac** (overlay PR): please try moving it by its bar, resizing it by the
   corner grip, clicking beside it (should reach the window below), and whether it stays on top
   of a browser playing a video while Torqa is not the active app. **Full view** should bring
@@ -50,14 +57,6 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ### Needs a decision
 
-- **Zwift Click**: its Bluetooth protocol is encrypted. BikeControl's author decoded the Click
-  v1 (it needs an elliptic-curve key exchange and AES — new crypto dependencies), and the
-  Click v2 must be unlocked in the Zwift app once a day before it works anywhere else.
-  BikeControl's app code was GPL-3.0 but has reportedly moved to a non-commercial licence, so
-  I did not look at or reuse it. My plan instead: Torqa reads **OpenBikeControl** controllers
-  (open protocol, MIT), and the BikeControl app (phone or desktop) turns the Click into one.
-  Which Click do you have (v1 or v2)? Is going through BikeControl fine, or do you want a
-  direct Click v1 driver (with the crypto dependencies)?
 - **Per-computer settings in the synced data folder**: the overlay's place and the graphics
   quality are per computer, but live in `settings.toml` of the data directory, which may be
   synced (R30). With two computers sharing it, the last one to save wins. Move them to a

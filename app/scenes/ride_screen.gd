@@ -10,6 +10,8 @@ signal closed
 signal summary_requested(path: String)
 ## The rider wants the overlay (R55), or the whole screen back.
 signal overlay_requested(on: bool)
+## The rider wants the overlay `steps` sizes larger, or smaller if negative (#124).
+signal overlay_zoom_requested(steps: int)
 
 ## Keys during the ride: C camera; M play/pause music, "." next and "," previous track.
 # i18n-begin
@@ -189,6 +191,7 @@ func _ready() -> void:
 	_settings_button.add_sibling(_overlay_button)
 	_overlay_hud.hide()
 	_overlay_hud.leave_requested.connect(func() -> void: overlay_requested.emit(false))
+	_overlay_hud.zoom_requested.connect(overlay_zoom_requested.emit)
 	add_child(_overlay_hud)
 
 
@@ -197,10 +200,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not visible or key == null or not key.pressed or key.echo:
 		return
 	if is_overlay():
-		# The overlay is too small for dialogs; it only goes back.
+		# The overlay is too small for dialogs; it only goes back or changes its size.
 		if key.keycode in [KEY_O, KEY_ESCAPE]:
 			overlay_requested.emit(false)
-			get_viewport().set_input_as_handled()
+		elif key.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
+			overlay_zoom_requested.emit(1)
+		elif key.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
+			overlay_zoom_requested.emit(-1)
+		else:
+			return
+		get_viewport().set_input_as_handled()
 		return
 	if key.keycode in [KEY_UP, KEY_DOWN] and not _world.is_free_camera():
 		# Virtual gears (R9); with a cassette the rider shifts on the bike.

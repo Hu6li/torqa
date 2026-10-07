@@ -157,14 +157,19 @@ struct Settings {
     trainer: Option<RememberedDevice>,
     /// The heart-rate sensor connected last.
     heart_rate: Option<RememberedDevice>,
+    /// The controller (shifter) connected last.
+    controller: Option<RememberedDevice>,
+    /// The D-Fly channels of a Di2 shifter that shift up and down (R7).
+    shift_up_channel: Option<u8>,
+    shift_down_channel: Option<u8>,
     /// How detailed the 3D world is drawn on this computer (R43).
     graphics_quality: Option<GraphicsQuality>,
     /// Where the overlay was last on screen (R55).
     overlay: Option<OverlayWindow>,
 }
 
-/// Where the overlay window is on screen (R55), in screen pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Where the overlay window is on screen (R55), in screen pixels, and how large it draws.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct OverlayWindow {
     /// Left edge.
     pub x: i32,
@@ -174,6 +179,10 @@ pub struct OverlayWindow {
     pub width: u32,
     /// Height.
     pub height: u32,
+    /// How large the overlay draws its figures (#124): 1 is one interface unit per point.
+    /// `None` in settings from before it could be chosen, which take the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
 }
 
 /// How detailed the 3D world is drawn (R43): more detail needs a stronger GPU. Medium holds
@@ -230,6 +239,19 @@ pub struct RememberedDevices {
     pub trainer: Option<RememberedDevice>,
     /// The heart-rate sensor connected last.
     pub heart_rate: Option<RememberedDevice>,
+    /// The controller (shifter) connected last.
+    pub controller: Option<RememberedDevice>,
+}
+
+/// What a remembered device is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceRole {
+    /// The trainer.
+    Trainer,
+    /// The heart-rate sensor.
+    HeartRate,
+    /// A controller that shifts.
+    Controller,
 }
 
 /// All readable profiles, by name. Unreadable ones are skipped.
@@ -328,24 +350,47 @@ pub fn remembered_devices(data_dir: &Path) -> RememberedDevices {
     RememberedDevices {
         trainer: settings.trainer,
         heart_rate: settings.heart_rate,
+        controller: settings.controller,
     }
 }
 
-/// Remembers a trainer (or, with `trainer` false, a heart-rate sensor) to reconnect next time.
+/// Remembers a device in its `role` to reconnect next time.
 ///
 /// # Errors
 /// On file system errors.
 pub fn remember_device(
     data_dir: &Path,
-    trainer: bool,
+    role: DeviceRole,
     device: RememberedDevice,
 ) -> Result<(), ProfileError> {
     let mut settings = settings(data_dir);
-    if trainer {
-        settings.trainer = Some(device);
-    } else {
-        settings.heart_rate = Some(device);
-    }
+    let slot = match role {
+        DeviceRole::Trainer => &mut settings.trainer,
+        DeviceRole::HeartRate => &mut settings.heart_rate,
+        DeviceRole::Controller => &mut settings.controller,
+    };
+    *slot = Some(device);
+    save_settings(data_dir, &settings)
+}
+
+/// The D-Fly channels (1–4) whose buttons shift up and down; 1 and 2 until chosen.
+#[must_use]
+pub fn shift_channels(data_dir: &Path) -> (u8, u8) {
+    let settings = settings(data_dir);
+    (
+        settings.shift_up_channel.unwrap_or(1),
+        settings.shift_down_channel.unwrap_or(2),
+    )
+}
+
+/// Remembers which D-Fly channels shift up and down.
+///
+/// # Errors
+/// On file system errors.
+pub fn set_shift_channels(data_dir: &Path, up: u8, down: u8) -> Result<(), ProfileError> {
+    let mut settings = settings(data_dir);
+    settings.shift_up_channel = Some(up);
+    settings.shift_down_channel = Some(down);
     save_settings(data_dir, &settings)
 }
 
@@ -437,7 +482,7 @@ mod tests {
         assert_eq!(graphics_quality(&dir), GraphicsQuality::Medium);
         remember_device(
             &dir,
-            true,
+            DeviceRole::Trainer,
             RememberedDevice {
                 id: "kickr".to_owned(),
                 name: "KICKR".to_owned(),
@@ -461,6 +506,16 @@ mod tests {
     }
 
     #[test]
+    fn shift_channels_default_to_one_and_two() {
+        let dir = temp_dir("channels");
+        assert_eq!(shift_channels(&dir), (1, 2));
+
+        set_shift_channels(&dir, 3, 4).unwrap();
+
+        assert_eq!(shift_channels(&dir), (3, 4));
+    }
+
+    #[test]
     fn the_overlay_window_is_remembered_with_the_other_settings() {
         let dir = temp_dir("overlay");
         assert_eq!(overlay_window(&dir), None);
@@ -470,6 +525,7 @@ mod tests {
             y: 40,
             width: 320,
             height: 480,
+            scale: Some(1.75),
         };
 
         set_overlay_window(&dir, window).unwrap();
@@ -477,6 +533,28 @@ mod tests {
         assert_eq!(overlay_window(&dir), Some(window));
         assert_eq!(graphics_quality(&dir), GraphicsQuality::High);
         assert_eq!(GraphicsQuality::from_name("epic"), None);
+    }
+
+    #[test]
+    fn an_overlay_remembered_before_its_size_could_be_chosen_keeps_its_place() {
+        let dir = temp_dir("overlay-before-scale");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            "[overlay]\nx = 10\ny = 20\nwidth = 300\nheight = 400\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            overlay_window(&dir),
+            Some(OverlayWindow {
+                x: 10,
+                y: 20,
+                width: 300,
+                height: 400,
+                scale: None,
+            })
+        );
     }
 
     #[test]
@@ -575,7 +653,7 @@ mod tests {
         };
 
         set_active(&data, "anna").unwrap();
-        remember_device(&data, true, kickr.clone()).unwrap();
+        remember_device(&data, DeviceRole::Trainer, kickr.clone()).unwrap();
         set_active(&data, "zoe").unwrap();
 
         assert_eq!(remembered_devices(&data).trainer, Some(kickr));
