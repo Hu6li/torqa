@@ -28,6 +28,7 @@ func _ready() -> void:
 	_ride.closed.connect(_back_home)
 	_ride.summary_requested.connect(_show_summary)
 	_ride.overlay_requested.connect(_set_overlay)
+	_ride.overlay_zoom_requested.connect(_overlay.zoom)
 	get_window().size_changed.connect(_on_window_resized)
 	_summary.closed.connect(_back_home)
 
@@ -62,24 +63,29 @@ func _set_overlay(on: bool) -> void:
 		_video.hide()
 		# One frame for the overlay's content to take its size.
 		await get_tree().process_frame
-		_overlay.enter(_ride.overlay_content_size(), _torqa.overlay_window())
+		_overlay.enter(
+			_ride.overlay_content_size(), _torqa.overlay_window(), _torqa.overlay_scale()
+		)
 		await get_tree().process_frame
 		_overlay.set_clickable(_ride.overlay_outline())
 	else:
-		_torqa.set_overlay_window(_overlay.leave())
+		# Taken first: restoring the window resizes it, which is no choice of the rider's.
+		var chosen: float = _overlay.scale
+		_torqa.set_overlay_window(_overlay.leave(), chosen)
 		_ride.set_overlay(false)
 		_video.visible = _ride.visible and _torqa.riding_along_video()
 
 
 func _on_window_resized() -> void:
 	if _overlay.active:
+		_overlay.window_resized()
 		_overlay.set_clickable(_ride.overlay_outline())
 
 
 func _notification(what: int) -> void:
 	# Quit from the overlay: it opens there next time.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and _overlay != null and _overlay.active:
-		_torqa.set_overlay_window(_overlay.geometry())
+		_torqa.set_overlay_window(_overlay.geometry(), _overlay.scale)
 
 
 ## The summary of the ride just saved (R42); closing it returns to the start page.
