@@ -38,8 +38,11 @@ With a single cog set as your drivetrain ([riders.md](riders.md)), Torqa shifts 
 gears from a mountain-bike low (0.75) to a sprint gear (5.5, chainring over cog), about 9 %
 apart. A ride starts in the gear nearest to your real one; **↑** shifts harder, **↓** easier,
 and the trainer feels the new gear at once. With a **Shimano Di2** bike, the hood buttons can shift
-too: assign two of them to D-Fly channels in E-TUBE, then choose the shifter and which channel
-shifts up and down under Devices & Settings (it reconnects at start like the trainer). The gear shows briefly when it changes, and as the
+too: assign them to D-Fly channels in E-TUBE, then choose the shifter under Devices & Settings
+(it reconnects at start like the trainer). There you also choose what each channel does when
+pressed, held or double-pressed: shift one or two gears, the next camera, the overlay on or
+off, or the music (play/pause, next, previous). Until you change it, the first channel shifts
+up and the second down, two gears on a double press. The gear shows briefly when it changes, and as the
 **Gear** figure if you add it to your HUD. In a bigger gear the same cadence means more speed,
 so the trainer brakes harder — exactly as the road would in that gear. Workouts in ERG hold
 their power in any gear.

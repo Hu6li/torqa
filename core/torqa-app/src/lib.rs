@@ -21,7 +21,7 @@ use torqa_devices::{DeviceEvent, DeviceHandle};
 use torqa_domain::files::UsedFiles;
 use torqa_domain::profile::{Drivetrain, Profile};
 use torqa_domain::recording::{RideSummary, Sample};
-use torqa_domain::shifting::{Shift, ShiftInput};
+use torqa_domain::shifting::{ButtonMap, Control, Shift, ShiftInput};
 use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup, VirtualGears};
 use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
@@ -33,7 +33,9 @@ use torqa_session::workout::Workout;
 use torqa_session::{Ride, RideConfig, RideState};
 use torqa_storage::course::{self, Manifest};
 use torqa_storage::profiles::{self, DeviceRole, StoredProfile};
-pub use torqa_storage::profiles::{GraphicsQuality, OverlayWindow};
+pub use torqa_storage::profiles::{
+    GraphicsQuality, OverlayWindow, button_action_from_name, button_action_name,
+};
 use torqa_storage::rides::{self, ClimbTime, RideRecord};
 use torqa_terrain::{Terrain, TileSource};
 pub use torqa_video::Frame;
@@ -258,6 +260,8 @@ pub enum AppEvent {
         /// The best time before this ride, if any.
         previous_best: Option<Duration>,
     },
+    /// A shifter's button asked for a ride control (#139), during a ride.
+    Control(Control),
     /// A background operation failed.
     Error(String),
 }
@@ -422,8 +426,8 @@ pub struct App {
     keys: torqa_devices::shift::KeyboardKeys,
     /// Identifier of the connected controller, to avoid reconnecting it.
     controller_id: Option<String>,
-    /// Which D-Fly channels of a Di2 shifter shift up and down.
-    shift_channels: Arc<torqa_devices::shift::Channels>,
+    /// What the Di2 shifter's buttons do (#139).
+    buttons: Arc<torqa_devices::shift::Assignments>,
     profile: StoredProfile,
     data_dir: PathBuf,
     cache_dir: PathBuf,
@@ -473,10 +477,9 @@ impl App {
             shift_inputs_connected: vec![true],
             keys,
             controller_id: None,
-            shift_channels: Arc::new({
-                let (up, down) = profiles::shift_channels(&data_dir);
-                torqa_devices::shift::Channels::new(up, down)
-            }),
+            buttons: Arc::new(torqa_devices::shift::Assignments::new(
+                profiles::button_map(&data_dir),
+            )),
             profile: initial_profile(&data_dir),
             data_dir,
             cache_dir,
@@ -1414,8 +1417,8 @@ impl App {
         Ok(())
     }
 
-    /// Connects a Shimano Di2 shifter whose D-Fly buttons shift (R7), replacing any previous
-    /// one; the keyboard keeps shifting too.
+    /// Connects a Shimano Di2 shifter whose D-Fly buttons shift or do what else the rider gave
+    /// them (R7, #139), replacing any previous one; the keyboard keeps shifting too.
     ///
     /// # Errors
     /// [`AppError::UnknownDevice`] if the index is not a controller from the last scan.
@@ -1429,27 +1432,26 @@ impl App {
         self.remember(DeviceRole::Controller, &device);
         let handle = self.bluetooth()?.connect(device);
         self.controller_id = Some(id);
-        let channels = Arc::clone(&self.shift_channels);
+        let buttons = Arc::clone(&self.buttons);
         self.add_shift_input(Box::new(torqa_devices::shift::Controller::new(
-            handle, channels,
+            handle, buttons,
         )));
         Ok(())
     }
 
-    /// The D-Fly channels (1–4) whose buttons shift up and down.
+    /// What the Di2 shifter's buttons do (#139).
     #[must_use]
-    pub fn shift_channels(&self) -> (u8, u8) {
-        self.shift_channels.get()
+    pub fn button_map(&self) -> ButtonMap {
+        self.buttons.get()
     }
 
-    /// Chooses the D-Fly channels that shift up and down, at once and for next time.
+    /// Gives the Di2 shifter's buttons what `map` says, at once and for next time.
     ///
     /// # Errors
     /// [`AppError::Storage`] if the choice cannot be saved.
-    pub fn set_shift_channels(&mut self, up: u8, down: u8) -> Result<(), AppError> {
-        self.shift_channels.set(up, down);
-        profiles::set_shift_channels(&self.data_dir, up, down)
-            .map_err(|e| AppError::Storage(e.to_string()))
+    pub fn set_button_map(&mut self, map: ButtonMap) -> Result<(), AppError> {
+        self.buttons.set(map);
+        profiles::set_button_map(&self.data_dir, &map).map_err(|e| AppError::Storage(e.to_string()))
     }
 
     /// Shifts from `input` from now on, instead of the shifter connected before (R7).
@@ -2012,6 +2014,12 @@ impl App {
             for shift in input.poll() {
                 if let Some(active) = &mut self.ride {
                     active.ride.shift(shift);
+                }
+            }
+            // Taken either way, so that presses between rides do not act in the next one.
+            for control in input.controls() {
+                if self.ride.is_some() {
+                    events.push(AppEvent::Control(control));
                 }
             }
             let connected = input.connected();
@@ -2807,9 +2815,10 @@ mod tests {
         app.shutdown();
     }
 
-    /// A shifter that shifts as told and is connected or not.
+    /// A shifter that shifts and asks for controls as told, and is connected or not.
     struct Shifter {
         shifts: Vec<Shift>,
+        controls: Vec<Control>,
         connected: bool,
     }
 
@@ -2822,13 +2831,17 @@ mod tests {
             std::mem::take(&mut self.shifts)
         }
 
+        fn controls(&mut self) -> Vec<Control> {
+            std::mem::take(&mut self.controls)
+        }
+
         fn connected(&self) -> bool {
             self.connected
         }
     }
 
     #[test]
-    fn a_shifters_shifts_reach_the_ride_and_its_connection_is_told() {
+    fn a_shifters_shifts_reach_the_ride_its_controls_the_front_end_and_its_connection_is_told() {
         let dir = temp_dir("shifter");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
         let mut profile = app.profile().profile.clone();
@@ -2852,6 +2865,7 @@ mod tests {
 
         app.add_shift_input(Box::new(Shifter {
             shifts: vec![Shift::Up, Shift::Up, Shift::Down, Shift::Up],
+            controls: vec![Control::NextCamera, Control::PlayPause],
             connected: true,
         }));
         let events = app.update(Duration::from_millis(16));
@@ -2860,10 +2874,40 @@ mod tests {
             events.contains(&AppEvent::Connected("RDR9250".to_owned())),
             "{events:?}"
         );
+        let controls: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, AppEvent::Control(_)))
+            .collect();
+        assert_eq!(
+            controls,
+            [
+                &AppEvent::Control(Control::NextCamera),
+                &AppEvent::Control(Control::PlayPause)
+            ]
+        );
         assert_eq!(app.ride_state().unwrap().gear.unwrap().number, before + 2);
-        app.set_shift_channels(3, 4).unwrap();
-        assert_eq!(app.shift_channels(), (3, 4));
         app.shutdown();
+    }
+
+    #[test]
+    fn the_shifters_buttons_are_assigned_for_next_time() {
+        let dir = temp_dir("buttons");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(app.button_map(), ButtonMap::default());
+        let mut map = ButtonMap::shifting(2, 1);
+        map.assign(
+            3,
+            torqa_domain::shifting::Press::Short,
+            Some(torqa_domain::shifting::ButtonAction::Control(
+                Control::Overlay,
+            )),
+        );
+
+        app.set_button_map(map).unwrap();
+        app.shutdown();
+
+        let app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(app.button_map(), map);
     }
 
     #[test]

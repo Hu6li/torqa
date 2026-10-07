@@ -110,6 +110,14 @@ func _run() -> void:
 	)
 	_torqa.abort_ride()
 	_torqa.save_profile(id, rider)
+
+	# Di2 buttons (#139): any press of a channel can be given an action, or none.
+	_check(_torqa.assign_button(3, 1, "next_camera"), "holding channel 3 moves the camera")
+	var buttons: Array = _torqa.button_map()
+	var third: PackedStringArray = buttons[2]
+	_check(third[1] == "next_camera" and third[0] == "", "assigned: %s" % [buttons])
+	_check(not _torqa.assign_button(3, 1, "fly"), "unknown actions are refused")
+	_torqa.assign_button(3, 1, "")
 	DirAccess.remove_absolute(course_path)
 	print("RIDE SMOKE TEST PASSED (%s)" % _saved_path)
 	quit(0)
