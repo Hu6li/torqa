@@ -1697,11 +1697,9 @@ async fn buildings_drawn_into_the_road_are_left_out() {
     })
     .await;
 
-    assert!(
-        building_faces(&world, (8.5, 500.0), 7.0).is_empty(),
-        "a house drawn on the road"
-    );
-    assert!(!building_faces(&world, (30.0, 500.0), 7.0).is_empty());
+    let faces = |east: f32| building_faces(&world, (east, 500.0), 7.0).len();
+    assert_eq!(faces(8.5), 0, "a house drawn on the road");
+    assert!(faces(30.0) > 0, "the house off the road is gone");
 }
 
 #[tokio::test]
