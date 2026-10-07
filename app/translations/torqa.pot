@@ -543,7 +543,7 @@ msgstr ""
 msgid "Found %d device(s)"
 msgstr ""
 
-#: app/scenes/world.gd:168
+#: app/scenes/world.gd:173
 msgid "Free"
 msgstr ""
 

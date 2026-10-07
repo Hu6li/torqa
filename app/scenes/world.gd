@@ -145,8 +145,11 @@ const QUALITY: Dictionary[String, Dictionary] = {
 const HAZE: Dictionary[String, float] = {
 	"Clear": 0.00035, "Cloudy": 0.0005, "Hazy": 0.0016, "Rain": 0.0012
 }
-## Low sun hazes the distance more: mornings most, evenings a little.
-const HAZE_BY_TIME: Dictionary[String, float] = {"Morning": 2.2, "Midday": 1.0, "Evening": 1.4}
+## Low sun hazes the distance a little more: mornings most. Kept small, as more turned the whole
+## view milky (#115).
+const HAZE_BY_TIME: Dictionary[String, float] = {"Morning": 1.3, "Midday": 1.0, "Evening": 1.15}
+## How much a low sun brightens the haze on its side.
+const LOW_SUN_SCATTER: float = 0.08
 ## Fog lying in low ground (#103): how thick, per time of day and per weather, and how high it
 ## reaches over the route's lowest ground (metres).
 const VALLEY_FOG_BY_TIME: Dictionary[String, float] = {
@@ -156,10 +159,12 @@ const VALLEY_FOG_BY_WEATHER: Dictionary[String, float] = {
 	"Clear": 0.5, "Cloudy": 0.7, "Hazy": 1.0, "Rain": 0.9
 }
 const VALLEY_FOG_DEPTH: float = 30.0
-## Density gained per metre below the valley fog's top at full thickness. Godot's height fog
-## hangs on height alone, not distance: seen from above the valleys fill with it, and down in
-## it everything is veiled alike, so it stays light at the bottom.
-const VALLEY_FOG_DENSITY: float = 0.02
+## Density gained per metre below the valley fog's top at full thickness.
+const VALLEY_FOG_DENSITY: float = 0.01
+## Godot's height fog hangs on height alone, not distance: whatever lies below its top is veiled
+## alike, the road at the rider's wheel as much as the far shore. So its top stays this far
+## below the rider: the valleys below fill with it, the rider's surroundings stay clear (#115).
+const VALLEY_FOG_CLEARANCE: float = 8.0
 ## Raindrops fall around the camera from this far above it.
 const RAIN_ABOVE: float = 9.0
 ## How fast the clouds drift, in cloud-layer units per second.
@@ -177,6 +182,8 @@ var _cloud_offset: Vector2 = Vector2.ZERO
 var _quality: Dictionary = QUALITY["medium"]
 ## The route's lowest ground (metres), where valley fog lies.
 var _low_ground: float = 0.0
+## Where the rider is (metres above sea level), which the valley fog stays below.
+var _rider_elevation: float = INF
 var _time_of_day: String = "Midday"
 var _weather: String = "Clear"
 ## Draw-distance factor of the current preset.
@@ -319,7 +326,7 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	)
 	_environment.fog_light_color = sky_horizon
 	# A low sun lights the haze from its side.
-	_environment.fog_sun_scatter = 0.2 if elevation < 20.0 else 0.0
+	_environment.fog_sun_scatter = LOW_SUN_SCATTER if elevation < 20.0 else 0.0
 	_apply_valley_fog()
 	var raining: float = 1.0 if weather == "Rain" else 0.0
 	_rain.emitting = raining > 0.0
@@ -687,6 +694,9 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 	var yaw: Basis = Basis(Vector3.UP, -heading)
 	var pitch: Basis = Basis(Vector3.RIGHT, atan(grade / 100.0))
 	var position: Vector3 = Vector3(east, elevation, -north)
+	if absf(elevation - _rider_elevation) > 0.5:
+		_rider_elevation = elevation
+		_apply_valley_fog()
 	if not _clouds_settled:
 		_clouds.settle(elevation)
 		_clouds_settled = true
@@ -772,12 +782,14 @@ func _make_rain() -> void:
 
 
 ## Fog lying in the low ground of the route (#103): thick on mornings, a trace at midday, and
-## thicker in haze and rain; the rider climbs out of it.
+## thicker in haze and rain; always below the rider, who sees it lie in the valleys below.
 func _apply_valley_fog() -> void:
 	var thickness: float = (
 		VALLEY_FOG_BY_TIME.get(_time_of_day, 0.0) * VALLEY_FOG_BY_WEATHER.get(_weather, 0.0)
 	)
-	_environment.fog_height = _low_ground + VALLEY_FOG_DEPTH
+	_environment.fog_height = minf(
+		_low_ground + VALLEY_FOG_DEPTH, _rider_elevation - VALLEY_FOG_CLEARANCE
+	)
 	_environment.fog_height_density = VALLEY_FOG_DENSITY * thickness
 
 
