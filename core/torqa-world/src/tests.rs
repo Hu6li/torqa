@@ -648,6 +648,62 @@ async fn railways_tunnel_through_hills_rather_than_climb_them() {
 }
 
 #[tokio::test]
+async fn railway_tunnels_under_the_road_stay_below_it() {
+    // Flat land 3 m below the road ridden (500 m), which crosses it on an embankment, and a line
+    // passing under it at 500 m in a tunnel 240 m long: its 5 m arch would show through the
+    // road and the embankment (#138).
+    struct Low;
+    impl ElevationModel for Low {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            std::future::ready(Ok(497.0))
+        }
+    }
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 500.0), (-120.0, 500.0)], None),
+            railway(
+                &[(-120.0, 500.0), (120.0, 500.0)],
+                Some(StructureKind::Tunnel),
+            ),
+            railway(&[(120.0, 500.0), (300.0, 500.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let world = generate(&route_north(&[]).await, &mut Low, &map, &mut |_, _| {}).await;
+
+    let tube: Vec<_> = world
+        .structures
+        .vertices
+        .iter()
+        .filter(|v| (v[2] + 500.0).abs() < 8.0)
+        .collect();
+    // Nothing of it on or beside the road...
+    let through = tube
+        .iter()
+        .filter(|v| v[0].abs() < 8.0)
+        .map(|v| v[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        through < 500.0 - 0.1,
+        "the tunnel reaches {through} at the road"
+    );
+    // ...while away from it the arch keeps its height.
+    let arch = tube
+        .iter()
+        .filter(|v| v[0].abs() > 80.0)
+        .map(|v| v[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        arch > 497.0 + 4.5,
+        "the arch only reaches {arch} away from the road"
+    );
+}
+
+#[tokio::test]
 async fn railway_bridges_clear_the_road_and_meet_their_track() {
     // A line crossing the route at 500 m, on a bridge 60 m long over it.
     let map = MapData {
@@ -1539,6 +1595,43 @@ fn lowest(faces: &[Face]) -> f32 {
 /// Ground of the eastward slope at a point `east` metres from the road.
 fn slope_at(east: f32) -> f32 {
     500.0 + 0.1 * east
+}
+
+#[tokio::test]
+async fn buildings_drawn_into_the_road_are_left_out() {
+    // A square house turned 45° to the road, its corner towards it clipped in the map: the
+    // footprint keeps 4.2 m off the centre line, but the house is drawn on the whole square,
+    // its corner 2.5 m off, on the road (#138). The same house further off stays.
+    let diamond = |east: f64, clip: f64| {
+        let reach = clip - east + 6.0;
+        let points = [
+            (clip, 500.0 - reach),
+            (clip, 500.0 + reach),
+            (east, 506.0),
+            (east + 6.0, 500.0),
+            (east, 494.0),
+            (clip, 500.0 - reach),
+        ];
+        points.iter().map(|&(e, n)| at(e, n)).collect::<Vec<_>>()
+    };
+    let house = |id, outline| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house(1, diamond(8.5, 4.2)), house(2, diamond(30.0, 25.7))],
+        ..MapData::default()
+    })
+    .await;
+
+    assert!(
+        building_faces(&world, (8.5, 500.0), 7.0).is_empty(),
+        "a house drawn on the road"
+    );
+    assert!(!building_faces(&world, (30.0, 500.0), 7.0).is_empty());
 }
 
 #[tokio::test]

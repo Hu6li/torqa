@@ -11,7 +11,7 @@ use torqa_routes::{ElevationModel, LocalProjection, Surface};
 
 use crate::road::{CentrePoint, RoadIndex};
 use crate::streets::Street;
-use crate::{MeshData, ROAD_HALF_WIDTH, palette, railways};
+use crate::{LEVEL_REACH, MeshData, ROAD_HALF_WIDTH, palette, railways, shape};
 
 static CONCRETE: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.concrete", 0.0));
 static STONE: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.stone", 0.0));
@@ -44,6 +44,12 @@ const FOOTING: f64 = 2.5;
 /// Tunnels are this wide either side of their line, and at most this high.
 const TUNNEL_RADIUS: f64 = 5.0;
 const TUNNEL_HEIGHT: f64 = 7.5;
+/// Ground left over a railway tunnel where it passes under the road ridden (#138).
+const TUNNEL_COVER: f64 = 0.3;
+/// A railway this far or more below the road ridden passes under it, rather than beside it.
+const UNDERPASS: f64 = 1.0;
+/// The road has shaped the ground where it differs from the natural ground by more than this.
+const SHAPED: f64 = 0.01;
 const ARCH_SEGMENTS: usize = 12;
 /// Railway bridges or tunnels running alongside one another this close (centre to centre) are
 /// one.
@@ -165,15 +171,20 @@ pub(crate) async fn build_all<M: ElevationModel>(
     model: &mut M,
 ) -> MeshData {
     let mut mesh = MeshData::default();
-    let structures = road
+    let own = road
         .structure_runs()
         .into_iter()
-        .map(|(surface, run)| (surface, sections(&run, half_width(surface))))
-        .chain(bundles(&railways.structure_runs()));
-    for (surface, run) in structures {
+        .map(|(surface, run)| (surface, sections(&run, half_width(surface)), None));
+    let rails = bundles(&railways.structure_runs())
+        .into_iter()
+        .map(|(surface, run)| (surface, run, Some(road)));
+    for (surface, run, over) in own.chain(rails) {
         match surface {
             Surface::Bridge => bridge(&mut mesh, &run, below, projection, model).await,
-            Surface::Tunnel => tunnel(&mut mesh, &run),
+            Surface::Tunnel => {
+                let over = over.map(|road| (road, projection, &mut *model));
+                tunnel(&mut mesh, &run, over).await;
+            }
             Surface::Ground => {}
         }
     }
@@ -653,22 +664,52 @@ impl<'a> Path<'a> {
     }
 }
 
-/// An arched tube from its left edge to its right one, at most `TUNNEL_HEIGHT` high.
-fn tunnel(mesh: &mut MeshData, run: &[Section]) {
-    for pair in run.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
+/// An arched tube from its left edge to its right one, at most `TUNNEL_HEIGHT` high. A railway
+/// tunnel passing under the road ridden (`over`) is cut flat below the ground the road shapes
+/// there, so it never shows through the road or its cuttings and embankments (#138).
+async fn tunnel<M: ElevationModel>(
+    mesh: &mut MeshData,
+    run: &[Section],
+    over: Option<(&RoadIndex, &LocalProjection, &mut M)>,
+) {
+    #[allow(clippy::cast_precision_loss)] // small segment counts
+    let angle = |k: usize| std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64;
+    let mut rings: Vec<Vec<[f64; 3]>> = run
+        .iter()
+        .map(|&s| {
+            let half = f64::midpoint(s.left, s.right);
+            let middle = (s.right - s.left) / 2.0;
+            (0..=ARCH_SEGMENTS)
+                .map(|k| {
+                    let (sin, cos) = angle(k).sin_cos();
+                    offset(s.centre, middle + half * cos, half.min(TUNNEL_HEIGHT) * sin)
+                })
+                .collect()
+        })
+        .collect();
+    if let Some((road, projection, model)) = over {
+        for (section, ring) in run.iter().zip(&mut rings) {
+            let floor = section.centre.elevation;
+            for point in ring {
+                let (east, north) = (point[0], -point[2]);
+                if let Some(ground) =
+                    ground_over(road, projection, model, (east, north), floor).await
+                {
+                    point[1] = point[1].min((ground - TUNNEL_COVER).max(floor));
+                }
+            }
+        }
+    }
+    for (i, pair) in run.windows(2).enumerate() {
+        let a = pair[0];
         for k in 0..ARCH_SEGMENTS {
-            #[allow(clippy::cast_precision_loss)] // small segment counts
-            let angle = |k: usize| std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64;
-            let (start, end) = (angle(k), angle(k + 1));
-            let ring = |s: Section, angle: f64| {
-                let (sin, cos) = angle.sin_cos();
-                let half = f64::midpoint(s.left, s.right);
-                let middle = (s.right - s.left) / 2.0;
-                offset(s.centre, middle + half * cos, half.min(TUNNEL_HEIGHT) * sin)
-            };
-            let corners = [ring(a, start), ring(b, start), ring(b, end), ring(a, end)];
-            let middle = f64::midpoint(start, end);
+            let corners = [
+                rings[i][k],
+                rings[i + 1][k],
+                rings[i + 1][k + 1],
+                rings[i][k + 1],
+            ];
+            let middle = f64::midpoint(angle(k), angle(k + 1));
             let (sin, cos) = middle.sin_cos();
             let right = right(a.centre);
             // Square to the arch (an ellipse where flattened), facing the axis, seen from inside
@@ -681,6 +722,29 @@ fn tunnel(mesh: &mut MeshData, run: &[Section]) {
             quad(mesh, corners, inward.map(|v| -v), *CONCRETE);
         }
     }
+}
+
+/// The ground at `(east, north)` as the road ridden shapes it, where it does and a railway at
+/// `floor` passes under it there: `None` where the road leaves the ground as it is, or the
+/// line runs beside the road rather than below it (its portals stay whole).
+async fn ground_over<M: ElevationModel>(
+    road: &RoadIndex,
+    projection: &LocalProjection,
+    model: &mut M,
+    (east, north): (f64, f64),
+    floor: f64,
+) -> Option<f64> {
+    let pieces = road.near(east, north, LEVEL_REACH);
+    let under = pieces.iter().any(|&(_, elevation, surface)| {
+        surface != Surface::Tunnel && elevation - floor >= UNDERPASS
+    });
+    if !under {
+        return None;
+    }
+    let (lat, lon) = projection.unproject(east, north);
+    let natural = model.elevation(lat, lon).await.ok()?;
+    let ground = shape(natural, &pieces);
+    ((ground - natural).abs() > SHAPED).then_some(ground)
 }
 
 /// A vertical strip along the line `across` metres right of it at either end, from `low` to
