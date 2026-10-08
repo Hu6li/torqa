@@ -77,6 +77,9 @@ stuttered while ordinary players, using dav1d with its assembly, played it smoot
   missing. It is assembled with **nasm**, which every x86_64 build already has for FFmpeg (dev
   container, Linux and Windows CI). rav1d's build script runs it through `nasm-rs`, a build
   dependency it always had: no crate is added. ARM builds stay as they are.
+- On Linux the GDExtension links with **`-Bsymbolic`** (`torqa-gd/build.rs`): the assembly
+  addresses rav1d's tables PC-relative, which the linker refuses against symbols a shared
+  library exports unless the library binds its references to its own definitions.
 - **The decoder works on several frames at once**: dav1d's default frame delay instead of one
   frame. A picture then comes out a few packets after its data went in; decoding forward and
   seeking already take pictures out as they come and drain them at the end.
