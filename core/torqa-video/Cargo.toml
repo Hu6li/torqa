@@ -13,6 +13,11 @@ quick-xml.workspace = true
 rav1d.workspace = true
 thiserror.workspace = true
 
+# rav1d's x86 assembly (assembled with nasm): the pure Rust decoder alone cannot keep up with a
+# 720p video on a laptop (ADR 0010).
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+rav1d = { workspace = true, features = ["asm"] }
+
 [features]
 # Test videos for other crates' tests.
 testing = []
