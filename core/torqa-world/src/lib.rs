@@ -23,6 +23,8 @@ mod vegetation;
 mod water;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use torqa_osm::{LandCover, MapData, RoadClass};
 use torqa_routes::{ElevationModel, LocalProjection, Route, Surface};
@@ -215,7 +217,6 @@ async fn whole<M: ElevationModel>(
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
 /// `progress` is called with (chunks done, chunks total).
-#[allow(clippy::too_many_lines)] // one pass over the chunks, each step of it named in order
 pub async fn generate<M: ElevationModel>(
     route: &Route,
     model: &mut M,
@@ -234,85 +235,39 @@ pub async fn generate<M: ElevationModel>(
     let buildings =
         buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
     let ways = Ways::new(map, &projection, &road, model).await;
-    let Ways {
-        streets,
-        streams,
-        pools,
-        ..
-    } = &ways;
     let shapers = Shapers {
         road: &road,
         rails: &ways.network.index,
     };
-    let below = structures::Below::new(&road, &ways.network.index, streets);
+    let below = structures::Below::new(&road, &ways.network.index, &ways.streets);
     let mut world = whole(map, &projection, (&road, &ways, &below), model).await;
+    let corridor = Corridor {
+        shapers: &shapers,
+        land: &land,
+        ways: &ways,
+        below: &below,
+        buildings: &buildings,
+        climate,
+    };
 
-    for (done, (cx, cn)) in cells.into_iter().enumerate() {
-        let heights = HeightGrid::sample(
-            cx,
-            cn,
-            &projection,
-            &shapers,
-            (&ways.channels, &land),
-            model,
-            &mut world,
-        )
-        .await;
-        let origin = [
-            heights.origin.0 + CHUNK_SIZE / 2.0,
-            0.0,
-            -(heights.origin.1 + CHUNK_SIZE / 2.0),
-        ];
-        let mut chunk_buildings = buildings::ChunkBuildings::default();
-        for plot in buildings.get(&(cx, cn)).into_iter().flatten() {
-            buildings::add(&mut chunk_buildings, plot, &heights, origin);
+    // Chunks go in batches: their elevations one after the other, as the model is not shared,
+    // then the chunks themselves on all cores, where nearly all the time goes.
+    let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let cells: Vec<(i32, i32)> = cells.into_iter().collect();
+    for batch in cells.chunks(threads * 4) {
+        let mut jobs = Vec::with_capacity(batch.len());
+        for &(cx, cn) in batch {
+            let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
+            jobs.push((cx, cn, elevations));
         }
-        #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-        let center = [origin[0] as f32, 0.0, origin[2] as f32];
-        // Buildings of this chunk and its neighbours: plants near a border keep out of those
-        // across it too.
-        let footprints: Vec<vegetation::Footprint> = (-1..=1)
-            .flat_map(|de| (-1..=1).map(move |dn| (cx + de, cn + dn)))
-            .filter_map(|key| buildings.get(&key))
-            .flatten()
-            .map(|plot| vegetation::Footprint::around(&plot.footprint))
-            .collect();
-        let ground = vegetation::Ground {
-            heights: &heights,
-            land: &land,
-            road: &road,
-            streets: &ways.clearance,
-            buildings: &footprints,
-            climate,
-        };
-        let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
-        vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
-        let (paved, mut unpaved) = streets::meshes(
-            (streets, &ways.corners),
-            heights.origin,
-            CHUNK_SIZE,
-            &heights,
-            &below,
-            origin,
-        );
-        unpaved.append(water::shore_mesh(
-            pools,
-            heights.origin,
-            CHUNK_SIZE,
-            &heights,
-            origin,
-        ));
-        world.chunks.push(TerrainChunk {
-            center,
-            mesh: heights.mesh(&land, origin, &shapers, &ways.islands),
-            buildings: chunk_buildings.shells,
-            modelled: chunk_buildings.cells.into_values().collect(),
-            streets: paved,
-            tracks: unpaved,
-            water: water::mesh(streams, pools, heights.origin, CHUNK_SIZE, &heights, origin),
-            trees,
+        let chunks = in_parallel(&jobs, threads, |(cx, cn, elevations)| {
+            corridor.chunk(*cx, *cn, elevations)
         });
-        progress(done + 1, total);
+        for (chunk, fallbacks) in chunks {
+            world.chunks.push(chunk);
+            world.fallback_samples += fallbacks;
+        }
+        progress(world.chunks.len(), total);
     }
     if world.fallback_samples > 0 {
         warn!(
@@ -426,6 +381,129 @@ fn buildings_by_chunk<'a>(
     by_chunk
 }
 
+/// What every chunk is built from, shared by the chunks built at the same time.
+struct Corridor<'a> {
+    shapers: &'a Shapers<'a>,
+    land: &'a LandIndex,
+    ways: &'a Ways,
+    below: &'a structures::Below<'a>,
+    buildings: &'a HashMap<(i32, i32), Vec<buildings::Plot<'a>>>,
+    climate: climate::Climate,
+}
+
+impl Corridor<'_> {
+    /// Chunk (`cx`, `cn`) from its [`HeightGrid::elevations`], and how many of its terrain
+    /// samples had no elevation data.
+    fn chunk(&self, cx: i32, cn: i32, elevations: &[Option<f64>]) -> (TerrainChunk, usize) {
+        let Ways {
+            streets,
+            streams,
+            pools,
+            ..
+        } = self.ways;
+        let (heights, fallbacks) = HeightGrid::build(
+            cx,
+            cn,
+            elevations,
+            self.shapers,
+            (&self.ways.channels, self.land),
+        );
+        let origin = [
+            heights.origin.0 + CHUNK_SIZE / 2.0,
+            0.0,
+            -(heights.origin.1 + CHUNK_SIZE / 2.0),
+        ];
+        let mut chunk_buildings = buildings::ChunkBuildings::default();
+        for plot in self.buildings.get(&(cx, cn)).into_iter().flatten() {
+            buildings::add(&mut chunk_buildings, plot, &heights, origin);
+        }
+        #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
+        let center = [origin[0] as f32, 0.0, origin[2] as f32];
+        // Buildings of this chunk and its neighbours: plants near a border keep out of those
+        // across it too.
+        let footprints: Vec<vegetation::Footprint> = (-1..=1)
+            .flat_map(|de| (-1..=1).map(move |dn| (cx + de, cn + dn)))
+            .filter_map(|key| self.buildings.get(&key))
+            .flatten()
+            .map(|plot| vegetation::Footprint::around(&plot.footprint))
+            .collect();
+        let ground = vegetation::Ground {
+            heights: &heights,
+            land: self.land,
+            road: self.shapers.road,
+            streets: &self.ways.clearance,
+            buildings: &footprints,
+            climate: self.climate,
+        };
+        let mut trees = vegetation::place(heights.origin, CHUNK_SIZE, &ground, origin);
+        vegetation::place_grass(&mut trees, heights.origin, CHUNK_SIZE, &ground, origin);
+        let (paved, mut unpaved) = streets::meshes(
+            (streets, &self.ways.corners),
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            self.below,
+            origin,
+        );
+        unpaved.append(water::shore_mesh(
+            pools,
+            heights.origin,
+            CHUNK_SIZE,
+            &heights,
+            origin,
+        ));
+        let chunk = TerrainChunk {
+            center,
+            mesh: heights.mesh(self.land, origin, self.shapers, &self.ways.islands),
+            buildings: chunk_buildings.shells,
+            modelled: chunk_buildings.cells.into_values().collect(),
+            streets: paved,
+            tracks: unpaved,
+            water: water::mesh(streams, pools, heights.origin, CHUNK_SIZE, &heights, origin),
+            trees,
+        };
+        (chunk, fallbacks)
+    }
+}
+
+/// `work` done for each of `jobs` on up to `threads` threads, the results in the order of
+/// `jobs`. A panic in `work` is passed on.
+fn in_parallel<J: Sync, R: Send>(
+    jobs: &[J],
+    threads: usize,
+    work: impl Fn(&J) -> R + Sync,
+) -> Vec<R> {
+    // Each thread takes the next job when done with one: chunks differ a lot in work (a town
+    // against a field).
+    let next = AtomicUsize::new(0);
+    let mut results: Vec<Option<R>> = std::iter::repeat_with(|| None).take(jobs.len()).collect();
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads.clamp(1, jobs.len().max(1)))
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(job) = jobs.get(index) else {
+                            return done;
+                        };
+                        done.push((index, work(job)));
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            for (index, result) in worker
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            {
+                results[index] = Some(result);
+            }
+        }
+    });
+    results.into_iter().flatten().collect()
+}
+
 fn chunk_of(east: f64, north: f64) -> (i32, i32) {
     #[allow(clippy::cast_possible_truncation)] // world coordinates are far below 2^31 chunks
     (
@@ -485,18 +563,52 @@ pub(crate) enum On {
 }
 
 impl HeightGrid {
-    #[allow(clippy::too_many_arguments)]
-    async fn sample<M: ElevationModel>(
+    /// Vertices per side of a chunk's grid, without the border.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    const SIDE: usize = (CHUNK_SIZE / GRID) as usize + 1;
+
+    /// Positions (east, north) of the vertices of chunk (`cx`, `cn`), border included, row by
+    /// row from the south-west.
+    fn vertices(cx: i32, cn: i32) -> impl Iterator<Item = (f64, f64)> {
+        let bordered = Self::SIDE + 2;
+        let origin = (f64::from(cx) * CHUNK_SIZE, f64::from(cn) * CHUNK_SIZE);
+        (0..bordered).flat_map(move |j| {
+            (0..bordered).map(move |i| {
+                #[allow(clippy::cast_precision_loss)] // small grid indices
+                (
+                    origin.0 + (i as f64 - 1.0) * GRID,
+                    origin.1 + (j as f64 - 1.0) * GRID,
+                )
+            })
+        })
+    }
+
+    /// The model's elevations at the vertices of chunk (`cx`, `cn`), `None` where it has none.
+    /// Kept apart from [`HeightGrid::build`]: the model is the one part chunks cannot share.
+    async fn elevations<M: ElevationModel>(
         cx: i32,
         cn: i32,
         projection: &LocalProjection,
+        model: &mut M,
+    ) -> Vec<Option<f64>> {
+        let mut elevations = Vec::with_capacity((Self::SIDE + 2).pow(2));
+        for (east, north) in Self::vertices(cx, cn) {
+            let (lat, lon) = projection.unproject(east, north);
+            elevations.push(model.elevation(lat, lon).await.ok());
+        }
+        elevations
+    }
+
+    /// The grid of chunk (`cx`, `cn`) from its [`HeightGrid::elevations`], and how many
+    /// vertices had none and follow the road instead.
+    fn build(
+        cx: i32,
+        cn: i32,
+        elevations: &[Option<f64>],
         shapers: &Shapers<'_>,
         water: (&channels::Channels, &LandIndex),
-        model: &mut M,
-        world: &mut World,
-    ) -> Self {
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let side = (CHUNK_SIZE / GRID).round() as usize + 1;
+    ) -> (Self, usize) {
+        let side = Self::SIDE;
         let bordered = side + 2;
         let origin = (f64::from(cx) * CHUNK_SIZE, f64::from(cn) * CHUNK_SIZE);
         let chunk_road_elevation = shapers
@@ -511,29 +623,19 @@ impl HeightGrid {
         let mut natural = vec![0.0; bordered * bordered];
         let mut heights = vec![0.0; bordered * bordered];
         let mut carve = vec![0.0; bordered * bordered];
-        for j in 0..bordered {
-            for i in 0..bordered {
-                #[allow(clippy::cast_precision_loss)] // small grid indices
-                let (east, north) = (
-                    origin.0 + (i as f64 - 1.0) * GRID,
-                    origin.1 + (j as f64 - 1.0) * GRID,
-                );
-                let (lat, lon) = projection.unproject(east, north);
-                let height = if let Ok(height) = model.elevation(lat, lon).await {
-                    height
-                } else {
-                    world.fallback_samples += 1;
-                    shapers
-                        .road
-                        .nearest(east, north, FALLBACK_RADIUS)
-                        .map_or(chunk_road_elevation, |(_, elevation, _)| elevation)
-                };
-                let cut = carve_at(water, east, north, shapers);
-                natural[j * bordered + i] = height;
-                carve[j * bordered + i] = cut;
-                heights[j * bordered + i] =
-                    shape(height, &shapers.near(east, north, LEVEL_REACH)) - cut;
-            }
+        let mut fallbacks = 0;
+        for (k, ((east, north), elevation)) in Self::vertices(cx, cn).zip(elevations).enumerate() {
+            let height = elevation.unwrap_or_else(|| {
+                fallbacks += 1;
+                shapers
+                    .road
+                    .nearest(east, north, FALLBACK_RADIUS)
+                    .map_or(chunk_road_elevation, |(_, elevation, _)| elevation)
+            });
+            let cut = carve_at(water, east, north, shapers);
+            natural[k] = height;
+            carve[k] = cut;
+            heights[k] = shape(height, &shapers.near(east, north, LEVEL_REACH)) - cut;
         }
         let mut grid = Self {
             origin,
@@ -555,7 +657,7 @@ impl HeightGrid {
                 }
             }
         }
-        grid
+        (grid, fallbacks)
     }
 
     /// Whether the ground anywhere in cell (`i`, `j`) is shaped around the road. Elsewhere it
