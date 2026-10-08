@@ -1,0 +1,3 @@
+# The dev image (.devcontainer/Dockerfile) is built from the repository root for one file.
+*
+!scripts/build-ffmpeg.sh

@@ -27,11 +27,13 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-      # One image per Dockerfile: built the first time that Dockerfile is seen, pulled after.
+      # One image per Dockerfile (and the FFmpeg build script it runs): built the first time
+      # that pair is seen, pulled after.
       - id: tag
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "tag=ghcr.io/$owner/torqa-dev:$(sha256sum .devcontainer/Dockerfile | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          hash="$(cat .devcontainer/Dockerfile scripts/build-ffmpeg.sh | sha256sum | cut -c1-16)"
+          echo "tag=ghcr.io/$owner/torqa-dev:$hash" >> "$GITHUB_OUTPUT"
       # A PR from a fork has a read-only token: it uses the image as it is, or the checks job
       # builds its own if the Dockerfile changed.
       - name: Build and push the image if GHCR lacks it
@@ -45,7 +47,7 @@ jobs:
             echo "$TAG is there already"
             exit 0
           fi
-          docker build -t "$TAG" .devcontainer
+          docker build -f .devcontainer/Dockerfile -t "$TAG" .
           docker push "$TAG"
 
   checks:
@@ -58,9 +60,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # The build directory, the crate registry and Godot's imports carry over between runs, as
-      # the devcontainer's volumes do for a developer: a cold build (FFmpeg from source and the
-      # whole workspace) takes about 20 minutes, a warm one a fraction of that. The key is what
-      # decides the build: the toolchain (the Dockerfile) and the dependencies (the lock file);
+      # the devcontainer's volumes do for a developer: a cold build of the whole workspace takes
+      # over ten minutes, a warm one seconds. The key is what decides the build: the toolchain
+      # and FFmpeg (the image's inputs) and the dependencies (the lock file and the profiles);
       # not the runner's own Rust, which rust-cache would mix in and which varies between
       # runner images. Only a changed key saves: the dependencies are what is worth keeping.
       - uses: actions/cache@v4
@@ -69,15 +71,15 @@ jobs:
             ~/.cargo/registry
             core/target
             app/.godot
-          key: checks-${{ hashFiles('.devcontainer/Dockerfile') }}-${{ hashFiles('core/Cargo.lock', 'core/Cargo.toml', '.cargo/config.toml') }}
+          key: checks-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-${{ hashFiles('core/Cargo.lock', 'core/Cargo.toml') }}
           restore-keys: |
-            checks-${{ hashFiles('.devcontainer/Dockerfile') }}-
+            checks-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-
       - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
-          docker pull "$IMAGE" || docker build -t "$IMAGE" .devcontainer
+          docker pull "$IMAGE" || docker build -f .devcontainer/Dockerfile -t "$IMAGE" .
       # Without incremental compilation: a run compiles each changed crate once, and the build
       # directory stays small enough to cache.
       - name: fmt, clippy, test, deny, gdlint in the dev container
@@ -107,9 +109,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
-      # FFmpeg is built from source into the extension (ADR 0010); its assembly needs nasm.
+      # FFmpeg's assembly needs nasm.
       - name: Install FFmpeg build tools
         run: brew install nasm
+      # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
+      - id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Build FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: scripts/build-ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
+      - run: echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
       - name: Build GDExtension
         run: scripts/build-gdext.sh release
       - name: Build CLI
@@ -149,10 +161,10 @@ jobs:
 
   windows:
     name: Windows app (x86_64)
-    # FFmpeg's configure rejects the target OS ffmpeg-sys-next passes when cross-compiling
-    # ("windows"), so the extension is built natively with MSVC, like the macOS one.
+    # Built natively with MSVC, like the macOS one: the extension is a Windows DLL with
+    # Windows' Bluetooth behind it.
     runs-on: windows-latest
-    # A cold build (FFmpeg from source plus the workspace) takes about 15 minutes.
+    # A cold build (FFmpeg plus the workspace) takes about 15 minutes.
     timeout-minutes: 60
     env:
       GODOT_VERSION: "4.7.2"
@@ -174,32 +186,44 @@ jobs:
       # first (its link.exe must win over coreutils' link), then MSYS2 (FFmpeg's makefiles need
       # MSYS2's make, sh and awk; other makes on the image mangle their quoting), then the rest.
       # Git's own sh and coreutils come out so the build uses one MSYS2 runtime (git.exe stays).
-      - name: Build GDExtension and CLI
+      # The steps after this one inherit the environment.
+      - name: Set up the MSVC and MSYS2 environment
         run: |
-          $before = $env:PATH -split ';'
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          $paths = $env:PATH -split ';'
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products * -property installationPath `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
           Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation `
             -DevCmdArguments '-arch=x64 -host_arch=x64'
-          $vsPaths = $env:PATH -split ';' | Where-Object { $_ -and $before -notcontains $_ }
-          $rest = $before | Where-Object { $_ -and $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
+          $vsPaths = $env:PATH -split ';' | Where-Object { $_ -and $paths -notcontains $_ }
+          $rest = $paths | Where-Object { $_ -and $_ -notmatch '\\Git\\(usr\\)?bin\\?$' }
           $env:PATH = (@($vsPaths) + 'C:\msys64\usr\bin' + @($rest)) -join ';'
+          Get-ChildItem env: | Where-Object { $before[$_.Name] -ne $_.Value } |
+            ForEach-Object { "$($_.Name)=$($_.Value)" } >> $env:GITHUB_ENV
           Get-Command cl, link, make, sh, awk, nasm | Format-Table Name, Source -AutoSize
+      # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
+      - id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Build FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          sh scripts/build-ffmpeg.sh "$env:RUNNER_TEMP\ffmpeg"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - run: '"FFMPEG_DIR=$env:RUNNER_TEMP\ffmpeg" >> $env:GITHUB_ENV'
+      - name: Build GDExtension and CLI
+        run: |
           sh scripts/build-gdext.sh release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo build --manifest-path core/Cargo.toml -p torqa-cli --release --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive core/target/release/torqa-cli.exe dist/torqa-cli-windows-x86_64.zip
-      # Cargo only shows configure's summary; the cause of a failed FFmpeg build is in its log.
-      - name: Show FFmpeg configure log
-        if: failure()
-        run: |
-          Get-ChildItem core/target -Recurse -Filter config.log -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match 'ffbuild' } |
-            ForEach-Object { Write-Output "== $($_.FullName)"; Get-Content $_.FullName -Tail 80 }
       - name: Install Godot and export templates
         run: |
           $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
@@ -268,6 +292,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libdbus-1-dev pkg-config libclang-dev nasm libfontconfig1
+      # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
+      - id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Build FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: scripts/build-ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
+      - run: echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
       - name: Build GDExtension
         run: scripts/build-gdext.sh release
       - name: Build CLI

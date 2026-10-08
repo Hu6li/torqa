@@ -14,8 +14,7 @@ ARG CARGO_DENY_SHA256_AARCH64=995c82be0defc7a025cae49a2aa2644ce8245c9a3318fc4103
 # libdbus: btleplug's Linux backend talks to BlueZ over D-Bus.
 # libfontconfig: needed by the Godot binary even in headless mode.
 # mesa-vulkan-drivers (lavapipe) + xvfb: software rendering for 3D screenshots without a GPU.
-# libclang-dev + nasm: torqa-video builds FFmpeg from source (bindgen needs libclang, FFmpeg's
-# assembly needs nasm).
+# libclang-dev: ffmpeg-sys-next's bindgen. nasm: FFmpeg's assembly (built below).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libdbus-1-dev pkg-config libfontconfig1 pipx unzip ca-certificates \
@@ -50,5 +49,11 @@ RUN case "$(uname -m)" in \
     && unzip -q /tmp/godot.zip -d /tmp/godot \
     && mv "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" /usr/local/bin/godot \
     && rm -rf /tmp/godot /tmp/godot.zip
+
+# FFmpeg's libraries for torqa-video (ADR 0010), from the pinned release the script verifies;
+# ffmpeg-sys-next finds them through FFMPEG_DIR instead of building its own.
+COPY scripts/build-ffmpeg.sh /tmp/build-ffmpeg.sh
+RUN sh /tmp/build-ffmpeg.sh /opt/ffmpeg && rm /tmp/build-ffmpeg.sh
+ENV FFMPEG_DIR=/opt/ffmpeg
 
 WORKDIR /workspaces/torqa

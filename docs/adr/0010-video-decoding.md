@@ -27,19 +27,23 @@ Options considered:
   any moment (`Video::frame_at`), decoding forward when the next request is close and seeking
   to a keyframe otherwise, scaled to at most 1920 px wide (1080p); Godot only displays the
   frames.
-- **FFmpeg 9.0 is built from source** by `ffmpeg-sys-next`'s `build` feature (the release/9.0
-  branch, i.e. the latest 9.0.x), statically linked — the same version in the dev container,
-  in CI and in app builds, no system FFmpeg needed. The default configuration is **LGPL**,
-  compatible with our GPL-3.0; no GPL-only or non-free parts are enabled.
-- On macOS FFmpeg's configure builds in VideoToolbox. The decoder does not use it yet: frames
-  are decoded in software on a background thread (hardware decoding is a follow-up, see
-  PLAN Phase 5).
+- **FFmpeg 9.0.2 is built by `scripts/build-ffmpeg.sh`** from the release tarball, its SHA-256
+  pinned in the script, statically linked, and found by `ffmpeg-sys-next` through `FFMPEG_DIR`
+  — the same bytes in the dev container (built into the image), in CI (built once per
+  platform and cached) and in app builds, no system FFmpeg needed. Only avcodec, avformat,
+  avutil and swscale, nothing autodetected, no network; the configuration is **LGPL**,
+  compatible with our GPL-3.0; no GPL-only or non-free parts are enabled. *(Until 2026-10-08
+  `ffmpeg-sys-next`'s `build` feature cloned FFmpeg's release/9.0 branch at build time:
+  unpinned, unverified, and compiled again on every cold build.)*
+- Frames are decoded in software on a background thread; hardware decoding (VideoToolbox on
+  macOS) is a follow-up, see PLAN Phase 5, and would add Apple's frameworks to the link.
 
 ## Consequences
 
-- The first build compiles FFmpeg (several minutes); later builds reuse it from the target
-  directory/cache. The container needs `libclang-dev` (bindgen) and `nasm`; macOS runners
-  need `nasm` (CI only, never on developer machines).
+- Building FFmpeg takes several minutes: once per dev image, once per platform in CI (cached
+  by the script's hash). The container needs `libclang-dev` (bindgen) and `nasm`; the CI
+  runners need `nasm` (never on developer machines). On Windows `torqa-video`'s build script
+  links the system libraries FFmpeg's static libraries need.
 - H.264 and HEVC are patent-encumbered in some countries; FFmpeg's decoders are used as is,
   as by most open-source players.
 - Transcoding down on import (R17) needs an encoder: VideoToolbox on macOS; until then frames

@@ -62,7 +62,7 @@ scripts/                   container helpers: checks, GDExtension build, screens
   scripts (riders from Blender Studio's CC0 Human Base Meshes), exported to `.glb`; scripts and
   models committed, CC0/CC-BY(-SA) only ([ADR 0009](adr/0009-asset-pipeline.md),
   [ADR 0011](adr/0011-stylized-look.md)).
-- **Video**: FFmpeg (LGPL, built from source) in the Rust core
+- **Video**: FFmpeg 9.0.2 (LGPL, built from a pinned release) in the Rust core
   ([ADR 0010](adr/0010-video-decoding.md)); software decoding on a background thread; the
   rider's distance sets the video time (matched like ghosts); Godot blends the previous and
   next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video added to a

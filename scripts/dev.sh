@@ -5,7 +5,7 @@ set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
-docker build -q -t torqa-dev "$root/.devcontainer" >/dev/null
+docker build -q -t torqa-dev -f "$root/.devcontainer/Dockerfile" "$root" >/dev/null
 
 tty_flags=""
 if [ -t 0 ] && [ -t 1 ]; then
