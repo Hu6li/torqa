@@ -483,11 +483,6 @@ pub(crate) async fn build_all<M: ElevationModel>(
             Surface::Tunnel => {
                 let over = over.map(|road| (road, projection, &mut *model));
                 tunnel(&mut mesh, &run, over).await;
-                let shapers = Shapers {
-                    road,
-                    rails: railways,
-                    portals,
-                };
                 for (end, outward) in [(run.first(), -1.0), (run.last(), 1.0)] {
                     let Some(&end) = end else {
                         continue;
