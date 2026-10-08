@@ -2,6 +2,7 @@
 
 mod devices;
 mod free_ride;
+mod gear_check;
 mod recorded_ride;
 
 use std::path::PathBuf;
@@ -43,6 +44,8 @@ enum Command {
     },
     /// Ride a GPX route or a workout, or control the trainer from the keyboard.
     Ride(Box<RideArgs>),
+    /// Check virtual gears on the trainer: what it brakes in each gear against what it should.
+    GearCheck(Box<gear_check::GearCheckArgs>),
     /// Show length, climbing and elevation source of a GPX route.
     Route(RouteArgs),
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
@@ -194,6 +197,7 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Scan { seconds } => scan(seconds).await,
         Command::Ride(args) => ride(*args).await,
+        Command::GearCheck(args) => gear_check(&args).await,
         Command::Route(args) => route_info(&args).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
     }
@@ -254,6 +258,13 @@ async fn ride(args: RideArgs) -> Result<()> {
         }
         (None, None) => free_ride::run(&mut devices).await,
     };
+    devices.close().await;
+    result
+}
+
+async fn gear_check(args: &gear_check::GearCheckArgs) -> Result<()> {
+    let mut devices = devices::connect(&args.devices).await?;
+    let result = gear_check::run(args, &mut devices).await;
     devices.close().await;
     result
 }
@@ -444,6 +455,9 @@ mod tests {
         assert!(parse(&["--gears", "50x14"]).is_ok());
         assert!(parse(&["--gears", "50"]).is_err());
         assert_eq!(parse_gears("34/14"), Ok((34, 14)));
+        assert!(
+            Cli::try_parse_from(["torqa-cli", "gear-check", "--fake", "--gears", "34x14"]).is_ok()
+        );
     }
 
     #[test]

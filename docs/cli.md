@@ -108,6 +108,39 @@ data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (O
 Terrain data: [Mapterhorn](https://mapterhorn.com/attribution) (CC BY 4.0) and
 [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
 
+## Check virtual gears
+
+```sh
+./torqa-cli gear-check --trainer kickr --gears 50x14   # chainring x cog on the trainer
+./torqa-cli gear-check --trainer kickr --controller     # shift with the Di2 buttons
+```
+
+Rides a flat virtual road in virtual gears (ADR 0003) and shows, every second, whether the
+trainer brakes the way the gear asks it to. Type `u` / `d` and Enter to shift, a number (1–24)
+to jump to that gear, `g 4` to ride a 4 % road, `q` to quit. Pedal steadily for a few seconds
+after each change; the values are averaged over the second.
+
+```text
+gear 24 5.50  sent +0.0 % Crr 0.0062 Cw 0.72 |  420 W  91 rpm  41.0 km/h | felt 3.57 (real 3.57) | expect 1114 W, ungeared 327 W | virtual 49.3 km/h = 4.29
+```
+
+| Part | Meaning |
+|---|---|
+| `gear 24 5.50` | The virtual gear and its ratio (chainring over cog) |
+| `sent …` | The gradient, rolling resistance and wind coefficient sent to the trainer for that gear |
+| `W rpm km/h` | Power, cadence and speed as the trainer measures them |
+| `felt 3.57 (real 3.57)` | The ratio the trainer turns in: its speed over cadence × wheel. It should match the real gear; if not, `--gears` does not match the bike, or the trainer assumes another wheel |
+| `expect … W` | The power the trainer should brake at its speed with the parameters sent |
+| `ungeared … W` | The power it would brake at that speed without the gear (the road's parameters) |
+| `virtual … = 4.29` | Torqa's speed from your power, and the ratio it implies at your cadence: it settles at the gear's ratio when the trainer brakes as expected |
+
+If the measured power stays near `ungeared` instead of `expect` on a flat road, the trainer
+ignores the rolling resistance and wind coefficient of the simulation command, so the gears
+only take effect where there is a gradient. `--mass 83` (rider plus bike) and `--wheel 2.105`
+(circumference in m) set the values the expectation is computed with; the trainer uses its own
+rider weight, so on gradients the expectation is approximate. Speed and the felt ratio need a
+trainer that reports speed; the fake trainer (`--fake`) does not.
+
 ## Ride a workout
 
 ```sh
