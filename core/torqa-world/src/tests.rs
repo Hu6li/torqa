@@ -774,6 +774,24 @@ async fn a_railway_bridge_mapped_on_its_own_is_kept() {
 }
 
 #[tokio::test]
+async fn a_railway_tunnel_on_its_own_is_left_out() {
+    // #116: a tunnel joining no line of its own tells nothing about where its ends lie: cut
+    // at a tile border, an end is deep in the hill (the Gotthard tunnel above Andermatt), and
+    // a track laid from there to the ground would hang in the air across the valley. It is
+    // left out, as it was.
+    let world = world(&MapData {
+        railways: vec![railway(
+            &[(200.0, 300.0), (200.0, 500.0)],
+            Some(StructureKind::Tunnel),
+        )],
+        ..MapData::default()
+    })
+    .await;
+
+    assert!(rail_bed(&world).is_empty(), "the tunnel is laid out");
+}
+
+#[tokio::test]
 async fn railway_bridges_clear_the_road_and_meet_their_track() {
     // A line crossing the route at 500 m, on a bridge 60 m long over it.
     let map = MapData {

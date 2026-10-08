@@ -20,8 +20,13 @@ pub(crate) const BED_M: f64 = 3.2;
 const STEP_M: f64 = 5.0;
 /// The terrain is smoothed over this far either side of each point...
 const SMOOTHING_M: f64 = 80.0;
-/// ...and the line held to this grade (rise per metre), funiculars excepted.
+/// ...and the line held to this grade (rise per metre), funiculars excepted...
 const MAX_GRADE: f64 = 0.04;
+/// ...and rack railways: the map does not tell them apart, but a line mapped on ground that
+/// climbs steeper than `MAX_GRADE` over this far can only be one, and climbs with the ground...
+const RACK_WINDOW_M: f64 = 1000.0;
+/// ...up to this grade, the steepest of rack lines (#116).
+const RACK_MAX_GRADE: f64 = 0.25;
 /// Where the hill rises this far above the track it runs in a tunnel...
 const TUNNEL_COVER: f64 = 8.0;
 /// ...where the ground lies this far below it, on a viaduct...
@@ -178,13 +183,18 @@ fn lay_out(
         .iter()
         .map(|p| p.terrain.filter(|_| p.surface == Surface::Ground))
         .collect();
-    // A bridge or tunnel mapped on its own, between switches where the line does not join on:
-    // its ends stand on the ground, rather than the whole of it being left out (#116).
+    // A bridge mapped on its own, between switches where the line does not join on: its ends
+    // stand on the ground, rather than the whole of it being left out (#116). A tunnel's ends
+    // tell nothing: cut at a tile border, one lies deep in the hill, and a line from there to
+    // the ground would run through the open air.
     if known.iter().all(Option::is_none)
         && let Some(last) = points.len().checked_sub(1)
     {
-        known[0] = points[0].terrain;
-        known[last] = points[last].terrain;
+        for k in [0, last] {
+            if points[k].surface == Surface::Bridge {
+                known[k] = points[k].terrain;
+            }
+        }
     }
     let mut heights = fill_between(&known, &along)?;
     heights = smooth(&heights, &along, SMOOTHING_M);
@@ -208,7 +218,11 @@ fn lay_out(
             .enumerate()
             .filter_map(|(k, b)| b.map(|(height, _)| (k, height, Pin::Exactly))),
     );
-    hold_grades(&mut heights, &along, &pins, funicular);
+    // Held to `MAX_GRADE`, a line up a rack railway's hillside would leave the ground on
+    // viaducts below and sink into it above (#116: the Oberalp line at Nätschen).
+    let limit =
+        (!funicular).then(|| MAX_GRADE.max(sustained_grade(&heights, &along).min(RACK_MAX_GRADE)));
+    hold_grades(&mut heights, &along, &pins, limit);
     // Tunnels where the hill rises far above the track, viaducts where the ground falls far
     // below it.
     for (k, point) in points.iter().enumerate() {
@@ -331,7 +345,7 @@ enum Pin {
 
 /// Keeps the line's grades within `MAX_GRADE` (funiculars excepted) while it keeps its heights
 /// at the crossings.
-fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], funicular: bool) {
+fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], limit: Option<f64>) {
     let apply = |heights: &mut [f64]| {
         for &(k, height, pin) in pins {
             heights[k] = match pin {
@@ -342,27 +356,44 @@ fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], f
         }
     };
     apply(heights);
-    if funicular {
+    let Some(limit) = limit else {
         return;
-    }
+    };
     let pinned: Vec<bool> = (0..heights.len())
         .map(|k| pins.iter().any(|p| p.0 == k))
         .collect();
     for _ in 0..4 {
         for k in 1..heights.len() {
-            let room = MAX_GRADE * (along[k] - along[k - 1]);
+            let room = limit * (along[k] - along[k - 1]);
             if !pinned[k] {
                 heights[k] = heights[k].clamp(heights[k - 1] - room, heights[k - 1] + room);
             }
         }
         for k in (0..heights.len() - 1).rev() {
-            let room = MAX_GRADE * (along[k + 1] - along[k]);
+            let room = limit * (along[k + 1] - along[k]);
             if !pinned[k] {
                 heights[k] = heights[k].clamp(heights[k + 1] - room, heights[k + 1] + room);
             }
         }
         apply(heights);
     }
+}
+
+/// The steepest mean grade of `heights` over any `RACK_WINDOW_M` along the line: 0 for a line
+/// shorter than that.
+fn sustained_grade(heights: &[f64], along: &[f64]) -> f64 {
+    let mut steepest: f64 = 0.0;
+    let mut far = 0;
+    for (near, &from) in along.iter().enumerate() {
+        while far < along.len() && along[far] - from < RACK_WINDOW_M {
+            far += 1;
+        }
+        if far == along.len() {
+            break;
+        }
+        steepest = steepest.max((heights[far] - heights[near]).abs() / (along[far] - from));
+    }
+    steepest
 }
 
 /// Turns tunnels and viaducts found from the ground's shape back into track where they would be
@@ -400,21 +431,45 @@ mod tests {
 
     #[test]
     fn lines_keep_gentle_grades_and_their_crossings() {
-        // A steep, bumpy hillside 1 km long; a level crossing at 500 m.
+        // A bumpy hillside 1 km long, 3 % overall; a level crossing at 500 m.
         let along: Vec<f64> = (0..=200).map(|k| f64::from(k) * 5.0).collect();
         let mut heights: Vec<f64> = along
             .iter()
-            .map(|a| 500.0 + 0.12 * a + 3.0 * (a / 15.0).sin())
+            .map(|a| 500.0 + 0.03 * a + 3.0 * (a / 15.0).sin())
             .collect();
+        assert!(
+            grade_at(&heights, &along) > MAX_GRADE,
+            "the bumps are steep"
+        );
         let pins = [(100, 520.0, Pin::Exactly)];
-        hold_grades(&mut heights, &along, &pins, false);
+        hold_grades(&mut heights, &along, &pins, Some(MAX_GRADE));
 
         assert!(grade_at(&heights, &along) <= MAX_GRADE + 1e-9);
         assert!((heights[100] - 520.0).abs() < 1e-9);
         // A funicular keeps its slope.
         let mut steep: Vec<f64> = along.iter().map(|a| 500.0 + 0.3 * a).collect();
-        hold_grades(&mut steep, &along, &[], true);
+        hold_grades(&mut steep, &along, &[], None);
         assert!(grade_at(&steep, &along) > 0.29);
+    }
+
+    #[test]
+    fn a_line_up_a_steep_hillside_is_a_rack_railway_and_climbs_with_it() {
+        // #116: 11 % for 1 km, as the Oberalp line above Andermatt; bumps on the way.
+        let along: Vec<f64> = (0..=200).map(|k| f64::from(k) * 5.0).collect();
+        let heights: Vec<f64> = along
+            .iter()
+            .map(|a| 1400.0 + 0.11 * a + 3.0 * (a / 15.0).sin())
+            .collect();
+        let grade = sustained_grade(&heights, &along);
+        assert!((0.10..0.12).contains(&grade), "sustained grade {grade}");
+        // Bumps 3 m high over 150 m are no rack railway.
+        let bumpy: Vec<f64> = along
+            .iter()
+            .map(|a| 500.0 + 3.0 * (a / 15.0).sin())
+            .collect();
+        assert!(sustained_grade(&bumpy, &along) < 0.02);
+        // Too short to tell: nothing.
+        assert!(sustained_grade(&heights[..50], &along[..50]).abs() < f64::EPSILON);
     }
 
     #[test]
