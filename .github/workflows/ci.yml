@@ -3,24 +3,102 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "**.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**.md"]
+
+# A newer push to the same branch or PR makes the running checks moot.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  checks:
-    name: Checks (dev container)
+  image:
+    name: Dev image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-      - name: fmt, clippy, test, deny, gdlint in the dev container
-        uses: devcontainers/ci@v0.3
+      # One image per Dockerfile: built the first time that Dockerfile is seen, pulled after.
+      - id: tag
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "tag=ghcr.io/$owner/torqa-dev:$(sha256sum .devcontainer/Dockerfile | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      # A PR from a fork has a read-only token: it uses the image as it is, or the checks job
+      # builds its own if the Dockerfile changed.
+      - name: Build and push the image if GHCR lacks it
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if docker manifest inspect "$TAG" >/dev/null 2>&1; then
+            echo "$TAG is there already"
+            exit 0
+          fi
+          docker build -t "$TAG" .devcontainer
+          docker push "$TAG"
+
+  checks:
+    name: Checks (dev container)
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMAGE: ${{ needs.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      # The build directory, the crate registry and Godot's imports carry over between runs, as
+      # the devcontainer's volumes do for a developer: a cold build (FFmpeg from source and the
+      # whole workspace) takes about 20 minutes, a warm one a fraction of that. The key is what
+      # decides the build: the toolchain (the Dockerfile) and the dependencies (the lock file);
+      # not the runner's own Rust, which rust-cache would mix in and which varies between
+      # runner images. Only a changed key saves: the dependencies are what is worth keeping.
+      - uses: actions/cache@v4
         with:
-          runCmd: scripts/check.sh
-          push: never
+          path: |
+            ~/.cargo/registry
+            core/target
+            app/.godot
+          key: checks-${{ hashFiles('.devcontainer/Dockerfile') }}-${{ hashFiles('core/Cargo.lock', 'core/Cargo.toml', '.cargo/config.toml') }}
+          restore-keys: |
+            checks-${{ hashFiles('.devcontainer/Dockerfile') }}-
+      - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
+          docker pull "$IMAGE" || docker build -t "$IMAGE" .devcontainer
+      # Without incremental compilation: a run compiles each changed crate once, and the build
+      # directory stays small enough to cache.
+      - name: fmt, clippy, test, deny, gdlint in the dev container
+        run: |
+          mkdir -p ~/.cargo/registry core/target app/.godot
+          docker run --rm \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$PWD:/workspaces/torqa" \
+            -v "$HOME/.cargo/registry:/usr/local/cargo/registry" \
+            -w /workspaces/torqa \
+            "$IMAGE" scripts/check.sh
+      # The container runs as root; the cache step must be able to read what it saves.
+      - name: Hand the build directory back to the runner's user
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" core/target app/.godot ~/.cargo/registry
 
   macos:
     name: macOS app (arm64)
     # Docker on macOS has no Bluetooth/Metal, so macOS builds happen natively on the runner.
     runs-on: macos-latest
+    timeout-minutes: 45
     env:
       GODOT_VERSION: "4.7.2"
     steps:
