@@ -60,6 +60,9 @@ fn failed(what: &str) -> VideoError {
 impl Av1 {
     /// A decoder using as many threads as dav1d sees fit.
     pub(crate) fn new() -> Result<Self, VideoError> {
+        // dav1d's defaults decode several frames at once, on all cores: with a single frame in
+        // flight a laptop decodes 720p slower than it plays. Pictures then come out a few
+        // packets after their data went in, which `decode` and `pictures` handle.
         let mut settings = MaybeUninit::<Dav1dSettings>::uninit();
         // SAFETY: `dav1d_default_settings` writes a complete `Dav1dSettings` to its argument,
         // which may be uninitialised; afterwards it is initialised.
@@ -67,9 +70,6 @@ impl Av1 {
             dav1d_default_settings(NonNull::from(&mut settings).cast());
             settings.assume_init()
         };
-        // One frame of delay: a picture comes out as soon as its data went in, which keeps
-        // decoding forward and seeking simple.
-        settings.max_frame_delay = 1;
         let mut context: Option<Dav1dContext> = None;
         // SAFETY: both pointers come from live, exclusive references for the call; dav1d writes
         // the context to the first and only reads the second.
