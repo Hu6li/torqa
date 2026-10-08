@@ -3093,12 +3093,13 @@ async fn the_subtropics_grow_palms_and_build_houses_for_the_heat() {
     let plateau = forest_and_houses((46.95, 7.44)).await;
 
     // Palms among the broadleaf trees, banana plants and tropical shrubs, but no conifers.
-    assert!(!plants_of(&ishigaki, &["palm"]).is_empty(), "no palms");
-    assert!(!plants_of(&ishigaki, &["broadleaf"]).is_empty());
-    assert!(plants_of(&ishigaki, &["conifer", "bush"]).is_empty());
+    let count = |world: &World, kinds: &[&str]| plants_of(world, kinds).len();
+    assert!(count(&ishigaki, &["palm"]) > 0, "no palms");
+    assert!(count(&ishigaki, &["broadleaf"]) > 0, "no broadleaf trees");
+    assert_eq!(count(&ishigaki, &["conifer", "bush"]), 0);
     // At home conifers and bushes as before, nothing tropical.
-    assert!(!plants_of(&plateau, &["conifer"]).is_empty());
-    assert!(plants_of(&plateau, &["palm", "banana", "tropical_bush"]).is_empty());
+    assert!(count(&plateau, &["conifer"]) > 0, "no conifers");
+    assert_eq!(count(&plateau, &["palm", "banana", "tropical_bush"]), 0);
 
     // Houses with flat roofs or low red-tiled ones on Ishigaki, the usual houses at home.
     let models =
