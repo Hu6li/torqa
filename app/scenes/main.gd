@@ -25,6 +25,12 @@ func _ready() -> void:
 	_summary.bind(_torqa)
 	_start.ride_started.connect(_on_ride_started)
 	_overlay = OverlayWindow.new(get_window())
+	# On macOS the window comes up as if transparent (per-pixel transparency is allowed, for
+	# the overlay), and a transparent viewport draws no sky: black behind the world until the
+	# overlay has been turned on and off once (#156, #149). Say so plainly, as leaving the
+	# overlay does.
+	get_window().transparent = false
+	get_window().transparent_bg = false
 	_ride.closed.connect(_back_home)
 	_ride.summary_requested.connect(_show_summary)
 	_ride.overlay_requested.connect(_set_overlay)
