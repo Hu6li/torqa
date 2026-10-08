@@ -3136,6 +3136,64 @@ async fn mapped_building_colours_turn_into_palette_colours() {
     }
 }
 
+/// Chunks are built on all cores but come out as one by one: one per corridor cell, in the
+/// cells' order, with progress counting up to all of them.
+#[tokio::test]
+async fn chunks_come_in_corridor_order_with_progress() {
+    let route = route_north(&[]).await;
+    let mut reports = Vec::new();
+    let world = generate(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |done, total| reports.push((done, total)),
+    )
+    .await;
+
+    let projection = LocalProjection::for_route(&route);
+    let cells = chunks_near_route(&RoadIndex::new(&route, &projection));
+    let centers: Vec<(f32, f32)> = cells
+        .iter()
+        .map(|&(cx, cn)| {
+            (
+                ((f64::from(cx) + 0.5) * CHUNK_SIZE) as f32,
+                (-(f64::from(cn) + 0.5) * CHUNK_SIZE) as f32,
+            )
+        })
+        .collect();
+    let built: Vec<(f32, f32)> = world
+        .chunks
+        .iter()
+        .map(|c| (c.center[0], c.center[2]))
+        .collect();
+    assert_eq!(built, centers);
+    let total = cells.len();
+    assert_eq!(reports.first(), Some(&(0, total)));
+    assert_eq!(reports.last(), Some(&(total, total)));
+    assert!(reports.windows(2).all(|pair| pair[0].0 <= pair[1].0));
+}
+
+#[test]
+fn parallel_work_keeps_the_order_of_its_jobs() {
+    let jobs: Vec<u64> = (0..100).collect();
+    // Uneven work, so the threads finish out of order.
+    let squares = in_parallel(&jobs, 8, |&n| {
+        std::thread::sleep(std::time::Duration::from_micros(n * 37 % 11 * 100));
+        n * n
+    });
+    assert_eq!(squares, jobs.iter().map(|n| n * n).collect::<Vec<_>>());
+    assert_eq!(in_parallel(&[] as &[u64], 8, |&n| n), Vec::<u64>::new());
+}
+
+#[test]
+#[should_panic(expected = "bad chunk")]
+fn a_panic_in_parallel_work_is_passed_on() {
+    in_parallel(&[1, 2, 3], 2, |&n| {
+        assert!(n != 2, "bad chunk");
+        n
+    });
+}
+
 /// A closed eight-sided ring (a round tower) of radius `radius` around a point.
 fn round(east: f64, north: f64, radius: f64) -> Vec<(f64, f64)> {
     (0..=8)
