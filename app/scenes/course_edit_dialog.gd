@@ -9,7 +9,8 @@ extends ConfirmationDialog
 signal course_renamed(course_name: String)
 ## The course's video is to go: the course is ridden in 3D from then on.
 signal video_removed
-## `video` is to be added, placed on the route by `marks` (see `VideoAlignDialog.aligned`).
+## `video` is to be added, placed on the route by `marks` (see `VideoAlignDialog.aligned`);
+## it may be a Tacx `.rlv`, as `TorqaApp.add_video` takes it.
 signal video_added(video: String, marks: PackedVector2Array)
 ## The course's video, placed on the route by hand, is to follow `marks` instead.
 signal video_aligned(marks: PackedVector2Array)
@@ -22,8 +23,10 @@ var _video: Dictionary = {}
 var _edited: Dictionary = {}
 ## Whether `_edited` is a video chosen here, rather than the course's own.
 var _new_video: bool = false
-## The video chosen, until its alignment is confirmed.
+## The file chosen, until its alignment is confirmed: a video, or a Tacx RLV.
 var _choosing: String = ""
+## The video file itself of `_choosing`, which the alignment shows.
+var _choosing_video: String = ""
 var _choosing_duration_s: float = 0.0
 var _name_edit: LineEdit = LineEdit.new()
 var _video_section: VBoxContainer = VBoxContainer.new()
@@ -97,8 +100,9 @@ func _init() -> void:
 	_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	var videos: PackedStringArray = PackedStringArray()
+	# A Tacx RLV brings its video and the camera's speeds along it.
 	for extension: String in TorqaApp.video_extensions():
-		if not extension in ["xml", "rlv"]:
+		if extension != "xml":
 			videos.append("*." + extension)
 	_file_dialog.filters = PackedStringArray([", ".join(videos) + " ; " + tr("Videos")])
 	_file_dialog.use_native_dialog = true
@@ -129,8 +133,12 @@ func _on_video_chosen(path: String) -> void:
 	if probe.is_empty():
 		return
 	_choosing = path
+	_choosing_video = probe["video"]
 	_choosing_duration_s = probe["duration_s"]
-	_edit_alignment(path, _choosing_duration_s, PackedVector2Array())
+	var start_s: float = probe["start_s"]
+	var end_s: float = probe["end_s"]
+	var marks: PackedVector2Array = PackedVector2Array([Vector2(0.0, start_s), Vector2(0.0, end_s)])
+	_edit_alignment(_choosing_video, _choosing_duration_s, marks)
 
 
 func _align() -> void:
@@ -153,7 +161,8 @@ func _on_aligned(marks: PackedVector2Array) -> void:
 		_edited["marks"] = marks
 		return
 	_edited = {
-		"path": _choosing,
+		"path": _choosing_video,
+		"chosen": _choosing,
 		"duration_s": _choosing_duration_s,
 		"marks": marks,
 		"aligned_by_hand": true,
@@ -179,9 +188,9 @@ func _on_confirmed() -> void:
 	if not _video.is_empty() and (_edited.is_empty() or _new_video):
 		video_removed.emit()
 	if _new_video:
-		var path: String = _edited["path"]
+		var chosen: String = _edited["chosen"]
 		var marks: PackedVector2Array = _edited["marks"]
-		video_added.emit(path, marks)
+		video_added.emit(chosen, marks)
 	elif not _edited.is_empty() and _edited.get("marks") != _video.get("marks"):
 		var new_marks: PackedVector2Array = _edited["marks"]
 		video_aligned.emit(new_marks)

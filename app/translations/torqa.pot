@@ -175,7 +175,7 @@ msgstr ""
 msgid "Add points where the footage stops or changes speed."
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:80
+#: app/scenes/course_edit_dialog.gd:83
 msgid "Add video…"
 msgstr ""
 
@@ -199,7 +199,7 @@ msgstr ""
 msgid "Align video with route"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:83
+#: app/scenes/course_edit_dialog.gd:86
 msgid "Align video…"
 msgstr ""
 
@@ -343,7 +343,7 @@ msgstr ""
 msgid "Checking…"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:96
+#: app/scenes/course_edit_dialog.gd:99
 msgid "Choose a video of this course"
 msgstr ""
 
@@ -587,7 +587,7 @@ msgstr ""
 msgid "Edit a copy…"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:56
+#: app/scenes/course_edit_dialog.gd:59
 msgid "Edit course"
 msgstr ""
 
@@ -1043,7 +1043,7 @@ msgstr ""
 msgid "Music: previous track"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:61 app/scenes/profile_dialog.gd:50 app/ui/workout_editor.gd:120
+#: app/scenes/course_edit_dialog.gd:64 app/scenes/profile_dialog.gd:50 app/ui/workout_editor.gd:120
 msgid "Name"
 msgstr ""
 
@@ -1119,7 +1119,7 @@ msgstr ""
 msgid "None (keyboard: ↑ / ↓)"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:117
+#: app/scenes/course_edit_dialog.gd:121
 msgid "None: ridden in the 3D world"
 msgstr ""
 
@@ -1347,7 +1347,7 @@ msgstr ""
 msgid "Remove the step"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:85
+#: app/scenes/course_edit_dialog.gd:88
 msgid "Remove video"
 msgstr ""
 
@@ -1387,7 +1387,7 @@ msgstr ""
 msgid "Ride summary"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:81
+#: app/scenes/course_edit_dialog.gd:84
 msgid "Ride this course along a video of it"
 msgstr ""
 
@@ -1427,7 +1427,7 @@ msgstr ""
 msgid "Sat"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:57 app/scenes/profile_dialog.gd:38 app/ui/workout_editor.gd:111
+#: app/scenes/course_edit_dialog.gd:60 app/scenes/profile_dialog.gd:38 app/ui/workout_editor.gd:111
 msgid "Save"
 msgstr ""
 
@@ -1735,7 +1735,7 @@ msgstr ""
 msgid "Very light"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:71 app/ui/course_card.gd:70
+#: app/scenes/course_edit_dialog.gd:74 app/ui/course_card.gd:70
 msgid "Video"
 msgstr ""
 
@@ -1755,7 +1755,7 @@ msgstr ""
 msgid "Video without GPS"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd:103
+#: app/scenes/course_edit_dialog.gd:107
 msgid "Videos"
 msgstr ""
 

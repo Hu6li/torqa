@@ -115,6 +115,7 @@ func _edit_dialog() -> void:
 	dialog.edit(null, "Gurten", video)
 	remove.pressed.emit()
 	dialog.set("_choosing", "/videos/new.mp4")
+	dialog.set("_choosing_video", "/videos/new.mp4")
 	dialog.set("_choosing_duration_s", 90.0)
 	align_dialog.aligned.emit(other_marks)
 	_check(align.visible and remove.visible, "the new video shows")
@@ -122,6 +123,21 @@ func _edit_dialog() -> void:
 	_check(
 		events == [["removed"], ["added", "/videos/new.mp4", other_marks]],
 		"replaced on Save: %s" % [events]
+	)
+
+	# A Tacx RLV on a GPX course: its video shows, the RLV itself is added for its speeds.
+	events.clear()
+	dialog.edit(null, "Stelvio", {})
+	dialog.set("_choosing", "/videos/stelvio.rlv")
+	dialog.set("_choosing_video", "/videos/stelvio.avi")
+	dialog.set("_choosing_duration_s", 90.0)
+	align_dialog.aligned.emit(other_marks)
+	var video_name: Label = dialog.get("_video_name")
+	_check(video_name.text == "stelvio.avi", "the RLV's video shows: %s" % video_name.text)
+	dialog.confirmed.emit()
+	_check(
+		events == [["added", "/videos/stelvio.rlv", other_marks]],
+		"the RLV is added on Save: %s" % [events]
 	)
 
 	dialog.edit(null, "Gurten", {})
