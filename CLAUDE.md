@@ -11,7 +11,7 @@ Torqa — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
 - Only exception (Docker on macOS has no Bluetooth or Metal): the macOS app and GDExtension are built
   by GitHub Actions macOS runners. Locally, only the portable Godot editor `.app` and downloaded
   Torqa builds run natively, for 3D and real-trainer testing.
-- Same for Windows (FFmpeg cannot be cross-compiled from the container): the Windows `.exe` and
+- Same for Windows (a Windows DLL with Windows' Bluetooth behind it): the Windows `.exe` and
   GDExtension are built by the `windows` job on GitHub Actions Windows runners.
 - Linux release builds come from the `linux` job on GitHub Actions `ubuntu-22.04` runners, not
   the container: its newer glibc would keep them from starting on older distributions (ADR 0012).
