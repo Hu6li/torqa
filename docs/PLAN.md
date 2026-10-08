@@ -214,7 +214,9 @@ the realistic look's textures and patterns were replaced step by step.
 - [x] Castles and lighthouses (#137): from the map's points of interest (castles by class,
   lighthouses by name, as OpenMapTiles has no class for them), Blender-made castles (keep,
   crenellations, corner towers) and lighthouses (banded tower, gallery, lantern), lighthouses
-  without an outline standing on their own
+  without an outline standing on their own; a castle of any other outline built from it:
+  windowed walls behind merlons, towers at its convex corners, a keep under a hipped roof
+  over the largest rectangle inside
 - [x] Tropical worlds (#136): palms, banana plants and tropical shrubs, and houses built for
   the heat (flat roofs with water tanks, low red-tiled hipped roofs) within 27° of the
   equator below 1,200 m

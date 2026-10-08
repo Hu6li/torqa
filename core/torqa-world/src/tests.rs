@@ -3117,3 +3117,61 @@ async fn the_subtropics_grow_palms_and_build_houses_for_the_heat() {
         "{temperate:?}"
     );
 }
+
+#[tokio::test]
+async fn a_castle_with_a_free_outline_gets_towers_windows_and_a_roof() {
+    // A Schloss grown over centuries, as the map draws it: an L of 30 × 28 m, no rectangle
+    // and so no model. It must not be a bare block: towers at its corners, windows in its
+    // walls, and a roof over its keep rising above the walls (#137, #147).
+    let outline: Vec<(f64, f64)> = [
+        (0.0, 0.0),
+        (30.0, 0.0),
+        (30.0, 12.0),
+        (12.0, 12.0),
+        (12.0, 28.0),
+        (0.0, 28.0),
+    ]
+    .into_iter()
+    .map(|(east, north)| at(80.0 + east, 500.0 + north))
+    .collect();
+    let castle = Building {
+        id: 63,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![castle],
+        castles: vec![at(86.0, 506.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let faces = building_faces(&world, (95.0, 514.0), 40.0);
+    assert!(!faces.is_empty(), "no castle");
+    let ground = 500.0 + 0.1 * 95.0;
+    let top = faces
+        .iter()
+        .flat_map(|f| f.corners.iter().map(|c| c[1]))
+        .fold(f32::MIN, f32::max);
+    assert!(
+        f64::from(top) > ground + 12.0,
+        "nothing rises over the walls: the castle tops out at {top}"
+    );
+    let styled =
+        |style: buildings::Style| faces.iter().filter(|f| f.style() == style as u8).count();
+    assert!(
+        styled(buildings::Style::Plaster) > 0,
+        "no windows in the walls"
+    );
+    assert!(styled(buildings::Style::Tiles) > 0, "no roof");
+    // Round towers: wall faces well outside the L's outline, at its outer corners.
+    let outside = faces
+        .iter()
+        .filter(|f| f.style() == buildings::Style::Plaster as u8)
+        .map(Face::middle)
+        .filter(|m| m[0] < 79.0 || m[0] > 111.0 || -m[2] < 499.0 || -m[2] > 529.0)
+        .count();
+    assert!(outside > 0, "no towers at the corners");
+}
