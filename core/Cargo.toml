@@ -49,6 +49,12 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+# Tests build synthetic worlds: optimized they run several times faster, debug assertions
+# still on. Line tables keep the backtraces readable without the full debug info's size.
+[profile.test]
+opt-level = 2
+debug = "line-tables-only"
+
 [workspace.lints.rust]
 missing_docs = "warn"
 unsafe_code = "deny"
