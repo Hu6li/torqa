@@ -63,6 +63,26 @@ const STORE_AREA: f64 = 2500.0;
 /// rocks, reach 8 m down (`art/buildings`, `DEEP`).
 const MODEL_BASEMENT: f64 = 2.8;
 const DEEP_BASEMENT: f64 = 7.8;
+/// A castle's walls rise this far at least and at most, to a wall walk behind a parapet this
+/// high; over a free outline the keep rises this far over the walk before its roof, and the
+/// towers this far.
+const CASTLE_WALLS_MIN: f64 = 7.0;
+const CASTLE_WALLS_MAX: f64 = 12.0;
+const CASTLE_PARAPET: f64 = 1.0;
+const CASTLE_KEEP_RISE: f64 = 2.5;
+const CASTLE_TOWER_RISE: f64 = 4.0;
+/// Merlons: this wide, high and thick, this far out over the wall, this far apart.
+const MERLON_WIDTH: f64 = 0.9;
+const MERLON_HEIGHT: f64 = 0.8;
+const MERLON_THICKNESS: f64 = 0.5;
+const MERLON_OUT: f64 = 0.1;
+const MERLON_SPACING: f64 = 1.8;
+/// Towers stand at convex corners turning at least this much (radians) between walls at least
+/// this long, this far apart at least, this many at most.
+const TOWER_TURN: f64 = 0.95;
+const TOWER_WALL_MIN: f64 = 4.0;
+const TOWER_APART: f64 = 7.0;
+const TOWERS: usize = 6;
 /// Modelled buildings are grouped in cells this size, so that each cell switches between
 /// models up close and shells far away by its own distance.
 const CELL: f64 = 120.0;
@@ -1514,7 +1534,7 @@ fn castle_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
             || dice.pick(1, &CASTLE_WALLS),
             |mapped| nearest(mapped, &CASTLE_WALLS),
         )),
-        Style::Blank,
+        Style::Plaster,
     );
     let roof = Paint::new(dice.pick(2, &[TILES[0], TILES[1], TILES[3]]), Style::Tiles);
     (wall, roof)
@@ -1534,8 +1554,12 @@ fn lighthouse_paints(dice: &Dice) -> (Paint, Paint) {
     )
 }
 
-/// A castle (#137): walls rising to a parapet round a steep hipped roof and, on a
-/// rectangular keep, round towers under pointed roofs at its corners, as the models have.
+/// A castle (#137): windowed walls up to a wall walk behind merlons, round towers under
+/// pointed roofs at the corners, and a keep under a steep hipped roof rising over the walls.
+/// A rectangular castle has its towers at the four corners and its roof over all of it, as the
+/// models have; any other outline (a Schloss grown over centuries, as the map draws it) has
+/// them at its convex corners and the keep over the largest rectangle that fits inside, so no
+/// castle is a bare block.
 fn castle(
     b: &mut Builder,
     plot: &Plot,
@@ -1550,62 +1574,216 @@ fn castle(
         || {
             plot.building
                 .height
-                .map_or(0.5 * area.sqrt(), |height| height * 0.6)
-                .clamp(9.0, 16.0)
+                .map_or(0.45 * area.sqrt(), |height| height * 0.6)
+                .clamp(CASTLE_WALLS_MIN, CASTLE_WALLS_MAX)
         },
         |fit| fit.model.eaves,
     );
     let eaves = b.ground + walls;
-    let parapet = 1.0;
-    b.walls(&outline, b.footing, eaves + parapet, wall);
+    let parapet_top = eaves + CASTLE_PARAPET;
+    b.walls(&outline, b.footing, parapet_top, wall);
     b.flat_roof(
         &outline,
         eaves,
-        parapet,
+        CASTLE_PARAPET,
         Paint::new(FLAT[0], Style::Flat),
-        wall,
+        wall.with(Style::Blank),
     );
-    let Some(rect) = rect else {
-        return;
-    };
+    merlons(b, &outline, parapet_top, wall.with(Style::Blank));
     let paint = RoofPaint {
         top: roof,
-        under: wall,
+        under: wall.with(Style::Blank),
         gables: wall,
     };
-    let keep = Rect {
-        half_length: rect.half_length - 0.8,
-        half_width: rect.half_width - 0.8,
-        ..rect
-    };
-    if keep.half_width > 1.0 {
+    // The keep's roof: over the whole of a rectangular castle, else over the largest rectangle
+    // inside the walls, on walls of its own rising over the wall parapet_top.
+    let keep = rect.map_or_else(
+        || inscribed(&plot.footprint),
+        |r| {
+            Some(Rect {
+                half_length: r.half_length - 0.8,
+                half_width: r.half_width - 0.8,
+                ..r
+            })
+        },
+    );
+    if let Some(keep) = keep.filter(|k| k.half_width > 1.5) {
+        let keep_eaves = if rect.is_some() {
+            eaves + 0.2
+        } else {
+            let top = parapet_top + CASTLE_KEEP_RISE;
+            b.walls(&keep.corners(), eaves, top, wall);
+            top
+        };
         let pitch = Pitch {
-            eaves: eaves + 0.2,
+            eaves: keep_eaves,
             angle: 48f64.to_radians().min((10.0 / keep.half_width).atan()),
             overhang: 0.0,
             verge: 0.0,
         };
         b.hipped_roof(&keep, pitch, paint);
     }
-    let radius = (rect.half_width * 0.3).clamp(2.0, 4.0);
-    let tower_top = eaves + 6.0;
-    for (along, across) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-        let centre = rect.point(along * rect.half_length, across * rect.half_width);
-        b.walls(
-            &octagon(centre, radius, rect.axis),
-            b.footing,
-            tower_top,
+    // The towers.
+    let corners: Vec<(Point, Point, f64)> = rect.map_or_else(
+        || tower_corners(&plot.footprint),
+        |r| {
+            let radius = (r.half_width * 0.3).clamp(2.0, 4.0);
+            [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+                .into_iter()
+                .map(|(along, across)| {
+                    (
+                        r.point(along * r.half_length, across * r.half_width),
+                        r.axis,
+                        radius,
+                    )
+                })
+                .collect()
+        },
+    );
+    for (centre, axis, radius) in corners {
+        tower(
+            b,
+            (centre, axis, radius),
+            parapet_top + CASTLE_TOWER_RISE,
             wall,
+            paint,
         );
-        let cap = Rect::square(centre, rect.axis, radius + 0.3);
-        let spire = Pitch {
-            eaves: tower_top,
-            angle: 2.2f64.atan(),
-            overhang: 0.0,
-            verge: 0.0,
-        };
-        b.hipped_roof(&cap, spire, paint);
     }
+}
+
+/// A castle's round tower: an eight-sided shaft round `centre` turned with `axis`, from the
+/// footing up to `top`, under a pointed roof.
+fn tower(
+    b: &mut Builder,
+    (centre, axis, radius): (Point, Point, f64),
+    top: f64,
+    wall: Paint,
+    paint: RoofPaint,
+) {
+    b.walls(&octagon(centre, radius, axis), b.footing, top, wall);
+    let cap = Rect::square(centre, axis, radius + 0.3);
+    let spire = Pitch {
+        eaves: top,
+        angle: 2.2f64.atan(),
+        overhang: 0.0,
+        verge: 0.0,
+    };
+    b.hipped_roof(&cap, spire, paint);
+}
+
+/// Merlons along the top of a counter-clockwise `outline` standing on `top`: a block every
+/// `MERLON_SPACING` metres, a little out over the wall's face.
+fn merlons(b: &mut Builder, outline: &[Point], top: f64, paint: Paint) {
+    let count = outline.len();
+    for k in 0..count {
+        let (a, c) = (outline[k], outline[(k + 1) % count]);
+        let length = distance(a, c);
+        if length < MERLON_WIDTH * 2.0 {
+            continue;
+        }
+        let along = ((c.0 - a.0) / length, (c.1 - a.1) / length);
+        // Outward is to the right of the way round a counter-clockwise ring.
+        let out = (along.1, -along.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few dozen
+        let blocks = ((length / MERLON_SPACING).floor() as usize).max(1);
+        #[allow(clippy::cast_precision_loss)] // a few dozen
+        let step = length / blocks as f64;
+        for n in 0..blocks {
+            #[allow(clippy::cast_precision_loss)] // a few dozen
+            let middle = (n as f64 + 0.5) * step;
+            let at =
+                |u: f64, o: f64| (a.0 + along.0 * u + out.0 * o, a.1 + along.1 * u + out.1 * o);
+            let (u0, u1) = (middle - MERLON_WIDTH / 2.0, middle + MERLON_WIDTH / 2.0);
+            let block = [
+                at(u0, -MERLON_THICKNESS + MERLON_OUT),
+                at(u0, MERLON_OUT),
+                at(u1, MERLON_OUT),
+                at(u1, -MERLON_THICKNESS + MERLON_OUT),
+            ];
+            b.walls(&block, top, top + MERLON_HEIGHT, paint);
+            b.flat_roof(&block, top + MERLON_HEIGHT, 0.0, paint, paint);
+        }
+    }
+}
+
+/// The largest rectangle that fits inside `outline`, along its bounding rectangle's axis
+/// round its centroid, by trying ever smaller ones; `None` where even a small one does not.
+fn inscribed(outline: &[Point]) -> Option<Rect> {
+    let around = Rect::around(outline)?;
+    let centre = shape::centroid(outline);
+    (0..=14).rev().find_map(|k| {
+        let scale = 0.16 + 0.06 * f64::from(k);
+        let rect = Rect {
+            centre,
+            axis: around.axis,
+            half_length: around.half_length * scale,
+            half_width: around.half_width * scale,
+        };
+        let (l, w) = (rect.half_length, rect.half_width);
+        let inside = [
+            (-l, -w),
+            (l, -w),
+            (l, w),
+            (-l, w),
+            (0.0, -w),
+            (0.0, w),
+            (-l, 0.0),
+            (l, 0.0),
+        ]
+        .into_iter()
+        .all(|(along, across)| shape::contains(outline, rect.point(along, across)));
+        inside.then_some(rect)
+    })
+}
+
+/// Where the towers of a castle with a free outline stand: at its convex corners, the sharpest
+/// first, none within `TOWER_APART` of another, at most `TOWERS`; each with the direction of
+/// the wall leading to it and a radius the two walls there allow.
+fn tower_corners(outline: &[Point]) -> Vec<(Point, Point, f64)> {
+    let count = outline.len();
+    if count < 3 {
+        return Vec::new();
+    }
+    let mut corners: Vec<(f64, Point, Point, f64)> = Vec::new();
+    for k in 0..count {
+        let (before, at, after) = (
+            outline[(k + count - 1) % count],
+            outline[k],
+            outline[(k + 1) % count],
+        );
+        let (into, out) = (
+            (at.0 - before.0, at.1 - before.1),
+            (after.0 - at.0, after.1 - at.1),
+        );
+        let (length_in, length_out) = (into.0.hypot(into.1), out.0.hypot(out.1));
+        if length_in < TOWER_WALL_MIN || length_out < TOWER_WALL_MIN {
+            continue;
+        }
+        // A left turn on a counter-clockwise ring is a convex corner.
+        let cross = into.0 * out.1 - into.1 * out.0;
+        let dot = into.0 * out.0 + into.1 * out.1;
+        let turn = cross.atan2(dot);
+        if turn < TOWER_TURN {
+            continue;
+        }
+        let axis = (into.0 / length_in, into.1 / length_in);
+        let radius = (0.35 * length_in.min(length_out)).clamp(1.6, 2.6);
+        corners.push((turn, at, axis, radius));
+    }
+    corners.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut chosen: Vec<(Point, Point, f64)> = Vec::new();
+    for (_, at, axis, radius) in corners {
+        if chosen.len() >= TOWERS {
+            break;
+        }
+        if chosen
+            .iter()
+            .all(|(c, _, _)| distance(*c, at) >= TOWER_APART)
+        {
+            chosen.push((at, axis, radius));
+        }
+    }
+    chosen
 }
 
 /// An eight-sided outline round `centre`, counter-clockwise, turned with `axis`.
