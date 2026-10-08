@@ -54,9 +54,10 @@ const UNDERPASS: f64 = 1.0;
 const SHAPED: f64 = 0.01;
 const ARCH_SEGMENTS: usize = 12;
 /// A tunnel enters the hill where the ground lies this far over its crown, looked at this far
-/// inside (#135)...
+/// inside, and keeps lying over it this far on (#135)...
 const PORTAL_COVER: f64 = 0.5;
 const PORTAL_PROBE: f64 = 1.0;
+const PORTAL_HOLD: f64 = 30.0;
 /// ...and its headwall rises this far over the crown, this thick, reaching out beside the
 /// opening until the ground before it is as high, by at most this much.
 const HEADWALL_RISE: f64 = 1.5;
@@ -270,7 +271,7 @@ pub(crate) async fn open_portals<M: ElevationModel>(
 }
 
 /// How many segments at either end of a tunnel `run` lie before the ground rises over its
-/// crown, or `None` where it never covers it.
+/// crown and stays over it (`PORTAL_HOLD`), or `None` where it never does.
 async fn open_ends<M: ElevationModel>(
     run: &TunnelRun,
     shapers: &Shapers<'_>,
@@ -279,18 +280,22 @@ async fn open_ends<M: ElevationModel>(
 ) -> Option<(usize, usize)> {
     let points = &run.points;
     let segments = points.len() - 1;
+    let mut along = vec![0.0; points.len()];
+    for k in 1..points.len() {
+        along[k] = along[k - 1] + distance(points[k - 1].position, points[k].position);
+    }
     let mut start = None;
-    for (k, &point) in points[..segments].iter().enumerate() {
+    for k in 0..segments {
         // Where the line begins in the tunnel there is no portal to look for.
-        if !run.open.0 || covered(point, 1.0, shapers, projection, model).await {
+        if !run.open.0 || held(points, &along, k, 1.0, shapers, projection, model).await {
             start = Some(k);
             break;
         }
     }
     let start = start?;
     let mut end = None;
-    for (k, &point) in points[start + 1..].iter().rev().enumerate() {
-        if !run.open.1 || covered(point, -1.0, shapers, projection, model).await {
+    for (k, j) in (start + 1..points.len()).rev().enumerate() {
+        if !run.open.1 || held(points, &along, j, -1.0, shapers, projection, model).await {
             end = Some(k);
             break;
         }
@@ -298,6 +303,35 @@ async fn open_ends<M: ElevationModel>(
     let end = end?;
     // A little of the tube is left at least.
     (start + end + 2 <= segments).then_some((start, end))
+}
+
+/// Whether the ground lies over the tube from `points[k]` on into the tunnel (`inward` 1 along
+/// the line, −1 against it) for `PORTAL_HOLD` metres, or to the run's end: a hill that covers
+/// the tube at one point and dips right behind it is no portal yet.
+async fn held<M: ElevationModel>(
+    points: &[CentrePoint],
+    along: &[f64],
+    k: usize,
+    inward: f64,
+    shapers: &Shapers<'_>,
+    projection: &LocalProjection,
+    model: &mut M,
+) -> bool {
+    let mut j = k;
+    loop {
+        if !covered(points[j], inward, shapers, projection, model).await {
+            return false;
+        }
+        let next = if inward > 0.0 {
+            j + 1
+        } else {
+            j.wrapping_sub(1)
+        };
+        if next >= points.len() || (along[next] - along[k]).abs() > PORTAL_HOLD {
+            return true;
+        }
+        j = next;
+    }
 }
 
 /// Whether the ground lies over the crown of a tube at `point` across its whole width, a little
@@ -327,17 +361,17 @@ async fn covered<M: ElevationModel>(
     true
 }
 
-/// The ground at a point as the terrain has it, shaped by the road ridden and the railways;
-/// `None` without terrain data there.
+/// The ground at a point as the chunks will draw it (`crate::drawn_ground`), shaped by the road
+/// ridden and the railways; `None` without terrain data there. A portal and its headwall stand
+/// against the drawn ground, not against the finer terrain the tiles have, which would leave the
+/// tube bare where the drawn hill lies lower.
 async fn ground<M: ElevationModel>(
     (east, north): (f64, f64),
     shapers: &Shapers<'_>,
     projection: &LocalProjection,
     model: &mut M,
 ) -> Option<f64> {
-    let (lat, lon) = projection.unproject(east, north);
-    let natural = model.elevation(lat, lon).await.ok()?;
-    Some(shape(natural, &shapers.near(east, north, LEVEL_REACH)))
+    crate::drawn_ground(model, projection, shapers, (east, north)).await
 }
 
 /// Geometry of the bridges and tunnels of the road ridden and the railways, in route

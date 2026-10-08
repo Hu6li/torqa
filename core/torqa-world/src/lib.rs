@@ -995,6 +995,46 @@ pub(crate) fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
     height
 }
 
+/// The natural ground at a point as the chunks draw it: the terrain sampled on their `GRID`
+/// lattice and interpolated between the samples, as [`HeightGrid::natural_at`] does. The
+/// terrain tiles are finer than the lattice, so where the ground rises abruptly, as the hill
+/// over a tunnel's portal does, the drawn hill lies lower than the tiles have it: whatever
+/// stands against the drawn ground is placed by the drawn ground (#135). `None` where the model
+/// has no data.
+pub(crate) async fn drawn_natural<M: ElevationModel>(
+    model: &mut M,
+    projection: &LocalProjection,
+    (east, north): (f64, f64),
+) -> Option<f64> {
+    let (u, v) = (east / GRID, north / GRID);
+    let (i, j) = (u.floor(), v.floor());
+    let (fu, fv) = (u - i, v - j);
+    let mut corners = [0.0; 4];
+    for (slot, (di, dj)) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let (lat, lon) = projection.unproject((i + di) * GRID, (j + dj) * GRID);
+        corners[slot] = model.elevation(lat, lon).await.ok()?;
+    }
+    let [sw, se, nw, ne] = corners;
+    let bottom = sw * (1.0 - fu) + se * fu;
+    let top = nw * (1.0 - fu) + ne * fu;
+    Some(bottom * (1.0 - fv) + top * fv)
+}
+
+/// The ground at a point as the chunks draw it, before channels cut it: the drawn natural
+/// ground shaped around the road ridden and the railways. `None` where the model has no data.
+pub(crate) async fn drawn_ground<M: ElevationModel>(
+    model: &mut M,
+    projection: &LocalProjection,
+    shapers: &Shapers<'_>,
+    (east, north): (f64, f64),
+) -> Option<f64> {
+    let natural = drawn_natural(model, projection, (east, north)).await?;
+    Some(shape(natural, &shapers.near(east, north, LEVEL_REACH)))
+}
+
 /// 0 where the ground is fully shaped around the road, rising to 1 at `LEVEL_REACH`.
 fn fade(distance: f64) -> f64 {
     let t = ((distance - (LEVEL_REACH - REACH_FADE)) / REACH_FADE).clamp(0.0, 1.0);

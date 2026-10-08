@@ -2720,6 +2720,77 @@ async fn tunnels_enter_the_hill_through_a_portal_left_open() {
 }
 
 #[tokio::test]
+async fn portals_stand_where_the_hill_as_drawn_covers_the_tube_for_good() {
+    // A hill rising in a sheer step at 450 m to 12 m over the road, dropping back to the road's
+    // level in a notch from 470 m to 486 m, and rising for good beyond; the tunnel is mapped
+    // from 400 m to 700 m. The terrain tiles have the step, but the ground is drawn from samples
+    // 16 m apart and ramps up to it, lower than the tiles have it; and the notch would bare a
+    // tube entering at the step. The portal must stand where the drawn hill covers the tube and
+    // keeps covering it, with nothing of the tube in the open behind it (#135, #149).
+    struct Step;
+    impl ElevationModel for Step {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            std::future::ready(Ok(hill((lat - 46.0) * METERS_PER_DEGREE)))
+        }
+    }
+    fn hill(north: f64) -> f64 {
+        if north < 450.0 || (470.0..486.0).contains(&north) {
+            500.0
+        } else {
+            512.0
+        }
+    }
+    let tunnel = Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 400.0), at(0.0, 700.0)],
+    };
+    let route = route_north(&[tunnel]).await;
+    let world = generate(&route, &mut Step, &MapData::default(), &mut |_, _| {}).await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    let inside = palette::srgb("structure.tunnel", 0.0);
+    let tube: Vec<[f32; 3]> = mesh
+        .vertices
+        .iter()
+        .zip(&mesh.colors)
+        .filter(|(_, colour)| **colour == inside)
+        .map(|(v, _)| *v)
+        .collect();
+    assert!(!tube.is_empty(), "no tube");
+    // The tube begins beyond the notch, not at the step...
+    let entrance = tube.iter().map(|v| -v[2]).fold(f32::MAX, f32::min);
+    assert!(
+        (486.0..520.0).contains(&entrance),
+        "the tube begins at {entrance} m"
+    );
+    // ...and between its headwalls (in whose planes the ground is cut open) the drawn ground
+    // lies over all of it.
+    let exit = tube.iter().map(|v| -v[2]).fold(f32::MIN, f32::max);
+    for v in tube
+        .iter()
+        .filter(|v| -v[2] > entrance + 2.0 && -v[2] < exit - 2.0)
+    {
+        let ground = ground_at(&world, v[0], v[2])
+            .unwrap_or_else(|| panic!("no ground over the tube at {v:?}"));
+        assert!(
+            ground >= v[1] - 0.05,
+            "the tube stands in the open at {v:?}: the ground there is at {ground}"
+        );
+    }
+    // Before the portal the line runs in a cutting at the road's level.
+    let before = ground_at(&world, 0.0, -(entrance - 3.0)).expect("ground before the portal");
+    assert!(
+        before < 500.5,
+        "the ground before the portal lies at {before}"
+    );
+}
+
+#[tokio::test]
 async fn all_world_meshes_face_their_normals() {
     let house = Building {
         id: 7,
