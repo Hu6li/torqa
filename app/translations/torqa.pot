@@ -23,7 +23,7 @@ msgstr ""
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
-#: app/scenes/course_detail.gd:256
+#: app/scenes/course_detail.gd:257
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
@@ -59,7 +59,7 @@ msgstr ""
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/course_detail.gd:259 app/scenes/ride_screen.gd:558
+#: app/scenes/course_detail.gd:260 app/scenes/ride_screen.gd:558
 msgid "(best %s)"
 msgstr ""
 
@@ -1311,15 +1311,15 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:356
+#: app/scenes/course_detail.gd:361
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:353
+#: app/scenes/course_detail.gd:358
 msgid "Video aligned with the route."
 msgstr ""
 
-#: app/scenes/course_detail.gd:365
+#: app/scenes/course_detail.gd:370
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
@@ -1327,7 +1327,7 @@ msgstr ""
 msgid "Video without GPS"
 msgstr ""
 
-#: app/scenes/course_detail.gd:202
+#: app/scenes/course_detail.gd:203
 msgid "Videos"
 msgstr ""
 
@@ -1407,7 +1407,7 @@ msgstr ""
 msgid "Your best on this route"
 msgstr ""
 
-#: app/scenes/course_detail.gd:251
+#: app/scenes/course_detail.gd:252
 msgid "Your best time on this route: %s"
 msgstr ""
 
