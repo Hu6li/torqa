@@ -17,6 +17,7 @@ func _run() -> void:
 	_workout_settings()
 	_workout_editor()
 	_rider_drivetrain()
+	_shifter_buttons()
 	_course_cards()
 	_video_view()
 	_video_alignment()
@@ -342,6 +343,25 @@ func _rider_drivetrain() -> void:
 	dialog.edit({"id": "r", "name": "R"}, PackedStringArray(["power"]))
 	_check(not cog.visible, "a cassette needs no teeth")
 	dialog.free()
+
+
+## Every action the core offers for a Di2's buttons can be chosen by its label (#139).
+func _shifter_buttons() -> void:
+	var actions: PackedStringArray = TorqaApp.button_actions()
+	for action: String in actions:
+		_check(DevicesTab.ACTION_LABELS.has(action), "a label for %s" % action)
+	_check(actions.size() == DevicesTab.ACTION_LABELS.size(), "no label for a gone action")
+	var tab: DevicesTab = DevicesTab.new()
+	root.add_child(tab)
+	var choices: Array[Node] = tab.find_children("*", "OptionButton", true, false)
+	# Trainer, heart rate and shifter, a press, a hold and a double press of four channels, and
+	# the graphics quality.
+	_check(
+		choices.size() == 3 + 4 * 3 + 1, "a choice per press of each channel: %d" % choices.size()
+	)
+	var press: OptionButton = choices[3]
+	_check(press.item_count == 1 + actions.size(), "nothing or any action")
+	tab.free()
 
 
 ## The captions of a three-column options grid whose rows show.

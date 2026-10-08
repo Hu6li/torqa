@@ -1,85 +1,55 @@
 //! Shift inputs (R7) behind [`ShiftInput`]: the keyboard, whose keys the front end passes on,
-//! and the D-Fly buttons of a Shimano Di2 shifter.
+//! and the D-Fly buttons of a Shimano Di2 shifter, which do what the rider gave them (#139).
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 
-use torqa_domain::shifting::{Shift, ShiftInput};
+use torqa_domain::shifting::{ButtonAction, ButtonMap, Control, Shift, ShiftInput};
 
-use crate::di2::{ButtonPress, Press};
 use crate::{DeviceEvent, DeviceHandle};
 
-/// Which D-Fly channels shift up and down, as the rider assigned their buttons in E-TUBE;
-/// shared with the settings, so a change applies at once.
-#[derive(Debug)]
-pub struct Channels {
-    up: AtomicU8,
-    down: AtomicU8,
-}
+/// What a Di2 shifter's buttons do, shared with the settings, so a change applies at once.
+#[derive(Debug, Default)]
+pub struct Assignments(Mutex<ButtonMap>);
 
-impl Channels {
-    /// Channel `up` shifts up (harder), `down` down (easier), each 1–4.
+impl Assignments {
+    /// The buttons doing what `map` gives them.
     #[must_use]
-    pub fn new(up: u8, down: u8) -> Self {
-        Self {
-            up: AtomicU8::new(up),
-            down: AtomicU8::new(down),
-        }
+    pub fn new(map: ButtonMap) -> Self {
+        Self(Mutex::new(map))
     }
 
-    /// Assigns the channels anew.
-    pub fn set(&self, up: u8, down: u8) {
-        self.up.store(up, Ordering::Relaxed);
-        self.down.store(down, Ordering::Relaxed);
+    /// Gives the buttons what `map` says.
+    pub fn set(&self, map: ButtonMap) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = map;
     }
 
-    /// The channels shifting up and down.
+    /// What the buttons do.
     #[must_use]
-    pub fn get(&self) -> (u8, u8) {
-        (
-            self.up.load(Ordering::Relaxed),
-            self.down.load(Ordering::Relaxed),
-        )
-    }
-
-    /// The shifts `presses` ask for: a short or long press one gear, a double press two; other
-    /// channels shift nothing.
-    #[must_use]
-    pub fn shifts(&self, presses: &[ButtonPress]) -> Vec<Shift> {
-        let (up, down) = self.get();
-        presses
-            .iter()
-            .flat_map(|press| {
-                let shift = if press.channel == up {
-                    Some(Shift::Up)
-                } else if press.channel == down {
-                    Some(Shift::Down)
-                } else {
-                    None
-                };
-                let times = if press.press == Press::Double { 2 } else { 1 };
-                std::iter::repeat_n(shift, times).flatten()
-            })
-            .collect()
+    pub fn get(&self) -> ButtonMap {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-/// Shifts from a Di2 shifter connected with [`crate::ble::Bluetooth::connect`].
+/// Shifts, and the other controls its buttons were given, from a Di2 shifter connected with
+/// [`crate::ble::Bluetooth::connect`].
 #[derive(Debug)]
 pub struct Controller {
     handle: DeviceHandle,
-    channels: Arc<Channels>,
+    assignments: Arc<Assignments>,
     connected: bool,
+    /// Controls pressed for, until [`ShiftInput::controls`] takes them.
+    controls: Vec<Control>,
 }
 
 impl Controller {
-    /// Shifts from the shifter behind `handle`, with its buttons on `channels`.
+    /// Shifts from the shifter behind `handle`, its buttons doing what `assignments` say.
     #[must_use]
-    pub fn new(handle: DeviceHandle, channels: Arc<Channels>) -> Self {
+    pub fn new(handle: DeviceHandle, assignments: Arc<Assignments>) -> Self {
         Self {
             handle,
-            channels,
+            assignments,
             connected: false,
+            controls: Vec::new(),
         }
     }
 }
@@ -95,11 +65,22 @@ impl ShiftInput for Controller {
             match event {
                 DeviceEvent::Connected => self.connected = true,
                 DeviceEvent::Disconnected => self.connected = false,
-                DeviceEvent::Buttons(presses) => shifts.extend(self.channels.shifts(&presses)),
+                DeviceEvent::Buttons(presses) => {
+                    for action in self.assignments.get().actions(&presses) {
+                        shifts.extend_from_slice(action.shifts());
+                        if let ButtonAction::Control(control) = action {
+                            self.controls.push(control);
+                        }
+                    }
+                }
                 DeviceEvent::Telemetry(_) => {}
             }
         }
         shifts
+    }
+
+    fn controls(&mut self) -> Vec<Control> {
+        std::mem::take(&mut self.controls)
     }
 
     fn connected(&self) -> bool {
@@ -146,23 +127,38 @@ impl ShiftInput for Keyboard {
 
 #[cfg(test)]
 mod tests {
+    use torqa_domain::shifting::{ButtonPress, Press};
+
     use super::*;
 
-    #[test]
-    fn the_assigned_channels_shift_up_and_down() {
-        let channels = Channels::new(2, 1);
+    #[tokio::test]
+    async fn presses_shift_or_ask_for_the_controls_their_buttons_were_given() {
+        let mut map = ButtonMap::shifting(2, 1);
+        map.assign(
+            3,
+            Press::Short,
+            Some(ButtonAction::Control(Control::NextCamera)),
+        );
         let press = |channel, press| ButtonPress { channel, press };
-
-        let shifts = channels.shifts(&[
+        let presses = vec![
             press(2, Press::Short),
-            press(1, Press::Long),
             press(3, Press::Short),
-            press(2, Press::Double),
-        ]);
+            press(1, Press::Double),
+            press(4, Press::Short),
+        ];
+        let handle = DeviceHandle::spawn("RDR8150".to_owned(), false, |channels| async move {
+            let _ = channels.events.send(DeviceEvent::Connected).await;
+            let _ = channels.events.send(DeviceEvent::Buttons(presses)).await;
+        });
+        let mut controller = Controller::new(handle, Arc::new(Assignments::new(map)));
+        tokio::task::yield_now().await;
 
-        assert_eq!(shifts, [Shift::Up, Shift::Down, Shift::Up, Shift::Up]);
-        channels.set(3, 4);
-        assert_eq!(channels.shifts(&[press(3, Press::Short)]), [Shift::Up]);
+        let shifts = controller.poll();
+
+        assert_eq!(shifts, [Shift::Up, Shift::Down, Shift::Down]);
+        assert_eq!(controller.controls(), [Control::NextCamera]);
+        assert_eq!(controller.controls(), [], "taken once");
+        assert!(controller.connected());
     }
 
     #[test]

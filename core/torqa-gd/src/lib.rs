@@ -19,7 +19,7 @@ use torqa_app::{App, AppEvent, GhostChoice, TrainerChoice, paths};
 use torqa_devices::ble::DeviceKind;
 use torqa_devices::fake::{FakeHeart, FakeRider};
 use torqa_domain::profile::{Avatar, Drivetrain, Profile, UnitSystem};
-use torqa_domain::shifting::Shift;
+use torqa_domain::shifting::{BUTTONS, Control, Press, Shift};
 use torqa_domain::units::{
     BeatsPerMinute, Kilograms, Meters, MetersPerSecond, Percent, Rpm, Watts,
 };
@@ -148,6 +148,11 @@ impl TorqaApp {
     /// Something went wrong.
     #[signal]
     fn failed(message: GString);
+
+    /// A shifter's button asked for a ride control (#139), to be carried out as its key is:
+    /// `next_camera`, `overlay`, or the music's `play_pause`, `next` and `previous`.
+    #[signal]
+    fn control_requested(control: GString);
 
     /// Reconnects the trainer and heart-rate sensor used last, in the background (emits
     /// `devices_found`, `device_connected` and, for those not found, `remembered_missing`).
@@ -1018,7 +1023,8 @@ impl TorqaApp {
         }
     }
 
-    /// Connects a scanned Shimano Di2 shifter by its index: its D-Fly buttons shift (R7).
+    /// Connects a scanned Shimano Di2 shifter by its index: its D-Fly buttons shift or do what
+    /// else the rider gave them (R7, #139).
     #[func]
     fn connect_controller(&mut self, index: i64) -> bool {
         let Ok(index) = usize::try_from(index) else {
@@ -1027,21 +1033,67 @@ impl TorqaApp {
         self.command(|app| app.connect_controller(index))
     }
 
-    /// The D-Fly channels shifting up (`x`) and down (`y`), 1–4.
+    /// The names of the actions a Di2 shifter's buttons can be given (#139), in the order to
+    /// offer them.
     #[func]
-    fn shift_channels(&self) -> Vector2i {
-        let (up, down) = self
-            .app
-            .as_ref()
-            .map_or((1, 2), torqa_app::App::shift_channels);
-        Vector2i::new(i32::from(up), i32::from(down))
+    fn button_actions() -> PackedStringArray {
+        torqa_domain::shifting::ButtonAction::ALL
+            .into_iter()
+            .map(|action| GString::from(torqa_app::button_action_name(action)))
+            .collect()
     }
 
-    /// Chooses the D-Fly channels that shift up and down (1–4).
+    /// What the Di2 shifter's buttons do (#139): for each D-Fly channel 1–4, the action names
+    /// of a press, a hold and a double press, "" where it does nothing.
     #[func]
-    fn set_shift_channels(&mut self, up: i64, down: i64) -> bool {
-        let channel = |c: i64| u8::try_from(c.clamp(1, 4)).unwrap_or(1);
-        self.command(|app| app.set_shift_channels(channel(up), channel(down)))
+    fn button_map(&self) -> VarArray {
+        let map = self
+            .app
+            .as_ref()
+            .map_or_else(Default::default, torqa_app::App::button_map);
+        (1..=BUTTONS)
+            .map(|channel| {
+                Press::ALL
+                    .into_iter()
+                    .map(|press| {
+                        map.action(channel, press)
+                            .map_or("", torqa_app::button_action_name)
+                    })
+                    .map(GString::from)
+                    .collect::<PackedStringArray>()
+                    .to_variant()
+            })
+            .collect()
+    }
+
+    /// Gives `press` (0 a press, 1 a hold, 2 a double press) of D-Fly channel `channel` (1–4)
+    /// the action called `action`, or nothing with "". False for an unknown press or action.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn assign_button(&mut self, channel: i64, press: i64, action: GString) -> bool {
+        let action = action.to_string();
+        let assigned = if action.is_empty() {
+            None
+        } else {
+            let Some(found) = torqa_app::button_action_from_name(&action) else {
+                return false;
+            };
+            Some(found)
+        };
+        let (Ok(channel), Some(&press)) = (
+            u8::try_from(channel),
+            usize::try_from(press).ok().and_then(|p| Press::ALL.get(p)),
+        ) else {
+            return false;
+        };
+        if !(1..=BUTTONS).contains(&channel) {
+            return false;
+        }
+        self.command(|app| {
+            let mut map = app.button_map();
+            map.assign(channel, press, assigned);
+            app.set_button_map(map)
+        })
     }
 
     /// Shifts the virtual gears (R9): `direction` 1 up (harder), -1 down; nothing without them.
@@ -1717,12 +1769,28 @@ impl TorqaApp {
                     names.iter().map(|n| GString::from(n.as_str())).collect();
                 self.signals().remembered_missing().emit(&names);
             }
+            AppEvent::Control(control) => {
+                self.signals()
+                    .control_requested()
+                    .emit(&GString::from(control_name(control)));
+            }
             AppEvent::Error(message) => {
                 self.signals()
                     .failed()
                     .emit(&GString::from(message.as_str()));
             }
         }
+    }
+}
+
+/// How the front end calls `control`: the music's as `control_music` does.
+fn control_name(control: Control) -> &'static str {
+    match control {
+        Control::NextCamera => "next_camera",
+        Control::Overlay => "overlay",
+        Control::PlayPause => "play_pause",
+        Control::NextTrack => "next",
+        Control::PreviousTrack => "previous",
     }
 }
 

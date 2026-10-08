@@ -99,6 +99,7 @@ func bind(torqa: TorqaApp, world: RideWorld) -> void:
 	_torqa.climb_completed.connect(_on_climb_completed)
 	_torqa.route_completed.connect(_on_route_completed)
 	_torqa.failed.connect(_on_failed)
+	_torqa.control_requested.connect(_on_control_requested)
 
 
 ## Prepares the screen for a new ride on the loaded route with `options` in effect.
@@ -225,10 +226,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _simulation.visible and key.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
 		_step_time_scale(-1)
 	elif MUSIC_KEYS.has(key.keycode):
-		var command: String = MUSIC_KEYS[key.keycode][0]
-		var message: String = MUSIC_KEYS[key.keycode][1]
-		_torqa.control_music(command)
-		_show_toast(tr(message))
+		_control_music(MUSIC_KEYS[key.keycode])
 	else:
 		return
 	get_viewport().set_input_as_handled()
@@ -616,6 +614,31 @@ func _step_time_scale(step: int) -> void:
 	var index: int = TIME_SCALES.find(_time_scale)
 	_set_time_scale(TIME_SCALES[clampi(index + step, 0, TIME_SCALES.size() - 1)])
 	_show_toast(tr("Simulation: %d×") % roundi(_time_scale))
+
+
+## A shifter's button asked for a control (#139): done as its key does.
+func _on_control_requested(control: String) -> void:
+	if not visible:
+		return
+	if control == "next_camera":
+		# The overlay shows no world to look at.
+		if not is_overlay():
+			_cycle_camera()
+	elif control == "overlay":
+		if not _finished:
+			overlay_requested.emit(not is_overlay())
+	else:
+		for music: Array in MUSIC_KEYS.values():
+			if music[0] == control:
+				_control_music(music)
+
+
+## Plays, pauses or skips the music: `music` is a command and its message, as in MUSIC_KEYS.
+func _control_music(music: Array) -> void:
+	var command: String = music[0]
+	var message: String = music[1]
+	_torqa.control_music(command)
+	_show_toast(tr(message))
 
 
 func _cycle_camera() -> void:

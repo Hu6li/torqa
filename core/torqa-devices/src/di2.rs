@@ -1,9 +1,11 @@
 //! Shimano Di2 over Bluetooth (12-speed Di2, or the EW-WU111 wireless unit): the D-Fly
 //! channels. In E-TUBE the hood buttons (or any switch) are assigned to channels 1–4; the
-//! unit indicates each press, which Torqa can use to shift the virtual gears (R7).
+//! unit indicates each press, which Torqa turns into shifts and other controls (R7, #139).
 //!
 //! The service and its button characteristic sit in Shimano's own UUID base, which spells
 //! `SHIMANO_BLE`. The unit must be paired before it sends the presses.
+
+use torqa_domain::shifting::{ButtonPress, Press};
 
 use crate::bytes::ParseError;
 
@@ -20,26 +22,6 @@ const UNASSIGNED: u8 = 0xF0;
 const SHORT: u8 = 0x10;
 const LONG: u8 = 0x20;
 const DOUBLE: u8 = 0x40;
-
-/// How a button was pressed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Press {
-    /// Pressed once.
-    Short,
-    /// Held down; one press however long.
-    Long,
-    /// Pressed twice quickly.
-    Double,
-}
-
-/// A press of a button assigned to a D-Fly channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ButtonPress {
-    /// The D-Fly channel, 1–4.
-    pub channel: u8,
-    /// How it was pressed.
-    pub press: Press,
-}
 
 /// Turns the unit's button indications into presses, each once.
 ///

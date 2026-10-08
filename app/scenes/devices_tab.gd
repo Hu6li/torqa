@@ -1,23 +1,41 @@
 class_name DevicesTab
 extends VBoxContainer
-## Trainer, heart-rate sensor and Di2 shifter (R5, R7, R41): scanning, choosing, the D-Fly
-## channels that shift, and the devices used last reconnecting at start.
+## Trainer, heart-rate sensor and Di2 shifter (R5, R7, R41): scanning, choosing, what the
+## shifter's buttons do (#139), and the devices used last reconnecting at start.
 
 const FAKE_TRAINER: int = -1
 const NO_HEART_RATE: int = -1
 const NO_SHIFTER: int = -1
 const SCAN_SECONDS: float = 5.0
+## What a shifter's buttons can be given (#139), by the core's name for each action.
+# i18n-begin
+const ACTION_LABELS: Dictionary[String, String] = {
+	"shift_up": "Shift up",
+	"shift_down": "Shift down",
+	"shift_up_two": "Shift up two gears",
+	"shift_down_two": "Shift down two gears",
+	"next_camera": "Next camera",
+	"overlay": "Overlay on / off",
+	"play_pause": "Music: play / pause",
+	"next_track": "Music: next track",
+	"previous_track": "Music: previous track",
+}
+## The kinds of press, in the core's order.
+const PRESSES: Array[String] = ["Press", "Hold", "Double press"]
+# i18n-end
+const CHANNELS: int = 4
 
 var _torqa: TorqaApp
 var _scan_button: Button = Button.new()
 var _scan_label: Label = Label.new()
 var _trainer: OptionButton = OptionButton.new()
 var _heart_rate: OptionButton = OptionButton.new()
-## A Shimano Di2 shifter whose D-Fly buttons shift the virtual gears, and which channels.
+## A Shimano Di2 shifter, and what each press of its D-Fly channels does: a row per channel,
+## a column per kind of press.
 var _shifter: OptionButton = OptionButton.new()
-var _up_channel: OptionButton = OptionButton.new()
-var _down_channel: OptionButton = OptionButton.new()
-var _channel_rows: Array[Control] = []
+var _buttons: GridContainer = GridContainer.new()
+var _channel_captions: Array[Label] = []
+var _assignments: Array[OptionButton] = []
 var _status: Label = Label.new()
 ## How detailed the 3D world is drawn on this computer (R43).
 var _quality: OptionButton = OptionButton.new()
@@ -37,9 +55,14 @@ func bind(torqa: TorqaApp) -> void:
 		if _quality.get_item_metadata(i) == current:
 			_quality.select(i)
 	_show_quality_note()
-	var channels: Vector2i = _torqa.shift_channels()
-	_up_channel.select(channels.x - 1)
-	_down_channel.select(channels.y - 1)
+	var assigned: Array = _torqa.button_map()
+	for channel: int in range(assigned.size()):
+		var presses: PackedStringArray = assigned[channel]
+		for press: int in range(presses.size()):
+			var option: OptionButton = _assignments[channel * PRESSES.size() + press]
+			for i: int in range(option.item_count):
+				if option.get_item_metadata(i) == presses[press]:
+					option.select(i)
 	# The trainer and strap used last reconnect in the background (R41).
 	if _torqa.reconnect_remembered():
 		_scan_button.disabled = true
@@ -91,8 +114,6 @@ func _init() -> void:
 		["Trainer", _trainer],
 		["Heart rate", _heart_rate],
 		["Shifter (Di2)", _shifter],
-		["Shift up", _up_channel],
-		["Shift down", _down_channel],
 	]:
 		# i18n-end
 		var caption: Label = Label.new()
@@ -104,18 +125,12 @@ func _init() -> void:
 		option.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		option.custom_minimum_size = Vector2(420, 0)
 		grid.add_child(option)
-		if option in [_up_channel, _down_channel]:
-			_channel_rows.append_array([caption, option])
 	add_child(grid)
 	_shifter.tooltip_text = tr(
-		"Assign buttons to D-Fly channels in E-TUBE; they shift the virtual gears"
+		"Assign buttons to D-Fly channels in E-TUBE, then choose here what each press does"
 	)
-	for channel: int in range(1, 5):
-		for option: OptionButton in [_up_channel, _down_channel]:
-			option.add_item(tr("D-Fly channel %d") % channel)
-	_up_channel.item_selected.connect(func(_index: int) -> void: _on_channels_changed())
-	_down_channel.item_selected.connect(func(_index: int) -> void: _on_channels_changed())
 	_shifter.item_selected.connect(func(_index: int) -> void: _show_channels())
+	_build_buttons()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
 	add_child(_status)
@@ -128,9 +143,7 @@ func _notification(what: int) -> void:
 		_trainer.set_item_text(0, tr("Fake trainer (200 W, for testing)"))
 		_heart_rate.set_item_text(0, tr("None"))
 		_shifter.set_item_text(0, tr("None (keyboard: ↑ / ↓)"))
-		for i: int in range(4):
-			_up_channel.set_item_text(i, tr("D-Fly channel %d") % (i + 1))
-			_down_channel.set_item_text(i, tr("D-Fly channel %d") % (i + 1))
+		_label_buttons()
 
 
 func _on_scan_pressed() -> void:
@@ -176,14 +189,56 @@ func _on_devices_found(devices: Array) -> void:
 	_show_channels()
 
 
-## The channel rows matter only with a shifter chosen.
+## The buttons matter only with a shifter chosen.
 func _show_channels() -> void:
-	for control: Control in _channel_rows:
-		control.visible = _shifter.get_selected_metadata() != NO_SHIFTER
+	_buttons.visible = _shifter.get_selected_metadata() != NO_SHIFTER
 
 
-func _on_channels_changed() -> void:
-	_torqa.set_shift_channels(_up_channel.selected + 1, _down_channel.selected + 1)
+func _build_buttons() -> void:
+	_buttons.columns = 1 + PRESSES.size()
+	_buttons.add_theme_constant_override("h_separation", 16)
+	_buttons.add_theme_constant_override("v_separation", 10)
+	var corner: Control = Control.new()
+	corner.custom_minimum_size = Vector2(RideOptions.CAPTION_WIDTH, 0)
+	_buttons.add_child(corner)
+	for heading: String in PRESSES:
+		var label: Label = Label.new()
+		label.text = heading
+		_buttons.add_child(label)
+	for channel: int in range(1, CHANNELS + 1):
+		var caption: Label = Label.new()
+		caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		_channel_captions.append(caption)
+		_buttons.add_child(caption)
+		for press: int in range(PRESSES.size()):
+			var option: OptionButton = OptionButton.new()
+			option.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+			option.custom_minimum_size = Vector2(240, 0)
+			option.add_item("")
+			option.set_item_metadata(0, "")
+			for action: String in TorqaApp.button_actions():
+				option.add_item("")
+				option.set_item_metadata(option.item_count - 1, action)
+			option.item_selected.connect(
+				func(index: int) -> void:
+					var action: String = option.get_item_metadata(index)
+					_torqa.assign_button(channel, press, action)
+			)
+			_assignments.append(option)
+			_buttons.add_child(option)
+	add_child(_buttons)
+	_label_buttons()
+
+
+## Names the channels and actions in the interface language.
+func _label_buttons() -> void:
+	for i: int in range(_channel_captions.size()):
+		_channel_captions[i].text = tr("D-Fly channel %d") % (i + 1)
+	for option: OptionButton in _assignments:
+		for i: int in range(option.item_count):
+			var action: String = option.get_item_metadata(i)
+			var label: String = ACTION_LABELS.get(action, action)
+			option.set_item_text(i, tr(label) if action else tr("Nothing"))
 
 
 func _build_graphics() -> void:
