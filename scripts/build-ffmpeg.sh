@@ -33,7 +33,7 @@ set -- \
     --disable-autodetect --disable-programs --disable-doc --disable-network \
     --disable-debug --enable-stripping \
     --enable-static --disable-shared --enable-pic \
-    --disable-avdevice --disable-avfilter --disable-postproc --disable-swresample \
+    --disable-avdevice --disable-avfilter --disable-swresample \
     --enable-avcodec --enable-avformat --enable-swscale
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*) set -- "$@" --toolchain=msvc ;;
