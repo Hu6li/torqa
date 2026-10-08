@@ -645,8 +645,8 @@ async fn railways_tunnel_through_hills_rather_than_climb_them() {
         .filter(|v| (v[0] - 300.0).abs() < 6.0 && (v[2] + 500.0).abs() < 20.0)
         .count();
     assert!(tube > 10, "no tunnel under the hill");
-    // It enters the hill through portals: a headwall at either end of the tube, facing out
-    // along the line (#135).
+    // It enters the hill through portals: a ring round the opening at either end of the tube,
+    // its face out along the line (#135).
     let faces: Vec<_> = world
         .structures
         .vertices
@@ -664,14 +664,14 @@ async fn railways_tunnel_through_hills_rather_than_climb_them() {
         let wall = faces
             .iter()
             .any(|(v, n)| n[2] * facing > 0.99 && (v[2] + end).abs() < 0.5);
-        assert!(wall, "no headwall at the tunnel's end at {end} m");
+        assert!(wall, "no portal ring at the tunnel's end at {end} m");
     }
 }
 
 #[tokio::test]
 async fn railway_tunnels_under_the_road_stay_below_it() {
     // Flat land 3 m below the road ridden (500 m), which crosses it on an embankment, and a line
-    // passing under it at 500 m in a tunnel 240 m long: its 5 m arch would show through the
+    // passing under it at 500 m in a tunnel 240 m long: its 4.5 m arch would show through the
     // road and the embankment (#138).
     struct Low;
     impl ElevationModel for Low {
@@ -719,7 +719,7 @@ async fn railway_tunnels_under_the_road_stay_below_it() {
         .map(|v| v[1])
         .fold(f32::MIN, f32::max);
     assert!(
-        arch > 497.0 + 4.5,
+        arch > 497.0 + 4.0,
         "the arch only reaches {arch} away from the road"
     );
 }
@@ -2667,27 +2667,27 @@ async fn tunnels_enter_the_hill_through_a_portal_left_open() {
         );
     }
 
-    // At either end a headwall faces out along the road, over the opening and beside it.
+    // At either end a ring faces out along the road, over the opening and beside it.
     for (portal, facing) in [(entrance, 1.0_f32), (exit, -1.0)] {
         let face: Vec<[f32; 3]> = mesh
             .vertices
             .iter()
             .zip(&mesh.normals)
-            .filter(|(v, n)| n[2] * facing > 0.99 && (v[2] + portal).abs() < 0.5)
+            .filter(|(v, n)| n[2] * facing > 0.99 && (v[2] + portal).abs() < 2.0)
             .map(|(v, _)| *v)
             .collect();
         assert!(
             face.iter().any(|v| v[0].abs() < 1.0 && v[1] > 505.5),
-            "no wall over the opening at {portal} m"
+            "no ring over the opening at {portal} m"
         );
         assert!(
             face.iter().any(|v| v[0] < -5.5) && face.iter().any(|v| v[0] > 5.5),
-            "no wall beside the opening at {portal} m"
+            "no ring beside the opening at {portal} m"
         );
     }
 
     // The opening is open: before it the cutting lies at the road, and no ground reaches into
-    // it just before the headwall or behind it.
+    // it just before the ring or behind it.
     for (portal, inward) in [(entrance, 1.0_f32), (exit, -1.0)] {
         for x in [-3.0_f32, 0.0, 3.0] {
             let before =
@@ -2708,7 +2708,7 @@ async fn tunnels_enter_the_hill_through_a_portal_left_open() {
         }
     }
 
-    // The hill over the tunnel stays as it is, right behind the headwalls too.
+    // The hill over the tunnel stays as it is, right behind the portals too.
     for north in [entrance + 8.0, 470.0, exit - 8.0] {
         let ground = ground_at(&world, 0.0, -north).expect("ground over the tunnel");
         let hill = ridge(f64::from(north)) as f32;
@@ -2768,7 +2768,7 @@ async fn portals_stand_where_the_hill_as_drawn_covers_the_tube_for_good() {
         (486.0..520.0).contains(&entrance),
         "the tube begins at {entrance} m"
     );
-    // ...and between its headwalls (in whose planes the ground is cut open) the drawn ground
+    // ...and between its portals (in whose planes the ground is cut open) the drawn ground
     // lies over all of it.
     let exit = tube.iter().map(|v| -v[2]).fold(f32::MIN, f32::max);
     for v in tube

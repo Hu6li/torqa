@@ -2,9 +2,9 @@
 //! bridges (#75): arched openings between piers, the walls over the arches and the vaults under
 //! them; longer and higher ones, and those over a road, a street or a track, are viaducts, their
 //! deck on piers as wide as itself. Piers keep off the ways below (#98). Tunnels are an arched
-//! tube, starting where the ground rises over it: there a headwall stands in the hill at the end
-//! of the cutting leading to it (#135). Parallel tracks share one bridge or tunnel, as wide as
-//! they need (#99).
+//! tube, starting where the ground rises over it and keeps it covered: a stone ring round the
+//! opening at the end of the cutting leading to it (#135). Parallel tracks share one bridge or
+//! tunnel, as wide as they need (#99).
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -46,6 +46,10 @@ const FOOTING: f64 = 2.5;
 /// Tunnels are this wide either side of their line, and at most this high.
 const TUNNEL_RADIUS: f64 = 5.0;
 const TUNNEL_HEIGHT: f64 = 7.5;
+/// A railway's tunnel is this wide (its arch's radius) and at least this high for one track: a
+/// tall arch over the bed, not the road's wide tube.
+const RAIL_TUNNEL_RADIUS: f64 = 3.5;
+const RAIL_TUNNEL_HEIGHT: f64 = 4.5;
 /// Ground left over a railway tunnel where it passes under the road ridden (#138).
 const TUNNEL_COVER: f64 = 0.3;
 /// A railway this far or more below the road ridden passes under it, rather than beside it.
@@ -58,16 +62,15 @@ const ARCH_SEGMENTS: usize = 12;
 const PORTAL_COVER: f64 = 0.5;
 const PORTAL_PROBE: f64 = 1.0;
 const PORTAL_HOLD: f64 = 30.0;
-/// ...and its headwall rises this far over the crown, this thick, reaching out beside the
-/// opening until the ground before it is as high, by at most this much.
-const HEADWALL_RISE: f64 = 1.5;
-const HEADWALL_THICKNESS: f64 = 0.8;
-const HEADWALL_REACH: f64 = 8.0;
-/// Ground this far before a portal and this far inside it is kept out of the opening, within
-/// this margin of the tube.
+/// ...and its ring round the opening is this wide and stands this far proud of the hill.
+const COLLAR_WIDTH: f64 = 0.8;
+const COLLAR_DEPTH: f64 = 1.0;
+/// Ground this far before a portal and this far inside it is cut to the tube's outline, this
+/// margin out (under the ring), down to this far over the line (the cutting's floor stays).
 const HOLLOW_FRONT: f64 = 4.0;
 const HOLLOW_DEPTH: f64 = 6.0;
-const HOLLOW_MARGIN: f64 = 0.5;
+const HOLLOW_MARGIN: f64 = 0.3;
+const HOLLOW_FLOOR: f64 = 0.05;
 /// Railway bridges or tunnels running alongside one another this close (centre to centre) are
 /// one.
 const BUNDLE_REACH: f64 = 15.0;
@@ -169,6 +172,8 @@ struct Section {
     centre: CentrePoint,
     left: f64,
     right: f64,
+    /// How high a tunnel's arch rises here (nothing for a bridge).
+    crown: f64,
 }
 
 impl Section {
@@ -178,13 +183,16 @@ impl Section {
     }
 }
 
-/// Where a tunnel enters the hill (#135): the plane of its headwall, and the line's height
+/// Where a tunnel enters the hill (#135): the plane of its opening, and the line's height
 /// there and how steeply it rises into the tunnel.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Portal {
     plane: Plane,
     floor: f64,
     rise: f64,
+    /// The tube's arch: its radius and how high it rises.
+    half: f64,
+    crown: f64,
 }
 
 impl Portal {
@@ -203,18 +211,85 @@ impl Portal {
         along.abs() <= reach && across.abs() <= LEVEL_REACH + reach
     }
 
-    /// Whether a point of the ground (east, north, height) lies in the tunnel's opening, just
-    /// before the portal or just inside it: ground there would close it.
-    pub(crate) fn hollow(&self, [east, north, height]: [f64; 3]) -> bool {
-        let (along, across) = self.local(east, north);
-        if !(-HOLLOW_FRONT..HOLLOW_DEPTH).contains(&along) {
-            return false;
+    /// The parts of a ground triangle (corners east, north, height) outside the tunnel's
+    /// opening, just before the portal and just inside it, as triangles; `None` where the
+    /// opening does not touch it. The ground is cut to the tube's outline, `HOLLOW_MARGIN` out
+    /// (under the ring), so nothing closes the opening and nothing is missing round it (#135).
+    pub(crate) fn cut(&self, corners: [[f64; 3]; 3]) -> Option<Vec<[[f64; 3]; 3]>> {
+        let local = corners.map(|[east, north, height]| {
+            let (along, across) = self.local(east, north);
+            [along, across, height - (self.floor + self.rise * along)]
+        });
+        let (half, crown) = (self.half + HOLLOW_MARGIN, self.crown + HOLLOW_MARGIN);
+        // Wholly before, past, beside, under or over the opening: untouched.
+        let all = |keep: &dyn Fn([f64; 3]) -> bool| local.iter().all(|&l| keep(l));
+        if all(&|l| l[0] <= -HOLLOW_FRONT)
+            || all(&|l| l[0] >= HOLLOW_DEPTH)
+            || all(&|l| l[1] <= -half)
+            || all(&|l| l[1] >= half)
+            || all(&|l| l[2] <= HOLLOW_FLOOR)
+            || all(&|l| l[2] >= crown)
+        {
+            return None;
         }
-        let half = TUNNEL_RADIUS + HOLLOW_MARGIN;
-        let up = height - (self.floor + self.rise * along);
-        let arch = (TUNNEL_RADIUS.min(TUNNEL_HEIGHT) + HOLLOW_MARGIN)
-            * (1.0 - (across / half).powi(2)).max(0.0).sqrt();
-        across.abs() < half && up > 0.05 && up < arch
+        // The opening as half-spaces over (along, across, up), inside where they are positive:
+        // before it, past it, its floor, and the pieces of its arch, from the right at the
+        // floor over the crown to the left, the inside on their left.
+        let mut planes = vec![
+            [1.0, 0.0, 0.0, HOLLOW_FRONT],
+            [-1.0, 0.0, 0.0, HOLLOW_DEPTH],
+            [0.0, 0.0, 1.0, -HOLLOW_FLOOR],
+        ];
+        #[allow(clippy::cast_precision_loss)] // small segment counts
+        let arch = |k: usize| {
+            let (sin, cos) = (std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64).sin_cos();
+            (half * cos, crown * sin)
+        };
+        for k in 0..ARCH_SEGMENTS {
+            let ((x0, y0), (x1, y1)) = (arch(k), arch(k + 1));
+            let (dx, dy) = (x1 - x0, y1 - y0);
+            planes.push([0.0, -dy, dx, dy * x0 - dx * y0]);
+        }
+        // What lies outside any of them is kept, plane by plane; what is left inside all of
+        // them was in the opening.
+        let mut remaining: Vec<([f64; 3], [f64; 3])> = local.into_iter().zip(corners).collect();
+        let mut pieces = Vec::new();
+        let mut split = false;
+        for plane in planes {
+            let value = |v: &([f64; 3], [f64; 3])| {
+                plane[0] * v.0[0] + plane[1] * v.0[1] + plane[2] * v.0[2] + plane[3]
+            };
+            let (mut outside, mut inside) = (Vec::new(), Vec::new());
+            for (k, a) in remaining.iter().enumerate() {
+                let b = &remaining[(k + 1) % remaining.len()];
+                let (fa, fb) = (value(a), value(b));
+                if fa >= 0.0 {
+                    inside.push(*a);
+                } else {
+                    outside.push(*a);
+                }
+                if (fa >= 0.0) != (fb >= 0.0) {
+                    let t = fa / (fa - fb);
+                    let between =
+                        |p: [f64; 3], q: [f64; 3]| [0, 1, 2].map(|i| p[i] + (q[i] - p[i]) * t);
+                    let m = (between(a.0, b.0), between(a.1, b.1));
+                    inside.push(m);
+                    outside.push(m);
+                    split = true;
+                }
+            }
+            for i in 1..outside.len().saturating_sub(1) {
+                pieces.push([outside[0].1, outside[i].1, outside[i + 1].1]);
+            }
+            remaining = inside;
+            if remaining.len() < 3 {
+                break;
+            }
+        }
+        if !split && remaining.len() < 3 {
+            return None;
+        }
+        Some(pieces)
     }
 }
 
@@ -247,24 +322,28 @@ pub(crate) async fn open_portals<M: ElevationModel>(
             portals: &[],
         };
         for run in &road_runs {
-            road_openings.push(open_ends(run, &shapers, projection, model).await);
+            road_openings.push(open_ends(run, tube(false), &shapers, projection, model).await);
         }
         for run in &rail_runs {
-            rail_openings.push(open_ends(run, &shapers, projection, model).await);
+            rail_openings.push(open_ends(run, tube(true), &shapers, projection, model).await);
         }
     }
     let mut portals = Vec::new();
-    for (index, runs, openings) in [
-        (road, &road_runs, road_openings),
-        (rails, &rail_runs, rail_openings),
+    for (index, runs, openings, railway) in [
+        (road, &road_runs, road_openings, false),
+        (rails, &rail_runs, rail_openings, true),
     ] {
+        let (half, crown) = tube(railway);
         for (run, opened) in runs.iter().zip(openings) {
-            portals.extend(
-                index
-                    .set_portals(run, opened)
-                    .into_iter()
-                    .map(|(plane, floor, rise)| Portal { plane, floor, rise }),
-            );
+            portals.extend(index.set_portals(run, opened).into_iter().map(
+                |(plane, floor, rise)| Portal {
+                    plane,
+                    floor,
+                    rise,
+                    half,
+                    crown,
+                },
+            ));
         }
     }
     portals
@@ -274,6 +353,7 @@ pub(crate) async fn open_portals<M: ElevationModel>(
 /// crown and stays over it (`PORTAL_HOLD`), or `None` where it never does.
 async fn open_ends<M: ElevationModel>(
     run: &TunnelRun,
+    tube: (f64, f64),
     shapers: &Shapers<'_>,
     projection: &LocalProjection,
     model: &mut M,
@@ -287,7 +367,7 @@ async fn open_ends<M: ElevationModel>(
     let mut start = None;
     for k in 0..segments {
         // Where the line begins in the tunnel there is no portal to look for.
-        if !run.open.0 || held(points, &along, k, 1.0, shapers, projection, model).await {
+        if !run.open.0 || held(points, &along, (k, 1.0), tube, shapers, projection, model).await {
             start = Some(k);
             break;
         }
@@ -295,7 +375,7 @@ async fn open_ends<M: ElevationModel>(
     let start = start?;
     let mut end = None;
     for (k, j) in (start + 1..points.len()).rev().enumerate() {
-        if !run.open.1 || held(points, &along, j, -1.0, shapers, projection, model).await {
+        if !run.open.1 || held(points, &along, (j, -1.0), tube, shapers, projection, model).await {
             end = Some(k);
             break;
         }
@@ -308,18 +388,19 @@ async fn open_ends<M: ElevationModel>(
 /// Whether the ground lies over the tube from `points[k]` on into the tunnel (`inward` 1 along
 /// the line, −1 against it) for `PORTAL_HOLD` metres, or to the run's end: a hill that covers
 /// the tube at one point and dips right behind it is no portal yet.
+#[allow(clippy::too_many_arguments)] // the run, where to start in it, the tube, the world
 async fn held<M: ElevationModel>(
     points: &[CentrePoint],
     along: &[f64],
-    k: usize,
-    inward: f64,
+    (k, inward): (usize, f64),
+    tube: (f64, f64),
     shapers: &Shapers<'_>,
     projection: &LocalProjection,
     model: &mut M,
 ) -> bool {
     let mut j = k;
     loop {
-        if !covered(points[j], inward, shapers, projection, model).await {
+        if !covered(points[j], inward, tube, shapers, projection, model).await {
             return false;
         }
         let next = if inward > 0.0 {
@@ -334,11 +415,12 @@ async fn held<M: ElevationModel>(
     }
 }
 
-/// Whether the ground lies over the crown of a tube at `point` across its whole width, a little
-/// way into the tunnel (`inward` 1 along the line, −1 against it).
+/// Whether the ground lies over the whole arch of a `tube` (its radius, how high its arch rises)
+/// at `point`, a little way into the tunnel (`inward` 1 along the line, −1 against it).
 async fn covered<M: ElevationModel>(
     point: CentrePoint,
     inward: f64,
+    (half, crown): (f64, f64),
     shapers: &Shapers<'_>,
     projection: &LocalProjection,
     model: &mut M,
@@ -351,10 +433,14 @@ async fn covered<M: ElevationModel>(
         ),
         ..point
     };
-    let crown = point.elevation + TUNNEL_RADIUS.min(TUNNEL_HEIGHT) + PORTAL_COVER;
-    for across in [-TUNNEL_RADIUS, 0.0, TUNNEL_RADIUS] {
-        let height = ground(aside(probe, across), shapers, projection, model).await;
-        if height.is_none_or(|h| h < crown) {
+    // Along the arch, from one flank over the crown to the other: on a hillside the downhill
+    // flank is the last to go under.
+    for k in 0..=ARCH_SEGMENTS {
+        #[allow(clippy::cast_precision_loss)] // small segment counts
+        let (sin, cos) = (std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64).sin_cos();
+        let needed = point.elevation + crown * sin + PORTAL_COVER;
+        let height = ground(aside(probe, half * cos), shapers, projection, model).await;
+        if height.is_none_or(|h| h < needed) {
             return false;
         }
     }
@@ -362,9 +448,9 @@ async fn covered<M: ElevationModel>(
 }
 
 /// The ground at a point as the chunks will draw it (`crate::drawn_ground`), shaped by the road
-/// ridden and the railways; `None` without terrain data there. A portal and its headwall stand
-/// against the drawn ground, not against the finer terrain the tiles have, which would leave the
-/// tube bare where the drawn hill lies lower.
+/// ridden and the railways; `None` without terrain data there. A portal stands in the drawn
+/// ground, not in the finer terrain the tiles have, which would leave the tube bare where the
+/// drawn hill lies lower.
 async fn ground<M: ElevationModel>(
     (east, north): (f64, f64),
     shapers: &Shapers<'_>,
@@ -375,7 +461,7 @@ async fn ground<M: ElevationModel>(
 }
 
 /// Geometry of the bridges and tunnels of the road ridden and the railways, in route
-/// coordinates, with headwalls at the tunnels' `portals`.
+/// coordinates, with rings round the tunnels' openings at their `portals`.
 pub(crate) async fn build_all<M: ElevationModel>(
     (road, railways): (&RoadIndex, &RoadIndex),
     below: &Below<'_>,
@@ -387,7 +473,7 @@ pub(crate) async fn build_all<M: ElevationModel>(
     let own = road
         .structure_runs()
         .into_iter()
-        .map(|(surface, run)| (surface, sections(&run, half_width(surface)), None));
+        .map(|(surface, run)| (surface, sections(&run, surface, false), None));
     let rails = bundles(&railways.structure_runs())
         .into_iter()
         .map(|(surface, run)| (surface, run, Some(road)));
@@ -410,7 +496,7 @@ pub(crate) async fn build_all<M: ElevationModel>(
                         .iter()
                         .any(|p| distance(p.plane.0, end.centre.position) < 1.0);
                     if at_portal {
-                        headwall(&mut mesh, end, outward, &shapers, projection, model).await;
+                        collar(&mut mesh, end, outward);
                     }
                 }
             }
@@ -420,21 +506,42 @@ pub(crate) async fn build_all<M: ElevationModel>(
     mesh
 }
 
-/// How far a structure reaches either side of a single line.
-fn half_width(surface: Surface) -> f64 {
-    if surface == Surface::Tunnel {
-        TUNNEL_RADIUS
-    } else {
-        DECK_HALF_WIDTH
+/// How far a structure reaches either side of a single line, of the road ridden or a railway.
+fn half_width(surface: Surface, railway: bool) -> f64 {
+    match (surface, railway) {
+        (Surface::Tunnel, false) => TUNNEL_RADIUS,
+        (Surface::Tunnel, true) => RAIL_TUNNEL_RADIUS,
+        _ => DECK_HALF_WIDTH,
     }
 }
 
-fn sections(run: &[CentrePoint], half: f64) -> Vec<Section> {
+/// A single line's tunnel tube, of the road ridden or a railway: its radius and how high its
+/// arch rises.
+fn tube(railway: bool) -> (f64, f64) {
+    let half = half_width(Surface::Tunnel, railway);
+    (half, arch_height(half, railway))
+}
+
+/// How high a tunnel's arch rises over a tube `half` wide: the road ridden's a semicircle,
+/// flattened past `TUNNEL_HEIGHT`; a railway's at least `RAIL_TUNNEL_HEIGHT`, so a single track's
+/// is taller than wide.
+fn arch_height(half: f64, railway: bool) -> f64 {
+    let height = half.min(TUNNEL_HEIGHT);
+    if railway {
+        height.max(RAIL_TUNNEL_HEIGHT)
+    } else {
+        height
+    }
+}
+
+fn sections(run: &[CentrePoint], surface: Surface, railway: bool) -> Vec<Section> {
+    let half = half_width(surface, railway);
     run.iter()
         .map(|&centre| Section {
             centre,
             left: half,
             right: half,
+            crown: arch_height(half, railway),
         })
         .collect()
 }
@@ -458,7 +565,7 @@ fn bundles(runs: &[(Surface, Vec<CentrePoint>)]) -> Vec<(Surface, Vec<Section>)>
         }
         taken[guide] = true;
         let (kind, line) = (runs[guide].0, &runs[guide].1);
-        let half = half_width(kind);
+        let half = half_width(kind, true);
         let mut widths = vec![(half, half); line.len()];
         for &other in &order {
             if taken[other] || runs[other].0 != kind {
@@ -484,12 +591,12 @@ fn bundles(runs: &[(Surface, Vec<CentrePoint>)]) -> Vec<(Surface, Vec<Section>)>
                     continue;
                 }
                 if stretch.len() >= 2 {
-                    bundles.push((kind, sections(&stretch, half)));
+                    bundles.push((kind, sections(&stretch, kind, true)));
                 }
                 stretch.clear();
             }
             if stretch.len() >= 2 {
-                bundles.push((kind, sections(&stretch, half)));
+                bundles.push((kind, sections(&stretch, kind, true)));
             }
         }
         let carried = line
@@ -499,6 +606,7 @@ fn bundles(runs: &[(Surface, Vec<CentrePoint>)]) -> Vec<(Surface, Vec<Section>)>
                 centre,
                 left,
                 right,
+                crown: arch_height(f64::midpoint(left, right), true),
             })
             .collect();
         bundles.push((kind, carried));
@@ -889,6 +997,7 @@ impl<'a> Path<'a> {
             },
             left: a.left + (b.left - a.left) * t,
             right: a.right + (b.right - a.right) * t,
+            crown: a.crown + (b.crown - a.crown) * t,
         }
     }
 }
@@ -911,7 +1020,7 @@ async fn tunnel<M: ElevationModel>(
             (0..=ARCH_SEGMENTS)
                 .map(|k| {
                     let (sin, cos) = angle(k).sin_cos();
-                    offset(s.centre, middle + half * cos, half.min(TUNNEL_HEIGHT) * sin)
+                    offset(s.centre, middle + half * cos, s.crown * sin)
                 })
                 .collect()
         })
@@ -944,7 +1053,7 @@ async fn tunnel<M: ElevationModel>(
             // Square to the arch (an ellipse where flattened), facing the axis, seen from inside
             // the tunnel...
             let half = f64::midpoint(a.left, a.right);
-            let (across, up) = (cos * half.min(TUNNEL_HEIGHT), sin * half);
+            let (across, up) = (cos * a.crown, sin * half);
             let inward = [-right[0] * across, -up, -right[2] * across];
             quad(mesh, corners, inward, *TUNNEL_WALL);
             // ...and the outside, visible at the portals.
@@ -976,120 +1085,101 @@ async fn ground_over<M: ElevationModel>(
     ((ground - natural).abs() > SHAPED).then_some(ground)
 }
 
-/// A portal's headwall (#135): a stone face square to the tube at its `end` section, facing out
-/// of the tunnel (`outward` 1 along the line, −1 against it), around the tube's arched opening.
-/// It rises over the crown and reaches out either side until the ground before it is as high,
-/// so the cutting ends against it; a coping caps it.
-async fn headwall<M: ElevationModel>(
-    mesh: &mut MeshData,
-    end: Section,
-    outward: f64,
-    shapers: &Shapers<'_>,
-    projection: &LocalProjection,
-    model: &mut M,
-) {
-    let front = end.centre;
-    let (de, dn) = front.direction;
-    let moved = |by: f64| CentrePoint {
+/// A portal's ring (#135): a stone collar round the tube's arch at its `end` section, standing
+/// `COLLAR_DEPTH` proud of the hill, facing out of the tunnel (`outward` 1 along the line, −1
+/// against it). It follows the tube's own outline, `COLLAR_WIDTH` wide, down into the ground
+/// beside the opening, and covers the edge where the ground is cut open round the tube: no
+/// wall, the hill meets the ring.
+fn collar(mesh: &mut MeshData, end: Section, outward: f64) {
+    let back = end.centre;
+    let (de, dn) = back.direction;
+    let front = CentrePoint {
         position: (
-            front.position.0 + de * outward * by,
-            front.position.1 + dn * outward * by,
+            back.position.0 + de * outward * COLLAR_DEPTH,
+            back.position.1 + dn * outward * COLLAR_DEPTH,
         ),
-        ..front
+        ..back
     };
-    let back = moved(-HEADWALL_THICKNESS);
-    let sideways = right(front);
     let half = f64::midpoint(end.left, end.right);
     let middle = (end.right - end.left) / 2.0;
-    let crown = half.min(TUNNEL_HEIGHT);
-    let (top, bottom) = (crown + HEADWALL_RISE, -FOOTING);
-    let (before, height) = (moved(1.0), front.elevation + top);
-    let far_left = wall_end(before, (end.left, -1.0), height, shapers, projection, model).await;
-    let far_right = wall_end(before, (end.right, 1.0), height, shapers, projection, model).await;
+    let crown = end.crown;
+    // The ring's inner and outer outline: the tube's arch, and the arch `COLLAR_WIDTH` out.
     #[allow(clippy::cast_precision_loss)] // small segment counts
-    let arch = |k: usize| {
-        let angle = std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64;
-        let (sin, cos) = angle.sin_cos();
-        (middle + half * cos, crown * sin)
+    let angle = |k: usize| std::f64::consts::PI * k as f64 / ARCH_SEGMENTS as f64;
+    let outline = |k: usize, out: f64| {
+        let (sin, cos) = angle(k).sin_cos();
+        (middle + (half + out) * cos, (crown + out) * sin)
     };
-    let facing = forward(front).map(|v| v * outward);
-    for (plane, normal) in [(front, facing), (back, facing.map(|v| -v))] {
-        // Over the opening...
-        for k in 0..ARCH_SEGMENTS {
-            let ((x0, y0), (x1, y1)) = (arch(k), arch(k + 1));
-            quad(
-                mesh,
-                [
-                    offset(plane, x0, y0),
-                    offset(plane, x1, y1),
-                    offset(plane, x1, top),
-                    offset(plane, x0, top),
-                ],
-                normal,
-                *STONE,
-            );
-        }
-        // ...and beside it, from below the ground.
-        for (from, to) in [(-far_left, -end.left), (end.right, far_right)] {
-            quad(
-                mesh,
-                [
-                    offset(plane, from, bottom),
-                    offset(plane, to, bottom),
-                    offset(plane, to, top),
-                    offset(plane, from, top),
-                ],
-                normal,
-                *STONE,
-            );
-        }
-    }
-    quad(
-        mesh,
-        [
-            offset(front, -far_left, top),
-            offset(front, far_right, top),
-            offset(back, far_right, top),
-            offset(back, -far_left, top),
-        ],
-        [0.0, 1.0, 0.0],
-        *CONCRETE,
-    );
-    for (across, side) in [(-far_left, -1.0), (far_right, 1.0)] {
+    let facing = forward(back).map(|v| v * outward);
+    let sideways = right(back);
+    for k in 0..ARCH_SEGMENTS {
+        let ((xi0, yi0), (xi1, yi1)) = (outline(k, 0.0), outline(k + 1, 0.0));
+        let ((xo0, yo0), (xo1, yo1)) = (outline(k, COLLAR_WIDTH), outline(k + 1, COLLAR_WIDTH));
+        // The ring's face...
         quad(
             mesh,
             [
-                offset(front, across, bottom),
-                offset(back, across, bottom),
-                offset(back, across, top),
-                offset(front, across, top),
+                offset(front, xi0, yi0),
+                offset(front, xi1, yi1),
+                offset(front, xo1, yo1),
+                offset(front, xo0, yo0),
+            ],
+            facing,
+            *STONE,
+        );
+        // ...its outside, from the hill out to the face...
+        let (sin, cos) = f64::midpoint(angle(k), angle(k + 1)).sin_cos();
+        let radial = [sideways[0] * cos, sin, sideways[2] * cos];
+        quad(
+            mesh,
+            [
+                offset(back, xo0, yo0),
+                offset(back, xo1, yo1),
+                offset(front, xo1, yo1),
+                offset(front, xo0, yo0),
+            ],
+            radial,
+            *STONE,
+        );
+        // ...and its inside, on from the tube's wall.
+        quad(
+            mesh,
+            [
+                offset(front, xi0, yi0),
+                offset(front, xi1, yi1),
+                offset(back, xi1, yi1),
+                offset(back, xi0, yi0),
+            ],
+            radial.map(|v| -v),
+            *STONE,
+        );
+    }
+    // Its legs beside the opening, down into the ground.
+    for (edge, side) in [(-end.left, -1.0), (end.right, 1.0)] {
+        let far = edge + side * COLLAR_WIDTH;
+        quad(
+            mesh,
+            [
+                offset(front, edge, -FOOTING),
+                offset(front, far, -FOOTING),
+                offset(front, far, 0.0),
+                offset(front, edge, 0.0),
+            ],
+            facing,
+            *STONE,
+        );
+        quad(
+            mesh,
+            [
+                offset(back, far, -FOOTING),
+                offset(back, far, 0.0),
+                offset(front, far, 0.0),
+                offset(front, far, -FOOTING),
             ],
             sideways.map(|v| v * side),
             *STONE,
         );
     }
-}
-
-/// How far from the line on `side` (−1 left, 1 right) a headwall reaches out past the opening's
-/// `edge`: until the ground before it (beside `before`) rises to `height`, by at most
-/// `HEADWALL_REACH`.
-async fn wall_end<M: ElevationModel>(
-    before: CentrePoint,
-    (edge, side): (f64, f64),
-    height: f64,
-    shapers: &Shapers<'_>,
-    projection: &LocalProjection,
-    model: &mut M,
-) -> f64 {
-    let mut out = edge + 1.0;
-    while out < edge + HEADWALL_REACH {
-        let found = ground(aside(before, side * out), shapers, projection, model).await;
-        if found.is_some_and(|g| g >= height) {
-            break;
-        }
-        out += 1.0;
-    }
-    out
 }
 
 /// A vertical strip along the line `across` metres right of it at either end, from `low` to

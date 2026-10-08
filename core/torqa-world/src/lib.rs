@@ -852,13 +852,21 @@ impl HeightGrid {
                     .iter()
                     .filter(|p| p.near(east, north, GRID))
                     .collect();
-                // A piece's two triangles from its corners (index, [east, north, height]), but
-                // none reaching into a tunnel's opening.
+                // A piece's two triangles from its corners (index, [east, north, height]), cut
+                // to a tunnel's opening where they reach into one.
                 let add = |mesh: &mut MeshData, corners: [(u32, [f64; 3]); 4]| {
                     let [sw, se, nw, ne] = corners;
                     for triangle in [[sw, nw, ne], [sw, ne, se]] {
-                        if !in_opening(&portals, triangle.map(|c| c.1)) {
-                            mesh.indices.extend(triangle.map(|c| c.0));
+                        match cut_out(&portals, triangle.map(|c| c.1)) {
+                            None => mesh.indices.extend(triangle.map(|c| c.0)),
+                            Some(pieces) => {
+                                for piece in pieces {
+                                    for [east, north, height] in piece {
+                                        let index = push(mesh, east, north, height);
+                                        mesh.indices.push(index);
+                                    }
+                                }
+                            }
                         }
                     }
                 };
@@ -904,18 +912,26 @@ impl HeightGrid {
     }
 }
 
-/// Whether a triangle of the ground (corners east, north, height) reaches into the opening of a
-/// tunnel at one of `portals`: it is left out, so nothing closes the opening (#135).
-fn in_opening(portals: &[&structures::Portal], [a, b, c]: [[f64; 3]; 3]) -> bool {
-    if portals.is_empty() {
-        return false;
+/// The pieces of a ground triangle (corners east, north, height) outside the openings of the
+/// tunnels at `portals`, where it reaches into one; `None` where it does not. Nothing closes an
+/// opening, and the ground meets the tube's ring round it (#135).
+fn cut_out(portals: &[&structures::Portal], triangle: [[f64; 3]; 3]) -> Option<Vec<[[f64; 3]; 3]>> {
+    let mut pieces = vec![triangle];
+    let mut touched = false;
+    for portal in portals {
+        let mut next = Vec::new();
+        for piece in pieces {
+            match portal.cut(piece) {
+                None => next.push(piece),
+                Some(cut) => {
+                    touched = true;
+                    next.extend(cut);
+                }
+            }
+        }
+        pieces = next;
     }
-    let between = |p: [f64; 3], q: [f64; 3]| [0, 1, 2].map(|k| f64::midpoint(p[k], q[k]));
-    let centre = [0, 1, 2].map(|k| (a[k] + b[k] + c[k]) / 3.0);
-    let probes = [a, b, c, between(a, b), between(b, c), between(c, a), centre];
-    portals
-        .iter()
-        .any(|portal| probes.iter().any(|&probe| portal.hollow(probe)))
+    touched.then_some(pieces)
 }
 
 /// How far channels cut the ground at a point (`channels::Channels::depth`).
