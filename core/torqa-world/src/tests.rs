@@ -2605,7 +2605,15 @@ async fn tunnels_are_tubes_visible_from_inside() {
         .filter(|(v, n)| n[0] * v[0] < 0.0 || (n[1] < 0.0 && v[1] > 500.0))
         .count();
     assert!(inward > 0);
-    let top = mesh.vertices.iter().map(|v| v[1]).fold(f32::MIN, f32::max);
+    // The arch of the tube itself: the ring round its opening stands a little proud of it.
+    let inside = palette::srgb("structure.tunnel", 0.0);
+    let top = mesh
+        .vertices
+        .iter()
+        .zip(&mesh.colors)
+        .filter(|(_, colour)| **colour == inside)
+        .map(|(v, _)| v[1])
+        .fold(f32::MIN, f32::max);
     assert!((top - 505.0).abs() < 0.1, "arch 5 m high: {top}");
 }
 
@@ -2717,6 +2725,76 @@ async fn tunnels_enter_the_hill_through_a_portal_left_open() {
             "the hill at {north} m cut to {ground}, not {hill}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_tunnel_the_terrain_never_covers_gets_a_hill_heaped_over_it() {
+    // A tunnel mapped from 300 m to 700 m on ground the terrain has flat (a gallery on a
+    // cliff the samples smooth away): the tube must not lie bare on the hillside. The portals
+    // stand at the mapped ends and the ground is heaped over the tube between them (#135).
+    let tunnel = Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 300.0), at(0.0, 700.0)],
+    };
+    let route = route_north(&[tunnel]).await;
+    let world = generate(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+    )
+    .await;
+
+    let mesh = &world.structures;
+    assert_valid(mesh);
+    let inside = palette::srgb("structure.tunnel", 0.0);
+    let tube: Vec<[f32; 3]> = mesh
+        .vertices
+        .iter()
+        .zip(&mesh.colors)
+        .filter(|(_, colour)| **colour == inside)
+        .map(|(v, _)| *v)
+        .collect();
+    assert!(!tube.is_empty(), "no tube");
+    let (entrance, exit) = tube.iter().fold((f32::MAX, f32::MIN), |(low, high), v| {
+        (low.min(-v[2]), high.max(-v[2]))
+    });
+    // The mapped ends, on the road's own points 10 m apart.
+    assert!(
+        (285.0..306.0).contains(&entrance),
+        "the tube begins at {entrance} m"
+    );
+    assert!((694.0..715.0).contains(&exit), "the tube ends at {exit} m");
+    // Between the portals the ground lies over all of the tube...
+    for v in tube
+        .iter()
+        .filter(|v| -v[2] > entrance + 8.0 && -v[2] < exit - 8.0)
+    {
+        let ground = ground_at(&world, v[0], v[2])
+            .unwrap_or_else(|| panic!("no ground over the tube at {v:?}"));
+        assert!(
+            ground >= v[1] - 0.05,
+            "the tube stands in the open at {v:?}: the ground there is at {ground}"
+        );
+    }
+    // ...before the portal the line runs on the ground at the road's level...
+    let before = ground_at(&world, 0.0, -(entrance - 6.0)).expect("ground before the portal");
+    assert!(
+        before < 500.5,
+        "the ground before the portal lies at {before}"
+    );
+    // ...and a ring faces out over the opening.
+    let face: Vec<[f32; 3]> = mesh
+        .vertices
+        .iter()
+        .zip(&mesh.normals)
+        .filter(|(v, n)| n[2] > 0.99 && (v[2] + entrance).abs() < 2.0)
+        .map(|(v, _)| *v)
+        .collect();
+    assert!(
+        face.iter().any(|v| v[0].abs() < 1.0 && v[1] > 505.5),
+        "no ring over the opening at {entrance} m"
+    );
 }
 
 #[tokio::test]

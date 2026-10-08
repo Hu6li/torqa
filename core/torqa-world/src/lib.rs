@@ -62,6 +62,12 @@ const FILL_SLOPE: f64 = 0.6;
 /// `REACH_FADE` metres the shaped ground blends into the natural.
 pub(crate) const LEVEL_REACH: f64 = 45.0;
 const REACH_FADE: f64 = 12.0;
+/// The hill heaped over a tunnel of the road ridden where the terrain has none (#135) lies this
+/// far over the tube's arch...
+const TUNNEL_HILL_COVER: f64 = 1.0;
+/// ...and reaches this far beyond the tube either side, over the ring round its opening, before
+/// banking down at `FILL_SLOPE`.
+const TUNNEL_HILL_SHOULDER: f64 = 1.0;
 /// Level ground sits this far below the road surface, so the two never flicker; the road's edge
 /// bevels down to it (road.rs). Other streets lie between the two where they join the road.
 const ROAD_SINK: f64 = 0.15;
@@ -242,6 +248,7 @@ pub async fn generate<M: ElevationModel>(
         road: &road,
         rails: &ways.network.index,
         portals: &portals,
+        hills: true,
     };
     let below = structures::Below::new(&road, &ways.network.index, &ways.streets);
     let mut world = whole(map, &projection, (&shapers, &ways, &below), model).await;
@@ -677,11 +684,7 @@ impl HeightGrid {
         {
             return true;
         }
-        let roads: Vec<_> = shapers
-            .near(east, north, LEVEL_REACH + half_diagonal)
-            .into_iter()
-            .filter(|r| r.2 != Surface::Tunnel)
-            .collect();
+        let roads = shapers.near(east, north, LEVEL_REACH + half_diagonal);
         if roads.is_empty() {
             return false;
         }
@@ -1084,13 +1087,28 @@ pub(crate) struct Shapers<'a> {
     pub(crate) road: &'a RoadIndex,
     pub(crate) rails: &'a RoadIndex,
     pub(crate) portals: &'a [structures::Portal],
+    /// Whether the road's tunnels get a hill heaped over them where the terrain has none
+    /// (`shape`, #135): not while their portals are placed, which looks for the hill the
+    /// terrain has.
+    pub(crate) hills: bool,
 }
 
 impl Shapers<'_> {
-    /// Every piece of road or railway within `reach`, as [`RoadIndex::near`] gives them.
+    /// Every piece of road or railway within `reach` that shapes the ground, as
+    /// [`RoadIndex::near`] gives them: the road's tunnels only with `hills`, a railway's never.
     pub(crate) fn near(&self, east: f64, north: f64, reach: f64) -> Vec<(f64, f64, Surface)> {
-        let mut found = self.road.near(east, north, reach);
-        found.extend(self.rails.near(east, north, reach));
+        let mut found: Vec<_> = self
+            .road
+            .near(east, north, reach)
+            .into_iter()
+            .filter(|r| self.hills || r.2 != Surface::Tunnel)
+            .collect();
+        found.extend(
+            self.rails
+                .near(east, north, reach)
+                .into_iter()
+                .filter(|r| r.2 != Surface::Tunnel),
+        );
         found
     }
 }
@@ -1098,26 +1116,40 @@ impl Shapers<'_> {
 /// The ground at a point with natural height `natural`, shaped around the pieces of road near
 /// it (distance, road elevation, surface): level just below the road out to the verge, then
 /// cut into the hillside or banked down to the valley at most as steeply as cuttings and
-/// embankments are, natural again further away. Under bridges the ground is only lowered,
-/// above tunnels never touched. Where the road passes more than once (hairpins), the ground
-/// stays below every pass.
+/// embankments are, natural again further away. Under bridges the ground is only lowered.
+/// Over a tunnel of the road ridden the ground is only raised: a tunnel runs under a hill, and
+/// where the terrain has none, as on a cliff the samples smooth away or under a gallery, the
+/// ground is heaped over the tube and banked down beyond it, so no tube lies bare on the
+/// hillside (#135). Where the road passes more than once (hairpins), the ground stays below
+/// every pass.
 pub(crate) fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
-    let Some(&(distance, elevation, surface)) = roads
+    let nearest = roads
         .iter()
         .filter(|r| r.2 != Surface::Tunnel)
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-    else {
-        return natural;
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    // Past a portal the line's pieces count as its tunnel's (`road`): the hill's ground there.
+    let mut height = match nearest {
+        Some(&(distance, elevation, surface)) => {
+            let level = elevation - ROAD_SINK;
+            let room = (distance - VERGE).max(0.0);
+            let (floor, ceiling) = (level - room * FILL_SLOPE, level + room * CUT_SLOPE);
+            let shaped = match surface {
+                // The valley under a bridge stays open: only ground above the deck is cut away.
+                Surface::Bridge => natural.min(ceiling),
+                Surface::Ground | Surface::Tunnel => natural.clamp(floor, ceiling),
+            };
+            shaped + (natural - shaped) * fade(distance)
+        }
+        None => natural,
     };
-    let level = elevation - ROAD_SINK;
-    let room = (distance - VERGE).max(0.0);
-    let (floor, ceiling) = (level - room * FILL_SLOPE, level + room * CUT_SLOPE);
-    let shaped = match surface {
-        // The valley under a bridge stays open: only ground above the deck is cut away.
-        Surface::Bridge => natural.min(ceiling),
-        Surface::Ground | Surface::Tunnel => natural.clamp(floor, ceiling),
-    };
-    let mut height = shaped + (natural - shaped) * fade(distance);
+    for &(distance, elevation, surface) in roads {
+        if surface == Surface::Tunnel {
+            let (half, crown) = structures::tube(false);
+            let top = elevation + crown + TUNNEL_HILL_COVER;
+            let hill = top - (distance - (half + TUNNEL_HILL_SHOULDER)).max(0.0) * FILL_SLOPE;
+            height = height.max(hill + (natural - hill) * fade(distance));
+        }
+    }
     for &(distance, elevation, surface) in roads {
         if surface == Surface::Tunnel {
             continue;

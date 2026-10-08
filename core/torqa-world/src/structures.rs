@@ -296,8 +296,9 @@ impl Portal {
 /// Finds where each tunnel of the road ridden and the railways enters the hill, where the
 /// ground first lies over its crown, and opens the line before that onto the ground (#135): the
 /// tube starts there, the approach runs in a cutting up to the portal and the hill over the
-/// tunnel stays as it is. Tunnels the ground never covers (galleries, or hills the terrain data
-/// misses) stay as mapped, without portals.
+/// tunnel stays as it is. A tunnel of the road ridden that the ground never covers (a gallery,
+/// or a cliff the terrain data misses) keeps its mapped ends as portals, and the ground is
+/// heaped over it; a railway's stays as mapped, without portals.
 pub(crate) async fn open_portals<M: ElevationModel>(
     road: &mut RoadIndex,
     rails: &mut RoadIndex,
@@ -320,9 +321,14 @@ pub(crate) async fn open_portals<M: ElevationModel>(
             road: &*road,
             rails: &*rails,
             portals: &[],
+            hills: false,
         };
         for run in &road_runs {
-            road_openings.push(open_ends(run, tube(false), &shapers, projection, model).await);
+            // Where the terrain never covers the tube (a gallery, a cliff the samples smooth
+            // away), the portals stand at the mapped ends and the ground is heaped over the
+            // tube between them (`crate::shape`).
+            let opened = open_ends(run, tube(false), &shapers, projection, model).await;
+            road_openings.push(opened.or(Some((0, 0))));
         }
         for run in &rail_runs {
             rail_openings.push(open_ends(run, tube(true), &shapers, projection, model).await);
@@ -512,7 +518,7 @@ fn half_width(surface: Surface, railway: bool) -> f64 {
 
 /// A single line's tunnel tube, of the road ridden or a railway: its radius and how high its
 /// arch rises.
-fn tube(railway: bool) -> (f64, f64) {
+pub(crate) fn tube(railway: bool) -> (f64, f64) {
     let half = half_width(Surface::Tunnel, railway);
     (half, arch_height(half, railway))
 }
