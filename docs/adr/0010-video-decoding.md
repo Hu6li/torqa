@@ -65,3 +65,21 @@ hardware decoders, which M1/M2 Macs lack, so those videos showed nothing.
   Assembly can be enabled once a rav1d release ships the headers (tracked in an issue).
 - rav1d depends on `paste`, a finished compile-time macro flagged unmaintained
   (RUSTSEC-2024-0436); `deny.toml` ignores that advisory, and allows `CC0-1.0` (`to_method`).
+
+## Amendment (2026-10-08): rav1d's x86 assembly and frame threading
+
+The ~145 fps above does not hold everywhere. On an Intel i7-9750H laptop (6 cores) a
+720p, 30 fps AV1 route video decoded at **21 fps**: slower than it plays, so rides on it
+stuttered while ordinary players, using dav1d with its assembly, played it smoothly.
+
+- **x86_64 builds turn on rav1d's `asm` feature** (in `torqa-video`, for that architecture
+  only): the 1.1.0 package does ship its x86 assembly, it is only the ARM headers that are
+  missing. It is assembled with **nasm**, which every x86_64 build already has for FFmpeg (dev
+  container, Linux and Windows CI). rav1d's build script runs it through `nasm-rs`, a build
+  dependency it always had: no crate is added. ARM builds stay as they are.
+- **The decoder works on several frames at once**: dav1d's default frame delay instead of one
+  frame. A picture then comes out a few packets after its data went in; decoding forward and
+  seeking already take pictures out as they come and drain them at the end.
+- On the laptop above, for that video: 21 fps → **161 fps** decoding, and a jump to a new
+  moment (decoding forward from the keyframe before it, 5 s apart in that video) from ~7 s to
+  ~1 s. Assembly alone gave 102 fps, frame threading alone 40 fps.
