@@ -217,6 +217,9 @@ the realistic look's textures and patterns were replaced step by step.
   without an outline standing on their own; a castle of any other outline built from it:
   windowed walls behind merlons, towers at its convex corners, a keep under a hipped roof
   over the largest rectangle inside
+- [x] Tropical worlds (#136): palms, banana plants and tropical shrubs, and houses built for
+  the heat (flat roofs with water tanks, low red-tiled hipped roofs) within 27° of the
+  equator below 1,200 m
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [x] Asset pipeline: Blender 5.2 LTS in an x86-64 art container (`scripts/art.sh`), scripted
