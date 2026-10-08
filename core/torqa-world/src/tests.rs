@@ -2983,9 +2983,9 @@ async fn castles_and_lighthouses_from_the_map_get_their_models() {
         .filter(|m| m.model.starts_with("lighthouse_"))
         .collect();
     assert_eq!(lighthouses.len(), 2, "two lighthouses");
-    assert!(lighthouses.iter().any(|m| near(*m, (80.0, 700.0))));
+    assert!(lighthouses.iter().any(|m| near(m, (80.0, 700.0))));
     assert!(
-        lighthouses.iter().any(|m| near(*m, (-60.0, 500.0))),
+        lighthouses.iter().any(|m| near(m, (-60.0, 500.0))),
         "the lighthouse without an outline stands on its own"
     );
     // Round towers are not stretched out of round.
