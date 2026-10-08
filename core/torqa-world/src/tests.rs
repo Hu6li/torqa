@@ -2933,3 +2933,135 @@ async fn mapped_building_colours_turn_into_palette_colours() {
         assert!(luminance > 0.6, "dark wall {r} {g} {b}");
     }
 }
+
+/// A closed eight-sided ring (a round tower) of radius `radius` around a point.
+fn round(east: f64, north: f64, radius: f64) -> Vec<(f64, f64)> {
+    (0..=8)
+        .map(|k| {
+            let angle = std::f64::consts::TAU * f64::from(k % 8) / 8.0;
+            at(east + radius * angle.cos(), north + radius * angle.sin())
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn castles_and_lighthouses_from_the_map_get_their_models() {
+    // A 22 × 16 m castle with its point inside, a round lighthouse with its point beside it,
+    // and a lighthouse the map has as a point only.
+    let castle = Building {
+        id: 61,
+        outline: rectangle(80.0, 300.0, 11.0, 8.0),
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let tower = Building {
+        id: 62,
+        outline: round(80.0, 700.0, 3.0),
+        ..castle.clone()
+    };
+    let world = world(&MapData {
+        buildings: vec![castle, tower],
+        castles: vec![at(80.0, 302.0)],
+        lighthouses: vec![at(80.0, 704.0), at(-60.0, 500.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let models = placed(&world);
+    let near = |model: &Placed, (east, north): (f32, f32)| {
+        (model.origin[0] - east).hypot(model.origin[2] + north) < 1.0
+    };
+    let castles: Vec<&Placed> = models
+        .iter()
+        .filter(|m| m.model.starts_with("castle_"))
+        .collect();
+    assert_eq!(castles.len(), 1, "one castle");
+    assert!(near(castles[0], (80.0, 300.0)));
+    let lighthouses: Vec<&Placed> = models
+        .iter()
+        .filter(|m| m.model.starts_with("lighthouse_"))
+        .collect();
+    assert_eq!(lighthouses.len(), 2, "two lighthouses");
+    assert!(lighthouses.iter().any(|m| near(m, (80.0, 700.0))));
+    assert!(
+        lighthouses.iter().any(|m| near(m, (-60.0, 500.0))),
+        "the lighthouse without an outline stands on its own"
+    );
+    // Round towers are not stretched out of round.
+    for lighthouse in &lighthouses {
+        assert!((length(lighthouse.x) - length(lighthouse.z)).abs() < 0.05);
+    }
+    // Far off, the castle's shell rises to towers and a roof well above its walls, and the
+    // lone lighthouse's to its lantern.
+    let castle = building_faces(&world, (80.0, 300.0), 30.0);
+    assert!(
+        highest(&castle) > slope_at(91.0) + 18.0,
+        "{}",
+        highest(&castle)
+    );
+    let lighthouse = building_faces(&world, (-60.0, 500.0), 10.0);
+    assert!(
+        highest(&lighthouse) > slope_at(-57.0) + 12.0,
+        "{}",
+        highest(&lighthouse)
+    );
+}
+
+#[tokio::test]
+async fn a_castle_with_a_free_outline_gets_towers_windows_and_a_roof() {
+    // A Schloss grown over centuries, as the map draws it: an L of 30 × 28 m, no rectangle
+    // and so no model. It must not be a bare block: towers at its corners, windows in its
+    // walls, and a roof over its keep rising above the walls (#137, #147).
+    let outline: Vec<(f64, f64)> = [
+        (0.0, 0.0),
+        (30.0, 0.0),
+        (30.0, 12.0),
+        (12.0, 12.0),
+        (12.0, 28.0),
+        (0.0, 28.0),
+    ]
+    .into_iter()
+    .map(|(east, north)| at(80.0 + east, 500.0 + north))
+    .collect();
+    let castle = Building {
+        id: 63,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![castle],
+        castles: vec![at(86.0, 506.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let faces = building_faces(&world, (95.0, 514.0), 40.0);
+    assert!(!faces.is_empty(), "no castle");
+    let ground = 500.0 + 0.1 * 95.0;
+    let top = faces
+        .iter()
+        .flat_map(|f| f.corners.iter().map(|c| c[1]))
+        .fold(f32::MIN, f32::max);
+    assert!(
+        f64::from(top) > ground + 12.0,
+        "nothing rises over the walls: the castle tops out at {top}"
+    );
+    let styled =
+        |style: buildings::Style| faces.iter().filter(|f| f.style() == style as u8).count();
+    assert!(
+        styled(buildings::Style::Plaster) > 0,
+        "no windows in the walls"
+    );
+    assert!(styled(buildings::Style::Tiles) > 0, "no roof");
+    // Round towers: wall faces well outside the L's outline, at its outer corners.
+    let outside = faces
+        .iter()
+        .filter(|f| f.style() == buildings::Style::Plaster as u8)
+        .map(Face::middle)
+        .filter(|m| m[0] < 79.0 || m[0] > 111.0 || -m[2] < 499.0 || -m[2] > 529.0)
+        .count();
+    assert!(outside > 0, "no towers at the corners");
+}
