@@ -63,6 +63,12 @@ const FILL_SLOPE: f64 = 0.6;
 /// `REACH_FADE` metres the shaped ground blends into the natural.
 pub(crate) const LEVEL_REACH: f64 = 45.0;
 const REACH_FADE: f64 = 12.0;
+/// The hill heaped over a tunnel of the road ridden where the terrain has none (#135) lies this
+/// far over the tube's arch...
+const TUNNEL_HILL_COVER: f64 = 1.0;
+/// ...and reaches this far beyond the tube either side, over the ring round its opening, before
+/// banking down at `FILL_SLOPE`.
+const TUNNEL_HILL_SHOULDER: f64 = 1.0;
 /// Level ground sits this far below the road surface, so the two never flicker; the road's edge
 /// bevels down to it (road.rs). Other streets lie between the two where they join the road.
 const ROAD_SINK: f64 = 0.15;
@@ -208,13 +214,14 @@ pub struct World {
 async fn whole<M: ElevationModel>(
     map: &MapData,
     projection: &LocalProjection,
-    (road, ways, below): (&RoadIndex, &Ways, &structures::Below<'_>),
+    (shapers, ways, below): (&Shapers<'_>, &Ways, &structures::Below<'_>),
     model: &mut M,
 ) -> World {
-    let rails = &ways.network.index;
+    let (road, rails) = (shapers.road, shapers.rails);
     World {
         road: road.mesh(ROAD_HALF_WIDTH, &streets::mouths(&ways.streets, road)),
-        structures: structures::build_all(road, rails, below, projection, model).await,
+        structures: structures::build_all((road, rails), below, shapers.portals, projection, model)
+            .await,
         railways: rails.mesh(railways::BED_M / 2.0, &[]),
         minimap: minimap::build(map, projection, road),
         ..World::default()
@@ -232,7 +239,7 @@ pub async fn generate<M: ElevationModel>(
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
     let projection = LocalProjection::for_route(route);
-    let road = RoadIndex::new(route, &projection);
+    let mut road = RoadIndex::new(route, &projection);
     let cells = chunks_near_route(&road);
     let total = cells.len();
     // Announce the step before the slower preparation below.
@@ -242,14 +249,24 @@ pub async fn generate<M: ElevationModel>(
     let lone_lighthouses = buildings::lone_lighthouses(map, &projection);
     let buildings =
         buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
-    let ways = Ways::new(map, &projection, &road, model).await;
+    let mut ways = Ways::new(map, &projection, &road, model).await;
+    let portals = structures::open_portals(
+        &mut road,
+        &mut ways.network.index,
+        &ways.levels,
+        &projection,
+        model,
+    )
+    .await;
     let shapers = Shapers {
         road: &road,
         rails: &ways.network.index,
         streets: &ways.levels,
+        portals: &portals,
+        hills: true,
     };
     let below = structures::Below::new(&road, &ways.network.index, &ways.streets);
-    let mut world = whole(map, &projection, (&road, &ways, &below), model).await;
+    let mut world = whole(map, &projection, (&shapers, &ways, &below), model).await;
     let corridor = Corridor {
         shapers: &shapers,
         land: &land,
@@ -784,11 +801,15 @@ impl HeightGrid {
     fn needs_detail(&self, i: usize, j: usize, shapers: &Shapers<'_>) -> bool {
         let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         let (east, north) = self.position(i, j, 0.5, 0.5);
-        let roads: Vec<_> = shapers
-            .near(east, north, LEVEL_REACH + half_diagonal)
-            .into_iter()
-            .filter(|r| r.2 != Surface::Tunnel)
-            .collect();
+        // At a tunnel portal the cutting ends: the ground steps up to the hill there.
+        if shapers
+            .portals
+            .iter()
+            .any(|p| p.near(east, north, half_diagonal + FINE))
+        {
+            return true;
+        }
+        let roads = shapers.near(east, north, LEVEL_REACH + half_diagonal);
         if roads.is_empty() {
             return false;
         }
@@ -1065,6 +1086,30 @@ impl HeightGrid {
         }
         for j in 0..side - 1 {
             for i in 0..side - 1 {
+                let (east, north) = self.position(i, j, 0.5, 0.5);
+                let portals: Vec<&structures::Portal> = shapers
+                    .portals
+                    .iter()
+                    .filter(|p| p.near(east, north, GRID))
+                    .collect();
+                // A piece's two triangles from its corners (index, [east, north, height]), cut
+                // to a tunnel's opening where they reach into one.
+                let add = |mesh: &mut MeshData, corners: [(u32, [f64; 3]); 4]| {
+                    let [sw, se, nw, ne] = corners;
+                    for triangle in [[sw, nw, ne], [sw, ne, se]] {
+                        match cut_out(&portals, triangle.map(|c| c.1)) {
+                            None => mesh.indices.extend(triangle.map(|c| c.0)),
+                            Some(pieces) => {
+                                for piece in pieces {
+                                    for [east, north, height] in piece {
+                                        let index = push(mesh, east, north, height);
+                                        mesh.indices.push(index);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
                 if let Some(fine) = self.fine.get(&(i, j)) {
                     let mut corners = Vec::with_capacity((SUB + 1) * (SUB + 1));
                     for b in 0..=SUB {
@@ -1072,26 +1117,61 @@ impl HeightGrid {
                             #[allow(clippy::cast_precision_loss)]
                             let (east, north) =
                                 self.position(i, j, a as f64 / SUB as f64, b as f64 / SUB as f64);
-                            corners.push(push(&mut mesh, east, north, fine[b * (SUB + 1) + a]));
+                            let height = fine[b * (SUB + 1) + a];
+                            corners.push((
+                                push(&mut mesh, east, north, height),
+                                [east, north, height],
+                            ));
                         }
                     }
                     for b in 0..SUB {
                         for a in 0..SUB {
                             let at = |a: usize, b: usize| corners[b * (SUB + 1) + a];
-                            let (sw, se, nw, ne) =
-                                (at(a, b), at(a + 1, b), at(a, b + 1), at(a + 1, b + 1));
-                            mesh.indices.extend([sw, nw, ne, sw, ne, se]);
+                            add(
+                                &mut mesh,
+                                [at(a, b), at(a + 1, b), at(a, b + 1), at(a + 1, b + 1)],
+                            );
                         }
                     }
                 } else {
-                    let at = |i: usize, j: usize| grid[j * side + i];
-                    let (sw, se, nw, ne) = (at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
-                    mesh.indices.extend([sw, nw, ne, sw, ne, se]);
+                    let at = |i: usize, j: usize| {
+                        let (east, north) = self.position(i, j, 0.0, 0.0);
+                        (
+                            grid[j * side + i],
+                            [east, north, self.vertex(i as isize, j as isize)],
+                        )
+                    };
+                    add(
+                        &mut mesh,
+                        [at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1)],
+                    );
                 }
             }
         }
         mesh
     }
+}
+
+/// The pieces of a ground triangle (corners east, north, height) outside the openings of the
+/// tunnels at `portals`, where it reaches into one; `None` where it does not. Nothing closes an
+/// opening, and the ground meets the tube's ring round it (#135).
+fn cut_out(portals: &[&structures::Portal], triangle: [[f64; 3]; 3]) -> Option<Vec<[[f64; 3]; 3]>> {
+    let mut pieces = vec![triangle];
+    let mut touched = false;
+    for portal in portals {
+        let mut next = Vec::new();
+        for piece in pieces {
+            match portal.cut(piece) {
+                None => next.push(piece),
+                Some(cut) => {
+                    touched = true;
+                    next.extend(cut);
+                }
+            }
+        }
+        pieces = next;
+    }
+    touched.then_some(pieces)
 }
 
 /// How far channels cut the ground at a point (`channels::Channels::depth`).
@@ -1121,18 +1201,35 @@ fn on_triangles(sw: f64, se: f64, nw: f64, ne: f64, u: f64, v: f64) -> f64 {
 
 /// What shapes the ground: the road ridden and the railways (`railways`), each level across just
 /// below it, with cuttings and embankments; and, giving way to them, the paved streets, level
-/// across (#116).
+/// across (#116); and the portals of their tunnels, where those cuttings end and the ground
+/// keeps out of the openings (#135).
 pub(crate) struct Shapers<'a> {
     pub(crate) road: &'a RoadIndex,
     pub(crate) rails: &'a RoadIndex,
     pub(crate) streets: &'a streets::Levels,
+    pub(crate) portals: &'a [structures::Portal],
+    /// Whether the road's tunnels get a hill heaped over them where the terrain has none
+    /// (`shape`, #135): not while their portals are placed, which looks for the hill the
+    /// terrain has.
+    pub(crate) hills: bool,
 }
 
 impl Shapers<'_> {
-    /// Every piece of road or railway within `reach`, as [`RoadIndex::near`] gives them.
+    /// Every piece of road or railway within `reach` that shapes the ground, as
+    /// [`RoadIndex::near`] gives them: the road's tunnels only with `hills`, a railway's never.
     pub(crate) fn near(&self, east: f64, north: f64, reach: f64) -> Vec<(f64, f64, Surface)> {
-        let mut found = self.road.near(east, north, reach);
-        found.extend(self.rails.near(east, north, reach));
+        let mut found: Vec<_> = self
+            .road
+            .near(east, north, reach)
+            .into_iter()
+            .filter(|r| self.hills || r.2 != Surface::Tunnel)
+            .collect();
+        found.extend(
+            self.rails
+                .near(east, north, reach)
+                .into_iter()
+                .filter(|r| r.2 != Surface::Tunnel),
+        );
         found
     }
 }
@@ -1140,26 +1237,40 @@ impl Shapers<'_> {
 /// The ground at a point with natural height `natural`, shaped around the pieces of road near
 /// it (distance, road elevation, surface): level just below the road out to the verge, then
 /// cut into the hillside or banked down to the valley at most as steeply as cuttings and
-/// embankments are, natural again further away. Under bridges the ground is only lowered,
-/// above tunnels never touched. Where the road passes more than once (hairpins), the ground
-/// stays below every pass.
+/// embankments are, natural again further away. Under bridges the ground is only lowered.
+/// Over a tunnel of the road ridden the ground is only raised: a tunnel runs under a hill, and
+/// where the terrain has none, as on a cliff the samples smooth away or under a gallery, the
+/// ground is heaped over the tube and banked down beyond it, so no tube lies bare on the
+/// hillside (#135). Where the road passes more than once (hairpins), the ground stays below
+/// every pass.
 pub(crate) fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
-    let Some(&(distance, elevation, surface)) = roads
+    let nearest = roads
         .iter()
         .filter(|r| r.2 != Surface::Tunnel)
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-    else {
-        return natural;
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    // Past a portal the line's pieces count as its tunnel's (`road`): the hill's ground there.
+    let mut height = match nearest {
+        Some(&(distance, elevation, surface)) => {
+            let level = elevation - ROAD_SINK;
+            let room = (distance - VERGE).max(0.0);
+            let (floor, ceiling) = (level - room * FILL_SLOPE, level + room * CUT_SLOPE);
+            let shaped = match surface {
+                // The valley under a bridge stays open: only ground above the deck is cut away.
+                Surface::Bridge => natural.min(ceiling),
+                Surface::Ground | Surface::Tunnel => natural.clamp(floor, ceiling),
+            };
+            shaped + (natural - shaped) * fade(distance)
+        }
+        None => natural,
     };
-    let level = elevation - ROAD_SINK;
-    let room = (distance - VERGE).max(0.0);
-    let (floor, ceiling) = (level - room * FILL_SLOPE, level + room * CUT_SLOPE);
-    let shaped = match surface {
-        // The valley under a bridge stays open: only ground above the deck is cut away.
-        Surface::Bridge => natural.min(ceiling),
-        Surface::Ground | Surface::Tunnel => natural.clamp(floor, ceiling),
-    };
-    let mut height = shaped + (natural - shaped) * fade(distance);
+    for &(distance, elevation, surface) in roads {
+        if surface == Surface::Tunnel {
+            let (half, crown) = structures::tube(false);
+            let top = elevation + crown + TUNNEL_HILL_COVER;
+            let hill = top - (distance - (half + TUNNEL_HILL_SHOULDER)).max(0.0) * FILL_SLOPE;
+            height = height.max(hill + (natural - hill) * fade(distance));
+        }
+    }
     for &(distance, elevation, surface) in roads {
         if surface == Surface::Tunnel {
             continue;
@@ -1169,6 +1280,56 @@ pub(crate) fn shape(natural: f64, roads: &[(f64, f64, Surface)]) -> f64 {
         height = height.min(allowed);
     }
     height
+}
+
+/// The natural ground at a point as the chunks draw it: the terrain sampled on their `GRID`
+/// lattice and interpolated between the samples, as [`HeightGrid::natural_at`] does. The
+/// terrain tiles are finer than the lattice, so where the ground rises abruptly, as the hill
+/// over a tunnel's portal does, the drawn hill lies lower than the tiles have it: whatever
+/// stands against the drawn ground is placed by the drawn ground (#135). `None` where the model
+/// has no data.
+pub(crate) async fn drawn_natural<M: ElevationModel>(
+    model: &mut M,
+    projection: &LocalProjection,
+    (east, north): (f64, f64),
+) -> Option<f64> {
+    let (u, v) = (east / GRID, north / GRID);
+    let (i, j) = (u.floor(), v.floor());
+    let (fu, fv) = (u - i, v - j);
+    let mut corners = [0.0; 4];
+    for (slot, (di, dj)) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let (lat, lon) = projection.unproject((i + di) * GRID, (j + dj) * GRID);
+        corners[slot] = model.elevation(lat, lon).await.ok()?;
+    }
+    let [sw, se, nw, ne] = corners;
+    let bottom = sw * (1.0 - fu) + se * fu;
+    let top = nw * (1.0 - fu) + ne * fu;
+    Some(bottom * (1.0 - fv) + top * fv)
+}
+
+/// The ground at a point as the chunks draw it, before channels cut it: the drawn natural
+/// ground levelled across the paved street nearest to it (#116) and shaped around the road
+/// ridden and the railways, as [`HeightGrid::shaped_at`] does. `None` where the model has no
+/// data.
+pub(crate) async fn drawn_ground<M: ElevationModel>(
+    model: &mut M,
+    projection: &LocalProjection,
+    shapers: &Shapers<'_>,
+    (east, north): (f64, f64),
+) -> Option<f64> {
+    let natural = drawn_natural(model, projection, (east, north)).await?;
+    let levelled = match shapers.streets.nearest(east, north, 0.0) {
+        Some((distance, half, foot)) => level_across(
+            natural,
+            drawn_natural(model, projection, foot).await?,
+            distance - half,
+        ),
+        None => natural,
+    };
+    Some(shape(levelled, &shapers.near(east, north, LEVEL_REACH)))
 }
 
 /// The ground at a point with natural height `natural`, `beyond` metres outside the edge of a
