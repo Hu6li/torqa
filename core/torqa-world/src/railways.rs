@@ -8,8 +8,6 @@
 //! (the app's rail shader) at their own height. Plants keep off the tracks
 //! (`streets::Clearance`).
 
-use std::collections::HashMap;
-
 use torqa_osm::{MapData, StructureKind};
 use torqa_routes::{ElevationModel, LocalProjection, Surface};
 
@@ -20,12 +18,15 @@ use crate::{CORRIDOR, ROAD_HALF_WIDTH, drape};
 pub(crate) const BED_M: f64 = 3.2;
 /// Points of a line this far apart.
 const STEP_M: f64 = 5.0;
-/// Ends of pieces this close are joined into one line.
-const JOIN_M: f64 = 0.5;
 /// The terrain is smoothed over this far either side of each point...
 const SMOOTHING_M: f64 = 80.0;
-/// ...and the line held to this grade (rise per metre), funiculars excepted.
+/// ...and the line held to this grade (rise per metre), funiculars excepted...
 const MAX_GRADE: f64 = 0.04;
+/// ...and rack railways: the map does not tell them apart, but a line mapped on ground that
+/// climbs steeper than `MAX_GRADE` over this far can only be one, and climbs with the ground...
+const RACK_WINDOW_M: f64 = 1000.0;
+/// ...up to this grade, the steepest of rack lines (#116).
+const RACK_MAX_GRADE: f64 = 0.25;
 /// Where the hill rises this far above the track it runs in a tunnel...
 const TUNNEL_COVER: f64 = 8.0;
 /// ...where the ground lies this far below it, on a viaduct...
@@ -109,8 +110,8 @@ pub(crate) async fn network<M: ElevationModel>(
 }
 
 /// The railways near the route joined into continuous lines where their pieces meet end to end
-/// (not at switches, where three meet): each line as its pieces with what carries them, and
-/// whether it is a funicular.
+/// (not at switches, where three meet; `chains`): each line as its pieces with what carries
+/// them, and whether it is a funicular.
 fn chains(
     map: &MapData,
     projection: &LocalProjection,
@@ -139,57 +140,27 @@ fn chains(
                     .any(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some())
         })
         .collect();
-    #[allow(clippy::cast_possible_truncation)] // local metres stay far below 2^63
-    let key = |(e, n): (f64, f64)| ((e / JOIN_M).round() as i64, (n / JOIN_M).round() as i64);
-    // Which pieces end at each place.
-    let mut ends: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (index, ((line, _), _)) in pieces.iter().enumerate() {
-        for end in [line[0], line[line.len() - 1]] {
-            ends.entry(key(end)).or_default().push(index);
-        }
-    }
-    let mut used = vec![false; pieces.len()];
-    let mut chains = Vec::new();
-    for start in 0..pieces.len() {
-        if used[start] {
-            continue;
-        }
-        used[start] = true;
-        let mut funicular = pieces[start].1;
-        let mut chain: Vec<Piece> = vec![pieces[start].0.clone()];
-        // Grow the line at its end, then at its start, as long as exactly two pieces meet.
-        for forward in [true, false] {
-            loop {
-                let at = if forward {
-                    let line = &chain[chain.len() - 1].0;
-                    line[line.len() - 1]
-                } else {
-                    chain[0].0[0]
-                };
-                let here = &ends[&key(at)];
-                if here.len() != 2 {
-                    break;
-                }
-                let Some(other) = here.iter().copied().find(|&o| !used[o]) else {
-                    break;
-                };
-                used[other] = true;
-                let ((mut line, surface), steep) = pieces[other].clone();
-                funicular |= steep;
-                // Oriented to run on from `at`.
-                if (key(line[0]) == key(at)) != forward {
-                    line.reverse();
-                }
-                if forward {
-                    chain.push((line, surface));
-                } else {
-                    chain.insert(0, (line, surface));
-                }
-            }
-        }
-        chains.push((chain, funicular));
-    }
-    chains
+    let lines: Vec<&[(f64, f64)]> = pieces
+        .iter()
+        .map(|((line, _), _)| line.as_slice())
+        .collect();
+    crate::chains::chains(&lines, &|_, _| true)
+        .into_iter()
+        .map(|chain| {
+            let funicular = chain.iter().any(|&(piece, _)| pieces[piece].1);
+            let joined: Vec<Piece> = chain
+                .iter()
+                .map(|&(piece, reversed)| {
+                    let (mut line, surface) = pieces[piece].0.clone();
+                    if reversed {
+                        line.reverse();
+                    }
+                    (line, surface)
+                })
+                .collect();
+            (joined, funicular)
+        })
+        .collect()
 }
 
 /// A railway's centre line: heights from the terrain, smoothed and held to its grades, bridges
@@ -208,10 +179,23 @@ fn lay_out(
         along.push(along[along.len() - 1] + (b.0 - a.0).hypot(b.1 - a.1));
     }
     // On the ground the terrain's heights; over and under structures nothing yet.
-    let known: Vec<Option<f64>> = points
+    let mut known: Vec<Option<f64>> = points
         .iter()
         .map(|p| p.terrain.filter(|_| p.surface == Surface::Ground))
         .collect();
+    // A bridge mapped on its own, between switches where the line does not join on: its ends
+    // stand on the ground, rather than the whole of it being left out (#116). A tunnel's ends
+    // tell nothing: cut at a tile border, one lies deep in the hill, and a line from there to
+    // the ground would run through the open air.
+    if known.iter().all(Option::is_none)
+        && let Some(last) = points.len().checked_sub(1)
+    {
+        for k in [0, last] {
+            if points[k].surface == Surface::Bridge {
+                known[k] = points[k].terrain;
+            }
+        }
+    }
     let mut heights = fill_between(&known, &along)?;
     heights = smooth(&heights, &along, SMOOTHING_M);
     let mut surfaces: Vec<Surface> = points.iter().map(|p| p.surface).collect();
@@ -234,7 +218,11 @@ fn lay_out(
             .enumerate()
             .filter_map(|(k, b)| b.map(|(height, _)| (k, height, Pin::Exactly))),
     );
-    hold_grades(&mut heights, &along, &pins, funicular);
+    // Held to `MAX_GRADE`, a line up a rack railway's hillside would leave the ground on
+    // viaducts below and sink into it above (#116: the Oberalp line at Nätschen).
+    let limit =
+        (!funicular).then(|| MAX_GRADE.max(sustained_grade(&heights, &along).min(RACK_MAX_GRADE)));
+    hold_grades(&mut heights, &along, &pins, limit);
     // Tunnels where the hill rises far above the track, viaducts where the ground falls far
     // below it.
     for (k, point) in points.iter().enumerate() {
@@ -357,7 +345,7 @@ enum Pin {
 
 /// Keeps the line's grades within `MAX_GRADE` (funiculars excepted) while it keeps its heights
 /// at the crossings.
-fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], funicular: bool) {
+fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], limit: Option<f64>) {
     let apply = |heights: &mut [f64]| {
         for &(k, height, pin) in pins {
             heights[k] = match pin {
@@ -368,27 +356,44 @@ fn hold_grades(heights: &mut [f64], along: &[f64], pins: &[(usize, f64, Pin)], f
         }
     };
     apply(heights);
-    if funicular {
+    let Some(limit) = limit else {
         return;
-    }
+    };
     let pinned: Vec<bool> = (0..heights.len())
         .map(|k| pins.iter().any(|p| p.0 == k))
         .collect();
     for _ in 0..4 {
         for k in 1..heights.len() {
-            let room = MAX_GRADE * (along[k] - along[k - 1]);
+            let room = limit * (along[k] - along[k - 1]);
             if !pinned[k] {
                 heights[k] = heights[k].clamp(heights[k - 1] - room, heights[k - 1] + room);
             }
         }
         for k in (0..heights.len() - 1).rev() {
-            let room = MAX_GRADE * (along[k + 1] - along[k]);
+            let room = limit * (along[k + 1] - along[k]);
             if !pinned[k] {
                 heights[k] = heights[k].clamp(heights[k + 1] - room, heights[k + 1] + room);
             }
         }
         apply(heights);
     }
+}
+
+/// The steepest mean grade of `heights` over any `RACK_WINDOW_M` along the line: 0 for a line
+/// shorter than that.
+fn sustained_grade(heights: &[f64], along: &[f64]) -> f64 {
+    let mut steepest: f64 = 0.0;
+    let mut far = 0;
+    for (near, &from) in along.iter().enumerate() {
+        while far < along.len() && along[far] - from < RACK_WINDOW_M {
+            far += 1;
+        }
+        if far == along.len() {
+            break;
+        }
+        steepest = steepest.max((heights[far] - heights[near]).abs() / (along[far] - from));
+    }
+    steepest
 }
 
 /// Turns tunnels and viaducts found from the ground's shape back into track where they would be
@@ -426,21 +431,45 @@ mod tests {
 
     #[test]
     fn lines_keep_gentle_grades_and_their_crossings() {
-        // A steep, bumpy hillside 1 km long; a level crossing at 500 m.
+        // A bumpy hillside 1 km long, 3 % overall; a level crossing at 500 m.
         let along: Vec<f64> = (0..=200).map(|k| f64::from(k) * 5.0).collect();
         let mut heights: Vec<f64> = along
             .iter()
-            .map(|a| 500.0 + 0.12 * a + 3.0 * (a / 15.0).sin())
+            .map(|a| 500.0 + 0.03 * a + 3.0 * (a / 15.0).sin())
             .collect();
+        assert!(
+            grade_at(&heights, &along) > MAX_GRADE,
+            "the bumps are steep"
+        );
         let pins = [(100, 520.0, Pin::Exactly)];
-        hold_grades(&mut heights, &along, &pins, false);
+        hold_grades(&mut heights, &along, &pins, Some(MAX_GRADE));
 
         assert!(grade_at(&heights, &along) <= MAX_GRADE + 1e-9);
         assert!((heights[100] - 520.0).abs() < 1e-9);
         // A funicular keeps its slope.
         let mut steep: Vec<f64> = along.iter().map(|a| 500.0 + 0.3 * a).collect();
-        hold_grades(&mut steep, &along, &[], true);
+        hold_grades(&mut steep, &along, &[], None);
         assert!(grade_at(&steep, &along) > 0.29);
+    }
+
+    #[test]
+    fn a_line_up_a_steep_hillside_is_a_rack_railway_and_climbs_with_it() {
+        // #116: 11 % for 1 km, as the Oberalp line above Andermatt; bumps on the way.
+        let along: Vec<f64> = (0..=200).map(|k| f64::from(k) * 5.0).collect();
+        let heights: Vec<f64> = along
+            .iter()
+            .map(|a| 1400.0 + 0.11 * a + 3.0 * (a / 15.0).sin())
+            .collect();
+        let grade = sustained_grade(&heights, &along);
+        assert!((0.10..0.12).contains(&grade), "sustained grade {grade}");
+        // Bumps 3 m high over 150 m are no rack railway.
+        let bumpy: Vec<f64> = along
+            .iter()
+            .map(|a| 500.0 + 3.0 * (a / 15.0).sin())
+            .collect();
+        assert!(sustained_grade(&bumpy, &along) < 0.02);
+        // Too short to tell: nothing.
+        assert!(sustained_grade(&heights[..50], &along[..50]).abs() < f64::EPSILON);
     }
 
     #[test]

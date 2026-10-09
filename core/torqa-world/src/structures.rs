@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use torqa_routes::{ElevationModel, LocalProjection, Surface};
 
 use crate::road::{CentrePoint, Plane, RoadIndex, TunnelRun};
-use crate::streets::Street;
+use crate::streets::{Levels, Street};
 use crate::{LEVEL_REACH, MeshData, ROAD_HALF_WIDTH, Shapers, palette, railways, shape};
 
 static CONCRETE: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.concrete", 0.0));
@@ -302,6 +302,7 @@ impl Portal {
 pub(crate) async fn open_portals<M: ElevationModel>(
     road: &mut RoadIndex,
     rails: &mut RoadIndex,
+    streets: &Levels,
     projection: &LocalProjection,
     model: &mut M,
 ) -> Vec<Portal> {
@@ -320,6 +321,7 @@ pub(crate) async fn open_portals<M: ElevationModel>(
         let shapers = Shapers {
             road: &*road,
             rails: &*rails,
+            streets,
             portals: &[],
             hills: false,
         };

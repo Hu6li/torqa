@@ -6,6 +6,7 @@
 //! Triangles wind clockwise seen from their front, Godot's front-face order.
 
 mod buildings;
+mod chains;
 mod channels;
 mod climate;
 mod drape;
@@ -71,6 +72,9 @@ const TUNNEL_HILL_SHOULDER: f64 = 1.0;
 /// Level ground sits this far below the road surface, so the two never flicker; the road's edge
 /// bevels down to it (road.rs). Other streets lie between the two where they join the road.
 const ROAD_SINK: f64 = 0.15;
+/// A cell levelled across a street is split into fine pieces only where they would depart from
+/// its plain triangles by more than this.
+const PLAIN_TOLERANCE: f64 = 0.02;
 /// Without terrain data, heights follow the road found within this distance.
 const FALLBACK_RADIUS: f64 = 400.0;
 
@@ -120,6 +124,8 @@ struct Ways {
     islands: Vec<roundabouts::Island>,
     /// Where water cuts the ground.
     channels: channels::Channels,
+    /// Where paved streets level the ground across them.
+    levels: streets::Levels,
 }
 
 impl Ways {
@@ -139,6 +145,7 @@ impl Ways {
             corners,
             islands: roundabouts::islands(map, projection),
             channels: channels::Channels::new(&streams, &pools, &streets),
+            levels: streets::Levels::new(&streets),
             streets,
             network,
             streams,
@@ -224,6 +231,7 @@ async fn whole<M: ElevationModel>(
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
 /// `progress` is called with (chunks done, chunks total).
+#[allow(clippy::too_many_lines)] // one pass over the chunks, each step of it named in order
 pub async fn generate<M: ElevationModel>(
     route: &Route,
     model: &mut M,
@@ -242,11 +250,18 @@ pub async fn generate<M: ElevationModel>(
     let buildings =
         buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
     let mut ways = Ways::new(map, &projection, &road, model).await;
-    let portals =
-        structures::open_portals(&mut road, &mut ways.network.index, &projection, model).await;
+    let portals = structures::open_portals(
+        &mut road,
+        &mut ways.network.index,
+        &ways.levels,
+        &projection,
+        model,
+    )
+    .await;
     let shapers = Shapers {
         road: &road,
         rails: &ways.network.index,
+        streets: &ways.levels,
         portals: &portals,
         hills: true,
     };
@@ -632,7 +647,6 @@ impl HeightGrid {
             .map_or(0.0, |(_, elevation, _)| elevation);
 
         let mut natural = vec![0.0; bordered * bordered];
-        let mut heights = vec![0.0; bordered * bordered];
         let mut carve = vec![0.0; bordered * bordered];
         let mut fallbacks = 0;
         for (k, ((east, north), elevation)) in Self::vertices(cx, cn).zip(elevations).enumerate() {
@@ -643,32 +657,143 @@ impl HeightGrid {
                     .nearest(east, north, FALLBACK_RADIUS)
                     .map_or(chunk_road_elevation, |(_, elevation, _)| elevation)
             });
-            let cut = carve_at(water, east, north, shapers);
             natural[k] = height;
-            carve[k] = cut;
-            heights[k] = shape(height, &shapers.near(east, north, LEVEL_REACH)) - cut;
+            carve[k] = carve_at(water, east, north, shapers);
         }
         let mut grid = Self {
             origin,
             side,
-            heights,
+            heights: vec![0.0; bordered * bordered],
             natural,
             fine: HashMap::new(),
             carve,
             fine_carve: HashMap::new(),
         };
+        // Streets level the ground across them from the natural ground at their centre lines:
+        // all of it is known first.
+        for (k, (east, north)) in Self::vertices(cx, cn).enumerate() {
+            grid.heights[k] = grid.shaped_at(east, north, shapers) - grid.carve[k];
+        }
         let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         for j in 0..side - 1 {
             for i in 0..side - 1 {
                 let (east, north) = grid.position(i, j, 0.5, 0.5);
-                if grid.needs_detail(i, j, shapers) || water.0.near(east, north, half_diagonal) {
-                    let (fine, cuts) = grid.detail(i, j, shapers, water);
+                let detail = if grid.needs_detail(i, j, shapers)
+                    || water.0.near(east, north, half_diagonal)
+                {
+                    Some(grid.detail(i, j, shapers, water))
+                } else if shapers
+                    .streets
+                    .nearest(east, north, half_diagonal)
+                    .is_some()
+                {
+                    // Levelled across a street: split only where that changes the cell's
+                    // ground, so cells on flat land stay plain. On the chunk's edge always, as
+                    // the neighbouring chunk's cell along it may be split.
+                    let edge = i == 0 || j == 0 || i == side - 2 || j == side - 2;
+                    Some(grid.detail(i, j, shapers, water))
+                        .filter(|(fine, _)| edge || grid.departs(i, j, fine))
+                } else {
+                    None
+                };
+                if let Some((fine, cuts)) = detail {
                     grid.fine.insert((i, j), fine);
                     grid.fine_carve.insert((i, j), cuts);
                 }
             }
         }
+        grid.close_edges();
         (grid, fallbacks)
+    }
+
+    /// Where a split cell meets a plain one in the chunk, its edge takes the plain cell's
+    /// straight edge, so no gap opens between them: a plain cell beside a street departs a
+    /// little from the levelled ground (`PLAIN_TOLERANCE`).
+    fn close_edges(&mut self) {
+        #[allow(clippy::cast_possible_wrap)] // small grid
+        let cells = (self.side - 1) as isize;
+        let split: Vec<(usize, usize)> = self.fine.keys().copied().collect();
+        for (i, j) in split {
+            #[allow(clippy::cast_possible_wrap)] // small grid indices
+            let (ci, cj) = (i as isize, j as isize);
+            let plain = |di: isize, dj: isize| {
+                let (ni, nj) = (ci + di, cj + dj);
+                (0..cells).contains(&ni)
+                    && (0..cells).contains(&nj)
+                    && usize::try_from(ni)
+                        .ok()
+                        .zip(usize::try_from(nj).ok())
+                        .is_some_and(|cell| !self.fine.contains_key(&cell))
+            };
+            let (west, east, south, north) = (plain(-1, 0), plain(1, 0), plain(0, -1), plain(0, 1));
+            let (sw, se, nw, ne) = (
+                self.vertex(ci, cj),
+                self.vertex(ci + 1, cj),
+                self.vertex(ci, cj + 1),
+                self.vertex(ci + 1, cj + 1),
+            );
+            let Some(fine) = self.fine.get_mut(&(i, j)) else {
+                continue;
+            };
+            for k in 0..=SUB {
+                #[allow(clippy::cast_precision_loss)] // a few pieces
+                let share = k as f64 / SUB as f64;
+                if south {
+                    fine[k] = sw + (se - sw) * share;
+                }
+                if north {
+                    fine[SUB * (SUB + 1) + k] = nw + (ne - nw) * share;
+                }
+                if west {
+                    fine[k * (SUB + 1)] = sw + (nw - sw) * share;
+                }
+                if east {
+                    fine[k * (SUB + 1) + SUB] = se + (ne - se) * share;
+                }
+            }
+        }
+    }
+
+    /// The ground at a point before channels cut it: natural, levelled across the paved
+    /// street nearest to it (#116), then shaped around the road ridden and the railways, which
+    /// come first.
+    fn shaped_at(&self, east: f64, north: f64, shapers: &Shapers<'_>) -> f64 {
+        let natural = self.natural_at(east, north);
+        if shapers.streets.is_empty() {
+            return shape(natural, &shapers.near(east, north, LEVEL_REACH));
+        }
+        let levelled = shapers.streets.nearest(east, north, 0.0).map_or(
+            natural,
+            |(distance, half, (foot_east, foot_north))| {
+                level_across(
+                    natural,
+                    self.natural_at(foot_east, foot_north),
+                    distance - half,
+                )
+            },
+        );
+        shape(levelled, &shapers.near(east, north, LEVEL_REACH))
+    }
+
+    /// Whether the fine heights of cell (`i`, `j`) depart from its plain triangles by more than
+    /// `PLAIN_TOLERANCE`.
+    fn departs(&self, i: usize, j: usize, fine: &[f64]) -> bool {
+        #[allow(clippy::cast_possible_wrap)] // small grid indices
+        let (i, j) = (i as isize, j as isize);
+        let (sw, se, nw, ne) = (
+            self.vertex(i, j),
+            self.vertex(i + 1, j),
+            self.vertex(i, j + 1),
+            self.vertex(i + 1, j + 1),
+        );
+        (0..=SUB).any(|b| {
+            (0..=SUB).any(|a| {
+                #[allow(clippy::cast_precision_loss)] // small counts
+                let (u, v) = (a as f64 / SUB as f64, b as f64 / SUB as f64);
+                let plain = on_triangles(sw, se, nw, ne, u, v);
+                (fine[b * (SUB + 1) + a] - plain).abs() > PLAIN_TOLERANCE
+            })
+        })
     }
 
     /// Whether the ground anywhere in cell (`i`, `j`) is shaped around the road. Elsewhere it
@@ -730,12 +855,7 @@ impl HeightGrid {
                 let (u, v) = (a as f64 / SUB as f64, b as f64 / SUB as f64);
                 let (east, north) = self.position(i, j, u, v);
                 let cut = carve_at(water, east, north, shapers);
-                fine.push(
-                    shape(
-                        self.natural_at(east, north),
-                        &shapers.near(east, north, LEVEL_REACH),
-                    ) - cut,
-                );
+                fine.push(self.shaped_at(east, north, shapers) - cut);
                 cuts.push(cut);
             }
         }
@@ -907,8 +1027,7 @@ impl HeightGrid {
     /// The ground's normal at a point, from the shaped surface itself, so it is the same on
     /// either side of chunk and cell edges.
     fn normal_at(&self, east: f64, north: f64, shapers: &Shapers<'_>) -> [f32; 3] {
-        let height =
-            |e: f64, n: f64| shape(self.natural_at(e, n), &shapers.near(e, n, LEVEL_REACH));
+        let height = |e: f64, n: f64| self.shaped_at(e, n, shapers);
         let step = 1.0;
         let slope_east = (height(east + step, north) - height(east - step, north)) / (2.0 * step);
         let slope_north = (height(east, north + step) - height(east, north - step)) / (2.0 * step);
@@ -1081,11 +1200,13 @@ fn on_triangles(sw: f64, se: f64, nw: f64, ne: f64, u: f64, v: f64) -> f64 {
 }
 
 /// What shapes the ground: the road ridden and the railways (`railways`), each level across just
-/// below it, with cuttings and embankments, and the portals of their tunnels, where those
-/// cuttings end and the ground keeps out of the openings (#135).
+/// below it, with cuttings and embankments; and, giving way to them, the paved streets, level
+/// across (#116); and the portals of their tunnels, where those cuttings end and the ground
+/// keeps out of the openings (#135).
 pub(crate) struct Shapers<'a> {
     pub(crate) road: &'a RoadIndex,
     pub(crate) rails: &'a RoadIndex,
+    pub(crate) streets: &'a streets::Levels,
     pub(crate) portals: &'a [structures::Portal],
     /// Whether the road's tunnels get a hill heaped over them where the terrain has none
     /// (`shape`, #135): not while their portals are placed, which looks for the hill the
@@ -1190,7 +1311,9 @@ pub(crate) async fn drawn_natural<M: ElevationModel>(
 }
 
 /// The ground at a point as the chunks draw it, before channels cut it: the drawn natural
-/// ground shaped around the road ridden and the railways. `None` where the model has no data.
+/// ground levelled across the paved street nearest to it (#116) and shaped around the road
+/// ridden and the railways, as [`HeightGrid::shaped_at`] does. `None` where the model has no
+/// data.
 pub(crate) async fn drawn_ground<M: ElevationModel>(
     model: &mut M,
     projection: &LocalProjection,
@@ -1198,7 +1321,28 @@ pub(crate) async fn drawn_ground<M: ElevationModel>(
     (east, north): (f64, f64),
 ) -> Option<f64> {
     let natural = drawn_natural(model, projection, (east, north)).await?;
-    Some(shape(natural, &shapers.near(east, north, LEVEL_REACH)))
+    let levelled = match shapers.streets.nearest(east, north, 0.0) {
+        Some((distance, half, foot)) => level_across(
+            natural,
+            drawn_natural(model, projection, foot).await?,
+            distance - half,
+        ),
+        None => natural,
+    };
+    Some(shape(levelled, &shapers.near(east, north, LEVEL_REACH)))
+}
+
+/// The ground at a point with natural height `natural`, `beyond` metres outside the edge of a
+/// paved street whose centre line's nearest point lies on natural ground at `level` (#116):
+/// level with it out to `LEVEL_VERGE_M`, so the street is level across rather than tilted with
+/// the hillside, then cut into the hillside or banked down to the natural ground at most as
+/// steeply as the road's cuttings and embankments, natural again at `LEVEL_REACH_M`.
+fn level_across(natural: f64, level: f64, beyond: f64) -> f64 {
+    let room = (beyond - streets::LEVEL_VERGE_M).max(0.0);
+    let shaped = natural.clamp(level - room * FILL_SLOPE, level + room * CUT_SLOPE);
+    let t = ((room - (streets::LEVEL_REACH_M - streets::LEVEL_FADE_M)) / streets::LEVEL_FADE_M)
+        .clamp(0.0, 1.0);
+    shaped + (natural - shaped) * t * t * (3.0 - 2.0 * t)
 }
 
 /// 0 where the ground is fully shaped around the road, rising to 1 at `LEVEL_REACH`.
