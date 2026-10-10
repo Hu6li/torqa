@@ -81,8 +81,13 @@ ground; walls reach 3 m below ground for slopes. glTF/Godot turn Blender's y int
 ## Before committing
 
 1. Build the group and check the printed face counts.
-2. Render for review: `scripts/dev.sh scripts/render-models.sh` (`MODELS="a b"` for some) —
-   see `torqa-render-review`; look at the images, compare with `torqa-look`.
-3. Commit the scripts, the `.glb`, their `.glb.import` files and `models.json`;
+2. Render for review: `scripts/dev.sh scripts/render-models.sh` (`MODELS="a b"` or
+   `GROUPS="vegetation"` for some; `scripts/render-riders.sh` for riders) — see
+   `torqa-render-review`; look at the images, compare with `torqa-look`.
+3. Refresh the gallery in `art/README.md`: the same scripts with `GALLERY=docs/images/models`
+   (`scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-models.sh'`), and add or
+   remove table rows for models added or taken out; update the group's section there too.
+4. Commit the scripts, the `.glb`, their `.glb.import` files, `models.json` and the gallery;
    `scripts/check.sh` must pass (it runs the Rust test that every model exists).
-4. Put a few review images in the PR (JPEG under `docs/images/`, see `torqa-render-review`).
+5. Put a few review images in the PR (JPEG under `docs/images/`, linked by commit, see
+   `torqa-render-review`).

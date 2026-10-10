@@ -71,7 +71,8 @@ func _init() -> void:
 func _show_riders(riders: Array, active_id: String) -> void:
 	for child: Node in _cards.get_children():
 		_cards.remove_child(child)
-		child.free()
+		# Not free(): a card's own Use or chevron button is still emitting its pressed signal.
+		child.queue_free()
 	for rider: Dictionary in riders:
 		var id: String = rider.get("id", "")
 		_cards.add_child(_card(rider, id == active_id, riders.size() > 1))

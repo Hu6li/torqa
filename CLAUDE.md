@@ -69,6 +69,16 @@ Blender references. Use them for any visual or model work.
 - Rustdoc on all public items.
 - Significant decisions get an ADR in `docs/adr/`.
 - User-facing docs / README per feature.
+- **Docs are always updated with the change, in the same PR.** A change is not done until
+  every doc it affects says what the code now does: the user docs (`docs/*.md`, README),
+  `docs/PLAN.md`, `docs/REQUIREMENTS.md` (append-only), ADR amendments, `docs/CREDITS.md`,
+  `docs/OPEN-QUESTIONS.md` (remove what is settled), `art/README.md` and the skills in
+  `.claude/skills/`.
+- **Images in docs stay current too.** Re-render those a change affects: app screenshots with
+  `scripts/screenshots.sh`, the model galleries with `GALLERY=docs/images/models` and
+  `scripts/render-models.sh` / `scripts/render-riders.sh`. Delete images no doc links any more.
+  PR review images are committed under `docs/images/` and linked from the PR by commit
+  (`raw.githubusercontent.com/<owner>/Torqa/<commit>/…`), so pruning them breaks no PR.
 
 ## Git
 
@@ -79,5 +89,6 @@ Blender references. Use them for any visual or model work.
 
 - Small PR-sized steps, one roadmap phase at a time; stop for review after each meaningful step.
 - Before declaring done, run in the container: `cargo fmt --check`,
-  `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo deny check`, and `gdlint`.
+  `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo deny check`, and `gdlint`
+  (`scripts/check.sh` runs them all), and update the docs and their images (see Documentation).
 - Keep the checkboxes in `docs/PLAN.md` up to date.

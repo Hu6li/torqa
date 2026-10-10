@@ -15,6 +15,9 @@ While riding, control the music app you listen to:
 | . | Next track |
 | , | Previous track |
 
+The buttons of a Shimano Di2 can do the same, once you give them these actions under Devices &
+Settings ([riding.md](riding.md#virtual-gears)).
+
 - **macOS**: Spotify if it is running, otherwise Apple Music. The first time, macOS asks
   whether Torqa may control the app — allow it (System Settings → Privacy & Security →
   Automation).

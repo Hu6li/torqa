@@ -65,5 +65,9 @@ container, `.glb` files committed, material names styled by the app — but:
 - **No textures.** Every model carries material names only and gets flat palette colours
   (`app/assets/palette.json`); the CC0 texture sets were retired with their credits.
 - **Model groups** are `art/buildings` (houses, chalets, farmhouses, churches, chapels, sheds,
-  offices, hotels, public buildings), `art/vegetation`, `art/clouds` and `art/riders`, each with
-  a `build.py` writing its models and manifest under `app/assets/models/`.
+  offices, hotels, public buildings; since #136 and #137 also castles, lighthouses and houses
+  for the subtropics), `art/vegetation` (trees, bushes and rocks; palms and tropical plants
+  since #136), `art/clouds` and `art/riders`, each with a `build.py` writing its models and
+  manifest under `app/assets/models/`. `scripts/render-models.sh` and
+  `scripts/render-riders.sh` render them all for review and, with `GALLERY` (2026-10-10), for
+  the gallery in `art/README.md`.

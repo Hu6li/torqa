@@ -1,9 +1,15 @@
 #!/usr/bin/env sh
 # Renders the riders on their bikes as the world draws them into screenshots/riders/ for review
 # (ADR 0009). Runs inside the dev container: scripts/dev.sh scripts/render-riders.sh
+# GALLERY=docs/images/models also writes the small JPEGs of the gallery in art/README.md.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -n "${GALLERY:-}" ]; then
+    mkdir -p "$GALLERY"
+    GALLERY="$(cd "$GALLERY" && pwd)"
+    export GALLERY
+fi
 scripts/build-gdext.sh debug >/dev/null
 godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
 # A script that does not compile leaves Godot waiting forever: find out now.

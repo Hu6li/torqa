@@ -21,20 +21,25 @@ Working today:
 
 - Smart trainer control over Bluetooth FTMS (tested with the CLI on a Wahoo KICKR Core 2): SIM, ERG,
   resistance; heart-rate straps; the devices used last reconnect at start
+- Virtual gears on a single cog, shifted from the keyboard or a Shimano Di2's hood buttons,
+  which can also work the camera, the overlay or the music
 - GPX import with terrain-corrected elevation, auto-detected climbs
 - Stylized, faceted 3D worlds in a pastel palette, generated from real terrain and
   OpenStreetMap data (roads, buildings by kind — churches, castles and lighthouses among them —,
   forests, water, railways; palms and houses built for the heat in the subtropics), with cameras,
   time of day and weather
 - Course library: prepared routes as `.tqc` files that ride offline on any computer
-- Video courses: GoPro videos with GPS and Incyclist route videos; the video plays at your speed
+- Video courses: GoPro videos with GPS, Incyclist route videos, Tacx RLV and any video aligned
+  with a GPX route; the video plays at your speed, its sound too
 - Realistic physics, adjustable trainer difficulty, descent modes; ghosts and pacers
-- Rider profiles with zones, a customizable HUD, music control, English and German
+- Workouts: hold a power or a heart rate, structured workouts (ZWO, ERG/MRC, FIT files and an
+  editor), three FTP tests; on their own or on a course in 3D
+- An overlay: just your HUD on top of other windows, e.g. over a video
+- Rider profiles with adjustable zones, a customizable HUD, music control, English and German
 - FIT export, ride history and analysis, personal records per course and climb
 
-Planned: Street View / Mapillary rides, virtual gears and Zwift Click, workouts, uploads to
-Strava and others, ANT+ FE-C. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full
-list.
+Planned: Street View / Mapillary rides, uploads to Strava, intervals.icu and others, ANT+ FE-C,
+hardware video decoding. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full list.
 
 ## Using Torqa
 
@@ -46,6 +51,8 @@ list.
 | Devices, riding and in-ride settings | [docs/riding.md](docs/riding.md) |
 | Riders, zones | [docs/riders.md](docs/riders.md) |
 | Ride HUD | [docs/hud.md](docs/hud.md) |
+| Workouts and FTP tests | [docs/workouts.md](docs/workouts.md) |
+| Overlay over other apps | [docs/overlay.md](docs/overlay.md) |
 | Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
 | Ride history, climbs and records | [docs/history.md](docs/history.md) |
 | Music control | [docs/audio.md](docs/audio.md) |
@@ -68,13 +75,13 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
 | Render screenshots of the start page, a ride and the summary (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
 | Render the standard views of the 3D world (before and after a visual change) into `screenshots/views/` | `scripts/render-views.sh` |
-| Render the building models and the riders for review | `scripts/render-models.sh`, `scripts/render-riders.sh` |
+| Render the 3D models (buildings, plants, clouds) and the riders for review; with `GALLERY=docs/images/models`, also the galleries in `art/README.md` | `scripts/render-models.sh`, `scripts/render-riders.sh` |
 | Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
 | Refresh the translation template after text changes | `python3 scripts/i18n/extract.py` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
 
-The 3D models are Blender scripts in `art/` (see [art/README.md](art/README.md)); Blender runs in
-its own container on the host:
+The 3D models are Blender scripts in `art/` (see [art/README.md](art/README.md) for them and a
+gallery of every model); Blender runs in its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
 
 To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).

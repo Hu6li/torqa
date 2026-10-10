@@ -78,8 +78,9 @@ The palette lives in one file, `app/assets/palette.json`: `core/torqa-world/src/
 reads it for vertex colours (`palette::srgb("ground.meadow", alpha)`), `app/scenes/palette.gd`
 for shader uniforms (`Palette.color("sky.top")`). Add a colour there and use it by name; never
 scatter hex values in code. Evening, rain, road and other colours marked * above are Torqa's own
-additions. To take a palette from a new reference image, cluster its colours (k-means, e.g. in
-the art container's Blender Python) and add the ones that fit by name.
+additions. To take a palette from a new reference image, cluster its colours with
+`scripts/palette.py` beside this file (k-means in the art container's Blender Python; its
+header shows how to run it) and add the ones that fit by name.
 
 ## How to get it
 

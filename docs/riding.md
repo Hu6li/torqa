@@ -2,11 +2,14 @@
 
 ## Devices
 
-Torqa remembers the trainer and heart-rate strap you used last and **reconnects them in the
-background** when it starts — they appear selected in **Devices & Settings**. If one is not found
-(asleep, or connected to another app), that tab says so: pedal to wake the trainer or
-put on the strap, then press **Scan for devices**. Choosing another device and riding with it
-makes that one the remembered device.
+Torqa remembers the trainer, heart-rate strap and Di2 shifter you used last and **reconnects
+them in the background** when it starts — they appear selected in **Devices & Settings**. If one
+is not found (asleep, or connected to another app), that tab says so: pedal to wake the trainer
+or put on the strap, then press **Scan for devices**. Choosing another device and riding with it
+makes that one the remembered device. **Fake trainer** rides a simulation without hardware (see
+below).
+
+![Devices & Settings](images/app/devices.png)
 
 ## During a ride
 
@@ -15,30 +18,34 @@ The ride screen keeps the road in view — the 3D world, or the video on video c
 and ghost panels on the right, and a slim bar of controls at the bottom left, each with a
 tooltip: **Settings** (or key **S**), **Overlay** (or **O**), which shrinks Torqa to just your
 figures on top of other windows, e.g. to watch a video while you ride
-([overlay.md](overlay.md)), and on simulated rides the speeds. The chevron at the bar's left
-folds it away to the corner and brings it back; Torqa remembers that, and the keys work either
-way.
+([overlay.md](overlay.md)), **Pause** (or **P**), and on simulated rides the speeds. Once the
+ride is saved, a flag there opens its summary. The chevron at the bar's left folds the bar away
+to the corner and brings it back; Torqa remembers that, and the keys work either way.
+
+![Riding up the Gurten in the chase camera](images/app/ride.jpg)
 
 **Settings** opens the ride settings; changes apply at once and the ride keeps going:
 
-- **Ride**: camera (chase, first person, drone), trainer difficulty, descents ridden like flat
-  roads, time of day and weather — the same options as on the course page. Mornings bring
-  fog lying in the valleys below you, never around you; haze and rain thicken it, and the
-  distance is a little hazier in low sun. In rain, faceted drops fall, roads and streets turn
-  darker with a soft sheen, and puddles stand where they are level.
+- **Ride**: camera (chase, first person, drone), trainer difficulty (starting from the rider's
+  own, [riders.md](riders.md)), descents ridden like flat roads, time of day and weather — the
+  same options as on the course page. Mornings bring fog lying in the valleys below you, never
+  around you; haze and rain thicken it, and the distance is a little hazier in low sun. In
+  rain, faceted drops fall, roads and streets turn darker with a soft sheen, and puddles stand
+  where they are level.
 - **Workout** (in workouts): change what the workout asks for ([workouts.md](workouts.md)).
 - **HUD**: arrange your figures (see [hud.md](hud.md)).
 - **Finish & save** ends the ride, saves it and shows its summary (name it there; see
   [history.md](history.md)).
 - **Abort without saving** ends the ride after asking once; nothing is saved.
 
-Keys: **P** (or space) pauses the ride and goes on with it, the clock, the rider and the trainer waiting; **C** switches the camera, **S** opens the settings, **O** the overlay, **↑** / **↓**
-shift the virtual gears, **M** / **.** / **,** control your music ([audio.md](audio.md)).
+![The ride settings](images/app/ride-settings.jpg)
 
-**Training zones.** Power zones 1–7 are shares of your FTP (Coggan's 55 / 75 / 90 / 105 / 120 /
-150 %) and heart-rate zones 1–5 shares of your maximum heart rate (60 / 70 / 80 / 90 %). See and
-adjust the top of each zone in **Rider settings → Zones**; the watts and beats they come to
-show beside them, and **Standard zones** puts them back.
+Keys: **P** (or space) pauses the ride and goes on with it: the clock, the rider and the
+trainer wait (it lets go of its resistance), and the time paused is not recorded. **C**
+switches the camera, **S** opens the settings, **O** the overlay, **↑** / **↓** shift the
+virtual gears, **M** / **.** / **,** control your music ([audio.md](audio.md)).
+
+The power and heart-rate zones in the HUD are the rider's own ([riders.md](riders.md)).
 
 ### Virtual gears
 
@@ -92,6 +99,14 @@ Mapped heights and façade colours are used where the map has them. Close to you
 outline suits one are models made in Blender, chunky and faceted in flat pastel colours:
 recessed windows with shutters, balconies with geraniums, cornices, canopies, clock towers.
 Further away, and for unusual outlines, they are drawn more simply.
+
+Bridges and tunnels come from the map as well: short, low bridges of the road you ride are
+stone arches, longer and higher ones viaducts on piers, and tunnels enter the hill through a
+stone ring. Railways run on a line of their own on ballast, sleepers and rails; streams, rivers
+and lakes lie in channels in the land and pass under the roads. Forests, solitary trees and
+bushes in meadows and gardens, and rocks on scree and steep slopes follow the land cover.
+Beyond the 1.5 km around the route the mountains go on, coarser, out to 12 km.
+Every model the world places is shown in the [art gallery](../art/README.md#gallery).
 
 ## Simulation (fake trainer)
 

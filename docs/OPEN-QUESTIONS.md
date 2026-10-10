@@ -85,8 +85,9 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 - **Route video libraries**: the free Van Gestel videos used by Incyclist are CC BY-NC-SA —
   fine to ride, not to bundle. Torqa only refers to videos; tests generate their own footage.
-- **Plugin traits**: CLAUDE.md and the PLAN name `RouteImporter`, `TrainerDriver`, … but none
-  exist yet — each capability has one implementation behind a concrete type. I noted in the
+- **Plugin traits**: CLAUDE.md and the PLAN name `RouteImporter`, `TrainerDriver`, … Only
+  `ShiftInput` and `WorkoutParser` exist so far (they had several implementations from the
+  start); every other capability has one implementation behind a concrete type. I noted in the
   PLAN that each trait comes with its second implementation; say if you want them earlier.
 
 ## 2026-10-03 — Phase 4: HUD editor, ghosts, audio
@@ -135,13 +136,5 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 - **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
   saved earlier in `rides/` are not moved. Mass comes from the profile (rider + bike).
-- **Lake Biel fixture** reports a steepest grade of 19 % — the elevation profile has a sharp
-  spike around 2.3 km, probably a bridge/underpass the smoothing does not catch. Worth a look
-  on a real ride.
-
-- **Aerial imagery dropped** (PR #8): SWISSIMAGE draped on the terrain looked worse than the
-  land-cover shading and was removed. PR #8 now only brings zoom 15 terrain and the
-  first-person camera.
-- **60 fps on M1** not yet measured (software renderer in the container only).
 - **GitHub token** cannot read check results (`checks:read` missing), so I can't see CI status
   of PRs; I rely on `scripts/check.sh` locally.

@@ -3,9 +3,8 @@
 The overlay (R55, R57) turns Torqa's window into just your HUD, small, borderless and on top of
 other windows, so you can watch a video or a stream in another app while you ride. The window
 is see-through between the panels; the panels themselves are solid, so what is behind them
-does not show through the figures. The ride
-goes on as before: the trainer keeps following the course or holding the workout's power, and
-the ride is recorded and saved as usual.
+does not show through the figures. The ride goes on as before: the trainer keeps following the
+course or holding the workout's power, and the ride is recorded and saved as usual.
 
 ![The overlay: the HUD and the workout's targets on a see-through window](images/overlay/overlay.png)
 
@@ -16,6 +15,9 @@ the ride is recorded and saved as usual.
   ([workouts.md](workouts.md)).
 - **Back:** **Full view** in the overlay's bar, or **O** / **Esc** while the overlay has the
   focus. The window returns to its size and place (and full screen) from before.
+
+**Pause** in the bar, or **P** / space while the overlay has the focus, pauses the ride and
+goes on with it, as in the full view ([riding.md](riding.md)).
 
 When a course ride reaches the finish, the whole screen comes back for its summary. To finish
 a workout, go back to the full view and use *Settings* → *Finish & save*.

@@ -1,6 +1,6 @@
 [package]
 name = "torqa-osm"
-description = "OpenStreetMap data for Torqa: Overpass download, offline cache, map features"
+description = "OpenStreetMap data for Torqa: OpenFreeMap vector tiles, offline cache, map features"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

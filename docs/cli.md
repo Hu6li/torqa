@@ -16,6 +16,12 @@ xattr -d com.apple.quarantine torqa-cli   # unsigned binary
 On first use macOS asks whether your terminal app may use Bluetooth — allow it
 (System Settings → Privacy & Security → Bluetooth).
 
+## Install (Windows)
+
+Download `torqa-cli-windows-x86_64.zip` from a CI run, unpack it and run `torqa-cli.exe --help`
+in a terminal (PowerShell: `.\torqa-cli.exe --help`); the examples below call it
+`./torqa-cli`. Bluetooth must be on (Settings → Bluetooth & devices).
+
 ## Install (Linux)
 
 Download `torqa-cli-linux-x86_64.tar.gz` (or `-arm64`) from a CI run, then:

@@ -1,7 +1,7 @@
 # Courses
 
-A course is a prepared route saved as one `.tqc` file: the GPX track plus the terrain, map data
-it needs. Courses ride **fully offline**, on any computer.
+A course is a prepared route saved as one `.tqc` file: the GPX track plus the terrain and map
+data it needs. Courses ride **fully offline**, on any computer.
 
 ## Prepare a course
 
@@ -9,7 +9,13 @@ Import a GPX route with **Import** on the Courses tab while online. The track is
 roads and paths it rides (from OpenStreetMap): GPS wander and corners cut between sparse points
 disappear, so the road you ride is the real one. Where a service road, cycle path or side street
 runs right beside the road, the route stays on the road unless the track clearly follows the
-other. Stretches away from any mapped road keep their course.
+other. Where the file leaves the roads between two places on them — a planner's straight line
+through a tunnel or a gallery, across a lake, or a GPS fix lost in a tunnel — the route
+follows the roads between them, and their bridges and tunnels come with it. Only a stretch
+much longer than the way by road (a real detour off the map) keeps its course.
+The elevations come from a terrain model, checked against the file's own: where the model
+shows a wall the road does not have (a ledge, a gallery's roof), the file's heights are used
+there, and short spikes are cut.
 Torqa asks for the course's **name** (suggested from the file), downloads terrain and map
 data, builds the 3D world and adds the course to your library. If a course of that name exists
 already, choose **Replace** to replace it or **Keep both**.

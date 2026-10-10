@@ -16,6 +16,8 @@ The editor shows the **HUD** itself with example values, and the figures still *
 - The **first** figure is shown large at the top; with power figures, your W/kg and power zone
   appear below it. Up to 13 figures in total.
 
+![The HUD editor in the ride settings, a figure being dragged into the HUD](images/app/hud-editor.jpg)
+
 | Figure | Meaning |
 |---|---|
 | Power, Power 3 s, Power 10 s | Instant power and its average over the last 3 or 10 seconds |
@@ -23,10 +25,11 @@ The editor shows the **HUD** itself with example values, and the figures still *
 | W/kg, Power zone | Power per kilogram body weight, zone from your FTP |
 | Heart rate, Heart-rate zone | From a heart-rate strap, zone from your maximum heart rate |
 | Cadence | Pedal revolutions per minute |
+| Gear | The virtual gear (1–24) on a single cog ([riding.md](riding.md#virtual-gears)) |
 | Speed, Avg speed | Virtual speed |
 | Distance, To go | Ridden so far, left to the finish |
-| Time | Since the start |
-| Elevation, Climbed | Current altitude, climbing so far |
+| Time | Since the start (pauses do not count) |
+| Elevation, Climbed, Ascent to go | Current altitude, climbing so far, climbing still ahead on the route |
 | Grade, Next 500 m | Gradient here, and on average over the next 500 m |
 | Intensity, TSS, Work | Intensity factor, training stress score and kilojoules so far |
 

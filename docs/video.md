@@ -38,8 +38,9 @@ A video without GPS cannot tell where it was filmed, so it is added to a course:
    and the ±1 s / ±0.1 s buttons, checking the frame above.
 4. Where the footage stops or changes speed (a traffic light, a steep climb), **Add point**:
    set its place on the route (shown on the elevation profile) and its moment in the video.
-
 5. **Save** in **Edit course**: the course is now ridden along the video.
+
+![Edit course: the name, and the video to ride along](images/app/course-edit.png)
 
 Between neighbouring points the video follows your distance evenly; the GPX's own timestamps
 are not used (they come from another recording). **Align video…** in **Edit course** changes
@@ -56,9 +57,9 @@ Open the course and press **Ride**: Torqa asks whether to ride **along the video
 3D** — a video course is a route like any other, so its 3D world is there too (built the
 first time you choose it; online, it fetches the terrain and map data the video course does
 not hold yet). Along the video, the video fills the screen, with your figures, map and
-elevation profile on top. Where you are on the route
-decides the moment of the video: it plays at the speed you ride, stands still when you stop,
-and blends smoothly from frame to frame even when you crawl up a steep climb.
+elevation profile on top. Where you are on the route decides the moment of the video: it
+plays at the speed you ride, stands still when you stop, and blends smoothly from frame to
+frame even when you crawl up a steep climb.
 
 The video's own **sound** plays along at the same speed, without sounding higher or deeper:
 it is stretched, not sped up like a tape. It fades out when you slow to a crawl or stop.

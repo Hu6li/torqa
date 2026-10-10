@@ -164,11 +164,22 @@ func _run() -> void:
 		var index: int = tab[0]
 		var file: String = tab[1]
 		start_tabs.current_tab = index
+		if index == StartPage.Tab.PROFILE:
+			_unfold_rider(start)
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
+
+
+## Unfolds the rider's card to their whole setup and zones (#194), as docs/riders.md shows it.
+func _unfold_rider(start: StartPage) -> void:
+	for found: Node in start.find_children("*", "Button", true, false):
+		var button: Button = found
+		if button.is_visible_in_tree() and button.tooltip_text == tr("All settings"):
+			button.pressed.emit()
+			return
 
 
 ## The Workouts tab (R58) and a heart-rate workout on its own (R56), with its settings.

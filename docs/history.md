@@ -7,10 +7,12 @@ JSON file holding its summary.
 After a ride, its **summary** shows the same figures as the history: give the ride a name,
 keep it with **Done** or **Discard ride**. Afterwards it is in the **History** tab.
 
+![A ride's summary](images/app/summary.png)
+
 **Names**: a ride is called after its course and date (e.g. *Gurtenstrasse · Sat 3 Oct*)
-until you name it — press the pencil beside the title (or click the title), in the summary or later in the history. Names
-are stored in the ride's JSON file only, so the files keep their names (sync-safe); uploads
-will send the name as the activity title.
+until you name it — press the pencil beside the title (or click the title), in the summary or
+later in the history. Names are stored in the ride's JSON file only, so the files keep their
+names (sync-safe); uploads will send the name as the activity title.
 
 The history shows:
 

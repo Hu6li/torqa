@@ -54,12 +54,18 @@ manifest.json      format, generator, name, length, climbing, max grade, created
 route.gpx          the original track
 data/…             every terrain tile and map tile the course was built from,
                    under its path relative to the download cache
+preview.png        the course's map with its route, drawn when it was prepared (#192)
 ```
 
 Data providers record which cached files they read or wrote while a course is prepared; saving
 packs exactly those. Opening a course puts them back into the cache (existing files are kept;
 cache paths are versioned) and builds the course offline. This needs no own format for terrain,
 map or meshes, and every course is always built by the current generator (R35).
+
+`preview.png` (added 2026-10-10, #192) is the picture the course's card shows: the flat map
+the ride's minimap draws, with the route on it. The app draws it once the world is built and
+puts it into the file; a course without one gets it the next time its world is built. It is
+an optional entry, so the format stays 1.
 
 Measured on the 7 km Lake Biel route: 6.2 MB, opened on an empty machine offline in ~23 s
 (debug build). Storing the pre-built world for an instant start remains a later step

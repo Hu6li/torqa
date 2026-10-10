@@ -14,12 +14,15 @@ scripts/art.sh blender --background --factory-startup --python art/buildings/bui
 ```
 
 The second form rebuilds only the named models. Then review them as the world draws them
-(runs in the dev container; images land in `screenshots/models/`):
+(runs in the dev container; images land in `screenshots/models/<group>/`):
 
 ```sh
 scripts/dev.sh scripts/render-models.sh
 scripts/dev.sh sh -c 'MODELS="chalet_2_m" scripts/render-models.sh'
+scripts/dev.sh sh -c 'GROUPS="vegetation clouds" scripts/render-models.sh'
 ```
+
+After a change to the models, refresh the [gallery](#gallery) below as well.
 
 ## Buildings (`buildings/`)
 
@@ -74,18 +77,7 @@ The build also writes `models.json` next to the models: each model's kind, roof,
 its walls stand on (`length` along x, `width` along y), `eaves` and total `height`. The world
 reads it to fit models to the outlines on the map.
 
-### Gallery
-
-Rendered with `scripts/render-models.sh` (three variants per model; colours vary per building):
-
-| | |
-|---|---|
-| ![House](../docs/images/buildings/house_gable_2_m-close.jpg) | ![Apartment house](../docs/images/buildings/house_hipped_3_l-close.jpg) |
-| ![Chalet](../docs/images/buildings/chalet_3_m-close.jpg) | ![Bernese farmhouse](../docs/images/buildings/farmhouse_l-close.jpg) |
-| ![Church with needle spires](../docs/images/buildings/church_needle_l-close.jpg) | ![Churches with saddle roofs](../docs/images/buildings/church_saddle_m.jpg) |
-| ![Chapels](../docs/images/buildings/chapel_m.jpg) | ![Offices](../docs/images/buildings/office_3_m.jpg) |
-| ![Hotels](../docs/images/buildings/hotel_4_m-close.jpg) | ![Public buildings, classic](../docs/images/buildings/public_hipped_2_m.jpg) |
-| ![Public buildings, modern](../docs/images/buildings/public_flat_2_l-close.jpg) | |
+Every building is in the [gallery](#buildings).
 
 ## Vegetation (`vegetation/`)
 
@@ -111,7 +103,7 @@ scripts/art.sh blender --background --factory-startup --python art/vegetation/bu
 The app gives each name its look in `app/scenes/vegetation_models.gd` and
 `app/shaders/vegetation.gdshader` (trees sway a little in the wind). `models.json` lists each
 model's `kind` and `height`; the world (`core/torqa-world/src/vegetation.rs`) picks one model
-of the kind it wants per plant.
+of the kind it wants per plant. Every plant is in the [gallery](#vegetation).
 
 ## Riders (`riders/`)
 
@@ -158,11 +150,7 @@ and aims the legs at the pedals (inverse kinematics).
 
 Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` there too) and
 `bike` for the bike's other parts. A rider about 4,400–5,300 triangles, a bike about 1,400.
-
-| | |
-|---|---|
-| ![Female rider](../docs/images/riders/female-side.jpg) | ![Male rider](../docs/images/riders/male-side.jpg) |
-| ![Female rider from the front](../docs/images/riders/female-front.jpg) | ![Male rider from behind](../docs/images/riders/male-chase.jpg) |
+Both riders, from every side, are in the [gallery](#riders).
 
 ## Clouds (`clouds/`)
 
@@ -170,8 +158,68 @@ Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` 
 a towering one, each a few rough balls of 20 facets flattened underneath, 60–120 faces, about
 10 m long (the app scales them up). One material, `cloud`; `app/shaders/cloud.gdshader` lights
 them by the sun and the weather and fades them into the horizon, and `app/scenes/cloud_layer.gd`
-spreads them round the camera, more, bigger and lower as the weather clouds over.
+spreads them round the camera, more, bigger and lower as the weather clouds over. They are
+in the [gallery](#clouds) too.
 
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/clouds/build.py
 ```
+
+## Gallery
+
+Every model as the world draws it, in its palette colours and light: buildings and plants in
+three variants side by side (colours vary per building and plant), the riders from the views
+`scripts/render-riders.sh` takes. After changing a model, render the pictures again in the dev
+container (a run replaces its group's pictures, so a model taken out leaves none behind) and
+update the tables if models were added or removed:
+
+```sh
+scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-models.sh'
+scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-riders.sh'
+```
+
+### Buildings
+
+| | | |
+|---|---|---|
+| ![house_gable_1_m](../docs/images/models/buildings/house_gable_1_m.jpg)<br>`house_gable_1_m` | ![house_gable_1_s](../docs/images/models/buildings/house_gable_1_s.jpg)<br>`house_gable_1_s` | ![house_gable_2_l](../docs/images/models/buildings/house_gable_2_l.jpg)<br>`house_gable_2_l` |
+| ![house_gable_2_m](../docs/images/models/buildings/house_gable_2_m.jpg)<br>`house_gable_2_m` | ![house_gable_2_s](../docs/images/models/buildings/house_gable_2_s.jpg)<br>`house_gable_2_s` | ![house_gable_3_l](../docs/images/models/buildings/house_gable_3_l.jpg)<br>`house_gable_3_l` |
+| ![house_gable_3_m](../docs/images/models/buildings/house_gable_3_m.jpg)<br>`house_gable_3_m` | ![house_hipped_2_l](../docs/images/models/buildings/house_hipped_2_l.jpg)<br>`house_hipped_2_l` | ![house_hipped_2_m](../docs/images/models/buildings/house_hipped_2_m.jpg)<br>`house_hipped_2_m` |
+| ![house_hipped_3_l](../docs/images/models/buildings/house_hipped_3_l.jpg)<br>`house_hipped_3_l` | ![chalet_2_m](../docs/images/models/buildings/chalet_2_m.jpg)<br>`chalet_2_m` | ![chalet_2_s](../docs/images/models/buildings/chalet_2_s.jpg)<br>`chalet_2_s` |
+| ![chalet_3_l](../docs/images/models/buildings/chalet_3_l.jpg)<br>`chalet_3_l` | ![chalet_3_m](../docs/images/models/buildings/chalet_3_m.jpg)<br>`chalet_3_m` | ![farmhouse_l](../docs/images/models/buildings/farmhouse_l.jpg)<br>`farmhouse_l` |
+| ![farmhouse_m](../docs/images/models/buildings/farmhouse_m.jpg)<br>`farmhouse_m` | ![farmhouse_xl](../docs/images/models/buildings/farmhouse_xl.jpg)<br>`farmhouse_xl` | ![church_needle_l](../docs/images/models/buildings/church_needle_l.jpg)<br>`church_needle_l` |
+| ![church_needle_m](../docs/images/models/buildings/church_needle_m.jpg)<br>`church_needle_m` | ![church_saddle_m](../docs/images/models/buildings/church_saddle_m.jpg)<br>`church_saddle_m` | ![chapel_m](../docs/images/models/buildings/chapel_m.jpg)<br>`chapel_m` |
+| ![chapel_s](../docs/images/models/buildings/chapel_s.jpg)<br>`chapel_s` | ![garage_m](../docs/images/models/buildings/garage_m.jpg)<br>`garage_m` | ![shed_m](../docs/images/models/buildings/shed_m.jpg)<br>`shed_m` |
+| ![shed_s](../docs/images/models/buildings/shed_s.jpg)<br>`shed_s` | ![office_2_xl](../docs/images/models/buildings/office_2_xl.jpg)<br>`office_2_xl` | ![office_3_m](../docs/images/models/buildings/office_3_m.jpg)<br>`office_3_m` |
+| ![office_4_l](../docs/images/models/buildings/office_4_l.jpg)<br>`office_4_l` | ![office_6_l](../docs/images/models/buildings/office_6_l.jpg)<br>`office_6_l` | ![hotel_3_m](../docs/images/models/buildings/hotel_3_m.jpg)<br>`hotel_3_m` |
+| ![hotel_4_m](../docs/images/models/buildings/hotel_4_m.jpg)<br>`hotel_4_m` | ![hotel_6_l](../docs/images/models/buildings/hotel_6_l.jpg)<br>`hotel_6_l` | ![public_flat_2_l](../docs/images/models/buildings/public_flat_2_l.jpg)<br>`public_flat_2_l` |
+| ![public_flat_3_xl](../docs/images/models/buildings/public_flat_3_xl.jpg)<br>`public_flat_3_xl` | ![public_flat_4_l](../docs/images/models/buildings/public_flat_4_l.jpg)<br>`public_flat_4_l` | ![public_hipped_2_m](../docs/images/models/buildings/public_hipped_2_m.jpg)<br>`public_hipped_2_m` |
+| ![public_hipped_3_l](../docs/images/models/buildings/public_hipped_3_l.jpg)<br>`public_hipped_3_l` | ![castle_l](../docs/images/models/buildings/castle_l.jpg)<br>`castle_l` | ![castle_m](../docs/images/models/buildings/castle_m.jpg)<br>`castle_m` |
+| ![castle_s](../docs/images/models/buildings/castle_s.jpg)<br>`castle_s` | ![lighthouse_l](../docs/images/models/buildings/lighthouse_l.jpg)<br>`lighthouse_l` | ![lighthouse_s](../docs/images/models/buildings/lighthouse_s.jpg)<br>`lighthouse_s` |
+| ![tropical_flat_1_m](../docs/images/models/buildings/tropical_flat_1_m.jpg)<br>`tropical_flat_1_m` | ![tropical_flat_2_l](../docs/images/models/buildings/tropical_flat_2_l.jpg)<br>`tropical_flat_2_l` | ![tropical_flat_2_m](../docs/images/models/buildings/tropical_flat_2_m.jpg)<br>`tropical_flat_2_m` |
+| ![tropical_hipped_1_m](../docs/images/models/buildings/tropical_hipped_1_m.jpg)<br>`tropical_hipped_1_m` | ![tropical_hipped_1_s](../docs/images/models/buildings/tropical_hipped_1_s.jpg)<br>`tropical_hipped_1_s` |  |
+
+### Vegetation
+
+| | | |
+|---|---|---|
+| ![conifer_broad](../docs/images/models/vegetation/conifer_broad.jpg)<br>`conifer_broad` | ![conifer_tall](../docs/images/models/vegetation/conifer_tall.jpg)<br>`conifer_tall` | ![broadleaf_cluster](../docs/images/models/vegetation/broadleaf_cluster.jpg)<br>`broadleaf_cluster` |
+| ![broadleaf_round](../docs/images/models/vegetation/broadleaf_round.jpg)<br>`broadleaf_round` | ![bush](../docs/images/models/vegetation/bush.jpg)<br>`bush` | ![rock_block](../docs/images/models/vegetation/rock_block.jpg)<br>`rock_block` |
+| ![rock_pair](../docs/images/models/vegetation/rock_pair.jpg)<br>`rock_pair` | ![palm_coconut](../docs/images/models/vegetation/palm_coconut.jpg)<br>`palm_coconut` | ![palm_fan](../docs/images/models/vegetation/palm_fan.jpg)<br>`palm_fan` |
+| ![palm_short](../docs/images/models/vegetation/palm_short.jpg)<br>`palm_short` | ![banana](../docs/images/models/vegetation/banana.jpg)<br>`banana` | ![tropical_bush](../docs/images/models/vegetation/tropical_bush.jpg)<br>`tropical_bush` |
+
+### Clouds
+
+![The four clouds: small, puffy, long and towering](../docs/images/models/clouds/clouds.jpg)
+
+### Riders
+
+| | Female | Male |
+|---|---|---|
+| side | ![female side](../docs/images/models/riders/female-side.jpg) | ![male side](../docs/images/models/riders/male-side.jpg) |
+| side-down | ![female side-down](../docs/images/models/riders/female-side-down.jpg) | ![male side-down](../docs/images/models/riders/male-side-down.jpg) |
+| front | ![female front](../docs/images/models/riders/female-front.jpg) | ![male front](../docs/images/models/riders/male-front.jpg) |
+| chase | ![female chase](../docs/images/models/riders/female-chase.jpg) | ![male chase](../docs/images/models/riders/male-chase.jpg) |
+| face | ![female face](../docs/images/models/riders/female-face.jpg) | ![male face](../docs/images/models/riders/male-face.jpg) |
+| head | ![female head](../docs/images/models/riders/female-head.jpg) | ![male head](../docs/images/models/riders/male-head.jpg) |
+| lean | ![female lean](../docs/images/models/riders/female-lean.jpg) | ![male lean](../docs/images/models/riders/male-lean.jpg) |

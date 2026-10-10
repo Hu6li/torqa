@@ -13,16 +13,22 @@ shots, run them in the background, and read the PNGs with the Read tool. Output 
 ## Ready-made
 
 - `scripts/dev.sh scripts/render-views.sh` — the **standard views** (`app/tools/render_views.gd`):
-  fixed shots on the fixture routes (village, climb, hairpin, lake, rain, evening, bridge) into
+  fixed shots on the fixture routes (village, climb, hairpin, lake, rain, morning, evening,
+  shops, junctions, river, old town, roundabout, bridges and the Oberalp reference route) into
   `screenshots/views/`. Render them before a visual change (`OUT_DIR=…/views-before`, pass it inside
   `sh -c '…'`) and after, and compare pairs; `VIEWS="village-chase lake-drone"` limits it.
 
-- `scripts/dev.sh scripts/screenshots.sh` — the standard ride screenshots (`app/tests/
-  screenshots.gd`).
-- `scripts/dev.sh scripts/render-models.sh` — every model of `app/assets/models/buildings` as
-  the world draws it, three variants and a close-up each, into `screenshots/models/`;
-  `MODELS="house_gable_2_m chalet_2_m"` limits it (pass it inside `sh -c '…'` so it reaches the
-  container).
+- `scripts/dev.sh scripts/screenshots.sh` — the standard app screenshots (`app/tests/
+  screenshots.gd`): start page tabs, course page, a ride in each camera, the settings, summary,
+  history, workouts and the overlay. The user docs show some of them (`docs/images/app/`,
+  `workouts/`, `overlay/`); copy the new ones there when a change alters a screen.
+- `scripts/dev.sh scripts/render-models.sh` — every Blender model as the world draws it:
+  buildings (three variants and a close-up each) and plants (three variants) into
+  `screenshots/models/<group>/`, the clouds together; `GROUPS="vegetation clouds"` or
+  `MODELS="house_gable_2_m chalet_2_m"` limits it (pass them inside `sh -c '…'` so they reach
+  the container). `scripts/render-riders.sh` does the same for the riders.
+- With `GALLERY=docs/images/models`, both also write the small JPEGs of the gallery in
+  `art/README.md`; refresh it whenever a model changes.
 
 ## A view of a place on a route
 

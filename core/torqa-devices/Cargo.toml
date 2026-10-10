@@ -1,6 +1,6 @@
 [package]
 name = "torqa-devices"
-description = "Trainer and sensor drivers for Torqa (Bluetooth FTMS, heart rate, fake trainer)"
+description = "Trainer and sensor drivers for Torqa (Bluetooth FTMS, heart rate, Shimano Di2, fake trainer)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

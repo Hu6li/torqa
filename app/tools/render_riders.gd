@@ -1,7 +1,9 @@
 extends SceneTree
 ## Renders the riders on their bikes (art/riders) as the world draws them, from a few fixed
 ## views and at a few crank angles, into $OUT_DIR/<rider>-<view>.png for review (ADR 0009). Run
-## it with scripts/render-riders.sh. Light and colours are the world's (ADR 0011).
+## it with scripts/render-riders.sh. With $GALLERY set, every view also goes there as a small
+## JPEG, riders/<rider>-<view>.jpg, for the gallery in art/README.md. Light and colours are the
+## world's (ADR 0011).
 
 ## Name, camera position and target (rider's local axes: −z forward), crank angle in degrees
 ## and whether the rider leans into a bend (40 km/h, 40 m radius, to the right).
@@ -14,6 +16,7 @@ const VIEWS: Array = [
 	["head", Vector3(-0.75, 1.55, 0.45), Vector3(0.0, 1.3, -0.4), 160.0],
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
 ]
+const GALLERY_SIZE: Vector2i = Vector2i(640, 360)
 
 var _camera: Camera3D = Camera3D.new()
 
@@ -26,6 +29,10 @@ func _run() -> void:
 	_stage()
 	var out: String = OS.get_environment("OUT_DIR")
 	DirAccess.make_dir_recursive_absolute(out)
+	var gallery: String = OS.get_environment("GALLERY")
+	if not gallery.is_empty():
+		gallery = gallery.path_join("riders")
+		DirAccess.make_dir_recursive_absolute(gallery)
 	for rider: String in RiderAvatar.RIDERS:
 		var avatar: RiderAvatar = RiderAvatar.new()
 		avatar.rider = rider
@@ -45,7 +52,11 @@ func _run() -> void:
 			_camera.look_at_from_position(eye, target, Vector3.UP)
 			for frame: int in range(12):
 				await process_frame
-			root.get_texture().get_image().save_png(out.path_join(rider + "-" + view_name + ".png"))
+			var image: Image = root.get_texture().get_image()
+			image.save_png(out.path_join(rider + "-" + view_name + ".png"))
+			if not gallery.is_empty():
+				image.resize(GALLERY_SIZE.x, GALLERY_SIZE.y, Image.INTERPOLATE_LANCZOS)
+				image.save_jpg(gallery.path_join(rider + "-" + view_name + ".jpg"), 0.8)
 		print("rendered ", rider)
 		avatar.free()
 	quit(0)

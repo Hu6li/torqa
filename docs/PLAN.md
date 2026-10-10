@@ -13,12 +13,16 @@ core/                      Rust workspace (tokio + tracing)
   torqa-domain/            newtype units (SI internally), profiles, plugin traits
   torqa-physics/           speed integration, grade scaling, descent modes, virtual gears
   torqa-devices/           btleplug FTMS + HRM + Shimano Di2 (D-Fly), fake trainer, (later) ANT+ FE-C
-  torqa-routes/            GPX import, smoothing, DEM correction, climb detection
+  torqa-routes/            GPX import, snapping to the map's roads, smoothing, DEM correction,
+                           climb detection
   torqa-terrain/           elevation tiles (Mapterhorn, AWS fallback), disk cache, height lookup
   torqa-osm/               OpenStreetMap features from OpenFreeMap vector tiles, tile cache
-  torqa-world/             terrain chunks, land cover, buildings, trees, rivers, road mesh
-  torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, recording
-  torqa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist route videos (ADR 0010)
+  torqa-world/             terrain chunks, land cover, road mesh, streets, railways, bridges and
+                           tunnels, water, buildings, vegetation, the minimap
+  torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, workouts
+                           (ERG, heart-rate hold, structured), recording
+  torqa-workouts/          workout files (ZWO, ERG/MRC, FIT), built-in workouts, the library
+  torqa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist and Tacx RLV (ADR 0010)
   torqa-storage/           FIT files, ride summaries, profiles, course files (.tqc)
   torqa-app/               application layer: commands + update() per frame for front ends
   torqa-gd/                gdext bindings (TorqaApp node)
@@ -26,19 +30,21 @@ core/                      Rust workspace (tokio + tracing)
 app/                       Godot 4 project: scenes/ (screens, 3D world, video view), ui/ (shared
                            controls and theme), shaders/, translations/, tests/ (smoke tests)
 art/                       Blender Python scripts for the 3D models: buildings, vegetation,
-                           riders and bikes; third-party bases in art/sources/ (ADR 0009)
-docs/                      requirements, plan, ADRs, user docs per feature
-scripts/                   container helpers: checks, GDExtension build, screenshots, i18n
+                           clouds, riders and bikes; third-party bases in art/sources/ (ADR 0009)
+docs/                      requirements, plan, ADRs, user docs per feature, images/ for them
+scripts/                   container helpers: checks, builds (GDExtension, FFmpeg), renders and
+                           screenshots, the art container, i18n
 .devcontainer/             development container (all tooling lives here)
 ```
 
 ### Key design points
 
 - **Plugin traits**: `RouteImporter`, `TrainerDriver`, `SensorDriver`, `ShiftInput`,
-  `ActivityUploader`, `WorkoutParser`. Not introduced yet: today there is one implementation
-  of each (or none), behind concrete types (`ElevationModel` is the only trait so far); each
-  trait comes with its second implementation (e.g. ANT+ FE-C, a second importer). Ride modes
-  are separate Godot views: the 3D world and the video view (Street View later).
+  `ActivityUploader`, `WorkoutParser`. `ShiftInput` (keyboard, Shimano Di2) and
+  `WorkoutParser` (ZWO, ERG/MRC, FIT) exist, as does `ElevationModel`; the others are not
+  introduced yet: today there is one implementation of each (or none), behind concrete types,
+  and each trait comes with its second implementation (e.g. ANT+ FE-C, a second importer).
+  Ride modes are separate Godot views: the 3D world and the video view (Street View later).
 - **FTMS**: service `0x1826`, Indoor Bike Data `0x2AD2`, Control Point `0x2AD9`
   (Request Control `0x00`, Set Target Resistance `0x04`, Set Target Power `0x05`,
   Set Indoor Bike Simulation `0x11`). Heart rate: `0x180D` / `0x2A37`.
@@ -52,12 +58,15 @@ scripts/                   container helpers: checks, GDExtension build, screens
   `courses/*.tqc` shared by all riders. The SQLite index of ADR 0002 is not built yet — the
   history reads the JSON summaries directly, fast enough so far. Config TOML, data JSON
   ([ADR 0004](adr/0004-config-formats.md)).
-- **Course files** (`.tqc`, [ADR 0007](adr/0007-course-files.md)): manifest, GPX and the
-  terrain and map tiles used, so a course is rebuilt offline anywhere; video courses refer to
-  their video instead of embedding it.
-- **3D world generation**: ~2–5 km corridor around the route; DEM → chunked heightmap meshes with
-  LOD; road mesh from the smoothed route spline; OSM buildings (extruded), forests/fields
-  (MultiMesh vegetation), water; procedural fill where data is missing; cached per route.
+- **Course files** (`.tqc`, [ADR 0007](adr/0007-course-files.md)): manifest, GPX, the
+  terrain and map tiles used and a picture of its map, so a course is rebuilt offline
+  anywhere; video courses refer to their video instead of embedding it.
+- **3D world generation**: a 1.5 km corridor around the route, coarse land beyond it out to
+  12 km; DEM → chunked heightmap meshes, finer near the road; the road shaped into the ground
+  along the route snapped to the map; streets, railways, bridges and tunnels from the map;
+  buildings as Blender models fitted to the mapped outlines (simple shells further out and for
+  odd outlines); MultiMesh vegetation by land cover; water in channels. Built when a ride
+  starts, terrain chunks on all cores.
 - **3D assets**: rider, bike, building and vegetation models generated by headless Blender
   scripts (riders from Blender Studio's CC0 Human Base Meshes), exported to `.glb`; scripts and
   models committed, CC0/CC-BY(-SA) only ([ADR 0009](adr/0009-asset-pipeline.md),
@@ -121,7 +130,9 @@ Built in rideable steps:
 
 ### Phase 4 — Rider & history
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
-- [x] Customizable HUD (R23)
+- [x] Zones shown and adjustable per rider (#173); a rider's default trainer difficulty (#175);
+  riders deleted with their rides, after asking
+- [x] Customizable HUD (R23); an ascent-to-go figure (#174)
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
@@ -150,6 +161,8 @@ Built in rideable steps:
 - [x] Original video sound (R26): pitch-keeping time stretch (WSOLA) at the rider's speed,
   fades out when slow, switchable per ride
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)
+- [x] A video course keeps its own copy of the video beside it, so it outlives the imported
+  file (#165); AV1 decoded fast enough for real time on x86_64 (rav1d's assembly)
 - **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 
 ### Phase 6 — Street imagery
@@ -163,7 +176,7 @@ Built in rideable steps:
     (channels chosen in Devices & Settings), remembered and reconnected like the trainer
   - [x] Di2 buttons assignable (#139): each channel's press, hold and double press shift one
     or two gears, or work the camera, the overlay or the music
-- [ ] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
+- [x] ERG workouts (ZWO/ERG/MRC/FIT + editor), FTP test:
   - [x] Structured workouts (R21): ZWO, ERG/MRC and FIT workout files behind `WorkoutParser`
     (`torqa-workouts`), a library in `workouts/` with five built-in workouts, ridden on their
     own or on a course; steps, ramps, free steps, cadence targets and messages
@@ -178,7 +191,8 @@ Built in rideable steps:
 
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
 - [x] Start page with top tabs (Courses, History, Profile, Devices & Settings); ride view separated
-- [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only)
+- [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
+  #192 on the course's own map, drawn when the course is prepared and kept in the `.tqc`
 - [ ] Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
   (ADR 0007 format bump); frames from the video for video courses
 - [x] Courses gallery (cards with stats and small map) and course detail page with ride options;
@@ -191,8 +205,15 @@ Built in rideable steps:
 - [x] The same ride options on the course detail page (R48, with the start page)
 - [x] Ride names: default course + date, set on the summary, rename in history (R50)
 - [x] Export a ride's FIT file from the history or summary to a place the rider picks (R28)
+- [x] Pause a ride and go on with it (button, P or space; also in the overlay)
 - [ ] UI design system (sleek minimal) applied to all screens and dialogs, polished course
-  summaries; no text bloat on course load, dialogs that reflow when resized (R52–R53)
+  summaries; no text bloat on course load, dialogs that reflow when resized (R52–R53):
+  - [x] The ride view's controls as icons with tooltips in a bar that folds away (#189)
+  - [x] The summary's rename and delete as icon buttons (#190); buttons that delete are red
+  - [x] The Profile tab and dialog: the rider as a heading, cards unfolding to every setting
+    and the zones (#191, #194)
+  - [x] The course page's title line like a ride's: a pencil for Edit course (name, video), a
+    bin to delete it
 - **Exit:** start the app, pick a course from the gallery, ride it, see the summary, land back home
 
 ### Phase 9 — Graphics (R43–R47, [ADR 0009](adr/0009-asset-pipeline.md), [ADR 0011](adr/0011-stylized-look.md))
@@ -254,7 +275,7 @@ the realistic look's textures and patterns were replaced step by step.
     puddles where they are level; pastel haze thicker in low sun, fog lying in the route's low
     ground (thick on mornings); presets without SSIL, SDFGI or volumetric fog, their budget
     given to grass, models and shadows further out, raindrops per preset
-- [ ] Feedback round after the riders (issues #74–#79), in this order:
+- [x] Feedback round after the riders (issues #74–#79), in this order:
   - [x] Nicer riders (#76): hair over the scalp (to the nape for her, short for him) and a
     longer ponytail; helmets shaped from the head they sit on, drawn out at the back, with vent
     slots; shoulder caps smaller and turning with the arms; sunglasses with two lenses following
@@ -327,8 +348,14 @@ the realistic look's textures and patterns were replaced step by step.
     in the stylized look, review images only PRs used removed (PRs now link theirs by commit),
     the realism risk below, MPFB2 and textures in ADR 0009, feature docs describing the old
     look, the CLI doc (bridges and tunnels, `route --world`)
-- **Exit:** a long hilly course at 60 fps on M1 base at Medium (#111); screenshots reviewed against
-  the references (R44)
+- [x] Planners' files (#166, #172) and the reference route (#167): where a file leaves the roads
+  (a straight line through a tunnel or gallery, across a lake, a fix lost in a tunnel) the
+  route follows the map's roads between; the terrain model checked against the file's own
+  elevations and spikes cut; the Oberalp route as a fixture with its standard views and checks
+- [x] Streets and railways as one line across tile borders, paved streets level across
+  (#116, #117); nothing of a railway tunnel or a house in the road ridden (#138)
+- **Exit:** a long hilly course at 60 fps on M1 base at Medium ✅ (#111, 2026-10-08); screenshots
+  reviewed against the references (R44)
 
 ### Phase 10 — Workout modes & overlay (R55–R56)
 - [x] Constant-power workout (ERG target) and heart-rate hold (zone or bpm, min/max power, gentle
@@ -349,7 +376,8 @@ the realistic look's textures and patterns were replaced step by step.
 
 ## Risks
 
-- Zwift Click protocol is reverse-engineered and may change → isolated behind `ShiftInput`.
+- The Shimano Di2 button protocol is reverse-engineered (community findings, no code reused)
+  and may change → isolated behind `ShiftInput`.
 - Garmin / TrainingPeaks / Komoot upload APIs need partner approval.
 - Insta360 GPS extraction is less documented than GoPro GPMF.
 - Detail on an M1 integrated GPU (towns place thousands of buildings, forests thousands of

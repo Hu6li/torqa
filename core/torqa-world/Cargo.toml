@@ -1,6 +1,6 @@
 [package]
 name = "torqa-world"
-description = "3D world geometry for Torqa: terrain around the route and the road"
+description = "3D world geometry for Torqa: terrain, road, streets, railways, water, buildings and plants around the route"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
