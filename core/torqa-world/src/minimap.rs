@@ -48,14 +48,14 @@ pub(crate) fn build(map: &MapData, projection: &LocalProjection, road: &RoadInde
         for ring in &area.outer {
             let ring = project(ring);
             if near(&ring) {
-                fill(&mut flat, &ring, color);
+                fill(&mut flat, &ring, color, SIMPLIFY);
             }
         }
         // Holes are painted with the background, approximating the cut-out.
         for ring in &area.inner {
             let ring = project(ring);
             if near(&ring) {
-                fill(&mut flat, &ring, BACKGROUND);
+                fill(&mut flat, &ring, BACKGROUND, SIMPLIFY);
             }
         }
     }
@@ -83,7 +83,7 @@ pub(crate) fn build(map: &MapData, projection: &LocalProjection, road: &RoadInde
     for building in &map.buildings {
         let outline = project(&building.outline);
         if near(&outline) {
-            fill(&mut flat, &outline, BUILDING);
+            fill(&mut flat, &outline, BUILDING, SIMPLIFY);
         }
     }
     flat
@@ -117,10 +117,10 @@ fn cover_color(cover: LandCover) -> [f32; 4] {
     }
 }
 
-/// Fills a closed ring.
+/// Fills a closed ring, simplified to `tolerance` metres.
 #[allow(clippy::cast_possible_truncation)] // drawing precision
-fn fill(flat: &mut FlatMap, ring: &[(f64, f64)], color: [f32; 4]) {
-    let mut points = simplify(ring, SIMPLIFY);
+pub(crate) fn fill(flat: &mut FlatMap, ring: &[(f64, f64)], color: [f32; 4], tolerance: f64) {
+    let mut points = simplify(ring, tolerance);
     points.pop(); // closing point
     if points.len() < 3 {
         return;

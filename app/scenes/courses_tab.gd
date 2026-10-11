@@ -11,7 +11,8 @@ signal course_opened(course: Dictionary)
 const STEP_WEIGHTS: Dictionary[String, Vector2] = {
 	"Reading route": Vector2(0.0, 0.02),
 	"Downloading map data": Vector2(0.02, 0.6),
-	"Correcting elevations": Vector2(0.6, 0.8),
+	"Correcting elevations": Vector2(0.6, 0.75),
+	"Downloading the course map": Vector2(0.75, 0.8),
 	"Building 3D world": Vector2(0.8, 1.0),
 }
 
@@ -236,10 +237,10 @@ func _on_course_added(path: String) -> void:
 	_importing = ""
 	_loading.hide()
 	_import_button.disabled = false
-	# The course's map picture for its card, from the world just built (#192).
-	if _torqa.course_preview(path).is_empty():
+	# The course's map picture for its card (#192), from the map loaded with it (#203).
+	if _torqa.course_preview_outdated(path):
 		var png: PackedByteArray = await MapPreview.capture(
-			get_tree(), _torqa.minimap_mesh(), _torqa.track(2000)
+			get_tree(), _torqa.course_map(path), _torqa.track(2000)
 		)
 		if not png.is_empty():
 			_torqa.set_course_preview(path, png)

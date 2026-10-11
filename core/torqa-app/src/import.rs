@@ -4,8 +4,9 @@ use std::path::Path;
 
 use torqa_domain::files::UsedFiles;
 use torqa_osm::{MapData, Osm};
-use torqa_routes::{ElevationModel, Route};
+use torqa_routes::{ElevationModel, LocalProjection, Route};
 use torqa_terrain::{Terrain, TileSource};
+use torqa_world::course_map::{self, CourseMap, Frame};
 use tracing::warn;
 
 /// A step of preparing a course, for progress display.
@@ -17,6 +18,8 @@ pub enum LoadStage {
     Map,
     /// Correcting elevations with the terrain model.
     Elevation,
+    /// Downloading (or reading cached) map data for the course's picture.
+    CourseMap,
     /// Building the 3D world.
     World,
 }
@@ -25,12 +28,15 @@ impl LoadStage {
     /// What the step does, for display.
     #[must_use]
     pub fn label(self) -> &'static str {
+        // i18n-begin: translated by the front end.
         match self {
             Self::Route => "Reading route",
             Self::Map => "Downloading map data",
             Self::Elevation => "Correcting elevations",
+            Self::CourseMap => "Downloading the course map",
             Self::World => "Building 3D world",
         }
+        // i18n-end
     }
 
     /// What the step counts, for display.
@@ -38,7 +44,7 @@ impl LoadStage {
     pub fn unit(self) -> &'static str {
         match self {
             Self::Route => "files",
-            Self::Map => "tiles",
+            Self::Map | Self::CourseMap => "tiles",
             Self::Elevation => "points",
             Self::World => "chunks",
         }
@@ -58,6 +64,8 @@ pub struct Imported {
     pub name: String,
     /// The original GPX track, kept for saving the course.
     pub gpx: String,
+    /// The map for the course's picture, when it is to get one ([`course_map`]).
+    pub course_map: Option<Box<CourseMap>>,
 }
 
 /// Reads a GPX file and imports it with [`import_gpx`], named after the file if the track has
@@ -143,7 +151,46 @@ pub async fn import_gpx(
         map,
         name,
         gpx: xml,
+        course_map: None,
     })
+}
+
+/// The map of the land around the whole of `route` for the course's picture (#203), from map
+/// tiles as detailed as the picture needs. Downloads are cached under `cache_dir` but not
+/// recorded for the course file, which keeps the picture instead; `offline` uses the cache
+/// only. `None` if no tile is available.
+pub async fn course_map(
+    route: &Route,
+    cache_dir: &Path,
+    offline: bool,
+    progress: Progress<'_>,
+) -> Option<Box<CourseMap>> {
+    let projection = LocalProjection::for_route(route);
+    let track: Vec<_> = route
+        .points()
+        .iter()
+        .map(|p| projection.project(p.lat, p.lon))
+        .collect();
+    let frame = Frame::around(&track)?;
+    let mut osm = Osm::new(cache_dir.join("osm"));
+    if offline {
+        osm = osm.offline();
+    }
+    let map = osm
+        .area(
+            frame.corners(&projection),
+            frame.zoom(&projection),
+            &mut |done, total| progress(LoadStage::CourseMap, done, total),
+        )
+        .await
+        .inspect_err(|error| warn!(%error, "no map for the course's picture"))
+        .ok()?;
+    Some(Box::new(course_map::build(
+        &map,
+        &projection,
+        &track,
+        frame,
+    )))
 }
 
 /// Reports elevation lookups as progress.
@@ -160,5 +207,50 @@ impl<M: ElevationModel + Send> ElevationModel for Counting<'_, M> {
         self.done += 1;
         (self.progress)(LoadStage::Elevation, self.done.min(self.total), self.total);
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_course_map_shows_the_land_around_the_whole_route() {
+        // #203: a 15 km line from Meiringen to the east, its map from tiles of a zoom for the
+        // whole of it, here the one cached around Meiringen.
+        let cache = std::env::temp_dir().join(format!("torqa-course-map-{}", std::process::id()));
+        let tiles = cache.join("osm/openfreemap-omt-v1/12/2141");
+        std::fs::create_dir_all(&tiles).unwrap();
+        std::fs::write(
+            tiles.join("1445.pbf"),
+            include_bytes!("../../torqa-osm/tests/data/12_2141_1445.pbf"),
+        )
+        .unwrap();
+        let gpx = r#"<gpx><trk><trkseg>
+            <trkpt lat="46.7277" lon="8.1872"><ele>595</ele></trkpt>
+            <trkpt lat="46.7050" lon="8.2300"><ele>625</ele></trkpt>
+            <trkpt lat="46.7000" lon="8.3800"><ele>700</ele></trkpt>
+        </trkseg></trk></gpx>"#;
+        let route = Route::from_gpx(gpx, None).await.unwrap();
+        let mut stages = Vec::new();
+
+        let map = course_map(&route, &cache, true, &mut |stage, _, total| {
+            stages.push((stage, total));
+        })
+        .await
+        .unwrap();
+
+        // The neighbouring tiles are not cached: the map has what there is.
+        assert!(
+            stages
+                .iter()
+                .all(|&(stage, total)| stage == LoadStage::CourseMap && total > 1)
+        );
+        assert!(map.labels.iter().any(|l| l.name == "Meiringen"));
+        let (west, east) = (map.frame.west, map.frame.east);
+        let projection = LocalProjection::for_route(&route);
+        let (end_east, _) = projection.project(46.70, 8.38);
+        assert!(west < -500.0 && east > end_east + 500.0);
+        std::fs::remove_dir_all(cache).unwrap();
     }
 }

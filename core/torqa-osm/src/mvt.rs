@@ -9,12 +9,13 @@ use mvt_reader::Reader;
 use mvt_reader::feature::Value;
 
 use crate::{
-    Area, Building, LandCover, LatLon, MapData, OsmError, Railway, Road, RoadClass, StructureKind,
-    Waterway, ZOOM,
+    Area, Building, LandCover, LatLon, MapData, OsmError, Place, PlaceKind, Railway, Road,
+    RoadClass, StructureKind, Waterway,
 };
 
-/// Adds the features of tile (x, y) to `data`.
+/// Adds the features of tile (x, y) at `zoom` to `data`.
 pub(crate) fn merge(
+    zoom: u8,
     (x, y): (u32, u32),
     bytes: Vec<u8>,
     data: &mut MapData,
@@ -23,6 +24,7 @@ pub(crate) fn merge(
     let reader = Reader::new(bytes).map_err(invalid)?;
     for layer in reader.get_layer_metadata().map_err(invalid)? {
         let projection = TileProjection {
+            zoom,
             x: f64::from(x),
             y: f64::from(y),
             extent: f64::from(layer.extent),
@@ -40,6 +42,7 @@ pub(crate) fn merge(
                 }
                 "waterway" => add_waterway(data, &tags, geometry, &projection),
                 "transportation" => add_road(data, &tags, geometry, &projection),
+                "place" => add_place(data, &tags, geometry, &projection),
                 // Other religions' buildings would need other shapes; unknown ones are mostly
                 // chapels where churches are.
                 "poi"
@@ -85,6 +88,41 @@ pub(crate) fn merge(
         }
     }
     Ok(())
+}
+
+fn add_place(
+    data: &mut MapData,
+    tags: &Tags,
+    geometry: &Geometry<f64>,
+    projection: &TileProjection,
+) {
+    // Hamlets, suburbs and the like are too small for a whole course's map; countries and
+    // states too large.
+    let kind = match tags.text("class") {
+        "city" => PlaceKind::City,
+        "town" => PlaceKind::Town,
+        "village" => PlaceKind::Village,
+        _ => return,
+    };
+    let name = tags.text("name").trim();
+    if name.is_empty() {
+        return;
+    }
+    // Ranks are small whole numbers.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let rank = tags.number("rank").map_or(u32::MAX, |r| r.max(0.0) as u32);
+    for point in points(geometry) {
+        // Neighbouring tiles repeat places near their borders; one of them owns each.
+        if projection.owns(point) {
+            data.places.push(Place {
+                name: name.to_owned(),
+                latin: tags.text("name:latin").trim().to_owned(),
+                kind,
+                rank,
+                position: projection.point(point.0, point.1),
+            });
+        }
+    }
 }
 
 /// Whether a point of interest of this class is a shop, café, restaurant or the like: a
@@ -451,6 +489,7 @@ fn lines(geometry: &Geometry<f64>) -> Vec<&LineString<f64>> {
 
 /// Converts tile pixel coordinates (y down) to latitude/longitude.
 struct TileProjection {
+    zoom: u8,
     x: f64,
     y: f64,
     extent: f64,
@@ -458,7 +497,7 @@ struct TileProjection {
 
 impl TileProjection {
     fn point(&self, px: f64, py: f64) -> LatLon {
-        let n = f64::from(1u32 << ZOOM);
+        let n = f64::from(1u32 << self.zoom);
         let lon = (self.x + px / self.extent) / n * 360.0 - 180.0;
         let mercator = PI * (1.0 - 2.0 * (self.y + py / self.extent) / n);
         (mercator.sinh().atan().to_degrees(), lon)
@@ -568,6 +607,7 @@ mod tests {
     fn test_tile() -> MapData {
         let mut data = MapData::default();
         merge(
+            14,
             (8531, 5767),
             include_bytes!("../tests/data/14_8531_5767.pbf").to_vec(),
             &mut data,
@@ -577,8 +617,33 @@ mod tests {
     }
 
     #[test]
+    fn names_the_villages_of_a_tile_but_not_its_hamlets() {
+        let mut data = MapData::default();
+        merge(
+            12,
+            (2141, 1445),
+            include_bytes!("../tests/data/12_2141_1445.pbf").to_vec(),
+            &mut data,
+        )
+        .unwrap();
+        let named = |name: &str| data.places.iter().filter(|p| p.name == name).count();
+
+        let meiringen = data.places.iter().find(|p| p.name == "Meiringen").unwrap();
+        assert_eq!(meiringen.kind, PlaceKind::Village);
+        assert_eq!(meiringen.latin, "Meiringen");
+        assert!((meiringen.position.0 - 46.728).abs() < 0.002);
+        assert!((meiringen.position.1 - 8.187).abs() < 0.002);
+        assert_eq!(named("Innertkirchen"), 1);
+        // Hamlets (Wyler) are too small for a course's map; Lungern is the neighbouring
+        // tile's to name, though this one repeats it near its border.
+        assert_eq!(named("Wyler"), 0);
+        assert_eq!(named("Lungern"), 0);
+    }
+
+    #[test]
     fn tile_coordinates_map_to_the_tile_area() {
         let projection = TileProjection {
+            zoom: 14,
             x: 8531.0,
             y: 5767.0,
             extent: 4096.0,
@@ -772,6 +837,7 @@ mod tests {
     #[test]
     fn streams_in_culverts_and_tunnels_are_left_out() {
         let projection = TileProjection {
+            zoom: 14,
             x: 8531.0,
             y: 5767.0,
             extent: 4096.0,
@@ -799,6 +865,7 @@ mod tests {
     #[test]
     fn railways_are_kept_with_their_bridges_and_tunnels_but_not_trams_or_subways() {
         let projection = TileProjection {
+            zoom: 14,
             x: 8531.0,
             y: 5767.0,
             extent: 4096.0,
@@ -864,6 +931,7 @@ mod tests {
     fn ways_crossing_a_tile_border_meet_there_end_to_end() {
         // #116, #117: the copies in the tiles' buffers overlapped, ending along each other.
         let here = TileProjection {
+            zoom: 14,
             x: 8531.0,
             y: 5767.0,
             extent: 4096.0,
@@ -917,6 +985,7 @@ mod tests {
     #[test]
     fn a_building_on_a_tile_border_is_drawn_by_one_tile() {
         let here = TileProjection {
+            zoom: 14,
             x: 8531.0,
             y: 5767.0,
             extent: 4096.0,

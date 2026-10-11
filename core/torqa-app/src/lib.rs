@@ -9,7 +9,7 @@ pub mod paths;
 pub mod video;
 pub mod view;
 
-pub use import::{Imported, LoadStage, Progress, import_gpx, import_route};
+pub use import::{Imported, LoadStage, Progress, course_map, import_gpx, import_route};
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
@@ -419,6 +419,8 @@ pub struct App {
     /// A video open for preview frames, e.g. while aligning it to a route.
     preview: Option<(PathBuf, Video)>,
     route: Option<Route>,
+    /// The map for the loaded course's picture, if it is to get one (#203).
+    course_map: Option<Box<torqa_world::course_map::CourseMap>>,
     world: Option<Arc<World>>,
     offline: bool,
     /// Name and GPX of the loaded route, for saving it as a course.
@@ -476,6 +478,7 @@ impl App {
             view: View::World,
             preview: None,
             route: None,
+            course_map: None,
             world: None,
             offline: false,
             loaded: None,
@@ -602,11 +605,15 @@ impl App {
                 load,
                 last: None,
             };
-            let result = import_route(&path, &cache, offline, &used, &mut |stage, done, total| {
-                reporter.report(stage, done, total);
-            })
-            .await
-            .map(Box::new);
+            let mut report = |stage, done, total| reporter.report(stage, done, total);
+            let result = match import_route(&path, &cache, offline, &used, &mut report).await {
+                Ok(mut imported) => {
+                    imported.course_map =
+                        course_map(&imported.route, &cache, offline, &mut report).await;
+                    Ok(Box::new(imported))
+                }
+                Err(message) => Err(message),
+            };
             let _ = tx.send(JobResult::Route(load, result));
         });
     }
@@ -632,12 +639,14 @@ impl App {
             reporter.report(LoadStage::Route, 0, 1);
             let unpack_from = path.clone();
             let unpack_to = cache.clone();
-            let unpacked =
-                tokio::task::spawn_blocking(move || course::unpack(&unpack_from, &unpack_to))
-                    .await
-                    .map_err(|e| e.to_string())
-                    .and_then(|r| r.map_err(|e| format!("cannot open {}: {e}", path.display())));
-            let unpacked = match unpacked {
+            let unpacked = tokio::task::spawn_blocking(move || {
+                let outdated = course::preview_outdated(&unpack_from);
+                course::unpack(&unpack_from, &unpack_to).map(|unpacked| (unpacked, outdated))
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r.map_err(|e| format!("cannot open {}: {e}", path.display())));
+            let (unpacked, outdated_preview) = match unpacked {
                 Ok(unpacked) => unpacked,
                 Err(message) => {
                     let _ = tx.send(JobResult::Route(load, Err(message)));
@@ -664,19 +673,28 @@ impl App {
                     located: reference.located,
                 });
             }
-            let imported = import_gpx(
+            let mut report = |stage, done, total| reporter.report(stage, done, total);
+            let mut imported = import_gpx(
                 unpacked.gpx,
                 &unpacked.manifest.name,
                 (&cache, true),
                 video.is_some(),
                 &used,
-                &mut |stage, done, total| reporter.report(stage, done, total),
+                &mut report,
             )
             .await
             .map(|mut imported| {
                 imported.name = unpacked.manifest.name;
                 imported
             });
+            // A course from before #203 gets the map of its land: its file holds only its
+            // corridor's, so the map comes online.
+            if let Ok(imported) = &mut imported
+                && outdated_preview
+                && video.as_ref().is_none_or(|v| v.located)
+            {
+                imported.course_map = course_map(&imported.route, &cache, false, &mut report).await;
+            }
             let _ = tx.send(match (imported, video) {
                 (Ok(imported), Some(source)) => {
                     JobResult::Video(load, Ok(Box::new((imported, source))))
@@ -715,8 +733,9 @@ impl App {
                 .await
                 .map_err(|e| e.to_string())
                 .and_then(|r| r);
+            let mut report = |stage, done, total| reporter.report(stage, done, total);
             let result = match source {
-                Ok(source) => import_gpx(
+                Ok(source) => match import_gpx(
                     source.gpx.clone(),
                     &source.name,
                     // A course without a place keeps its own elevations: terrain data from
@@ -724,10 +743,20 @@ impl App {
                     (&cache, offline || !source.located),
                     true,
                     &used,
-                    &mut |stage, done, total| reporter.report(stage, done, total),
+                    &mut report,
                 )
                 .await
-                .map(|imported| Box::new((imported, source))),
+                {
+                    Ok(mut imported) => {
+                        // Nor does it get a map: there is no land around a drawn line.
+                        if source.located {
+                            imported.course_map =
+                                course_map(&imported.route, &cache, offline, &mut report).await;
+                        }
+                        Ok(Box::new((imported, source)))
+                    }
+                    Err(message) => Err(message),
+                },
                 Err(message) => Err(message),
             };
             let _ = tx.send(JobResult::Video(load, result));
@@ -1194,6 +1223,24 @@ impl App {
         course::preview(path)
     }
 
+    /// Whether the course at `path` is to get a new map picture: it has none, or one of its
+    /// route's corridor only, from before #203.
+    #[must_use]
+    pub fn course_preview_outdated(path: &Path) -> bool {
+        course::preview_outdated(path)
+    }
+
+    /// The map to draw the picture of the course at `path` from (#203), if it is the loaded
+    /// course and its map came with it: a new course's always, an opened one's only when its
+    /// picture was outdated ([`App::course_preview_outdated`]). `None` too when no map data
+    /// could be had.
+    #[must_use]
+    pub fn course_map(&self, path: &Path) -> Option<&torqa_world::course_map::CourseMap> {
+        (self.course.as_deref() == Some(path))
+            .then_some(self.course_map.as_deref())
+            .flatten()
+    }
+
     /// Keeps `png`, the map picture the app drew, with the course at `path` (#192).
     ///
     /// # Errors
@@ -1244,6 +1291,7 @@ impl App {
         self.view = View::World;
         self.world = None;
         self.route = None;
+        self.course_map = None;
         self.loaded = None;
         self.used = UsedFiles::default();
         self.used.clone()
@@ -2414,9 +2462,14 @@ impl App {
     /// Takes a loaded route as the current one and reports it.
     fn route_loaded(&mut self, imported: Imported, events: &mut Vec<AppEvent>) {
         let Imported {
-            route, name, gpx, ..
+            route,
+            name,
+            gpx,
+            course_map,
+            ..
         } = imported;
         self.loaded = Some((name.clone(), gpx));
+        self.course_map = course_map;
         events.push(AppEvent::RouteLoaded(RouteSummary {
             name,
             length: route.length().0,
