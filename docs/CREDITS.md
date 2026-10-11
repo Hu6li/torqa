@@ -26,3 +26,13 @@ The Blender skills in `.claude/skills/blender-*` are from
 
 Map and terrain data credits are shown in the app and stored in every course file; see
 [courses.md](courses.md).
+
+## Documentation images
+
+Images that only illustrate the docs and never ship in the app may show third-party footage
+under other licences; each is listed here with its own.
+
+- `docs/images/readme/video-course.jpg` shows a frame of
+  [“Le petit Menglonnais”](https://cycling.vangestel.online) by **Fred Van Gestel**,
+  **CC BY-NC-SA 4.0** ([licence](https://creativecommons.org/licenses/by-nc-sa/4.0/)). The
+  screenshot is under the same licence.

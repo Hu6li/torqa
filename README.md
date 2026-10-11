@@ -5,41 +5,86 @@
   </picture>
 </p>
 
+<p align="center"><em>Killer watts. No cloud.</em></p>
+
+<p align="center">
+  <a href="https://github.com/bossm8/Torqa/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/bossm8/Torqa/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/bossm8/Torqa" alt="License: GPL-3.0"></a>
+  <a href="docs/development.md#builds"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platforms: macOS, Windows, Linux"></a>
+  <img src="https://img.shields.io/badge/Rust-000000?logo=rust" alt="Rust">
+  <img src="https://img.shields.io/badge/Godot-4-478CBF?logo=godotengine&logoColor=white" alt="Godot 4">
+</p>
+
 # Torqa
 
 A modern, offline-first, open-source indoor cycling app. Import a GPX route or a ride video and
-ride it on your smart trainer through a generated 3D world or along the video.
+ride it on your smart trainer, through a generated 3D world or along the video.
 
-> **Status:** early development — see [docs/PLAN.md](docs/PLAN.md) for what is done and what
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="docs/images/ride-lake.jpg" alt="Riding along the Bielersee in Torqa's 3D world"><br>
+      <sub>Any GPX route as a 3D world, here along the Bielersee</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/readme/video-course.jpg" alt="Riding a video course in Torqa"><br>
+      <sub>Along a real video, played at your speed</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/readme/overlay.jpg" alt="Torqa's overlay on top of a browser window"><br>
+      <sub>Just your HUD, on top of any window</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>Video: <a href="https://cycling.vangestel.online">“Le petit Menglonnais”</a> by Fred Van
+Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>.</sub>
+
+> [!WARNING]
+> **Written by AI, ridden at your own risk.** Every line of Torqa is written by AI. It comes
+> with no warranty of any kind, and we accept no liability for injury to you or for damage to
+> your trainer, bike or any other gear (sections 15 and 16 of the [GPL-3.0](LICENSE)).
+
+> [!NOTE]
+> Torqa is in early development: [docs/PLAN.md](docs/PLAN.md) shows what is done and what
 > comes next.
-
-![Riding along the Bielersee in Torqa](docs/images/ride-lake.jpg)
 
 ## Features
 
-Working today:
+<table>
+  <tr>
+    <td width="50%">🚴 <b><a href="docs/riding.md#devices">Smart trainers</a></b><br>
+      Bluetooth FTMS (SIM, ERG, resistance) and heart-rate straps; your devices reconnect at start</td>
+    <td width="50%">🗺️ <b><a href="docs/riding.md#the-3d-world">Any GPX in 3D</a></b><br>
+      A stylized world from real terrain and OpenStreetMap, with weather and time of day</td>
+  </tr>
+  <tr>
+    <td>🎬 <b><a href="docs/video.md">Video courses</a></b><br>
+      GoPro, Incyclist, Tacx RLV or any video matched to a GPX; it plays at your speed</td>
+    <td>💪 <b><a href="docs/workouts.md">Workouts</a></b><br>
+      Hold a power or a heart rate, ZWO / ERG / MRC / FIT with an editor, three FTP tests</td>
+  </tr>
+  <tr>
+    <td>⚙️ <b><a href="docs/riding.md#virtual-gears">Virtual gears</a></b><br>
+      24 gears on a single cog, shifted from the keyboard or Shimano Di2 hood buttons</td>
+    <td>🪟 <b><a href="docs/overlay.md">Overlay</a></b><br>
+      Just your HUD, on top of a video or any other window</td>
+  </tr>
+  <tr>
+    <td>👻 <b><a href="docs/ghosts.md">Ghosts &amp; pacers</a></b><br>
+      Race your best ride, a friend's activity or a pacer at your FTP</td>
+    <td>📈 <b><a href="docs/history.md">History &amp; records</a></b><br>
+      FIT export, ride analysis, personal records per course and climb</td>
+  </tr>
+</table>
 
-- Smart trainer control over Bluetooth FTMS (tested with the CLI on a Wahoo KICKR Core 2): SIM, ERG,
-  resistance; heart-rate straps; the devices used last reconnect at start
-- Virtual gears on a single cog, shifted from the keyboard or a Shimano Di2's hood buttons,
-  which can also work the camera, the overlay or the music
-- GPX import with terrain-corrected elevation, auto-detected climbs
-- Stylized, faceted 3D worlds in a pastel palette, generated from real terrain and
-  OpenStreetMap data (roads, buildings by kind — churches, castles and lighthouses among them —,
-  forests, water, railways; palms and houses built for the heat in the subtropics), with cameras,
-  time of day and weather
-- Course library: prepared routes as `.tqc` files that ride offline on any computer
-- Video courses: GoPro videos with GPS, Incyclist route videos, Tacx RLV and any video aligned
-  with a GPX route; the video plays at your speed, its sound too
-- Realistic physics, adjustable trainer difficulty, descent modes; ghosts and pacers
-- Workouts: hold a power or a heart rate, structured workouts (ZWO, ERG/MRC, FIT files and an
-  editor), three FTP tests; on their own or on a course in 3D
-- An overlay: just your HUD on top of other windows, e.g. over a video
-- Rider profiles with adjustable zones, a customizable HUD, music control, English and German
-- FIT export, ride history and analysis, personal records per course and climb
+📴 Courses ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
+🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows and Linux
 
-Planned: Street View / Mapillary rides, uploads to Strava, intervals.icu and others, ANT+ FE-C,
-hardware video decoding. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the full list.
+**Planned:** Street View / Mapillary rides, uploads to Strava, intervals.icu and others, ANT+
+FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Using Torqa
 
@@ -59,53 +104,20 @@ hardware video decoding. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for th
 | Translations | [docs/translating.md](docs/translating.md) |
 | Command-line tool for testing trainers | [docs/cli.md](docs/cli.md) |
 
-## Development
+## Download
 
-All tooling runs in a container — nothing is installed on your machine.
+There are no releases yet. The builds for macOS (Apple silicon), Windows and Linux are
+artifacts of the [CI runs on `main`](https://github.com/bossm8/Torqa/actions/workflows/ci.yml?query=branch%3Amain)
+(download them while signed in to GitHub); [docs/development.md](docs/development.md#builds)
+says which file is which.
 
-1. Install [Docker](https://www.docker.com/) and [VS Code](https://code.visualstudio.com/) with the
-   [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
-2. Open this folder in VS Code and choose **Reopen in Container**.
+## Contributing
 
-Without VS Code, `scripts/dev.sh <command>` runs any command in the same container.
-
-| Task | Command (inside the container) |
-|---|---|
-| All checks (fmt, clippy, tests, cargo-deny, translations, gdlint, gdformat, Godot smoke tests) | `scripts/check.sh` |
-| Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
-| Render screenshots of the start page, a ride and the summary (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
-| Render the standard views of the 3D world (before and after a visual change) into `screenshots/views/` | `scripts/render-views.sh` |
-| Render the 3D models (buildings, plants, clouds) and the riders for review; with `GALLERY=docs/images/models`, also the galleries in `art/README.md` | `scripts/render-models.sh`, `scripts/render-riders.sh` |
-| Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
-| Refresh the translation template after text changes | `python3 scripts/i18n/extract.py` |
-| Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p torqa-cli -- ride --fake` |
-
-The 3D models are Blender scripts in `art/` (see [art/README.md](art/README.md) for them and a
-gallery of every model); Blender runs in its own container on the host:
-`scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
-
-To test real trainers on macOS, use the CLI built by CI: see [docs/cli.md](docs/cli.md).
-
-Windows builds come from the `windows` CI job: `Torqa-windows-x86_64.zip` (`Torqa.exe` with
-`torqa_gd.dll` beside it; keep both in one folder) and `torqa-cli-windows-x86_64.zip`, both under
-the run's artifacts. Like the macOS app it is built natively on the runner (MSVC, with MSYS2's
-`sh` and `make` for FFmpeg).
-FFmpeg's libraries come from `scripts/build-ffmpeg.sh` (a pinned, verified release; ADR 0010):
-built into the dev image, and once per platform in CI.
-
-Linux builds come from the `linux` CI job, for x86_64 and arm64: `Torqa-linux-<arch>.tar.gz`
-(a `Torqa` folder with `Torqa.<arch>` and `libtorqa_gd.so`; keep both together) and
-`torqa-cli-linux-<arch>.tar.gz`. They are built on Ubuntu 22.04 so they run on any distribution
-with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), not only on ones as new as
-the dev container ([ADR 0012](docs/adr/0012-linux-builds.md)). CI starts the exported app
-headless to check that it loads.
-
-Docker on macOS cannot access Bluetooth or the GPU, so macOS builds are produced by GitHub Actions.
-To test 3D rendering or a real trainer, run the built app (or the portable Godot editor) natively.
-
-Contributor conventions: [CLAUDE.md](CLAUDE.md). Architecture decisions: [docs/adr/](docs/adr/).
-Third-party assets and their licences: [docs/CREDITS.md](docs/CREDITS.md).
+Everything runs in a dev container: setup, checks and builds are in
+[docs/development.md](docs/development.md). Conventions: [CLAUDE.md](CLAUDE.md); architecture
+decisions: [docs/adr/](docs/adr/); third-party assets: [docs/CREDITS.md](docs/CREDITS.md).
 
 ## License
 
-[GPL-3.0](LICENSE)
+[GPL-3.0](LICENSE). The video-course screenshot shows a frame of a CC BY-NC-SA 4.0 video and is
+under that licence (see [docs/CREDITS.md](docs/CREDITS.md)).
