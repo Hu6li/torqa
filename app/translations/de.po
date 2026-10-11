@@ -627,6 +627,18 @@ msgstr "Strecke löschen?"
 msgid "Building 3D world"
 msgstr "3D-Welt wird gebaut"
 
+msgid "Correcting elevations"
+msgstr "Höhen werden korrigiert"
+
+msgid "Downloading map data"
+msgstr "Kartendaten werden geladen"
+
+msgid "Downloading the course map"
+msgstr "Streckenkarte wird geladen"
+
+msgid "Reading route"
+msgstr "Strecke wird gelesen"
+
 msgid "Its file is deleted; your rides on it are kept."
 msgstr "Die Datei wird gelöscht; deine Fahrten darauf bleiben erhalten."
 

@@ -11,7 +11,7 @@ signal back_requested
 signal ride_requested(options: Dictionary, ghost: Dictionary)
 ## The world asked for with `build()` is ready: the ride can start.
 signal ready_to_ride
-## The course was renamed or deleted: the gallery is out of date.
+## The course was renamed, deleted or given a new map picture: the gallery is out of date.
 signal course_changed
 
 var _torqa: TorqaApp
@@ -247,6 +247,7 @@ func _show_route() -> void:
 	_records.text = "\n".join(lines)
 	var ftp: float = _torqa.profile().get("ftp_w", 200.0)
 	_ghost.configure(_torqa.has_personal_best(), ftp)
+	_keep_preview()
 
 
 func _on_loading_progress(step: String, _unit: String, done: int, total: int) -> void:
@@ -264,19 +265,20 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_status.text = ""
 	_ride_button.disabled = false
 	ready_to_ride.emit()
-	_keep_preview()
 
 
-## A course from before map pictures gets its own from the world just built (#192).
+## A course without a map of its whole land, from before #203, gets one from the map loaded
+## with it.
 func _keep_preview() -> void:
-	if _path.is_empty() or not _torqa.course_preview(_path).is_empty():
+	if _path.is_empty() or not _torqa.course_preview_outdated(_path):
 		return
 	var png: PackedByteArray = await MapPreview.capture(
-		get_tree(), _torqa.minimap_mesh(), _torqa.track(2000)
+		get_tree(), _torqa.course_map(_path), _torqa.track(2000)
 	)
 	if not png.is_empty():
 		_torqa.set_course_preview(_path, png)
 		_path_card.set_map(png)
+		course_changed.emit()
 
 
 func _on_failed(message: String) -> void:

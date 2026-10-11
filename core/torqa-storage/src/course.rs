@@ -29,8 +29,11 @@ pub const FORMAT_VERSION: u32 = 1;
 const MANIFEST: &str = "manifest.json";
 const ROUTE: &str = "route.gpx";
 const DATA: &str = "data/";
-/// The course's map picture, drawn by the app when the course was prepared (#192).
-const PREVIEW: &str = "preview.png";
+/// The course's map picture, drawn by the app when the course was prepared (#192, #203).
+const PREVIEW: &str = "map.png";
+/// The picture of courses prepared before #203: the route's corridor only. Shown until the
+/// course gets a new one.
+const CORRIDOR_PREVIEW: &str = "preview.png";
 
 /// Reading or writing a course file failed.
 #[derive(Debug, thiserror::Error)]
@@ -310,7 +313,7 @@ pub fn unpack(path: &Path, data_root: &Path) -> Result<Unpacked, CourseError> {
 /// # Errors
 /// [`CourseError::NewerFormat`] for files from a newer Torqa, or an I/O, zip or manifest error.
 pub fn rewrite_manifest(path: &Path, manifest: &Manifest) -> Result<(), CourseError> {
-    rewrite(path, MANIFEST, |out| {
+    rewrite(path, &[MANIFEST], |out| {
         out.start_file(
             MANIFEST,
             SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
@@ -320,14 +323,28 @@ pub fn rewrite_manifest(path: &Path, manifest: &Manifest) -> Result<(), CourseEr
     })
 }
 
-/// The course's map picture, if it has one: the PNG the app drew when it was prepared (#192).
+/// The course's map picture, if it has one: the PNG the app drew when it was prepared (#192),
+/// or one of its corridor from before #203.
 #[must_use]
 pub fn preview(path: &Path) -> Option<Vec<u8>> {
     let mut zip = ZipArchive::new(BufReader::new(File::open(path).ok()?)).ok()?;
-    let mut entry = zip.by_name(PREVIEW).ok()?;
+    let mut entry = match zip.index_for_name(PREVIEW) {
+        Some(index) => zip.by_index(index).ok()?,
+        None => zip.by_name(CORRIDOR_PREVIEW).ok()?,
+    };
     let mut png = Vec::new();
     entry.read_to_end(&mut png).ok()?;
     Some(png)
+}
+
+/// Whether the course lacks a map picture of the land around its whole route (#203): it has
+/// none, or one of its corridor only.
+#[must_use]
+pub fn preview_outdated(path: &Path) -> bool {
+    File::open(path)
+        .ok()
+        .and_then(|file| ZipArchive::new(BufReader::new(file)).ok())
+        .is_none_or(|zip| zip.index_for_name(PREVIEW).is_none())
 }
 
 /// Puts the course's map picture `png` into its file, in place of an earlier one (#192).
@@ -335,7 +352,7 @@ pub fn preview(path: &Path) -> Option<Vec<u8>> {
 /// # Errors
 /// If the course cannot be read or written.
 pub fn set_preview(path: &Path, png: &[u8]) -> Result<(), CourseError> {
-    rewrite(path, PREVIEW, |out| {
+    rewrite(path, &[PREVIEW, CORRIDOR_PREVIEW], |out| {
         // A PNG is compressed already.
         out.start_file(
             PREVIEW,
@@ -346,11 +363,11 @@ pub fn set_preview(path: &Path, png: &[u8]) -> Result<(), CourseError> {
     })
 }
 
-/// Writes the course again with the entry `replaced` written by `write` and everything else
-/// copied as it is; the file appears whole or not at all.
+/// Writes the course again with the entries `replaced` left out, what `write` writes added, and
+/// everything else copied as it is; the file appears whole or not at all.
 fn rewrite(
     path: &Path,
-    replaced: &str,
+    replaced: &[&str],
     write: impl FnOnce(&mut ZipWriter<BufWriter<File>>) -> Result<(), CourseError>,
 ) -> Result<(), CourseError> {
     let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
@@ -361,7 +378,7 @@ fn rewrite(
         write(&mut out)?;
         for index in 0..zip.len() {
             let entry = zip.by_index_raw(index)?;
-            if entry.name() != replaced {
+            if !replaced.contains(&entry.name()) {
                 out.raw_copy_file(entry)?;
             }
         }
@@ -435,6 +452,31 @@ mod tests {
         let read = read_manifest(&path).unwrap();
         assert_eq!(read.name, manifest().name);
         assert_eq!(unpack(&path, &dir.join("out")).unwrap().gpx, "<gpx/>");
+    }
+
+    #[test]
+    fn a_corridor_picture_shows_until_the_course_gets_a_map_of_its_land() {
+        // #203: courses prepared before kept a picture of the route's corridor only.
+        let dir = temp_dir("corridor-preview");
+        let path = dir.join("lake.tqc");
+        write(&path, &manifest(), "<gpx/>", &dir, &[]).unwrap();
+        assert!(preview_outdated(&path));
+        rewrite(&path, &[], |out| {
+            out.start_file(CORRIDOR_PREVIEW, SimpleFileOptions::default())?;
+            out.write_all(b"PNG corridor")?;
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(preview(&path).as_deref(), Some(&b"PNG corridor"[..]));
+        assert!(preview_outdated(&path));
+
+        set_preview(&path, b"PNG land").unwrap();
+
+        assert_eq!(preview(&path).as_deref(), Some(&b"PNG land"[..]));
+        assert!(!preview_outdated(&path));
+        let mut zip = ZipArchive::new(File::open(&path).unwrap()).unwrap();
+        assert!(zip.by_name(CORRIDOR_PREVIEW).is_err());
     }
 
     #[test]

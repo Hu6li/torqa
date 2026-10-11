@@ -47,7 +47,7 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:207
+#: app/scenes/courses_tab.gd:208
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
@@ -67,7 +67,7 @@ msgstr ""
 msgid "+ Step"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:208
+#: app/scenes/courses_tab.gd:209
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
 
@@ -75,7 +75,7 @@ msgstr ""
 msgid "2 × 8-minute test"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:209
+#: app/scenes/courses_tab.gd:210
 msgid "2. Open that course."
 msgstr ""
 
@@ -87,7 +87,7 @@ msgstr ""
 msgid "20-minute test"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:211
+#: app/scenes/courses_tab.gd:212
 msgid "3. Press the pencil beside its name, then Add video…, and place the route in the video."
 msgstr ""
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "8 minutes all out: as hard as you can hold to the end"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:175
+#: app/scenes/courses_tab.gd:176
 msgid "A course named “%s” exists already. Replace it, or keep both?"
 msgstr ""
 
@@ -243,7 +243,7 @@ msgstr ""
 msgid "Bike weight"
 msgstr ""
 
-#: app/scenes/course_detail.gd:98 app/scenes/workouts_tab.gd:281
+#: app/scenes/course_detail.gd:98 app/scenes/workouts_tab.gd:281 core/torqa-app/src/import.rs:37
 msgid "Building 3D world"
 msgstr ""
 
@@ -367,7 +367,11 @@ msgstr ""
 msgid "Constant power %d W"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:134
+#: core/torqa-app/src/import.rs:35
+msgid "Correcting elevations"
+msgstr ""
+
+#: app/scenes/courses_tab.gd:135
 msgid "Course name in use"
 msgstr ""
 
@@ -457,6 +461,14 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd:24
 msgid "Double press"
+msgstr ""
+
+#: core/torqa-app/src/import.rs:34
+msgid "Downloading map data"
+msgstr ""
+
+#: core/torqa-app/src/import.rs:36
+msgid "Downloading the course map"
 msgstr ""
 
 #: app/scenes/overlay_hud.gd:58
@@ -623,11 +635,11 @@ msgstr ""
 msgid "Full view"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:112
+#: app/scenes/courses_tab.gd:113
 msgid "GPX routes"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:71
+#: app/scenes/courses_tab.gd:72
 msgid "GPX routes, videos with GPS, route videos and course files"
 msgstr ""
 
@@ -719,7 +731,7 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:70 app/scenes/courses_tab.gd:127
+#: app/scenes/courses_tab.gd:71 app/scenes/courses_tab.gd:128
 msgid "Import"
 msgstr ""
 
@@ -763,7 +775,7 @@ msgstr ""
 msgid "Jun"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:136
+#: app/scenes/courses_tab.gd:137
 msgid "Keep both"
 msgstr ""
 
@@ -783,7 +795,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:221
+#: app/scenes/courses_tab.gd:222
 msgid "Loading %s …"
 msgstr ""
 
@@ -879,7 +891,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:126
+#: app/scenes/courses_tab.gd:127
 msgid "Name the course"
 msgstr ""
 
@@ -919,7 +931,7 @@ msgstr ""
 msgid "Next: free ride for %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:91
+#: app/scenes/courses_tab.gd:92
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
@@ -995,7 +1007,7 @@ msgstr ""
 msgid "Only the HUD, on top of other windows, e.g. over a video (O)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:103
+#: app/scenes/courses_tab.gd:104
 msgid "Open a GPX route, video or Torqa course"
 msgstr ""
 
@@ -1119,6 +1131,10 @@ msgstr ""
 msgid "Ramp to"
 msgstr ""
 
+#: core/torqa-app/src/import.rs:33
+msgid "Reading route"
+msgstr ""
+
 #: app/scenes/devices_tab.gd:69
 msgid "Reconnecting your devices…"
 msgstr ""
@@ -1143,7 +1159,7 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:135
+#: app/scenes/courses_tab.gd:136
 msgid "Replace"
 msgstr ""
 
@@ -1199,7 +1215,7 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:111
+#: app/scenes/courses_tab.gd:112
 msgid "Routes, videos and courses"
 msgstr ""
 
@@ -1411,7 +1427,7 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:120
+#: app/scenes/courses_tab.gd:121
 msgid "Torqa courses"
 msgstr ""
 
@@ -1459,19 +1475,19 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:321
+#: app/scenes/course_detail.gd:323
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:328
+#: app/scenes/course_detail.gd:330
 msgid "Video aligned with the route."
 msgstr ""
 
-#: app/scenes/course_detail.gd:334
+#: app/scenes/course_detail.gd:336
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:141
+#: app/scenes/courses_tab.gd:142
 msgid "Video without GPS"
 msgstr ""
 
@@ -1479,7 +1495,7 @@ msgstr ""
 msgid "Videos"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:117
+#: app/scenes/courses_tab.gd:118
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
@@ -1559,7 +1575,7 @@ msgstr ""
 msgid "Your best time on this route: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:66
+#: app/scenes/courses_tab.gd:67
 msgid "Your courses"
 msgstr ""
 

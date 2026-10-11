@@ -165,6 +165,34 @@ pub struct Railway {
     pub funicular: bool,
 }
 
+/// How big a settlement is, most important first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PlaceKind {
+    /// A city.
+    City,
+    /// A town.
+    Town,
+    /// A village.
+    Village,
+}
+
+/// A named settlement, for the names on a course's map (#203).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Place {
+    /// The name as on the ground, in the local language.
+    pub name: String,
+    /// The name in Latin letters: the same where the local one is written so, else a
+    /// transliteration; empty if unknown.
+    pub latin: String,
+    /// City, town or village.
+    pub kind: PlaceKind,
+    /// Importance among places of its kind as `OpenMapTiles` ranks them: lower is more
+    /// important.
+    pub rank: u32,
+    /// Where its name belongs.
+    pub position: LatLon,
+}
+
 /// Map features around a route.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MapData {
@@ -193,6 +221,8 @@ pub struct MapData {
     pub castles: Vec<LatLon>,
     /// Lighthouses, as points on their tower or where it stands when it has no outline.
     pub lighthouses: Vec<LatLon>,
+    /// Cities, towns and villages.
+    pub places: Vec<Place>,
 }
 
 /// Downloads and caches map tiles.
@@ -255,14 +285,44 @@ impl Osm {
         corridor: f64,
         progress: &mut (dyn FnMut(usize, usize) + Send),
     ) -> Result<MapData, OsmError> {
-        let tiles = tiles_near(points, corridor);
+        self.load(ZOOM, tiles_near(points, corridor), progress)
+            .await
+    }
+
+    /// Map features between the corners `south_west` and `north_east`, from tiles at `zoom`
+    /// (at most 14): lower zooms cover more land with less detail, as for a map of a whole
+    /// course (#203). Progress and errors as for [`Osm::around`].
+    ///
+    /// # Errors
+    /// [`OsmError`] if none of the needed tiles is available.
+    pub async fn area(
+        &self,
+        (south_west, north_east): (LatLon, LatLon),
+        zoom: u8,
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<MapData, OsmError> {
+        let zoom = zoom.min(ZOOM);
+        let (west, north) = tile_of(zoom, north_east.0, south_west.1);
+        let (east, south) = tile_of(zoom, south_west.0, north_east.1);
+        let tiles = (west..=east)
+            .flat_map(|x| (north..=south).map(move |y| (x, y)))
+            .collect();
+        self.load(zoom, tiles, progress).await
+    }
+
+    async fn load(
+        &self,
+        zoom: u8,
+        tiles: BTreeSet<(u32, u32)>,
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<MapData, OsmError> {
         let total = tiles.len();
-        info!(tiles = total, "loading map data");
+        info!(zoom, tiles = total, "loading map data");
         progress(0, total);
         let template = self.template().await;
         let template = template.as_deref();
         let mut downloads = stream::iter(tiles)
-            .map(|tile| async move { (tile, self.tile(tile, template).await) })
+            .map(|tile| async move { (tile, self.tile(zoom, tile, template).await) })
             .buffer_unordered(PARALLEL_DOWNLOADS);
         // Download in parallel, but merge in tile order so the data does not depend on
         // download timing.
@@ -276,10 +336,10 @@ impl Osm {
         let mut loaded = 0;
         let mut last_error = None;
         for (tile, result) in results {
-            match result.and_then(|bytes| mvt::merge(tile, bytes, &mut data)) {
+            match result.and_then(|bytes| mvt::merge(zoom, tile, bytes, &mut data)) {
                 Ok(()) => loaded += 1,
                 Err(error) => {
-                    warn!(tile = %tile_name(tile), %error, "map tile unavailable");
+                    warn!(tile = %tile_name(zoom, tile), %error, "map tile unavailable");
                     last_error = Some(error);
                 }
             }
@@ -304,11 +364,16 @@ impl Osm {
         template
     }
 
-    async fn tile(&self, tile: (u32, u32), template: Option<&str>) -> Result<Vec<u8>, OsmError> {
+    async fn tile(
+        &self,
+        zoom: u8,
+        tile: (u32, u32),
+        template: Option<&str>,
+    ) -> Result<Vec<u8>, OsmError> {
         let path = self
             .cache_dir
             .join(CACHE_VERSION)
-            .join(ZOOM.to_string())
+            .join(zoom.to_string())
             .join(tile.0.to_string())
             .join(format!("{}.pbf", tile.1));
         match tokio::fs::read(&path).await {
@@ -320,17 +385,17 @@ impl Osm {
             Err(_) => {}
         }
         let Some(template) = template else {
-            return Err(OsmError::Unavailable(tile_name(tile)));
+            return Err(OsmError::Unavailable(tile_name(zoom, tile)));
         };
         let url = template
-            .replace("{z}", &ZOOM.to_string())
+            .replace("{z}", &zoom.to_string())
             .replace("{x}", &tile.0.to_string())
             .replace("{y}", &tile.1.to_string());
         debug!(%url, "downloading map tile");
         let bytes = self
             .download(&url)
             .await
-            .ok_or_else(|| OsmError::Unavailable(tile_name(tile)))?;
+            .ok_or_else(|| OsmError::Unavailable(tile_name(zoom, tile)))?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -367,8 +432,8 @@ fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(u32, u32)> {
     for &(lat, lon) in points {
         let d_lat = corridor / METERS_PER_DEGREE;
         let d_lon = corridor / (METERS_PER_DEGREE * lat.to_radians().cos().max(0.01));
-        let (west, north) = tile_of(lat + d_lat, lon - d_lon);
-        let (east, south) = tile_of(lat - d_lat, lon + d_lon);
+        let (west, north) = tile_of(ZOOM, lat + d_lat, lon - d_lon);
+        let (east, south) = tile_of(ZOOM, lat - d_lat, lon + d_lon);
         for x in west..=east {
             for y in north..=south {
                 tiles.insert((x, y));
@@ -378,9 +443,9 @@ fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(u32, u32)> {
     tiles
 }
 
-/// The Web Mercator tile containing a position.
-fn tile_of(lat: f64, lon: f64) -> (u32, u32) {
-    let n = f64::from(1u32 << ZOOM);
+/// The Web Mercator tile at `zoom` containing a position.
+fn tile_of(zoom: u8, lat: f64, lon: f64) -> (u32, u32) {
+    let n = f64::from(1u32 << zoom);
     let lat = lat.clamp(-85.05, 85.05).to_radians();
     let x = (lon + 180.0) / 360.0 * n;
     let y = (1.0 - (lat.tan() + 1.0 / lat.cos()).ln() / std::f64::consts::PI) / 2.0 * n;
@@ -389,8 +454,8 @@ fn tile_of(lat: f64, lon: f64) -> (u32, u32) {
     (clamp(x), clamp(y))
 }
 
-fn tile_name((x, y): (u32, u32)) -> String {
-    format!("{ZOOM}/{x}/{y}")
+fn tile_name(zoom: u8, (x, y): (u32, u32)) -> String {
+    format!("{zoom}/{x}/{y}")
 }
 
 #[cfg(test)]
@@ -455,6 +520,39 @@ mod tests {
         assert!(data.roads.len() > 10);
         assert!(data.areas.iter().any(|a| a.cover == LandCover::Forest));
         assert_eq!(reports, [(0, 1), (1, 1)]);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_area_comes_from_tiles_of_its_zoom() {
+        let cache = std::env::temp_dir().join(format!("torqa-osm-area-{}", std::process::id()));
+        let dir = cache.join(CACHE_VERSION).join("12").join("2141");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("1445.pbf"),
+            include_bytes!("../tests/data/12_2141_1445.pbf"),
+        )
+        .unwrap();
+        let osm = Osm::new(cache.clone()).offline();
+        let mut reports = Vec::new();
+
+        // Around Meiringen, within that one tile.
+        let data = osm
+            .area(((46.70, 8.18), (46.73, 8.25)), 12, &mut |done, total| {
+                reports.push((done, total));
+            })
+            .await
+            .unwrap();
+
+        assert!(data.places.iter().any(|p| p.name == "Meiringen"));
+        assert!(data.areas.iter().any(|a| a.cover == LandCover::Water));
+        assert_eq!(reports, [(0, 1), (1, 1)]);
+        // The neighbouring tiles a larger area needs are not cached.
+        let wider = osm
+            .area(((46.6, 8.0), (46.8, 8.4)), 12, &mut |_, _| {})
+            .await
+            .unwrap();
+        assert_eq!(wider.places, data.places);
         std::fs::remove_dir_all(cache).unwrap();
     }
 

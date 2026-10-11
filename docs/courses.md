@@ -39,10 +39,14 @@ The library is the `courses` folder of the Torqa data directory:
 | Windows | `%APPDATA%\Torqa\courses` |
 | Linux | `~/.local/share/torqa/courses` |
 
-A course's card shows its route on the map of its surroundings, drawn when the course was
-prepared and kept in the course file; a course from an earlier Torqa gets its map the next time
-it is opened. You can also copy `.tqc` files there directly. A name too long for its card shows
-in full when you hover over it. The data directory may live in a synced folder.
+A course's card shows its route on a black-and-white map of the land around the whole route,
+with its lakes, rivers, main roads and the names of the towns and villages along it. The map is
+downloaded once, when the course is prepared, and kept in the course file as a picture. A
+course prepared offline, or by an earlier Torqa with a map of the route's corridor only, gets
+the map the next time it is opened with an internet connection.
+
+You can also copy `.tqc` files there directly. A name too long for its card shows in full when
+you hover over it. The data directory may live in a synced folder.
 
 ## Video courses
 

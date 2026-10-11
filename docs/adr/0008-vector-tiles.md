@@ -29,3 +29,7 @@ Measured on a 36 km test line: 344 s, 6 of 20 tiles failed.
 - Features crossing tile borders arrive clipped per tile; land cover and roads are unaffected,
   very large buildings may be cut at a tile edge.
 - One data provider; VersaTiles (Shortbread schema) is a possible fallback if needed.
+- A course's map picture (#203) shows the land around the whole route, far beyond the corridor:
+  it comes from the same tiles at a lower zoom (4–14, as detailed as the picture needs, a few
+  tiles per course), downloaded once when the course is prepared. They are cached but not
+  bundled into the course file, which keeps the picture instead.

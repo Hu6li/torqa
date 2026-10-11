@@ -707,6 +707,95 @@ impl TorqaApp {
             .unwrap_or_default()
     }
 
+    /// Whether the course at `path` is to get a new map picture (#203): it has none, or one of
+    /// its route's corridor only.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    #[allow(clippy::unused_self)] // a #[func] is called on the node
+    fn course_preview_outdated(&self, path: GString) -> bool {
+        App::course_preview_outdated(Path::new(&path.to_string()))
+    }
+
+    /// The map to draw the picture of the course at `path` from (#203), when it is the loaded
+    /// course and its map came with it; empty otherwise. `{size, frame, background, vertices,
+    /// colors, lines, labels}`: the picture's `size` in pixels; the `frame` of land it shows
+    /// and everything on it in metres east/north of the route start (as in `track()`); woods,
+    /// towns and lakes as coloured triangles (`vertices`, `colors`); `lines` as
+    /// `[{points, width, color}]` in drawing order, `width` in pixels; `labels` as
+    /// `[{name, latin, kind, position}]`, most important first: `name` in the local language,
+    /// `latin` in Latin letters (empty if unknown), `kind` one of `"city"`, `"town"`,
+    /// `"village"`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn course_map(&self, path: GString) -> VarDictionary {
+        use torqa_world::course_map::{PICTURE, PlaceKind};
+        let path = PathBuf::from(path.to_string());
+        let Some(map) = self.app.as_ref().and_then(|app| app.course_map(&path)) else {
+            return VarDictionary::new();
+        };
+        let color = |[r, g, b, a]: [f32; 4]| Color::from_rgba(r, g, b, a);
+        let vertices: PackedVector2Array = map
+            .areas
+            .vertices
+            .iter()
+            .map(|&[x, y]| Vector2::new(x, y))
+            .collect();
+        let colors: PackedColorArray = map.areas.colors.iter().map(|&c| color(c)).collect();
+        let mut lines = VarArray::new();
+        for line in &map.lines {
+            let points: PackedVector2Array = line
+                .points
+                .iter()
+                .map(|&[x, y]| Vector2::new(x, y))
+                .collect();
+            lines.push(
+                &vdict! {
+                    "points" => &points,
+                    "width" => line.width,
+                    "color" => color(line.color),
+                }
+                .to_variant(),
+            );
+        }
+        let mut labels = VarArray::new();
+        for label in &map.labels {
+            let kind = match label.kind {
+                PlaceKind::City => "city",
+                PlaceKind::Town => "town",
+                PlaceKind::Village => "village",
+            };
+            labels.push(
+                &vdict! {
+                    "name" => label.name.as_str(),
+                    "latin" => label.latin.as_str(),
+                    "kind" => kind,
+                    "position" => Vector2::new(label.position[0], label.position[1]),
+                }
+                .to_variant(),
+            );
+        }
+        let frame = map.frame;
+        // Drawing precision.
+        #[allow(clippy::cast_possible_truncation)]
+        let frame = Rect2::new(
+            Vector2::new(frame.west as f32, frame.south as f32),
+            Vector2::new(frame.width() as f32, frame.height() as f32),
+        );
+        let size = Vector2i::new(
+            i32::try_from(PICTURE[0]).unwrap_or(i32::MAX),
+            i32::try_from(PICTURE[1]).unwrap_or(i32::MAX),
+        );
+        vdict! {
+            "size" => size,
+            "frame" => frame,
+            "background" => color(torqa_world::course_map::LAND),
+            "vertices" => &vertices,
+            "colors" => &colors,
+            "lines" => &lines,
+            "labels" => &labels,
+        }
+    }
+
     /// Keeps `png`, the map picture the app drew, with the course at `path` (#192).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot

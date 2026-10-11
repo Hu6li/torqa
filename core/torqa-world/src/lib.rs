@@ -9,6 +9,7 @@ mod buildings;
 mod chains;
 mod channels;
 mod climate;
+pub mod course_map;
 mod drape;
 mod horizon;
 mod junctions;
