@@ -153,6 +153,23 @@ impl TorqaApp {
     #[signal]
     fn failed(message: GString);
 
+    /// Rider `rider`'s account on `platform` is connected, as `label` (R29).
+    #[signal]
+    fn account_connected(rider: GString, platform: GString, label: GString);
+
+    /// Connecting rider `rider`'s account on `platform` failed, for the reason in `message`.
+    #[signal]
+    fn account_failed(rider: GString, platform: GString, message: GString);
+
+    /// The ride in `path` is on `platform`, its page at `url` (R29).
+    #[signal]
+    fn upload_finished(path: GString, platform: GString, url: GString);
+
+    /// Uploading the ride in `path` to `platform` failed, for the reason in `message`;
+    /// `reconnect` if the platform no longer accepts the account.
+    #[signal]
+    fn upload_failed(path: GString, platform: GString, message: GString, reconnect: bool);
+
     /// A shifter's button asked for a ride control (#139), to be carried out as its key is:
     /// `next_camera`, `overlay`, or the music's `play_pause`, `next` and `previous`.
     #[signal]
@@ -498,8 +515,9 @@ impl TorqaApp {
     /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
     /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
     /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
-    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs}]`; values the ride
-    /// did not record are `null`, and `ftp_estimate_w` for all but FTP tests (R22).
+    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs, uploads}]`; values
+    /// the ride did not record are `null`, and `ftp_estimate_w` for all but FTP tests (R22).
+    /// `uploads` has the page of the ride's activity by platform id (R29).
     #[func]
     fn history(&self) -> VarArray {
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
@@ -535,6 +553,7 @@ impl TorqaApp {
                     "route_record" => entry.route_record,
                     "ftp_estimate_w" => &optional(entry.record.ftp_estimate.map(|w| w.0)),
                     "climbs" => &climb_times(&entry),
+                    "uploads" => &uploads_dict(&entry),
                 }
                 .to_variant(),
             );
@@ -609,6 +628,77 @@ impl TorqaApp {
         let path = PathBuf::from(path.to_string());
         let to = PathBuf::from(to.to_string());
         self.command(|app| app.export_ride(&path, &to))
+    }
+
+    /// Every platform rides can be uploaded to, with rider `rider`'s account on it (R29):
+    /// `[{platform, name, fields, help, help_url, label}]` in the order offered, `fields` as
+    /// `[{key, label, secret}]` to ask for when connecting (labels and help in English, to
+    /// translate), `label` who is connected, empty if nobody.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn accounts(&self, rider: GString) -> VarArray {
+        let mut array = VarArray::new();
+        let Some(app) = self.app.as_ref() else {
+            return array;
+        };
+        for account in app.accounts(&rider.to_string()) {
+            let mut fields = VarArray::new();
+            for field in account.fields {
+                fields.push(
+                    &vdict! {
+                        "key" => field.key,
+                        "label" => field.label,
+                        "secret" => field.secret,
+                    }
+                    .to_variant(),
+                );
+            }
+            array.push(
+                &vdict! {
+                    "platform" => account.platform,
+                    "name" => account.name,
+                    "fields" => &fields,
+                    "help" => account.help,
+                    "help_url" => account.help_url,
+                    "label" => account.label.as_deref().unwrap_or_default(),
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
+    /// Connects rider `rider`'s account on `platform` with the `entered` fields (by key), in
+    /// the background: emits `account_connected` or `account_failed`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn connect_account(
+        &mut self,
+        rider: GString,
+        platform: GString,
+        entered: VarDictionary,
+    ) -> bool {
+        let entered = entered
+            .iter_shared()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect();
+        self.command(|app| app.connect_account(&rider.to_string(), &platform.to_string(), entered))
+    }
+
+    /// Forgets rider `rider`'s account on `platform`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn disconnect_account(&mut self, rider: GString, platform: GString) -> bool {
+        self.command(|app| app.disconnect_account(&rider.to_string(), &platform.to_string()))
+    }
+
+    /// Uploads the active rider's ride in `path` to `platform` as `title`, in the background:
+    /// emits `upload_finished` or `upload_failed` (and `failed` if it cannot start).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn upload_ride(&mut self, path: GString, platform: GString, title: GString) -> bool {
+        let path = PathBuf::from(path.to_string());
+        self.command(|app| app.upload_ride(&path, &platform.to_string(), &title.to_string()))
     }
 
     /// The file name to suggest when exporting the ride titled `title`.
@@ -1841,6 +1931,57 @@ impl TorqaApp {
             .collect()
     }
 
+    /// Signals the outcome of upload work (R29).
+    fn emit_upload(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::AccountConnected {
+                rider,
+                platform,
+                label,
+            } => {
+                self.signals().account_connected().emit(
+                    &GString::from(rider.as_str()),
+                    &GString::from(platform.as_str()),
+                    &GString::from(label.as_str()),
+                );
+            }
+            AppEvent::AccountFailed {
+                rider,
+                platform,
+                message,
+            } => {
+                self.signals().account_failed().emit(
+                    &GString::from(rider.as_str()),
+                    &GString::from(platform.as_str()),
+                    &GString::from(message.as_str()),
+                );
+            }
+            AppEvent::UploadFinished { fit, platform, url } => {
+                let path = fit.display().to_string();
+                self.signals().upload_finished().emit(
+                    &GString::from(path.as_str()),
+                    &GString::from(platform.as_str()),
+                    &GString::from(url.as_str()),
+                );
+            }
+            AppEvent::UploadFailed {
+                fit,
+                platform,
+                message,
+                reconnect,
+            } => {
+                let path = fit.display().to_string();
+                self.signals().upload_failed().emit(
+                    &GString::from(path.as_str()),
+                    &GString::from(platform.as_str()),
+                    &GString::from(message.as_str()),
+                    reconnect,
+                );
+            }
+            _ => {}
+        }
+    }
+
     fn emit(&mut self, event: AppEvent) {
         match event {
             AppEvent::DevicesFound(devices) => {
@@ -1895,6 +2036,10 @@ impl TorqaApp {
                     .ride_saved()
                     .emit(&GString::from(path.as_str()));
             }
+            event @ (AppEvent::AccountConnected { .. }
+            | AppEvent::AccountFailed { .. }
+            | AppEvent::UploadFinished { .. }
+            | AppEvent::UploadFailed { .. }) => self.emit_upload(event),
             AppEvent::CourseAdded(path) => {
                 let path = path.display().to_string();
                 self.signals()
@@ -2210,6 +2355,15 @@ fn climb_times(entry: &torqa_app::HistoryEntry) -> VarArray {
         );
     }
     array
+}
+
+/// The page of a ride's activity, by platform id.
+fn uploads_dict(entry: &torqa_app::HistoryEntry) -> VarDictionary {
+    let mut dict = VarDictionary::new();
+    for (platform, upload) in &entry.record.uploads {
+        dict.set(platform.as_str(), upload.url.as_str());
+    }
+    dict
 }
 
 /// Converts mesh data to the arrays Godot's `ArrayMesh` takes; `colors` is empty when the

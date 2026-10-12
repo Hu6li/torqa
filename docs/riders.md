@@ -8,7 +8,8 @@ plus at the top adds one. The bin deletes a rider together with all their rides,
 the last rider cannot be deleted, and deleting the active one switches to another. The chevron
 unfolds a card to the rider's whole setup in three columns: every setting the dialog has (the
 HUD as **Default** or **Custom**), the power zones and the heart-rate zones, each zone with its
-range.
+range. Under them, **Accounts** lists the training platforms rides can be uploaded to, with
+**Connect…** or **Disconnect** for each ([uploads.md](uploads.md)).
 
 ![The Profile tab with a rider's card unfolded](images/app/profile.png)
 
@@ -39,5 +40,5 @@ workouts all follow your zones.
 **HUD**: the figures you see while riding ([hud.md](hud.md)).
 
 Profiles are stored in the data directory as `profiles/<rider>/profile.toml` and can be edited by
-hand; each rider's activities are saved in `profiles/<rider>/rides/`. Courses are shared by all
-riders.
+hand; each rider's activities are saved in `profiles/<rider>/rides/`, their accounts in
+`profiles/<rider>/accounts.toml`. Courses are shared by all riders.

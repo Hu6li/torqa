@@ -26,6 +26,7 @@ const PATHS: Dictionary[String, String] = {
 	"pencil": '<path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M13 7l3 3"/>',
 	"bin": '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
 	"download": '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
+	"upload": '<path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/>',
 	"plus": '<path d="M12 5v14"/><path d="M5 12h14"/>',
 	"cross": '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
 }

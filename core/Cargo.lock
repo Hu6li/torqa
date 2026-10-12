@@ -2388,6 +2388,7 @@ dependencies = [
  "torqa-session",
  "torqa-storage",
  "torqa-terrain",
+ "torqa-upload",
  "torqa-video",
  "torqa-workouts",
  "torqa-world",
@@ -2519,6 +2520,16 @@ dependencies = [
  "tokio",
  "torqa-domain",
  "tracing",
+]
+
+[[package]]
+name = "torqa-upload"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "torqa-domain",
 ]
 
 [[package]]

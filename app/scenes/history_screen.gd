@@ -1,9 +1,10 @@
 class_name HistoryScreen
 extends Control
 ## The rider's past rides (R31): a list on the left, the selected ride's figures, chart and
-## time in zones on the right. Rides have names (R50), edited in place, and their FIT files can
-## be saved anywhere on the computer (R28). Right after a ride the same screen is its summary
-## (R42): that ride only, to name, keep or discard.
+## time in zones on the right. Rides have names (R50), edited in place, their FIT files can
+## be saved anywhere on the computer (R28) and they go up to the rider's training platforms
+## (R29). Right after a ride the same screen is its summary (R42): that ride only, to name,
+## keep, upload or discard.
 
 signal closed
 
@@ -49,11 +50,24 @@ var _export_button: Button = Button.new()
 var _export_dialog: FileDialog = FileDialog.new()
 var _export_status: Label = Label.new()
 var _exporting: bool = false
+## Uploading the ride to the rider's training platforms (R29), each a menu entry.
+var _upload_button: MenuButton = MenuButton.new()
+var _account_dialog: AccountDialog = AccountDialog.new()
+## The platforms with the active rider's accounts, as `TorqaApp.accounts()` gives them.
+var _accounts: Array = []
+## Uploads under way, by `_upload_key()`.
+var _uploading: Dictionary[String, bool] = {}
+## The platform to upload the shown ride to once its account is connected.
+var _upload_after_connect: String = ""
+var _starting_upload: bool = false
 
 
 func bind(torqa: TorqaApp) -> void:
 	_torqa = torqa
 	_torqa.failed.connect(_on_failed)
+	_torqa.upload_finished.connect(_on_upload_finished)
+	_torqa.upload_failed.connect(_on_upload_failed)
+	_account_dialog.bind(torqa)
 
 
 ## The summary of the ride just saved in `path` (R42): only that ride, to name, keep or
@@ -153,6 +167,19 @@ func _ready() -> void:
 	_export_status.hide()
 	titles.add_child(_export_status)
 	title_row.add_child(titles)
+	_upload_button.icon = UiIcons.texture("upload")
+	_upload_button.tooltip_text = tr("Upload")
+	_upload_button.focus_mode = Control.FOCUS_NONE
+	# Drawn like the buttons beside it, not as a flat menu title.
+	_upload_button.flat = false
+	_upload_button.about_to_popup.connect(_fill_upload_menu)
+	var menu: PopupMenu = _upload_button.get_popup()
+	# Entries name the platform; they are translated as they are made.
+	menu.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	menu.id_pressed.connect(_on_upload_chosen)
+	_title.add_action(_upload_button)
+	_account_dialog.account_connected.connect(_on_account_connected)
+	add_child(_account_dialog)
 	_export_button.icon = UiIcons.texture("download")
 	_export_button.tooltip_text = tr("Export FIT file")
 	_export_button.focus_mode = Control.FOCUS_NONE
@@ -448,9 +475,134 @@ func _export(to: String) -> void:
 
 
 func _on_failed(message: String) -> void:
-	if _exporting:
-		_export_status.text = message
-		_export_status.show()
+	if _exporting or _starting_upload:
+		_show_status(message)
+
+
+## Lists the platforms: the ride's page where it went, uploading where the rider has an
+## account, connecting first where not.
+func _fill_upload_menu() -> void:
+	var menu: PopupMenu = _upload_button.get_popup()
+	menu.clear()
+	if _selected < 0:
+		return
+	var ride: Dictionary = _rides[_selected]
+	var path: String = ride["path"]
+	var uploads: Dictionary = ride.get("uploads", {})
+	_accounts = _torqa.accounts(_rider())
+	for i: int in range(_accounts.size()):
+		var account: Dictionary = _accounts[i]
+		var platform: String = account["platform"]
+		var platform_name: String = account["name"]
+		var label: String = account["label"]
+		if uploads.has(platform):
+			menu.add_item(tr("View on %s") % platform_name, i)
+		elif _uploading.has(_upload_key(path, platform)):
+			menu.add_item(tr("Uploading to %s…") % platform_name, i)
+			menu.set_item_disabled(menu.get_item_index(i), true)
+		elif label.is_empty():
+			menu.add_item(tr("Connect %s and upload…") % platform_name, i)
+		else:
+			menu.add_item(tr("Upload to %s") % platform_name, i)
+
+
+func _on_upload_chosen(index: int) -> void:
+	if _selected < 0 or index >= _accounts.size():
+		return
+	var account: Dictionary = _accounts[index]
+	var platform: String = account["platform"]
+	var ride: Dictionary = _rides[_selected]
+	var uploads: Dictionary = ride.get("uploads", {})
+	var label: String = account["label"]
+	if uploads.has(platform):
+		var url: String = uploads[platform]
+		OS.shell_open(url)
+	elif label.is_empty():
+		_upload_after_connect = platform
+		_account_dialog.open(_rider(), account)
+	else:
+		_upload(platform)
+
+
+## Sends the shown ride to `platform` under the title it shows (R50).
+func _upload(platform: String) -> void:
+	if _selected < 0:
+		return
+	# A name still being typed is the one to upload under.
+	_rename()
+	var ride: Dictionary = _rides[_selected]
+	var path: String = ride["path"]
+	var ride_name: String = ride["name"]
+	var title: String = ride_name if not ride_name.is_empty() else _default_name(ride)
+	_starting_upload = true
+	var started: bool = _torqa.upload_ride(path, platform, title)
+	_starting_upload = false
+	if started:
+		_uploading[_upload_key(path, platform)] = true
+		_show_status(tr("Uploading to %s…") % _platform_name(platform))
+
+
+func _on_account_connected(platform: String) -> void:
+	if platform == _upload_after_connect:
+		_upload_after_connect = ""
+		_upload(platform)
+
+
+func _on_upload_finished(path: String, platform: String, url: String) -> void:
+	_uploading.erase(_upload_key(path, platform))
+	for ride: Dictionary in _rides:
+		if ride["path"] == path:
+			var uploads: Dictionary = ride.get("uploads", {})
+			uploads[platform] = url
+			ride["uploads"] = uploads
+	if _shown_path() == path:
+		_show_status(tr("Uploaded to %s.") % _platform_name(platform))
+
+
+func _on_upload_failed(path: String, platform: String, message: String, reconnect: bool) -> void:
+	_uploading.erase(_upload_key(path, platform))
+	if _shown_path() != path:
+		return
+	if not reconnect:
+		_show_status(message)
+		return
+	# The platform no longer lets Torqa in: connect again, then upload.
+	_show_status(
+		tr("%s no longer accepts the account: connect it again.") % _platform_name(platform)
+	)
+	for account: Dictionary in _accounts:
+		if account["platform"] == platform:
+			_upload_after_connect = platform
+			_account_dialog.open(_rider(), account)
+
+
+func _platform_name(platform: String) -> String:
+	for account: Dictionary in _accounts:
+		if account["platform"] == platform:
+			var platform_name: String = account["name"]
+			return platform_name
+	return platform
+
+
+func _rider() -> String:
+	var id: String = _torqa.profile().get("id", "")
+	return id
+
+
+func _shown_path() -> String:
+	if _selected < 0 or _selected >= _rides.size():
+		return ""
+	var ride: Dictionary = _rides[_selected]
+	return ride["path"]
+
+
+static func _upload_key(path: String, platform: String) -> String:
+	return path + "\n" + platform
+
+
+func _show_status(text: String) -> void:
+	_export_status.text = text
+	_export_status.show()
 
 
 ## Saves the name typed into the title (R50); an empty name shows route and date again.
