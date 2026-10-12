@@ -146,6 +146,13 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
 	print("saved summary")
+	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
+	var summary: HistoryScreen = _main.get_node("HistoryScreen")
+	var upload: MenuButton = summary.get("_upload_button")
+	upload.show_popup()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("upload-menu.png"))
+	upload.get_popup().hide()
 	(_main.get_node("HistoryScreen") as HistoryScreen).closed.emit()
 	var start_tabs: TabContainer = start.find_children("*", "TabContainer", true, false)[0]
 	start_tabs.current_tab = StartPage.Tab.HISTORY
@@ -168,6 +175,13 @@ func _run() -> void:
 			_unfold_rider(start)
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
+		if index == StartPage.Tab.PROFILE:
+			# Connecting an account (R29), from the card's Accounts.
+			var dialog_shown: AccountDialog = _connect_account(start)
+			await create_timer(0.5).timeout
+			root.get_texture().get_image().save_png(out_dir.path_join("account-dialog.png"))
+			if dialog_shown != null:
+				dialog_shown.hide()
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
@@ -180,6 +194,19 @@ func _unfold_rider(start: StartPage) -> void:
 		if button.is_visible_in_tree() and button.tooltip_text == tr("All settings"):
 			button.pressed.emit()
 			return
+
+
+## Presses Connect… on the unfolded rider's first account; the dialog it opens, if any.
+func _connect_account(start: StartPage) -> AccountDialog:
+	for found: Node in start.find_children("*", "Button", true, false):
+		var button: Button = found
+		if button.is_visible_in_tree() and button.text == tr("Connect…"):
+			button.pressed.emit()
+			# The History tab has one too.
+			for dialog: Node in start.find_children("*", "AccountDialog", true, false):
+				if (dialog as AccountDialog).visible:
+					return dialog
+	return null
 
 
 ## The Workouts tab (R58) and a heart-rate workout on its own (R56), with its settings.

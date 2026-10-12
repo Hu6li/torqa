@@ -2,8 +2,9 @@ class_name ProfileTab
 extends VBoxContainer
 ## The riders (R22): one card per rider, the active one marked, each a line of key figures
 ## that unfolds to the rider's whole setup in three columns: settings, power zones and
-## heart-rate zones (#191, #194). Riders can be deleted, all but the last. Switching riders
-## also switches the interface language (R24).
+## heart-rate zones (#191, #194), and under them the rider's accounts on training platforms
+## (R29). Riders can be deleted, all but the last. Switching riders also switches the
+## interface language (R24).
 
 ## The active rider changed (figures, units, language or HUD).
 signal profile_changed
@@ -12,6 +13,7 @@ var _torqa: TorqaApp
 var _cards: VBoxContainer = VBoxContainer.new()
 var _add_button: Button = Button.new()
 var _dialog: ProfileDialog = ProfileDialog.new()
+var _account_dialog: AccountDialog = AccountDialog.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
 ## The rider the confirmation asks about.
 var _deleting: String = ""
@@ -21,6 +23,10 @@ var _unfolded: Dictionary[String, bool] = {}
 
 func bind(torqa: TorqaApp) -> void:
 	_torqa = torqa
+	_account_dialog.bind(torqa)
+	_torqa.account_connected.connect(
+		func(_rider: String, _platform: String, _label: String) -> void: refresh()
+	)
 	refresh()
 
 
@@ -58,6 +64,7 @@ func _init() -> void:
 	add_child(_cards)
 	add_child(_dialog)
 	_dialog.profile_confirmed.connect(_on_profile_confirmed)
+	add_child(_account_dialog)
 	_confirm_delete.title = tr("Delete rider?")
 	_confirm_delete.ok_button_text = tr("Delete")
 	UiTheme.danger_button(_confirm_delete.get_ok_button())
@@ -173,7 +180,46 @@ func _card(rider: Dictionary, active: bool, deletable: bool) -> PanelContainer:
 		columns.add_child(settings)
 		_show_zones(columns, rider)
 		rows.add_child(columns)
+		rows.add_child(_accounts(id))
 	return card
+
+
+## The rider's accounts on training platforms (R29): who is connected where, and the way to
+## connect or disconnect each.
+func _accounts(id: String) -> VBoxContainer:
+	var section: VBoxContainer = VBoxContainer.new()
+	section.add_theme_constant_override("separation", 6)
+	section.add_child(UiTheme.caption(tr("Accounts")))
+	var accounts: Array = _torqa.accounts(id) if _torqa != null else []
+	for account: Dictionary in accounts:
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		var platform: String = account.get("platform", "")
+		var platform_name: Label = Label.new()
+		platform_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		var platform_text: String = account.get("name", "")
+		platform_name.text = platform_text
+		platform_name.custom_minimum_size = Vector2(150, 0)
+		row.add_child(platform_name)
+		var label: String = account.get("label", "")
+		var status: Label = Label.new()
+		# Holds the name the platform knows the rider by.
+		status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		status.text = tr("Not connected") if label.is_empty() else tr("Connected as %s") % label
+		status.add_theme_color_override("font_color", UiTheme.MUTED)
+		status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(status)
+		var button: Button = Button.new()
+		button.focus_mode = Control.FOCUS_NONE
+		if label.is_empty():
+			button.text = tr("Connect…")
+			button.pressed.connect(_account_dialog.open.bind(id, account))
+		else:
+			button.text = tr("Disconnect")
+			button.pressed.connect(_disconnect.bind(id, platform))
+		row.add_child(button)
+		section.add_child(row)
+	return section
 
 
 ## The line under the name: FTP and W/kg, weight, maximum heart rate.
@@ -321,6 +367,11 @@ func _zone_column(
 func _toggle(id: String) -> void:
 	_unfolded[id] = not _unfolded.get(id, false)
 	if _torqa != null:
+		refresh()
+
+
+func _disconnect(id: String, platform: String) -> void:
+	if _torqa.disconnect_account(id, platform):
 		refresh()
 
 

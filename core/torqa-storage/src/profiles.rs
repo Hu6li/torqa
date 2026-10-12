@@ -612,7 +612,7 @@ pub fn set_active(data_dir: &Path, id: &str) -> Result<(), ProfileError> {
     save_settings(data_dir, &settings)
 }
 
-fn profile_dir(data_dir: &Path, id: &str) -> PathBuf {
+pub(crate) fn profile_dir(data_dir: &Path, id: &str) -> PathBuf {
     data_dir.join(PROFILES).join(id)
 }
 

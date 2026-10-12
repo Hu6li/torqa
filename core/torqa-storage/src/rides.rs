@@ -2,6 +2,7 @@
 //! the ride's summary, so the history lists rides without decoding every FIT file. The FIT file
 //! stays the source of truth; a missing or outdated JSON file can be rebuilt from it.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -48,6 +49,17 @@ pub struct RideRecord {
     pub name: Option<String>,
     /// The FTP an FTP test showed (R22), if the ride was one.
     pub ftp_estimate: Option<Watts>,
+    /// Where the ride was uploaded (R29), by platform id.
+    pub uploads: BTreeMap<String, Upload>,
+}
+
+/// A ride's activity on a training platform (R29).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Upload {
+    /// The platform's id for it.
+    pub id: String,
+    /// Its page on the platform.
+    pub url: String,
 }
 
 /// The time on one climb of a ride.
@@ -113,6 +125,8 @@ struct RideFile {
     name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ftp_estimate_w: Option<f64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    uploads: BTreeMap<String, Upload>,
 }
 
 impl From<&RideRecord> for RideFile {
@@ -143,6 +157,7 @@ impl From<&RideRecord> for RideFile {
             route_key: r.route_key.clone(),
             name: r.name.clone(),
             ftp_estimate_w: r.ftp_estimate.map(|w| w.0),
+            uploads: r.uploads.clone(),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
             climbs: r
                 .climbs
@@ -183,6 +198,7 @@ impl From<RideFile> for RideRecord {
             route_key: f.route_key,
             name: f.name,
             ftp_estimate: f.ftp_estimate_w.map(Watts),
+            uploads: f.uploads,
             route_time: f.route_time_s.map(|t| Duration::from_secs_f64(t.max(0.0))),
             climbs: f
                 .climbs
@@ -324,6 +340,13 @@ mod tests {
             }],
             name: Some("Morning loop".to_owned()),
             ftp_estimate: Some(Watts(245.0)),
+            uploads: BTreeMap::from([(
+                "intervals".to_owned(),
+                Upload {
+                    id: "i777".to_owned(),
+                    url: "https://intervals.icu/activities/i777".to_owned(),
+                },
+            )]),
         }
     }
 
@@ -357,6 +380,7 @@ mod tests {
         assert_eq!(record.route_key, None);
         assert_eq!(record.climbs, []);
         assert_eq!(record.name, None);
+        assert_eq!(record.uploads, BTreeMap::new());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

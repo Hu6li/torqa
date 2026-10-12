@@ -1245,3 +1245,60 @@ msgstr "FIT-Aktivitäten"
 
 msgid "Saved as %s"
 msgstr "Gespeichert als %s"
+
+msgid "Upload"
+msgstr "Hochladen"
+
+msgid "Upload to %s"
+msgstr "Auf %s hochladen"
+
+msgid "Uploading to %s…"
+msgstr "Wird auf %s hochgeladen…"
+
+msgid "Uploaded to %s."
+msgstr "Auf %s hochgeladen."
+
+msgid "View on %s"
+msgstr "Auf %s ansehen"
+
+msgid "Connect %s and upload…"
+msgstr "%s verbinden und hochladen…"
+
+msgid "%s no longer accepts the account: connect it again."
+msgstr "%s akzeptiert das Konto nicht mehr: verbinde es erneut."
+
+msgid "Accounts"
+msgstr "Konten"
+
+msgid "Not connected"
+msgstr "Nicht verbunden"
+
+msgid "Connected as %s"
+msgstr "Verbunden als %s"
+
+msgid "Connect…"
+msgstr "Verbinden…"
+
+msgid "Disconnect"
+msgstr "Trennen"
+
+msgid "Connect %s"
+msgstr "%s verbinden"
+
+msgid "Connect"
+msgstr "Verbinden"
+
+msgid "Fill in every field."
+msgstr "Fülle alle Felder aus."
+
+msgid "Checking…"
+msgstr "Wird geprüft…"
+
+msgid "Cannot connect."
+msgstr "Verbinden nicht möglich."
+
+msgid "API key"
+msgstr "API-Schlüssel"
+
+msgid "Find your API key on intervals.icu under Settings, Developer Settings."
+msgstr "Deinen API-Schlüssel findest du auf intervals.icu unter Settings, Developer Settings."

@@ -113,8 +113,8 @@ Things to review or decide together. Newest first; remove entries once settled.
 ### Findings
 
 - **Ride names in FIT** (R50): FIT has no activity-title field, so names live in the ride's
-  JSON only; uploaders (Phase 7) pass the name as the title (Strava, intervals.icu accept it).
-  If you also want it inside the FIT file, the sport-profile name would be the only place.
+  JSON only; uploads send the name as the activity's title (ADR 0013). If you also want it
+  inside the FIT file, the sport-profile name would be the only place.
 
 ## 2026-10-03 — Course files (Phase 3c)
 

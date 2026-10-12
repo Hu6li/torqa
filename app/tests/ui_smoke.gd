@@ -643,6 +643,8 @@ func _summary_icons() -> void:
 		),
 		"export saves anywhere on the computer"
 	)
+	var upload: MenuButton = history.get("_upload_button")
+	_check(upload.icon != null and not upload.tooltip_text.is_empty(), "upload, with a tooltip")
 	main.free()
 
 
