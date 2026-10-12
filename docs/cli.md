@@ -187,8 +187,9 @@ saved as a FIT file like a route ride, as indoor cycling without positions. `--m
 ```
 
 Writes made-up rides to the history of the rider Torqa starts with: three a week (intervals,
-an hour of endurance, a long ride or sprints), up to today, by a rider whose FTP grows from
-215 W to 250 W. They fill the history and the Analysis tab ([analysis.md](analysis.md)) for
+an hour of endurance, a long ride or sprints), up to today. The rider builds up from an FTP of
+215 W to 250 W, takes a week off six weeks ago and comes back at 232 W with harder short
+efforts, so the last weeks differ from their best. They fill the history and the Analysis tab ([analysis.md](analysis.md)) for
 screenshots or to try them out; delete them in the history, or the rider's `rides` folder,
 afterwards. Running it again on the same day writes the same rides again rather than adding
 more.

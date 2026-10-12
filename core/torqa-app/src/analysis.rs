@@ -1,5 +1,6 @@
 //! The rider's power across rides (R62): the best power held over every duration among the
-//! rides of a period, compared with all rides or the period before, and the records it sets.
+//! rides of a period, compared with all rides or the period before, and the records it sets;
+//! the power profile of a period against the rider's best (R63).
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -41,6 +42,57 @@ pub struct PowerCurves {
     pub period: Vec<BestEffort>,
     /// The best efforts among the rides compared with, shortest first.
     pub compare: Vec<BestEffort>,
+}
+
+/// One axis of the power profile (R63): the best power over one of the [`RECORD_DURATIONS`]
+/// among a period's rides, against the rider's best of all rides.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfileAxis {
+    /// How long the efforts lasted.
+    pub duration: Duration,
+    /// The period's best effort, if a ride of it lasted that long.
+    pub period: Option<BestEffort>,
+    /// The rider's best effort of all rides.
+    pub best: Option<BestEffort>,
+    /// The period's best as a share of the rider's best, from 0 to 1 (per kilogram if so
+    /// asked); `None` without both.
+    pub share: Option<f64>,
+}
+
+/// The power profile of the rides in `history` that started within `period` before `now`
+/// against all of them, over each of the [`RECORD_DURATIONS`]; `mass` and `per_kg` as for
+/// [`power_curves`].
+#[must_use]
+pub fn power_profile(
+    history: &[HistoryEntry],
+    period: Option<Duration>,
+    now: SystemTime,
+    mass: Kilograms,
+    per_kg: bool,
+) -> Vec<ProfileAxis> {
+    let curves = power_curves(history, period, Comparison::AllTime, now, mass, per_kg);
+    let at = |efforts: &[BestEffort], duration: Duration| {
+        efforts.iter().find(|e| e.duration == duration).cloned()
+    };
+    let value = |e: &BestEffort| if per_kg { e.watts_per_kg } else { e.power.0 };
+    RECORD_DURATIONS
+        .into_iter()
+        .map(|duration| {
+            let period = at(&curves.period, duration);
+            let best = at(&curves.compare, duration);
+            let share = period
+                .as_ref()
+                .zip(best.as_ref())
+                .filter(|(_, b)| value(b) > 0.0)
+                .map(|(p, b)| value(p) / value(b));
+            ProfileAxis {
+                duration,
+                period,
+                best,
+                share,
+            }
+        })
+        .collect()
 }
 
 /// The power curves of the rides in `history` that started within `period` before `now` (all
@@ -286,6 +338,34 @@ mod tests {
         let per_kg = best(true);
         assert_eq!(powers(&per_kg), [(1200, 290.0)]);
         assert!((per_kg[0].watts_per_kg - 5.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_profile_sets_a_period_against_the_riders_best() {
+        // Sprints were better two months ago; the 5 and 20 minutes are this month's.
+        let history = [
+            ride(3, &[(5, 800.0), (300, 350.0), (1200, 280.0)], None),
+            ride(60, &[(5, 1000.0), (300, 330.0)], None),
+        ];
+
+        let profile = power_profile(&history, Some(DAY * 42), now(), Kilograms(70.0), false);
+
+        let shares: Vec<(u64, Option<f64>)> = profile
+            .iter()
+            .map(|axis| (axis.duration.as_secs(), axis.share))
+            .collect();
+        assert_eq!(
+            shares,
+            [
+                (5, Some(0.8)),
+                (60, None),
+                (300, Some(1.0)),
+                (1200, Some(1.0)),
+                (3600, None)
+            ]
+        );
+        assert_eq!(profile[0].best.as_ref().unwrap().power, Watts(1000.0));
+        assert_eq!(profile[0].period.as_ref().unwrap().power, Watts(800.0));
     }
 
     #[test]

@@ -1,5 +1,7 @@
-//! Made-up rides for screenshots and for trying out the analysis across rides (R62): weeks of
-//! workouts by a rider getting fitter, written to the rider's history like their own rides.
+//! Made-up rides for screenshots and for trying out the analysis across rides (R62): a season
+//! of workouts written to the rider's history like their own rides. The rider builds up, takes
+//! a week off and comes back with short, hard efforts, so a recent period differs from the
+//! rider's best: the top end is back, the threshold not yet.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -33,8 +35,9 @@ struct Session {
     stretches: Vec<(u32, f64)>,
 }
 
-/// Writes the rides of `args.weeks` weeks, three a week, to the active rider's history (a new
-/// default rider if there is none). Rides of the same day are written again, not added.
+/// Writes the rides of `args.weeks` weeks, three a week but for the week off six weeks ago, to
+/// the active rider's history (a new default rider if there is none). Rides of the same day are
+/// written again, not added.
 pub fn write(args: &SampleRidesArgs) -> Result<()> {
     let data_dir = args.data_dir.clone().unwrap_or_else(paths::data_dir);
     let (id, profile) = rider(&data_dir)?;
@@ -47,10 +50,34 @@ pub fn write(args: &SampleRidesArgs) -> Result<()> {
         .context("the clock is before 1970")?;
     let mut noise = Noise(0x5eed_cafe);
     let mut count = 0;
-    for week in 0..args.weeks {
-        // FTP grows from 215 W to 250 W over the weeks.
-        let ftp = 215.0 + 35.0 * f64::from(week) / f64::from(args.weeks.max(1));
-        for (weekday, session) in [(1, intervals(week)), (3, endurance()), (5, weekend(week))] {
+    // The week off, after which the rider comes back.
+    let comeback = args.weeks.saturating_sub(6);
+    for week in (0..args.weeks).filter(|&week| week != comeback) {
+        let sessions = if week < comeback {
+            // FTP grows from 215 W to 250 W while building up.
+            let ftp = 215.0 + 35.0 * f64::from(week) / f64::from(comeback.max(1));
+            let intervals = if week.is_multiple_of(2) {
+                vo2max(1.12 + 0.01 * f64::from(week))
+            } else {
+                threshold()
+            };
+            let weekend = if week % 3 == 2 {
+                sprints(3.4)
+            } else {
+                long_ride()
+            };
+            [(ftp, intervals), (ftp, endurance()), (ftp, weekend)]
+        } else {
+            // Back after the week off at a lower FTP, with harder short efforts.
+            let ftp = 232.0;
+            let weekend = if week % 2 == 1 {
+                sprints(3.65)
+            } else {
+                long_ride()
+            };
+            [(ftp, vo2max(1.27)), (ftp, endurance()), (ftp, weekend)]
+        };
+        for (weekday, (ftp, session)) in [1, 3, 5].into_iter().zip(sessions) {
             let start = today - DAY * (7 * (args.weeks - week)) + DAY * weekday + DAY / 4;
             if start > now {
                 continue;
@@ -97,27 +124,27 @@ fn rider(data_dir: &Path) -> Result<(String, Profile)> {
     Ok((id, profile))
 }
 
-fn intervals(week: u32) -> Session {
-    if week.is_multiple_of(2) {
-        Session {
-            name: "VO2max 5×5 min",
-            stretches: [(900, 0.6)]
-                .into_iter()
-                .chain([(300, 1.12 + 0.01 * f64::from(week)), (300, 0.5)].repeat(5))
-                .chain([(600, 0.55)])
-                .collect(),
-        }
-    } else {
-        Session {
-            name: "Threshold 2×20 min",
-            stretches: vec![
-                (900, 0.6),
-                (1200, 0.97),
-                (300, 0.5),
-                (1200, 0.97),
-                (600, 0.55),
-            ],
-        }
+fn vo2max(share: f64) -> Session {
+    Session {
+        name: "VO2max 5×5 min",
+        stretches: [(900, 0.6)]
+            .into_iter()
+            .chain([(300, share), (300, 0.5)].repeat(5))
+            .chain([(600, 0.55)])
+            .collect(),
+    }
+}
+
+fn threshold() -> Session {
+    Session {
+        name: "Threshold 2×20 min",
+        stretches: vec![
+            (900, 0.6),
+            (1200, 0.97),
+            (300, 0.5),
+            (1200, 0.97),
+            (600, 0.55),
+        ],
     }
 }
 
@@ -128,21 +155,21 @@ fn endurance() -> Session {
     }
 }
 
-fn weekend(week: u32) -> Session {
-    if week % 3 == 2 {
-        Session {
-            name: "Sprints 6×15 s",
-            stretches: [(1200, 0.62)]
-                .into_iter()
-                .chain([(15, 3.4), (165, 0.5)].repeat(6))
-                .chain([(1200, 0.68)])
-                .collect(),
-        }
-    } else {
-        Session {
-            name: "Long ride 2 h",
-            stretches: vec![(2400, 0.68), (1200, 0.85), (3600, 0.68)],
-        }
+fn sprints(share: f64) -> Session {
+    Session {
+        name: "Sprints 6×15 s",
+        stretches: [(1200, 0.62)]
+            .into_iter()
+            .chain([(15, share), (165, 0.5)].repeat(6))
+            .chain([(1200, 0.68)])
+            .collect(),
+    }
+}
+
+fn long_ride() -> Session {
+    Session {
+        name: "Long ride 2 h",
+        stretches: vec![(2400, 0.68), (1200, 0.85), (3600, 0.68)],
     }
 }
 

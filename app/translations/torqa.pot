@@ -183,11 +183,11 @@ msgstr ""
 msgid "Added to your workouts."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:14
+#: app/scenes/analysis_tab.gd:15
 msgid "Against all time"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:14
+#: app/scenes/analysis_tab.gd:15
 msgid "Against the period before"
 msgstr ""
 
@@ -211,7 +211,7 @@ msgstr ""
 msgid "All settings"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:10 app/scenes/analysis_tab.gd:14
+#: app/scenes/analysis_tab.gd:11 app/scenes/analysis_tab.gd:15
 msgid "All time"
 msgstr ""
 
@@ -875,15 +875,15 @@ msgstr ""
 msgid "Larger (+)"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:10
+#: app/scenes/analysis_tab.gd:11
 msgid "Last 12 months"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:10
+#: app/scenes/analysis_tab.gd:11
 msgid "Last 6 weeks"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:10
+#: app/scenes/analysis_tab.gd:11
 msgid "Last 90 days"
 msgstr ""
 
@@ -1043,7 +1043,7 @@ msgstr ""
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:88
+#: app/scenes/analysis_tab.gd:87
 msgid "No rides with power yet: your best efforts show here once you ride with power."
 msgstr ""
 
@@ -1167,7 +1167,7 @@ msgstr ""
 msgid "Paused"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:82
+#: app/scenes/analysis_tab.gd:81
 msgid "Per kilogram"
 msgstr ""
 
@@ -1203,8 +1203,12 @@ msgstr ""
 msgid "Power 3 s"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:100 app/scenes/history_screen.gd:285
+#: app/scenes/analysis_tab.gd:112 app/scenes/history_screen.gd:285
 msgid "Power curve"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:139
+msgid "Power profile"
 msgstr ""
 
 #: app/scenes/workouts_tab.gd:205
@@ -1507,7 +1511,7 @@ msgstr ""
 msgid "Test"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:102
+#: app/scenes/analysis_tab.gd:122
 msgid "The best power you held for each length of effort, from a sprint to hours."
 msgstr ""
 
@@ -1519,7 +1523,7 @@ msgstr ""
 msgid "The only rider cannot be deleted"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:14
+#: app/scenes/analysis_tab.gd:15
 msgid "The period before"
 msgstr ""
 
@@ -1743,6 +1747,10 @@ msgstr ""
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
+#: app/scenes/analysis_tab.gd:141
+msgid "Your best of the period as a share of your best of all time."
+msgstr ""
+
 #: app/ui/ghost_picker.gd:23
 msgid "Your best on this route"
 msgstr ""
@@ -1755,7 +1763,7 @@ msgstr ""
 msgid "Your courses"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:67
+#: app/scenes/analysis_tab.gd:71
 msgid "Your power"
 msgstr ""
 
