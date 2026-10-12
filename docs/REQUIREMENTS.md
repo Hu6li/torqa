@@ -4,7 +4,8 @@ Outcome of the initial requirements-elicitation session (2026-10-02, ~70 questio
 2026-10-03 with course previews, start page and realistic graphics (R36–R47) and in-ride
 settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement (R48–R54),
 plus overlay mode and constant-power / heart-rate workouts (R55–R56), refined 2026-10-06: an
-overlay over normal windows only, a Workouts tab and Di2 shifting (R57–R59).
+overlay over normal windows only, a Workouts tab and Di2 shifting (R57–R59), extended 2026-10-12
+with the analysis of a rider's power across their rides (R60–R61, #217).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -79,7 +80,7 @@ on a smart trainer (primary: Wahoo KICKR Core 2) through a generated semi-realis
 | R28 | Export activities as **FIT** (MVP). |
 | R29 | Uploaders behind a common interface: Strava, intervals.icu, Garmin Connect, TrainingPeaks, Komoot. (Garmin/TrainingPeaks/Komoot require partner approval → best effort.) |
 | R30 | Local storage in a **configurable data directory** that may live in a synced folder (e.g. Nextcloud) → sync-safe design, see ADR 0002. |
-| R31 | Detailed ride history and analysis: power/HR/cadence charts, zones, PRs. |
+| R31 | Detailed ride history and analysis: power/HR/cadence charts, zones, PRs. *(Across rides: R60–R61.)* |
 
 ## Courses
 
@@ -98,7 +99,7 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 
 | ID | Requirement |
 |---|---|
-| R38 | A real **start page** separate from the ride view, with a top tab bar: **Courses**, **History**, **Profile**, **Devices & Settings**. The ride view only shows the ride. *(Workouts tab: R58.)* |
+| R38 | A real **start page** separate from the ride view, with a top tab bar: **Courses**, **History**, **Profile**, **Devices & Settings**. The ride view only shows the ride. *(Workouts tab: R58; Analysis tab: R60.)* |
 | R39 | **Courses tab**: gallery overview of the course library (R34) — each card shows the cover or path card, distance, elevation gain, a small map, the course type (3D / video) and other key stats. Importing a GPX / preparing a new course starts here. |
 | R40 | **Course detail page** (opened from a card): screenshot gallery, path card, map, elevation profile, stats, personal records on the course, and the per-ride options (difficulty, descent mode, weather, time of day, camera, ghost) → **Ride**. |
 | R41 | The last-used trainer and sensors **reconnect automatically** in the background at app start; the user is only prompted if that fails when a ride starts. |
@@ -130,6 +131,13 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R57 | Refines R55 (2026-10-06): the overlay stays on top of **normal (windowed) apps only**; showing it over full-screen apps would need native macOS window code (a new dependency and unsafe code) and is not done. The overlay is entered with a button during **any ride or workout** (a course ride goes on following its gradient, its world hidden) or by ticking **"start as overlay"** when starting a workout. |
 | R58 | Extends R38 (2026-10-06): a **Workouts** tab on the start page, right after Courses. Workouts (R56, later R21) are started there, either on their own (a flat road, the HUD only) or **on a course in the 3D world** (the trainer holds the workout's power while the world goes by). |
 | R59 | Supersedes R7's shift inputs (2026-10-06): the virtual gears are shifted from the **keyboard** and from **Shimano Di2** directly over Bluetooth — the buttons the rider assigns to D-Fly channels in E-TUBE shift up and down. Each channel's press, hold and double press can be given an action instead (#139): shift one or two gears, next camera, overlay on/off, or the music (play/pause, next, previous). No dependency on paid bridge apps (BikeControl needs a subscription on macOS and Android), so no OpenBikeControl-through-BikeControl; the Zwift Click (encrypted, the v2 unlocked daily in Zwift) is not supported. |
+
+## Analysis
+
+| ID | Requirement |
+|---|---|
+| R60 | Extends R38 (2026-10-12): an **Analysis** tab on the start page, right after History: the active rider's power across all their rides, beyond the single ride of R31. |
+| R61 | **Power curve**: the rider's best average power over every duration from 1 s to the longest ride, among the rides of a chosen period (last 6 weeks, 90 days, 12 months, all time), drawn against all rides or the period before, in W or in W/kg (with the rider's weight on each ride, where the ride kept it). A ride's summary shows its own curve over the rider's best. The durations 5 s, 1, 5, 20 and 60 min over which a ride holds the rider's best power are marked ★ like the records of R27. Simulated rides (sped up or moved along) count for none of it. |
 
 ## MVP definition
 

@@ -20,8 +20,10 @@ shots, run them in the background, and read the PNGs with the Read tool. Output 
 
 - `scripts/dev.sh scripts/screenshots.sh` — the standard app screenshots (`app/tests/
   screenshots.gd`): start page tabs, course page, a ride in each camera, the settings, summary,
-  history, workouts and the overlay. The user docs show some of them (`docs/images/app/`,
-  `workouts/`, `overlay/`); copy the new ones there when a change alters a screen.
+  history, analysis, workouts and the overlay. The rider gets 16 weeks of made-up rides first
+  (`torqa-cli sample-rides`), so the history and the Analysis tab have something to show. The
+  user docs show some of them (`docs/images/app/`, `workouts/`, `overlay/`); copy the new ones
+  there when a change alters a screen.
 - `scripts/dev.sh scripts/render-models.sh` — every Blender model as the world draws it:
   buildings (three variants and a close-up each) and plants (three variants) into
   `screenshots/models/<group>/`, the clouds together; `GROUPS="vegetation clouds"` or

@@ -2,6 +2,7 @@
 //! frame-driven API. Front ends (the Godot app, tests) call commands and [`App::update`] once per
 //! frame; all asynchronous work runs on an internal runtime, so callers never block or await.
 
+pub mod analysis;
 pub mod hud;
 mod import;
 pub mod media;
@@ -27,7 +28,7 @@ use torqa_domain::units::{Meters, Percent, Watts};
 use torqa_physics::{DescentMode, RiderSetup, VirtualGears};
 use torqa_routes::{Climb, ElevationSource, LocalProjection, Route};
 use torqa_session::analysis::{
-    effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
+    analyse, effort, summarize, time_at, time_in_heart_rate_zones, time_in_power_zones,
 };
 use torqa_session::ghost::Ghost;
 use torqa_session::workout::Workout;
@@ -175,6 +176,9 @@ pub struct HistoryEntry {
     pub route_record: bool,
     /// Per entry of [`RideRecord::climbs`]: whether it is the rider's fastest time there.
     pub climb_records: Vec<bool>,
+    /// The durations of [`RECORD_DURATIONS`](torqa_domain::recording::RECORD_DURATIONS) over
+    /// which this ride holds the rider's best power (R61).
+    pub power_records: Vec<Duration>,
 }
 
 /// The rider's best times on a route (R27).
@@ -1900,6 +1904,9 @@ impl App {
                     .collect(),
                 name: None,
                 ftp_estimate: active.ride.ftp_estimate(),
+                rider_mass: Some(self.profile.profile.rider_mass),
+                simulated: active.simulated,
+                analysis: Some(analyse(samples)),
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
@@ -1913,13 +1920,16 @@ impl App {
     }
 
     /// The active rider's rides, newest first (R31). Rides without metadata, e.g. FIT files
-    /// copied in by hand, are analysed once and get it written.
+    /// copied in by hand, are analysed once and get it written; so do rides without the data
+    /// the analysis across rides needs (R61), e.g. saved by an older Torqa.
     #[must_use]
     pub fn history(&self) -> Vec<HistoryEntry> {
         let records: Vec<(PathBuf, RideRecord)> = rides::fit_files(&self.rides_dir())
             .into_iter()
             .filter_map(|fit| {
-                let record = rides::load(&fit).or_else(|_| self.rebuild_metadata(&fit));
+                let record = rides::load(&fit)
+                    .or_else(|_| self.rebuild_metadata(&fit))
+                    .map(|record| with_analysis(&fit, record));
                 match record {
                     Ok(record) => Some((fit, record)),
                     Err(error) => {
@@ -1930,6 +1940,7 @@ impl App {
             })
             .collect();
         let all: Vec<&RideRecord> = records.iter().map(|(_, r)| r).collect();
+        let power_bests = analysis::record_powers(all.iter().copied());
         records
             .iter()
             .map(|(fit, record)| {
@@ -1949,6 +1960,7 @@ impl App {
                         .iter()
                         .map(|climb| Some(climb.elapsed) == best_climb_time(&same_route, climb))
                         .collect(),
+                    power_records: analysis::power_records(record, &power_bests),
                     record: record.clone(),
                 }
             })
@@ -1981,6 +1993,26 @@ impl App {
                 })
                 .collect(),
         }
+    }
+
+    /// The active rider's power curves (R61): the best efforts among the rides of the last
+    /// `period` (all rides for `None`) and among those of `comparison`; see
+    /// [`analysis::power_curves`].
+    #[must_use]
+    pub fn power_curves(
+        &self,
+        period: Option<Duration>,
+        comparison: analysis::Comparison,
+        per_kg: bool,
+    ) -> analysis::PowerCurves {
+        analysis::power_curves(
+            &self.history(),
+            period,
+            comparison,
+            SystemTime::now(),
+            self.profile.profile.rider_mass,
+            per_kg,
+        )
     }
 
     /// The active rider's HUD metrics, in order (R23); the first is shown large.
@@ -2195,6 +2227,9 @@ impl App {
             climbs: Vec::new(),
             name: None,
             ftp_estimate: None,
+            rider_mass: None,
+            simulated: false,
+            analysis: Some(analyse(&samples)),
         };
         if let Err(error) = rides::save(fit, &record) {
             warn!(%error, "cannot save rebuilt ride metadata");
@@ -2594,6 +2629,24 @@ fn activity_points(path: &Path) -> Result<Vec<torqa_routes::TimedPoint>, String>
     Ok(points)
 }
 
+/// `record` with what the analysis across rides keeps of it (R61): computed from the FIT file
+/// and saved with the rest if it has none yet. Every other field stays as it was.
+fn with_analysis(fit: &Path, mut record: RideRecord) -> RideRecord {
+    if record.analysis.is_some() {
+        return record;
+    }
+    match read_fit(fit) {
+        Ok((_, samples)) => {
+            record.analysis = Some(analyse(&samples));
+            if let Err(error) = rides::save(fit, &record) {
+                warn!(%error, "cannot save the ride's analysis");
+            }
+        }
+        Err(error) => warn!(%error, "cannot analyse ride"),
+    }
+    record
+}
+
 fn read_fit(fit: &Path) -> Result<(SystemTime, Vec<Sample>), String> {
     let bytes = std::fs::read(fit).map_err(|e| format!("cannot read {}: {e}", fit.display()))?;
     torqa_storage::decode_fit(&bytes).map_err(|e| format!("{}: {e}", fit.display()))
@@ -2694,7 +2747,7 @@ fn unique_course_path(library: &Path, name: &str) -> PathBuf {
 mod tests {
     use std::fmt::Write as _;
 
-    use torqa_domain::units::{Rpm, Watts};
+    use torqa_domain::units::{Kilograms, MetersPerSecond, Rpm, Watts};
     use torqa_session::workout::RampTest;
 
     use super::*;
@@ -3298,6 +3351,8 @@ mod tests {
         assert_eq!(app.history()[0].fit, *fit);
         assert_eq!(record.route_key, None, "a simulated ride sets no records");
         assert_eq!(record.climbs.len(), 0);
+        assert!(record.simulated);
+        assert_eq!(app.history()[0].power_records, [], "nor power records");
         app.shutdown();
     }
 
@@ -3345,6 +3400,9 @@ mod tests {
         assert_eq!(history[0].fit, *path);
         assert_eq!(history[0].record.route, "Test loop");
         assert!(history[0].record.summary.distance.0 > 1.0);
+        assert_eq!(history[0].record.rider_mass, Some(Kilograms(75.0)));
+        let curve = &history[0].record.analysis.as_ref().unwrap().power_curve;
+        assert_eq!(curve.at(Duration::from_secs(1)), Some(Watts(250.0)));
         let detail = app.ride_detail(path).unwrap();
         assert!(detail.samples.len() > 1);
         assert!(detail.power_zones.iter().sum::<Duration>() > Duration::ZERO);
@@ -3361,6 +3419,74 @@ mod tests {
 
         app.delete_ride(path).unwrap();
         assert_eq!(app.history().len(), 0);
+        app.shutdown();
+    }
+
+    #[test]
+    fn rides_saved_before_the_analysis_get_it_once_and_keep_everything_else() {
+        let dir = temp_dir("analysis-backfill");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let rides_dir = dir.join("data/profiles/rider/rides");
+        std::fs::create_dir_all(&rides_dir).unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        // Ten minutes: five at 300 W, five at 200 W.
+        let samples: Vec<Sample> = (0..600_u32)
+            .map(|s| Sample {
+                elapsed: Duration::from_secs(u64::from(s)),
+                location: None,
+                distance: Meters(8.0 * f64::from(s)),
+                speed: MetersPerSecond(8.0),
+                power: Some(Watts(if s < 300 { 300.0 } else { 200.0 })),
+                cadence: None,
+                heart_rate: None,
+            })
+            .collect();
+        let fit = rides_dir.join(paths::activity_file_name(start));
+        std::fs::write(&fit, torqa_storage::encode_fit(start, &samples).unwrap()).unwrap();
+        // As an older Torqa saved it: named, on a known course, without the analysis.
+        let saved = RideRecord {
+            route: "Gurten".to_owned(),
+            start,
+            summary: summarize(&samples, Watts(250.0)),
+            route_key: Some("0123456789abcdef".to_owned()),
+            route_time: Some(Duration::from_mins(10)),
+            climbs: Vec::new(),
+            name: Some("Before the update".to_owned()),
+            ftp_estimate: None,
+            rider_mass: None,
+            simulated: false,
+            analysis: None,
+        };
+        rides::save(&fit, &saved).unwrap();
+
+        let history = app.history();
+
+        let analysed = &history[0].record;
+        let curve = &analysed.analysis.as_ref().unwrap().power_curve;
+        assert_eq!(curve.at(Duration::from_mins(5)), Some(Watts(300.0)));
+        assert_eq!(curve.at(Duration::from_mins(10)), Some(Watts(250.0)));
+        assert_eq!(
+            RideRecord {
+                analysis: None,
+                ..analysed.clone()
+            },
+            saved,
+            "nothing else changes"
+        );
+        assert_eq!(
+            rides::load(&fit).unwrap(),
+            *analysed,
+            "saved: computed once"
+        );
+        // The rider's only ride holds every record it is long enough for.
+        assert_eq!(
+            history[0].power_records,
+            [
+                Duration::from_secs(5),
+                Duration::from_mins(1),
+                Duration::from_mins(5)
+            ]
+        );
         app.shutdown();
     }
 

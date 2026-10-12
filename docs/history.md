@@ -21,6 +21,9 @@ The history shows:
 - **Chart**: power and heart rate over the ride, on top of the elevation.
 - **Time in zones**: power zones from your FTP, heart-rate zones from your maximum heart rate
   (see [riders.md](riders.md)). Sections without data, e.g. no heart-rate strap, are hidden.
+- **Power curve**: the ride's best power over every duration from a second to the whole ride,
+  over your best of all rides in grey ([analysis.md](analysis.md)). A ★ under the figures marks
+  each duration of 5 s, 1, 5, 20 or 60 min over which the ride holds your best power.
 - The bin beside the title (**Delete ride**) removes the FIT file and its summary, after asking.
 - The arrow beside the title (**Export FIT file**) saves a copy of the ride's FIT file wherever
   you choose on your computer, e.g. to upload it to Strava, intervals.icu or Garmin Connect by
@@ -32,7 +35,8 @@ when the ride was saved, so they do not change when you update your FTP later; t
 uses the current profile.
 
 FIT files copied into a rider's `rides` folder by hand appear in the history too; their summary
-is computed and saved the first time the history is opened.
+is computed and saved the first time the history is opened. So is the power curve of rides
+saved by an older Torqa.
 
 ## Climbs and personal records
 

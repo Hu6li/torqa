@@ -1,9 +1,10 @@
 class_name HistoryScreen
 extends Control
-## The rider's past rides (R31): a list on the left, the selected ride's figures, chart and
-## time in zones on the right. Rides have names (R50), edited in place, and their FIT files can
-## be saved anywhere on the computer (R28). Right after a ride the same screen is its summary
-## (R42): that ride only, to name, keep or discard.
+## The rider's past rides (R31): a list on the left, the selected ride's figures, chart, time
+## in zones and power curve over the rider's best (R61) on the right, its power records marked.
+## Rides have names (R50), edited in place, and their FIT files can be saved anywhere on the
+## computer (R28). Right after a ride the same screen is its summary (R42): that ride only, to
+## name, keep or discard.
 
 signal closed
 
@@ -36,6 +37,8 @@ var _back: Button = Button.new()
 var _subtitle: Label = Label.new()
 var _stats: GridContainer = GridContainer.new()
 var _climbs: VBoxContainer = VBoxContainer.new()
+## The durations over which the ride holds the rider's best power (R61).
+var _power_records: HFlowContainer = HFlowContainer.new()
 ## What an FTP test showed (R22), and taking it as the rider's FTP.
 var _ftp_row: HBoxContainer = HBoxContainer.new()
 var _ftp_text: Label = Label.new()
@@ -43,6 +46,10 @@ var _ftp_button: Button = Button.new()
 var _chart: RideChart = RideChart.new()
 var _power_zones: ZoneBars = ZoneBars.new()
 var _heart_rate_zones: ZoneBars = ZoneBars.new()
+var _power_curve: PowerCurveChart = PowerCurveChart.new()
+## The rider's best power over each duration among all rides, as `TorqaApp.power_curves()`
+## gives it; read with the rides.
+var _best_efforts: Array = []
 var _delete_button: Button = Button.new()
 ## Saving the ride's FIT file somewhere outside the data directory (R28).
 var _export_button: Button = Button.new()
@@ -80,6 +87,8 @@ func _load() -> void:
 	_delete_button.visible = not _summary
 	_imperial = _torqa.profile().get("units", "metric") == "imperial"
 	_rides = _torqa.history()
+	var curves: Dictionary = _torqa.power_curves(0, false, false)
+	_best_efforts = curves.get("period", [])
 	for child: Node in _list.get_children():
 		child.queue_free()
 	var group: ButtonGroup = ButtonGroup.new()
@@ -188,6 +197,8 @@ func _ready() -> void:
 	_detail.add_child(_stats)
 	_climbs.add_theme_constant_override("separation", 4)
 	_detail.add_child(_climbs)
+	_power_records.add_theme_constant_override("h_separation", 24)
+	_detail.add_child(_power_records)
 	_ftp_row.add_theme_constant_override("separation", 16)
 	_ftp_text.add_theme_font_size_override("font_size", 18)
 	_ftp_row.add_child(_ftp_text)
@@ -217,9 +228,12 @@ func _ready() -> void:
 
 	var zones: HBoxContainer = HBoxContainer.new()
 	zones.add_theme_constant_override("separation", 32)
+	_power_curve.custom_minimum_size = Vector2(0, 170)
 	# i18n-begin
 	for entry: Array in [
-		["Time in power zones", _power_zones], ["Time in heart-rate zones", _heart_rate_zones]
+		["Time in power zones", _power_zones],
+		["Time in heart-rate zones", _heart_rate_zones],
+		["Power curve", _power_curve],
 	]:
 		# i18n-end
 		var column: VBoxContainer = VBoxContainer.new()
@@ -227,8 +241,8 @@ func _ready() -> void:
 		column.add_theme_constant_override("separation", 8)
 		var caption: String = entry[0]
 		column.add_child(UiTheme.caption(caption))
-		var bars: ZoneBars = entry[1]
-		column.add_child(bars)
+		var content: Control = entry[1]
+		column.add_child(content)
 		zones.add_child(column)
 	_detail.add_child(zones)
 
@@ -270,10 +284,12 @@ func _show_ride(index: int) -> void:
 	var ride_name: String = ride["name"]
 	_title.placeholder_text = _default_name(ride)
 	_title.text = ride_name
-	_subtitle.text = _date(start)
+	_subtitle.text = UiTheme.date(start)
 	_export_status.hide()
 	_fill_stats(ride)
 	_fill_climbs(ride)
+	_fill_power_records(ride)
+	_show_power_curve(ride)
 	_show_ftp(ride)
 	var detail: Dictionary = _torqa.ride_detail(path, CHART_POINTS)
 	if detail.is_empty():
@@ -386,6 +402,36 @@ func _fill_climbs(ride: Dictionary) -> void:
 		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
 
 
+## A ★ for each duration over which the ride holds the rider's best power (R61).
+func _fill_power_records(ride: Dictionary) -> void:
+	for child: Node in _power_records.get_children():
+		child.queue_free()
+	var records: PackedFloat64Array = ride.get("power_records", PackedFloat64Array())
+	var curve: PackedVector2Array = ride.get("power_curve", PackedVector2Array())
+	_power_records.visible = not records.is_empty()
+	for seconds: float in records:
+		var watts: float = 0.0
+		for point: Vector2 in curve:
+			if is_equal_approx(point.x, seconds):
+				watts = point.y
+		var badge: Label = Label.new()
+		badge.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		badge.text = (
+			tr("★ Best %s: %d W") % [PowerCurveChart.duration_label(seconds), roundi(watts)]
+		)
+		badge.add_theme_color_override("font_color", UiTheme.CLIMB_COLORS["Cat 3"])
+		_power_records.add_child(badge)
+
+
+## The ride's best power over each duration, over the rider's best of all rides (R61).
+func _show_power_curve(ride: Dictionary) -> void:
+	var curve: PackedVector2Array = ride.get("power_curve", PackedVector2Array())
+	(_power_curve.get_parent() as Control).visible = not curve.is_empty()
+	_power_curve.clear()
+	_power_curve.add_curve(curve, UiTheme.POWER_COLOR)
+	_power_curve.add_efforts(_best_efforts, UiTheme.MUTED)
+
+
 func _time_row(what: String, seconds: float, power: Variant, record: bool) -> HBoxContainer:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -478,7 +524,7 @@ func _close() -> void:
 func _default_name(ride: Dictionary) -> String:
 	var route: String = ride["route"]
 	var start: int = ride["start_unix_s"]
-	return "%s · %s" % [route, _date(start).get_slice(",", 0).rsplit(" ", true, 1)[0]]
+	return "%s · %s" % [route, UiTheme.date(start).get_slice(",", 0).rsplit(" ", true, 1)[0]]
 
 
 func _list_text(ride: Dictionary) -> String:
@@ -490,32 +536,7 @@ func _list_text(ride: Dictionary) -> String:
 	)
 	var ride_name: String = ride["name"]
 	var title: String = ride_name if not ride_name.is_empty() else _default_name(ride)
-	return "%s\n%s  ·  %s  ·  %s" % [title, _date(start), distance, _duration(elapsed_s)]
-
-
-## Local date and time of a Unix timestamp, e.g. "Sat 3 Oct 2026, 07:15".
-static func _date(unix_s: int) -> String:
-	var bias_minutes: int = Time.get_time_zone_from_system().get("bias", 0)
-	var date: Dictionary = Time.get_datetime_dict_from_unix_time(unix_s + bias_minutes * 60)
-	# i18n-begin
-	var weekdays: Array[String] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-	var months: Array[String] = [
-		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-	]
-	# i18n-end
-	var weekday: int = date["weekday"]
-	var month: int = date["month"]
-	return (
-		"%s %d %s %d, %02d:%02d"
-		% [
-			TranslationServer.translate(weekdays[weekday]),
-			date["day"],
-			TranslationServer.translate(months[month - 1]),
-			date["year"],
-			date["hour"],
-			date["minute"]
-		]
-	)
+	return "%s\n%s  ·  %s  ·  %s" % [title, UiTheme.date(start), distance, _duration(elapsed_s)]
 
 
 static func _duration(seconds: float) -> String:

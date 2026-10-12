@@ -1,6 +1,6 @@
 # Start page
 
-Torqa opens on the start page with five tabs:
+Torqa opens on the start page with six tabs:
 
 - **Courses** — your course library as cards: each shows the route on a map of its
   surroundings (a video course without a place on black), then length, climbing and steepest
@@ -18,6 +18,8 @@ Torqa opens on the start page with five tabs:
   ride a structured workout (built in, imported or your own) or an FTP test; on its own or on
   a course in 3D ([workouts.md](workouts.md)).
 - **History** — your rides ([history.md](history.md)).
+- **Analysis** — your power across your rides: the best you held for every duration, in a
+  period against all time or the period before ([analysis.md](analysis.md)).
 - **Profile** — who rides, their figures, editing them and their HUD, adding and deleting riders
   ([riders.md](riders.md), [hud.md](hud.md)).
 - **Devices & Settings** — trainer, heart-rate strap and Di2 shifter, the ones used last

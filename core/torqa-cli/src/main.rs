@@ -4,6 +4,7 @@ mod devices;
 mod free_ride;
 mod gear_check;
 mod recorded_ride;
+mod sample_rides;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -56,6 +57,9 @@ enum Command {
         #[arg(long, default_value_t = 8)]
         seconds: u64,
     },
+    /// Write weeks of made-up rides to the active rider's history, e.g. for screenshots of
+    /// the Analysis tab.
+    SampleRides(sample_rides::SampleRidesArgs),
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -209,6 +213,7 @@ async fn main() -> Result<()> {
         Command::Route(args) => route_info(&args).await,
         Command::Video { file, seconds } => video_check(&file, seconds),
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
+        Command::SampleRides(args) => sample_rides::write(&args),
     }
 }
 

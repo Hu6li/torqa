@@ -179,6 +179,20 @@ messages). `./torqa-cli workout builtins` lists the built-in workouts and
 saved as a FIT file like a route ride, as indoor cycling without positions. `--mass`,
 `--output` and (for constant power only) `--time-scale` apply as for routes.
 
+## Sample rides
+
+```sh
+./torqa-cli sample-rides                      # 16 weeks of made-up rides for the active rider
+./torqa-cli sample-rides --weeks 8 --data-dir /tmp/torqa
+```
+
+Writes made-up rides to the history of the rider Torqa starts with: three a week (intervals,
+an hour of endurance, a long ride or sprints), up to today, by a rider whose FTP grows from
+215 W to 250 W. They fill the history and the Analysis tab ([analysis.md](analysis.md)) for
+screenshots or to try them out; delete them in the history, or the rider's `rides` folder,
+afterwards. Running it again on the same day writes the same rides again rather than adding
+more.
+
 ## Check a video
 
 ```sh

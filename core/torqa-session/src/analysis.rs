@@ -1,17 +1,20 @@
-//! Ride analysis (R31): summary figures and time in training zones, computed from the 1 Hz
-//! samples of a recorded ride.
+//! Ride analysis (R31): summary figures, time in training zones and the power curve (R61),
+//! computed from the 1 Hz samples of a recorded ride.
 
 use std::ops::Range;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
-use torqa_domain::recording::{RideSummary, Sample};
+use torqa_domain::recording::{CURVE_DURATIONS, PowerCurve, RideAnalysis, RideSummary, Sample};
 use torqa_domain::units::{BeatsPerMinute, Joules, Meters, MetersPerSecond, Rpm, Watts};
 
 /// Normalized power smooths power over this many samples (30 s at 1 Hz).
 const NP_WINDOW: usize = 30;
 /// Each sample stands for this much time.
 const SAMPLE_TIME: Duration = Duration::from_secs(1);
+/// Gaps between samples up to this many seconds are bridged with the power before them, as a
+/// device recording only changes leaves them; longer ones are pauses no effort spans.
+const MAX_HOLD_S: u64 = 10;
 
 /// Summarises a ride; intensity and training stress are relative to `ftp`.
 #[must_use]
@@ -84,13 +87,95 @@ pub fn best_average_power(samples: &[Sample], window: Duration) -> Option<Watts>
         .iter()
         .map(|s| s.power.map_or(0.0, |p| p.0))
         .collect();
+    best_mean(&powers, length).map(Watts)
+}
+
+/// What the analysis across rides keeps of a ride (R61).
+#[must_use]
+pub fn analyse(samples: &[Sample]) -> RideAnalysis {
+    RideAnalysis {
+        power_curve: power_curve(samples),
+    }
+}
+
+/// The ride's best average power over each of the [`CURVE_DURATIONS`] it lasted (R61). Samples
+/// are put on a 1 s grid first, so activities recorded at another rate or only on changes give
+/// the same curve; no effort spans a pause. Empty for a ride without power.
+#[must_use]
+pub fn power_curve(samples: &[Sample]) -> PowerCurve {
+    if samples.iter().all(|s| s.power.is_none()) {
+        return PowerCurve::default();
+    }
+    let stretches = power_stretches(samples);
+    PowerCurve(
+        CURVE_DURATIONS
+            .iter()
+            .filter_map(|&duration| {
+                let window = usize::try_from(duration.as_secs()).ok()?;
+                stretches
+                    .iter()
+                    .filter_map(|stretch| best_mean(stretch, window))
+                    .reduce(f64::max)
+                    // A tenth of a watt is finer than power meters measure, and keeps the
+                    // stored curve short and the same as the one computed.
+                    .map(|best| (duration, Watts((best * 10.0).round() / 10.0)))
+            })
+            .collect(),
+    )
+}
+
+/// The ride's power once per second, in stretches between pauses: samples within the same
+/// second are averaged, short gaps hold the power before them, and seconds without power count
+/// as 0 W.
+fn power_stretches(samples: &[Sample]) -> Vec<Vec<f64>> {
+    let mut stretches = Vec::new();
+    let mut stretch: Vec<f64> = Vec::new();
+    // The second being filled: when, the sum of its powers and how many there were.
+    let mut second: Option<(u64, f64, u32)> = None;
+    for sample in samples {
+        let at = sample.elapsed.as_secs();
+        let power = sample.power.map_or(0.0, |p| p.0);
+        if let Some((current, sum, count)) = &mut second
+            && at <= *current
+        {
+            *sum += power;
+            *count += 1;
+            continue;
+        }
+        if let Some((current, sum, count)) = second {
+            let average = sum / f64::from(count);
+            stretch.push(average);
+            let gap = at - current;
+            if gap > MAX_HOLD_S {
+                stretches.push(std::mem::take(&mut stretch));
+            } else {
+                let held = usize::try_from(gap - 1).unwrap_or_default();
+                stretch.extend(std::iter::repeat_n(average, held));
+            }
+        }
+        second = Some((at, power, 1));
+    }
+    if let Some((_, sum, count)) = second {
+        stretch.push(sum / f64::from(count));
+        stretches.push(stretch);
+    }
+    stretches
+}
+
+/// The highest mean of `window` consecutive values, as a running sum; `None` if there are
+/// fewer.
+fn best_mean(values: &[f64], window: usize) -> Option<f64> {
+    if window == 0 || values.len() < window {
+        return None;
+    }
+    let mut sum: f64 = values[..window].iter().sum();
+    let mut best = sum;
+    for (entering, leaving) in values[window..].iter().zip(values) {
+        sum += entering - leaving;
+        best = best.max(sum);
+    }
     #[allow(clippy::cast_precision_loss)] // a window of seconds
-    let seconds = length as f64;
-    powers
-        .windows(length)
-        .map(|w| w.iter().sum::<f64>() / seconds)
-        .reduce(f64::max)
-        .map(Watts)
+    Some(best / window as f64)
 }
 
 /// Share of the best minute of a ramp test that the rider can hold for an hour: the usual
@@ -270,6 +355,110 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    /// Samples at the given times in seconds with the given powers.
+    fn timed(points: impl IntoIterator<Item = (f64, f64)>) -> Vec<Sample> {
+        points
+            .into_iter()
+            .map(|(at, power)| Sample {
+                elapsed: Duration::from_secs_f64(at),
+                location: None,
+                distance: Meters(8.0 * at),
+                speed: MetersPerSecond(8.0),
+                power: Some(Watts(power)),
+                cadence: None,
+                heart_rate: None,
+            })
+            .collect()
+    }
+
+    /// 10 minutes at 200 W, 5 at 400 W, 10 at 200 W: power for each second of 25 minutes.
+    fn block_power(second: f64) -> f64 {
+        if (600.0..900.0).contains(&second) {
+            400.0
+        } else {
+            200.0
+        }
+    }
+
+    fn watts_at(curve: &PowerCurve, seconds: u64) -> Option<f64> {
+        curve.at(Duration::from_secs(seconds)).map(|p| p.0)
+    }
+
+    #[test]
+    fn a_steady_ride_holds_its_power_at_every_duration_it_lasted() {
+        let curve = power_curve(&ride(&[Some(250.0); 600]));
+
+        // Every duration of the curve from a second to the ride's 10 minutes.
+        assert_eq!(curve.0.len(), 19);
+        assert!(curve.0.iter().all(|(_, p)| (p.0 - 250.0).abs() < 1e-9));
+        assert_eq!(
+            curve.0.last().map(|(d, _)| *d),
+            Some(Duration::from_mins(10))
+        );
+        assert_eq!(watts_at(&curve, 720), None, "longer than the ride");
+    }
+
+    #[test]
+    fn the_curve_holds_the_hardest_stretch_of_each_length() {
+        let samples = timed((0..1500).map(|s| (f64::from(s), block_power(f64::from(s)))));
+
+        let curve = power_curve(&samples);
+
+        assert_eq!(watts_at(&curve, 1), Some(400.0));
+        assert_eq!(watts_at(&curve, 300), Some(400.0));
+        // The hard 5 minutes with 5 easy ones: (300·400 + 300·200) / 600.
+        assert_eq!(watts_at(&curve, 600), Some(300.0));
+        assert_eq!(watts_at(&curve, 1200), Some(250.0));
+        assert_eq!(watts_at(&curve, 1500), Some(240.0));
+    }
+
+    #[test]
+    fn the_recording_rate_does_not_change_the_curve() {
+        let every_second = power_curve(&timed(
+            (0..1500).map(|s| (f64::from(s), block_power(f64::from(s)))),
+        ));
+        let twice_a_second = power_curve(&timed((0..3000).map(|i| {
+            let at = f64::from(i) / 2.0;
+            (at, block_power(at.floor()))
+        })));
+        // Recorded every 4 s, as devices recording only changes do on steady efforts.
+        let every_four_seconds = power_curve(&timed(
+            (0..375).map(|i| (f64::from(i * 4), block_power(f64::from(i * 4)))),
+        ));
+
+        assert_eq!(twice_a_second, every_second);
+        for (duration, power) in &every_second.0 {
+            if duration.as_secs() <= 1200 {
+                assert_eq!(
+                    every_four_seconds.at(*duration),
+                    Some(*power),
+                    "{duration:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_effort_spans_a_pause() {
+        // 5 minutes at 300 W, a 10-minute pause, 5 more minutes at 300 W.
+        let samples = timed(
+            (0..300)
+                .map(|s| (f64::from(s), 300.0))
+                .chain((900..1200).map(|s| (f64::from(s), 300.0))),
+        );
+
+        let curve = power_curve(&samples);
+
+        assert_eq!(watts_at(&curve, 300), Some(300.0));
+        assert_eq!(watts_at(&curve, 360), None);
+    }
+
+    #[test]
+    fn a_ride_without_power_has_no_curve() {
+        assert_eq!(power_curve(&ride(&[None; 120])), PowerCurve::default());
+        assert_eq!(power_curve(&[]), PowerCurve::default());
     }
 
     #[test]

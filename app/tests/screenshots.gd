@@ -159,11 +159,15 @@ func _run() -> void:
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("start-gallery.png"))
 	for tab: Array in [
-		[StartPage.Tab.PROFILE, "start-profile"], [StartPage.Tab.DEVICES, "start-devices"]
+		[StartPage.Tab.ANALYSIS, "start-analysis"],
+		[StartPage.Tab.PROFILE, "start-profile"],
+		[StartPage.Tab.DEVICES, "start-devices"],
 	]:
 		var index: int = tab[0]
 		var file: String = tab[1]
 		start_tabs.current_tab = index
+		if index == StartPage.Tab.ANALYSIS:
+			_compare_periods(start)
 		if index == StartPage.Tab.PROFILE:
 			_unfold_rider(start)
 		await create_timer(0.5).timeout
@@ -171,6 +175,18 @@ func _run() -> void:
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
+
+
+## The last six weeks against the six before, read off at 5 minutes, as docs/analysis.md shows
+## the power curve (R61).
+func _compare_periods(start: StartPage) -> void:
+	var analysis: AnalysisTab = start.find_children("*", "AnalysisTab", true, false)[0]
+	var compare: OptionButton = analysis.get("_compare")
+	compare.select(1)
+	analysis.refresh()
+	var chart: PowerCurveChart = analysis.get("_chart")
+	chart.set("_hover_s", 300.0)
+	chart.queue_redraw()
 
 
 ## Unfolds the rider's card to their whole setup and zones (#194), as docs/riders.md shows it.

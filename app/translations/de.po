@@ -1245,3 +1245,54 @@ msgstr "FIT-Aktivitäten"
 
 msgid "Saved as %s"
 msgstr "Gespeichert als %s"
+
+msgid "%d h"
+msgstr "%d h"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "%d s"
+msgstr "%d s"
+
+msgid "Against all time"
+msgstr "Gegenüber dem gesamten Zeitraum"
+
+msgid "Against the period before"
+msgstr "Gegenüber dem Zeitraum davor"
+
+msgid "All time"
+msgstr "Gesamter Zeitraum"
+
+msgid "Analysis"
+msgstr "Analyse"
+
+msgid "Last 6 weeks"
+msgstr "Letzte 6 Wochen"
+
+msgid "Last 90 days"
+msgstr "Letzte 90 Tage"
+
+msgid "Last 12 months"
+msgstr "Letzte 12 Monate"
+
+msgid "No rides with power yet: your best efforts show here once you ride with power."
+msgstr "Noch keine Fahrten mit Leistung: Sobald du mit Leistungsmessung fährst, erscheinen hier deine Bestleistungen."
+
+msgid "Per kilogram"
+msgstr "Pro Kilogramm"
+
+msgid "Power curve"
+msgstr "Leistungskurve"
+
+msgid "The best power you held for each length of effort, from a sprint to hours."
+msgstr "Die beste Leistung, die du über jede Dauer gehalten hast, vom Sprint bis zu Stunden."
+
+msgid "The period before"
+msgstr "Zeitraum davor"
+
+msgid "Your power"
+msgstr "Deine Leistung"
+
+msgid "★ Best %s: %d W"
+msgstr "★ Bestleistung %s: %d W"

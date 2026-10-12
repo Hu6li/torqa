@@ -76,6 +76,14 @@ func _run() -> void:
 	var detail: Dictionary = _torqa.ride_detail(newest_path, 100)
 	var power_chart: PackedVector2Array = detail.get("power", PackedVector2Array())
 	_check(not power_chart.is_empty(), "power chart: %s" % detail)
+	# The ride's best power over each duration, held at the fake trainer's 250 W (R61).
+	var curve: PackedVector2Array = newest.get("power_curve", PackedVector2Array())
+	_check(
+		not curve.is_empty() and curve[0] == Vector2(1, 250), "the ride's power curve: %s" % curve
+	)
+	var curves: Dictionary = _torqa.power_curves(0, false, false)
+	var bests: Array = curves.get("period", [])
+	_check(not bests.is_empty(), "the rider's power curve: %s" % curves)
 
 	await _workout()
 

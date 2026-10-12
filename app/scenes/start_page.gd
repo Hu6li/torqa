@@ -1,14 +1,14 @@
 class_name StartPage
 extends Control
-## The start page (R38): tabs for Courses, Workouts (R58), History, Profile and Devices &
-## Settings. The ride view is separate; riding starts from a course's detail page or the
+## The start page (R38): tabs for Courses, Workouts (R58), History, Analysis (R60), Profile and
+## Devices & Settings. The ride view is separate; riding starts from a course's detail page or the
 ## Workouts tab.
 
 ## A ride has started with `options` (`RideOptions.options()`); a workout's also carry
 ## `workout` (`WorkoutsTab.workout()`) and `on_course`.
 signal ride_started(options: Dictionary)
 
-enum Tab { COURSES, WORKOUTS, HISTORY, PROFILE, DEVICES }
+enum Tab { COURSES, WORKOUTS, HISTORY, ANALYSIS, PROFILE, DEVICES }
 
 var _torqa: TorqaApp
 var _tabs: TabContainer = TabContainer.new()
@@ -19,6 +19,7 @@ var _workouts: WorkoutsTab = WorkoutsTab.new()
 var _history: HistoryScreen = (
 	(preload("res://scenes/history_screen.tscn") as PackedScene).instantiate() as HistoryScreen
 )
+var _analysis: AnalysisTab = AnalysisTab.new()
 var _profile: ProfileTab = ProfileTab.new()
 var _devices: DevicesTab = DevicesTab.new()
 ## The options and ghost of the ride waiting for its world.
@@ -34,6 +35,7 @@ func bind(torqa: TorqaApp) -> void:
 	_detail.bind(torqa)
 	_workouts.bind(torqa)
 	_history.bind(torqa)
+	_analysis.bind(torqa)
 	_profile.bind(torqa)
 	_devices.bind(torqa)
 
@@ -45,6 +47,8 @@ func refresh() -> void:
 	_detail.refresh_records()
 	if _tabs.current_tab == Tab.HISTORY:
 		_history.open()
+	elif _tabs.current_tab == Tab.ANALYSIS:
+		_analysis.refresh()
 
 
 ## The ride options of the course being ridden, e.g. to show them in the ride.
@@ -60,6 +64,7 @@ func _ready() -> void:
 		[_courses_page, "Courses"],
 		[_workouts, "Workouts"],
 		[_history, "History"],
+		[_analysis, "Analysis"],
 		[_profile, "Profile"],
 		[_devices, "Devices & Settings"],
 	]:
@@ -108,6 +113,8 @@ func _show_gallery() -> void:
 func _on_tab_changed(tab: int) -> void:
 	if tab == Tab.HISTORY:
 		_history.open()
+	elif tab == Tab.ANALYSIS:
+		_analysis.refresh()
 	elif tab == Tab.WORKOUTS:
 		# Courses and riders change on the other tabs.
 		_workouts.refresh()

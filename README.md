@@ -76,7 +76,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
     <td>👻 <b><a href="docs/ghosts.md">Ghosts &amp; pacers</a></b><br>
       Race your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="docs/history.md">History &amp; records</a></b><br>
-      FIT export, ride analysis, personal records per course and climb</td>
+      FIT export, ride analysis, your power curve, records per course, climb and duration</td>
   </tr>
 </table>
 
@@ -100,6 +100,7 @@ FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.m
 | Overlay over other apps | [docs/overlay.md](docs/overlay.md) |
 | Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
 | Ride history, climbs and records | [docs/history.md](docs/history.md) |
+| Analysis across rides: power curve | [docs/analysis.md](docs/analysis.md) |
 | Music control | [docs/audio.md](docs/audio.md) |
 | Translations | [docs/translating.md](docs/translating.md) |
 | Command-line tool for testing trainers | [docs/cli.md](docs/cli.md) |
