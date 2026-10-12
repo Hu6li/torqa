@@ -151,7 +151,13 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 - **History (PR #11)**: the history scans each rider's `rides/` folder and reads the JSON
   summaries; the SQLite index from ADR 0002 is not built yet — not needed until there are
-  hundreds of rides.
+  hundreds of rides. The Analysis tab (R61) reads the same summaries, so it is the first place
+  to look if that changes.
+- **Analysis across rides (#217)**: rides saved before keep no weight, so their power per
+  kilogram uses the rider's weight today. The first time the history is read after updating,
+  each older ride's FIT file is read once to find its power curve (ADR 0014), a single
+  longer wait with many rides. In FIT files copied in, a gap of more than 10 s between records
+  is taken as a pause that no effort spans.
 
 - **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
   saved earlier in `rides/` are not moved. Mass comes from the profile (rider + bike).

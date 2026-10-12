@@ -12,6 +12,7 @@ use std::time::Duration;
 use godot::classes::image::Format as ImageFormat;
 use godot::classes::{Engine, INode, Image, Node};
 use godot::prelude::*;
+use torqa_app::analysis::{BestEffort, Comparison};
 use torqa_app::hud::MetricKind;
 use torqa_app::media::MediaCommand;
 use torqa_app::view;
@@ -519,9 +520,12 @@ impl TorqaApp {
     /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
     /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
     /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
-    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs, uploads}]`; values
-    /// the ride did not record are `null`, and `ftp_estimate_w` for all but FTP tests (R22).
-    /// `uploads` has the page of the ride's activity by platform id (R29).
+    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs, power_curve,
+    /// power_records, uploads}]`; values the ride did not record are `null`, and
+    /// `ftp_estimate_w` for all but FTP tests (R22). `power_curve` holds `(duration s, W)`
+    /// points of the ride's best power, `power_records` the durations in seconds over which it
+    /// is the rider's best (R62). `uploads` has the page of the ride's activity by platform id
+    /// (R29).
     #[func]
     fn history(&self) -> VarArray {
         let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
@@ -529,11 +533,7 @@ impl TorqaApp {
         for entry in self.app.as_ref().map(App::history).unwrap_or_default() {
             let s = &entry.record.summary;
             let path = entry.fit.display().to_string();
-            let start = entry
-                .record
-                .start
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+            let start = unix_seconds(entry.record.start);
             array.push(
                 &vdict! {
                     "path" => path.as_str(),
@@ -557,12 +557,72 @@ impl TorqaApp {
                     "route_record" => entry.route_record,
                     "ftp_estimate_w" => &optional(entry.record.ftp_estimate.map(|w| w.0)),
                     "climbs" => &climb_times(&entry),
+                    "power_curve" => &entry
+                        .record
+                        .analysis
+                        .as_ref()
+                        .map(|a| {
+                            a.power_curve
+                                .0
+                                .iter()
+                                .map(|(d, p)| vector2(d.as_secs_f64(), p.0))
+                                .collect::<PackedVector2Array>()
+                        })
+                        .unwrap_or_default(),
+                    "power_records" => &entry
+                        .power_records
+                        .iter()
+                        .map(Duration::as_secs_f64)
+                        .collect::<PackedFloat64Array>(),
                     "uploads" => &uploads_dict(&entry),
                 }
                 .to_variant(),
             );
         }
         array
+    }
+
+    /// The active rider's power curves (R62): `{period, compare}`, each the best efforts per
+    /// duration as `[{duration_s, power, watts_per_kg, start_unix_s, path}]`, shortest first.
+    /// `period` holds those of the rides of the last `period_days` (all rides for 0), `compare`
+    /// those of all rides or, with `previous`, of the period before. With `per_kg`, the best
+    /// effort is the one with the most power per kilogram.
+    #[func]
+    fn power_curves(&self, period_days: i64, previous: bool, per_kg: bool) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let period = u64::try_from(period_days)
+            .ok()
+            .filter(|&days| days > 0)
+            .map(|days| Duration::from_secs(days * 24 * 3600));
+        let comparison = if previous {
+            Comparison::PreviousPeriod
+        } else {
+            Comparison::AllTime
+        };
+        let curves = app.power_curves(period, comparison, per_kg);
+        let efforts = |efforts: &[BestEffort]| {
+            let mut array = VarArray::new();
+            for effort in efforts {
+                let path = effort.fit.display().to_string();
+                array.push(
+                    &vdict! {
+                        "duration_s" => effort.duration.as_secs_f64(),
+                        "power" => effort.power.0,
+                        "watts_per_kg" => effort.watts_per_kg,
+                        "start_unix_s" => unix_seconds(effort.start),
+                        "path" => path.as_str(),
+                    }
+                    .to_variant(),
+                );
+            }
+            array
+        };
+        vdict! {
+            "period" => &efforts(&curves.period),
+            "compare" => &efforts(&curves.compare),
+        }
     }
 
     /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
@@ -2463,6 +2523,12 @@ fn mesh_arrays(mesh: &torqa_world::MeshData) -> VarDictionary {
         "colors" => &colors,
         "indices" => &indices,
     }
+}
+
+/// Seconds since 1970 of `time`, as the history gives start times.
+fn unix_seconds(time: std::time::SystemTime) -> i64 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
 }
 
 // Godot vectors are f32; metre precision is ample for drawing.

@@ -146,8 +146,19 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
 	print("saved summary")
-	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
+	# Further down, the ride's power curve over the rider's best (R62).
 	var summary: HistoryScreen = _main.get_node("HistoryScreen")
+	var ride_detail: Control = summary.get("_detail")
+	var detail_scroll: ScrollContainer = ride_detail.get_parent() as ScrollContainer
+	var ride_curve: Control = summary.get("_power_curve")
+	detail_scroll.ensure_control_visible(ride_curve)
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("summary-curve.png"))
+	print("saved summary curve")
+	detail_scroll.scroll_vertical = 0
+	# The menu opens where its button is once the scroll is laid out again.
+	await process_frame
+	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
 	var upload: MenuButton = summary.get("_upload_button")
 	upload.show_popup()
 	await create_timer(0.5).timeout
@@ -166,11 +177,15 @@ func _run() -> void:
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("start-gallery.png"))
 	for tab: Array in [
-		[StartPage.Tab.PROFILE, "start-profile"], [StartPage.Tab.DEVICES, "start-devices"]
+		[StartPage.Tab.ANALYSIS, "start-analysis"],
+		[StartPage.Tab.PROFILE, "start-profile"],
+		[StartPage.Tab.DEVICES, "start-devices"],
 	]:
 		var index: int = tab[0]
 		var file: String = tab[1]
 		start_tabs.current_tab = index
+		if index == StartPage.Tab.ANALYSIS:
+			_compare_periods(start)
 		if index == StartPage.Tab.PROFILE:
 			_unfold_rider(start)
 		await create_timer(0.5).timeout
@@ -188,6 +203,18 @@ func _run() -> void:
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
+
+
+## The last six weeks against the six before, read off at 5 minutes, as docs/analysis.md shows
+## the power curve (R62).
+func _compare_periods(start: StartPage) -> void:
+	var analysis: AnalysisTab = start.find_children("*", "AnalysisTab", true, false)[0]
+	var compare: OptionButton = analysis.get("_compare")
+	compare.select(1)
+	analysis.refresh()
+	var chart: PowerCurveChart = analysis.get("_chart")
+	chart.set("_hover_s", 300.0)
+	chart.queue_redraw()
 
 
 ## Unfolds the rider's card to their whole setup and zones (#194), as docs/riders.md shows it.

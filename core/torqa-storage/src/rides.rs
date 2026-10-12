@@ -7,13 +7,19 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use torqa_domain::recording::RideSummary;
-use torqa_domain::units::{BeatsPerMinute, Joules, Meters, MetersPerSecond, Rpm, Watts};
+use torqa_domain::recording::{PowerCurve, RideAnalysis, RideSummary};
+use torqa_domain::units::{BeatsPerMinute, Joules, Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 
 /// The metadata format written by this version; newer files are treated as missing and rebuilt
 /// from the FIT file rather than misread.
 /// Version 2 added the route key, route time and climb times; version 1 files read without them.
 pub const FORMAT_VERSION: u32 = 2;
+
+/// The analysis data written by this version (R62, ADR 0014). It has its own version, so it can
+/// grow and be computed again from the FIT file without a new [`FORMAT_VERSION`], which an older
+/// Torqa would answer by rebuilding the metadata and losing the ride's name and times. Later
+/// versions only add to it, so a newer one still reads as this one.
+pub const ANALYSIS_VERSION: u32 = 1;
 
 /// Reading or writing ride metadata failed.
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +55,15 @@ pub struct RideRecord {
     pub name: Option<String>,
     /// The FTP an FTP test showed (R22), if the ride was one.
     pub ftp_estimate: Option<Watts>,
+    /// The rider's body mass on the ride, for power per kilogram (R62); `None` for rides saved
+    /// before Torqa kept it.
+    pub rider_mass: Option<Kilograms>,
+    /// Sped up or moved along in simulation (#53): not the rider's own effort, so it counts
+    /// towards no records and no analysis.
+    pub simulated: bool,
+    /// What the analysis across rides keeps of the ride (R62); `None` until it is computed
+    /// from the FIT file, or if an older Torqa computed less than this one keeps.
+    pub analysis: Option<RideAnalysis>,
     /// Where the ride was uploaded (R29), by platform id.
     pub uploads: BTreeMap<String, Upload>,
 }
@@ -127,6 +142,47 @@ struct RideFile {
     ftp_estimate_w: Option<f64>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     uploads: BTreeMap<String, Upload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rider_mass_kg: Option<f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    simulated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    analysis: Option<AnalysisFile>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AnalysisFile {
+    version: u32,
+    /// Best power in watts per duration in seconds: one line each in the pretty-printed file.
+    #[serde(default)]
+    power_curve_w: BTreeMap<u64, f64>,
+}
+
+impl From<&RideAnalysis> for AnalysisFile {
+    fn from(a: &RideAnalysis) -> Self {
+        Self {
+            version: ANALYSIS_VERSION,
+            power_curve_w: a
+                .power_curve
+                .0
+                .iter()
+                .map(|(d, p)| (d.as_secs(), p.0))
+                .collect(),
+        }
+    }
+}
+
+impl From<AnalysisFile> for RideAnalysis {
+    fn from(f: AnalysisFile) -> Self {
+        Self {
+            power_curve: PowerCurve(
+                f.power_curve_w
+                    .into_iter()
+                    .map(|(s, w)| (Duration::from_secs(s), Watts(w)))
+                    .collect(),
+            ),
+        }
+    }
 }
 
 impl From<&RideRecord> for RideFile {
@@ -157,6 +213,9 @@ impl From<&RideRecord> for RideFile {
             route_key: r.route_key.clone(),
             name: r.name.clone(),
             ftp_estimate_w: r.ftp_estimate.map(|w| w.0),
+            rider_mass_kg: r.rider_mass.map(|m| m.0),
+            simulated: r.simulated,
+            analysis: r.analysis.as_ref().map(AnalysisFile::from),
             uploads: r.uploads.clone(),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
             climbs: r
@@ -198,6 +257,12 @@ impl From<RideFile> for RideRecord {
             route_key: f.route_key,
             name: f.name,
             ftp_estimate: f.ftp_estimate_w.map(Watts),
+            rider_mass: f.rider_mass_kg.map(Kilograms),
+            simulated: f.simulated,
+            analysis: f
+                .analysis
+                .filter(|a| a.version >= ANALYSIS_VERSION)
+                .map(RideAnalysis::from),
             uploads: f.uploads,
             route_time: f.route_time_s.map(|t| Duration::from_secs_f64(t.max(0.0))),
             climbs: f
@@ -340,6 +405,15 @@ mod tests {
             }],
             name: Some("Morning loop".to_owned()),
             ftp_estimate: Some(Watts(245.0)),
+            rider_mass: Some(Kilograms(72.5)),
+            simulated: false,
+            analysis: Some(RideAnalysis {
+                power_curve: PowerCurve(vec![
+                    (Duration::from_secs(1), Watts(612.5)),
+                    (Duration::from_mins(1), Watts(388.0)),
+                    (Duration::from_mins(20), Watts(251.3)),
+                ]),
+            }),
             uploads: BTreeMap::from([(
                 "intervals".to_owned(),
                 Upload {
@@ -381,6 +455,35 @@ mod tests {
         assert_eq!(record.climbs, []);
         assert_eq!(record.name, None);
         assert_eq!(record.uploads, BTreeMap::new());
+        assert_eq!(record.rider_mass, None);
+        assert!(!record.simulated);
+        assert_eq!(record.analysis, None, "to be computed from the FIT file");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn analysis_from_an_older_torqa_is_computed_again_and_a_newer_one_still_read() {
+        let dir = temp_dir("analysis-versions");
+        let fit = dir.join("a.fit");
+        let json = |version: u32| {
+            format!(
+                r#"{{"format": 2, "route": "R", "start_unix_s": 1, "elapsed_s": 60.0,
+                    "distance_m": 500.0, "elevation_gain_m": 0.0, "avg_speed_mps": 8.0,
+                    "max_speed_mps": 9.0, "ftp_w": 200.0, "simulated": true,
+                    "analysis": {{"version": {version}, "power_curve_w": {{"5": 700.0}},
+                    "added_later": [1, 2]}}}}"#
+            )
+        };
+
+        std::fs::write(dir.join("a.json"), json(0)).unwrap();
+        let older = load(&fit).unwrap();
+        std::fs::write(dir.join("a.json"), json(99)).unwrap();
+        let newer = load(&fit).unwrap();
+
+        assert!(older.simulated);
+        assert_eq!(older.analysis, None);
+        let curve = newer.analysis.unwrap().power_curve;
+        assert_eq!(curve.at(Duration::from_secs(5)), Some(Watts(700.0)));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

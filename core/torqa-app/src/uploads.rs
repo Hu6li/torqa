@@ -691,6 +691,9 @@ mod tests {
             climbs: Vec::new(),
             name: name.map(ToOwned::to_owned),
             ftp_estimate: None,
+            rider_mass: None,
+            simulated: false,
+            analysis: None,
             uploads: BTreeMap::new(),
         };
         rides::save(&fit, &record).unwrap();

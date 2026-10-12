@@ -19,16 +19,18 @@ core/                      Rust workspace (tokio + tracing)
   torqa-osm/               OpenStreetMap features from OpenFreeMap vector tiles, tile cache
   torqa-world/             terrain chunks, land cover, road mesh, streets, railways, bridges and
                            tunnels, water, buildings, vegetation, the minimap
-  torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones), ghosts, workouts
-                           (ERG, heart-rate hold, structured), recording
+  torqa-session/           ride loop (10–20 Hz), metrics (NP/TSS/zones, power curve), ghosts,
+                           workouts (ERG, heart-rate hold, structured), recording
   torqa-workouts/          workout files (ZWO, ERG/MRC, FIT), built-in workouts, the library
   torqa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist and Tacx RLV (ADR 0010)
   torqa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
   torqa-upload/            uploads to training platforms (intervals.icu, Strava) behind
                            ActivityUploader, the OAuth login in the browser
-  torqa-app/               application layer: commands + update() per frame for front ends
+  torqa-app/               application layer: commands + update() per frame for front ends,
+                           the analysis across a rider's rides
   torqa-gd/                gdext bindings (TorqaApp node)
-  torqa-cli/               headless: scan devices, ride with fake trainer, export FIT
+  torqa-cli/               headless: scan devices, ride with fake trainer, export FIT, sample
+                           rides
 app/                       Godot 4 project: scenes/ (screens, 3D world, video view), ui/ (shared
                            controls and theme), shaders/, translations/, tests/ (smoke tests)
 art/                       Blender Python scripts for the 3D models: buildings, vegetation,
@@ -58,9 +60,10 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
 - **Elevation**: Mapterhorn terrain tiles with AWS fallback, cached on disk
   ([ADR 0005](adr/0005-elevation-data.md)).
 - **Storage**: files are the source of truth ([ADR 0002](adr/0002-sync-safe-storage.md)):
-  per rider `profiles/<rider>/profile.toml`, `hud.toml` and `rides/` (FIT + JSON summary);
+  per rider `profiles/<rider>/profile.toml`, `hud.toml` and `rides/` (FIT + JSON summary, with
+  what the analysis across rides keeps of each ride, [ADR 0014](adr/0014-ride-analysis-data.md));
   `courses/*.tqc` shared by all riders. The SQLite index of ADR 0002 is not built yet — the
-  history reads the JSON summaries directly, fast enough so far. Config TOML, data JSON
+  history and the analysis read the JSON summaries directly, fast enough so far. Config TOML, data JSON
   ([ADR 0004](adr/0004-config-formats.md)).
 - **Course files** (`.tqc`, [ADR 0007](adr/0007-course-files.md)): manifest, GPX, the
   terrain and map tiles used and a picture of its map, so a course is rebuilt offline
@@ -387,6 +390,22 @@ the realistic look's textures and patterns were replaced step by step.
 - [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)
 - **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
   Zone 3 on the KICKR and the session lands in the history as a FIT
+
+### Phase 11 — Rider analysis (R61–R62, #217)
+The rider's power across their rides on an Analysis tab, from what each ride keeps beside its
+summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
+- [x] Power curve (R62): the best power per duration among a period's rides against all rides or
+  the period before, in W or W/kg; the ride's curve on its summary and ★ for its power records;
+  rides saved before analysed once from their FIT files; `torqa-cli sample-rides` for
+  screenshots
+- [ ] Power profile: a radar of the best 5 s / 1 / 5 / 20 / 60 min of a recent period against the
+  rider's best of all time (the "power spider" of #217)
+- [ ] Fitness, fatigue and form (CTL / ATL / TSB) from the rides' TSS; weekly bars of time,
+  distance, climbing, TSS, rides and time in power and heart-rate zones
+- [ ] Progress: the best 1 / 5 / 20 min per month, the FTP over time, an FTP estimated from the
+  rides offered, never applied
+- **Exit:** a season of real rides shows where the rider got stronger, and how fit and fresh
+  they are, without leaving Torqa
 
 ## Risks
 

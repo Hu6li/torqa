@@ -260,6 +260,32 @@ static func duration(seconds: float) -> String:
 	return "%d:%02d" % [total / 60, total % 60]
 
 
+## Local date and time of a Unix timestamp, e.g. "Sat 3 Oct 2026, 07:15"; the date alone is
+## the part before the comma.
+static func date(unix_s: int) -> String:
+	var bias_minutes: int = Time.get_time_zone_from_system().get("bias", 0)
+	var local: Dictionary = Time.get_datetime_dict_from_unix_time(unix_s + bias_minutes * 60)
+	# i18n-begin
+	var weekdays: Array[String] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+	var months: Array[String] = [
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+	]
+	# i18n-end
+	var weekday: int = local["weekday"]
+	var month: int = local["month"]
+	return (
+		"%s %d %s %d, %02d:%02d"
+		% [
+			TranslationServer.translate(weekdays[weekday]),
+			local["day"],
+			TranslationServer.translate(months[month - 1]),
+			local["year"],
+			local["hour"],
+			local["minute"]
+		]
+	)
+
+
 ## An 18 px check box: a light outline, or an accent square with a white tick.
 static func _check_icon(checked: bool, alpha: float = 1.0) -> ImageTexture:
 	const SIZE: int = 18

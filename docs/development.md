@@ -19,7 +19,7 @@ Without VS Code, `scripts/dev.sh <command>` runs any command in the same contain
 |---|---|
 | All checks (fmt, clippy, tests, cargo-deny, translations, gdlint, gdformat, Godot smoke tests) | `scripts/check.sh` |
 | Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
-| Render screenshots of the start page, a ride and the summary (software Vulkan) into `screenshots/` | `scripts/screenshots.sh` |
+| Render screenshots of the start page, a ride, the summary and the analysis (software Vulkan, with 16 weeks of made-up rides) into `screenshots/` | `scripts/screenshots.sh` |
 | Render the standard views of the 3D world (before and after a visual change) into `screenshots/views/` | `scripts/render-views.sh` |
 | Render the 3D models (buildings, plants, clouds) and the riders for review; with `GALLERY=docs/images/models`, also the galleries in `art/README.md` | `scripts/render-models.sh`, `scripts/render-riders.sh` |
 | Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
