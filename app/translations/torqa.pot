@@ -235,7 +235,7 @@ msgstr ""
 msgid "Apr"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:120
+#: core/torqa-app/src/hud.rs:136
 msgid "Ascent to go"
 msgstr ""
 
@@ -263,7 +263,7 @@ msgstr ""
 msgid "Avg power"
 msgstr ""
 
-#: app/scenes/history_screen.gd:369 core/torqa-app/src/hud.rs:98
+#: app/scenes/history_screen.gd:369 core/torqa-app/src/hud.rs:114
 msgid "Avg speed"
 msgstr ""
 
@@ -287,7 +287,7 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
-#: app/ui/workout_editor.gd:348 core/torqa-app/src/hud.rs:95
+#: app/ui/workout_editor.gd:348 core/torqa-app/src/hud.rs:111
 msgid "Cadence"
 msgstr ""
 
@@ -391,7 +391,7 @@ msgstr ""
 msgid "Climb done in %s"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:112
+#: core/torqa-app/src/hud.rs:128
 msgid "Climbed"
 msgstr ""
 
@@ -531,7 +531,7 @@ msgstr ""
 msgid "Disconnect"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:21 app/scenes/history_screen.gd:359 core/torqa-app/src/hud.rs:99
+#: app/scenes/analysis_tab.gd:21 app/scenes/history_screen.gd:359 core/torqa-app/src/hud.rs:115
 msgid "Distance"
 msgstr ""
 
@@ -599,7 +599,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: app/scenes/course_detail.gd:135 app/scenes/history_screen.gd:254 core/torqa-app/src/hud.rs:104 app/scenes/ride_screen.tscn:73
+#: app/scenes/course_detail.gd:135 app/scenes/history_screen.gd:254 core/torqa-app/src/hud.rs:120 app/scenes/ride_screen.tscn:73
 msgid "Elevation"
 msgstr ""
 
@@ -771,7 +771,7 @@ msgstr ""
 msgid "GPX routes, videos with GPS, route videos and course files"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:96
+#: core/torqa-app/src/hud.rs:112
 msgid "Gear"
 msgstr ""
 
@@ -779,7 +779,7 @@ msgstr ""
 msgid "Gear %d of %d"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:126
+#: core/torqa-app/src/hud.rs:142
 msgid "Grade"
 msgstr ""
 
@@ -811,15 +811,19 @@ msgstr ""
 msgid "Hazy"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:115 app/scenes/history_screen.gd:253 app/scenes/ride_screen.gd:415 app/ui/workout_options.gd:45 app/ui/workout_options.gd:74 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:81
+#: app/scenes/devices_tab.gd:115 app/scenes/history_screen.gd:253 app/scenes/ride_screen.gd:415 app/ui/workout_options.gd:45 app/ui/workout_options.gd:74 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:89
 msgid "Heart rate"
+msgstr ""
+
+#: core/torqa-app/src/hud.rs:97
+msgid "Heart rate % max"
 msgstr ""
 
 #: app/ui/workout_options.gd:182
 msgid "Heart rate %d bpm"
 msgstr ""
 
-#: app/ui/workout_options.gd:45 core/torqa-app/src/hud.rs:89
+#: app/ui/workout_options.gd:45 core/torqa-app/src/hud.rs:105
 msgid "Heart-rate zone"
 msgstr ""
 
@@ -883,7 +887,7 @@ msgstr ""
 msgid "In between, the video follows your distance evenly."
 msgstr ""
 
-#: app/scenes/history_screen.gd:376 core/torqa-app/src/hud.rs:135
+#: app/scenes/history_screen.gd:376 core/torqa-app/src/hud.rs:151
 msgid "Intensity"
 msgstr ""
 
@@ -1067,7 +1071,7 @@ msgstr ""
 msgid "New workout…"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:129
+#: core/torqa-app/src/hud.rs:145
 msgid "Next 500 m"
 msgstr ""
 
@@ -1247,6 +1251,10 @@ msgstr ""
 msgid "Power"
 msgstr ""
 
+#: core/torqa-app/src/hud.rs:80
+msgid "Power % FTP"
+msgstr ""
+
 #: core/torqa-app/src/hud.rs:67
 msgid "Power 10 s"
 msgstr ""
@@ -1267,7 +1275,7 @@ msgstr ""
 msgid "Power rises each minute until you give way. FTP: 75 % of your best minute."
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:78
+#: core/torqa-app/src/hud.rs:86
 msgid "Power zone"
 msgstr ""
 
@@ -1499,7 +1507,7 @@ msgstr ""
 msgid "Sound"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:97
+#: core/torqa-app/src/hud.rs:113
 msgid "Speed"
 msgstr ""
 
@@ -1555,7 +1563,7 @@ msgstr ""
 msgid "System language"
 msgstr ""
 
-#: app/scenes/history_screen.gd:377 core/torqa-app/src/hud.rs:136
+#: app/scenes/history_screen.gd:377 core/torqa-app/src/hud.rs:152
 msgid "TSS"
 msgstr ""
 
@@ -1611,7 +1619,7 @@ msgstr ""
 msgid "Thu"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:20 app/scenes/history_screen.gd:357 core/torqa-app/src/hud.rs:101
+#: app/scenes/analysis_tab.gd:20 app/scenes/history_screen.gd:357 core/torqa-app/src/hud.rs:117
 msgid "Time"
 msgstr ""
 
@@ -1631,7 +1639,7 @@ msgstr ""
 msgid "Times"
 msgstr ""
 
-#: core/torqa-app/src/hud.rs:100
+#: core/torqa-app/src/hud.rs:116
 msgid "To go"
 msgstr ""
 
@@ -1803,7 +1811,7 @@ msgstr ""
 msgid "Whole route"
 msgstr ""
 
-#: app/scenes/history_screen.gd:378 core/torqa-app/src/hud.rs:137
+#: app/scenes/history_screen.gd:378 core/torqa-app/src/hud.rs:153
 msgid "Work"
 msgstr ""
 
@@ -1879,7 +1887,7 @@ msgstr ""
 msgid "for %d bpm  ·  now %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:378 core/torqa-app/src/hud.rs:137
+#: app/scenes/history_screen.gd:378 core/torqa-app/src/hud.rs:153
 msgid "kJ"
 msgstr ""
 

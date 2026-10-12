@@ -187,6 +187,9 @@ msgstr "Dunstig"
 msgid "Heart rate"
 msgstr "Puls"
 
+msgid "Heart rate % max"
+msgstr "Puls % max."
+
 msgid "Heart-rate zone"
 msgstr "Pulszone"
 
@@ -309,6 +312,9 @@ msgstr "Tempomacher mit deiner FTP"
 
 msgid "Power"
 msgstr "Leistung"
+
+msgid "Power % FTP"
+msgstr "Leistung % FTP"
 
 msgid "Power 10 s"
 msgstr "Leistung 10 s"

@@ -139,7 +139,8 @@ Built in rideable steps:
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [x] Zones shown and adjustable per rider (#173); a rider's default trainer difficulty (#175);
   riders deleted with their rides, after asking
-- [x] Customizable HUD (R23); an ascent-to-go figure (#174)
+- [x] Customizable HUD (R23); an ascent-to-go figure (#174); power in % of FTP and heart
+  rate in % of the maximum
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)

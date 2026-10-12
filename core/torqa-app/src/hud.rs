@@ -75,6 +75,14 @@ pub const METRICS: &[Metric] = &[
         236.0,
     ),
     metric("watts_per_kg", "W/kg", "W/kg", 1, MetricKind::Number, 3.3),
+    metric(
+        "power_percent_ftp",
+        "Power % FTP",
+        "%",
+        0,
+        MetricKind::Number,
+        86.0,
+    ),
     metric("power_zone", "Power zone", "", 0, MetricKind::Zone, 3.0),
     metric(
         "heart_rate",
@@ -83,6 +91,14 @@ pub const METRICS: &[Metric] = &[
         0,
         MetricKind::Number,
         148.0,
+    ),
+    metric(
+        "heart_rate_percent_max",
+        "Heart rate % max",
+        "%",
+        0,
+        MetricKind::Number,
+        80.0,
     ),
     metric(
         "heart_rate_zone",
@@ -208,8 +224,12 @@ pub fn values(
                 "avg_power" => summary.avg_power.map(|p| p.0),
                 "normalized_power" => summary.normalized_power.map(|p| p.0),
                 "watts_per_kg" => power.map(|p| profile.watts_per_kg(p)),
+                "power_percent_ftp" => power.and_then(|p| profile.percent_of_ftp(p)),
                 "power_zone" => power.map(|p| f64::from(profile.power_zone(p))),
                 "heart_rate" => t.heart_rate.map(|h| h.0),
+                "heart_rate_percent_max" => t
+                    .heart_rate
+                    .and_then(|h| profile.percent_of_max_heart_rate(h)),
                 "heart_rate_zone" => t.heart_rate.map(|h| f64::from(profile.heart_rate_zone(h))),
                 "cadence" => t.cadence.map(|c| c.0),
                 #[allow(clippy::cast_precision_loss)] // a gear number
@@ -251,7 +271,8 @@ fn recent_power(samples: &[Sample], seconds: usize) -> Option<f64> {
 mod tests {
     use std::time::Duration;
 
-    use torqa_domain::units::{Meters, MetersPerSecond, Watts};
+    use torqa_domain::telemetry::Telemetry;
+    use torqa_domain::units::{BeatsPerMinute, Meters, MetersPerSecond, Watts};
 
     use super::*;
 
@@ -279,6 +300,42 @@ mod tests {
         }
         let default: Vec<String> = DEFAULT_LAYOUT.iter().map(|&s| s.to_owned()).collect();
         assert_eq!(sanitize(&default), default);
+    }
+
+    #[test]
+    fn percentages_relate_power_to_ftp_and_heart_rate_to_the_maximum() {
+        let profile = Profile {
+            ftp: Watts(250.0),
+            max_heart_rate: BeatsPerMinute(190.0),
+            ..Profile::default()
+        };
+        let mut state = RideState {
+            elapsed: Duration::ZERO,
+            distance: Meters(0.0),
+            remaining: None,
+            speed: MetersPerSecond(0.0),
+            position: None,
+            telemetry: Telemetry {
+                power: Some(Watts(275.0)),
+                heart_rate: Some(BeatsPerMinute(171.0)),
+                ..Telemetry::default()
+            },
+            workout: None,
+            gear: None,
+        };
+        let value = |state: &RideState, id: &str| {
+            values(state, &[], &RideSummary::default(), None, &profile)
+                .into_iter()
+                .find(|&(metric, _)| metric == id)
+                .and_then(|(_, value)| value)
+        };
+
+        assert!((value(&state, "power_percent_ftp").unwrap() - 110.0).abs() < 1e-9);
+        assert!((value(&state, "heart_rate_percent_max").unwrap() - 90.0).abs() < 1e-9);
+        // Without a strap or a power reading there is nothing to relate.
+        state.telemetry = Telemetry::default();
+        assert_eq!(value(&state, "power_percent_ftp"), None);
+        assert_eq!(value(&state, "heart_rate_percent_max"), None);
     }
 
     #[test]

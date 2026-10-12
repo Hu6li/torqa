@@ -18,8 +18,9 @@ range. Under them, **Accounts** lists the training platforms rides can be upload
 **Rider settings** (the pencil) has three tabs: **Profile**, **Zones** and **HUD**.
 
 - **Weight + bike weight** set how hard climbs are and how fast you roll.
-- **FTP** sets the power zones shown under the power figure, together with watts per kilogram.
-- **Maximum heart rate** sets the heart-rate zones.
+- **FTP** sets the power zones shown under the power figure, together with watts per kilogram,
+  and the HUD's **Power % FTP**.
+- **Maximum heart rate** sets the heart-rate zones and the HUD's **Heart rate % max**.
 - **Trainer difficulty** is the share of the road's gradient you feel on the trainer that every
   ride starts with (0–100 %, 50 % unless you change it); the course page shows it, and the ride
   settings change it for one ride ([riding.md](riding.md)).
