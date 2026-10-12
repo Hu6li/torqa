@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use torqa_domain::recording::{PowerCurve, RideAnalysis, RideSummary};
+use torqa_domain::recording::{Histogram, PowerCurve, RideAnalysis, RideSummary};
 use torqa_domain::units::{BeatsPerMinute, Joules, Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 
 /// The metadata format written by this version; newer files are treated as missing and rebuilt
@@ -18,8 +18,9 @@ pub const FORMAT_VERSION: u32 = 2;
 /// The analysis data written by this version (R62, ADR 0014). It has its own version, so it can
 /// grow and be computed again from the FIT file without a new [`FORMAT_VERSION`], which an older
 /// Torqa would answer by rebuilding the metadata and losing the ride's name and times. Later
-/// versions only add to it, so a newer one still reads as this one.
-pub const ANALYSIS_VERSION: u32 = 1;
+/// versions only add to it, so a newer one still reads as this one. Version 1 held the power
+/// curve, version 2 added the power and heart-rate histograms (R64).
+pub const ANALYSIS_VERSION: u32 = 2;
 
 /// Reading or writing ride metadata failed.
 #[derive(Debug, thiserror::Error)]
@@ -156,6 +157,12 @@ struct AnalysisFile {
     /// Best power in watts per duration in seconds: one line each in the pretty-printed file.
     #[serde(default)]
     power_curve_w: BTreeMap<u64, f64>,
+    /// Seconds per whole watt.
+    #[serde(default)]
+    power_histogram_s: BTreeMap<u32, f64>,
+    /// Seconds per whole beat per minute.
+    #[serde(default)]
+    heart_rate_histogram_s: BTreeMap<u32, f64>,
 }
 
 impl From<&RideAnalysis> for AnalysisFile {
@@ -168,6 +175,8 @@ impl From<&RideAnalysis> for AnalysisFile {
                 .iter()
                 .map(|(d, p)| (d.as_secs(), p.0))
                 .collect(),
+            power_histogram_s: a.power_histogram.0.clone(),
+            heart_rate_histogram_s: a.heart_rate_histogram.0.clone(),
         }
     }
 }
@@ -181,6 +190,8 @@ impl From<AnalysisFile> for RideAnalysis {
                     .map(|(s, w)| (Duration::from_secs(s), Watts(w)))
                     .collect(),
             ),
+            power_histogram: Histogram(f.power_histogram_s),
+            heart_rate_histogram: Histogram(f.heart_rate_histogram_s),
         }
     }
 }
@@ -413,6 +424,8 @@ mod tests {
                     (Duration::from_mins(1), Watts(388.0)),
                     (Duration::from_mins(20), Watts(251.3)),
                 ]),
+                power_histogram: Histogram(BTreeMap::from([(150, 600.0), (250, 1200.0)])),
+                heart_rate_histogram: Histogram(BTreeMap::from([(141, 1800.0)])),
             }),
             uploads: BTreeMap::from([(
                 "intervals".to_owned(),
@@ -475,7 +488,7 @@ mod tests {
             )
         };
 
-        std::fs::write(dir.join("a.json"), json(0)).unwrap();
+        std::fs::write(dir.join("a.json"), json(ANALYSIS_VERSION - 1)).unwrap();
         let older = load(&fit).unwrap();
         std::fs::write(dir.join("a.json"), json(99)).unwrap();
         let newer = load(&fit).unwrap();

@@ -1,6 +1,7 @@
 extends SceneTree
 ## Headless checks of the analysis across rides: the Analysis tab (R61), the power curve and a
-## ride's power records on its summary (R62), the power profile (R63).
+## ride's power records on its summary (R62), the power profile (R63), fitness, fatigue and form
+## and the weekly bars (R64), the progress and the FTP the rides show (R65).
 ## Run: godot --headless --path app -s res://tests/analysis_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -15,6 +16,8 @@ func _initialize() -> void:
 func _run() -> void:
 	_power_curve_chart()
 	_radar_chart()
+	_fitness_and_weeks()
+	_progress_chart()
 	await _analysis_tab()
 	if not _failed:
 		print("ANALYSIS SMOKE TEST PASSED")
@@ -73,6 +76,61 @@ func _radar_chart() -> void:
 	tab.free()
 
 
+## Form's bands as intervals.icu names them, and the weeks' bars for each metric (R64).
+func _fitness_and_weeks() -> void:
+	var bands: PackedStringArray = PackedStringArray()
+	for form: float in [30.0, 10.0, 0.0, -20.0, -40.0]:
+		bands.append(FitnessChart.band(form))
+	_expect(bands, ["Transition", "Fresh", "Grey zone", "Optimal", "High risk"], "form bands")
+	_check(FitnessChart.short_date(86400 * 20738) == "12 Oct", "a short date")
+	var tab: AnalysisTab = AnalysisTab.new()
+	root.add_child(tab)
+	var week: Dictionary = {
+		"start_unix_s": 86400 * 20738,
+		"rides": 3,
+		"time_s": 4.5 * 3600.0,
+		"distance_m": 120000.0,
+		"climbing_m": 900.0,
+		"stress": 240.0,
+		"power_zones": PackedFloat64Array([0.0, 7200.0, 3600.0, 0.0, 1800.0, 0.0, 0.0]),
+		"heart_rate_zones": PackedFloat64Array([0.0, 9000.0, 7200.0, 0.0, 0.0]),
+	}
+	var time: PackedFloat64Array = tab.call("_week_values", week, 0)
+	var zones: PackedFloat64Array = tab.call("_week_values", week, 5)
+	_check(time == PackedFloat64Array([4.5]), "hours a week: %s" % time)
+	_check(zones.size() == 7 and zones[1] == 2.0, "hours in each power zone: %s" % zones)
+	tab.set("_imperial", true)
+	var miles: PackedFloat64Array = tab.call("_week_values", week, 1)
+	_check(absf(miles[0] - 74.56) < 0.01, "miles in imperial units: %s" % miles)
+	var hours: Callable = tab.call("_week_format", 0)
+	var written: String = hours.call(4.5)
+	_check(written == "4:30 h", "hours written as h:mm: %s" % written)
+	tab.set("_weeks", [week])
+	var metric: OptionButton = tab.get("_weekly_metric")
+	metric.select(5)
+	tab.call("_fill_weekly")
+	var legend: HFlowContainer = tab.get("_zone_legend")
+	_check(legend.get_child_count() == 7, "the power zones named under stacked bars")
+	tab.free()
+
+
+## Progress (R65): weeks named by their Monday, months by name, gaps where nothing was ridden.
+func _progress_chart() -> void:
+	var chart: TrendChart = TrendChart.new()
+	root.add_child(chart)
+	var october: int = 86400 * 20727
+	chart.set_periods(PackedInt64Array([october - 86400 * 30, october]), true)
+	var month: String = chart.call("_period_name", 1, true)
+	_check(month == "Oct 2026", "a month in full: %s" % month)
+	chart.set_periods(PackedInt64Array([86400 * 20738]), false)
+	var week: String = chart.call("_period_name", 0, false)
+	_check(week == "12 Oct", "a week by its Monday: %s" % week)
+	chart.add_series(PackedFloat64Array([250.0, -1.0]), Color.WHITE, "20 min", false, false)
+	var span: Vector2 = chart.call("_value_range")
+	_check(span.x < 250.0 and span.y > 250.0, "room around the values: %s" % span)
+	chart.free()
+
+
 ## The Analysis tab (R61) after History, its figures from the efforts the core gives (R62),
 ## and a ride's power records on its summary.
 func _analysis_tab() -> void:
@@ -85,7 +143,30 @@ func _analysis_tab() -> void:
 	tabs.current_tab = StartPage.Tab.ANALYSIS
 	var analysis: AnalysisTab = start.get("_analysis")
 	var empty: Label = analysis.get("_empty")
-	var content: Control = analysis.get("_scroll")
+	var content: Control = analysis.get("_content")
+	var scroll: ScrollContainer = analysis.get("_scroll")
+	var period: Control = analysis.get("_period")
+	_check(scroll.is_ancestor_of(period), "the period scrolls with the sections")
+	var radar: Control = analysis.get("_radar")
+	var curve: Control = analysis.get("_chart")
+	var per_kg: Control = analysis.get("_per_kg")
+	var compare: Control = analysis.get("_compare")
+	var settings: Node = per_kg.get_parent()
+	var card: Node = settings.get_parent()
+	_check(
+		(
+			compare.get_parent() == settings
+			and card.is_ancestor_of(radar)
+			and card.is_ancestor_of(curve)
+		),
+		"one power card: its two settings in a row over the curve and the profile"
+	)
+	_check(per_kg.get_index() < compare.get_index(), "per kilogram first, then the comparison")
+	# A ticked box under the pointer keeps its place and its text: no state adds margins.
+	var theme: Theme = UiTheme.build()
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var box: StyleBox = theme.get_stylebox(state, "CheckBox")
+		_check(box.get_minimum_size() == Vector2.ZERO, "no margins on a %s check box" % state)
 	_check(empty.visible != content.visible, "the curve or why there is none")
 	var efforts: Array = [
 		{"duration_s": 5.0, "power": 812.0, "watts_per_kg": 11.6, "start_unix_s": 0},
@@ -95,6 +176,20 @@ func _analysis_tab() -> void:
 	_check(AnalysisTab._value_text(five_minutes, false) == "312 W", "watts")
 	_check(AnalysisTab._value_text(five_minutes, true) == "4.5 W/kg", "per kilogram")
 	_check(AnalysisTab._value_text(AnalysisTab._effort(efforts, 60), false) == "--", "no effort")
+	# The FTP the rides show (R65): with the model, or from the best 20 minutes.
+	analysis.call(
+		"_show_estimate",
+		{"ftp_w": 262.0, "method": "critical_power", "w_prime_kj": 18.4, "max_power_w": 900.0}
+	)
+	var estimate: Label = analysis.get("_estimate_text")
+	var use: Button = analysis.get("_estimate_button")
+	_check(estimate.text.contains("262 W") and estimate.text.contains("18.4 kJ"), estimate.text)
+	_check(use.text == "Use 262 W", "a button to take it: %s" % use.text)
+	analysis.call("_show_estimate", {"ftp_w": 240.0, "method": "twenty_minutes"})
+	_check(estimate.text.contains("20 minutes"), estimate.text)
+	analysis.call("_show_estimate", {})
+	var row: Control = analysis.get("_estimate_row")
+	_check(not row.visible, "nothing to offer without 20 minutes")
 	var history: HistoryScreen = main.get_node("HistoryScreen")
 	var ride: Dictionary = {
 		"power_records": PackedFloat64Array([300.0]),

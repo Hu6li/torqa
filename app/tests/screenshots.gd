@@ -190,6 +190,15 @@ func _run() -> void:
 			_unfold_rider(start)
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
+		if index == StartPage.Tab.ANALYSIS:
+			for section: Array in [
+				["_fitness", "fitness"], ["_weekly", "weekly"], ["_trend", "progress"]
+			]:
+				var chart: String = section[0]
+				var shot: String = section[1]
+				await _analysis_below(start, chart)
+				var path: String = out_dir.path_join("start-analysis-%s.png" % shot)
+				root.get_texture().get_image().save_png(path)
 		if index == StartPage.Tab.PROFILE:
 			# Connecting an account (R29), from the card's Accounts: intervals.icu, Strava.
 			for platform: Array in [[0, "account-dialog"], [1, "account-dialog-strava"]]:
@@ -215,6 +224,25 @@ func _compare_periods(start: StartPage) -> void:
 	var chart: PowerCurveChart = analysis.get("_chart")
 	chart.set("_hover_s", 300.0)
 	chart.queue_redraw()
+
+
+## Further down the Analysis tab, scrolled to the card of `chart`, as docs/analysis.md shows it:
+## fitness, fatigue and form read off at today, and the weeks' time in power zones (R64).
+func _analysis_below(start: StartPage, chart: String) -> void:
+	var analysis: AnalysisTab = start.find_children("*", "AnalysisTab", true, false)[0]
+	var metric: OptionButton = analysis.get("_weekly_metric")
+	metric.select(5)
+	analysis.call("_fill_weekly")
+	var fitness: FitnessChart = analysis.get("_fitness")
+	var days: PackedInt64Array = fitness.get("_days")
+	fitness.set("_hover", days.size() - 1)
+	fitness.queue_redraw()
+	var shown: Control = analysis.get(chart)
+	var card: Control = shown.get_parent().get_parent()
+	var sections: Control = analysis.get("_content")
+	var scroll: ScrollContainer = analysis.get("_scroll")
+	scroll.scroll_vertical = int(sections.position.y + card.position.y)
+	await create_timer(0.5).timeout
 
 
 ## Unfolds the rider's card to their whole setup and zones (#194), as docs/riders.md shows it.

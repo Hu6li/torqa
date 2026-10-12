@@ -2086,6 +2086,68 @@ impl App {
         )
     }
 
+    /// The active rider's fitness, fatigue and form for each local day of the last `period`
+    /// (since their first ride for `None`), local time `utc_offset_s` ahead of UTC (R64).
+    #[must_use]
+    pub fn fitness(&self, period: Option<Duration>, utc_offset_s: i64) -> Vec<analysis::DayLoad> {
+        let history = self.history();
+        let (first, last) =
+            analysis::period_days(&history, period, SystemTime::now(), utc_offset_s);
+        analysis::day_loads(&history, first, last, utc_offset_s)
+    }
+
+    /// The active rider's weeks of the last `period` (since their first ride for `None`), with
+    /// the time in their zones today (R64); local time `utc_offset_s` ahead of UTC.
+    #[must_use]
+    pub fn weekly(&self, period: Option<Duration>, utc_offset_s: i64) -> Vec<analysis::WeekTotals> {
+        let history = self.history();
+        let (first, last) =
+            analysis::period_days(&history, period, SystemTime::now(), utc_offset_s);
+        analysis::weekly(&history, &self.profile.profile, first, last, utc_offset_s)
+    }
+
+    /// The active rider's progress (R65) over the last `period` (since their first ride for
+    /// `None`), week by week or month by month; local time `utc_offset_s` ahead of UTC.
+    #[must_use]
+    pub fn progress(
+        &self,
+        period: Option<Duration>,
+        utc_offset_s: i64,
+        per_kg: bool,
+    ) -> analysis::Progress {
+        let history = self.history();
+        let (first, last) =
+            analysis::period_days(&history, period, SystemTime::now(), utc_offset_s);
+        analysis::progress(
+            &history,
+            first,
+            last,
+            utc_offset_s,
+            self.profile.profile.rider_mass,
+            per_kg,
+        )
+    }
+
+    /// The FTP the active rider's best efforts of the last 90 days show (R65), offered and
+    /// never applied by itself; `None` without an effort of 20 minutes.
+    #[must_use]
+    pub fn ftp_estimate(&self) -> Option<torqa_session::ftp_estimate::FtpEstimate> {
+        let curves = analysis::power_curves(
+            &self.history(),
+            Some(analysis::FTP_ESTIMATE_PERIOD),
+            analysis::Comparison::AllTime,
+            SystemTime::now(),
+            self.profile.profile.rider_mass,
+            false,
+        );
+        let efforts: Vec<(Duration, Watts)> = curves
+            .period
+            .iter()
+            .map(|effort| (effort.duration, effort.power))
+            .collect();
+        torqa_session::ftp_estimate::estimate_ftp(&efforts)
+    }
+
     /// The active rider's HUD metrics, in order (R23); the first is shown large.
     #[must_use]
     pub fn hud_layout(&self) -> Vec<String> {

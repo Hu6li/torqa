@@ -5,7 +5,9 @@ use std::ops::Range;
 use std::time::Duration;
 
 use torqa_domain::profile::Profile;
-use torqa_domain::recording::{CURVE_DURATIONS, PowerCurve, RideAnalysis, RideSummary, Sample};
+use torqa_domain::recording::{
+    CURVE_DURATIONS, Histogram, PowerCurve, RideAnalysis, RideSummary, Sample,
+};
 use torqa_domain::units::{BeatsPerMinute, Joules, Meters, MetersPerSecond, Rpm, Watts};
 
 /// Normalized power smooths power over this many samples (30 s at 1 Hz).
@@ -95,7 +97,27 @@ pub fn best_average_power(samples: &[Sample], window: Duration) -> Option<Watts>
 pub fn analyse(samples: &[Sample]) -> RideAnalysis {
     RideAnalysis {
         power_curve: power_curve(samples),
+        power_histogram: histogram(samples, |s| s.power.map(|p| p.0)),
+        heart_rate_histogram: histogram(samples, |s| s.heart_rate.map(|h| h.0)),
     }
+}
+
+/// Seconds at each whole value of `value` (R64), counted like the time in zones: each
+/// interval between samples counts for the value at its end, where there is one.
+fn histogram(samples: &[Sample], value: impl Fn(&Sample) -> Option<f64>) -> Histogram {
+    let mut histogram = Histogram::default();
+    for pair in samples.windows(2) {
+        if let Some(v) = value(&pair[1]) {
+            // Whole values, as power and heart rate are recorded; never below zero.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let whole = v.round().max(0.0) as u32;
+            *histogram.0.entry(whole).or_default() += pair[1]
+                .elapsed
+                .saturating_sub(pair[0].elapsed)
+                .as_secs_f64();
+        }
+    }
+    histogram
 }
 
 /// The ride's best average power over each of the [`CURVE_DURATIONS`] it lasted (R62). Samples
@@ -453,6 +475,41 @@ mod tests {
 
         assert_eq!(watts_at(&curve, 300), Some(300.0));
         assert_eq!(watts_at(&curve, 360), None);
+    }
+
+    #[test]
+    fn the_histograms_give_the_time_in_zones_for_any_zones() {
+        let powers: Vec<Option<f64>> = (0..900)
+            .map(|s| match s % 300 {
+                0..100 => Some(140.0),
+                100..200 => Some(205.0),
+                200..280 => Some(260.0),
+                _ => None,
+            })
+            .collect();
+        let samples = ride(&powers);
+        let analysis = analyse(&samples);
+
+        for ftp in [200.0, 250.0] {
+            let rider = Profile {
+                ftp: Watts(ftp),
+                max_heart_rate: BeatsPerMinute(180.0),
+                ..Profile::default()
+            };
+            let from_histogram: [Duration; 7] = analysis
+                .power_histogram
+                .zones(|watts| rider.power_zone(Watts(watts)));
+            assert_eq!(
+                from_histogram,
+                time_in_power_zones(&samples, &rider),
+                "FTP {ftp}"
+            );
+            let heart: [Duration; 5] = analysis
+                .heart_rate_histogram
+                .zones(|bpm| rider.heart_rate_zone(BeatsPerMinute(bpm)));
+            assert_eq!(heart, time_in_heart_rate_zones(&samples, &rider));
+        }
+        assert_eq!(analysis.power_histogram.0.get(&205), Some(&300.0));
     }
 
     #[test]
