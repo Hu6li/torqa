@@ -463,7 +463,7 @@ msgstr ""
 msgid "D-Fly channel %d"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:220
+#: app/scenes/analysis_tab.gd:226
 msgid "Daily TSS"
 msgstr ""
 
@@ -631,11 +631,11 @@ msgstr ""
 msgid "FIT activities"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:299 app/scenes/profile_dialog.gd:99 app/scenes/profile_tab.gd:277
+#: app/scenes/analysis_tab.gd:305 app/scenes/profile_dialog.gd:99 app/scenes/profile_tab.gd:277
 msgid "FTP"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:300 app/ui/workout_options.gd:197 app/ui/workout_options.gd:45 app/ui/workout_panel.gd:48
+#: app/scenes/analysis_tab.gd:306 app/ui/workout_options.gd:197 app/ui/workout_options.gd:45 app/ui/workout_panel.gd:48
 msgid "FTP test"
 msgstr ""
 
@@ -655,7 +655,7 @@ msgstr ""
 msgid "Fake trainer (200 W, for testing)"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:218 app/scenes/analysis_tab.gd:375
+#: app/scenes/analysis_tab.gd:224 app/scenes/analysis_tab.gd:380
 msgid "Fatigue"
 msgstr ""
 
@@ -703,7 +703,7 @@ msgstr ""
 msgid "First Person"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:217 app/scenes/analysis_tab.gd:374
+#: app/scenes/analysis_tab.gd:223 app/scenes/analysis_tab.gd:379
 msgid "Fitness"
 msgstr ""
 
@@ -711,7 +711,7 @@ msgstr ""
 msgid "Fitness %d"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:203
+#: app/scenes/analysis_tab.gd:209
 msgid "Fitness, fatigue and form"
 msgstr ""
 
@@ -727,7 +727,7 @@ msgstr ""
 msgid "For weaker computers: shorter view, simpler shadows and sky."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:219 app/scenes/analysis_tab.gd:376
+#: app/scenes/analysis_tab.gd:225 app/scenes/analysis_tab.gd:381
 msgid "Form"
 msgstr ""
 
@@ -735,7 +735,7 @@ msgstr ""
 msgid "Form %+d"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:208
+#: app/scenes/analysis_tab.gd:214
 msgid "Form is fitness minus fatigue: fresh above zero, tired below it."
 msgstr ""
 
@@ -1219,7 +1219,7 @@ msgstr ""
 msgid "Paused"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:184
+#: app/scenes/analysis_tab.gd:157
 msgid "Per kilogram"
 msgstr ""
 
@@ -1255,11 +1255,11 @@ msgstr ""
 msgid "Power 3 s"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:152 app/scenes/history_screen.gd:285
+#: app/scenes/analysis_tab.gd:174 app/scenes/history_screen.gd:285
 msgid "Power curve"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:180
+#: app/scenes/analysis_tab.gd:193
 msgid "Power profile"
 msgstr ""
 
@@ -1287,7 +1287,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:261
+#: app/scenes/analysis_tab.gd:267
 msgid "Progress"
 msgstr ""
 
@@ -1575,7 +1575,7 @@ msgstr ""
 msgid "Test"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:162
+#: app/scenes/analysis_tab.gd:176
 msgid "The best power you held for each length of effort, from a sprint to hours."
 msgstr ""
 
@@ -1707,7 +1707,7 @@ msgstr ""
 msgid "Use"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:519 app/scenes/history_screen.gd:407
+#: app/scenes/analysis_tab.gd:524 app/scenes/history_screen.gd:407
 msgid "Use %d W"
 msgstr ""
 
@@ -1791,7 +1791,7 @@ msgstr ""
 msgid "Week of %s"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:242
+#: app/scenes/analysis_tab.gd:248
 msgid "Weekly"
 msgstr ""
 
@@ -1823,19 +1823,19 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:528 app/scenes/history_screen.gd:415
+#: app/scenes/analysis_tab.gd:533 app/scenes/history_screen.gd:415
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:264
+#: app/scenes/analysis_tab.gd:270
 msgid "Your best 1, 5 and 20 minutes and your FTP week by week (month by month for long periods)."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:516
+#: app/scenes/analysis_tab.gd:521
 msgid "Your best 20 minutes of the last 90 days show an FTP of about %d W. Now %d W."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:189
+#: app/scenes/analysis_tab.gd:195
 msgid "Your best of the period as a share of your best of all time."
 msgstr ""
 
@@ -1851,7 +1851,7 @@ msgstr ""
 msgid "Your courses"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:511
+#: app/scenes/analysis_tab.gd:516
 msgid "Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W."
 msgstr ""
 
@@ -1859,7 +1859,7 @@ msgstr ""
 msgid "Your rides"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:206
+#: app/scenes/analysis_tab.gd:212
 msgid "Your training load from the rides' TSS: fitness over six weeks, fatigue over one."
 msgstr ""
 
