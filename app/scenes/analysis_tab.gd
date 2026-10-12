@@ -36,6 +36,7 @@ var _period: OptionButton = OptionButton.new()
 var _compare: OptionButton = OptionButton.new()
 var _per_kg: CheckBox = CheckBox.new()
 var _scroll: ScrollContainer = ScrollContainer.new()
+## The sections under the heading, hidden without rides with power.
 var _content: VBoxContainer = VBoxContainer.new()
 var _empty: Label = Label.new()
 var _chart: PowerCurveChart = PowerCurveChart.new()
@@ -72,7 +73,7 @@ func refresh() -> void:
 	if days == 0 and not previous:
 		compared = []
 	_empty.visible = current.is_empty() and compared.is_empty()
-	_scroll.visible = not _empty.visible
+	_content.visible = not _empty.visible
 	_chart.unit = "W/kg" if per_kg else "W"
 	_chart.clear()
 	_chart.add_efforts(current, UiTheme.POWER_COLOR, per_kg)
@@ -93,7 +94,15 @@ func refresh() -> void:
 
 
 func _init() -> void:
-	add_theme_constant_override("separation", 16)
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_scroll)
+	# The heading and its choices scroll away with the sections: the page's title, not a bar
+	# over sections that are not about power.
+	var page: VBoxContainer = VBoxContainer.new()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 16)
+	_scroll.add_child(page)
 	var header: HBoxContainer = HBoxContainer.new()
 	header.add_theme_constant_override("separation", 12)
 	var heading: Label = Label.new()
@@ -110,7 +119,7 @@ func _init() -> void:
 	_per_kg.text = tr("Per kilogram")
 	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
 	header.add_child(_per_kg)
-	add_child(header)
+	page.add_child(header)
 
 	_empty.text = tr(
 		"No rides with power yet: your best efforts show here once you ride with power."
@@ -118,14 +127,11 @@ func _init() -> void:
 	_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_empty.add_theme_color_override("font_color", UiTheme.MUTED)
 	_empty.hide()
-	add_child(_empty)
+	page.add_child(_empty)
 
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 16)
-	_scroll.add_child(_content)
-	add_child(_scroll)
+	page.add_child(_content)
 	var power: HBoxContainer = HBoxContainer.new()
 	power.add_theme_constant_override("separation", 16)
 	power.add_child(_curve_card())
