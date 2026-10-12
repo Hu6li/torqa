@@ -239,8 +239,9 @@ func _analysis_below(start: StartPage, chart: String) -> void:
 	fitness.queue_redraw()
 	var shown: Control = analysis.get(chart)
 	var card: Control = shown.get_parent().get_parent()
+	var sections: Control = analysis.get("_content")
 	var scroll: ScrollContainer = analysis.get("_scroll")
-	scroll.scroll_vertical = int(card.position.y)
+	scroll.scroll_vertical = int(sections.position.y + card.position.y)
 	await create_timer(0.5).timeout
 
 
