@@ -1315,8 +1315,8 @@ msgstr "Client ID"
 msgid "Client Secret"
 msgstr "Client Secret"
 
-msgid "Strava lets an app in only with that app's secret, which open-source Torqa cannot keep. So you connect through a Strava API application of your own: create one on Strava's API settings page (Strava asks for a subscription for this), set its Authorization Callback Domain to localhost, and copy its Client ID and Client Secret here. Then log in to Strava in your browser."
-msgstr "Strava lässt eine App nur mit deren Secret herein, und das kann das quelloffene Torqa nicht geheim halten. Darum verbindest du dich über eine eigene Strava-API-Anwendung: Lege auf Stravas API-Einstellungsseite eine an (Strava verlangt dafür ein Abo), setze ihre Authorization Callback Domain auf localhost und kopiere ihre Client ID und ihr Client Secret hierher. Dann meldest du dich im Browser bei Strava an."
+msgid "Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here."
+msgstr "Lege auf Strava eine API-Anwendung mit Authorization Callback Domain localhost an und kopiere ihre Client ID und ihr Client Secret hierher."
 
 msgid "Log in to %s in your browser and let Torqa upload your rides. Then come back here."
 msgstr "Melde dich im Browser bei %s an und erlaube Torqa, deine Fahrten hochzuladen. Komm dann hierher zurück."

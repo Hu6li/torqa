@@ -45,7 +45,7 @@ const FIELDS: &[Field] = &[
     },
 ];
 // One line: the translation template takes texts line by line.
-const HELP: &str = "Strava lets an app in only with that app's secret, which open-source Torqa cannot keep. So you connect through a Strava API application of your own: create one on Strava's API settings page (Strava asks for a subscription for this), set its Authorization Callback Domain to localhost, and copy its Client ID and Client Secret here. Then log in to Strava in your browser.";
+const HELP: &str = "Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here.";
 // i18n-end
 
 /// Uploads to Strava.
