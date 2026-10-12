@@ -32,8 +32,8 @@ func bind(torqa: TorqaApp) -> void:
 
 
 ## Opens the dialog for rider `rider`'s account on the platform `account` describes (an entry
-## of `TorqaApp.accounts()`).
-func open(rider: String, account: Dictionary) -> void:
+## of `TorqaApp.accounts()`); `why` says why it has to be connected again, if it does.
+func open(rider: String, account: Dictionary, why: String = "") -> void:
 	_rider = rider
 	_platform = account.get("platform", "")
 	_platform_name = account.get("name", "")
@@ -62,6 +62,9 @@ func open(rider: String, account: Dictionary) -> void:
 	_link.uri = url
 	_link.visible = not url.is_empty()
 	_status.hide()
+	if not why.is_empty():
+		# The platform's words; a few are translated.
+		_show_status(tr(why), UiTheme.DANGER)
 	_login_link.hide()
 	_set_connecting(false)
 	popup_centered()

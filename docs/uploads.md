@@ -56,8 +56,12 @@ which is all Torqa needs. Each rider uploading to Strava creates their own.
 - A ride the platform already has, e.g. one uploaded by hand, counts as uploaded and links to
   it.
 - If a platform no longer accepts the account (you deleted the key on intervals.icu, revoked
-  Torqa's access on Strava or changed your application's secret), Torqa asks you to connect
-  again and then uploads the ride.
+  Torqa's access on Strava or changed your application's secret), Torqa says why, asks you to
+  connect again and then uploads the ride.
+- **Strava without a subscription**: Strava switches off the API application of an account
+  without a Strava subscription. Logging in still works, but uploads are refused, and Torqa
+  says so. Subscribe, reactivate the application on Strava's
+  [API settings page](https://www.strava.com/settings/api), then upload again.
 - Uploading needs the internet; everything else works offline as before.
 
 ## Uploading automatically

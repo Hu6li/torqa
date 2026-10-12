@@ -102,6 +102,9 @@ Decision:
 Consequences:
 
 - Every rider uploading to Strava needs a Strava subscription and a few minutes to create the
-  application, explained in the dialog and in [uploads.md](../uploads.md).
+  application, explained in the dialog and in [uploads.md](../uploads.md). Without one Strava
+  switches the application off: logging in still works, uploads are refused with `403`
+  (`Application` `Status` `Inactive`). Torqa says the subscription is missing instead of
+  asking to connect again; only a `401` means connecting again.
 - Should Strava offer a public-client (PKCE) flow, Strava can move to an application of
   Torqa's with an id only; accounts connected before keep working as they are.

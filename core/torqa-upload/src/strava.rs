@@ -45,7 +45,9 @@ const FIELDS: &[Field] = &[
     },
 ];
 // One line: the translation template takes texts line by line.
-const HELP: &str = "Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here.";
+const HELP: &str = "Needs a Strava subscription. Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here.";
+/// Strava switched the rider's application off: logging in still works, uploads do not.
+const INACTIVE: &str = "Strava has switched off your API application: the account that owns it needs a Strava subscription. Subscribe, reactivate the application in Strava's API settings, then upload again.";
 // i18n-end
 
 /// Uploads to Strava.
@@ -276,14 +278,36 @@ fn duplicate_of(error: &str) -> Option<String> {
     (!digits.is_empty()).then_some(digits)
 }
 
+/// Whether Strava's answer says the application is switched off, as it does for applications
+/// whose owner has no Strava subscription:
+/// `{"errors":[{"resource":"Application","field":"Status","code":"Inactive"}]}`.
+fn inactive(answer: &str) -> bool {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(answer) else {
+        return false;
+    };
+    json.get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|error| {
+            let part = |key: &str| error.get(key).and_then(serde_json::Value::as_str);
+            part("resource") == Some("Application")
+                && part("field") == Some("Status")
+                && part("code") == Some("Inactive")
+        })
+}
+
 /// The JSON of a successful answer, or what went wrong.
 async fn answered(answer: reqwest::Response) -> Result<serde_json::Value, UploadError> {
     let status = answer.status();
     let text = answer.text().await.map_err(|e| cannot_reach(NAME, &e))?;
     match status {
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(UploadError::Unauthorized(
-            format!("{NAME} no longer lets Torqa in: {}.", describe(&text)),
-        )),
+        StatusCode::UNAUTHORIZED => Err(UploadError::Unauthorized(format!(
+            "{NAME} no longer lets Torqa in: {}.",
+            describe(&text)
+        ))),
+        // Connecting again would not help: the login works, the application is off.
+        StatusCode::FORBIDDEN if inactive(&text) => Err(UploadError::Rejected(INACTIVE.to_owned())),
         StatusCode::TOO_MANY_REQUESTS => Err(UploadError::Rejected(format!(
             "{NAME} takes no more uploads for a while: try again later."
         ))),
@@ -719,6 +743,48 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, UploadError::Unauthorized(_)), "{error:?}");
+    }
+
+    #[tokio::test]
+    async fn an_application_switched_off_for_want_of_a_subscription_says_so() {
+        let (site, _served) = serve(vec![(
+            "403 Forbidden",
+            r#"{"message":"Forbidden","errors":[{"resource":"Application","field":"Status",
+                "code":"Inactive"}]}"#
+                .to_owned(),
+        )])
+        .await;
+
+        let error = strava(&site)
+            .upload(&mut connected(3600), &activity())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&error, UploadError::Rejected(why) if why.contains("subscription")),
+            "not a reason to connect again, but to subscribe: {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn other_refusals_say_why_without_asking_to_connect_again() {
+        let (site, _served) = serve(vec![(
+            "403 Forbidden",
+            r#"{"message":"Forbidden","errors":[{"resource":"Athlete","field":"access",
+                "code":"forbidden"}]}"#
+                .to_owned(),
+        )])
+        .await;
+
+        let error = strava(&site)
+            .upload(&mut connected(3600), &activity())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&error, UploadError::Rejected(why) if why.contains("Forbidden")),
+            "{error:?}"
+        );
     }
 
     #[tokio::test]

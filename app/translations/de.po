@@ -1315,8 +1315,8 @@ msgstr "Client ID"
 msgid "Client Secret"
 msgstr "Client Secret"
 
-msgid "Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here."
-msgstr "Lege auf Strava eine API-Anwendung mit Authorization Callback Domain localhost an und kopiere ihre Client ID und ihr Client Secret hierher."
+msgid "Needs a Strava subscription. Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here."
+msgstr "Braucht ein Strava-Abo. Lege auf Strava eine API-Anwendung mit Authorization Callback Domain localhost an und kopiere ihre Client ID und ihr Client Secret hierher."
 
 msgid "Log in to %s in your browser and let Torqa upload your rides. Then come back here."
 msgstr "Melde dich im Browser bei %s an und erlaube Torqa, deine Fahrten hochzuladen. Komm dann hierher zurück."
@@ -1329,3 +1329,6 @@ msgstr "Torqa ist verbunden. Du kannst diese Seite schliessen."
 
 msgid "Torqa could not connect. Go back to Torqa to try again."
 msgstr "Torqa konnte sich nicht verbinden. Geh zurück zu Torqa, um es nochmals zu versuchen."
+
+msgid "Strava has switched off your API application: the account that owns it needs a Strava subscription. Subscribe, reactivate the application in Strava's API settings, then upload again."
+msgstr "Strava hat deine API-Anwendung abgeschaltet: Das Konto, dem sie gehört, braucht ein Strava-Abo. Schliesse eines ab, aktiviere die Anwendung in Stravas API-Einstellungen wieder und lade dann erneut hoch."

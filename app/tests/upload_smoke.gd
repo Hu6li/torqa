@@ -143,6 +143,30 @@ func _uploads() -> void:
 		),
 		"an uploaded ride leads to its page, per platform: %s" % menu.get_item_text(0)
 	)
+	# A refused upload says why, in red, and does not ask to connect again when that would
+	# not help (Strava without a subscription).
+	var refused: String = "Strava has switched off your API application."
+	history.call("_on_upload_failed", ride["path"], "strava", refused, false)
+	var history_status: Label = history.get("_export_status")
+	var reconnecting: AccountDialog = history.get("_account_dialog")
+	_check(
+		(
+			history_status.visible
+			and history_status.text == refused
+			and history_status.get_theme_color("font_color") == UiTheme.DANGER
+			and not reconnecting.visible
+		),
+		"a refused upload says why: %s" % history_status.text
+	)
+	# Connecting again says why it is needed.
+	var strava: Dictionary = torqa.accounts("nobody-yet")[1]
+	reconnecting.open("nobody-yet", strava, "Strava no longer lets Torqa in.")
+	var why: Label = reconnecting.get("_status")
+	_check(
+		reconnecting.visible and why.visible and why.text == "Strava no longer lets Torqa in.",
+		"connecting again says why: %s" % why.text
+	)
+	reconnecting.hide()
 	main.free()
 
 
