@@ -3,11 +3,11 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
-#: app/scenes/profile_tab.gd:266
+#: app/scenes/profile_tab.gd:277
 msgid "%d W  ·  %.1f W/kg"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:267
+#: app/scenes/profile_tab.gd:278
 msgid "%d bpm"
 msgstr ""
 
@@ -51,7 +51,7 @@ msgstr ""
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
-#: app/scenes/history_screen.gd:571
+#: app/scenes/history_screen.gd:570
 msgid "%s no longer accepts the account: connect it again."
 msgstr ""
 
@@ -131,7 +131,7 @@ msgstr ""
 msgid "Abort without saving"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:192
+#: app/scenes/profile_tab.gd:194
 msgid "Accounts"
 msgstr ""
 
@@ -203,7 +203,7 @@ msgstr ""
 msgid "Applies from the next ride."
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Apr"
 msgstr ""
 
@@ -215,7 +215,7 @@ msgstr ""
 msgid "Assign buttons to D-Fly channels in E-TUBE, then choose here what each press does"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Aug"
 msgstr ""
 
@@ -223,19 +223,19 @@ msgstr ""
 msgid "Available — drag in to add, drop here to remove"
 msgstr ""
 
-#: app/scenes/history_screen.gd:353
+#: app/scenes/history_screen.gd:354
 msgid "Avg cadence"
 msgstr ""
 
-#: app/scenes/history_screen.gd:352
+#: app/scenes/history_screen.gd:353
 msgid "Avg heart rate"
 msgstr ""
 
-#: app/scenes/history_screen.gd:346 core/torqa-app/src/hud.rs:68
+#: app/scenes/history_screen.gd:347 core/torqa-app/src/hud.rs:68
 msgid "Avg power"
 msgstr ""
 
-#: app/scenes/history_screen.gd:342 core/torqa-app/src/hud.rs:98
+#: app/scenes/history_screen.gd:343 core/torqa-app/src/hud.rs:98
 msgid "Avg speed"
 msgstr ""
 
@@ -251,7 +251,7 @@ msgstr ""
 msgid "Below 60 fps: a lower graphics quality (Devices & Settings) runs smoother."
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:98 app/scenes/profile_tab.gd:265
+#: app/scenes/profile_dialog.gd:98 app/scenes/profile_tab.gd:276
 msgid "Bike weight"
 msgstr ""
 
@@ -283,7 +283,7 @@ msgstr ""
 msgid "Cannot connect."
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:83 app/scenes/profile_tab.gd:273
+#: app/scenes/profile_dialog.gd:83 app/scenes/profile_tab.gd:284
 msgid "Cassette: shift on the bike"
 msgstr ""
 
@@ -347,7 +347,7 @@ msgstr ""
 msgid "Climb"
 msgstr ""
 
-#: app/scenes/history_screen.gd:412
+#: app/scenes/history_screen.gd:413
 msgid "Climb %d  ·  %.1f km from km %.1f"
 msgstr ""
 
@@ -359,7 +359,7 @@ msgstr ""
 msgid "Climbed"
 msgstr ""
 
-#: app/scenes/history_screen.gd:337 app/ui/course_card.gd:111
+#: app/scenes/history_screen.gd:338 app/ui/course_card.gd:111
 msgid "Climbing"
 msgstr ""
 
@@ -387,15 +387,15 @@ msgstr ""
 msgid "Connect %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:504
+#: app/scenes/history_screen.gd:505
 msgid "Connect %s and upload…"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:208
+#: app/scenes/profile_tab.gd:209
 msgid "Connected as %s"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:215
+#: app/scenes/profile_tab.gd:226
 msgid "Connect…"
 msgstr ""
 
@@ -419,7 +419,7 @@ msgstr ""
 msgid "Courses"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:283
+#: app/scenes/profile_tab.gd:294
 msgid "Custom"
 msgstr ""
 
@@ -427,15 +427,15 @@ msgstr ""
 msgid "D-Fly channel %d"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Dec"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:283
+#: app/scenes/profile_tab.gd:294
 msgid "Default"
 msgstr ""
 
-#: app/scenes/course_detail.gd:171 app/scenes/history_screen.gd:207 app/scenes/profile_tab.gd:69 app/ui/workout_editor.gd:181 app/ui/workout_editor.gd:188
+#: app/scenes/course_detail.gd:171 app/scenes/history_screen.gd:208 app/scenes/profile_tab.gd:69 app/ui/workout_editor.gd:181 app/ui/workout_editor.gd:188
 msgid "Delete"
 msgstr ""
 
@@ -447,11 +447,11 @@ msgstr ""
 msgid "Delete course?"
 msgstr ""
 
-#: app/scenes/history_screen.gd:198
+#: app/scenes/history_screen.gd:199
 msgid "Delete ride"
 msgstr ""
 
-#: app/scenes/history_screen.gd:205
+#: app/scenes/history_screen.gd:206
 msgid "Delete ride?"
 msgstr ""
 
@@ -483,19 +483,19 @@ msgstr ""
 msgid "Devices & Settings"
 msgstr ""
 
-#: app/scenes/history_screen.gd:269
+#: app/scenes/history_screen.gd:270
 msgid "Discard ride"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:218
+#: app/scenes/profile_tab.gd:229
 msgid "Disconnect"
 msgstr ""
 
-#: app/scenes/history_screen.gd:332 core/torqa-app/src/hud.rs:99
+#: app/scenes/history_screen.gd:333 core/torqa-app/src/hud.rs:99
 msgid "Distance"
 msgstr ""
 
-#: app/scenes/history_screen.gd:274 app/scenes/ride_settings_dialog.gd:24
+#: app/scenes/history_screen.gd:275 app/scenes/ride_settings_dialog.gd:24
 msgid "Done"
 msgstr ""
 
@@ -523,7 +523,7 @@ msgstr ""
 msgid "Drag to resize the overlay"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:105 app/scenes/profile_tab.gd:272
+#: app/scenes/profile_dialog.gd:105 app/scenes/profile_tab.gd:283
 msgid "Drivetrain"
 msgstr ""
 
@@ -559,7 +559,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: app/scenes/course_detail.gd:135 app/scenes/history_screen.gd:233 core/torqa-app/src/hud.rs:104 app/scenes/ride_screen.tscn:73
+#: app/scenes/course_detail.gd:135 app/scenes/history_screen.gd:234 core/torqa-app/src/hud.rs:104 app/scenes/ride_screen.tscn:73
 msgid "Elevation"
 msgstr ""
 
@@ -579,19 +579,19 @@ msgstr ""
 msgid "Everything on, including global illumination: for fast GPUs."
 msgstr ""
 
-#: app/scenes/history_screen.gd:184
+#: app/scenes/history_screen.gd:185
 msgid "Export FIT file"
 msgstr ""
 
-#: app/scenes/history_screen.gd:188
+#: app/scenes/history_screen.gd:189
 msgid "Export the ride as a FIT file"
 msgstr ""
 
-#: app/scenes/history_screen.gd:193
+#: app/scenes/history_screen.gd:194
 msgid "FIT activities"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:99 app/scenes/profile_tab.gd:266
+#: app/scenes/profile_dialog.gd:99 app/scenes/profile_tab.gd:277
 msgid "FTP"
 msgstr ""
 
@@ -607,7 +607,7 @@ msgstr ""
 msgid "FTP test · 20 minutes"
 msgstr ""
 
-#: app/scenes/history_screen.gd:378
+#: app/scenes/history_screen.gd:379
 msgid "FTP test: your FTP is about %d W (now %d W)."
 msgstr ""
 
@@ -615,11 +615,11 @@ msgstr ""
 msgid "Fake trainer (200 W, for testing)"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Feb"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:80 app/scenes/profile_tab.gd:269
+#: app/scenes/profile_dialog.gd:80 app/scenes/profile_tab.gd:280
 msgid "Female rider"
 msgstr ""
 
@@ -679,7 +679,7 @@ msgstr ""
 msgid "Free ride"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Fri"
 msgstr ""
 
@@ -715,7 +715,7 @@ msgstr ""
 msgid "HC"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:122 app/scenes/profile_tab.gd:283 app/scenes/ride_settings_dialog.gd:30
+#: app/scenes/profile_dialog.gd:122 app/scenes/profile_tab.gd:294 app/scenes/ride_settings_dialog.gd:30
 msgid "HUD"
 msgstr ""
 
@@ -731,7 +731,7 @@ msgstr ""
 msgid "Hazy"
 msgstr ""
 
-#: app/scenes/devices_tab.gd:115 app/scenes/history_screen.gd:232 app/scenes/ride_screen.gd:415 app/ui/workout_options.gd:45 app/ui/workout_options.gd:74 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:81
+#: app/scenes/devices_tab.gd:115 app/scenes/history_screen.gd:233 app/scenes/ride_screen.gd:415 app/ui/workout_options.gd:45 app/ui/workout_options.gd:74 app/ui/workout_panel.gd:43 core/torqa-app/src/hud.rs:81
 msgid "Heart rate"
 msgstr ""
 
@@ -747,7 +747,7 @@ msgstr ""
 msgid "Heart-rate zone %d"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:304
+#: app/scenes/profile_tab.gd:315
 msgid "Heart-rate zones"
 msgstr ""
 
@@ -779,7 +779,7 @@ msgstr ""
 msgid "How do you want to ride?"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:78 app/scenes/profile_tab.gd:268
+#: app/scenes/profile_dialog.gd:78 app/scenes/profile_tab.gd:279
 msgid "Imperial (mi, lb)"
 msgstr ""
 
@@ -799,7 +799,7 @@ msgstr ""
 msgid "In between, the video follows your distance evenly."
 msgstr ""
 
-#: app/scenes/history_screen.gd:349 core/torqa-app/src/hud.rs:135
+#: app/scenes/history_screen.gd:350 core/torqa-app/src/hud.rs:135
 msgid "Intensity"
 msgstr ""
 
@@ -815,15 +815,15 @@ msgstr ""
 msgid "Its file is deleted; your rides on it are kept."
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Jan"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Jul"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Jun"
 msgstr ""
 
@@ -831,7 +831,7 @@ msgstr ""
 msgid "Keep both"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:103 app/scenes/profile_tab.gd:270
+#: app/scenes/profile_dialog.gd:103 app/scenes/profile_tab.gd:281
 msgid "Language"
 msgstr ""
 
@@ -863,19 +863,19 @@ msgstr ""
 msgid "Lowest power"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:81 app/scenes/profile_tab.gd:269
+#: app/scenes/profile_dialog.gd:81 app/scenes/profile_tab.gd:280
 msgid "Male rider"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Mar"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:100 app/scenes/profile_tab.gd:267
+#: app/scenes/profile_dialog.gd:100 app/scenes/profile_tab.gd:278
 msgid "Max heart rate"
 msgstr ""
 
-#: app/scenes/history_screen.gd:348
+#: app/scenes/history_screen.gd:349
 msgid "Max power"
 msgstr ""
 
@@ -883,7 +883,7 @@ msgstr ""
 msgid "Maximum"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "May"
 msgstr ""
 
@@ -899,7 +899,7 @@ msgstr ""
 msgid "Message at the start of the step"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:77 app/scenes/profile_tab.gd:268
+#: app/scenes/profile_dialog.gd:77 app/scenes/profile_tab.gd:279
 msgid "Metric (km, kg)"
 msgstr ""
 
@@ -911,7 +911,7 @@ msgstr ""
 msgid "Moderate"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Mon"
 msgstr ""
 
@@ -987,7 +987,7 @@ msgstr ""
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
-#: app/scenes/history_screen.gd:146
+#: app/scenes/history_screen.gd:147
 msgid "No rides yet. Finished rides appear here."
 msgstr ""
 
@@ -1011,7 +1011,7 @@ msgstr ""
 msgid "None: ridden in the 3D world"
 msgstr ""
 
-#: app/scenes/history_screen.gd:347
+#: app/scenes/history_screen.gd:348
 msgid "Normalized"
 msgstr ""
 
@@ -1019,7 +1019,7 @@ msgstr ""
 msgid "Normalized power"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:208
+#: app/scenes/profile_tab.gd:209
 msgid "Not connected"
 msgstr ""
 
@@ -1031,11 +1031,11 @@ msgstr ""
 msgid "Nothing recorded."
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Nov"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Oct"
 msgstr ""
 
@@ -1123,7 +1123,7 @@ msgstr ""
 msgid "Position on the route"
 msgstr ""
 
-#: app/scenes/history_screen.gd:231 app/scenes/ride_screen.gd:415 app/ui/workout_editor.gd:348 app/ui/workout_options.gd:72 core/torqa-app/src/hud.rs:65
+#: app/scenes/history_screen.gd:232 app/scenes/ride_screen.gd:415 app/ui/workout_editor.gd:348 app/ui/workout_options.gd:72 core/torqa-app/src/hud.rs:65
 msgid "Power"
 msgstr ""
 
@@ -1143,7 +1143,7 @@ msgstr ""
 msgid "Power zone"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:301
+#: app/scenes/profile_tab.gd:312
 msgid "Power zones"
 msgstr ""
 
@@ -1255,7 +1255,7 @@ msgstr ""
 msgid "Rider"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:104 app/scenes/profile_tab.gd:269
+#: app/scenes/profile_dialog.gd:104 app/scenes/profile_tab.gd:280
 msgid "Rider on the bike"
 msgstr ""
 
@@ -1267,6 +1267,10 @@ msgstr ""
 msgid "Riders"
 msgstr ""
 
+#: app/scenes/profile_tab.gd:217
+msgid "Rides you keep with Done on their summary go up by themselves"
+msgstr ""
+
 #: app/scenes/minimap.gd:115
 msgid "Route"
 msgstr ""
@@ -1275,7 +1279,7 @@ msgstr ""
 msgid "Routes, videos and courses"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Sat"
 msgstr ""
 
@@ -1287,7 +1291,7 @@ msgstr ""
 msgid "Saved %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:472
+#: app/scenes/history_screen.gd:473
 msgid "Saved as %s"
 msgstr ""
 
@@ -1303,7 +1307,7 @@ msgstr ""
 msgid "Scanning…"
 msgstr ""
 
-#: app/scenes/history_screen.gd:655
+#: app/scenes/history_screen.gd:677
 msgid "Sep"
 msgstr ""
 
@@ -1351,7 +1355,7 @@ msgstr ""
 msgid "Simulation: %d×"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:84 app/scenes/profile_tab.gd:273
+#: app/scenes/profile_dialog.gd:84 app/scenes/profile_tab.gd:284
 msgid "Single cog: virtual gears"
 msgstr ""
 
@@ -1403,7 +1407,7 @@ msgstr ""
 msgid "Structured workout"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Sun"
 msgstr ""
 
@@ -1411,11 +1415,11 @@ msgstr ""
 msgid "Sync points"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:248 app/translations/extra-msgids.txt:13
+#: app/scenes/profile_tab.gd:259 app/translations/extra-msgids.txt:13
 msgid "System language"
 msgstr ""
 
-#: app/scenes/history_screen.gd:350 core/torqa-app/src/hud.rs:136
+#: app/scenes/history_screen.gd:351 core/torqa-app/src/hud.rs:136
 msgid "TSS"
 msgstr ""
 
@@ -1435,7 +1439,7 @@ msgstr ""
 msgid "The only rider cannot be deleted"
 msgstr ""
 
-#: app/scenes/history_screen.gd:206
+#: app/scenes/history_screen.gd:207
 msgid "The ride and its FIT file are deleted."
 msgstr ""
 
@@ -1455,19 +1459,19 @@ msgstr ""
 msgid "Threshold"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Thu"
 msgstr ""
 
-#: app/scenes/history_screen.gd:330 core/torqa-app/src/hud.rs:101
+#: app/scenes/history_screen.gd:331 core/torqa-app/src/hud.rs:101
 msgid "Time"
 msgstr ""
 
-#: app/scenes/history_screen.gd:249
+#: app/scenes/history_screen.gd:250
 msgid "Time in heart-rate zones"
 msgstr ""
 
-#: app/scenes/history_screen.gd:249
+#: app/scenes/history_screen.gd:250
 msgid "Time in power zones"
 msgstr ""
 
@@ -1475,7 +1479,7 @@ msgstr ""
 msgid "Time of day"
 msgstr ""
 
-#: app/scenes/history_screen.gd:401
+#: app/scenes/history_screen.gd:402
 msgid "Times"
 msgstr ""
 
@@ -1495,7 +1499,7 @@ msgstr ""
 msgid "Trainer difficulty"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Tue"
 msgstr ""
 
@@ -1507,23 +1511,27 @@ msgstr ""
 msgid "Ultra"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:102 app/scenes/profile_tab.gd:268
+#: app/scenes/profile_dialog.gd:102 app/scenes/profile_tab.gd:279
 msgid "Units"
 msgstr ""
 
-#: app/scenes/history_screen.gd:171
+#: app/scenes/history_screen.gd:172
 msgid "Upload"
 msgstr ""
 
-#: app/scenes/history_screen.gd:506
+#: app/scenes/profile_tab.gd:215
+msgid "Upload automatically"
+msgstr ""
+
+#: app/scenes/history_screen.gd:507
 msgid "Upload to %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:559
+#: app/scenes/history_screen.gd:557
 msgid "Uploaded to %s."
 msgstr ""
 
-#: app/scenes/history_screen.gd:501 app/scenes/history_screen.gd:542
+#: app/scenes/history_screen.gd:502 app/scenes/history_screen.gd:540
 msgid "Uploading to %s…"
 msgstr ""
 
@@ -1531,7 +1539,7 @@ msgstr ""
 msgid "Use"
 msgstr ""
 
-#: app/scenes/history_screen.gd:380
+#: app/scenes/history_screen.gd:381
 msgid "Use %d W"
 msgstr ""
 
@@ -1571,7 +1579,7 @@ msgstr ""
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
-#: app/scenes/history_screen.gd:499
+#: app/scenes/history_screen.gd:500
 msgid "View on %s"
 msgstr ""
 
@@ -1607,11 +1615,11 @@ msgstr ""
 msgid "Weather"
 msgstr ""
 
-#: app/scenes/history_screen.gd:653
+#: app/scenes/history_screen.gd:675
 msgid "Wed"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd:97 app/scenes/profile_tab.gd:264
+#: app/scenes/profile_dialog.gd:97 app/scenes/profile_tab.gd:275
 msgid "Weight"
 msgstr ""
 
@@ -1619,11 +1627,11 @@ msgstr ""
 msgid "Where"
 msgstr ""
 
-#: app/scenes/history_screen.gd:405
+#: app/scenes/history_screen.gd:406
 msgid "Whole route"
 msgstr ""
 
-#: app/scenes/history_screen.gd:351 core/torqa-app/src/hud.rs:137
+#: app/scenes/history_screen.gd:352 core/torqa-app/src/hud.rs:137
 msgid "Work"
 msgstr ""
 
@@ -1639,7 +1647,7 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
-#: app/scenes/history_screen.gd:388
+#: app/scenes/history_screen.gd:389
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
@@ -1655,7 +1663,7 @@ msgstr ""
 msgid "Your courses"
 msgstr ""
 
-#: app/scenes/history_screen.gd:135
+#: app/scenes/history_screen.gd:136
 msgid "Your rides"
 msgstr ""
 
@@ -1691,7 +1699,7 @@ msgstr ""
 msgid "for %d bpm  ·  now %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:351 core/torqa-app/src/hud.rs:137
+#: app/scenes/history_screen.gd:352 core/torqa-app/src/hud.rs:137
 msgid "kJ"
 msgstr ""
 
@@ -1711,11 +1719,11 @@ msgstr ""
 msgid "© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL) · Terrain: Mapterhorn (CC BY 4.0), AWS Terrain Tiles"
 msgstr ""
 
-#: app/scenes/profile_tab.gd:396
+#: app/scenes/profile_tab.gd:411
 msgid "“%s” and all their rides are deleted."
 msgstr ""
 
-#: app/scenes/history_screen.gd:131
+#: app/scenes/history_screen.gd:132
 msgid "← Back"
 msgstr ""
 
@@ -1723,6 +1731,6 @@ msgstr ""
 msgid "← Courses"
 msgstr ""
 
-#: app/scenes/history_screen.gd:434
+#: app/scenes/history_screen.gd:435
 msgid "★ Personal record"
 msgstr ""

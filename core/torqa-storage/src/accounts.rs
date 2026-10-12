@@ -1,6 +1,6 @@
 //! A rider's accounts on training platforms (R29, ADR 0013): `profiles/<id>/accounts.toml`,
-//! one table per platform with who is connected and the platform's own credentials, kept as
-//! the platform gave them. The file holds secrets, so on macOS and Linux only its owner may
+//! one table per platform with who is connected, whether rides go up automatically (R60) and
+//! the platform's own credentials, kept as the platform gave them. The file holds secrets, so on macOS and Linux only its owner may
 //! read it; it lives with the rider and syncs like the rest of their folder (ADR 0002).
 
 use std::collections::BTreeMap;
@@ -20,6 +20,8 @@ const ACCOUNTS_FILE: &str = "accounts.toml";
 pub struct StoredAccount {
     /// Who is connected, as the platform knows them.
     pub label: String,
+    /// Rides the rider keeps go up without asking (R60).
+    pub auto_upload: bool,
     /// What the platform needs for uploads.
     pub credentials: Credentials,
 }
@@ -82,6 +84,7 @@ mod tests {
     fn intervals() -> StoredAccount {
         StoredAccount {
             label: "Ann Rider".to_owned(),
+            auto_upload: true,
             credentials: Credentials::from([("api_key".to_owned(), "s3cret".to_owned())]),
         }
     }
@@ -125,6 +128,23 @@ mod tests {
             .mode();
 
         assert_eq!(mode & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn accounts_from_before_automatic_uploads_upload_only_when_asked() {
+        let dir = temp_dir("before-auto");
+        std::fs::create_dir_all(dir.join("profiles/ann")).unwrap();
+        std::fs::write(
+            dir.join("profiles/ann/accounts.toml"),
+            "[intervals]\nlabel = \"Ann\"\n\n[intervals.credentials]\napi_key = \"k\"\n",
+        )
+        .unwrap();
+
+        let accounts = load(&dir, "ann").unwrap();
+
+        assert!(!accounts["intervals"].auto_upload);
+        assert_eq!(accounts["intervals"].credentials["api_key"], "k");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

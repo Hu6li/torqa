@@ -485,8 +485,8 @@ pub struct App {
     /// What the Di2 shifter's buttons do (#139).
     buttons: Arc<torqa_devices::shift::Assignments>,
     profile: StoredProfile,
-    /// The training platforms rides can be uploaded to (R29).
-    uploaders: Vec<Arc<dyn uploads::ActivityUploader>>,
+    /// The training platforms rides can be uploaded to and the uploads under way (R29).
+    uploads: uploads::UploadState,
     data_dir: PathBuf,
     cache_dir: PathBuf,
 }
@@ -540,7 +540,7 @@ impl App {
                 profiles::button_map(&data_dir),
             )),
             profile: initial_profile(&data_dir),
-            uploaders: uploads::platforms(),
+            uploads: uploads::UploadState::new(uploads::platforms()),
             data_dir,
             cache_dir,
         })

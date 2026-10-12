@@ -192,7 +192,8 @@ Built in rideable steps:
   - [x] intervals.icu behind `ActivityUploader` (`torqa-upload`, ADR 0013): the rider's API
     key under Accounts on their card, uploads from the summary and the history, where each
     ride went kept with it
-  - [ ] Upload rides automatically, per account
+  - [x] Upload rides automatically, per account (R60): on the summary's Done; uploads take
+    turns, each with the account's newest credentials, and a ride goes to a platform once
   - [ ] Strava, through each rider's own Strava API application (OAuth in the browser)
   - [ ] ANT+ FE-C
 - [x] Windows and Linux builds from CI (Linux x86_64 and arm64 on Ubuntu 22.04, ADR 0012)

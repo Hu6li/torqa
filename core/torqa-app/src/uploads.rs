@@ -1,8 +1,11 @@
 //! Uploading rides to training platforms (R29): a rider's accounts, connected with what the
 //! platform asks for, and rides uploaded in the background, each remembering where it went.
+//! Rides the rider keeps go up by themselves to the accounts set to upload automatically
+//! (R60).
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use torqa_storage::accounts::{self, StoredAccount};
 use torqa_storage::rides;
@@ -31,6 +34,33 @@ pub struct AccountStatus {
     pub help_url: &'static str,
     /// Who is connected, if anyone.
     pub label: Option<String>,
+    /// Rides the rider keeps go up without asking (R60).
+    pub auto_upload: bool,
+}
+
+/// The platforms and the uploads under way.
+pub(crate) struct UploadState {
+    platforms: Vec<Arc<dyn ActivityUploader>>,
+    /// One upload at a time. Each reads the account's credentials when its turn comes and
+    /// stores renewed ones before the next starts: platforms that renew tokens (Strava) take
+    /// only the newest, so two renewals of one account must not overlap.
+    queue: Arc<tokio::sync::Mutex<()>>,
+    /// Held while a rider's accounts file is read, changed and written, by the frame loop and
+    /// uploads alike.
+    accounts: Arc<Mutex<()>>,
+    /// Rides on their way to a platform, so none goes up twice.
+    in_flight: HashSet<(PathBuf, &'static str)>,
+}
+
+impl UploadState {
+    pub(crate) fn new(platforms: Vec<Arc<dyn ActivityUploader>>) -> Self {
+        Self {
+            platforms,
+            queue: Arc::default(),
+            accounts: Arc::default(),
+            in_flight: HashSet::new(),
+        }
+    }
 }
 
 /// Upload work done in the background, for the frame loop to keep.
@@ -40,24 +70,18 @@ pub(crate) enum Done {
         platform: &'static str,
         result: Result<torqa_upload::Account, UploadError>,
     },
-    Uploaded(UploadJob),
-}
-
-/// A finished upload.
-pub(crate) struct UploadJob {
-    rider: String,
-    platform: &'static str,
-    fit: PathBuf,
-    /// The credentials after the upload, if they changed on the way.
-    renewed: Option<Credentials>,
-    result: Result<Uploaded, UploadError>,
+    Uploaded {
+        platform: &'static str,
+        fit: PathBuf,
+        result: Result<Uploaded, UploadError>,
+    },
 }
 
 impl App {
     /// Takes `platforms` as those rides can be uploaded to instead of [`platforms`], e.g.
     /// stand-ins in tests.
     pub fn set_upload_platforms(&mut self, platforms: Vec<Arc<dyn ActivityUploader>>) {
-        self.uploaders = platforms;
+        self.uploads.platforms = platforms;
     }
 
     /// Every platform with rider `rider`'s account on it, in the order they are offered.
@@ -67,15 +91,20 @@ impl App {
             tracing::warn!(%error, "cannot read the rider's accounts");
             accounts::Accounts::new()
         });
-        self.uploaders
+        self.uploads
+            .platforms
             .iter()
-            .map(|uploader| AccountStatus {
-                platform: uploader.id(),
-                name: uploader.name(),
-                fields: uploader.fields(),
-                help: uploader.help(),
-                help_url: uploader.help_url(),
-                label: stored.get(uploader.id()).map(|a| a.label.clone()),
+            .map(|uploader| {
+                let account = stored.get(uploader.id());
+                AccountStatus {
+                    platform: uploader.id(),
+                    name: uploader.name(),
+                    fields: uploader.fields(),
+                    help: uploader.help(),
+                    help_url: uploader.help_url(),
+                    label: account.map(|a| a.label.clone()),
+                    auto_upload: account.is_some_and(|a| a.auto_upload),
+                }
             })
             .collect()
     }
@@ -115,57 +144,138 @@ impl App {
         })
     }
 
+    /// Whether rides rider `rider` keeps go up to `platform` without asking (R60).
+    ///
+    /// # Errors
+    /// [`AppError::NotConnected`] if the rider has no account there, [`AppError::Storage`] if
+    /// the accounts cannot be read or written.
+    pub fn set_auto_upload(
+        &mut self,
+        rider: &str,
+        platform: &str,
+        on: bool,
+    ) -> Result<(), AppError> {
+        let uploader = self.uploader(platform)?;
+        let mut connected = false;
+        self.change_accounts(rider, |accounts| {
+            if let Some(account) = accounts.get_mut(uploader.id()) {
+                account.auto_upload = on;
+                connected = true;
+            }
+        })?;
+        if connected {
+            Ok(())
+        } else {
+            Err(AppError::NotConnected(uploader.name()))
+        }
+    }
+
     /// Uploads the active rider's ride `fit` to `platform` as `title` (R50), in the
     /// background: reports [`AppEvent::UploadFinished`] or [`AppEvent::UploadFailed`]. An
-    /// empty title falls back to the ride's name or route.
+    /// empty title falls back to the ride's name or route. A ride already on its way there is
+    /// not sent again.
     ///
     /// # Errors
     /// [`AppError::UnknownPlatform`] if there is no such platform, [`AppError::NotConnected`]
     /// if the rider has no account there, [`AppError::Storage`] if the ride cannot be read.
     pub fn upload_ride(&mut self, fit: &Path, platform: &str, title: &str) -> Result<(), AppError> {
         let uploader = self.uploader(platform)?;
-        let rider = self.profile.id.clone();
-        let mut credentials = accounts::load(&self.data_dir, &rider)
+        let connected = accounts::load(&self.data_dir, &self.profile.id)
             .map_err(|e| AppError::Storage(format!("cannot read the accounts: {e}")))?
-            .remove(uploader.id())
-            .ok_or(AppError::NotConnected(uploader.name()))?
-            .credentials;
-        let bytes = std::fs::read(fit)
-            .map_err(|e| AppError::Storage(format!("cannot read {}: {e}", fit.display())))?;
-        let title = title.trim();
-        let name = if title.is_empty() {
-            rides::load(fit).ok().map_or_else(
-                || "Ride".to_owned(),
-                |record| record.name.unwrap_or(record.route),
-            )
-        } else {
-            title.to_owned()
-        };
-        let activity = Activity {
-            fit: bytes,
-            name,
-            external_id: fit
-                .file_stem()
-                .map_or_else(String::new, |s| s.to_string_lossy().into_owned()),
-        };
-        let tx = self.jobs_tx.clone();
-        let fit = fit.to_owned();
-        self.runtime.spawn(async move {
-            let before = credentials.clone();
-            let result = uploader.upload(&mut credentials, &activity).await;
-            let _ = tx.send(JobResult::Upload(Box::new(Done::Uploaded(UploadJob {
-                rider,
-                platform: uploader.id(),
-                fit,
-                renewed: (credentials != before).then_some(credentials),
-                result,
-            }))));
-        });
+            .contains_key(uploader.id());
+        if !connected {
+            return Err(AppError::NotConnected(uploader.name()));
+        }
+        if self
+            .uploads
+            .in_flight
+            .contains(&(fit.to_owned(), uploader.id()))
+        {
+            return Ok(());
+        }
+        let activity = activity(fit, title)?;
+        self.start_upload(uploader, fit, activity);
         Ok(())
     }
 
+    /// The rider keeps the ride `fit` (Done on its summary, R42): it goes up as `title` to
+    /// every account of theirs set to upload automatically that does not have it yet (R60).
+    /// Returns those platforms.
+    pub fn keep_ride(&mut self, fit: &Path, title: &str) -> Vec<&'static str> {
+        let stored = accounts::load(&self.data_dir, &self.profile.id).unwrap_or_else(|error| {
+            tracing::warn!(%error, "cannot read the rider's accounts");
+            accounts::Accounts::new()
+        });
+        let uploaded = rides::load(fit).map(|r| r.uploads).unwrap_or_default();
+        let due: Vec<Arc<dyn ActivityUploader>> = self
+            .uploads
+            .platforms
+            .iter()
+            .filter(|u| stored.get(u.id()).is_some_and(|a| a.auto_upload))
+            .filter(|u| !uploaded.contains_key(u.id()))
+            .filter(|u| !self.uploads.in_flight.contains(&(fit.to_owned(), u.id())))
+            .cloned()
+            .collect();
+        if due.is_empty() {
+            return Vec::new();
+        }
+        let activity = match activity(fit, title) {
+            Ok(activity) => activity,
+            Err(error) => {
+                tracing::warn!(%error, "cannot upload the ride");
+                return Vec::new();
+            }
+        };
+        due.into_iter()
+            .map(|uploader| {
+                let platform = uploader.id();
+                self.start_upload(uploader, fit, activity.clone());
+                platform
+            })
+            .collect()
+    }
+
+    /// The platforms the ride `fit` is on its way to.
+    #[must_use]
+    pub fn uploading(&self, fit: &Path) -> Vec<&'static str> {
+        self.uploads
+            .platforms
+            .iter()
+            .map(|u| u.id())
+            .filter(|&id| self.uploads.in_flight.contains(&(fit.to_owned(), id)))
+            .collect()
+    }
+
+    /// Queues the upload of `activity`, the ride `fit`, to the active rider's account on
+    /// `uploader`'s platform.
+    fn start_upload(
+        &mut self,
+        uploader: Arc<dyn ActivityUploader>,
+        fit: &Path,
+        activity: Activity,
+    ) {
+        let platform = uploader.id();
+        self.uploads.in_flight.insert((fit.to_owned(), platform));
+        let tx = self.jobs_tx.clone();
+        let queue = Arc::clone(&self.uploads.queue);
+        let lock = Arc::clone(&self.uploads.accounts);
+        let data_dir = self.data_dir.clone();
+        let rider = self.profile.id.clone();
+        let fit = fit.to_owned();
+        self.runtime.spawn(async move {
+            let _turn = queue.lock().await;
+            let result = upload_in_turn(&data_dir, &lock, &rider, &*uploader, &activity).await;
+            let _ = tx.send(JobResult::Upload(Box::new(Done::Uploaded {
+                platform,
+                fit,
+                result,
+            })));
+        });
+    }
+
     fn uploader(&self, platform: &str) -> Result<Arc<dyn ActivityUploader>, AppError> {
-        self.uploaders
+        self.uploads
+            .platforms
             .iter()
             .find(|u| u.id() == platform)
             .cloned()
@@ -177,27 +287,29 @@ impl App {
         rider: &str,
         change: impl FnOnce(&mut accounts::Accounts),
     ) -> Result<(), AppError> {
-        let storage = |e: torqa_storage::profiles::ProfileError| {
-            AppError::Storage(format!("cannot save the accounts: {e}"))
-        };
-        let mut stored = accounts::load(&self.data_dir, rider).map_err(storage)?;
-        change(&mut stored);
-        accounts::save(&self.data_dir, rider, &stored).map_err(storage)
+        change_accounts(&self.data_dir, &self.uploads.accounts, rider, change)
     }
 
     /// Keeps what upload work in the background did, and tells what came of it.
-    pub(crate) fn upload_work_done(&self, done: Done) -> AppEvent {
+    pub(crate) fn upload_work_done(&mut self, done: Done) -> AppEvent {
         match done {
             Done::Connected {
                 rider,
                 platform,
                 result,
             } => self.account_connected(rider, platform, result),
-            Done::Uploaded(job) => self.upload_done(job),
+            Done::Uploaded {
+                platform,
+                fit,
+                result,
+            } => {
+                self.uploads.in_flight.remove(&(fit.clone(), platform));
+                self.upload_done(platform, fit, result)
+            }
         }
     }
 
-    /// Keeps a connected account.
+    /// Keeps a connected account; one connected again keeps its setting for automatic uploads.
     fn account_connected(
         &self,
         rider: String,
@@ -214,12 +326,16 @@ impl App {
             Err(error) => return failed(error.to_string()),
         };
         let label = account.label.clone();
-        let stored = StoredAccount {
-            label: account.label,
-            credentials: account.credentials,
-        };
         match self.change_accounts(&rider, |accounts| {
-            accounts.insert(platform.to_owned(), stored);
+            let auto_upload = accounts.get(platform).is_some_and(|a| a.auto_upload);
+            accounts.insert(
+                platform.to_owned(),
+                StoredAccount {
+                    label: account.label,
+                    auto_upload,
+                    credentials: account.credentials,
+                },
+            );
         }) {
             Ok(()) => AppEvent::AccountConnected {
                 rider,
@@ -230,24 +346,13 @@ impl App {
         }
     }
 
-    /// Keeps what changed in an upload: renewed credentials and where the ride went.
-    fn upload_done(&self, job: UploadJob) -> AppEvent {
-        let UploadJob {
-            rider,
-            platform,
-            fit,
-            renewed,
-            result,
-        } = job;
-        if let Some(credentials) = renewed
-            && let Err(error) = self.change_accounts(&rider, |accounts| {
-                if let Some(account) = accounts.get_mut(platform) {
-                    account.credentials = credentials;
-                }
-            })
-        {
-            tracing::warn!(%error, "cannot keep the renewed credentials");
-        }
+    /// Remembers where the ride went.
+    fn upload_done(
+        &self,
+        platform: &'static str,
+        fit: PathBuf,
+        result: Result<Uploaded, UploadError>,
+    ) -> AppEvent {
         match result {
             Ok(uploaded) => {
                 let url = uploaded.url.clone();
@@ -283,11 +388,80 @@ impl App {
     }
 }
 
+/// The ride `fit` to upload as `title`; an empty title falls back to the ride's name or route.
+fn activity(fit: &Path, title: &str) -> Result<Activity, AppError> {
+    let bytes = std::fs::read(fit)
+        .map_err(|e| AppError::Storage(format!("cannot read {}: {e}", fit.display())))?;
+    let title = title.trim();
+    let name = if title.is_empty() {
+        rides::load(fit).ok().map_or_else(
+            || "Ride".to_owned(),
+            |record| record.name.unwrap_or(record.route),
+        )
+    } else {
+        title.to_owned()
+    };
+    Ok(Activity {
+        fit: bytes,
+        name,
+        external_id: fit
+            .file_stem()
+            .map_or_else(String::new, |s| s.to_string_lossy().into_owned()),
+    })
+}
+
+/// Uploads `activity` with the account's credentials as they are now, and stores them again
+/// if the platform renewed them on the way. Runs in the upload's turn.
+async fn upload_in_turn(
+    data_dir: &Path,
+    lock: &Mutex<()>,
+    rider: &str,
+    uploader: &dyn ActivityUploader,
+    activity: &Activity,
+) -> Result<Uploaded, UploadError> {
+    let stored = {
+        let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        accounts::load(data_dir, rider)
+    };
+    let mut credentials = stored
+        .map_err(|e| UploadError::Rejected(format!("Cannot read the accounts: {e}")))?
+        .remove(uploader.id())
+        .ok_or_else(|| UploadError::Unauthorized(format!("Connect {} again.", uploader.name())))?
+        .credentials;
+    let before = credentials.clone();
+    let result = uploader.upload(&mut credentials, activity).await;
+    if credentials != before
+        && let Err(error) = change_accounts(data_dir, lock, rider, |accounts| {
+            if let Some(account) = accounts.get_mut(uploader.id()) {
+                account.credentials = credentials;
+            }
+        })
+    {
+        tracing::warn!(%error, "cannot keep the renewed credentials");
+    }
+    result
+}
+
+/// Reads rider `rider`'s accounts, applies `change` and writes them, holding `lock`.
+fn change_accounts(
+    data_dir: &Path,
+    lock: &Mutex<()>,
+    rider: &str,
+    change: impl FnOnce(&mut accounts::Accounts),
+) -> Result<(), AppError> {
+    let storage = |e: torqa_storage::profiles::ProfileError| {
+        AppError::Storage(format!("cannot save the accounts: {e}"))
+    };
+    let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut stored = accounts::load(data_dir, rider).map_err(storage)?;
+    change(&mut stored);
+    accounts::save(data_dir, rider, &stored).map_err(storage)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::sync::Mutex;
-    use std::time::UNIX_EPOCH;
+    use std::time::{Duration, UNIX_EPOCH};
 
     use torqa_domain::recording::RideSummary;
     use torqa_domain::upload::BoxFuture;
@@ -298,20 +472,39 @@ mod tests {
     use super::*;
     use crate::tests::{run_until, temp_dir};
 
-    /// A platform that takes the key `good` and keeps what it is sent; every upload renews a
-    /// token, as OAuth platforms do.
-    #[derive(Default)]
+    /// A platform that takes the key `good` and keeps what it is sent. Like Strava, it
+    /// renews a token with every upload and from then on takes only the new one; and it takes
+    /// its time.
     struct Fake {
+        id: &'static str,
+        name: &'static str,
         received: Mutex<Vec<Activity>>,
+        /// The token it gave out last.
+        token: Mutex<Option<String>>,
+    }
+
+    impl Fake {
+        fn new(id: &'static str, name: &'static str) -> Arc<Self> {
+            Arc::new(Self {
+                id,
+                name,
+                received: Mutex::default(),
+                token: Mutex::default(),
+            })
+        }
+
+        fn received(&self) -> Vec<Activity> {
+            self.received.lock().unwrap().clone()
+        }
     }
 
     impl ActivityUploader for Fake {
         fn id(&self) -> &'static str {
-            "fake"
+            self.id
         }
 
         fn name(&self) -> &'static str {
-            "Fake"
+            self.name
         }
 
         fn fields(&self) -> &'static [Field] {
@@ -354,9 +547,19 @@ mod tests {
                 if credentials.get("key").is_none_or(|k| k != "good") {
                     return Err(UploadError::Unauthorized("Connect Fake again.".to_owned()));
                 }
+                let presented = credentials.get("token").cloned();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let mut token = self.token.lock().unwrap();
+                if token.is_some() && presented != *token {
+                    return Err(UploadError::Unauthorized(
+                        "Fake renewed that token already.".to_owned(),
+                    ));
+                }
                 let mut received = self.received.lock().unwrap();
                 received.push(activity.clone());
-                credentials.insert("token".to_owned(), format!("renewed {}", received.len()));
+                let renewed = format!("renewed {}", received.len());
+                *token = Some(renewed.clone());
+                credentials.insert("token".to_owned(), renewed);
                 Ok(Uploaded {
                     id: "a1".to_owned(),
                     url: "https://fake.example/a1".to_owned(),
@@ -368,16 +571,21 @@ mod tests {
     fn app(name: &str) -> (App, Arc<Fake>, PathBuf) {
         let dir = temp_dir(name);
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
-        let fake = Arc::new(Fake::default());
+        let fake = Fake::new("fake", "Fake");
         app.set_upload_platforms(vec![fake.clone()]);
         (app, fake, dir)
     }
 
     /// A ride of the active rider, named `name`.
     fn ride(app: &App, name: Option<&str>) -> PathBuf {
+        ride_at(app, "torqa-20261012-071500", name)
+    }
+
+    /// A ride of the active rider in `stem.fit`, named `name`.
+    fn ride_at(app: &App, stem: &str, name: Option<&str>) -> PathBuf {
         let dir = profiles::rides_dir(&app.data_dir, &app.profile().id);
         std::fs::create_dir_all(&dir).unwrap();
-        let fit = dir.join("torqa-20261012-071500.fit");
+        let fit = dir.join(format!("{stem}.fit"));
         std::fs::write(&fit, b"FIT activity").unwrap();
         let record = RideRecord {
             route: "Gurten".to_owned(),
@@ -395,9 +603,13 @@ mod tests {
     }
 
     fn connect(app: &mut App, key: &str) -> AppEvent {
+        connect_to(app, "fake", key)
+    }
+
+    fn connect_to(app: &mut App, platform: &str, key: &str) -> AppEvent {
         let rider = app.profile().id.clone();
         let entered = Credentials::from([("key".to_owned(), key.to_owned())]);
-        app.connect_account(&rider, "fake", entered).unwrap();
+        app.connect_account(&rider, platform, entered).unwrap();
         run_until(app, |e| {
             matches!(
                 e,
@@ -410,14 +622,23 @@ mod tests {
 
     fn upload(app: &mut App, fit: &Path, title: &str) -> AppEvent {
         app.upload_ride(fit, "fake", title).unwrap();
-        run_until(app, |e| {
+        uploads_done(app, 1).pop().unwrap()
+    }
+
+    /// Runs the app until `count` uploads have finished or failed; those events.
+    fn uploads_done(app: &mut App, count: usize) -> Vec<AppEvent> {
+        let done = |e: &AppEvent| {
             matches!(
                 e,
                 AppEvent::UploadFinished { .. } | AppEvent::UploadFailed { .. }
             )
-        })
-        .pop()
-        .unwrap()
+        };
+        let mut seen = 0;
+        let events = run_until(app, |e| {
+            seen += usize::from(done(e));
+            seen == count
+        });
+        events.into_iter().filter(done).collect()
     }
 
     fn label(app: &App, rider: &str) -> Option<String> {
@@ -435,6 +656,7 @@ mod tests {
         assert_eq!((fake.platform, fake.name), ("fake", "Fake"));
         assert_eq!(fake.fields[0].key, "key");
         assert_eq!(fake.label, None);
+        assert!(!fake.auto_upload);
         assert_eq!(
             platforms().iter().map(|p| p.id()).collect::<Vec<_>>(),
             ["intervals"],
@@ -494,7 +716,7 @@ mod tests {
                 url: "https://fake.example/a1".to_owned(),
             }
         );
-        let sent = fake.received.lock().unwrap()[0].clone();
+        let sent = fake.received()[0].clone();
         assert_eq!(sent.name, "Gurten · Mon 12 Oct");
         assert_eq!(sent.fit, b"FIT activity");
         assert_eq!(sent.external_id, "torqa-20261012-071500");
@@ -511,7 +733,7 @@ mod tests {
 
         upload(&mut app, &fit, " ");
 
-        assert_eq!(fake.received.lock().unwrap()[0].name, "Morning loop");
+        assert_eq!(fake.received()[0].name, "Morning loop");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -552,6 +774,7 @@ mod tests {
         let rider = app.profile().id.clone();
         let revoked = StoredAccount {
             label: "Ann on Fake".to_owned(),
+            auto_upload: false,
             credentials: Credentials::from([("key".to_owned(), "revoked".to_owned())]),
         };
         accounts::save(
@@ -587,6 +810,102 @@ mod tests {
         app.disconnect_account(&rider, "fake").unwrap();
 
         assert_eq!(label(&app, &rider), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn kept_rides_go_up_to_the_accounts_set_to_upload_them_automatically() {
+        let dir = temp_dir("keep");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let (auto, asked, unconnected) = (
+            Fake::new("fake", "Fake"),
+            Fake::new("asked", "Asked"),
+            Fake::new("unconnected", "Unconnected"),
+        );
+        app.set_upload_platforms(vec![auto.clone(), asked.clone(), unconnected.clone()]);
+        let rider = app.profile().id.clone();
+        connect_to(&mut app, "fake", "good");
+        connect_to(&mut app, "asked", "good");
+        app.set_auto_upload(&rider, "fake", true).unwrap();
+        let fit = ride(&app, None);
+
+        let started = app.keep_ride(&fit, "Morning loop");
+        let event = uploads_done(&mut app, 1).pop().unwrap();
+
+        assert_eq!(started, ["fake"]);
+        assert!(
+            matches!(event, AppEvent::UploadFinished { .. }),
+            "{event:?}"
+        );
+        assert_eq!(auto.received()[0].name, "Morning loop");
+        assert!(asked.received().is_empty() && unconnected.received().is_empty());
+        let accounts = app.accounts(&rider);
+        assert_eq!(
+            accounts.iter().map(|a| a.auto_upload).collect::<Vec<_>>(),
+            [true, false, false]
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_ride_goes_to_a_platform_once_even_when_kept_while_uploading() {
+        let (mut app, fake, dir) = app("once");
+        let rider = app.profile().id.clone();
+        connect(&mut app, "good");
+        app.set_auto_upload(&rider, "fake", true).unwrap();
+        let fit = ride(&app, None);
+
+        app.upload_ride(&fit, "fake", "Ride").unwrap();
+        let while_uploading = app.uploading(&fit);
+        let kept_while_uploading = app.keep_ride(&fit, "Ride");
+        app.upload_ride(&fit, "fake", "Ride").unwrap();
+        uploads_done(&mut app, 1);
+        let kept_after = app.keep_ride(&fit, "Ride");
+
+        assert_eq!(while_uploading, ["fake"]);
+        assert!(kept_while_uploading.is_empty() && kept_after.is_empty());
+        assert_eq!(app.uploading(&fit), [""; 0]);
+        assert_eq!(fake.received().len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn uploads_take_turns_so_a_renewed_token_is_never_stale() {
+        let (mut app, fake, dir) = app("turns");
+        connect(&mut app, "good");
+        let first = ride_at(&app, "torqa-20261012-071500", None);
+        let second = ride_at(&app, "torqa-20261012-181500", None);
+
+        app.upload_ride(&first, "fake", "First").unwrap();
+        app.upload_ride(&second, "fake", "Second").unwrap();
+        let events = uploads_done(&mut app, 2);
+
+        assert!(
+            events
+                .iter()
+                .all(|e| matches!(e, AppEvent::UploadFinished { .. })),
+            "{events:?}"
+        );
+        assert_eq!(fake.received().len(), 2);
+        let stored = accounts::load(&app.data_dir, &app.profile().id).unwrap();
+        assert_eq!(stored["fake"].credentials["token"], "renewed 2");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn automatic_uploads_need_an_account_and_survive_connecting_again() {
+        let (mut app, _, dir) = app("auto-setting");
+        let rider = app.profile().id.clone();
+
+        assert!(matches!(
+            app.set_auto_upload(&rider, "fake", true),
+            Err(AppError::NotConnected("Fake"))
+        ));
+        connect(&mut app, "good");
+        app.set_auto_upload(&rider, "fake", true).unwrap();
+        connect(&mut app, "good");
+
+        assert!(app.accounts(&rider)[0].auto_upload);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

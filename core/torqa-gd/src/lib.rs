@@ -631,9 +631,10 @@ impl TorqaApp {
     }
 
     /// Every platform rides can be uploaded to, with rider `rider`'s account on it (R29):
-    /// `[{platform, name, fields, help, help_url, label}]` in the order offered, `fields` as
-    /// `[{key, label, secret}]` to ask for when connecting (labels and help in English, to
-    /// translate), `label` who is connected, empty if nobody.
+    /// `[{platform, name, fields, help, help_url, label, auto_upload}]` in the order offered,
+    /// `fields` as `[{key, label, secret}]` to ask for when connecting (labels and help in
+    /// English, to translate), `label` who is connected, empty if nobody, `auto_upload` whether
+    /// kept rides go up without asking (R60).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn accounts(&self, rider: GString) -> VarArray {
@@ -661,6 +662,7 @@ impl TorqaApp {
                     "help" => account.help,
                     "help_url" => account.help_url,
                     "label" => account.label.as_deref().unwrap_or_default(),
+                    "auto_upload" => account.auto_upload,
                 }
                 .to_variant(),
             );
@@ -690,6 +692,44 @@ impl TorqaApp {
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn disconnect_account(&mut self, rider: GString, platform: GString) -> bool {
         self.command(|app| app.disconnect_account(&rider.to_string(), &platform.to_string()))
+    }
+
+    /// Whether rides rider `rider` keeps go up to `platform` without asking (R60); emits
+    /// `failed` if they have no account there.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn set_auto_upload(&mut self, rider: GString, platform: GString, on: bool) -> bool {
+        self.command(|app| app.set_auto_upload(&rider.to_string(), &platform.to_string(), on))
+    }
+
+    /// The rider keeps the ride in `path` (Done on its summary): it goes up as `title` to their
+    /// accounts set to upload automatically (R60), in the background like `upload_ride`.
+    /// Returns those platforms.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn keep_ride(&mut self, path: GString, title: GString) -> PackedStringArray {
+        let path = PathBuf::from(path.to_string());
+        self.app
+            .as_mut()
+            .map(|app| app.keep_ride(&path, &title.to_string()))
+            .unwrap_or_default()
+            .into_iter()
+            .map(GString::from)
+            .collect()
+    }
+
+    /// The platforms the ride in `path` is on its way to.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn uploading(&self, path: GString) -> PackedStringArray {
+        let path = PathBuf::from(path.to_string());
+        self.app
+            .as_ref()
+            .map(|app| app.uploading(&path))
+            .unwrap_or_default()
+            .into_iter()
+            .map(GString::from)
+            .collect()
     }
 
     /// Uploads the active rider's ride in `path` to `platform` as `title`, in the background:

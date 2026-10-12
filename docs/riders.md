@@ -9,7 +9,8 @@ the last rider cannot be deleted, and deleting the active one switches to anothe
 unfolds a card to the rider's whole setup in three columns: every setting the dialog has (the
 HUD as **Default** or **Custom**), the power zones and the heart-rate zones, each zone with its
 range. Under them, **Accounts** lists the training platforms rides can be uploaded to, with
-**Connect…** or **Disconnect** for each ([uploads.md](uploads.md)).
+**Connect…** or **Disconnect** for each and, once connected, **Upload automatically**
+([uploads.md](uploads.md)).
 
 ![The Profile tab with a rider's card unfolded](images/app/profile.png)
 

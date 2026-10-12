@@ -6,6 +6,8 @@ JSON file holding its summary.
 
 After a ride, its **summary** shows the same figures as the history: give the ride a name,
 upload it, keep it with **Done** or **Discard ride**. Afterwards it is in the **History** tab.
+**Done** also uploads the ride to the accounts set to upload automatically
+([uploads.md](uploads.md)).
 
 ![A ride's summary](images/app/summary.png)
 
