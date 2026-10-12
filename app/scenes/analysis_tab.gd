@@ -4,7 +4,8 @@ extends VBoxContainer
 ## watts or watts per kilogram. The power curve (R62) shows the best power over every duration
 ## among the period's rides, against all rides or the period before, with the durations riders
 ## compare below; beside it the power profile (R63) sets the period against the rider's best.
-## Below them: fitness, fatigue and form over the period's days and its weeks' totals (R64).
+## Below them: fitness, fatigue and form over the period's days and its weeks' totals (R64),
+## then the progress of the best efforts and the FTP, with the FTP the rides show (R65).
 
 ## The periods to choose from, in days (0: all rides).
 # i18n-begin
@@ -52,6 +53,11 @@ var _zone_legend: HFlowContainer = HFlowContainer.new()
 ## The period's weeks as `TorqaApp.weekly()` gives them, kept to switch what the bars show.
 var _weeks: Array = []
 var _imperial: bool = false
+var _trend: TrendChart = TrendChart.new()
+## The FTP the best efforts show, and taking it as the rider's FTP.
+var _estimate_row: HBoxContainer = HBoxContainer.new()
+var _estimate_text: Label = Label.new()
+var _estimate_button: Button = Button.new()
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -91,6 +97,8 @@ func refresh() -> void:
 	_imperial = _torqa.profile().get("units", "metric") == "imperial"
 	_weeks = _torqa.weekly(days, bias_minutes)
 	_fill_weekly()
+	_fill_progress(_torqa.progress(days, bias_minutes, per_kg), per_kg)
+	_show_estimate(_torqa.ftp_estimate())
 
 
 func _init() -> void:
@@ -129,6 +137,7 @@ func _init() -> void:
 	_content.add_child(_power_card())
 	_content.add_child(_fitness_card())
 	_content.add_child(_weekly_card())
+	_content.add_child(_progress_card())
 
 
 ## Power in one card (R62, R63): a row with what the curve is compared with and whether power is
@@ -249,6 +258,53 @@ func _weekly_card() -> PanelContainer:
 	_zone_legend.add_theme_constant_override("h_separation", 18)
 	rows.add_child(_zone_legend)
 	return _card(rows)
+
+
+## The best 1, 5 and 20 minutes and the FTP over the period (R65), and the FTP the rides show.
+func _progress_card() -> PanelContainer:
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 12)
+	rows.add_child(UiTheme.caption(tr("Progress")))
+	var about: Label = Label.new()
+	about.text = tr(
+		"Your best 1, 5 and 20 minutes and your FTP week by week (month by month for long periods)."
+	)
+	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	about.add_theme_color_override("font_color", UiTheme.MUTED)
+	rows.add_child(about)
+	var legend: HBoxContainer = HBoxContainer.new()
+	legend.add_theme_constant_override("separation", 18)
+	for entry: Array in _trend_series():
+		var key_name: String = entry[1]
+		var key: Label = UiTheme.caption(key_name)
+		var color: Color = entry[2]
+		key.add_theme_color_override("font_color", color)
+		legend.add_child(key)
+	rows.add_child(legend)
+	_trend.custom_minimum_size = Vector2(0, 260)
+	rows.add_child(_trend)
+	_estimate_row.add_theme_constant_override("separation", 16)
+	_estimate_text.add_theme_font_size_override("font_size", 16)
+	_estimate_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_estimate_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_estimate_row.add_child(_estimate_text)
+	_estimate_button.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	_estimate_button.pressed.connect(_use_estimate)
+	_estimate_row.add_child(_estimate_button)
+	_estimate_row.hide()
+	rows.add_child(_estimate_row)
+	return _card(rows)
+
+
+## The progress chart's series: the key of `TorqaApp.progress()`, the name and the colour.
+static func _trend_series() -> Array[Array]:
+	return [
+		["one_minute", PowerCurveChart.duration_label(60), UiTheme.POWER_ZONES[5][1]],
+		["five_minutes", PowerCurveChart.duration_label(300), UiTheme.POWER_ZONES[4][1]],
+		["twenty_minutes", PowerCurveChart.duration_label(1200), UiTheme.POWER_ZONES[3][1]],
+		["ftp", TranslationServer.translate("FTP"), UiTheme.TEXT],
+		["test", TranslationServer.translate("FTP test"), UiTheme.ACCENT],
+	]
 
 
 static func _card(content: Control) -> PanelContainer:
@@ -428,6 +484,55 @@ func _fill_zone_legend(zones: Array[Array]) -> void:
 static func _hours(hours: float) -> String:
 	var minutes: int = roundi(hours * 60.0)
 	return "%d:%02d h" % [minutes / 60, minutes % 60]
+
+
+## The weeks or months of `progress` (`TorqaApp.progress()`): the best efforts and the FTP as
+## lines, FTP tests as dots.
+func _fill_progress(progress: Dictionary, per_kg: bool) -> void:
+	_trend.unit = "W/kg" if per_kg else "W"
+	var monthly: bool = progress.get("monthly", false)
+	var starts: PackedInt64Array = progress.get("start_unix_s", PackedInt64Array())
+	_trend.set_periods(starts, monthly)
+	for entry: Array in _trend_series():
+		var key: String = entry[0]
+		var series_name: String = entry[1]
+		var color: Color = entry[2]
+		var values: PackedFloat64Array = progress.get(key, PackedFloat64Array())
+		_trend.add_series(values, color, series_name, key == "ftp", key == "test")
+
+
+## The FTP the best efforts of the last 90 days show (`TorqaApp.ftp_estimate()`), next to the
+## rider's, with a button to take it; never applied without asking (R65).
+func _show_estimate(estimate: Dictionary) -> void:
+	_estimate_row.visible = not estimate.is_empty()
+	if estimate.is_empty():
+		return
+	var ftp_w: float = estimate["ftp_w"]
+	var current_w: float = _torqa.profile().get("ftp_w", 0.0)
+	var method: String = estimate["method"]
+	if method == "critical_power":
+		var w_prime_kj: float = estimate["w_prime_kj"]
+		_estimate_text.text = (
+			tr("Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W.")
+			% [roundi(ftp_w), w_prime_kj, roundi(current_w)]
+		)
+	else:
+		_estimate_text.text = (
+			tr("Your best 20 minutes of the last 90 days show an FTP of about %d W. Now %d W.")
+			% [roundi(ftp_w), roundi(current_w)]
+		)
+	_estimate_button.text = tr("Use %d W") % roundi(ftp_w)
+	_estimate_button.visible = roundi(ftp_w) != roundi(current_w)
+	_estimate_button.set_meta("watts", ftp_w)
+
+
+func _use_estimate() -> void:
+	var watts: float = _estimate_button.get_meta("watts", 0.0)
+	if watts > 0.0 and _torqa.use_ftp(watts):
+		_estimate_text.text = (
+			tr("Your FTP is now %d W: zones and workouts follow it.") % roundi(watts)
+		)
+		_estimate_button.hide()
 
 
 static func _effort(efforts: Array, seconds: int) -> Dictionary:

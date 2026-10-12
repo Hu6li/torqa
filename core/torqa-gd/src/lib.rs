@@ -716,6 +716,61 @@ impl TorqaApp {
         array
     }
 
+    /// The active rider's progress (R65) over the last `period_days` (since the first ride for
+    /// 0), local time `utc_offset_minutes` ahead of UTC: `{monthly, start_unix_s, one_minute,
+    /// five_minutes, twenty_minutes, ftp, test}`, one entry per week or month (months for
+    /// periods over 13 weeks) in each array, in W or with `per_kg` in W/kg, -1 where a week or
+    /// month has none.
+    #[func]
+    fn progress(&self, period_days: i64, utc_offset_minutes: i64, per_kg: bool) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let offset = utc_offset_minutes * 60;
+        let progress = app.progress(period_of(period_days), offset, per_kg);
+        let series = |value: &dyn Fn(&torqa_app::analysis::ProgressPoint) -> Option<f64>| {
+            progress
+                .points
+                .iter()
+                .map(|point| value(point).unwrap_or(-1.0))
+                .collect::<PackedFloat64Array>()
+        };
+        vdict! {
+            "monthly" => progress.monthly,
+            "start_unix_s" => &progress
+                .points
+                .iter()
+                .map(|point| torqa_session::fitness::day_start(point.start, offset))
+                .collect::<PackedInt64Array>(),
+            "one_minute" => &series(&|point| point.bests[0]),
+            "five_minutes" => &series(&|point| point.bests[1]),
+            "twenty_minutes" => &series(&|point| point.bests[2]),
+            "ftp" => &series(&|point| point.ftp),
+            "test" => &series(&|point| point.test),
+        }
+    }
+
+    /// The FTP the active rider's best efforts of the last 90 days show (R65): `{ftp_w,
+    /// method, w_prime_kj, max_power_w}`, `method` `critical_power` or `twenty_minutes` (then
+    /// without W′ and maximal power, `null`); empty without an effort of 20 minutes.
+    #[func]
+    fn ftp_estimate(&self) -> VarDictionary {
+        use torqa_session::ftp_estimate::Method;
+        let Some(estimate) = self.app.as_ref().and_then(App::ftp_estimate) else {
+            return VarDictionary::new();
+        };
+        let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+        vdict! {
+            "ftp_w" => estimate.ftp.0,
+            "method" => match estimate.method {
+                Method::CriticalPower => "critical_power",
+                Method::TwentyMinutes => "twenty_minutes",
+            },
+            "w_prime_kj" => &optional(estimate.w_prime.map(|w| w.0 / 1000.0)),
+            "max_power_w" => &optional(estimate.max_power.map(|p| p.0)),
+        }
+    }
+
     /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
     /// `speed_kmh`, `elevation_m` — and seconds per zone of the active rider in `power_zones`
     /// (7) and `heart_rate_zones` (5). Empty (and emits `failed`) if the file cannot be read.
