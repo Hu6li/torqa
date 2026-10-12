@@ -5,7 +5,9 @@
   </picture>
 </p>
 
-<p align="center"><em>Killer watts. No cloud.</em></p>
+<p align="center"><strong>Make waves with watts, not payments</strong></p>
+
+<p align="center">Open-source · Local-first · Indoor cycling</p>
 
 <p align="center">
   <a href="https://github.com/bossm8/Torqa/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/bossm8/Torqa/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -81,7 +83,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
   </tr>
 </table>
 
-📴 Courses ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
+📴 Ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
 🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows and Linux
 
 **Planned:** Street View / Mapillary rides, ANT+ FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
