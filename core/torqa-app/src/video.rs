@@ -342,9 +342,19 @@ impl VideoCourse {
     }
 }
 
-/// Decodes a video course's frames on its own thread, so riding never waits for the decoder:
-/// [`VideoPlayer::show`] asks for a moment, [`VideoPlayer::frame`] hands out the newest frame
-/// once decoded.
+/// How far ahead of the moment shown frames are decoded, in seconds of the ride. Decoding comes
+/// in bursts — now and then one frame takes as long as several — and a frame decoded only once
+/// the ride has reached it holds the picture still, then jumps.
+const FRAMES_AHEAD_S: f64 = 0.15;
+/// Frames kept decoded ahead at most (a 1080p frame takes 8 MB); when more would come within
+/// [`FRAMES_AHEAD_S`], frames further apart are decoded.
+const MAX_FRAMES_AHEAD: u32 = 8;
+/// The fastest the video is expected to play, in video seconds per second.
+const MAX_PLAY_SPEED: f64 = 8.0;
+
+/// Decodes a video course's frames on its own thread, ahead of the ride, so riding never waits
+/// for the decoder: [`VideoPlayer::show`] tells the moment of the video shown,
+/// [`VideoPlayer::frame`] hands out the next frame to blend towards (R17).
 pub struct VideoPlayer {
     shared: Arc<(Mutex<PlayerState>, Condvar)>,
     thread: Option<JoinHandle<()>>,
@@ -352,10 +362,45 @@ pub struct VideoPlayer {
 
 #[derive(Default)]
 struct PlayerState {
-    wanted: Option<Duration>,
-    ready: Option<Frame>,
+    /// The moment of the video shown last, and when.
+    shown: Option<(Duration, Instant)>,
+    /// Video seconds played per second, estimated from the moments shown.
+    speed: f64,
+    /// Frames decoded ahead, in order.
+    ahead: VecDeque<Frame>,
+    /// The frame handed out last, which the view blends towards.
+    handed: Option<Duration>,
+    /// The moment shown went back: the decoder starts over from there.
+    restart: bool,
     error: Option<String>,
     stop: bool,
+}
+
+/// The moment of the video to decode the frame of next, while `shown` plays at `speed` with
+/// the frame at `last` decoded last and `queued` frames waiting; `None` while enough lies
+/// decoded ahead. Frames are found half a frame `step` past where they are expected, so that
+/// rounding in their times cannot give the same frame twice.
+fn next_moment(
+    shown: Duration,
+    speed: f64,
+    last: Option<Duration>,
+    queued: usize,
+    step: Duration,
+) -> Option<Duration> {
+    if queued >= MAX_FRAMES_AHEAD as usize {
+        return None;
+    }
+    let reach = Duration::from_secs_f64(speed.clamp(0.0, MAX_PLAY_SPEED) * FRAMES_AHEAD_S);
+    let spacing = step.max(reach / MAX_FRAMES_AHEAD);
+    // The frame after the one the view blends towards is wanted too: it is needed the moment
+    // the ride reaches that one.
+    let horizon = shown + step * 2 + reach;
+    let next = match last {
+        Some(last) if last >= shown => last + spacing + step / 2,
+        // The frame just after the moment shown.
+        _ => shown + step,
+    };
+    (next <= horizon).then_some(next)
 }
 
 impl VideoPlayer {
@@ -383,31 +428,45 @@ impl VideoPlayer {
                         return;
                     }
                 };
-                // The frame after the moment shown, so the view can blend towards it (R17).
                 let step = Duration::from_secs_f64(1.0 / video.info().frame_rate.max(1.0));
                 let (lock, wake) = &*state;
-                let mut shown: Option<Duration> = None;
+                // The frame decoded last, or the moment looked at last where none came.
+                let mut last: Option<Duration> = None;
                 loop {
-                    let wanted = {
+                    let moment = {
                         let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
-                        while s.wanted.is_none() && !s.stop {
+                        loop {
+                            if s.stop {
+                                return;
+                            }
+                            if std::mem::take(&mut s.restart) {
+                                last = None;
+                            }
+                            let next = s.shown.and_then(|(shown, _)| {
+                                next_moment(shown, s.speed, last, s.ahead.len(), step)
+                            });
+                            if let Some(next) = next {
+                                break next;
+                            }
                             s = wake.wait(s).unwrap_or_else(PoisonError::into_inner);
                         }
-                        if s.stop {
-                            return;
-                        }
-                        s.wanted.take()
                     };
-                    let Some(wanted) = wanted else { continue };
-                    let decoded = video.frame_at(wanted + step);
+                    let decoded = video.frame_at(moment).cloned();
                     let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+                    if s.restart {
+                        continue;
+                    }
                     match decoded {
-                        Ok(frame) if shown != Some(frame.time) => {
-                            shown = Some(frame.time);
-                            s.ready = Some(frame.clone());
+                        Ok(frame) if last.is_none_or(|last| frame.time > last) => {
+                            last = Some(frame.time);
+                            s.ahead.push_back(frame);
                         }
-                        Ok(_) => {}
-                        Err(error) => s.error = Some(error.to_string()),
+                        // Nothing new there (the end of the video): look further on next time.
+                        Ok(_) => last = Some(moment),
+                        Err(error) => {
+                            s.error = Some(error.to_string());
+                            last = Some(moment);
+                        }
                     }
                 }
             })
@@ -421,21 +480,51 @@ impl VideoPlayer {
         })
     }
 
-    /// Asks for the frames around `time`; a newer request replaces one not yet started.
+    /// The moment of the video shown now; called every frame.
     pub fn show(&self, time: Duration) {
+        let now = Instant::now();
         let (lock, wake) = &*self.shared;
-        lock.lock().unwrap_or_else(PoisonError::into_inner).wanted = Some(time);
+        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((before, at)) = s.shown {
+            if time < before {
+                // Moved back (a simulated ride jumps): the frames decoded lie ahead of it.
+                s.ahead.clear();
+                s.handed = None;
+                s.restart = true;
+            }
+            let elapsed = now.duration_since(at).as_secs_f64();
+            if elapsed > 0.0 {
+                let speed = (time.as_secs_f64() - before.as_secs_f64()) / elapsed;
+                // Frames come unevenly; smooth over a few of them.
+                s.speed += (speed.clamp(0.0, MAX_PLAY_SPEED) - s.speed) * 0.2;
+            }
+        }
+        s.shown = Some((time, now));
         wake.notify_one();
     }
 
-    /// The newest decoded frame not handed out yet: the one following the moment asked for.
+    /// The frame to blend towards once the moment `now` has reached the one handed out
+    /// before: the first decoded frame after `now`, or while decoding lags behind, the newest
+    /// one before it. `None` while the frame handed out last still lies ahead, or none is new.
     #[must_use]
-    pub fn frame(&self) -> Option<Frame> {
-        let (lock, _) = &*self.shared;
-        lock.lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .ready
-            .take()
+    pub fn frame(&self, now: Duration) -> Option<Frame> {
+        let (lock, wake) = &*self.shared;
+        let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        if s.handed.is_some_and(|handed| handed > now) {
+            return None;
+        }
+        let mut passed = None;
+        while s.ahead.front().is_some_and(|f| f.time <= now) {
+            passed = s.ahead.pop_front();
+        }
+        let frame = s.ahead.pop_front().or(passed)?;
+        // Room in the queue again.
+        wake.notify_one();
+        if s.handed.is_some_and(|handed| frame.time <= handed) {
+            return None;
+        }
+        s.handed = Some(frame.time);
+        Some(frame)
     }
 
     /// Why the video could not be decoded, once, if it could not.
@@ -682,5 +771,87 @@ impl std::fmt::Debug for SoundPlayer {
         f.debug_struct("SoundPlayer")
             .field("rate", &self.rate)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use torqa_video::testing::test_video;
+
+    /// How often the view refreshes.
+    const REFRESH: Duration = Duration::from_millis(16);
+
+    /// Plays the video from `from` at `speed` (video seconds per second) up to `until`, as the
+    /// view does each refresh: tells the moment shown, then takes the frame to blend towards.
+    /// Returns the refreshes that had a frame ahead of the moment shown to blend towards, and
+    /// those that had not.
+    fn ride_along(player: &VideoPlayer, from: Duration, speed: f64, until: Duration) -> (u32, u32) {
+        // Standing at the start first, as a rider does before pedalling off.
+        player.show(from);
+        std::thread::sleep(Duration::from_millis(200));
+        let mut shown = from;
+        let mut blending_towards = player.frame(shown).map(|f| f.time);
+        let (mut ahead, mut behind) = (0, 0);
+        while shown < until {
+            std::thread::sleep(REFRESH);
+            shown += REFRESH.mul_f64(speed);
+            player.show(shown);
+            if let Some(frame) = player.frame(shown) {
+                blending_towards = Some(frame.time);
+            }
+            if blending_towards.is_some_and(|t| t > shown) {
+                ahead += 1;
+            } else {
+                behind += 1;
+            }
+        }
+        (ahead, behind)
+    }
+
+    #[test]
+    fn frames_are_decoded_before_the_ride_reaches_them() {
+        // The view blends from one frame to the next by where the ride is between them: a
+        // frame that comes only once the ride has reached the one before holds the picture
+        // still, then jumps (R17). Slow, at the video's own pace and fast.
+        let video = test_video("ahead", 64, 48);
+        for (speed, until) in [(0.3, 0.8), (1.0, 2.5), (3.0, 3.6)] {
+            let player = VideoPlayer::open(&video).unwrap();
+            let (ahead, behind) = ride_along(
+                &player,
+                Duration::ZERO,
+                speed,
+                Duration::from_secs_f64(until),
+            );
+            assert!(
+                behind * 50 <= ahead,
+                "at {speed}×, {behind} of {} refreshes had no frame ahead",
+                ahead + behind
+            );
+        }
+    }
+
+    #[test]
+    fn after_a_jump_back_the_frames_come_from_there() {
+        let player = VideoPlayer::open(&test_video("jump", 64, 48)).unwrap();
+        ride_along(&player, Duration::ZERO, 1.0, Duration::from_secs(2));
+
+        let (ahead, behind) = ride_along(
+            &player,
+            Duration::from_millis(500),
+            1.0,
+            Duration::from_secs(1),
+        );
+
+        assert!(
+            behind * 50 <= ahead,
+            "{behind} of {} behind",
+            ahead + behind
+        );
+        let shown = Duration::from_millis(1_050);
+        player.show(shown);
+        std::thread::sleep(Duration::from_millis(100));
+        let next = player.frame(shown).map_or(Duration::ZERO, |f| f.time);
+        assert!(next <= Duration::from_millis(1_200), "{next:?}");
     }
 }

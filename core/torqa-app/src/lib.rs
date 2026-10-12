@@ -977,11 +977,13 @@ impl App {
         Some(video.time_at(self.ride_state()?.distance))
     }
 
-    /// The newest video frame decoded for the ride on a video course, once; it follows the
-    /// moment of [`App::video_time`], so the view can blend from the frame before.
+    /// The next video frame for the ride on a video course, once the moment of
+    /// [`App::video_time`] has reached the one before: it lies just after that moment, decoded
+    /// ahead, so the view can blend towards it from the frame before.
     pub fn video_frame(&mut self) -> Option<torqa_video::Frame> {
+        let now = self.video_time()?;
         let active = self.ride.as_mut()?;
-        let frame = active.player.as_ref()?.frame()?;
+        let frame = active.player.as_ref()?.frame(now)?;
         active.video_watch.frames += 1;
         Some(frame)
     }
@@ -3813,9 +3815,11 @@ mod tests {
         assert!(distance.0 > 5.0, "rider should be moving: {distance:?}");
         assert!(frames.len() >= 2, "{frames:?}");
         assert!(frames.windows(2).all(|w| w[1].1 > w[0].1), "{frames:?}");
-        // Each frame is the one coming up next, to blend towards (decoding may lag a little).
-        let (shown, last) = frames[frames.len() - 1];
-        assert!(last + Duration::from_millis(150) > shown, "{frames:?}");
+        // Each frame is the one coming up next, decoded ahead, to blend towards.
+        assert!(
+            frames[1..].iter().all(|(shown, frame)| frame > shown),
+            "{frames:?}"
+        );
         app.abort_ride();
         assert!(app.video_frame().is_none());
     }

@@ -17,5 +17,7 @@ Pacers have your weight and bike and ride descents like you (coasting or flat), 
 and descend realistically — a 250 W pacer is as fast as you would be holding 250 W.
 
 Recorded activities are matched onto the course: the race starts where the activity passed the
-course start, and parts that left the course (detours, other roads) are skipped. An activity
-that never follows the course is refused with a message.
+course start, and parts that left the course (detours, other roads) are skipped. Its GPS is
+evened out over a few seconds, so a ghost that rode steadily moves steadily rather than in the
+jerks of GPS wandering along the road. An activity that never follows the course is refused
+with a message.

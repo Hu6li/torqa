@@ -86,3 +86,28 @@ stuttered while ordinary players, using dav1d with its assembly, played it smoot
 - On the laptop above, for that video: 21 fps → **161 fps** decoding, and a jump to a new
   moment (decoding forward from the keyframe before it, 5 s apart in that video) from ~7 s to
   ~1 s. Assembly alone gave 102 fps, frame threading alone 40 fps.
+
+## Amendment (2026-10-12): frames decoded ahead of the ride
+
+On a Mac (Apple M5 Pro), Incyclist AV1 route videos (720p, 30 fps) ridden at one to three times
+their filmed pace juddered, while on Windows they looked smooth. The player decoded a frame
+only when asked, and it was asked for the frame to blend towards only once the ride had reached
+the one before: smooth only if the decoder answered within a screen refresh. With rav1d's x86
+assembly it mostly does; on ARM, without it, it often does not. Measured in the dev container
+on that Mac, 60 refreshes a second, as refreshes where the picture jumped by over half a frame:
+
+| Speed | Old player, AV1 | Old player, fast decoder* | Decoding ahead, AV1 |
+|---|---|---|---|
+| 1× | 219 of 599 | 1 of 599 | 0 of 599 |
+| 2× | 310 of 599 | 0 of 599 | 2 of 599 |
+| 3× | 500 of 599 | 303 of 599 (a steady frame behind) | 10 of 599 |
+
+\* The same footage copied to MPEG-4, which decodes thousands of frames a second.
+
+- **The player decodes ahead**: the frames for the next 0.15 s of the ride, and always the frame
+  after the one the view blends towards, at most eight (8 MB each at 1080p); when more would come
+  in that time, frames further apart. The speed comes from the moments shown, as for the sound.
+- A frame is handed out once the ride reaches the one handed out before: the first decoded
+  frame after that moment, or while decoding lags behind, the newest one before it.
+- At 4× the view had no frame ahead at 4.5% of refreshes: there the pure Rust rav1d (no ARM
+  assembly, see above) reaches its limit, which hardware decoding is still to lift.

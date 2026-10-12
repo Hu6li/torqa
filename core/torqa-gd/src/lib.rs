@@ -340,9 +340,9 @@ impl TorqaApp {
             .map_or(-1.0, |t| t.as_secs_f64())
     }
 
-    /// The next video frame during a ride on a video course, once decoded: `{time_s, image}`
-    /// (an RGBA8 `Image`); empty while none is new. It is the frame following `video_time()`,
-    /// to blend towards from the previous one.
+    /// The next video frame during a ride on a video course: `{time_s, image}` (an RGBA8
+    /// `Image`); empty while the one before still lies ahead of `video_time()`. It is the frame
+    /// following `video_time()`, decoded ahead, to blend towards from the previous one.
     #[func]
     fn video_frame(&mut self) -> VarDictionary {
         let Some(frame) = self.app.as_mut().and_then(App::video_frame) else {
