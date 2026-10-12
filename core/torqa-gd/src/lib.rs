@@ -592,10 +592,7 @@ impl TorqaApp {
         let Some(app) = self.app.as_ref() else {
             return VarDictionary::new();
         };
-        let period = u64::try_from(period_days)
-            .ok()
-            .filter(|&days| days > 0)
-            .map(|days| Duration::from_secs(days * 24 * 3600));
+        let period = period_of(period_days);
         let comparison = if previous {
             Comparison::PreviousPeriod
         } else {
@@ -623,6 +620,38 @@ impl TorqaApp {
             "period" => &efforts(&curves.period),
             "compare" => &efforts(&curves.compare),
         }
+    }
+
+    /// The active rider's power profile (R63): per duration of 5 s, 1, 5, 20 and 60 min,
+    /// `{duration_s, period, best, share}` with the best of the rides of the last `period_days`
+    /// (all rides for 0) and of all rides, in W or with `per_kg` in W/kg, and the first as a
+    /// share of the second (0–1); values without rides are `null`.
+    #[func]
+    fn power_profile(&self, period_days: i64, per_kg: bool) -> VarArray {
+        let Some(app) = self.app.as_ref() else {
+            return VarArray::new();
+        };
+        let optional = |value: Option<f64>| value.map_or_else(Variant::nil, |v| v.to_variant());
+        let value = |effort: &Option<BestEffort>| {
+            optional(
+                effort
+                    .as_ref()
+                    .map(|e| if per_kg { e.watts_per_kg } else { e.power.0 }),
+            )
+        };
+        let mut array = VarArray::new();
+        for axis in app.power_profile(period_of(period_days), per_kg) {
+            array.push(
+                &vdict! {
+                    "duration_s" => axis.duration.as_secs_f64(),
+                    "period" => &value(&axis.period),
+                    "best" => &value(&axis.best),
+                    "share" => &optional(axis.share),
+                }
+                .to_variant(),
+            );
+        }
+        array
     }
 
     /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
@@ -2523,6 +2552,14 @@ fn mesh_arrays(mesh: &torqa_world::MeshData) -> VarDictionary {
         "colors" => &colors,
         "indices" => &indices,
     }
+}
+
+/// The last `days` before now as the analysis takes a period (R62); all time for 0 or less.
+fn period_of(days: i64) -> Option<Duration> {
+    u64::try_from(days)
+        .ok()
+        .filter(|&days| days > 0)
+        .map(|days| Duration::from_hours(days * 24))
 }
 
 /// Seconds since 1970 of `time`, as the history gives start times.

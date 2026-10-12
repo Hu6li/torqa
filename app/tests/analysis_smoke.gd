@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless checks of the analysis across rides: the Analysis tab (R61), the power curve and a
-## ride's power records on its summary (R62).
+## ride's power records on its summary (R62), the power profile (R63).
 ## Run: godot --headless --path app -s res://tests/analysis_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -14,6 +14,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_power_curve_chart()
+	_radar_chart()
 	await _analysis_tab()
 	if not _failed:
 		print("ANALYSIS SMOKE TEST PASSED")
@@ -53,6 +54,25 @@ func _power_curve_chart() -> void:
 	chart.free()
 
 
+## The power profile (R63): a spoke per duration, rides missing on some of them.
+func _radar_chart() -> void:
+	var tab: AnalysisTab = AnalysisTab.new()
+	root.add_child(tab)
+	var axes: Array = [
+		{"duration_s": 5.0, "period": 800.0, "best": 1000.0, "share": 0.8},
+		{"duration_s": 60.0, "period": null, "best": 450.0, "share": null},
+		{"duration_s": 300.0, "period": 350.0, "best": 350.0, "share": 1.0},
+	]
+	tab.call("_fill_radar", axes, false)
+	var radar: RadarChart = tab.get("_radar")
+	var spokes: Array = radar.get("_spokes")
+	var shares: Array = spokes.map(func(spoke: Dictionary) -> float: return spoke["share"])
+	_check(shares == [0.8, -1.0, 1.0], "a spoke without a ride of the period: %s" % [shares])
+	var values: Array = spokes.map(func(spoke: Dictionary) -> String: return spoke["value"])
+	_check(values == ["800 W", "--", "350 W"], "the period's values: %s" % [values])
+	tab.free()
+
+
 ## The Analysis tab (R61) after History, its figures from the efforts the core gives (R62),
 ## and a ride's power records on its summary.
 func _analysis_tab() -> void:
@@ -65,7 +85,7 @@ func _analysis_tab() -> void:
 	tabs.current_tab = StartPage.Tab.ANALYSIS
 	var analysis: AnalysisTab = start.get("_analysis")
 	var empty: Label = analysis.get("_empty")
-	var content: Control = analysis.get("_content")
+	var content: Control = analysis.get("_scroll")
 	_check(empty.visible != content.visible, "the curve or why there is none")
 	var efforts: Array = [
 		{"duration_s": 5.0, "power": 812.0, "watts_per_kg": 11.6, "start_unix_s": 0},

@@ -2069,6 +2069,23 @@ impl App {
         )
     }
 
+    /// The active rider's power profile (R63): the best of the rides of the last `period` (all
+    /// rides for `None`) against their best of all; see [`analysis::power_profile`].
+    #[must_use]
+    pub fn power_profile(
+        &self,
+        period: Option<Duration>,
+        per_kg: bool,
+    ) -> Vec<analysis::ProfileAxis> {
+        analysis::power_profile(
+            &self.history(),
+            period,
+            SystemTime::now(),
+            self.profile.profile.rider_mass,
+            per_kg,
+        )
+    }
+
     /// The active rider's HUD metrics, in order (R23); the first is shown large.
     #[must_use]
     pub fn hud_layout(&self) -> Vec<String> {

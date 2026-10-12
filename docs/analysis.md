@@ -2,9 +2,10 @@
 
 The **Analysis** tab on the start page looks at your power across all your rides, where the
 [history](history.md) looks at one ride at a time. It shows the active rider's rides; switch
-riders on the Profile tab.
+riders on the Profile tab. At the top, choose the **period** (the last 6 weeks, 90 days or 12
+months, or all time) and whether power shows **per kilogram**; both apply to the whole tab.
 
-![The Analysis tab: the power curve of the last six weeks over the six weeks before, read off at 5 minutes](images/app/analysis.png)
+![The Analysis tab: the power curve of the last six weeks over the six weeks before, and the power profile with a dent at 20 minutes](images/app/analysis.png)
 
 ## Power curve
 
@@ -13,10 +14,9 @@ The power curve shows the best average power you held for every length of effort
 axis is logarithmic, so short efforts get as much room as long ones. Hover over the chart to
 read off each curve at that duration, with the date of the ride it comes from.
 
-- **Period**: the last 6 weeks, 90 days or 12 months, or all time. The curve in blue is the
-  best of the rides in that period.
-- **Compared with**: in grey, the best of all your rides, or of the period just before (the
-  6 weeks before the last 6). Where the blue curve reaches the grey one, you are as strong as
+- The curve in blue is the best of the rides in the period.
+- **Compared with** (beside the title): in grey, the best of all your rides, or of the period
+  just before (the 6 weeks before the last 6). Where the blue curve reaches the grey one, you are as strong as
   you have ever been; where it stays under it, there is form to win back.
 - **Per kilogram**: the curve in W/kg instead of watts, each ride with the weight you had then.
   Rides saved before Torqa kept the weight use your weight today.
@@ -25,6 +25,18 @@ read off each curve at that duration, with the date of the ride it comes from.
 
 Simulated rides (sped up or moved along with the fake trainer) count for nothing here: the
 power was not yours.
+
+## Power profile
+
+Beside the curve, the power profile — the "power spider" — shows your best 5 seconds (sprint),
+1 minute (anaerobic), 5 minutes (VO2max), 20 minutes (threshold) and hour of the period, each
+as a share of your best of all time. The rim is your own best, so a full shape means you are as
+strong as you have ever been everywhere, and a dent shows where there is most to win back.
+Each corner gives the share and the period's best; "--" means no ride of the period lasted that
+long. With **All time** chosen, the shape fills the rim.
+
+The profile compares you with yourself only, not with other riders: it needs no age or sex and
+no reference tables.
 
 ## Records
 
