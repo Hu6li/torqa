@@ -19,6 +19,9 @@ const MATCH_TOLERANCE_M: f64 = 40.0;
 const SEARCH_AHEAD_M: f64 = 3_000.0;
 /// An activity must pass this close to the route start to be raced from the start.
 const START_TOLERANCE_M: f64 = 100.0;
+/// Seconds of an activity over which its positions along the route are averaged (see
+/// [`smoothed`]).
+const SMOOTHING_S: f64 = 5.0;
 
 /// A ghost rider: when it passed each distance along the route.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,12 +90,17 @@ impl Ghost {
         let mut from = 0;
         for point in points {
             let (x, y) = projection.project(point.lat, point.lon);
-            let window = along[from..]
-                .iter()
+            let reach = along[from].2 + SEARCH_AHEAD_M;
+            // The nearest place on the route's line, not its nearest point: those lie metres
+            // apart, and an activity snapped from one to the next moves in jerks.
+            let Some((offset, gap, distance)) = along[from..]
+                .windows(2)
+                .take_while(|pair| pair[0].2 <= reach)
                 .enumerate()
-                .take_while(|(_, (_, _, d))| *d <= along[from].2 + SEARCH_AHEAD_M);
-            let Some((offset, gap, distance)) = window
-                .map(|(i, (px, py, d))| (i, (px - x).hypot(py - y), *d))
+                .map(|(i, pair)| {
+                    let (gap, distance) = onto_segment(pair[0], pair[1], (x, y));
+                    (i, gap, distance)
+                })
                 .min_by(|a, b| a.1.total_cmp(&b.1))
             else {
                 continue;
@@ -104,7 +112,10 @@ impl Ghost {
             matched.push((distance, point.time));
         }
         let start = matched.first()?.1;
-        Self::from_trace(name, matched.into_iter().map(|(d, t)| (d, t - start)))
+        Self::from_trace(
+            name,
+            smoothed(&matched).into_iter().map(|(d, t)| (d, t - start)),
+        )
     }
 
     /// From `(distance m, time s)` points; standing still and going back are skipped. `None`
@@ -169,6 +180,50 @@ impl Ghost {
     pub fn total_time(&self) -> Duration {
         Duration::from_secs_f64(self.trace[self.trace.len() - 1].1)
     }
+}
+
+/// How far `point` lies from the route between `a` and `b` (`(x, y, distance along the route)`),
+/// and the route distance of the place there nearest to it.
+fn onto_segment(a: (f64, f64, f64), b: (f64, f64, f64), (x, y): (f64, f64)) -> (f64, f64) {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let length_squared = dx * dx + dy * dy;
+    let along = if length_squared > 0.0 {
+        (((x - a.0) * dx + (y - a.1) * dy) / length_squared).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (
+        (a.0 + dx * along - x).hypot(a.1 + dy * along - y),
+        a.2 + (b.2 - a.2) * along,
+    )
+}
+
+/// `(distance, time)` points of an activity with each distance averaged over the points within
+/// [`SMOOTHING_S`] around it. GPS positions wander metres along the road from second to second;
+/// followed as they are, a ghost — or a video timed by them (R17) — speeds up and slows down
+/// where the activity went steadily. As many points are taken before as after, so the ends and
+/// the edges of detours left out stay where they are.
+fn smoothed(matched: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let half = SMOOTHING_S / 2.0;
+    (0..matched.len())
+        .map(|i| {
+            let time = matched[i].1;
+            let before = matched[..i]
+                .iter()
+                .rev()
+                .take_while(|p| time - p.1 <= half)
+                .count();
+            let after = matched[i + 1..]
+                .iter()
+                .take_while(|p| p.1 - time <= half)
+                .count();
+            let n = before.min(after);
+            let window = &matched[i - n..=i + n];
+            #[allow(clippy::cast_precision_loss)] // a few dozen points
+            let mean = window.iter().map(|p| p.0).sum::<f64>() / window.len() as f64;
+            (mean, time)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -251,14 +306,18 @@ mod tests {
         assert_eq!(strong.distance_at(Duration::from_hours(1)), route.length());
     }
 
-    #[tokio::test]
-    async fn activities_are_matched_onto_the_route_from_its_start() {
-        let route = flat_route().await;
-        let point = |metres: f64, east: f64, time: f64| TimedPoint {
+    /// A recorded position `metres` north of the flat route's start and `east` of it.
+    fn point(metres: f64, east: f64, time: f64) -> TimedPoint {
+        TimedPoint {
             lat: 46.0 + metres / 111_195.0,
             lon: 7.0 + east / (111_195.0 * 46f64.to_radians().cos()),
             time,
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn activities_are_matched_onto_the_route_from_its_start() {
+        let route = flat_route().await;
         let points = vec![
             point(-500.0, 0.0, 1000.0), // warming up before the start
             point(0.0, 5.0, 1100.0),    // race starts here
@@ -276,5 +335,39 @@ mod tests {
         // Elsewhere entirely: nothing to race.
         let far: Vec<TimedPoint> = points.iter().map(|p| point(0.0, 5_000.0, p.time)).collect();
         assert!(Ghost::from_activity("x", &route, &far).is_none());
+    }
+
+    #[tokio::test]
+    async fn an_activity_ridden_steadily_stays_steady_on_the_route() {
+        // A camera's or bike computer's GPS once a second, at a pace out of step with the
+        // route's points, wandering metres along and across the road.
+        let route = flat_route().await;
+        let speed = 7.3;
+        let mut state = 0x2545_f491_u32;
+        let mut wander = || {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            f64::from(state % 601) / 100.0 - 3.0
+        };
+        let points: Vec<TimedPoint> = (0..=270)
+            .map(|s| {
+                let time = f64::from(s);
+                point(speed * time + wander(), wander(), time)
+            })
+            .collect();
+
+        let ghost = Ghost::from_activity("Steady", &route, &points).unwrap();
+
+        // Each 20 m took it as long as the next: a video timed by it plays evenly (R17).
+        let expected = 20.0 / speed;
+        for start in (40..1_900).step_by(20) {
+            let at = |m: u32| ghost.time_at(Meters(f64::from(m))).unwrap().as_secs_f64();
+            let took = at(start + 20) - at(start);
+            assert!(
+                (took - expected).abs() < 0.15 * expected,
+                "{took:.2} s instead of {expected:.2} s from {start} m"
+            );
+        }
     }
 }

@@ -59,8 +59,9 @@ first time you choose it; online, it fetches the terrain and map data the video 
 not hold yet). Along the video, the video fills the screen, with your figures, map and
 elevation profile on top. Where you are on the route decides the moment of the video: it
 plays at the speed you ride, stands still when you stop, and blends smoothly from frame to
-frame even when you crawl up a steep climb. Frames are decoded a little ahead of you, so the
-blend never waits for one.
+frame even when you crawl up a steep climb. The footage's GPS is matched onto the route and
+evened out over a few seconds, so at a steady speed the video plays at a steady pace, and
+frames are decoded a little ahead of you, so the blend never waits for one.
 
 The video's own **sound** plays along at the same speed, without sounding higher or deeper:
 it is stretched, not sped up like a tape. It fades out when you slow to a crawl or stop.

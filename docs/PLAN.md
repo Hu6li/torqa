@@ -80,8 +80,9 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
   [ADR 0011](adr/0011-stylized-look.md)).
 - **Video**: FFmpeg 9.0.2 (LGPL, built from a pinned release) in the Rust core
   ([ADR 0010](adr/0010-video-decoding.md)); software decoding on a background thread, a few
-  frames ahead of the ride; the rider's distance sets the video time (matched like ghosts);
-  Godot blends the previous and next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video added to a
+  frames ahead of the ride; the rider's distance sets the video time (matched like ghosts,
+  onto the route's line and evened out over a few seconds); Godot blends the previous and
+  next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video added to a
   GPX course by its start and end marks.
 - **Street imagery** (later): Street View Static API + Mapillary API v4, crossfade shader.
 - **Development environment**: everything runs in Docker / devcontainer. Docker on macOS has no
@@ -170,8 +171,10 @@ Built in rideable steps:
 - [x] Ride options that apply to video courses only (no camera, time of day, weather)
 - [x] A video course keeps its own copy of the video beside it, so it outlives the imported
   file (#165); AV1 decoded fast enough for real time on x86_64 (rav1d's assembly)
-- [x] Smooth playback where decoding is slow (AV1 on Apple silicon): frames decoded ahead of
-  the ride, so the blend never waits for one
+- [x] Smooth playback: the footage's GPS matched onto the route's line rather than its points
+  10 m apart (1 Hz GPS gave each 10 m one, two or three seconds of video) and evened out over
+  5 s; frames decoded ahead of the ride, so the blend never waits for one (AV1 on Apple
+  silicon decodes slowly)
 - **Exit:** ride a GoPro recording of a real climb on the KICKR, video in step with the effort
 
 ### Phase 6 — Street imagery
