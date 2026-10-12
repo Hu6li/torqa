@@ -67,6 +67,8 @@ func refresh() -> void:
 func _init() -> void:
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Room between the page and its scroll bar, which would cover the header's choices.
+	_scroll.add_theme_constant_override("scrollbar_h_separation", 12)
 	add_child(_scroll)
 	# The heading and its choices scroll away with the sections: the page's title, not a bar
 	# over sections that are not about power.

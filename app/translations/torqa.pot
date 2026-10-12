@@ -1043,7 +1043,7 @@ msgstr ""
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:96
+#: app/scenes/analysis_tab.gd:98
 msgid "No rides with power yet: your best efforts show here once you ride with power."
 msgstr ""
 
@@ -1167,7 +1167,7 @@ msgstr ""
 msgid "Paused"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:90
+#: app/scenes/analysis_tab.gd:92
 msgid "Per kilogram"
 msgstr ""
 
@@ -1203,11 +1203,11 @@ msgstr ""
 msgid "Power 3 s"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:118 app/scenes/history_screen.gd:285
+#: app/scenes/analysis_tab.gd:120 app/scenes/history_screen.gd:285
 msgid "Power curve"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:145
+#: app/scenes/analysis_tab.gd:147
 msgid "Power profile"
 msgstr ""
 
@@ -1511,7 +1511,7 @@ msgstr ""
 msgid "Test"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:128
+#: app/scenes/analysis_tab.gd:130
 msgid "The best power you held for each length of effort, from a sprint to hours."
 msgstr ""
 
@@ -1747,7 +1747,7 @@ msgstr ""
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:147
+#: app/scenes/analysis_tab.gd:149
 msgid "Your best of the period as a share of your best of all time."
 msgstr ""
 
@@ -1763,7 +1763,7 @@ msgstr ""
 msgid "Your courses"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:80
+#: app/scenes/analysis_tab.gd:82
 msgid "Your power"
 msgstr ""
 
