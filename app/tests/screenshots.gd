@@ -146,6 +146,13 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
 	print("saved summary")
+	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
+	var summary: HistoryScreen = _main.get_node("HistoryScreen")
+	var upload: MenuButton = summary.get("_upload_button")
+	upload.show_popup()
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("upload-menu.png"))
+	upload.get_popup().hide()
 	(_main.get_node("HistoryScreen") as HistoryScreen).closed.emit()
 	var start_tabs: TabContainer = start.find_children("*", "TabContainer", true, false)[0]
 	start_tabs.current_tab = StartPage.Tab.HISTORY
@@ -172,13 +179,23 @@ func _run() -> void:
 			_unfold_rider(start)
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
+		if index == StartPage.Tab.PROFILE:
+			# Connecting an account (R29), from the card's Accounts: intervals.icu, Strava.
+			for platform: Array in [[0, "account-dialog"], [1, "account-dialog-strava"]]:
+				var which: int = platform[0]
+				var shot: String = platform[1]
+				var dialog_shown: AccountDialog = _connect_account(start, which)
+				await create_timer(0.5).timeout
+				root.get_texture().get_image().save_png(out_dir.path_join(shot + ".png"))
+				if dialog_shown != null:
+					dialog_shown.hide()
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
 
 
 ## The last six weeks against the six before, read off at 5 minutes, as docs/analysis.md shows
-## the power curve (R61).
+## the power curve (R62).
 func _compare_periods(start: StartPage) -> void:
 	var analysis: AnalysisTab = start.find_children("*", "AnalysisTab", true, false)[0]
 	var compare: OptionButton = analysis.get("_compare")
@@ -196,6 +213,24 @@ func _unfold_rider(start: StartPage) -> void:
 		if button.is_visible_in_tree() and button.tooltip_text == tr("All settings"):
 			button.pressed.emit()
 			return
+
+
+## Presses Connect… on the unfolded rider's account number `which`; the dialog it opens, if
+## any.
+func _connect_account(start: StartPage, which: int) -> AccountDialog:
+	var seen: int = 0
+	for found: Node in start.find_children("*", "Button", true, false):
+		var button: Button = found
+		if not button.is_visible_in_tree() or button.text != tr("Connect…"):
+			continue
+		seen += 1
+		if seen == which + 1:
+			button.pressed.emit()
+			# The History tab has one too.
+			for dialog: Node in start.find_children("*", "AccountDialog", true, false):
+				if (dialog as AccountDialog).visible:
+					return dialog
+	return null
 
 
 ## The Workouts tab (R58) and a heart-rate workout on its own (R56), with its settings.

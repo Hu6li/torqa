@@ -1,6 +1,6 @@
 class_name AnalysisTab
 extends VBoxContainer
-## The Analysis tab (R60): the active rider's power across their rides. The power curve (R61)
+## The Analysis tab (R61): the active rider's power across their rides. The power curve (R62)
 ## shows the best power over every duration among the rides of a period, against all rides or
 ## the period before, in watts or watts per kilogram, with the durations riders compare below.
 
@@ -14,7 +14,7 @@ const COMPARISONS: Array[Array] = [
 	["Against all time", "All time"], ["Against the period before", "The period before"]
 ]
 # i18n-end
-## The durations shown as figures under the curve, in seconds (the records of R61).
+## The durations shown as figures under the curve, in seconds (the records of R62).
 const KEY_DURATIONS: Array[int] = [5, 60, 300, 1200, 3600]
 
 var _torqa: TorqaApp

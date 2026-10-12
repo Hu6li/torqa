@@ -15,7 +15,7 @@ use torqa_domain::units::{BeatsPerMinute, Joules, Kilograms, Meters, MetersPerSe
 /// Version 2 added the route key, route time and climb times; version 1 files read without them.
 pub const FORMAT_VERSION: u32 = 2;
 
-/// The analysis data written by this version (R61, ADR 0013). It has its own version, so it can
+/// The analysis data written by this version (R62, ADR 0014). It has its own version, so it can
 /// grow and be computed again from the FIT file without a new [`FORMAT_VERSION`], which an older
 /// Torqa would answer by rebuilding the metadata and losing the ride's name and times. Later
 /// versions only add to it, so a newer one still reads as this one.
@@ -55,15 +55,26 @@ pub struct RideRecord {
     pub name: Option<String>,
     /// The FTP an FTP test showed (R22), if the ride was one.
     pub ftp_estimate: Option<Watts>,
-    /// The rider's body mass on the ride, for power per kilogram (R61); `None` for rides saved
+    /// The rider's body mass on the ride, for power per kilogram (R62); `None` for rides saved
     /// before Torqa kept it.
     pub rider_mass: Option<Kilograms>,
     /// Sped up or moved along in simulation (#53): not the rider's own effort, so it counts
     /// towards no records and no analysis.
     pub simulated: bool,
-    /// What the analysis across rides keeps of the ride (R61); `None` until it is computed
+    /// What the analysis across rides keeps of the ride (R62); `None` until it is computed
     /// from the FIT file, or if an older Torqa computed less than this one keeps.
     pub analysis: Option<RideAnalysis>,
+    /// Where the ride was uploaded (R29), by platform id.
+    pub uploads: BTreeMap<String, Upload>,
+}
+
+/// A ride's activity on a training platform (R29).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Upload {
+    /// The platform's id for it.
+    pub id: String,
+    /// Its page on the platform.
+    pub url: String,
 }
 
 /// The time on one climb of a ride.
@@ -129,6 +140,8 @@ struct RideFile {
     name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ftp_estimate_w: Option<f64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    uploads: BTreeMap<String, Upload>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rider_mass_kg: Option<f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -203,6 +216,7 @@ impl From<&RideRecord> for RideFile {
             rider_mass_kg: r.rider_mass.map(|m| m.0),
             simulated: r.simulated,
             analysis: r.analysis.as_ref().map(AnalysisFile::from),
+            uploads: r.uploads.clone(),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
             climbs: r
                 .climbs
@@ -249,6 +263,7 @@ impl From<RideFile> for RideRecord {
                 .analysis
                 .filter(|a| a.version >= ANALYSIS_VERSION)
                 .map(RideAnalysis::from),
+            uploads: f.uploads,
             route_time: f.route_time_s.map(|t| Duration::from_secs_f64(t.max(0.0))),
             climbs: f
                 .climbs
@@ -399,6 +414,13 @@ mod tests {
                     (Duration::from_mins(20), Watts(251.3)),
                 ]),
             }),
+            uploads: BTreeMap::from([(
+                "intervals".to_owned(),
+                Upload {
+                    id: "i777".to_owned(),
+                    url: "https://intervals.icu/activities/i777".to_owned(),
+                },
+            )]),
         }
     }
 
@@ -432,6 +454,7 @@ mod tests {
         assert_eq!(record.route_key, None);
         assert_eq!(record.climbs, []);
         assert_eq!(record.name, None);
+        assert_eq!(record.uploads, BTreeMap::new());
         assert_eq!(record.rider_mass, None);
         assert!(!record.simulated);
         assert_eq!(record.analysis, None, "to be computed from the FIT file");

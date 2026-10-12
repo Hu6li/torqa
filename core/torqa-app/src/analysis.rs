@@ -1,4 +1,4 @@
-//! The rider's power across rides (R61): the best power held over every duration among the
+//! The rider's power across rides (R62): the best power held over every duration among the
 //! rides of a period, compared with all rides or the period before, and the records it sets.
 
 use std::path::PathBuf;
@@ -185,6 +185,7 @@ mod tests {
                 ftp_estimate: None,
                 rider_mass: mass.map(Kilograms),
                 simulated: false,
+                uploads: std::collections::BTreeMap::new(),
                 analysis: Some(RideAnalysis {
                     power_curve: PowerCurve(
                         curve

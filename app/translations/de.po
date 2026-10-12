@@ -1296,3 +1296,89 @@ msgstr "Deine Leistung"
 
 msgid "★ Best %s: %d W"
 msgstr "★ Bestleistung %s: %d W"
+msgid "Upload"
+msgstr "Hochladen"
+
+msgid "Upload to %s"
+msgstr "Auf %s hochladen"
+
+msgid "Uploading to %s…"
+msgstr "Wird auf %s hochgeladen…"
+
+msgid "Uploaded to %s."
+msgstr "Auf %s hochgeladen."
+
+msgid "View on %s"
+msgstr "Auf %s ansehen"
+
+msgid "Connect %s and upload…"
+msgstr "%s verbinden und hochladen…"
+
+msgid "%s no longer accepts the account: connect it again."
+msgstr "%s akzeptiert das Konto nicht mehr: verbinde es erneut."
+
+msgid "Accounts"
+msgstr "Konten"
+
+msgid "Not connected"
+msgstr "Nicht verbunden"
+
+msgid "Connected as %s"
+msgstr "Verbunden als %s"
+
+msgid "Connect…"
+msgstr "Verbinden…"
+
+msgid "Disconnect"
+msgstr "Trennen"
+
+msgid "Connect %s"
+msgstr "%s verbinden"
+
+msgid "Connect"
+msgstr "Verbinden"
+
+msgid "Fill in every field."
+msgstr "Fülle alle Felder aus."
+
+msgid "Checking…"
+msgstr "Wird geprüft…"
+
+msgid "Cannot connect."
+msgstr "Verbinden nicht möglich."
+
+msgid "API key"
+msgstr "API-Schlüssel"
+
+msgid "Find your API key on intervals.icu under Settings, Developer Settings."
+msgstr "Deinen API-Schlüssel findest du auf intervals.icu unter Settings, Developer Settings."
+
+msgid "Upload automatically"
+msgstr "Automatisch hochladen"
+
+msgid "Rides you keep with Done on their summary go up by themselves"
+msgstr "Fahrten, die du in der Zusammenfassung mit «Fertig» behältst, werden von selbst hochgeladen"
+
+msgid "Client ID"
+msgstr "Client ID"
+
+msgid "Client Secret"
+msgstr "Client Secret"
+
+msgid "Needs a Strava subscription. Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here."
+msgstr "Braucht ein Strava-Abo. Lege auf Strava eine API-Anwendung mit Authorization Callback Domain localhost an und kopiere ihre Client ID und ihr Client Secret hierher."
+
+msgid "Log in to %s in your browser and let Torqa upload your rides. Then come back here."
+msgstr "Melde dich im Browser bei %s an und erlaube Torqa, deine Fahrten hochzuladen. Komm dann hierher zurück."
+
+msgid "Open the login again"
+msgstr "Anmeldung erneut öffnen"
+
+msgid "Torqa is connected. You can close this page."
+msgstr "Torqa ist verbunden. Du kannst diese Seite schliessen."
+
+msgid "Torqa could not connect. Go back to Torqa to try again."
+msgstr "Torqa konnte sich nicht verbinden. Geh zurück zu Torqa, um es nochmals zu versuchen."
+
+msgid "Strava has switched off your API application: the account that owns it needs a Strava subscription. Subscribe, reactivate the application in Strava's API settings, then upload again."
+msgstr "Strava hat deine API-Anwendung abgeschaltet: Das Konto, dem sie gehört, braucht ein Strava-Abo. Schliesse eines ab, aktiviere die Anwendung in Stravas API-Einstellungen wieder und lade dann erneut hoch."

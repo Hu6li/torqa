@@ -1,6 +1,6 @@
 [package]
 name = "torqa-storage"
-description = "Storage for Torqa: FIT export, course files and rider profiles"
+description = "Storage for Torqa: FIT export, course files, rider profiles and their accounts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -7,6 +7,7 @@ pub mod hud;
 mod import;
 pub mod media;
 pub mod paths;
+pub mod uploads;
 pub mod video;
 pub mod view;
 
@@ -98,6 +99,12 @@ pub enum AppError {
     /// A workout file cannot be read.
     #[error("{0}")]
     Workout(String),
+    /// No training platform with that id (R29).
+    #[error("unknown platform")]
+    UnknownPlatform,
+    /// The rider has no account on that platform yet.
+    #[error("connect {0} first")]
+    NotConnected(&'static str),
 }
 
 /// Who to race against (R20).
@@ -177,7 +184,7 @@ pub struct HistoryEntry {
     /// Per entry of [`RideRecord::climbs`]: whether it is the rider's fastest time there.
     pub climb_records: Vec<bool>,
     /// The durations of [`RECORD_DURATIONS`](torqa_domain::recording::RECORD_DURATIONS) over
-    /// which this ride holds the rider's best power (R61).
+    /// which this ride holds the rider's best power (R62).
     pub power_records: Vec<Duration>,
 }
 
@@ -270,6 +277,46 @@ pub enum AppEvent {
     },
     /// A shifter's button asked for a ride control (#139), during a ride.
     Control(Control),
+    /// A rider's account on a training platform is connected (R29).
+    AccountConnected {
+        /// The rider's profile id.
+        rider: String,
+        /// The platform's id.
+        platform: String,
+        /// Who is connected, as the platform knows them.
+        label: String,
+    },
+    /// Connecting an account failed.
+    AccountFailed {
+        /// The rider's profile id.
+        rider: String,
+        /// The platform's id.
+        platform: String,
+        /// Why, in words for the rider.
+        message: String,
+    },
+    /// A ride is on a platform (R29).
+    UploadFinished {
+        /// The ride's FIT file.
+        fit: PathBuf,
+        /// The platform's id.
+        platform: String,
+        /// The activity's page there.
+        url: String,
+    },
+    /// A page to show the rider in their browser, e.g. a platform's login.
+    OpenUrl(String),
+    /// Uploading a ride failed.
+    UploadFailed {
+        /// The ride's FIT file.
+        fit: PathBuf,
+        /// The platform's id.
+        platform: String,
+        /// Why, in words for the rider.
+        message: String,
+        /// The platform no longer accepts the account: the rider has to connect it again.
+        reconnect: bool,
+    },
     /// A background operation failed.
     Error(String),
 }
@@ -295,6 +342,7 @@ enum JobResult {
     CourseSaved(Result<PathBuf, String>),
     /// The course at the first path has its own copy of its video at the second (#165).
     VideoKept(PathBuf, PathBuf),
+    Upload(Box<uploads::Done>),
     Failed(String),
 }
 
@@ -443,6 +491,8 @@ pub struct App {
     /// What the Di2 shifter's buttons do (#139).
     buttons: Arc<torqa_devices::shift::Assignments>,
     profile: StoredProfile,
+    /// The training platforms rides can be uploaded to and the uploads under way (R29).
+    uploads: uploads::UploadState,
     data_dir: PathBuf,
     cache_dir: PathBuf,
 }
@@ -496,6 +546,7 @@ impl App {
                 profiles::button_map(&data_dir),
             )),
             profile: initial_profile(&data_dir),
+            uploads: uploads::UploadState::new(uploads::platforms()),
             data_dir,
             cache_dir,
         })
@@ -556,8 +607,8 @@ impl App {
         Ok(id)
     }
 
-    /// Deletes a rider with their rides; deleting the active one switches to the first rider
-    /// left.
+    /// Deletes a rider with their rides, withdrawing Torqa's access to their accounts on
+    /// training platforms (R29); deleting the active one switches to the first rider left.
     ///
     /// # Errors
     /// [`AppError::LastProfile`] for the only rider, [`AppError::UnknownProfile`] if there is no
@@ -570,6 +621,8 @@ impl App {
         let Some(next) = listed.into_iter().find(|p| p.id != id) else {
             return Err(AppError::LastProfile);
         };
+        // While the credentials are still there.
+        self.revoke_accounts(id);
         profiles::delete(&self.data_dir, id)
             .map_err(|e| AppError::Storage(format!("cannot delete profile: {e}")))?;
         if self.profile.id == id {
@@ -1907,6 +1960,7 @@ impl App {
                 rider_mass: Some(self.profile.profile.rider_mass),
                 simulated: active.simulated,
                 analysis: Some(analyse(samples)),
+                uploads: std::collections::BTreeMap::new(),
             };
             // The FIT file is what counts; the history rebuilds missing metadata from it.
             if let Err(error) = rides::save(&path, &record) {
@@ -1921,7 +1975,7 @@ impl App {
 
     /// The active rider's rides, newest first (R31). Rides without metadata, e.g. FIT files
     /// copied in by hand, are analysed once and get it written; so do rides without the data
-    /// the analysis across rides needs (R61), e.g. saved by an older Torqa.
+    /// the analysis across rides needs (R62), e.g. saved by an older Torqa.
     #[must_use]
     pub fn history(&self) -> Vec<HistoryEntry> {
         let records: Vec<(PathBuf, RideRecord)> = rides::fit_files(&self.rides_dir())
@@ -1995,7 +2049,7 @@ impl App {
         }
     }
 
-    /// The active rider's power curves (R61): the best efforts among the rides of the last
+    /// The active rider's power curves (R62): the best efforts among the rides of the last
     /// `period` (all rides for `None`) and among those of `comparison`; see
     /// [`analysis::power_curves`].
     #[must_use]
@@ -2230,6 +2284,7 @@ impl App {
             rider_mass: None,
             simulated: false,
             analysis: Some(analyse(&samples)),
+            uploads: std::collections::BTreeMap::new(),
         };
         if let Err(error) = rides::save(fit, &record) {
             warn!(%error, "cannot save rebuilt ride metadata");
@@ -2483,6 +2538,7 @@ impl App {
                         events.push(AppEvent::Error(e.to_string()));
                     }
                 }
+                JobResult::Upload(done) => events.push(self.upload_work_done(*done)),
                 JobResult::Scan(Err(message))
                 | JobResult::Route(_, Err(message))
                 | JobResult::Video(_, Err(message))
@@ -2629,7 +2685,7 @@ fn activity_points(path: &Path) -> Result<Vec<torqa_routes::TimedPoint>, String>
     Ok(points)
 }
 
-/// `record` with what the analysis across rides keeps of it (R61): computed from the FIT file
+/// `record` with what the analysis across rides keeps of it (R62): computed from the FIT file
 /// and saved with the rest if it has none yet. Every other field stays as it was.
 fn with_analysis(fit: &Path, mut record: RideRecord) -> RideRecord {
     if record.analysis.is_some() {
@@ -2752,7 +2808,7 @@ mod tests {
 
     use super::*;
 
-    fn temp_dir(name: &str) -> PathBuf {
+    pub(crate) fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("torqa-app-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -2773,7 +2829,10 @@ mod tests {
     }
 
     /// Calls `update` like a 60 fps frame loop until `done` returns true (or 120 s pass).
-    fn run_until(app: &mut App, mut done: impl FnMut(&AppEvent) -> bool) -> Vec<AppEvent> {
+    pub(crate) fn run_until(
+        app: &mut App,
+        mut done: impl FnMut(&AppEvent) -> bool,
+    ) -> Vec<AppEvent> {
         // Generous wall-clock limit: an unoptimized world build under a parallel test run takes
         // well over 30 s on some machines; the limit only has to catch a hang.
         let deadline = std::time::Instant::now() + Duration::from_secs(120);
@@ -3456,6 +3515,7 @@ mod tests {
             rider_mass: None,
             simulated: false,
             analysis: None,
+            uploads: std::collections::BTreeMap::new(),
         };
         rides::save(&fit, &saved).unwrap();
 

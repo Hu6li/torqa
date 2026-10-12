@@ -5,14 +5,16 @@ the rider's folder, `profiles/<rider>/rides/` in the Torqa data directory, toget
 JSON file holding its summary.
 
 After a ride, its **summary** shows the same figures as the history: give the ride a name,
-keep it with **Done** or **Discard ride**. Afterwards it is in the **History** tab.
+upload it, keep it with **Done** or **Discard ride**. Afterwards it is in the **History** tab.
+**Done** also uploads the ride to the accounts set to upload automatically
+([uploads.md](uploads.md)).
 
 ![A ride's summary](images/app/summary.png)
 
 **Names**: a ride is called after its course and date (e.g. *Gurtenstrasse · Sat 3 Oct*)
 until you name it — press the pencil beside the title (or click the title), in the summary or
 later in the history. Names are stored in the ride's JSON file only, so the files keep their
-names (sync-safe); uploads will send the name as the activity title.
+names (sync-safe); uploads send the name as the activity's title.
 
 The history shows:
 
@@ -25,9 +27,11 @@ The history shows:
   over your best of all rides in grey ([analysis.md](analysis.md)). A ★ under the figures marks
   each duration of 5 s, 1, 5, 20 or 60 min over which the ride holds your best power.
 - The bin beside the title (**Delete ride**) removes the FIT file and its summary, after asking.
-- The arrow beside the title (**Export FIT file**) saves a copy of the ride's FIT file wherever
-  you choose on your computer, e.g. to upload it to Strava, intervals.icu or Garmin Connect by
-  hand. The file is named after the ride, as FIT files have no field for an activity name;
+- The up arrow beside the title (**Upload**) sends the ride to intervals.icu or Strava, or
+  opens it there once it is uploaded ([uploads.md](uploads.md)). Uploading also works on the
+  summary.
+- The down arrow beside the title (**Export FIT file**) saves a copy of the ride's FIT file
+  wherever you choose on your computer, e.g. to import it into Garmin Connect by hand. The file is named after the ride, as FIT files have no field for an activity name;
   the ride stays in the history. Export also works on the summary right after a ride.
 
 Normalized power needs at least 30 s of power data. Intensity and TSS use the FTP the rider had

@@ -1,12 +1,12 @@
-# ADR 0013 — Ride analysis data beside each ride
+# ADR 0014 — Ride analysis data beside each ride
 
 - Status: accepted
 - Date: 2026-10-12
 
 ## Context
 
-The Analysis tab (R60) looks at a rider's power across all their rides. The first analysis,
-the power curve (R61), needs each ride's best power over every duration, and later ones need
+The Analysis tab (R61) looks at a rider's power across all their rides. The first analysis,
+the power curve (R62), needs each ride's best power over every duration, and later ones need
 more per ride (time in zones, #217). Computing it from the FIT files every time means decoding
 every ride whenever the tab opens, which is too slow for a season of rides.
 

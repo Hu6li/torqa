@@ -23,7 +23,9 @@ core/                      Rust workspace (tokio + tracing)
                            workouts (ERG, heart-rate hold, structured), recording
   torqa-workouts/          workout files (ZWO, ERG/MRC, FIT), built-in workouts, the library
   torqa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist and Tacx RLV (ADR 0010)
-  torqa-storage/           FIT files, ride summaries, profiles, course files (.tqc)
+  torqa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
+  torqa-upload/            uploads to training platforms (intervals.icu, Strava) behind
+                           ActivityUploader, the OAuth login in the browser
   torqa-app/               application layer: commands + update() per frame for front ends,
                            the analysis across a rider's rides
   torqa-gd/                gdext bindings (TorqaApp node)
@@ -42,10 +44,12 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
 ### Key design points
 
 - **Plugin traits**: `RouteImporter`, `TrainerDriver`, `SensorDriver`, `ShiftInput`,
-  `ActivityUploader`, `WorkoutParser`. `ShiftInput` (keyboard, Shimano Di2) and
-  `WorkoutParser` (ZWO, ERG/MRC, FIT) exist, as does `ElevationModel`; the others are not
-  introduced yet: today there is one implementation of each (or none), behind concrete types,
-  and each trait comes with its second implementation (e.g. ANT+ FE-C, a second importer).
+  `ActivityUploader`, `WorkoutParser`. `ShiftInput` (keyboard, Shimano Di2),
+  `WorkoutParser` (ZWO, ERG/MRC, FIT) and `ActivityUploader` (intervals.icu, Strava;
+  ADR 0013) exist, as does `ElevationModel`; the others
+  are not introduced yet: today there is one implementation of each (or none), behind concrete
+  types, and each trait comes with its second implementation (e.g. ANT+ FE-C, a second
+  importer).
   Ride modes are separate Godot views: the 3D world and the video view (Street View later).
 - **FTMS**: service `0x1826`, Indoor Bike Data `0x2AD2`, Control Point `0x2AD9`
   (Request Control `0x00`, Set Target Resistance `0x04`, Set Target Power `0x05`,
@@ -57,7 +61,7 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
   ([ADR 0005](adr/0005-elevation-data.md)).
 - **Storage**: files are the source of truth ([ADR 0002](adr/0002-sync-safe-storage.md)):
   per rider `profiles/<rider>/profile.toml`, `hud.toml` and `rides/` (FIT + JSON summary, with
-  what the analysis across rides keeps of each ride, [ADR 0013](adr/0013-ride-analysis-data.md));
+  what the analysis across rides keeps of each ride, [ADR 0014](adr/0014-ride-analysis-data.md));
   `courses/*.tqc` shared by all riders. The SQLite index of ADR 0002 is not built yet — the
   history and the analysis read the JSON summaries directly, fast enough so far. Config TOML, data JSON
   ([ADR 0004](adr/0004-config-formats.md)).
@@ -188,7 +192,16 @@ Built in rideable steps:
     also the 20-minute (95 %) and 2 × 8-minute (90 %) tests, all out in slope mode (#125)
   - [x] Workout editor: steps (steady, ramp, free) with duration, % of FTP, cadence and a
     message, intervals added at once, a live chart; saved as ZWO in the library
-- [ ] Uploaders, ANT+ FE-C
+- [ ] Uploaders (R29), ANT+ FE-C:
+  - [x] intervals.icu behind `ActivityUploader` (`torqa-upload`, ADR 0013): the rider's API
+    key under Accounts on their card, uploads from the summary and the history, where each
+    ride went kept with it
+  - [x] Upload rides automatically, per account (R60): on the summary's Done; uploads take
+    turns, each with the account's newest credentials, and a ride goes to a platform once
+  - [x] Strava, through each rider's own Strava API application: its Client ID and Secret,
+    then the login in the browser back to a loopback address; tokens renewed in the upload's
+    turn, access revoked on disconnecting or deleting the rider
+  - [ ] ANT+ FE-C
 - [x] Windows and Linux builds from CI (Linux x86_64 and arm64 on Ubuntu 22.04, ADR 0012)
 - [x] Logo (orca on a bike, `docs/brand/`), app icon and boot splash
 
@@ -378,10 +391,10 @@ the realistic look's textures and patterns were replaced step by step.
 - **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
   Zone 3 on the KICKR and the session lands in the history as a FIT
 
-### Phase 11 — Rider analysis (R60–R61, #217)
+### Phase 11 — Rider analysis (R61–R62, #217)
 The rider's power across their rides on an Analysis tab, from what each ride keeps beside its
-summary ([ADR 0013](adr/0013-ride-analysis-data.md)). One step per analysis:
-- [x] Power curve (R61): the best power per duration among a period's rides against all rides or
+summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
+- [x] Power curve (R62): the best power per duration among a period's rides against all rides or
   the period before, in W or W/kg; the ride's curve on its summary and ★ for its power records;
   rides saved before analysed once from their FIT files; `torqa-cli sample-rides` for
   screenshots
@@ -398,7 +411,9 @@ summary ([ADR 0013](adr/0013-ride-analysis-data.md)). One step per analysis:
 
 - The Shimano Di2 button protocol is reverse-engineered (community findings, no code reused)
   and may change → isolated behind `ShiftInput`.
-- Garmin / TrainingPeaks / Komoot upload APIs need partner approval.
+- Garmin / TrainingPeaks / Komoot upload APIs need partner approval (Garmin's developer
+  program takes no new applications in 2026) → not offered, FIT export instead (ADR 0013).
+  Strava requires a client secret → each rider brings their own Strava API application.
 - Insta360 GPS extraction is less documented than GoPro GPMF.
 - Detail on an M1 integrated GPU (towns place thousands of buildings, forests thousands of
   trees) → a lean stylized look (ADR 0011: flat colours, chunky faceted models within triangle

@@ -35,7 +35,7 @@ and in the history, e.g. *★ Best 5 min: 312 W*. Another ride beating it later 
 
 Each ride keeps its best power over 36 durations, from 1 s to 8 h, in its summary file beside
 the FIT file, so the tab reads no FIT files and the data syncs with the rides
-([ADR 0013](adr/0013-ride-analysis-data.md)). Rides saved before this existed, and FIT files
+([ADR 0014](adr/0014-ride-analysis-data.md)). Rides saved before this existed, and FIT files
 copied in by hand, are read once the next time the history or this tab opens.
 
 Seconds without power count as 0 W. In FIT files from other apps or devices, power is taken

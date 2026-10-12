@@ -1,4 +1,4 @@
-//! Made-up rides for screenshots and for trying out the analysis across rides (R61): weeks of
+//! Made-up rides for screenshots and for trying out the analysis across rides (R62): weeks of
 //! workouts by a rider getting fitter, written to the rider's history like their own rides.
 
 use std::path::{Path, PathBuf};
@@ -71,6 +71,7 @@ pub fn write(args: &SampleRidesArgs) -> Result<()> {
                 rider_mass: Some(profile.rider_mass),
                 simulated: false,
                 analysis: Some(analyse(&samples)),
+                uploads: std::collections::BTreeMap::new(),
             };
             rides::save(&fit, &record)?;
             count += 1;

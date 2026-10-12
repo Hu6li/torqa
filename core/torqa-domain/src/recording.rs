@@ -77,7 +77,7 @@ const fn secs(seconds: u64) -> Duration {
     Duration::from_secs(seconds)
 }
 
-/// The durations a ride's power curve keeps (R61): spaced evenly on a logarithmic scale from a
+/// The durations a ride's power curve keeps (R62): spaced evenly on a logarithmic scale from a
 /// second to eight hours, so short efforts are as finely resolved as long ones, and including
 /// the durations riders compare ([`RECORD_DURATIONS`]).
 pub const CURVE_DURATIONS: [Duration; 36] = [
@@ -119,11 +119,11 @@ pub const CURVE_DURATIONS: [Duration; 36] = [
     secs(28_800),
 ];
 
-/// The durations whose best power counts as a personal record (R61): sprint, anaerobic
+/// The durations whose best power counts as a personal record (R62): sprint, anaerobic
 /// capacity, maximal aerobic power, threshold and the hour.
 pub const RECORD_DURATIONS: [Duration; 5] = [secs(5), secs(60), secs(300), secs(1200), secs(3600)];
 
-/// The best average power held over each of the [`CURVE_DURATIONS`] (R61), shortest first, up
+/// The best average power held over each of the [`CURVE_DURATIONS`] (R62), shortest first, up
 /// to the longest the rider rode without a pause.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PowerCurve(pub Vec<(Duration, Watts)>);
@@ -136,7 +136,7 @@ impl PowerCurve {
     }
 }
 
-/// What the analysis across rides keeps of each ride (R61), derived from its samples.
+/// What the analysis across rides keeps of each ride (R62), derived from its samples.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RideAnalysis {
     /// The ride's best power over each duration.

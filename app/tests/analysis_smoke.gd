@@ -1,6 +1,6 @@
 extends SceneTree
-## Headless checks of the analysis across rides: the Analysis tab (R60), the power curve and a
-## ride's power records on its summary (R61).
+## Headless checks of the analysis across rides: the Analysis tab (R61), the power curve and a
+## ride's power records on its summary (R62).
 ## Run: godot --headless --path app -s res://tests/analysis_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -20,7 +20,7 @@ func _run() -> void:
 	quit(1 if _failed else 0)
 
 
-## The power curve (R61): durations named as riders say them, curves scaled to their data.
+## The power curve (R62): durations named as riders say them, curves scaled to their data.
 func _power_curve_chart() -> void:
 	var labels: PackedStringArray = PackedStringArray()
 	for seconds: float in [5.0, 60.0, 90.0, 1200.0, 3600.0, 5400.0]:
@@ -53,7 +53,7 @@ func _power_curve_chart() -> void:
 	chart.free()
 
 
-## The Analysis tab (R60) after History, its figures from the efforts the core gives (R61),
+## The Analysis tab (R61) after History, its figures from the efforts the core gives (R62),
 ## and a ride's power records on its summary.
 func _analysis_tab() -> void:
 	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()

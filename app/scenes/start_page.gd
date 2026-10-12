@@ -1,6 +1,6 @@
 class_name StartPage
 extends Control
-## The start page (R38): tabs for Courses, Workouts (R58), History, Analysis (R60), Profile and
+## The start page (R38): tabs for Courses, Workouts (R58), History, Analysis (R61), Profile and
 ## Devices & Settings. The ride view is separate; riding starts from a course's detail page or the
 ## Workouts tab.
 

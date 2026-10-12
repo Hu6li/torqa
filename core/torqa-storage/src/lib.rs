@@ -1,6 +1,7 @@
-//! Storage for Torqa: recorded rides as FIT activities (R28), course files (R32–R35) and rider
-//! profiles (R22).
+//! Storage for Torqa: recorded rides as FIT activities (R28), course files (R32–R35), rider
+//! profiles (R22) and their accounts on training platforms (R29).
 
+pub mod accounts;
 pub mod course;
 pub mod profiles;
 pub mod rides;

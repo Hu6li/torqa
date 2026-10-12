@@ -6,7 +6,7 @@ set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$root/screenshots"
 "$root/scripts/build-gdext.sh" debug >/dev/null
-# Weeks of made-up rides, so the history and the Analysis tab (R60) have something to show.
+# Weeks of made-up rides, so the history and the Analysis tab (R61) have something to show.
 cargo run -q --manifest-path "$root/core/Cargo.toml" -p torqa-cli -- sample-rides --weeks 16
 godot --headless --path "$root/app" --import >/dev/null 2>&1 || true
 # Software rendering is slow; a broken script would otherwise leave Godot running forever.

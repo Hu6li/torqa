@@ -1,4 +1,4 @@
-//! Ride analysis (R31): summary figures, time in training zones and the power curve (R61),
+//! Ride analysis (R31): summary figures, time in training zones and the power curve (R62),
 //! computed from the 1 Hz samples of a recorded ride.
 
 use std::ops::Range;
@@ -90,7 +90,7 @@ pub fn best_average_power(samples: &[Sample], window: Duration) -> Option<Watts>
     best_mean(&powers, length).map(Watts)
 }
 
-/// What the analysis across rides keeps of a ride (R61).
+/// What the analysis across rides keeps of a ride (R62).
 #[must_use]
 pub fn analyse(samples: &[Sample]) -> RideAnalysis {
     RideAnalysis {
@@ -98,7 +98,7 @@ pub fn analyse(samples: &[Sample]) -> RideAnalysis {
     }
 }
 
-/// The ride's best average power over each of the [`CURVE_DURATIONS`] it lasted (R61). Samples
+/// The ride's best average power over each of the [`CURVE_DURATIONS`] it lasted (R62). Samples
 /// are put on a 1 s grid first, so activities recorded at another rate or only on changes give
 /// the same curve; no effort spans a pause. Empty for a ride without power.
 #[must_use]

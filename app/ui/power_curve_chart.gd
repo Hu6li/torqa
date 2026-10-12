@@ -1,6 +1,6 @@
 class_name PowerCurveChart
 extends Control
-## Best power over the duration of an effort (R61): curves on a logarithmic time axis from a
+## Best power over the duration of an effort (R62): curves on a logarithmic time axis from a
 ## second to the longest effort, the first added on top. Hovering reads every curve off at the
 ## pointer.
 

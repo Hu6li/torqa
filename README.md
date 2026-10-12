@@ -76,15 +76,15 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
     <td>👻 <b><a href="docs/ghosts.md">Ghosts &amp; pacers</a></b><br>
       Race your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="docs/history.md">History &amp; records</a></b><br>
-      FIT export, ride analysis, your power curve, records per course, climb and duration</td>
+      Ride analysis, your power curve, records per course, climb and duration, FIT export and
+      <a href="docs/uploads.md">upload to intervals.icu and Strava</a></td>
   </tr>
 </table>
 
 📴 Courses ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
 🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows and Linux
 
-**Planned:** Street View / Mapillary rides, uploads to Strava, intervals.icu and others, ANT+
-FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+**Planned:** Street View / Mapillary rides, ANT+ FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Using Torqa
 
@@ -98,6 +98,7 @@ FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.m
 | Ride HUD | [docs/hud.md](docs/hud.md) |
 | Workouts and FTP tests | [docs/workouts.md](docs/workouts.md) |
 | Overlay over other apps | [docs/overlay.md](docs/overlay.md) |
+| Uploading rides to intervals.icu and Strava | [docs/uploads.md](docs/uploads.md) |
 | Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
 | Ride history, climbs and records | [docs/history.md](docs/history.md) |
 | Analysis across rides: power curve | [docs/analysis.md](docs/analysis.md) |
