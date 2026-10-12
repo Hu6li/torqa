@@ -1,6 +1,7 @@
 extends SceneTree
-## Headless checks of uploading rides to training platforms (R29): the platforms on the rider's
-## card, the dialog that connects an account, and a ride's upload menu. Needs no network.
+## Headless checks of uploading rides to training platforms (R29, R60): the platforms on the
+## rider's card, the dialog that connects an account, uploading automatically, and a ride's
+## upload menu. Needs no network.
 ## Run: godot --headless --path app -s res://tests/upload_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -65,6 +66,28 @@ func _uploads() -> void:
 		"an empty key is not sent, and the dialog says so"
 	)
 	dialog.hide()
+	# A connected account (R60): kept rides can go up by themselves.
+	var connected: Dictionary = {
+		"platform": "intervals",
+		"name": "intervals.icu",
+		"label": "Ann Rider",
+		"auto_upload": true,
+	}
+	var section: Control = tab.call("_account_section", "nobody-yet", [connected])
+	tab.add_child(section)
+	var automatic: CheckBox = null
+	for box: Node in section.find_children("*", "CheckBox", true, false):
+		automatic = box
+	_check(
+		(
+			_label_with_text(section, "Connected as Ann Rider")
+			and _button_with_text(section, "Disconnect") != null
+			and automatic != null
+			and automatic.text == "Upload automatically"
+			and automatic.button_pressed
+		),
+		"a connected account can be disconnected and set to upload automatically"
+	)
 	tab.free()
 
 	var history: HistoryScreen = main.get_node("HistoryScreen")
@@ -91,6 +114,13 @@ func _uploads() -> void:
 		"an uploaded ride leads to its page: %s" % menu.get_item_text(0)
 	)
 	main.free()
+
+
+func _label_with_text(node: Node, text: String) -> bool:
+	for label: Node in node.find_children("*", "Label", true, false):
+		if (label as Label).text == text:
+			return true
+	return false
 
 
 func _button_with_text(node: Node, text: String) -> Button:

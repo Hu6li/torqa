@@ -38,7 +38,8 @@ an app in differently. As of October 2026:
   An activity intervals.icu already has (it compares files) counts as uploaded.
 - **Where a ride went is kept with the ride**, in its JSON metadata (`uploads`: platform id →
   activity id and page), so it syncs with the ride (ADR 0002) and the history links to it.
-- **Uploads only go out when the rider asks**, from the summary or the history.
+- **Uploads only go out when the rider asks**, from the summary or the history (amended below:
+  also automatically, per account).
 - Garmin Connect, TrainingPeaks and Komoot are left out until they let open-source apps in.
   Until then rides reach them through the FIT export (R28) and the platform's own import.
 
@@ -53,3 +54,16 @@ an app in differently. As of October 2026:
   already has.
 - Strava fits the same interface. Its OAuth login in the browser adds a parameter to
   `connect` when it comes.
+
+## Amendment — 2026-10-12: automatic uploads (R60)
+
+- Each account can be set to **upload automatically**. A ride goes up when the rider keeps it
+  with **Done** on its summary: the ride is saved before the summary, where it may still be
+  renamed or discarded, so saving is too early.
+- **Uploads take turns**, one at a time. Each reads the account's credentials when its turn
+  comes and stores renewed ones before the next starts. Platforms that renew tokens with every
+  use (Strava) accept only the newest one, so two uploads of one account must not renew
+  side by side.
+- A ride on its way to a platform is not sent there again, and a kept ride already there is
+  skipped. A failed automatic upload leaves the ride to upload from the history; it does not
+  open the connect dialog by itself.

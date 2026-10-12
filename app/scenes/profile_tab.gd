@@ -180,17 +180,18 @@ func _card(rider: Dictionary, active: bool, deletable: bool) -> PanelContainer:
 		columns.add_child(settings)
 		_show_zones(columns, rider)
 		rows.add_child(columns)
-		rows.add_child(_accounts(id))
+		var accounts: Array = _torqa.accounts(id) if _torqa != null else []
+		rows.add_child(_account_section(id, accounts))
 	return card
 
 
-## The rider's accounts on training platforms (R29): who is connected where, and the way to
+## Rider `id`'s accounts on training platforms (R29), as `TorqaApp.accounts()` gives them:
+## who is connected where, whether kept rides go up by themselves (R60), and the way to
 ## connect or disconnect each.
-func _accounts(id: String) -> VBoxContainer:
+func _account_section(id: String, accounts: Array) -> VBoxContainer:
 	var section: VBoxContainer = VBoxContainer.new()
 	section.add_theme_constant_override("separation", 6)
 	section.add_child(UiTheme.caption(tr("Accounts")))
-	var accounts: Array = _torqa.accounts(id) if _torqa != null else []
 	for account: Dictionary in accounts:
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
@@ -209,6 +210,16 @@ func _accounts(id: String) -> VBoxContainer:
 		status.add_theme_color_override("font_color", UiTheme.MUTED)
 		status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(status)
+		if not label.is_empty():
+			var automatic: CheckBox = CheckBox.new()
+			automatic.text = tr("Upload automatically")
+			automatic.tooltip_text = tr(
+				"Rides you keep with Done on their summary go up by themselves"
+			)
+			automatic.focus_mode = Control.FOCUS_NONE
+			automatic.button_pressed = account.get("auto_upload", false)
+			automatic.toggled.connect(_set_auto_upload.bind(id, platform))
+			row.add_child(automatic)
 		var button: Button = Button.new()
 		button.focus_mode = Control.FOCUS_NONE
 		if label.is_empty():
@@ -368,6 +379,10 @@ func _toggle(id: String) -> void:
 	_unfolded[id] = not _unfolded.get(id, false)
 	if _torqa != null:
 		refresh()
+
+
+func _set_auto_upload(on: bool, id: String, platform: String) -> void:
+	_torqa.set_auto_upload(id, platform, on)
 
 
 func _disconnect(id: String, platform: String) -> void:

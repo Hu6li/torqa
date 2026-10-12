@@ -131,6 +131,12 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R58 | Extends R38 (2026-10-06): a **Workouts** tab on the start page, right after Courses. Workouts (R56, later R21) are started there, either on their own (a flat road, the HUD only) or **on a course in the 3D world** (the trainer holds the workout's power while the world goes by). |
 | R59 | Supersedes R7's shift inputs (2026-10-06): the virtual gears are shifted from the **keyboard** and from **Shimano Di2** directly over Bluetooth — the buttons the rider assigns to D-Fly channels in E-TUBE shift up and down. Each channel's press, hold and double press can be given an action instead (#139): shift one or two gears, next camera, overlay on/off, or the music (play/pause, next, previous). No dependency on paid bridge apps (BikeControl needs a subscription on macOS and Android), so no OpenBikeControl-through-BikeControl; the Zwift Click (encrypted, the v2 unlocked daily in Zwift) is not supported. |
 
+## Uploads
+
+| ID | Requirement |
+|---|---|
+| R60 | Extends R29 (2026-10-12): rides go up to a rider's training platforms with **one click** from the summary or the history, or **automatically** to each account the rider set to upload by itself. An automatic upload starts when the summary is closed with **Done**, never before (the ride may still be renamed or discarded there) and never for a discarded ride. A ride goes to a platform at most once; an upload that fails leaves the ride to upload again from the history. |
+
 ## MVP definition
 
 Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mode → save a FIT file.

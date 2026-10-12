@@ -55,8 +55,9 @@ var _upload_button: MenuButton = MenuButton.new()
 var _account_dialog: AccountDialog = AccountDialog.new()
 ## The platforms with the active rider's accounts, as `TorqaApp.accounts()` gives them.
 var _accounts: Array = []
-## Uploads under way, by `_upload_key()`.
-var _uploading: Dictionary[String, bool] = {}
+## Uploads the rider started here and not finished yet, by `_upload_key()`: only these
+## ask to connect again when the platform refuses the account.
+var _started: Dictionary[String, bool] = {}
 ## The platform to upload the shown ride to once its account is connected.
 var _upload_after_connect: String = ""
 var _starting_upload: bool = false
@@ -273,7 +274,7 @@ func _ready() -> void:
 	var done: Button = Button.new()
 	done.text = tr("Done")
 	done.custom_minimum_size = Vector2(140, 0)
-	done.pressed.connect(_close)
+	done.pressed.connect(_keep)
 	_actions.add_child(done)
 	_actions.hide()
 	_detail.add_child(_actions)
@@ -497,7 +498,7 @@ func _fill_upload_menu() -> void:
 		var label: String = account["label"]
 		if uploads.has(platform):
 			menu.add_item(tr("View on %s") % platform_name, i)
-		elif _uploading.has(_upload_key(path, platform)):
+		elif _torqa.uploading(path).has(platform):
 			menu.add_item(tr("Uploading to %s…") % platform_name, i)
 			menu.set_item_disabled(menu.get_item_index(i), true)
 		elif label.is_empty():
@@ -530,15 +531,12 @@ func _upload(platform: String) -> void:
 		return
 	# A name still being typed is the one to upload under.
 	_rename()
-	var ride: Dictionary = _rides[_selected]
-	var path: String = ride["path"]
-	var ride_name: String = ride["name"]
-	var title: String = ride_name if not ride_name.is_empty() else _default_name(ride)
+	var path: String = _shown_path()
 	_starting_upload = true
-	var started: bool = _torqa.upload_ride(path, platform, title)
+	var started: bool = _torqa.upload_ride(path, platform, _shown_title())
 	_starting_upload = false
 	if started:
-		_uploading[_upload_key(path, platform)] = true
+		_started[_upload_key(path, platform)] = true
 		_show_status(tr("Uploading to %s…") % _platform_name(platform))
 
 
@@ -549,7 +547,7 @@ func _on_account_connected(platform: String) -> void:
 
 
 func _on_upload_finished(path: String, platform: String, url: String) -> void:
-	_uploading.erase(_upload_key(path, platform))
+	_started.erase(_upload_key(path, platform))
 	for ride: Dictionary in _rides:
 		if ride["path"] == path:
 			var uploads: Dictionary = ride.get("uploads", {})
@@ -560,16 +558,21 @@ func _on_upload_finished(path: String, platform: String, url: String) -> void:
 
 
 func _on_upload_failed(path: String, platform: String, message: String, reconnect: bool) -> void:
-	_uploading.erase(_upload_key(path, platform))
+	var key: String = _upload_key(path, platform)
+	var started_here: bool = _started.has(key)
+	_started.erase(key)
 	if _shown_path() != path:
 		return
 	if not reconnect:
 		_show_status(message)
 		return
-	# The platform no longer lets Torqa in: connect again, then upload.
 	_show_status(
 		tr("%s no longer accepts the account: connect it again.") % _platform_name(platform)
 	)
+	# The platform no longer lets Torqa in: connect again, then upload. Not for automatic
+	# uploads, which may end while the rider is elsewhere.
+	if not started_here or not is_visible_in_tree():
+		return
 	for account: Dictionary in _accounts:
 		if account["platform"] == platform:
 			_upload_after_connect = platform
@@ -587,6 +590,15 @@ func _platform_name(platform: String) -> String:
 func _rider() -> String:
 	var id: String = _torqa.profile().get("id", "")
 	return id
+
+
+## The title the shown ride goes by (R50): its name, or its route and date.
+func _shown_title() -> String:
+	if _selected < 0 or _selected >= _rides.size():
+		return ""
+	var ride: Dictionary = _rides[_selected]
+	var ride_name: String = ride["name"]
+	return ride_name if not ride_name.is_empty() else _default_name(ride)
 
 
 func _shown_path() -> String:
@@ -618,6 +630,16 @@ func _rename() -> void:
 	ride["name"] = new_name
 	if _selected < _list.get_child_count():
 		(_list.get_child(_selected) as Button).text = _list_text(ride)
+
+
+## Done on the summary (R42): the rider keeps the ride, and it goes up to their accounts set
+## to upload automatically (R60). Discarding goes another way.
+func _keep() -> void:
+	_rename()
+	var path: String = _shown_path()
+	if not path.is_empty():
+		_torqa.keep_ride(path, _shown_title())
+	_close()
 
 
 func _close() -> void:

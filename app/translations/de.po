@@ -1302,3 +1302,9 @@ msgstr "API-Schlüssel"
 
 msgid "Find your API key on intervals.icu under Settings, Developer Settings."
 msgstr "Deinen API-Schlüssel findest du auf intervals.icu unter Settings, Developer Settings."
+
+msgid "Upload automatically"
+msgstr "Automatisch hochladen"
+
+msgid "Rides you keep with Done on their summary go up by themselves"
+msgstr "Fahrten, die du in der Zusammenfassung mit «Fertig» behältst, werden von selbst hochgeladen"
