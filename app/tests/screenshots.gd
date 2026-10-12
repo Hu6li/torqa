@@ -191,7 +191,9 @@ func _run() -> void:
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
 		if index == StartPage.Tab.ANALYSIS:
-			for section: Array in [["_fitness", "fitness"], ["_weekly", "weekly"]]:
+			for section: Array in [
+				["_fitness", "fitness"], ["_weekly", "weekly"], ["_trend", "progress"]
+			]:
 				var chart: String = section[0]
 				var shot: String = section[1]
 				await _analysis_below(start, chart)

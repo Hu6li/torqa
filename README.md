@@ -76,7 +76,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
     <td>👻 <b><a href="docs/ghosts.md">Ghosts &amp; pacers</a></b><br>
       Race your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="docs/history.md">History &amp; records</a></b><br>
-      Your power curve and profile, fitness and form, records per course, climb and duration,
+      Your power curve and profile, fitness, progress, records per course, climb and duration,
       FIT export and <a href="docs/uploads.md">upload to intervals.icu and Strava</a></td>
   </tr>
 </table>
@@ -101,7 +101,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 | Uploading rides to intervals.icu and Strava | [docs/uploads.md](docs/uploads.md) |
 | Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
 | Ride history, climbs and records | [docs/history.md](docs/history.md) |
-| Analysis across rides: power curve and profile, fitness, weeks | [docs/analysis.md](docs/analysis.md) |
+| Analysis across rides: power curve and profile, fitness, weeks, progress | [docs/analysis.md](docs/analysis.md) |
 | Music control | [docs/audio.md](docs/audio.md) |
 | Translations | [docs/translating.md](docs/translating.md) |
 | Command-line tool for testing trainers | [docs/cli.md](docs/cli.md) |

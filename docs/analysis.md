@@ -72,6 +72,32 @@ bar for the week's figures.
 
 ![The weekly time in power zones](images/app/analysis-weekly.png)
 
+## Progress
+
+At the bottom, the progress chart follows your best 1 minute, 5 minutes and 20 minutes week by
+week — month by month for periods longer than 13 weeks — with your FTP (dashed: the FTP each
+ride was saved with) and the results of your FTP tests as dots. A gap means you did not ride
+that long in that week or month.
+
+![Progress: the best efforts and the FTP week by week, and the FTP the rides show](images/app/analysis-progress.png)
+
+### The FTP your rides show
+
+Under the chart, Torqa estimates your FTP from your best efforts of the last 90 days, next to the
+FTP in your profile, with **Use … W** to take it. It never changes your FTP by itself.
+
+- With best efforts from 2 to 20 minutes that fit together, it is the **critical power** of
+  Morton's three-parameter model, the power you could hold for a long time, fitted to those
+  efforts as GoldenCheetah does. **W′** is the work you can do above it before you are spent.
+  Efforts that cannot have been all-out — a best 10 minutes lower than your best 5 and 20
+  minutes say you could hold — are left out of the fit.
+- Otherwise it is 95 % of your best 20 minutes, as after the 20-minute test.
+- It needs a ride of at least 20 minutes in the last 90 days.
+
+The estimate is only as good as your best efforts: if you have not ridden hard for 3, 5, 10 or
+20 minutes lately, it comes out low. An FTP test ([workouts.md](workouts.md)) gives a firmer
+number.
+
 ## Records
 
 A ride holding your best power over 5 s, 1, 5, 20 or 60 minutes gets a ★ for it on its summary
