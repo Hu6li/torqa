@@ -1291,9 +1291,6 @@ msgstr "Die beste Leistung, die du über jede Dauer gehalten hast, vom Sprint bi
 msgid "The period before"
 msgstr "Zeitraum davor"
 
-msgid "Your power"
-msgstr "Deine Leistung"
-
 msgid "★ Best %s: %d W"
 msgstr "★ Bestleistung %s: %d W"
 msgid "Upload"

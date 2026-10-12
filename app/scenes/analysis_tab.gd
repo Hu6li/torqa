@@ -96,31 +96,23 @@ func refresh() -> void:
 func _init() -> void:
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	# Room between the page and its scroll bar, which would cover the header's choices.
+	# Room between the page and its scroll bar, which would cover the period's choice.
 	_scroll.add_theme_constant_override("scrollbar_h_separation", 12)
 	add_child(_scroll)
-	# The heading and its choices scroll away with the sections: the page's title, not a bar
-	# over sections that are not about power.
+	# The period applies to every section; it scrolls away with them, a choice at the top of the
+	# page rather than a bar over all of it. Each section has its own title.
 	var page: VBoxContainer = VBoxContainer.new()
 	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	page.add_theme_constant_override("separation", 16)
 	_scroll.add_child(page)
 	var header: HBoxContainer = HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
-	var heading: Label = Label.new()
-	heading.text = tr("Your power")
-	heading.add_theme_font_size_override("font_size", 22)
-	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(heading)
+	header.alignment = BoxContainer.ALIGNMENT_END
 	for period: Array in PERIODS:
 		var period_name: String = period[0]
 		_period.add_item(tr(period_name))
 	_period.select(0)
 	_period.item_selected.connect(func(_index: int) -> void: refresh())
 	header.add_child(_period)
-	_per_kg.text = tr("Per kilogram")
-	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
-	header.add_child(_per_kg)
 	page.add_child(header)
 
 	_empty.text = tr(
@@ -175,7 +167,15 @@ func _curve_card() -> PanelContainer:
 func _profile_card() -> PanelContainer:
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 12)
-	rows.add_child(UiTheme.caption(tr("Power profile")))
+	var title: HBoxContainer = HBoxContainer.new()
+	var caption: Label = UiTheme.caption(tr("Power profile"))
+	caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_child(caption)
+	# Switches every chart of power, the curve and the progress too.
+	_per_kg.text = tr("Per kilogram")
+	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
+	title.add_child(_per_kg)
+	rows.add_child(title)
 	var about: Label = Label.new()
 	about.text = tr("Your best of the period as a share of your best of all time.")
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -128,7 +128,10 @@ func _analysis_tab() -> void:
 	var content: Control = analysis.get("_content")
 	var scroll: ScrollContainer = analysis.get("_scroll")
 	var period: Control = analysis.get("_period")
-	_check(scroll.is_ancestor_of(period), "the heading and its choices scroll with the sections")
+	_check(scroll.is_ancestor_of(period), "the period scrolls with the sections")
+	var radar: Control = analysis.get("_radar")
+	var per_kg: Control = analysis.get("_per_kg")
+	_check(radar.get_parent().is_ancestor_of(per_kg), "per kilogram on the power profile")
 	_check(empty.visible != content.visible, "the curve or why there is none")
 	var efforts: Array = [
 		{"duration_s": 5.0, "power": 812.0, "watts_per_kg": 11.6, "start_unix_s": 0},
