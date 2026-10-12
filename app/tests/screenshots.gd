@@ -146,8 +146,19 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("summary.png"))
 	print("saved summary")
-	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
+	# Further down, the ride's power curve over the rider's best (R62).
 	var summary: HistoryScreen = _main.get_node("HistoryScreen")
+	var ride_detail: Control = summary.get("_detail")
+	var detail_scroll: ScrollContainer = ride_detail.get_parent() as ScrollContainer
+	var ride_curve: Control = summary.get("_power_curve")
+	detail_scroll.ensure_control_visible(ride_curve)
+	await create_timer(0.5).timeout
+	root.get_texture().get_image().save_png(out_dir.path_join("summary-curve.png"))
+	print("saved summary curve")
+	detail_scroll.scroll_vertical = 0
+	# The menu opens where its button is once the scroll is laid out again.
+	await process_frame
+	# Its upload menu (R29): the rider has no account yet, so it offers to connect first.
 	var upload: MenuButton = summary.get("_upload_button")
 	upload.show_popup()
 	await create_timer(0.5).timeout

@@ -23,9 +23,10 @@ The history shows:
 - **Chart**: power and heart rate over the ride, on top of the elevation.
 - **Time in zones**: power zones from your FTP, heart-rate zones from your maximum heart rate
   (see [riders.md](riders.md)). Sections without data, e.g. no heart-rate strap, are hidden.
-- **Power curve**: the ride's best power over every duration from a second to the whole ride,
-  over your best of all rides in grey ([analysis.md](analysis.md)). A ★ under the figures marks
-  each duration of 5 s, 1, 5, 20 or 60 min over which the ride holds your best power.
+- **Power curve**, in a row of its own below the zones (scroll down when the window is too
+  small): the ride's best power over every duration from a second to the whole ride, over your
+  best of all rides in grey ([analysis.md](analysis.md)). A ★ under the figures marks each
+  duration of 5 s, 1, 5, 20 or 60 min over which the ride holds your best power.
 - The bin beside the title (**Delete ride**) removes the FIT file and its summary, after asking.
 - The up arrow beside the title (**Upload**) sends the ride to intervals.icu or Strava, or
   opens it there once it is uploaded ([uploads.md](uploads.md)). Uploading also works on the
@@ -33,6 +34,8 @@ The history shows:
 - The down arrow beside the title (**Export FIT file**) saves a copy of the ride's FIT file
   wherever you choose on your computer, e.g. to import it into Garmin Connect by hand. The file is named after the ride, as FIT files have no field for an activity name;
   the ride stays in the history. Export also works on the summary right after a ride.
+
+![A ride's power curve over the rider's best, below the zones](images/app/summary-curve.png)
 
 Normalized power needs at least 30 s of power data. Intensity and TSS use the FTP the rider had
 when the ride was saved, so they do not change when you update your FTP later; time in zones

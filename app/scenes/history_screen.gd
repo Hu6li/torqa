@@ -159,8 +159,17 @@ func _ready() -> void:
 	var right: PanelContainer = PanelContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(right)
+	var right_rows: VBoxContainer = VBoxContainer.new()
+	right_rows.add_theme_constant_override("separation", 16)
+	right.add_child(right_rows)
+	# The ride's rows outgrow smaller windows; the summary's buttons stay in reach below them.
+	var detail_scroll: ScrollContainer = ScrollContainer.new()
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_detail.add_theme_constant_override("separation", 16)
-	right.add_child(_detail)
+	detail_scroll.add_child(_detail)
+	right_rows.add_child(detail_scroll)
 	var title_row: HBoxContainer = HBoxContainer.new()
 	var titles: VBoxContainer = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -255,12 +264,10 @@ func _ready() -> void:
 
 	var zones: HBoxContainer = HBoxContainer.new()
 	zones.add_theme_constant_override("separation", 32)
-	_power_curve.custom_minimum_size = Vector2(0, 170)
 	# i18n-begin
 	for entry: Array in [
 		["Time in power zones", _power_zones],
 		["Time in heart-rate zones", _heart_rate_zones],
-		["Power curve", _power_curve],
 	]:
 		# i18n-end
 		var column: VBoxContainer = VBoxContainer.new()
@@ -272,11 +279,14 @@ func _ready() -> void:
 		column.add_child(content)
 		zones.add_child(column)
 	_detail.add_child(zones)
+	var curve_row: VBoxContainer = VBoxContainer.new()
+	curve_row.add_theme_constant_override("separation", 8)
+	curve_row.add_child(UiTheme.caption(tr("Power curve")))
+	_power_curve.custom_minimum_size = Vector2(0, 220)
+	curve_row.add_child(_power_curve)
+	_detail.add_child(curve_row)
 
 	# Summary only: keep (the ride is saved already) or discard it.
-	var push: Control = Control.new()
-	push.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_detail.add_child(push)
 	_actions.add_theme_constant_override("separation", 12)
 	_actions.alignment = BoxContainer.ALIGNMENT_END
 	var discard: Button = Button.new()
@@ -290,7 +300,7 @@ func _ready() -> void:
 	done.pressed.connect(_keep)
 	_actions.add_child(done)
 	_actions.hide()
-	_detail.add_child(_actions)
+	right_rows.add_child(_actions)
 	_apply_embedded()
 
 
