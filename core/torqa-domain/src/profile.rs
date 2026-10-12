@@ -125,6 +125,19 @@ impl Profile {
         zone(heart_rate.0, self.max_heart_rate.0, &self.heart_rate_zones)
     }
 
+    /// Power in percent of FTP, the scale the power zones are set on; `None` without an FTP.
+    #[must_use]
+    pub fn percent_of_ftp(&self, power: Watts) -> Option<f64> {
+        percent(power.0, self.ftp.0)
+    }
+
+    /// Heart rate in percent of the maximum, the scale the heart-rate zones are set on; `None`
+    /// without a maximum.
+    #[must_use]
+    pub fn percent_of_max_heart_rate(&self, heart_rate: BeatsPerMinute) -> Option<f64> {
+        percent(heart_rate.0, self.max_heart_rate.0)
+    }
+
     /// Power zone bounds a rider may keep: six, each above the one before, none above
     /// `ZONE_CEILING`; the standard ones otherwise, so a file or a dialog cannot leave zones
     /// that cannot be told apart.
@@ -172,6 +185,11 @@ fn sane<const N: usize>(bounds: &[f64], floor: f64) -> Option<[f64; N]> {
         last = bound;
     }
     Some(out)
+}
+
+/// `value` in percent of `base`; `None` for a base of zero, as a profile file may hold.
+fn percent(value: f64, base: f64) -> Option<f64> {
+    (base > 0.0).then(|| value / base * 100.0)
 }
 
 /// The 1-based zone of `value`: zone n ends at `bounds[n - 1] × base`, inclusive.
@@ -267,6 +285,35 @@ mod tests {
         assert_eq!(rider.heart_rate_zone(BeatsPerMinute(143.0)), 4);
         let (low, high) = rider.heart_rate_zone_range(4);
         assert!((low.0 - 142.5).abs() < 1e-9 && (high.0 - 161.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn percentages_are_on_the_scale_of_the_zones() {
+        let mut rider = rider();
+        rider.power_zones = [0.50, 0.70, 0.85, 1.00, 1.15, 1.40];
+        // 250 W FTP, 190 bpm maximum: a zone's top in percent is its bound × 100.
+        let ftp = rider.percent_of_ftp(Watts(250.0)).unwrap();
+        assert!((ftp - 100.0).abs() < 1e-9);
+        assert_eq!(rider.power_zone(Watts(250.0)), 4);
+        let sprint = rider.percent_of_ftp(Watts(400.0)).unwrap();
+        assert!((sprint - 160.0).abs() < 1e-9);
+        assert_eq!(rider.power_zone(Watts(400.0)), 7);
+        let heart = rider
+            .percent_of_max_heart_rate(BeatsPerMinute(152.0))
+            .unwrap();
+        assert!((heart - 80.0).abs() < 1e-9);
+        assert_eq!(rider.heart_rate_zone(BeatsPerMinute(152.0)), 3);
+    }
+
+    #[test]
+    fn percentages_need_a_base() {
+        let rider = Profile {
+            ftp: Watts(0.0),
+            max_heart_rate: BeatsPerMinute(0.0),
+            ..Profile::default()
+        };
+        assert_eq!(rider.percent_of_ftp(Watts(200.0)), None);
+        assert_eq!(rider.percent_of_max_heart_rate(BeatsPerMinute(150.0)), None);
     }
 
     #[test]
