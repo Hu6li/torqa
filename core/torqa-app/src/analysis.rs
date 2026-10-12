@@ -1,12 +1,15 @@
 //! The rider's power across rides (R62): the best power held over every duration among the
 //! rides of a period, compared with all rides or the period before, and the records it sets;
-//! the power profile of a period against the rider's best (R63).
+//! the power profile of a period against the rider's best (R63); fitness, fatigue and form and
+//! the weekly totals (R64).
 
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use torqa_domain::profile::Profile;
 use torqa_domain::recording::{CURVE_DURATIONS, RECORD_DURATIONS};
-use torqa_domain::units::{Kilograms, Watts};
+use torqa_domain::units::{BeatsPerMinute, Kilograms, Meters, Watts};
+use torqa_session::fitness::{self, Load};
 use torqa_storage::rides::RideRecord;
 
 use crate::HistoryEntry;
@@ -93,6 +96,161 @@ pub fn power_profile(
             }
         })
         .collect()
+}
+
+/// The training load of one local day (R64).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DayLoad {
+    /// The day, counted from 1970-01-01.
+    pub day: i64,
+    /// Its stress, and the fitness, fatigue and form it leaves.
+    pub load: Load,
+}
+
+/// Fitness, fatigue and form for every local day from `first` to `last` (R64), from the TSS
+/// of the rides in `history`, local time `utc_offset_s` ahead of UTC. The model runs from the
+/// rider's first ride, so a period starting later starts from the load built up before it.
+#[must_use]
+pub fn day_loads(
+    history: &[HistoryEntry],
+    first: i64,
+    last: i64,
+    utc_offset_s: i64,
+) -> Vec<DayLoad> {
+    let rides: Vec<(i64, f64)> = history
+        .iter()
+        .filter(|entry| !entry.record.simulated)
+        .map(|entry| {
+            let day = fitness::day_of(unix_seconds(entry.record.start), utc_offset_s);
+            (day, entry.record.summary.training_stress.unwrap_or(0.0))
+        })
+        .collect();
+    let start = rides
+        .iter()
+        .map(|(day, _)| *day)
+        .min()
+        .unwrap_or(first)
+        .min(first);
+    let length = usize::try_from(last - start + 1).unwrap_or(0);
+    let mut stress = vec![0.0; length];
+    for (day, tss) in rides {
+        if let Some(total) = usize::try_from(day - start)
+            .ok()
+            .and_then(|i| stress.get_mut(i))
+        {
+            *total += tss;
+        }
+    }
+    fitness::loads(&stress)
+        .into_iter()
+        .zip(start..)
+        .filter(|(_, day)| *day >= first)
+        .map(|(load, day)| DayLoad { day, load })
+        .collect()
+}
+
+/// The local days `(first, last)` of the `period` before `now`, or for `None` from the first
+/// of the rides in `history` (today without rides); local time `utc_offset_s` ahead of UTC.
+#[must_use]
+pub fn period_days(
+    history: &[HistoryEntry],
+    period: Option<Duration>,
+    now: SystemTime,
+    utc_offset_s: i64,
+) -> (i64, i64) {
+    let today = fitness::day_of(unix_seconds(now), utc_offset_s);
+    let first = match period {
+        Some(length) => {
+            let days = i64::try_from(length.as_secs() / 86_400).unwrap_or(i64::MAX);
+            today.saturating_sub(days) + 1
+        }
+        None => history
+            .iter()
+            .filter(|entry| !entry.record.simulated)
+            .map(|entry| fitness::day_of(unix_seconds(entry.record.start), utc_offset_s))
+            .min()
+            .unwrap_or(today),
+    };
+    (first.min(today), today)
+}
+
+/// What the rider rode in one week, Monday to Sunday (R64).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct WeekTotals {
+    /// The Monday the week starts on, counted from 1970-01-01.
+    pub start: i64,
+    /// How many rides.
+    pub rides: u32,
+    /// Their riding time.
+    pub time: Duration,
+    /// Their distance.
+    pub distance: Meters,
+    /// Their climbing.
+    pub climbing: Meters,
+    /// Their training stress (TSS).
+    pub stress: f64,
+    /// Time in each power zone of the rider's zones today.
+    pub power_zones: [Duration; 7],
+    /// Time in each heart-rate zone of the rider's zones today.
+    pub heart_rate_zones: [Duration; 5],
+}
+
+/// Every week from the one holding local day `first` to the one holding `last`, with the
+/// rides of `history` that fall in it (R64); time in zones uses `profile`'s zones, as the
+/// summary does. Local time is `utc_offset_s` ahead of UTC; simulated rides are left out.
+#[must_use]
+pub fn weekly(
+    history: &[HistoryEntry],
+    profile: &Profile,
+    first: i64,
+    last: i64,
+    utc_offset_s: i64,
+) -> Vec<WeekTotals> {
+    let first_week = fitness::week_start(first);
+    let mut weeks: Vec<WeekTotals> = (first_week..=last)
+        .step_by(7)
+        .map(|start| WeekTotals {
+            start,
+            ..WeekTotals::default()
+        })
+        .collect();
+    for entry in history.iter().filter(|entry| !entry.record.simulated) {
+        let record = &entry.record;
+        let day = fitness::day_of(unix_seconds(record.start), utc_offset_s);
+        let Some(week) = usize::try_from((fitness::week_start(day) - first_week) / 7)
+            .ok()
+            .filter(|_| day <= last)
+            .and_then(|i| weeks.get_mut(i))
+        else {
+            continue;
+        };
+        let summary = &record.summary;
+        week.rides += 1;
+        week.time += summary.elapsed;
+        week.distance.0 += summary.distance.0;
+        week.climbing.0 += summary.elevation_gain.0;
+        week.stress += summary.training_stress.unwrap_or(0.0);
+        if let Some(analysis) = &record.analysis {
+            let power: [Duration; 7] = analysis
+                .power_histogram
+                .zones(|watts| profile.power_zone(Watts(watts)));
+            let heart: [Duration; 5] = analysis
+                .heart_rate_histogram
+                .zones(|bpm| profile.heart_rate_zone(BeatsPerMinute(bpm)));
+            for (total, zone) in week.power_zones.iter_mut().zip(power) {
+                *total += zone;
+            }
+            for (total, zone) in week.heart_rate_zones.iter_mut().zip(heart) {
+                *total += zone;
+            }
+        }
+    }
+    weeks
+}
+
+fn unix_seconds(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// The power curves of the rides in `history` that started within `period` before `now` (all
@@ -245,6 +403,7 @@ mod tests {
                             .map(|&(s, w)| (Duration::from_secs(s), Watts(w)))
                             .collect(),
                     ),
+                    ..RideAnalysis::default()
                 }),
             },
             route_record: false,
@@ -366,6 +525,73 @@ mod tests {
         );
         assert_eq!(profile[0].best.as_ref().unwrap().power, Watts(1000.0));
         assert_eq!(profile[0].period.as_ref().unwrap().power, Watts(800.0));
+    }
+
+    #[test]
+    fn a_period_starts_from_the_load_built_up_before_it() {
+        // A ride of 100 TSS a day for two weeks, then two days off.
+        let today = fitness::day_of(unix_seconds(now()), 0);
+        let mut history: Vec<HistoryEntry> = (2..16).map(|ago| ride(ago, &[], None)).collect();
+        for entry in &mut history {
+            entry.record.summary.training_stress = Some(100.0);
+        }
+
+        let all = day_loads(&history, today - 15, today, 0);
+        let last_week = day_loads(&history, today - 6, today, 0);
+
+        assert_eq!(all.len(), 16);
+        assert_eq!(last_week.len(), 7);
+        assert_eq!(
+            last_week.first(),
+            all.get(9),
+            "the same model, only the last days shown"
+        );
+        assert_eq!(all[0].load.form, 0.0, "rested before the first ride");
+        let rested = last_week.last().unwrap().load;
+        assert_eq!(rested.stress, 0.0);
+        assert!(rested.form > all[13].load.form, "two days off: fresher");
+    }
+
+    #[test]
+    fn weeks_add_up_their_rides_in_the_riders_zones_today() {
+        use std::collections::BTreeMap;
+        use torqa_domain::recording::Histogram;
+
+        // Today is a Friday: two rides this week, one last week, none the week before.
+        let today = fitness::day_of(unix_seconds(now()), 0);
+        assert_eq!(today - fitness::week_start(today), 4, "a Friday");
+        let mut history = vec![ride(0, &[], None), ride(1, &[], None), ride(9, &[], None)];
+        for entry in &mut history {
+            let record = &mut entry.record;
+            record.summary.elapsed = Duration::from_hours(1);
+            record.summary.distance = Meters(30_000.0);
+            record.summary.training_stress = Some(60.0);
+            if let Some(analysis) = record.analysis.as_mut() {
+                // Half an hour at 130 W, half an hour at 230 W.
+                analysis.power_histogram =
+                    Histogram(BTreeMap::from([(130, 1800.0), (230, 1800.0)]));
+            }
+        }
+        let zones_at = |ftp: f64| Profile {
+            ftp: Watts(ftp),
+            ..Profile::default()
+        };
+
+        let weeks = weekly(&history, &zones_at(200.0), today - 13, today, 0);
+
+        let rides: Vec<u32> = weeks.iter().map(|week| week.rides).collect();
+        assert_eq!(rides, [0, 1, 2]);
+        let this_week = &weeks[2];
+        assert_eq!(this_week.time, Duration::from_hours(2));
+        assert_eq!(this_week.distance, Meters(60_000.0));
+        assert!((this_week.stress - 120.0).abs() < 1e-9);
+        // 130 W is endurance and 230 W VO2max at an FTP of 200 W (65 % and 115 %) ...
+        assert_eq!(this_week.power_zones[1], Duration::from_hours(1));
+        assert_eq!(this_week.power_zones[4], Duration::from_hours(1));
+        // ... but recovery and threshold at 250 W (52 % and 92 %).
+        let fitter = weekly(&history, &zones_at(250.0), today - 13, today, 0);
+        assert_eq!(fitter[2].power_zones[0], Duration::from_hours(1));
+        assert_eq!(fitter[2].power_zones[3], Duration::from_hours(1));
     }
 
     #[test]

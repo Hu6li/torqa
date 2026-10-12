@@ -1,6 +1,7 @@
 extends SceneTree
 ## Headless checks of the analysis across rides: the Analysis tab (R61), the power curve and a
-## ride's power records on its summary (R62), the power profile (R63).
+## ride's power records on its summary (R62), the power profile (R63), fitness, fatigue and form
+## and the weekly bars (R64).
 ## Run: godot --headless --path app -s res://tests/analysis_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -15,6 +16,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_power_curve_chart()
 	_radar_chart()
+	_fitness_and_weeks()
 	await _analysis_tab()
 	if not _failed:
 		print("ANALYSIS SMOKE TEST PASSED")
@@ -70,6 +72,44 @@ func _radar_chart() -> void:
 	_check(shares == [0.8, -1.0, 1.0], "a spoke without a ride of the period: %s" % [shares])
 	var values: Array = spokes.map(func(spoke: Dictionary) -> String: return spoke["value"])
 	_check(values == ["800 W", "--", "350 W"], "the period's values: %s" % [values])
+	tab.free()
+
+
+## Form's bands as intervals.icu names them, and the weeks' bars for each metric (R64).
+func _fitness_and_weeks() -> void:
+	var bands: PackedStringArray = PackedStringArray()
+	for form: float in [30.0, 10.0, 0.0, -20.0, -40.0]:
+		bands.append(FitnessChart.band(form))
+	_expect(bands, ["Transition", "Fresh", "Grey zone", "Optimal", "High risk"], "form bands")
+	_check(FitnessChart.short_date(86400 * 20738) == "12 Oct", "a short date")
+	var tab: AnalysisTab = AnalysisTab.new()
+	root.add_child(tab)
+	var week: Dictionary = {
+		"start_unix_s": 86400 * 20738,
+		"rides": 3,
+		"time_s": 4.5 * 3600.0,
+		"distance_m": 120000.0,
+		"climbing_m": 900.0,
+		"stress": 240.0,
+		"power_zones": PackedFloat64Array([0.0, 7200.0, 3600.0, 0.0, 1800.0, 0.0, 0.0]),
+		"heart_rate_zones": PackedFloat64Array([0.0, 9000.0, 7200.0, 0.0, 0.0]),
+	}
+	var time: PackedFloat64Array = tab.call("_week_values", week, 0)
+	var zones: PackedFloat64Array = tab.call("_week_values", week, 5)
+	_check(time == PackedFloat64Array([4.5]), "hours a week: %s" % time)
+	_check(zones.size() == 7 and zones[1] == 2.0, "hours in each power zone: %s" % zones)
+	tab.set("_imperial", true)
+	var miles: PackedFloat64Array = tab.call("_week_values", week, 1)
+	_check(absf(miles[0] - 74.56) < 0.01, "miles in imperial units: %s" % miles)
+	var hours: Callable = tab.call("_week_format", 0)
+	var written: String = hours.call(4.5)
+	_check(written == "4:30 h", "hours written as h:mm: %s" % written)
+	tab.set("_weeks", [week])
+	var metric: OptionButton = tab.get("_weekly_metric")
+	metric.select(5)
+	tab.call("_fill_weekly")
+	var legend: HFlowContainer = tab.get("_zone_legend")
+	_check(legend.get_child_count() == 7, "the power zones named under stacked bars")
 	tab.free()
 
 

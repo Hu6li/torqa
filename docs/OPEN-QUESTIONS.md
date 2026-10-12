@@ -157,7 +157,9 @@ Things to review or decide together. Newest first; remove entries once settled.
   kilogram uses the rider's weight today. The first time the history is read after updating,
   each older ride's FIT file is read once to find its power curve (ADR 0014), a single
   longer wait with many rides. In FIT files copied in, a gap of more than 10 s between records
-  is taken as a pause that no effort spans.
+  is taken as a pause that no effort spans. Fitness and fatigue start at zero before the
+  rider's first ride in Torqa (rides elsewhere are not known), and days follow today's offset
+  from UTC (ADR 0014).
 
 - **Profiles (PR #10)**: rides are now saved per rider in `profiles/<rider>/rides/`; rides
   saved earlier in `rides/` are not moved. Mass comes from the profile (rider + bike).

@@ -51,3 +51,16 @@ Options considered:
 - An older Torqa that saves a summary (e.g. renaming a ride) drops fields it does not know; a
   newer one computes them again on its next read.
 - Rides saved before Torqa kept the rider's weight use today's weight for W/kg.
+
+## Amendment — 2026-10-12: histograms and days (R64)
+
+- **Version 2** of the `analysis` object adds `power_histogram_s` and `heart_rate_histogram_s`:
+  the seconds the ride spent at each whole watt and each whole beat per minute, counted like
+  the summary's time in zones (each interval between samples for the value at its end). The
+  weekly time in zones is counted from them with the rider's zones of today, so it matches the
+  summary's and follows a changed FTP or zones without reading the FIT files. Rides analysed by
+  version 1 are analysed again once.
+- Fitness, fatigue and form and the weekly totals count rides by **local day**. Rust has no
+  time-zone data here and no dependency is added for it: the interface passes its current
+  offset from UTC, so a ride near midnight on the other side of a change to or from summer
+  time may land on the day beside it.

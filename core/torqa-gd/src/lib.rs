@@ -654,6 +654,68 @@ impl TorqaApp {
         array
     }
 
+    /// The active rider's fitness, fatigue and form (R64) for each day of the last
+    /// `period_days` (since the first ride for 0), local time `utc_offset_minutes` ahead of
+    /// UTC: `{day_unix_s, stress, fitness, fatigue, form}`, an array each with one entry a day.
+    #[func]
+    fn fitness(&self, period_days: i64, utc_offset_minutes: i64) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let offset = utc_offset_minutes * 60;
+        let days = app.fitness(period_of(period_days), offset);
+        let series = |value: fn(&torqa_session::fitness::Load) -> f64| {
+            days.iter()
+                .map(|d| value(&d.load))
+                .collect::<PackedFloat64Array>()
+        };
+        vdict! {
+            "day_unix_s" => &days
+                .iter()
+                .map(|d| torqa_session::fitness::day_start(d.day, offset))
+                .collect::<PackedInt64Array>(),
+            "stress" => &series(|l| l.stress),
+            "fitness" => &series(|l| l.fitness),
+            "fatigue" => &series(|l| l.fatigue),
+            "form" => &series(|l| l.form),
+        }
+    }
+
+    /// The active rider's weeks (R64) of the last `period_days` (since the first ride for 0),
+    /// local time `utc_offset_minutes` ahead of UTC: `[{start_unix_s, rides, time_s,
+    /// distance_m, climbing_m, stress, power_zones, heart_rate_zones}]`, the zones as seconds
+    /// in each of the rider's zones today.
+    #[func]
+    fn weekly(&self, period_days: i64, utc_offset_minutes: i64) -> VarArray {
+        let Some(app) = self.app.as_ref() else {
+            return VarArray::new();
+        };
+        let offset = utc_offset_minutes * 60;
+        let seconds = |zones: &[Duration]| {
+            zones
+                .iter()
+                .map(Duration::as_secs_f64)
+                .collect::<PackedFloat64Array>()
+        };
+        let mut array = VarArray::new();
+        for week in app.weekly(period_of(period_days), offset) {
+            array.push(
+                &vdict! {
+                    "start_unix_s" => torqa_session::fitness::day_start(week.start, offset),
+                    "rides" => i64::from(week.rides),
+                    "time_s" => week.time.as_secs_f64(),
+                    "distance_m" => week.distance.0,
+                    "climbing_m" => week.climbing.0,
+                    "stress" => week.stress,
+                    "power_zones" => &seconds(&week.power_zones),
+                    "heart_rate_zones" => &seconds(&week.heart_rate_zones),
+                }
+                .to_variant(),
+            );
+        }
+        array
+    }
+
     /// Charts of one ride as `(elapsed_s, value)` points — `power`, `heart_rate`, `cadence`,
     /// `speed_kmh`, `elevation_m` — and seconds per zone of the active rider in `power_zones`
     /// (7) and `heart_rate_zones` (5). Empty (and emits `failed`) if the file cannot be read.

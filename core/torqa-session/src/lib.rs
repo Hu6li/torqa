@@ -6,6 +6,7 @@
 //! the same engine runs headless in the CLI, in tests and behind the 3D world.
 
 pub mod analysis;
+pub mod fitness;
 pub mod ghost;
 pub mod workout;
 

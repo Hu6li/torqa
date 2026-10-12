@@ -391,7 +391,7 @@ the realistic look's textures and patterns were replaced step by step.
 - **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
   Zone 3 on the KICKR and the session lands in the history as a FIT
 
-### Phase 11 — Rider analysis (R61–R63, #217)
+### Phase 11 — Rider analysis (R61–R64, #217)
 The rider's power across their rides on an Analysis tab, from what each ride keeps beside its
 summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
 - [x] Power curve (R62): the best power per duration among a period's rides against all rides or
@@ -400,8 +400,9 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   screenshots
 - [x] Power profile (R63): a radar of the best 5 s / 1 / 5 / 20 / 60 min of the period against
   the rider's best of all time (the "power spider" of #217), beside the power curve
-- [ ] Fitness, fatigue and form (CTL / ATL / TSB) from the rides' TSS; weekly bars of time,
-  distance, climbing, TSS, rides and time in power and heart-rate zones
+- [x] Fitness, fatigue and form (R64, CTL / ATL / TSB) from the rides' TSS, by local day;
+  weekly bars of time, distance, climbing, TSS, rides and time in power and heart-rate zones,
+  from power and heart-rate histograms each ride keeps (analysis version 2)
 - [ ] Progress: the best 1 / 5 / 20 min per month, the FTP over time, an FTP estimated from the
   rides offered, never applied
 - **Exit:** a season of real rides shows where the rider got stronger, and how fit and fresh

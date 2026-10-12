@@ -183,11 +183,11 @@ msgstr ""
 msgid "Added to your workouts."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:15
+#: app/scenes/analysis_tab.gd:16
 msgid "Against all time"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:15
+#: app/scenes/analysis_tab.gd:16
 msgid "Against the period before"
 msgstr ""
 
@@ -211,7 +211,7 @@ msgstr ""
 msgid "All settings"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:11 app/scenes/analysis_tab.gd:15
+#: app/scenes/analysis_tab.gd:12 app/scenes/analysis_tab.gd:16
 msgid "All time"
 msgstr ""
 
@@ -395,7 +395,7 @@ msgstr ""
 msgid "Climbed"
 msgstr ""
 
-#: app/scenes/history_screen.gd:364 app/ui/course_card.gd:111
+#: app/scenes/analysis_tab.gd:22 app/scenes/history_screen.gd:364 app/ui/course_card.gd:111
 msgid "Climbing"
 msgstr ""
 
@@ -463,6 +463,10 @@ msgstr ""
 msgid "D-Fly channel %d"
 msgstr ""
 
+#: app/scenes/analysis_tab.gd:203
+msgid "Daily TSS"
+msgstr ""
+
 #: app/ui/ui_theme.gd:271
 msgid "Dec"
 msgstr ""
@@ -527,7 +531,7 @@ msgstr ""
 msgid "Disconnect"
 msgstr ""
 
-#: app/scenes/history_screen.gd:359 core/torqa-app/src/hud.rs:99
+#: app/scenes/analysis_tab.gd:21 app/scenes/history_screen.gd:359 core/torqa-app/src/hud.rs:99
 msgid "Distance"
 msgstr ""
 
@@ -651,6 +655,14 @@ msgstr ""
 msgid "Fake trainer (200 W, for testing)"
 msgstr ""
 
+#: app/scenes/analysis_tab.gd:201 app/scenes/analysis_tab.gd:311
+msgid "Fatigue"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:204
+msgid "Fatigue %d"
+msgstr ""
+
 #: app/ui/ui_theme.gd:271
 msgid "Feb"
 msgstr ""
@@ -691,6 +703,18 @@ msgstr ""
 msgid "First Person"
 msgstr ""
 
+#: app/scenes/analysis_tab.gd:200 app/scenes/analysis_tab.gd:310
+msgid "Fitness"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:203
+msgid "Fitness %d"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:186
+msgid "Fitness, fatigue and form"
+msgstr ""
+
 #: app/ui/ride_bar.gd:30
 msgid "Fold the controls away"
 msgstr ""
@@ -703,6 +727,18 @@ msgstr ""
 msgid "For weaker computers: shorter view, simpler shadows and sky."
 msgstr ""
 
+#: app/scenes/analysis_tab.gd:202 app/scenes/analysis_tab.gd:312
+msgid "Form"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:205
+msgid "Form %+d"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:191
+msgid "Form is fitness minus fatigue: fresh above zero, tired below it."
+msgstr ""
+
 #: app/scenes/devices_tab.gd:178
 msgid "Found %d device(s)"
 msgstr ""
@@ -713,6 +749,10 @@ msgstr ""
 
 #: app/ui/workout_editor.gd:291 app/ui/workout_panel.gd:61
 msgid "Free ride"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:25
+msgid "Fresh"
 msgstr ""
 
 #: app/ui/ui_theme.gd:269
@@ -745,6 +785,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd:246
 msgid "Graphics"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:26
+msgid "Grey zone"
 msgstr ""
 
 #: app/ui/ui_theme.gd:39 core/torqa-routes/src/climbs.rs:57
@@ -793,6 +837,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd:257
 msgid "High"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:28
+msgid "High risk"
 msgstr ""
 
 #: app/ui/workout_options.gd:76
@@ -875,15 +923,15 @@ msgstr ""
 msgid "Larger (+)"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:11
+#: app/scenes/analysis_tab.gd:12
 msgid "Last 12 months"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:11
+#: app/scenes/analysis_tab.gd:12
 msgid "Last 6 weeks"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:11
+#: app/scenes/analysis_tab.gd:12
 msgid "Last 90 days"
 msgstr ""
 
@@ -1043,7 +1091,7 @@ msgstr ""
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:87
+#: app/scenes/analysis_tab.gd:116
 msgid "No rides with power yet: your best efforts show here once you ride with power."
 msgstr ""
 
@@ -1131,6 +1179,10 @@ msgstr ""
 msgid "Open the login again"
 msgstr ""
 
+#: app/ui/fitness_chart.gd:27
+msgid "Optimal"
+msgstr ""
+
 #: app/scenes/devices_tab.gd:18
 msgid "Overlay on / off"
 msgstr ""
@@ -1167,7 +1219,7 @@ msgstr ""
 msgid "Paused"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:81
+#: app/scenes/analysis_tab.gd:110
 msgid "Per kilogram"
 msgstr ""
 
@@ -1203,11 +1255,11 @@ msgstr ""
 msgid "Power 3 s"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:112 app/scenes/history_screen.gd:285
+#: app/scenes/analysis_tab.gd:143 app/scenes/history_screen.gd:285
 msgid "Power curve"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:139
+#: app/scenes/analysis_tab.gd:170
 msgid "Power profile"
 msgstr ""
 
@@ -1341,6 +1393,10 @@ msgstr ""
 
 #: app/scenes/profile_tab.gd:53
 msgid "Riders"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:24
+msgid "Rides"
 msgstr ""
 
 #: app/scenes/profile_tab.gd:217
@@ -1503,6 +1559,10 @@ msgstr ""
 msgid "TSS"
 msgstr ""
 
+#: app/ui/fitness_chart.gd:206
+msgid "TSS %d"
+msgstr ""
+
 #: app/ui/ui_theme.gd:18
 msgid "Tempo"
 msgstr ""
@@ -1511,7 +1571,7 @@ msgstr ""
 msgid "Test"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:122
+#: app/scenes/analysis_tab.gd:153
 msgid "The best power you held for each length of effort, from a sprint to hours."
 msgstr ""
 
@@ -1523,7 +1583,7 @@ msgstr ""
 msgid "The only rider cannot be deleted"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:15
+#: app/scenes/analysis_tab.gd:16
 msgid "The period before"
 msgstr ""
 
@@ -1551,15 +1611,15 @@ msgstr ""
 msgid "Thu"
 msgstr ""
 
-#: app/scenes/history_screen.gd:357 core/torqa-app/src/hud.rs:101
+#: app/scenes/analysis_tab.gd:20 app/scenes/history_screen.gd:357 core/torqa-app/src/hud.rs:101
 msgid "Time"
 msgstr ""
 
-#: app/scenes/history_screen.gd:271
+#: app/scenes/analysis_tab.gd:26 app/scenes/history_screen.gd:271
 msgid "Time in heart-rate zones"
 msgstr ""
 
-#: app/scenes/history_screen.gd:270
+#: app/scenes/analysis_tab.gd:25 app/scenes/history_screen.gd:270
 msgid "Time in power zones"
 msgstr ""
 
@@ -1593,6 +1653,14 @@ msgstr ""
 
 #: app/scenes/profile_dialog.gd:101 app/ui/ride_options.gd:49
 msgid "Trainer difficulty"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:23
+msgid "Training stress"
+msgstr ""
+
+#: app/ui/fitness_chart.gd:24
+msgid "Transition"
 msgstr ""
 
 #: app/ui/ui_theme.gd:269
@@ -1715,6 +1783,14 @@ msgstr ""
 msgid "Wed"
 msgstr ""
 
+#: app/ui/weekly_bars.gd:131
+msgid "Week of %s"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:225
+msgid "Weekly"
+msgstr ""
+
 #: app/scenes/profile_dialog.gd:97 app/scenes/profile_tab.gd:275
 msgid "Weight"
 msgstr ""
@@ -1747,7 +1823,7 @@ msgstr ""
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:141
+#: app/scenes/analysis_tab.gd:172
 msgid "Your best of the period as a share of your best of all time."
 msgstr ""
 
@@ -1763,12 +1839,16 @@ msgstr ""
 msgid "Your courses"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:71
+#: app/scenes/analysis_tab.gd:100
 msgid "Your power"
 msgstr ""
 
 #: app/scenes/history_screen.gd:144
 msgid "Your rides"
+msgstr ""
+
+#: app/scenes/analysis_tab.gd:189
+msgid "Your training load from the rides' TSS: fitness over six weeks, fatigue over one."
 msgstr ""
 
 #: app/ui/workout_options.gd:73

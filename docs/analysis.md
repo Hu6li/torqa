@@ -38,6 +38,38 @@ long. With **All time** chosen, the shape fills the rim.
 The profile compares you with yourself only, not with other riders: it needs no age or sex and
 no reference tables.
 
+## Fitness, fatigue and form
+
+Under the power, the fitness chart shows how your training adds up over the days of the period
+— the performance management chart of TrainingPeaks and intervals.icu, computed in Torqa from
+your rides:
+
+![Fitness, fatigue and form over the last six weeks, read off at today](images/app/analysis-fitness.png)
+
+- **Fitness** (blue) is your training load averaged over about six weeks (42 days), **fatigue**
+  (purple) over about one week (7 days). Both count each ride's TSS on the day you rode it,
+  with the most recent days weighing most; the grey bars are each day's TSS.
+- **Form** (yellow, below) is yesterday's fitness minus fatigue: above zero you are fresh, below
+  it tired. Its bands are named as intervals.icu names them: *Transition* (over +25: rested,
+  losing fitness), *Fresh* (+5 to +25: ready to race), *Grey zone* (−10 to +5), *Optimal*
+  (−30 to −10: training that builds fitness) and *High risk* (under −30).
+- Under the chart: your fitness, fatigue and form today.
+- Hover over the chart to read a day off.
+
+Everything starts at zero before your first ride in Torqa, so fitness says little in the first
+weeks. A shorter period still counts the rides before it. Rides without power have no TSS and
+count as rest.
+
+## Weekly
+
+The weekly bars show each week (Monday to Sunday) of the period: riding **time**, **distance**,
+**climbing**, **training stress** (TSS) or the number of **rides**, or the **time in power
+zones** or **heart-rate zones**, stacked in the zones' colours. The zones are the rider's zones
+today, as on a ride's summary, so they follow when you change your FTP or zones. Hover over a
+bar for the week's figures.
+
+![The weekly time in power zones](images/app/analysis-weekly.png)
+
 ## Records
 
 A ride holding your best power over 5 s, 1, 5, 20 or 60 minutes gets a ★ for it on its summary
@@ -45,11 +77,14 @@ and in the history, e.g. *★ Best 5 min: 312 W*. Another ride beating it later 
 
 ## How it is computed
 
-Each ride keeps its best power over 36 durations, from 1 s to 8 h, in its summary file beside
-the FIT file, so the tab reads no FIT files and the data syncs with the rides
+Each ride keeps its best power over 36 durations, from 1 s to 8 h, and the seconds it spent at
+each watt and each heartbeat per minute, in its summary file beside the FIT file, so the tab
+reads no FIT files and the data syncs with the rides
 ([ADR 0014](adr/0014-ride-analysis-data.md)). Rides saved before this existed, and FIT files
 copied in by hand, are read once the next time the history or this tab opens.
 
-Seconds without power count as 0 W. In FIT files from other apps or devices, power is taken
+Days and weeks follow your computer's time zone as it is today; around a change to or from
+summer time, a ride close to midnight may count for the day next to it. Seconds without power
+count as 0 W. In FIT files from other apps or devices, power is taken
 once per second; a gap of more than 10 s between records counts as a pause, and no effort spans
 it.

@@ -1,5 +1,6 @@
 //! What gets recorded during a ride.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::units::{BeatsPerMinute, GradePercent, Joules, Meters, MetersPerSecond, Rpm, Watts};
@@ -136,9 +137,31 @@ impl PowerCurve {
     }
 }
 
+/// Seconds a ride spent at each whole value of power or heart rate (R64), so its time in zones
+/// can be counted again for zones changed later.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Histogram(pub BTreeMap<u32, f64>);
+
+impl Histogram {
+    /// The time in each of `N` zones, `zone` giving the zone (from 1) of a value.
+    #[must_use]
+    pub fn zones<const N: usize>(&self, zone: impl Fn(f64) -> u8) -> [Duration; N] {
+        let mut zones = [Duration::ZERO; N];
+        for (&value, &seconds) in &self.0 {
+            let index = usize::from(zone(f64::from(value)).max(1) - 1).min(N - 1);
+            zones[index] += Duration::from_secs_f64(seconds.max(0.0));
+        }
+        zones
+    }
+}
+
 /// What the analysis across rides keeps of each ride (R62), derived from its samples.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RideAnalysis {
     /// The ride's best power over each duration.
     pub power_curve: PowerCurve,
+    /// Seconds at each whole watt (R64).
+    pub power_histogram: Histogram,
+    /// Seconds at each whole beat per minute (R64).
+    pub heart_rate_histogram: Histogram,
 }

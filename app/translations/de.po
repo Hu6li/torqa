@@ -1388,3 +1388,63 @@ msgstr "Leistungsprofil"
 
 msgid "Your best of the period as a share of your best of all time."
 msgstr "Deine Bestleistungen im Zeitraum als Anteil deiner Bestleistungen aller Zeiten."
+
+msgid "Daily TSS"
+msgstr "TSS pro Tag"
+
+msgid "Fatigue"
+msgstr "Ermüdung"
+
+msgid "Fatigue %d"
+msgstr "Ermüdung %d"
+
+msgid "Fitness"
+msgstr "Fitness"
+
+msgid "Fitness %d"
+msgstr "Fitness %d"
+
+msgid "Fitness, fatigue and form"
+msgstr "Fitness, Ermüdung und Form"
+
+msgid "Form"
+msgstr "Form"
+
+msgid "Form %+d"
+msgstr "Form %+d"
+
+msgid "Form is fitness minus fatigue: fresh above zero, tired below it."
+msgstr "Form ist Fitness minus Ermüdung: über null frisch, darunter müde."
+
+msgid "Fresh"
+msgstr "Frisch"
+
+msgid "Grey zone"
+msgstr "Graubereich"
+
+msgid "High risk"
+msgstr "Hohes Risiko"
+
+msgid "Optimal"
+msgstr "Optimal"
+
+msgid "Rides"
+msgstr "Fahrten"
+
+msgid "TSS %d"
+msgstr "TSS %d"
+
+msgid "Training stress"
+msgstr "Trainingsbelastung"
+
+msgid "Transition"
+msgstr "Übergang"
+
+msgid "Week of %s"
+msgstr "Woche vom %s"
+
+msgid "Weekly"
+msgstr "Pro Woche"
+
+msgid "Your training load from the rides' TSS: fitness over six weeks, fatigue over one."
+msgstr "Deine Trainingsbelastung aus dem TSS der Fahrten: Fitness über sechs Wochen, Ermüdung über eine."

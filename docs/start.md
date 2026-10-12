@@ -19,8 +19,8 @@ Torqa opens on the start page with six tabs:
   a course in 3D ([workouts.md](workouts.md)).
 - **History** — your rides ([history.md](history.md)).
 - **Analysis** — your power across your rides: the best you held for every duration, in a
-  period against all time or the period before, and your power profile
-  ([analysis.md](analysis.md)).
+  period against all time or the period before, your power profile, fitness, fatigue and form,
+  and your weeks ([analysis.md](analysis.md)).
 - **Profile** — who rides, their figures, editing them and their HUD, adding and deleting riders
   ([riders.md](riders.md), [hud.md](hud.md)).
 - **Devices & Settings** — trainer, heart-rate strap and Di2 shifter, the ones used last
