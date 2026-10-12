@@ -5,8 +5,8 @@
 use reqwest::StatusCode;
 
 use crate::{
-    Account, Activity, ActivityUploader, BoxFuture, Credentials, Field, UploadError, Uploaded,
-    cannot_reach, client, describe, multipart, query,
+    Account, Activity, ActivityUploader, BoxFuture, Browser, Credentials, Field, UploadError,
+    Uploaded, cannot_reach, client, describe, multipart, query,
 };
 
 const NAME: &str = "intervals.icu";
@@ -79,9 +79,12 @@ impl IntervalsIcu {
 
     async fn send(&self, key: &str, activity: &Activity) -> Result<Uploaded, UploadError> {
         let (content_type, body) = multipart(
-            "file",
-            &format!("{}.fit", activity.external_id),
-            &activity.fit,
+            &[],
+            (
+                "file",
+                &format!("{}.fit", activity.external_id),
+                &activity.fit,
+            ),
         );
         let answer = client()?
             .post(format!(
@@ -166,7 +169,11 @@ impl ActivityUploader for IntervalsIcu {
         "https://intervals.icu/settings"
     }
 
-    fn connect(&self, entered: Credentials) -> BoxFuture<'_, Result<Account, UploadError>> {
+    fn connect(
+        &self,
+        entered: Credentials,
+        _browser: Browser,
+    ) -> BoxFuture<'_, Result<Account, UploadError>> {
         Box::pin(async move {
             let key = api_key(&entered)?;
             let label = self.athlete(&key).await?;
@@ -199,6 +206,15 @@ mod tests {
         }
     }
 
+    /// intervals.icu needs no login in the browser.
+    fn no_browser() -> Browser {
+        Browser {
+            open: Box::new(|url| panic!("opened {url}")),
+            connected_page: String::new(),
+            failed_page: String::new(),
+        }
+    }
+
     fn with_key(key: &str) -> Credentials {
         Credentials::from([(API_KEY.to_owned(), key.to_owned())])
     }
@@ -216,7 +232,7 @@ mod tests {
         .await;
 
         let account = IntervalsIcu::with_site(&site)
-            .connect(with_key(" secret "))
+            .connect(with_key(" secret "), no_browser())
             .await
             .unwrap();
 
@@ -232,7 +248,7 @@ mod tests {
         let (site, _served) = serve(vec![("401 Unauthorized", "{}".to_owned())]).await;
 
         let error = IntervalsIcu::with_site(&site)
-            .connect(with_key("secret"))
+            .connect(with_key("secret"), no_browser())
             .await
             .unwrap_err();
 
@@ -242,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn no_key_asks_for_one_without_asking_intervals_icu() {
         let error = IntervalsIcu::with_site("http://127.0.0.1:9")
-            .connect(with_key("  "))
+            .connect(with_key("  "), no_browser())
             .await
             .unwrap_err();
 

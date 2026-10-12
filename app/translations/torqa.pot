@@ -203,7 +203,7 @@ msgstr ""
 msgid "Applies from the next ride."
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Apr"
 msgstr ""
 
@@ -215,7 +215,7 @@ msgstr ""
 msgid "Assign buttons to D-Fly channels in E-TUBE, then choose here what each press does"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Aug"
 msgstr ""
 
@@ -279,7 +279,7 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: app/scenes/account_dialog.gd:113
+#: app/scenes/account_dialog.gd:128
 msgid "Cannot connect."
 msgstr ""
 
@@ -311,7 +311,7 @@ msgstr ""
 msgid "Chase"
 msgstr ""
 
-#: app/scenes/account_dialog.gd:110
+#: app/scenes/account_dialog.gd:122
 msgid "Checking…"
 msgstr ""
 
@@ -341,6 +341,14 @@ msgstr ""
 
 #: app/scenes/minimap.gd:25
 msgid "Click: jump there · corner: close view / whole route"
+msgstr ""
+
+#: core/torqa-upload/src/strava.rs:38
+msgid "Client ID"
+msgstr ""
+
+#: core/torqa-upload/src/strava.rs:43
+msgid "Client Secret"
 msgstr ""
 
 #: app/ui/ui_theme.gd:34 core/torqa-routes/src/climbs.rs:52
@@ -379,15 +387,15 @@ msgstr ""
 msgid "Coggan's power zones and the usual heart-rate zones"
 msgstr ""
 
-#: app/scenes/account_dialog.gd:68
+#: app/scenes/account_dialog.gd:77
 msgid "Connect"
 msgstr ""
 
-#: app/scenes/account_dialog.gd:35
+#: app/scenes/account_dialog.gd:40
 msgid "Connect %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:505
+#: app/scenes/history_screen.gd:504
 msgid "Connect %s and upload…"
 msgstr ""
 
@@ -427,7 +435,7 @@ msgstr ""
 msgid "D-Fly channel %d"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Dec"
 msgstr ""
 
@@ -615,7 +623,7 @@ msgstr ""
 msgid "Fake trainer (200 W, for testing)"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Feb"
 msgstr ""
 
@@ -627,7 +635,7 @@ msgstr ""
 msgid "Fewer"
 msgstr ""
 
-#: app/scenes/account_dialog.gd:106
+#: app/scenes/account_dialog.gd:118
 msgid "Fill in every field."
 msgstr ""
 
@@ -679,7 +687,7 @@ msgstr ""
 msgid "Free ride"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Fri"
 msgstr ""
 
@@ -815,15 +823,15 @@ msgstr ""
 msgid "Its file is deleted; your rides on it are kept."
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Jan"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Jul"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Jun"
 msgstr ""
 
@@ -855,6 +863,10 @@ msgstr ""
 msgid "Loading the course"
 msgstr ""
 
+#: app/scenes/account_dialog.gd:138
+msgid "Log in to %s in your browser and let Torqa upload your rides. Then come back here."
+msgstr ""
+
 #: app/scenes/devices_tab.gd:257
 msgid "Low"
 msgstr ""
@@ -867,7 +879,7 @@ msgstr ""
 msgid "Male rider"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Mar"
 msgstr ""
 
@@ -883,7 +895,7 @@ msgstr ""
 msgid "Maximum"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "May"
 msgstr ""
 
@@ -911,7 +923,7 @@ msgstr ""
 msgid "Moderate"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Mon"
 msgstr ""
 
@@ -945,6 +957,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd:127
 msgid "Name the course"
+msgstr ""
+
+#: core/torqa-upload/src/strava.rs:48
+msgid "Needs a Strava subscription. Create an API application on Strava with Authorization Callback Domain localhost, then copy its Client ID and Client Secret here."
 msgstr ""
 
 #: app/ui/ui_theme.gd:22
@@ -1031,11 +1047,11 @@ msgstr ""
 msgid "Nothing recorded."
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Nov"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Oct"
 msgstr ""
 
@@ -1065,6 +1081,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd:104
 msgid "Open a GPX route, video or Torqa course"
+msgstr ""
+
+#: app/scenes/account_dialog.gd:99
+msgid "Open the login again"
 msgstr ""
 
 #: app/scenes/devices_tab.gd:18
@@ -1279,7 +1299,7 @@ msgstr ""
 msgid "Routes, videos and courses"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Sat"
 msgstr ""
 
@@ -1307,7 +1327,7 @@ msgstr ""
 msgid "Scanning…"
 msgstr ""
 
-#: app/scenes/history_screen.gd:677
+#: app/scenes/history_screen.gd:679
 msgid "Sep"
 msgstr ""
 
@@ -1403,11 +1423,15 @@ msgstr ""
 msgid "Step %d of %d  ·  %s left"
 msgstr ""
 
+#: core/torqa-upload/src/strava.rs:50
+msgid "Strava has switched off your API application: the account that owns it needs a Strava subscription. Subscribe, reactivate the application in Strava's API settings, then upload again."
+msgstr ""
+
 #: app/ui/workout_options.gd:184 app/ui/workout_options.gd:45 app/ui/workout_panel.gd:46
 msgid "Structured workout"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Sun"
 msgstr ""
 
@@ -1459,7 +1483,7 @@ msgstr ""
 msgid "Threshold"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Thu"
 msgstr ""
 
@@ -1487,8 +1511,16 @@ msgstr ""
 msgid "To go"
 msgstr ""
 
+#: app/scenes/account_dialog.gd:125
+msgid "Torqa could not connect. Go back to Torqa to try again."
+msgstr ""
+
 #: app/scenes/courses_tab.gd:121
 msgid "Torqa courses"
+msgstr ""
+
+#: app/scenes/account_dialog.gd:124
+msgid "Torqa is connected. You can close this page."
 msgstr ""
 
 #: app/scenes/devices_tab.gd:114
@@ -1499,7 +1531,7 @@ msgstr ""
 msgid "Trainer difficulty"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Tue"
 msgstr ""
 
@@ -1523,15 +1555,15 @@ msgstr ""
 msgid "Upload automatically"
 msgstr ""
 
-#: app/scenes/history_screen.gd:507
+#: app/scenes/history_screen.gd:506
 msgid "Upload to %s"
 msgstr ""
 
-#: app/scenes/history_screen.gd:557
+#: app/scenes/history_screen.gd:556
 msgid "Uploaded to %s."
 msgstr ""
 
-#: app/scenes/history_screen.gd:502 app/scenes/history_screen.gd:540
+#: app/scenes/history_screen.gd:501 app/scenes/history_screen.gd:539
 msgid "Uploading to %s…"
 msgstr ""
 
@@ -1579,7 +1611,7 @@ msgstr ""
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
-#: app/scenes/history_screen.gd:500
+#: app/scenes/history_screen.gd:499
 msgid "View on %s"
 msgstr ""
 
@@ -1615,7 +1647,7 @@ msgstr ""
 msgid "Weather"
 msgstr ""
 
-#: app/scenes/history_screen.gd:675
+#: app/scenes/history_screen.gd:677
 msgid "Wed"
 msgstr ""
 

@@ -161,6 +161,10 @@ impl TorqaApp {
     #[signal]
     fn account_failed(rider: GString, platform: GString, message: GString);
 
+    /// A page to show in the rider's browser, e.g. a platform's login while connecting.
+    #[signal]
+    fn open_url(url: GString);
+
     /// The ride in `path` is on `platform`, its page at `url` (R29).
     #[signal]
     fn upload_finished(path: GString, platform: GString, url: GString);
@@ -671,7 +675,9 @@ impl TorqaApp {
     }
 
     /// Connects rider `rider`'s account on `platform` with the `entered` fields (by key), in
-    /// the background: emits `account_connected` or `account_failed`.
+    /// the background: emits `account_connected` or `account_failed`. Platforms the rider logs
+    /// in to emit `open_url` with their login first; the page the browser then comes back to
+    /// says `connected_text` or `failed_text`.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn connect_account(
@@ -679,12 +685,28 @@ impl TorqaApp {
         rider: GString,
         platform: GString,
         entered: VarDictionary,
+        connected_text: GString,
+        failed_text: GString,
     ) -> bool {
         let entered = entered
             .iter_shared()
             .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect();
-        self.command(|app| app.connect_account(&rider.to_string(), &platform.to_string(), entered))
+        let pages = torqa_app::uploads::LoginPages {
+            connected: connected_text.to_string(),
+            failed: failed_text.to_string(),
+        };
+        self.command(|app| {
+            app.connect_account(&rider.to_string(), &platform.to_string(), entered, pages)
+        })
+    }
+
+    /// Gives up on the account being connected, e.g. a login no longer to wait for.
+    #[func]
+    fn cancel_connect(&mut self) {
+        if let Some(app) = self.app.as_mut() {
+            app.cancel_connect();
+        }
     }
 
     /// Forgets rider `rider`'s account on `platform`.
@@ -1996,6 +2018,9 @@ impl TorqaApp {
                     &GString::from(message.as_str()),
                 );
             }
+            AppEvent::OpenUrl(url) => {
+                self.signals().open_url().emit(&GString::from(url.as_str()));
+            }
             AppEvent::UploadFinished { fit, platform, url } => {
                 let path = fit.display().to_string();
                 self.signals().upload_finished().emit(
@@ -2078,6 +2103,7 @@ impl TorqaApp {
             }
             event @ (AppEvent::AccountConnected { .. }
             | AppEvent::AccountFailed { .. }
+            | AppEvent::OpenUrl(_)
             | AppEvent::UploadFinished { .. }
             | AppEvent::UploadFailed { .. }) => self.emit_upload(event),
             AppEvent::CourseAdded(path) => {

@@ -24,7 +24,8 @@ core/                      Rust workspace (tokio + tracing)
   torqa-workouts/          workout files (ZWO, ERG/MRC, FIT), built-in workouts, the library
   torqa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist and Tacx RLV (ADR 0010)
   torqa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
-  torqa-upload/            uploads to training platforms (intervals.icu) behind ActivityUploader
+  torqa-upload/            uploads to training platforms (intervals.icu, Strava) behind
+                           ActivityUploader, the OAuth login in the browser
   torqa-app/               application layer: commands + update() per frame for front ends
   torqa-gd/                gdext bindings (TorqaApp node)
   torqa-cli/               headless: scan devices, ride with fake trainer, export FIT
@@ -42,8 +43,8 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
 
 - **Plugin traits**: `RouteImporter`, `TrainerDriver`, `SensorDriver`, `ShiftInput`,
   `ActivityUploader`, `WorkoutParser`. `ShiftInput` (keyboard, Shimano Di2),
-  `WorkoutParser` (ZWO, ERG/MRC, FIT) and `ActivityUploader` (intervals.icu; Strava planned,
-  so it came with its first platform, ADR 0013) exist, as does `ElevationModel`; the others
+  `WorkoutParser` (ZWO, ERG/MRC, FIT) and `ActivityUploader` (intervals.icu, Strava;
+  ADR 0013) exist, as does `ElevationModel`; the others
   are not introduced yet: today there is one implementation of each (or none), behind concrete
   types, and each trait comes with its second implementation (e.g. ANT+ FE-C, a second
   importer).
@@ -194,7 +195,9 @@ Built in rideable steps:
     ride went kept with it
   - [x] Upload rides automatically, per account (R60): on the summary's Done; uploads take
     turns, each with the account's newest credentials, and a ride goes to a platform once
-  - [ ] Strava, through each rider's own Strava API application (OAuth in the browser)
+  - [x] Strava, through each rider's own Strava API application: its Client ID and Secret,
+    then the login in the browser back to a loopback address; tokens renewed in the upload's
+    turn, access revoked on disconnecting or deleting the rider
   - [ ] ANT+ FE-C
 - [x] Windows and Linux builds from CI (Linux x86_64 and arm64 on Ubuntu 22.04, ADR 0012)
 - [x] Logo (orca on a bike, `docs/brand/`), app icon and boot splash

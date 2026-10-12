@@ -470,14 +470,13 @@ func _export(to: String) -> void:
 	var path: String = ride["path"]
 	_exporting = true
 	if _torqa.export_ride(path, to):
-		_export_status.text = tr("Saved as %s") % to
-		_export_status.show()
+		_show_status(tr("Saved as %s") % to)
 	_exporting = false
 
 
 func _on_failed(message: String) -> void:
 	if _exporting or _starting_upload:
-		_show_status(message)
+		_show_status(message, UiTheme.DANGER)
 
 
 ## Lists the platforms: the ride's page where it went, uploading where the rider has an
@@ -564,10 +563,12 @@ func _on_upload_failed(path: String, platform: String, message: String, reconnec
 	if _shown_path() != path:
 		return
 	if not reconnect:
-		_show_status(message)
+		# The platform's words; a few, e.g. Strava wanting a subscription, are translated.
+		_show_status(tr(message), UiTheme.DANGER)
 		return
 	_show_status(
-		tr("%s no longer accepts the account: connect it again.") % _platform_name(platform)
+		tr("%s no longer accepts the account: connect it again.") % _platform_name(platform),
+		UiTheme.DANGER
 	)
 	# The platform no longer lets Torqa in: connect again, then upload. Not for automatic
 	# uploads, which may end while the rider is elsewhere.
@@ -576,7 +577,7 @@ func _on_upload_failed(path: String, platform: String, message: String, reconnec
 	for account: Dictionary in _accounts:
 		if account["platform"] == platform:
 			_upload_after_connect = platform
-			_account_dialog.open(_rider(), account)
+			_account_dialog.open(_rider(), account, message)
 
 
 func _platform_name(platform: String) -> String:
@@ -612,8 +613,9 @@ static func _upload_key(path: String, platform: String) -> String:
 	return path + "\n" + platform
 
 
-func _show_status(text: String) -> void:
+func _show_status(text: String, color: Color = UiTheme.MUTED) -> void:
 	_export_status.text = text
+	_export_status.add_theme_color_override("font_color", color)
 	_export_status.show()
 
 

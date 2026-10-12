@@ -2,6 +2,25 @@
 
 Things to review or decide together. Newest first; remove entries once settled.
 
+## 2026-10-12 — Uploads (R29, R60)
+
+### Needs your accounts
+
+- **intervals.icu** (#214): connect with your API key (Profile → your card → Accounts) and
+  upload a ride from the history. It should show as a virtual ride under its name, and
+  **View on intervals.icu** should open it.
+- **Strava**: create your own API application ([uploads.md](uploads.md#connecting-strava)),
+  connect, and upload a ride. Check that the browser comes back to "Torqa is connected", that
+  the ride shows as a virtual ride on a trainer under its name, and that **Disconnect**
+  removes Torqa from Strava's *My Apps*. The tests run against a stand-in for Strava only.
+
+### Decisions I took (say if you want them otherwise)
+
+- **Strava rides are marked as on a trainer** (`trainer=1`), which Strava shows as indoor;
+  the FIT file decides between a virtual ride (courses) and a ride (workouts).
+- **Reconnecting asks for the Client ID and Secret again**, rather than keeping them filled
+  in from the account it replaces.
+
 ## 2026-10-06 — Phases 7 and 10: workouts, overlay, extras
 
 ### Needs your hardware
