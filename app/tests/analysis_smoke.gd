@@ -161,6 +161,12 @@ func _analysis_tab() -> void:
 		),
 		"one power card: its two settings in a row over the curve and the profile"
 	)
+	_check(per_kg.get_index() < compare.get_index(), "per kilogram first, then the comparison")
+	# A ticked box under the pointer keeps its place and its text: no state adds margins.
+	var theme: Theme = UiTheme.build()
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var box: StyleBox = theme.get_stylebox(state, "CheckBox")
+		_check(box.get_minimum_size() == Vector2.ZERO, "no margins on a %s check box" % state)
 	_check(empty.visible != content.visible, "the curve or why there is none")
 	var efforts: Array = [
 		{"duration_s": 5.0, "power": 812.0, "watts_per_kg": 11.6, "start_unix_s": 0},
