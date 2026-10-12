@@ -65,10 +65,10 @@ static func build() -> Theme:
 		theme.set_stylebox("pressed", type, _button_box(Color(ACCENT, 0.85)))
 		theme.set_stylebox("disabled", type, _button_box(Color(1, 1, 1, 0.04)))
 		theme.set_stylebox("focus", type, StyleBoxEmpty.new())
-	theme.set_stylebox("normal", "CheckBox", StyleBoxEmpty.new())
-	theme.set_stylebox("hover", "CheckBox", StyleBoxEmpty.new())
-	theme.set_stylebox("pressed", "CheckBox", StyleBoxEmpty.new())
-	theme.set_stylebox("focus", "CheckBox", StyleBoxEmpty.new())
+	# Every state: one left to Godot's default has margins, so a ticked box shifted and cut its
+	# text off when hovered.
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		theme.set_stylebox(state, "CheckBox", StyleBoxEmpty.new())
 	# The default boxes are dark grey, invisible on dark panels.
 	theme.set_icon("unchecked", "CheckBox", _check_icon(false))
 	theme.set_icon("checked", "CheckBox", _check_icon(true))

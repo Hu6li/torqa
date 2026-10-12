@@ -1219,7 +1219,7 @@ msgstr ""
 msgid "Paused"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:148
+#: app/scenes/analysis_tab.gd:143
 msgid "Per kilogram"
 msgstr ""
 

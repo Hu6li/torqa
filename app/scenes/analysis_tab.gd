@@ -139,15 +139,15 @@ func _power_card() -> PanelContainer:
 	var settings: HBoxContainer = HBoxContainer.new()
 	settings.alignment = BoxContainer.ALIGNMENT_END
 	settings.add_theme_constant_override("separation", 16)
+	# Switches the curve, the profile and the progress.
+	_per_kg.text = tr("Per kilogram")
+	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
+	settings.add_child(_per_kg)
 	for comparison: Array in COMPARISONS:
 		var choice: String = comparison[0]
 		_compare.add_item(tr(choice))
 	_compare.item_selected.connect(func(_index: int) -> void: refresh())
 	settings.add_child(_compare)
-	# Switches the curve, the profile and the progress.
-	_per_kg.text = tr("Per kilogram")
-	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
-	settings.add_child(_per_kg)
 	rows.add_child(settings)
 	var charts: HBoxContainer = HBoxContainer.new()
 	charts.add_theme_constant_override("separation", 32)
