@@ -4,7 +4,7 @@ The **Analysis** tab on the start page looks at your power across all your rides
 [history](history.md) looks at one ride at a time. It shows the active rider's rides; switch
 riders on the Profile tab. At the top, choose the **period** (the last 6 weeks, 90 days or 12
 months, or all time); it applies to every section. **Per kilogram**, at the top of the power
-profile, shows power in W/kg in the power curve, the profile and the progress.
+card, shows power in W/kg in the power curve, the profile and the progress.
 
 ![The Analysis tab: the power curve of the last six weeks over the six weeks before, and the power profile with a dent at 20 minutes](images/app/analysis.png)
 
@@ -16,10 +16,10 @@ axis is logarithmic, so short efforts get as much room as long ones. Hover over 
 read off each curve at that duration, with the date of the ride it comes from.
 
 - The curve in blue is the best of the rides in the period.
-- **Compared with** (beside the title): in grey, the best of all your rides, or of the period
+- **Compared with** (at the top of the power card): in grey, the best of all your rides, or of the period
   just before (the 6 weeks before the last 6). Where the blue curve reaches the grey one, you are as strong as
   you have ever been; where it stays under it, there is form to win back.
-- **Per kilogram** (beside the power profile): the curve in W/kg instead of watts, each ride
+- **Per kilogram** (at the top of the power card): the curve in W/kg instead of watts, each ride
   with the weight you had then.
   Rides saved before Torqa kept the weight use your weight today.
 - Under the chart: your best 5 s, 1 min, 5 min, 20 min and 60 min of the period, and of the

@@ -126,29 +126,43 @@ func _init() -> void:
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 16)
 	page.add_child(_content)
-	var power: HBoxContainer = HBoxContainer.new()
-	power.add_theme_constant_override("separation", 16)
-	power.add_child(_curve_card())
-	power.add_child(_profile_card())
-	_content.add_child(power)
+	_content.add_child(_power_card())
 	_content.add_child(_fitness_card())
 	_content.add_child(_weekly_card())
 
 
-## The power curve (R62) with what it is compared with, its legend and the key durations.
-func _curve_card() -> PanelContainer:
+## Power in one card (R62, R63): a row with what the curve is compared with and whether power is
+## per kilogram, then the curve and the profile side by side.
+func _power_card() -> PanelContainer:
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 12)
-	var title: HBoxContainer = HBoxContainer.new()
-	var caption: Label = UiTheme.caption(tr("Power curve"))
-	caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_child(caption)
+	var settings: HBoxContainer = HBoxContainer.new()
+	settings.alignment = BoxContainer.ALIGNMENT_END
+	settings.add_theme_constant_override("separation", 16)
 	for comparison: Array in COMPARISONS:
 		var choice: String = comparison[0]
 		_compare.add_item(tr(choice))
 	_compare.item_selected.connect(func(_index: int) -> void: refresh())
-	title.add_child(_compare)
-	rows.add_child(title)
+	settings.add_child(_compare)
+	# Switches the curve, the profile and the progress.
+	_per_kg.text = tr("Per kilogram")
+	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
+	settings.add_child(_per_kg)
+	rows.add_child(settings)
+	var charts: HBoxContainer = HBoxContainer.new()
+	charts.add_theme_constant_override("separation", 32)
+	charts.add_child(_curve_column())
+	charts.add_child(_profile_column())
+	rows.add_child(charts)
+	return _card(rows)
+
+
+## The power curve (R62) with its legend and the key durations.
+func _curve_column() -> VBoxContainer:
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 12)
+	rows.add_child(UiTheme.caption(tr("Power curve")))
 	var about: Label = Label.new()
 	about.text = tr("The best power you held for each length of effort, from a sprint to hours.")
 	about.add_theme_color_override("font_color", UiTheme.MUTED)
@@ -160,22 +174,14 @@ func _curve_card() -> PanelContainer:
 	_figures.columns = KEY_DURATIONS.size()
 	_figures.add_theme_constant_override("h_separation", 40)
 	rows.add_child(_figures)
-	return _card(rows, true)
+	return rows
 
 
 ## The power profile (R63): the period's best against the rider's best of all.
-func _profile_card() -> PanelContainer:
+func _profile_column() -> VBoxContainer:
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 12)
-	var title: HBoxContainer = HBoxContainer.new()
-	var caption: Label = UiTheme.caption(tr("Power profile"))
-	caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_child(caption)
-	# Switches every chart of power, the curve and the progress too.
-	_per_kg.text = tr("Per kilogram")
-	_per_kg.toggled.connect(func(_on: bool) -> void: refresh())
-	title.add_child(_per_kg)
-	rows.add_child(title)
+	rows.add_child(UiTheme.caption(tr("Power profile")))
 	var about: Label = Label.new()
 	about.text = tr("Your best of the period as a share of your best of all time.")
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -184,7 +190,7 @@ func _profile_card() -> PanelContainer:
 	_radar.custom_minimum_size = Vector2(380, 340)
 	_radar.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rows.add_child(_radar)
-	return _card(rows, false)
+	return rows
 
 
 ## Fitness, fatigue and form (R64) over the period's days, and where they stand today.
@@ -222,7 +228,7 @@ func _fitness_card() -> PanelContainer:
 	_today.columns = 3
 	_today.add_theme_constant_override("h_separation", 40)
 	rows.add_child(_today)
-	return _card(rows, true)
+	return _card(rows)
 
 
 ## The period's weeks (R64): time, distance, climbing, TSS, rides or time in zones.
@@ -242,13 +248,12 @@ func _weekly_card() -> PanelContainer:
 	rows.add_child(_weekly)
 	_zone_legend.add_theme_constant_override("h_separation", 18)
 	rows.add_child(_zone_legend)
-	return _card(rows, true)
+	return _card(rows)
 
 
-static func _card(content: Control, expand: bool) -> PanelContainer:
+static func _card(content: Control) -> PanelContainer:
 	var card: PanelContainer = PanelContainer.new()
-	if expand:
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.add_child(content)
 	return card
 
