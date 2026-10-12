@@ -85,7 +85,10 @@ func _analysis_tab() -> void:
 	tabs.current_tab = StartPage.Tab.ANALYSIS
 	var analysis: AnalysisTab = start.get("_analysis")
 	var empty: Label = analysis.get("_empty")
-	var content: Control = analysis.get("_scroll")
+	var content: Control = analysis.get("_content")
+	var scroll: ScrollContainer = analysis.get("_scroll")
+	var period: Control = analysis.get("_period")
+	_check(scroll.is_ancestor_of(period), "the heading and its choices scroll with the sections")
 	_check(empty.visible != content.visible, "the curve or why there is none")
 	var efforts: Array = [
 		{"duration_s": 5.0, "power": 812.0, "watts_per_kg": 11.6, "start_unix_s": 0},
