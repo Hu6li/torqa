@@ -166,6 +166,7 @@ func _ready() -> void:
 	var detail_scroll: ScrollContainer = ScrollContainer.new()
 	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	detail_scroll.add_theme_constant_override("scrollbar_h_separation", 12)
 	_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_detail.add_theme_constant_override("separation", 16)
 	detail_scroll.add_child(_detail)
