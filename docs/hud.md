@@ -22,8 +22,8 @@ The editor shows the **HUD** itself with example values, and the figures still *
 |---|---|
 | Power, Power 3 s, Power 10 s | Instant power and its average over the last 3 or 10 seconds |
 | Avg power, Normalized power | Over the ride so far ([history.md](history.md) explains NP) |
-| W/kg, Power zone | Power per kilogram body weight, zone from your FTP |
-| Heart rate, Heart-rate zone | From a heart-rate strap, zone from your maximum heart rate |
+| W/kg, Power % FTP, Power zone | Power per kilogram body weight, in percent of your FTP, and its zone |
+| Heart rate, Heart rate % max, Heart-rate zone | From a heart-rate strap, in percent of your maximum heart rate, and its zone |
 | Cadence | Pedal revolutions per minute |
 | Gear | The virtual gear (1–24) on a single cog ([riding.md](riding.md#virtual-gears)) |
 | Speed, Avg speed | Virtual speed |
@@ -32,6 +32,9 @@ The editor shows the **HUD** itself with example values, and the figures still *
 | Elevation, Climbed, Ascent to go | Current altitude, climbing so far, climbing still ahead on the route |
 | Grade, Next 500 m | Gradient here, and on average over the next 500 m |
 | Intensity, TSS, Work | Intensity factor, training stress score and kilojoules so far |
+
+The percentages are on the scale your zones are set on (**Rider settings → Zones**, see
+[riders.md](riders.md)): at 92 % FTP you are just past the top of the standard zone 3, 90 %.
 
 Each rider has their own layout, stored in `profiles/<rider>/hud.toml`. Units follow the rider's
 profile (metric or imperial).
