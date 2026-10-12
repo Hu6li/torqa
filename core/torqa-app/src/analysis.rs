@@ -1,7 +1,7 @@
 //! The rider's power across rides (R62): the best power held over every duration among the
 //! rides of a period, compared with all rides or the period before, and the records it sets;
 //! the power profile of a period against the rider's best (R63); fitness, fatigue and form and
-//! the weekly totals (R64).
+//! the weekly totals (R64); the best efforts and FTP week by week or month by month (R65).
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -147,6 +147,122 @@ pub fn day_loads(
         .filter(|(_, day)| *day >= first)
         .map(|(load, day)| DayLoad { day, load })
         .collect()
+}
+
+/// The durations whose best the progress follows (R65): anaerobic capacity, maximal aerobic
+/// power and threshold.
+pub const PROGRESS_DURATIONS: [Duration; 3] = [
+    Duration::from_mins(1),
+    Duration::from_mins(5),
+    Duration::from_mins(20),
+];
+
+/// The best efforts the FTP estimate looks at (R65): recent enough to be the rider's form now,
+/// long enough to hold some maximal ones.
+pub const FTP_ESTIMATE_PERIOD: Duration = Duration::from_hours(90 * 24);
+
+/// Periods up to this many days are followed week by week, longer ones month by month.
+const WEEKS_UP_TO_DAYS: i64 = 91;
+
+/// One week or month of the rider's progress (R65), in watts or watts per kilogram.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ProgressPoint {
+    /// Its first day, counted from 1970-01-01.
+    pub start: i64,
+    /// The best power over each of the [`PROGRESS_DURATIONS`] among its rides.
+    pub bests: [Option<f64>; 3],
+    /// The FTP of its last ride, as the ride was saved with.
+    pub ftp: Option<f64>,
+    /// The highest FTP an FTP test of it showed.
+    pub test: Option<f64>,
+}
+
+/// The rider's progress over a period of local days.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Progress {
+    /// Whether the points are months (else weeks).
+    pub monthly: bool,
+    /// Every week or month from the one holding the first day to the one holding the last.
+    pub points: Vec<ProgressPoint>,
+}
+
+/// The rides of `history` from local day `first` to `last` week by week, or month by month for
+/// a period longer than 13 weeks (R65): their best 1, 5 and 20 minutes, the FTP they were saved
+/// with and the FTP tests. With `per_kg` everything is per kilogram of the rider's mass on each
+/// ride (`mass` where a ride did not keep it). Simulated rides are left out.
+#[must_use]
+pub fn progress(
+    history: &[HistoryEntry],
+    first: i64,
+    last: i64,
+    utc_offset_s: i64,
+    mass: Kilograms,
+    per_kg: bool,
+) -> Progress {
+    let monthly = last - first + 1 > WEEKS_UP_TO_DAYS;
+    let bucket_start = |day: i64| {
+        if monthly {
+            fitness::month_start(day)
+        } else {
+            fitness::week_start(day)
+        }
+    };
+    let mut points: Vec<ProgressPoint> = Vec::new();
+    let mut start = bucket_start(first);
+    while start <= last {
+        points.push(ProgressPoint {
+            start,
+            ..ProgressPoint::default()
+        });
+        start = if monthly {
+            fitness::month_start(start + 31)
+        } else {
+            start + 7
+        };
+    }
+    // Oldest first, so each point's FTP ends up the one of its last ride.
+    let mut rides: Vec<&HistoryEntry> = history
+        .iter()
+        .filter(|entry| !entry.record.simulated)
+        .collect();
+    rides.sort_by_key(|entry| entry.record.start);
+    for entry in rides {
+        let record = &entry.record;
+        let day = fitness::day_of(unix_seconds(record.start), utc_offset_s);
+        let Some(point) = points
+            .iter_mut()
+            .find(|point| point.start == bucket_start(day))
+            .filter(|_| (first..=last).contains(&day))
+        else {
+            continue;
+        };
+        let rider_mass = record.rider_mass.unwrap_or(mass).0;
+        let value = |watts: Watts| {
+            if !per_kg {
+                watts.0
+            } else if rider_mass > 0.0 {
+                watts.0 / rider_mass
+            } else {
+                0.0
+            }
+        };
+        if let Some(analysis) = &record.analysis {
+            for (best, duration) in point.bests.iter_mut().zip(PROGRESS_DURATIONS) {
+                if let Some(power) = analysis.power_curve.at(duration).map(value)
+                    && best.is_none_or(|held| power > held)
+                {
+                    *best = Some(power);
+                }
+            }
+        }
+        point.ftp = Some(value(record.summary.ftp));
+        if let Some(test) = record.ftp_estimate.map(value)
+            && point.test.is_none_or(|held| test > held)
+        {
+            point.test = Some(test);
+        }
+    }
+    Progress { monthly, points }
 }
 
 /// The local days `(first, last)` of the `period` before `now`, or for `None` from the first
@@ -592,6 +708,51 @@ mod tests {
         let fitter = weekly(&history, &zones_at(250.0), today - 13, today, 0);
         assert_eq!(fitter[2].power_zones[0], Duration::from_hours(1));
         assert_eq!(fitter[2].power_zones[3], Duration::from_hours(1));
+    }
+
+    #[test]
+    fn progress_goes_week_by_week_and_month_by_month_for_long_periods() {
+        let today = fitness::day_of(unix_seconds(now()), 0);
+        let mut history = vec![
+            ride(1, &[(60, 400.0), (300, 300.0)], Some(80.0)),
+            ride(3, &[(60, 420.0), (1200, 250.0)], None),
+            ride(20, &[(300, 280.0)], None),
+            ride(120, &[(1200, 230.0)], None),
+        ];
+        for (entry, ftp) in history.iter_mut().zip([240.0, 235.0, 230.0, 220.0]) {
+            entry.record.summary.ftp = Watts(ftp);
+        }
+        history[0].record.ftp_estimate = Some(Watts(245.0));
+
+        let weeks = progress(&history, today - 41, today, 0, Kilograms(70.0), false);
+        let months = progress(&history, today - 364, today, 0, Kilograms(70.0), false);
+
+        assert!(!weeks.monthly && months.monthly);
+        assert_eq!(weeks.points.len(), 7, "six weeks and the one begun");
+        let this_week = weeks.points.last().unwrap();
+        assert_eq!(this_week.bests, [Some(420.0), Some(300.0), Some(250.0)]);
+        assert_eq!(this_week.ftp, Some(240.0), "the last ride's");
+        assert_eq!(this_week.test, Some(245.0));
+        assert_eq!(months.points.len(), 13, "twelve months and the one begun");
+        assert!(
+            months
+                .points
+                .iter()
+                .all(|p| fitness::civil_date(p.start).2 == 1)
+        );
+        let four_months_ago = months.points.iter().find(|p| p.ftp == Some(220.0));
+        assert_eq!(four_months_ago.unwrap().bests[2], Some(230.0));
+
+        let per_kg = progress(&history, today - 41, today, 0, Kilograms(70.0), true);
+        let this_week = per_kg.points.last().unwrap();
+        assert!(
+            (this_week.bests[1].unwrap() - 3.75).abs() < 1e-9,
+            "300 W at 80 kg"
+        );
+        assert!(
+            (this_week.bests[0].unwrap() - 6.0).abs() < 1e-9,
+            "420 W at 70 kg today"
+        );
     }
 
     #[test]

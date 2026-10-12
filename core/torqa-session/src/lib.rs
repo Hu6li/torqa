@@ -7,6 +7,7 @@
 
 pub mod analysis;
 pub mod fitness;
+pub mod ftp_estimate;
 pub mod ghost;
 pub mod workout;
 

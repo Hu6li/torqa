@@ -64,3 +64,20 @@ Options considered:
   time-zone data here and no dependency is added for it: the interface passes its current
   offset from UTC, so a ride near midnight on the other side of a change to or from summer
   time may land on the day beside it.
+
+## Amendment — 2026-10-12: the FTP estimate (R65)
+
+- The Analysis tab offers an FTP estimated from the **best efforts of the last 90 days**, the
+  window intervals.icu uses, and never applies it by itself.
+- It is the **critical power of Morton's three-parameter model**, `P(t) = CP + W′ / (t − k)`,
+  fitted to the best efforts of 2 to 20 minutes: for each `k` from −0.5 s to −300 s in half
+  seconds, `CP` and `W′` follow from a linear least-squares fit, and the `k` with the smallest
+  error is kept. No library is needed for it. As in GoldenCheetah, critical power stands for
+  FTP.
+- Only efforts that **look maximal** are fitted: those on the upper hull of work over time.
+  A best 10 minutes from rides that never went hard for 10 minutes lies under the line between
+  harder shorter and longer efforts; fitted, such efforts pulled a test rider's estimate from
+  250 W down to 212 W. At least three maximal efforts are needed.
+- The fit is only taken if critical power lies between 50 and 600 W, `W′` between 3 and 40 kJ
+  and critical power below the best 20 minutes; otherwise, or with fewer efforts, the estimate
+  is 95 % of the best 20 minutes (the 20-minute test's rule). Without 20 minutes there is none.

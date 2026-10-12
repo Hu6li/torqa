@@ -1,7 +1,7 @@
 extends SceneTree
 ## Headless checks of the analysis across rides: the Analysis tab (R61), the power curve and a
 ## ride's power records on its summary (R62), the power profile (R63), fitness, fatigue and form
-## and the weekly bars (R64).
+## and the weekly bars (R64), the progress and the FTP the rides show (R65).
 ## Run: godot --headless --path app -s res://tests/analysis_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -17,6 +17,7 @@ func _run() -> void:
 	_power_curve_chart()
 	_radar_chart()
 	_fitness_and_weeks()
+	_progress_chart()
 	await _analysis_tab()
 	if not _failed:
 		print("ANALYSIS SMOKE TEST PASSED")
@@ -113,6 +114,23 @@ func _fitness_and_weeks() -> void:
 	tab.free()
 
 
+## Progress (R65): weeks named by their Monday, months by name, gaps where nothing was ridden.
+func _progress_chart() -> void:
+	var chart: TrendChart = TrendChart.new()
+	root.add_child(chart)
+	var october: int = 86400 * 20727
+	chart.set_periods(PackedInt64Array([october - 86400 * 30, october]), true)
+	var month: String = chart.call("_period_name", 1, true)
+	_check(month == "Oct 2026", "a month in full: %s" % month)
+	chart.set_periods(PackedInt64Array([86400 * 20738]), false)
+	var week: String = chart.call("_period_name", 0, false)
+	_check(week == "12 Oct", "a week by its Monday: %s" % week)
+	chart.add_series(PackedFloat64Array([250.0, -1.0]), Color.WHITE, "20 min", false, false)
+	var span: Vector2 = chart.call("_value_range")
+	_check(span.x < 250.0 and span.y > 250.0, "room around the values: %s" % span)
+	chart.free()
+
+
 ## The Analysis tab (R61) after History, its figures from the efforts the core gives (R62),
 ## and a ride's power records on its summary.
 func _analysis_tab() -> void:
@@ -135,6 +153,20 @@ func _analysis_tab() -> void:
 	_check(AnalysisTab._value_text(five_minutes, false) == "312 W", "watts")
 	_check(AnalysisTab._value_text(five_minutes, true) == "4.5 W/kg", "per kilogram")
 	_check(AnalysisTab._value_text(AnalysisTab._effort(efforts, 60), false) == "--", "no effort")
+	# The FTP the rides show (R65): with the model, or from the best 20 minutes.
+	analysis.call(
+		"_show_estimate",
+		{"ftp_w": 262.0, "method": "critical_power", "w_prime_kj": 18.4, "max_power_w": 900.0}
+	)
+	var estimate: Label = analysis.get("_estimate_text")
+	var use: Button = analysis.get("_estimate_button")
+	_check(estimate.text.contains("262 W") and estimate.text.contains("18.4 kJ"), estimate.text)
+	_check(use.text == "Use 262 W", "a button to take it: %s" % use.text)
+	analysis.call("_show_estimate", {"ftp_w": 240.0, "method": "twenty_minutes"})
+	_check(estimate.text.contains("20 minutes"), estimate.text)
+	analysis.call("_show_estimate", {})
+	var row: Control = analysis.get("_estimate_row")
+	_check(not row.visible, "nothing to offer without 20 minutes")
 	var history: HistoryScreen = main.get_node("HistoryScreen")
 	var ride: Dictionary = {
 		"power_records": PackedFloat64Array([300.0]),

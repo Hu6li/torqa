@@ -1448,3 +1448,15 @@ msgstr "Pro Woche"
 
 msgid "Your training load from the rides' TSS: fitness over six weeks, fatigue over one."
 msgstr "Deine Trainingsbelastung aus dem TSS der Fahrten: Fitness über sechs Wochen, Ermüdung über eine."
+
+msgid "Progress"
+msgstr "Fortschritt"
+
+msgid "Your best 1, 5 and 20 minutes and your FTP week by week (month by month for long periods)."
+msgstr "Deine besten 1, 5 und 20 Minuten und deine FTP Woche für Woche (für lange Zeiträume Monat für Monat)."
+
+msgid "Your best 20 minutes of the last 90 days show an FTP of about %d W. Now %d W."
+msgstr "Deine besten 20 Minuten der letzten 90 Tage ergeben eine FTP von etwa %d W. Jetzt %d W."
+
+msgid "Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W."
+msgstr "Deine letzten 90 Tage ergeben eine FTP von etwa %d W: kritische Leistung, W′ %.1f kJ. Jetzt %d W."
