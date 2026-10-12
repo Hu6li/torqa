@@ -1835,7 +1835,7 @@ msgstr ""
 msgid "Your best 20 minutes of the last 90 days show an FTP of about %d W. Now %d W."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:195
+#: app/scenes/analysis_tab.gd:196
 msgid "Your best of the period as a share of your best of all time."
 msgstr ""
 
