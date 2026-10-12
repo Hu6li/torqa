@@ -39,13 +39,19 @@ func _uploads() -> void:
 	for label: Node in cards.find_children("*", "Label", true, false):
 		texts.append((label as Label).text)
 	_check(
-		"ACCOUNTS" in texts and "intervals.icu" in texts and "Not connected" in texts,
+		(
+			"ACCOUNTS" in texts
+			and "intervals.icu" in texts
+			and "Strava" in texts
+			and texts.count("Not connected") == 2
+		),
 		"the rider's card lists the platforms: %s" % [texts]
 	)
-	var connect: Button = _button_with_text(cards, "Connect…")
-	_check(connect != null, "a platform not connected can be connected")
-	if connect != null:
-		connect.pressed.emit()
+	var connects: Array[Button] = _buttons_with_text(cards, "Connect…")
+	_check(connects.size() == 2, "a platform not connected can be connected")
+	if connects.is_empty():
+		return
+	connects[0].pressed.emit()
 	var dialog: AccountDialog = tab.get("_account_dialog")
 	var edits: Array[Node] = dialog.find_children("*", "LineEdit", true, false)
 	var link: LinkButton = dialog.get("_link")
@@ -64,6 +70,23 @@ func _uploads() -> void:
 	_check(
 		dialog.visible and status.visible and not status.text.is_empty(),
 		"an empty key is not sent, and the dialog says so"
+	)
+	dialog.hide()
+	if connects.size() > 1:
+		connects[1].pressed.emit()
+	edits = dialog.find_children("*", "LineEdit", true, false)
+	# The fields of intervals.icu are freed at the end of the frame.
+	edits = edits.filter(func(edit: Node) -> bool: return not edit.is_queued_for_deletion())
+	_check(
+		(
+			dialog.visible
+			and dialog.title == "Connect Strava"
+			and edits.size() == 2
+			and not (edits[0] as LineEdit).secret
+			and (edits[1] as LineEdit).secret
+			and link.uri == "https://www.strava.com/settings/api"
+		),
+		"connecting Strava asks for the application's id and its secret, hidden, and where to make one"
 	)
 	dialog.hide()
 	# A connected account (R60): kept rides can go up by themselves.
@@ -104,14 +127,21 @@ func _uploads() -> void:
 	var upload: MenuButton = history.get("_upload_button")
 	var menu: PopupMenu = upload.get_popup()
 	_check(
-		menu.item_count == 1 and menu.get_item_text(0) == "Connect intervals.icu and upload…",
+		(
+			menu.item_count == 2
+			and menu.get_item_text(0) == "Connect intervals.icu and upload…"
+			and menu.get_item_text(1) == "Connect Strava and upload…"
+		),
 		"a platform not connected is connected first: %s" % menu.get_item_text(0)
 	)
 	ride["uploads"] = {"intervals": "https://intervals.icu/activities/i1"}
 	history.call("_fill_upload_menu")
 	_check(
-		menu.get_item_text(0) == "View on intervals.icu",
-		"an uploaded ride leads to its page: %s" % menu.get_item_text(0)
+		(
+			menu.get_item_text(0) == "View on intervals.icu"
+			and menu.get_item_text(1) == "Connect Strava and upload…"
+		),
+		"an uploaded ride leads to its page, per platform: %s" % menu.get_item_text(0)
 	)
 	main.free()
 
@@ -124,10 +154,16 @@ func _label_with_text(node: Node, text: String) -> bool:
 
 
 func _button_with_text(node: Node, text: String) -> Button:
+	var found: Array[Button] = _buttons_with_text(node, text)
+	return found[0] if not found.is_empty() else null
+
+
+func _buttons_with_text(node: Node, text: String) -> Array[Button]:
+	var found: Array[Button] = []
 	for button: Node in node.find_children("*", "Button", true, false):
 		if (button as Button).text == text:
-			return button
-	return null
+			found.append(button)
+	return found
 
 
 func _check(condition: bool, what: String) -> void:

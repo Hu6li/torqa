@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use torqa_storage::accounts::{self, StoredAccount};
 use torqa_storage::rides;
-pub use torqa_upload::{Activity, ActivityUploader, Credentials, Field, UploadError, Uploaded};
+pub use torqa_upload::{
+    Activity, ActivityUploader, Browser, Credentials, Field, UploadError, Uploaded,
+};
 
 use crate::{App, AppError, AppEvent, JobResult};
 
@@ -38,6 +40,16 @@ pub struct AccountStatus {
     pub auto_upload: bool,
 }
 
+/// What the page the browser comes back to after logging in to a platform says, in the
+/// rider's language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoginPages {
+    /// Once the account is connected.
+    pub connected: String,
+    /// When the login failed or was declined.
+    pub failed: String,
+}
+
 /// The platforms and the uploads under way.
 pub(crate) struct UploadState {
     platforms: Vec<Arc<dyn ActivityUploader>>,
@@ -50,6 +62,8 @@ pub(crate) struct UploadState {
     accounts: Arc<Mutex<()>>,
     /// Rides on their way to a platform, so none goes up twice.
     in_flight: HashSet<(PathBuf, &'static str)>,
+    /// The account being connected, to give up on when the rider cancels.
+    connecting: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl UploadState {
@@ -59,6 +73,7 @@ impl UploadState {
             queue: Arc::default(),
             accounts: Arc::default(),
             in_flight: HashSet::new(),
+            connecting: None,
         }
     }
 }
@@ -75,6 +90,8 @@ pub(crate) enum Done {
         fit: PathBuf,
         result: Result<Uploaded, UploadError>,
     },
+    /// A platform's login, to show in the rider's browser.
+    OpenUrl(String),
 }
 
 impl App {
@@ -111,6 +128,8 @@ impl App {
 
     /// Connects rider `rider`'s account on `platform` with the fields they `entered`, in the
     /// background: reports [`AppEvent::AccountConnected`] or [`AppEvent::AccountFailed`].
+    /// Platforms the rider logs in to report [`AppEvent::OpenUrl`] with the login first, and
+    /// their page afterwards says `pages`. Connecting another account gives up on this one.
     ///
     /// # Errors
     /// [`AppError::UnknownPlatform`] if there is no such platform.
@@ -119,29 +138,70 @@ impl App {
         rider: &str,
         platform: &str,
         entered: Credentials,
+        pages: LoginPages,
     ) -> Result<(), AppError> {
         let uploader = self.uploader(platform)?;
+        self.cancel_connect();
         let tx = self.jobs_tx.clone();
+        let opener = self.jobs_tx.clone();
+        let browser = Browser {
+            open: Box::new(move |url| {
+                let _ = opener.send(JobResult::Upload(Box::new(Done::OpenUrl(url.to_owned()))));
+            }),
+            connected_page: pages.connected,
+            failed_page: pages.failed,
+        };
         let rider = rider.to_owned();
-        self.runtime.spawn(async move {
-            let result = uploader.connect(entered).await;
+        self.uploads.connecting = Some(self.runtime.spawn(async move {
+            let result = uploader.connect(entered, browser).await;
             let _ = tx.send(JobResult::Upload(Box::new(Done::Connected {
                 rider,
                 platform: uploader.id(),
                 result,
             })));
-        });
+        }));
         Ok(())
     }
 
-    /// Forgets rider `rider`'s account on `platform`.
+    /// Gives up on the account being connected, e.g. a login the rider no longer wants to
+    /// finish; nothing is reported for it.
+    pub fn cancel_connect(&mut self) {
+        if let Some(connecting) = self.uploads.connecting.take() {
+            connecting.abort();
+        }
+    }
+
+    /// Forgets rider `rider`'s account on `platform` and, in the background, withdraws
+    /// Torqa's access where the platform keeps a grant for it.
     ///
     /// # Errors
     /// [`AppError::Storage`] if the accounts cannot be read or written.
     pub fn disconnect_account(&mut self, rider: &str, platform: &str) -> Result<(), AppError> {
+        let mut removed = None;
         self.change_accounts(rider, |accounts| {
-            accounts.remove(platform);
-        })
+            removed = accounts.remove(platform);
+        })?;
+        if let (Some(account), Ok(uploader)) = (removed, self.uploader(platform)) {
+            self.revoke(uploader, account.credentials);
+        }
+        Ok(())
+    }
+
+    /// Withdraws Torqa's access to all of rider `rider`'s accounts in the background, as the
+    /// rider is deleted.
+    pub(crate) fn revoke_accounts(&mut self, rider: &str) {
+        let stored = accounts::load(&self.data_dir, rider).unwrap_or_default();
+        for (platform, account) in stored {
+            if let Ok(uploader) = self.uploader(&platform) {
+                self.revoke(uploader, account.credentials);
+            }
+        }
+    }
+
+    fn revoke(&self, uploader: Arc<dyn ActivityUploader>, credentials: Credentials) {
+        self.runtime.spawn(async move {
+            uploader.disconnect(&credentials).await;
+        });
     }
 
     /// Whether rides rider `rider` keeps go up to `platform` without asking (R60).
@@ -306,6 +366,7 @@ impl App {
                 self.uploads.in_flight.remove(&(fit.clone(), platform));
                 self.upload_done(platform, fit, result)
             }
+            Done::OpenUrl(url) => AppEvent::OpenUrl(url),
         }
     }
 
@@ -474,13 +535,16 @@ mod tests {
 
     /// A platform that takes the key `good` and keeps what it is sent. Like Strava, it
     /// renews a token with every upload and from then on takes only the new one; and it takes
-    /// its time.
+    /// its time. The key `login` logs in through the browser first; with `never` the login
+    /// never ends.
     struct Fake {
         id: &'static str,
         name: &'static str,
         received: Mutex<Vec<Activity>>,
         /// The token it gave out last.
         token: Mutex<Option<String>>,
+        /// The credentials of the accounts disconnected.
+        revoked: Mutex<Vec<Credentials>>,
     }
 
     impl Fake {
@@ -490,7 +554,20 @@ mod tests {
                 name,
                 received: Mutex::default(),
                 token: Mutex::default(),
+                revoked: Mutex::default(),
             })
+        }
+
+        /// Waits a little for `count` accounts to be disconnected, as that happens in the
+        /// background; their credentials.
+        fn revoked(&self, count: usize) -> Vec<Credentials> {
+            for _ in 0..100 {
+                if self.revoked.lock().unwrap().len() >= count {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            self.revoked.lock().unwrap().clone()
         }
 
         fn received(&self) -> Vec<Activity> {
@@ -523,9 +600,21 @@ mod tests {
             "https://fake.example"
         }
 
-        fn connect(&self, entered: Credentials) -> BoxFuture<'_, Result<Account, UploadError>> {
+        fn connect(
+            &self,
+            entered: Credentials,
+            browser: Browser,
+        ) -> BoxFuture<'_, Result<Account, UploadError>> {
             Box::pin(async move {
-                if entered.get("key").is_some_and(|k| k == "good") {
+                match entered.get("key").map(String::as_str) {
+                    Some("never") => std::future::pending::<()>().await,
+                    Some("login") => (browser.open)("https://fake.example/login"),
+                    _ => {}
+                }
+                if entered
+                    .get("key")
+                    .is_some_and(|k| k == "good" || k == "login")
+                {
                     Ok(Account {
                         label: "Ann on Fake".to_owned(),
                         credentials: entered,
@@ -564,6 +653,12 @@ mod tests {
                     id: "a1".to_owned(),
                     url: "https://fake.example/a1".to_owned(),
                 })
+            })
+        }
+
+        fn disconnect<'a>(&'a self, credentials: &'a Credentials) -> BoxFuture<'a, ()> {
+            Box::pin(async move {
+                self.revoked.lock().unwrap().push(credentials.clone());
             })
         }
     }
@@ -607,9 +702,7 @@ mod tests {
     }
 
     fn connect_to(app: &mut App, platform: &str, key: &str) -> AppEvent {
-        let rider = app.profile().id.clone();
-        let entered = Credentials::from([("key".to_owned(), key.to_owned())]);
-        app.connect_account(&rider, platform, entered).unwrap();
+        start_connecting(app, platform, key);
         run_until(app, |e| {
             matches!(
                 e,
@@ -618,6 +711,17 @@ mod tests {
         })
         .pop()
         .unwrap()
+    }
+
+    fn start_connecting(app: &mut App, platform: &str, key: &str) {
+        let rider = app.profile().id.clone();
+        let entered = Credentials::from([("key".to_owned(), key.to_owned())]);
+        let pages = LoginPages {
+            connected: "Connected.".to_owned(),
+            failed: "Not connected.".to_owned(),
+        };
+        app.connect_account(&rider, platform, entered, pages)
+            .unwrap();
     }
 
     fn upload(app: &mut App, fit: &Path, title: &str) -> AppEvent {
@@ -659,8 +763,8 @@ mod tests {
         assert!(!fake.auto_upload);
         assert_eq!(
             platforms().iter().map(|p| p.id()).collect::<Vec<_>>(),
-            ["intervals"],
-            "intervals.icu is offered in the app"
+            ["intervals", "strava"],
+            "intervals.icu and Strava are offered in the app"
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -906,6 +1010,81 @@ mod tests {
         connect(&mut app, "good");
 
         assert!(app.accounts(&rider)[0].auto_upload);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn platforms_that_log_in_open_the_riders_browser_first() {
+        let (mut app, _, dir) = app("login");
+
+        start_connecting(&mut app, "fake", "login");
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::AccountConnected { .. }));
+
+        let opened = events
+            .iter()
+            .position(|e| *e == AppEvent::OpenUrl("https://fake.example/login".to_owned()));
+        assert!(
+            opened.is_some_and(|i| i < events.len() - 1),
+            "the login opens before the account is connected: {events:?}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_cancelled_login_connects_nothing_and_a_new_one_can_start() {
+        let (mut app, _, dir) = app("cancel");
+        let rider = app.profile().id.clone();
+
+        start_connecting(&mut app, "fake", "never");
+        app.cancel_connect();
+        let deadline = std::time::Instant::now() + Duration::from_millis(200);
+        let mut events = Vec::new();
+        while std::time::Instant::now() < deadline {
+            events.extend(app.update(Duration::from_millis(16)));
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        let connected_after = connect(&mut app, "good");
+
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                AppEvent::AccountConnected { .. } | AppEvent::AccountFailed { .. }
+            )),
+            "{events:?}"
+        );
+        assert!(matches!(connected_after, AppEvent::AccountConnected { .. }));
+        assert_eq!(label(&app, &rider).as_deref(), Some("Ann on Fake"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn disconnecting_withdraws_torqas_access() {
+        let (mut app, fake, dir) = app("revoke");
+        let rider = app.profile().id.clone();
+        connect(&mut app, "good");
+
+        app.disconnect_account(&rider, "fake").unwrap();
+
+        let revoked = fake.revoked(1);
+        assert_eq!(revoked.len(), 1);
+        assert_eq!(revoked[0]["key"], "good");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn deleting_a_rider_withdraws_torqas_access_to_their_accounts() {
+        let (mut app, fake, dir) = app("delete-rider");
+        let leaving = app.profile().id.clone();
+        connect(&mut app, "good");
+        let staying = torqa_domain::profile::Profile {
+            name: "Bob".to_owned(),
+            ..torqa_domain::profile::Profile::default()
+        };
+        app.save_profile(None, staying).unwrap();
+
+        app.delete_profile(&leaving).unwrap();
+
+        assert_eq!(fake.revoked(1).len(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

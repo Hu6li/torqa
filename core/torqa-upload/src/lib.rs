@@ -1,8 +1,11 @@
 //! Uploading rides to training platforms (R29), each behind [`ActivityUploader`]:
-//! intervals.icu ([`intervals::IntervalsIcu`]) first. Adding a platform means an uploader and
-//! an entry in [`platforms`]; storage, the app layer and the interface take it as it is.
+//! intervals.icu ([`intervals::IntervalsIcu`]) and Strava ([`strava::Strava`]). Platforms the
+//! rider logs in to in the browser share [`oauth`]. Adding a platform means an uploader and an
+//! entry in [`platforms`]; storage, the app layer and the interface take it as it is.
 
 pub mod intervals;
+pub mod oauth;
+pub mod strava;
 
 use std::fmt::Write as _;
 use std::hash::{BuildHasher, Hasher, RandomState};
@@ -10,13 +13,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub use torqa_domain::upload::{
-    Account, Activity, ActivityUploader, BoxFuture, Credentials, Field, UploadError, Uploaded,
+    Account, Activity, ActivityUploader, BoxFuture, Browser, Credentials, Field, UploadError,
+    Uploaded,
 };
 
 /// Every platform rides can be uploaded to, in the order they are offered to the rider.
 #[must_use]
 pub fn platforms() -> Vec<Arc<dyn ActivityUploader>> {
-    vec![Arc::new(intervals::IntervalsIcu::new())]
+    vec![
+        Arc::new(intervals::IntervalsIcu::new()),
+        Arc::new(strava::Strava::new()),
+    ]
 }
 
 /// The HTTP client of the uploaders: a ride's FIT file is small, a slow platform is not.
@@ -45,30 +52,56 @@ fn describe(answer: &str) -> String {
         return answer.trim().chars().take(200).collect();
     };
     let text = |key: &str| json.get(key).and_then(serde_json::Value::as_str);
-    text("error_description")
+    let mut description = text("error_description")
         .or_else(|| text("message"))
         .or_else(|| text("error"))
         .unwrap_or_default()
-        .to_owned()
+        .to_owned();
+    // Strava's: which field was wrong and how.
+    for error in json
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let part = |key: &str| error.get(key).and_then(serde_json::Value::as_str);
+        if let (Some(field), Some(code)) = (part("field"), part("code")) {
+            let _ = write!(description, " ({field} {code})");
+        }
+    }
+    description
 }
 
-/// A `multipart/form-data` body with one file: its content type (with the boundary) and bytes.
-/// Written here rather than with reqwest's `multipart` feature, which would bring in more
-/// crates for one small body.
-fn multipart(field: &str, filename: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+/// A `multipart/form-data` body with text `fields` and one file (its field, file name and
+/// bytes): its content type (with the boundary) and bytes. Written here rather than with
+/// reqwest's `multipart` feature, which would bring in more crates for one small body.
+fn multipart(fields: &[(&str, &str)], file: (&str, &str, &[u8])) -> (String, Vec<u8>) {
     // Long and random enough not to occur in a FIT file by chance.
     let boundary = format!("torqa-{}", random_text());
-    let mut body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; \
-         filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-    )
-    .into_bytes();
+    let mut body = Vec::new();
+    for (name, value) in fields {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n\
+                 {value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    let (field, filename, bytes) = file;
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; \
+             filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
     body.extend_from_slice(bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
     (format!("multipart/form-data; boundary={boundary}"), body)
 }
 
-/// A URL query of `pairs`, percent-encoded.
+/// A URL query of `pairs`, percent-encoded; also an `application/x-www-form-urlencoded` body.
 fn query(pairs: &[(&str, &str)]) -> String {
     pairs
         .iter()
@@ -88,6 +121,34 @@ fn encode(text: &str) -> String {
         }
     }
     encoded
+}
+
+/// A percent-encoded query value as text, `+` standing for a space.
+fn decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let escaped = (bytes[i] == b'%')
+            .then(|| bytes.get(i + 1..i + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
+        match (escaped, bytes[i]) {
+            (Some(byte), _) => {
+                decoded.push(byte);
+                i += 3;
+            }
+            (None, b'+') => {
+                decoded.push(b' ');
+                i += 1;
+            }
+            (None, byte) => {
+                decoded.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
 }
 
 /// 32 random hex digits. The standard library seeds its hashers from the system's random
@@ -160,14 +221,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn multipart_bodies_carry_the_file_between_boundaries() {
-        let (content_type, body) = multipart("file", "r.fit", &[0, 1, 2]);
+    fn multipart_bodies_carry_fields_and_the_file_between_boundaries() {
+        let (content_type, body) = multipart(&[("name", "Ride")], ("file", "r.fit", &[0, 1, 2]));
 
         let boundary = content_type
             .strip_prefix("multipart/form-data; boundary=")
             .unwrap();
         let text = String::from_utf8_lossy(&body);
         assert!(text.starts_with(&format!("--{boundary}\r\n")));
+        assert!(text.contains("name=\"name\"\r\n\r\nRide\r\n"));
         assert!(text.contains("name=\"file\"; filename=\"r.fit\""));
         assert!(body.windows(3).any(|w| w == [0, 1, 2]));
         assert!(text.ends_with(&format!("\r\n--{boundary}--\r\n")));
@@ -175,7 +237,10 @@ mod tests {
 
     #[test]
     fn boundaries_differ_between_uploads() {
-        assert_ne!(multipart("f", "a", b"").0, multipart("f", "a", b"").0);
+        assert_ne!(
+            multipart(&[], ("f", "a", b"")).0,
+            multipart(&[], ("f", "a", b"")).0
+        );
     }
 
     #[test]
@@ -187,7 +252,20 @@ mod tests {
     }
 
     #[test]
+    fn query_values_are_decoded() {
+        assert_eq!(decode("Zone%202+%26%20more%2F%C3%A4"), "Zone 2 & more/ä");
+        assert_eq!(decode("100%"), "100%", "a stray percent sign stays");
+        assert_eq!(decode("%zz"), "%zz");
+    }
+
+    #[test]
     fn error_answers_are_told_short() {
+        assert_eq!(
+            describe(
+                r#"{"message":"Bad Request","errors":[{"resource":"Application","field":"client_id","code":"invalid"}]}"#
+            ),
+            "Bad Request (client_id invalid)"
+        );
         assert_eq!(
             describe(r#"{"error":"invalid_grant","error_description":"Code expired"}"#),
             "Code expired"

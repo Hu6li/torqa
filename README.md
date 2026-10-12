@@ -77,15 +77,14 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
       Race your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="docs/history.md">History &amp; records</a></b><br>
       Ride analysis, personal records per course and climb, FIT export and
-      <a href="docs/uploads.md">upload to intervals.icu</a></td>
+      <a href="docs/uploads.md">upload to intervals.icu and Strava</a></td>
   </tr>
 </table>
 
 📴 Courses ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
 🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows and Linux
 
-**Planned:** Street View / Mapillary rides, uploads to Strava, ANT+ FE-C, hardware video
-decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+**Planned:** Street View / Mapillary rides, ANT+ FE-C, hardware video decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Using Torqa
 
@@ -99,7 +98,7 @@ decoding — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 | Ride HUD | [docs/hud.md](docs/hud.md) |
 | Workouts and FTP tests | [docs/workouts.md](docs/workouts.md) |
 | Overlay over other apps | [docs/overlay.md](docs/overlay.md) |
-| Uploading rides to intervals.icu | [docs/uploads.md](docs/uploads.md) |
+| Uploading rides to intervals.icu and Strava | [docs/uploads.md](docs/uploads.md) |
 | Ghosts and pacers | [docs/ghosts.md](docs/ghosts.md) |
 | Ride history, climbs and records | [docs/history.md](docs/history.md) |
 | Music control | [docs/audio.md](docs/audio.md) |

@@ -1,38 +1,62 @@
 # Uploading rides
 
-Rides go up to **intervals.icu** straight from Torqa: from a ride's summary right after
-riding, later from the **History** tab, or by themselves once you keep them. Torqa sends the ride's FIT file under the ride's
-name (R50). Strava is to follow; why Garmin Connect, TrainingPeaks and Komoot are not offered
-is in [ADR 0013](adr/0013-activity-uploads.md).
+Rides go up to **intervals.icu** and **Strava** straight from Torqa: from a ride's summary
+right after riding, later from the **History** tab, or by themselves once you keep them. Torqa
+sends the ride's FIT file under the ride's name (R50). Why Garmin Connect, TrainingPeaks and
+Komoot are not offered is in [ADR 0013](adr/0013-activity-uploads.md).
+
+Each rider connects their own accounts, under **Accounts** at the bottom of their unfolded
+card in the **Profile** tab ([riders.md](riders.md)). Or start uploading a ride: Torqa asks
+you to connect first. **Disconnect** on the card forgets the account and, on Strava, withdraws
+Torqa's access. Deleting a rider does the same for all their accounts.
 
 ## Connecting intervals.icu
 
 1. On intervals.icu, open **Settings** and find **Developer Settings** near the bottom. Create
    an **API key** there if you have none, and copy it.
-2. In Torqa, open the **Profile** tab and unfold your rider's card with the chevron. Under
-   **Accounts**, press **Connect…** beside intervals.icu. Or start uploading a ride: Torqa asks
-   you to connect first.
+2. In Torqa, press **Connect…** beside intervals.icu on your card.
 3. Paste the key and press **Connect**. Torqa checks it with intervals.icu; the card then says
    *Connected as* and your name there.
 
    ![Connecting intervals.icu](images/app/account-dialog.png)
 
-Each rider connects their own account. **Disconnect** on the card forgets it.
+## Connecting Strava
 
-Accounts are at the bottom of the unfolded card, see [riders.md](riders.md).
+Strava lets an app in only with the app's secret, and an open-source app cannot keep one
+secret ([ADR 0013](adr/0013-activity-uploads.md)). So Torqa connects through a Strava API
+application of your own. Setting it up takes a few minutes, once:
+
+1. Log in on Strava's [API settings page](https://www.strava.com/settings/api) and create an
+   application. Strava asks for a subscription for this. Name, category and website are up to
+   you; set **Authorization Callback Domain** to `localhost`.
+2. In Torqa, press **Connect…** beside Strava on your card.
+3. Copy the application's **Client ID** and **Client Secret** into the dialog and press
+   **Connect**.
+
+   ![Connecting Strava](images/app/account-dialog-strava.png)
+
+4. Your browser opens Strava's login. Allow Torqa to upload your activities (leave that box
+   ticked). The page then says that Torqa is connected and can be closed; the card says
+   *Connected as* and your name on Strava. Should the browser not have opened, **Open the
+   login again** in the dialog does it; **Cancel** gives up waiting.
+
+An application of your own serves you alone (Strava allows its owner as its only athlete),
+which is all Torqa needs. Each rider uploading to Strava creates their own.
 
 ## Uploading
 
 - Press the up arrow beside the ride's title (**Upload**), in the summary or in the history,
-  and choose **Upload to intervals.icu**. The ride goes up under the name it shows.
+  and choose the platform, e.g. **Upload to Strava**. The ride goes up under the name it shows,
+  on Strava as a ride on a trainer.
 
   ![The upload menu on a ride's summary](images/app/upload.png)
 
-- Once it is there, the same menu says **View on intervals.icu** and opens the ride on the
-  platform. Torqa remembers this with the ride.
+- Once it is there, the same menu says **View on …** and opens the ride on the platform.
+  Torqa remembers this with the ride. Strava takes a few seconds to process a ride first.
 - A ride the platform already has, e.g. one uploaded by hand, counts as uploaded and links to
   it.
-- If intervals.icu no longer accepts the key (you deleted it there), Torqa asks you to connect
+- If a platform no longer accepts the account (you deleted the key on intervals.icu, revoked
+  Torqa's access on Strava or changed your application's secret), Torqa asks you to connect
   again and then uploads the ride.
 - Uploading needs the internet; everything else works offline as before.
 
@@ -55,6 +79,8 @@ the file on the platform, e.g. with Garmin Connect's *Import Data*.
 
 ## Privacy
 
-The API key is kept in the rider's folder, `profiles/<rider>/accounts.toml` in the data
-directory. On macOS and Linux only your user can read it. It syncs with the data directory
-like your rides. Torqa talks to intervals.icu directly, with no server in between.
+The intervals.icu key, the Strava application's ID and secret and Strava's tokens are kept in
+the rider's folder, `profiles/<rider>/accounts.toml` in the data directory. On macOS and Linux
+only your user can read it. It syncs with the data directory like your rides. Torqa talks to
+the platforms directly, with no server in between; for the Strava login it listens on your
+computer only (`127.0.0.1`), and only until you are back.

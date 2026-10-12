@@ -300,6 +300,8 @@ pub enum AppEvent {
         /// The activity's page there.
         url: String,
     },
+    /// A page to show the rider in their browser, e.g. a platform's login.
+    OpenUrl(String),
     /// Uploading a ride failed.
     UploadFailed {
         /// The ride's FIT file.
@@ -601,8 +603,8 @@ impl App {
         Ok(id)
     }
 
-    /// Deletes a rider with their rides; deleting the active one switches to the first rider
-    /// left.
+    /// Deletes a rider with their rides, withdrawing Torqa's access to their accounts on
+    /// training platforms (R29); deleting the active one switches to the first rider left.
     ///
     /// # Errors
     /// [`AppError::LastProfile`] for the only rider, [`AppError::UnknownProfile`] if there is no
@@ -615,6 +617,8 @@ impl App {
         let Some(next) = listed.into_iter().find(|p| p.id != id) else {
             return Err(AppError::LastProfile);
         };
+        // While the credentials are still there.
+        self.revoke_accounts(id);
         profiles::delete(&self.data_dir, id)
             .map_err(|e| AppError::Storage(format!("cannot delete profile: {e}")))?;
         if self.profile.id == id {

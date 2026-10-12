@@ -53,7 +53,7 @@ an app in differently. As of October 2026:
   The ride then shows as not uploaded; uploading it again links the activity the platform
   already has.
 - Strava fits the same interface. Its OAuth login in the browser adds a parameter to
-  `connect` when it comes.
+  `connect` when it comes (see the Strava amendment).
 
 ## Amendment — 2026-10-12: automatic uploads (R60)
 
@@ -67,3 +67,41 @@ an app in differently. As of October 2026:
 - A ride on its way to a platform is not sent there again, and a kept ride already there is
   skipped. A failed automatic upload leaves the ride to upload from the history; it does not
   open the connect dialog by itself.
+
+## Amendment — 2026-10-12: Strava
+
+Options for Strava, which needs the client secret for every token request:
+
+- **Torqa's own application, its secret built in**: against the API Agreement, and one
+  athlete until Strava reviews it.
+- **Torqa's own application and a token service holding the secret**: a server to run for good,
+  Strava's review past 10 athletes, and every rider's tokens passing through Torqa's
+  infrastructure.
+- **Each rider's own Strava API application**: no secret to leak and no server, within the
+  single-athlete capacity; the rider creates the application once.
+
+Decision:
+
+- **Strava connects through the rider's own API application**: its Client ID and Client
+  Secret in the dialog, then the login in the browser, asking for `activity:write` only.
+- **OAuth platforms share `torqa_upload::oauth`**: the authorization code comes back over a
+  loopback redirect (RFC 8252). For the login only, Torqa listens on `127.0.0.1` at a free
+  port and checks the `state`. While the browser waits, Torqa trades the code for tokens, so
+  the page it then shows says how it ended. Access tokens are renewed shortly before they
+  expire, in the upload's turn (Strava's refresh tokens rotate). The rider can cancel a login.
+- `ActivityUploader::connect` gets the rider's **browser** (a way to open the login and the
+  pages to come back to, in the rider's language), and `disconnect` withdraws a platform's
+  grant (RFC 7009) as the rider disconnects or is deleted; best effort.
+- Rides go up as FIT files marked as on a trainer, named after the ride; Strava processes them
+  for a few seconds, and Torqa waits for the activity. One Strava already has counts as
+  uploaded.
+- The API stays at `www.strava.com/api/v3`; Strava's new host (`api-v3.strava.com`) only
+  opens in 2027. Tokens already go in the `Authorization` header, and access is revoked with
+  `/oauth/revoke`, as Strava requires from June 2027.
+
+Consequences:
+
+- Every rider uploading to Strava needs a Strava subscription and a few minutes to create the
+  application, explained in the dialog and in [uploads.md](../uploads.md).
+- Should Strava offer a public-client (PKCE) flow, Strava can move to an application of
+  Torqa's with an id only; accounts connected before keep working as they are.

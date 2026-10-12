@@ -1,7 +1,8 @@
 //! Uploading rides to training platforms (R4, R29) behind the [`ActivityUploader`] plugin
 //! interface. Each platform decides what it keeps about a rider's account (an API key, the
 //! tokens of a login) as [`Credentials`]; Torqa stores them per rider as given and hands them
-//! back for every upload, so a new platform needs no change outside its uploader.
+//! back for every upload, so a new platform needs no change outside its uploader. Platforms
+//! the rider logs in to on their website get the rider's [`Browser`].
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -55,6 +56,26 @@ pub struct Field {
     pub secret: bool,
 }
 
+/// The rider's browser, for platforms the rider logs in to on their website (OAuth).
+pub struct Browser {
+    /// Shows the rider a page: the platform's login.
+    pub open: Box<dyn Fn(&str) + Send + Sync>,
+    /// What the page the browser comes back to says once the account is connected, in the
+    /// rider's language.
+    pub connected_page: String,
+    /// What it says when the login failed or was declined.
+    pub failed_page: String,
+}
+
+impl fmt::Debug for Browser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Browser")
+            .field("connected_page", &self.connected_page)
+            .field("failed_page", &self.failed_page)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Connecting or uploading failed. Each carries what went wrong, in words for the rider.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UploadError {
@@ -62,7 +83,7 @@ pub enum UploadError {
     Unreachable(String),
     /// The platform no longer accepts the account: the rider has to connect it again.
     Unauthorized(String),
-    /// The platform turned the request down.
+    /// The platform turned the request down, or the login did not finish.
     Rejected(String),
 }
 
@@ -96,8 +117,12 @@ pub trait ActivityUploader: Send + Sync {
     fn help_url(&self) -> &'static str;
 
     /// Connects the rider's account with the fields they `entered`, checking them with the
-    /// platform.
-    fn connect(&self, entered: Credentials) -> BoxFuture<'_, Result<Account, UploadError>>;
+    /// platform and logging in through `browser` where the platform asks for that.
+    fn connect(
+        &self,
+        entered: Credentials,
+        browser: Browser,
+    ) -> BoxFuture<'_, Result<Account, UploadError>>;
 
     /// Uploads `activity` to the account with `credentials`. An activity the platform has
     /// already counts as uploaded. Credentials that change on the way, such as a renewed
@@ -107,4 +132,11 @@ pub trait ActivityUploader: Send + Sync {
         credentials: &'a mut Credentials,
         activity: &'a Activity,
     ) -> BoxFuture<'a, Result<Uploaded, UploadError>>;
+
+    /// Withdraws Torqa's access to the account with `credentials` where the platform keeps a
+    /// grant for it, as the rider disconnects it; best effort.
+    fn disconnect<'a>(&'a self, credentials: &'a Credentials) -> BoxFuture<'a, ()> {
+        let _ = credentials;
+        Box::pin(async {})
+    }
 }

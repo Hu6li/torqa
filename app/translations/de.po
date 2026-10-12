@@ -1308,3 +1308,24 @@ msgstr "Automatisch hochladen"
 
 msgid "Rides you keep with Done on their summary go up by themselves"
 msgstr "Fahrten, die du in der Zusammenfassung mit «Fertig» behältst, werden von selbst hochgeladen"
+
+msgid "Client ID"
+msgstr "Client ID"
+
+msgid "Client Secret"
+msgstr "Client Secret"
+
+msgid "Strava lets an app in only with that app's secret, which open-source Torqa cannot keep. So you connect through a Strava API application of your own: create one on Strava's API settings page (Strava asks for a subscription for this), set its Authorization Callback Domain to localhost, and copy its Client ID and Client Secret here. Then log in to Strava in your browser."
+msgstr "Strava lässt eine App nur mit deren Secret herein, und das kann das quelloffene Torqa nicht geheim halten. Darum verbindest du dich über eine eigene Strava-API-Anwendung: Lege auf Stravas API-Einstellungsseite eine an (Strava verlangt dafür ein Abo), setze ihre Authorization Callback Domain auf localhost und kopiere ihre Client ID und ihr Client Secret hierher. Dann meldest du dich im Browser bei Strava an."
+
+msgid "Log in to %s in your browser and let Torqa upload your rides. Then come back here."
+msgstr "Melde dich im Browser bei %s an und erlaube Torqa, deine Fahrten hochzuladen. Komm dann hierher zurück."
+
+msgid "Open the login again"
+msgstr "Anmeldung erneut öffnen"
+
+msgid "Torqa is connected. You can close this page."
+msgstr "Torqa ist verbunden. Du kannst diese Seite schliessen."
+
+msgid "Torqa could not connect. Go back to Torqa to try again."
+msgstr "Torqa konnte sich nicht verbinden. Geh zurück zu Torqa, um es nochmals zu versuchen."

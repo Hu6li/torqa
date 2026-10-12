@@ -176,12 +176,15 @@ func _run() -> void:
 		await create_timer(0.5).timeout
 		root.get_texture().get_image().save_png(out_dir.path_join(file + ".png"))
 		if index == StartPage.Tab.PROFILE:
-			# Connecting an account (R29), from the card's Accounts.
-			var dialog_shown: AccountDialog = _connect_account(start)
-			await create_timer(0.5).timeout
-			root.get_texture().get_image().save_png(out_dir.path_join("account-dialog.png"))
-			if dialog_shown != null:
-				dialog_shown.hide()
+			# Connecting an account (R29), from the card's Accounts: intervals.icu, Strava.
+			for platform: Array in [[0, "account-dialog"], [1, "account-dialog-strava"]]:
+				var which: int = platform[0]
+				var shot: String = platform[1]
+				var dialog_shown: AccountDialog = _connect_account(start, which)
+				await create_timer(0.5).timeout
+				root.get_texture().get_image().save_png(out_dir.path_join(shot + ".png"))
+				if dialog_shown != null:
+					dialog_shown.hide()
 	print("saved history")
 	await _workout_screens(torqa, start)
 	quit(0)
@@ -196,11 +199,16 @@ func _unfold_rider(start: StartPage) -> void:
 			return
 
 
-## Presses Connect… on the unfolded rider's first account; the dialog it opens, if any.
-func _connect_account(start: StartPage) -> AccountDialog:
+## Presses Connect… on the unfolded rider's account number `which`; the dialog it opens, if
+## any.
+func _connect_account(start: StartPage, which: int) -> AccountDialog:
+	var seen: int = 0
 	for found: Node in start.find_children("*", "Button", true, false):
 		var button: Button = found
-		if button.is_visible_in_tree() and button.text == tr("Connect…"):
+		if not button.is_visible_in_tree() or button.text != tr("Connect…"):
+			continue
+		seen += 1
+		if seen == which + 1:
 			button.pressed.emit()
 			# The History tab has one too.
 			for dialog: Node in start.find_children("*", "AccountDialog", true, false):
