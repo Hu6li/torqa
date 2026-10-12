@@ -1384,7 +1384,7 @@ msgid "Power profile"
 msgstr "Leistungsprofil"
 
 msgid "Your best of the period as a share of your best of all time."
-msgstr "Deine Bestleistungen im Zeitraum als Anteil deiner Bestleistungen aller Zeiten."
+msgstr "Deine Bestwerte im Zeitraum als Anteil deiner Bestwerte aller Zeiten."
 
 msgid "Daily TSS"
 msgstr "TSS pro Tag"

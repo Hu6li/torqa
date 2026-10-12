@@ -183,8 +183,8 @@ func _profile_column() -> VBoxContainer:
 	rows.add_theme_constant_override("separation", 12)
 	rows.add_child(UiTheme.caption(tr("Power profile")))
 	var about: Label = Label.new()
+	# On one line: it sets the column's width, the curve beside it takes the rest.
 	about.text = tr("Your best of the period as a share of your best of all time.")
-	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.add_theme_color_override("font_color", UiTheme.MUTED)
 	rows.add_child(about)
 	_radar.custom_minimum_size = Vector2(380, 340)

@@ -1823,7 +1823,7 @@ msgstr ""
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
 
-#: app/scenes/analysis_tab.gd:186
+#: app/scenes/analysis_tab.gd:187
 msgid "Your best of the period as a share of your best of all time."
 msgstr ""
 
