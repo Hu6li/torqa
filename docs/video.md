@@ -59,7 +59,8 @@ first time you choose it; online, it fetches the terrain and map data the video 
 not hold yet). Along the video, the video fills the screen, with your figures, map and
 elevation profile on top. Where you are on the route decides the moment of the video: it
 plays at the speed you ride, stands still when you stop, and blends smoothly from frame to
-frame even when you crawl up a steep climb.
+frame even when you crawl up a steep climb. Frames are decoded a little ahead of you, so the
+blend never waits for one.
 
 The video's own **sound** plays along at the same speed, without sounding higher or deeper:
 it is stretched, not sped up like a tape. It fades out when you slow to a crawl or stop.
@@ -67,7 +68,10 @@ Switch it off under **Sound** in the ride options (course page or **Settings** w
 
 Videos are decoded on the processor for now, on all its cores. 1080p is the target; larger
 videos are scaled down while playing, which may not keep up on a small machine — hardware
-decoding is planned.
+decoding is planned. Riding faster than the footage was filmed asks for more frames a second:
+a climb filmed at 8 km/h and ridden at 30 km/h plays nearly four times as fast. Apple silicon
+decodes AV1 route videos (such as the Van Gestel library's) without its fast assembly for
+now, and up to about three times their own pace stays smooth.
 
 ## The video stays beside the course
 
