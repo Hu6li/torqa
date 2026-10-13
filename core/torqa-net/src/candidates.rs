@@ -71,6 +71,27 @@ pub enum NatBehavior {
     NoAnswer,
 }
 
+impl NatBehavior {
+    pub(crate) fn to_byte(self) -> u8 {
+        match self {
+            Self::EndpointIndependent => 1,
+            Self::Symmetric => 2,
+            Self::Unknown => 3,
+            Self::NoAnswer => 4,
+        }
+    }
+
+    pub(crate) fn from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            1 => Some(Self::EndpointIndependent),
+            2 => Some(Self::Symmetric),
+            3 => Some(Self::Unknown),
+            4 => Some(Self::NoAnswer),
+            _ => None,
+        }
+    }
+}
+
 /// What to gather.
 #[derive(Clone, Debug)]
 pub struct GatherOptions {
@@ -80,6 +101,8 @@ pub struct GatherOptions {
     pub router: bool,
     /// How long to wait for STUN servers and the router, together.
     pub timeout: Duration,
+    /// Also offer the loopback address, for two Torqas on one computer (tests, trying it out).
+    pub loopback: bool,
 }
 
 impl Default for GatherOptions {
@@ -88,6 +111,7 @@ impl Default for GatherOptions {
             stun_servers: DEFAULT_STUN_SERVERS.map(String::from).to_vec(),
             router: true,
             timeout: Duration::from_secs(3),
+            loopback: false,
         }
     }
 }
@@ -114,7 +138,18 @@ pub async fn gather(socket: &UdpSocket, options: &GatherOptions) -> Gathered {
         };
     };
     let addresses = interface_addresses();
-    let own = own_candidates(&addresses, bound);
+    let mut own = own_candidates(&addresses, bound);
+    if options.loopback {
+        let ip = if bound.is_ipv4() {
+            IpAddr::from([127, 0, 0, 1])
+        } else {
+            IpAddr::from(std::net::Ipv6Addr::LOCALHOST)
+        };
+        own.push(Candidate {
+            kind: CandidateKind::Local,
+            addr: SocketAddr::new(ip, bound.port()),
+        });
+    }
     // IPv6 has no NAT to learn about: without a public address of its own, nobody is reached
     // over it, and STUN servers would only be waited for.
     if bound.is_ipv6() && own.iter().all(|c| c.kind != CandidateKind::Public) {
@@ -333,6 +368,7 @@ mod tests {
             stun_servers: vec![server.to_string()],
             router: false,
             timeout: Duration::from_secs(2),
+            loopback: false,
         };
         let gathered = gather(&socket, &options).await;
         let own = socket.local_addr().unwrap();
@@ -351,6 +387,7 @@ mod tests {
             stun_servers: Vec::new(),
             router: false,
             timeout: Duration::from_secs(2),
+            loopback: false,
         };
         let gathered = gather(&socket, &options).await;
         assert!(

@@ -15,6 +15,13 @@ use tokio::time::timeout;
 /// afterwards should Torqa not get to release it.
 const LEASE: Duration = Duration::from_hours(4);
 
+/// How often a mapping is renewed: well within its lease.
+pub const RENEW_EVERY: Duration = Duration::from_hours(1);
+
+fn lease_seconds() -> u32 {
+    u32::try_from(LEASE.as_secs()).unwrap_or(u32::MAX)
+}
+
 /// Shown in the router's list of forwarded ports.
 const DESCRIPTION: &str = "Torqa group ride";
 
@@ -22,6 +29,7 @@ const DESCRIPTION: &str = "Torqa group ride";
 #[derive(Debug)]
 pub struct RouterMapping {
     external: SocketAddr,
+    local: SocketAddr,
     via: Via,
 }
 
@@ -36,6 +44,26 @@ impl RouterMapping {
     #[must_use]
     pub fn external(&self) -> SocketAddr {
         self.external
+    }
+
+    /// Asks the router to keep forwarding the port for another lease; `false` if it would not.
+    pub async fn renew(&mut self) -> bool {
+        let renewed = match &mut self.via {
+            Via::Pcp(mapping) => mapping.renew().await.map_err(|e| e.to_string()),
+            Via::Upnp(gateway) => gateway
+                .add_port(
+                    PortMappingProtocol::UDP,
+                    self.external.port(),
+                    self.local,
+                    lease_seconds(),
+                    DESCRIPTION,
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        };
+        renewed
+            .inspect_err(|e| tracing::debug!("Router did not renew {}: {e}", self.external))
+            .is_ok()
     }
 
     /// Asks the router to stop forwarding the port. Best effort: the lease ends anyway.
@@ -92,7 +120,7 @@ async fn by_pcp(local: SocketAddr) -> Option<RouterMapping> {
     };
     let options = crab_nat::PortMappingOptions {
         external_port: NonZeroU16::new(local.port()),
-        lifetime_seconds: u32::try_from(LEASE.as_secs()).ok(),
+        lifetime_seconds: Some(lease_seconds()),
         timeout_config: None,
     };
     let mapping = crab_nat::PortMapping::new(
@@ -120,6 +148,7 @@ async fn by_pcp(local: SocketAddr) -> Option<RouterMapping> {
     };
     Some(RouterMapping {
         external: SocketAddr::new(ip, mapping.external_port().get()),
+        local,
         via: Via::Pcp(mapping),
     })
 }
@@ -131,14 +160,19 @@ async fn by_upnp(local: SocketAddr) -> Option<RouterMapping> {
         .await
         .inspect_err(|e| tracing::debug!("No UPnP router: {e}"))
         .ok()?;
-    let lease = u32::try_from(LEASE.as_secs()).unwrap_or(u32::MAX);
     let external = gateway
-        .get_any_address(PortMappingProtocol::UDP, local, lease, DESCRIPTION)
+        .get_any_address(
+            PortMappingProtocol::UDP,
+            local,
+            lease_seconds(),
+            DESCRIPTION,
+        )
         .await
         .inspect_err(|e| tracing::debug!("No UPnP mapping from {}: {e}", gateway.addr))
         .ok()?;
     Some(RouterMapping {
         external,
+        local,
         via: Via::Upnp(gateway),
     })
 }

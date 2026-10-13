@@ -4,12 +4,13 @@
 //!
 //! The binary form: a version byte, a kind byte, then the kind's fields. Strings are a length
 //! byte and UTF-8; addresses a candidate kind byte, a family byte (4 or 6), the address and the
-//! port, big-endian.
+//! port, big-endian. After the addresses comes how the router maps ports (see
+//! [`NatBehavior`]).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::base64url;
-use crate::candidates::{Candidate, CandidateKind};
+use crate::candidates::{Candidate, CandidateKind, NatBehavior};
 
 /// What every code starts with, so a code is told apart from other text.
 pub const PREFIX: &str = "torqa:";
@@ -38,6 +39,8 @@ pub struct Invite {
     pub fingerprint: [u8; 32],
     /// Where the host may be reached, the best first.
     pub candidates: Vec<Candidate>,
+    /// How the host's router maps ports, to tell why a connection failed.
+    pub nat: NatBehavior,
 }
 
 /// The course of a group ride, as a joiner finds it in their library.
@@ -56,6 +59,8 @@ pub struct Reply {
     pub secret: [u8; 16],
     /// Where the joiner may be reached, the best first.
     pub candidates: Vec<Candidate>,
+    /// How the joiner's router maps ports, to tell why a connection failed.
+    pub nat: NatBehavior,
 }
 
 /// Why text is not a code that can be used.
@@ -85,6 +90,7 @@ impl Invite {
         w.string(&self.course.name);
         w.string(&self.host);
         w.candidates(&self.candidates);
+        w.0.push(self.nat.to_byte());
         w.finish()
     }
 
@@ -105,12 +111,14 @@ impl Invite {
         let name = r.string()?;
         let host = r.string()?;
         let candidates = r.candidates()?;
+        let nat = NatBehavior::from_byte(r.byte()?).ok_or(CodeError::NotACode)?;
         r.end()?;
         Ok(Self {
             host,
             course: Course { name, route_hash },
             fingerprint,
             candidates,
+            nat,
         })
     }
 }
@@ -122,6 +130,7 @@ impl Reply {
         let mut w = Writer::new(KIND_REPLY);
         w.bytes(&self.secret);
         w.candidates(&self.candidates);
+        w.0.push(self.nat.to_byte());
         w.finish()
     }
 
@@ -139,8 +148,13 @@ impl Reply {
         }
         let secret = r.array()?;
         let candidates = r.candidates()?;
+        let nat = NatBehavior::from_byte(r.byte()?).ok_or(CodeError::NotACode)?;
         r.end()?;
-        Ok(Self { secret, candidates })
+        Ok(Self {
+            secret,
+            candidates,
+            nat,
+        })
     }
 }
 
@@ -289,6 +303,7 @@ mod tests {
                 candidate(CandidateKind::Public, "[2001:db8::1]:51820"),
                 candidate(CandidateKind::Local, "192.168.1.20:51820"),
             ],
+            nat: NatBehavior::EndpointIndependent,
         }
     }
 
@@ -296,6 +311,7 @@ mod tests {
         Reply {
             secret: [9; 16],
             candidates: vec![candidate(CandidateKind::Stun, "198.51.100.4:61000")],
+            nat: NatBehavior::Symmetric,
         }
     }
 

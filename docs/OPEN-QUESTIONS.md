@@ -11,6 +11,12 @@ Things to review or decide together. Newest first; remove entries once settled.
   for a port (UPnP, NAT-PMP, PCP) is only tested against routers that refuse, from the
   container; with UPnP on in the router, a `Router` address should show, and with
   `--keep-mapping` the router's list of forwarded ports should have "Torqa group ride".
+- **`torqa-cli net-ping`** between your home and a friend's (see [cli.md](cli.md)): the joiner
+  should connect and get ten pings back. Tried only between two simulated home routers (Linux
+  NAT, one port per destination) in the container, where it connects within seconds; with
+  both routers picking a port per destination it gives up with that reason, as it should.
+  A router that does not drop unsolicited packets sent to itself can turn the joiner's early
+  probes into a mapping that moves the host's port; Linux-based home routers drop them.
 
 ### Decisions I took (say if you want them otherwise)
 

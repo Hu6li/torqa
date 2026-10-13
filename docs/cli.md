@@ -223,6 +223,22 @@ other. A port the router forwards is released at the end, unless `--keep-mapping
 to look up in the router. `RUST_LOG=torqa_net=debug` shows why the router or a STUN server did
 not answer.
 
+## Try connecting two computers
+
+```sh
+./torqa-cli net-ping host                  # on one computer: prints an invite, takes replies
+./torqa-cli net-ping join '<the invite>'   # on the other: prints a reply, connects, pings
+```
+
+Connects two computers as a group ride would (ADR 0015), to try punching through real routers
+before riding. The host prints an invite; pass it on to the other rider, who runs `join` with
+it and passes the printed reply back within 60 s. The host pastes it and presses Enter (one
+host takes several replies, one per line). Both punch through their routers, connect
+encrypted, and the joiner pings the host ten times. If they cannot reach each other within
+60 s, both say what may have kept them apart. `--no-stun`, `--stun <host:port>` and
+`--no-router` work as for `net-check`; `--loopback` also offers `127.0.0.1`, to try both ends
+on one computer.
+
 ## Connection
 
 If the trainer drops out, the CLI reconnects automatically and re-applies the last command.

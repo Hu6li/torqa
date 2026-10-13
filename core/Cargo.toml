@@ -40,11 +40,16 @@ image-webp = "0.2.4"
 mvt-reader = "2.5.0"
 netdev = "0.46.3"
 png = "0.18.1"
+# QUIC for group rides (ADR 0015), on the aws-lc-rs crypto that reqwest's rustls already uses.
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
 quick-xml = "0.42.0"
 # Without its assembly here: the 1.1.0 package leaves out the headers its ARM assembly needs.
 # torqa-video turns it on for x86_64, whose assembly the package has (ADR 0010).
 rav1d = { version = "1.1.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
+# A group ride's own certificate (ADR 0015), signed with aws-lc-rs as rustls is.
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "aws_lc_rs"] }
 reqwest = "0.13.5"
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std"] }
 rustyfit = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

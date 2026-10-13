@@ -431,10 +431,10 @@ Riding a course together without a server. One step per PR:
 - [x] `torqa-net`: invite and reply codes (encode, decode, reject other versions) and address
   candidates: local addresses, global IPv6, STUN (Torqa's own binding request, tested against
   a stand-in server), UPnP / NAT-PMP / PCP mappings; `torqa-cli net-check`
-- [ ] Hole punching and QUIC: probes on one socket, the per-ride certificate pinned by the
+- [x] Hole punching and QUIC: probes on one socket, the per-ride certificate pinned by the
   invite, the joiner's secret, keep-alives, the router's port renewed and released, giving up
   after 60 s with a reason; tested between
-  two Torqas on one machine
+  two Torqas on one machine; `torqa-cli net-ping`
 - [ ] The lobby and the ride: joining and leaving, the countdown, state datagrams at 5 Hz, the
   host forwarding, a rider or the host dropping out; `torqa-cli ride-together` for two fake
   trainers

@@ -4,6 +4,7 @@ mod devices;
 mod free_ride;
 mod gear_check;
 mod net_check;
+mod net_ping;
 mod recorded_ride;
 mod sample_rides;
 
@@ -64,6 +65,8 @@ enum Command {
     /// Show the addresses this computer would offer a group ride, and how its router maps
     /// them.
     NetCheck(net_check::NetCheckArgs),
+    /// Connect two computers as a group ride would and ping between them.
+    NetPing(net_ping::NetPingArgs),
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -219,6 +222,7 @@ async fn main() -> Result<()> {
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
         Command::SampleRides(args) => sample_rides::write(&args),
         Command::NetCheck(args) => net_check::run(&args).await,
+        Command::NetPing(args) => net_ping::run(&args).await,
     }
 }
 
