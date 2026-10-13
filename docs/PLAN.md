@@ -131,6 +131,8 @@ Built in rideable steps:
 - [x] `.tqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
   versions (ADR 0007 amendment)
 - [x] Course library in the data directory; list, import, save-as-course in the app
+- [x] An import can be cancelled from beside its loading bar, and a job that dies reports an
+  error instead of loading forever (#219)
 - [x] Rebuild outdated worlds from stored inputs (format 1 always rebuilds offline)
 - [ ] Format 2: store the pre-built world for an instant start
 - **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅

@@ -23,6 +23,8 @@ var _import_button: Button = Button.new()
 var _loading: HBoxContainer = HBoxContainer.new()
 var _loading_bar: ProgressBar = ProgressBar.new()
 var _loading_label: Label = Label.new()
+## Gives up on an import that takes too long or hangs (#219); what was downloaded is kept.
+var _cancel_button: Button = Button.new()
 var _status: Label = Label.new()
 var _file_dialog: FileDialog = FileDialog.new()
 var _no_gps_dialog: AcceptDialog = AcceptDialog.new()
@@ -81,7 +83,11 @@ func _init() -> void:
 	_loading_bar.show_percentage = false
 	_loading_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_loading.add_child(_loading_bar)
+	_loading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_loading.add_child(_loading_label)
+	_cancel_button.text = tr("Cancel")
+	_cancel_button.pressed.connect(_cancel_loading)
+	_loading.add_child(_cancel_button)
 	_loading.hide()
 	add_child(_loading)
 	_status.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
@@ -229,6 +235,15 @@ func _on_loading_progress(step: String, unit: String, done: int, total: int) -> 
 	var share: Vector2 = STEP_WEIGHTS.get(step, Vector2(0.0, 1.0))
 	_loading_bar.value = lerpf(share.x, share.y, float(done) / float(maxi(total, 1)))
 	_loading_label.text = "%s… %d / %d %s" % [tr(step), done, total, tr(unit)]
+
+
+func _cancel_loading() -> void:
+	if _importing != "gpx" and _importing != "video":
+		return
+	_torqa.cancel_loading()
+	_importing = ""
+	_loading.hide()
+	_import_button.disabled = false
 
 
 ## A prepared route (or an imported course file) is in the library: show it and open it.

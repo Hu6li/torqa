@@ -456,6 +456,8 @@ pub struct App {
     from_course: bool,
     /// Counts loads; results of earlier ones are stale.
     load: u64,
+    /// The job of the current load, to cancel it (#219).
+    loading: Option<tokio::task::AbortHandle>,
     /// When to build the loaded route's world.
     world_plan: WorldPlan,
     /// The course file of the loaded route, once it is one.
@@ -524,6 +526,7 @@ impl App {
             reconnecting: false,
             from_course: false,
             load: 0,
+            loading: None,
             world_plan: WorldPlan::Now,
             course: None,
             saving: None,
@@ -656,7 +659,7 @@ impl App {
         let load = self.load;
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
-        self.runtime.spawn(async move {
+        self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
@@ -687,7 +690,7 @@ impl App {
         self.course = Some(path.clone());
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
-        self.runtime.spawn(async move {
+        self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
@@ -779,7 +782,7 @@ impl App {
         let load = self.load;
         let tx = self.jobs_tx.clone();
         let cache = self.cache_dir.clone();
-        self.runtime.spawn(async move {
+        self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
@@ -1338,8 +1341,45 @@ impl App {
         self.data_dir.join("courses")
     }
 
-    /// Forgets the current route and starts recording the files a new one uses.
+    /// Stops preparing the route, video or world being loaded (#219): its results are dropped,
+    /// and what it downloaded stays in the cache, so trying again is quick.
+    pub fn cancel_loading(&mut self) {
+        if self.loading.as_ref().is_some_and(|job| !job.is_finished()) {
+            let _ = self.start_loading(self.offline);
+        }
+    }
+
+    /// Runs the job of load `load` (the current one), in place of the current load's job; a
+    /// job that panics fails the load instead of leaving the rider waiting (#219).
+    fn spawn_load(&mut self, load: u64, job: impl Future<Output = ()> + Send + 'static) {
+        let task = self.runtime.spawn(job);
+        self.loading = Some(task.abort_handle());
+        let tx = self.jobs_tx.clone();
+        self.runtime.spawn(async move {
+            let Err(error) = task.await else {
+                return;
+            };
+            // A cancelled load is a stale one: its report is dropped like its results.
+            let message = if error.is_panic() {
+                let panic = error.into_panic();
+                let reason = panic
+                    .downcast_ref::<&str>()
+                    .map(|reason| (*reason).to_owned())
+                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                    .unwrap_or_default();
+                format!("preparing the course stopped unexpectedly: {reason}")
+            } else {
+                "preparing the course was cancelled".to_owned()
+            };
+            let _ = tx.send(JobResult::Route(load, Err(message)));
+        });
+    }
+
+    /// Forgets the current route, stops its job and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        if let Some(job) = self.loading.take() {
+            job.abort();
+        }
         self.load += 1;
         self.offline = offline;
         self.world_plan = WorldPlan::Now;
@@ -1372,7 +1412,7 @@ impl App {
         let mut detailed = terrain(TileSource::defaults());
         // The land beyond the corridor needs only coarse tiles, a few for the whole view.
         let mut distant = terrain(TileSource::distant());
-        self.runtime.spawn(async move {
+        self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
@@ -2980,6 +3020,43 @@ mod tests {
         assert_eq!(summary.name, "Test loop");
         assert!((summary.length - 400.0).abs() < 1.0);
         assert!(app.route().is_some());
+    }
+
+    #[test]
+    fn a_load_that_hangs_can_be_cancelled_and_the_next_one_goes_through() {
+        let dir = temp_dir("cancel");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let _ = app.start_loading(true);
+        app.spawn_load(app.load, std::future::pending());
+
+        app.cancel_loading();
+
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(16));
+            let events = app.update(Duration::from_millis(16));
+            assert!(
+                events.is_empty(),
+                "nothing from a cancelled load: {events:?}"
+            );
+        }
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+    }
+
+    #[test]
+    fn a_load_whose_job_panics_is_reported_instead_of_loading_forever() {
+        let dir = temp_dir("panic");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let _ = app.start_loading(true);
+
+        app.spawn_load(app.load, async { panic!("a broken tile") });
+
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::Error(_)));
+        let Some(AppEvent::Error(message)) = events.last() else {
+            unreachable!()
+        };
+        assert!(message.contains("a broken tile"), "{message}");
     }
 
     /// The reference route (#167) imported as a rider would, from the map and terrain tiles in

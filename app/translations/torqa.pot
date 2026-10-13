@@ -59,7 +59,7 @@ msgstr ""
 msgid "%s disconnected — reconnecting…"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:208
+#: app/scenes/courses_tab.gd:214
 msgid "%s has no GPS, so it cannot become a course by itself."
 msgstr ""
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "+ Step"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:209
+#: app/scenes/courses_tab.gd:215
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
 
@@ -91,7 +91,7 @@ msgstr ""
 msgid "2 × 8-minute test"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:210
+#: app/scenes/courses_tab.gd:216
 msgid "2. Open that course."
 msgstr ""
 
@@ -103,7 +103,7 @@ msgstr ""
 msgid "20-minute test"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:212
+#: app/scenes/courses_tab.gd:218
 msgid "3. Press the pencil beside its name, then Add video…, and place the route in the video."
 msgstr ""
 
@@ -115,7 +115,7 @@ msgstr ""
 msgid "8 minutes all out: as hard as you can hold to the end"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:176
+#: app/scenes/courses_tab.gd:182
 msgid "A course named “%s” exists already. Replace it, or keep both?"
 msgstr ""
 
@@ -303,7 +303,7 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/ui/workout_editor.gd:60
+#: app/scenes/courses_tab.gd:88 app/ui/workout_editor.gd:60
 msgid "Cancel"
 msgstr ""
 
@@ -447,7 +447,7 @@ msgstr ""
 msgid "Correcting elevations"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:135
+#: app/scenes/courses_tab.gd:141
 msgid "Course name in use"
 msgstr ""
 
@@ -763,11 +763,11 @@ msgstr ""
 msgid "Full view"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:113
+#: app/scenes/courses_tab.gd:119
 msgid "GPX routes"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:72
+#: app/scenes/courses_tab.gd:74
 msgid "GPX routes, videos with GPS, route videos and course files"
 msgstr ""
 
@@ -871,7 +871,7 @@ msgstr ""
 msgid "Imperial (mi, lb)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:71 app/scenes/courses_tab.gd:128
+#: app/scenes/courses_tab.gd:73 app/scenes/courses_tab.gd:134
 msgid "Import"
 msgstr ""
 
@@ -915,7 +915,7 @@ msgstr ""
 msgid "Jun"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:137
+#: app/scenes/courses_tab.gd:143
 msgid "Keep both"
 msgstr ""
 
@@ -947,7 +947,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:222
+#: app/scenes/courses_tab.gd:228
 msgid "Loading %s …"
 msgstr ""
 
@@ -1047,7 +1047,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:127
+#: app/scenes/courses_tab.gd:133
 msgid "Name the course"
 msgstr ""
 
@@ -1091,7 +1091,7 @@ msgstr ""
 msgid "Next: free ride for %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:92
+#: app/scenes/courses_tab.gd:98
 msgid "No courses yet. Import a GPX route or a video to prepare your first course."
 msgstr ""
 
@@ -1175,7 +1175,7 @@ msgstr ""
 msgid "Only the HUD, on top of other windows, e.g. over a video (O)"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:104
+#: app/scenes/courses_tab.gd:110
 msgid "Open a GPX route, video or Torqa course"
 msgstr ""
 
@@ -1355,7 +1355,7 @@ msgstr ""
 msgid "Rename the ride"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:136
+#: app/scenes/courses_tab.gd:142
 msgid "Replace"
 msgstr ""
 
@@ -1419,7 +1419,7 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:112
+#: app/scenes/courses_tab.gd:118
 msgid "Routes, videos and courses"
 msgstr ""
 
@@ -1651,7 +1651,7 @@ msgstr ""
 msgid "Torqa could not connect. Go back to Torqa to try again."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:121
+#: app/scenes/courses_tab.gd:127
 msgid "Torqa courses"
 msgstr ""
 
@@ -1743,7 +1743,7 @@ msgstr ""
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
-#: app/scenes/courses_tab.gd:142
+#: app/scenes/courses_tab.gd:148
 msgid "Video without GPS"
 msgstr ""
 
@@ -1751,7 +1751,7 @@ msgstr ""
 msgid "Videos"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:118
+#: app/scenes/courses_tab.gd:124
 msgid "Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)"
 msgstr ""
 
@@ -1855,7 +1855,7 @@ msgstr ""
 msgid "Your best time on this route: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd:67
+#: app/scenes/courses_tab.gd:69
 msgid "Your courses"
 msgstr ""
 
