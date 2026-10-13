@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["torqa-domain", "torqa-terrain", "torqa-video", "torqa-osm", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-workouts", "torqa-session", "torqa-world", "torqa-upload", "torqa-app", "torqa-gd", "torqa-cli"]
+members = ["torqa-domain", "torqa-terrain", "torqa-video", "torqa-osm", "torqa-routes", "torqa-physics", "torqa-devices", "torqa-storage", "torqa-workouts", "torqa-session", "torqa-world", "torqa-upload", "torqa-net", "torqa-app", "torqa-gd", "torqa-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +12,7 @@ publish = false
 [workspace.dependencies]
 torqa-app = { path = "torqa-app" }
 torqa-domain = { path = "torqa-domain" }
+torqa-net = { path = "torqa-net" }
 torqa-osm = { path = "torqa-osm" }
 torqa-devices = { path = "torqa-devices" }
 torqa-physics = { path = "torqa-physics" }
@@ -26,14 +27,18 @@ torqa-world = { path = "torqa-world" }
 anyhow = "1.0.104"
 btleplug = "0.13.3"
 clap = { version = "4.6.7", features = ["derive"] }
+crab_nat = "0.8.1"
 # FFmpeg's libraries come prebuilt by scripts/build-ffmpeg.sh (a pinned release, verified),
 # found through FFMPEG_DIR and linked statically (ADR 0010).
 ffmpeg-next = { version = "9.0.0", default-features = false, features = ["codec", "format", "software-scaling", "static"] }
 embedded-io-adapters = { version = "0.7.0", features = ["std"] }
 futures = "0.3.34"
 geo-types = "0.7.20"
+# UPnP port mappings for group rides (ADR 0015); async on tokio, without the blocking client.
+igd-next = { version = "0.18.0", default-features = false, features = ["aio_tokio"] }
 image-webp = "0.2.4"
 mvt-reader = "2.5.0"
+netdev = "0.46.3"
 png = "0.18.1"
 quick-xml = "0.42.0"
 # Without its assembly here: the 1.1.0 package leaves out the headers its ARM assembly needs.

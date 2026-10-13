@@ -4,6 +4,14 @@ Things to review or decide together. Newest first; remove entries once settled.
 
 ## 2026-10-13 — Phase 12: group rides (R67–R69, ADR 0015)
 
+### Needs your network
+
+- **`torqa-cli net-check`** on your computers at home (and a friend's): it should list a
+  `Stun` address and say the router keeps one port for every destination. Asking the router
+  for a port (UPnP, NAT-PMP, PCP) is only tested against routers that refuse, from the
+  container; with UPnP on in the router, a `Router` address should show, and with
+  `--keep-mapping` the router's list of forwarded ports should have "Torqa group ride".
+
 ### Decisions I took (say if you want them otherwise)
 
 - **Heart rate stays private**: riders see each other's distance, speed, power and cadence,

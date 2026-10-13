@@ -206,6 +206,23 @@ frames shown per second, the longest wait for a frame and the straight decoding 
 verdict. A video that cannot keep up here stutters in the app too; see [video.md](video.md)
 on sizes and codecs.
 
+## Check the network for group rides
+
+```sh
+./torqa-cli net-check               # the addresses a group ride would offer from here
+./torqa-cli net-check --no-stun     # without asking public STUN servers
+./torqa-cli net-check --no-router   # without asking the router for a port
+```
+
+Lists, for IPv4 and IPv6, the addresses this computer would put into a group ride's code
+(ADR 0015) and where each comes from: a port the router forwards (`Router`, by UPnP, NAT-PMP or
+PCP), an address of its own reachable from anywhere (`Public`, usually IPv6), the public
+address STUN servers saw (`Stun`) and addresses on the local network (`Local`). It also tells
+how the router maps ports: one port for every destination is what riders need to reach each
+other. A port the router forwards is released at the end, unless `--keep-mapping` keeps it
+to look up in the router. `RUST_LOG=torqa_net=debug` shows why the router or a STUN server did
+not answer.
+
 ## Connection
 
 If the trainer drops out, the CLI reconnects automatically and re-applies the last command.

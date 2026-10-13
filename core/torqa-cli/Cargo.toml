@@ -15,6 +15,7 @@ path = "src/main.rs"
 torqa-app.workspace = true
 torqa-domain.workspace = true
 torqa-devices.workspace = true
+torqa-net.workspace = true
 torqa-physics.workspace = true
 torqa-routes.workspace = true
 torqa-session.workspace = true

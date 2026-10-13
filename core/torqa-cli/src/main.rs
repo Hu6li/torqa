@@ -3,6 +3,7 @@
 mod devices;
 mod free_ride;
 mod gear_check;
+mod net_check;
 mod recorded_ride;
 mod sample_rides;
 
@@ -60,6 +61,9 @@ enum Command {
     /// Write weeks of made-up rides to the active rider's history, e.g. for screenshots of
     /// the Analysis tab.
     SampleRides(sample_rides::SampleRidesArgs),
+    /// Show the addresses this computer would offer a group ride, and how its router maps
+    /// them.
+    NetCheck(net_check::NetCheckArgs),
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -214,6 +218,7 @@ async fn main() -> Result<()> {
         Command::Video { file, seconds } => video_check(&file, seconds),
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
         Command::SampleRides(args) => sample_rides::write(&args),
+        Command::NetCheck(args) => net_check::run(&args).await,
     }
 }
 

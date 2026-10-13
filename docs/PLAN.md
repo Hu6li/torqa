@@ -428,11 +428,12 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
 ### Phase 12 — Group rides (R67–R69, [ADR 0015](adr/0015-group-rides.md))
 Riding a course together without a server. One step per PR:
 - [x] ADR 0015, requirements R67–R69 and this plan
-- [ ] `torqa-net`: invite and reply codes (encode, decode, reject other versions) and address
+- [x] `torqa-net`: invite and reply codes (encode, decode, reject other versions) and address
   candidates: local addresses, global IPv6, STUN (Torqa's own binding request, tested against
-  a stand-in server), UPnP / NAT-PMP / PCP mappings
+  a stand-in server), UPnP / NAT-PMP / PCP mappings; `torqa-cli net-check`
 - [ ] Hole punching and QUIC: probes on one socket, the per-ride certificate pinned by the
-  invite, the joiner's secret, keep-alives, giving up after 60 s with a reason; tested between
+  invite, the joiner's secret, keep-alives, the router's port renewed and released, giving up
+  after 60 s with a reason; tested between
   two Torqas on one machine
 - [ ] The lobby and the ride: joining and leaving, the countdown, state datagrams at 5 Hz, the
   host forwarding, a rider or the host dropping out; `torqa-cli ride-together` for two fake

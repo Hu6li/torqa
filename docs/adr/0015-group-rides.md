@@ -80,8 +80,9 @@ unreliable datagrams over one UDP socket, and that socket can be punched first.
   the lobby. `torqa-session` gets remote riders beside its ghosts; Godot only shows them. No
   plugin trait: there is one way of connecting.
 - **New dependencies**: `quinn` and `rustls` (QUIC and TLS), `rcgen` (the ride's certificate),
-  `qrcode` (drawing the QR code), `igd-next` (UPnP) and `crab_nat` (NAT-PMP and PCP). All MIT
-  or Apache-2.0. Scanning a QR code with a camera is left out: it needs camera access on three
+  `qrcode` (drawing the QR code), `igd-next` (UPnP), `crab_nat` (NAT-PMP and PCP) and `netdev`
+  (the network interfaces' addresses, and the router's, which NAT-PMP and PCP are sent to).
+  All MIT or Apache-2.0. Scanning a QR code with a camera is left out: it needs camera access on three
   platforms for something pasting already does.
 
 ## Consequences

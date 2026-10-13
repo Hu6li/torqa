@@ -1,0 +1,22 @@
+[package]
+name = "torqa-net"
+description = "Group rides without a server: invite codes, address discovery, hole punching"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+crab_nat.workspace = true
+igd-next.workspace = true
+netdev.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "time", "macros"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "net", "time"] }
+
+[lints]
+workspace = true
