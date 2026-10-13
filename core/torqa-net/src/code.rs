@@ -52,6 +52,18 @@ pub struct Course {
     pub route_hash: [u8; 32],
 }
 
+impl Course {
+    /// The course named `name` whose route is `route`: the bytes that make the route, the same
+    /// for everyone who has the course.
+    #[must_use]
+    pub fn new(name: &str, route: &[u8]) -> Self {
+        Self {
+            name: name.to_owned(),
+            route_hash: crate::link::sha256(&crate::link::provider(), route),
+        }
+    }
+}
+
 /// A joiner's answer to an invite, which the host pastes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reply {
@@ -158,6 +170,15 @@ impl Reply {
     }
 }
 
+/// `text` cut to [`MAX_NAME_BYTES`] at a character boundary.
+pub(crate) fn cut_name(text: &str) -> &str {
+    let mut end = text.len().min(MAX_NAME_BYTES);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 struct Writer(Vec<u8>);
 
 impl Writer {
@@ -170,13 +191,10 @@ impl Writer {
     }
 
     fn string(&mut self, text: &str) {
-        let mut end = text.len().min(MAX_NAME_BYTES);
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
+        let text = cut_name(text);
         #[allow(clippy::cast_possible_truncation)] // at most MAX_NAME_BYTES
-        self.0.push(end as u8);
-        self.bytes(&text.as_bytes()[..end]);
+        self.0.push(text.len() as u8);
+        self.bytes(text.as_bytes());
     }
 
     fn candidates(&mut self, candidates: &[Candidate]) {

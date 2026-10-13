@@ -17,6 +17,9 @@ Things to review or decide together. Newest first; remove entries once settled.
   both routers picking a port per destination it gives up with that reason, as it should.
   A router that does not drop unsolicited packets sent to itself can turn the joiner's early
   probes into a mapping that moves the host's port; Linux-based home routers drop them.
+- **`torqa-cli ride-together`** with a friend, both with `--fake` (see [cli.md](cli.md#ride-together)):
+  both should start within a moment of each other and see the same gap from both ends. Tried
+  only with two riders on one machine in the container.
 
 ### Decisions I took (say if you want them otherwise)
 
@@ -28,6 +31,13 @@ Things to review or decide together. Newest first; remove entries once settled.
   exchange codes with the host.
 - **Pasting codes, no camera scanning**: the QR code is shown for phones and riders in the
   same room; Torqa does not read QR codes.
+- **The CLI matches the course by the GPX file**: `ride-together` takes the SHA-256 of the
+  file's bytes as the route's hash, so every rider needs the very same file. The app will
+  hash the course's route instead, when it gets **Ride together**.
+- **A place freed before the start is taken again**: a rider who leaves the lobby makes room
+  for another; after the start, nobody joins, even into a free place.
+- **The host starts when they choose** (`go`), not when a set number is in; the countdown is
+  10 s.
 
 ## 2026-10-12 — Uploads (R29, R60)
 

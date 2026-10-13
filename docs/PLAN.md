@@ -435,7 +435,7 @@ Riding a course together without a server. One step per PR:
   invite, the joiner's secret, keep-alives, the router's port renewed and released, giving up
   after 60 s with a reason; tested between
   two Torqas on one machine; `torqa-cli net-ping`
-- [ ] The lobby and the ride: joining and leaving, the countdown, state datagrams at 5 Hz, the
+- [x] The lobby and the ride: joining and leaving, the countdown, state datagrams at 5 Hz, the
   host forwarding, a rider or the host dropping out; `torqa-cli ride-together` for two fake
   trainers
 - [ ] Remote riders in the session and the app layer, beside the ghosts: interpolated, on the

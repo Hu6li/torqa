@@ -239,6 +239,27 @@ encrypted, and the joiner pings the host ten times. If they cannot reach each ot
 `--no-router` work as for `net-check`; `--loopback` also offers `127.0.0.1`, to try both ends
 on one computer.
 
+## Ride together
+
+```sh
+./torqa-cli ride-together --route col.gpx --name Anna                    # host
+./torqa-cli ride-together --route col.gpx --name Ben --join '<the invite>'  # each joiner
+```
+
+A group ride along a GPX route (R67, ADR 0015), up to 8 riders, each on their own trainer
+(`--fake` and the other trainer options work as for `ride`). The host prints an invite and
+passes it on; each joiner runs `--join` with it on the same GPX file and passes their printed
+reply back within 60 s. The host pastes each reply and presses Enter, and sees who is in. When
+everyone is, the host types `go`: after a countdown (`--countdown`, 10 s) everyone starts
+together. Nobody can join after the start.
+
+Each rider rides with their own physics, `--difficulty` and `--mass`, as alone. Every second
+the CLI prints the rider's state and each other rider's gap (`Ben +12 m`: Ben is 12 m ahead);
+riders send each other their distance, speed, power and cadence 5 times a second, never their
+heart rate. Type `q` to stop and save the ride as FIT. A rider who leaves or drops out is
+reported to the others; if the host leaves, the others ride on alone. `--no-stun`, `--stun`,
+`--no-router` and `--loopback` work as for `net-check`.
+
 ## Connection
 
 If the trainer drops out, the CLI reconnects automatically and re-applies the last command.

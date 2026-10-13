@@ -15,6 +15,7 @@ quinn.workspace = true
 rcgen.workspace = true
 rustls.workspace = true
 thiserror.workspace = true
+torqa-domain.workspace = true
 tokio = { workspace = true, features = ["net", "time", "macros", "rt", "sync"] }
 tracing.workspace = true
 

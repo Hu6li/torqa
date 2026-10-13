@@ -6,6 +6,7 @@ mod gear_check;
 mod net_check;
 mod net_ping;
 mod recorded_ride;
+mod ride_together;
 mod sample_rides;
 
 use std::path::{Path, PathBuf};
@@ -67,6 +68,9 @@ enum Command {
     NetCheck(net_check::NetCheckArgs),
     /// Connect two computers as a group ride would and ping between them.
     NetPing(net_ping::NetPingArgs),
+    /// Ride a GPX route together with others, each on their own trainer: host the ride, or
+    /// join one with `--join <invite>`.
+    RideTogether(Box<ride_together::RideTogetherArgs>),
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -223,6 +227,7 @@ async fn main() -> Result<()> {
         Command::SampleRides(args) => sample_rides::write(&args),
         Command::NetCheck(args) => net_check::run(&args).await,
         Command::NetPing(args) => net_ping::run(&args).await,
+        Command::RideTogether(args) => ride_together::run(&args).await,
     }
 }
 
@@ -535,6 +540,22 @@ mod tests {
             (hold.min_power, hold.max_power),
             (Watts(100.0), Watts(250.0))
         );
+    }
+
+    #[test]
+    fn a_group_ride_is_hosted_or_joined_on_a_route() {
+        let parse = |args: &[&str]| {
+            Cli::try_parse_from([&["torqa-cli", "ride-together"], args].concat()).is_ok()
+        };
+        assert!(parse(&["--route", "a.gpx", "--fake", "--name", "Anna"]));
+        assert!(parse(&[
+            "--route",
+            "a.gpx",
+            "--join",
+            "torqa:abc",
+            "--no-stun"
+        ]));
+        assert!(!parse(&["--join", "torqa:abc"]));
     }
 
     #[test]

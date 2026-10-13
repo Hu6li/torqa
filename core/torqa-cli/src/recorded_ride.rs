@@ -110,7 +110,7 @@ pub(crate) fn clock(time: Duration) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
-fn save(ride: &Ride, start: SystemTime, output: Option<&std::path::Path>) -> Result<()> {
+pub(crate) fn save(ride: &Ride, start: SystemTime, output: Option<&std::path::Path>) -> Result<()> {
     let path = output.map_or_else(|| paths::activity_file_name(start), ToOwned::to_owned);
     let fit = torqa_storage::encode_fit(start, ride.samples())?;
     std::fs::write(&path, fit).with_context(|| format!("cannot write {}", path.display()))?;
@@ -118,7 +118,7 @@ fn save(ride: &Ride, start: SystemTime, output: Option<&std::path::Path>) -> Res
     Ok(())
 }
 
-fn format_state(state: &RideState) -> String {
+pub(crate) fn format_state(state: &RideState) -> String {
     let t = state.telemetry;
     let readings = [
         field(

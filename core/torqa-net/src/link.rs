@@ -613,11 +613,11 @@ impl Local {
     }
 }
 
-fn provider() -> Arc<CryptoProvider> {
+pub(crate) fn provider() -> Arc<CryptoProvider> {
     Arc::new(rustls::crypto::aws_lc_rs::default_provider())
 }
 
-fn sha256(provider: &CryptoProvider, bytes: &[u8]) -> [u8; 32] {
+pub(crate) fn sha256(provider: &CryptoProvider, bytes: &[u8]) -> [u8; 32] {
     let hash = provider
         .cipher_suites
         .iter()

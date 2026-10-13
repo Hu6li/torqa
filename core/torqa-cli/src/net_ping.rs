@@ -15,6 +15,13 @@ use torqa_net::{
 pub(crate) struct NetPingArgs {
     #[command(subcommand)]
     role: Role,
+    #[command(flatten)]
+    net: NetArgs,
+}
+
+/// Which addresses to offer a group ride.
+#[derive(Args)]
+pub(crate) struct NetArgs {
     /// Ask no STUN server, as with the setting switched off.
     #[arg(long, global = true)]
     no_stun: bool,
@@ -40,15 +47,22 @@ enum Role {
     },
 }
 
-pub(crate) async fn run(args: &NetPingArgs) -> Result<()> {
-    let mut options = ConnectOptions::default();
-    if args.no_stun {
-        options.gather.stun_servers.clear();
-    } else if !args.stun.is_empty() {
-        options.gather.stun_servers.clone_from(&args.stun);
+impl NetArgs {
+    pub(crate) fn options(&self) -> ConnectOptions {
+        let mut options = ConnectOptions::default();
+        if self.no_stun {
+            options.gather.stun_servers.clear();
+        } else if !self.stun.is_empty() {
+            options.gather.stun_servers.clone_from(&self.stun);
+        }
+        options.gather.router = !self.no_router;
+        options.gather.loopback = self.loopback;
+        options
     }
-    options.gather.router = !args.no_router;
-    options.gather.loopback = args.loopback;
+}
+
+pub(crate) async fn run(args: &NetPingArgs) -> Result<()> {
+    let options = args.net.options();
     match &args.role {
         Role::Host => host(&options).await,
         Role::Join { invite } => join(invite, &options).await,
@@ -142,14 +156,14 @@ async fn echo(connection: Connection) {
     println!("{} left", connection.remote_address());
 }
 
-fn print_candidates(candidates: &[torqa_net::Candidate]) {
+pub(crate) fn print_candidates(candidates: &[torqa_net::Candidate]) {
     println!("Offering:");
     for c in candidates {
         println!("  {:<8} {}", format!("{:?}", c.kind), c.addr);
     }
 }
 
-fn hint_text(hint: Hint) -> &'static str {
+pub(crate) fn hint_text(hint: Hint) -> &'static str {
     match hint {
         Hint::NoPublicAddress => {
             "one side has no public address (no STUN answer, no router port, no IPv6)"
