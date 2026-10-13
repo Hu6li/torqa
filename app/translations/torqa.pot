@@ -35,7 +35,7 @@ msgstr ""
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
-#: app/scenes/course_detail.gd:269
+#: app/scenes/course_detail.gd:268
 msgid "%s %.1f km at %.1f %%"
 msgstr ""
 
@@ -75,7 +75,7 @@ msgstr ""
 msgid "%s to go  ·  %.1f %%"
 msgstr ""
 
-#: app/scenes/course_detail.gd:272 app/scenes/ride_screen.gd:559
+#: app/scenes/course_detail.gd:271 app/scenes/ride_screen.gd:559
 msgid "(best %s)"
 msgstr ""
 
@@ -215,7 +215,7 @@ msgstr ""
 msgid "All time"
 msgstr ""
 
-#: app/scenes/course_detail.gd:181
+#: app/scenes/course_detail.gd:180
 msgid "Along the video"
 msgstr ""
 
@@ -283,7 +283,7 @@ msgstr ""
 msgid "Bike weight"
 msgstr ""
 
-#: app/scenes/course_detail.gd:101 app/scenes/workouts_tab.gd:281 core/torqa-app/src/import.rs:37
+#: app/scenes/course_detail.gd:100 app/scenes/workouts_tab.gd:281 core/torqa-app/src/import.rs:37
 msgid "Building 3D world"
 msgstr ""
 
@@ -475,15 +475,15 @@ msgstr ""
 msgid "Default"
 msgstr ""
 
-#: app/scenes/course_detail.gd:175 app/scenes/history_screen.gd:226 app/scenes/profile_tab.gd:69 app/ui/workout_editor.gd:181 app/ui/workout_editor.gd:188
+#: app/scenes/course_detail.gd:174 app/scenes/history_screen.gd:226 app/scenes/profile_tab.gd:69 app/ui/workout_editor.gd:181 app/ui/workout_editor.gd:188
 msgid "Delete"
 msgstr ""
 
-#: app/scenes/course_detail.gd:122
+#: app/scenes/course_detail.gd:121
 msgid "Delete course"
 msgstr ""
 
-#: app/scenes/course_detail.gd:173
+#: app/scenes/course_detail.gd:172
 msgid "Delete course?"
 msgstr ""
 
@@ -591,7 +591,7 @@ msgstr ""
 msgid "Edit course"
 msgstr ""
 
-#: app/scenes/course_detail.gd:24
+#: app/scenes/course_detail.gd:23
 msgid "Edit the course's name and video"
 msgstr ""
 
@@ -599,7 +599,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: app/scenes/course_detail.gd:138 app/scenes/history_screen.gd:254 core/torqa-app/src/hud.rs:130 app/scenes/ride_screen.tscn:73
+#: app/scenes/course_detail.gd:137 app/scenes/history_screen.gd:254 core/torqa-app/src/hud.rs:130 app/scenes/ride_screen.tscn:73
 msgid "Elevation"
 msgstr ""
 
@@ -863,7 +863,7 @@ msgstr ""
 msgid "Hold a power or a heart rate, or ride a structured workout step by step."
 msgstr ""
 
-#: app/scenes/course_detail.gd:179
+#: app/scenes/course_detail.gd:178
 msgid "How do you want to ride?"
 msgstr ""
 
@@ -879,7 +879,7 @@ msgstr ""
 msgid "Import…"
 msgstr ""
 
-#: app/scenes/course_detail.gd:182
+#: app/scenes/course_detail.gd:181
 msgid "In 3D"
 msgstr ""
 
@@ -899,7 +899,7 @@ msgstr ""
 msgid "Its file is deleted from your workouts."
 msgstr ""
 
-#: app/scenes/course_detail.gd:174
+#: app/scenes/course_detail.gd:173
 msgid "Its file is deleted; your rides on it are kept."
 msgstr ""
 
@@ -1303,7 +1303,7 @@ msgstr ""
 msgid "Quality"
 msgstr ""
 
-#: app/scenes/course_detail.gd:152
+#: app/scenes/course_detail.gd:151
 msgid "Race against"
 msgstr ""
 
@@ -1363,7 +1363,7 @@ msgstr ""
 msgid "Resume"
 msgstr ""
 
-#: app/scenes/course_detail.gd:164 app/scenes/ride_settings_dialog.gd:28
+#: app/scenes/course_detail.gd:163 app/scenes/ride_settings_dialog.gd:28
 msgid "Ride"
 msgstr ""
 
@@ -1375,7 +1375,7 @@ msgstr ""
 msgid "Ride descents like flat roads"
 msgstr ""
 
-#: app/scenes/course_detail.gd:149
+#: app/scenes/course_detail.gd:148
 msgid "Ride options"
 msgstr ""
 
@@ -1611,7 +1611,7 @@ msgstr ""
 msgid "The second 8 minutes all out"
 msgstr ""
 
-#: app/scenes/course_detail.gd:180
+#: app/scenes/course_detail.gd:179
 msgid "This course has a video. Ride along it, or in the 3D world?"
 msgstr ""
 
@@ -1627,7 +1627,7 @@ msgstr ""
 msgid "Time"
 msgstr ""
 
-#: app/scenes/course_detail.gd:214
+#: app/scenes/course_detail.gd:213
 msgid "Time at %d %% FTP"
 msgstr ""
 
@@ -1739,15 +1739,15 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: app/scenes/course_detail.gd:350
+#: app/scenes/course_detail.gd:349
 msgid "Video added: this course is ridden along it now."
 msgstr ""
 
-#: app/scenes/course_detail.gd:357
+#: app/scenes/course_detail.gd:356
 msgid "Video aligned with the route."
 msgstr ""
 
-#: app/scenes/course_detail.gd:363
+#: app/scenes/course_detail.gd:362
 msgid "Video removed: this course is ridden in 3D."
 msgstr ""
 
@@ -1859,7 +1859,7 @@ msgstr ""
 msgid "Your best on this route"
 msgstr ""
 
-#: app/scenes/course_detail.gd:264
+#: app/scenes/course_detail.gd:263
 msgid "Your best time on this route: %s"
 msgstr ""
 
@@ -1939,7 +1939,7 @@ msgstr ""
 msgid "← Back"
 msgstr ""
 
-#: app/scenes/course_detail.gd:116
+#: app/scenes/course_detail.gd:115
 msgid "← Courses"
 msgstr ""
 
