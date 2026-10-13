@@ -6,13 +6,11 @@ use std::time::Duration;
 
 use torqa_domain::recording::Sample;
 use torqa_domain::units::{Meters, MetersPerSecond, Watts};
-use torqa_physics::{DescentMode, Motion, RiderSetup};
+use torqa_physics::{DescentMode, RiderSetup};
 use torqa_routes::{LocalProjection, Route, TimedPoint};
 
-/// Simulation step for pacers.
-const STEP: Duration = Duration::from_millis(500);
-/// A pacer that has not finished after this long is stopped (e.g. too little power for a wall).
-const MAX_PACER_TIME: Duration = Duration::from_hours(12);
+use crate::estimate::steady_ride;
+
 /// Activity points further than this from the route are not on it (detours, GPS jumps).
 const MATCH_TOLERANCE_M: f64 = 40.0;
 /// How far ahead along the route the next activity point is looked for.
@@ -45,7 +43,8 @@ impl Ghost {
     }
 
     /// A pacer riding `route` at constant `power` with the rider's `setup` and descent mode, so
-    /// it climbs and descends like the rider would at that power.
+    /// it climbs and descends like the rider would at that power. One that cannot finish (too
+    /// little power for a wall) stops after half a day.
     #[must_use]
     pub fn pacer(
         name: &str,
@@ -54,17 +53,18 @@ impl Ghost {
         descent: DescentMode,
         power: Watts,
     ) -> Self {
-        let mut motion = Motion::default();
-        let mut distance = 0.0;
-        let mut elapsed = Duration::ZERO;
         let mut trace = vec![(0.0, 0.0)];
-        while distance < route.length().0 && elapsed < MAX_PACER_TIME {
-            let grade = descent.apply(route.position(Meters(distance)).grade);
-            let covered = motion.step(setup, power, grade, MetersPerSecond(0.0), STEP);
-            distance = (distance + covered.0).min(route.length().0);
-            elapsed += STEP;
-            if covered.0 > 0.0 {
-                trace.push((distance, elapsed.as_secs_f64()));
+        let ride = steady_ride(
+            route,
+            setup,
+            descent,
+            power,
+            Meters(0.0),
+            MetersPerSecond(0.0),
+        );
+        for (distance, elapsed) in ride {
+            if trace.last().is_some_and(|&(last, _)| distance.0 > last) {
+                trace.push((distance.0, elapsed.as_secs_f64()));
             }
         }
         Self {

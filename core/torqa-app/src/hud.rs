@@ -1,5 +1,7 @@
 //! The ride HUD's metrics (R23): what a rider can choose to show, and their live values.
 
+use std::time::Duration;
+
 use torqa_domain::profile::Profile;
 use torqa_domain::recording::{RideSummary, Sample};
 use torqa_routes::Route;
@@ -116,6 +118,14 @@ pub const METRICS: &[Metric] = &[
     metric("remaining", "To go", "", 2, MetricKind::Distance, 7.6),
     metric("elapsed", "Time", "", 0, MetricKind::Duration, 1543.0),
     metric(
+        "time_remaining",
+        "Time to go",
+        "",
+        0,
+        MetricKind::Duration,
+        2_710.0,
+    ),
+    metric(
         "elevation",
         "Elevation",
         "",
@@ -192,7 +202,7 @@ pub fn sanitize(layout: &[String]) -> Vec<String> {
 
 /// Live value of every metric, in metric display units (km/h, km, m, s); `None` where unknown,
 /// e.g. heart rate without a strap, or the road without a route. `summary` summarises the
-/// samples so far.
+/// samples so far, `time_to_go` is the estimated time to the finish (R66).
 #[must_use]
 pub fn values(
     state: &RideState,
@@ -200,6 +210,7 @@ pub fn values(
     summary: &RideSummary,
     route: Option<&Route>,
     profile: &Profile,
+    time_to_go: Option<Duration>,
 ) -> Vec<(&'static str, Option<f64>)> {
     let t = state.telemetry;
     let power = t.power;
@@ -239,6 +250,7 @@ pub fn values(
                 "distance" => Some(state.distance.0 / 1000.0),
                 "remaining" => state.remaining.map(|r| r.0 / 1000.0),
                 "elapsed" => Some(state.elapsed.as_secs_f64()),
+                "time_remaining" => time_to_go.map(|t| t.as_secs_f64()),
                 "elevation" => state.position.map(|p| p.elevation.0),
                 "elevation_gain" => route.map(|_| summary.elevation_gain.0),
                 "ascent_remaining" => route.map(|r| r.ascent_ahead(state.distance).0),
@@ -269,8 +281,6 @@ fn recent_power(samples: &[Sample], seconds: usize) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use torqa_domain::telemetry::Telemetry;
     use torqa_domain::units::{BeatsPerMinute, Meters, MetersPerSecond, Watts};
 
@@ -324,7 +334,7 @@ mod tests {
             gear: None,
         };
         let value = |state: &RideState, id: &str| {
-            values(state, &[], &RideSummary::default(), None, &profile)
+            values(state, &[], &RideSummary::default(), None, &profile, None)
                 .into_iter()
                 .find(|&(metric, _)| metric == id)
                 .and_then(|(_, value)| value)

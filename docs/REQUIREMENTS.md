@@ -6,7 +6,7 @@ settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement
 plus overlay mode and constant-power / heart-rate workouts (R55–R56), refined 2026-10-06: an
 overlay over normal windows only, a Workouts tab and Di2 shifting (R57–R59), extended 2026-10-12
 with uploads by one click or automatically (R60) and the analysis of a rider's power across
-their rides (R61–R65, #217).
+their rides (R61–R65, #217), and 2026-10-13 with an estimated time to the finish (R66, #231).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -68,11 +68,12 @@ on a smart trainer (primary: Wahoo KICKR Core 2) through a generated semi-realis
 |---|---|
 | R21 | Structured workouts later, but architected for now: ZWO, ERG/MRC, FIT workouts, built-in editor. No multi-week training plans. *(Constant-power and heart-rate workouts: R56.)* |
 | R22 | Rider profile: weight, FTP, max HR, power and HR zones, built-in FTP test. **Multiple user profiles** per installation. |
-| R23 | Fully customizable HUD widgets: power (instant/3 s/10 s), cadence, HR, speed, distance, time, elevation gain, current & upcoming gradient, W/kg, NP, TSS, kJ, zone. *(Per-rider layout and editor: R51.)* |
+| R23 | Fully customizable HUD widgets: power (instant/3 s/10 s), cadence, HR, speed, distance, time, elevation gain, current & upcoming gradient, W/kg, NP, TSS, kJ, zone. *(Per-rider layout and editor: R51. Estimated time to go: R66.)* |
 | R24 | Metric and imperial units. English UI first, i18n-ready from day one. |
 | R25 | Single window / fullscreen, external monitor / TV. Phone companion app is a possible future extension. *(Overlay mode: R55.)* |
 | R26 | Audio, selectable per ride: ambient sounds, original video audio, music app control. |
 | R27 | Auto-detected climbs with personal KOM-style times; personal records per route. Multiplayer possibly later — keep simulation state separable from rendering. |
+| R66 | Extends R23 and R40 (2026-10-13, #231): an **estimated time to the finish**. The course page shows how long the route takes the rider at 75 % of their FTP, with their weight and the descents as chosen in the ride options; the HUD can show the **time to go**, which follows the rider's average power so far (moving over to it from 75 % of FTP during the first ten minutes). Both ride the rest of the route with the ride's own physics, so climbs and descents count as they will. |
 
 ## Data
 

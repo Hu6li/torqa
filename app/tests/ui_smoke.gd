@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless checks of UI behaviour that needs no ride: the HUD editor (R51).
+## Headless checks of UI behaviour that needs no ride (the HUD's are in hud_smoke.gd).
 ## Run: godot --headless --path app -s res://tests/ui_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -12,7 +12,6 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	_hud_editor()
 	_ride_settings()
 	_workout_settings()
 	_workout_editor()
@@ -35,58 +34,6 @@ func _run() -> void:
 	if not _failed:
 		print("UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
-
-
-func _hud_editor() -> void:
-	var editor: HudEditor = HudEditor.new()
-	root.add_child(editor)
-	var changes: Array[PackedStringArray] = []
-	editor.layout_changed.connect(func(layout: PackedStringArray) -> void: changes.append(layout))
-	editor.edit(PackedStringArray(["power", "speed", "cadence"]), false)
-
-	editor.place("cadence", 0)
-	_expect(editor.layout(), ["cadence", "power", "speed"], "move to the large figure")
-	editor.place("heart_rate", 1)
-	_expect(editor.layout(), ["cadence", "heart_rate", "power", "speed"], "add from available")
-	editor.remove("power")
-	_expect(editor.layout(), ["cadence", "heart_rate", "speed"], "remove")
-
-	# Drag "cadence" out of the HUD onto an available figure: removed.
-	_available_chips(editor)[0].call("_drop_data", Vector2.ZERO, {HudEditor.DRAG_KEY: "cadence"})
-	_expect(editor.layout(), ["heart_rate", "speed"], "drop on the available list")
-	editor.place("speed", 0)
-
-	# Directly in the HUD (R54): drop "power" on the lower half of the large figure: right after it.
-	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
-	var large: Control = preview.get_child(0)
-	large.size = Vector2(200, 80)
-	var accepts: bool = large.call("_can_drop_data", Vector2(10, 70), {HudPanel.DRAG_KEY: "power"})
-	_check(accepts, "the HUD accepts figures")
-	large.call("_drop_data", Vector2(10, 70), {HudPanel.DRAG_KEY: "power"})
-	_expect(editor.layout(), ["speed", "power", "heart_rate"], "drop into the HUD")
-	# Grid cells split left/right: dropping "speed" on the right half of "heart_rate" (the last
-	# figure) moves it to the end.
-	preview = editor.find_children("*", "HudPanel", true, false)[0]
-	var grid: Node = preview.get_child(preview.get_child_count() - 1)
-	var last: Control = grid.get_child(grid.get_child_count() - 1)
-	last.size = Vector2(100, 40)
-	last.call("_drop_data", Vector2(90, 10), {HudPanel.DRAG_KEY: "speed"})
-	_expect(editor.layout(), ["power", "heart_rate", "speed"], "move within the HUD")
-	# Free space in the HUD appends.
-	preview = editor.find_children("*", "HudPanel", true, false)[0]
-	preview.call("_drop_data", Vector2.ZERO, {HudPanel.DRAG_KEY: "cadence"})
-	_expect(editor.layout(), ["power", "heart_rate", "speed", "cadence"], "drop on free space")
-	editor.remove("power")
-	editor.remove("cadence")
-
-	for id: String in ["speed", "heart_rate"]:
-		editor.remove(id)
-	_expect(editor.layout(), ["heart_rate"], "the last figure stays")
-	for i: int in range(20):
-		editor.place(str(TorqaApp.hud_metrics()[i]["id"]), 99)
-	_check(editor.layout().size() == TorqaApp.hud_max_metrics(), "at most the maximum figures")
-	_check(not changes.is_empty(), "changes are reported")
-	editor.free()
 
 
 ## The ride options and the in-ride settings dialog (R48, R49).
@@ -529,10 +476,6 @@ func _translations() -> void:
 
 
 ## The available figures of the editor (its second column).
-func _available_chips(editor: HudEditor) -> Array[Node]:
-	return editor.get_child(1).get_child(1).get_child(0).get_children()
-
-
 func _expect(actual: PackedStringArray, expected: Array, what: String) -> void:
 	_check(actual == PackedStringArray(expected), "%s: %s" % [what, actual])
 

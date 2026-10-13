@@ -397,6 +397,9 @@ msgstr "Do"
 msgid "Time"
 msgstr "Zeit"
 
+msgid "Time at %d %% FTP"
+msgstr "Zeit bei %d %% FTP"
+
 msgid "Time in heart-rate zones"
 msgstr "Zeit in Pulszonen"
 
@@ -405,6 +408,9 @@ msgstr "Zeit in Leistungszonen"
 
 msgid "Time of day"
 msgstr "Tageszeit"
+
+msgid "Time to go"
+msgstr "Restzeit"
 
 msgid "Times"
 msgstr "Zeiten"

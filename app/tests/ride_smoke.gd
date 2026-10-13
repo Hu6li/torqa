@@ -27,6 +27,15 @@ func _run() -> void:
 	_check(not route.is_empty(), "route loaded")
 	var profile: PackedVector2Array = _torqa.elevation_profile(100)
 	_check(profile.size() >= 2, "elevation profile available")
+	# How long the rider would take (R66): at a share of their FTP, no quicker with descents
+	# ridden flat.
+	var estimate: Dictionary = _torqa.estimated_time(false)
+	var flat_estimate: Dictionary = _torqa.estimated_time(true)
+	var share: float = estimate["ftp_share_pct"]
+	_check(estimate["time_s"] != null and share == 75.0, "estimated time: %s" % estimate)
+	var estimated_s: float = estimate["time_s"]
+	var flat_s: float = flat_estimate["time_s"]
+	_check(flat_s >= estimated_s, "flat descents: %s" % flat_estimate)
 	await _wait_for(_torqa.world_ready)
 
 	_check(_torqa.save_course(), "course saving started")
@@ -47,6 +56,8 @@ func _run() -> void:
 	var power: float = state.get("power", 0.0)
 	_check(distance_m > 0.5, "rider moves: %s" % state)
 	_check(is_equal_approx(power, 250.0), "power arrives: %s" % state)
+	var metrics: Dictionary = state.get("metrics", {})
+	_check(metrics.get("time_remaining") != null, "time to go on the HUD: %s" % metrics)
 
 	_torqa.finish_ride()
 	_check(_saved_path.ends_with(".fit"), "ride saved: %s" % _saved_path)

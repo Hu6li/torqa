@@ -170,6 +170,14 @@ pub struct Motion {
 }
 
 impl Motion {
+    /// A rider already rolling at `speed`, e.g. to simulate the rest of a ride from where it is.
+    #[must_use]
+    pub fn moving_at(speed: MetersPerSecond) -> Self {
+        Self {
+            speed: MetersPerSecond(speed.0.max(0.0)),
+        }
+    }
+
     /// Current speed.
     #[must_use]
     pub fn speed(&self) -> MetersPerSecond {

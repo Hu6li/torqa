@@ -81,17 +81,22 @@ static func figure_rows(course: Dictionary, imperial: bool) -> GridContainer:
 	grid.add_theme_constant_override("h_separation", 16)
 	grid.add_theme_constant_override("v_separation", 6)
 	for figure: PackedStringArray in figures(course, imperial):
-		var caption: Label = Label.new()
-		caption.text = TranslationServer.translate(figure[0])
-		caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-		caption.add_theme_color_override("font_color", UiTheme.MUTED)
-		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		grid.add_child(caption)
-		var value: Label = Label.new()
-		value.text = figure[1]
-		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		grid.add_child(value)
+		add_figure(grid, TranslationServer.translate(figure[0]), figure[1])
 	return grid
+
+
+## Adds a row to a grid of `figure_rows`: `caption`, translated already, and `value`.
+static func add_figure(grid: GridContainer, caption: String, value: String) -> void:
+	var caption_label: Label = Label.new()
+	caption_label.text = caption
+	caption_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	caption_label.add_theme_color_override("font_color", UiTheme.MUTED)
+	caption_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_child(caption_label)
+	var value_label: Label = Label.new()
+	value_label.text = value
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	grid.add_child(value_label)
 
 
 ## `[caption, value]` pairs: length, climbing and steepest gradient, in the rider's units.
