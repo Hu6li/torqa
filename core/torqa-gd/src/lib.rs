@@ -216,6 +216,15 @@ impl TorqaApp {
         }
     }
 
+    /// Stops preparing the route, video or world being loaded (#219); nothing more is emitted
+    /// for it.
+    #[func]
+    fn cancel_loading(&mut self) {
+        if let Some(app) = self.app.as_mut() {
+            app.cancel_loading();
+        }
+    }
+
     /// File extensions `load_video` accepts, for file dialogs: videos, Incyclist's `xml` and
     /// Tacx's `rlv`.
     #[func]

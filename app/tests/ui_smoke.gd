@@ -727,6 +727,13 @@ func _courses_tab() -> void:
 	detail.show()
 	tabs.get_tab_bar().tab_clicked.emit(StartPage.Tab.COURSES)
 	_check(courses.visible and not detail.visible, "the Courses tab brings the gallery back")
+	# An import that hangs is given up on (#219): the library is usable again.
+	courses.call("_start_loading", "gpx", "route.gpx")
+	var loading: Control = courses.get("_loading")
+	var import_button: Button = courses.get("_import_button")
+	_check(loading.visible and import_button.disabled, "importing: the loading bar, no import")
+	_button_with_text(loading, "Cancel").pressed.emit()
+	_check(not loading.visible and not import_button.disabled, "Cancel: back to the library")
 	main.queue_free()
 
 
