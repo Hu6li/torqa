@@ -6,6 +6,7 @@
 //! the same engine runs headless in the CLI, in tests and behind the 3D world.
 
 pub mod analysis;
+pub mod estimate;
 pub mod fitness;
 pub mod ftp_estimate;
 pub mod ghost;
@@ -281,6 +282,21 @@ impl Ride {
     #[must_use]
     pub fn ftp_estimate(&self) -> Option<Watts> {
         self.workout.as_ref()?.ftp_estimate(&self.samples)
+    }
+
+    /// How long the rider would still take to the finish holding `power` from here on (R66),
+    /// with this ride's rider, bike and descents; `None` without a route, or if that power would
+    /// not get them there.
+    #[must_use]
+    pub fn time_to_finish(&self, power: Watts) -> Option<Duration> {
+        estimate::time_to_finish(
+            self.route.as_ref()?,
+            &self.config.setup,
+            self.config.descent,
+            self.distance,
+            self.motion.speed(),
+            power,
+        )
     }
 
     /// The route being ridden; `None` in a workout without one.

@@ -9,7 +9,10 @@ Torqa opens on the start page with six tabs:
   `.tqc` course file ([courses.md](courses.md)). Click a card for the course page: route, key
   figures, elevation profile with its climbs, your best times there, the ride options (camera,
   difficulty, descents, time of day, weather), who to race ([ghosts.md](ghosts.md)) and
-  **Ride**. The 3D world is built when you press **Ride**, so looking around the library stays
+  **Ride**. Among the figures, **Time at 75 % FTP** estimates how long the course takes you
+  holding three quarters of your FTP, with your weight, climbs and descents included (ridden
+  flat if you choose so in the options). It is a steady endurance pace; for a harder ride, a
+  [pacer](ghosts.md) at the power you have in mind shows where it gets you. The 3D world is built when you press **Ride**, so looking around the library stays
   quick.
   On the course page, the pencil beside the name opens **Edit course**: rename it, or add a
   video to ride it along ([video.md](video.md)). The bin beside it (**Delete course**) removes

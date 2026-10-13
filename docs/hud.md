@@ -28,10 +28,16 @@ The editor shows the **HUD** itself with example values, and the figures still *
 | Gear | The virtual gear (1–24) on a single cog ([riding.md](riding.md#virtual-gears)) |
 | Speed, Avg speed | Virtual speed |
 | Distance, To go | Ridden so far, left to the finish |
-| Time | Since the start (pauses do not count) |
+| Time, Time to go | Since the start (pauses do not count), and estimated to the finish (below) |
 | Elevation, Climbed, Ascent to go | Current altitude, climbing so far, climbing still ahead on the route |
 | Grade, Next 500 m | Gradient here, and on average over the next 500 m |
 | Intensity, TSS, Work | Intensity factor, training stress score and kilojoules so far |
+
+**Time to go** rides the rest of the route through the same physics as you, climbs and
+descents included, at the power you are expected to hold: 75 % of your FTP at the start (as
+the course page estimates), moving over to your average power of the ride during its first
+ten minutes. It is renewed every ten seconds and counts down in between. Without a route, or
+while that power would not get you to the finish, it shows `--`.
 
 The percentages are on the scale your zones are set on (**Rider settings → Zones**, see
 [riders.md](riders.md)): at 92 % FTP you are just past the top of the standard zone 3, 90 %.

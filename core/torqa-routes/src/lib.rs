@@ -391,6 +391,14 @@ impl Route {
         GradePercent(steepest * 100.0)
     }
 
+    /// The gradient at a distance from the start (clamped to the route), as [`Self::position`]
+    /// gives it, without the work of finding the place: for simulating many steps along it.
+    #[must_use]
+    pub fn grade_at(&self, distance: Meters) -> GradePercent {
+        let (index, _) = self.segment_at(distance.0);
+        grade(&self.points[index], &self.points[index + 1])
+    }
+
     /// Position, elevation, gradient, heading and curvature at a distance from the start
     /// (clamped to the route). The position lies on the smooth curve through the route's points
     /// that the road is drawn along ([`catmull_rom`]).
@@ -399,7 +407,6 @@ impl Route {
         let along = distance.0.clamp(0.0, self.length().0);
         let (index, fraction) = self.segment_at(along);
         let (start, end) = (&self.points[index], &self.points[index + 1]);
-        let span = end.distance.0 - start.distance.0;
         let rise = end.elevation.0 - start.elevation.0;
         let projection = LocalProjection::for_route(self);
         let here = self.curve_point(&projection, along);
@@ -425,7 +432,7 @@ impl Route {
             lat,
             lon,
             elevation: Meters(start.elevation.0 + rise * fraction),
-            grade: GradePercent(if span > 0.0 { rise / span * 100.0 } else { 0.0 }),
+            grade: grade(start, end),
             heading,
             curvature,
         }
@@ -470,6 +477,13 @@ impl Route {
 
 fn distance_between(a: (f64, f64), b: (f64, f64)) -> f64 {
     (b.0 - a.0).hypot(b.1 - a.1)
+}
+
+/// Gradient of the segment from `a` to `b`; flat if it has no length.
+fn grade(a: &RoutePoint, b: &RoutePoint) -> GradePercent {
+    let span = b.distance.0 - a.distance.0;
+    let rise = b.elevation.0 - a.elevation.0;
+    GradePercent(if span > 0.0 { rise / span * 100.0 } else { 0.0 })
 }
 
 /// Direction from `a` to `b` in radians, clockwise from north (flat-earth approximation,
@@ -949,6 +963,7 @@ mod tests {
 
         let middle = route.position(Meters(1000.0));
         assert!((middle.grade.0 - 5.0).abs() < 0.05, "{:?}", middle.grade);
+        assert_eq!(route.grade_at(Meters(1000.0)), middle.grade);
         assert!(
             (middle.elevation.0 - 50.0).abs() < 0.5,
             "{:?}",

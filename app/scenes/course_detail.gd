@@ -1,10 +1,10 @@
 class_name CourseDetail
 extends HBoxContainer
-## One course (R40): name, key figures, path card, elevation profile with climbs and the
-## rider's records on it, next to the ride options (R48) and who to race (R20) → Ride. The
-## pencil beside the name renames the course and adds, aligns or removes its video (R17); the
-## bin beside it deletes the course. Opening the page loads only the route; the 3D world is
-## built once Ride is pressed.
+## One course (R40): name, key figures with the rider's estimated time (R66), path card,
+## elevation profile with climbs and the rider's records on it, next to the ride options (R48)
+## and who to race (R20) → Ride. The pencil beside the name renames the course and adds, aligns
+## or removes its video (R17); the bin beside it deletes the course. Opening the page loads
+## only the route; the 3D world is built once Ride is pressed.
 
 signal back_requested
 ## Ride was pressed with `options` (`RideOptions.options()`) against `ghost` (`GhostPicker`).
@@ -36,6 +36,8 @@ var _edit_dialog: CourseEditDialog = CourseEditDialog.new()
 ## Courses with a video are ridden along it or in 3D, as chosen when riding (#44).
 var _view_dialog: AcceptDialog = AcceptDialog.new()
 var _along_video: bool = false
+## The descents the estimated time was worked out for: of the options, only they change it.
+var _estimated_flat_descents: bool = false
 
 
 func bind(torqa: TorqaApp) -> void:
@@ -144,6 +146,7 @@ func _init() -> void:
 	var right: VBoxContainer = VBoxContainer.new()
 	right.add_theme_constant_override("separation", 14)
 	right.add_child(UiTheme.caption(tr("Ride options")))
+	_options.changed.connect(_on_options_changed)
 	right.add_child(_options)
 	right.add_child(UiTheme.caption(tr("Race against")))
 	right.add_child(_ghost)
@@ -191,7 +194,29 @@ func _show_figures() -> void:
 		_figures.remove_child(child)
 		child.queue_free()
 	var imperial: bool = _torqa.profile().get("units", "metric") == "imperial"
-	_figures.add_child(CourseCard.figure_rows(_course, imperial))
+	var grid: GridContainer = CourseCard.figure_rows(_course, imperial)
+	_add_estimate(grid)
+	_figures.add_child(grid)
+
+
+## The time the rider would take at the planned share of their FTP (R66), once the route is
+## loaded.
+func _add_estimate(grid: GridContainer) -> void:
+	if _loading_route or _torqa.loaded_course() != _path or not _torqa.has_route():
+		return
+	_estimated_flat_descents = _options.options()["flat_descents"]
+	var estimate: Dictionary = _torqa.estimated_time(_estimated_flat_descents)
+	if estimate["time_s"] == null:
+		return
+	var seconds: float = estimate["time_s"]
+	var share: float = estimate["ftp_share_pct"]
+	var caption: String = tr("Time at %d %% FTP") % roundi(share)
+	CourseCard.add_figure(grid, caption, UiTheme.duration(seconds))
+
+
+func _on_options_changed() -> void:
+	if _options.options()["flat_descents"] != _estimated_flat_descents:
+		_show_figures()
 
 
 ## The video is known once the route is loaded; until then only the name can change.
@@ -227,6 +252,7 @@ func _show_route() -> void:
 	_loading_route = false
 	_ride_button.disabled = false
 	_show_option_groups()
+	_show_figures()
 	var climbs: Dictionary = _torqa.climbs()
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
