@@ -6,7 +6,8 @@ settings, ride names, per-rider HUD layouts, UI quality and direct HUD placement
 plus overlay mode and constant-power / heart-rate workouts (R55–R56), refined 2026-10-06: an
 overlay over normal windows only, a Workouts tab and Di2 shifting (R57–R59), extended 2026-10-12
 with uploads by one click or automatically (R60) and the analysis of a rider's power across
-their rides (R61–R65, #217), and 2026-10-13 with an estimated time to the finish (R66, #231).
+their rides (R61–R65, #217), and 2026-10-13 with an estimated time to the finish (R66, #231)
+and group rides without a server (R67–R69).
 Requirement IDs (`R<n>`) are referenced from code, tests and ADRs. The list is **append-only**:
 existing requirements are never reworded or renumbered; changes are new requirements that state
 what they supersede, and the old entry only gets a short pointer.
@@ -72,7 +73,7 @@ on a smart trainer (primary: Wahoo KICKR Core 2) through a generated semi-realis
 | R24 | Metric and imperial units. English UI first, i18n-ready from day one. |
 | R25 | Single window / fullscreen, external monitor / TV. Phone companion app is a possible future extension. *(Overlay mode: R55.)* |
 | R26 | Audio, selectable per ride: ambient sounds, original video audio, music app control. |
-| R27 | Auto-detected climbs with personal KOM-style times; personal records per route. Multiplayer possibly later — keep simulation state separable from rendering. |
+| R27 | Auto-detected climbs with personal KOM-style times; personal records per route. Multiplayer possibly later — keep simulation state separable from rendering. *(Group rides without a server: R67–R69.)* |
 | R66 | Extends R23 and R40 (2026-10-13, #231): an **estimated time to the finish**. The course page shows how long the route takes the rider at 75 % of their FTP, with their weight and the descents as chosen in the ride options; the HUD can show the **time to go**, which follows the rider's average power so far (moving over to it from 75 % of FTP during the first ten minutes). Both ride the rest of the route with the ride's own physics, so climbs and descents count as they will. |
 
 ## Data
@@ -149,6 +150,14 @@ Sharing is file-based for now; a built-in online catalog may follow later.
 | R63 | **Power profile** (the "power spider" of #217): a radar of the rider's best 5 s, 1, 5, 20 and 60 min of the chosen period (R62), each as a share of their best of all rides — the rim is the rider's own best, so no age, sex or reference tables are needed. |
 | R64 | **Fitness, fatigue and form** over the days of the chosen period, from the rides' TSS (the performance management chart: 42- and 7-day exponentially weighted averages, form the day before's fitness minus fatigue, with form's bands), computed in Torqa offline; and **weekly bars** of the period: time, distance, climbing, TSS, number of rides, and the time in each power and heart-rate zone of the rider's zones today, as the summary counts it. |
 | R65 | **Progress** over the chosen period, week by week (month by month for periods over 13 weeks): the best 1, 5 and 20 min of each, the FTP the rides were saved with and the FTP tests. And an **FTP estimated** from the best efforts of the last 90 days (the critical power of Morton's three-parameter model, or 95 % of the best 20 min where the model does not fit), shown beside the rider's FTP with a button to take it — **never applied without asking**. |
+
+## Riding together
+
+| ID | Requirement |
+|---|---|
+| R67 | Extends R27 (2026-10-13): **group rides** — up to 8 riders, each at home on their own trainer, ride the same course together from a common start. Each rides with their own physics and settings; the others show like ghosts (R20): in the world, on the map and the profile, and in a panel with the gaps. Rides are saved as each rider's own. |
+| R68 | **No server**, in keeping with R2 and R3: one rider hosts, and Torqas connect to each other directly (peer to peer, through the riders' routers by hole punching). Riders invite each other with **codes they pass on themselves**: a text to paste into any messenger, also shown as a QR code. Public STUN servers may be asked for the rider's public address (can be switched off); no ride data goes through anyone else. Connections are encrypted and only riders whose codes the host took can join. |
+| R69 | A group ride that cannot connect (e.g. both riders behind carrier-grade NAT) **says so within a minute**, with what may help, rather than waiting. A rider who drops out or a host who leaves never stops anyone else's ride. |
 
 ## MVP definition
 

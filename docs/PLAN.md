@@ -26,6 +26,8 @@ core/                      Rust workspace (tokio + tracing)
   torqa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
   torqa-upload/            uploads to training platforms (intervals.icu, Strava) behind
                            ActivityUploader, the OAuth login in the browser
+  torqa-net/               (Phase 12) group rides: invite codes, address discovery (STUN,
+                           UPnP / NAT-PMP / PCP), hole punching, QUIC, the lobby (ADR 0015)
   torqa-app/               application layer: commands + update() per frame for front ends,
                            the analysis across a rider's rides
   torqa-gd/                gdext bindings (TorqaApp node)
@@ -84,6 +86,10 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
   onto the route's line and evened out over a few seconds); Godot blends the previous and
   next frame in a shader. GPS from GoPro GPMF; Incyclist route videos (GPX + `.xml`); any other video added to a
   GPX course by its start and end marks.
+- **Group rides** (Phase 12, [ADR 0015](adr/0015-group-rides.md)): no server; riders pass
+  invite codes (text and QR) by themselves, Torqas punch through their routers and talk QUIC
+  in a star around the host, up to 8 riders. Each rides their own physics; the others arrive
+  5 times a second and show like ghosts.
 - **Street imagery** (later): Street View Static API + Mapillary API v4, crossfade shader.
 - **Development environment**: everything runs in Docker / devcontainer. Docker on macOS has no
   Bluetooth or Metal, so macOS builds come from GitHub Actions macOS runners and only the
@@ -419,6 +425,26 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
 - **Exit:** a season of real rides shows where the rider got stronger, and how fit and fresh
   they are, without leaving Torqa
 
+### Phase 12 — Group rides (R67–R69, [ADR 0015](adr/0015-group-rides.md))
+Riding a course together without a server. One step per PR:
+- [x] ADR 0015, requirements R67–R69 and this plan
+- [ ] `torqa-net`: invite and reply codes (encode, decode, reject other versions) and address
+  candidates: local addresses, global IPv6, STUN (Torqa's own binding request, tested against
+  a stand-in server), UPnP / NAT-PMP / PCP mappings
+- [ ] Hole punching and QUIC: probes on one socket, the per-ride certificate pinned by the
+  invite, the joiner's secret, keep-alives, giving up after 60 s with a reason; tested between
+  two Torqas on one machine
+- [ ] The lobby and the ride: joining and leaving, the countdown, state datagrams at 5 Hz, the
+  host forwarding, a rider or the host dropping out; `torqa-cli ride-together` for two fake
+  trainers
+- [ ] Remote riders in the session and the app layer, beside the ghosts: interpolated, on the
+  map and the profile, gaps in the panel
+- [ ] The app: **Ride together** on the course page (host or join, the codes with their QR
+  code, who is in), the riders in the world, the STUN setting; `docs/group-rides.md`, README,
+  screenshots
+- **Exit:** two riders at different homes, each behind their own router, ride a course
+  together on their trainers and see each other in the world
+
 ## Risks
 
 - The Shimano Di2 button protocol is reverse-engineered (community findings, no code reused)
@@ -432,6 +458,10 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   budgets), quality presets (R43); art direction reviewed on rendered previews.
 - Wayland has no portable always-on-top → the overlay may not stay on top there. (Over
   full-screen apps it would need native macOS window settings Godot doesn't expose; dropped, R57.)
+- Hole punching fails through symmetric NATs (some carrier-grade NAT, mobile hotspots, company
+  networks), and without a server there is no relay to fall back on (ADR 0015) → IPv6 and
+  router mappings tried as well, and a failed connection says so within a minute with what may
+  help.
 - Free terrain imagery is limited → the ground is coloured by OSM land cover and slope, no
   imagery needed.
 

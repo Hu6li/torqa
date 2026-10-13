@@ -2,6 +2,19 @@
 
 Things to review or decide together. Newest first; remove entries once settled.
 
+## 2026-10-13 — Phase 12: group rides (R67–R69, ADR 0015)
+
+### Decisions I took (say if you want them otherwise)
+
+- **Heart rate stays private**: riders see each other's distance, speed, power and cadence,
+  not heart rate.
+- **No joining after the start**, and **no drafting** in the first version: each rider's
+  physics stays exactly as when riding alone.
+- **One invite for the whole group**, but the host pastes each rider's reply; joiners only
+  exchange codes with the host.
+- **Pasting codes, no camera scanning**: the QR code is shown for phones and riders in the
+  same room; Torqa does not read QR codes.
+
 ## 2026-10-12 — Uploads (R29, R60)
 
 ### Needs your accounts

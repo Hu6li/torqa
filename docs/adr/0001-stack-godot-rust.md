@@ -20,6 +20,7 @@ logic, exposed to Godot via GDExtension (`godot-rust/gdext`).
 - Rust gives fast, memory-safe device, physics and data code. `btleplug` covers BLE on all three
   desktop OSes.
 - A headless Rust core is testable in containers and reusable for a future multiplayer server (R27).
+  *(Group rides came without a server, peer to peer: ADR 0015.)*
 
 ## Alternatives considered
 
