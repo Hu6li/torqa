@@ -13,8 +13,8 @@ The editor shows the **HUD** itself with example values, and the figures still *
   with a click.
 - **Move** figures by dragging them within the HUD, and **drag them back** onto the available
   list to remove them.
-- The **first** figure is shown large at the top; with power figures, your W/kg and power zone
-  appear below it. Up to 13 figures in total.
+- The **first** figure is shown large at the top; with power figures, your W/kg, power in % of
+  your FTP and power zone appear below it. Up to 13 figures in total.
 
 ![The HUD editor in the ride settings, a figure being dragged into the HUD](images/app/hud-editor.jpg)
 

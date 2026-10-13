@@ -140,7 +140,7 @@ Built in rideable steps:
 - [x] Zones shown and adjustable per rider (#173); a rider's default trainer difficulty (#175);
   riders deleted with their rides, after asking
 - [x] Customizable HUD (R23); an ascent-to-go figure (#174); power in % of FTP and heart
-  rate in % of the maximum
+  rate in % of the maximum; % of FTP also under a large power figure, beside W/kg and zone
 - [x] Estimated time to the finish (R66, #231): on the course page at 75 % of FTP, as a
   time-to-go figure on the HUD from the rider's average power so far
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)

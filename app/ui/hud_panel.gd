@@ -50,6 +50,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		remove_child(child)
 		child.queue_free()
 	_power_detail.text = ""
+	_power_detail.custom_minimum_size.x = 0.0
 	if layout.is_empty():
 		_power_detail.hide()
 		add_child(_power_detail)
@@ -58,7 +59,7 @@ func show_layout(layout: PackedStringArray) -> void:
 	var main: _Cell = _Cell.new(self, main_id, 0, false)
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
-	# Power figures get the rider's W/kg and zone underneath.
+	# Power figures get the rider's W/kg, % of FTP and zone underneath.
 	_power_detail.visible = main_id in POWER_METRICS
 	main.add_child(_power_detail)
 	add_child(main)
@@ -119,11 +120,12 @@ func _indicate(cell: _Cell, after: bool) -> void:
 		cell.mark(2 if after else 1)
 
 
-## Live values (`ride_state()["metrics"]`), with W/kg and power zone for the power line.
+## Live values (`ride_state()["metrics"]`), with W/kg and power zone for the power line; its
+## % of FTP is among the values.
 func show_values(values: Dictionary, watts_per_kg: Variant, power_zone: Variant) -> void:
 	for id: String in _values:
 		_values[id].text = _format(catalogue[id], values.get(id))
-	_show_power_detail(watts_per_kg, power_zone)
+	_show_power_detail(watts_per_kg, values.get("power_percent_ftp"), power_zone)
 
 
 ## Typical values, so a layout can be judged before riding with it.
@@ -192,8 +194,9 @@ func _format(metric: Dictionary, value: Variant) -> String:
 	return "%.*f" % [decimals, number]
 
 
-## "3.6 W/kg · Z4 Threshold", coloured by zone; empty without power.
-func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
+## "3.6 W/kg · 98 % FTP · Z4 Threshold", coloured by zone; empty without power, and without
+## the percentage for a rider without an FTP.
+func _show_power_detail(watts_per_kg: Variant, percent_ftp: Variant, zone: Variant) -> void:
 	if watts_per_kg == null or zone == null:
 		_power_detail.text = ""
 		return
@@ -202,8 +205,17 @@ func _show_power_detail(watts_per_kg: Variant, zone: Variant) -> void:
 	var index: int = clampi(zone_number - 1, 0, UiTheme.POWER_ZONES.size() - 1)
 	var zone_name: String = UiTheme.POWER_ZONES[index][0]
 	var color: Color = UiTheme.POWER_ZONES[index][1]
-	_power_detail.text = "%.1f W/kg  ·  Z%d %s" % [ratio, index + 1, tr(zone_name)]
+	var parts: PackedStringArray = PackedStringArray(["%.1f W/kg" % ratio])
+	if percent_ftp != null:
+		var percent: float = percent_ftp
+		parts.append("%d %% FTP" % roundi(percent))
+	parts.append("Z%d %s" % [index + 1, tr(zone_name)])
+	_power_detail.text = " · ".join(parts)
 	_power_detail.add_theme_color_override("font_color", color)
+	# Zone 7's line is wider than the HUD's grid. Keeping the widest width so far stops the HUD
+	# from jumping in width each time a sprint crosses between zones 6 and 7.
+	var width: float = _power_detail.get_minimum_size().x
+	_power_detail.custom_minimum_size.x = maxf(_power_detail.custom_minimum_size.x, width)
 
 
 ## One figure of the HUD. In an editable HUD it can be dragged elsewhere, and dropping a figure
