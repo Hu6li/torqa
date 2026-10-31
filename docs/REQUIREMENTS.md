@@ -332,6 +332,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 
 | R173 | Refines R168 (2026-10-31): planned organizer changes require an explicit offer and successor acceptance, preserve original rider slots and group identity across fresh pinned links, and commit only with the old organizer's bound proof after every replacement connection is ready. Consent expires after 30 seconds and preparation after 60 seconds; cancelled proposals consume epochs. Precommit failure retains the old authority; a revealed commit cannot restore it. Keep personal recording, course position, workout clock/pause, intensity and eligibility intact, blend assistance over two seconds and reconnect opted-in listening microphone-off. Use existing address permissions and explain address sharing. The new organizer supplies a fresh invitation and verified content to later joiners. Unexpected loss preserves solo riding without electing a replacement. |
 
+## Guided group connections
+
+| ID | Requirement |
+|---|---|
+| R174 | Refines R169 and R161 (2026-10-31): creating a group ride and joining from an invitation show a connection popup with plain-language choices for separate homes, one home Wi-Fi/router, and a mixture. Explain each choice and optional public address lookup without requiring network terminology. Inspect invitations offline, retain pasted text when going Back, and start no discovery or connections before confirmation. Home-network access remains explicit, separate-home mode cannot silently acquire it, and same-home mode uses no public lookup services. Preserve the existing bounded transport and classified Technical details/Dismiss error reporting. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

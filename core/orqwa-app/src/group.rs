@@ -14,6 +14,7 @@ use std::sync::{
 };
 use std::time::Instant;
 use tokio::sync::{mpsc, watch};
+pub mod connection;
 mod handover;
 mod runtime;
 #[cfg(test)]

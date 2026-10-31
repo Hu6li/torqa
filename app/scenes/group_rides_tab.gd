@@ -44,9 +44,7 @@ var _organizer_picker: AcceptDialog = AcceptDialog.new()
 var _organizer_choices: VBoxContainer = VBoxContainer.new()
 var _progress: ProgressBar = ProgressBar.new()
 var _bytes: Label = Label.new()
-var _connection: AcceptDialog = AcceptDialog.new()
-var _lan: CheckBox = CheckBox.new()
-var _stun: CheckBox = CheckBox.new()
+var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
 var _exchange: ConfirmationDialog = ConfirmationDialog.new()
 var _paste: LineEdit = LineEdit.new()
 var _exchange_help: Label = Label.new()
@@ -62,6 +60,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_orqwa = orqwa
 	_picker.bind(orqwa)
 	_voice_controls.bind(orqwa)
+	_connection.bind(orqwa)
 	if is_node_ready():
 		refresh()
 
@@ -138,7 +137,9 @@ func _build_setup() -> void:
 	var host: VBoxContainer = _card(_setup)
 	_label(host, tr("Start a group ride"), 22)
 	_muted(host, tr("Choose the ride and invite your friends. You decide when everyone starts."))
-	var create: Button = _button(host, tr("Create a ride"), func() -> void: _open(""))
+	var create: Button = _button(
+		host, tr("Create a ride"), func() -> void: _connection.ask_create()
+	)
 	create.custom_minimum_size.y = 48
 	create.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	var join: VBoxContainer = _card(_setup)
@@ -148,13 +149,6 @@ func _build_setup() -> void:
 		join, tr("Join a ride…"), func() -> void: _show_exchange("join")
 	)
 	join_button.custom_minimum_size.y = 48
-	var connection_button: Button = _button(
-		self,
-		tr("Connection settings…"),
-		func() -> void: _connection.popup_centered(Vector2i(520, 0))
-	)
-	connection_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_setup.visibility_changed.connect(func() -> void: connection_button.visible = _setup.visible)
 
 
 func _build_connecting() -> void:
@@ -228,7 +222,7 @@ func _build_roster() -> void:
 
 
 func _build_dialogs() -> void:
-	for dialog: AcceptDialog in [_exchange, _connection]:
+	for dialog: AcceptDialog in [_exchange]:
 		dialog.theme = UiTheme.build()
 		add_child(dialog)
 	_exchange.dialog_hide_on_ok = false
@@ -251,24 +245,9 @@ func _build_dialogs() -> void:
 	fields.add_child(_exchange_error)
 	_exchange.add_child(fields)
 	_exchange.confirmed.connect(_submit_exchange)
-	_connection.title = tr("Connection settings")
-	var network: VBoxContainer = VBoxContainer.new()
-	network.add_theme_constant_override("separation", 14)
-	_muted(
-		network,
-		tr("The defaults work for friends on different home networks. Change these only if needed.")
-	)
-	_lan.text = tr("Allow friends on my local network")
-	_stun.text = tr("Find my internet address automatically")
-	_stun.button_pressed = true
-	network.add_child(_lan)
-	network.add_child(_stun)
-	_muted(network, tr("Automatic discovery contacts public STUN services."))
-	_muted(network, tr("On the same home network, both riders must allow local connections."))
-	for child: Node in network.get_children():
-		if child is Label:
-			(child as Label).custom_minimum_size.x = 460
-	_connection.add_child(network)
+	add_child(_connection)
+	_connection.started.connect(_connection_started)
+	_connection.join_cancelled.connect(func() -> void: _exchange.popup_centered(Vector2i(540, 0)))
 	_organizer_picker.theme = UiTheme.build()
 	_organizer_picker.title = tr("Choose a new organizer")
 	_organizer_choices.add_theme_constant_override("separation", 12)
@@ -661,7 +640,7 @@ func _show_exchange(kind: String) -> void:
 		if kind == "join"
 		else tr("Paste the join request your friend sent back. Only add people you invited.")
 	)
-	_exchange.ok_button_text = tr("Join ride") if kind == "join" else tr("Add friend")
+	_exchange.ok_button_text = tr("Continue") if kind == "join" else tr("Add friend")
 	_paste.placeholder_text = (
 		tr("Paste invitation here") if kind == "join" else tr("Paste join request here")
 	)
@@ -677,11 +656,12 @@ func _submit_exchange() -> void:
 	var value: String = _paste.text.strip_edges()
 	if value.is_empty():
 		return
-	var accepted: bool = (
-		_orqwa.group_open(value, _lan.button_pressed, _stun.button_pressed)
-		if _exchange_kind == "join"
-		else _orqwa.group_admit(value)
-	)
+	if _exchange_kind == "join":
+		_exchange.hide()
+		if _connection.ask_join(value):
+			return
+		_exchange.popup_centered(Vector2i(540, 0))
+	var accepted: bool = _orqwa.group_admit(value) if _exchange_kind != "join" else false
 	if accepted:
 		_request.text = tr("Copy join request")
 		_exchange.hide()
@@ -694,10 +674,10 @@ func _submit_exchange() -> void:
 	_update()
 
 
-func _open(invite: String) -> void:
+func _connection_started() -> void:
 	_notice.text = ""
 	_request.text = tr("Copy join request")
-	_orqwa.group_open(invite, _lan.button_pressed, _stun.button_pressed)
+	_paste.clear()
 	_update()
 
 

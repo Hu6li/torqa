@@ -887,6 +887,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   personal intensity and local safety pause with current-step resume
 - [x] Planned host handover (R168): successor consent, pinned replacement links, authority
   epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
+- [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups
+  during create/join, inspect invitations offline, and confirm before discovery or connections
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

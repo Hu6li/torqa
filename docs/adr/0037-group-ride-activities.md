@@ -108,6 +108,22 @@ automatic crash recovery is not part of this decision.
 
 ## Delivery and validation
 
+### Guided connection consent — 2026-10-31
+
+Connection options move from a separate settings button into create/join popups. The rider
+chooses Separate homes, Same home Wi-Fi, or Some together, some elsewhere, with short
+descriptions. Optional public address lookup stays available under More connection options.
+Same-home mode always clears that server list; separate-home mode never enables LAN access.
+These mappings live in Rust and retain the existing transport limits and address policy.
+
+Joining inspects the bounded invitation offline first, showing only the validated organizer
+name and whether home-network permission is needed. Inspection permits parsing LAN fields
+without granting network access; the selected policy is checked again synchronously before
+starting the existing group owner, and again by transport. No new service or protocol version
+is introduced. Back preserves the invitation; cancellation starts no discovery, probes or
+listeners. Invitations that include local destinations still require explicit home-network
+permission rather than silently widening the rider's separate-home choice.
+
 The first step implements activity/readiness types, normalized workout wire encoding,
 streaming content helpers and a course archive validator. Tests exercise the existing real
 pinned loopback transport, content corruption/truncation/trailing data, atomic publication,

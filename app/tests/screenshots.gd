@@ -19,9 +19,17 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		TranslationServer.set_locale(locale)
 		await create_timer(0.4).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-home-" + locale + ".png"))
-	group._lan.button_pressed = true
-	group._stun.button_pressed = false
-	group._open("")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._connection.ask_create()
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-connection-create-" + locale + ".png")
+		)
+		group._connection.hide()
+	group._connection.ask_create()
+	group._connection._choices["home"].button_pressed = true
+	group._connection._confirm()
 	var until: int = Time.get_ticks_msec() + 10000
 	while (
 		orqwa.group_status().get("phase", "idle") == "connecting" and Time.get_ticks_msec() < until
@@ -29,6 +37,18 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		await process_frame
 	var phase: String = orqwa.group_status().get("phase", "idle")
 	_check(phase == "waiting", "local lobby opened")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		_check(
+			group._connection.ask_join(str(orqwa.group_status()["invite"])),
+			"invitation inspected offline"
+		)
+		group._connection._choices["home"].button_pressed = true
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-connection-join-" + locale + ".png")
+		)
+		group._connection.hide()
 	var picker: GroupActivityPicker = group._picker
 	_check(picker._course.item_count > 1, "bundled course available for preview")
 	for locale: String in ["en", "de"]:

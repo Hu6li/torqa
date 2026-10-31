@@ -9,11 +9,98 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	await _group_connections()
 	await _group_activity()
 	await _group_motion()
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## Cancelling setup grants no network access; joining inspects the code before connecting.
+func _group_connections() -> void:
+	var host: OrqwaApp = OrqwaApp.new()
+	root.add_child(host)
+	var page: GroupRidesTab = GroupRidesTab.new()
+	page.bind(host)
+	root.add_child(page)
+	await process_frame
+	var connection: GroupConnectionDialog = page._connection
+	connection.ask_create()
+	_check(
+		connection.visible and str(host.group_status()["phase"]) == "idle",
+		"create asks before starting networking"
+	)
+	_check(connection._mode == "internet", "online rides have a clear default")
+	connection.get_cancel_button().pressed.emit()
+	await process_frame
+	_check(
+		not connection.visible and str(host.group_status()["phase"]) == "idle",
+		"cancel creates no lobby"
+	)
+	connection.ask_create()
+	connection._more.pressed.emit()
+	connection._lookup.button_pressed = false
+	connection._cancel()
+	connection.ask_create()
+	_check(
+		not connection._lookup.button_pressed,
+		"opening setup again preserves an explicit lookup opt-out"
+	)
+	connection._choices["home"].button_pressed = true
+	_check(
+		not connection._lookup.button_pressed and not connection._more.visible,
+		"same-home rides need no public address lookup"
+	)
+	connection._confirm()
+	var until: int = Time.get_ticks_msec() + 5000
+	while str(host.group_status()["invite"]).is_empty() and Time.get_ticks_msec() < until:
+		await process_frame
+	var invitation: String = host.group_status()["invite"]
+	_check(not invitation.is_empty(), "confirmation opens the home-network lobby")
+	var peer: OrqwaApp = OrqwaApp.new()
+	root.add_child(peer)
+	var joining: GroupRidesTab = GroupRidesTab.new()
+	joining.bind(peer)
+	root.add_child(joining)
+	await process_frame
+	_check(
+		not peer.group_connect(invitation, "internet", true),
+		"home-network permission is checked before creating a connection owner"
+	)
+	_check(
+		str(peer.group_status()["phase"]) == "idle", "incompatible invitation starts no networking"
+	)
+	joining._show_exchange("join")
+	joining._paste.text = invitation
+	joining._submit_exchange()
+	_check(
+		joining._connection.visible and str(peer.group_status()["phase"]) == "idle",
+		"pasted invitation opens connection choices offline"
+	)
+	_check(
+		joining._connection._mode.is_empty(), "invitation cannot silently grant home-network access"
+	)
+	joining._connection.get_cancel_button().pressed.emit()
+	await process_frame
+	_check(
+		joining._exchange.visible and joining._paste.text == invitation,
+		"Back preserves the invitation"
+	)
+	joining._submit_exchange()
+	joining._connection._choices["home"].button_pressed = true
+	joining._connection._confirm()
+	until = Time.get_ticks_msec() + 5000
+	while str(peer.group_status()["reply"]).is_empty() and Time.get_ticks_msec() < until:
+		await process_frame
+	_check(not str(peer.group_status()["reply"]).is_empty(), "join starts only after confirmation")
+	peer.group_leave()
+	host.group_leave()
+	joining.free()
+	page.free()
+	peer.queue_free()
+	host.queue_free()
+	await process_frame
 
 
 ## Group choices preview before sharing, survive a refresh, and audio devices stay usable.

@@ -343,10 +343,6 @@ msgstr ""
 msgid "All {planned} planned rides this week done."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Allow friends on my local network"
-msgstr ""
-
 #: app/scenes/course_detail.gd
 msgid "Allow videos"
 msgstr ""
@@ -443,10 +439,6 @@ msgstr ""
 msgid "Automatic"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Automatic discovery contacts public STUN services."
-msgstr ""
-
 #: app/scenes/devices_tab.gd
 msgid "Automatic: a cadence sensor, else the power meter, else the trainer"
 msgstr ""
@@ -475,7 +467,7 @@ msgstr ""
 msgid "B (right pod)"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/ride_bar.gd
+#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/group_connection_dialog.gd app/ui/ride_bar.gd
 msgid "Back"
 msgstr ""
 
@@ -543,7 +535,7 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/workout_editor.gd
+#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/workout_editor.gd
 msgid "Cancel"
 msgstr ""
 
@@ -611,6 +603,10 @@ msgstr ""
 msgid "Check for updates"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
+msgstr ""
+
 #: app/scenes/account_dialog.gd
 msgid "Checking…"
 msgstr ""
@@ -649,6 +645,14 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Choose the ride and invite your friends. You decide when everyone starts."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group is riding. Nothing connects before you confirm."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group will ride before inviting friends."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -807,14 +811,6 @@ msgstr ""
 msgid "Connecting…"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Connection settings"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Connection settings…"
-msgstr ""
-
 #: app/scenes/profile_tab.gd
 msgid "Connect…"
 msgstr ""
@@ -825,6 +821,10 @@ msgstr ""
 
 #: app/ui/workout_options.gd
 msgid "Constant power %d W"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Continue"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1045,6 +1045,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Create a ride"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Create ride"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1319,6 +1323,14 @@ msgstr ""
 msgid "Everyone is ready. Start when you like!"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone uses their own home internet connection. Recommended for riding with friends online."
+msgstr ""
+
 #: app/ui/ride_bar.gd
 msgid "Exit full screen (F11)"
 msgstr ""
@@ -1403,7 +1415,7 @@ msgstr ""
 msgid "Find a preset for smooth 60 fps. Takes about 30 seconds and resets details to Auto."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_connection_dialog.gd
 msgid "Find my internet address automatically"
 msgstr ""
 
@@ -1647,6 +1659,10 @@ msgstr ""
 msgid "Help everyone stay with the organizer while pedaling."
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "High"
 msgstr ""
@@ -1771,7 +1787,7 @@ msgstr ""
 msgid "Join near the organizer at the current workout step. Your recording starts now."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_connection_dialog.gd
 msgid "Join ride"
 msgstr ""
 
@@ -2001,6 +2017,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Mon"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "More connection options"
 msgstr ""
 
 #: app/scenes/world.gd
@@ -2303,10 +2323,6 @@ msgstr ""
 msgid "On its own (HUD only)"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "On the same home network, both riders must allow local connections."
-msgstr ""
-
 #: core/orqwa-session/src/workout.rs
 msgid "One minute all out!"
 msgstr ""
@@ -2345,6 +2361,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Organizer"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Organizer: %s"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -2787,6 +2807,10 @@ msgstr ""
 msgid "Rust libraries"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Same home Wi-Fi"
+msgstr ""
+
 #: app/ui/ui_theme.gd
 msgid "Sat"
 msgstr ""
@@ -2845,6 +2869,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Sep"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Separate homes"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2921,6 +2949,14 @@ msgstr ""
 
 #: app/scenes/overlay_hud.gd
 msgid "Smaller (−)"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some friends share a Wi-Fi network; others join from another home. Allows both home-network and internet connections."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some together, some elsewhere"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -3099,10 +3135,6 @@ msgstr ""
 msgid "The course is not ready yet."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "The defaults work for friends on different home networks. Change these only if needed."
-msgstr ""
-
 #: app/scenes/devices_tab.gd
 msgid "The devices used last connect by themselves. Search beside a row to find one of that kind."
 msgstr ""
@@ -3185,6 +3217,10 @@ msgstr ""
 
 #: app/ui/update_dialog.gd
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -3517,6 +3553,10 @@ msgstr ""
 
 #: app/scenes/workouts_tab.gd
 msgid "Where"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Where will everyone ride?"
 msgstr ""
 
 #: app/scenes/history_screen.gd

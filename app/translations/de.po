@@ -2529,9 +2529,6 @@ msgstr "Freund hinzufügen"
 msgid "All set? Let your friends know you're ready."
 msgstr "Alles parat? Sag deinen Freunden, dass du bereit bist."
 
-msgid "Allow friends on my local network"
-msgstr "Freunde in meinem lokalen Netzwerk zulassen"
-
 msgid "Ask the organizer for an invitation, then paste it here to join their ride."
 msgstr "Lass dir eine Einladung schicken und füge sie hier ein, um mitzufahren."
 
@@ -2540,9 +2537,6 @@ msgstr "Audioeinstellungen"
 
 msgid "Audio settings…"
 msgstr "Audioeinstellungen…"
-
-msgid "Automatic discovery contacts public STUN services."
-msgstr "Die automatische Erkennung kontaktiert öffentliche STUN-Dienste."
 
 msgid "Cancel joining"
 msgstr "Beitritt abbrechen"
@@ -2573,12 +2567,6 @@ msgstr "Trainer verbinden…"
 
 msgid "Connecting to your friends…"
 msgstr "Verbindung zu deinen Freunden wird hergestellt…"
-
-msgid "Connection settings"
-msgstr "Verbindungseinstellungen"
-
-msgid "Connection settings…"
-msgstr "Verbindungseinstellungen…"
 
 msgid "Copied · send it to the organizer"
 msgstr "Kopiert · an die organisierende Person senden"
@@ -2667,9 +2655,6 @@ msgstr "Diese Person für mich stummschalten"
 msgid "No course · workout only"
 msgstr "Ohne Strecke · nur Training"
 
-msgid "On the same home network, both riders must allow local connections."
-msgstr "Im selben Heimnetzwerk müssen beide lokale Verbindungen zulassen."
-
 msgid "Paste invitation here"
 msgstr "Einladung hier einfügen"
 
@@ -2708,9 +2693,6 @@ msgstr "Eine Gruppenfahrt starten"
 
 msgid "That didn't work. Paste the entire invitation or request, or ask for a fresh one."
 msgstr "Das hat nicht geklappt. Füge die ganze Einladung oder Anfrage ein oder lass dir eine neue schicken."
-
-msgid "The defaults work for friends on different home networks. Change these only if needed."
-msgstr "Die Voreinstellungen sind für Freunde in verschiedenen Heimnetzwerken gedacht. Ändere sie nur bei Bedarf."
 
 msgid "Use headphones. Your microphone starts off."
 msgstr "Nutze Kopfhörer. Dein Mikrofon ist anfangs aus."
@@ -2889,3 +2871,67 @@ msgstr "Alle werden mit %s verbunden. Fahre weiter; deine Aufzeichnung läuft we
 #: app/scenes/group_rides_tab.gd
 msgid "Organizer"
 msgstr "Organisation"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Where will everyone ride?"
+msgstr "Wo fährt eure Gruppe?"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Continue"
+msgstr "Weiter"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Create ride"
+msgstr "Fahrt erstellen"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Separate homes"
+msgstr "Jede Person zu Hause"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone uses their own home internet connection. Recommended for riding with friends online."
+msgstr "Alle nutzen ihren eigenen Internetanschluss zu Hause. Empfohlen, wenn ihr euch online zum Fahren trefft."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Same home Wi-Fi"
+msgstr "Im selben WLAN"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
+msgstr "Alle sind mit demselben WLAN oder Router verbunden. Erlaubt Verbindungen im Heimnetz, ohne die Internetadresse abzufragen."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some together, some elsewhere"
+msgstr "Einige zusammen, andere woanders"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some friends share a Wi-Fi network; others join from another home. Allows both home-network and internet connections."
+msgstr "Einige teilen sich ein WLAN, andere fahren zu Hause an einem anderen Ort. Erlaubt Verbindungen im Heimnetz und über das Internet."
+
+#: app/ui/group_connection_dialog.gd
+msgid "More connection options"
+msgstr "Weitere Verbindungsoptionen"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
+msgstr "Hilft Personen an anderen Orten, dich zu erreichen. Fragt öffentliche Dienste nach deiner Internetadresse; Fahrtdaten und Sprache werden nicht an sie gesendet. Schalte dies nur aus, wenn du ohne die Abfrage eine Verbindung herstellen kannst."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group will ride before inviting friends."
+msgstr "Wähle vor dem Einladen, wo eure Gruppe fährt."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Organizer: %s"
+msgstr "Organisiert von %s"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group is riding. Nothing connects before you confirm."
+msgstr "Wähle, wo eure Gruppe fährt. Ohne deine Bestätigung wird keine Verbindung hergestellt."
+
+#: app/ui/group_connection_dialog.gd
+msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
+msgstr "Diese Einladung enthält Verbindungen im Heimnetz. Wähle „Im selben WLAN“ oder „Einige zusammen, andere woanders“. Für „Jede Person zu Hause“ bitte die organisierende Person um eine neue Einladung."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
+msgstr "Prüfe deine Einladung und Verbindungsauswahl und versuche es erneut. Mehr Informationen findest du unter Technische Details."

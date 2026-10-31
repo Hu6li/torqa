@@ -105,8 +105,9 @@ The [usage wiki](https://github.com/ORQWA/ORQWA/wiki) covers riding and every fe
 with [Getting started](https://github.com/ORQWA/ORQWA/wiki/Getting-started); testers can ride a
 trainer without the app with the [command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool).
 The **[Group Rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides)** tab creates or joins
-private eight-rider lobbies. The host selects a 3D course or structured workout, participants
-receive it directly, and everyone starts together once ready. Friends can also join later,
+private eight-rider lobbies. A popup explains the connection choices before creating or joining.
+The host selects a 3D course or structured workout, participants receive it directly, and
+everyone starts together once ready. Friends can also join later,
 prepare independently and enter near the organizer at the current workout step; their
 recording starts at entry. The organizer coordinates workout pause/resume and skips;
 intensity stays personal, and each rider can pause locally for safety. Hand organizer duties to a

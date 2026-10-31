@@ -2064,6 +2064,31 @@ impl OrqwaApp {
         let text = invite.to_string();
         self.command(|app| app.group_open((!text.is_empty()).then_some(text), options))
     }
+    /// Inspects a lobby invitation offline, before showing connection choices.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_invitation(&mut self, invite: GString) -> VarDictionary {
+        match orqwa_app::group::connection::invitation(&invite.to_string()) {
+            Ok(preview) => {
+                vdict! {"organizer"=>preview.organizer.as_str(),"requires_home"=>preview.requires_home}
+            }
+            Err(error) => {
+                self.report_failure(&Failure::from(error));
+                VarDictionary::new()
+            }
+        }
+    }
+    /// Starts networking only after the rider confirms the guided popup.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_connect(&mut self, invite: GString, mode: GString, lookup: bool) -> bool {
+        let text = invite.to_string();
+        let Some(mode) = orqwa_app::group::connection::ConnectionMode::from_key(&mode.to_string())
+        else {
+            return false;
+        };
+        self.command(|app| app.group_connect((!text.is_empty()).then_some(text), mode, lookup))
+    }
     /// Leaves the group without stopping or discarding a local ride.
     #[func]
     fn group_leave(&mut self) {
