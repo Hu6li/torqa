@@ -123,6 +123,9 @@ starting the existing group owner, and again by transport. No new service or pro
 is introduced. Back preserves the invitation; cancellation starts no discovery, probes or
 listeners. Invitations that include local destinations still require explicit home-network
 permission rather than silently widening the rider's separate-home choice.
+The popup uses the existing touch-scroll helper and native release actions for whole-card
+selection, so finger swipes scroll without changing connection permissions. Gesture tests
+exercise the popup's actual cards as well as tap selection.
 
 The first step implements activity/readiness types, normalized workout wire encoding,
 streaming content helpers and a course archive validator. Tests exercise the existing real

@@ -38,7 +38,7 @@ func _ready() -> void:
 	get_ok_button().add_theme_stylebox_override("normal", UiTheme.accent_button())
 	title = tr("Where will everyone ride?")
 	dialog_hide_on_ok = false
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UiTheme.scroll_down_only(_scroll)
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 12)
 	_scroll.add_child(_content)
@@ -84,7 +84,6 @@ func _choice(key: String) -> void:
 	option.button_group = _buttons
 	option.custom_minimum_size.y = 32
 	option.toggled.connect(func(on: bool) -> void: _selected(key, on))
-	panel.gui_input.connect(func(event: InputEvent) -> void: _select_from_card(event, option))
 	_choices[key] = option
 	box.add_child(option)
 	var help: Label = Label.new()
@@ -93,14 +92,19 @@ func _choice(key: String) -> void:
 	help.add_theme_color_override("font_color", UiTheme.MUTED)
 	box.add_child(help)
 	panel.add_child(box)
+	# A native release action lets ScrollContainer cancel taps when a touch becomes a swipe.
+	var target: Button = Button.new()
+	target.focus_mode = Control.FOCUS_NONE
+	for state: String in ["normal", "hover", "pressed", "disabled", "focus"]:
+		target.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	target.pressed.connect(func() -> void: _card_selected(option))
+	panel.add_child(target)
 	_content.add_child(panel)
 
 
-func _select_from_card(event: InputEvent, option: CheckBox) -> void:
-	var click: InputEventMouseButton = event as InputEventMouseButton
-	if click != null and click.button_index == MOUSE_BUTTON_LEFT and click.pressed:
-		option.button_pressed = true
-		option.accept_event()
+func _card_selected(option: CheckBox) -> void:
+	option.button_pressed = true
+	option.grab_focus()
 
 
 func ask_create() -> void:
