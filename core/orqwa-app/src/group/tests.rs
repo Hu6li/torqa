@@ -270,8 +270,11 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
         h.group().handover == Handover::Idle && p.group().handover == Handover::Idle
     });
     host.group_workout_pause(true).unwrap();
+    // The ride follows a received clock on a later update; compare from where it holds.
     wait(&mut host, &mut peer, |_, p| {
-        p.group().workout_clock.is_some_and(|c| c.paused)
+        p.group().workout_clock.is_some_and(|c| {
+            c.paused && p.ride.as_ref().unwrap().ride.workout_elapsed() == Some(c.elapsed)
+        })
     });
     let elapsed = peer.ride_state().unwrap().elapsed;
     let distance = peer.ride_state().unwrap().distance;
