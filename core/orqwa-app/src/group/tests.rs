@@ -1,7 +1,8 @@
 use super::*;
 use crate::{App, TrainerChoice};
 use orqwa_devices::fake::FakeRider;
-use orqwa_domain::units::{Rpm, Watts};
+use orqwa_domain::profile::Avatar;
+use orqwa_domain::units::{Kilograms, Rpm, Watts};
 use std::time::Duration;
 
 struct Directory(PathBuf);
@@ -722,6 +723,10 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     let mut peer = to.app();
     host.profile.profile.ftp = Watts(200.0);
     peer.profile.profile.ftp = Watts(300.0);
+    // Each rider's own weight and look reach the others (#422, #423).
+    host.profile.profile.rider_mass = Kilograms(80.0);
+    peer.profile.profile.rider_mass = Kilograms(68.0);
+    peer.profile.profile.avatar = Avatar::Male;
     host.connect_trainer(TrainerChoice::Fake(FakeRider {
         power: Watts(180.0),
         cadence: Rpm(85.0),
@@ -786,6 +791,15 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     assert!((peer.ride_state().unwrap().telemetry.power.unwrap().0 - 120.0).abs() < 2.0);
     assert!((host.group_riders()[0].power.0 - 120.0).abs() < 2.0);
     assert!((peer.group_riders()[0].power.0 - 80.0).abs() < 2.0);
+    let (joiner, organizer) = (&host.group_riders()[0], &peer.group_riders()[0]);
+    assert_eq!(
+        (joiner.weight, joiner.avatar),
+        (Kilograms(68.0), Avatar::Male)
+    );
+    assert_eq!(
+        (organizer.weight, organizer.avatar),
+        (Kilograms(80.0), Avatar::Female)
+    );
     peer.set_paused(true);
     wait(&mut host, &mut peer, |h, _| {
         h.group_riders()

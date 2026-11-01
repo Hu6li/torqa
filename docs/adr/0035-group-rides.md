@@ -247,6 +247,17 @@ each run, so they never go stale. CI runs each target for 30 seconds on every ch
 pinned nightly toolchain and cargo-fuzz in the dev image; the fuzz crate is its own workspace, so
 the app never builds with nightly. Its lock follows the main one, and cargo-deny checks it too.
 
+### Rider weight and avatar — 2026-11-01
+
+Riders saw each other's names and gaps but not their effort, and every friend rode as the
+default avatar (#422, #423). A roster entry now carries, beside the name and the rider-plus-bike
+mass, the rider's **own weight** and **avatar**. Others show each rider's power and power per
+kilogram beside their name in the riders panel and under it on the road, and draw them as they
+chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
+unknown avatar is a protocol error. The rider-plus-bike mass already revealed about as much as
+the weight, so sharing it with the group adds little; heart rate stays private as before.
+Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

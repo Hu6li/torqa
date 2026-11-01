@@ -1,6 +1,7 @@
 class_name GroupRiderAvatar
 extends Node3D
-## A named group rider; all positions and smoothed telemetry come from the Rust core.
+## A named group rider, as they chose to look (#423), their power and W/kg under the name
+## (#422); all positions and smoothed telemetry come from the Rust core.
 
 var generation: String = ""
 var _avatar: RiderAvatar = RiderAvatar.new()
@@ -8,8 +9,10 @@ var _motion: RiderMotion = RiderMotion.new()
 var _name: Label3D = Label3D.new()
 
 
-func _init(id: int, membership: String) -> void:
+## `look` is the rider's own avatar, one of `RiderAvatar.RIDERS`; it stays for the membership.
+func _init(id: int, membership: String, look: String) -> void:
 	generation = membership
+	_avatar.rider = look
 	_avatar.accent = UiTheme.group_color(id)
 	_name.modulate = _avatar.accent
 
@@ -48,4 +51,5 @@ func show_state(state: Dictionary, delta: float) -> void:
 		Basis(Vector3.UP, -heading) * Basis(Vector3.RIGHT, _motion.pitch),
 		Vector3(east, elevation, -north)
 	)
-	_name.text = state["name"]
+	var rider_name: String = state["name"]
+	_name.text = "%s\n%s" % [rider_name, GroupRidersPanel.effort(state)]

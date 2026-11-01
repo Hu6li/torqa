@@ -664,6 +664,8 @@ mod tests {
         let rider = Rider {
             name: "Rider".into(),
             mass: Kilograms(80.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         };
         let host = Host::lobby(&rider.name, &options).await.unwrap();
         let root = host.invite().ride;

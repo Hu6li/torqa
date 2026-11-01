@@ -5,12 +5,17 @@ use std::time::Duration;
 use quinn::{RecvStream, SendStream};
 use tokio::time::timeout;
 
+use orqwa_domain::profile::Avatar;
+
 use crate::code::RouteHash;
 use crate::lobby::{LobbyError, Rider, Roster};
 use crate::state::{MAX_RIDERS, RiderId};
 
 const MAX_FRAME: usize = 1024;
 
+// Controls are decoded and handled one at a time: a welcome's full roster, about 400 bytes, on
+// the stack costs less than an allocation for every control.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub(crate) enum Message {
     Hello(RouteHash, Rider),
@@ -73,6 +78,11 @@ fn rider(bytes: &mut Vec<u8>, rider: &Rider) -> Result<(), LobbyError> {
     bytes.push(u8::try_from(rider.name.len()).map_err(|_| LobbyError::Protocol)?);
     bytes.extend_from_slice(rider.name.as_bytes());
     bytes.extend_from_slice(&rider.mass.0.to_be_bytes());
+    bytes.extend_from_slice(&rider.weight.0.to_be_bytes());
+    bytes.push(match rider.avatar {
+        Avatar::Female => 0,
+        Avatar::Male => 1,
+    });
     Ok(())
 }
 
@@ -197,6 +207,12 @@ impl Reader<'_> {
         let rider = Rider {
             name: name.into(),
             mass: orqwa_domain::units::Kilograms(f64::from_be_bytes(self.take()?)),
+            weight: orqwa_domain::units::Kilograms(f64::from_be_bytes(self.take()?)),
+            avatar: match self.byte()? {
+                0 => Avatar::Female,
+                1 => Avatar::Male,
+                _ => return Err(LobbyError::Protocol),
+            },
         };
         rider.validate()?;
         Ok(rider)
@@ -352,21 +368,33 @@ mod tests {
         let who = Rider {
             name: "Anna".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(74.0),
+            avatar: Avatar::Male,
         };
         let valid = encode(&Message::Hello(RouteHash([1; 32]), who.clone())).unwrap();
-        assert!(matches!(decode(&valid), Ok(Message::Hello(_, _))));
+        assert!(matches!(decode(&valid), Ok(Message::Hello(_, ref sent)) if *sent == who));
         for len in 0..valid.len() {
             assert!(decode(&valid[..len]).is_err());
         }
         let mut extra = valid.clone();
         extra.push(0);
         assert!(decode(&extra).is_err());
-        for mass in [f64::NAN, f64::INFINITY, -1.0, 1000.0] {
+        // Mass, then weight, then the avatar end a rider.
+        let (mass_at, weight_at, avatar_at) = (valid.len() - 17, valid.len() - 9, valid.len() - 1);
+        for mass in [f64::NAN, f64::INFINITY, -1.0, 1000.0, 70.0] {
             let mut invalid = valid.clone();
-            let at = invalid.len() - 8;
-            invalid[at..].copy_from_slice(&mass.to_be_bytes());
-            assert!(decode(&invalid).is_err());
+            invalid[mass_at..weight_at].copy_from_slice(&mass.to_be_bytes());
+            assert!(decode(&invalid).is_err(), "mass {mass}");
         }
+        // A weight above the rider-plus-bicycle mass is as invalid as one out of range.
+        for weight in [f64::NAN, f64::INFINITY, 10.0, 90.0] {
+            let mut invalid = valid.clone();
+            invalid[weight_at..avatar_at].copy_from_slice(&weight.to_be_bytes());
+            assert!(decode(&invalid).is_err(), "weight {weight}");
+        }
+        let mut unknown = valid.clone();
+        unknown[avatar_at] = 2;
+        assert!(decode(&unknown).is_err(), "an avatar nobody knows");
         let mut roster: Roster = std::array::from_fn(|_| None);
         roster[0] = Some(who.clone());
         roster[1] = Some(who);
@@ -380,7 +408,8 @@ mod tests {
         .unwrap();
         assert!(decode(&welcome).is_ok());
         let mut duplicate = welcome;
-        duplicate[43] = 0;
+        // The second rider's slot, after the first's id, name, mass, weight and avatar.
+        duplicate[52] = 0;
         assert!(decode(&duplicate).is_err());
         assert!(decode(&vec![0; MAX_FRAME + 1]).is_err());
         assert!(decode(&[crate::code::VERSION, 5, 0, 1, 0, 0]).is_err());

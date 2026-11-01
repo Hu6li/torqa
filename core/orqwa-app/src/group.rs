@@ -1,6 +1,7 @@
 //! App group lobbies: owned background networking and local course preparation.
 
 use crate::{App, AppError, AppEvent, DescentMode, Failure, GhostChoice, Kind, Workout};
+use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
@@ -34,6 +35,10 @@ pub struct GroupRider {
     pub name: String,
     /// Rider and bike mass, for avatar effort only.
     pub mass: Kilograms,
+    /// The rider's own weight, for their power per kilogram (#422).
+    pub weight: Kilograms,
+    /// How the rider looks on the bike (#423).
+    pub avatar: Avatar,
     /// Smoothed course distance.
     pub distance: Meters,
     /// Peer virtual speed.
@@ -424,6 +429,8 @@ impl App {
             rider: Rider {
                 name: rider.name.clone(),
                 mass: Kilograms(rider.rider_mass.0 + rider.bike_mass.0),
+                weight: rider.rider_mass,
+                avatar: rider.avatar,
             },
             data: self.data_dir.clone(),
             temporary: self.cache_dir.join(format!("group-{:x?}", token.0)),
@@ -555,6 +562,8 @@ impl App {
                     generation: peer.generation,
                     name: rider.name.clone(),
                     mass: rider.mass,
+                    weight: rider.weight,
+                    avatar: rider.avatar,
                     distance: peer.distance,
                     speed: peer.speed,
                     power: peer.power,

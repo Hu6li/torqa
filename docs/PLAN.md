@@ -902,6 +902,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   properties, regenerated seeds and a 30-second-per-target CI job
 - [x] The in-ride group panel opens from a Group Rides icon in the control bar (R180, #431)
 - [x] A rider offered organizer duties answers the request over the ride (R181, #424)
+- [x] Riders' power and W/kg beside their names, and their own avatars, from weight and avatar
+  in the roster (R183, #422, #423)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

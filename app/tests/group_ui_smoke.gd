@@ -290,6 +290,9 @@ func _group_motion() -> void:
 		"cadence": 85.0,
 		"effort": 4.0,
 		"curvature": 0.0,
+		"power_w": 252.0,
+		"watts_per_kg": 3.36,
+		"avatar": "male",
 	}
 	avatars.show_riders([peer], 1.0 / 60.0)
 	panel.show_riders([peer], false)
@@ -298,6 +301,10 @@ func _group_motion() -> void:
 		first.generation == "1" and panel.visible, "fresh membership appears on the road and HUD"
 	)
 	_check(panel._labels[1].text == "12 m ahead", "relative gap uses metric distance")
+	# Others see the rider as they chose to look (#423) and their effort (#422).
+	_check(first._avatar.rider == "male", "the rider's own avatar")
+	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
+	_check("252 W · 3.4 W/kg" in first._name.text, "and under it on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)
 	_check(panel._labels[1].text == "39 ft behind", "gap follows direction and rider units")

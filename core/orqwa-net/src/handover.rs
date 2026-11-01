@@ -588,10 +588,14 @@ mod tests {
         roster[0] = Some(Rider {
             name: "Original".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         });
         roster[3] = Some(Rider {
             name: "Successor".into(),
             mass: Kilograms(75.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         });
         let selection = Selection {
             revision: 7,

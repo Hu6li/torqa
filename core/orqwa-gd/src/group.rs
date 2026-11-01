@@ -18,8 +18,14 @@ pub(super) fn riders(app: &App) -> VarArray {
             "distance_m" => peer.distance.0, "gap_m" => peer.distance.0-local,
             "speed_kmh" => peer.speed.as_kilometers_per_hour(), "power_w" => peer.power.0,
             "cadence" => peer.cadence.0,
-            // Only the admitted rider-and-bike mass is known; effort drives presentation only.
+            // Effort drives the avatar's motion only, from the rider-and-bike mass.
             "effort" => peer.power.0 / peer.mass.0.max(1.0),
+            // The roster keeps weights within its bounds; never a division by zero.
+            "watts_per_kg" => peer.power.0 / peer.weight.0.max(1.0),
+            "avatar" => match peer.avatar {
+                orqwa_domain::profile::Avatar::Female => "female",
+                orqwa_domain::profile::Avatar::Male => "male",
+            },
         };
         if let (Some(route), Some(projection)) = (route, &projection) {
             let at = route.position(peer.distance);
@@ -55,7 +61,7 @@ pub(super) fn status(app: &App) -> VarDictionary {
             continue;
         };
         let sample = status.states[id].filter(|(_, at)| at.elapsed() < Duration::from_secs(2));
-        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>sample.is_some(),"gap_m"=>sample.map_or(0.0,|(s,_)|s.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0)}.to_variant());
+        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>sample.is_some(),"gap_m"=>sample.map_or(0.0,|(s,_)|s.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0),"watts_per_kg"=>sample.map_or(0.0,|(s,_)|s.power.0/rider.weight.0.max(1.0))}.to_variant());
     }
     let successor_name = status
         .successor

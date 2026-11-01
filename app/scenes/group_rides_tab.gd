@@ -661,6 +661,7 @@ func _show_roster(phase: String, host: bool) -> void:
 				if imperial
 				else tr("%s m") % roundi(gap)
 			)
+			state.text += " · " + GroupRidersPanel.effort(rider)
 		if rider.get("organizer", false):
 			state.text += " · " + tr("Organizer")
 		row.add_child(text)

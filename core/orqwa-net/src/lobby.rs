@@ -3,6 +3,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::Kilograms;
 use quinn::{RecvStream, SendStream};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -42,12 +43,19 @@ pub struct Rider {
     pub name: String,
     /// Rider plus bicycle mass in kilograms.
     pub mass: Kilograms,
+    /// The rider's own weight, without the bicycle, for others to see their power per
+    /// kilogram (#422); never more than `mass`.
+    pub weight: Kilograms,
+    /// How the rider looks on the bike in the others' worlds (#423).
+    pub avatar: Avatar,
 }
 impl Rider {
     pub(crate) fn validate(&self) -> Result<(), LobbyError> {
+        let finite = self.mass.0.is_finite() && self.weight.0.is_finite();
         if !valid_name(&self.name)
-            || !self.mass.0.is_finite()
+            || !finite
             || !(20.0..=300.0).contains(&self.mass.0)
+            || !(20.0..=self.mass.0).contains(&self.weight.0)
         {
             return Err(LobbyError::Protocol);
         }
@@ -1631,6 +1639,8 @@ mod tests {
         Rider {
             name: name.into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(75.0),
+            avatar: Avatar::Female,
         }
     }
     async fn host() -> HostLobby {

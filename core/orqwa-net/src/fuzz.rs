@@ -133,6 +133,8 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
     let rider = Rider {
         name: "Anna".into(),
         mass: Kilograms(80.0),
+        weight: Kilograms(70.0),
+        avatar: orqwa_domain::profile::Avatar::Female,
     };
     let anna = RiderId::new(1).expect("valid rider");
     let mut roster: crate::lobby::Roster = std::array::from_fn(|_| None);

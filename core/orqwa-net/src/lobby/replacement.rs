@@ -205,6 +205,8 @@ mod tests {
             roster[id] = Some(Rider {
                 name: name.into(),
                 mass: Kilograms(80.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             });
         }
         let selection = Selection {
@@ -363,6 +365,8 @@ mod tests {
             roster[slot] = Some(Rider {
                 name: name.into(),
                 mass: Kilograms(83.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             });
         }
         let selection = Selection {
@@ -532,6 +536,8 @@ mod tests {
             Rider {
                 name: "Late".into(),
                 mass: Kilograms(75.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             },
         )
         .await
