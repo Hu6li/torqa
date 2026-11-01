@@ -200,6 +200,28 @@ There is still no relay. A host behind carrier-grade NAT whose mappings change p
 cannot be reached; the usage guide tells riders that the host must not be behind CGNAT and how
 to check, and a rider-provided relay remains a possible later decision.
 
+### Joiner certificates — 2026-11-01
+
+Replies carried a 256-bit bearer secret: anyone who read a reply in a chat, clipboard history
+or screenshot could connect first and take that rider's place within the admission window.
+Each joiner now generates a per-ride certificate with rcgen, as the host does, and the reply
+carries its SHA-256 instead of a secret, so codes keep their length. The host requires TLS
+client authentication. Its verifier lets any certificate finish the handshake but checks the
+handshake signature, so the joiner proves its private key; admission then looks the
+certificate's pin up in the existing one-use table, with its pending, used and expired
+tombstones, deadlines and budgets unchanged. The authentication message still binds the
+ride, host pin and route.
+
+A copied reply therefore admits nobody else, and leaked codes reveal only names and
+addresses. The invite must still arrive unaltered: someone able to replace it in transit
+could substitute their own host pin, as before. A short comparison code against that was
+considered and deferred; it would need at least 64 bits, because an attacker who controls
+the chat can generate keys until a shorter code matches. Planned handover uses the same
+mechanism: each rider's replacement reply names its fresh replacement-link certificate,
+and the successor binds that pin to the reserved slot, so no secret passes through the
+predecessor. Protocol/invitation version 7 and ALPN `orqwa-group/7` require matching builds
+and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

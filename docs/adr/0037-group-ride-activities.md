@@ -311,7 +311,8 @@ before opening a fresh pinned listener under their existing discovery/address se
 Authenticated old links distribute a bounded public plan; admission replies travel privately
 to the successor through the predecessor. Each rider validates their own address policy and
 the frozen group, complete membership/metadata, selection and fresh pin before opening links.
-Replacement admission binds a transport-authenticated secret to the reserved original rider
+Replacement admission binds a transport-authenticated credential (since protocol 7, the rider's
+TLS client certificate; ADR 0035) to the reserved original rider
 slot, preventing a claimed rider number or matching display name from taking another slot.
 
 A fresh random proof stays with the old organizer. Its SHA-256 commitment binds the root,

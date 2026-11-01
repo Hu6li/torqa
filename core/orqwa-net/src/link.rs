@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep_until, timeout_at};
 
-use crate::code::{AdmissionSecret, CodeError, Invite, Reply, RideId, RouteHash, valid_name};
+use crate::code::{CodeError, Fingerprint, Invite, Reply, RideId, RouteHash, valid_name};
 use crate::crypto::{RandomError, random};
 use crate::discovery::{self, GatherError, GatherOptions};
 use crate::limits::{ConnectionBudget, ConnectionPermit, MAX_CONNECTIONS};
@@ -31,7 +31,7 @@ const PROBE: &[u8] = &[0, b'o', b'q'];
 /// Joiners only probe once their reply is admitted, and home and carrier NATs often forget an
 /// idle UDP mapping within a minute; ICE refreshes its candidates as often (RFC 8445).
 pub const MAPPING_REFRESH: Duration = Duration::from_secs(15);
-const AUTH_LEN: usize = 113;
+const AUTH_LEN: usize = 81;
 const ACK_OK: u8 = 1;
 const ACK_WAIT: u8 = 2;
 const ACK_REPLAY: u8 = 3;
@@ -234,7 +234,7 @@ async fn probe(
 
 struct LiveConnection {
     quic: quinn::Connection,
-    admission: Option<AdmissionSecret>,
+    client: Option<Fingerprint>,
     deadline: Instant,
     _permit: Option<ConnectionPermit>,
     _owner: Option<Local>,
@@ -260,8 +260,9 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
-    pub(crate) fn admission(&self) -> Option<&AdmissionSecret> {
-        self.0.admission.as_ref()
+    /// At the host, the joiner certificate this connection proved and was admitted with.
+    pub(crate) fn client(&self) -> Option<Fingerprint> {
+        self.0.client
     }
     /// Peer address for local diagnostics; not forwarded to other riders.
     #[must_use]
@@ -357,7 +358,7 @@ struct Admission {
     stop: Arc<AtomicBool>,
 }
 struct Shared {
-    admissions: Mutex<HashMap<AdmissionSecret, Admission>>,
+    admissions: Mutex<HashMap<Fingerprint, Admission>>,
     budget: ConnectionBudget,
     events: mpsc::Sender<HostEvent>,
     invite: Invite,
@@ -365,7 +366,7 @@ struct Shared {
 }
 
 impl Shared {
-    fn admissions(&self) -> MutexGuard<'_, HashMap<AdmissionSecret, Admission>> {
+    fn admissions(&self) -> MutexGuard<'_, HashMap<Fingerprint, Admission>> {
         self.admissions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -487,14 +488,14 @@ impl Host {
         let stop = Arc::new(AtomicBool::new(false));
         {
             let mut admissions = self.shared.admissions();
-            if admissions.contains_key(&reply.secret) {
+            if admissions.contains_key(&reply.client) {
                 return Err(LinkError::Replay);
             }
             if admissions.len() >= MAX_ADMISSIONS {
                 return Err(LinkError::Full);
             }
             admissions.insert(
-                reply.secret.clone(),
+                reply.client,
                 Admission {
                     expires,
                     state: AdmissionState::Pending,
@@ -509,12 +510,12 @@ impl Host {
             stop,
         ));
         let shared = self.shared.clone();
-        let secret = reply.secret.clone();
+        let client = reply.client;
         self.tasks.spawn(async move {
             sleep_until(expires).await;
             let timed_out = {
                 let mut admissions = shared.admissions();
-                if let Some(entry) = admissions.get_mut(&secret)
+                if let Some(entry) = admissions.get_mut(&client)
                     && entry.state == AdmissionState::Pending
                 {
                     entry.state = AdmissionState::Expired;
@@ -533,7 +534,7 @@ impl Host {
 
     /// Revokes a pending reply without removing its replay-prevention tombstone.
     pub fn revoke(&mut self, reply: &Reply) {
-        if let Some(entry) = self.shared.admissions().get_mut(&reply.secret) {
+        if let Some(entry) = self.shared.admissions().get_mut(&reply.client) {
             entry.state = AdmissionState::Expired;
             entry.stop.store(true, Ordering::Relaxed);
         }
@@ -609,17 +610,17 @@ async fn accept_all(endpoint: Endpoint, shared: Arc<Shared>) {
     }
 }
 
-fn auth_message(invite: &Invite, secret: &AdmissionSecret) -> [u8; AUTH_LEN] {
+// The joiner's credential is its TLS client certificate; this binds that proof to one ride.
+fn auth_message(invite: &Invite) -> [u8; AUTH_LEN] {
     let mut bytes = [0; AUTH_LEN];
     bytes[0] = 1;
     bytes[1..17].copy_from_slice(&invite.ride.0);
     bytes[17..49].copy_from_slice(&invite.fingerprint.0);
     bytes[49..81].copy_from_slice(&invite.route.0);
-    bytes[81..].copy_from_slice(&secret.0);
     bytes
 }
 
-fn take_credential(shared: &Shared, bytes: &[u8]) -> (u8, Option<Instant>) {
+fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, Option<Instant>) {
     if bytes.len() != AUTH_LEN
         || bytes[0] != 1
         || bytes[1..17] != shared.invite.ride.0
@@ -628,13 +629,8 @@ fn take_credential(shared: &Shared, bytes: &[u8]) -> (u8, Option<Instant>) {
     {
         return (ACK_INVALID, None);
     }
-    let Ok(secret) =
-        AdmissionSecret::from_random_bytes(bytes[81..].try_into().expect("checked frame length"))
-    else {
-        return (ACK_INVALID, None);
-    };
     let mut admissions = shared.admissions();
-    let Some(entry) = admissions.get_mut(&secret) else {
+    let Some(entry) = admissions.get_mut(&client) else {
         return (ACK_WAIT, None);
     };
     if entry.state == AdmissionState::Used {
@@ -655,30 +651,28 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
     let Ok(quic) = until(end, async { incoming.await }).await else {
         return;
     };
+    let Some(client) = tls::client_pin(&quic) else {
+        quic.close(VarInt::from_u32(1), b"admission failed");
+        return;
+    };
     let result = async {
         let (mut send, mut recv) = until(end, quic.accept_bi()).await?;
         let bytes = until(end, recv.read_to_end(AUTH_LEN)).await?;
-        let (ack, expires) = take_credential(&shared, &bytes);
+        let (ack, expires) = take_credential(&shared, &bytes, client);
         until(end, send.write_all(&[ack])).await?;
         send.finish().map_err(|_| LinkError::Lost)?;
         if ack != ACK_OK {
             let _ = timeout_at(end, send.stopped()).await;
             return Err(LinkError::Replay);
         }
-        let secret = AdmissionSecret::from_random_bytes(
-            bytes[81..].try_into().map_err(|_| LinkError::Lost)?,
-        )?;
-        Ok((
-            expires.expect("an accepted credential has an expiry"),
-            secret,
-        ))
+        Ok(expires.expect("an accepted credential has an expiry"))
     }
     .await;
     match result {
-        Ok((expires, secret)) => {
+        Ok(expires) => {
             let connection = Connection(Arc::new(LiveConnection {
                 quic,
-                admission: Some(secret),
+                client: Some(client),
                 // AUTH_WAIT bounds only the credential exchange. The lobby handshake that
                 // follows shares the admission's one deadline (R161), as the joiner's does.
                 deadline: expires,
@@ -729,14 +723,14 @@ impl Joiner {
             return Err(CodeError::WrongRide.into());
         }
         invite.encode(options.gather.policy)?;
-        let secret = AdmissionSecret::generate()?;
-        let (client, pinned) = tls::client(invite.fingerprint)?;
+        let identity = tls::Identity::generate()?;
+        let (client, pinned) = tls::client(invite.fingerprint, &identity)?;
         let local = Local::open(&options.gather, end, None).await?;
         let reply = Reply {
             ride: invite.ride,
             fingerprint: invite.fingerprint,
             route,
-            secret,
+            client: identity.pin(),
             candidates: local.candidates.clone(),
             nat: local.nat,
         };
@@ -788,7 +782,7 @@ impl Joiner {
                         self.tasks.abort_all();
                         return Ok(Connection(Arc::new(LiveConnection {
                             quic,
-                            admission: None,
+                            client: None,
                             deadline: self.deadline,
                             _permit: None,
                             _owner: self.local.take(),
@@ -846,11 +840,7 @@ impl Joiner {
 
     async fn authenticate(&self, connection: &quinn::Connection) -> Result<bool, LinkError> {
         let (mut send, mut recv) = until(self.deadline, connection.open_bi()).await?;
-        until(
-            self.deadline,
-            send.write_all(&auth_message(&self.invite, &self.reply.secret)),
-        )
-        .await?;
+        until(self.deadline, send.write_all(&auth_message(&self.invite))).await?;
         send.finish().map_err(|_| LinkError::Lost)?;
         let ack = until(self.deadline, recv.read_to_end(1)).await?;
         match ack.as_slice() {
@@ -1060,7 +1050,7 @@ mod tests {
         assert_eq!(
             host.shared
                 .admissions()
-                .get(&legitimate.reply().secret)
+                .get(&legitimate.reply().client)
                 .unwrap()
                 .state,
             AdmissionState::Pending
@@ -1070,10 +1060,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_consumed_credential_and_repeated_reply_cannot_admit_another_connection() {
+    async fn a_used_joiner_key_and_repeated_reply_cannot_admit_another_connection() {
         let mut host = host().await;
         let first = joiner(&host).await;
         let used = first.reply().clone();
+        let same_key = first.client.clone();
         host.admit(&used).unwrap();
         let client = first.connect().await.unwrap();
         let peer = joined(&mut host).await;
@@ -1081,7 +1072,7 @@ mod tests {
         let pending = joiner(&host).await;
         host.admit(pending.reply()).unwrap();
         let mut replay = joiner(&host).await;
-        replay.reply.secret = used.secret;
+        replay.client = same_key;
         assert!(matches!(replay.connect().await, Err(LinkError::Replay)));
         assert!(
             timeout(Duration::from_millis(20), host.next())
@@ -1089,6 +1080,82 @@ mod tests {
                 .is_err()
         );
         drop((client, peer, pending));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_copied_reply_admits_nobody_but_the_joiner_that_created_it() {
+        let mut host = host().await;
+        let legitimate = joiner(&host).await;
+        host.admit(legitimate.reply()).unwrap();
+        // Someone who saw the reply in a chat reuses it from another computer.
+        let mut opts = options();
+        opts.window = Duration::from_millis(300);
+        let mut copier = Joiner::open(host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        copier.reply = legitimate.reply().clone();
+        assert!(matches!(copier.connect().await, Err(LinkError::Timeout)));
+        assert!(
+            timeout(Duration::from_millis(20), host.next())
+                .await
+                .is_err(),
+            "the copier was never admitted"
+        );
+        assert_eq!(
+            host.shared
+                .admissions()
+                .get(&legitimate.reply().client)
+                .unwrap()
+                .state,
+            AdmissionState::Pending
+        );
+        let expected = legitimate.reply().client;
+        let client = legitimate.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert_eq!(peer.client(), Some(expected));
+        drop((client, peer));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_joiner_without_a_certificate_is_never_admitted() {
+        let mut host = host().await;
+        let pending = joiner(&host).await;
+        host.admit(pending.reply()).unwrap();
+        // Pins the real host, like a joiner, but offers no certificate of its own.
+        let identity = tls::Identity::generate().unwrap();
+        let (_, pinned) = tls::client(host.invite().fingerprint, &identity).unwrap();
+        let mut without_certificate =
+            rustls::ClientConfig::builder_with_provider(crate::crypto::provider())
+                .with_protocol_versions(&[&rustls::version::TLS13])
+                .unwrap()
+                .dangerous()
+                .with_custom_certificate_verifier(pinned)
+                .with_no_client_auth();
+        without_certificate.alpn_protocols = vec![tls::ALPN.to_vec()];
+        let config = quinn::ClientConfig::new(Arc::new(
+            quinn::crypto::rustls::QuicClientConfig::try_from(without_certificate).unwrap(),
+        ));
+        let address = ipv4(&host).endpoint.local_addr().unwrap();
+        let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
+        let attempt = endpoint
+            .connect_with(config, address, tls::SERVER_NAME)
+            .unwrap();
+        let result = timeout(Duration::from_secs(2), async {
+            let connection = attempt.await?;
+            // TLS 1.3 clients finish before the server checks their certificate.
+            connection.accept_uni().await.map(|_| ())
+        })
+        .await
+        .unwrap();
+        assert!(result.is_err());
+        assert!(
+            timeout(Duration::from_millis(20), host.next())
+                .await
+                .is_err()
+        );
+        drop(pending);
         host.close().await;
     }
 

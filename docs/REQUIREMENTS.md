@@ -338,6 +338,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R174 | Refines R169 and R161 (2026-10-31): creating a group ride and joining from an invitation show a connection popup with plain-language choices for separate homes, one home Wi-Fi/router, and a mixture. Explain each choice and optional public address lookup without requiring network terminology. Inspect invitations offline, retain pasted text when going Back, and start no discovery or connections before confirmation. Home-network access remains explicit, separate-home mode cannot silently acquire it, and same-home mode uses no public lookup services. Preserve the existing bounded transport and classified Technical details/Dismiss error reporting. |
 
+## Group codes safe to copy
+
+| ID | Requirement |
+|---|---|
+| R175 | Extends R160 (2026-11-01): a join reply binds admission to a certificate the joiner's computer creates for that ride, and TLS client authentication proves its private key, which never leaves that computer. A copied, forwarded or leaked reply admits nobody else, and a used reply cannot admit its own computer again. Codes still reveal names and addresses, so riders exchange them privately, and the invite must reach joiners unaltered because it pins the host. Planned handover binds each rider's replacement link the same way, so no admission secret passes between riders. Protocol and invitation version 7 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

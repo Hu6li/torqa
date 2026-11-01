@@ -112,7 +112,7 @@ impl Phase {
         }
     }
 }
-/// Latest group view. Codes contain admission secrets, so this deliberately has no Debug.
+/// Latest group view. Codes reveal riders' addresses, so this deliberately has no Debug.
 #[derive(Clone)]
 #[allow(clippy::struct_excessive_bools)] // presentation of independent readiness and local audio gates
 pub struct Snapshot {

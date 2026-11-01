@@ -83,9 +83,7 @@ impl Reply {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::code::{
-        AdmissionSecret, Candidate, CandidateKind, Fingerprint, NatObservation, RideId, RouteHash,
-    };
+    use crate::code::{Candidate, CandidateKind, Fingerprint, NatObservation, RideId, RouteHash};
 
     fn invite() -> Invite {
         Invite {
@@ -117,7 +115,7 @@ mod tests {
             ride: invite.ride,
             fingerprint: invite.fingerprint,
             route: invite.route,
-            secret: AdmissionSecret::generate().unwrap(),
+            client: Fingerprint([5; 32]),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };

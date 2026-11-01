@@ -1,9 +1,9 @@
 //! Size-bounded, versioned invite/reply payloads (R160, R161).
 //!
-//! A code is a bearer credential, not proof of its sender's identity. Exchange it through an
-//! authenticated private channel. Debug output deliberately omits admission credentials.
+//! A code is not proof of its sender's identity: the invite's pin authenticates the host only if
+//! the invite arrives unaltered, so exchange codes through a channel the riders trust. A reply
+//! names the joiner's own per-ride certificate, so a copied reply admits nobody else.
 
-use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::policy::{AddressPolicy, is_public};
@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Old Torqa codes are deliberately incompatible with the new security contract.
-pub const VERSION: u8 = 6;
+pub const VERSION: u8 = 7;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;
@@ -163,32 +163,6 @@ pub struct Invite {
     pub nat: NatObservation,
 }
 
-/// A 256-bit bearer credential. Its bytes are intentionally absent from Debug output.
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct AdmissionSecret(pub(crate) [u8; 32]);
-
-impl fmt::Debug for AdmissionSecret {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("AdmissionSecret([REDACTED])")
-    }
-}
-
-impl AdmissionSecret {
-    /// Imports a credential supplied by a cryptographic random generator or the wire decoder.
-    ///
-    /// This does not generate randomness. Session code must generate a fresh credential for
-    /// every reply using its cryptographic provider; callers must never choose a password here.
-    ///
-    /// # Errors
-    /// An all-zero credential is rejected to catch accidentally uninitialized state.
-    pub fn from_random_bytes(bytes: [u8; 32]) -> Result<Self, CodeError> {
-        if bytes == [0; 32] {
-            return Err(CodeError::Invalid);
-        }
-        Ok(Self(bytes))
-    }
-}
-
 /// An answer bound to an invite's ride, certificate and route; exchange it privately.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reply {
@@ -198,8 +172,9 @@ pub struct Reply {
     pub fingerprint: Fingerprint,
     /// The route this joiner has locally.
     pub route: RouteHash,
-    /// The bearer credential, deliberately redacted from Debug.
-    pub secret: AdmissionSecret,
+    /// SHA-256 of the joiner's per-ride client certificate. Admission requires TLS proof of
+    /// its private key, which never leaves the joiner's computer; this value is not a secret.
+    pub client: Fingerprint,
     /// At most eight distinct permitted destinations.
     pub candidates: Vec<Candidate>,
     /// What STUN observed, if enabled.
@@ -282,13 +257,16 @@ impl Reply {
         Ok(())
     }
 
-    /// Validates and encodes a reply. The returned bytes include the admission credential.
+    /// Validates and encodes a reply, including the joiner's certificate pin.
     ///
     /// # Errors
     /// Invalid identifiers, counts or destinations return [`CodeError`].
     pub fn encode(&self, policy: AddressPolicy) -> Result<Vec<u8>, CodeError> {
         let mut out = header(REPLY, self.ride, self.fingerprint, self.route)?;
-        out.extend(self.secret.0);
+        if self.client.0 == [0; 32] {
+            return Err(CodeError::Invalid);
+        }
+        out.extend(self.client.0);
         put_candidates(&mut out, &self.candidates, policy)?;
         out.push(self.nat.byte());
         Ok(out)
@@ -301,7 +279,10 @@ impl Reply {
     pub fn decode(bytes: &[u8], policy: AddressPolicy) -> Result<Self, CodeError> {
         let mut reader = Reader::new(bytes, REPLY)?;
         let (ride, fingerprint, route) = reader.identity()?;
-        let secret = AdmissionSecret::from_random_bytes(reader.array()?)?;
+        let client = Fingerprint(reader.array()?);
+        if client.0 == [0; 32] {
+            return Err(CodeError::Invalid);
+        }
         let candidates = reader.candidates(policy)?;
         let nat = NatObservation::from_byte(reader.byte()?)?;
         reader.end()?;
@@ -309,7 +290,7 @@ impl Reply {
             ride,
             fingerprint,
             route,
-            secret,
+            client,
             candidates,
             nat,
         })
@@ -497,7 +478,7 @@ mod tests {
             ride: invite.ride,
             fingerprint: invite.fingerprint,
             route: invite.route,
-            secret: AdmissionSecret::from_random_bytes([4; 32]).unwrap(),
+            client: Fingerprint([4; 32]),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };
@@ -519,8 +500,9 @@ mod tests {
         changed = invite;
         changed.route.0[0] ^= 1;
         assert_eq!(reply.matches(&changed), Err(CodeError::WrongRide));
-        assert!(!format!("{reply:?}").contains("[4, 4"));
-        assert!(format!("{reply:?}").contains("REDACTED"));
+        let mut unset = reply;
+        unset.client = Fingerprint([0; 32]);
+        assert_eq!(unset.encode(policy), Err(CodeError::Invalid));
     }
 
     #[test]

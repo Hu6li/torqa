@@ -893,6 +893,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   first rider, IPv6 candidates first, the host's lobby handshake keeps the admission deadline,
   and state arriving shortly before the host's start no longer drops a rider; the usage guides
   say a host must not be behind carrier-grade NAT and how to check
+- [x] Joiner certificates (R175): replies name a per-ride client certificate proved by TLS
+  instead of carrying a bearer secret, so a copied reply admits nobody else; handover
+  replacement links use the same binding
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

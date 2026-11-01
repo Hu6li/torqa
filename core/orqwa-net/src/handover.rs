@@ -293,7 +293,7 @@ pub enum Message {
         epoch: u64,
         /// Authenticated original rider identity.
         rider: RiderId,
-        /// Fresh single-use credential.
+        /// Fresh one-use reply naming the rider's replacement-link certificate.
         reply: Reply,
     },
     /// A participant owns its replacement link; the successor also confirms accepted links.
@@ -688,7 +688,7 @@ mod tests {
             ride: plan.invite.ride,
             fingerprint: plan.invite.fingerprint,
             route: RouteHash::LOBBY,
-            secret: crate::code::AdmissionSecret::from_random_bytes([7; 32]).unwrap(),
+            client: crate::code::Fingerprint([7; 32]),
             candidates: plan.invite.candidates.clone(),
             nat: NatObservation::None,
         };

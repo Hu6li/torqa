@@ -1,8 +1,8 @@
-//! Credential-bound stable identities for one prepared successor listener.
+//! Certificate-bound stable identities for one prepared successor listener.
 
 use std::time::Instant;
 
-use crate::code::{AdmissionSecret, Reply};
+use crate::code::{Fingerprint, Reply};
 use crate::handover::{Context, Plan, Proof};
 use crate::link::{Connection, Host};
 use crate::state::{MAX_RIDERS, RiderId};
@@ -25,7 +25,7 @@ pub struct Replacement {
 pub(super) struct Prepared {
     pub(super) replacement: Replacement,
     pub(super) active: bool,
-    credentials: [Option<AdmissionSecret>; MAX_RIDERS],
+    credentials: [Option<Fingerprint>; MAX_RIDERS],
 }
 impl Prepared {
     pub(super) fn new(replacement: Replacement, host: &Host) -> Result<Self, LobbyError> {
@@ -67,7 +67,7 @@ impl Prepared {
             return Err(LobbyError::Protocol);
         }
         host.admit(reply)?;
-        self.credentials[slot] = Some(reply.secret.clone());
+        self.credentials[slot] = Some(reply.client);
         Ok(())
     }
     pub(super) fn assign(
@@ -76,11 +76,11 @@ impl Prepared {
         rider: &Rider,
         roster: &Roster,
     ) -> Result<RiderId, LobbyError> {
-        let credential = connection.admission().ok_or(LobbyError::Protocol)?;
+        let credential = connection.client().ok_or(LobbyError::Protocol)?;
         let slot = self
             .credentials
             .iter()
-            .position(|candidate| candidate.as_ref() == Some(credential))
+            .position(|candidate| *candidate == Some(credential))
             .ok_or(LobbyError::Protocol)?;
         if roster[slot].is_some() || self.replacement.roster[slot].as_ref() != Some(rider) {
             return Err(LobbyError::Protocol);
