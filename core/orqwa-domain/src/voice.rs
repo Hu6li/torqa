@@ -58,6 +58,14 @@ pub trait VoiceAudio {
     fn deafen(&mut self, deafened: bool);
     /// Reports asynchronous device failures without panicking in callbacks.
     fn healthy(&self) -> bool;
+    /// Rebuilds invalidated native streams on their owning thread, retaining local controls.
+    /// Returns `false` for permanent failures or exhausted recovery; no network is restarted.
+    ///
+    /// # Errors
+    /// Returns [`VoiceDeviceError`] if rebuilding the current device configuration fails.
+    fn recover(&mut self) -> Result<bool, VoiceDeviceError> {
+        Ok(false)
+    }
     /// Takes the diagnostic for an asynchronous device failure. Backends without a more
     /// specific cause still report the operation without exposing microphone samples.
     fn failure(&mut self) -> VoiceDeviceError {

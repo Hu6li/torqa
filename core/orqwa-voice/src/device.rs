@@ -1,9 +1,9 @@
 //! Native audio streams with bounded callback queues and no network work in callbacks.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
@@ -58,24 +58,56 @@ struct Gates {
     activation: AtomicU32,
     deafened: AtomicBool,
     revision: AtomicU32,
-    failed: AtomicBool,
+    invalidated: AtomicU8,
     failure: Mutex<Option<VoiceDeviceError>>,
 }
 impl Gates {
-    fn fail(&self, error: cpal::Error) {
+    fn fail(&self, error: cpal::Error, stream: u8) {
         // CPAL recovers buffer underruns/overruns itself. A dropped audio buffer is not
         // a lost device and must not tear down the whole conversation during a slow frame.
-        if error.kind() == cpal::ErrorKind::Xrun {
+        if matches!(
+            error.kind(),
+            cpal::ErrorKind::Xrun
+                | cpal::ErrorKind::DeviceChanged
+                | cpal::ErrorKind::RealtimeDenied
+        ) {
             return;
         }
+        let reason = if error.kind() == cpal::ErrorKind::StreamInvalidated {
+            stream
+        } else {
+            PERMANENT
+        };
         // Error callbacks never wait on the audio owner. Keep at most one diagnostic,
         // with no samples or credentials, and retire the stream through its normal gate.
         if let Ok(mut failure) = self.failure.try_lock()
-            && failure.is_none()
+            && (failure.is_none() || reason == PERMANENT)
         {
             *failure = Some(VoiceDeviceError::new("voice audio callback", error));
         }
-        self.failed.store(true, Ordering::Release);
+        self.invalidated.fetch_or(reason, Ordering::AcqRel);
+    }
+}
+
+const INPUT: u8 = 1;
+const OUTPUT: u8 = 2;
+const PERMANENT: u8 = 4;
+
+struct RecoveryBudget {
+    since: Instant,
+    attempts: u8,
+}
+impl RecoveryBudget {
+    fn attempt(&mut self, now: Instant) -> bool {
+        if now.saturating_duration_since(self.since) >= Duration::from_secs(5) {
+            self.since = now;
+            self.attempts = 0;
+        }
+        if self.attempts == 3 {
+            return false;
+        }
+        self.attempts += 1;
+        true
     }
 }
 
@@ -89,11 +121,12 @@ struct Output {
 pub struct NativeAudio {
     options: DeviceOptions,
     gates: Arc<Gates>,
-    _output: Stream,
+    output: Option<Stream>,
     input: Option<Stream>,
     capture_send: SyncSender<CapturedVoice>,
     capture_receive: Receiver<CapturedVoice>,
     play_send: SyncSender<Output>,
+    recovery: RecoveryBudget,
 }
 impl NativeAudio {
     /// Opens output only. Capture is constructed lazily by [`VoiceAudio::microphone`].
@@ -101,55 +134,67 @@ impl NativeAudio {
     /// # Errors
     /// Returns [`VoiceDeviceError`] for unavailable devices or unsupported configurations.
     pub fn open(options: DeviceOptions, stop: Arc<AtomicBool>) -> Result<Self, VoiceDeviceError> {
-        let host = cpal::default_host();
-        let device = choose(&host, options.output.as_deref(), false)?;
-        let supported = device
-            .default_output_config()
-            .map_err(|e| VoiceDeviceError::new("reading speaker configuration", e))?;
-        let format = supported.sample_format();
-        let config = configuration(&supported);
-        validate(&config)?;
         let gates = Arc::new(Gates {
             stop,
             activation: AtomicU32::new(0),
             deafened: AtomicBool::new(false),
             revision: AtomicU32::new(0),
-            failed: AtomicBool::new(false),
+            invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
         });
-        let (play_send, receive) = sync_channel(4);
-        let output = match format {
-            SampleFormat::F32 => output::<f32>(&device, config, receive, gates.clone()),
-            SampleFormat::F64 => output::<f64>(&device, config, receive, gates.clone()),
-            SampleFormat::I8 => output::<i8>(&device, config, receive, gates.clone()),
-            SampleFormat::I16 => output::<i16>(&device, config, receive, gates.clone()),
-            SampleFormat::I32 => output::<i32>(&device, config, receive, gates.clone()),
-            SampleFormat::I64 => output::<i64>(&device, config, receive, gates.clone()),
-            SampleFormat::U8 => output::<u8>(&device, config, receive, gates.clone()),
-            SampleFormat::U16 => output::<u16>(&device, config, receive, gates.clone()),
-            SampleFormat::U32 => output::<u32>(&device, config, receive, gates.clone()),
-            SampleFormat::U64 => output::<u64>(&device, config, receive, gates.clone()),
-            _ => {
-                return Err(VoiceDeviceError::new(
-                    "opening voice audio stream",
-                    "unsupported sample format",
-                ));
-            }
-        }?;
-        output
-            .play()
-            .map_err(|e| VoiceDeviceError::new("starting speaker playback", e))?;
+        let (output, play_send) = speakers(&options, &gates)?;
         let (capture_send, capture_receive) = sync_channel(4);
         Ok(Self {
             options,
             gates,
-            _output: output,
+            output: Some(output),
             input: None,
             capture_send,
             capture_receive,
             play_send,
+            recovery: RecoveryBudget {
+                since: Instant::now(),
+                attempts: 0,
+            },
         })
     }
+}
+
+fn speakers(
+    options: &DeviceOptions,
+    gates: &Arc<Gates>,
+) -> Result<(Stream, SyncSender<Output>), VoiceDeviceError> {
+    let host = cpal::default_host();
+    let device = choose(&host, options.output.as_deref(), false)?;
+    let supported = device
+        .default_output_config()
+        .map_err(|e| VoiceDeviceError::new("reading speaker configuration", e))?;
+    let format = supported.sample_format();
+    let config = configuration(&supported);
+    validate(&config)?;
+    let (play_send, receive) = sync_channel(4);
+    let output = match format {
+        SampleFormat::F32 => output::<f32>(&device, config, receive, gates.clone()),
+        SampleFormat::F64 => output::<f64>(&device, config, receive, gates.clone()),
+        SampleFormat::I8 => output::<i8>(&device, config, receive, gates.clone()),
+        SampleFormat::I16 => output::<i16>(&device, config, receive, gates.clone()),
+        SampleFormat::I32 => output::<i32>(&device, config, receive, gates.clone()),
+        SampleFormat::I64 => output::<i64>(&device, config, receive, gates.clone()),
+        SampleFormat::U8 => output::<u8>(&device, config, receive, gates.clone()),
+        SampleFormat::U16 => output::<u16>(&device, config, receive, gates.clone()),
+        SampleFormat::U32 => output::<u32>(&device, config, receive, gates.clone()),
+        SampleFormat::U64 => output::<u64>(&device, config, receive, gates.clone()),
+        _ => {
+            return Err(VoiceDeviceError::new(
+                "opening voice audio stream",
+                "unsupported sample format",
+            ));
+        }
+    }?;
+    output
+        .play()
+        .map_err(|e| VoiceDeviceError::new("starting speaker playback", e))?;
+    Ok((output, play_send))
 }
 
 fn choose(
@@ -157,7 +202,7 @@ fn choose(
     id: Option<&str>,
     input: bool,
 ) -> Result<cpal::Device, VoiceDeviceError> {
-    match id {
+    let device = match id {
         Some(id) => host.device_by_id(
             &id.parse()
                 .map_err(|e| VoiceDeviceError::new("reading selected audio device ID", e))?,
@@ -170,7 +215,14 @@ fn choose(
             "selecting audio device",
             "selected or default device is unavailable",
         )
-    })
+    })?;
+    if (input && !device.supports_input()) || (!input && !device.supports_output()) {
+        return Err(VoiceDeviceError::new(
+            "selecting audio device",
+            "the device does not support the selected direction",
+        ));
+    }
+    Ok(device)
 }
 fn validate(config: &StreamConfig) -> Result<(), VoiceDeviceError> {
     if !(1..=8).contains(&config.channels) || !(8000..=192_000).contains(&config.sample_rate) {
@@ -281,7 +333,47 @@ impl VoiceAudio for NativeAudio {
         self.gates.revision.fetch_add(1, Ordering::AcqRel);
     }
     fn healthy(&self) -> bool {
-        !self.gates.failed.load(Ordering::Acquire)
+        self.gates.invalidated.load(Ordering::Acquire) == 0
+    }
+    fn recover(&mut self) -> Result<bool, VoiceDeviceError> {
+        let invalidated = self.gates.invalidated.load(Ordering::Acquire);
+        if invalidated & PERMANENT != 0
+            || self.gates.stop.load(Ordering::Acquire)
+            || !self.recovery.attempt(Instant::now())
+        {
+            return Ok(false);
+        }
+        // Bluetooth may change both hardware rates when its microphone opens. Keep an
+        // unaffected capture stream open so the headset does not switch profiles again.
+        let activation = self.gates.activation.load(Ordering::Acquire);
+        if invalidated & INPUT != 0 {
+            self.microphone(None)?;
+        }
+        self.output = None;
+        self.gates.revision.fetch_add(1, Ordering::AcqRel);
+        let invalidated = self.gates.invalidated.swap(0, Ordering::AcqRel);
+        if invalidated & PERMANENT != 0 {
+            self.gates
+                .invalidated
+                .fetch_or(invalidated, Ordering::AcqRel);
+            return Ok(false);
+        }
+        self.gates
+            .failure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        std::thread::sleep(Duration::from_millis(100));
+        if self.gates.stop.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+        if invalidated & INPUT != 0 && activation != 0 {
+            self.microphone(Some(activation))?;
+        }
+        let (output, send) = speakers(&self.options, &self.gates)?;
+        self.output = Some(output);
+        self.play_send = send;
+        Ok(true)
     }
     fn failure(&mut self) -> VoiceDeviceError {
         self.gates
@@ -323,6 +415,7 @@ where
             config,
             move |data: &[T], _| {
                 if gates.stop.load(Ordering::Acquire)
+                    || gates.invalidated.load(Ordering::Acquire) != 0
                     || gates.activation.load(Ordering::Acquire) != activation
                 {
                     count = 0;
@@ -365,7 +458,7 @@ where
                 }
             },
             move |error| {
-                failures.fail(error);
+                failures.fail(error, INPUT);
             },
             None,
         )
@@ -418,6 +511,7 @@ where
             move |data: &mut [T], _| {
                 let current = gates.revision.load(Ordering::Acquire);
                 if gates.stop.load(Ordering::Acquire)
+                    || gates.invalidated.load(Ordering::Acquire) != 0
                     || gates.deafened.load(Ordering::Acquire)
                     || revision != current
                 {
@@ -452,7 +546,7 @@ where
                 }
             },
             move |error| {
-                failures.fail(error);
+                failures.fail(error, OUTPUT);
             },
             None,
         )
@@ -469,23 +563,63 @@ mod tests {
             activation: AtomicU32::new(0),
             deafened: AtomicBool::new(false),
             revision: AtomicU32::new(0),
-            failed: AtomicBool::new(false),
+            invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
         };
-        gates.fail(cpal::Error::with_message(
-            cpal::ErrorKind::Xrun,
-            "buffer underrun",
-        ));
-        assert!(!gates.failed.load(Ordering::Acquire));
-        gates.fail(cpal::Error::with_message(
-            cpal::ErrorKind::DeviceNotAvailable,
-            "AAudio device disconnected",
-        ));
-        assert!(gates.failed.load(Ordering::Acquire));
+        gates.fail(
+            cpal::Error::with_message(cpal::ErrorKind::Xrun, "buffer underrun"),
+            OUTPUT,
+        );
+        for kind in [
+            cpal::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::RealtimeDenied,
+        ] {
+            gates.fail(cpal::Error::new(kind), INPUT);
+        }
+        assert_eq!(gates.invalidated.load(Ordering::Acquire), 0);
+        gates.fail(
+            cpal::Error::with_message(
+                cpal::ErrorKind::StreamInvalidated,
+                "Device sample rate changed",
+            ),
+            OUTPUT,
+        );
+        assert_eq!(gates.invalidated.load(Ordering::Acquire), OUTPUT);
+        assert!(
+            gates
+                .failure
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .to_string()
+                .contains("Device sample rate changed")
+        );
+        gates.fail(
+            cpal::Error::with_message(
+                cpal::ErrorKind::DeviceNotAvailable,
+                "AAudio device disconnected",
+            ),
+            INPUT,
+        );
+        assert_ne!(gates.invalidated.load(Ordering::Acquire) & PERMANENT, 0);
         let cause = gates.failure.lock().unwrap().take().unwrap().to_string();
         assert!(
             cause.contains("voice audio callback") && cause.contains("AAudio device disconnected")
         );
+    }
+    #[test]
+    fn repeated_route_failures_have_a_finite_recovery_budget() {
+        let now = Instant::now();
+        let mut budget = RecoveryBudget {
+            since: now,
+            attempts: 0,
+        };
+        for _ in 0..3 {
+            assert!(budget.attempt(now));
+        }
+        assert!(!budget.attempt(now + Duration::from_secs(4)));
+        assert!(budget.attempt(now + Duration::from_secs(5)));
     }
     #[test]
     fn device_rates_produce_forty_eight_thousand_finite_mono_samples_per_second() {

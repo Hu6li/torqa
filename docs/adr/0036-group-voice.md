@@ -98,6 +98,23 @@ exclusive native devices. A stalled OS driver may outlive that wait, but its sta
 inert. The regression test holds an old backend inside playback until a replacement is speaking,
 then releases it and checks that new microphone consent and group state survive its cleanup.
 
+## Amendment — device sample-rate recovery (2026-11-01, #413)
+
+CPAL classifies a CoreAudio sample-rate change as `StreamInvalidated`: its stream must be
+rebuilt, while `DeviceChanged` means a default-device stream already followed the new route.
+Rebuild invalidated streams on the audio owner, requerying the selected device's native rate
+and channel configuration. Keep an unaffected microphone open: closing a Bluetooth microphone
+can switch its profile and invalidate the output again. Actual device choices still reconnect
+microphone-off as R169 specifies; a rate change preserves the rider's existing mic consent.
+Mute/deafen and stop continue to gate transmission immediately while recovery is in progress.
+
+Discard queued playback and decoder history at recovery. Permit three recoveries per five
+seconds, with a 100 ms settling delay before reopening, then report the original device error
+through the usual voice diagnostic. Disconnects and permission failures remain explicit errors;
+underrun, automatic reroute and denied realtime priority notifications do not end conversation.
+Selected devices must support the requested direction, so an output-only device cannot become
+a system-audio loopback capture by accident. No package or protocol version changes.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

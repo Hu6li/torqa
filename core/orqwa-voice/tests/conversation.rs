@@ -26,6 +26,8 @@ struct Probe {
     dropped: AtomicBool,
     stall: Mutex<Option<mpsc::Receiver<()>>>,
     stalled: AtomicBool,
+    invalidated: AtomicBool,
+    recovered: AtomicUsize,
 }
 struct Audio {
     probe: Arc<Probe>,
@@ -78,7 +80,12 @@ impl VoiceAudio for Audio {
         self.deafened = deafened;
     }
     fn healthy(&self) -> bool {
-        true
+        !self.probe.invalidated.load(Ordering::Acquire)
+    }
+    fn recover(&mut self) -> Result<bool, VoiceDeviceError> {
+        self.probe.invalidated.store(false, Ordering::Release);
+        self.probe.recovered.fetch_add(1, Ordering::Relaxed);
+        Ok(true)
     }
 }
 
@@ -363,6 +370,38 @@ async fn a_full_group_can_talk_while_ride_state_keeps_flowing() {
     for rider in riders {
         rider.close().await;
     }
+    host.close().await;
+}
+
+#[tokio::test]
+async fn a_device_rate_change_recovers_without_rejoining_or_reopening_microphone_consent() {
+    let host = host().await;
+    let mut anna = join(&host, "Anna").await;
+    let mut ben = join(&host, "Ben").await;
+    let a = Arc::new(Probe::default());
+    let b = Arc::new(Probe::default());
+    let anna_voice = chat(&mut anna, &a, 440.0).await;
+    let ben_voice = chat(&mut ben, &b, 660.0).await;
+    anna_voice.microphone(true).unwrap();
+    until(|| b.heard.load(Ordering::Relaxed) >= 5).await;
+    a.invalidated.store(true, Ordering::Release);
+    until(|| a.recovered.load(Ordering::Relaxed) == 1).await;
+    let before = b.heard.load(Ordering::Relaxed);
+    until(|| b.heard.load(Ordering::Relaxed) >= before + 5).await;
+    assert!(anna_voice.microphone_enabled());
+    assert_eq!(a.opened.load(Ordering::Relaxed), 1);
+    anna_voice.microphone(false).unwrap();
+    a.invalidated.store(true, Ordering::Release);
+    until(|| a.recovered.load(Ordering::Relaxed) == 2).await;
+    assert!(
+        !anna_voice.microphone_enabled(),
+        "recovery cannot unmute a muted microphone"
+    );
+    assert!(!a.microphone.load(Ordering::Acquire));
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
     host.close().await;
 }
 

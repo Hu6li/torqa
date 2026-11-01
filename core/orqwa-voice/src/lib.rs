@@ -270,7 +270,15 @@ fn run(
             playback = output;
         }
         if !audio.healthy() {
-            let error = audio.failure();
+            let error = match audio.recover() {
+                Ok(true) => {
+                    decoders.fill_with(|| None);
+                    next = Instant::now() + FRAME_TIME;
+                    continue;
+                }
+                Ok(false) => audio.failure(),
+                Err(error) => error,
+            };
             let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             break;
         }

@@ -575,6 +575,15 @@ the merge with main; a release, built from its tag, names its commit alone.
 
 ### Riding audio
 
+For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.
+They use pinned loopback QUIC, real Opus and simulated devices, including delayed old-worker
+cleanup and recoverable device failures. Native Bluetooth acceptance remains manual: switch
+speakers during listening, enable the headset microphone, then repeat mute/deafen and device
+changes during a ride. Check that a rate transition resumes sound, a manual choice starts
+microphone-off, and permission/disconnect errors leave the group and local ride intact. Record
+the OS, headset, chosen input/output and Technical details for failures. Test separately from
+container checks; no real microphone or Bluetooth device is available inside Docker on macOS.
+
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and
 [ADR 0029](adr/0029-ride-audio.md). Run the preview and asset preparation in the devcontainer.
