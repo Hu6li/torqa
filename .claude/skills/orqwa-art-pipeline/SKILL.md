@@ -149,6 +149,21 @@ all maps, normal-map import on normals, and keep these six textures with their s
 - Exports are deterministic: rebuilding unchanged scripts must give byte-identical `.glb`s.
   If a rebuild changes files you did not touch, find out why before committing.
 
+## Regional buildings
+
+Asian buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
+`japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional
+wall/roof colours aligned with Rust placement. Castle model tiers, first eave height and
+footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`; review the
+nearby and distant silhouettes together. Nordic buildings (`art/buildings/nordic.py`) use
+the `nordic_wood` instance-tinted plank material and their own country outlines, palette and
+model kinds. Keep the Nordic castle's distant generic keep visually compatible. Asian and
+Nordic outlines are independent of climate. French models (`art/buildings/french.py`) use
+the French palette and a simplified metropolitan-France/Corsica outline; keep their pale
+village houses, limestone city façades with zinc mansards, and slate-roofed château silhouettes
+aligned with the French region selector. See
+`docs/regional-buildings.md` before extending the regional sets.
+
 ## Tree LODs
 
 `art/vegetation/lods.py` exports medium/far forms of every tree to

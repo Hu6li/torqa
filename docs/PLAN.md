@@ -451,6 +451,18 @@ physically based materials and light, restyled group by group.
 - [x] Tropical worlds (#136): palms, banana plants and tropical shrubs, and houses built for
   the heat (flat roofs with water tanks, low red-tiled hipped roofs) within 27° of the
   equator below 1,200 m
+- [x] Asian architecture starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)):
+  six East Asian timber-and-plaster houses with varied pastel/earth/green/blue walls and
+  roofs, and three tiered castle keeps, selected per building from bundled Asian outlines.
+  Regional distant/fallback shells; tropical houses retained.
+  [Assets and validation](regional-buildings.md).
+- [x] Nordic regional architecture (R164): four painted-timber houses and three stone keeps,
+  selected for Denmark, Finland, Iceland, Norway, Sweden and Nordic territories from bundled
+  outlines. Red, ochre, cream, green and blue walls and roofs; castles remain mapped POIs.
+- [x] French regional architecture (R164): four plastered village houses, two five- and
+  six-storey Haussmann-inspired city houses and three château-inspired stone keeps for
+  metropolitan France and Corsica. [Assets and validation](regional-buildings.md).
+- [ ] More locally distinct architecture sets and house/landmark types across Asia.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [x] **Benchmark graphics** in Settings → Graphics (R151, #353): offline calibration with

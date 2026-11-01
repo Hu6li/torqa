@@ -171,7 +171,9 @@ thousands of them; `build.py` prints the counts.
 | Name | Used for |
 |---|---|
 | `plaster` | rendered walls; the colour varies per building |
+| `nordic_wood` | painted plank siding on Nordic houses; the colour varies per building |
 | `stone` | plinths, sills, quoins |
+| `castle_stone` | Regional keeps' stone platforms, using the existing natural-rock scan |
 | `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and log ends; the Ründi |
 | `frame`, `glass`, `leaded` | window frames; glass, and stained glass in churches |
 | `shutter`, `door`, `garage` | shutters (colour varies per building, some have none), doors |
@@ -187,6 +189,21 @@ its walls stand on (`length` along x, `width` along y), `eaves` and total `heigh
 reads it to fit models to the outlines on the map.
 
 Every building is in the [gallery](#buildings).
+
+The Asian starter set (`japanese.py`, R164) uses six Japanese-inspired `japanese_house`
+models with pale or coloured plaster, dark timber lattice, deep swept tiled eaves and ridge
+caps, plus three `japanese_castle` keeps with battered stone bases and three or five
+receding roofs. Eight wall colours and six roof colours give neighbouring buildings more
+variety. The Nordic set (`nordic.py`) adds four painted-plank houses with bright trim and
+steep gables, plus three stone keeps with four corner towers. Seven wall colours and five
+roof colours span red, ochre, cream, green and blue. The French set (`french.py`) adds four
+plastered village houses with shutters, two Haussmann-inspired city houses with iron balconies
+and zinc mansard roofs, and three château-inspired stone keeps with roofed corner pavilions.
+Six pale or muted village wall colours and five slate or terracotta roof colours sit alongside
+five limestone city wall colours and four zinc roof colours. Regional selectors preserve
+tropical lowland houses; castles remain mapped points of interest. See
+[regional buildings](../docs/regional-buildings.md) for placement, references, rebuild
+commands and validation. These are own-work archetypes, not replicas.
 
 ## Vegetation (`vegetation/`)
 
@@ -432,6 +449,36 @@ scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-riders.sh'
 | ![castle_s](../docs/images/models/buildings/castle_s.jpg)<br>`castle_s` | ![lighthouse_l](../docs/images/models/buildings/lighthouse_l.jpg)<br>`lighthouse_l` | ![lighthouse_s](../docs/images/models/buildings/lighthouse_s.jpg)<br>`lighthouse_s` |
 | ![tropical_flat_1_m](../docs/images/models/buildings/tropical_flat_1_m.jpg)<br>`tropical_flat_1_m` | ![tropical_flat_2_l](../docs/images/models/buildings/tropical_flat_2_l.jpg)<br>`tropical_flat_2_l` | ![tropical_flat_2_m](../docs/images/models/buildings/tropical_flat_2_m.jpg)<br>`tropical_flat_2_m` |
 | ![tropical_hipped_1_m](../docs/images/models/buildings/tropical_hipped_1_m.jpg)<br>`tropical_hipped_1_m` | ![tropical_hipped_1_s](../docs/images/models/buildings/tropical_hipped_1_s.jpg)<br>`tropical_hipped_1_s` |  |
+
+Asian starter set (Japanese-inspired models):
+
+| | | |
+|---|---|---|
+| ![Japanese one-storey house, small](../docs/images/models/buildings/japanese_house_1_s.jpg)<br>`japanese_house_1_s` | ![Japanese one-storey house](../docs/images/models/buildings/japanese_house_1_m.jpg)<br>`japanese_house_1_m` | ![Japanese hipped house](../docs/images/models/buildings/japanese_house_hipped_1_m.jpg)<br>`japanese_house_hipped_1_m` |
+| ![Japanese two-storey house, small](../docs/images/models/buildings/japanese_house_2_s.jpg)<br>`japanese_house_2_s` | ![Japanese two-storey house](../docs/images/models/buildings/japanese_house_2_m.jpg)<br>`japanese_house_2_m` | ![Japanese two-storey house, large](../docs/images/models/buildings/japanese_house_2_l.jpg)<br>`japanese_house_2_l` |
+| ![Japanese three-tier keep, small](../docs/images/models/buildings/japanese_castle_3_s.jpg)<br>`japanese_castle_3_s` | ![Japanese three-tier keep](../docs/images/models/buildings/japanese_castle_3_m.jpg)<br>`japanese_castle_3_m` | ![Japanese five-tier keep](../docs/images/models/buildings/japanese_castle_5_l.jpg)<br>`japanese_castle_5_l` |
+
+Nordic starter set:
+
+| | | |
+|---|---|---|
+| ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_s.jpg)<br>`nordic_house_1_s` | ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_m.jpg)<br>`nordic_house_1_m` | ![Nordic two-storey house](../docs/images/models/buildings/nordic_house_2_m.jpg)<br>`nordic_house_2_m` |
+| ![Nordic two-storey house, large](../docs/images/models/buildings/nordic_house_2_l.jpg)<br>`nordic_house_2_l` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_s.jpg)<br>`nordic_castle_3_s` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_m.jpg)<br>`nordic_castle_3_m` |
+| ![Nordic four-storey keep](../docs/images/models/buildings/nordic_castle_4_l.jpg)<br>`nordic_castle_4_l` | | |
+
+French starter set:
+
+| | | |
+|---|---|---|
+| ![French one-storey house](../docs/images/models/buildings/french_house_1_s.jpg)<br>`french_house_1_s` | ![French one-storey house, medium](../docs/images/models/buildings/french_house_1_m.jpg)<br>`french_house_1_m` | ![French two-storey house](../docs/images/models/buildings/french_house_2_m.jpg)<br>`french_house_2_m` |
+| ![French two-storey house, large](../docs/images/models/buildings/french_house_2_l.jpg)<br>`french_house_2_l` | ![French three-storey château keep](../docs/images/models/buildings/french_castle_3_s.jpg)<br>`french_castle_3_s` | ![French three-storey château keep, medium](../docs/images/models/buildings/french_castle_3_m.jpg)<br>`french_castle_3_m` |
+| ![French four-storey château keep](../docs/images/models/buildings/french_castle_4_l.jpg)<br>`french_castle_4_l` | | |
+
+French city houses:
+
+| | |
+|---|---|
+| ![French five-storey city apartment](../docs/images/models/buildings/french_city_5_m.jpg)<br>`french_city_5_m` | ![French six-storey city apartment](../docs/images/models/buildings/french_city_6_l.jpg)<br>`french_city_6_l` |
 
 ### Tree detail levels
 

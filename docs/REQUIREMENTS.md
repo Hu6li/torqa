@@ -301,3 +301,9 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero
 Assioma Pro Duo power pedals, Shimano Di2 (RD-R8150), and a Zwift Click + Cog (the original
 Click, R75), and a Zwift Click v2 (R77, R96).
+
+## Regional architecture
+
+| ID | Requirement |
+|---|---|
+| R164 | Extends R45 and R89 (2026-11-01): **Asian, Nordic and French rides** select regional houses and castle models from bundled outlines, independently of climate. Asian rides use East Asian timber-and-plaster houses and tiered keeps with varied pastel, earth, green and blue colours. Nordic rides use painted-timber houses with pale trim, steep gables and stone keeps with four corner towers, in varied red, ochre, cream, green and blue. French rides in metropolitan France and Corsica use plastered village houses, five- and six-storey Haussmann-inspired city apartments, and château-inspired stone keeps, with varied pale limestone walls, zinc roofs and slate or terracotta roofs. Asian, Nordic and French mountain houses do not become Swiss chalets or Bernese farmhouses; tropical lowland houses retain their existing set. Castles still require mapped castle points. Region selection works offline, and fallback/distant shells retain regional colours and broad silhouettes. Models are scripted, exported and reviewed through the existing asset pipeline. |
