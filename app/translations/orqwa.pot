@@ -531,6 +531,10 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Building the world · %d %%"
+msgstr ""
+
 #: app/scenes/devices_tab.gd app/scenes/history_screen.gd app/ui/ride_devices.gd app/ui/workout_editor.gd core/orqwa-app/src/hud.rs
 msgid "Cadence"
 msgstr ""
@@ -1237,6 +1241,10 @@ msgstr ""
 
 #: core/orqwa-app/src/import.rs
 msgid "Downloading the course map"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Downloading · %d %%"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd

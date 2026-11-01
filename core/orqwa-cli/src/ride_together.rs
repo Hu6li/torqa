@@ -300,6 +300,7 @@ impl Others {
             | LobbyEvent::HostLeft
             | LobbyEvent::Selection(_)
             | LobbyEvent::Readiness { .. }
+            | LobbyEvent::Preparation { .. }
             | LobbyEvent::Running { .. }
             | LobbyEvent::Entry { .. }
             | LobbyEvent::Workout(_)

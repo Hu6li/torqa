@@ -716,6 +716,7 @@ fn changing_devices_mutes_immediately_and_supersedes_an_older_queued_unmute() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one two-rider lobby checks shared rules, preparation and readiness together
 fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     let from = Directory::new();
     let to = Directory::new();
@@ -763,7 +764,11 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     host.group_ready(true).unwrap();
     peer.group_ready(true).unwrap();
     wait(&mut host, &mut peer, |h, _| h.group().can_start());
-    assert_eq!(host.group().preparation[1], None, "ready, nothing left to report");
+    assert_eq!(
+        host.group().preparation[1],
+        None,
+        "ready, nothing left to report"
+    );
     host.group_assistance(false, true).unwrap();
     wait(&mut host, &mut peer, |h, p| {
         !h.group().ready[0] && !p.group().ready[1] && !p.group().assistance.drafting

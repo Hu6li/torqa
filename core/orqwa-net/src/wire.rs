@@ -96,9 +96,12 @@ fn stage_byte(stage: Stage) -> u8 {
 }
 
 fn percent_byte(percent: u8) -> Result<u8, LobbyError> {
-    (percent <= 100).then_some(percent).ok_or(LobbyError::Protocol)
+    (percent <= 100)
+        .then_some(percent)
+        .ok_or(LobbyError::Protocol)
 }
 
+#[allow(clippy::too_many_lines)] // one arm per control: the wire format reads as one table
 pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
     let mut bytes = vec![crate::code::VERSION];
     match message {
@@ -287,6 +290,7 @@ impl Reader<'_> {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per control: the wire format reads as one table
 pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
     if bytes.len() > MAX_FRAME {
         return Err(LobbyError::Protocol);

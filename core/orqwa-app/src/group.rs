@@ -6,9 +6,9 @@ use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
-use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
 /// What a rider preparing the activity is doing (#419).
 pub use orqwa_net::lobby::Stage;
+use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
 use orqwa_net::state::{MAX_RIDERS, RiderId, RiderState};
 use std::path::PathBuf;
 use std::sync::{
@@ -1168,6 +1168,10 @@ mod built_tests {
             }
         }
         assert_eq!(last, 99, "done only once the world is ready");
-        assert_eq!(built(LoadStage::World, 3, 0), 55, "a step with nothing to count");
+        assert_eq!(
+            built(LoadStage::World, 3, 0),
+            55,
+            "a step with nothing to count"
+        );
     }
 }

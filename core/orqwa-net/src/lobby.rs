@@ -428,7 +428,10 @@ impl HostLobby {
     /// # Errors
     /// Returns [`LobbyError::Lost`] for a disconnected actor.
     pub fn preparation(&self, revision: u64, stage: Stage, percent: u8) -> Result<(), LobbyError> {
-        match self.commands.try_send(Command::Preparation(revision, stage, percent)) {
+        match self
+            .commands
+            .try_send(Command::Preparation(revision, stage, percent))
+        {
             Err(mpsc::error::TrySendError::Closed(_)) => Err(LobbyError::Lost),
             _ => Ok(()),
         }
@@ -1161,7 +1164,9 @@ async fn host_loop(
     }
 }
 
-#[allow(clippy::too_many_arguments)] // one bounded peer worker owns both stream halves and mailboxes
+// One bounded peer worker owns both stream halves and mailboxes and reads every control a
+// rider may send.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn serve_peer(
     connection: &Connection,
     mut send: SendStream,
@@ -1683,13 +1688,18 @@ mod tests {
                 if id == client.me()
         ));
         host.preparation(1, Stage::Preparing, 90).unwrap();
-        let organizer = client_event(&mut client, |e| {
-            matches!(e, LobbyEvent::Preparation { id, .. } if *id == RiderId::HOST)
-        })
+        let organizer = client_event(
+            &mut client,
+            |e| matches!(e, LobbyEvent::Preparation { id, .. } if *id == RiderId::HOST),
+        )
         .await;
         assert!(matches!(
             organizer,
-            LobbyEvent::Preparation { percent: 90, stage: Stage::Preparing, .. }
+            LobbyEvent::Preparation {
+                percent: 90,
+                stage: Stage::Preparing,
+                ..
+            }
         ));
         host.ready(1, true).await.unwrap();
         assert!(host.start(Duration::from_secs(1)).await.is_err());

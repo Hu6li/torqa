@@ -137,7 +137,14 @@ func _group_activity() -> void:
 	# How far everyone has got (#419), and something turning while this rider waits (#420).
 	var roster: Array = [
 		{"id": 0, "name": "Host", "ready": false, "me": false, "stage": "preparing", "percent": 70},
-		{"id": 1, "name": "Sam", "ready": false, "me": false, "stage": "downloading", "percent": 40},
+		{
+			"id": 1,
+			"name": "Sam",
+			"ready": false,
+			"me": false,
+			"stage": "downloading",
+			"percent": 40
+		},
 		{"id": 2, "name": "Me", "ready": false, "me": true, "stage": "preparing", "percent": 55},
 		{"id": 3, "name": "Mia", "ready": true, "me": false, "stage": "", "percent": 0},
 	]
