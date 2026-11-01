@@ -1599,8 +1599,12 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
-#: app/scenes/ride_screen.gd app/scenes/start_page.gd app/ui/group_riders_panel.gd
+#: app/scenes/start_page.gd app/ui/group_riders_panel.gd
 msgid "Group Rides"
+msgstr ""
+
+#: app/ui/ride_bar.gd
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd

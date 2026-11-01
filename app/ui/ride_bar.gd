@@ -1,9 +1,9 @@
 class_name RideBar
 extends PanelContainer
 ## The ride view's controls in one slim bar at the bottom left (#189): icon buttons with
-## tooltips for the settings, the group ride (#431), the overlay, full screen and pausing, and the simulation's
-## speeds when the ride is simulated. A chevron folds the bar away to its corner and back;
-## the keys work either way.
+## tooltips for the settings, the group ride (#431), the overlay, full screen and pausing, and
+## the simulation's speeds when the ride is simulated. A chevron folds the bar away to its
+## corner and back; the keys work either way.
 
 ## The settings were asked for (S).
 signal settings_requested
