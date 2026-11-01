@@ -622,16 +622,26 @@ checks sustained capture/playback. Also test several short words separated by si
 microphones on, and several simultaneous speakers. Brief delivery bursts must preserve both
 participant lists, consent, countdown and riding; fresh speech and positions must resume without
 rejoining. The loopback suite exercises per-speaker and aggregate overflow in both directions,
-delayed first speech, a full room's audio workers stalling/resuming, and current silence superseding
-queued speech. Huge sequence jumps remain invalid; three consecutive overloaded raw-datagram
+delayed first speech, a full room's audio workers stalling/resuming, and stale words being
+dropped while a short backlog of current speech is all sent. Huge sequence jumps remain invalid; three consecutive overloaded raw-datagram
 windows close only the abusive connection. macOS/Windows CI also runs the simulated Opus/device
 conversations and live pacing tests, without opening physical audio devices.
-The deterministic playback tests also cover slower capture, both workers waking late, and a
-listener that stops consuming while the fixed jitter window evicts history. Native audio integration tests use
+The deterministic playback tests also cover lost and late packets, network jitter, sound
+cards a fraction of a percent apart, slower senders, and a listener that stops consuming while
+the fixed jitter window evicts history. Native audio integration tests use
 `cargo test -p orqwa-voice --locked -- --test-threads=1` so one full room's real-time threads run
 at a time; keep the eight-rider and stall coverage inside that room.
 Record both build IDs, selected devices and terminal/Technical details for native failures; the
 synthetic jitter reproduction does not replace acceptance on the originally affected computers.
+
+For R189, the conversation suite runs simulated sound cards whose microphones and speakers each
+keep their own clock: a steady voice must arrive without gaps, and a rider next to a fan must
+not keep a speaking rider's microphone closed in speaker mode. On two native computers, talk for
+a minute with **Prevent speaker echo** off and headphones on both, then with it on and speakers,
+with a fan running near one microphone. Speech must sound clean (not metallic or choppy), arrive
+whole, and each rider must be able to answer within about half a second of the other stopping.
+Repeat with a Bluetooth headset's microphone, which runs at 16 or 24 kHz. Record both builds,
+devices and sample rates (Audio MIDI Setup on macOS) for any failure.
 
 For macOS permission acceptance, launch the exported **ORQWA.app** from Finder on an account
 that has not granted it microphone access. Joining voice, opening Audio settings and testing

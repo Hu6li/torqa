@@ -896,6 +896,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     separate delivery quotas from persistent raw abuse, pace live capture without catch-up
     and recover current speech after an initially delayed packet, slower capture or a stalled
     listener evicting jitter history.
+  - [x] Clean, continuous voice between computers (R189): playback paced by each speaker,
+    every fresh capture sent, pulled jitter buffers with Opus in-band recovery, band-limited
+    resampling, level-keeping soft mixing and an echo gate that reacts only to speech.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

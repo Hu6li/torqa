@@ -125,7 +125,7 @@ func _ready() -> void:
 	fields.add_child(_echo)
 	var echo_help: Label = Label.new()
 	echo_help.text = tr(
-		"While a friend is audible, your microphone stays quiet. Turn off for headphones."
+		"While a friend is speaking, your microphone stays quiet. Turn off for headphones."
 	)
 	echo_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	echo_help.custom_minimum_size.x = 380

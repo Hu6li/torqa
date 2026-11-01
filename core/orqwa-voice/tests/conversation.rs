@@ -36,14 +36,31 @@ struct Probe {
 struct Audio {
     probe: Arc<Probe>,
     activation: Option<u32>,
+    opened: Option<Instant>,
+    produced: u32,
     phase: f32,
     frequency: f32,
     deafened: bool,
+}
+fn audio(probe: Arc<Probe>, frequency: f32) -> Audio {
+    Audio {
+        probe,
+        activation: None,
+        opened: None,
+        produced: 0,
+        phase: 0.0,
+        frequency,
+        deafened: false,
+    }
 }
 impl VoiceAudio for Audio {
     fn microphone(&mut self, activation: Option<u32>) -> Result<(), VoiceDeviceError> {
         if activation.is_some() && self.activation != activation {
             self.probe.opened.fetch_add(1, Ordering::Relaxed);
+        }
+        if self.activation != activation {
+            self.opened = None;
+            self.produced = 0;
         }
         self.activation = activation;
         self.probe
@@ -58,6 +75,15 @@ impl VoiceAudio for Audio {
             self.probe.captured.fetch_add(1, Ordering::Release);
             return Some(frame);
         }
+        // Like a real microphone, one frame per 20 ms; a stalled reader loses the oldest.
+        let opened = *self.opened.get_or_insert_with(Instant::now);
+        let due = u32::try_from(opened.elapsed().as_millis() / 20)
+            .unwrap_or(u32::MAX)
+            .saturating_add(1);
+        if self.produced >= due {
+            return None;
+        }
+        self.produced = self.produced.max(due.saturating_sub(4)) + 1;
         let samples = std::array::from_fn(|_| {
             let sample = self.phase.sin() * 0.2;
             self.phase = (self.phase + self.frequency * std::f32::consts::TAU / 48_000.0)
@@ -108,32 +134,17 @@ async fn a_retired_audio_worker_cannot_disable_its_replacement_or_disconnect_the
     let (release, stalled) = mpsc::channel();
     *retired.stall.lock().unwrap() = Some(stalled);
     let probe = retired.clone();
-    let old = VoiceChat::with_audio(port.clone(), move |_| {
-        Ok(Box::new(Audio {
-            probe,
-            activation: None,
-            phase: 0.0,
-            frequency: 440.0,
-            deafened: false,
-        }))
-    })
-    .await
-    .unwrap();
+    let old = VoiceChat::with_audio(port.clone(), move |_| Ok(Box::new(audio(probe, 440.0))))
+        .await
+        .unwrap();
     until(|| retired.stalled.load(Ordering::Acquire)).await;
     drop(old);
     let current = Arc::new(Probe::default());
     let probe = current.clone();
-    let replacement = VoiceChat::with_audio(port.clone(), move |_| {
-        Ok(Box::new(Audio {
-            probe,
-            activation: None,
-            phase: 0.0,
-            frequency: 660.0,
-            deafened: false,
-        }))
-    })
-    .await
-    .unwrap();
+    let replacement =
+        VoiceChat::with_audio(port.clone(), move |_| Ok(Box::new(audio(probe, 660.0))))
+            .await
+            .unwrap();
     replacement.microphone(true).unwrap();
     until(|| current.microphone.load(Ordering::Acquire)).await;
     release.send(()).unwrap();
@@ -211,13 +222,7 @@ async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
 async fn chat(lobby: &mut JoinerLobby, probe: &Arc<Probe>, frequency: f32) -> VoiceChat {
     let probe = probe.clone();
     let chat = VoiceChat::with_audio(lobby.take_voice().unwrap(), move |_| {
-        Ok(Box::new(Audio {
-            probe,
-            activation: None,
-            phase: 0.0,
-            frequency,
-            deafened: false,
-        }))
+        Ok(Box::new(audio(probe, frequency)))
     })
     .await
     .unwrap();
@@ -307,13 +312,7 @@ async fn sustained_joiner_microphone_preserves_an_organizer_that_is_listening() 
     let output = Arc::new(Probe::default());
     let probe = output.clone();
     let host_voice = VoiceChat::with_audio(host.take_voice().unwrap(), move |_| {
-        Ok(Box::new(Audio {
-            probe,
-            activation: None,
-            phase: 0.0,
-            frequency: 440.0,
-            deafened: false,
-        }))
+        Ok(Box::new(audio(probe, 440.0)))
     })
     .await
     .unwrap();
@@ -342,7 +341,7 @@ async fn sustained_joiner_microphone_preserves_an_organizer_that_is_listening() 
 }
 
 #[tokio::test]
-async fn a_capture_backlog_sends_the_freshest_audio_and_then_keeps_speech_working() {
+async fn a_capture_backlog_sends_current_speech_in_order_but_never_stale_words() {
     let host = host().await;
     let mut anna = join(&host, "Queued capture").await;
     let mut ben = join(&host, "Listener").await;
@@ -362,11 +361,11 @@ async fn a_capture_backlog_sends_the_freshest_audio_and_then_keeps_speech_workin
         (t * 440.0 * std::f32::consts::TAU).sin() * 0.2
     });
     let at = Instant::now();
-    // The old word is superseded by current silence in the callback queue.
+    // A word captured before a long stall is too old to belong to the conversation.
     captures
         .send(CapturedVoice {
             activation: 1,
-            at: at.checked_sub(Duration::from_millis(1)).unwrap(),
+            at: at.checked_sub(Duration::from_millis(500)).unwrap(),
             samples: tone,
         })
         .unwrap();
@@ -385,9 +384,25 @@ async fn a_capture_backlog_sends_the_freshest_audio_and_then_keeps_speech_workin
     assert_eq!(
         b.heard.load(Ordering::Acquire),
         0,
-        "a queued word must not replay after current silence"
+        "a stale word must not replay after a stall"
     );
-    // Fresh words still cross the real Opus/QUIC path after the backlog is gone.
+    // A short backlog of current speech is all sent, none of it dropped for being queued.
+    let (release, stall) = mpsc::channel();
+    a.stalled.store(false, Ordering::Release);
+    *a.stall.lock().unwrap() = Some(stall);
+    until(|| a.stalled.load(Ordering::Acquire)).await;
+    for _ in 0..4 {
+        captures
+            .send(CapturedVoice {
+                activation: 1,
+                at: Instant::now(),
+                samples: tone,
+            })
+            .unwrap();
+    }
+    release.send(()).unwrap();
+    until(|| b.heard.load(Ordering::Acquire) >= 4).await;
+    // Fresh words keep crossing the real Opus/QUIC path afterwards.
     for _ in 0..15 {
         captures
             .send(CapturedVoice {
@@ -398,7 +413,7 @@ async fn a_capture_backlog_sends_the_freshest_audio_and_then_keeps_speech_workin
             .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    until(|| b.heard.load(Ordering::Acquire) > 2).await;
+    until(|| b.heard.load(Ordering::Acquire) > 10).await;
     assert!(anna_voice.microphone_enabled());
     host.start(Duration::from_secs(1)).await.unwrap();
     anna_voice.close().await;
@@ -658,18 +673,10 @@ async fn speaker_mode_drops_feedback_but_releases_the_microphone_after_the_echo_
 #[tokio::test]
 async fn microphone_test_is_temporary_local_and_never_plays_captured_samples() {
     let probe = Arc::new(Probe::default());
-    let audio = probe.clone();
-    let test = MicrophoneTest::with_audio(move |_| {
-        Ok(Box::new(Audio {
-            probe: audio,
-            activation: None,
-            phase: 0.0,
-            frequency: 440.0,
-            deafened: false,
-        }))
-    })
-    .await
-    .unwrap();
+    let device = probe.clone();
+    let test = MicrophoneTest::with_audio(move |_| Ok(Box::new(audio(device, 440.0))))
+        .await
+        .unwrap();
     until(|| test.level() > 0.1).await;
     until(|| test.voice_detected()).await;
     assert!(test.voice_heard());
@@ -698,18 +705,10 @@ async fn microphone_test_is_temporary_local_and_never_plays_captured_samples() {
 #[tokio::test]
 async fn microphone_test_closes_itself_after_ten_seconds() {
     let probe = Arc::new(Probe::default());
-    let audio = probe.clone();
-    let test = MicrophoneTest::with_audio(move |_| {
-        Ok(Box::new(Audio {
-            probe: audio,
-            activation: None,
-            phase: 0.0,
-            frequency: 440.0,
-            deafened: false,
-        }))
-    })
-    .await
-    .unwrap();
+    let device = probe.clone();
+    let test = MicrophoneTest::with_audio(move |_| Ok(Box::new(audio(device, 440.0))))
+        .await
+        .unwrap();
     tokio::time::timeout(Duration::from_secs(12), async {
         while test.running() {
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -721,4 +720,199 @@ async fn microphone_test_closes_itself_after_ten_seconds() {
     assert!(!probe.microphone.load(Ordering::Acquire));
     assert_eq!(test.level(), 0.0);
     assert_eq!(probe.played.load(Ordering::Relaxed), 0);
+}
+
+/// A simulated sound card whose microphone and speaker each run on their own clock, as real
+/// hardware does, so their rates differ slightly from each other and from the other rider's.
+struct SoundCard {
+    activation: Option<u32>,
+    started: Instant,
+    capture_period: Duration,
+    captured: u32,
+    voice: fn(u32) -> PcmFrame,
+    play_period: Duration,
+    state: std::cell::RefCell<Speaker>,
+    heard: Arc<Mutex<Vec<f32>>>,
+}
+#[derive(Default)]
+struct Speaker {
+    queue: std::collections::VecDeque<f32>,
+    ticks: u32,
+}
+impl SoundCard {
+    fn new(
+        capture_period: Duration,
+        play_period: Duration,
+        voice: fn(u32) -> PcmFrame,
+        heard: Arc<Mutex<Vec<f32>>>,
+    ) -> Self {
+        Self {
+            activation: None,
+            started: Instant::now(),
+            capture_period,
+            captured: 0,
+            voice,
+            play_period,
+            state: std::cell::RefCell::default(),
+            heard,
+        }
+    }
+    fn ticks(&self, period: Duration) -> u32 {
+        u32::try_from(self.started.elapsed().as_nanos() / period.as_nanos()).unwrap()
+    }
+    /// The speaker plays one queued frame per period; an empty queue is heard as a gap.
+    fn advance(&self) {
+        let due = self.ticks(self.play_period);
+        let mut speaker = self.state.borrow_mut();
+        while speaker.ticks < due {
+            speaker.ticks += 1;
+            let level = speaker.queue.pop_front().unwrap_or(-1.0);
+            self.heard.lock().unwrap().push(level);
+        }
+    }
+}
+impl VoiceAudio for SoundCard {
+    fn microphone(&mut self, activation: Option<u32>) -> Result<(), VoiceDeviceError> {
+        if activation.is_some() && self.activation.is_none() {
+            self.captured = self.ticks(self.capture_period);
+        }
+        self.activation = activation;
+        Ok(())
+    }
+    fn capture(&mut self) -> Option<CapturedVoice> {
+        let activation = self.activation?;
+        if self.captured >= self.ticks(self.capture_period) {
+            return None;
+        }
+        self.captured += 1;
+        Some(CapturedVoice {
+            activation,
+            at: Instant::now(),
+            samples: (self.voice)(self.captured),
+        })
+    }
+    fn play(&mut self, frame: PcmFrame) {
+        self.advance();
+        let energy: f32 = frame.iter().map(|sample| sample * sample).sum();
+        #[allow(clippy::cast_precision_loss)]
+        let level = (energy / frame.len() as f32).sqrt();
+        self.state.borrow_mut().queue.push_back(level);
+    }
+    fn playback_queued(&self) -> Option<usize> {
+        self.advance();
+        Some(self.state.borrow().queue.len())
+    }
+    fn deafen(&mut self, _deafened: bool) {}
+    fn healthy(&self) -> bool {
+        true
+    }
+}
+
+/// A steady 300 Hz voice, continuous from frame to frame, 0.2 at its peak.
+fn steady_voice(frame: u32) -> PcmFrame {
+    std::array::from_fn(|index| {
+        #[allow(clippy::cast_precision_loss)]
+        let t = (u64::from(frame) * 960 + index as u64) as f64 / 48_000.0;
+        #[allow(clippy::cast_possible_truncation)]
+        let value = ((t * 300.0 * std::f64::consts::TAU).sin() * 0.2) as f32;
+        value
+    })
+}
+/// A fan behind the rider: broadband noise at about -31 dBFS and no speech.
+fn fan(frame: u32) -> PcmFrame {
+    let mut state = frame.wrapping_mul(2_654_435_761).wrapping_add(1);
+    std::array::from_fn(|_| {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        #[allow(clippy::cast_precision_loss)]
+        let noise = (state >> 8) as f32 / (1 << 24) as f32 - 0.5;
+        noise * 0.1
+    })
+}
+
+async fn sound_card(
+    lobby: &mut JoinerLobby,
+    capture_ms: f64,
+    play_ms: f64,
+    voice: fn(u32) -> PcmFrame,
+) -> (VoiceChat, Arc<Mutex<Vec<f32>>>) {
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let output = heard.clone();
+    let chat = VoiceChat::with_audio(lobby.take_voice().unwrap(), move |_| {
+        Ok(Box::new(SoundCard::new(
+            Duration::from_secs_f64(capture_ms / 1000.0),
+            Duration::from_secs_f64(play_ms / 1000.0),
+            voice,
+            output,
+        )))
+    })
+    .await
+    .unwrap();
+    (chat, heard)
+}
+/// Output frames heard from `from`: (gaps with nothing to play, quiet frames, all frames).
+fn listened(heard: &Mutex<Vec<f32>>, from: usize, quiet: f32) -> (usize, usize, usize) {
+    let heard = heard.lock().unwrap();
+    let window = &heard[from.min(heard.len())..];
+    let gaps = window.iter().filter(|level| **level < 0.0).count();
+    let soft = window
+        .iter()
+        .filter(|level| (0.0..quiet).contains(*level))
+        .count();
+    (gaps, soft, window.len())
+}
+
+#[tokio::test]
+async fn speech_stays_continuous_when_every_sound_card_runs_at_its_own_rate() {
+    let host = host().await;
+    let mut anna = join(&host, "Anna").await;
+    let mut ben = join(&host, "Ben").await;
+    // Anna's microphone runs fast, Ben's speaker runs faster still: his queue keeps running
+    // dry unless playback follows his own speaker and stretches the odd frame.
+    let (anna_voice, _) = sound_card(&mut anna, 19.98, 20.02, steady_voice).await;
+    let (ben_voice, heard) = sound_card(&mut ben, 20.02, 19.96, steady_voice).await;
+    anna_voice.echo_prevention(false);
+    ben_voice.echo_prevention(false);
+    anna_voice.microphone(true).unwrap();
+    until(|| listened(&heard, 0, 0.04).2 > 0).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let from = heard.lock().unwrap().len();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let (gaps, soft, total) = listened(&heard, from, 0.04);
+    assert!(total >= 240, "Ben's speaker played {total} frames");
+    // The steady voice must come through whole: no gaps, no dropped or concealed words.
+    assert!(
+        gaps + soft <= 3,
+        "{gaps} gaps and {soft} quiet frames in {total}"
+    );
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
+    host.close().await;
+}
+
+#[tokio::test]
+async fn background_noise_on_an_open_microphone_does_not_silence_the_other_rider() {
+    let host = host().await;
+    let mut anna = join(&host, "Anna, by a fan").await;
+    let mut ben = join(&host, "Ben, talking").await;
+    // Both on speakers with echo prevention, both microphones open. Anna is quiet, but her
+    // fan is loud enough that any played sound would have held Ben's microphone forever.
+    let (anna_voice, heard) = sound_card(&mut anna, 20.0, 20.0, fan).await;
+    let (ben_voice, _) = sound_card(&mut ben, 20.0, 20.0, steady_voice).await;
+    anna_voice.echo_prevention(true);
+    ben_voice.echo_prevention(true);
+    anna_voice.microphone(true).unwrap();
+    ben_voice.microphone(true).unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let from = heard.lock().unwrap().len();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let (_, soft, total) = listened(&heard, from, 0.04);
+    assert!(total >= 90, "Anna's speaker played {total} frames");
+    assert!(soft <= 3, "Ben was silent in {soft} of {total} frames");
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
+    host.close().await;
 }

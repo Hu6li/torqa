@@ -125,15 +125,29 @@ impl AudioTest {
                     let until = started
                         + Duration::from_secs(if kind == TestKind::Microphone { 10 } else { 2 });
                     let mut detector = SpeechActivity::default();
+                    let mut played = 0;
                     while !worker.stop.load(Ordering::Acquire) && Instant::now() < until {
                         if !audio.healthy() && !audio.recover()? {
                             return Err(audio.failure());
                         }
-                        if kind == TestKind::Speakers {
-                            audio.play(test_tone(
-                                started.elapsed(),
-                                f32::from_bits(worker.volume.load(Ordering::Relaxed)),
-                            ));
+                        let wait = if kind == TestKind::Speakers {
+                            // Tones follow the speaker's clock like speech does, so the
+                            // check sounds exactly as clean as a friend will.
+                            let due = audio
+                                .playback_queued()
+                                .map_or(1, |queued| crate::PLAYBACK_QUEUE.saturating_sub(queued));
+                            for _ in 0..due {
+                                audio.play(test_tone(
+                                    played,
+                                    f32::from_bits(worker.volume.load(Ordering::Relaxed)),
+                                ));
+                                played += 1;
+                            }
+                            if audio.playback_queued().is_some() {
+                                crate::POLL
+                            } else {
+                                Duration::from_millis(20)
+                            }
                         } else {
                             let mut peak = 0.0_f32;
                             // Capture queues are bounded. Do not let an uncooperative plugin loop forever.
@@ -163,8 +177,9 @@ impl AudioTest {
                                 .voice
                                 .store(detector.detected(Instant::now()), Ordering::Release);
                             worker.heard.store(detector.seen(), Ordering::Release);
-                        }
-                        std::thread::park_timeout(Duration::from_millis(20));
+                            Duration::from_millis(20)
+                        };
+                        std::thread::park_timeout(wait);
                     }
                     if kind == TestKind::Microphone {
                         audio.microphone(None)?;
@@ -282,8 +297,7 @@ impl AudioTest {
 }
 
 #[allow(clippy::cast_precision_loss)] // at most two seconds of 48 kHz samples
-fn test_tone(elapsed: Duration, volume: f32) -> orqwa_domain::voice::PcmFrame {
-    let frame = u32::try_from(elapsed.as_millis() / 20).unwrap_or(100);
+fn test_tone(frame: u32, volume: f32) -> orqwa_domain::voice::PcmFrame {
     std::array::from_fn(|index| {
         let sample = frame * 960 + u32::try_from(index).unwrap_or(0);
         let within = sample % 48_000;

@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 struct Capture {
     live: Arc<AtomicUsize>,
     activation: Option<u32>,
+    opened: Option<std::time::Instant>,
+    produced: u32,
     phase: f32,
     played: Arc<AtomicUsize>,
 }
@@ -17,11 +19,24 @@ impl VoiceAudio for Capture {
         if self.activation.is_some() && activation.is_none() {
             self.live.fetch_sub(1, Ordering::AcqRel);
         }
+        if self.activation != activation {
+            self.opened = None;
+            self.produced = 0;
+        }
         self.activation = activation;
         Ok(())
     }
     fn capture(&mut self) -> Option<CapturedVoice> {
         let activation = self.activation?;
+        // Like a real microphone, one frame per 20 ms.
+        let opened = *self.opened.get_or_insert_with(std::time::Instant::now);
+        let due = u32::try_from(opened.elapsed().as_millis() / 20)
+            .unwrap_or(u32::MAX)
+            .saturating_add(1);
+        if self.produced >= due {
+            return None;
+        }
+        self.produced = self.produced.max(due.saturating_sub(4)) + 1;
         let samples = std::array::from_fn(|_| {
             let sample = self.phase.sin() * 0.1 + (self.phase * 3.0).sin() * 0.04;
             self.phase =
@@ -83,6 +98,8 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
                 Ok(Box::new(Capture {
                     live: capture.clone(),
                     activation: None,
+                    opened: None,
+                    produced: 0,
                     phase: 0.0,
                     played: Arc::default(),
                 }))
@@ -153,6 +170,8 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
                 Ok(Box::new(Capture {
                     live: live.clone(),
                     activation: None,
+                    opened: None,
+                    produced: 0,
                     phase: 0.0,
                     played: output.clone(),
                 }))

@@ -2982,8 +2982,8 @@ msgstr "Teste das Mikrofon 10 Sekunden lang nur auf diesem Computer. Der Sprachc
 msgid "Prevent speaker echo"
 msgstr "Lautsprecherecho verhindern"
 
-msgid "While a friend is audible, your microphone stays quiet. Turn off for headphones."
-msgstr "Während du jemanden hörst, bleibt dein Mikrofon stumm. Für Kopfhörer ausschalten."
+msgid "While a friend is speaking, your microphone stays quiet. Turn off for headphones."
+msgstr "Während jemand spricht, bleibt dein Mikrofon stumm. Für Kopfhörer ausschalten."
 
 msgid "Start a microphone test, then speak."
 msgstr "Starte einen Mikrofontest und sprich dann."

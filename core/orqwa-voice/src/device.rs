@@ -4,7 +4,7 @@
 #[path = "device/linux_tests.rs"]
 mod linux_tests;
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +14,8 @@ use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
 use orqwa_domain::voice::{
     CapturedVoice, FRAME_SAMPLES, PcmFrame, SAMPLE_RATE, VoiceAudio, VoiceDeviceError,
 };
+
+use crate::resample::Resampler;
 
 /// Device IDs from [`devices`]. Unspecified IDs use the operating system's defaults.
 #[derive(Clone, Debug, Default)]
@@ -157,6 +159,36 @@ struct Output {
     revision: u32,
 }
 
+/// The worker's end of the playback queue. The callback counts every frame it takes, so the
+/// worker can mix exactly as fast as the speaker plays instead of by its own timer.
+struct Speaker {
+    send: SyncSender<Output>,
+    sent: u64,
+    taken: Arc<AtomicU64>,
+    largest: Arc<AtomicUsize>,
+    rate: u32,
+}
+impl Speaker {
+    fn closed() -> Self {
+        Self {
+            send: sync_channel(1).0,
+            sent: 0,
+            taken: Arc::new(AtomicU64::new(0)),
+            largest: Arc::new(AtomicUsize::new(0)),
+            rate: SAMPLE_RATE,
+        }
+    }
+}
+
+/// Playback frames queued, less those one device callback will take beyond the first: a
+/// device that plays large blocks needs that much more in hand, or each block runs dry.
+fn queued_ahead(queued: usize, largest_callback: usize, rate: u32) -> usize {
+    let block = u64::try_from(largest_callback).unwrap_or(u64::MAX);
+    let frame = u64::from(rate) * FRAME_SAMPLES as u64;
+    let frames = (block.saturating_mul(u64::from(SAMPLE_RATE))).div_ceil(frame.max(1));
+    queued.saturating_sub(usize::try_from(frames.saturating_sub(1)).unwrap_or(usize::MAX))
+}
+
 /// CPAL audio backend. Its streams remain on the owning audio thread.
 pub struct NativeAudio {
     options: DeviceOptions,
@@ -165,7 +197,7 @@ pub struct NativeAudio {
     input: Option<Stream>,
     capture_send: SyncSender<CapturedVoice>,
     capture_receive: Receiver<CapturedVoice>,
-    play_send: SyncSender<Output>,
+    speaker: Speaker,
     recovery: RecoveryBudget,
 }
 impl NativeAudio {
@@ -179,7 +211,6 @@ impl NativeAudio {
             failure: Mutex::new(None),
         });
         let (capture_send, capture_receive) = sync_channel(4);
-        let (play_send, _) = sync_channel(4);
         Self {
             options,
             gates,
@@ -187,7 +218,7 @@ impl NativeAudio {
             input: None,
             capture_send,
             capture_receive,
-            play_send,
+            speaker: Speaker::closed(),
             recovery: RecoveryBudget {
                 since: Instant::now(),
                 attempts: 0,
@@ -207,7 +238,7 @@ impl NativeAudio {
             invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
         });
-        let (output, play_send) = speakers(&options, &gates)?;
+        let (output, speaker) = speakers(&options, &gates)?;
         let (capture_send, capture_receive) = sync_channel(4);
         Ok(Self {
             options,
@@ -216,7 +247,7 @@ impl NativeAudio {
             input: None,
             capture_send,
             capture_receive,
-            play_send,
+            speaker,
             recovery: RecoveryBudget {
                 since: Instant::now(),
                 attempts: 0,
@@ -228,24 +259,34 @@ impl NativeAudio {
 fn speakers(
     options: &DeviceOptions,
     gates: &Arc<Gates>,
-) -> Result<(Stream, SyncSender<Output>), VoiceDeviceError> {
+) -> Result<(Stream, Speaker), VoiceDeviceError> {
     let host = cpal::default_host();
     let (device, supported) = configured(&host, options.output.as_deref(), false)?;
     let format = supported.sample_format();
     let config = configuration(&supported);
     validate(&config)?;
-    let (play_send, receive) = sync_channel(4);
+    // Room for large device blocks; the worker keeps only what the device needs queued.
+    let (send, receive) = sync_channel(8);
+    let taken = Arc::new(AtomicU64::new(0));
+    let largest = Arc::new(AtomicUsize::new(0));
+    let rate = config.sample_rate;
+    let queue = Queue {
+        receive,
+        taken: taken.clone(),
+        largest: largest.clone(),
+    };
+    let gates = gates.clone();
     let output = match format {
-        SampleFormat::F32 => output::<f32>(&device, config, receive, gates.clone()),
-        SampleFormat::F64 => output::<f64>(&device, config, receive, gates.clone()),
-        SampleFormat::I8 => output::<i8>(&device, config, receive, gates.clone()),
-        SampleFormat::I16 => output::<i16>(&device, config, receive, gates.clone()),
-        SampleFormat::I32 => output::<i32>(&device, config, receive, gates.clone()),
-        SampleFormat::I64 => output::<i64>(&device, config, receive, gates.clone()),
-        SampleFormat::U8 => output::<u8>(&device, config, receive, gates.clone()),
-        SampleFormat::U16 => output::<u16>(&device, config, receive, gates.clone()),
-        SampleFormat::U32 => output::<u32>(&device, config, receive, gates.clone()),
-        SampleFormat::U64 => output::<u64>(&device, config, receive, gates.clone()),
+        SampleFormat::F32 => output::<f32>(&device, config, queue, gates),
+        SampleFormat::F64 => output::<f64>(&device, config, queue, gates),
+        SampleFormat::I8 => output::<i8>(&device, config, queue, gates),
+        SampleFormat::I16 => output::<i16>(&device, config, queue, gates),
+        SampleFormat::I32 => output::<i32>(&device, config, queue, gates),
+        SampleFormat::I64 => output::<i64>(&device, config, queue, gates),
+        SampleFormat::U8 => output::<u8>(&device, config, queue, gates),
+        SampleFormat::U16 => output::<u16>(&device, config, queue, gates),
+        SampleFormat::U32 => output::<u32>(&device, config, queue, gates),
+        SampleFormat::U64 => output::<u64>(&device, config, queue, gates),
         _ => {
             return Err(VoiceDeviceError::new(
                 "opening voice audio stream",
@@ -256,7 +297,16 @@ fn speakers(
     output
         .play()
         .map_err(|e| VoiceDeviceError::new("starting speaker playback", e))?;
-    Ok((output, play_send))
+    Ok((
+        output,
+        Speaker {
+            send,
+            sent: 0,
+            taken,
+            largest,
+            rate,
+        },
+    ))
 }
 
 fn choose(
@@ -429,13 +479,29 @@ impl VoiceAudio for NativeAudio {
         self.capture_receive.try_recv().ok()
     }
     fn play(&mut self, frame: PcmFrame) {
-        if !self.gates.deafened.load(Ordering::Relaxed) {
-            let _ = self.play_send.try_send(Output {
+        // Deafened output still takes (and discards) frames, keeping the worker on its clock.
+        if self
+            .speaker
+            .send
+            .try_send(Output {
                 samples: frame,
                 at: Instant::now(),
                 revision: self.gates.revision.load(Ordering::Relaxed),
-            });
+            })
+            .is_ok()
+        {
+            self.speaker.sent += 1;
         }
+    }
+    fn playback_queued(&self) -> Option<usize> {
+        self.output.as_ref()?;
+        let taken = self.speaker.taken.load(Ordering::Acquire);
+        let queued = usize::try_from(self.speaker.sent.saturating_sub(taken)).unwrap_or(usize::MAX);
+        Some(queued_ahead(
+            queued,
+            self.speaker.largest.load(Ordering::Relaxed),
+            self.speaker.rate,
+        ))
     }
     fn deafen(&mut self, deafened: bool) {
         self.gates.deafened.store(deafened, Ordering::Release);
@@ -481,9 +547,9 @@ impl VoiceAudio for NativeAudio {
             self.microphone(Some(activation))?;
         }
         if output_open {
-            let (output, send) = speakers(&self.options, &self.gates)?;
+            let (output, speaker) = speakers(&self.options, &self.gates)?;
             self.output = Some(output);
-            self.play_send = send;
+            self.speaker = speaker;
         }
         Ok(true)
     }
@@ -517,7 +583,7 @@ where
     f32: FromSample<T>,
 {
     let channels = usize::from(config.channels);
-    let mut resampler = Resampler::new(config.sample_rate);
+    let mut resampler = Resampler::new(config.sample_rate, SAMPLE_RATE);
     let sample_rate = config.sample_rate;
     let mut samples = [0.0; FRAME_SAMPLES];
     let mut count = 0;
@@ -577,44 +643,32 @@ where
         .map_err(|error| VoiceDeviceError::new("building native audio stream", error))
 }
 
-struct Resampler {
-    previous: f32,
-    position: f64,
-    step: f64,
+struct Queue {
+    receive: Receiver<Output>,
+    taken: Arc<AtomicU64>,
+    largest: Arc<AtomicUsize>,
 }
-impl Resampler {
-    fn new(rate: u32) -> Self {
-        Self {
-            previous: 0.0,
-            position: 1.0,
-            step: f64::from(rate) / f64::from(SAMPLE_RATE),
-        }
-    }
-    fn push(&mut self, mono: f32, mut emit: impl FnMut(f32)) {
-        while self.position <= 1.0 {
-            #[allow(clippy::cast_possible_truncation)] // interpolation fraction is in [0,1]
-            emit(self.previous + (mono - self.previous) * self.position as f32);
-            self.position += self.step;
-        }
-        self.position -= 1.0;
-        self.previous = mono;
+impl Queue {
+    fn take(&self) -> Option<Output> {
+        let next = self.receive.try_recv().ok()?;
+        self.taken.fetch_add(1, Ordering::Release);
+        Some(next)
     }
 }
 
-#[allow(clippy::cast_precision_loss)] // frame length is exactly 960, representable as f64
 fn output<T>(
     device: &cpal::Device,
     config: StreamConfig,
-    receive: Receiver<Output>,
+    queue: Queue,
     gates: Arc<Gates>,
 ) -> Result<Stream, VoiceDeviceError>
 where
     T: SizedSample + FromSample<f32>,
 {
     let channels = usize::from(config.channels);
-    let step = f64::from(SAMPLE_RATE) / f64::from(config.sample_rate);
+    let mut resampler = Resampler::new(SAMPLE_RATE, config.sample_rate);
     let mut samples = [0.0; FRAME_SAMPLES];
-    let mut position = FRAME_SAMPLES as f64;
+    let mut position = FRAME_SAMPLES;
     let mut revision = 0;
     let failures = gates.clone();
     device
@@ -627,34 +681,44 @@ where
                     || gates.deafened.load(Ordering::Acquire)
                     || revision != current
                 {
-                    while receive.try_recv().is_ok() {}
-                    samples.fill(0.0);
-                    position = FRAME_SAMPLES as f64;
+                    while queue.take().is_some() {}
+                    position = FRAME_SAMPLES;
                     revision = current;
+                    resampler.reset();
                     data.fill(T::from_sample(0.0));
                     return;
                 }
+                queue
+                    .largest
+                    .fetch_max(data.len() / channels, Ordering::Relaxed);
+                // An empty queue plays silence for the rest of this callback only; the next
+                // frame continues exactly where it arrives instead of a whole frame later.
+                let mut starved = false;
                 for frame in data.chunks_exact_mut(channels) {
-                    if position >= FRAME_SAMPLES as f64 {
-                        position -= FRAME_SAMPLES as f64;
-                        samples.fill(0.0);
-                        while let Ok(next) = receive.try_recv() {
-                            if next.revision == revision
-                                && next.at.elapsed() <= std::time::Duration::from_millis(100)
-                            {
-                                samples = next.samples;
-                                break;
+                    let value = resampler.pull(|| {
+                        while position == FRAME_SAMPLES && !starved {
+                            match queue.take() {
+                                Some(next)
+                                    if next.revision == revision
+                                        && next.at.elapsed() <= Duration::from_millis(250) =>
+                                {
+                                    samples = next.samples;
+                                    position = 0;
+                                }
+                                Some(_) => {}
+                                None => starved = true,
                             }
                         }
-                    }
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    // phase is maintained in [0,960)
-                    let index = position as usize;
-                    let value = samples[index];
+                        if position < FRAME_SAMPLES {
+                            position += 1;
+                            samples[position - 1]
+                        } else {
+                            0.0
+                        }
+                    });
                     for sample in frame {
                         *sample = T::from_sample(value);
                     }
-                    position += step;
                 }
             },
             move |error| {
@@ -721,6 +785,16 @@ mod tests {
         );
     }
     #[test]
+    fn devices_playing_large_blocks_keep_enough_speech_in_hand() {
+        // 10 ms callbacks need nothing extra; one 85 ms Bluetooth block takes five frames.
+        assert_eq!(queued_ahead(2, 480, 48_000), 2);
+        assert_eq!(queued_ahead(2, 441, 44_100), 2);
+        assert_eq!(queued_ahead(2, 960, 48_000), 2);
+        assert_eq!(queued_ahead(6, 4096, 48_000), 2);
+        assert_eq!(queued_ahead(2, 4096, 48_000), 0);
+        assert_eq!(queued_ahead(3, 1365, 16_000), 0);
+    }
+    #[test]
     fn repeated_route_failures_have_a_finite_recovery_budget() {
         let now = Instant::now();
         let mut budget = RecoveryBudget {
@@ -732,22 +806,5 @@ mod tests {
         }
         assert!(!budget.attempt(now + Duration::from_secs(4)));
         assert!(budget.attempt(now + Duration::from_secs(5)));
-    }
-    #[test]
-    fn device_rates_produce_forty_eight_thousand_finite_mono_samples_per_second() {
-        for rate in [8000, 16_000, 44_100, 48_000, 96_000, 192_000] {
-            let mut resampler = Resampler::new(rate);
-            let mut count = 0_u32;
-            for _ in 0..rate {
-                resampler.push(0.25, |sample| {
-                    assert!(sample.is_finite() && (sample - 0.25).abs() < 0.001);
-                    count += 1;
-                });
-            }
-            assert!(
-                count.abs_diff(SAMPLE_RATE) <= 6,
-                "native rate {rate}, count {count}"
-            );
-        }
     }
 }

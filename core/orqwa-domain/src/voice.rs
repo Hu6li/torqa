@@ -50,10 +50,17 @@ pub trait VoiceAudio {
     /// # Errors
     /// Returns [`VoiceDeviceError`] when capture cannot be opened safely.
     fn microphone(&mut self, activation: Option<u32>) -> Result<(), VoiceDeviceError>;
-    /// Takes one bounded captured frame, without waiting for one.
+    /// Takes the oldest bounded captured frame, without waiting for one. Frames arrive at the
+    /// microphone's own pace, one per twenty milliseconds.
     fn capture(&mut self) -> Option<CapturedVoice>;
     /// Queues one playback frame; a full queue drops it instead of blocking.
     fn play(&mut self, frame: PcmFrame);
+    /// Playback frames queued that the output device has not started yet. Workers keep this
+    /// small queue topped up, so mixing follows the speaker's own clock. `None` means the
+    /// backend has no device clock and the worker paces playback every twenty milliseconds.
+    fn playback_queued(&self) -> Option<usize> {
+        None
+    }
     /// Silences output and clears pending speech; reopening must never replay it.
     fn deafen(&mut self, deafened: bool);
     /// Reports asynchronous device failures without panicking in callbacks.

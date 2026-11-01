@@ -3660,7 +3660,7 @@ msgid "Where will everyone ride?"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd
-msgid "While a friend is audible, your microphone stays quiet. Turn off for headphones."
+msgid "While a friend is speaking, your microphone stays quiet. Turn off for headphones."
 msgstr ""
 
 #: app/scenes/history_screen.gd

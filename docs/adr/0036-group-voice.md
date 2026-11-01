@@ -43,7 +43,8 @@ returns. Real hardware/permissions/hotplug acceptance remains a separate manual 
 - Invite/control version 2 and ALPN `orqwa-group/2` require matching builds and fresh codes.
   Existing address policy, per-ride certificate pinning, one-use admission and deadline remain.
 - Mono 48 kHz Opus, 20 ms frames, 24 kbit/s CBR, no DTX, encoder complexity five. Encode
-  once; normal compressed packets are 60 bytes. The 19-byte voice header includes version,
+  once; normal compressed packets are 60 bytes. *(Now 32 kbit/s with in-band recovery data:
+  see the device-clock amendment below.)* The 19-byte voice header includes version,
   authenticated rider number, microphone activation, sequence and host-assigned membership epoch.
 - The host stamps membership epochs from its current admitted roster. Reliable voice-roster
   controls follow joined/left controls in the same stream; receivers reject other epochs before
@@ -58,17 +59,20 @@ returns. Real hardware/permissions/hotplug acceptance remains a separate manual 
   second. Malformed packets and sustained raw abuse still disconnect the offending connection;
   invalid compressed audio silences only that speaker locally, preserving other conversation.
 - Each speaker has eight fixed jitter slots, a 60 ms prebuffer, at most three concealment
-  frames and no playback of speech idle for 250 ms. Delayed consumers skip history. Source
+  frames and no playback of speech idle for 250 ms. *(Playout is now pulled by the speaker:
+  see the device-clock amendment.)* Delayed consumers skip history. Source
   sequences cannot jump arbitrarily ahead and poison ordering. Decode accepts only mono and
   exactly 960 samples per packet into a fixed output slice; malformed durations and stereo
   are rejected before decode. Native hardening remains enabled.
 - Capture and output callback queues have four frames each; callbacks never perform network
   work or wait for it. Captures older than 60 ms and output older than 100 ms are discarded.
   Each live 20 ms tick drains at most four captures and encodes only the freshest valid one;
-  late/control wakeups never emit catch-up speech.
-  At most 640 of each connection's 4,096 datagram-send bytes are available for speech,
+  late/control wakeups never emit catch-up speech. *(Superseded: every fresh capture is now
+  sent; see the device-clock amendment.)*
+  At most 640 (now 800) of each connection's 4,096 datagram-send bytes are available for speech,
   leaving space for disposable ride state. Congestion drops speech instead of blocking.
-- Each speaker has a separate decoder. Mixing normalizes by speaker count, accepts finite
+- Each speaker has a separate decoder. Mixing normalizes by speaker count *(now a soft
+  limiter instead: device-clock amendment)*, accepts finite
   samples and limits output amplitude; gain is finite and 0–1. Samples and credentials never
   appear in status/errors or Debug. Audio queues and decoder work remain bounded when muted.
 
@@ -131,8 +135,8 @@ choices, volume, deafen and local mutes. UI code presents the Rust state and req
 
 The existing transport excludes the local speaker from forwarding and playout. That does not
 prevent another rider's speakers being recaptured by their microphone (#429). Speaker mode
-therefore defaults to a half-duplex gate: while mixed remote playback is audible, discard local
-capture, including a 300 ms tail covering the output queue and short room echo. Keep capture
+therefore defaults to a half-duplex gate: while mixed remote playback is audible *(now: while a
+friend's voiced speech is, see the device-clock amendment)*, discard local capture, including a 300 ms tail covering the output queue and short room echo. Keep capture
 open to avoid Bluetooth profile switches and preserve the explicit microphone consent.
 Disable **Prevent speaker echo** for full-duplex headphones. This is no adaptive acoustic echo
 canceller or noise suppression; competing speakers may need to take turns. No extra dependency,
@@ -269,7 +273,8 @@ window resets that history. Thus one delayed batch cannot close a lobby, but sus
 cannot grow decoding, fan-out or queues. Reliable controls retain their existing hard budgets.
 
 The audio worker now schedules its next tick from the live tick, without accumulating missed
-transmissions, and consumes only the freshest valid frame from the four-frame capture queue.
+transmissions, and consumes only the freshest valid frame from the four-frame capture queue
+*(superseded by the device-clock amendment below)*.
 An overrun inside encoding or playback also defers the next tick, so completing stalled work
 cannot leave an expired deadline immediately behind the just-sent frame.
 Suppressed feedback, superseded words, stale captures and old activations never replay later.
@@ -302,6 +307,71 @@ tests serially: each already exercises up to eight simultaneous riders with real
 and multiple unrelated rooms must not compete for its wall-clock deadlines on a shared runner.
 Speaker checks assert both audible pitches and gain, rather than scheduler-dependent callback
 throughput. Physical-device acceptance stays manual.
+
+## Amendment — device-clocked, continuous speech (2026-11-01, R189)
+
+Native macOS-to-macOS tests after the burst fix found voice "extremely metallic", and half the
+time voices did not come through. Three independent clocks (microphone, the worker's 20 ms timer
+and the speaker) were reconciled by dropping or inserting whole 20 ms frames. The worker encoded
+only the freshest of its queued captures, the speaker played a frame of silence whenever the timer
+ran late, and listeners concealed the resulting gaps; Opus concealment, many times a second, is
+what sounds robotic. Simulated sound cards running 0.1–0.2 % apart reproduce it: 15 silent frames
+in 250 with timer-paced playback.
+
+- **Playback is pulled by the speaker.** The output callback counts every frame it takes; the
+  worker keeps two frames queued ahead of it, more for a device that plays larger blocks per
+  callback, and wakes every 5 ms to top up. The output queue holds eight frames and discards
+  frames older than 250 ms. Each mixed frame pulls exactly one 20 ms step from every speaker's
+  jitter buffer. A starved callback plays silence only until the next frame arrives, not for a
+  whole frame. Backends without a device clock (test doubles) keep the worker's 20 ms pacing.
+- **Every fresh capture is sent, in order,** at the microphone's own rate. Frames older than
+  120 ms (after a worker stall) are still discarded, and their sequence numbers are spent so
+  listeners conceal the gap instead of splicing speech together.
+- **Jitter buffers no longer run on wall-clock deadlines.** Playback starts with one spare
+  frame, or after three frames for a single short word. A missing frame with later speech
+  queued is rebuilt from the next packet's in-band recovery data (or concealed once), then
+  playback continues with the speech that arrived. When nothing has arrived, up to three frames
+  are concealed without skipping, so late speech still plays and the buffer grows to the
+  network's jitter. A buffer whose smallest spare depth over one second exceeds one frame drops
+  the excess, so differing sound-card rates neither drift behind nor skip words. The eight
+  fixed slots, ingress budgets, sequence-clock validation, epochs and 250 ms idle restart stay.
+- **Opus** runs at 32 kbit/s CBR (80-byte packets), complexity ten, voice signal, with in-band
+  recovery data planned for 10 % loss; Opus 1.6 codes none at all at 5 % or less. A frame
+  rebuilt from the next packet is about six times closer to the original than concealment in
+  the codec regression. Speech may use 800 of each connection's 4,096 datagram-send bytes,
+  eight 99-byte packets. Receivers already accepted any valid 20 ms packet up to 256 bytes.
+- **Resampling** between 48 kHz and device rates uses a windowed-sinc kernel (Blackman,
+  24 input samples per side, widened when decimating, cutoff at 90 % of the slower rate's
+  Nyquist frequency) instead of nearest-sample output and two-point capture interpolation.
+  Equal rates pass through. Nearest-sample output folded Opus' upper band back into the
+  audible range on 16/24 kHz Bluetooth headsets.
+- **Mixing** no longer divides by the number of active speakers, which changed one voice's level
+  whenever another microphone opened. Gain applies to the sum; a soft limiter (linear to 0.5,
+  a tanh knee up to 0.9) rounds off loud overlaps instead of clipping them.
+- **Speaker echo prevention holds the microphone only for a friend's speech:** two consecutive
+  playback frames that are voiced (normalized autocorrelation at least 0.45 at a 60–400 Hz
+  pitch, measured at 8 kHz over 40 ms) and stand 10 dB above that playback's background noise
+  and above −46 dBFS. The background is the fourth-quietest frame of each block of fifteen,
+  the minimum over five blocks, ignoring digital silence from a friend whose own gate holds.
+  The held microphone fades to silence within 5 ms and keeps sending, so the stream stays
+  continuous; after the 300 ms tail it fades back in over 20 ms, as it does when opened.
+  Previously any playback sample above 0.005 held it: one rider's fan or room noise held the
+  other's microphone, whose speech then held the first in turn. A regression with a fan at one
+  end and speech at the other heard the speaker in none of 101 frames.
+
+There is still no adaptive acoustic echo cancellation or noise suppression. The operating
+systems' voice-processing units (macOS VoiceProcessingIO, Windows communications mode, Android
+VoiceCommunication) remain a possible follow-up needing a native backend beside CPAL. There is
+no protocol, wire format or dependency change.
+
+Unit regressions cover the resampler (pace, tone fidelity, rejection of Bluetooth-rate aliases),
+recovery from the next packet, the pull jitter buffer (loss recovery, jitter without
+concealment, ±0.5 % clock differences, slow senders, stalled listeners) and the gate (speech
+and tail, a loud fan never holds, a whine learned as background). Real QUIC and Opus with
+simulated sound cards, whose microphones and speakers run at their own rates, check continuous
+speech (at most three gaps or quiet frames in 250) and that a rider by a fan never silences a
+speaking one. Each fails with the previous timer pacing or gate respectively. Physical-device
+acceptance stays manual.
 
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),

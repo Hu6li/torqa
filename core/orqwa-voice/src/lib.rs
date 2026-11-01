@@ -6,6 +6,7 @@ pub mod device;
 mod echo;
 pub mod microphone_test;
 mod pacing;
+mod resample;
 mod speech_activity;
 
 use std::sync::Arc;
@@ -15,10 +16,19 @@ use std::time::{Duration, Instant};
 
 use orqwa_domain::voice::{FRAME_SAMPLES, PcmFrame, VoiceAudio, VoiceDeviceError};
 use orqwa_net::state::{MAX_RIDERS, RiderId};
-use orqwa_net::voice::{FRAME_TIME, Playout, VoicePort};
+use orqwa_net::voice::{Playout, VoicePort};
 use tokio::sync::{mpsc, oneshot};
 
 use codec::{SpeechDecoder, SpeechEncoder};
+
+/// Playback frames kept queued ahead of the speaker, covering a late worker wakeup.
+const PLAYBACK_QUEUE: usize = 2;
+/// How often the worker tops up playback and sends captured speech.
+const POLL: Duration = Duration::from_millis(5);
+/// Captured speech older than this would arrive too late to belong to the conversation.
+const CAPTURE_FRESH: Duration = Duration::from_millis(120);
+/// Frames handled per wakeup in each direction, whatever a backend reports.
+const MAX_FRAMES_PER_WAKE: usize = 8;
 
 /// Bounded local status messages, without audio or credentials.
 #[derive(Debug)]
@@ -167,8 +177,9 @@ impl VoiceChat {
     pub fn microphone_enabled(&self) -> bool {
         self.port.transmitting().is_some()
     }
-    /// Prevents speaker feedback by holding outgoing speech while received audio is audible,
-    /// including a short echo tail. Disable for full-duplex conversation with headphones.
+    /// Prevents speaker feedback by holding outgoing speech while a friend's speech is audible,
+    /// including a short echo tail; background noise does not hold it. Disable for
+    /// full-duplex conversation with headphones.
     pub fn echo_prevention(&self, enabled: bool) {
         self.controls
             .echo_prevention
@@ -269,7 +280,7 @@ fn run(
     let mut activation = None;
     let mut playback = (false, 0);
     let mut pacer = pacing::Pacer::new(Instant::now());
-    let mut speaker_gate = echo::SpeakerGate::default();
+    let mut speaker_gate = echo::SpeakerGate::new();
     while !controls.stop.load(Ordering::Acquire) && port.alive() {
         let requested = port.transmitting();
         if requested != activation {
@@ -279,6 +290,7 @@ fn run(
                 let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             }
             activation = port.transmitting();
+            speaker_gate.restart();
         }
         let output = (port.deafened(), controls.flush.load(Ordering::Relaxed));
         if output != playback {
@@ -298,26 +310,38 @@ fn run(
             let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             break;
         }
-        let now = Instant::now();
-        if !pacer.due(now) {
-            std::thread::park_timeout(pacer.wait(now));
-            continue;
+        // The speaker's clock sets the pace: each frame it takes is mixed once, so the
+        // microphone, worker and speaker never drift apart into skipped or doubled speech.
+        let queued = audio.playback_queued();
+        let due = match queued {
+            Some(queued) => PLAYBACK_QUEUE.saturating_sub(queued),
+            None => usize::from(pacer.due(Instant::now())),
+        };
+        for _ in 0..due.min(MAX_FRAMES_PER_WAKE) {
+            let mixed = mix(
+                port,
+                &mut decoders,
+                f32::from_bits(controls.volume.load(Ordering::Relaxed)),
+                events,
+            );
+            speaker_gate.observe(&mixed, Instant::now());
+            audio.play(mixed);
         }
-        let mixed = mix(
-            port,
-            &mut decoders,
-            f32::from_bits(controls.volume.load(Ordering::Relaxed)),
-            events,
-        );
-        let allowed =
-            speaker_gate.allow(&mixed, now) || !controls.echo_prevention.load(Ordering::Acquire);
         if let Some(spurt) = activation {
-            send_capture(port, audio.as_mut(), &mut encoder, spurt, allowed, events);
+            let gate = controls
+                .echo_prevention
+                .load(Ordering::Acquire)
+                .then_some(&mut speaker_gate);
+            send_captures(port, audio.as_mut(), &mut encoder, spurt, gate, events);
         }
-        audio.play(mixed);
-        let completed = Instant::now();
-        pacer.completed(completed);
-        std::thread::park_timeout(pacer.wait(completed));
+        let now = Instant::now();
+        pacer.completed(now);
+        let wait = if queued.is_some() {
+            POLL
+        } else {
+            pacer.wait(now).min(POLL)
+        };
+        std::thread::park_timeout(wait);
     }
     port.disable();
     let _ = audio.microphone(None);
@@ -326,31 +350,30 @@ fn run(
     let _ = events.try_send(VoiceEvent::Stopped);
 }
 
-fn send_capture(
+fn send_captures(
     port: &VoicePort,
     audio: &mut dyn VoiceAudio,
     encoder: &mut SpeechEncoder,
     spurt: u32,
-    allowed: bool,
+    mut gate: Option<&mut echo::SpeakerGate>,
     events: &mpsc::Sender<VoiceEvent>,
 ) {
-    // Old captures and suppressed speaker feedback never become delayed speech.
-    let mut latest = None;
-    for _ in 0..4 {
-        let Some(captured) = audio.capture() else {
+    // Every fresh frame is sent, in order: dropping any cuts a hole into the words.
+    for _ in 0..MAX_FRAMES_PER_WAKE {
+        let Some(mut captured) = audio.capture() else {
             break;
         };
-        if captured.activation != spurt || captured.at.elapsed() > FRAME_TIME * 3 || !allowed {
+        if captured.activation != spurt {
             continue;
         }
-        if latest
-            .as_ref()
-            .is_none_or(|old: &orqwa_domain::voice::CapturedVoice| captured.at >= old.at)
-        {
-            latest = Some(captured);
+        if captured.at.elapsed() > CAPTURE_FRESH {
+            // Old captures never become delayed speech; listeners conceal the gap.
+            let _ = encoder.skip(spurt);
+            continue;
         }
-    }
-    if let Some(captured) = latest {
+        if let Some(gate) = gate.as_deref_mut() {
+            gate.apply(&mut captured.samples, captured.at);
+        }
         if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
             let _ = port.send(frame);
         } else {
@@ -358,6 +381,7 @@ fn send_capture(
             let _ = events.try_send(VoiceEvent::DeviceUnavailable {
                 error: VoiceDeviceError::new("encoding voice frame", "Opus encoding failed"),
             });
+            break;
         }
     }
 }
@@ -368,9 +392,8 @@ fn mix(
     volume: f32,
     events: &mpsc::Sender<VoiceEvent>,
 ) -> PcmFrame {
-    let actions = port.playout(Instant::now());
+    let actions = port.playout();
     let mut mixed = [0.0; FRAME_SAMPLES];
-    let mut speakers = 0_u8;
     for (id, playback) in actions.into_iter().enumerate() {
         let action = playback.action;
         if matches!(action, Playout::Silence) {
@@ -390,11 +413,11 @@ fn mix(
         };
         let result = match action {
             Playout::Frame(frame) => decoder.decode(&frame),
+            Playout::Recover(frame) => decoder.recover(&frame),
             Playout::Conceal => decoder.conceal(),
             Playout::Silence => continue,
         };
         if let Ok(samples) = result {
-            speakers += 1;
             for (sum, sample) in mixed.iter_mut().zip(samples) {
                 *sum += sample;
             }
@@ -405,9 +428,41 @@ fn mix(
             let _ = events.try_send(VoiceEvent::PeerMuted { peer });
         }
     }
-    let gain = volume / f32::from(speakers.max(1));
+    // Each voice keeps its level whoever else has a microphone open; only loud overlaps
+    // are rounded off, never clipped.
     for sample in &mut mixed {
-        *sample = (*sample * gain).clamp(-0.9, 0.9);
+        *sample = limit(*sample * volume);
     }
     mixed
+}
+
+fn limit(sample: f32) -> f32 {
+    const KNEE: f32 = 0.5;
+    const ROOM: f32 = 0.4;
+    let level = sample.abs();
+    if level <= KNEE {
+        sample
+    } else {
+        (KNEE + ROOM * ((level - KNEE) / ROOM).tanh()).copysign(sample)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mixing_keeps_quiet_speech_exact_and_rounds_off_loud_overlaps_below_full_scale() {
+        for sample in [0.0, 0.1, -0.3, 0.5] {
+            assert!((limit(sample) - sample).abs() < f32::EPSILON);
+        }
+        let mut previous = 0.0;
+        for step in 0..=400 {
+            #[allow(clippy::cast_precision_loss)]
+            let value = limit(step as f32 / 100.0);
+            assert!(value >= previous && value <= 0.9, "{value}");
+            previous = value;
+        }
+        assert!((limit(-2.0) + limit(2.0)).abs() < f32::EPSILON);
+    }
 }

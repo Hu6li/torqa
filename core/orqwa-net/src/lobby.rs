@@ -2078,7 +2078,7 @@ mod tests {
         timeout(Duration::from_secs(2), async {
             loop {
                 assert!(port.alive(), "valid voice burst disconnected the listener");
-                let playout = port.playout(std::time::Instant::now());
+                let playout = port.playout();
                 if matches!(&playout[usize::from(speaker.value())].action, voice::Playout::Frame(frame) if frame.payload() == [payload]) {break;}
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
