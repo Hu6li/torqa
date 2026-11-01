@@ -211,6 +211,11 @@ pub struct Snapshot {
     pub received: u64,
     /// Expected current-file size; zero before a transfer begins.
     pub total: u64,
+    /// This rider's connection to the organizer was lost: reconnecting by itself until then,
+    /// when the organizer gives the seat up (#434).
+    pub reconnecting: Option<Instant>,
+    /// Riders whose connection was lost, with their seats held while they reconnect (#434).
+    pub away: [bool; MAX_RIDERS],
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -258,6 +263,8 @@ impl Default for Snapshot {
             muted: [false; MAX_RIDERS],
             received: 0,
             total: 0,
+            reconnecting: None,
+            away: [false; MAX_RIDERS],
         }
     }
 }
@@ -311,6 +318,8 @@ impl Snapshot {
             && self.prepared
             && self.phase == Phase::Riding
             && self.handover == Handover::Idle
+            // Everyone must take part in the change, so nobody may be reconnecting (#434).
+            && !self.away.contains(&true)
             && self
                 .roster
                 .iter()
@@ -326,13 +335,15 @@ impl Snapshot {
             .is_some_and(|(clock, plan)| clock.position(Instant::now()) >= plan.duration())
     }
 
-    /// Only the prepared host with every admitted participant ready can start.
+    /// Only the prepared host with every admitted participant ready, none of them
+    /// reconnecting (#434), can start.
     #[must_use]
     pub fn can_start(&self) -> bool {
         self.host
             && self.prepared
             && self.start.is_none()
             && self.selection.is_some()
+            && !self.away.contains(&true)
             && self
                 .roster
                 .iter()
@@ -473,7 +484,15 @@ impl App {
             .ok_or_else(|| error("Open a lobby first."))?
             .commands
             .try_send(command)
-            .map_err(|_| error("The group is busy or disconnected. Retry or leave the lobby."))
+            .map_err(|failed| match failed {
+                mpsc::error::TrySendError::Full(_) => {
+                    error("The group is busy. Try again in a moment.")
+                }
+                // Nothing is left to retry: the connection gave up reconnecting (#434).
+                mpsc::error::TrySendError::Closed(_) => {
+                    error("The group connection has ended. Leave the group to keep riding alone.")
+                }
+            })
     }
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {
@@ -651,6 +670,14 @@ impl App {
         )
     }
 
+    /// Tries to reconnect to the organizer now rather than after the pause between attempts
+    /// (#434); the connection keeps trying by itself until the seat is given up.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if the command queue is unavailable.
+    pub fn group_reconnect(&self) -> Result<(), AppError> {
+        self.group_command(Command::Reconnect)
+    }
     /// Retries a failed content transfer/preparation.
     ///
     /// # Errors
@@ -950,7 +977,10 @@ impl App {
 
     fn sync_group_workout(&mut self, snapshot: &Snapshot) {
         if let Some(active) = &mut self.ride {
-            if matches!(snapshot.phase, Phase::Ended | Phase::Failed) {
+            // Reconnecting rides on alone; the group's next clock takes the workout back (#434).
+            if matches!(snapshot.phase, Phase::Ended | Phase::Failed)
+                || snapshot.reconnecting.is_some()
+            {
                 active.ride.sync_group_workout(None);
             } else if let Some(clock) = snapshot.workout_clock {
                 active

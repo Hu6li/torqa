@@ -10,6 +10,9 @@ publish.workspace = true
 [features]
 # Exposes the property checks the fuzz targets in core/fuzz drive; never enabled in builds.
 fuzzing = []
+# Lets other crates' tests lose a rider's connection as a failing network would (#434);
+# never enabled in builds.
+testing = []
 
 [dependencies]
 base64.workspace = true

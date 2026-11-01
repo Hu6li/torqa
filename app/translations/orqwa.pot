@@ -827,6 +827,10 @@ msgstr ""
 msgid "Connecting…"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Connection lost. Reconnecting… Your local ride continues."
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "Connect…"
 msgstr ""
@@ -2647,6 +2651,10 @@ msgstr ""
 msgid "Reconnect devices"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Reconnect now"
+msgstr ""
+
 #: app/scenes/remote_dialog.gd
 msgid "Reconnecting to ORQWA…"
 msgstr ""
@@ -3355,6 +3363,10 @@ msgstr ""
 msgid "Tree density"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Trying for another %s. You keep your place in the group."
+msgstr ""
+
 #: app/ui/ui_theme.gd
 msgid "Tue"
 msgstr ""
@@ -3909,6 +3921,11 @@ msgstr ""
 
 #: app/scenes/history_screen.gd
 msgid "★ Personal record"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgctxt "group_rider"
+msgid "Reconnecting…"
 msgstr ""
 
 #: app/scenes/course_detail.gd

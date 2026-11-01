@@ -238,6 +238,87 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
 }
 
 #[test]
+fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_groups_workout_step() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Riding
+    });
+    let seat = peer.group().me;
+    // #434: the peer's network drops mid-workout, and nobody exchanges codes again.
+    peer.group_command(Command::LoseConnection).unwrap();
+    // A later command the runtime has processed shows the connection is gone first.
+    peer.group_voice_volume(0.5).unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        (p.group().voice_volume - 0.5).abs() < f32::EPSILON
+    });
+    // The organizer pauses meanwhile: only a new connection can tell the peer.
+    host.group_workout_pause(true).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        p.ride_state().unwrap().workout.unwrap().paused
+            && p.group().reconnecting.is_none()
+            && !h.group().away.contains(&true)
+    });
+    assert_eq!(peer.group().me, seat);
+    assert!(
+        peer.group().phase == Phase::Riding,
+        "{} {}",
+        peer.group().phase.key(),
+        peer.group().error
+    );
+    assert!(peer.ride.is_some(), "the local ride never stopped");
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
+fn a_rider_reconnecting_keeps_the_start_and_an_organizer_change_waiting() {
+    let rider = Rider {
+        name: "Anna".into(),
+        mass: Kilograms(80.0),
+        weight: Kilograms(70.0),
+        avatar: Avatar::Female,
+    };
+    let mut lobby = Snapshot {
+        host: true,
+        prepared: true,
+        selection: Some(Selection {
+            revision: 1,
+            name: "Workout".into(),
+            course: None,
+            course_key: None,
+            workout: Some(
+                orqwa_net::activity::ContentId::of(
+                    orqwa_net::activity::ContentKind::Workout,
+                    b"workout",
+                )
+                .unwrap(),
+            ),
+            assistance: Assistance::default(),
+        }),
+        ready: [true; MAX_RIDERS],
+        ..Snapshot::default()
+    };
+    lobby.roster[0] = Some(rider.clone());
+    lobby.roster[1] = Some(rider);
+    assert!(lobby.can_start());
+    // #434: until the rider is back or removed.
+    lobby.away[1] = true;
+    assert!(!lobby.can_start());
+    let mut riding = Snapshot {
+        phase: Phase::Riding,
+        start: Some(Instant::now()),
+        ..lobby.clone()
+    };
+    assert!(!riding.can_handover());
+    riding.away[1] = false;
+    assert!(riding.can_handover());
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // consent, rollback, two authority changes and late entry share one real group lifecycle
 fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority() {
     let from = Directory::new();

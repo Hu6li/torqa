@@ -183,6 +183,21 @@ func _group_activity() -> void:
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
 	)
 	_check(group._retry.visible, "activity retry remains available beside standard error history")
+	# A rider whose connection was lost keeps trying by themselves (#434).
+	var away: Array = [
+		{"id": 0, "name": "Host", "ready": true, "me": false},
+		{"id": 1, "name": "Sam", "ready": true, "me": false, "away": true},
+	]
+	group._show_status({"host": false, "phase": "riding", "reconnect_s": 272.4, "roster": away})
+	_check(
+		group._reconnect.visible and group._working.visible,
+		"reconnecting turns and offers to try now"
+	)
+	_check(group._next.text.contains("4:32"), "and says how long: %s" % group._next.text)
+	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
+	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
+	group._show_status({"host": false, "phase": "riding", "roster": away})
+	_check(not group._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")
 	group._show_status(
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}

@@ -304,7 +304,12 @@ impl Others {
             | LobbyEvent::Running { .. }
             | LobbyEvent::Entry { .. }
             | LobbyEvent::Workout(_)
-            | LobbyEvent::Handover { .. } => {}
+            | LobbyEvent::Handover { .. }
+            // CLI rides are course lobbies, which never hold a seat for reconnecting (#434).
+            | LobbyEvent::Away { .. }
+            | LobbyEvent::Back { .. }
+            | LobbyEvent::Reconnecting { .. }
+            | LobbyEvent::Reconnected => {}
         }
     }
     fn gaps(&self, mine: f64) -> String {

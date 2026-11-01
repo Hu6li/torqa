@@ -599,6 +599,19 @@ impl Coordinator {
     pub(super) fn busy(&self) -> bool {
         self.context.is_some()
     }
+    /// This rider's link to the organizer is reconnecting (#434). A prepared replacement link
+    /// carries on as when the old organizer is lost; without one the planned change cannot
+    /// finish and is given up. True if group networking must end.
+    pub(super) fn reconnecting(&mut self, session: &Session, snapshot: &mut Snapshot) -> bool {
+        if !self.busy() {
+            return false;
+        }
+        if self.replacement.is_some() {
+            self.lost();
+            return false;
+        }
+        self.fail(session, snapshot)
+    }
     fn reset(&mut self, snapshot: &mut Snapshot) {
         if self
             .context
