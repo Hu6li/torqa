@@ -879,6 +879,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     cleanup; device replacements await bounded native-stream release (#428, #441).
   - [x] Rebuild invalidated native voice streams after Bluetooth sample-rate changes, retaining
     local controls with a finite recovery budget; harmless route notifications keep playing (#413).
+  - [x] Explicit ten-second local microphone meter, automatic capture cleanup and muted voice
+    restoration; optional full-duplex headphone mode beside default speaker echo prevention
+    (R177, #414, #429).
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

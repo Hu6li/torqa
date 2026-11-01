@@ -71,15 +71,22 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	audio.update_status(
 		{
 			"voice": true,
+			"microphone_test": true,
+			"microphone_level": 0.65,
 			"input_device": "headset",
 			"output_device": "headset",
 			"devices": [{"id": "headset", "name": "USB Headset", "input": true, "output": true}]
 		}
 	)
-	audio._settings.popup_centered(Vector2i(440, 0))
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-audio-de.png"))
-	audio._settings.hide()
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group.refresh()
+		audio.update_status({"microphone_test": true, "microphone_level": 0.65})
+		audio._settings.popup_centered(Vector2i(440, 0))
+		await create_timer(0.4).timeout
+		print("saved audio dialog ", locale, ": ", audio._settings.size)
+		root.get_texture().get_image().save_png(out.path_join("group-audio-" + locale + ".png"))
+		audio._settings.hide()
 	group._show_status({"phase": "connecting", "reply": "private"})
 	await create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-joining-de.png"))

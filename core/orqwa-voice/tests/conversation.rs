@@ -16,6 +16,7 @@ use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, Rider};
 use orqwa_net::policy::AddressPolicy;
 use orqwa_net::state::{RiderState, STATE_EVERY};
 use orqwa_net::voice::VoiceFrame;
+use orqwa_voice::microphone_test::MicrophoneTest;
 use orqwa_voice::{VoiceChat, VoiceEvent};
 
 #[derive(Default)]
@@ -28,6 +29,7 @@ struct Probe {
     stalled: AtomicBool,
     invalidated: AtomicBool,
     recovered: AtomicUsize,
+    played: AtomicUsize,
 }
 struct Audio {
     probe: Arc<Probe>,
@@ -62,6 +64,7 @@ impl VoiceAudio for Audio {
         })
     }
     fn play(&mut self, samples: PcmFrame) {
+        self.probe.played.fetch_add(1, Ordering::Relaxed);
         let stall = self.probe.stall.lock().unwrap().take();
         if let Some(stall) = stall {
             self.probe.stalled.store(true, Ordering::Release);
@@ -200,7 +203,7 @@ async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
 }
 async fn chat(lobby: &mut JoinerLobby, probe: &Arc<Probe>, frequency: f32) -> VoiceChat {
     let probe = probe.clone();
-    VoiceChat::with_audio(lobby.take_voice().unwrap(), move |_| {
+    let chat = VoiceChat::with_audio(lobby.take_voice().unwrap(), move |_| {
         Ok(Box::new(Audio {
             probe,
             activation: None,
@@ -210,7 +213,9 @@ async fn chat(lobby: &mut JoinerLobby, probe: &Arc<Probe>, frequency: f32) -> Vo
         }))
     })
     .await
-    .unwrap()
+    .unwrap();
+    chat.echo_prevention(false);
+    chat
 }
 async fn until(predicate: impl Fn() -> bool) {
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -437,4 +442,102 @@ async fn startup_failures_preserve_their_causes_and_leave_microphones_gated_off(
     );
     assert!(port.transmitting().is_none());
     host.close().await;
+}
+
+#[tokio::test]
+async fn speaker_mode_drops_feedback_but_releases_the_microphone_after_the_echo_tail() {
+    let host = host().await;
+    let mut anna = join(&host, "Anna").await;
+    let mut ben = join(&host, "Ben").await;
+    let a = Arc::new(Probe::default());
+    let b = Arc::new(Probe::default());
+    let anna_voice = chat(&mut anna, &a, 440.0).await;
+    let ben_voice = chat(&mut ben, &b, 660.0).await;
+    ben_voice.echo_prevention(true);
+    anna_voice.microphone(true).unwrap();
+    until(|| b.heard.load(Ordering::Relaxed) >= 5).await;
+    ben_voice.microphone(true).unwrap();
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(
+        a.heard.load(Ordering::Relaxed),
+        0,
+        "speaker feedback is not sent back to Anna"
+    );
+    anna_voice.microphone(false).unwrap();
+    until(|| a.heard.load(Ordering::Relaxed) >= 5).await;
+    assert!(
+        ben_voice.microphone_enabled(),
+        "echo prevention does not revoke consent"
+    );
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
+    host.close().await;
+}
+
+#[tokio::test]
+async fn microphone_test_is_temporary_local_and_never_plays_captured_samples() {
+    let probe = Arc::new(Probe::default());
+    let audio = probe.clone();
+    let test = MicrophoneTest::with_audio(move |_| {
+        Ok(Box::new(Audio {
+            probe: audio,
+            activation: None,
+            phase: 0.0,
+            frequency: 440.0,
+            deafened: false,
+        }))
+    })
+    .await
+    .unwrap();
+    until(|| test.level() > 0.1).await;
+    assert!(test.level().is_finite() && test.level() <= 1.0);
+    assert_eq!(probe.played.load(Ordering::Relaxed), 0);
+    test.close().await;
+    assert!(probe.dropped.load(Ordering::Acquire));
+    assert!(!probe.microphone.load(Ordering::Acquire));
+    assert_eq!(probe.played.load(Ordering::Relaxed), 0);
+    let failure = MicrophoneTest::with_audio(|_| {
+        Err(VoiceDeviceError::new(
+            "opening test microphone",
+            "permission denied",
+        ))
+    })
+    .await
+    .err()
+    .unwrap();
+    assert!(
+        failure
+            .to_string()
+            .contains("opening test microphone: permission denied")
+    );
+}
+
+#[tokio::test]
+async fn microphone_test_closes_itself_after_ten_seconds() {
+    let probe = Arc::new(Probe::default());
+    let audio = probe.clone();
+    let test = MicrophoneTest::with_audio(move |_| {
+        Ok(Box::new(Audio {
+            probe: audio,
+            activation: None,
+            phase: 0.0,
+            frequency: 440.0,
+            deafened: false,
+        }))
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(12), async {
+        while test.running() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(probe.dropped.load(Ordering::Acquire));
+    assert!(!probe.microphone.load(Ordering::Acquire));
+    assert_eq!(test.level(), 0.0);
+    assert_eq!(probe.played.load(Ordering::Relaxed), 0);
 }

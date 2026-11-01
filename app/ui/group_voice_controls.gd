@@ -11,6 +11,9 @@ var _settings: AcceptDialog = AcceptDialog.new()
 var _inputs: OptionButton = OptionButton.new()
 var _outputs: OptionButton = OptionButton.new()
 var _device_key: String = ""
+var _test: Button = Button.new()
+var _level: ProgressBar = ProgressBar.new()
+var _echo: CheckBox = CheckBox.new()
 
 
 func _ready() -> void:
@@ -63,13 +66,45 @@ func _ready() -> void:
 	fields.add_child(help)
 	fields.add_child(UiTheme.caption(tr("Microphone")))
 	fields.add_child(_inputs)
+	_test.text = tr("Test microphone")
+	_test.pressed.connect(_on_test)
+	fields.add_child(_test)
+	_level.show_percentage = false
+	_level.max_value = 1.0
+	_level.step = 0.001
+	_level.custom_minimum_size.y = 18
+	_level.tooltip_text = tr("Microphone level")
+	fields.add_child(_level)
+	var test_help: Label = Label.new()
+	test_help.text = tr(
+		"Test for 10 seconds on this computer only. Voice pauses, then resumes with your microphone off."
+	)
+	test_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	test_help.custom_minimum_size.x = 380
+	fields.add_child(test_help)
 	fields.add_child(UiTheme.caption(tr("Speakers")))
 	fields.add_child(_outputs)
+	_echo.text = tr("Prevent speaker echo")
+	_echo.button_pressed = true
+	_echo.toggled.connect(func(on: bool) -> void: _orqwa.group_voice_echo_prevention(on))
+	fields.add_child(_echo)
+	var echo_help: Label = Label.new()
+	echo_help.text = tr(
+		"While a friend is audible, your microphone stays quiet. Turn off for headphones."
+	)
+	echo_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	echo_help.custom_minimum_size.x = 380
+	fields.add_child(echo_help)
 	for picker: OptionButton in [_inputs, _outputs]:
 		UiTheme.narrowable(picker)
 		picker.item_selected.connect(func(_index: int) -> void: _choose_devices())
 	_settings.add_child(fields)
 	add_child(_settings)
+	_settings.visibility_changed.connect(
+		func() -> void:
+			if not _settings.visible and _orqwa != null:
+				_orqwa.group_microphone_test(false)
+	)
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -81,6 +116,12 @@ func update_status(status: Dictionary) -> void:
 	var pending: bool = status.get("voice_pending", false)
 	var microphone: bool = status.get("microphone", false)
 	var deafened: bool = status.get("deafened", false)
+	var testing: bool = status.get("microphone_test", false)
+	_listen.disabled = testing
+	_test.text = tr("Stop microphone test") if testing else tr("Test microphone")
+	_level.value = status.get("microphone_level", 0.0)
+	var prevent_echo: bool = status.get("echo_prevention", true)
+	_echo.set_pressed_no_signal(prevent_echo)
 	_listen.set_pressed_no_signal(voice or pending)
 	_mic.disabled = not voice or deafened
 	_deafen.disabled = not voice
@@ -118,6 +159,14 @@ func update_status(status: Dictionary) -> void:
 			_outputs.set_item_metadata(_outputs.item_count - 1, device["id"])
 			if device["id"] == previous_output:
 				_outputs.select(_outputs.item_count - 1)
+
+
+func _on_test() -> void:
+	var testing: bool = _orqwa.group_status().get("microphone_test", false)
+	if not testing and OS.has_feature("android"):
+		if not OS.request_permission("android.permission.RECORD_AUDIO"):
+			return
+	_orqwa.group_microphone_test(not testing)
 
 
 func _choose_devices() -> void:

@@ -195,6 +195,12 @@ pub struct Snapshot {
     pub output_device: String,
     /// Local playback gain, retained when devices reconnect.
     pub voice_volume: f32,
+    /// Speaker mode suppresses outgoing speech during remote playback and its short echo tail.
+    pub echo_prevention: bool,
+    /// An explicitly requested, temporary local microphone level test is starting or running.
+    pub microphone_test: bool,
+    /// Finite local test level, from zero to one; no samples enter status or networking.
+    pub microphone_level: f32,
     /// Per-speaker playback mute on this computer.
     pub muted: [bool; MAX_RIDERS],
     /// Bytes stored for the current file, coalesced by the download worker.
@@ -244,6 +250,9 @@ impl Default for Snapshot {
             input_device: String::new(),
             output_device: String::new(),
             voice_volume: 0.6,
+            echo_prevention: true,
+            microphone_test: false,
+            microphone_level: 0.0,
             muted: [false; MAX_RIDERS],
             received: 0,
             total: 0,
@@ -351,6 +360,7 @@ pub(crate) struct Running {
 #[derive(Default)]
 struct VoiceControls {
     generation: AtomicU64,
+    microphone_test: std::sync::atomic::AtomicBool,
     port: Mutex<Option<orqwa_net::voice::VoicePort>>,
 }
 impl Drop for Running {
@@ -418,6 +428,7 @@ impl App {
         let voice_controls = Arc::new(VoiceControls::default());
         let token = orqwa_net::code::RideId::generate().map_err(error)?;
         let request = runtime::Request {
+            audio: runtime::AudioBackend::default(),
             voice_controls: Arc::clone(&voice_controls),
             invite,
             options,
@@ -699,6 +710,9 @@ impl App {
             .as_ref()
             .ok_or_else(|| error("Open a lobby first."))?
             .voice_controls;
+        if controls.microphone_test.load(Ordering::Acquire) {
+            return Err(error("Stop the microphone test before joining voice chat."));
+        }
         let generation = controls
             .generation
             .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
@@ -737,6 +751,47 @@ impl App {
     /// Returns [`AppError`] if the queue is unavailable.
     pub fn group_voice_devices(&self) -> Result<(), AppError> {
         self.group_command(Command::Devices)
+    }
+    /// Starts/stops a ten-second local meter, pausing voice with transmission closed.
+    /// Previously opted-in listening resumes microphone-off when testing ends.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if no group is open or its command queue is unavailable.
+    pub fn group_microphone_test(&self, enabled: bool) -> Result<(), AppError> {
+        let controls = &self
+            .group
+            .as_ref()
+            .ok_or_else(|| error("Open a lobby first."))?
+            .voice_controls;
+        if controls.microphone_test.swap(enabled, Ordering::AcqRel) == enabled {
+            return Ok(());
+        }
+        let generation = controls
+            .generation
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
+            .map_err(|_| error("Voice activation exhausted."))?
+            + 1;
+        if let Err(error) = self.group_command(Command::MicrophoneTest(generation, enabled)) {
+            controls.microphone_test.store(!enabled, Ordering::Release);
+            return Err(error);
+        }
+        if enabled
+            && let Some(port) = controls
+                .port
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+        {
+            port.enable(false);
+        }
+        Ok(())
+    }
+    /// Sets the local speaker echo gate; headphones may use full-duplex speech instead.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if the group command queue is unavailable.
+    pub fn group_voice_echo_prevention(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_command(Command::EchoPrevention(enabled))
     }
     /// Selects native devices, restarting opted-in voice with the microphone muted.
     ///

@@ -262,6 +262,17 @@ func _group_activity() -> void:
 	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
 	voice.update_status({"voice": true, "deafened": true, "microphone": false})
 	_check(voice._mic.disabled, "mute all sound prevents microphone activation")
+	voice.update_status(
+		{"microphone_test": true, "microphone_level": 0.65, "echo_prevention": true}
+	)
+	_check(voice._listen.disabled and voice._mic.disabled, "local testing cannot transmit voice")
+	_check(is_equal_approx(voice._level.value, 0.65), "local microphone meter follows Rust status")
+	_check(voice._echo.button_pressed, "speaker echo prevention starts enabled")
+	voice.update_status({"echo_prevention": false})
+	_check(
+		not voice._echo.button_pressed and not voice._listen.disabled,
+		"headphone mode and stopped test follow status"
+	)
 	group.free()
 	app.free()
 

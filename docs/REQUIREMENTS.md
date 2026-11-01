@@ -350,6 +350,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R176 | Extends R174 and R161 (2026-11-01): once a group lobby is open, its host is told when the host's own address discovery suggests that friends at other homes probably cannot connect: servers saw a different mapping each, as carrier-grade NAT often does; only IPv6 is directly reachable; or too little evidence came back. The advice is to let a friend at another home create the ride, with a link to the usage guide's check. A rider offered organizer duties gets the same advice from their own discovery before accepting. The advice is evidence, never a claim that a NAT type was proved; good connections and home-network rides show nothing, and no extra network request is made. |
 
+## Local group audio checks
+
+| ID | Requirement |
+|---|---|
+| R177 | Extends R162 and R169 (2026-11-01, #414, #429): group **Audio settings** offer an explicit **Test microphone** action and level meter, using the selected input without playback, transmission or recording. The test stops after ten seconds, on Stop, closing its dialog, changing devices or leaving the group. It temporarily pauses voice and restores previously opted-in listening with the microphone off. A default-on **Prevent speaker echo** setting holds outgoing speech while a friend is audible and for a short echo tail; riders using headphones can turn it off for simultaneous conversation. Device choices, volume and local rider mutes survive testing. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

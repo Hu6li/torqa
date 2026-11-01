@@ -2020,6 +2020,10 @@ msgid "Microphone"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd
+msgid "Microphone level"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
 msgid "Microphone on"
 msgstr ""
 
@@ -2571,6 +2575,10 @@ msgstr ""
 msgid "Press"
 msgstr ""
 
+#: app/ui/group_voice_controls.gd
+msgid "Prevent speaker echo"
+msgstr ""
+
 #: app/scenes/profile_dialog.gd app/scenes/ride_settings_dialog.gd app/scenes/start_page.gd
 msgid "Profile"
 msgstr ""
@@ -3063,6 +3071,10 @@ msgstr ""
 msgid "Stop"
 msgstr ""
 
+#: app/ui/group_voice_controls.gd
+msgid "Stop microphone test"
+msgstr ""
+
 #: core/orqwa-app/src/failure.rs core/orqwa-upload/src/strava.rs
 msgid "Strava has switched off your API application: the account that owns it needs a Strava subscription. Subscribe, reactivate the application in Strava's API settings, then upload again."
 msgstr ""
@@ -3109,6 +3121,14 @@ msgstr ""
 
 #: app/ui/workout_options.gd
 msgid "Test"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Test for 10 seconds on this computer only. Voice pauses, then resumes with your microphone off."
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Test microphone"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3589,6 +3609,10 @@ msgstr ""
 
 #: app/ui/group_connection_dialog.gd
 msgid "Where will everyone ride?"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "While a friend is audible, your microphone stays quiet. Turn off for headphones."
 msgstr ""
 
 #: app/scenes/history_screen.gd

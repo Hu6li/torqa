@@ -115,6 +115,24 @@ underrun, automatic reroute and denied realtime priority notifications do not en
 Selected devices must support the requested direction, so an output-only device cannot become
 a system-audio loopback capture by accident. No package or protocol version changes.
 
+## Amendment — local microphone test and speaker echo gate (2026-11-01, R177)
+
+The microphone test owns a separate capture-only backend with no voice port, codec, recording
+or playback. Only a finite peak level enters the app snapshot. It requires explicit microphone
+permission, runs for ten seconds, and closes when stopped or its dialog closes. Device changes,
+group teardown and handover cancel its owners. Native cleanup is bounded as for voice.
+Testing pauses conversation and resumes prior listening microphone-off, preserving device
+choices, volume, deafen and local mutes. UI code presents the Rust state and requests actions.
+
+The existing transport excludes the local speaker from forwarding and playout. That does not
+prevent another rider's speakers being recaptured by their microphone (#429). Speaker mode
+therefore defaults to a half-duplex gate: while mixed remote playback is audible, discard local
+capture, including a 300 ms tail covering the output queue and short room echo. Keep capture
+open to avoid Bluetooth profile switches and preserve the explicit microphone consent.
+Disable **Prevent speaker echo** for full-duplex headphones. This is no adaptive acoustic echo
+canceller or noise suppression; competing speakers may need to take turns. No extra dependency,
+network service, protocol field or recorded speech is introduced.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

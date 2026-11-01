@@ -129,6 +129,31 @@ pub struct NativeAudio {
     recovery: RecoveryBudget,
 }
 impl NativeAudio {
+    pub(crate) fn capture_only(options: DeviceOptions, stop: Arc<AtomicBool>) -> Self {
+        let gates = Arc::new(Gates {
+            stop,
+            activation: AtomicU32::new(0),
+            deafened: AtomicBool::new(true),
+            revision: AtomicU32::new(0),
+            invalidated: AtomicU8::new(0),
+            failure: Mutex::new(None),
+        });
+        let (capture_send, capture_receive) = sync_channel(4);
+        let (play_send, _) = sync_channel(4);
+        Self {
+            options,
+            gates,
+            output: None,
+            input: None,
+            capture_send,
+            capture_receive,
+            play_send,
+            recovery: RecoveryBudget {
+                since: Instant::now(),
+                attempts: 0,
+            },
+        }
+    }
     /// Opens output only. Capture is constructed lazily by [`VoiceAudio::microphone`].
     ///
     /// # Errors
@@ -336,6 +361,7 @@ impl VoiceAudio for NativeAudio {
         self.gates.invalidated.load(Ordering::Acquire) == 0
     }
     fn recover(&mut self) -> Result<bool, VoiceDeviceError> {
+        let output_open = self.output.is_some();
         let invalidated = self.gates.invalidated.load(Ordering::Acquire);
         if invalidated & PERMANENT != 0
             || self.gates.stop.load(Ordering::Acquire)
@@ -370,9 +396,11 @@ impl VoiceAudio for NativeAudio {
         if invalidated & INPUT != 0 && activation != 0 {
             self.microphone(Some(activation))?;
         }
-        let (output, send) = speakers(&self.options, &self.gates)?;
-        self.output = Some(output);
-        self.play_send = send;
+        if output_open {
+            let (output, send) = speakers(&self.options, &self.gates)?;
+            self.output = Some(output);
+            self.play_send = send;
+        }
         Ok(true)
     }
     fn failure(&mut self) -> VoiceDeviceError {

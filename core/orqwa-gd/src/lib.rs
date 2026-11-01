@@ -2192,6 +2192,16 @@ impl OrqwaApp {
     fn group_voice_devices(&mut self) -> bool {
         self.command(|app| app.group_voice_devices())
     }
+    /// Starts/stops a local microphone meter without transmission or sample playback.
+    #[func]
+    fn group_microphone_test(&mut self, enabled: bool) -> bool {
+        self.command(|app| app.group_microphone_test(enabled))
+    }
+    /// Holds outgoing speech while friends are audible, preventing speaker feedback.
+    #[func]
+    fn group_voice_echo_prevention(&mut self, enabled: bool) -> bool {
+        self.command(|app| app.group_voice_echo_prevention(enabled))
+    }
     /// Selects native devices, reconnecting active voice with the microphone muted.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value

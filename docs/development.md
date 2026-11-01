@@ -584,6 +584,16 @@ microphone-off, and permission/disconnect errors leave the group and local ride 
 the OS, headset, chosen input/output and Technical details for failures. Test separately from
 container checks; no real microphone or Bluetooth device is available inside Docker on macOS.
 
+For R177, simulated-device tests check that local microphone metering never calls playback,
+releases capture on close and after ten seconds, and retains permission diagnostics. Encrypted
+conversation tests cover the speaker gate and full-duplex headphones independently. On native
+devices, test before joining voice and while speaking, close the settings dialog mid-test,
+switch input during testing, and leave the group. Verify that only the level meter moves,
+capture ends and opted-in listening returns microphone-off. With speakers, take turns; with
+headphones on every rider, disable **Prevent speaker echo** and verify simultaneous speech.
+Issue #258 still requires listening during a real video ride; group voice changes do not
+validate WSOLA's perceptual quality or settle its fade thresholds.
+
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and
 [ADR 0029](adr/0029-ride-audio.md). Run the preview and asset preparation in the devcontainer.

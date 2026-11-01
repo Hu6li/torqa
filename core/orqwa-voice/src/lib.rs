@@ -2,6 +2,8 @@
 
 pub mod codec;
 pub mod device;
+mod echo;
+pub mod microphone_test;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -53,6 +55,7 @@ struct Controls {
     stop: Arc<AtomicBool>,
     volume: AtomicU32,
     flush: AtomicU32,
+    echo_prevention: AtomicBool,
 }
 
 /// Owns one local voice thread and its audio devices. Starts listening with the mic muted.
@@ -91,6 +94,7 @@ impl VoiceChat {
             stop: Arc::new(AtomicBool::new(false)),
             volume: AtomicU32::new(0.6_f32.to_bits()),
             flush: AtomicU32::new(0),
+            echo_prevention: AtomicBool::new(false),
         });
         let (ready, receive) = oneshot::channel();
         let (send, events) = mpsc::channel(8);
@@ -159,6 +163,14 @@ impl VoiceChat {
     #[must_use]
     pub fn microphone_enabled(&self) -> bool {
         self.port.transmitting().is_some()
+    }
+    /// Prevents speaker feedback by holding outgoing speech while received audio is audible,
+    /// including a short echo tail. Disable for full-duplex conversation with headphones.
+    pub fn echo_prevention(&self, enabled: bool) {
+        self.controls
+            .echo_prevention
+            .store(enabled, Ordering::Release);
+        self.wake();
     }
     /// Silences playback and mutes the microphone; undeafening keeps the microphone muted.
     pub fn deafen(&self, deafened: bool) {
@@ -254,6 +266,7 @@ fn run(
     let mut activation = None;
     let mut playback = (false, 0);
     let mut next = Instant::now();
+    let mut speaker_gate = echo::SpeakerGate::default();
     while !controls.stop.load(Ordering::Acquire) && port.alive() {
         let requested = port.transmitting();
         if requested != activation {
@@ -287,32 +300,18 @@ fn run(
             std::thread::park_timeout(next.saturating_duration_since(now));
             continue;
         }
-        if let Some(spurt) = activation {
-            // Old captures and previous microphone activations never become delayed speech.
-            while let Some(captured) = audio.capture() {
-                if captured.activation != spurt || captured.at.elapsed() > FRAME_TIME * 3 {
-                    continue;
-                }
-                if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
-                    let _ = port.send(frame);
-                } else {
-                    let _ = port.microphone(false);
-                    let _ = events.try_send(VoiceEvent::DeviceUnavailable {
-                        error: VoiceDeviceError::new(
-                            "encoding voice frame",
-                            "Opus encoding failed",
-                        ),
-                    });
-                }
-                break;
-            }
-        }
-        audio.play(mix(
+        let mixed = mix(
             port,
             &mut decoders,
             f32::from_bits(controls.volume.load(Ordering::Relaxed)),
             events,
-        ));
+        );
+        let allowed =
+            speaker_gate.allow(&mixed, now) || !controls.echo_prevention.load(Ordering::Acquire);
+        if let Some(spurt) = activation {
+            send_capture(port, audio.as_mut(), &mut encoder, spurt, allowed, events);
+        }
+        audio.play(mixed);
         next += FRAME_TIME;
         let now = Instant::now();
         if now > next + FRAME_TIME {
@@ -325,6 +324,34 @@ fn run(
     audio.deafen(true);
     drop(audio);
     let _ = events.try_send(VoiceEvent::Stopped);
+}
+
+fn send_capture(
+    port: &VoicePort,
+    audio: &mut dyn VoiceAudio,
+    encoder: &mut SpeechEncoder,
+    spurt: u32,
+    allowed: bool,
+    events: &mpsc::Sender<VoiceEvent>,
+) {
+    // Old captures and suppressed speaker feedback never become delayed speech.
+    for _ in 0..4 {
+        let Some(captured) = audio.capture() else {
+            break;
+        };
+        if captured.activation != spurt || captured.at.elapsed() > FRAME_TIME * 3 || !allowed {
+            continue;
+        }
+        if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
+            let _ = port.send(frame);
+        } else {
+            let _ = port.microphone(false);
+            let _ = events.try_send(VoiceEvent::DeviceUnavailable {
+                error: VoiceDeviceError::new("encoding voice frame", "Opus encoding failed"),
+            });
+        }
+        break;
+    }
 }
 
 fn mix(
