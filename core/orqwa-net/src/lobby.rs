@@ -756,6 +756,18 @@ fn elapsed(start: Option<Instant>) -> Option<Duration> {
         .filter(|at| *at <= Instant::now())
         .map(|at| Instant::now() - at)
 }
+// Joiners place the shared start half a measured round trip early, so a peer's first state
+// can arrive shortly before our own start. Count it as the start; its timestamp is still
+// checked against MAX_FUTURE and charged to the peer's budget. State in the lobby is refused.
+fn peer_elapsed(start: Option<Instant>) -> Option<Duration> {
+    let start = start?;
+    let now = Instant::now();
+    match start.checked_duration_since(now) {
+        None => Some(now - start),
+        Some(ahead) if ahead <= crate::state::MAX_FUTURE => Some(Duration::ZERO),
+        Some(_) => None,
+    }
+}
 
 fn running(at: Instant) -> Result<Message, LobbyError> {
     let now = Instant::now();
@@ -1173,7 +1185,7 @@ async fn serve_peer(
                     continue;
                 }
                 let mut mailbox = lock(&shared);
-                let elapsed = elapsed(mailbox.start).ok_or(LobbyError::Protocol)?;
+                let elapsed = peer_elapsed(mailbox.start).ok_or(LobbyError::Protocol)?;
                 if !mailbox.entered[usize::from(member.rider().value())] { return Err(LobbyError::Protocol); }
                 mailbox.inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?;
             },
@@ -1333,7 +1345,7 @@ async fn client_actor(
                 if packets == 0 { return Err(StateError::Flood.into()); } packets -= 1;
                 if prepared.is_some() {continue;}
                 let id = RiderId::new(*bytes.get(1).ok_or(LobbyError::Protocol)?)?;
-                let Some(elapsed) = elapsed(start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
+                let Some(elapsed) = peer_elapsed(start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
                 if id == me { return Err(LobbyError::Protocol); }
                 // A datagram sent before a reliable departure may arrive after it.
                 if let Some(member) = members[usize::from(id.value())] { inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?; }
@@ -1668,6 +1680,60 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_peer_clock_slightly_ahead_counts_from_the_start_but_lobby_state_does_not() {
+        let start = Instant::now() + Duration::from_secs(1);
+        assert_eq!(peer_elapsed(None), None);
+        assert_eq!(peer_elapsed(Some(start)), Some(Duration::ZERO));
+        assert_eq!(
+            peer_elapsed(Some(Instant::now() + crate::state::MAX_FUTURE * 2)),
+            None
+        );
+        tokio::time::advance(Duration::from_millis(1500)).await;
+        assert_eq!(peer_elapsed(Some(start)), Some(Duration::from_millis(500)));
+    }
+
+    #[tokio::test]
+    async fn state_arriving_just_before_the_hosts_start_keeps_the_rider_at_the_start_line() {
+        let mut host = host().await;
+        let anna = join(&host, "Anna").await;
+        let mut ben = join(&host, "Ben").await;
+        let cara = join(&host, "Cara").await;
+        let early = |me: RiderId| {
+            RiderState {
+                at: Duration::from_millis(1),
+                distance: Meters(3.0),
+                ..RiderState::default()
+            }
+            .datagram(me)
+            .unwrap()
+        };
+        // Ride state during the lobby is still a protocol violation.
+        cara.connection.send_datagram(&early(cara.me())).unwrap();
+        let LobbyEvent::Left { id } =
+            host_event(&mut host, |e| matches!(e, LobbyEvent::Left { .. })).await
+        else {
+            panic!("left");
+        };
+        assert_eq!(id, cara.me());
+        host.start(Duration::from_secs(1)).await.unwrap();
+        client_event(&mut ben, |e| matches!(e, LobbyEvent::Start { .. })).await;
+        // Anna's start estimate runs ahead of the host's: her first state arrives early.
+        anna.connection.send_datagram(&early(anna.me())).unwrap();
+        let LobbyEvent::State { id, state } = client_event(&mut ben, |e| {
+            matches!(e, LobbyEvent::State { .. } | LobbyEvent::Left { .. })
+        })
+        .await
+        else {
+            panic!("Anna was disconnected at the start line");
+        };
+        assert_eq!(id, anna.me());
+        assert_eq!(state.distance, Meters(3.0));
+        drop((anna, cara));
+        ben.close().await;
+        host.close().await;
     }
 
     #[tokio::test]

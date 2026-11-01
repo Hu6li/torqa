@@ -13,7 +13,7 @@ use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep_until, timeout_at};
 
 use crate::code::{AdmissionSecret, CodeError, Invite, Reply, RideId, RouteHash, valid_name};
-use crate::crypto::RandomError;
+use crate::crypto::{RandomError, random};
 use crate::discovery::{self, GatherError, GatherOptions};
 use crate::limits::{ConnectionBudget, ConnectionPermit, MAX_CONNECTIONS};
 use crate::tls::{self, Pinned};
@@ -27,6 +27,10 @@ const ATTEMPT: Duration = Duration::from_secs(5);
 const PROBE_EVERY: Duration = Duration::from_millis(500);
 const PROBE_LIMIT: usize = 100;
 const PROBE: &[u8] = &[0, b'o', b'q'];
+/// How often a host refreshes its advertised STUN mapping while nobody is connected through it.
+/// Joiners only probe once their reply is admitted, and home and carrier NATs often forget an
+/// idle UDP mapping within a minute; ICE refreshes its candidates as often (RFC 8445).
+pub const MAPPING_REFRESH: Duration = Duration::from_secs(15);
 const AUTH_LEN: usize = 113;
 const ACK_OK: u8 = 1;
 const ACK_WAIT: u8 = 2;
@@ -119,6 +123,7 @@ async fn until<T, E>(
 struct Path {
     endpoint: Endpoint,
     prober: StdSocket,
+    refresh: Option<SocketAddr>,
 }
 impl Drop for Path {
     fn drop(&mut self) {
@@ -159,7 +164,11 @@ impl Local {
                 local.nat = path.nat;
             }
             local.candidates.extend(path.candidates);
-            local.paths.push(Path { endpoint, prober });
+            local.paths.push(Path {
+                endpoint,
+                prober,
+                refresh: path.refresh,
+            });
         }
         if local.candidates.is_empty() {
             return Err(LinkError::NoCandidates);
@@ -352,6 +361,7 @@ struct Shared {
     budget: ConnectionBudget,
     events: mpsc::Sender<HostEvent>,
     invite: Invite,
+    sealed: AtomicBool,
 }
 
 impl Shared {
@@ -421,10 +431,22 @@ impl Host {
             budget: ConnectionBudget::new(Instant::now().into_std()),
             events: send,
             invite,
+            sealed: AtomicBool::new(false),
         });
         let mut tasks = JoinSet::new();
         for path in &local.paths {
             tasks.spawn(accept_all(path.endpoint.clone(), shared.clone()));
+            if let Some(server) = path.refresh
+                && let Ok(prober) = path.prober.try_clone()
+            {
+                tasks.spawn(keep_mapping(
+                    prober,
+                    server,
+                    path.endpoint.clone(),
+                    shared.clone(),
+                    MAPPING_REFRESH,
+                ));
+            }
         }
         Ok(Self {
             local,
@@ -444,6 +466,7 @@ impl Host {
     /// Stops all pending replies and probes when the lobby countdown begins.
     /// Future pasted replies must be refused by the lobby owner.
     pub fn seal(&mut self) {
+        self.shared.sealed.store(true, Ordering::Relaxed);
         for admission in self.shared.admissions().values_mut() {
             if admission.state == AdmissionState::Pending {
                 admission.state = AdmissionState::Expired;
@@ -545,6 +568,30 @@ impl Drop for Host {
     }
 }
 
+// A Binding indication refreshes the mapping the invite advertises; servers never answer it.
+// Once a rider is connected, QUIC keep-alives refresh the same mapping instead.
+async fn keep_mapping(
+    prober: StdSocket,
+    server: SocketAddr,
+    endpoint: Endpoint,
+    shared: Arc<Shared>,
+    every: Duration,
+) {
+    loop {
+        sleep_until(Instant::now() + every).await;
+        if shared.sealed.load(Ordering::Relaxed) {
+            return;
+        }
+        if endpoint.open_connections() > 0 {
+            continue;
+        }
+        let Ok(transaction) = random() else {
+            return;
+        };
+        let _ = prober.send_to(&crate::stun::binding_indication(&transaction), server);
+    }
+}
+
 async fn accept_all(endpoint: Endpoint, shared: Arc<Shared>) {
     let mut jobs = JoinSet::new();
     loop {
@@ -632,7 +679,9 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
             let connection = Connection(Arc::new(LiveConnection {
                 quic,
                 admission: Some(secret),
-                deadline: expires.min(end),
+                // AUTH_WAIT bounds only the credential exchange. The lobby handshake that
+                // follows shares the admission's one deadline (R161), as the joiner's does.
+                deadline: expires,
                 _permit: Some(permit),
                 _owner: None,
             }));
@@ -861,6 +910,88 @@ mod tests {
             HostEvent::Expired => panic!("reply expired"),
         }
     }
+    fn ipv4(host: &Host) -> &Path {
+        host.local
+            .paths
+            .iter()
+            .find(|p| p.endpoint.local_addr().unwrap().is_ipv4())
+            .expect("IPv4 loopback path")
+    }
+
+    #[tokio::test]
+    async fn an_admitted_host_connection_keeps_the_whole_admission_window_for_the_lobby() {
+        let mut opts = options();
+        opts.window = Duration::from_secs(10);
+        let mut host = Host::open("Anna", "Galibier", route(), &opts)
+            .await
+            .unwrap();
+        let joiner = Joiner::open(host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        let admitted = Instant::now();
+        host.admit(joiner.reply()).unwrap();
+        let client = joiner.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert!(peer.admission_deadline() >= admitted + opts.window);
+        drop((client, peer));
+        host.close().await;
+    }
+
+    // At most one refresh may already be on its way when the condition changes.
+    async fn falls_silent(server: &tokio::net::UdpSocket, every: Duration) -> bool {
+        let mut packet = [0; 64];
+        for _ in 0..2 {
+            if timeout(every * 4, server.recv_from(&mut packet))
+                .await
+                .is_err()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn an_advertised_mapping_is_refreshed_only_while_waiting_for_a_rider() {
+        let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let mut host = host().await;
+        let path = ipv4(&host);
+        let every = Duration::from_millis(30);
+        host.tasks.spawn(keep_mapping(
+            path.prober.try_clone().unwrap(),
+            server.local_addr().unwrap(),
+            path.endpoint.clone(),
+            host.shared.clone(),
+            every,
+        ));
+        let mut packet = [0; 64];
+        let (len, _) = timeout(every * 4, server.recv_from(&mut packet))
+            .await
+            .expect("a refresh while nobody is connected")
+            .unwrap();
+        assert_eq!(len, 20);
+        assert_eq!(packet[..2], [0x00, 0x11], "a Binding indication");
+        assert_eq!(packet[4..8], [0x21, 0x12, 0xa4, 0x42]);
+
+        // Each path refreshes its own mapping, so connect through the refreshed one.
+        let mut invite = host.invite().clone();
+        invite.candidates.retain(|c| c.addr().is_ipv4());
+        let joiner = Joiner::open(invite, route(), &options()).await.unwrap();
+        host.admit(joiner.reply()).unwrap();
+        let client = joiner.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert!(
+            falls_silent(&server, every).await,
+            "QUIC keep-alives refresh the mapping once a rider is connected"
+        );
+        drop((client, peer));
+        host.seal();
+        assert!(
+            falls_silent(&server, every).await,
+            "a sealed invite needs no refresh"
+        );
+        host.close().await;
+    }
 
     #[tokio::test]
     async fn only_an_admitted_joiner_gets_a_connection_and_both_can_talk() {
@@ -1033,7 +1164,7 @@ mod tests {
         let mut host = host().await;
         host.tasks.abort_all();
         while host.tasks.join_next().await.is_some() {}
-        let endpoint = host.local.paths[0].endpoint.clone();
+        let endpoint = ipv4(&host).endpoint.clone();
         let mut invite = host.invite().clone();
         invite.candidates.retain(|c| c.addr().is_ipv4());
         let task = tokio::spawn(async move {

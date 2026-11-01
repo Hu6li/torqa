@@ -178,6 +178,28 @@ some are globally routed; those are not required direct interface candidates in 
 The transport integration must use both [Incoming admission controls](https://docs.rs/quinn/0.11.12/quinn/struct.Incoming.html)
 and explicit [QUIC buffer/stream limits](https://docs.rs/quinn/0.11.12/quinn/struct.TransportConfig.html).
 
+### Connection reliability — 2026-11-01
+
+A host asks STUN once, when it opens. Joiners probe it only after the host admits their
+reply, which can be minutes later, while home and carrier NATs often forget an idle UDP
+mapping within a minute; carrier NATs then usually pick another port, so the invite's address
+stops working. Each path that advertises a STUN mapping now sends a 20-byte Binding indication
+(RFC 8489, never answered) to the server that observed it every 15 seconds, the interval ICE
+uses (RFC 8445). It pauses while a connection uses that path, whose QUIC keep-alives refresh
+the same mapping, and ends when the invite is sealed or the host owner is dropped. Disabling
+STUN sends none. Paths sort IPv6 first, as Happy Eyeballs does (RFC 8305): carrier NAT often
+shares IPv4 while IPv6 stays directly reachable, and the existing stagger still tries IPv4
+within 250 ms.
+
+An admitted connection's lobby handshake now keeps the admission's single deadline; the
+three-second limit bounds only the credential exchange. State that arrives before the local
+start, by at most the two seconds a peer timestamp may lead, counts from the start: joiners
+estimate it from half the round trip. State during the lobby remains a protocol violation.
+
+There is still no relay. A host behind carrier-grade NAT whose mappings change per destination
+cannot be reached; the usage guide tells riders that the host must not be behind CGNAT and how
+to check, and a rider-provided relay remains a possible later decision.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

@@ -47,6 +47,8 @@ pub struct BoundSocket {
     pub candidates: Vec<Candidate>,
     /// Evidence from the configured STUN servers, not a guarantee about other destinations.
     pub nat: NatObservation,
+    /// The server whose observed mapping is advertised; a host refreshes it while waiting.
+    pub refresh: Option<SocketAddr>,
 }
 
 /// Discovery did not provide a socket. Failures contain no invite or admission secrets.
@@ -131,19 +133,23 @@ pub async fn bind(
             } else {
                 stun::discover(&socket, &options.stun_servers, options.policy, deadline).await?
             };
-            for address in &seen {
-                if let Ok(candidate) = Candidate::new(CandidateKind::Stun, *address, options.policy)
-                    && !candidates.iter().any(|c| c.addr() == *address)
+            let mut refresh = None;
+            for mapping in &seen {
+                if let Ok(candidate) =
+                    Candidate::new(CandidateKind::Stun, mapping.seen, options.policy)
+                    && !candidates.iter().any(|c| c.addr() == mapping.seen)
                 {
                     candidates.push(candidate);
+                    refresh = Some(mapping.server);
                     break;
                 }
             }
-            let nat = observation(&seen);
+            let nat = observation(&seen.iter().map(|m| m.seen).collect::<Vec<_>>());
             Ok(BoundSocket {
                 socket,
                 candidates,
                 nat,
+                refresh,
             })
         });
     }
@@ -158,8 +164,9 @@ pub async fn bind(
     if bound.is_empty() {
         return Err(GatherError::Socket);
     }
-    // IPv4 first is deterministic even when IPv6 discovery completes before it.
-    bound.sort_by_key(|path| path.socket.local_addr().is_ok_and(|a| a.is_ipv6()));
+    // IPv6 first, as Happy Eyeballs does (RFC 8305): carrier NAT often shares a rider's IPv4
+    // address while IPv6 stays directly reachable. Deterministic whichever finishes first.
+    bound.sort_by_key(|path| path.socket.local_addr().is_ok_and(|a| a.is_ipv4()));
     Ok(bound)
 }
 

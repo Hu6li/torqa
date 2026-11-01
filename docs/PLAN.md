@@ -889,6 +889,10 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
 - [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups
   during create/join, inspect invitations offline, and confirm before discovery or connections
+- [x] Connection reliability: hosts refresh their advertised STUN mapping while waiting for the
+  first rider, IPv6 candidates first, the host's lobby handshake keeps the admission deadline,
+  and state arriving shortly before the host's start no longer drops a rider; the usage guides
+  say a host must not be behind carrier-grade NAT and how to check
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits
