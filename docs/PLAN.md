@@ -226,6 +226,8 @@ Built in rideable steps:
 - [x] i18n: all texts translatable, German translation, language per rider (R24)
 - [x] German reviewed text by text (#261): contextual translations and classified core errors
   with localized explanations, unchanged diagnostic details and session error history (R74)
+- [x] Failures at the bottom right on a card with a red edge and a warning sign, the newest
+  explained and earlier ones counted (R178, #436)
 
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
 - [x] Video decoding in the core: frame for any moment, forward/backward/seek, scaled to 1080p

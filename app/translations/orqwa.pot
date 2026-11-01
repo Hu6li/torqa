@@ -135,6 +135,10 @@ msgstr ""
 msgid "+ Step"
 msgstr ""
 
+#: app/ui/failure_details.gd
+msgid "+%d earlier"
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "1. Import the GPX route of the ride shown in the video."
 msgstr ""
