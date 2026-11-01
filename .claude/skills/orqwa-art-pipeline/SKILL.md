@@ -158,8 +158,10 @@ footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`;
 nearby and distant silhouettes together. Nordic buildings (`art/buildings/nordic.py`) use
 the `nordic_wood` instance-tinted plank material and their own country outlines, palette and
 model kinds. Keep the Nordic castle's distant generic keep visually compatible. Asian and
-Nordic outlines are independent of climate; see `docs/regional-buildings.md` before extending
-the regional sets.
+Nordic outlines are independent of climate. French models (`art/buildings/french.py`) use
+the French palette and a simplified metropolitan-France/Corsica outline; keep their pale
+village-house shells and slate-roofed château silhouettes aligned. See
+`docs/regional-buildings.md` before extending the regional sets.
 
 ## Tree LODs
 

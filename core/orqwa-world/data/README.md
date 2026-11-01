@@ -20,3 +20,7 @@ the traffic-territory outlines from the same source. No country-coder code is in
 the Faroe Islands, Åland, Svalbard and Jan Mayen: nine country/territory polygons from the
 same revision. Greenland and Bouvet Island are excluded. The Nordic classifier is explicit
 rather than treating all of Northern Europe as Nordic.
+
+`france.json` is a coarse hand-drawn outline of metropolitan France and Corsica for regional
+selection. It deliberately excludes overseas France and other French-speaking countries;
+the simplified line is suitable for a scenery heuristic, not boundary display or legal use.

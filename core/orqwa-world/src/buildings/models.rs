@@ -23,7 +23,7 @@ pub(crate) struct Model {
     pub(crate) name: String,
     /// `house`, `chalet`, `farmhouse`, `church`, `chapel`, `shed`, `office`, `public`,
     /// `hotel`, `castle`, `lighthouse`, `tropical`, `japanese_house`, `japanese_castle`,
-    /// `nordic_house` or `nordic_castle`.
+    /// `nordic_house`, `nordic_castle`, `french_house` or `french_castle`.
     kind: String,
     /// `gable`, `hipped` or `flat`.
     pub(crate) roof: String,
@@ -81,6 +81,7 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
     let kind = match wanted.kind {
         Kind::House if wanted.tropical => "tropical",
         Kind::House if wanted.region == Region::Asia => "japanese_house",
+        Kind::House if wanted.region == Region::France => "french_house",
         Kind::House if wanted.region == Region::Nordic => "nordic_house",
         Kind::House => "house",
         Kind::Chalet => "chalet",
@@ -92,6 +93,7 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Public => "public",
         Kind::Hotel => "hotel",
         Kind::Castle if wanted.region == Region::Asia => "japanese_castle",
+        Kind::Castle if wanted.region == Region::France => "french_castle",
         Kind::Castle if wanted.region == Region::Nordic => "nordic_castle",
         Kind::Castle => "castle",
         Kind::Lighthouse => "lighthouse",
@@ -434,6 +436,46 @@ mod tests {
                     "tropical"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn french_models_are_selected_only_in_france() {
+        for (kind, prefix) in [
+            (Kind::House, "french_house"),
+            (Kind::Castle, "french_castle"),
+        ] {
+            let (half_length, half_width) = if kind == Kind::House {
+                (6.0, 4.5)
+            } else {
+                (11.5, 8.0)
+            };
+            let rect = Rect {
+                half_length,
+                half_width,
+                ..Rect::square((0.0, 0.0), (1.0, 0.0), 1.0)
+            };
+            let wanted = Wanted {
+                kind,
+                tropical: false,
+                region: Region::France,
+                chapel: false,
+                storeys: Some(3),
+                hipped: true,
+            };
+            let fit = fitting(&rect, wanted, &Dice(23)).expect("French model");
+            assert!(fit.model.name.starts_with(prefix));
+            let generic = Wanted {
+                region: Region::Generic,
+                ..wanted
+            };
+            assert!(
+                !fitting(&rect, generic, &Dice(23))
+                    .unwrap()
+                    .model
+                    .name
+                    .starts_with("french_")
+            );
         }
     }
 }

@@ -48,6 +48,7 @@ async fn regional_rides_place_houses_and_only_mapped_castles_offline() {
         (37.57, 126.98, "japanese_house", "japanese_castle"),
         (26.21, 127.68, "tropical", "japanese_castle"),
         (59.33, 18.07, "nordic_house", "nordic_castle"),
+        (48.86, 2.35, "french_house", "french_castle"),
         (46.95, 7.45, "house", "castle"),
     ] {
         let xml = format!(

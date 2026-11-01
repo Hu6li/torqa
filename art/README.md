@@ -196,8 +196,11 @@ caps, plus three `japanese_castle` keeps with battered stone bases and three or 
 receding roofs. Eight wall colours and six roof colours give neighbouring buildings more
 variety. The Nordic set (`nordic.py`) adds four painted-plank houses with bright trim and
 steep gables, plus three stone keeps with four corner towers. Seven wall colours and five
-roof colours span red, ochre, cream, green and blue. Regional selectors preserve tropical
-lowland houses; castles remain mapped points of interest. See
+roof colours span red, ochre, cream, green and blue. The French set (`french.py`) adds four
+plastered village houses with shutters and four château-inspired stone keeps with roofed
+corner pavilions. Six pale or muted wall colours and five slate or terracotta roof colours add
+variety. Regional selectors preserve tropical lowland houses; castles remain mapped points of
+interest. See
 [regional buildings](../docs/regional-buildings.md) for placement, references, rebuild
 commands and validation. These are own-work archetypes, not replicas.
 
@@ -461,6 +464,14 @@ Nordic starter set:
 | ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_s.jpg)<br>`nordic_house_1_s` | ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_m.jpg)<br>`nordic_house_1_m` | ![Nordic two-storey house](../docs/images/models/buildings/nordic_house_2_m.jpg)<br>`nordic_house_2_m` |
 | ![Nordic two-storey house, large](../docs/images/models/buildings/nordic_house_2_l.jpg)<br>`nordic_house_2_l` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_s.jpg)<br>`nordic_castle_3_s` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_m.jpg)<br>`nordic_castle_3_m` |
 | ![Nordic four-storey keep](../docs/images/models/buildings/nordic_castle_4_l.jpg)<br>`nordic_castle_4_l` | | |
+
+French starter set:
+
+| | | |
+|---|---|---|
+| ![French one-storey house](../docs/images/models/buildings/french_house_1_s.jpg)<br>`french_house_1_s` | ![French one-storey house, medium](../docs/images/models/buildings/french_house_1_m.jpg)<br>`french_house_1_m` | ![French two-storey house](../docs/images/models/buildings/french_house_2_m.jpg)<br>`french_house_2_m` |
+| ![French two-storey house, large](../docs/images/models/buildings/french_house_2_l.jpg)<br>`french_house_2_l` | ![French three-storey château keep](../docs/images/models/buildings/french_castle_3_s.jpg)<br>`french_castle_3_s` | ![French three-storey château keep, medium](../docs/images/models/buildings/french_castle_3_m.jpg)<br>`french_castle_3_m` |
+| ![French four-storey château keep](../docs/images/models/buildings/french_castle_4_l.jpg)<br>`french_castle_4_l` | | |
 
 ### Tree detail levels
 

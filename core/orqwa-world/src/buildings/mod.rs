@@ -127,6 +127,9 @@ static ASIAN_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.asian_ro
 /// Painted timber walls and steep roofs of Nordic houses and keeps.
 static NORDIC_WALLS: Colours = LazyLock::new(|| palette::list("buildings.nordic_walls"));
 static NORDIC_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.nordic_roofs"));
+/// Pale render, ochre and muted façades with slate or terracotta roofs in France.
+static FRENCH_WALLS: Colours = LazyLock::new(|| palette::list("buildings.french_walls"));
+static FRENCH_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.french_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
 /// Shop fronts' frames, and awnings.
@@ -775,6 +778,9 @@ fn colours(plot: &Plot, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32
             Some(Landmark::Castle) if plot.region == Region::Nordic => {
                 nordic_paints(plot.building, dice)
             }
+            Some(Landmark::Castle) if plot.region == Region::France => {
+                french_paints(plot.building, dice)
+            }
             Some(Landmark::Castle) => castle_paints(plot.building, dice),
             Some(Landmark::Lighthouse) => lighthouse_paints(dice),
             None => church_paints(plot.building, dice),
@@ -825,7 +831,8 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     let tropical = plot.climate.tropical_at(ground);
     let asian = plot.region == Region::Asia;
     let nordic = plot.region == Region::Nordic;
-    let regional = asian || nordic;
+    let french = plot.region == Region::France;
+    let regional = asian || nordic || french;
     let alpine =
         !tropical && !regional && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     match plot.setting {
@@ -957,6 +964,7 @@ fn design(
     match kind {
         Kind::House if tropical => recipe.tropical_house(),
         Kind::House if region == Region::Asia => recipe.japanese_house(),
+        Kind::House if region == Region::France => recipe.french_house(),
         Kind::House if region == Region::Nordic => recipe.nordic_house(),
         Kind::House => recipe.house(),
         Kind::Chalet => recipe.chalet(),
@@ -1014,6 +1022,23 @@ impl Recipe<'_> {
         design.verge = 0.5;
         design.chimney = true;
         design.gable_windows = None;
+        design
+    }
+
+    fn french_house(&self) -> Design {
+        let mut design = self.house();
+        let (wall, roof) = french_paints(self.building, self.dice);
+        design.wall = wall;
+        design.roof_paint = RoofPaint {
+            top: roof,
+            under: Paint::new(*DARK_TIMBER, Style::Boards),
+            gables: wall.with(Style::Blank),
+        };
+        design.pitch_degrees = 38.0;
+        design.max_rise = 4.8;
+        design.overhang = 0.55;
+        design.verge = 0.45;
+        design.chimney = true;
         design
     }
 
@@ -1697,6 +1722,17 @@ fn nordic_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     (
         Paint::new(dice.tint(wall), Style::Plaster),
         Paint::new(dice.pick(2, &NORDIC_ROOFS), Style::Tiles),
+    )
+}
+
+fn french_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+    let wall = building.color.map_or_else(
+        || dice.pick(1, &FRENCH_WALLS),
+        |mapped| nearest(mapped, &FRENCH_WALLS),
+    );
+    (
+        Paint::new(dice.tint(wall), Style::Plaster),
+        Paint::new(dice.pick(2, &FRENCH_ROOFS), Style::Tiles),
     )
 }
 
@@ -2481,6 +2517,30 @@ mod tests {
                 .zip(pair[1].iter())
                 .any(|(a, b)| (a - b).abs() > 0.001)
         }));
+    }
+
+    #[test]
+    fn french_houses_keep_their_style_in_the_mountains_and_vary_colours() {
+        for id in 0..20 {
+            let building = untagged(id);
+            let plot = Plot {
+                region: Region::France,
+                ..plot(&building, Setting::Countryside, false)
+            };
+            assert_eq!(kind(&plot, 600.0, 1500.0, &Dice(id)), Kind::House);
+            let design = design(
+                Kind::House,
+                &building,
+                true,
+                false,
+                Region::France,
+                &Dice(id),
+            );
+            assert!(design.chimney);
+            assert!(FRENCH_ROOFS.contains(&design.roof_paint.top.rgb));
+        }
+        assert!(FRENCH_WALLS.len() >= 6);
+        assert!(FRENCH_ROOFS.len() >= 5);
     }
 
     #[test]

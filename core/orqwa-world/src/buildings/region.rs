@@ -2,11 +2,12 @@
 
 use std::sync::LazyLock;
 
-/// Asian and Nordic rides use their regional archetypes; other places stay generic.
+/// Asian, French and Nordic rides use their regional archetypes; other places stay generic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Region {
     Generic,
     Asia,
+    France,
     Nordic,
 }
 
@@ -49,6 +50,8 @@ static ASIA: LazyLock<Vec<BoundedPolygon>> =
     LazyLock::new(|| bounded(include_str!("../../data/asia.json")));
 static NORDIC: LazyLock<Vec<BoundedPolygon>> =
     LazyLock::new(|| bounded(include_str!("../../data/nordic.json")));
+static FRANCE: LazyLock<Vec<BoundedPolygon>> =
+    LazyLock::new(|| bounded(include_str!("../../data/france.json")));
 
 fn in_region(region: &[BoundedPolygon], (lat, lon): (f64, f64)) -> bool {
     region.iter().any(|polygon| {
@@ -72,6 +75,8 @@ impl Region {
         // UN M49 Asia region polygons (142), with per-island bounds to keep lookups cheap.
         if in_region(&ASIA, (lat, lon)) {
             Self::Asia
+        } else if in_region(&FRANCE, (lat, lon)) {
+            Self::France
         } else if in_region(&NORDIC, (lat, lon)) {
             Self::Nordic
         } else {
@@ -112,7 +117,6 @@ mod tests {
         }
         // Europe, Africa, the Americas, Australia and Switzerland remain generic.
         for place in [
-            (48.86, 2.35),
             (-1.29, 36.82),
             (40.71, -74.01),
             (-33.87, 151.21),
@@ -145,6 +149,22 @@ mod tests {
             (52.52, 13.40),
         ] {
             assert_eq!(Region::at(place), Region::Generic, "{place:?}");
+        }
+    }
+
+    #[test]
+    fn french_architecture_covers_metropolitan_france_and_corsica_only() {
+        for place in [(48.86, 2.35), (43.30, 5.37), (48.58, 7.75), (42.04, 9.01)] {
+            assert_eq!(Region::at(place), Region::France, "{place:?}");
+        }
+        for place in [
+            (50.85, 4.35),   // Brussels
+            (46.95, 7.45),   // Bern
+            (43.74, 7.42),   // Monaco
+            (42.55, 1.52),   // Andorra
+            (18.54, -72.34), // Haiti
+        ] {
+            assert_ne!(Region::at(place), Region::France, "{place:?}");
         }
     }
 }

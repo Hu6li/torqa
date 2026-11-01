@@ -62,6 +62,13 @@
     {"name": "nordic_house_2_l", "kind": "nordic_house", "roof": "gable", "storeys": 2, "length": 15.0, "width": 10.5, "pitch": 38},
     {"name": "nordic_castle_3_s", "kind": "nordic_castle", "roof": "gable", "storeys": 3, "length": 16.0, "width": 12.0, "pitch": 42},
     {"name": "nordic_castle_3_m", "kind": "nordic_castle", "roof": "gable", "storeys": 3, "length": 23.0, "width": 16.0, "pitch": 42},
-    {"name": "nordic_castle_4_l", "kind": "nordic_castle", "roof": "gable", "storeys": 4, "length": 32.0, "width": 22.0, "pitch": 40}
+    {"name": "nordic_castle_4_l", "kind": "nordic_castle", "roof": "gable", "storeys": 4, "length": 32.0, "width": 22.0, "pitch": 40},
+    {"name": "french_house_1_s", "kind": "french_house", "roof": "hipped", "storeys": 1, "length": 9.5, "width": 7.5, "pitch": 38, "cover": "slate"},
+    {"name": "french_house_1_m", "kind": "french_house", "roof": "hipped", "storeys": 1, "length": 12.0, "width": 9.0, "pitch": 36, "cover": "tiles"},
+    {"name": "french_house_2_m", "kind": "french_house", "roof": "hipped", "storeys": 2, "length": 12.0, "width": 9.0, "pitch": 36, "cover": "slate"},
+    {"name": "french_house_2_l", "kind": "french_house", "roof": "hipped", "storeys": 2, "length": 15.0, "width": 10.5, "pitch": 34, "cover": "tiles"},
+    {"name": "french_castle_3_s", "kind": "french_castle", "roof": "hipped", "storeys": 3, "length": 16.0, "width": 12.0, "pitch": 45},
+    {"name": "french_castle_3_m", "kind": "french_castle", "roof": "hipped", "storeys": 3, "length": 23.0, "width": 16.0, "pitch": 45},
+    {"name": "french_castle_4_l", "kind": "french_castle", "roof": "hipped", "storeys": 4, "length": 32.0, "width": 22.0, "pitch": 42}
   ]
 }

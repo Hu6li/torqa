@@ -146,6 +146,76 @@
    "storeys": 1,
    "pitch": 42
   },
+  "french_castle_3_m": {
+   "kind": "french_castle",
+   "roof": "hipped",
+   "length": 23.0,
+   "width": 16.0,
+   "eaves": 10.5,
+   "height": 18.53,
+   "storeys": 3,
+   "pitch": 45
+  },
+  "french_castle_3_s": {
+   "kind": "french_castle",
+   "roof": "hipped",
+   "length": 16.0,
+   "width": 12.0,
+   "eaves": 10.5,
+   "height": 17.01,
+   "storeys": 3,
+   "pitch": 45
+  },
+  "french_castle_4_l": {
+   "kind": "french_castle",
+   "roof": "hipped",
+   "length": 32.0,
+   "width": 22.0,
+   "eaves": 13.5,
+   "height": 22.977,
+   "storeys": 4,
+   "pitch": 42
+  },
+  "french_house_1_m": {
+   "kind": "french_house",
+   "roof": "hipped",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 3.5,
+   "height": 7.919,
+   "storeys": 1,
+   "pitch": 36
+  },
+  "french_house_1_s": {
+   "kind": "french_house",
+   "roof": "hipped",
+   "length": 9.5,
+   "width": 7.5,
+   "eaves": 3.5,
+   "height": 7.58,
+   "storeys": 1,
+   "pitch": 38
+  },
+  "french_house_2_l": {
+   "kind": "french_house",
+   "roof": "hipped",
+   "length": 15.0,
+   "width": 10.5,
+   "eaves": 6.4,
+   "height": 11.091,
+   "storeys": 2,
+   "pitch": 34
+  },
+  "french_house_2_m": {
+   "kind": "french_house",
+   "roof": "hipped",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 6.4,
+   "height": 10.819,
+   "storeys": 2,
+   "pitch": 36
+  },
   "garage_m": {
    "kind": "shed",
    "roof": "gable",

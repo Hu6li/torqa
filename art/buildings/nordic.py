@@ -107,7 +107,9 @@ def nordic_castle(spec):
 
     # Four square towers project beyond the keep. Their pyramidal tiled roofs echo Nordic
     # brick and stone fortresses without borrowing the Asian castle silhouette.
-    for x, y in rect.corners():
+    # The corner towers meet the inset keep walls; placing them at the platform corners leaves
+    # them visibly detached from the building above the stone base.
+    for x, y in keep.corners():
         width = min(3.2, rect.width * 0.22)
         mesh.box((x - width / 2, y - width / 2, platform),
                  (x + width / 2, y + width / 2, eaves + 0.8), "plaster")

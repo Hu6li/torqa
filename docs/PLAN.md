@@ -457,6 +457,9 @@ physically based materials and light, restyled group by group.
 - [x] Nordic regional architecture (R164): four painted-timber houses and three stone keeps,
   selected for Denmark, Finland, Iceland, Norway, Sweden and Nordic territories from bundled
   outlines. Red, ochre, cream, green and blue walls and roofs; castles remain mapped POIs.
+- [x] French regional architecture (R164): four plastered village houses and three
+  château-inspired stone keeps for metropolitan France and Corsica, in pale wall colours and
+  slate or terracotta roofs. [Assets and validation](regional-buildings.md).
 - [ ] More locally distinct architecture sets and house/landmark types across Asia.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
