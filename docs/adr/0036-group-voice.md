@@ -51,8 +51,11 @@ returns. Real hardware/permissions/hotplug acceptance remains a separate manual 
   for or remove a reused slot. Voice can therefore operate safely before the countdown too.
 - At most 256 compressed bytes per frame; per-speaker ingress burst ten, sustained 50 Hz,
   including malformed/duplicate packets. Forwarded ingress additionally has an aggregate
-  80-packet burst and 400 Hz allowance, including unknown/departed speakers. Consent controls
-  have a burst of eight and sustained one per second. Invalid/flooding peers are disconnected;
+  80-packet burst and 400 Hz allowance, including unknown/departed speakers. Exhaustion drops
+  disposable media before parsing; it does not end the group. A separate connection guard counts
+  every raw datagram, allows 880 per one-second window and drops excess, closing only on the third
+  consecutive overloaded window. Consent controls have a burst of eight and sustained one per
+  second. Malformed packets and sustained raw abuse still disconnect the offending connection;
   invalid compressed audio silences only that speaker locally, preserving other conversation.
 - Each speaker has eight fixed jitter slots, a 60 ms prebuffer, at most three concealment
   frames and no playback of speech idle for 250 ms. Delayed consumers skip history. Source
@@ -61,6 +64,8 @@ returns. Real hardware/permissions/hotplug acceptance remains a separate manual 
   are rejected before decode. Native hardening remains enabled.
 - Capture and output callback queues have four frames each; callbacks never perform network
   work or wait for it. Captures older than 60 ms and output older than 100 ms are discarded.
+  Each live 20 ms tick drains at most four captures and encodes only the freshest valid one;
+  late/control wakeups never emit catch-up speech.
   At most 640 of each connection's 4,096 datagram-send bytes are available for speech,
   leaving space for disposable ride state. Congestion drops speech instead of blocking.
 - Each speaker has a separate decoder. Mixing normalizes by speaker count, accepts finite
@@ -245,6 +250,41 @@ stream. This avoids a misleading invalid-control diagnostic after the organizer 
 Both regressions fail with their old guards restored. A fifteen-second encrypted Opus test keeps
 the organizer listening and the joiner transmitting through simulated devices. macOS/Windows CI
 also runs the deterministic voice-clock regressions; physical-device acceptance remains manual.
+
+## Amendment — recover from delayed media instead of ending the group (2026-11-01, #428, R179)
+
+The next native report reached the original fatal token-bucket overflow with only a few spoken
+words. The codec sends 50 constant-size packets per second while unmuted, including silence:
+these budgets measure arrivals, not words or loudness. Network and scheduler delays can release
+several valid packets together. Treating the eleventh packet in a burst as a connection failure
+confused congestion with abuse. The aggregate forwarded-voice and state buckets had the same flaw.
+
+Preserve all media rates, queue sizes, authentication, membership epochs and decoding bounds.
+Exhausted delivery buckets now drop packets before parsing/forwarding; they refill normally and
+accept fresh audio and positions without membership or consent changes. Count all raw datagrams
+separately before media parsing, including malformed, duplicate, unknown and departed senders.
+At 880 packets per second (twice eight riders' 50 Hz audio plus 5 Hz state), an overloaded window
+drops excess immediately. Only three consecutive overloaded windows end the connection; a quiet
+window resets that history. Thus one delayed batch cannot close a lobby, but sustained excess
+cannot grow decoding, fan-out or queues. Reliable controls retain their existing hard budgets.
+
+The audio worker now schedules its next tick from the live tick, without accumulating missed
+transmissions, and consumes only the freshest valid frame from the four-frame capture queue.
+Suppressed feedback, superseded words, stale captures and old activations never replay later.
+
+A deeper timing regression also delays the very first speech packet. Anchoring the sequence clock
+to that first arrival rejects every following live packet once the initial delay disappears.
+Use the speaker buffer's admission time as the earlier timing bound, retaining the first sequence
+number, fixed anchor and clock-skew allowance. Actual work remains limited by the independent
+ingress budgets. Huge future jumps and repeated staircase advances still fail validation without
+changing ordering. There is no wire, service or dependency change.
+
+The forwarded-burst and delayed-first-arrival regressions fail with their original guards. Real
+loopback QUIC tests cover both receivers, multiple forwarded speakers, state recovery, reliable
+countdown after overload and isolation of persistent raw floods. Real Opus with simulated devices
+covers current silence superseding queued speech, subsequent fresh words and every speaking rider's
+audio worker stalling/resuming while group state continues. macOS and Windows CI run these
+simulated conversations as well as lobby/voice validation; physical-device acceptance stays manual.
 
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),

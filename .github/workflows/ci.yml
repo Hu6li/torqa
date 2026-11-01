@@ -188,6 +188,8 @@ jobs:
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
       - name: Test native voice jitter validation
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
+      - name: Test native voice pacing and simulated conversations
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked
       - id: ffmpeg
         uses: actions/cache@v6
         with:
@@ -294,6 +296,8 @@ jobs:
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
       - name: Test native voice jitter validation
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
+      - name: Test native voice pacing and simulated conversations
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked
       - id: ffmpeg
         uses: actions/cache@v6
         with:

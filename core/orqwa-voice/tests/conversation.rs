@@ -30,6 +30,8 @@ struct Probe {
     invalidated: AtomicBool,
     recovered: AtomicUsize,
     played: AtomicUsize,
+    captures: Mutex<Option<mpsc::Receiver<CapturedVoice>>>,
+    captured: AtomicUsize,
 }
 struct Audio {
     probe: Arc<Probe>,
@@ -51,6 +53,11 @@ impl VoiceAudio for Audio {
     }
     fn capture(&mut self) -> Option<CapturedVoice> {
         let activation = self.activation?;
+        if let Some(queue) = self.probe.captures.lock().unwrap().as_ref() {
+            let frame = queue.try_recv().ok()?;
+            self.probe.captured.fetch_add(1, Ordering::Release);
+            return Some(frame);
+        }
         let samples = std::array::from_fn(|_| {
             let sample = self.phase.sin() * 0.2;
             self.phase = (self.phase + self.frequency * std::f32::consts::TAU / 48_000.0)
@@ -331,6 +338,73 @@ async fn sustained_joiner_microphone_preserves_an_organizer_that_is_listening() 
 }
 
 #[tokio::test]
+async fn a_capture_backlog_sends_the_freshest_audio_and_then_keeps_speech_working() {
+    let host = host().await;
+    let mut anna = join(&host, "Queued capture").await;
+    let mut ben = join(&host, "Listener").await;
+    let a = Arc::new(Probe::default());
+    let b = Arc::new(Probe::default());
+    let (captures, queue) = mpsc::sync_channel(4);
+    *a.captures.lock().unwrap() = Some(queue);
+    let (release, stall) = mpsc::channel();
+    *a.stall.lock().unwrap() = Some(stall);
+    let anna_voice = chat(&mut anna, &a, 440.0).await;
+    let ben_voice = chat(&mut ben, &b, 660.0).await;
+    until(|| a.stalled.load(Ordering::Acquire)).await;
+    anna_voice.microphone(true).unwrap();
+    let tone: PcmFrame = std::array::from_fn(|index| {
+        #[allow(clippy::cast_precision_loss)] // fixed 960-sample test frame
+        let t = index as f32 / 48_000.0;
+        (t * 440.0 * std::f32::consts::TAU).sin() * 0.2
+    });
+    let at = Instant::now();
+    // The old word is superseded by current silence in the callback queue.
+    captures
+        .send(CapturedVoice {
+            activation: 1,
+            at: at.checked_sub(Duration::from_millis(1)).unwrap(),
+            samples: tone,
+        })
+        .unwrap();
+    for _ in 0..3 {
+        captures
+            .send(CapturedVoice {
+                activation: 1,
+                at,
+                samples: [0.0; 960],
+            })
+            .unwrap();
+    }
+    release.send(()).unwrap();
+    until(|| a.captured.load(Ordering::Acquire) == 4).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        b.heard.load(Ordering::Acquire),
+        0,
+        "a queued word must not replay after current silence"
+    );
+    // Fresh words still cross the real Opus/QUIC path after the backlog is gone.
+    for _ in 0..15 {
+        captures
+            .send(CapturedVoice {
+                activation: 1,
+                at: Instant::now(),
+                samples: tone,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    until(|| b.heard.load(Ordering::Acquire) > 2).await;
+    assert!(anna_voice.microphone_enabled());
+    host.start(Duration::from_secs(1)).await.unwrap();
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
+    host.close().await;
+}
+
+#[tokio::test]
 async fn malformed_speech_mutes_only_that_source_and_group_drop_closes_live_microphones() {
     let host = host().await;
     let mut anna = join(&host, "Anna").await;
@@ -410,6 +484,57 @@ async fn a_full_group_can_talk_while_ride_state_keeps_flowing() {
     })
     .await
     .unwrap();
+    // All live audio workers can stall and resume without replaying a catch-up
+    // conversation or revoking consent. Network/state actors keep running.
+    let mut releases = Vec::new();
+    for probe in &probes {
+        let (release, stall) = mpsc::channel();
+        *probe.stall.lock().unwrap() = Some(stall);
+        releases.push(release);
+    }
+    until(|| {
+        probes
+            .iter()
+            .all(|probe| probe.stalled.load(Ordering::Acquire))
+    })
+    .await;
+    for rider in &riders {
+        rider
+            .send_state(RiderState {
+                at: STATE_EVERY,
+                distance: Meters(27.0),
+                ..RiderState::default()
+            })
+            .unwrap();
+    }
+    let mut updated = [false; 8];
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while updated.iter().filter(|updated| **updated).count() < 7 {
+            if let Some(LobbyEvent::State { id, state }) = host.next().await
+                && state.distance == Meters(27.0)
+            {
+                updated[usize::from(id.value())] = true;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let heard: Vec<_> = probes
+        .iter()
+        .map(|probe| probe.heard.load(Ordering::Acquire))
+        .collect();
+    for release in releases {
+        release.send(()).unwrap();
+    }
+    until(|| {
+        probes
+            .iter()
+            .zip(&heard)
+            .all(|(probe, before)| probe.heard.load(Ordering::Acquire) > before + 3)
+    })
+    .await;
+    assert!(chats.iter().all(VoiceChat::microphone_enabled));
     for voice in chats {
         voice.close().await;
     }

@@ -5,6 +5,7 @@ pub mod codec;
 pub mod device;
 mod echo;
 pub mod microphone_test;
+mod pacing;
 mod speech_activity;
 
 use std::sync::Arc;
@@ -267,7 +268,7 @@ fn run(
     let mut decoders: [Option<(u64, SpeechDecoder)>; MAX_RIDERS] = std::array::from_fn(|_| None);
     let mut activation = None;
     let mut playback = (false, 0);
-    let mut next = Instant::now();
+    let mut pacer = pacing::Pacer::new(Instant::now());
     let mut speaker_gate = echo::SpeakerGate::default();
     while !controls.stop.load(Ordering::Acquire) && port.alive() {
         let requested = port.transmitting();
@@ -288,7 +289,7 @@ fn run(
             let error = match audio.recover() {
                 Ok(true) => {
                     decoders.fill_with(|| None);
-                    next = Instant::now() + FRAME_TIME;
+                    pacer.defer(Instant::now());
                     continue;
                 }
                 Ok(false) => audio.failure(),
@@ -298,8 +299,8 @@ fn run(
             break;
         }
         let now = Instant::now();
-        if now < next {
-            std::thread::park_timeout(next.saturating_duration_since(now));
+        if !pacer.due(now) {
+            std::thread::park_timeout(pacer.wait(now));
             continue;
         }
         let mixed = mix(
@@ -314,12 +315,7 @@ fn run(
             send_capture(port, audio.as_mut(), &mut encoder, spurt, allowed, events);
         }
         audio.play(mixed);
-        next += FRAME_TIME;
-        let now = Instant::now();
-        if now > next + FRAME_TIME {
-            next = now + FRAME_TIME;
-        }
-        std::thread::park_timeout(next.saturating_duration_since(now));
+        std::thread::park_timeout(pacer.wait(Instant::now()));
     }
     port.disable();
     let _ = audio.microphone(None);
@@ -337,6 +333,7 @@ fn send_capture(
     events: &mpsc::Sender<VoiceEvent>,
 ) {
     // Old captures and suppressed speaker feedback never become delayed speech.
+    let mut latest = None;
     for _ in 0..4 {
         let Some(captured) = audio.capture() else {
             break;
@@ -344,6 +341,14 @@ fn send_capture(
         if captured.activation != spurt || captured.at.elapsed() > FRAME_TIME * 3 || !allowed {
             continue;
         }
+        if latest
+            .as_ref()
+            .is_none_or(|old: &orqwa_domain::voice::CapturedVoice| captured.at >= old.at)
+        {
+            latest = Some(captured);
+        }
+    }
+    if let Some(captured) = latest {
         if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
             let _ = port.send(frame);
         } else {
@@ -352,7 +357,6 @@ fn send_capture(
                 error: VoiceDeviceError::new("encoding voice frame", "Opus encoding failed"),
             });
         }
-        break;
     }
 }
 

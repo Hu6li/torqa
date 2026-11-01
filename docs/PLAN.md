@@ -892,6 +892,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     distinguish partial-control timeouts and remove disconnected remote riders from ended rosters.
   - [x] Reproduce and fix microphone sequence rejection after packet delay/loss (#428): keep
     one timing anchor per microphone activation and preserve actual transport-close errors.
+  - [x] Recover from voice/state arrival bursts without disconnecting the group (R179, #428),
+    separate delivery quotas from persistent raw abuse, pace live capture without catch-up
+    and allow an initially delayed microphone packet to recover to current speech.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

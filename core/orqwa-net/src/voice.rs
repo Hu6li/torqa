@@ -35,7 +35,7 @@ pub enum VoiceError {
         /// Highest plausible counter for the current activation.
         limit: u32,
     },
-    /// More than fifty frames per second beyond the bounded jitter burst.
+    /// A hard packet budget has been exhausted.
     #[error("The peer is sending too many voice packets.")]
     Flood,
     /// The voice owner is closed, disabled or microphone transmission is muted.
@@ -164,6 +164,7 @@ pub struct VoiceInbox {
     spurt: u32,
     latest: Option<(u32, Instant)>,
     origin: Option<(u32, Instant)>,
+    admitted_at: Instant,
     next: u32,
     play_at: Option<Instant>,
     missing: u8,
@@ -181,6 +182,7 @@ impl VoiceInbox {
             spurt: 0,
             latest: None,
             origin: None,
+            admitted_at: now,
             next: 0,
             play_at: None,
             missing: 0,
@@ -192,7 +194,8 @@ impl VoiceInbox {
     /// Old/duplicate frames are discarded. Excessive future sequence jumps never alter ordering.
     ///
     /// # Errors
-    /// Returns [`VoiceError`] for a forged/malformed packet or sustained flood.
+    /// Returns [`VoiceError`] for a forged/malformed packet or invalid sequence.
+    /// Brief ingress excess is discarded before parsing, without ending the group.
     pub fn ingest(&mut self, bytes: &[u8], now: Instant) -> Result<bool, VoiceError> {
         let elapsed = now.saturating_duration_since(self.refilled);
         let added = u8::try_from(elapsed.as_nanos() / FRAME_TIME.as_nanos()).unwrap_or(BURST);
@@ -204,7 +207,7 @@ impl VoiceInbox {
             self.refilled = now.checked_sub(remainder).unwrap_or(now);
         }
         if self.tokens == 0 {
-            return Err(VoiceError::Flood);
+            return Ok(false);
         }
         self.tokens -= 1;
         let frame = VoiceFrame::parse(bytes, self.speaker)?;
@@ -230,7 +233,10 @@ impl VoiceInbox {
             }
         }
         if new_spurt {
-            self.origin = Some((frame.sequence, now));
+            // The first arrival may itself be delayed. Buffer admission is an
+            // earlier bound; using receipt time can reject live speech forever
+            // after that initial delay disappears. Packet budgets bound actual work.
+            self.origin = Some((frame.sequence, self.admitted_at));
         }
         let idle = self
             .latest
@@ -375,7 +381,12 @@ impl IncomingBudget {
         }
     }
     pub fn charge(&mut self) -> Result<(), VoiceError> {
-        let now = Instant::now();
+        self.accept().then_some(()).ok_or(VoiceError::Flood)
+    }
+    pub fn accept(&mut self) -> bool {
+        self.accept_at(Instant::now())
+    }
+    fn accept_at(&mut self, now: Instant) -> bool {
         let elapsed = now.saturating_duration_since(self.refilled);
         let period = self.period;
         let added = u16::try_from(elapsed.as_nanos() / period.as_nanos()).unwrap_or(self.burst);
@@ -386,10 +397,10 @@ impl IncomingBudget {
             self.refilled = now.checked_sub(remainder).unwrap_or(now);
         }
         if self.tokens == 0 {
-            return Err(VoiceError::Flood);
+            return false;
         }
         self.tokens -= 1;
-        Ok(())
+        true
     }
 }
 fn lock(room: &Arc<Mutex<Room>>) -> MutexGuard<'_, Room> {
@@ -587,7 +598,8 @@ impl VoicePort {
     /// send buffered speech after mute/unmute, and transport congestion drops disposable audio.
     ///
     /// # Errors
-    /// Returns [`VoiceError`] for invalid state, closed/muted gates or a local frame flood.
+    /// Returns [`VoiceError`] for invalid state, closed/muted gates or an invalid sequence.
+    /// Local media-budget exhaustion drops the frame without closing the voice session.
     pub fn send(&self, frame: VoiceFrame) -> Result<(), VoiceError> {
         let mut room = lock(&self.room);
         if !self.current(&room)
@@ -820,14 +832,51 @@ mod tests {
         for _ in 0..BURST {
             assert_eq!(inbox.ingest(&[], now), Err(VoiceError::Invalid));
         }
-        assert_eq!(
-            inbox.ingest(&bytes(RiderId::HOST, 0), now),
-            Err(VoiceError::Flood)
-        );
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 0), now), Ok(false));
         assert_eq!(
             inbox.ingest(&bytes(RiderId::HOST, 0), now + FRAME_TIME),
             Ok(true)
         );
+    }
+
+    #[test]
+    fn a_delayed_speech_batch_drops_excess_and_resumes_with_fresh_audio() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        let delayed = now + Duration::from_millis(500);
+        for sequence in 1..=25 {
+            assert_eq!(
+                inbox.ingest(&bytes(RiderId::HOST, sequence), delayed),
+                Ok(sequence <= u32::from(BURST))
+            );
+        }
+        let fresh = delayed + FRAME_TIME;
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 26), fresh), Ok(true));
+        // Recovery stays within the bounded playout window, never a growing backlog.
+        assert!((0..=8).any(|tick| matches!(
+            inbox.playout(fresh + PREBUFFER + FRAME_TIME * tick),
+            Playout::Frame(frame) if frame.sequence == 26
+        )));
+    }
+
+    #[test]
+    fn aggregate_media_budget_recovers_without_borrowing_from_future_time() {
+        let mut budget = IncomingBudget::new();
+        let now = budget.refilled;
+        for _ in 0..80 {
+            assert!(budget.accept_at(now));
+        }
+        for _ in 0..1000 {
+            assert!(!budget.accept_at(now));
+        }
+        assert!(!budget.accept_at(now + Duration::from_micros(2499)));
+        assert!(budget.accept_at(now + Duration::from_micros(2500)));
+        assert!(!budget.accept_at(now + Duration::from_micros(2500)));
+        for _ in 0..80 {
+            assert!(budget.accept_at(now + Duration::from_secs(1)));
+        }
+        assert!(!budget.accept_at(now + Duration::from_secs(1)));
     }
     #[test]
     fn jitter_reorders_but_slow_consumers_skip_history_and_mute_discards_audio() {
@@ -895,6 +944,20 @@ mod tests {
             inbox.ingest(&bytes(RiderId::HOST, 76), now + Duration::from_millis(1520)),
             Ok(true)
         );
+    }
+
+    #[test]
+    fn a_delayed_first_packet_cannot_make_all_following_live_speech_look_too_fast() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        // A stall starts before any speech arrives. The first old frame must not
+        // establish a clock that permanently rejects the source's fresh frames.
+        let resumed = now + Duration::from_secs(1);
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 0), resumed), Ok(true));
+        for sequence in 50..100 {
+            let at = resumed + FRAME_TIME * (sequence - 50) + Duration::from_millis(1);
+            assert_eq!(inbox.ingest(&bytes(RiderId::HOST, sequence), at), Ok(true));
+        }
     }
 
     #[test]

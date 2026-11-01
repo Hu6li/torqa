@@ -132,6 +132,9 @@ pub enum LobbyEvent {
 /// Bounded lobby failures, without copying peer-supplied diagnostics.
 #[derive(Debug, thiserror::Error)]
 pub enum LobbyError {
+    /// Raw datagram traffic persistently exceeded a full room's safety allowance.
+    #[error("The peer persistently exceeded the group datagram safety budget.")]
+    DatagramFlood,
     /// Invalid or excessive voice traffic, retaining its specific cause.
     #[error(transparent)]
     Voice(#[from] voice::VoiceError),
@@ -1219,6 +1222,7 @@ async fn serve_peer(
     let mut readers = JoinSet::new();
     let mut transfers = JoinSet::new();
     let mut transfer_budget = voice::IncomingBudget::controls();
+    let mut datagrams = crate::traffic::DatagramIngress::new(std::time::Instant::now());
     let receiver_voice = voice.clone();
     let receiver_shared = shared.clone();
     readers.spawn(async move {
@@ -1272,6 +1276,7 @@ async fn serve_peer(
             },
             bytes = connection.read_datagram() => {
                 let bytes = bytes?;
+                if !datagrams.accept(std::time::Instant::now()).map_err(|_| LobbyError::DatagramFlood)? {continue;}
                 if !lock(&shared).active {return Err(LobbyError::Protocol);}
                 if bytes.first() == Some(&voice::TAG) {
                     voice.ingest(member,&bytes)?;
@@ -1347,6 +1352,7 @@ async fn client_actor(
     // A host may forward eight independent 5 Hz streams. Charge even unknown/stale packets.
     let mut packets = 80_u8;
     let mut voice_packets = voice::IncomingBudget::new();
+    let mut datagrams = crate::traffic::DatagramIngress::new(std::time::Instant::now());
     let mut voice_control_open = true;
     let mut refill = Instant::now();
     loop {
@@ -1419,8 +1425,9 @@ async fn client_actor(
             },
             bytes = connection.read_datagram() => {
                 let bytes = bytes?;
+                if !datagrams.accept(std::time::Instant::now()).map_err(|_| LobbyError::DatagramFlood)? {continue;}
                 if bytes.first() == Some(&voice::TAG) {
-                    voice_packets.charge()?;
+                    if !voice_packets.accept() {continue;}
                     if prepared.is_some() {continue;}
                     let id = RiderId::new(*bytes.get(2).ok_or(LobbyError::Protocol)?)?;
                     if id == me { return Err(LobbyError::Protocol); }
@@ -1436,7 +1443,7 @@ async fn client_actor(
                     let remainder = (now-refill).as_nanos() % Duration::from_millis(25).as_nanos();
                     refill = now - Duration::from_nanos(u64::try_from(remainder).expect("under 25 ms"));
                 }
-                if packets == 0 { return Err(StateError::Flood.into()); } packets -= 1;
+                if packets == 0 { continue; } packets -= 1;
                 if prepared.is_some() {continue;}
                 let id = RiderId::new(*bytes.get(1).ok_or(LobbyError::Protocol)?)?;
                 let Some(elapsed) = peer_elapsed(start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
@@ -1986,6 +1993,198 @@ mod tests {
         (connection, send, recv, id)
     }
 
+    async fn raw_organizer() -> (Host, Connection, SendStream, RecvStream, JoinerLobby) {
+        let mut host = Host::open("Host", "Test course", RouteHash([9; 32]), &options())
+            .await
+            .unwrap();
+        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
+            .await
+            .unwrap();
+        host.admit(joiner.reply()).unwrap();
+        let joining = tokio::spawn(JoinerLobby::join(joiner, rider("Peer")));
+        let Some(HostEvent::Joined(connection)) = host.next().await else {
+            panic!("connection");
+        };
+        let (mut send, mut recv) = connection.accept_bi().await.unwrap();
+        assert!(matches!(
+            wire::read(&mut recv).await.unwrap(),
+            Message::Hello(..)
+        ));
+        let me = rider_id(1);
+        let roster =
+            std::array::from_fn(|slot| Some(rider(if slot == 1 { "Peer" } else { "Rider" })));
+        wire::write(
+            &mut send,
+            &Message::Welcome(me, RiderId::HOST, host.invite().ride, 1, roster),
+        )
+        .await
+        .unwrap();
+        wire::write(
+            &mut send,
+            &Message::VoiceRoster(std::array::from_fn(|slot| u64::try_from(slot + 1).unwrap())),
+        )
+        .await
+        .unwrap();
+        let peer = joining.await.unwrap().unwrap();
+        (host, connection, send, recv, peer)
+    }
+
+    #[tokio::test]
+    async fn forwarded_voice_bursts_recover_without_losing_voice_or_group_controls() {
+        let (host, connection, mut send, mut recv, mut peer) = raw_organizer().await;
+        let voice = peer.take_voice().unwrap();
+        voice.enable(true);
+        assert!(matches!(
+            wire::read(&mut recv).await.unwrap(),
+            Message::VoiceEnabled(true)
+        ));
+        let speech = |slot: usize, sequence: u32| {
+            let (mut bytes, len) = voice::VoiceFrame::new(
+                rider_id(slot),
+                1,
+                sequence,
+                &[u8::try_from(sequence).unwrap()],
+            )
+            .unwrap()
+            .datagram();
+            bytes[11..19].copy_from_slice(&u64::try_from(slot + 1).unwrap().to_be_bytes());
+            bytes[..len].to_vec()
+        };
+        connection.send_datagram(&speech(0, 0)).unwrap();
+        wait_for_voice(&voice, RiderId::HOST, 0).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Simulate a network/receiver stall releasing several speakers together.
+        for sequence in 1..=12 {
+            for slot in 0..MAX_RIDERS {
+                if slot != 1 {
+                    connection.send_datagram(&speech(slot, sequence)).unwrap();
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        connection.send_datagram(&speech(0, 13)).unwrap();
+        wait_for_voice(&voice, RiderId::HOST, 13).await;
+        wire::write(&mut send, &Message::Start(0)).await.unwrap();
+        client_event(&mut peer, |event| matches!(event, LobbyEvent::Start { .. })).await;
+        assert!(
+            voice.alive(),
+            "voice overload must not disconnect the group"
+        );
+        peer.close().await;
+        host.close().await;
+    }
+
+    async fn wait_for_voice(port: &VoicePort, speaker: RiderId, payload: u8) {
+        timeout(Duration::from_secs(2), async {
+            loop {
+                assert!(port.alive(), "valid voice burst disconnected the listener");
+                let playout = port.playout(std::time::Instant::now());
+                if matches!(&playout[usize::from(speaker.value())].action, voice::Playout::Frame(frame) if frame.payload() == [payload]) {break;}
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn peer_voice_and_state_bursts_keep_both_rosters_and_other_riders_connected() {
+        let mut host = host().await;
+        let voice = host.take_voice().unwrap();
+        voice.enable(true);
+        let mut healthy = join(&host, "Listening rider").await;
+        let listening = healthy.take_voice().unwrap();
+        listening.enable(true);
+        let (connection, mut send, _recv, id) = raw_join(&host).await;
+        wire::write(&mut send, &Message::VoiceEnabled(true))
+            .await
+            .unwrap();
+        let speech = |sequence: u32| {
+            let (bytes, len) =
+                voice::VoiceFrame::new(id, 1, sequence, &[u8::try_from(sequence).unwrap()])
+                    .unwrap()
+                    .datagram();
+            bytes[..len].to_vec()
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        connection.send_datagram(&speech(0)).unwrap();
+        wait_for_voice(&voice, id, 0).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        for sequence in 1..=25 {
+            connection.send_datagram(&speech(sequence)).unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        connection.send_datagram(&speech(26)).unwrap();
+        wait_for_voice(&voice, id, 26).await;
+        wait_for_voice(&listening, id, 26).await;
+        let at = host.start(Duration::from_secs(1)).await.unwrap();
+        client_event(&mut healthy, |event| {
+            matches!(event, LobbyEvent::Start { .. })
+        })
+        .await;
+        tokio::time::sleep_until(at).await;
+        for millis in 0..25 {
+            connection
+                .send_datagram(
+                    &RiderState {
+                        at: Duration::from_millis(millis),
+                        ..RiderState::default()
+                    }
+                    .datagram(id)
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+        tokio::time::sleep(STATE_EVERY + Duration::from_millis(20)).await;
+        let fresh = RiderState {
+            at: Duration::from_millis(200),
+            distance: Meters(12.0),
+            ..RiderState::default()
+        };
+        connection
+            .send_datagram(&fresh.datagram(id).unwrap())
+            .unwrap();
+        host_event(&mut host, |event| matches!(event,LobbyEvent::State {id: source, state} if *source == id && state.distance == fresh.distance)).await;
+        client_event(&mut healthy, |event| matches!(event,LobbyEvent::State {id: source, state} if *source == id && state.distance == fresh.distance)).await;
+        assert!(voice.alive() && listening.alive());
+        connection.close();
+        healthy.close().await;
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn forwarded_state_bursts_keep_the_group_and_resume_fresh_positions() {
+        let (host, connection, mut send, _recv, mut peer) = raw_organizer().await;
+        wire::write(&mut send, &Message::Start(0)).await.unwrap();
+        client_event(&mut peer, |event| matches!(event, LobbyEvent::Start { .. })).await;
+        for millis in 0..15 {
+            for slot in 0..MAX_RIDERS {
+                if slot != 1 {
+                    connection
+                        .send_datagram(
+                            &RiderState {
+                                at: Duration::from_millis(millis),
+                                ..RiderState::default()
+                            }
+                            .datagram(rider_id(slot))
+                            .unwrap(),
+                        )
+                        .unwrap();
+                }
+            }
+        }
+        tokio::time::sleep(STATE_EVERY + Duration::from_millis(20)).await;
+        let fresh = RiderState {
+            at: Duration::from_millis(200),
+            distance: Meters(19.0),
+            ..RiderState::default()
+        };
+        connection
+            .send_datagram(&fresh.datagram(RiderId::HOST).unwrap())
+            .unwrap();
+        client_event(&mut peer, |event| matches!(event,LobbyEvent::State {id, state} if *id == RiderId::HOST && state.distance == fresh.distance)).await;
+        peer.close().await;
+        host.close().await;
+    }
+
     #[tokio::test]
     async fn a_joiner_cannot_send_organizer_workout_time_or_stop_the_lobby() {
         let mut host = HostLobby::open(
@@ -2036,8 +2235,10 @@ mod tests {
                 2 => bytes[2..6].copy_from_slice(&100_000_u32.to_be_bytes()),
                 _ => {}
             }
-            for _ in 0..if attack == 3 { 20 } else { 1 } {
-                let _ = connection.send_datagram(&bytes);
+            if attack == 3 {
+                flood_until_closed(&connection, &bytes).await;
+            } else {
+                connection.send_datagram(&bytes).unwrap();
             }
             timeout(Duration::from_secs(1), connection.closed())
                 .await
@@ -2214,6 +2415,7 @@ mod tests {
     async fn voice_sender_forgery_packet_floods_and_control_floods_close_only_the_offending_peer() {
         for attack in 0..3 {
             let mut host = host().await;
+            let mut healthy = join(&host, "Healthy").await;
             let (connection, mut send, _recv, id) = raw_join(&host).await;
             if attack == 2 {
                 for _ in 0..12 {
@@ -2223,8 +2425,10 @@ mod tests {
                 let source = if attack == 0 { RiderId::HOST } else { id };
                 let frame = voice::VoiceFrame::new(source, 1, 0, &[1]).unwrap();
                 let (bytes, len) = frame.datagram();
-                for _ in 0..if attack == 1 { 20 } else { 1 } {
-                    let _ = connection.send_datagram(&bytes[..len]);
+                if attack == 1 {
+                    flood_until_closed(&connection, &bytes[..len]).await;
+                } else {
+                    connection.send_datagram(&bytes[..len]).unwrap();
                 }
             }
             timeout(Duration::from_secs(1), connection.closed())
@@ -2248,15 +2452,59 @@ mod tests {
                 matches!(
                     (attack, error.as_ref()),
                     (0, LobbyError::Voice(voice::VoiceError::Invalid))
-                        | (1, LobbyError::Voice(voice::VoiceError::Flood))
+                        | (1, LobbyError::DatagramFlood)
                         | (2, LobbyError::ControlFlood)
                 ),
                 "original reader/voice error must reach the organizer: {error}"
             );
             host_event(&mut host, |event| matches!(event, LobbyEvent::Left { .. })).await;
             assert!(!host.tasks.is_empty());
+            host.start(Duration::from_secs(1)).await.unwrap();
+            client_event(&mut healthy, |event| {
+                matches!(event, LobbyEvent::Start { .. })
+            })
+            .await;
+            healthy.close().await;
             host.close().await;
         }
+    }
+
+    // Yield between small batches so loopback QUIC actually delivers sustained
+    // excess, rather than merely replacing the sender's bounded datagram queue.
+    async fn flood_until_closed(connection: &Connection, bytes: &[u8]) {
+        timeout(Duration::from_secs(6), async {
+            let mut tick = interval(Duration::from_millis(2));
+            loop {
+                tokio::select! {
+                    () = connection.closed() => break,
+                    _ = tick.tick() => for _ in 0..32 {
+                        let _ = connection.send_datagram(bytes);
+                    },
+                }
+            }
+        })
+        .await
+        .expect("persistent raw datagram flood must close its connection");
+    }
+
+    #[tokio::test]
+    async fn sustained_organizer_datagram_abuse_is_distinct_from_a_voice_delivery_burst() {
+        let (host, connection, _send, _recv, mut peer) = raw_organizer().await;
+        let (mut bytes, len) = voice::VoiceFrame::new(RiderId::HOST, 1, 0, &[1])
+            .unwrap()
+            .datagram();
+        bytes[11..19].copy_from_slice(&1_u64.to_be_bytes());
+        flood_until_closed(&connection, &bytes[..len]).await;
+        let failure = client_event(&mut peer, |event| {
+            matches!(event, LobbyEvent::Failed { .. })
+        })
+        .await;
+        assert!(
+            matches!(failure, LobbyEvent::Failed {error, ..} if matches!(error.as_ref(), LobbyError::DatagramFlood))
+        );
+        client_event(&mut peer, |event| matches!(event, LobbyEvent::HostLeft)).await;
+        peer.close().await;
+        host.close().await;
     }
 
     #[tokio::test]

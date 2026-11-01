@@ -357,6 +357,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 | R177 | Extends R162 and R169 (2026-11-01, #414, #429): group **Audio settings** offer an explicit **Test microphone** action and level meter, using the selected input without playback, transmission or recording. The test stops after ten seconds, on Stop, closing its dialog, changing devices or leaving the group. It temporarily pauses voice and restores previously opted-in listening with the microphone off. A default-on **Prevent speaker echo** setting holds outgoing speech while a friend is audible and for a short echo tail; riders using headphones can turn it off for simultaneous conversation. Device choices, volume and local rider mutes survive testing. |
 | R178 | Refines R177 (2026-11-01): the microphone check visibly shows **Voice detected** when it estimates speech activity, keeps the result after the check and reports when none was detected. **Test speakers** plays two short tones through the selected output at the adjustable voice volume for two seconds, without opening a microphone, requesting microphone permission or sending audio. Only one local audio check runs at once. Both checks stop on Stop, closing Audio settings, changing devices or leaving the group, and restore previously joined listening with the microphone off. |
 
+## Group audio continuity
+
+| ID | Requirement |
+|---|---|
+| R179 | Refines R161–R163 (2026-11-01, #428): ordinary speech and microphone silence must preserve the group connection, participant list and ride controls. Short delivery bursts and audio-worker stalls discard excess or superseded media and automatically resume current speech and rider positions, including when the first audio packet was delayed. Existing fixed queues and media-work budgets remain bounded; sustained raw traffic abuse is detected separately from transient delivery-budget exhaustion and affects only the offending connection. Sender wakeups never replay missed capture ticks or queued old speech. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

@@ -618,7 +618,14 @@ packet loss or changing latency if available, and after mute/unmute. The sequenc
 reproduces valid frame 50 arriving late at 1.5 s and frame 75 arriving promptly at 1.501 s; the
 old arrival-relative guard rejects frame 75. A separate loopback regression checks that organizer
 closure is not mislabeled as invalid control traffic, and the simulated-device Opus conversation
-checks sustained capture/playback. Impossible jumps and ingress floods must still be rejected.
+checks sustained capture/playback. Also test several short words separated by silence, both
+microphones on, and several simultaneous speakers. Brief delivery bursts must preserve both
+participant lists, consent, countdown and riding; fresh speech and positions must resume without
+rejoining. The loopback suite exercises per-speaker and aggregate overflow in both directions,
+delayed first speech, a full room's audio workers stalling/resuming, and current silence superseding
+queued speech. Huge sequence jumps remain invalid; three consecutive overloaded raw-datagram
+windows close only the abusive connection. macOS/Windows CI also runs the simulated Opus/device
+conversations and live pacing tests, without opening physical audio devices.
 Record both build IDs, selected devices and terminal/Technical details for native failures; the
 synthetic jitter reproduction does not replace acceptance on the originally affected computers.
 
