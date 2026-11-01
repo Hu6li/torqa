@@ -8,7 +8,9 @@ use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
 use orqwa_net::code::{Invite, Reply};
 use orqwa_net::content::{self, Source};
 use orqwa_net::link::{ConnectOptions, Host, Joiner};
-use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity};
+use orqwa_net::lobby::{
+    HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity, Stage,
+};
 use orqwa_net::state::{RiderId, RiderState};
 use orqwa_voice::{VoiceChat, device::DeviceOptions};
 use tokio::sync::{mpsc, watch};
@@ -23,6 +25,8 @@ pub(super) enum Command {
     Select(Option<PathBuf>, Option<Plan>),
     Assistance(Assistance),
     Prepared(u64),
+    /// How far building the selected course's world has got, 0–100 (#419).
+    Preparing(u8),
     Ready(bool),
     Start,
     Enter,
@@ -74,6 +78,13 @@ impl Session {
             Self::Join(l) => l.ready(revision, ready).map_err(|e| e.to_string()),
         }
     }
+    fn preparation(&self, revision: u64, stage: Stage, percent: u8) {
+        // Advisory: the next report, or readiness, supersedes a lost one.
+        let _ = match self {
+            Self::Host(lobby) => lobby.preparation(revision, stage, percent),
+            Self::Join(lobby) => lobby.preparation(revision, stage, percent),
+        };
+    }
     fn state(&self, local: Option<Local>) {
         if let Self::Host(lobby) = self {
             let _ = lobby.progress(local.and_then(|local| local.progress));
@@ -83,6 +94,23 @@ impl Session {
                 Self::Host(lobby) => lobby.send_state(local.state),
                 Self::Join(lobby) => lobby.send_state(local.state),
             };
+        }
+    }
+}
+/// This rider's preparation as last told to the group (#419): on a change of stage at once,
+/// otherwise at most every `EVERY`, which keeps well within the host's control budget.
+#[derive(Default)]
+struct Reported(Option<(u64, Stage, u8, tokio::time::Instant)>);
+impl Reported {
+    const EVERY: Duration = Duration::from_secs(2);
+    fn report(&mut self, session: &Session, revision: u64, stage: Stage, percent: u8) {
+        let now = tokio::time::Instant::now();
+        let due = self.0.is_none_or(|(r, s, p, at)| {
+            r != revision || s != stage || (p != percent && now.duration_since(at) >= Self::EVERY)
+        });
+        if due {
+            session.preparation(revision, stage, percent);
+            self.0 = Some((revision, stage, percent, now));
         }
     }
 }
@@ -201,6 +229,7 @@ async fn run_inner(
         received: 0,
         total: 0,
     });
+    let mut reported = Reported::default();
     let mut ticker = tokio::time::interval(Duration::from_millis(200));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -235,7 +264,8 @@ async fn run_inner(
                         jobs.spawn(async move {chosen(course,plan,dir,revision).await.map(Prepared::Host)}); Ok(())
                     }
                     Command::Assistance(rules) => change_rules(&session,snapshot,&mut next_revision,rules,jobs.is_empty()).await,
-                    Command::Prepared(revision) => {if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.prepared = true; snapshot.phase = Phase::Ready;} Ok(())}
+                    Command::Prepared(revision) => {if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.prepared = true; snapshot.phase = Phase::Ready; reported.report(&session,revision,Stage::Preparing,100);} Ok(())}
+                    Command::Preparing(percent) => {if snapshot.phase==Phase::Preparing && let Some(selection)=&snapshot.selection {reported.report(&session,selection.revision,Stage::Preparing,percent.min(99));} Ok(())}
                     Command::Ready(ready) => {
                         if !snapshot.prepared {continue;}
                         session.ready(snapshot.selection.as_ref().ok_or("Select an activity first.")?.revision,ready).await
@@ -320,17 +350,18 @@ async fn run_inner(
                 Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
                     let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None;}
-                Some(LobbyEvent::Readiness {id,revision,ready}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.ready[usize::from(id.value())] = ready;},
+                Some(LobbyEvent::Readiness {id,revision,ready}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.ready[usize::from(id.value())] = ready; if ready {snapshot.preparation[usize::from(id.value())] = None;}},
+                Some(LobbyEvent::Preparation {id,revision,stage,percent}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) && !snapshot.ready[usize::from(id.value())] {snapshot.preparation[usize::from(id.value())] = Some((stage,percent));},
                 Some(LobbyEvent::Selection(selection)) => {
                     if snapshot.start.is_some() {continue;}
                     if snapshot.selection.as_ref().is_some_and(|s|s.revision==selection.revision) {continue;}
                     let retained=snapshot.prepared && snapshot.selection.as_ref().is_some_and(|s|s.course==selection.course&&s.workout==selection.workout);
                     snapshot.assistance=selection.assistance;
                     if retained && jobs.is_empty() {
-                        snapshot.selection=Some(selection);snapshot.ready.fill(false);snapshot.phase=Phase::Ready;continue;
+                        snapshot.selection=Some(selection);snapshot.ready.fill(false);snapshot.preparation.fill(None);snapshot.phase=Phase::Ready;continue;
                     }
                     jobs.abort_all(); while jobs.join_next().await.is_some() {}
-                    snapshot.selection = Some(selection.clone()); snapshot.ready.fill(false); snapshot.prepared = false; snapshot.error.clear();snapshot.activity_failed=false;
+                    snapshot.selection = Some(selection.clone()); snapshot.ready.fill(false); snapshot.preparation.fill(None); snapshot.prepared = false; snapshot.error.clear();snapshot.activity_failed=false;
                     snapshot.course = None; snapshot.workout = None; snapshot.plan=None;snapshot.workout_id.clear();
                     if let Session::Join(l) = &session {
                         let link = l.content_link().ok_or("The group connection ended.")?; let data = request.data.clone();
@@ -383,7 +414,11 @@ async fn run_inner(
                     Err(error)=>{snapshot.report(Kind::GroupRide,error);if handover.fail(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
                 }
             },
-            changed=latest_progress.changed()=>{if changed.is_ok(){let p=*latest_progress.borrow_and_update();snapshot.received=p.received;snapshot.total=p.total;}},
+            changed=latest_progress.changed()=>{if changed.is_ok(){let p=*latest_progress.borrow_and_update();snapshot.received=p.received;snapshot.total=p.total;
+                if p.total>0 && let Some(selection)=&snapshot.selection {
+                    let percent=u8::try_from(p.received.min(p.total)*100/p.total).unwrap_or(100);
+                    reported.report(&session,selection.revision,Stage::Downloading,percent);
+                }}},
             changed=local.changed()=>{if changed.is_ok(){session.state(*local.borrow_and_update());}},
             result = jobs.join_next(), if !jobs.is_empty() => {
                 match result {

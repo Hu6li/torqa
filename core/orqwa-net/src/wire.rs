@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use orqwa_domain::profile::Avatar;
 
 use crate::code::RouteHash;
-use crate::lobby::{LobbyError, Rider, Roster};
+use crate::lobby::{LobbyError, Rider, Roster, Stage};
 use crate::state::{MAX_RIDERS, RiderId};
 
 const MAX_FRAME: usize = 1024;
@@ -28,6 +28,8 @@ pub(crate) enum Message {
     Selection(crate::activity::Selection),
     Ready(u64, bool),
     Readiness(RiderId, u64, bool),
+    Preparation(u64, crate::lobby::Stage, u8),
+    Preparations(RiderId, u64, crate::lobby::Stage, u8),
     Running(i64),
     Workout(crate::lobby::timing::WorkoutSample),
     Handover(crate::handover::Message),
@@ -86,6 +88,17 @@ fn rider(bytes: &mut Vec<u8>, rider: &Rider) -> Result<(), LobbyError> {
     Ok(())
 }
 
+fn stage_byte(stage: Stage) -> u8 {
+    match stage {
+        Stage::Downloading => 0,
+        Stage::Preparing => 1,
+    }
+}
+
+fn percent_byte(percent: u8) -> Result<u8, LobbyError> {
+    (percent <= 100).then_some(percent).ok_or(LobbyError::Protocol)
+}
+
 pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
     let mut bytes = vec![crate::code::VERSION];
     match message {
@@ -136,6 +149,14 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
         }
         Message::Readiness(id, revision, ready) => {
             bytes.extend_from_slice(&[10, id.value(), u8::from(*ready)]);
+            bytes.extend_from_slice(&revision.to_be_bytes());
+        }
+        Message::Preparation(revision, stage, percent) => {
+            bytes.extend_from_slice(&[16, stage_byte(*stage), percent_byte(*percent)?]);
+            bytes.extend_from_slice(&revision.to_be_bytes());
+        }
+        Message::Preparations(id, revision, stage, percent) => {
+            bytes.extend_from_slice(&[17, id.value(), stage_byte(*stage), percent_byte(*percent)?]);
             bytes.extend_from_slice(&revision.to_be_bytes());
         }
         Message::Handover(message) => {
@@ -195,6 +216,16 @@ impl Reader<'_> {
     }
     fn id(&mut self) -> Result<RiderId, LobbyError> {
         Ok(RiderId::new(self.byte()?)?)
+    }
+    fn stage(&mut self) -> Result<Stage, LobbyError> {
+        match self.byte()? {
+            0 => Ok(Stage::Downloading),
+            1 => Ok(Stage::Preparing),
+            _ => Err(LobbyError::Protocol),
+        }
+    }
+    fn percent(&mut self) -> Result<u8, LobbyError> {
+        percent_byte(self.byte()?)
     }
     fn rider(&mut self) -> Result<Rider, LobbyError> {
         let len = usize::from(self.byte()?);
@@ -343,6 +374,15 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
             Message::Running(age)
         }
         12 => Message::Enter(u64::from_be_bytes(reader.take()?)),
+        16 => {
+            let (stage, percent) = (reader.stage()?, reader.percent()?);
+            Message::Preparation(u64::from_be_bytes(reader.take()?), stage, percent)
+        }
+        17 => {
+            let id = reader.id()?;
+            let (stage, percent) = (reader.stage()?, reader.percent()?);
+            Message::Preparations(id, u64::from_be_bytes(reader.take()?), stage, percent)
+        }
         13 => reader.entry()?,
         14 => reader.workout()?,
         15 => {
@@ -362,6 +402,32 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
 mod tests {
     use super::*;
     use orqwa_domain::units::Kilograms;
+
+    #[test]
+    fn preparation_reports_carry_their_stage_and_a_percentage_up_to_100() {
+        let anna = RiderId::new(1).unwrap();
+        for message in [
+            Message::Preparation(3, Stage::Downloading, 0),
+            Message::Preparations(anna, 3, Stage::Preparing, 100),
+        ] {
+            let bytes = encode(&message).unwrap();
+            let decoded = decode(&bytes).unwrap();
+            assert_eq!(encode(&decoded).unwrap(), bytes, "{message:?}");
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+        }
+        assert!(encode(&Message::Preparation(3, Stage::Downloading, 101)).is_err());
+        let valid = encode(&Message::Preparations(anna, 3, Stage::Preparing, 50)).unwrap();
+        // The version and tag, then the rider, stage and percent before the revision.
+        let (stage_at, percent_at) = (3, 4);
+        let mut stage = valid.clone();
+        stage[stage_at] = 2;
+        assert!(decode(&stage).is_err(), "a stage nobody knows");
+        let mut percent = valid;
+        percent[percent_at] = 101;
+        assert!(decode(&percent).is_err(), "more than everything");
+    }
 
     #[test]
     fn untrusted_controls_reject_truncation_trailing_data_duplicate_ids_and_invalid_riders() {

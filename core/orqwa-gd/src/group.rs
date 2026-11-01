@@ -61,7 +61,10 @@ pub(super) fn status(app: &App) -> VarDictionary {
             continue;
         };
         let sample = status.states[id].filter(|(_, at)| at.elapsed() < Duration::from_secs(2));
-        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>sample.is_some(),"gap_m"=>sample.map_or(0.0,|(s,_)|s.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0),"watts_per_kg"=>sample.map_or(0.0,|(s,_)|s.power.0/rider.weight.0.max(1.0))}.to_variant());
+        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>sample.is_some(),"gap_m"=>sample.map_or(0.0,|(s,_)|s.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0),"watts_per_kg"=>sample.map_or(0.0,|(s,_)|s.power.0/rider.weight.0.max(1.0)),
+            // How far a rider not yet ready has got preparing the activity (#419).
+            "stage"=>match status.preparation[id] {Some((orqwa_app::group::Stage::Downloading,_))=>"downloading",Some((orqwa_app::group::Stage::Preparing,_))=>"preparing",None=>""},
+            "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent))}.to_variant());
     }
     let successor_name = status
         .successor

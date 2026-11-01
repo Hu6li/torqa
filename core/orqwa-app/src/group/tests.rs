@@ -753,11 +753,17 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     wait(&mut host, &mut peer, |h, p| {
         h.group().prepared && p.group().prepared
     });
+    // Each hears that the other has prepared (#419), until they say they are ready.
+    let done = Some((Stage::Preparing, 100));
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().preparation[1] == done && p.group().preparation[0] == done
+    });
     let received = peer.group().workout;
     assert!(host.group().assistance.drafting && host.group().assistance.keep_together);
     host.group_ready(true).unwrap();
     peer.group_ready(true).unwrap();
     wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    assert_eq!(host.group().preparation[1], None, "ready, nothing left to report");
     host.group_assistance(false, true).unwrap();
     wait(&mut host, &mut peer, |h, p| {
         !h.group().ready[0] && !p.group().ready[1] && !p.group().assistance.drafting

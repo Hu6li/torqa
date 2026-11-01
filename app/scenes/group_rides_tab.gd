@@ -26,6 +26,8 @@ var _reach: VBoxContainer = VBoxContainer.new()
 var _reach_text: Label = Label.new()
 var _roster: VBoxContainer = VBoxContainer.new()
 var _next: Label = Label.new()
+## Turns while ORQWA connects, receives or prepares the ride and the rider can only wait (#420).
+var _working: Spinner = Spinner.new(18.0)
 var _ready_button: Button = Button.new()
 var _start: Button = Button.new()
 var _enter: Button = Button.new()
@@ -210,7 +212,13 @@ func _build_roster() -> void:
 	card.add_child(HSeparator.new())
 	_next.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_next.add_theme_color_override("font_color", UiTheme.MUTED)
-	card.add_child(_next)
+	_next.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var next_row: HBoxContainer = HBoxContainer.new()
+	next_row.add_theme_constant_override("separation", 10)
+	_working.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	next_row.add_child(_working)
+	next_row.add_child(_next)
+	card.add_child(next_row)
 	_progress.show_percentage = false
 	_progress.custom_minimum_size.y = 6
 	card.add_child(_progress)
@@ -548,6 +556,15 @@ func _show_status(status: Dictionary) -> void:
 	_progress.max_value = maxf(1, total)
 	_progress.value = received
 	_bytes.text = tr("%.1f / %.1f MiB") % [received / 1048576, total / 1048576]
+	# Building the course's world takes longest; the group hears how far it has got too.
+	var built: int = _own_percent() if phase == "preparing" else 0
+	if built > 0:
+		_progress.visible = true
+		_bytes.visible = true
+		_progress.max_value = 100
+		_progress.value = built
+		_bytes.text = tr("Building the world · %d %%") % built
+	_working.visible = phase in ["connecting", "downloading", "preparing"] and not can_retry
 	var trainer: bool = _orqwa.trainer_connected()
 	_next.text = (
 		tr("Choose an activity to get started.")
@@ -610,6 +627,15 @@ func _show_status(status: Dictionary) -> void:
 		_show_roster(phase, host)
 
 
+## This rider's preparation as the group heard it (#419), 0 before the first report.
+func _own_percent() -> int:
+	for rider: Dictionary in _status.get("roster", []):
+		if rider.get("me", false):
+			var percent: int = rider.get("percent", 0)
+			return percent
+	return 0
+
+
 func _show_workout_controls() -> void:
 	_workout_panel.visible = _status.get("workout_shared", false)
 	var paused: bool = _status.get("workout_paused", false)
@@ -643,6 +669,13 @@ func _show_roster(phase: String, host: bool) -> void:
 		var label: Label = _label(text, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		var state: Label = _label(text, tr("Ready") if rider["ready"] else tr("Getting ready"), 13)
+		# How far each friend has got (#419), until they are ready.
+		var stage: String = rider.get("stage", "")
+		var percent: int = rider.get("percent", 0)
+		if not rider["ready"] and stage == "downloading":
+			state.text = tr("Downloading · %d %%") % percent
+		elif not rider["ready"] and stage == "preparing" and percent < 100:
+			state.text = tr("Building the world · %d %%") % percent
 		if phase == "riding":
 			state.text = tr("No signal") if rider["ready"] else tr("Getting ready")
 			if rider["me"]:

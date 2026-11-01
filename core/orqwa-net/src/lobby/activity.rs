@@ -105,6 +105,18 @@ impl Activities {
                 .selection()
                 .is_some_and(|selected| selected.revision == revision)
     }
+    /// Whether `id` may tell the group how far it has prepared `revision` (#419): a member
+    /// not yet ready, for the current selection.
+    pub(super) fn preparing(&self, id: RiderId, revision: u64) -> bool {
+        let slot = usize::from(id.value());
+        self.enabled
+            && self.members[slot].is_some()
+            && !self.ready[slot]
+            && self
+                .lobby
+                .selection()
+                .is_some_and(|selected| selected.revision == revision)
+    }
     pub(super) fn initial(&self) -> Vec<Message> {
         let mut messages = Vec::new();
         if let Some(selected) = self.lobby.selection() {

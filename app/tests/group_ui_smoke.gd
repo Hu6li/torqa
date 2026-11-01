@@ -134,6 +134,27 @@ func _group_activity() -> void:
 	_check(
 		picker._course.disabled and not picker._apply.visible, "joiners preview the shared choice"
 	)
+	# How far everyone has got (#419), and something turning while this rider waits (#420).
+	var roster: Array = [
+		{"id": 0, "name": "Host", "ready": false, "me": false, "stage": "preparing", "percent": 70},
+		{"id": 1, "name": "Sam", "ready": false, "me": false, "stage": "downloading", "percent": 40},
+		{"id": 2, "name": "Me", "ready": false, "me": true, "stage": "preparing", "percent": 55},
+		{"id": 3, "name": "Mia", "ready": true, "me": false, "stage": "", "percent": 0},
+	]
+	group._show_status({"host": false, "phase": "preparing", "name": "Ride", "roster": roster})
+	var states: Array[String] = []
+	for row: Node in group._roster.get_children():
+		states.append((row.get_child(1).get_child(1) as Label).text)
+	_check(states[0] == "Building the world · 70 %", "a friend building: %s" % states[0])
+	_check(states[1] == "Downloading · 40 %", "a friend downloading: %s" % states[1])
+	_check(states[3] == "Ready", "a ready friend: %s" % states[3])
+	_check(group._working.visible, "it turns while this rider's ride is prepared")
+	_check(
+		group._progress.visible and is_equal_approx(group._progress.value, 55.0),
+		"and shows how far the world is built"
+	)
+	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	_check(not group._working.visible, "nothing turns once it is prepared")
 	group._show_status({"host": true, "phase": "waiting", "drafting": true, "keep_together": true})
 	_check(
 		not group._drafting.disabled and not group._together.disabled, "organizer sets both rules"

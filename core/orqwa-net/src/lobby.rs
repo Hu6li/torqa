@@ -63,6 +63,15 @@ impl Rider {
     }
 }
 
+/// How far a rider has got preparing the selected activity, for the others to see (#419).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stage {
+    /// Receiving the course or workout from the organizer.
+    Downloading,
+    /// Building the course's world, or loading the workout.
+    Preparing,
+}
+
 /// Reliable membership/countdown events and disposable latest-state updates.
 #[derive(Clone, Debug)]
 pub enum LobbyEvent {
@@ -76,6 +85,17 @@ pub enum LobbyEvent {
         revision: u64,
         /// Whether local preparation completed.
         ready: bool,
+    },
+    /// A participant not yet ready reported how far it has prepared this revision (#419).
+    Preparation {
+        /// Authenticated roster slot, including the local rider.
+        id: RiderId,
+        /// Selection being prepared.
+        revision: u64,
+        /// What it is doing.
+        stage: Stage,
+        /// How much of it is done, 0–100.
+        percent: u8,
     },
     /// An admitted rider joined the roster.
     Joined {
@@ -240,6 +260,8 @@ enum Command {
     Select(SharedActivity, oneshot::Sender<Result<(), LobbyError>>),
     Ready(u64, bool, oneshot::Sender<Result<(), LobbyError>>),
     PeerReady(Membership, u64, bool),
+    Preparation(u64, Stage, u8),
+    PeerPreparation(Membership, u64, Stage, u8),
     Enter(Membership, u64),
     WorkoutPause(bool, oneshot::Sender<Result<(), LobbyError>>),
     WorkoutSkip(Duration, oneshot::Sender<Result<(), LobbyError>>),
@@ -399,6 +421,17 @@ impl HostLobby {
             .try_send(Command::Ready(revision, ready, send))
             .map_err(|_| LobbyError::Lost)?;
         receive.await.map_err(|_| LobbyError::Lost)?
+    }
+    /// Tells the group how far the organizer has prepared `revision` (#419); `percent` is
+    /// 0–100. Fire-and-forget: a full queue drops it, as a later report supersedes it.
+    ///
+    /// # Errors
+    /// Returns [`LobbyError::Lost`] for a disconnected actor.
+    pub fn preparation(&self, revision: u64, stage: Stage, percent: u8) -> Result<(), LobbyError> {
+        match self.commands.try_send(Command::Preparation(revision, stage, percent)) {
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(LobbyError::Lost),
+            _ => Ok(()),
+        }
     }
     /// Privately binds a replacement admission credential to its original stable identity.
     ///
@@ -692,6 +725,24 @@ impl JoinerLobby {
             .try_send(Message::Ready(revision, ready))
             .map_err(|_| LobbyError::Lost)
     }
+    /// Tells the group how far this rider has prepared `revision` (#419); `percent` is 0–100.
+    /// Callers send it on a change of stage and at most every couple of seconds otherwise, well
+    /// within the host's control budget; a full queue drops it, as a later report supersedes it.
+    ///
+    /// # Errors
+    /// Returns [`LobbyError`] in legacy mode or for a stopped control queue.
+    pub fn preparation(&self, revision: u64, stage: Stage, percent: u8) -> Result<(), LobbyError> {
+        if !self.app_lobby {
+            return Err(LobbyError::Protocol);
+        }
+        match self
+            .readiness
+            .try_send(Message::Preparation(revision, stage, percent))
+        {
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(LobbyError::Lost),
+            _ => Ok(()),
+        }
+    }
     /// Explicitly enters a running app ride after declaring this selection prepared.
     /// A response is delivered as [`LobbyEvent::Entry`]; it never restarts an existing ride.
     ///
@@ -958,6 +1009,20 @@ async fn host_loop(
                     }
                     let _ = result.send(answer);
                 }
+                Some(Command::Preparation(revision,stage,percent)) => {
+                    if percent <= 100 && activities.preparing(organizer,revision) {
+                        broadcast(&peers,&Message::Preparations(organizer,revision,stage,percent));
+                        event(controls,LobbyEvent::Preparation {id:organizer,revision,stage,percent})?;
+                    }
+                }
+                Some(Command::PeerPreparation(member,revision,stage,percent)) => {
+                    let id = member.rider();
+                    if peers[usize::from(id.value())].as_ref().is_some_and(|p| p.member==member)
+                        && percent <= 100 && activities.preparing(id,revision) {
+                        broadcast(&peers,&Message::Preparations(id,revision,stage,percent));
+                        event(controls,LobbyEvent::Preparation {id,revision,stage,percent})?;
+                    }
+                }
                 Some(Command::PeerReady(member,revision,ready)) => {
                     let id = member.rider();
                     if peers[usize::from(id.value())].as_ref().is_some_and(|p| p.member==member)
@@ -1162,6 +1227,9 @@ async fn serve_peer(
                 Message::Ready(revision, ready) => commands
                     .try_send(Command::PeerReady(member, revision, ready))
                     .map_err(|_| LobbyError::Lost)?,
+                Message::Preparation(revision, stage, percent) => commands
+                    .try_send(Command::PeerPreparation(member, revision, stage, percent))
+                    .map_err(|_| LobbyError::Lost)?,
                 _ => return Err(LobbyError::Protocol),
             }
         }
@@ -1286,6 +1354,9 @@ async fn client_actor(
                     }
                     Message::Readiness(id,revision,ready) if app_lobby && revision==selection_revision && roster[usize::from(id.value())].is_some() => {
                         event(&controls,LobbyEvent::Readiness {id,revision,ready})?;
+                    }
+                    Message::Preparations(id,revision,stage,percent) if app_lobby && revision==selection_revision && percent <= 100 && roster[usize::from(id.value())].is_some() => {
+                        event(&controls,LobbyEvent::Preparation {id,revision,stage,percent})?;
                     }
                     Message::VoiceRoster(epochs) => voice.0.install_epochs(epochs).map_err(|_| LobbyError::Protocol)?,
                     Message::Joined(id, rider) if (app_lobby || start.is_none()) && roster[usize::from(id.value())].is_none() && id != me => {
@@ -1602,6 +1673,24 @@ mod tests {
             b"normalized workout bytes"
         );
         drop(received);
+        // Everyone sees how far the others have got (#419); stale revisions say nothing.
+        client.preparation(7, Stage::Downloading, 10).unwrap();
+        client.preparation(1, Stage::Preparing, 60).unwrap();
+        let reported = host_event(&mut host, |e| matches!(e, LobbyEvent::Preparation { .. })).await;
+        assert!(matches!(
+            reported,
+            LobbyEvent::Preparation { id, revision: 1, stage: Stage::Preparing, percent: 60 }
+                if id == client.me()
+        ));
+        host.preparation(1, Stage::Preparing, 90).unwrap();
+        let organizer = client_event(&mut client, |e| {
+            matches!(e, LobbyEvent::Preparation { id, .. } if *id == RiderId::HOST)
+        })
+        .await;
+        assert!(matches!(
+            organizer,
+            LobbyEvent::Preparation { percent: 90, stage: Stage::Preparing, .. }
+        ));
         host.ready(1, true).await.unwrap();
         assert!(host.start(Duration::from_secs(1)).await.is_err());
         client.ready(1, true).unwrap();

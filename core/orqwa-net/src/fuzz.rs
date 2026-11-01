@@ -152,6 +152,8 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Selection(selection.clone()),
         Message::Ready(1, true),
         Message::Readiness(anna, 1, true),
+        Message::Preparation(1, crate::lobby::Stage::Downloading, 40),
+        Message::Preparations(anna, 1, crate::lobby::Stage::Preparing, 75),
         Message::Enter(1),
     ];
     let handover = [

@@ -258,6 +258,19 @@ unknown avatar is a protocol error. The rider-plus-bike mass already revealed ab
 the weight, so sharing it with the group adds little; heart rate stays private as before.
 Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
 
+### Preparation progress — 2026-11-01
+
+Riders waited for each other without knowing who was still downloading or building the world
+(#419), and a rider's own page went quiet once the download finished (#420). Each rider now
+reports what it is doing for the current selection, **downloading** or **preparing**, and how
+far it has got in percent: a new joiner-to-host control the host checks against the current
+revision and the rider's readiness, then forwards to everyone, the organizer's own report
+included. Reports are advisory and rate-limited by the sender, at a change of stage and at most
+every two seconds otherwise, well within the host's existing control budget; a full queue
+drops one, as the next supersedes it, and readiness ends them. Preparing a course reports the
+app's own build steps on one scale, so the percentage only grows. Protocol/invitation version
+9 and ALPN `orqwa-group/9` require matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

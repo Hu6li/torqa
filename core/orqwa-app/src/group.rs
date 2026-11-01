@@ -7,6 +7,8 @@ use orqwa_net::activity::{Assistance, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
 use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
+/// What a rider preparing the activity is doing (#419).
+pub use orqwa_net::lobby::Stage;
 use orqwa_net::state::{MAX_RIDERS, RiderId, RiderState};
 use std::path::PathBuf;
 use std::sync::{
@@ -154,6 +156,9 @@ pub struct Snapshot {
     pub assistance: Assistance,
     /// Readiness for the selected revision.
     pub ready: [bool; MAX_RIDERS],
+    /// How far each rider not yet ready has got preparing the selected revision, and what
+    /// they are doing (#419); this rider's own too, as the group heard it.
+    pub preparation: [Option<(Stage, u8)>; MAX_RIDERS],
     /// Whether local preparation completed.
     pub prepared: bool,
     /// Verified local course.
@@ -226,6 +231,7 @@ impl Default for Snapshot {
             generations: [0; MAX_RIDERS],
             assistance: Assistance::default(),
             ready: [false; MAX_RIDERS],
+            preparation: [None; MAX_RIDERS],
             prepared: false,
             course: None,
             workout: None,
@@ -341,6 +347,8 @@ pub(crate) struct Running {
     task: tokio::task::JoinHandle<()>,
     states: watch::Sender<Option<runtime::Local>>,
     preparing: Option<(u64, u64)>,
+    /// The world-building percentage last passed to the runtime, which tells the group (#419).
+    built: u8,
     prepared: u64,
     launched: bool,
     launching: bool,
@@ -444,6 +452,7 @@ impl App {
             task,
             states,
             preparing: None,
+            built: 0,
             prepared: 0,
             launched: false,
             launching: false,
@@ -830,8 +839,10 @@ impl App {
                     self.open_shared_course(course.clone());
                     if let Some(g) = &mut self.group {
                         g.preparing = Some((revision, self.load));
+                        g.built = 0;
                     }
                 } else if group.preparing == Some((revision, self.load)) {
+                    self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
                         self.build_world();
                     }
@@ -1050,6 +1061,23 @@ impl App {
             group.states.send_replace(None);
         }
     }
+    /// Passes how far the course's preparation has got to the runtime, in steps of a few
+    /// percent so the bounded command queue stays free for the rider's own actions.
+    fn report_building(&mut self, events: &[AppEvent]) {
+        let Some(percent) = events.iter().rev().find_map(|event| match event {
+            AppEvent::LoadProgress { stage, done, total } => Some(built(*stage, *done, *total)),
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(group) = &self.group
+            && percent >= group.built.saturating_add(5)
+            && self.group_command(Command::Preparing(percent)).is_ok()
+            && let Some(group) = &mut self.group
+        {
+            group.built = percent;
+        }
+    }
     fn group_prepared(&mut self, revision: u64) {
         if let Some(g) = &mut self.group
             && g.commands.try_send(Command::Prepared(revision)).is_ok()
@@ -1098,4 +1126,48 @@ fn blend(
             from.grade_offset().0 + (to.grade_offset().0 - from.grade_offset().0) * weight,
         ),
     )
+}
+
+/// How much of preparing a course is done, 0–99, from its current step (#419): the steps
+/// follow each other in this order, and building the world takes the most time.
+fn built(stage: crate::import::LoadStage, done: usize, total: usize) -> u8 {
+    use crate::import::LoadStage;
+    let (from, to) = match stage {
+        LoadStage::Route => (0, 5),
+        LoadStage::Map => (5, 30),
+        LoadStage::Elevation => (30, 45),
+        LoadStage::CourseMap => (45, 50),
+        LoadStage::Countries => (50, 55),
+        LoadStage::World => (55, 99),
+    };
+    let share = done.min(total) * usize::from(to - from) / total.max(1);
+    from + u8::try_from(share).unwrap_or(to - from)
+}
+
+#[cfg(test)]
+mod built_tests {
+    use super::built;
+    use crate::import::LoadStage;
+
+    #[test]
+    fn preparing_a_course_only_ever_gets_further_and_waits_below_100_for_the_world() {
+        let steps = [
+            LoadStage::Route,
+            LoadStage::Map,
+            LoadStage::Elevation,
+            LoadStage::CourseMap,
+            LoadStage::Countries,
+            LoadStage::World,
+        ];
+        let mut last = 0;
+        for stage in steps {
+            for done in 0..=10 {
+                let percent = built(stage, done, 10);
+                assert!(percent >= last, "{stage:?} {done}: {percent} after {last}");
+                last = percent;
+            }
+        }
+        assert_eq!(last, 99, "done only once the world is ready");
+        assert_eq!(built(LoadStage::World, 3, 0), 55, "a step with nothing to count");
+    }
 }

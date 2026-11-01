@@ -2604,6 +2604,12 @@ msgstr "Meine Internetadresse automatisch ermitteln"
 msgid "Free ride · no workout"
 msgstr "Freie Fahrt · ohne Training"
 
+msgid "Downloading · %d %%"
+msgstr "Lädt herunter · %d %%"
+
+msgid "Building the world · %d %%"
+msgstr "3D-Welt wird erstellt · %d %%"
+
 msgid "Getting ready"
 msgstr "Macht sich bereit"
 
