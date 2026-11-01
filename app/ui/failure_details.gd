@@ -79,6 +79,7 @@ func clear() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_instance_valid(_toggle):
 		_toggle.text = tr("Technical details")
+		_dismiss.text = tr("Dismiss")
 		_refresh()
 
 

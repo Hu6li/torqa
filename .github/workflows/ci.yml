@@ -112,6 +112,55 @@ jobs:
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" core/target app/.godot ~/.cargo/registry
 
+  fuzz:
+    name: Fuzz untrusted decoders (dev container)
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            core/target
+            core/fuzz/target
+          key: fuzz-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-${{ hashFiles('core/Cargo.lock', 'core/fuzz/Cargo.lock') }}
+          restore-keys: |
+            fuzz-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-
+      - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
+          docker pull "$IMAGE" || docker build -f .devcontainer/Dockerfile -t "$IMAGE" .
+      # Thirty seconds per target catches shallow regressions on every change; the seeds start
+      # each target from valid encodings, so even short runs reach deep into the formats.
+      - name: Fuzz each target for thirty seconds
+        run: |
+          mkdir -p ~/.cargo/registry core/target core/fuzz/target
+          docker run --rm \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$PWD:/workspaces/orqwa" \
+            -v "$HOME/.cargo/registry:/usr/local/cargo/registry" \
+            -w /workspaces/orqwa \
+            "$IMAGE" scripts/fuzz.sh 30
+      - name: Keep the inputs that failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: core/fuzz/artifacts
+          if-no-files-found: ignore
+      - name: Hand the build directories back to the runner's user
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" core/target core/fuzz ~/.cargo/registry
+
   macos:
     name: macOS app (arm64)
     # Docker on macOS has no Bluetooth/Metal, so macOS builds happen natively on the runner.

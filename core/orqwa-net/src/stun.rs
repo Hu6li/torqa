@@ -25,6 +25,24 @@ pub fn binding_request(transaction: &[u8; 12]) -> [u8; HEADER] {
     bytes
 }
 
+/// A Binding indication, which keeps this socket's NAT mapping alive without any answer
+/// (RFC 8489 section 3). Use a fresh cryptographically random transaction ID each time.
+#[must_use]
+pub fn binding_indication(transaction: &[u8; 12]) -> [u8; HEADER] {
+    let mut bytes = binding_request(transaction);
+    bytes[1] = 0x11;
+    bytes
+}
+
+/// What one server observed of this socket.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mapping {
+    /// The answering server, to which a refresh of this mapping is sent.
+    pub server: SocketAddr,
+    /// The public address and port it saw.
+    pub seen: SocketAddr,
+}
+
 /// Reads a complete bounded response, including a FINGERPRINT check when present.
 /// The source address must be matched separately by the socket reader.
 #[must_use]
@@ -135,7 +153,7 @@ pub async fn discover(
     servers: &[String],
     policy: AddressPolicy,
     deadline: Instant,
-) -> Result<Vec<SocketAddr>, RandomError> {
+) -> Result<Vec<Mapping>, RandomError> {
     let Ok(bound) = socket.local_addr() else {
         return Ok(Vec::new());
     };
@@ -187,7 +205,15 @@ pub async fn discover(
             ask.seen = Some(seen);
         }
     }
-    Ok(asks.into_iter().filter_map(|ask| ask.seen).collect())
+    Ok(asks
+        .into_iter()
+        .filter_map(|ask| {
+            ask.seen.map(|seen| Mapping {
+                server: ask.server,
+                seen,
+            })
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -255,6 +281,15 @@ mod tests {
         bytes
     }
 
+    #[test]
+    fn a_mapping_refresh_is_an_indication_that_servers_never_answer() {
+        let indication = binding_indication(&TRANSACTION);
+        assert_eq!(indication[..4], [0x00, 0x11, 0, 0]);
+        assert_eq!(indication[4..8], COOKIE);
+        assert_eq!(indication[8..], TRANSACTION);
+        assert_eq!(parse_binding_response(&indication, &TRANSACTION), None);
+    }
+
     #[tokio::test]
     async fn a_local_stand_in_can_drop_a_request_without_using_public_servers() {
         let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -281,7 +316,13 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(seen, vec!["1.1.1.1:60000".parse().unwrap()]);
+        assert_eq!(
+            seen,
+            vec![Mapping {
+                server: addr,
+                seen: "1.1.1.1:60000".parse().unwrap()
+            }]
+        );
         task.await.unwrap();
     }
 
@@ -302,7 +343,7 @@ mod tests {
             )
             .await
             .unwrap(),
-            [] as [SocketAddr; 0]
+            [] as [Mapping; 0]
         );
         let end = Instant::now() + Duration::from_millis(30);
         assert_eq!(
@@ -314,7 +355,7 @@ mod tests {
             )
             .await
             .unwrap(),
-            [] as [SocketAddr; 0]
+            [] as [Mapping; 0]
         );
         assert!(Instant::now() < end + Duration::from_millis(200));
     }

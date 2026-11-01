@@ -1,11 +1,14 @@
 //! App group lobbies: owned background networking and local course preparation.
 
 use crate::{App, AppError, AppEvent, DescentMode, Failure, GhostChoice, Kind, Workout};
+use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
-use orqwa_net::lobby::Rider;
+/// What a rider preparing the activity is doing (#419).
+pub use orqwa_net::lobby::Stage;
+use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
 use orqwa_net::state::{MAX_RIDERS, RiderId, RiderState};
 use std::path::PathBuf;
 use std::sync::{
@@ -14,6 +17,8 @@ use std::sync::{
 };
 use std::time::Instant;
 use tokio::sync::{mpsc, watch};
+pub mod connection;
+mod handover;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -32,6 +37,10 @@ pub struct GroupRider {
     pub name: String,
     /// Rider and bike mass, for avatar effort only.
     pub mass: Kilograms,
+    /// The rider's own weight, for their power per kilogram (#422).
+    pub weight: Kilograms,
+    /// How the rider looks on the bike (#423).
+    pub avatar: Avatar,
     /// Smoothed course distance.
     pub distance: Meters,
     /// Peer virtual speed.
@@ -67,6 +76,31 @@ pub enum Phase {
     /// Discovery or admission failed.
     Failed,
 }
+/// Planned organizer transition, independent of personal riding and recording.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum Handover {
+    /// No request is pending.
+    #[default]
+    Idle,
+    /// The selected rider must explicitly accept or decline.
+    Offered,
+    /// The old organizer still owns the ride while replacement links connect.
+    Preparing,
+    /// The authorized commit is completing on the replacement links.
+    Committing,
+}
+impl Handover {
+    /// Stable presentation key for translated status text.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Offered => "offered",
+            Self::Preparing => "preparing",
+            Self::Committing => "committing",
+        }
+    }
+}
 impl Phase {
     /// Stable key for translated captions.
     #[must_use]
@@ -85,7 +119,7 @@ impl Phase {
         }
     }
 }
-/// Latest group view. Codes contain admission secrets, so this deliberately has no Debug.
+/// Latest group view. Codes reveal riders' addresses, so this deliberately has no Debug.
 #[derive(Clone)]
 #[allow(clippy::struct_excessive_bools)] // presentation of independent readiness and local audio gates
 pub struct Snapshot {
@@ -97,8 +131,21 @@ pub struct Snapshot {
     pub invite: String,
     /// Private joiner reply while awaiting admission.
     pub reply: String,
+    /// Whether friends at other homes can probably reach this rider as host: for the host from
+    /// its invitation, for a joiner from its reply (offered organizer duties).
+    pub reachability: Option<orqwa_net::code::Reachability>,
     /// Local assigned slot.
     pub me: u8,
+    /// Original group identity, retained when transport invitations change.
+    pub root: Option<orqwa_net::code::RideId>,
+    /// Current committed authority epoch.
+    pub epoch: u64,
+    /// Organizer's stable roster slot.
+    pub organizer: u8,
+    /// Current planned transition.
+    pub handover: Handover,
+    /// Selected successor while a transition is pending.
+    pub successor: Option<u8>,
     /// Current content identities and rules.
     pub selection: Option<Selection>,
     /// Fixed membership table without peer addresses or heart rate.
@@ -109,6 +156,9 @@ pub struct Snapshot {
     pub assistance: Assistance,
     /// Readiness for the selected revision.
     pub ready: [bool; MAX_RIDERS],
+    /// How far each rider not yet ready has got preparing the selected revision, and what
+    /// they are doing (#419); this rider's own too, as the group heard it.
+    pub preparation: [Option<(Stage, u8)>; MAX_RIDERS],
     /// Whether local preparation completed.
     pub prepared: bool,
     /// Verified local course.
@@ -121,10 +171,24 @@ pub struct Snapshot {
     pub plan: Option<std::sync::Arc<orqwa_domain::workout::Plan>>,
     /// Local monotonic countdown target.
     pub start: Option<Instant>,
+    /// Joined after countdown; preparation must not launch the ride implicitly.
+    pub late: bool,
+    /// An explicit entry request is awaiting the organizer's response.
+    pub entering: bool,
+    /// Fresh position and workout step accepted for this rider's first local tick.
+    pub entry: Option<RideProgress>,
+    /// Latest organizer-owned workout time, separate from personal recording and local pause.
+    pub workout_clock: Option<WorkoutClock>,
     /// Latest peer samples and local arrival times.
     pub states: [Option<(RiderState, Instant)>; MAX_RIDERS],
     /// Diagnostic details under a translated error caption.
     pub error: String,
+    /// Latest classified failure, emitted once through the application's normal failure events.
+    pub failure: Option<Failure>,
+    /// Monotonic occurrence number; dismissing an error must not resurface the same snapshot.
+    pub failure_revision: u64,
+    /// Preparation failed independently of later voice or admission errors.
+    pub activity_failed: bool,
     /// Explicit voice listening consent.
     pub voice: bool,
     /// Native audio startup is pending; microphone controls stay disabled.
@@ -155,20 +219,34 @@ impl Default for Snapshot {
             host: false,
             invite: String::new(),
             reply: String::new(),
+            reachability: None,
             me: 0,
+            root: None,
+            epoch: 1,
+            organizer: 0,
+            handover: Handover::Idle,
+            successor: None,
             selection: None,
             roster: std::array::from_fn(|_| None),
             generations: [0; MAX_RIDERS],
             assistance: Assistance::default(),
             ready: [false; MAX_RIDERS],
+            preparation: [None; MAX_RIDERS],
             prepared: false,
             course: None,
             workout: None,
             workout_id: String::new(),
             plan: None,
             start: None,
+            late: false,
+            entering: false,
+            entry: None,
+            workout_clock: None,
             states: [None; MAX_RIDERS],
             error: String::new(),
+            failure: None,
+            failure_revision: 0,
+            activity_failed: false,
             voice: false,
             voice_pending: false,
             microphone: false,
@@ -184,6 +262,70 @@ impl Default for Snapshot {
     }
 }
 impl Snapshot {
+    fn report(&mut self, kind: Kind, details: impl std::fmt::Display) {
+        let failure = Failure::new(kind, details);
+        self.error.clone_from(&failure.details);
+        self.failure = Some(failure);
+        self.failure_revision = self.failure_revision.saturating_add(1);
+    }
+
+    fn activity_error(&mut self, details: impl std::fmt::Display) {
+        self.prepared = false;
+        self.phase = Phase::Waiting;
+        self.activity_failed = true;
+        self.report(Kind::GroupActivity, details);
+    }
+
+    /// A failed activity can be retried even if a subsequent voice error was dismissed.
+    #[must_use]
+    pub fn can_retry(&self) -> bool {
+        !self.host && self.activity_failed && self.phase == Phase::Waiting
+    }
+
+    /// A late joiner may explicitly enter after preparation, before starting a local ride.
+    #[must_use]
+    pub fn can_enter(&self) -> bool {
+        self.late
+            && self.prepared
+            && self.phase == Phase::Ready
+            && !self.entering
+            && self.entry.is_none()
+    }
+
+    /// Organizer controls are available while the selected workout is running.
+    #[must_use]
+    pub fn can_control_workout(&self) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && self.phase == Phase::Riding
+            && self
+                .workout_clock
+                .zip(self.plan.as_ref())
+                .is_some_and(|(clock, plan)| clock.position(Instant::now()) < plan.duration())
+    }
+
+    /// An active organizer can offer authority to another prepared member.
+    #[must_use]
+    pub fn can_handover(&self) -> bool {
+        self.host
+            && self.prepared
+            && self.phase == Phase::Riding
+            && self.handover == Handover::Idle
+            && self
+                .roster
+                .iter()
+                .enumerate()
+                .any(|(id, rider)| id != usize::from(self.me) && rider.is_some() && self.ready[id])
+    }
+
+    /// The shared plan has run its last step; course riding can still continue.
+    #[must_use]
+    pub fn workout_finished(&self) -> bool {
+        self.workout_clock
+            .zip(self.plan.as_ref())
+            .is_some_and(|(clock, plan)| clock.position(Instant::now()) >= plan.duration())
+    }
+
     /// Only the prepared host with every admitted participant ready can start.
     #[must_use]
     pub fn can_start(&self) -> bool {
@@ -203,8 +345,10 @@ pub(crate) struct Running {
     commands: mpsc::Sender<Command>,
     snapshot: watch::Receiver<Snapshot>,
     task: tokio::task::JoinHandle<()>,
-    states: watch::Sender<Option<RiderState>>,
+    states: watch::Sender<Option<runtime::Local>>,
     preparing: Option<(u64, u64)>,
+    /// The world-building percentage last passed to the runtime, which tells the group (#419).
+    built: u8,
     prepared: u64,
     launched: bool,
     launching: bool,
@@ -212,6 +356,10 @@ pub(crate) struct Running {
     workout_id: String,
     voice_controls: Arc<VoiceControls>,
     peers: orqwa_session::group::Riders,
+    reported_failure: u64,
+    authority: u64,
+    effect: orqwa_physics::GroupEffect,
+    transition: Option<(Instant, orqwa_physics::GroupEffect)>,
 }
 #[derive(Default)]
 struct VoiceControls {
@@ -245,8 +393,15 @@ impl App {
     pub fn group(&self) -> Snapshot {
         self.group.as_ref().map_or_else(Snapshot::default, |g| {
             let mut snapshot = g.snapshot.borrow().clone();
-            if snapshot.host {
+            if !g.workout_id.is_empty() {
                 snapshot.workout_id.clone_from(&g.workout_id);
+            }
+            if snapshot.late
+                && snapshot.entry.is_some()
+                && !g.launched
+                && snapshot.phase == Phase::Riding
+            {
+                snapshot.phase = Phase::Ready;
             }
             snapshot
         })
@@ -282,6 +437,8 @@ impl App {
             rider: Rider {
                 name: rider.name.clone(),
                 mass: Kilograms(rider.rider_mass.0 + rider.bike_mass.0),
+                weight: rider.rider_mass,
+                avatar: rider.avatar,
             },
             data: self.data_dir.clone(),
             temporary: self.cache_dir.join(format!("group-{:x?}", token.0)),
@@ -295,6 +452,7 @@ impl App {
             task,
             states,
             preparing: None,
+            built: 0,
             prepared: 0,
             launched: false,
             launching: false,
@@ -302,6 +460,10 @@ impl App {
             workout_id: String::new(),
             voice_controls,
             peers: orqwa_session::group::Riders::default(),
+            reported_failure: 0,
+            authority: 1,
+            effect: orqwa_physics::GroupEffect::default(),
+            transition: None,
         });
         Ok(())
     }
@@ -316,6 +478,7 @@ impl App {
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {
         if let Some(active) = &mut self.ride {
+            active.ride.sync_group_workout(None);
             active
                 .ride
                 .set_group_effect(orqwa_physics::GroupEffect::default());
@@ -408,6 +571,8 @@ impl App {
                     generation: peer.generation,
                     name: rider.name.clone(),
                     mass: rider.mass,
+                    weight: rider.weight,
+                    avatar: rider.avatar,
                     distance: peer.distance,
                     speed: peer.speed,
                     power: peer.power,
@@ -436,6 +601,56 @@ impl App {
         }
         self.group_command(Command::Start)
     }
+    /// Requests entry near the organizer at the current workout step, after preparation.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] without a trainer, before preparation or if the group has ended.
+    pub fn group_enter(&self) -> Result<(), AppError> {
+        if !self.trainer_connected() {
+            return Err(AppError::NoTrainer);
+        }
+        if !self.group().can_enter() {
+            return Err(error("Prepare the activity before joining the ride."));
+        }
+        self.group_command(Command::Enter)
+    }
+
+    /// Pauses or resumes the group's workout clock; personal safety pause remains local.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] unless this rider is the organizer of an active shared workout.
+    pub fn group_workout_pause(&self, paused: bool) -> Result<(), AppError> {
+        if !self.group().can_control_workout() {
+            return Err(error("Only the organizer can control the shared workout."));
+        }
+        self.group_command(Command::WorkoutPause(paused))
+    }
+
+    pub(crate) fn group_skip_step(&self) -> Option<bool> {
+        let snapshot = self.group();
+        if !matches!(snapshot.phase, Phase::Countdown | Phase::Riding) || snapshot.plan.is_none() {
+            return None;
+        }
+        if !snapshot.can_control_workout() {
+            return Some(false);
+        }
+        let Some(clock) = snapshot.workout_clock else {
+            return Some(false);
+        };
+        let elapsed = clock.position(Instant::now());
+        let Some(next) = snapshot
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.at(elapsed, self.profile.profile.ftp))
+        else {
+            return Some(false);
+        };
+        Some(
+            self.group_command(Command::WorkoutSkip(elapsed + next.left))
+                .is_ok(),
+        )
+    }
+
     /// Retries a failed content transfer/preparation.
     ///
     /// # Errors
@@ -453,6 +668,35 @@ impl App {
     /// Returns [`AppError`] for invalid slots or unavailable queue.
     pub fn group_remove(&self, id: u8) -> Result<(), AppError> {
         self.group_command(Command::Remove(RiderId::new(id).map_err(error)?))
+    }
+    /// Offers organizer duties to a prepared connected rider, who must accept.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] unless locally riding as the current organizer.
+    pub fn group_handover(&self, id: u8) -> Result<(), AppError> {
+        if !self.group().can_handover() || self.ride.is_none() {
+            return Err(error("Only the riding organizer can offer a handover."));
+        }
+        self.group_command(Command::Handover(RiderId::new(id).map_err(error)?))
+    }
+    /// Accepts or declines the current offer; accepting permits pinned peer connections.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] without an active local ride or command queue.
+    pub fn group_handover_answer(&self, accepted: bool) -> Result<(), AppError> {
+        if self.ride.is_none() {
+            return Err(error(
+                "Join the ride before answering the organizer request.",
+            ));
+        }
+        self.group_command(Command::HandoverAnswer(accepted))
+    }
+    /// Cancels a pending handover before the old organizer releases authority.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] for an unavailable command queue.
+    pub fn group_handover_cancel(&self) -> Result<(), AppError> {
+        self.group_command(Command::HandoverCancel)
     }
     /// Configures opted-in voice. First activation starts with the microphone muted.
     ///
@@ -569,6 +813,7 @@ impl App {
         if let Some(group) = &mut self.group {
             group.trainer_connected = connected;
         }
+        self.report_group_failure(&snapshot, events);
         let Some(group) = &self.group else {
             return;
         };
@@ -594,8 +839,10 @@ impl App {
                     self.open_shared_course(course.clone());
                     if let Some(g) = &mut self.group {
                         g.preparing = Some((revision, self.load));
+                        g.built = 0;
                     }
                 } else if group.preparing == Some((revision, self.load)) {
+                    self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
                         self.build_world();
                     }
@@ -617,12 +864,26 @@ impl App {
         {
             self.group_prepared(revision);
         }
+        self.sync_group_workout(&snapshot);
         self.update_group_motion(&snapshot);
         self.publish_group_state(&snapshot);
     }
 
+    fn report_group_failure(&mut self, snapshot: &Snapshot, events: &mut Vec<AppEvent>) {
+        if let Some(group) = &mut self.group
+            && group.reported_failure != snapshot.failure_revision
+        {
+            group.reported_failure = snapshot.failure_revision;
+            if let Some(failure) = &snapshot.failure {
+                events.push(AppEvent::Error(failure.clone()));
+            }
+        }
+    }
+
     fn launch_group(&mut self, snapshot: &Snapshot, revision: u64, events: &mut Vec<AppEvent>) {
-        if snapshot.start.is_some_and(|at| Instant::now() >= at)
+        if (!snapshot.late || snapshot.entry.is_some())
+            && self.trainer_connected()
+            && snapshot.start.is_some_and(|at| Instant::now() >= at)
             && self
                 .group
                 .as_ref()
@@ -658,6 +919,24 @@ impl App {
                     if let Some(active) = &mut self.ride {
                         active.assisted =
                             snapshot.assistance.drafting || snapshot.assistance.keep_together;
+                        if let Some(entry) = snapshot.entry {
+                            let near = Meters((entry.distance.0 - 5.0).max(0.0));
+                            let entered = active.ride.enter_group(near, entry.workout);
+                            debug_assert!(
+                                entered,
+                                "validated entry must match the prepared activity"
+                            );
+                            let distance = active.ride.state().distance;
+                            active.milestones.skip_to(distance);
+                            let climbs = active
+                                .ride
+                                .route()
+                                .map_or(&[][..], orqwa_routes::Route::climbs);
+                            active.next_climb = climbs
+                                .iter()
+                                .position(|climb| climb.start.0 >= distance.0)
+                                .unwrap_or(climbs.len());
+                        }
                     }
                     events.push(AppEvent::GroupRideStarted {
                         on_course,
@@ -669,10 +948,27 @@ impl App {
         }
     }
 
+    fn sync_group_workout(&mut self, snapshot: &Snapshot) {
+        if let Some(active) = &mut self.ride {
+            if matches!(snapshot.phase, Phase::Ended | Phase::Failed) {
+                active.ride.sync_group_workout(None);
+            } else if let Some(clock) = snapshot.workout_clock {
+                active
+                    .ride
+                    .sync_group_workout(Some((clock.position(Instant::now()), clock.paused)));
+            }
+        }
+    }
+
     fn update_group_motion(&mut self, snapshot: &Snapshot) {
         let Some(group) = &mut self.group else {
             return;
         };
+        if group.authority != snapshot.epoch {
+            group.authority = snapshot.epoch;
+            group.transition = Some((Instant::now(), group.effect));
+            group.peers = orqwa_session::group::Riders::default();
+        }
         for id in 0..MAX_RIDERS {
             if id == usize::from(snapshot.me)
                 || snapshot.roster[id].is_none()
@@ -706,10 +1002,24 @@ impl App {
                 state.distance,
                 state.speed,
                 pedaling,
-                (snapshot.me != 0).then_some(0),
+                (snapshot.me != snapshot.organizer).then_some(usize::from(snapshot.organizer)),
                 rules.drafting,
                 rules.keep_together,
             );
+            let effect = if pedaling {
+                group.transition.map_or(effect, |(at, previous)| {
+                    blend(previous, effect, at.elapsed())
+                })
+            } else {
+                orqwa_physics::GroupEffect::default()
+            };
+            if group
+                .transition
+                .is_some_and(|(at, _)| at.elapsed() >= std::time::Duration::from_secs(2))
+            {
+                group.transition = None;
+            }
+            group.effect = effect;
             active.ride.set_group_effect(effect);
         }
     }
@@ -722,21 +1032,50 @@ impl App {
                 .ride
                 .as_ref()
                 .is_some_and(|ride| ride.paused || ride.finished);
-            g.states.send_replace(Some(RiderState {
-                at,
-                distance: state.distance,
-                speed: if stopped {
-                    MetersPerSecond(0.0)
-                } else {
-                    state.speed
+            g.states.send_replace(Some(runtime::Local {
+                state: RiderState {
+                    at,
+                    distance: state.distance,
+                    speed: if stopped {
+                        MetersPerSecond(0.0)
+                    } else {
+                        state.speed
+                    },
+                    power: state.telemetry.power.unwrap_or_default(),
+                    cadence: if stopped {
+                        Rpm(0.0)
+                    } else {
+                        state.telemetry.cadence.unwrap_or_default()
+                    },
                 },
-                power: state.telemetry.power.unwrap_or_default(),
-                cadence: if stopped {
-                    Rpm(0.0)
-                } else {
-                    state.telemetry.cadence.unwrap_or_default()
-                },
+                progress: self
+                    .ride
+                    .as_ref()
+                    .filter(|ride| !ride.finished && !ride.paused)
+                    .map(|active| RideProgress {
+                        distance: state.distance,
+                        workout: active.ride.workout_elapsed(),
+                    }),
             }));
+        } else if let Some(group) = &self.group {
+            group.states.send_replace(None);
+        }
+    }
+    /// Passes how far the course's preparation has got to the runtime, in steps of a few
+    /// percent so the bounded command queue stays free for the rider's own actions.
+    fn report_building(&mut self, events: &[AppEvent]) {
+        let Some(percent) = events.iter().rev().find_map(|event| match event {
+            AppEvent::LoadProgress { stage, done, total } => Some(built(*stage, *done, *total)),
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(group) = &self.group
+            && percent >= group.built.saturating_add(5)
+            && self.group_command(Command::Preparing(percent)).is_ok()
+            && let Some(group) = &mut self.group
+        {
+            group.built = percent;
         }
     }
     fn group_prepared(&mut self, revision: u64) {
@@ -771,5 +1110,68 @@ impl App {
                 })
             })
             .collect()
+    }
+}
+
+fn blend(
+    from: orqwa_physics::GroupEffect,
+    to: orqwa_physics::GroupEffect,
+    elapsed: std::time::Duration,
+) -> orqwa_physics::GroupEffect {
+    let t = (elapsed.as_secs_f64() / 2.0).clamp(0.0, 1.0);
+    let weight = t * t * (3.0 - 2.0 * t);
+    orqwa_physics::GroupEffect::new(
+        from.drag_share() + (to.drag_share() - from.drag_share()) * weight,
+        orqwa_domain::units::GradePercent(
+            from.grade_offset().0 + (to.grade_offset().0 - from.grade_offset().0) * weight,
+        ),
+    )
+}
+
+/// How much of preparing a course is done, 0–99, from its current step (#419): the steps
+/// follow each other in this order, and building the world takes the most time.
+fn built(stage: crate::import::LoadStage, done: usize, total: usize) -> u8 {
+    use crate::import::LoadStage;
+    let (from, to) = match stage {
+        LoadStage::Route => (0, 5),
+        LoadStage::Map => (5, 30),
+        LoadStage::Elevation => (30, 45),
+        LoadStage::CourseMap => (45, 50),
+        LoadStage::Countries => (50, 55),
+        LoadStage::World => (55, 99),
+    };
+    let share = done.min(total) * usize::from(to - from) / total.max(1);
+    from + u8::try_from(share).unwrap_or(to - from)
+}
+
+#[cfg(test)]
+mod built_tests {
+    use super::built;
+    use crate::import::LoadStage;
+
+    #[test]
+    fn preparing_a_course_only_ever_gets_further_and_waits_below_100_for_the_world() {
+        let steps = [
+            LoadStage::Route,
+            LoadStage::Map,
+            LoadStage::Elevation,
+            LoadStage::CourseMap,
+            LoadStage::Countries,
+            LoadStage::World,
+        ];
+        let mut last = 0;
+        for stage in steps {
+            for done in 0..=10 {
+                let percent = built(stage, done, 10);
+                assert!(percent >= last, "{stage:?} {done}: {percent} after {last}");
+                last = percent;
+            }
+        }
+        assert_eq!(last, 99, "done only once the world is ready");
+        assert_eq!(
+            built(LoadStage::World, 3, 0),
+            55,
+            "a step with nothing to count"
+        );
     }
 }

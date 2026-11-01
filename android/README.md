@@ -10,7 +10,7 @@ scripts/android.sh scripts/build-android.sh      # → dist/ORQWA-android-arm64.
 | Part | What it is |
 |---|---|
 | `Dockerfile` | The Android image: the dev image plus OpenJDK 21, the SDK (platform 36, build tools 36.1.0), the NDK, FFmpeg for Android and Godot's Android templates. The debug key is made once and kept in the `orqwa-gradle` volume, so updates install over the APK on a device |
-| `plugin/` | ORQWA's Godot Android plugin: loads ORQWA's library early so btleplug finds its Java classes (compiled in from the btleplug crate), asks for Bluetooth |
+| `plugin/` | ORQWA's Godot Android plugin: loads ORQWA's library early so btleplug finds its Java classes (compiled in from the btleplug crate), initializes voice's Android context, asks for Bluetooth |
 | `godot/` | What only the APK build adds to its copy of the project: the export preset and the editor addon that puts the plugin into the export |
 | `stage.py` | Adds those, the extension's Android library and Android's texture formats to the copy |
 
@@ -21,6 +21,17 @@ The Rust extension, Android plugin and APK export target the documented Android 
 (API 29). Group voice links Android's AAudio library, which is absent from the API 24 native
 target. The image's FFmpeg libraries can still be built against API 24 and linked into this
 newer target; no SDK or NDK update is needed for this alignment.
+
+The plugin initializes CPAL's existing `ndk-context` before the extension can enumerate or
+open audio. Rust retains one global reference to the application context, surviving activity
+recreation without keeping an old Activity alive. Initialization opens no audio stream and
+requests no microphone permission; capture still requires explicit consent.
+
+Received group activities are staged and validated on their destination filesystem. Android's
+emulated shared storage rejects hard links, so publication falls back to the kernel's atomic
+`renameat2(RENAME_NOREPLACE)` operation. The syscall works at API 29, where Bionic does not yet
+export its API-30 `renameat2` wrapper. It never overwrites an existing activity; conflicts are
+verified or rejected. No broad storage permission or private-library relocation is needed.
 
 ## Installing on a tablet
 

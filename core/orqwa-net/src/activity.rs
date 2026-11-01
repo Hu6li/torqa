@@ -1,7 +1,8 @@
 //! Activity selection and revision-bound readiness for the app integration (ADR 0037).
 //!
 //! Admission authenticates a lobby, not its mutable activity. File names never select a
-//! local path: content is identified by its complete SHA-256 and byte length.
+//! local path: content is identified by its complete SHA-256 and byte length. A course also
+//! carries a [`CourseKey`], so a joiner rides a copy they already have instead (#435).
 
 use crate::code::{MAX_NAME_BYTES, valid_name};
 use crate::crypto::sha256;
@@ -13,7 +14,7 @@ pub const MAX_COURSE_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_WORKOUT_BYTES: u64 = 1024 * 1024;
 /// Maximum selection payload, independent of the lobby's existing control framing.
 pub const MAX_SELECTION_BYTES: usize = 256;
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 
 /// Whether content is a portable course archive or a normalized structured workout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +122,20 @@ impl ContentId {
     }
 }
 
+/// What a course rides on, however each rider named and showed their copy (#435): SHA-256 of
+/// its storage-layer key material, which leaves out the name, map picture and countries. A
+/// joiner whose library holds a course with this key rides that file and downloads nothing.
+/// It only ever selects a course the rider already has; transfers still check [`ContentId`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CourseKey(pub [u8; 32]);
+impl CourseKey {
+    /// The key of the course described by `material`.
+    #[must_use]
+    pub fn of(material: &[u8]) -> Self {
+        Self(sha256(material))
+    }
+}
+
 /// Independent group rules. Assistance amounts are computed individually, not sent by peers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Assistance {
@@ -147,6 +162,8 @@ pub struct Selection {
     pub name: String,
     /// Portable course, if the ride has one.
     pub course: Option<ContentId>,
+    /// The course's key, present exactly when `course` is.
+    pub course_key: Option<CourseKey>,
     /// Normalized structured workout, if the ride has one.
     pub workout: Option<ContentId>,
     /// Shared rules, frozen together with this selection at countdown.
@@ -161,6 +178,7 @@ impl Selection {
         if self.revision == 0
             || !valid_name(&self.name)
             || (self.course.is_none() && self.workout.is_none())
+            || self.course.is_some() != self.course_key.is_some()
             || self.course.is_some_and(|id| id.kind != ContentKind::Course)
             || self
                 .workout
@@ -183,11 +201,14 @@ impl Selection {
         out.push(
             u8::from(self.assistance.drafting) | (u8::from(self.assistance.keep_together) << 1),
         );
-        for content in [self.course, self.workout] {
-            out.push(u8::from(content.is_some()));
-            if let Some(id) = content {
-                id.write(&mut out);
-            }
+        out.push(u8::from(self.course.is_some()));
+        if let (Some(id), Some(key)) = (self.course, self.course_key) {
+            id.write(&mut out);
+            out.extend_from_slice(&key.0);
+        }
+        out.push(u8::from(self.workout.is_some()));
+        if let Some(id) = self.workout {
+            id.write(&mut out);
         }
         Ok(out)
     }
@@ -209,16 +230,25 @@ impl Selection {
         if flags > 3 {
             return Err(ActivityError::Invalid);
         }
-        let mut content = || match input.byte()? {
-            0 => Ok(None),
-            1 => Ok(Some(ContentId::read(&mut input)?)),
-            _ => Err(ActivityError::Invalid),
+        let (course, course_key) = match input.byte()? {
+            0 => (None, None),
+            1 => (
+                Some(ContentId::read(&mut input)?),
+                Some(CourseKey(input.take()?)),
+            ),
+            _ => return Err(ActivityError::Invalid),
+        };
+        let workout = match input.byte()? {
+            0 => None,
+            1 => Some(ContentId::read(&mut input)?),
+            _ => return Err(ActivityError::Invalid),
         };
         let selection = Self {
             revision,
             name,
-            course: content()?,
-            workout: content()?,
+            course,
+            course_key,
+            workout,
             assistance: Assistance {
                 drafting: flags & 1 != 0,
                 keep_together: flags & 2 != 0,
@@ -260,14 +290,31 @@ pub struct Participant {
 }
 
 /// Pure host-owned readiness state; it never operates devices or starts network tasks.
-#[derive(Default)]
 pub struct ActivityLobby {
+    organizer: RiderId,
     selection: Option<Selection>,
     slots: [Option<(u64, bool)>; MAX_RIDERS],
     next_generation: u64,
     started: bool,
 }
+impl Default for ActivityLobby {
+    fn default() -> Self {
+        Self::new(RiderId::HOST)
+    }
+}
 impl ActivityLobby {
+    /// Creates readiness state for the organizer's stable rider identity.
+    #[must_use]
+    pub fn new(organizer: RiderId) -> Self {
+        Self {
+            organizer,
+            selection: None,
+            slots: [None; MAX_RIDERS],
+            next_generation: 0,
+            started: false,
+        }
+    }
+
     /// Current activity, or none while the host is still choosing one.
     #[must_use]
     pub const fn selection(&self) -> Option<&Selection> {
@@ -352,7 +399,7 @@ impl ActivityLobby {
     pub fn can_start(&self) -> bool {
         !self.started
             && self.selection.is_some()
-            && self.slots[0].is_some()
+            && self.slots[usize::from(self.organizer.value())].is_some()
             && self.slots.iter().flatten().all(|(_, ready)| *ready)
     }
     /// Freezes selection and settings only once all current participants are prepared.
@@ -406,6 +453,7 @@ mod tests {
             revision,
             name: "Twann – Chasseral".into(),
             course: Some(ContentId::of(ContentKind::Course, b"course").unwrap()),
+            course_key: Some(CourseKey::of(b"course")),
             workout: None,
             assistance: Assistance::default(),
         }
@@ -416,6 +464,7 @@ mod tests {
             for workout in [false, true] {
                 let mut s = selection(1);
                 s.course = course.then(|| ContentId::of(ContentKind::Course, b"course").unwrap());
+                s.course_key = course.then(|| CourseKey::of(b"course"));
                 s.workout =
                     workout.then(|| ContentId::of(ContentKind::Workout, b"workout").unwrap());
                 if !course && !workout {
@@ -432,6 +481,14 @@ mod tests {
                 assert!(Selection::decode(&trailing).is_err());
             }
         }
+        // A course comes with its key, so every joiner can look for their own copy (#435).
+        let mut keyless = selection(1);
+        keyless.course_key = None;
+        assert!(keyless.encode().is_err());
+        let mut stray = selection(1);
+        stray.course = None;
+        stray.workout = Some(ContentId::of(ContentKind::Workout, b"workout").unwrap());
+        assert!(stray.encode().is_err());
         assert!(Selection::decode(&[0; MAX_SELECTION_BYTES + 1]).is_err());
         assert!(ContentId::new(ContentKind::Course, MAX_COURSE_BYTES + 1, [1; 32]).is_err());
         assert!(ContentId::new(ContentKind::Workout, 0, [1; 32]).is_err());

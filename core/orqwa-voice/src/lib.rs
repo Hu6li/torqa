@@ -19,7 +19,10 @@ use codec::{SpeechDecoder, SpeechEncoder};
 #[derive(Debug)]
 pub enum VoiceEvent {
     /// A device or microphone could not be used. Conversation/ride state is unaffected.
-    DeviceUnavailable,
+    DeviceUnavailable {
+        /// Local operation and backend diagnostic, without microphone samples.
+        error: VoiceDeviceError,
+    },
     /// Invalid compressed audio silenced only this speaker locally.
     PeerMuted {
         /// Offending speaker number.
@@ -36,8 +39,8 @@ pub enum VoiceError {
     #[error(transparent)]
     Device(#[from] VoiceDeviceError),
     /// Local worker or codec startup failed.
-    #[error("Voice could not start. The ride can continue without it.")]
-    Startup,
+    #[error("Voice could not start: {0}")]
+    Startup(String),
     /// Volume is finite and between zero and one.
     #[error("Voice volume must be from 0 to 1.")]
     Volume,
@@ -95,15 +98,27 @@ impl VoiceChat {
         let thread = std::thread::Builder::new()
             .name("orqwa-voice".into())
             .spawn(move || {
-                let result = factory(owner_controls.stop.clone());
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    factory(owner_controls.stop.clone())
+                }));
                 match result {
-                    Ok(audio) => run(&owner_port, &owner_controls, audio, ready, &send),
-                    Err(error) => {
+                    Ok(Ok(audio)) => run(&owner_port, &owner_controls, audio, ready, &send),
+                    Ok(Err(error)) => {
                         let _ = ready.send(Err(VoiceError::Device(error)));
+                    }
+                    Err(panic) => {
+                        let cause = panic
+                            .downcast_ref::<String>()
+                            .map(String::as_str)
+                            .or_else(|| panic.downcast_ref::<&str>().copied())
+                            .unwrap_or("non-string panic");
+                        let _ = ready.send(Err(VoiceError::Startup(format!(
+                            "opening native audio devices panicked: {cause}"
+                        ))));
                     }
                 }
             })
-            .map_err(|_| VoiceError::Startup)?;
+            .map_err(|error| VoiceError::Startup(format!("starting voice worker: {error}")))?;
         let mut chat = Self {
             port,
             controls,
@@ -116,9 +131,17 @@ impl VoiceChat {
                 chat.stop();
                 Err(error)
             }
-            _ => {
+            Ok(Err(error)) => {
                 chat.stop();
-                Err(VoiceError::Startup)
+                Err(VoiceError::Startup(format!(
+                    "voice worker ended before reporting readiness: {error}"
+                )))
+            }
+            Err(error) => {
+                chat.stop();
+                Err(VoiceError::Startup(format!(
+                    "waiting for native audio devices timed out: {error}"
+                )))
             }
         }
     }
@@ -209,12 +232,19 @@ fn run(
     ready: oneshot::Sender<Result<(), VoiceError>>,
     events: &mpsc::Sender<VoiceEvent>,
 ) {
-    let Ok(mut encoder) = SpeechEncoder::new() else {
-        let _ = ready.send(Err(VoiceError::Startup));
-        return;
+    let mut encoder = match SpeechEncoder::new() {
+        Ok(encoder) => encoder,
+        Err(error) => {
+            let _ = ready.send(Err(VoiceError::Startup(format!(
+                "opening Opus encoder: {error}"
+            ))));
+            return;
+        }
     };
     if controls.stop.load(Ordering::Acquire) || !port.alive() {
-        let _ = ready.send(Err(VoiceError::Startup));
+        let _ = ready.send(Err(VoiceError::Startup(
+            "group connection ended during voice startup".into(),
+        )));
         return;
     }
     port.enable(true);
@@ -226,10 +256,10 @@ fn run(
     while !controls.stop.load(Ordering::Acquire) && port.alive() {
         let requested = port.transmitting();
         if requested != activation {
-            if audio.microphone(requested).is_err() {
+            if let Err(error) = audio.microphone(requested) {
                 let _ = port.microphone(false);
                 let _ = audio.microphone(None);
-                let _ = events.try_send(VoiceEvent::DeviceUnavailable);
+                let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             }
             activation = port.transmitting();
         }
@@ -239,7 +269,8 @@ fn run(
             playback = output;
         }
         if !audio.healthy() {
-            let _ = events.try_send(VoiceEvent::DeviceUnavailable);
+            let error = audio.failure();
+            let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             break;
         }
         let now = Instant::now();
@@ -257,7 +288,12 @@ fn run(
                     let _ = port.send(frame);
                 } else {
                     let _ = port.microphone(false);
-                    let _ = events.try_send(VoiceEvent::DeviceUnavailable);
+                    let _ = events.try_send(VoiceEvent::DeviceUnavailable {
+                        error: VoiceDeviceError::new(
+                            "encoding voice frame",
+                            "Opus encoding failed",
+                        ),
+                    });
                 }
                 break;
             }

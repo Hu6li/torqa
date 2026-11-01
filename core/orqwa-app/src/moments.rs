@@ -620,6 +620,7 @@ mod tests {
                 all_out: false,
             }),
             intensity: orqwa_domain::units::Percent(100.0),
+            paused: false,
         }
     }
 

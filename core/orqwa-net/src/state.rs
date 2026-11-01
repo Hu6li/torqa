@@ -10,7 +10,8 @@ pub const MAX_RIDERS: usize = 8;
 pub const STATE_EVERY: Duration = Duration::from_millis(200);
 /// A small arrival burst allows normal network jitter without permitting a sustained flood.
 const STATE_BURST: u8 = 10;
-const MAX_FUTURE: Duration = Duration::from_secs(2);
+/// How far a peer's estimate of the shared clock may run ahead of ours.
+pub(crate) const MAX_FUTURE: Duration = Duration::from_secs(2);
 const MAX_SESSION_TIME: Duration = Duration::from_hours(48);
 const FORMAT: u8 = 1;
 const DATAGRAM_BYTES: usize = 22;
@@ -20,7 +21,7 @@ const DATAGRAM_BYTES: usize = 22;
 pub struct RiderId(u8);
 
 impl RiderId {
-    /// The host's reserved number.
+    /// The initial organizer's number; handover preserves identities when authority changes.
     pub const HOST: Self = Self(0);
 
     /// Checks a wire/roster number against the fixed rider limit.

@@ -197,6 +197,27 @@ mod tests {
     fn manifest() -> Vec<u8> {
         br#"{"format":1,"generator":"ORQWA","name":"Shared","length_m":1000,"elevation_gain_m":20,"max_grade_percent":3,"created_unix_s":0,"attribution":[]}"#.to_vec()
     }
+    // scripts/fuzz.sh runs this before fuzzing the validator from a small accepted course.
+    #[test]
+    #[ignore = "writes the fuzz corpus named by ORQWA_FUZZ_CORPUS"]
+    fn write_fuzz_seed() {
+        let directory = std::path::PathBuf::from(
+            std::env::var_os("ORQWA_FUZZ_CORPUS").expect("ORQWA_FUZZ_CORPUS"),
+        )
+        .join("course");
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = archive(&[
+            (MANIFEST, &manifest()),
+            (ROUTE, b"<gpx/>"),
+            ("data/map/tile", b"tile"),
+        ]);
+        validate(&path).unwrap();
+        std::fs::rename(&path, directory.join("seed.tqc"))
+            .or_else(|_| std::fs::copy(&path, directory.join("seed.tqc")).map(|_| ()))
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     fn shared_courses_are_checked_before_any_extraction() {
         let manifest = manifest();

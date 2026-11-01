@@ -46,6 +46,8 @@ geo-types = "0.7.20"
 image-webp = "0.2.4"
 mvt-reader = "2.5.0"
 netdev = "0.47.0"
+# Already used by CPAL; its embedded Android host needs the app's VM/context initialized.
+ndk-context = "0.1.1"
 quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "aws_lc_rs"] }
 png = "0.18.1"

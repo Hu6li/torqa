@@ -19,9 +19,17 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		TranslationServer.set_locale(locale)
 		await create_timer(0.4).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-home-" + locale + ".png"))
-	group._lan.button_pressed = true
-	group._stun.button_pressed = false
-	group._open("")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._connection.ask_create()
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-connection-create-" + locale + ".png")
+		)
+		group._connection.hide()
+	group._connection.ask_create()
+	group._connection._choices["home"].button_pressed = true
+	group._connection._confirm()
 	var until: int = Time.get_ticks_msec() + 10000
 	while (
 		orqwa.group_status().get("phase", "idle") == "connecting" and Time.get_ticks_msec() < until
@@ -29,6 +37,18 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		await process_frame
 	var phase: String = orqwa.group_status().get("phase", "idle")
 	_check(phase == "waiting", "local lobby opened")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		_check(
+			group._connection.ask_join(str(orqwa.group_status()["invite"])),
+			"invitation inspected offline"
+		)
+		group._connection._choices["home"].button_pressed = true
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-connection-join-" + locale + ".png")
+		)
+		group._connection.hide()
 	var picker: GroupActivityPicker = group._picker
 	_check(picker._course.item_count > 1, "bundled course available for preview")
 	for locale: String in ["en", "de"]:
@@ -68,7 +88,196 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-invitation-de.png"))
 	group._exchange.hide()
 	orqwa.group_leave()
+	await _group_late_screens(start, group, orqwa, out)
+	await _group_workout_screens(start, group, out)
+	await _group_handover_screens(start, group, out)
+	await _group_reach_screens(start, group, out)
+	await _group_error_screens(start, group, out)
 	print("saved group setup and joining views")
+
+
+func _group_late_screens(
+	start: StartPage, group: GroupRidesTab, orqwa: OrqwaApp, out: String
+) -> void:
+	_check(orqwa.connect_fake_trainer(180.0, 85.0), "late entry trainer")
+	var until: int = Time.get_ticks_msec() + 5000
+	while not orqwa.trainer_connected() and Time.get_ticks_msec() < until:
+		await process_frame
+	var scroll: ScrollContainer = start.get("_group_page")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._show_status(
+			{
+				"phase": "ready",
+				"host": false,
+				"late": true,
+				"prepared": true,
+				"can_enter": true,
+				"name": "Recovery 30",
+				"workout_id": "builtin:recovery-30",
+				"roster":
+				[
+					{"id": 0, "name": "Alex", "ready": true, "me": false, "muted": false},
+					{"id": 1, "name": "Rider", "ready": false, "me": true, "muted": false}
+				]
+			}
+		)
+		scroll.scroll_vertical = 0
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-late-join-" + locale + ".png"))
+		print("saved group-late-join-" + locale)
+
+
+func _group_workout_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:
+	var scroll: ScrollContainer = start.get("_group_page")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._show_status(
+			{
+				"host": true,
+				"phase": "riding",
+				"workout_shared": true,
+				"workout_paused": true,
+				"can_control_workout": true,
+				"name": "Recovery 30",
+				"workout_id": "builtin:recovery-30",
+				"roster":
+				[
+					{"id": 0, "name": "Rider", "ready": true, "me": true, "muted": false},
+					{"id": 1, "name": "Alex", "ready": true, "me": false, "muted": false}
+				]
+			}
+		)
+		await create_timer(0.2).timeout
+		scroll.scroll_vertical = 100000
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-workout-" + locale + ".png"))
+		print("saved group-workout-" + locale)
+
+
+func _group_handover_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:
+	var scroll: ScrollContainer = start.get("_group_page")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._show_status(
+			{
+				"host": false,
+				"phase": "riding",
+				"handover": "offered",
+				"handover_offer": true,
+				"can_cancel_handover": true,
+				"successor_name": "Alex",
+				"name": "Recovery 30",
+				"workout_shared": true,
+				"roster":
+				[
+					{
+						"id": 0,
+						"name": "Rider",
+						"ready": true,
+						"me": false,
+						"muted": false,
+						"organizer": true
+					},
+					{"id": 1, "name": "Alex", "ready": true, "me": true, "muted": false}
+				]
+			}
+		)
+		await create_timer(0.2).timeout
+		scroll.scroll_vertical = 260
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-handover-" + locale + ".png"))
+		print("saved group-handover-" + locale)
+
+
+func _group_reach_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:
+	var scroll: ScrollContainer = start.get("_group_page")
+	var organizer: Dictionary = {
+		"id": 0, "name": "Rider", "ready": false, "me": true, "muted": false, "organizer": true
+	}
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._show_status(
+			{
+				"host": true,
+				"phase": "waiting",
+				"invite": "private",
+				"reachability": "strict",
+				"roster": [organizer]
+			}
+		)
+		scroll.scroll_vertical = 0
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-reach-" + locale + ".png"))
+		print("saved group-reach-" + locale)
+	TranslationServer.set_locale("en")
+	group._show_status(
+		{
+			"host": false,
+			"phase": "riding",
+			"handover": "offered",
+			"handover_offer": true,
+			"can_cancel_handover": true,
+			"reachability": "strict",
+			"roster":
+			[
+				organizer.merged({"me": false, "ready": true}, true),
+				{"id": 1, "name": "Alex", "ready": true, "me": true, "muted": false}
+			]
+		}
+	)
+	await create_timer(0.2).timeout
+	scroll.scroll_vertical = 260
+	await create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-reach-offer-en.png"))
+	print("saved group-reach-offer-en")
+
+
+func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:
+	var history: FailureDetails = _main.get("_failures")
+	var scroll: ScrollContainer = start.get("_group_page")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		(
+			group
+			. _show_status(
+				{
+					"phase": "waiting",
+					"host": false,
+					"name": "Twann – Chasseral",
+					"can_retry": true,
+					"roster":
+					[
+						{"id": 0, "name": "Marco", "ready": false, "me": false, "muted": false},
+						{"id": 1, "name": "Rider", "ready": false, "me": true, "muted": false}
+					],
+				}
+			)
+		)
+		group._voice_panel.show()
+		history.clear()
+		history.report(
+			{
+				"message": "Could not prepare the shared activity.",
+				"details": "publishing verified activity: Permission denied (os error 13)"
+			}
+		)
+		history.report(
+			{
+				"message":
+				"Voice is unavailable. Check your audio devices and microphone permission.",
+				"details": "opening speakers: AAudio device is unavailable"
+			}
+		)
+		history._toggle.button_pressed = true
+		scroll.scroll_vertical = 100000
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-errors-" + locale + ".png"))
+		print("saved group-errors-" + locale)
+		history._dismiss.pressed.emit()
+		await create_timer(0.2).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-dismissed-" + locale + ".png"))
+		print("saved group-dismissed-" + locale)
 
 
 func _initialize() -> void:

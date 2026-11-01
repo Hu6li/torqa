@@ -1,8 +1,8 @@
 //! Native audio streams with bounded callback queues and no network work in callbacks.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -38,10 +38,13 @@ pub struct AudioDevice {
 pub fn devices() -> Result<Vec<AudioDevice>, VoiceDeviceError> {
     let host = cpal::default_host();
     host.devices()
-        .map_err(|_| VoiceDeviceError)?
+        .map_err(|e| VoiceDeviceError::new("enumerating audio devices", e))?
         .map(|device| {
             Ok(AudioDevice {
-                id: device.id().map_err(|_| VoiceDeviceError)?.to_string(),
+                id: device
+                    .id()
+                    .map_err(|e| VoiceDeviceError::new("reading audio device ID", e))?
+                    .to_string(),
                 name: device.to_string(),
                 input: device.supports_input(),
                 output: device.supports_output(),
@@ -56,7 +59,26 @@ struct Gates {
     deafened: AtomicBool,
     revision: AtomicU32,
     failed: AtomicBool,
+    failure: Mutex<Option<VoiceDeviceError>>,
 }
+impl Gates {
+    fn fail(&self, error: cpal::Error) {
+        // CPAL recovers buffer underruns/overruns itself. A dropped audio buffer is not
+        // a lost device and must not tear down the whole conversation during a slow frame.
+        if error.kind() == cpal::ErrorKind::Xrun {
+            return;
+        }
+        // Error callbacks never wait on the audio owner. Keep at most one diagnostic,
+        // with no samples or credentials, and retire the stream through its normal gate.
+        if let Ok(mut failure) = self.failure.try_lock()
+            && failure.is_none()
+        {
+            *failure = Some(VoiceDeviceError::new("voice audio callback", error));
+        }
+        self.failed.store(true, Ordering::Release);
+    }
+}
+
 struct Output {
     samples: PcmFrame,
     at: Instant,
@@ -83,7 +105,7 @@ impl NativeAudio {
         let device = choose(&host, options.output.as_deref(), false)?;
         let supported = device
             .default_output_config()
-            .map_err(|_| VoiceDeviceError)?;
+            .map_err(|e| VoiceDeviceError::new("reading speaker configuration", e))?;
         let format = supported.sample_format();
         let config = configuration(&supported);
         validate(&config)?;
@@ -93,6 +115,7 @@ impl NativeAudio {
             deafened: AtomicBool::new(false),
             revision: AtomicU32::new(0),
             failed: AtomicBool::new(false),
+            failure: Mutex::new(None),
         });
         let (play_send, receive) = sync_channel(4);
         let output = match format {
@@ -106,9 +129,16 @@ impl NativeAudio {
             SampleFormat::U16 => output::<u16>(&device, config, receive, gates.clone()),
             SampleFormat::U32 => output::<u32>(&device, config, receive, gates.clone()),
             SampleFormat::U64 => output::<u64>(&device, config, receive, gates.clone()),
-            _ => return Err(VoiceDeviceError),
+            _ => {
+                return Err(VoiceDeviceError::new(
+                    "opening voice audio stream",
+                    "unsupported sample format",
+                ));
+            }
         }?;
-        output.play().map_err(|_| VoiceDeviceError)?;
+        output
+            .play()
+            .map_err(|e| VoiceDeviceError::new("starting speaker playback", e))?;
         let (capture_send, capture_receive) = sync_channel(4);
         Ok(Self {
             options,
@@ -128,15 +158,29 @@ fn choose(
     input: bool,
 ) -> Result<cpal::Device, VoiceDeviceError> {
     match id {
-        Some(id) => host.device_by_id(&id.parse().map_err(|_| VoiceDeviceError)?),
+        Some(id) => host.device_by_id(
+            &id.parse()
+                .map_err(|e| VoiceDeviceError::new("reading selected audio device ID", e))?,
+        ),
         None if input => host.default_input_device(),
         None => host.default_output_device(),
     }
-    .ok_or(VoiceDeviceError)
+    .ok_or_else(|| {
+        VoiceDeviceError::new(
+            "selecting audio device",
+            "selected or default device is unavailable",
+        )
+    })
 }
 fn validate(config: &StreamConfig) -> Result<(), VoiceDeviceError> {
     if !(1..=8).contains(&config.channels) || !(8000..=192_000).contains(&config.sample_rate) {
-        return Err(VoiceDeviceError);
+        return Err(VoiceDeviceError::new(
+            "validating native audio configuration",
+            format!(
+                "unsupported {} channels at {} Hz",
+                config.channels, config.sample_rate
+            ),
+        ));
     }
     Ok(())
 }
@@ -158,13 +202,16 @@ impl VoiceAudio for NativeAudio {
             return Ok(());
         };
         if activation == 0 || self.gates.stop.load(Ordering::Acquire) {
-            return Err(VoiceDeviceError);
+            return Err(VoiceDeviceError::new(
+                "opening voice audio stream",
+                "unsupported configuration or activation is no longer valid",
+            ));
         }
         let host = cpal::default_host();
         let device = choose(&host, self.options.input.as_deref(), true)?;
         let supported = device
             .default_input_config()
-            .map_err(|_| VoiceDeviceError)?;
+            .map_err(|e| VoiceDeviceError::new("reading microphone configuration", e))?;
         let format = supported.sample_format();
         let config = configuration(&supported);
         validate(&config)?;
@@ -196,15 +243,23 @@ impl VoiceAudio for NativeAudio {
             SampleFormat::U64 => {
                 input::<u64>(&device, config, send, self.gates.clone(), activation)
             }
-            _ => return Err(VoiceDeviceError),
+            _ => {
+                return Err(VoiceDeviceError::new(
+                    "opening voice audio stream",
+                    "unsupported sample format",
+                ));
+            }
         }?;
         if self.gates.stop.load(Ordering::Acquire) {
-            return Err(VoiceDeviceError);
+            return Err(VoiceDeviceError::new(
+                "opening voice audio stream",
+                "unsupported configuration or activation is no longer valid",
+            ));
         }
         self.gates.activation.store(activation, Ordering::Release);
-        stream.play().map_err(|_| {
+        stream.play().map_err(|error| {
             self.gates.activation.store(0, Ordering::Release);
-            VoiceDeviceError
+            VoiceDeviceError::new("starting microphone capture", error)
         })?;
         self.input = Some(stream);
         Ok(())
@@ -226,7 +281,17 @@ impl VoiceAudio for NativeAudio {
         self.gates.revision.fetch_add(1, Ordering::AcqRel);
     }
     fn healthy(&self) -> bool {
-        !self.gates.failed.load(Ordering::Relaxed)
+        !self.gates.failed.load(Ordering::Acquire)
+    }
+    fn failure(&mut self) -> VoiceDeviceError {
+        self.gates
+            .failure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or_else(|| {
+                VoiceDeviceError::new("voice audio callback", "device stopped responding")
+            })
     }
 }
 impl Drop for NativeAudio {
@@ -299,12 +364,12 @@ where
                     });
                 }
             },
-            move |_| {
-                failures.failed.store(true, Ordering::Relaxed);
+            move |error| {
+                failures.fail(error);
             },
             None,
         )
-        .map_err(|_| VoiceDeviceError)
+        .map_err(|error| VoiceDeviceError::new("building native audio stream", error))
 }
 
 struct Resampler {
@@ -386,17 +451,42 @@ where
                     position += step;
                 }
             },
-            move |_| {
-                failures.failed.store(true, Ordering::Relaxed);
+            move |error| {
+                failures.fail(error);
             },
             None,
         )
-        .map_err(|_| VoiceDeviceError)
+        .map_err(|error| VoiceDeviceError::new("building native audio stream", error))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn buffer_underruns_recover_but_device_errors_keep_the_original_cause() {
+        let gates = Gates {
+            stop: Arc::new(AtomicBool::new(false)),
+            activation: AtomicU32::new(0),
+            deafened: AtomicBool::new(false),
+            revision: AtomicU32::new(0),
+            failed: AtomicBool::new(false),
+            failure: Mutex::new(None),
+        };
+        gates.fail(cpal::Error::with_message(
+            cpal::ErrorKind::Xrun,
+            "buffer underrun",
+        ));
+        assert!(!gates.failed.load(Ordering::Acquire));
+        gates.fail(cpal::Error::with_message(
+            cpal::ErrorKind::DeviceNotAvailable,
+            "AAudio device disconnected",
+        ));
+        assert!(gates.failed.load(Ordering::Acquire));
+        let cause = gates.failure.lock().unwrap().take().unwrap().to_string();
+        assert!(
+            cause.contains("voice audio callback") && cause.contains("AAudio device disconnected")
+        );
+    }
     #[test]
     fn device_rates_produce_forty_eight_thousand_finite_mono_samples_per_second() {
         for rate in [8000, 16_000, 44_100, 48_000, 96_000, 192_000] {

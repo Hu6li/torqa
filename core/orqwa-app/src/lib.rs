@@ -522,6 +522,14 @@ impl Reporter {
     }
 }
 
+fn release_trainer(trainer: Option<&DeviceHandle>) {
+    if let Some(trainer) = trainer
+        && let Err(error) = trainer.try_control(TrainerControl::Resistance(Percent(0.0)))
+    {
+        warn!(%error, "cannot free the trainer");
+    }
+}
+
 /// Feeds `ride` the shifts `input` asks for, passes on its other controls, and reports when it
 /// connects or drops, `was_connected` telling how it was at the last update.
 fn drive_shift_input(
@@ -2972,6 +2980,12 @@ impl App {
 
     /// Changes the workout of the current workout, e.g. its target power or heart rate.
     pub fn change_workout(&mut self, workout: Workout) {
+        if matches!(
+            self.group().phase,
+            group::Phase::Countdown | group::Phase::Riding
+        ) {
+            return;
+        }
         if let Some(active) = &mut self.ride {
             active.ride.change_workout(workout);
         }
@@ -3068,11 +3082,7 @@ impl App {
         }
         active.paused = paused;
         if paused {
-            if let Some(trainer) = &self.trainer
-                && let Err(error) = trainer.try_control(TrainerControl::Resistance(Percent(0.0)))
-            {
-                warn!(%error, "cannot free the trainer");
-            }
+            release_trainer(self.trainer.as_ref());
         } else {
             active.ride.resend_control();
         }
@@ -3107,6 +3117,9 @@ impl App {
 
     /// Goes on with the next step of a structured workout (#139); whether there was one.
     pub fn skip_step(&mut self) -> bool {
+        if let Some(skipped) = self.group_skip_step() {
+            return skipped;
+        }
         self.ride
             .as_mut()
             .is_some_and(|active| active.ride.skip_step())
@@ -3140,10 +3153,7 @@ impl App {
             });
         if saved.is_ok() {
             let route = active.ride.route();
-            let finished = samples
-                .last()
-                .zip(route)
-                .is_some_and(|(s, route)| s.distance.0 >= route.length().0 - 1.0);
+            let finished = active.ride.is_finished();
             // A simulated ride's times are not real: like a ride known only from its FIT file,
             // it counts towards no records; neither does a workout without a route.
             let real = !active.simulated;
@@ -3157,7 +3167,12 @@ impl App {
                 summary: summarize(samples, self.profile.profile.ftp),
                 route_key: route.filter(|_| real).map(Route::key),
                 route_time: route
-                    .filter(|_| finished && real && !active.assisted)
+                    .filter(|_| {
+                        finished
+                            && real
+                            && !active.assisted
+                            && active.ride.entry_distance().0 == 0.0
+                    })
                     .and_then(|route| effort(samples, Meters(0.0), route.length()))
                     .map(|e| e.elapsed),
                 climbs: route
@@ -3165,12 +3180,21 @@ impl App {
                     .iter()
                     .filter(|_| real && !active.assisted)
                     .filter_map(|c| {
-                        effort(samples, c.start, c.end).map(|e| ClimbTime {
-                            start: c.start,
-                            end: c.end,
-                            elapsed: e.elapsed,
-                            avg_power: e.avg_power,
-                        })
+                        (c.start.0 >= active.ride.entry_distance().0)
+                            .then(|| {
+                                effort(
+                                    samples,
+                                    Meters(c.start.0 - active.ride.entry_distance().0),
+                                    Meters(c.end.0 - active.ride.entry_distance().0),
+                                )
+                            })
+                            .flatten()
+                            .map(|e| ClimbTime {
+                                start: c.start,
+                                end: c.end,
+                                elapsed: e.elapsed,
+                                avg_power: e.avg_power,
+                            })
                     })
                     .collect(),
                 name: None,
@@ -3568,7 +3592,14 @@ impl App {
             .iter()
             .enumerate()
             .find(|(_, c)| c.start.0 <= state.distance.0 && state.distance.0 < c.end.0)?;
-        let started = time_at(active.ride.samples(), climb.start).unwrap_or(state.elapsed);
+        if climb.start.0 < active.ride.entry_distance().0 {
+            return None;
+        }
+        let started = time_at(
+            active.ride.samples(),
+            Meters(climb.start.0 - active.ride.entry_distance().0),
+        )
+        .unwrap_or(state.elapsed);
         Some(ClimbProgress {
             index,
             climb: *climb,
@@ -3755,7 +3786,11 @@ impl App {
             // Samples arrive once a second, so a climb is timed once a sample lies past its top.
             let climbs = active.ride.route().map_or(&[][..], Route::climbs);
             while let Some(climb) = climbs.get(active.next_climb)
-                && let Some(done) = effort(active.ride.samples(), climb.start, climb.end)
+                && let Some(done) = effort(
+                    active.ride.samples(),
+                    Meters(climb.start.0 - active.ride.entry_distance().0),
+                    Meters(climb.end.0 - active.ride.entry_distance().0),
+                )
             {
                 events.push(AppEvent::Moment(moments::climb_topped(
                     active.next_climb,
@@ -3773,6 +3808,8 @@ impl App {
             }
             // The finish is the summary's to tell (R113).
             if active.ride.is_finished() {
+                // A shared last-step skip can finish before another ERG update reaches the trainer.
+                release_trainer(self.trainer.as_ref());
                 active.finished = true;
                 events.push(AppEvent::RideFinished);
             } else {

@@ -12,8 +12,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep_until, timeout_at};
 
-use crate::code::{AdmissionSecret, CodeError, Invite, Reply, RideId, RouteHash, valid_name};
-use crate::crypto::RandomError;
+use crate::code::{CodeError, Fingerprint, Invite, Reply, RideId, RouteHash, valid_name};
+use crate::crypto::{RandomError, random};
 use crate::discovery::{self, GatherError, GatherOptions};
 use crate::limits::{ConnectionBudget, ConnectionPermit, MAX_CONNECTIONS};
 use crate::tls::{self, Pinned};
@@ -27,7 +27,11 @@ const ATTEMPT: Duration = Duration::from_secs(5);
 const PROBE_EVERY: Duration = Duration::from_millis(500);
 const PROBE_LIMIT: usize = 100;
 const PROBE: &[u8] = &[0, b'o', b'q'];
-const AUTH_LEN: usize = 113;
+/// How often a host refreshes its advertised STUN mapping while nobody is connected through it.
+/// Joiners only probe once their reply is admitted, and home and carrier NATs often forget an
+/// idle UDP mapping within a minute; ICE refreshes its candidates as often (RFC 8445).
+pub const MAPPING_REFRESH: Duration = Duration::from_secs(15);
+const AUTH_LEN: usize = 81;
 const ACK_OK: u8 = 1;
 const ACK_WAIT: u8 = 2;
 const ACK_REPLAY: u8 = 3;
@@ -119,6 +123,7 @@ async fn until<T, E>(
 struct Path {
     endpoint: Endpoint,
     prober: StdSocket,
+    refresh: Option<SocketAddr>,
 }
 impl Drop for Path {
     fn drop(&mut self) {
@@ -155,11 +160,17 @@ impl Local {
                 local.runtime.clone(),
             )
             .map_err(|_| LinkError::Socket)?;
-            if local.nat == crate::code::NatObservation::None {
+            // Codes report what STUN saw of IPv4, where address sharing happens.
+            let ipv4 = prober.local_addr().is_ok_and(|a| a.is_ipv4());
+            if ipv4 || local.nat == crate::code::NatObservation::None {
                 local.nat = path.nat;
             }
             local.candidates.extend(path.candidates);
-            local.paths.push(Path { endpoint, prober });
+            local.paths.push(Path {
+                endpoint,
+                prober,
+                refresh: path.refresh,
+            });
         }
         if local.candidates.is_empty() {
             return Err(LinkError::NoCandidates);
@@ -225,6 +236,7 @@ async fn probe(
 
 struct LiveConnection {
     quic: quinn::Connection,
+    client: Option<Fingerprint>,
     deadline: Instant,
     _permit: Option<ConnectionPermit>,
     _owner: Option<Local>,
@@ -250,6 +262,10 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
+    /// At the host, the joiner certificate this connection proved and was admitted with.
+    pub(crate) fn client(&self) -> Option<Fingerprint> {
+        self.0.client
+    }
     /// Peer address for local diagnostics; not forwarded to other riders.
     #[must_use]
     pub fn peer_address(&self) -> SocketAddr {
@@ -344,14 +360,15 @@ struct Admission {
     stop: Arc<AtomicBool>,
 }
 struct Shared {
-    admissions: Mutex<HashMap<AdmissionSecret, Admission>>,
+    admissions: Mutex<HashMap<Fingerprint, Admission>>,
     budget: ConnectionBudget,
     events: mpsc::Sender<HostEvent>,
     invite: Invite,
+    sealed: AtomicBool,
 }
 
 impl Shared {
-    fn admissions(&self) -> MutexGuard<'_, HashMap<AdmissionSecret, Admission>> {
+    fn admissions(&self) -> MutexGuard<'_, HashMap<Fingerprint, Admission>> {
         self.admissions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -417,10 +434,22 @@ impl Host {
             budget: ConnectionBudget::new(Instant::now().into_std()),
             events: send,
             invite,
+            sealed: AtomicBool::new(false),
         });
         let mut tasks = JoinSet::new();
         for path in &local.paths {
             tasks.spawn(accept_all(path.endpoint.clone(), shared.clone()));
+            if let Some(server) = path.refresh
+                && let Ok(prober) = path.prober.try_clone()
+            {
+                tasks.spawn(keep_mapping(
+                    prober,
+                    server,
+                    path.endpoint.clone(),
+                    shared.clone(),
+                    MAPPING_REFRESH,
+                ));
+            }
         }
         Ok(Self {
             local,
@@ -440,6 +469,7 @@ impl Host {
     /// Stops all pending replies and probes when the lobby countdown begins.
     /// Future pasted replies must be refused by the lobby owner.
     pub fn seal(&mut self) {
+        self.shared.sealed.store(true, Ordering::Relaxed);
         for admission in self.shared.admissions().values_mut() {
             if admission.state == AdmissionState::Pending {
                 admission.state = AdmissionState::Expired;
@@ -460,14 +490,14 @@ impl Host {
         let stop = Arc::new(AtomicBool::new(false));
         {
             let mut admissions = self.shared.admissions();
-            if admissions.contains_key(&reply.secret) {
+            if admissions.contains_key(&reply.client) {
                 return Err(LinkError::Replay);
             }
             if admissions.len() >= MAX_ADMISSIONS {
                 return Err(LinkError::Full);
             }
             admissions.insert(
-                reply.secret.clone(),
+                reply.client,
                 Admission {
                     expires,
                     state: AdmissionState::Pending,
@@ -482,12 +512,12 @@ impl Host {
             stop,
         ));
         let shared = self.shared.clone();
-        let secret = reply.secret.clone();
+        let client = reply.client;
         self.tasks.spawn(async move {
             sleep_until(expires).await;
             let timed_out = {
                 let mut admissions = shared.admissions();
-                if let Some(entry) = admissions.get_mut(&secret)
+                if let Some(entry) = admissions.get_mut(&client)
                     && entry.state == AdmissionState::Pending
                 {
                     entry.state = AdmissionState::Expired;
@@ -506,7 +536,7 @@ impl Host {
 
     /// Revokes a pending reply without removing its replay-prevention tombstone.
     pub fn revoke(&mut self, reply: &Reply) {
-        if let Some(entry) = self.shared.admissions().get_mut(&reply.secret) {
+        if let Some(entry) = self.shared.admissions().get_mut(&reply.client) {
             entry.state = AdmissionState::Expired;
             entry.stop.store(true, Ordering::Relaxed);
         }
@@ -541,6 +571,30 @@ impl Drop for Host {
     }
 }
 
+// A Binding indication refreshes the mapping the invite advertises; servers never answer it.
+// Once a rider is connected, QUIC keep-alives refresh the same mapping instead.
+async fn keep_mapping(
+    prober: StdSocket,
+    server: SocketAddr,
+    endpoint: Endpoint,
+    shared: Arc<Shared>,
+    every: Duration,
+) {
+    loop {
+        sleep_until(Instant::now() + every).await;
+        if shared.sealed.load(Ordering::Relaxed) {
+            return;
+        }
+        if endpoint.open_connections() > 0 {
+            continue;
+        }
+        let Ok(transaction) = random() else {
+            return;
+        };
+        let _ = prober.send_to(&crate::stun::binding_indication(&transaction), server);
+    }
+}
+
 async fn accept_all(endpoint: Endpoint, shared: Arc<Shared>) {
     let mut jobs = JoinSet::new();
     loop {
@@ -558,17 +612,17 @@ async fn accept_all(endpoint: Endpoint, shared: Arc<Shared>) {
     }
 }
 
-fn auth_message(invite: &Invite, secret: &AdmissionSecret) -> [u8; AUTH_LEN] {
+// The joiner's credential is its TLS client certificate; this binds that proof to one ride.
+fn auth_message(invite: &Invite) -> [u8; AUTH_LEN] {
     let mut bytes = [0; AUTH_LEN];
     bytes[0] = 1;
     bytes[1..17].copy_from_slice(&invite.ride.0);
     bytes[17..49].copy_from_slice(&invite.fingerprint.0);
     bytes[49..81].copy_from_slice(&invite.route.0);
-    bytes[81..].copy_from_slice(&secret.0);
     bytes
 }
 
-fn take_credential(shared: &Shared, bytes: &[u8]) -> (u8, Option<Instant>) {
+fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, Option<Instant>) {
     if bytes.len() != AUTH_LEN
         || bytes[0] != 1
         || bytes[1..17] != shared.invite.ride.0
@@ -577,13 +631,8 @@ fn take_credential(shared: &Shared, bytes: &[u8]) -> (u8, Option<Instant>) {
     {
         return (ACK_INVALID, None);
     }
-    let Ok(secret) =
-        AdmissionSecret::from_random_bytes(bytes[81..].try_into().expect("checked frame length"))
-    else {
-        return (ACK_INVALID, None);
-    };
     let mut admissions = shared.admissions();
-    let Some(entry) = admissions.get_mut(&secret) else {
+    let Some(entry) = admissions.get_mut(&client) else {
         return (ACK_WAIT, None);
     };
     if entry.state == AdmissionState::Used {
@@ -604,10 +653,14 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
     let Ok(quic) = until(end, async { incoming.await }).await else {
         return;
     };
+    let Some(client) = tls::client_pin(&quic) else {
+        quic.close(VarInt::from_u32(1), b"admission failed");
+        return;
+    };
     let result = async {
         let (mut send, mut recv) = until(end, quic.accept_bi()).await?;
         let bytes = until(end, recv.read_to_end(AUTH_LEN)).await?;
-        let (ack, expires) = take_credential(&shared, &bytes);
+        let (ack, expires) = take_credential(&shared, &bytes, client);
         until(end, send.write_all(&[ack])).await?;
         send.finish().map_err(|_| LinkError::Lost)?;
         if ack != ACK_OK {
@@ -621,7 +674,10 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
         Ok(expires) => {
             let connection = Connection(Arc::new(LiveConnection {
                 quic,
-                deadline: expires.min(end),
+                client: Some(client),
+                // AUTH_WAIT bounds only the credential exchange. The lobby handshake that
+                // follows shares the admission's one deadline (R161), as the joiner's does.
+                deadline: expires,
                 _permit: Some(permit),
                 _owner: None,
             }));
@@ -669,14 +725,14 @@ impl Joiner {
             return Err(CodeError::WrongRide.into());
         }
         invite.encode(options.gather.policy)?;
-        let secret = AdmissionSecret::generate()?;
-        let (client, pinned) = tls::client(invite.fingerprint)?;
+        let identity = tls::Identity::generate()?;
+        let (client, pinned) = tls::client(invite.fingerprint, &identity)?;
         let local = Local::open(&options.gather, end, None).await?;
         let reply = Reply {
             ride: invite.ride,
             fingerprint: invite.fingerprint,
             route,
-            secret,
+            client: identity.pin(),
             candidates: local.candidates.clone(),
             nat: local.nat,
         };
@@ -728,6 +784,7 @@ impl Joiner {
                         self.tasks.abort_all();
                         return Ok(Connection(Arc::new(LiveConnection {
                             quic,
+                            client: None,
                             deadline: self.deadline,
                             _permit: None,
                             _owner: self.local.take(),
@@ -785,11 +842,7 @@ impl Joiner {
 
     async fn authenticate(&self, connection: &quinn::Connection) -> Result<bool, LinkError> {
         let (mut send, mut recv) = until(self.deadline, connection.open_bi()).await?;
-        until(
-            self.deadline,
-            send.write_all(&auth_message(&self.invite, &self.reply.secret)),
-        )
-        .await?;
+        until(self.deadline, send.write_all(&auth_message(&self.invite))).await?;
         send.finish().map_err(|_| LinkError::Lost)?;
         let ack = until(self.deadline, recv.read_to_end(1)).await?;
         match ack.as_slice() {
@@ -848,6 +901,88 @@ mod tests {
             HostEvent::Joined(connection) => connection,
             HostEvent::Expired => panic!("reply expired"),
         }
+    }
+    fn ipv4(host: &Host) -> &Path {
+        host.local
+            .paths
+            .iter()
+            .find(|p| p.endpoint.local_addr().unwrap().is_ipv4())
+            .expect("IPv4 loopback path")
+    }
+
+    #[tokio::test]
+    async fn an_admitted_host_connection_keeps_the_whole_admission_window_for_the_lobby() {
+        let mut opts = options();
+        opts.window = Duration::from_secs(10);
+        let mut host = Host::open("Anna", "Galibier", route(), &opts)
+            .await
+            .unwrap();
+        let joiner = Joiner::open(host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        let admitted = Instant::now();
+        host.admit(joiner.reply()).unwrap();
+        let client = joiner.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert!(peer.admission_deadline() >= admitted + opts.window);
+        drop((client, peer));
+        host.close().await;
+    }
+
+    // At most one refresh may already be on its way when the condition changes.
+    async fn falls_silent(server: &tokio::net::UdpSocket, every: Duration) -> bool {
+        let mut packet = [0; 64];
+        for _ in 0..2 {
+            if timeout(every * 4, server.recv_from(&mut packet))
+                .await
+                .is_err()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn an_advertised_mapping_is_refreshed_only_while_waiting_for_a_rider() {
+        let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let mut host = host().await;
+        let path = ipv4(&host);
+        let every = Duration::from_millis(30);
+        host.tasks.spawn(keep_mapping(
+            path.prober.try_clone().unwrap(),
+            server.local_addr().unwrap(),
+            path.endpoint.clone(),
+            host.shared.clone(),
+            every,
+        ));
+        let mut packet = [0; 64];
+        let (len, _) = timeout(every * 4, server.recv_from(&mut packet))
+            .await
+            .expect("a refresh while nobody is connected")
+            .unwrap();
+        assert_eq!(len, 20);
+        assert_eq!(packet[..2], [0x00, 0x11], "a Binding indication");
+        assert_eq!(packet[4..8], [0x21, 0x12, 0xa4, 0x42]);
+
+        // Each path refreshes its own mapping, so connect through the refreshed one.
+        let mut invite = host.invite().clone();
+        invite.candidates.retain(|c| c.addr().is_ipv4());
+        let joiner = Joiner::open(invite, route(), &options()).await.unwrap();
+        host.admit(joiner.reply()).unwrap();
+        let client = joiner.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert!(
+            falls_silent(&server, every).await,
+            "QUIC keep-alives refresh the mapping once a rider is connected"
+        );
+        drop((client, peer));
+        host.seal();
+        assert!(
+            falls_silent(&server, every).await,
+            "a sealed invite needs no refresh"
+        );
+        host.close().await;
     }
 
     #[tokio::test]
@@ -917,7 +1052,7 @@ mod tests {
         assert_eq!(
             host.shared
                 .admissions()
-                .get(&legitimate.reply().secret)
+                .get(&legitimate.reply().client)
                 .unwrap()
                 .state,
             AdmissionState::Pending
@@ -927,10 +1062,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_consumed_credential_and_repeated_reply_cannot_admit_another_connection() {
+    async fn a_used_joiner_key_and_repeated_reply_cannot_admit_another_connection() {
         let mut host = host().await;
         let first = joiner(&host).await;
         let used = first.reply().clone();
+        let same_key = first.client.clone();
         host.admit(&used).unwrap();
         let client = first.connect().await.unwrap();
         let peer = joined(&mut host).await;
@@ -938,7 +1074,7 @@ mod tests {
         let pending = joiner(&host).await;
         host.admit(pending.reply()).unwrap();
         let mut replay = joiner(&host).await;
-        replay.reply.secret = used.secret;
+        replay.client = same_key;
         assert!(matches!(replay.connect().await, Err(LinkError::Replay)));
         assert!(
             timeout(Duration::from_millis(20), host.next())
@@ -946,6 +1082,82 @@ mod tests {
                 .is_err()
         );
         drop((client, peer, pending));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_copied_reply_admits_nobody_but_the_joiner_that_created_it() {
+        let mut host = host().await;
+        let legitimate = joiner(&host).await;
+        host.admit(legitimate.reply()).unwrap();
+        // Someone who saw the reply in a chat reuses it from another computer.
+        let mut opts = options();
+        opts.window = Duration::from_millis(300);
+        let mut copier = Joiner::open(host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        copier.reply = legitimate.reply().clone();
+        assert!(matches!(copier.connect().await, Err(LinkError::Timeout)));
+        assert!(
+            timeout(Duration::from_millis(20), host.next())
+                .await
+                .is_err(),
+            "the copier was never admitted"
+        );
+        assert_eq!(
+            host.shared
+                .admissions()
+                .get(&legitimate.reply().client)
+                .unwrap()
+                .state,
+            AdmissionState::Pending
+        );
+        let expected = legitimate.reply().client;
+        let client = legitimate.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        assert_eq!(peer.client(), Some(expected));
+        drop((client, peer));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_joiner_without_a_certificate_is_never_admitted() {
+        let mut host = host().await;
+        let pending = joiner(&host).await;
+        host.admit(pending.reply()).unwrap();
+        // Pins the real host, like a joiner, but offers no certificate of its own.
+        let identity = tls::Identity::generate().unwrap();
+        let (_, pinned) = tls::client(host.invite().fingerprint, &identity).unwrap();
+        let mut without_certificate =
+            rustls::ClientConfig::builder_with_provider(crate::crypto::provider())
+                .with_protocol_versions(&[&rustls::version::TLS13])
+                .unwrap()
+                .dangerous()
+                .with_custom_certificate_verifier(pinned)
+                .with_no_client_auth();
+        without_certificate.alpn_protocols = vec![tls::ALPN.to_vec()];
+        let config = quinn::ClientConfig::new(Arc::new(
+            quinn::crypto::rustls::QuicClientConfig::try_from(without_certificate).unwrap(),
+        ));
+        let address = ipv4(&host).endpoint.local_addr().unwrap();
+        let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
+        let attempt = endpoint
+            .connect_with(config, address, tls::SERVER_NAME)
+            .unwrap();
+        let result = timeout(Duration::from_secs(2), async {
+            let connection = attempt.await?;
+            // TLS 1.3 clients finish before the server checks their certificate.
+            connection.accept_uni().await.map(|_| ())
+        })
+        .await
+        .unwrap();
+        assert!(result.is_err());
+        assert!(
+            timeout(Duration::from_millis(20), host.next())
+                .await
+                .is_err()
+        );
+        drop(pending);
         host.close().await;
     }
 
@@ -1021,7 +1233,7 @@ mod tests {
         let mut host = host().await;
         host.tasks.abort_all();
         while host.tasks.join_next().await.is_some() {}
-        let endpoint = host.local.paths[0].endpoint.clone();
+        let endpoint = ipv4(&host).endpoint.clone();
         let mut invite = host.invite().clone();
         invite.candidates.retain(|c| c.addr().is_ipv4());
         let task = tokio::spawn(async move {

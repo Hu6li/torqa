@@ -20,11 +20,23 @@ pub struct CapturedVoice {
 }
 
 /// A local device error, containing no audio samples.
-#[derive(Debug, Clone, Copy)]
-pub struct VoiceDeviceError;
+#[derive(Debug, Clone)]
+pub struct VoiceDeviceError {
+    operation: &'static str,
+    details: String,
+}
+impl VoiceDeviceError {
+    /// Retains the backend's original cause under the operation that failed, without audio data.
+    pub fn new(operation: &'static str, cause: impl std::fmt::Display) -> Self {
+        Self {
+            operation,
+            details: cause.to_string(),
+        }
+    }
+}
 impl std::fmt::Display for VoiceDeviceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Voice audio device unavailable or unsupported; check device selection and microphone permissions.")
+        write!(f, "{}: {}", self.operation, self.details)
     }
 }
 impl std::error::Error for VoiceDeviceError {}
@@ -46,4 +58,12 @@ pub trait VoiceAudio {
     fn deafen(&mut self, deafened: bool);
     /// Reports asynchronous device failures without panicking in callbacks.
     fn healthy(&self) -> bool;
+    /// Takes the diagnostic for an asynchronous device failure. Backends without a more
+    /// specific cause still report the operation without exposing microphone samples.
+    fn failure(&mut self) -> VoiceDeviceError {
+        VoiceDeviceError::new(
+            "voice audio callback",
+            "the audio device stopped responding",
+        )
+    }
 }

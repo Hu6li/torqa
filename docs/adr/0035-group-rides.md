@@ -178,6 +178,99 @@ some are globally routed; those are not required direct interface candidates in 
 The transport integration must use both [Incoming admission controls](https://docs.rs/quinn/0.11.12/quinn/struct.Incoming.html)
 and explicit [QUIC buffer/stream limits](https://docs.rs/quinn/0.11.12/quinn/struct.TransportConfig.html).
 
+### Connection reliability — 2026-11-01
+
+A host asks STUN once, when it opens. Joiners probe it only after the host admits their
+reply, which can be minutes later, while home and carrier NATs often forget an idle UDP
+mapping within a minute; carrier NATs then usually pick another port, so the invite's address
+stops working. Each path that advertises a STUN mapping now sends a 20-byte Binding indication
+(RFC 8489, never answered) to the server that observed it every 15 seconds, the interval ICE
+uses (RFC 8445). It pauses while a connection uses that path, whose QUIC keep-alives refresh
+the same mapping, and ends when the invite is sealed or the host owner is dropped. Disabling
+STUN sends none. Paths sort IPv6 first, as Happy Eyeballs does (RFC 8305): carrier NAT often
+shares IPv4 while IPv6 stays directly reachable, and the existing stagger still tries IPv4
+within 250 ms.
+
+An admitted connection's lobby handshake now keeps the admission's single deadline; the
+three-second limit bounds only the credential exchange. State that arrives before the local
+start, by at most the two seconds a peer timestamp may lead, counts from the start: joiners
+estimate it from half the round trip. State during the lobby remains a protocol violation.
+
+There is still no relay. A host behind carrier-grade NAT whose mappings change per destination
+cannot be reached; the usage guide tells riders that the host must not be behind CGNAT and how
+to check, and a rider-provided relay remains a possible later decision.
+
+### Joiner certificates — 2026-11-01
+
+Replies carried a 256-bit bearer secret: anyone who read a reply in a chat, clipboard history
+or screenshot could connect first and take that rider's place within the admission window.
+Each joiner now generates a per-ride certificate with rcgen, as the host does, and the reply
+carries its SHA-256 instead of a secret, so codes keep their length. The host requires TLS
+client authentication. Its verifier lets any certificate finish the handshake but checks the
+handshake signature, so the joiner proves its private key; admission then looks the
+certificate's pin up in the existing one-use table, with its pending, used and expired
+tombstones, deadlines and budgets unchanged. The authentication message still binds the
+ride, host pin and route.
+
+A copied reply therefore admits nobody else, and leaked codes reveal only names and
+addresses. The invite must still arrive unaltered: someone able to replace it in transit
+could substitute their own host pin, as before. A short comparison code against that was
+considered and deferred; it would need at least 64 bits, because an attacker who controls
+the chat can generate keys until a shorter code matches. Planned handover uses the same
+mechanism: each rider's replacement reply names its fresh replacement-link certificate,
+and the successor binds that pin to the reserved slot, so no secret passes through the
+predecessor. Protocol/invitation version 7 and ALPN `orqwa-group/7` require matching builds
+and fresh codes.
+
+### Reachability hint — 2026-11-01
+
+`Reachability::of` classifies a code's own candidates with its IPv4 STUN observation: a public
+IPv4 address or the same mapping from two servers reads as reachable; a global IPv6 address
+with strict or missing IPv4 evidence as IPv6 only; different mappings per server, the
+endpoint-dependent behaviour typical of carrier-grade NAT, as strict; anything else as unknown,
+or home-network only. Codes now report the IPv4 path's observation, where address sharing
+happens. The host's invite drives a warning under Invite friends, and a joiner's reply the
+same advice when organizer duties are offered. It is evidence rather than detection: nothing
+here sees the provider's NAT or a firewall, so the wording says "probably" and points to the
+usage guide's manual check. It adds no network request.
+
+### Fuzzing — 2026-11-01
+
+Every decoder that reads a peer's or a pasted code's bytes has a libFuzzer target in `core/fuzz`:
+invite/reply codes, lobby and handover controls, voice and state datagrams, activity selections,
+normalized workouts, STUN responses and the shared-course archive validator. Beyond "never panic",
+each target checks that what a decoder accepts encodes again into an accepted, identical form
+(binary codes and voice packets byte for byte), so a host cannot admit input it later fails to
+forward. The properties live in `orqwa-net` behind a `fuzzing` feature, and stable unit tests run
+them over valid seeds, every truncation and every bit flip. Seeds come from the same encoders on
+each run, so they never go stale. CI runs each target for 30 seconds on every change with a
+pinned nightly toolchain and cargo-fuzz in the dev image; the fuzz crate is its own workspace, so
+the app never builds with nightly. Its lock follows the main one, and cargo-deny checks it too.
+
+### Rider weight and avatar — 2026-11-01
+
+Riders saw each other's names and gaps but not their effort, and every friend rode as the
+default avatar (#422, #423). A roster entry now carries, beside the name and the rider-plus-bike
+mass, the rider's **own weight** and **avatar**. Others show each rider's power and power per
+kilogram beside their name in the riders panel and under it on the road, and draw them as they
+chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
+unknown avatar is a protocol error. The rider-plus-bike mass already revealed about as much as
+the weight, so sharing it with the group adds little; heart rate stays private as before.
+Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
+
+### Preparation progress — 2026-11-01
+
+Riders waited for each other without knowing who was still downloading or building the world
+(#419), and a rider's own page went quiet once the download finished (#420). Each rider now
+reports what it is doing for the current selection, **downloading** or **preparing**, and how
+far it has got in percent: a new joiner-to-host control the host checks against the current
+revision and the rider's readiness, then forwards to everyone, the organizer's own report
+included. Reports are advisory and rate-limited by the sender, at a change of stage and at most
+every two seconds otherwise, well within the host's existing control budget; a full queue
+drops one, as the next supersedes it, and readiness ends them. Preparing a course reports the
+app's own build steps on one scale, so the percentage only grows. Protocol/invitation version
+9 and ALPN `orqwa-group/9` require matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

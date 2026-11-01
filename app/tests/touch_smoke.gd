@@ -16,6 +16,7 @@ func _run() -> void:
 	await _controls()
 	await _course_card()
 	await _nested_pages()
+	await _connection_choices()
 	if not _failed:
 		print("TOUCH SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -146,6 +147,28 @@ func _nested_pages() -> void:
 		"scroll bars keep their own drag handling"
 	)
 	outer.free()
+
+
+func _connection_choices() -> void:
+	var dialog: GroupConnectionDialog = GroupConnectionDialog.new()
+	root.add_child(dialog)
+	dialog.ask_create()
+	dialog.hide()
+	dialog._advanced.show()
+	# Exercise the popup's actual controls in this viewport, where the gesture helpers send input.
+	var scroll: ScrollContainer = dialog._scroll
+	dialog.remove_child(scroll)
+	root.add_child(scroll)
+	scroll.custom_minimum_size = Vector2.ZERO
+	scroll.position = Vector2(20, 20)
+	scroll.size = Vector2(560, 300)
+	await _settle()
+	await _swipe(scroll, dialog._panels["home"])
+	_check(dialog._mode == "internet", "swiping connection cards does not change permissions")
+	await _tap(scroll, dialog._panels["home"])
+	_check(dialog._mode == "home", "tapping a connection card still selects it")
+	scroll.free()
+	dialog.free()
 
 
 func _page(content: Control) -> ScrollContainer:

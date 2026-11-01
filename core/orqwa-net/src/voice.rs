@@ -314,6 +314,7 @@ struct Speaker {
 #[allow(clippy::struct_excessive_bools)] // independent lifetime, consent, microphone and playback gates
 struct Room {
     me: RiderId,
+    organizer: RiderId,
     open: bool,
     enabled: bool,
     microphone: bool,
@@ -382,9 +383,18 @@ pub(crate) struct VoiceOwner(pub VoiceHandle);
 #[derive(Clone)]
 pub(crate) struct VoiceHandle(Arc<Mutex<Room>>);
 
+#[cfg(test)]
 pub(crate) fn channel(me: RiderId) -> (VoicePort, VoiceOwner, tokio::sync::watch::Receiver<bool>) {
+    channel_for(me, RiderId::HOST)
+}
+
+pub(crate) fn channel_for(
+    me: RiderId,
+    organizer: RiderId,
+) -> (VoicePort, VoiceOwner, tokio::sync::watch::Receiver<bool>) {
     let room = Arc::new(Mutex::new(Room {
         me,
+        organizer,
         open: true,
         enabled: false,
         microphone: false,
@@ -519,7 +529,7 @@ impl VoicePort {
         {
             return Ok(());
         }
-        if room.me == RiderId::HOST {
+        if room.me == room.organizer {
             let (scoped, size) = frame.scoped(room.speakers[slot].epoch).datagram();
             forward(&room, room.me, &scoped[..size]);
         } else if let Some(connection) = &room.uplink {
@@ -569,11 +579,21 @@ fn forward(room: &Room, source: RiderId, bytes: &[u8]) {
     }
 }
 impl VoiceHandle {
+    pub(crate) fn suspend(&self) {
+        let mut room = lock(&self.0);
+        room.open = false;
+        room.microphone = false;
+        room.enabled = false;
+    }
+    pub(crate) fn activate(&self) {
+        lock(&self.0).open = true;
+    }
+
     pub fn join(&self, member: Membership, connection: Option<Connection>) {
         let mut room = lock(&self.0);
         let id = member.rider();
         room.muted &= !(1 << id.value());
-        let epoch = if room.me == RiderId::HOST {
+        let epoch = if room.me == room.organizer {
             room.next_epoch = room.next_epoch.saturating_add(1);
             room.next_epoch
         } else {
@@ -646,18 +666,18 @@ impl VoiceHandle {
         if speaker.member != Some(member) {
             return Err(VoiceError::Invalid);
         }
-        if room.me != RiderId::HOST {
+        if room.me != room.organizer {
             let frame = VoiceFrame::parse(bytes, id)?;
             if frame.epoch == 0 || frame.epoch != room.speakers[index].epoch {
                 return Ok(());
             }
         }
         let fresh = room.speakers[index].inbox.ingest(bytes, Instant::now())?;
-        if room.me == RiderId::HOST && !room.speakers[index].consent {
+        if room.me == room.organizer && !room.speakers[index].consent {
             room.speakers[index].inbox.clear();
             return Ok(());
         }
-        if room.me == RiderId::HOST && fresh && room.speakers[index].consent {
+        if room.me == room.organizer && fresh && room.speakers[index].consent {
             let frame = VoiceFrame::parse(bytes, id)?;
             if frame.epoch != 0 {
                 return Err(VoiceError::Invalid);

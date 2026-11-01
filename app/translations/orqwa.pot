@@ -67,6 +67,10 @@ msgstr ""
 msgid "%s ahead"
 msgstr ""
 
+#: app/ui/group_offer_card.gd
+msgid "%s asks you to organize the ride"
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s behind"
 msgstr ""
@@ -231,6 +235,10 @@ msgstr ""
 msgid "About"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+msgid "Accept organizer duties"
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "Accounts"
 msgstr ""
@@ -339,10 +347,6 @@ msgstr ""
 msgid "All {planned} planned rides this week done."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Allow friends on my local network"
-msgstr ""
-
 #: app/scenes/course_detail.gd
 msgid "Allow videos"
 msgstr ""
@@ -385,6 +389,14 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Apr"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, friends without IPv6 internet might not reach you."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, only friends on your home network could reach you."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -439,10 +451,6 @@ msgstr ""
 msgid "Automatic"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Automatic discovery contacts public STUN services."
-msgstr ""
-
 #: app/scenes/devices_tab.gd
 msgid "Automatic: a cadence sensor, else the power meter, else the trainer"
 msgstr ""
@@ -471,7 +479,7 @@ msgstr ""
 msgid "B (right pod)"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/ride_bar.gd
+#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/group_connection_dialog.gd app/ui/ride_bar.gd
 msgid "Back"
 msgstr ""
 
@@ -523,6 +531,10 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Building the world · %d %%"
+msgstr ""
+
 #: app/scenes/devices_tab.gd app/scenes/history_screen.gd app/ui/ride_devices.gd app/ui/workout_editor.gd core/orqwa-app/src/hud.rs
 msgid "Cadence"
 msgstr ""
@@ -539,12 +551,16 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/workout_editor.gd
+#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/workout_editor.gd
 msgid "Cancel"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Cancel joining"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Cancel organizer change"
 msgstr ""
 
 #: app/scenes/account_dialog.gd
@@ -587,6 +603,10 @@ msgstr ""
 msgid "Change it if another program uses this port"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Change organizer…"
+msgstr ""
+
 #: app/ui/group_voice_controls.gd
 msgid "Changing devices reconnects voice chat with your microphone off."
 msgstr ""
@@ -597,6 +617,10 @@ msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Check for updates"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
 msgstr ""
 
 #: app/scenes/account_dialog.gd
@@ -615,6 +639,14 @@ msgstr ""
 msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Choose a friend who is ready. They must accept before anything changes."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Choose a new organizer"
+msgstr ""
+
 #: app/scenes/course_edit_dialog.gd
 msgid "Choose a video of this course"
 msgstr ""
@@ -629,6 +661,14 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Choose the ride and invite your friends. You decide when everyone starts."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group is riding. Nothing connects before you confirm."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group will ride before inviting friends."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -756,6 +796,10 @@ msgid "Connect %s first."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Connect your trainer to join your friends."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Connect your trainer, then tell the group you're ready."
 msgstr ""
 
@@ -772,19 +816,15 @@ msgid "Connected as %s"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone off."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Connecting to your friends…"
 msgstr ""
 
 #: app/scenes/devices_tab.gd app/ui/ride_devices.gd
 msgid "Connecting…"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Connection settings"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Connection settings…"
 msgstr ""
 
 #: app/scenes/profile_tab.gd
@@ -797,6 +837,10 @@ msgstr ""
 
 #: app/ui/workout_options.gd
 msgid "Constant power %d W"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Continue"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -912,6 +956,10 @@ msgid "Could not prepare the map detail of %s."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
+msgid "Could not prepare the shared activity."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
 msgid "Could not reach %s. Check your internet connection."
 msgstr ""
 
@@ -1015,6 +1063,10 @@ msgstr ""
 msgid "Create a ride"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Create ride"
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "Creating your ride…"
 msgstr ""
@@ -1045,6 +1097,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Dec"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+msgid "Decline"
 msgstr ""
 
 #: app/scenes/profile_tab.gd
@@ -1115,10 +1171,6 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Details…"
-msgstr ""
-
 #: app/scenes/devices_tab.gd app/scenes/ride_settings_dialog.gd app/scenes/start_page.gd
 msgid "Devices"
 msgstr ""
@@ -1171,6 +1223,10 @@ msgstr ""
 msgid "Download it from its release page."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Download stopped. Try again when you're ready."
+msgstr ""
+
 #: app/ui/course_settings.gd
 msgid "Downloading %s: %s of %s"
 msgstr ""
@@ -1185,6 +1241,10 @@ msgstr ""
 
 #: core/orqwa-app/src/import.rs
 msgid "Downloading the course map"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Downloading · %d %%"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1283,6 +1343,14 @@ msgstr ""
 msgid "Everyone is ready. Start when you like!"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone uses their own home internet connection. Recommended for riding with friends online."
+msgstr ""
+
 #: app/ui/ride_bar.gd
 msgid "Exit full screen (F11)"
 msgstr ""
@@ -1367,7 +1435,7 @@ msgstr ""
 msgid "Find a preset for smooth 60 fps. Takes about 30 seconds and resets details to Auto."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_connection_dialog.gd
 msgid "Find my internet address automatically"
 msgstr ""
 
@@ -1471,6 +1539,18 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably cannot reach you: your connection looks like carrier-grade NAT or a similarly strict router. Let a friend at another home create the ride."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably could not reach you as organizer: your connection looks like carrier-grade NAT or a similarly strict router."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends with IPv6 internet can reach you; others may not. If someone cannot join, let a friend at another home create the ride."
+msgstr ""
+
 #: app/ui/graphics_settings.gd app/ui/ride_bar.gd
 msgid "Full screen (F11)"
 msgstr ""
@@ -1531,8 +1611,12 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
-#: app/scenes/ride_screen.gd app/scenes/start_page.gd app/ui/group_riders_panel.gd
+#: app/scenes/start_page.gd app/ui/group_riders_panel.gd
 msgid "Group Rides"
+msgstr ""
+
+#: app/ui/ride_bar.gd
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1540,11 +1624,15 @@ msgid "Group connection ended. Your local ride continues."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
-msgid "Group ride details"
+msgid "Group ride in progress"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
-msgid "Group ride in progress"
+msgid "Group workout"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Group workout complete"
 msgstr ""
 
 #: app/ui/ui_theme.gd core/orqwa-routes/src/climbs.rs
@@ -1607,6 +1695,10 @@ msgstr ""
 msgid "Help everyone stay with the organizer while pedaling."
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "High"
 msgstr ""
@@ -1645,6 +1737,10 @@ msgstr ""
 
 #: app/scenes/course_detail.gd
 msgid "How do you want to ride?"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "How to check"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1728,7 +1824,15 @@ msgid "Join a ride…"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Join near the organizer at the current workout step. Your recording starts now."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
 msgid "Join ride"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Join ride now"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd
@@ -1737,6 +1841,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Joining friends?"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Joining your friends…"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -1951,6 +2059,10 @@ msgstr ""
 msgid "Mon"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "More connection options"
+msgstr ""
+
 #: app/scenes/world.gd
 msgid "Morning"
 msgstr ""
@@ -2033,6 +2145,10 @@ msgstr ""
 
 #: app/scenes/button_dialog.gd
 msgid "Next camera"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Next step for everyone"
 msgstr ""
 
 #: app/ui/workout_panel.gd
@@ -2191,6 +2307,14 @@ msgstr ""
 msgid "ORQWA could not start."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes can reach you. If nobody can join, let a friend at another home create the ride."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes could reach you as organizer."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "ORQWA courses"
 msgstr ""
@@ -2247,10 +2371,6 @@ msgstr ""
 msgid "On its own (HUD only)"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "On the same home network, both riders must allow local connections."
-msgstr ""
-
 #: core/orqwa-session/src/workout.rs
 msgid "One minute all out!"
 msgstr ""
@@ -2285,6 +2405,14 @@ msgstr ""
 
 #: app/ui/fitness_chart.gd
 msgid "Optimal"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Organizer"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Organizer: %s"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -2339,7 +2467,11 @@ msgstr ""
 msgid "Pause the ride: the clock and the trainer wait (P)"
 msgstr ""
 
-#: app/scenes/remote_dialog.gd app/scenes/ride_screen.gd
+#: app/scenes/group_rides_tab.gd
+msgid "Pause workout for everyone"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd app/scenes/remote_dialog.gd app/scenes/ride_screen.gd
 msgid "Paused"
 msgstr ""
 
@@ -2580,6 +2712,10 @@ msgid "Resume"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Resume workout for everyone"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Retry download"
 msgstr ""
 
@@ -2597,6 +2733,10 @@ msgstr ""
 
 #: app/scenes/course_detail.gd
 msgid "Ride options"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Ride organizer"
 msgstr ""
 
 #: app/scenes/ride_settings_dialog.gd
@@ -2659,6 +2799,10 @@ msgstr ""
 msgid "Rides you keep with Done on their summary go up by themselves"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Riding"
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Right (left pod)"
 msgstr ""
@@ -2709,6 +2853,10 @@ msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Rust libraries"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Same home Wi-Fi"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -2769,6 +2917,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Sep"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Separate homes"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2847,8 +2999,12 @@ msgstr ""
 msgid "Smaller (−)"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Something went wrong. Try again or check the details."
+#: app/ui/group_connection_dialog.gd
+msgid "Some friends share a Wi-Fi network; others join from another home. Allows both home-network and internet connections."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some together, some elsewhere"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -3027,16 +3183,16 @@ msgstr ""
 msgid "The course is not ready yet."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "The defaults work for friends on different home networks. Change these only if needed."
-msgstr ""
-
 #: app/scenes/devices_tab.gd
 msgid "The devices used last connect by themselves. Search beside a row to find one of that kind."
 msgstr ""
 
 #: app/scenes/profile_tab.gd core/orqwa-app/src/failure.rs
 msgid "The only rider cannot be deleted"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "The organizer controls workout timing for everyone."
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -3109,6 +3265,10 @@ msgstr ""
 
 #: app/ui/update_dialog.gd
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -3263,6 +3423,10 @@ msgstr ""
 msgid "Use %d W"
 msgstr ""
 
+#: app/scenes/ride_settings_dialog.gd
+msgid "Use Group Rides for the shared workout. Your intensity stays personal."
+msgstr ""
+
 #: app/ui/group_voice_controls.gd
 msgid "Use headphones. Your microphone starts off."
 msgstr ""
@@ -3347,6 +3511,10 @@ msgstr ""
 msgid "Voice chat"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Voice is unavailable. Check your audio devices and microphone permission."
+msgstr ""
+
 #: app/ui/group_voice_controls.gd
 msgid "Voice volume"
 msgstr ""
@@ -3357,6 +3525,10 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "W/kg"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Waiting for %s to accept organizer duties."
 msgstr ""
 
 #: app/scenes/devices_tab.gd
@@ -3431,6 +3603,10 @@ msgstr ""
 msgid "Where"
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Where will everyone ride?"
+msgstr ""
+
 #: app/scenes/history_screen.gd
 msgid "Whole route"
 msgstr ""
@@ -3467,6 +3643,14 @@ msgstr ""
 msgid "Workout intensity: %d %%"
 msgstr ""
 
+#: app/ui/workout_panel.gd
+msgid "Workout paused"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Workout paused for the group. You can pedal freely."
+msgstr ""
+
 #: app/scenes/ride_screen.gd
 msgid "Workout: next step"
 msgstr ""
@@ -3479,12 +3663,20 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+msgid "Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Y (right pod)"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "You"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "You choose who organizes the ride. Your recording continues when you hand over."
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3560,7 +3752,15 @@ msgid "Your first ride on {course}."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Your friends are already riding. Get ready and join when you like."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Your group"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Your intensity stays personal. Pause in the ride controls stops only your own ride."
 msgstr ""
 
 #: app/scenes/analysis_tab.gd

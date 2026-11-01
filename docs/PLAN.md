@@ -875,13 +875,39 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
 - [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
   previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
+- [x] Android group runtime: atomic publication on shared storage without hard links,
+  embedded AAudio context initialization, and classified group/voice diagnostics through the
+  application's translated Technical details / Dismiss history
 - [ ] QR sharing using existing support
 - [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
   individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
-- [ ] Late joining and group workout timing (R167): independent preparation, entry near host,
-  no fictitious recorded distance, ordered host pause/resume/skips with personal intensity
-- [ ] Planned host handover (R168): successor consent, pinned replacement links, authority
+- [x] Late joining (R167): independent preparation, explicit entry near the host at the current
+  workout step, separate course position and recorded distance, no records for skipped sections
+- [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
+  personal intensity and local safety pause with current-step resume
+- [x] Planned host handover (R168): successor consent, pinned replacement links, authority
   epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
+- [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups
+  during create/join, inspect invitations offline, and confirm before discovery or connections
+- [x] Connection reliability: hosts refresh their advertised STUN mapping while waiting for the
+  first rider, IPv6 candidates first, the host's lobby handshake keeps the admission deadline,
+  and state arriving shortly before the host's start no longer drops a rider; the usage guides
+  say a host must not be behind carrier-grade NAT and how to check
+- [x] Joiner certificates (R175): replies name a per-ride client certificate proved by TLS
+  instead of carrying a bearer secret, so a copied reply admits nobody else; handover
+  replacement links use the same binding
+- [x] Reachability hint (R176): hosts, and riders offered organizer duties, are told when their own
+  discovery suggests friends at other homes probably cannot connect, with a link to the guide
+- [x] Fuzzing: libFuzzer targets for every decoder of peer or pasted input, with round-trip
+  properties, regenerated seeds and a 30-second-per-target CI job
+- [x] The in-ride group panel opens from a Group Rides icon in the control bar (R180, #431)
+- [x] A rider offered organizer duties answers the request over the ride (R181, #424)
+- [x] Riders' power and W/kg beside their names, and their own avatars, from weight and avatar
+  in the roster (R183, #422, #423)
+- [x] Every rider's preparation stage and percentage in the participant list, a spinner and the
+  world-building progress on one's own page (R184, #419, #420)
+- [x] A rider who has the selected course, under any name, rides their own copy without
+  downloading it; organizers share their own copy, renamed or not (R185, #435)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

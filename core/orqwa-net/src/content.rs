@@ -2,7 +2,9 @@
 //!
 //! A verified download is still untrusted application input. [`Received::validate`] must
 //! succeed before it can be published in a library. Callers own one transfer task per peer;
-//! dropping a future cancels its streams and removes its unique temporary file.
+//! dropping a future cancels its streams and removes its unique temporary file. A course may
+//! arrive as the sender's own copy, under its own identity: its validator checks it is the
+//! selected course by its key (#435).
 
 use std::fmt::Write as _;
 use std::io;
@@ -18,6 +20,8 @@ use tokio::time::{Instant, timeout_at};
 use crate::activity::{ActivityError, ContentId, ContentKind, Input};
 use crate::crypto::{random, sha256_provider};
 use crate::link::Connection;
+
+mod publication;
 
 const MAGIC: &[u8; 4] = b"OQC1";
 const HEADER: usize = 45;
@@ -188,16 +192,32 @@ impl Received {
     }
 }
 
+/// Hash-derived names publication tries in turn, the first without a number.
+const NAMES: usize = 8;
+
+fn names(id: ContentId) -> impl Iterator<Item = String> {
+    let first = id.basename();
+    (1..=NAMES).map(move |number| match first.split_once('.') {
+        Some((hash, extension)) if number > 1 => format!("{hash}-{number}.{extension}"),
+        _ => first.clone(),
+    })
+}
+
 /// Format-validated content eligible for atomic publication.
 pub struct Validated(Received);
 impl Validated {
     /// Retains content under a hash-derived name without replacing any existing file.
-    /// The staging directory must be on the library's file system for atomic hard linking.
+    /// A file of that name with other bytes, such as a course the rider has renamed or ridden
+    /// with map detail since receiving it, keeps its name and contents: this content takes the
+    /// next free `-2`, `-3`, … name instead (#435). The staging directory must be on the
+    /// library's file system. Android/Linux storage that rejects hard links uses an atomic
+    /// no-replace rename with the same publication guarantees.
     ///
     /// # Errors
-    /// Returns [`ContentError`] for I/O failure or an existing file with different bytes.
+    /// Returns [`ContentError`] for I/O failure, or [`ContentError::Mismatch`] once every name
+    /// holds different bytes.
     pub async fn publish(self, library: &Path) -> Result<PathBuf, ContentError> {
-        let destination = library.join(self.0.id.basename());
+        let library = library.to_owned();
         let deadline = Instant::now() + TRANSFER_WINDOW;
         // Own the guard through disk work, including if the caller cancels. All read
         // handles close before cleanup attempts to remove its path on Windows.
@@ -205,17 +225,33 @@ impl Validated {
             deadline,
             tokio::task::spawn_blocking(move || {
                 verify(&self.0.path, self.0.id, deadline)?;
-                if Instant::now() >= deadline {
-                    return Err(ContentError::Timeout);
-                }
-                match std::fs::hard_link(&self.0.path, &destination) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                        verify(&destination, self.0.id, deadline)?;
+                for name in names(self.0.id) {
+                    if Instant::now() >= deadline {
+                        return Err(ContentError::Timeout);
                     }
-                    Err(error) => return Err(error.into()),
+                    let destination = library.join(name);
+                    match publication::retain(&self.0.path, &destination) {
+                        Ok(()) => return Ok(destination),
+                        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                            match verify(&destination, self.0.id, deadline) {
+                                Ok(()) => return Ok(destination),
+                                Err(ContentError::Mismatch) => {}
+                                Err(error) => return Err(error),
+                            }
+                        }
+                        Err(error) => {
+                            return Err(io::Error::new(
+                                error.kind(),
+                                format!(
+                                    "publishing verified activity to {}: {error}",
+                                    destination.display()
+                                ),
+                            )
+                            .into());
+                        }
+                    }
                 }
-                Ok(destination)
+                Err(ContentError::Mismatch)
             }),
         )
         .await
@@ -328,7 +364,10 @@ async fn temporary(
     .map_err(|_| ContentError::Validation)?
 }
 
-/// Receives exactly the activity-selected content, then requires a clean stream end.
+/// Receives the requested content, then requires a clean stream end. A workout must be
+/// exactly the requested one. A course may come as the sender's own copy of it, renamed or
+/// with another map picture (#435): other bytes, which must match the identity the stream
+/// announces and [`Received::id`] reports, and whose course key the validator must check.
 /// The temporary directory is local configuration and must already exist.
 ///
 /// # Errors
@@ -345,21 +384,23 @@ pub async fn receive(
         .await
         .map_err(|_| ContentError::Timeout)?
         .map_err(|_| ContentError::Interrupted)?;
-    if identity(&bytes)? != expected {
+    let id = identity(&bytes)?;
+    if id != expected && (id.kind(), expected.kind()) != (ContentKind::Course, ContentKind::Course)
+    {
         return Err(ContentError::Mismatch);
     }
-    let mut writer = temporary(directory, expected, deadline).await?;
+    let mut writer = temporary(directory, id, deadline).await?;
     let mut hasher = sha256_provider().start();
     let mut chunk = vec![0; CHUNK];
     let mut total = 0;
     if let Some(progress) = progress {
         progress.send_replace(Progress {
             received: 0,
-            total: expected.bytes(),
+            total: id.bytes(),
         });
     }
-    while total < expected.bytes() {
-        let count = usize::try_from((expected.bytes() - total).min(CHUNK as u64))
+    while total < id.bytes() {
+        let count = usize::try_from((id.bytes() - total).min(CHUNK as u64))
             .map_err(|_| ContentError::Mismatch)?;
         timeout_at(end(deadline), recv.read_exact(&mut chunk[..count]))
             .await
@@ -371,7 +412,7 @@ pub async fn receive(
         if let Some(progress) = progress {
             progress.send_replace(Progress {
                 received: total,
-                total: expected.bytes(),
+                total: id.bytes(),
             });
         }
     }
@@ -384,7 +425,7 @@ pub async fn receive(
     {
         return Err(ContentError::Mismatch);
     }
-    if hasher.finish().as_ref() != expected.hash() {
+    if hasher.finish().as_ref() != id.hash() {
         return Err(ContentError::Mismatch);
     }
     writer.finish(deadline).await
@@ -422,6 +463,7 @@ pub async fn send(send: &mut SendStream, source: &mut Source) -> Result<(), Cont
 
 /// Opens a content request on an existing pinned connection, without discovery or extra sockets.
 /// Caller limits simultaneous requests to one per peer and owns cancellation of the future.
+/// A course may arrive as the sender's own copy; see [`receive`].
 ///
 /// # Errors
 /// Returns [`ContentError`] when opening, requesting, verifying or storing fails.
@@ -617,24 +659,67 @@ mod tests {
         assert!(to.empty());
     }
     #[tokio::test]
-    async fn publication_reuses_identical_content_but_never_overwrites_conflicts() {
-        for existing in [b"workout".as_slice(), b"different"] {
-            let to = Directory::new();
-            let id = ContentId::of(ContentKind::Workout, b"workout").unwrap();
-            let mut bytes = header(id);
-            bytes.extend_from_slice(b"workout");
-            let received = raw(bytes, id, &to.0).await.unwrap();
-            let destination = to.0.join(id.basename());
-            std::fs::write(&destination, existing).unwrap();
-            let result = received
-                .validate(|_| true)
-                .await
-                .unwrap()
-                .publish(&to.0)
-                .await;
-            assert_eq!(result.is_ok(), existing == b"workout");
-            assert_eq!(std::fs::read(destination).unwrap(), existing);
-            assert_eq!(std::fs::read_dir(&to.0).unwrap().count(), 1);
+    async fn a_course_may_arrive_as_the_senders_own_copy_but_only_as_the_bytes_it_names() {
+        let selected = ContentId::of(ContentKind::Course, b"selected course").unwrap();
+        let own = ContentId::of(ContentKind::Course, b"renamed course").unwrap();
+        let to = Directory::new();
+        let mut bytes = header(own);
+        bytes.extend_from_slice(b"renamed course");
+        let received = raw(bytes, selected, &to.0).await.unwrap();
+        assert_eq!(received.id(), own);
+        assert_eq!(std::fs::read(received.path()).unwrap(), b"renamed course");
+        drop(received);
+        // Bytes other than the copy it announces, or a workout, still never arrive.
+        let mut changed = header(own);
+        changed.extend_from_slice(b"another course");
+        assert!(raw(changed, selected, &to.0).await.is_err());
+        let workout = ContentId::of(ContentKind::Workout, b"workout").unwrap();
+        let mut other = header(workout);
+        other.extend_from_slice(b"workout");
+        assert!(raw(other, selected, &to.0).await.is_err());
+        assert!(to.empty());
+    }
+    async fn staged(to: &Path) -> (ContentId, Validated) {
+        let id = ContentId::of(ContentKind::Workout, b"workout").unwrap();
+        let mut bytes = header(id);
+        bytes.extend_from_slice(b"workout");
+        let received = raw(bytes, id, to).await.unwrap();
+        (id, received.validate(|_| true).await.unwrap())
+    }
+    #[tokio::test]
+    async fn publication_reuses_identical_content_and_never_overwrites_changed_files() {
+        let to = Directory::new();
+        let (id, validated) = staged(&to.0).await;
+        let destination = to.0.join(id.basename());
+        std::fs::write(&destination, b"workout").unwrap();
+        assert_eq!(validated.publish(&to.0).await.unwrap(), destination);
+        assert_eq!(std::fs::read_dir(&to.0).unwrap().count(), 1);
+
+        // A file the rider changed since it arrived keeps its name and bytes (#435).
+        let to = Directory::new();
+        let (id, validated) = staged(&to.0).await;
+        let changed = to.0.join(id.basename());
+        std::fs::write(&changed, b"different").unwrap();
+        let published = validated.publish(&to.0).await.unwrap();
+        let hash = id.basename().trim_end_matches(".oqw").to_owned();
+        assert_eq!(published, to.0.join(format!("{hash}-2.oqw")));
+        assert_eq!(std::fs::read(published).unwrap(), b"workout");
+        assert_eq!(std::fs::read(changed).unwrap(), b"different");
+        assert_eq!(std::fs::read_dir(&to.0).unwrap().count(), 2);
+
+        // Once every name holds other bytes, nothing is replaced and publication fails.
+        let to = Directory::new();
+        let (_, validated) = staged(&to.0).await;
+        for name in names(id) {
+            std::fs::write(to.0.join(name), b"different").unwrap();
+        }
+        assert!(matches!(
+            validated.publish(&to.0).await,
+            Err(ContentError::Mismatch)
+        ));
+        assert_eq!(std::fs::read_dir(&to.0).unwrap().count(), NAMES);
+        for name in names(id) {
+            assert_eq!(std::fs::read(to.0.join(name)).unwrap(), b"different");
         }
     }
     #[tokio::test]

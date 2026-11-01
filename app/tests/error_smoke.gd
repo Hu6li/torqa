@@ -114,6 +114,7 @@ func _run() -> void:
 	var diagnostic: String = payload["details"]
 	_check(message_key == "Could not load the activity.", "binding preserves the key")
 	_check("/missing-261.fit" in diagnostic, "binding preserves the original cause")
+	await _group_errors(orqwa, history)
 	orqwa.free()
 	history.free()
 	zones.free()
@@ -122,6 +123,37 @@ func _run() -> void:
 	if not _failed:
 		print("ERROR SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+func _group_errors(orqwa: OrqwaApp, history: FailureDetails) -> void:
+	history.clear()
+	orqwa.failure_reported.connect(history.report)
+	_check(orqwa.group_open("invalid invitation", true, false), "group attempt is asynchronous")
+	var until: int = Time.get_ticks_msec() + 5000
+	while not history.visible and Time.get_ticks_msec() < until:
+		await process_frame
+	_check(history.visible, "asynchronous group failures use the shared application history")
+	_check(history._dismiss.text == "Ausblenden", "Dismiss follows the current language")
+	var cause: String = orqwa.last_failure().get("details", "")
+	_check(not cause.is_empty(), "group failures retain an original technical cause")
+	history._toggle.button_pressed = true
+	_check(history._panel.visible, "group technical details expand with the standard control")
+	history._dismiss.pressed.emit()
+	for frame: int in range(4):
+		await process_frame
+	_check(not history.visible, "a dismissed failure stays dismissed during group status refresh")
+	orqwa.group_leave()
+	TranslationServer.set_locale("en")
+	_check(history._dismiss.text == "Dismiss", "Dismiss also switches back to English")
+	orqwa.android_update_failed(
+		"PackageInstaller: installation rejected by the device administrator"
+	)
+	_check(history.visible, "native Android failures use the same details and dismiss controls")
+	var install: Dictionary = orqwa.last_failure()
+	var message: String = install["message"]
+	_check(message == "Could not start the update's installer.", "native failure is classified")
+	var install_details: String = install["details"]
+	_check(install_details.contains("PackageInstaller"), "native technical cause is retained")
 
 
 func _check(condition: bool, what: String) -> void:

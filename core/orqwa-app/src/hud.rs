@@ -247,7 +247,7 @@ pub fn values(
                 "gear" => state.gear.map(|g| g.number as f64),
                 "speed" => Some(state.speed.as_kilometers_per_hour()),
                 "avg_speed" => Some(summary.avg_speed.as_kilometers_per_hour()),
-                "distance" => Some(state.distance.0 / 1000.0),
+                "distance" => Some(state.ridden.0 / 1000.0),
                 "remaining" => state.remaining.map(|r| r.0 / 1000.0),
                 "elapsed" => Some(state.elapsed.as_secs_f64()),
                 "time_remaining" => time_to_go.map(|t| t.as_secs_f64()),
@@ -322,6 +322,7 @@ mod tests {
         let mut state = RideState {
             elapsed: Duration::ZERO,
             distance: Meters(0.0),
+            ridden: Meters(0.0),
             remaining: None,
             speed: MetersPerSecond(0.0),
             position: None,

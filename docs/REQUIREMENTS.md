@@ -312,6 +312,59 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R169 | Refines R164 and R162 (2026-10-28): group setup uses plain-language create/join actions and guided private invitation exchange. Course choices preview their map, elevation and key figures; workout choices preview power and duration before explicit sharing. Voice microphone and speaker choices remain usable during voice chat; changing devices reconnects opted-in voice with the microphone muted, retaining volume and local rider mutes. Lobby and in-ride controls reflect the same device choices. |
 
+## Consistent group failures
+
+| ID | Requirement |
+|---|---|
+| R170 | Refines R74, R162 and R164 (2026-10-29): asynchronous group activity and voice failures, including Android-native failures, use the application's translated explanations with original **Technical details** and **Dismiss** controls. A dismissed occurrence stays hidden through status refreshes; a new occurrence is reported again. Dismiss does not pause the local ride or leave the group, and an activity download can still be retried after a voice failure. Shared activities must publish atomically on Android shared storage without overwriting existing library content; native voice startup must initialize the embedded Android host before device access. |
+
+## Entering ongoing rides
+
+| ID | Requirement |
+|---|---|
+| R171 | Refines R167 (2026-10-30): an admitted late joiner prepares the frozen activity independently, connects a trainer and explicitly chooses **Join ride now**. Entry uses recent organizer progress, starts near the organizer at rest and at the current structured-workout step, and cannot restart an already entered ride. Course position is independent of personal elapsed time and recorded distance; skipped sections add no samples or speed records. Complete later unassisted climbs and genuine measured-power training remain eligible. If the organizer is not actively riding, entry can be retried without stopping the group. The CLI retains its original pre-countdown admission workflow. |
+
+## Shared workout timing
+
+| ID | Requirement |
+|---|---|
+| R172 | Refines R167 (2026-10-30): the organizer controls a structured workout's **shared clock**, pause/resume and forward step skips through ordered authenticated updates. Pause holds the step and releases workout resistance while personal riding/recording can continue. FTP and intensity remain personal. Local safety pause stops only that rider and resumes at the current group step without invented samples, time or distance. Shared plans cannot be replaced while riding in the group; all input paths enforce organizer-only shared skips. Clock snapshots have fixed bounds and coalesce for slow consumers; leaving or losing the group resumes independent workout timing. |
+
+| R173 | Refines R168 (2026-10-31): planned organizer changes require an explicit offer and successor acceptance, preserve original rider slots and group identity across fresh pinned links, and commit only with the old organizer's bound proof after every replacement connection is ready. Consent expires after 30 seconds and preparation after 60 seconds; cancelled proposals consume epochs. Precommit failure retains the old authority; a revealed commit cannot restore it. Keep personal recording, course position, workout clock/pause, intensity and eligibility intact, blend assistance over two seconds and reconnect opted-in listening microphone-off. Use existing address permissions and explain address sharing. The new organizer supplies a fresh invitation and verified content to later joiners. Unexpected loss preserves solo riding without electing a replacement. |
+
+## Guided group connections
+
+| ID | Requirement |
+|---|---|
+| R174 | Refines R169 and R161 (2026-10-31): creating a group ride and joining from an invitation show a connection popup with plain-language choices for separate homes, one home Wi-Fi/router, and a mixture. Explain each choice and optional public address lookup without requiring network terminology. Inspect invitations offline, retain pasted text when going Back, and start no discovery or connections before confirmation. Home-network access remains explicit, separate-home mode cannot silently acquire it, and same-home mode uses no public lookup services. Preserve the existing bounded transport and classified Technical details/Dismiss error reporting. |
+
+## Group codes safe to copy
+
+| ID | Requirement |
+|---|---|
+| R175 | Extends R160 (2026-11-01): a join reply binds admission to a certificate the joiner's computer creates for that ride, and TLS client authentication proves its private key, which never leaves that computer. A copied, forwarded or leaked reply admits nobody else, and a used reply cannot admit its own computer again. Codes still reveal names and addresses, so riders exchange them privately, and the invite must reach joiners unaltered because it pins the host. Planned handover binds each rider's replacement link the same way, so no admission secret passes between riders. Protocol and invitation version 7 require matching builds and fresh codes. |
+
+## Who should host a group ride
+
+| ID | Requirement |
+|---|---|
+| R176 | Extends R174 and R161 (2026-11-01): once a group lobby is open, its host is told when the host's own address discovery suggests that friends at other homes probably cannot connect: servers saw a different mapping each, as carrier-grade NAT often does; only IPv6 is directly reachable; or too little evidence came back. The advice is to let a friend at another home create the ride, with a link to the usage guide's check. A rider offered organizer duties gets the same advice from their own discovery before accepting. The advice is evidence, never a claim that a NAT type was proved; good connections and home-network rides show nothing, and no extra network request is made. |
+
+## Group ride view
+
+| ID | Requirement |
+|---|---|
+| R180 | Refines R164 (2026-11-01, #431): during a group ride, the in-ride group panel (participants, shared settings, voice, **Leave group**) opens from a **Group Rides icon in the ride's control bar**, beside the settings, instead of a text button at the bottom right. The icon shows only while the rider is in a group and folds away with the other controls. |
+| R181 | Refines R168 and R173 (2026-11-01, #424): the rider offered organizer duties sees the request **over the ride**, above the control bar with a chime, not only inside the group panel: who asks, what organizing means, and the reachability warning when their own discovery suggests friends could not reach them (R176). **Accept organizer duties** and **Decline** answer it there; the request stays until answered, withdrawn or timed out, and the ride goes on meanwhile. The overlay leaves it out. |
+| R183 | Extends R164 (2026-11-01, #422, #423): in a group ride, every rider's **power and W/kg** show beside their name in the riders panel and under their name on the road, the W/kg from their **own weight** without the bicycle; and others see each rider with the **avatar** chosen in their profile, no longer always the default. The roster carries the weight and the avatar; heart rate stays private. Protocol and invitation version 8 require matching builds and fresh codes. |
+| R184 | Extends R165 and R169 (2026-11-01, #419, #420): while the activity is prepared, the participant list shows for every rider not yet ready **what they are doing and how far they have got**, *Downloading · 40 %* or *Building the world · 70 %*, until they are ready. A rider's own page keeps a **spinner** turning while it connects, receives and prepares the ride, and shows how far its world is built. Protocol and invitation version 9 require matching builds and fresh codes. |
+
+## Courses riders already have
+
+| ID | Requirement |
+|---|---|
+| R185 | Refines R165 (2026-11-01, #435): a rider who already has the selected course **rides their own copy and downloads nothing**, whatever they named it and whatever map picture or countries it shows, e.g. a `.tqc` the organizer sent beforehand or one received in an earlier ride. The selection carries a key of what the course rides on (its route, terrain and map data and the other manifest facts) without the name, map picture and countries, and each joiner looks through their course library for it. A downloaded course may likewise be the sender's own copy, renamed or with another picture, so an organizer after a handover shares theirs: its bytes are checked against what the transfer announces, and its key against the selection's. A course received earlier and changed since keeps its name and contents; the new download is saved beside it. Protocol and invitation version 10 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

@@ -33,7 +33,7 @@ does the same.
 | Render screenshots of the start page, a ride, the summary and the analysis (software Vulkan, with 16 weeks of made-up rides) into `screenshots/` | `scripts/screenshots.sh` |
 | Render only the English/German error-details views, without preparing a route | `SCREENSHOT_ERRORS_ONLY=1 scripts/screenshots.sh` |
 | Render only Graphics settings, without preparing a route or kept world | `SCREENSHOT_GRAPHICS_ONLY=1 scripts/screenshots.sh` |
-| Render English/German group setup and activity previews, with local-only hosting and presentation fixtures for join/audio dialogs | `SCREENSHOT_GROUP_ONLY=1 scripts/screenshots.sh` |
+| Render English/German group setup and connection popups, activity previews, late entry, shared workout controls and organizer consent, with local-only hosting and presentation fixtures | `SCREENSHOT_GROUP_ONLY=1 scripts/screenshots.sh` |
 | Render seven group avatars, distance gaps and map/profile markers on an offline course using presentation fixtures | `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` |
 | Render the screenshots in another window size, e.g. the smallest the layouts are made for (R94) | `SCREENSHOT_SIZE=1024x640 scripts/screenshots.sh` |
 | Render the standard views of the 3D world (before and after a visual change) into `screenshots/views/` | `scripts/render-views.sh` |
@@ -44,6 +44,7 @@ does the same.
 | Redraw the wordmark and the lockups in `docs/brand/` after changing their geometry ([ADR 0026](adr/0026-the-name-orqwa.md)) | `python3 scripts/brand/wordmark.py` |
 | Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
 | Refresh the translation template after text changes | `python3 scripts/i18n/extract.py` |
+| Fuzz the decoders that read group riders' input (codes, controls, voice, state, workouts, STUN, shared courses), each target for N seconds; a finding leaves its input in `core/fuzz/artifacts/` | `scripts/fuzz.sh [N]` |
 | Refresh the app's About notices and the CLI's packaged dependency/Opus licence file, after changing dependencies ([ADR 0018](adr/0018-about-and-notices.md)) | `scripts/notices.sh` |
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |

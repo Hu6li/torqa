@@ -58,9 +58,9 @@ impl Voice {
             }
         } else if let Some(chat) = &mut self.chat {
             match chat.next().await {
-                Some(VoiceEvent::DeviceUnavailable) => eprintln!(
-                    "Voice device unavailable; check audio devices and microphone permissions. The ride continues."
-                ),
+                Some(VoiceEvent::DeviceUnavailable { error }) => {
+                    eprintln!("Voice device unavailable: {error}. The ride continues.");
+                }
                 Some(VoiceEvent::PeerMuted { peer }) => eprintln!(
                     "Invalid speech from rider {}; that speaker was muted locally.",
                     peer.value()

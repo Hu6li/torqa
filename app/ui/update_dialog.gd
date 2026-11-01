@@ -39,7 +39,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_orqwa.update_downloaded.connect(_on_downloaded)
 	_orqwa.update_failed.connect(_on_failed)
 	if Engine.has_singleton(ANDROID):
-		Engine.get_singleton(ANDROID).connect(&"update_failed", _on_failed)
+		Engine.get_singleton(ANDROID).connect(&"update_failed", _on_android_failed)
 
 
 ## Shows the newer `version`, its release `page`, and whether ORQWA can install it itself.
@@ -119,3 +119,7 @@ func _on_failed(message: String) -> void:
 	_downloading = false
 	_show_offer()
 	dialog_text = message + "\n\n" + dialog_text
+
+
+func _on_android_failed(details: String) -> void:
+	_orqwa.android_update_failed(details)

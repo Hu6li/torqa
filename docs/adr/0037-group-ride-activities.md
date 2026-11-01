@@ -108,6 +108,25 @@ automatic crash recovery is not part of this decision.
 
 ## Delivery and validation
 
+### Guided connection consent — 2026-10-31
+
+Connection options move from a separate settings button into create/join popups. The rider
+chooses Separate homes, Same home Wi-Fi, or Some together, some elsewhere, with short
+descriptions. Optional public address lookup stays available under More connection options.
+Same-home mode always clears that server list; separate-home mode never enables LAN access.
+These mappings live in Rust and retain the existing transport limits and address policy.
+
+Joining inspects the bounded invitation offline first, showing only the validated organizer
+name and whether home-network permission is needed. Inspection permits parsing LAN fields
+without granting network access; the selected policy is checked again synchronously before
+starting the existing group owner, and again by transport. No new service or protocol version
+is introduced. Back preserves the invitation; cancellation starts no discovery, probes or
+listeners. Invitations that include local destinations still require explicit home-network
+permission rather than silently widening the rider's separate-home choice.
+The popup uses the existing touch-scroll helper and native release actions for whole-card
+selection, so finger swipes scroll without changing connection permissions. Gesture tests
+exercise the popup's actual cards as well as tap selection.
+
 The first step implements activity/readiness types, normalized workout wire encoding,
 streaming content helpers and a course archive validator. Tests exercise the existing real
 pinned loopback transport, content corruption/truncation/trailing data, atomic publication,
@@ -162,6 +181,31 @@ current actor still seals admission at countdown and host loss ends networking/v
 Native microphone permissions, audio device/hotplug acceptance and cross-home-network
 connectivity remain manual checks; local integration tests do not claim those results.
 
+### Late entry — 2026-10-29
+
+App lobbies retain explicit admission after countdown. The CLI continues sealing admissions.
+Protocol/invitation version 4 and ALPN `orqwa-group/4` add bounded Running, Enter and Entry
+controls; builds must match and exchange fresh codes. The eight-rider cap, one-use admission,
+fixed task/queue limits, selected-content serving and independent control/state/voice budgets
+remain in force. Activity and assistance selection stay frozen after countdown.
+
+New members receive the frozen selection and group clock without a local Start event. They
+download and build independently, then explicitly request entry after preparation and trainer
+connection. The host checks the current connection membership, selection revision, readiness
+and a recent active organizer snapshot. An unavailable snapshot yields a retryable response;
+it does not pause existing riders or end the connection. A successful connection enters once.
+Late members cannot publish ride state before entry; existing clients accept bounded roster
+changes during riding. Datagram/control reordering before clock receipt does not disconnect
+a preparing app joiner. Original countdown participants still start normally.
+
+The session keeps absolute course position separately from actual ridden distance and personal
+elapsed time. Entry starts at rest, five metres behind the organizer, seeks only the structured
+workout plan and creates no samples or previous telemetry. The HUD, FIT and summary count only
+post-entry riding. A partial course and climbs whose starts were skipped produce no speed
+records; later complete unassisted climbs and genuine power/training retain eligibility.
+Milestone and climb cursors skip unridden sections. Workout targets use local FTP and intensity.
+Shared pause/resume/skips and planned authority handover remain separate roadmap steps.
+
 ### Rider-facing setup refinement — 2026-10-28
 
 The tab starts with two actions: create a ride or join one. Invitation exchange is guided
@@ -209,3 +253,132 @@ tests cover rule replication, readiness reset, local/remote power separation and
 session tests cover simulation/ERG behavior, and saved FIT tests cover recording isolation.
 Seven-rider review images use presentation fixtures, separately from transport tests. Native
 trainer feel, audio permissions, cross-home connectivity and GPU frame rate remain manual.
+
+### Android publication and diagnostics repair — 2026-10-29
+
+Android's shared-storage filesystem rejects hard links even in the app-owned media folder.
+After complete validation and rehashing, a denied/unsupported link now falls back on Android
+and Linux to atomic `renameat2(RENAME_NOREPLACE)`, which [Android's FUSE service accepts](https://android.googlesource.com/platform/packages/providers/MediaProvider/+/refs/heads/master/jni/FuseDaemon.cpp).
+Existing files and symlinks are never
+replaced; matching content is still reverified and reused, and cross-filesystem publication
+still fails. API 29 uses the stable kernel syscall because Bionic's wrapper starts at API 30.
+No copy into an exposed partial library file, overwrite rename or permission broadening occurs.
+
+The Android plugin supplies a retained application context to CPAL's existing `ndk-context`
+before Godot opens the extension. CPAL documents that embedded JNI hosts must initialize this
+context [when embedded through JNI](https://github.com/RustAudio/cpal#compiling-for-android);
+otherwise device setup can panic before readiness. Voice setup remains microphone-off.
+Group errors use ADR 0017's common classified/translated failure history with original causes,
+Technical details and Dismiss; independent activity retry state survives later voice failures.
+
+### Shared workout timing — 2026-10-31
+
+Protocol/invitation version 5 and ALPN `orqwa-group/5` add organizer-owned workout samples.
+Each includes the frozen activity revision, increasing sequence, bounded workout position,
+paused flag and sample position on the original group clock. Mapping that sample position
+onto the already established local group start accounts for reliable delivery delays instead
+of starting a stale clock at receipt. Values and future times are validated before use.
+
+The host owns a monotonic timeline independent of app frame steps, local safety pauses and
+personal recording. Pause/resume and forward skips enter its existing bounded command queue;
+peer attempts to supply organizer time disconnect only that peer. Reliable snapshots run at
+five Hz and coalesce into one latest app value, so a slow consumer accumulates no clock history.
+Existing control ingress/frame limits and state/voice/content budgets remain intact. Late
+entry uses current authoritative workout time rather than a previous local progress report.
+
+Only structured-plan time is aligned in the session. Shared pause holds the step and asks
+for zero resistance while physical simulation and personal recording can continue. FTP,
+intensity, measured telemetry, course position and personal elapsed time are untouched.
+Local safety pause still stops that rider and frees the trainer; resume aligns to the current
+group step without manufacturing samples or distance. Shared step boundaries, skips and
+pause changes promptly update trainer control while retaining normal control throttling.
+
+All app skip inputs pass through organizer authority, and the engine refuses local skips
+while externally timed. Frozen shared plans cannot be replaced in the app or ride settings.
+Leaving or losing networking releases external timing once and continues the local workout
+from its reached step, including when the group had paused. Automatic recovery after unexpected
+host loss is still excluded.
+
+### Planned organizer handover — 2026-10-31
+
+Protocol/invitation version 6 and ALPN `orqwa-group/6` retain a logical root group identity,
+stable rider slots and a committed authority epoch independently of fresh transport identities.
+Welcome includes the actual organizer slot, root and epoch, also for later ordinary joiners.
+Activity readiness and voice forwarding use this explicit organizer rather than assuming slot 0.
+
+The current organizer offers duties to one prepared member. That rider explicitly accepts
+before opening a fresh pinned listener under their existing discovery/address settings.
+Authenticated old links distribute a bounded public plan; admission replies travel privately
+to the successor through the predecessor. Each rider validates their own address policy and
+the frozen group, complete membership/metadata, selection and fresh pin before opening links.
+Replacement admission binds a transport-authenticated credential (since protocol 7, the rider's
+TLS client certificate; ADR 0035) to the reserved original rider
+slot, preventing a claimed rider number or matching display name from taking another slot.
+
+A fresh random proof stays with the old organizer. Its SHA-256 commitment binds the root,
+proposal epoch, old/new organizer, complete roster/selection, pinned invitation and original
+group/workout clock. All replacement links prepare with state and voice disabled. The source
+reveals the proof on its new pinned link only after each member reports readiness and the
+successor confirms the complete server roster. The successor validates the commitment and
+full roster before activating; every peer validates the proof before replacing its old owner.
+Cancelled proposals consume epochs too, so delayed decisions and asynchronous replies cannot
+authorize a later attempt. Credentials, plans and proofs are redacted from Debug output.
+
+Consent lasts 30 seconds; accepted preparation uses a common deadline of 60 seconds on the
+existing group clock. Each app owns one cancellable job and at most an old and replacement
+session (14 peer links for eight riders). Existing frame, ingress, voice and transfer budgets
+remain in force. Membership changes or precommit failure discard replacement owners and retain
+the old authority. Once the proof is revealed, rollback cannot restore the old authority.
+Old-link loss allows at most five seconds, bounded by the original deadline, to finish an
+already prepared valid commit; otherwise group networking ends and the local ride continues.
+Prepared peers also defer old membership departures briefly: the successor may close its old
+link before their new proof arrives. The old source cancels precommit departures; a valid
+commit discards deferred old departures, while cancellation applies them to the old roster.
+This grace completes planned consent and does not elect an organizer after a crash.
+
+The switch keeps local recording, course position, assistance eligibility, workout/intensity,
+membership generations and the original monotonic start. It clears old peer motion history
+and blends assistance to the new reference over two seconds. Voice closes the old transmission
+gate synchronously, replaces the port and reconnects previously opted-in listening with a fresh
+generation and microphone off; device choices, gain, deafen and local mutes remain personal.
+The new host shares its already verified content and publishes a fresh invitation. No extra
+service, endpoint, package or dependency version is introduced.
+
+### Courses riders already have — 2026-11-01
+
+A joiner found an existing course only under its hash-derived name (#435). A `.tqc` sent
+beforehand and imported under the rider's own name was downloaded again, and so was any copy
+the app had changed since: renaming, importing, a new map picture, countries or map detail
+rewrite the archive. Worse, a received `<hash>.tqc` changed since then made publication fail,
+so the rider could not prepare that course again.
+
+Each course selection now also carries a **course key**: SHA-256 of key material the storage
+layer reads from the archive without unpacking it. The material is the manifest without its
+`name` and `countries`, serialized with sorted keys, followed by every other entry except
+the map picture (`map.png`, legacy `preview.png`) by path, stored CRC-32 and uncompressed
+size, sorted by path and length-prefixed. Renaming, importing under another name, a new
+picture or countries keep the key; other route, data or manifest changes, map detail among
+them, change it. Before downloading, a joiner keys every `.tqc` in its library, which costs a
+zip directory and manifest per course, so no index or cache is kept, and rides the first
+match without downloading. Courses open in shared mode in a group, so the match is not
+changed while riding.
+
+Transfers keep checking exact bytes. A workout response must name the requested identity. A
+course response may announce the sender's own copy instead, renamed or with another picture:
+the receiver checks its kind and size limit before creating a temporary file, its streaming
+SHA-256 against the announced identity, then the course validator and the course key against
+the selection's before publication. The serving lobby sends its local course as it is now. So
+a successor riding their renamed copy after a handover still serves late joiners, and so does
+a host whose file changed after selecting it.
+
+CRC-32 is not collision resistant, so a hostile organizer could make another course match a
+key. That gains nothing over selecting that course: a match only picks a course the joiner
+already has, and a forged download still passes the shared validator. It does not reach
+riders who are already prepared. Exact SHA-256 of whole files was rejected because the app's
+own rewrites change bytes, and hashing decompressed contents because it costs seconds per
+large course.
+
+Publication still never replaces a file. When a hash-derived name holds other bytes, the
+content takes the next free `-2` … `-8` name beside it. It reuses a name that already holds
+identical bytes, as before. Selection encoding version 2 and protocol/invitation version 10
+with ALPN `orqwa-group/10` require matching builds and fresh codes.

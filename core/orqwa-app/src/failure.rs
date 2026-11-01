@@ -6,6 +6,10 @@ use std::fmt;
 pub enum Kind {
     /// Could not complete the group ride action.
     GroupRide,
+    /// Could not prepare the shared activity.
+    GroupActivity,
+    /// Voice is unavailable. Check your audio devices and microphone permission.
+    GroupVoice,
     /// Could not save the rider profile.
     SaveProfile,
     /// Could not delete the rider profile.
@@ -158,6 +162,10 @@ impl Kind {
         // i18n-begin
         match self {
             Self::GroupRide => "Could not complete the group ride action.",
+            Self::GroupActivity => "Could not prepare the shared activity.",
+            Self::GroupVoice => {
+                "Voice is unavailable. Check your audio devices and microphone permission."
+            }
             Self::SaveProfile => "Could not save the rider profile.",
             Self::DeleteProfile => "Could not delete the rider profile.",
             Self::OpenFile => "Could not open %s.",

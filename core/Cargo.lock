@@ -2083,6 +2083,7 @@ name = "orqwa-gd"
 version = "0.5.4"
 dependencies = [
  "godot",
+ "ndk-context",
  "orqwa-app",
  "orqwa-devices",
  "orqwa-domain",

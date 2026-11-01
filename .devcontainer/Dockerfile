@@ -4,6 +4,10 @@ FROM rust:1.99.0-trixie
 ARG GODOT_VERSION=4.7.2
 ARG CARGO_DENY_VERSION=0.20.2
 ARG GDTOOLKIT_VERSION=4.5.0
+# Fuzzing only (scripts/fuzz.sh): libFuzzer instrumentation needs nightly. Keep the date equal to
+# core/fuzz/rust-toolchain.toml.
+ARG RUST_FUZZ_TOOLCHAIN=nightly-2026-10-31
+ARG CARGO_FUZZ_VERSION=0.13.2
 # Checksums of the downloads below, from the releases' SHA512-SUMS.txt (Godot) and .sha256
 # files (cargo-deny): a swapped download fails the build rather than ending up in the image.
 ARG GODOT_SHA512_X86_64=9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
@@ -24,6 +28,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rustup component add rustfmt clippy && rustup target add x86_64-pc-windows-gnu
+
+RUN rustup toolchain install "$RUST_FUZZ_TOOLCHAIN" --profile minimal \
+    && cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked \
+    && rm -rf /usr/local/cargo/registry
 
 RUN arch="$(uname -m)" \
     && case "$arch" in \

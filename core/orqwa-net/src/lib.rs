@@ -8,6 +8,10 @@ pub mod code;
 pub mod content;
 pub mod crypto;
 pub mod discovery;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzz;
+pub mod handover;
 pub mod limits;
 pub mod link;
 pub mod lobby;

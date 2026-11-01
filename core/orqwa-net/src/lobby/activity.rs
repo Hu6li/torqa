@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::activity::{ActivityLobby, Participant, Selection};
+use crate::activity::{ActivityLobby, ContentKind, Participant, Selection};
 use crate::content::{self, ContentError, Source};
 
 use super::{LobbyError, MAX_RIDERS, Message, RecvStream, RiderId, SendStream, rider_id, watch};
@@ -30,17 +30,17 @@ impl SharedActivity {
 }
 
 pub(super) struct Activities {
-    enabled: bool,
+    pub(super) enabled: bool,
     lobby: ActivityLobby,
     members: [Option<Participant>; MAX_RIDERS],
     ready: [bool; MAX_RIDERS],
     pub(super) selected: watch::Sender<Option<SharedActivity>>,
 }
 impl Activities {
-    pub(super) fn new(enabled: bool) -> Result<Self, LobbyError> {
-        let mut lobby = ActivityLobby::default();
+    pub(super) fn new(enabled: bool, organizer: RiderId) -> Result<Self, LobbyError> {
+        let mut lobby = ActivityLobby::new(organizer);
         let mut members = [None; MAX_RIDERS];
-        members[0] = Some(lobby.join(RiderId::HOST)?);
+        members[usize::from(organizer.value())] = Some(lobby.join(organizer)?);
         let (selected, _) = watch::channel(None);
         Ok(Self {
             enabled,
@@ -97,6 +97,26 @@ impl Activities {
         }
         Ok(())
     }
+    pub(super) fn can_enter(&self, id: RiderId, revision: u64) -> bool {
+        self.enabled
+            && self.ready[usize::from(id.value())]
+            && self
+                .lobby
+                .selection()
+                .is_some_and(|selected| selected.revision == revision)
+    }
+    /// Whether `id` may tell the group how far it has prepared `revision` (#419): a member
+    /// not yet ready, for the current selection.
+    pub(super) fn preparing(&self, id: RiderId, revision: u64) -> bool {
+        let slot = usize::from(id.value());
+        self.enabled
+            && self.members[slot].is_some()
+            && !self.ready[slot]
+            && self
+                .lobby
+                .selection()
+                .is_some_and(|selected| selected.revision == revision)
+    }
     pub(super) fn initial(&self) -> Vec<Message> {
         let mut messages = Vec::new();
         if let Some(selected) = self.lobby.selection() {
@@ -126,7 +146,9 @@ pub(super) async fn transfer(
     }
     .ok_or(ContentError::Mismatch)?;
     let mut source = Source::open(&path, id.kind()).await?;
-    if source.id() != id {
+    // A course goes as this rider's own copy, which may be renamed or show another map
+    // picture than the one selected (#435); the receiver checks its course key.
+    if id.kind() == ContentKind::Workout && source.id() != id {
         return Err(ContentError::Mismatch);
     }
     content::send(&mut send, &mut source).await

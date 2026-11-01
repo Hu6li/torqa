@@ -54,6 +54,7 @@ public class OrqwaAndroid extends GodotPlugin {
         super(godot);
         System.loadLibrary("orqwa_gd");
         initStorage(sharedFolder(godot.getContext()));
+        initVoice(godot.getContext().getApplicationContext());
     }
 
     /** Readies HTTPS's certificate checks through Android (rustls-platform-verifier). */
@@ -61,6 +62,9 @@ public class OrqwaAndroid extends GodotPlugin {
 
     /** Names ORQWA's folder in shared storage to the core, before Godot opens it (R148). */
     private static native void initStorage(String folder);
+
+    /** Readies CPAL's embedded AAudio host without opening a microphone or speaker stream. */
+    private static native void initVoice(Context context);
 
     /**
      * ORQWA's own folder in shared storage, `Android/media/org.orqwa.bike`, which Android

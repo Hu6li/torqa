@@ -34,6 +34,8 @@ use orqwa_session::estimate;
 use orqwa_session::workout::{EffortTest, HeartRateHold, RampTest, Workout};
 use orqwa_world::MapFeature;
 
+#[cfg(target_os = "android")]
+mod android_audio;
 mod graphics;
 mod group;
 mod log;
@@ -2041,6 +2043,15 @@ impl OrqwaApp {
             .map_or_else(VarDictionary::new, group::status)
     }
 
+    /// Routes an Android package installer's original diagnostic through the same translated
+    /// summary and technical-details history as core update failures.
+    #[func]
+    fn android_update_failed(&mut self, cause: GString) {
+        let failure = Failure::new(Kind::InstallUpdate, cause);
+        let summary = self.record_failure(&failure);
+        self.signals().update_failed().emit(&summary);
+    }
+
     /// Creates an empty lobby, or answers a pasted invite; discovery is explicitly opt-in.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
@@ -2052,6 +2063,31 @@ impl OrqwaApp {
         }
         let text = invite.to_string();
         self.command(|app| app.group_open((!text.is_empty()).then_some(text), options))
+    }
+    /// Inspects a lobby invitation offline, before showing connection choices.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_invitation(&mut self, invite: GString) -> VarDictionary {
+        match orqwa_app::group::connection::invitation(&invite.to_string()) {
+            Ok(preview) => {
+                vdict! {"organizer"=>preview.organizer.as_str(),"requires_home"=>preview.requires_home}
+            }
+            Err(error) => {
+                self.report_failure(&Failure::from(error));
+                VarDictionary::new()
+            }
+        }
+    }
+    /// Starts networking only after the rider confirms the guided popup.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_connect(&mut self, invite: GString, mode: GString, lookup: bool) -> bool {
+        let text = invite.to_string();
+        let Some(mode) = orqwa_app::group::connection::ConnectionMode::from_key(&mode.to_string())
+        else {
+            return false;
+        };
+        self.command(|app| app.group_connect((!text.is_empty()).then_some(text), mode, lookup))
     }
     /// Leaves the group without stopping or discarding a local ride.
     #[func]
@@ -2096,6 +2132,18 @@ impl OrqwaApp {
     fn group_start(&mut self) -> bool {
         self.command(|app| app.group_start())
     }
+    /// Enters the running ride after late-join preparation and explicit rider consent.
+    #[func]
+    fn group_enter(&mut self) -> bool {
+        self.command(|app| app.group_enter())
+    }
+
+    /// Pauses or resumes only the shared workout clock on the organizer.
+    #[func]
+    fn group_workout_pause(&mut self, paused: bool) -> bool {
+        self.command(|app| app.group_workout_pause(paused))
+    }
+
     /// Retries failed activity content/preparation.
     #[func]
     fn group_retry(&mut self) -> bool {
@@ -2108,6 +2156,24 @@ impl OrqwaApp {
             return false;
         };
         self.command(|app| app.group_remove(id))
+    }
+    /// Offers organizer duties to a prepared friend.
+    #[func]
+    fn group_handover(&mut self, id: i64) -> bool {
+        let Ok(id) = u8::try_from(id) else {
+            return false;
+        };
+        self.command(|app| app.group_handover(id))
+    }
+    /// Answers the current organizer request.
+    #[func]
+    fn group_handover_answer(&mut self, accepted: bool) -> bool {
+        self.command(|app| app.group_handover_answer(accepted))
+    }
+    /// Cancels preparation before authority commits.
+    #[func]
+    fn group_handover_cancel(&mut self) -> bool {
+        self.command(|app| app.group_handover_cancel())
     }
     /// Enables/disables explicit voice consent and configures local mic, deafen and volume.
     #[func]
@@ -2963,7 +3029,7 @@ impl OrqwaApp {
     /// watts_per_kg, power_zone, heart_rate_zone, metrics, workout}`, and on a route also
     /// `{remaining_m, grade, elevation_m, x, y, rider_x, rider_y, heading, curvature, ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when not riding.
-    /// `workout` is `{target_power_w, target_heart_rate, intensity_pct, progress}` in a
+    /// `workout` is `{target_power_w, target_heart_rate, intensity_pct, paused, progress}` in a
     /// workout, else `null`: the power `null` in a free step, the heart rate `null` but in a
     /// heart-rate hold, the intensity the share of the planned powers asked for, and
     /// `progress` of a structured workout `{step, steps, elapsed_s, step_left_s, left_s,
@@ -3760,6 +3826,7 @@ fn workout_state(w: &orqwa_session::workout::WorkoutState) -> Variant {
         "target_power_w" => &optional(w.target_power.map(|p| p.0)),
         "target_heart_rate" => &optional(w.target_heart_rate.map(|h| h.0)),
         "intensity_pct" => w.intensity.0,
+        "paused" => w.paused,
         "progress" => &w.progress.as_ref().map_or_else(Variant::nil, |p| {
             vdict! {
                 "step" => i64::try_from(p.step).unwrap_or(0),

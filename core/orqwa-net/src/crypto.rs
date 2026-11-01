@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 
 use rustls::crypto::CryptoProvider;
 
-use crate::code::{AdmissionSecret, Fingerprint, RideId, RouteHash};
+use crate::code::{Fingerprint, RideId, RouteHash};
 
 /// The operating system's secure random source could not supply bytes.
 #[derive(Debug, thiserror::Error)]
@@ -76,16 +76,6 @@ impl RideId {
     }
 }
 
-impl AdmissionSecret {
-    /// A fresh 256-bit bearer credential. Never log the resulting reply or publish it.
-    ///
-    /// # Errors
-    /// Returns [`RandomError`] if secure entropy is unavailable.
-    pub fn generate() -> Result<Self, RandomError> {
-        Self::from_random_bytes(random()?).map_err(|_| RandomError)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,11 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn separate_sessions_and_replies_get_separate_identifiers_and_credentials() {
+    fn separate_sessions_get_separate_identifiers() {
         assert_ne!(RideId::generate().unwrap(), RideId::generate().unwrap());
-        assert_ne!(
-            AdmissionSecret::generate().unwrap(),
-            AdmissionSecret::generate().unwrap()
-        );
     }
 }
