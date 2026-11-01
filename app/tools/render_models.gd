@@ -16,6 +16,8 @@ const VARIANTS: Array = [[0, 0, 0.5], [2, 1, 0.3], [1, 2, 0.9]]
 ## lighthouses) by kind, as the world paints them (core/orqwa-world/src/buildings/mod.rs);
 ## other kinds take plaster and tiles.
 const BUILDING_COLOURS: Dictionary[String, Array] = {
+	"japanese_house": ["buildings.japanese_walls", "buildings.japanese_roofs"],
+	"japanese_castle": ["buildings.japanese_walls", "buildings.japanese_roofs"],
 	"church": ["buildings.light_walls", "buildings.tiles"],
 	"chapel": ["buildings.light_walls", "buildings.tiles"],
 	"castle": ["buildings.castle_walls", "buildings.tiles"],

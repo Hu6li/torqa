@@ -282,6 +282,96 @@
    "storeys": 3,
    "pitch": 30
   },
+  "japanese_castle_3_m": {
+   "kind": "japanese_castle",
+   "roof": "hipped",
+   "length": 22.0,
+   "width": 16.0,
+   "eaves": 6.4,
+   "height": 15.847,
+   "storeys": 3,
+   "pitch": 28
+  },
+  "japanese_castle_3_s": {
+   "kind": "japanese_castle",
+   "roof": "hipped",
+   "length": 14.0,
+   "width": 11.0,
+   "eaves": 6.4,
+   "height": 15.136,
+   "storeys": 3,
+   "pitch": 28
+  },
+  "japanese_castle_5_l": {
+   "kind": "japanese_castle",
+   "roof": "hipped",
+   "length": 34.0,
+   "width": 24.0,
+   "eaves": 6.4,
+   "height": 22.448,
+   "storeys": 5,
+   "pitch": 28
+  },
+  "japanese_house_1_m": {
+   "kind": "japanese_house",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 3.5,
+   "height": 6.263,
+   "storeys": 1,
+   "pitch": 28
+  },
+  "japanese_house_1_s": {
+   "kind": "japanese_house",
+   "roof": "gable",
+   "length": 9.5,
+   "width": 7.5,
+   "eaves": 3.5,
+   "height": 5.864,
+   "storeys": 1,
+   "pitch": 28
+  },
+  "japanese_house_2_l": {
+   "kind": "japanese_house",
+   "roof": "gable",
+   "length": 15.0,
+   "width": 10.5,
+   "eaves": 6.4,
+   "height": 9.561,
+   "storeys": 2,
+   "pitch": 28
+  },
+  "japanese_house_2_m": {
+   "kind": "japanese_house",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 6.4,
+   "height": 9.163,
+   "storeys": 2,
+   "pitch": 28
+  },
+  "japanese_house_2_s": {
+   "kind": "japanese_house",
+   "roof": "gable",
+   "length": 9.5,
+   "width": 8.0,
+   "eaves": 6.4,
+   "height": 8.897,
+   "storeys": 2,
+   "pitch": 28
+  },
+  "japanese_house_hipped_1_m": {
+   "kind": "japanese_house",
+   "roof": "hipped",
+   "length": 14.0,
+   "width": 10.0,
+   "eaves": 3.5,
+   "height": 6.529,
+   "storeys": 1,
+   "pitch": 28
+  },
   "lighthouse_l": {
    "kind": "lighthouse",
    "roof": "flat",

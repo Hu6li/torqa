@@ -14,6 +14,7 @@ const DIRECTORY: String = "res://assets/models/buildings/"
 const LOOKS: Dictionary[String, Array] = {
 	"plaster": [0, "buildings.light_walls", "plaster", 2.0],
 	"stone": [1, "buildings.stone", "masonry", 2.4],
+	"castle_stone": [1, "buildings.stone", "rock", 2.4],
 	"wood": [2, "buildings.timber", "planks", 2.0],
 	"wood_dark": [3, "buildings.wood_dark", "planks", 2.0],
 	"wood_light": [2, "buildings.wood_light", "planks", 2.0],

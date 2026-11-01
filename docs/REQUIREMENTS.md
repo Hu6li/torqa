@@ -300,3 +300,9 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero
 Assioma Pro Duo power pedals, Shimano Di2 (RD-R8150), and a Zwift Click + Cog (the original
 Click, R75), and a Zwift Click v2 (R77, R96).
+
+## Regional architecture
+
+| ID | Requirement |
+|---|---|
+| R164 | Extends R45 and R89 (2026-11-01): a first **Japanese architecture set** selects timber-and-plaster houses with dark tiled roofs and tiered castle keeps on Japanese rides, independently of climate. Japanese mountain houses do not become Swiss chalets or Bernese farmhouses; tropical lowland houses retain their existing set. Castles still require mapped castle points. Region selection works offline, other regions keep their current architecture, and castle shells retain receding roof tiers when no model fits or at distance. Models are scripted, exported and reviewed through the existing asset pipeline. Further Asian styles are separate regional sets. |

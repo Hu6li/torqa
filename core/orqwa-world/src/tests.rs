@@ -41,6 +41,62 @@ impl ElevationModel for EastwardSlope {
 /// No terrain data at all, as when offline without cached tiles.
 struct NoData;
 
+#[tokio::test]
+async fn japanese_rides_place_regional_houses_and_only_mapped_castles_offline() {
+    for (lat, lon, expected_house, expected_castle) in [
+        (35.01, 135.77, "japanese_house", "japanese_castle"),
+        (26.21, 127.68, "tropical", "japanese_castle"),
+        (46.95, 7.45, "house", "castle"),
+    ] {
+        let xml = format!(
+            "<gpx><trk><trkseg><trkpt lat='{lat}' lon='{lon}'><ele>400</ele></trkpt>\
+             <trkpt lat='{}' lon='{lon}'><ele>400</ele></trkpt></trkseg></trk></gpx>",
+            lat + 0.009
+        );
+        let route = Route::from_gpx(&xml, None).await.unwrap();
+        let projection = LocalProjection::for_route(&route);
+        let building = |id, east, north, length: f64, width: f64| Building {
+            id,
+            outline: [
+                (-1.0, -1.0),
+                (1.0, -1.0),
+                (1.0, 1.0),
+                (-1.0, 1.0),
+                (-1.0, -1.0),
+            ]
+            .map(|(x, y)| projection.unproject(east + x * length / 2.0, north + y * width / 2.0))
+            .to_vec(),
+            height: None,
+            levels: Some(2.0),
+            color: None,
+        };
+        let map = MapData {
+            buildings: vec![
+                building(1, 40.0, 200.0, 12.0, 9.0),
+                building(2, 60.0, 600.0, 22.0, 16.0),
+            ],
+            castles: vec![projection.unproject(60.0, 600.0)],
+            ..MapData::default()
+        };
+        let world = generate(&route, &mut NoData, &map, &mut |_, _| {}).await;
+        let names: Vec<&str> = world
+            .chunks
+            .iter()
+            .flat_map(|c| &c.modelled)
+            .flat_map(|cell| cell.models.keys().map(String::as_str))
+            .collect();
+        assert!(
+            names.iter().any(|n| n.starts_with(expected_house)),
+            "{lat}: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n.starts_with(expected_castle)),
+            "{lat}: {names:?}"
+        );
+        assert_eq!(names.len(), 2, "only the marked building becomes a castle");
+    }
+}
+
 impl ElevationModel for NoData {
     fn elevation(
         &mut self,

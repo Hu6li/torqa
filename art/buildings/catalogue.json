@@ -46,6 +46,15 @@
     {"name": "tropical_flat_2_m", "kind": "tropical", "roof": "flat", "storeys": 2, "length": 12.0, "width": 9.5},
     {"name": "tropical_flat_2_l", "kind": "tropical", "roof": "flat", "storeys": 2, "length": 15.0, "width": 11.5},
     {"name": "tropical_hipped_1_s", "kind": "tropical", "roof": "hipped", "storeys": 1, "length": 9.5, "width": 8.0, "pitch": 24},
-    {"name": "tropical_hipped_1_m", "kind": "tropical", "roof": "hipped", "storeys": 1, "length": 12.5, "width": 10.0, "pitch": 24}
+    {"name": "tropical_hipped_1_m", "kind": "tropical", "roof": "hipped", "storeys": 1, "length": 12.5, "width": 10.0, "pitch": 24},
+    {"name": "japanese_house_1_s", "kind": "japanese_house", "roof": "gable", "storeys": 1, "length": 9.5, "width": 7.5, "pitch": 28},
+    {"name": "japanese_house_1_m", "kind": "japanese_house", "roof": "gable", "storeys": 1, "length": 12.0, "width": 9.0, "pitch": 28},
+    {"name": "japanese_house_2_s", "kind": "japanese_house", "roof": "gable", "storeys": 2, "length": 9.5, "width": 8.0, "pitch": 28},
+    {"name": "japanese_house_2_m", "kind": "japanese_house", "roof": "gable", "storeys": 2, "length": 12.0, "width": 9.0, "pitch": 28},
+    {"name": "japanese_house_2_l", "kind": "japanese_house", "roof": "gable", "storeys": 2, "length": 15.0, "width": 10.5, "pitch": 28},
+    {"name": "japanese_house_hipped_1_m", "kind": "japanese_house", "roof": "hipped", "storeys": 1, "length": 14.0, "width": 10.0, "pitch": 28},
+    {"name": "japanese_castle_3_s", "kind": "japanese_castle", "roof": "hipped", "storeys": 3, "length": 14.0, "width": 11.0, "pitch": 28},
+    {"name": "japanese_castle_3_m", "kind": "japanese_castle", "roof": "hipped", "storeys": 3, "length": 22.0, "width": 16.0, "pitch": 28},
+    {"name": "japanese_castle_5_l", "kind": "japanese_castle", "roof": "hipped", "storeys": 5, "length": 34.0, "width": 24.0, "pitch": 28}
   ]
 }

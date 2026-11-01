@@ -79,6 +79,8 @@
   "buildings": {
     "walls": ["#e9e4d8", "#e6d6bc", "#dcc6a6", "#c9b49c", "#efe9df", "#d8d4c6"],
     "light_walls": ["#ece8de", "#e4dfd3", "#e9e2d4", "#dfd9cd"],
+    "japanese_walls": ["#e8e3d7", "#d9d2c3", "#eee9de"],
+    "japanese_roofs": ["#484b50", "#55585c", "#62615e"],
     "timber": ["#5a3f2c", "#6a4a33", "#4e3727", "#7a5a3e"],
     "wood_dark": "#3a2a20",
     "wood_light": "#a07a52",

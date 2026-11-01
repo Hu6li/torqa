@@ -172,6 +172,7 @@ thousands of them; `build.py` prints the counts.
 |---|---|
 | `plaster` | rendered walls; the colour varies per building |
 | `stone` | plinths, sills, quoins |
+| `castle_stone` | Japanese keeps' battered stone platforms, using the existing natural-rock scan |
 | `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and log ends; the Ründi |
 | `frame`, `glass`, `leaded` | window frames; glass, and stained glass in churches |
 | `shutter`, `door`, `garage` | shutters (colour varies per building, some have none), doors |
@@ -187,6 +188,13 @@ its walls stand on (`length` along x, `width` along y), `eaves` and total `heigh
 reads it to fit models to the outlines on the map.
 
 Every building is in the [gallery](#buildings).
+
+The Japanese starter set (`japanese.py`, R164) adds six `japanese_house` models with pale
+plaster, dark timber lattice, deep swept tiled eaves and ridge caps, plus three
+`japanese_castle` keeps with battered stone bases and three or five receding roofs.
+The regional selector preserves tropical lowland houses and uses matching castle shells
+at distance. See [regional buildings](../docs/regional-buildings.md) for placement,
+references, rebuild commands and validation. These are own-work archetypes, not replicas.
 
 ## Vegetation (`vegetation/`)
 
@@ -432,6 +440,14 @@ scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-riders.sh'
 | ![castle_s](../docs/images/models/buildings/castle_s.jpg)<br>`castle_s` | ![lighthouse_l](../docs/images/models/buildings/lighthouse_l.jpg)<br>`lighthouse_l` | ![lighthouse_s](../docs/images/models/buildings/lighthouse_s.jpg)<br>`lighthouse_s` |
 | ![tropical_flat_1_m](../docs/images/models/buildings/tropical_flat_1_m.jpg)<br>`tropical_flat_1_m` | ![tropical_flat_2_l](../docs/images/models/buildings/tropical_flat_2_l.jpg)<br>`tropical_flat_2_l` | ![tropical_flat_2_m](../docs/images/models/buildings/tropical_flat_2_m.jpg)<br>`tropical_flat_2_m` |
 | ![tropical_hipped_1_m](../docs/images/models/buildings/tropical_hipped_1_m.jpg)<br>`tropical_hipped_1_m` | ![tropical_hipped_1_s](../docs/images/models/buildings/tropical_hipped_1_s.jpg)<br>`tropical_hipped_1_s` |  |
+
+Japanese starter set:
+
+| | | |
+|---|---|---|
+| ![Japanese one-storey house, small](../docs/images/models/buildings/japanese_house_1_s.jpg)<br>`japanese_house_1_s` | ![Japanese one-storey house](../docs/images/models/buildings/japanese_house_1_m.jpg)<br>`japanese_house_1_m` | ![Japanese hipped house](../docs/images/models/buildings/japanese_house_hipped_1_m.jpg)<br>`japanese_house_hipped_1_m` |
+| ![Japanese two-storey house, small](../docs/images/models/buildings/japanese_house_2_s.jpg)<br>`japanese_house_2_s` | ![Japanese two-storey house](../docs/images/models/buildings/japanese_house_2_m.jpg)<br>`japanese_house_2_m` | ![Japanese two-storey house, large](../docs/images/models/buildings/japanese_house_2_l.jpg)<br>`japanese_house_2_l` |
+| ![Japanese three-tier keep, small](../docs/images/models/buildings/japanese_castle_3_s.jpg)<br>`japanese_castle_3_s` | ![Japanese three-tier keep](../docs/images/models/buildings/japanese_castle_3_m.jpg)<br>`japanese_castle_3_m` | ![Japanese five-tier keep](../docs/images/models/buildings/japanese_castle_5_l.jpg)<br>`japanese_castle_5_l` |
 
 ### Tree detail levels
 

@@ -5,10 +5,12 @@
 //! interest in them or the land they stand on, halls on industrial land, chalets in the
 //! mountains, farmhouses as large buildings in the countryside, blocks from their height or
 //! size in towns, sheds from their size, and houses otherwise — in the subtropics houses built
-//! for the heat (#136). Each kind gets its own proportions, roof, materials and details.
+//! for the heat (#136). Regional architecture starts with Japanese houses and tiered keeps
+//! (R164), selected independently of climate. Each kind gets its own proportions and materials.
 
 mod models;
 mod parts;
+mod region;
 mod shape;
 
 use std::collections::{BTreeMap, HashMap};
@@ -22,6 +24,7 @@ use crate::{BuildingCell, HeightGrid, MeshData, hash, palette};
 use models::{Fit, Wanted};
 pub(crate) use parts::Style;
 use parts::{Builder, Paint, Pitch, RoofPaint};
+pub(crate) use region::Region;
 pub(crate) use shape::{Point, centroid, contains, footprint, signed_area, triangulate};
 use shape::{Rect, distance};
 
@@ -118,6 +121,9 @@ static CASTLE_WALLS: Colours = LazyLock::new(|| palette::list("buildings.castle_
 static BEACON: Colours = LazyLock::new(|| palette::list("buildings.beacon"));
 /// Houses in the subtropics: whites and pale pastels.
 static TROPICAL_WALLS: Colours = LazyLock::new(|| palette::list("buildings.tropical_walls"));
+/// Pale plaster and charcoal ceramic roofs of the Japanese starter set.
+static JAPANESE_WALLS: Colours = LazyLock::new(|| palette::list("buildings.japanese_walls"));
+static JAPANESE_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.japanese_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
 /// Shop fronts' frames, and awnings.
@@ -127,6 +133,7 @@ static AWNINGS: Colours = LazyLock::new(|| palette::list("buildings.awnings"));
 static SHUTTERS: Colours = LazyLock::new(|| palette::list("buildings.shutters"));
 /// Window frames; stone around church openings; chimneys and their caps.
 static WHITE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.frame"));
+static DARK_TIMBER: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.wood_dark"));
 static STONE: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.stone"));
 static METAL: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.metal"));
 static SOOT: LazyLock<[f32; 3]> = LazyLock::new(|| rgb("buildings.soot"));
@@ -171,7 +178,7 @@ pub(crate) enum Kind {
     Public,
     /// A hotel: balconies all along its fronts, an entrance under a canopy.
     Hotel,
-    /// A castle: crenellated walls round a steep roof, round towers at the corners.
+    /// A castle: a European keep with corner towers, or a regional tiered Japanese keep.
     Castle,
     /// A lighthouse: a round tower in bands of colour, a lantern on top.
     Lighthouse,
@@ -215,6 +222,8 @@ pub(crate) struct Plot<'a> {
     pub(crate) landmark: Option<Landmark>,
     /// The climate of the region it stands in.
     pub(crate) climate: Climate,
+    /// Architecture follows geography separately from the climate.
+    pub(crate) region: Region,
 }
 
 /// What a building is used for, from the points of interest in or by it; later ones win over
@@ -484,6 +493,7 @@ pub(crate) struct ChunkBuildings {
 
 /// Adds a building standing on `heights` to a chunk centred at `origin`: as a model where one
 /// fits its footprint (with its shell for the distance), else as a shell.
+#[allow(clippy::too_many_lines)] // placement, instance and matching shell form one pass
 pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid, origin: [f64; 3]) {
     let footprint = &plot.footprint;
     if footprint.len() < 3 {
@@ -505,7 +515,16 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         RECTANGULAR
     };
     let rect = Rect::around(footprint).filter(|r| area / r.area() >= fill);
-    let design = (!special).then(|| design(kind, plot.building, rect.is_some(), tropical, &dice));
+    let design = (!special).then(|| {
+        design(
+            kind,
+            plot.building,
+            rect.is_some(),
+            tropical,
+            plot.region,
+            &dice,
+        )
+    });
     let basement = if matches!(kind, Kind::Castle | Kind::Lighthouse) {
         DEEP_BASEMENT
     } else {
@@ -518,6 +537,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
             let wanted = Wanted {
                 kind,
                 tropical,
+                region: plot.region,
                 chapel: area < CHAPEL_AREA,
                 storeys: design
                     .as_ref()
@@ -597,6 +617,9 @@ fn shell(
 ) {
     let Some(design) = design else {
         match landmark(plot) {
+            Some(Landmark::Castle) if plot.region == Region::Japan => {
+                japanese_castle(b, plot, rect, dice, fit);
+            }
             Some(Landmark::Castle) => castle(b, plot, area, rect, dice, fit),
             Some(Landmark::Lighthouse) => lighthouse(b, plot, rect, dice, fit),
             None => church(b, plot, area, rect, dice),
@@ -743,6 +766,9 @@ fn colours(plot: &Plot, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32
         )
     } else {
         let (wall, roof) = match landmark(plot) {
+            Some(Landmark::Castle) if plot.region == Region::Japan => {
+                japanese_paints(plot.building, dice)
+            }
             Some(Landmark::Castle) => castle_paints(plot.building, dice),
             Some(Landmark::Lighthouse) => lighthouse_paints(dice),
             None => church_paints(plot.building, dice),
@@ -791,7 +817,9 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     }
     // The subtropics have neither chalets nor Bernese farmhouses.
     let tropical = plot.climate.tropical_at(ground);
-    let alpine = !tropical && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
+    let japanese = plot.region == Region::Japan;
+    let alpine =
+        !tropical && !japanese && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     match plot.setting {
         Setting::Industrial | Setting::Commercial if area < 80.0 => Kind::Shed,
         Setting::Industrial => Kind::Hall,
@@ -802,7 +830,7 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
         Setting::Town if area > 400.0 => Kind::Block,
         Setting::Countryside if area > 1500.0 => Kind::Hall,
         _ if alpine => Kind::Chalet,
-        Setting::Countryside if area > 220.0 && !tropical => Kind::Farmhouse,
+        Setting::Countryside if area > 220.0 && !tropical && !japanese => Kind::Farmhouse,
         _ => Kind::House,
     }
 }
@@ -909,6 +937,7 @@ fn design(
     building: &Building,
     rectangular: bool,
     tropical: bool,
+    region: Region,
     dice: &Dice,
 ) -> Design {
     let recipe = Recipe {
@@ -919,6 +948,7 @@ fn design(
     };
     match kind {
         Kind::House if tropical => recipe.tropical_house(),
+        Kind::House if region == Region::Japan => recipe.japanese_house(),
         Kind::House => recipe.house(),
         Kind::Chalet => recipe.chalet(),
         Kind::Farmhouse => recipe.farmhouse(),
@@ -941,6 +971,25 @@ struct Recipe<'a> {
 }
 
 impl Recipe<'_> {
+    fn japanese_house(&self) -> Design {
+        let mut design = self.house();
+        let (wall, roof) = japanese_paints(self.building, self.dice);
+        design.walls = storeys(if self.dice.roll(3) < 0.35 { 1.0 } else { 2.0 });
+        design.wall = wall;
+        design.roof_paint = RoofPaint {
+            top: roof,
+            under: Paint::new(*DARK_TIMBER, Style::Boards),
+            gables: wall.with(Style::Blank),
+        };
+        design.pitch_degrees = 28.0;
+        design.max_rise = 4.5;
+        design.overhang = 0.9;
+        design.verge = 0.6;
+        design.chimney = false;
+        design.gable_windows = None;
+        design
+    }
+
     fn paint(&self, palette: &[[f32; 3]], salt: i64, style: Style) -> Paint {
         Paint::new(self.dice.tint(self.dice.pick(salt, palette)), style)
     }
@@ -1602,6 +1651,69 @@ fn castle_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     (wall, roof)
 }
 
+fn japanese_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+    let wall = building.color.map_or_else(
+        || dice.pick(1, &JAPANESE_WALLS),
+        |mapped| nearest(mapped, &JAPANESE_WALLS),
+    );
+    (
+        Paint::new(dice.tint(wall), Style::Plaster),
+        Paint::new(dice.pick(2, &JAPANESE_ROOFS), Style::Tiles),
+    )
+}
+
+/// Tiered keeps retain their regional silhouette when a model gives way to its distant
+/// shell, and on footprints no authored model fits. The stone platform follows the map.
+fn japanese_castle(
+    b: &mut Builder,
+    plot: &Plot,
+    rect: Option<Rect>,
+    dice: &Dice,
+    fit: Option<Fit>,
+) {
+    let (wall, roof) = japanese_paints(plot.building, dice);
+    let stone = Paint::new(*STONE, Style::Blank);
+    let platform = b.ground + 3.0;
+    let outline = rect.map_or_else(|| plot.footprint.clone(), |r| r.corners());
+    b.walls(&outline, b.footing, platform, stone);
+    b.flat_roof(&outline, platform, 0.0, stone, stone);
+    let Some(base) = rect.or_else(|| inscribed(&plot.footprint)) else {
+        return;
+    };
+    let tiers = fit
+        .and_then(|f| f.model.storeys)
+        .unwrap_or_else(|| if base.area() >= 500.0 { 5 } else { 3 });
+    let first_eaves = fit.map_or(6.4, |f| f.model.eaves);
+    let step = first_eaves - 3.0;
+    let paint = RoofPaint {
+        top: roof,
+        under: wall.with(Style::Blank),
+        gables: wall,
+    };
+    for tier in 0..tiers {
+        let shrink = 0.78_f64.powf(f64::from(tier));
+        let keep = Rect {
+            half_length: base.half_length * 0.88 * shrink,
+            half_width: base.half_width * 0.88 * shrink,
+            ..base
+        };
+        let bottom = platform + f64::from(tier) * step;
+        let eaves = bottom + step;
+        b.walls(&keep.corners(), bottom, eaves, wall);
+        let pitch = Pitch {
+            eaves,
+            angle: 28_f64.to_radians(),
+            overhang: 0.9,
+            verge: 0.65,
+        };
+        if tier + 1 == tiers {
+            b.gable_roof(&keep, pitch, paint);
+        } else {
+            b.hipped_roof(&keep, pitch, paint);
+        }
+    }
+}
+
 /// A lighthouse's white, and the colour of its bands and cap: mostly red, now and then
 /// another.
 fn lighthouse_paints(dice: &Dice) -> (Paint, Paint) {
@@ -2212,6 +2324,7 @@ mod tests {
             purpose: None,
             landmark: None,
             climate: Climate::Temperate,
+            region: Region::Generic,
         }
     }
 
@@ -2250,6 +2363,106 @@ mod tests {
         // In between, both.
         let mixed = kinds(Setting::Countryside, 120.0, 900.0);
         assert!(mixed.contains(&Kind::Chalet) && mixed.contains(&Kind::House));
+    }
+
+    #[test]
+    fn japanese_rural_houses_keep_their_architecture_in_the_mountains() {
+        for id in 0..30 {
+            let building = untagged(id);
+            let plot = Plot {
+                region: Region::Japan,
+                ..plot(&building, Setting::Countryside, false)
+            };
+            for area in [120.0, 600.0] {
+                for elevation in [400.0, 1500.0] {
+                    assert_eq!(kind(&plot, area, elevation, &Dice(id)), Kind::House);
+                }
+            }
+            let design = design(
+                Kind::House,
+                &building,
+                true,
+                false,
+                Region::Japan,
+                &Dice(id),
+            );
+            assert!(!design.chimney);
+            assert!(design.overhang >= 0.9);
+            assert!(JAPANESE_ROOFS.contains(&design.roof_paint.top.rgb));
+        }
+    }
+
+    #[test]
+    fn japanese_castle_shells_keep_a_receding_silhouette_without_a_fitting_model() {
+        let building = untagged(7);
+        for (outline, rectangular) in [
+            (
+                vec![(-17.0, -5.0), (17.0, -5.0), (17.0, 5.0), (-17.0, 5.0)],
+                true,
+            ),
+            (
+                vec![
+                    (-12.0, -8.0),
+                    (12.0, -8.0),
+                    (12.0, 0.0),
+                    (0.0, 0.0),
+                    (0.0, 8.0),
+                    (-12.0, 8.0),
+                ],
+                false,
+            ),
+        ] {
+            let plot = Plot {
+                footprint: outline,
+                region: Region::Japan,
+                landmark: Some(Landmark::Castle),
+                ..plot(&building, Setting::Town, false)
+            };
+            let mut mesh = MeshData::default();
+            let mut builder = Builder {
+                mesh: &mut mesh,
+                origin: [0.0; 3],
+                ground: 0.0,
+                footing: -1.0,
+            };
+            let rect = rectangular.then(|| Rect::around(&plot.footprint).unwrap());
+            shell(
+                &mut builder,
+                &plot,
+                signed_area(&plot.footprint),
+                rect,
+                None,
+                &Dice(7),
+                None,
+            );
+            let roofs: Vec<_> = mesh
+                .vertices
+                .iter()
+                .zip(&mesh.colors)
+                .filter(|(_, colour)| Style::code(colour[3]) == Style::Tiles as u8)
+                .map(|(vertex, _)| vertex)
+                .collect();
+            assert!(
+                !roofs.is_empty(),
+                "a castle has tier roofs even without a model"
+            );
+            let top = roofs.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+            let extent = |above| {
+                roofs
+                    .iter()
+                    .filter(|p| p[1] >= above)
+                    .map(|p| p[0].hypot(p[2]))
+                    .fold(0.0_f32, f32::max)
+            };
+            assert!(top > 12.0, "the keep rises above its stone platform");
+            assert!(extent(top - 2.0) < extent(0.0) * 0.85, "upper roofs recede");
+            assert!(mesh.vertices.iter().flatten().all(|v| v.is_finite()));
+            assert!(
+                mesh.indices
+                    .iter()
+                    .all(|&i| (i as usize) < mesh.vertices.len())
+            );
+        }
     }
 
     #[test]
@@ -2471,7 +2684,16 @@ mod tests {
         assert!((0..200).all(|id| tropical(id, 120.0, 1500.0) == Kind::Chalet));
 
         let designs: Vec<Design> = (0..100)
-            .map(|id| design(Kind::House, &untagged(id), true, true, &Dice(id)))
+            .map(|id| {
+                design(
+                    Kind::House,
+                    &untagged(id),
+                    true,
+                    true,
+                    Region::Generic,
+                    &Dice(id),
+                )
+            })
             .collect();
         let flat = designs
             .iter()
@@ -2489,7 +2711,16 @@ mod tests {
         }
         // Outside the tropics the same houses keep pitched roofs and chimneys.
         let temperate: Vec<Design> = (0..100)
-            .map(|id| design(Kind::House, &untagged(id), true, false, &Dice(id)))
+            .map(|id| {
+                design(
+                    Kind::House,
+                    &untagged(id),
+                    true,
+                    false,
+                    Region::Generic,
+                    &Dice(id),
+                )
+            })
             .collect();
         assert!(
             temperate

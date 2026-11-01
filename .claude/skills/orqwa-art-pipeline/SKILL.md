@@ -149,6 +149,15 @@ all maps, normal-map import on normals, and keep these six textures with their s
 - Exports are deterministic: rebuilding unchanged scripts must give byte-identical `.glb`s.
   If a rebuild changes files you did not touch, find out why before committing.
 
+## Regional buildings
+
+Japanese buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
+`japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional
+wall/roof colours aligned with Rust placement. Castle model tiers, first eave height and
+footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`; review the
+nearby and distant silhouettes together. Region outlines and climate are independent; see
+`docs/regional-buildings.md` before extending the set to another region.
+
 ## Tree LODs
 
 `art/vegetation/lods.py` exports medium/far forms of every tree to

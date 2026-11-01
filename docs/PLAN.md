@@ -449,6 +449,12 @@ physically based materials and light, restyled group by group.
 - [x] Tropical worlds (#136): palms, banana plants and tropical shrubs, and houses built for
   the heat (flat roofs with water tanks, low red-tiled hipped roofs) within 27° of the
   equator below 1,200 m
+- [x] Japanese architecture starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)):
+  six timber-and-plaster houses and three tiered castle keeps, selected per building from
+  bundled region outlines. Regional distant/fallback shells; tropical houses retained.
+  [Assets and validation](regional-buildings.md).
+- [ ] Further Asian architecture sets with their own regional selection (China, Korea and
+  other regions), plus more Japanese house and landmark types.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [x] **Benchmark graphics** in Settings → Graphics (R151, #353): offline calibration with
