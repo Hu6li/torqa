@@ -241,7 +241,13 @@ impl VoiceInbox {
         let idle = self
             .latest
             .is_none_or(|(_, at)| now.saturating_duration_since(at) >= IDLE);
-        if new_spurt || idle || self.play_at.is_none() {
+        // Capture may legitimately skip ticks while the listener keeps advancing.
+        // Rebuffer a genuinely newer arrival; reordered old speech stays discarded.
+        let late_fresh = frame.sequence < self.next
+            && self
+                .latest
+                .is_some_and(|(latest, _)| frame.sequence > latest);
+        if new_spurt || idle || self.play_at.is_none() || late_fresh {
             if !new_spurt
                 && self
                     .latest
@@ -265,7 +271,17 @@ impl VoiceInbox {
             return Ok(false);
         }
         if frame.sequence.saturating_sub(self.next) >= u32::try_from(JITTER_FRAMES).unwrap_or(8) {
-            self.next = frame.sequence - u32::try_from(JITTER_FRAMES - 1).unwrap_or(7);
+            let next = frame.sequence - u32::try_from(JITTER_FRAMES - 1).unwrap_or(7);
+            // Eviction already skips these samples. Advance their deadline too,
+            // or a stalled listener skips the same history a second time. A
+            // delivered batch must never defer playback beyond the prebuffer.
+            let skipped = next.saturating_sub(self.next);
+            self.play_at = self.play_at.map(|at| {
+                at.checked_add(FRAME_TIME.saturating_mul(skipped))
+                    .unwrap_or(now)
+                    .min(now + PREBUFFER)
+            });
+            self.next = next;
             for queued in &mut self.frames {
                 if queued.is_some_and(|old| old.sequence < self.next) {
                     *queued = None;
@@ -1105,5 +1121,47 @@ mod tests {
                 assert_eq!(frame.sequence, sequence - 3);
             }
         }
+    }
+
+    #[test]
+    fn fresh_speech_survives_when_capture_ticks_are_slower_than_the_playback_clock() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        let mut heard = 0;
+        for tick in 0..1000 {
+            let at = now + FRAME_TIME * tick;
+            // A delayed producer emits one current frame, never catch-up frames.
+            if tick % 2 == 0 {
+                inbox.ingest(&bytes(RiderId::HOST, tick / 2), at).unwrap();
+            }
+            if matches!(
+                inbox.playout(at + Duration::from_millis(5)),
+                Playout::Frame(_)
+            ) {
+                heard += 1;
+            }
+        }
+        assert!(
+            heard > 450,
+            "fresh capture must not be discarded behind playback: heard {heard} of 500 frames"
+        );
+    }
+
+    #[test]
+    fn a_stalled_listener_skips_history_once_and_plays_current_buffered_speech() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        for sequence in 0..=50 {
+            inbox
+                .ingest(&bytes(RiderId::HOST, sequence), now + FRAME_TIME * sequence)
+                .unwrap();
+        }
+        let Playout::Frame(frame) = inbox.playout(now + Duration::from_secs(1)) else {
+            panic!("a live producer must still be audible after listener scheduling stalls");
+        };
+        assert!(
+            frame.sequence >= 47,
+            "old speech must be skipped, not replayed"
+        );
     }
 }

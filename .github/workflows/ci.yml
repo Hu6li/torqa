@@ -189,7 +189,8 @@ jobs:
       - name: Test native voice jitter validation
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
       - name: Test native voice pacing and simulated conversations
-        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked
+        # Each conversation already stresses up to eight riders and owns real-time audio threads.
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked -- --test-threads=1
       - id: ffmpeg
         uses: actions/cache@v6
         with:
@@ -297,7 +298,8 @@ jobs:
       - name: Test native voice jitter validation
         run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
       - name: Test native voice pacing and simulated conversations
-        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked
+        # Each conversation already stresses up to eight riders and owns real-time audio threads.
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked -- --test-threads=1
       - id: ffmpeg
         uses: actions/cache@v6
         with:

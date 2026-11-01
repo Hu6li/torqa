@@ -626,6 +626,10 @@ delayed first speech, a full room's audio workers stalling/resuming, and current
 queued speech. Huge sequence jumps remain invalid; three consecutive overloaded raw-datagram
 windows close only the abusive connection. macOS/Windows CI also runs the simulated Opus/device
 conversations and live pacing tests, without opening physical audio devices.
+The deterministic playback tests also cover slower capture and a listener that stops consuming
+while the fixed jitter window evicts history. Native audio integration tests use
+`cargo test -p orqwa-voice --locked -- --test-threads=1` so one full room's real-time threads run
+at a time; keep the eight-rider and stall coverage inside that room.
 Record both build IDs, selected devices and terminal/Technical details for native failures; the
 synthetic jitter reproduction does not replace acceptance on the originally affected computers.
 

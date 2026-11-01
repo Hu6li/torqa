@@ -281,12 +281,23 @@ number, fixed anchor and clock-skew allowance. Actual work remains limited by th
 ingress budgets. Huge future jumps and repeated staircase advances still fail validation without
 changing ordering. There is no wire, service or dependency change.
 
+Playback also resynchronizes when a newer source frame arrives behind an underrun cursor;
+old reordered frames remain discarded. Evicting history from the fixed jitter window advances
+its matching deadline, capped to the existing prebuffer, so a delayed consumer cannot skip that
+history twice. Deterministic clock regressions reproduce both defects: with capture at 25 Hz,
+the old receiver plays only 200 of 500 fresh frames; after a one-second listener stall it skips
+all current buffered speech. Both now recover without catch-up transmission or larger buffers.
+
 The forwarded-burst and delayed-first-arrival regressions fail with their original guards. Real
 loopback QUIC tests cover both receivers, multiple forwarded speakers, state recovery, reliable
 countdown after overload and isolation of persistent raw floods. Real Opus with simulated devices
 covers current silence superseding queued speech, subsequent fresh words and every speaking rider's
 audio worker stalling/resuming while group state continues. macOS and Windows CI run these
-simulated conversations as well as lobby/voice validation; physical-device acceptance stays manual.
+simulated conversations as well as lobby/voice validation. Run independent native conversation
+tests serially: each already exercises up to eight simultaneous riders with real audio threads,
+and multiple unrelated rooms must not compete for its wall-clock deadlines on a shared runner.
+Speaker checks assert both audible pitches and gain, rather than scheduler-dependent callback
+throughput. Physical-device acceptance stays manual.
 
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
