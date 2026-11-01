@@ -148,6 +148,34 @@ The tests are mutually exclusive, close on the existing lifecycle boundaries and
 prior listening microphone-off. A scrollable settings body keeps every control reachable at
 the minimum window size. No dependency, audio asset, network service or protocol change.
 
+## Amendment — Linux default routing (2026-11-01, #456)
+
+CPAL 0.18.2 deliberately reports an unknown direction for ALSA's virtual default device;
+its metadata-only `supports_input/output` checks return false for that default. Rejecting
+it before asking for the requested configuration broke default Linux voice startup.
+Allow unknown ALSA routes to reach the requested input/output configuration check. Known
+direction mismatches and the non-ALSA output-loopback protection remain in place. Enumeration
+uses metadata only; probing every ALSA plugin can leak native handles on failed opens.
+
+For an unspecified Linux ALSA device, try the PipeWire then PulseAudio bridge when listed,
+using the first available requested configuration, otherwise the ALSA default. Permission
+and busy errors stop selection. Explicit device IDs never fall back to another device.
+Reuse the selected configuration rather than opening it again, and keep microphone setup
+behind the existing explicit consent. Put bridge routes first in the picker and omit ALSA's
+silent `null` route. Named Bluetooth endpoints remain managed through the desktop sound
+settings with this ALSA backend; no native PipeWire/PulseAudio dependency is added.
+
+Regression fixtures execute real CPAL/ALSA configuration queries against a private null-PCM
+configuration in child processes. They never access audio hardware or change host settings.
+The first fixture reproduces the reported direction error without the fix; the others cover
+bridge preference, unavailable-server fallback, explicit choices and known output-only rejection.
+The separate “no Bluetooth adapter found” report still requires OS/BlueZ diagnostics; audio
+selection cannot create a controller that BlueZ does not expose.
+
+References: [CPAL ALSA implementation](https://github.com/RustAudio/cpal/blob/v0.18.2/src/host/alsa/mod.rs),
+[ALSA and sound-server routing](https://github.com/RustAudio/cpal#alsa-pipewire-and-pulseaudio),
+[WirePlumber Bluetooth monitoring](https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html).
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

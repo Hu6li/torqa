@@ -1,5 +1,9 @@
 //! Native audio streams with bounded callback queues and no network work in callbacks.
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "device/linux_tests.rs"]
+mod linux_tests;
+
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
@@ -26,9 +30,9 @@ pub struct AudioDevice {
     pub id: String,
     /// Human-readable local device name.
     pub name: String,
-    /// Whether the device has input configurations.
+    /// Whether input is advertised, or an ALSA route needs validation when selected.
     pub input: bool,
-    /// Whether the device has output configurations.
+    /// Whether output is advertised, or an ALSA route needs validation when selected.
     pub output: bool,
 }
 /// Lists local audio devices without opening capture or playback.
@@ -37,20 +41,56 @@ pub struct AudioDevice {
 /// Returns [`VoiceDeviceError`] if the OS cannot enumerate devices.
 pub fn devices() -> Result<Vec<AudioDevice>, VoiceDeviceError> {
     let host = cpal::default_host();
-    host.devices()
+    let mut devices = Vec::new();
+    for device in host
+        .devices()
         .map_err(|e| VoiceDeviceError::new("enumerating audio devices", e))?
-        .map(|device| {
-            Ok(AudioDevice {
-                id: device
-                    .id()
-                    .map_err(|e| VoiceDeviceError::new("reading audio device ID", e))?
-                    .to_string(),
-                name: device.to_string(),
-                input: device.supports_input(),
-                output: device.supports_output(),
+    {
+        let id = device
+            .id()
+            .map_err(|e| VoiceDeviceError::new("reading audio device ID", e))?;
+        #[cfg(target_os = "linux")]
+        if id.host() == cpal::HostId::Alsa && id.id() == "null" {
+            continue;
+        }
+        devices.push(AudioDevice {
+            id: id.to_string(),
+            name: device.to_string(),
+            input: supports_direction(&device, true),
+            output: supports_direction(&device, false),
+        });
+    }
+    #[cfg(target_os = "linux")]
+    devices.sort_by_key(|device| {
+        device
+            .id
+            .parse::<cpal::DeviceId>()
+            .map_or(3, |id| match (id.host(), id.id()) {
+                (cpal::HostId::Alsa, "pipewire") => 0,
+                (cpal::HostId::Alsa, "pulse") => 1,
+                (cpal::HostId::Alsa, "default") => 2,
+                _ => 3,
             })
-        })
-        .collect()
+    });
+    Ok(devices)
+}
+
+fn supports_direction(device: &cpal::Device, input: bool) -> bool {
+    #[cfg(target_os = "linux")]
+    if device.id().is_ok_and(|id| id.host() == cpal::HostId::Alsa)
+        && device
+            .description()
+            .is_ok_and(|description| description.direction() == cpal::DeviceDirection::Unknown)
+    {
+        // ALSA's default route deliberately has unknown metadata. Only the requested
+        // configuration can validate it; probing every plugin can leak native handles.
+        return true;
+    }
+    if input {
+        device.supports_input()
+    } else {
+        device.supports_output()
+    }
 }
 
 struct Gates {
@@ -190,10 +230,7 @@ fn speakers(
     gates: &Arc<Gates>,
 ) -> Result<(Stream, SyncSender<Output>), VoiceDeviceError> {
     let host = cpal::default_host();
-    let device = choose(&host, options.output.as_deref(), false)?;
-    let supported = device
-        .default_output_config()
-        .map_err(|e| VoiceDeviceError::new("reading speaker configuration", e))?;
+    let (device, supported) = configured(&host, options.output.as_deref(), false)?;
     let format = supported.sample_format();
     let config = configuration(&supported);
     validate(&config)?;
@@ -241,13 +278,63 @@ fn choose(
             "selected or default device is unavailable",
         )
     })?;
-    if (input && !device.supports_input()) || (!input && !device.supports_output()) {
+    if !supports_direction(&device, input) {
         return Err(VoiceDeviceError::new(
             "selecting audio device",
             "the device does not support the selected direction",
         ));
     }
     Ok(device)
+}
+
+fn read_configuration(
+    device: &cpal::Device,
+    input: bool,
+) -> Result<cpal::SupportedStreamConfig, cpal::Error> {
+    if input {
+        device.default_input_config()
+    } else {
+        device.default_output_config()
+    }
+}
+
+fn configured(
+    host: &cpal::Host,
+    id: Option<&str>,
+    input: bool,
+) -> Result<(cpal::Device, cpal::SupportedStreamConfig), VoiceDeviceError> {
+    let operation = if input {
+        "reading microphone configuration"
+    } else {
+        "reading speaker configuration"
+    };
+    #[cfg(target_os = "linux")]
+    if id.is_none() && host.id() == cpal::HostId::Alsa {
+        // Desktop sound servers own Bluetooth routing. Prefer their ALSA bridges to
+        // raw hardware; explicit device choices never fall through to another device.
+        for name in ["pipewire", "pulse"] {
+            if let Some(device) = host.device_by_id(&cpal::DeviceId::new(cpal::HostId::Alsa, name))
+                && supports_direction(&device, input)
+            {
+                match read_configuration(&device, input) {
+                    Ok(config) => return Ok((device, config)),
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            cpal::ErrorKind::PermissionDenied | cpal::ErrorKind::DeviceBusy
+                        ) =>
+                    {
+                        return Err(VoiceDeviceError::new(operation, error));
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+    }
+    let device = choose(host, id, input)?;
+    let config = read_configuration(&device, input)
+        .map_err(|error| VoiceDeviceError::new(operation, error))?;
+    Ok((device, config))
 }
 fn validate(config: &StreamConfig) -> Result<(), VoiceDeviceError> {
     if !(1..=8).contains(&config.channels) || !(8000..=192_000).contains(&config.sample_rate) {
@@ -285,10 +372,7 @@ impl VoiceAudio for NativeAudio {
             ));
         }
         let host = cpal::default_host();
-        let device = choose(&host, self.options.input.as_deref(), true)?;
-        let supported = device
-            .default_input_config()
-            .map_err(|e| VoiceDeviceError::new("reading microphone configuration", e))?;
+        let (device, supported) = configured(&host, self.options.input.as_deref(), true)?;
         let format = supported.sample_format();
         let config = configuration(&supported);
         validate(&config)?;

@@ -602,6 +602,15 @@ cleanup, and exercise microphone→speaker→voice restoration through the app. 
 deny microphone permission and still test the selected speakers, change voice volume, stop
 early and close the dialog. Review both settings scroll positions at the minimum window size.
 
+For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
+private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global
+environment is changed in parallel tests, no native audio stream is started and no hardware is
+used. The ignored child test is launched by its three parent regressions. On a Linux desktop,
+select the Bluetooth headset in the system's Sound settings, then test ORQWA's default speakers,
+default microphone and live voice. Record distro/build, selected routes and Technical details.
+If trainer discovery reports no adapter, collect `bluetoothctl list`, `rfkill list` and
+`systemctl status bluetooth` separately; successful audio routing does not prove BLE availability.
+
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and
 [ADR 0029](adr/0029-ride-audio.md). Run the preview and asset preparation in the devcontainer.
