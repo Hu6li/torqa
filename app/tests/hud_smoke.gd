@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless checks of the ride HUD: its editor (R51, R54), the line under a large power
-## figure and the minimap.
+## figure, the zone bars beside the figures and the minimap.
 ## Run: godot --headless --path app -s res://tests/hud_smoke.gd
 
 var _failed: bool = false
@@ -13,6 +13,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_hud_editor()
 	_power_detail()
+	_zone_bars()
 	await _minimap()
 	if not _failed:
 		print("HUD SMOKE TEST PASSED")
@@ -92,6 +93,40 @@ func _power_detail() -> void:
 	hud.show_layout(PackedStringArray(["speed", "power"]))
 	_check(not detail.visible, "no power line under another figure")
 	hud.free()
+
+
+## Each figure with a zone has a bar in that zone's colour (#432): power figures in the power
+## zones' colours, heart-rate figures in the heart-rate zones'; none without a zone, e.g.
+## for a rider without an FTP. The editor's example values show theirs.
+func _zone_bars() -> void:
+	var hud: HudPanel = HudPanel.new()
+	root.add_child(hud)
+	hud.show_layout(PackedStringArray(["power", "heart_rate", "speed", "avg_power"]))
+	hud.show_zones({"power": 5, "heart_rate": 2, "speed": null, "avg_power": 3})
+	var vo2max: Color = UiTheme.POWER_ZONES[4][1]
+	var tempo: Color = UiTheme.POWER_ZONES[2][1]
+	var light: Color = UiTheme.HEART_RATE_ZONES[1][1]
+	_check(_zone_bar(hud, "power") == vo2max, "power in its zone's colour")
+	_check(_zone_bar(hud, "avg_power") == tempo, "the average in its own")
+	_check(_zone_bar(hud, "heart_rate") == light, "heart rate in its zones' colours")
+	_check(_zone_bar(hud, "speed").a == 0.0, "no bar beside a figure without zones")
+	hud.show_zones({"power": null, "heart_rate": 2})
+	_check(_zone_bar(hud, "power").a == 0.0, "no bar without a zone")
+	hud.free()
+	var editor: HudEditor = HudEditor.new()
+	root.add_child(editor)
+	editor.edit(PackedStringArray(["power", "heart_rate"]), false)
+	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
+	for id: String in ["power", "heart_rate"]:
+		_check(_zone_bar(preview, id).a > 0.0, "an example bar for " + id)
+	editor.free()
+
+
+func _zone_bar(hud: HudPanel, id: String) -> Color:
+	var cells: Dictionary = hud.get("_cells")
+	var cell: Control = cells[id]
+	var color: Color = cell.get("_zone")
+	return color
 
 
 func _available_chips(editor: HudEditor) -> Array[Node]:
