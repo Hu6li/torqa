@@ -85,6 +85,8 @@
     "nordic_roofs": ["#41464a", "#5c433c", "#424f46", "#4e6171", "#754133"],
     "french_walls": ["#e8dcc3", "#dfc79d", "#eee7d9", "#c8d5d0", "#c9a58e", "#d9d3c6"],
     "french_roofs": ["#42464d", "#55575a", "#783f31", "#9b4f35", "#6b6258"],
+    "french_city_walls": ["#dfd2bd", "#e7ddca", "#d2c3aa", "#e8e2d7", "#d5c6ae"],
+    "french_city_roofs": ["#51545b", "#62656a", "#75777a", "#4a4e54"],
     "timber": ["#5a3f2c", "#6a4a33", "#4e3727", "#7a5a3e"],
     "wood_dark": "#3a2a20",
     "wood_light": "#a07a52",

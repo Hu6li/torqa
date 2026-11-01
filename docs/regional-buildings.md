@@ -2,8 +2,9 @@
 
 The regional sets (R164, [ADR 0035](adr/0035-regional-buildings.md)) add six East Asian
 houses and three tiered castle keeps, four Nordic painted-timber houses and three stone keeps,
-plus four French village houses and three château-inspired keeps. The East Asian models use
-Japanese architectural references. Source geometry is in `art/buildings/japanese.py`,
+plus four French village houses, two Haussmann-inspired apartment houses and three
+château-inspired keeps. The East Asian models use Japanese architectural references. Source
+geometry is in `art/buildings/japanese.py`,
 `art/buildings/nordic.py` and `art/buildings/french.py`; catalogue entries and exported GLBs
 use their corresponding regional model kinds.
 
@@ -17,9 +18,11 @@ and existing natural-rock scan. These are own-work archetypes, not copies of par
 monuments.
 
 French houses use light plaster, stone bases, shutters and hipped roofs in slate and tile
-colours. French keeps use stone walls, slate roofs and four roofed corner pavilions. These
-starter forms are inspired by French village houses and châteaux; they do not represent the
-full range of architecture across France.
+colours. Tall French residential blocks use pale stone façades, tall windows, continuous iron
+balconies on the second and fifth floors and zinc mansard roofs with dormers. French keeps use
+stone walls, slate roofs and four roofed corner pavilions. These starter forms are inspired by
+French village houses, Haussmannian apartments and châteaux; they do not represent the full
+range of architecture across France.
 
 Architectural references consulted for proportions and materials:
 
@@ -39,11 +42,14 @@ Architectural references consulted for proportions and materials:
   timber frames with brick, flint or earth infill.
 - [Château de Versailles: Louis Le Vau](https://en.chateauversailles.fr/discover/history/great-characters/louis-vau):
   slate roof use in French château architecture.
+- [City of Paris: Haussmann and the modern city](https://www.paris.fr/pages/haussmann-l-homme-qui-a-transforme-paris-23091):
+  the continuous fifth-floor balcony and apartment-building proportions.
 
 ## Placement
 
 `buildings/region.rs` classifies each footprint centroid using bundled country outlines.
-Asian coverage follows UN M49 region 142 and Nordic outlines come from country-coder. Nordic coverage names Denmark,
+Asian coverage follows UN M49 region 142 and Nordic outlines come from country-coder. Nordic
+coverage names Denmark,
 Finland, Iceland, Norway and Sweden, plus the Faroe Islands, Åland, Svalbard and Jan Mayen;
 Greenland and the rest of Northern Europe stay generic. French coverage uses a simplified
 metropolitan France and Corsica outline; overseas France and other Francophone countries
@@ -55,11 +61,13 @@ Non-tropical houses use their region's set; tropical lowlands retain their flat/
 houses. Asian houses have eight pastel, earth and cool wall colours and six dark, red, green
 and blue-gray roof colours. Nordic houses have seven red, ochre, cream, green and blue wall
 colours and five matching roof colours. French houses have six light or muted wall colours
-and five slate or terracotta roof colours. Asian, Nordic and French mountain houses do not
-become Swiss chalets or Bernese farmhouses. Modern building kinds retain their existing models.
+and five slate or terracotta roof colours. French city houses have five limestone colours and
+four zinc roof colours. Asian, Nordic and French mountain houses do not become Swiss chalets
+or Bernese farmhouses. Modern building kinds retain their existing models.
 
 Mapped Asian castles select tiered keeps; mapped Nordic castles select four-tower keeps;
-mapped French castles select château-inspired keeps.
+mapped French castles select château-inspired keeps. Tall French residential blocks select
+five- or six-storey Haussmann-inspired apartments.
 Other mapped castles retain their existing European models. No castle is added where the map
 marks none. Fit limits remain ±25%; shops, steep plots and unsuitable footprints use shells.
 Regional colours survive in the shells; Asian castle shells keep receding roof tiers, and
@@ -82,21 +90,23 @@ scripts/art.sh blender --background --factory-startup --python art/buildings/bui
   nordic_house_1_s nordic_house_1_m nordic_house_2_m nordic_house_2_l \
   nordic_castle_3_s nordic_castle_3_m nordic_castle_4_l \
   french_house_1_s french_house_1_m french_house_2_m french_house_2_l \
-  french_castle_3_s french_castle_3_m french_castle_4_l
+  french_castle_3_s french_castle_3_m french_castle_4_l \
+  french_city_5_m french_city_6_l
 ```
 
 The [model gallery](../art/README.md#buildings) shows the actual Godot materials in three
 variants. `MODELS` limits `scripts/render-models.sh`; use `GALLERY=docs/images/models` when
 refreshing committed pictures. Review both the overview and the eye-height close-ups. Keep
-ordinary houses within 5,000 triangles and keeps within 10,000.
+ordinary houses within 5,000 triangles, city houses within 10,000 and keeps within 10,000.
 
 | Regional painted-timber houses | Regional castles |
 |---|---|
 | ![Asian and Nordic house colour variants](images/japanese-buildings/nordic-house-close.jpg) | ![Asian and Nordic castle colour variants](images/japanese-buildings/nordic-castle-close.jpg) |
 
 Tests cover Asian, Nordic and French outlines, neighbouring countries, tropical precedence,
-bounded model fitting, mountain houses, regional palette variety, and complete offline world
-generation with mapped castles. The Asian fallback-shell test checks receding keeps on narrow
+bounded model fitting, mountain houses, French city blocks, regional palette variety and
+complete offline world generation with mapped castles. The Asian fallback-shell test checks
+receding keeps on narrow
 and concave outlines. The full `scripts/check.sh` suite and `make wiki-check` pass.
 
 Native ride performance on an M1 at Medium remains a manual check; software renders do not

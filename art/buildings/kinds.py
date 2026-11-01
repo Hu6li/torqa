@@ -8,7 +8,7 @@ import math
 
 from japanese import japanese_castle, japanese_house  # noqa: F401 — catalogue builders
 from nordic import nordic_castle, nordic_house  # noqa: F401 — catalogue builders
-from french import french_castle, french_house  # noqa: F401 — catalogue builders
+from french import french_castle, french_city, french_house  # noqa: F401 — catalogue builders
 
 from mathutils import Vector
 

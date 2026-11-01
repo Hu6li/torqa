@@ -113,7 +113,8 @@ void fragment() {
 	} else if (pattern == SHEET) {
 		// Standing seams every half metre along the roof.
 		float seam = 1.0 - smoothstep(0.0, 0.03, abs(fract(UV.x * 2.0) - 0.5) - 0.47);
-		tint = color * (1.0 - 0.25 * seam);
+		tint = (roof_tint.r + roof_tint.g + roof_tint.b > 0.0 ? to_linear(roof_tint) : color)
+			* (1.0 - 0.25 * seam);
 		metallic = 0.5;
 		roughness = 0.5;
 	} else if (pattern == FRAME) {

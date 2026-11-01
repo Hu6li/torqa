@@ -69,6 +69,8 @@
     {"name": "french_house_2_l", "kind": "french_house", "roof": "hipped", "storeys": 2, "length": 15.0, "width": 10.5, "pitch": 34, "cover": "tiles"},
     {"name": "french_castle_3_s", "kind": "french_castle", "roof": "hipped", "storeys": 3, "length": 16.0, "width": 12.0, "pitch": 45},
     {"name": "french_castle_3_m", "kind": "french_castle", "roof": "hipped", "storeys": 3, "length": 23.0, "width": 16.0, "pitch": 45},
-    {"name": "french_castle_4_l", "kind": "french_castle", "roof": "hipped", "storeys": 4, "length": 32.0, "width": 22.0, "pitch": 42}
+    {"name": "french_castle_4_l", "kind": "french_castle", "roof": "hipped", "storeys": 4, "length": 32.0, "width": 22.0, "pitch": 42},
+    {"name": "french_city_5_m", "kind": "french_city", "roof": "hipped", "storeys": 5, "length": 28.0, "width": 16.0, "pitch": 40},
+    {"name": "french_city_6_l", "kind": "french_city", "roof": "hipped", "storeys": 6, "length": 36.0, "width": 20.0, "pitch": 40}
   ]
 }

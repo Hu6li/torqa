@@ -160,7 +160,8 @@ the `nordic_wood` instance-tinted plank material and their own country outlines,
 model kinds. Keep the Nordic castle's distant generic keep visually compatible. Asian and
 Nordic outlines are independent of climate. French models (`art/buildings/french.py`) use
 the French palette and a simplified metropolitan-France/Corsica outline; keep their pale
-village-house shells and slate-roofed château silhouettes aligned. See
+village houses, limestone city façades with zinc mansards, and slate-roofed château silhouettes
+aligned with the French region selector. See
 `docs/regional-buildings.md` before extending the regional sets.
 
 ## Tree LODs

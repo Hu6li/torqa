@@ -23,7 +23,7 @@ pub(crate) struct Model {
     pub(crate) name: String,
     /// `house`, `chalet`, `farmhouse`, `church`, `chapel`, `shed`, `office`, `public`,
     /// `hotel`, `castle`, `lighthouse`, `tropical`, `japanese_house`, `japanese_castle`,
-    /// `nordic_house`, `nordic_castle`, `french_house` or `french_castle`.
+    /// `nordic_house`, `nordic_castle`, `french_house`, `french_castle` or `french_city`.
     kind: String,
     /// `gable`, `hipped` or `flat`.
     pub(crate) roof: String,
@@ -92,6 +92,7 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Office => "office",
         Kind::Public => "public",
         Kind::Hotel => "hotel",
+        Kind::Block if wanted.region == Region::France => "french_city",
         Kind::Castle if wanted.region == Region::Asia => "japanese_castle",
         Kind::Castle if wanted.region == Region::France => "french_castle",
         Kind::Castle if wanted.region == Region::Nordic => "nordic_castle",
@@ -444,11 +445,13 @@ mod tests {
         for (kind, prefix) in [
             (Kind::House, "french_house"),
             (Kind::Castle, "french_castle"),
+            (Kind::Block, "french_city"),
         ] {
-            let (half_length, half_width) = if kind == Kind::House {
-                (6.0, 4.5)
-            } else {
-                (11.5, 8.0)
+            let (half_length, half_width, storeys) = match kind {
+                Kind::House => (6.0, 4.5, 2),
+                Kind::Castle => (11.5, 8.0, 3),
+                Kind::Block => (14.0, 8.0, 5),
+                _ => unreachable!(),
             };
             let rect = Rect {
                 half_length,
@@ -460,7 +463,7 @@ mod tests {
                 tropical: false,
                 region: Region::France,
                 chapel: false,
-                storeys: Some(3),
+                storeys: Some(storeys),
                 hipped: true,
             };
             let fit = fitting(&rect, wanted, &Dice(23)).expect("French model");
@@ -469,13 +472,12 @@ mod tests {
                 region: Region::Generic,
                 ..wanted
             };
-            assert!(
-                !fitting(&rect, generic, &Dice(23))
-                    .unwrap()
-                    .model
-                    .name
-                    .starts_with("french_")
-            );
+            let generic_fit = fitting(&rect, generic, &Dice(23));
+            if kind == Kind::Block {
+                assert!(generic_fit.is_none());
+            } else {
+                assert!(!generic_fit.unwrap().model.name.starts_with("french_"));
+            }
         }
     }
 }

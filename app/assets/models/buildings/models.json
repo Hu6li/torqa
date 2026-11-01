@@ -176,6 +176,26 @@
    "storeys": 4,
    "pitch": 42
   },
+  "french_city_5_m": {
+   "kind": "french_city",
+   "roof": "hipped",
+   "length": 28.0,
+   "width": 16.0,
+   "eaves": 15.1,
+   "height": 20.964,
+   "storeys": 5,
+   "pitch": 40
+  },
+  "french_city_6_l": {
+   "kind": "french_city",
+   "roof": "hipped",
+   "length": 36.0,
+   "width": 20.0,
+   "eaves": 18.0,
+   "height": 24.797,
+   "storeys": 6,
+   "pitch": 40
+  },
   "french_house_1_m": {
    "kind": "french_house",
    "roof": "hipped",

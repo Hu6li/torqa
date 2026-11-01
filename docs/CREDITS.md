@@ -10,7 +10,8 @@ libraries (LGPL 2.1 or later) and every Rust crate, from `core/orqwa-app/notices
 ## Models
 
 The East Asian house and castle archetypes for Asian rides, Nordic painted-timber houses and
-stone keeps, and French village houses and château-inspired keeps (R164) are own work,
+stone keeps, and French village houses, Haussmann-inspired city houses and château-inspired
+keeps (R164) are own work,
 scripted in `art/buildings/japanese.py`, `art/buildings/nordic.py` and
 `art/buildings/french.py` (GPL-3.0), reusing the project's existing materials and textures.
 Architectural references are listed in [regional buildings](regional-buildings.md); no

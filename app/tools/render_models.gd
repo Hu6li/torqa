@@ -20,6 +20,7 @@ const REGIONAL_VARIANTS: Dictionary[String, Array] = {
 	"nordic_castle": [[0, 0, 0.5], [2, 2, 0.3], [6, 4, 0.9]],
 	"french_house": [[0, 0, 0.5], [1, 2, 0.3], [4, 3, 0.9]],
 	"french_castle": [[0, 0, 0.5], [1, 2, 0.3], [4, 3, 0.9]],
+	"french_city": [[0, 0, 0.5], [1, 1, 0.3], [4, 2, 0.9]],
 }
 ## The palette colours of walls and roofs (accents for modern buildings, bands for
 ## lighthouses) by kind, as the world paints them (core/orqwa-world/src/buildings/mod.rs);
@@ -31,6 +32,7 @@ const BUILDING_COLOURS: Dictionary[String, Array] = {
 	"nordic_castle": ["buildings.nordic_walls", "buildings.nordic_roofs"],
 	"french_house": ["buildings.french_walls", "buildings.french_roofs"],
 	"french_castle": ["buildings.french_walls", "buildings.french_roofs"],
+	"french_city": ["buildings.french_city_walls", "buildings.french_city_roofs"],
 	"church": ["buildings.light_walls", "buildings.tiles"],
 	"chapel": ["buildings.light_walls", "buildings.tiles"],
 	"castle": ["buildings.castle_walls", "buildings.tiles"],

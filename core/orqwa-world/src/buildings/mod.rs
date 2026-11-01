@@ -130,6 +130,9 @@ static NORDIC_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.nordic_
 /// Pale render, ochre and muted façades with slate or terracotta roofs in France.
 static FRENCH_WALLS: Colours = LazyLock::new(|| palette::list("buildings.french_walls"));
 static FRENCH_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.french_roofs"));
+/// Pale limestone façades and zinc-grey roofs of French city apartments.
+static FRENCH_CITY_WALLS: Colours = LazyLock::new(|| palette::list("buildings.french_city_walls"));
+static FRENCH_CITY_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.french_city_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
 /// Shop fronts' frames, and awnings.
@@ -970,6 +973,7 @@ fn design(
         Kind::Chalet => recipe.chalet(),
         Kind::Farmhouse => recipe.farmhouse(),
         Kind::Shed => recipe.shed(),
+        Kind::Block if region == Region::France => recipe.french_city(),
         Kind::Block => recipe.block(),
         Kind::Office => recipe.office(),
         Kind::Public => recipe.public(),
@@ -1039,6 +1043,29 @@ impl Recipe<'_> {
         design.overhang = 0.55;
         design.verge = 0.45;
         design.chimney = true;
+        design
+    }
+
+    fn french_city(&self) -> Design {
+        let mut design = self.block();
+        let (wall, roof) = french_city_paints(self.building, self.dice);
+        design.wall = wall;
+        design.roof = Roof::Hipped;
+        design.pitch_degrees = 42.0;
+        design.max_rise = 5.0;
+        design.overhang = 0.25;
+        design.roof_paint = RoofPaint {
+            top: roof,
+            under: Paint::new(*DARK_TIMBER, Style::Blank),
+            gables: wall.with(Style::Blank),
+        };
+        design.trim = Some(Trim {
+            band: Paint::new(*WHITE, Style::Blank),
+            balconies: None,
+            floors: false,
+            every_column: false,
+        });
+        design.chimney = false;
         design
     }
 
@@ -1733,6 +1760,17 @@ fn french_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     (
         Paint::new(dice.tint(wall), Style::Plaster),
         Paint::new(dice.pick(2, &FRENCH_ROOFS), Style::Tiles),
+    )
+}
+
+fn french_city_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+    let wall = building.color.map_or_else(
+        || dice.pick(1, &FRENCH_CITY_WALLS),
+        |mapped| nearest(mapped, &FRENCH_CITY_WALLS),
+    );
+    (
+        Paint::new(wall, Style::Plaster),
+        Paint::new(dice.pick(2, &FRENCH_CITY_ROOFS), Style::Sheet),
     )
 }
 
@@ -2541,6 +2579,33 @@ mod tests {
         }
         assert!(FRENCH_WALLS.len() >= 6);
         assert!(FRENCH_ROOFS.len() >= 5);
+    }
+
+    #[test]
+    fn tall_french_city_buildings_get_limestone_and_zinc_styles() {
+        let building = Building {
+            height: Some(18.0),
+            ..untagged(41)
+        };
+        let plot = Plot {
+            region: Region::France,
+            ..plot(&building, Setting::Town, false)
+        };
+        assert_eq!(kind(&plot, 900.0, 50.0, &Dice(41)), Kind::Block);
+
+        let design = design(
+            Kind::Block,
+            &building,
+            true,
+            false,
+            Region::France,
+            &Dice(41),
+        );
+        assert!(FRENCH_CITY_WALLS.contains(&design.wall.rgb));
+        assert!(FRENCH_CITY_ROOFS.contains(&design.roof_paint.top.rgb));
+        assert_eq!(design.roof_paint.top.style, Style::Sheet);
+        assert!(FRENCH_CITY_WALLS.len() >= 5);
+        assert!(FRENCH_CITY_ROOFS.len() >= 4);
     }
 
     #[test]

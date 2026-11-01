@@ -22,9 +22,10 @@ Asian homes and mapped castles use the East Asian starter archetypes, with varie
 earth, green and blue colours. Nordic homes use painted timber, pale trim, steep gables and
 varied red, ochre, cream, green and blue colours. Nordic mapped castles use stone-based keeps
 with four corner towers and Nordic colours. Other mapped castles retain the general European
-models. French houses use plastered village-house forms and mapped castles use château-inspired
-stone keeps, in pale walls and slate or terracotta roofs. Tropical lowlands retain their existing
-house set. Offices, apartments, public
+models. French homes use plastered village-house forms, while tall residential blocks use
+Haussmann-inspired limestone façades, floor-height windows, iron balconies and zinc mansard
+roofs. Mapped French castles use château-inspired stone keeps with pale walls and slate or
+terracotta roofs. Tropical lowlands retain their existing house set. Offices, apartments, public
 buildings and industrial buildings keep their existing classification; this does not turn a
 whole city into an old town. Castles are still placed only from existing castle points of
 interest. Footprints no model fits and distant castles use shells.

@@ -197,10 +197,11 @@ receding roofs. Eight wall colours and six roof colours give neighbouring buildi
 variety. The Nordic set (`nordic.py`) adds four painted-plank houses with bright trim and
 steep gables, plus three stone keeps with four corner towers. Seven wall colours and five
 roof colours span red, ochre, cream, green and blue. The French set (`french.py`) adds four
-plastered village houses with shutters and four château-inspired stone keeps with roofed
-corner pavilions. Six pale or muted wall colours and five slate or terracotta roof colours add
-variety. Regional selectors preserve tropical lowland houses; castles remain mapped points of
-interest. See
+plastered village houses with shutters, two Haussmann-inspired city houses with iron balconies
+and zinc mansard roofs, and three château-inspired stone keeps with roofed corner pavilions.
+Six pale or muted village wall colours and five slate or terracotta roof colours sit alongside
+five limestone city wall colours and four zinc roof colours. Regional selectors preserve
+tropical lowland houses; castles remain mapped points of interest. See
 [regional buildings](../docs/regional-buildings.md) for placement, references, rebuild
 commands and validation. These are own-work archetypes, not replicas.
 
@@ -472,6 +473,12 @@ French starter set:
 | ![French one-storey house](../docs/images/models/buildings/french_house_1_s.jpg)<br>`french_house_1_s` | ![French one-storey house, medium](../docs/images/models/buildings/french_house_1_m.jpg)<br>`french_house_1_m` | ![French two-storey house](../docs/images/models/buildings/french_house_2_m.jpg)<br>`french_house_2_m` |
 | ![French two-storey house, large](../docs/images/models/buildings/french_house_2_l.jpg)<br>`french_house_2_l` | ![French three-storey château keep](../docs/images/models/buildings/french_castle_3_s.jpg)<br>`french_castle_3_s` | ![French three-storey château keep, medium](../docs/images/models/buildings/french_castle_3_m.jpg)<br>`french_castle_3_m` |
 | ![French four-storey château keep](../docs/images/models/buildings/french_castle_4_l.jpg)<br>`french_castle_4_l` | | |
+
+French city houses:
+
+| | |
+|---|---|
+| ![French five-storey city apartment](../docs/images/models/buildings/french_city_5_m.jpg)<br>`french_city_5_m` | ![French six-storey city apartment](../docs/images/models/buildings/french_city_6_l.jpg)<br>`french_city_6_l` |
 
 ### Tree detail levels
 
