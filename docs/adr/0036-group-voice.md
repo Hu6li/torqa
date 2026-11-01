@@ -287,6 +287,10 @@ its matching deadline, capped to the existing prebuffer, so a delayed consumer c
 history twice. Deterministic clock regressions reproduce both defects: with capture at 25 Hz,
 the old receiver plays only 200 of 500 fresh frames; after a one-second listener stall it skips
 all current buffered speech. Both now recover without catch-up transmission or larger buffers.
+When delayed playback also outruns a slower producer's latest observed sequence, play the newest
+unplayed buffered frame and resume the live deadline. Do not conceal source ticks that capture
+never emitted. A further deterministic regression with both workers at 10 Hz previously played
+zero of 100 valid frames; it now keeps current speech audible while still discarding history.
 
 The forwarded-burst and delayed-first-arrival regressions fail with their original guards. Real
 loopback QUIC tests cover both receivers, multiple forwarded speakers, state recovery, reliable

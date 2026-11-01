@@ -316,11 +316,21 @@ impl VoiceInbox {
         let skipped =
             u32::try_from(now.saturating_duration_since(at).as_nanos() / FRAME_TIME.as_nanos())
                 .unwrap_or(u32::MAX);
-        self.next = self.next.saturating_add(skipped);
+        let mut wanted = self.next.saturating_add(skipped);
         let advance = FRAME_TIME.saturating_mul(skipped.saturating_add(1));
         self.play_at = Some(at.checked_add(advance).unwrap_or(now + FRAME_TIME));
-        let wanted = self.next;
-        self.next = self.next.saturating_add(1);
+        if skipped > 0
+            && let Some((latest, _)) = self.latest
+            && latest >= self.next
+            && wanted > latest
+        {
+            // A slow capture worker never emits its missed ticks. Late playout
+            // must use the newest unplayed frame instead of concealing imaginary
+            // source sequences and throwing away every actual arrival.
+            wanted = latest;
+            self.play_at = Some(now + FRAME_TIME);
+        }
+        self.next = wanted.saturating_add(1);
         for queued in &mut self.frames {
             if queued.is_some_and(|old| old.sequence < wanted) {
                 *queued = None;
@@ -1144,6 +1154,25 @@ mod tests {
         assert!(
             heard > 450,
             "fresh capture must not be discarded behind playback: heard {heard} of 500 frames"
+        );
+    }
+
+    #[test]
+    fn a_slow_listener_keeps_playing_current_speech_from_a_slow_capture_worker() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        let mut heard = 0;
+        for sequence in 0..100 {
+            let at = now + FRAME_TIME * 5 * sequence;
+            inbox.ingest(&bytes(RiderId::HOST, sequence), at).unwrap();
+            if matches!(inbox.playout(at + Duration::from_millis(5)), Playout::Frame(frame) if frame.sequence == sequence)
+            {
+                heard += 1;
+            }
+        }
+        assert!(
+            heard > 90,
+            "live speech must not be concealed by imagined capture ticks: heard {heard} of 100 frames"
         );
     }
 
