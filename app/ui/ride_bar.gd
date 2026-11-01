@@ -121,7 +121,9 @@ func _show_fullscreen() -> void:
 	var on: bool = FullScreen.is_on(get_window())
 	_fullscreen_on = on
 	_fullscreen.icon = UiIcons.texture("windowed" if on else "fullscreen", ICON)
-	_fullscreen.tooltip_text = tr("Exit full screen (F11)") if on else tr("Full screen (F11)")
+	_fullscreen.tooltip_text = (
+		tr("Exit full screen (Esc or F11)") if on else tr("Full screen (F11)")
+	)
 
 
 ## Shows the simulation's speeds, or hides them.

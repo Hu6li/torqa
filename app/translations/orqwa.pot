@@ -1112,7 +1112,7 @@ msgid "Every ride you planned this week is done, all {planned} of them!"
 msgstr ""
 
 #: app/ui/ride_bar.gd
-msgid "Exit full screen (F11)"
+msgid "Exit full screen (Esc or F11)"
 msgstr ""
 
 #: app/scenes/history_screen.gd

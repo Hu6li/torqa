@@ -862,8 +862,8 @@ msgstr "Fr"
 msgid "Full screen (F11)"
 msgstr "Vollbild (F11)"
 
-msgid "Exit full screen (F11)"
-msgstr "Vollbild verlassen (F11)"
+msgid "Exit full screen (Esc or F11)"
+msgstr "Vollbild verlassen (Esc oder F11)"
 
 msgid "Full view"
 msgstr "Vollständige Ansicht"

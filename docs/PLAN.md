@@ -389,6 +389,8 @@ Built in rideable steps:
   the choice is kept and ORQWA starts that way
 - [x] Full-screen button beside Overlay in the ride control bar (R150, #376), with an
   icon and tooltip that follow the window when switched by the keyboard or settings too
+- [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
+  full screen (R177, #439)
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter
