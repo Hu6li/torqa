@@ -189,11 +189,16 @@ func _on_window_resized() -> void:
 
 
 ## Escape, or the remote's Back (#228), leaves a course for the gallery and the summary for
-## the start page; dialogs close by themselves.
+## the start page; dialogs close by themselves. In full screen, Escape first puts ORQWA back in
+## a window (#439), as browsers and video players do. The remote's Back only goes back: a TV
+## by the trainer stays full screen.
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed(&"ui_cancel"):
 		return
-	if _start.visible and _start.go_back():
+	if event is InputEventKey and _can_switch_window() and FullScreen.is_on(get_window()):
+		FullScreen.set_on(get_window(), _orqwa, false)
+		get_viewport().set_input_as_handled()
+	elif _start.visible and _start.go_back():
 		get_viewport().set_input_as_handled()
 	elif _summary.visible:
 		_summary.go_back()
@@ -212,9 +217,13 @@ func _shortcut_input(event: InputEvent) -> void:
 
 
 func _toggle_fullscreen() -> void:
-	# The overlay is a small window of its own; leaving it brings full screen back.
-	if not _overlay.active and not _picture_in_picture:
+	if _can_switch_window():
 		FullScreen.set_on(get_window(), _orqwa, not FullScreen.is_on(get_window()))
+
+
+func _can_switch_window() -> bool:
+	# The overlay is a small window of its own; leaving it brings full screen back.
+	return not _overlay.active and not _picture_in_picture
 
 
 func _notification(what: int) -> void:
