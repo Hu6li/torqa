@@ -5,32 +5,32 @@
 
 ## Context
 
-Climate already selects tropical houses, but Asian rides can receive alpine chalets, Bernese
-farmhouses and European castles. Latitude and elevation describe climate, not regional
-architecture. Saved courses must remain reproducible offline (R101).
+Climate alone cannot select regional architecture. Asian and Nordic rides can receive
+buildings unlike their local traditions. Saved courses must remain reproducible offline (R101).
 
 ## Decision
 
-Select architecture per building from bundled region polygons, independently of climate.
-The Asian classifier uses the country-coder polygons carrying UN M49 region code 142 from
-the same pinned, ISC-licensed source already bundled for traffic-territory detection. The
-starter models are own-work East Asian archetypes with Japanese architectural references;
-the Asian regional set also uses varied pastel, earth, green and blue wall and roof colours.
-No provider request or course-format change is needed.
+Select architecture per building from bundled country polygons, independently of climate.
+Asia uses country-coder polygons carrying UN M49 region code 142. Nordic selection uses the
+five Nordic countries plus Faroe Islands, Åland, Svalbard and Jan Mayen; it is not a broad
+Northern Europe grouping. Both sets use the same pinned, ISC-licensed country-coder source
+already bundled for traffic-territory detection. No provider request or course-format change
+is needed.
 
-Asian rural houses remain houses rather than becoming Swiss chalets or farmhouses. Tropical
-lowlands retain their existing tropical house set. Offices, apartments, public buildings
-and industrial buildings keep their existing classification; this does not turn a whole city
-into an old town. Mapped castles in Asia use three tiered keeps on stone bases. Castles are
-still placed only from the existing castle points of interest. Distant shells and footprints
-no model fits use tiered roofs too, with the mapped irregular outline retained by the platform.
-Shells simplify the authored models' swept eaves, lattice and stone batter.
+Asian homes and mapped castles use the East Asian starter archetypes, with varied pastel,
+earth, green and blue colours. Nordic homes use painted timber, pale trim, steep gables and
+varied red, ochre, cream, green and blue colours. Nordic mapped castles use stone-based keeps
+with four corner towers and Nordic colours. Other mapped castles retain the general European
+models. Tropical lowlands retain their existing house set. Offices, apartments, public
+buildings and industrial buildings keep their existing classification; this does not turn a
+whole city into an old town. Castles are still placed only from existing castle points of
+interest. Footprints no model fits and distant castles use shells.
 
 ## Consequences
 
-Generator 37 offers regeneration of older kept worlds; stored format 3 stays unchanged.
+Generator 38 offers regeneration of older kept worlds; stored format 3 stays unchanged.
 Existing model names and instance buffers remain valid. Regional selection is inferred;
-these are scenery archetypes, not surveyed facades or reconstructions of named castles.
-More locally distinct regional architecture remains future work.
+these are scenery archetypes, not surveys of individual buildings or replicas of named
+monuments. More locally distinct architecture across both regions remains future work.
 
 See [regional buildings](../regional-buildings.md) for assets, references and validation.

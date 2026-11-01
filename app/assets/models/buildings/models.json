@@ -388,6 +388,76 @@
    "eaves": 16.0,
    "height": 22.274
   },
+  "nordic_castle_3_m": {
+   "kind": "nordic_castle",
+   "roof": "gable",
+   "length": 23.0,
+   "width": 16.0,
+   "eaves": 12.9,
+   "height": 18.624,
+   "storeys": 3,
+   "pitch": 42
+  },
+  "nordic_castle_3_s": {
+   "kind": "nordic_castle",
+   "roof": "gable",
+   "length": 16.0,
+   "width": 12.0,
+   "eaves": 12.9,
+   "height": 17.256,
+   "storeys": 3,
+   "pitch": 42
+  },
+  "nordic_castle_4_l": {
+   "kind": "nordic_castle",
+   "roof": "gable",
+   "length": 32.0,
+   "width": 22.0,
+   "eaves": 16.2,
+   "height": 23.465,
+   "storeys": 4,
+   "pitch": 40
+  },
+  "nordic_house_1_m": {
+   "kind": "nordic_house",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 3.5,
+   "height": 8.226,
+   "storeys": 1,
+   "pitch": 40
+  },
+  "nordic_house_1_s": {
+   "kind": "nordic_house",
+   "roof": "gable",
+   "length": 9.5,
+   "width": 7.5,
+   "eaves": 3.5,
+   "height": 7.827,
+   "storeys": 1,
+   "pitch": 42
+  },
+  "nordic_house_2_l": {
+   "kind": "nordic_house",
+   "roof": "gable",
+   "length": 15.0,
+   "width": 10.5,
+   "eaves": 6.4,
+   "height": 11.452,
+   "storeys": 2,
+   "pitch": 38
+  },
+  "nordic_house_2_m": {
+   "kind": "nordic_house",
+   "roof": "gable",
+   "length": 12.0,
+   "width": 9.0,
+   "eaves": 6.4,
+   "height": 11.126,
+   "storeys": 2,
+   "pitch": 40
+  },
   "office_2_xl": {
    "kind": "office",
    "roof": "flat",

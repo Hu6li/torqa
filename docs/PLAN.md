@@ -454,6 +454,9 @@ physically based materials and light, restyled group by group.
   roofs, and three tiered castle keeps, selected per building from bundled Asian outlines.
   Regional distant/fallback shells; tropical houses retained.
   [Assets and validation](regional-buildings.md).
+- [x] Nordic regional architecture (R164): four painted-timber houses and three stone keeps,
+  selected for Denmark, Finland, Iceland, Norway, Sweden and Nordic territories from bundled
+  outlines. Red, ochre, cream, green and blue walls and roofs; castles remain mapped POIs.
 - [ ] More locally distinct architecture sets and house/landmark types across Asia.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)

@@ -155,8 +155,11 @@ Asian buildings (`art/buildings/japanese.py`, R164) use the existing named mater
 `japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional
 wall/roof colours aligned with Rust placement. Castle model tiers, first eave height and
 footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`; review the
-nearby and distant silhouettes together. Asian outlines and climate are independent; see
-`docs/regional-buildings.md` before extending the regional set.
+nearby and distant silhouettes together. Nordic buildings (`art/buildings/nordic.py`) use
+the `nordic_wood` instance-tinted plank material and their own country outlines, palette and
+model kinds. Keep the Nordic castle's distant generic keep visually compatible. Asian and
+Nordic outlines are independent of climate; see `docs/regional-buildings.md` before extending
+the regional sets.
 
 ## Tree LODs
 

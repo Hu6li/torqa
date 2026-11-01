@@ -2,11 +2,12 @@
 
 use std::sync::LazyLock;
 
-/// Asian rides use the East Asian starter archetypes; other places keep their architecture.
+/// Asian and Nordic rides use their regional archetypes; other places stay generic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Region {
     Generic,
     Asia,
+    Nordic,
 }
 
 type Polygon = Vec<Vec<[f64; 2]>>;
@@ -16,9 +17,9 @@ struct BoundedPolygon {
     bounds: (f64, f64, f64, f64),
 }
 
-static ASIA: LazyLock<Vec<BoundedPolygon>> = LazyLock::new(|| {
-    let polygons: Vec<Polygon> = serde_json::from_str(include_str!("../../data/asia.json"))
-        .expect("bundled Asian outlines are valid JSON");
+fn bounded(data: &str) -> Vec<BoundedPolygon> {
+    let polygons: Vec<Polygon> =
+        serde_json::from_str(data).expect("bundled outlines are valid JSON");
     polygons
         .into_iter()
         .filter_map(|rings| {
@@ -42,26 +43,37 @@ static ASIA: LazyLock<Vec<BoundedPolygon>> = LazyLock::new(|| {
             Some(BoundedPolygon { rings, bounds })
         })
         .collect()
-});
+}
+
+static ASIA: LazyLock<Vec<BoundedPolygon>> =
+    LazyLock::new(|| bounded(include_str!("../../data/asia.json")));
+static NORDIC: LazyLock<Vec<BoundedPolygon>> =
+    LazyLock::new(|| bounded(include_str!("../../data/nordic.json")));
+
+fn in_region(region: &[BoundedPolygon], (lat, lon): (f64, f64)) -> bool {
+    region.iter().any(|polygon| {
+        let (min_lon, min_lat, max_lon, max_lat) = polygon.bounds;
+        (min_lat..=max_lat).contains(&lat)
+            && (min_lon..=max_lon).contains(&lon)
+            && polygon
+                .rings
+                .first()
+                .is_some_and(|ring| contains(ring, (lat, lon)))
+            && !polygon
+                .rings
+                .iter()
+                .skip(1)
+                .any(|ring| contains(ring, (lat, lon)))
+    })
+}
 
 impl Region {
     pub(crate) fn at((lat, lon): (f64, f64)) -> Self {
         // UN M49 Asia region polygons (142), with per-island bounds to keep lookups cheap.
-        if ASIA.iter().any(|polygon| {
-            let (min_lon, min_lat, max_lon, max_lat) = polygon.bounds;
-            (min_lat..=max_lat).contains(&lat)
-                && (min_lon..=max_lon).contains(&lon)
-                && polygon
-                    .rings
-                    .first()
-                    .is_some_and(|ring| contains(ring, (lat, lon)))
-                && !polygon
-                    .rings
-                    .iter()
-                    .skip(1)
-                    .any(|ring| contains(ring, (lat, lon)))
-        }) {
+        if in_region(&ASIA, (lat, lon)) {
             Self::Asia
+        } else if in_region(&NORDIC, (lat, lon)) {
+            Self::Nordic
         } else {
             Self::Generic
         }
@@ -105,6 +117,32 @@ mod tests {
             (40.71, -74.01),
             (-33.87, 151.21),
             (46.95, 7.45),
+        ] {
+            assert_eq!(Region::at(place), Region::Generic, "{place:?}");
+        }
+    }
+
+    #[test]
+    fn nordic_architecture_follows_the_nordic_countries_and_islands() {
+        // Copenhagen, Helsinki, Reykjavik, Oslo, Stockholm, the Faroes, Åland and Svalbard.
+        for place in [
+            (55.68, 12.57),
+            (60.17, 24.94),
+            (64.15, -21.94),
+            (59.91, 10.75),
+            (59.33, 18.07),
+            (61.90, -6.77),
+            (60.10, 19.94),
+            (78.22, 15.65),
+        ] {
+            assert_eq!(Region::at(place), Region::Nordic, "{place:?}");
+        }
+        // Greenland, the Baltic states, Britain and continental Europe retain generic forms.
+        for place in [
+            (64.18, -51.72),
+            (59.44, 24.75),
+            (55.95, -3.19),
+            (52.52, 13.40),
         ] {
             assert_eq!(Region::at(place), Region::Generic, "{place:?}");
         }

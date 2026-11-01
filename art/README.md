@@ -171,8 +171,9 @@ thousands of them; `build.py` prints the counts.
 | Name | Used for |
 |---|---|
 | `plaster` | rendered walls; the colour varies per building |
+| `nordic_wood` | painted plank siding on Nordic houses; the colour varies per building |
 | `stone` | plinths, sills, quoins |
-| `castle_stone` | Regional keeps' battered stone platforms, using the existing natural-rock scan |
+| `castle_stone` | Regional keeps' stone platforms, using the existing natural-rock scan |
 | `wood`, `wood_dark`, `wood_light` | boarded walls, balconies; beams and log ends; the Ründi |
 | `frame`, `glass`, `leaded` | window frames; glass, and stained glass in churches |
 | `shutter`, `door`, `garage` | shutters (colour varies per building, some have none), doors |
@@ -193,9 +194,12 @@ The Asian starter set (`japanese.py`, R164) uses six Japanese-inspired `japanese
 models with pale or coloured plaster, dark timber lattice, deep swept tiled eaves and ridge
 caps, plus three `japanese_castle` keeps with battered stone bases and three or five
 receding roofs. Eight wall colours and six roof colours give neighbouring buildings more
-variety. The regional selector preserves tropical lowland houses and uses matching castle
-shells at distance. See [regional buildings](../docs/regional-buildings.md) for placement,
-references, rebuild commands and validation. These are own-work archetypes, not replicas.
+variety. The Nordic set (`nordic.py`) adds four painted-plank houses with bright trim and
+steep gables, plus three stone keeps with four corner towers. Seven wall colours and five
+roof colours span red, ochre, cream, green and blue. Regional selectors preserve tropical
+lowland houses; castles remain mapped points of interest. See
+[regional buildings](../docs/regional-buildings.md) for placement, references, rebuild
+commands and validation. These are own-work archetypes, not replicas.
 
 ## Vegetation (`vegetation/`)
 
@@ -449,6 +453,14 @@ Asian starter set (Japanese-inspired models):
 | ![Japanese one-storey house, small](../docs/images/models/buildings/japanese_house_1_s.jpg)<br>`japanese_house_1_s` | ![Japanese one-storey house](../docs/images/models/buildings/japanese_house_1_m.jpg)<br>`japanese_house_1_m` | ![Japanese hipped house](../docs/images/models/buildings/japanese_house_hipped_1_m.jpg)<br>`japanese_house_hipped_1_m` |
 | ![Japanese two-storey house, small](../docs/images/models/buildings/japanese_house_2_s.jpg)<br>`japanese_house_2_s` | ![Japanese two-storey house](../docs/images/models/buildings/japanese_house_2_m.jpg)<br>`japanese_house_2_m` | ![Japanese two-storey house, large](../docs/images/models/buildings/japanese_house_2_l.jpg)<br>`japanese_house_2_l` |
 | ![Japanese three-tier keep, small](../docs/images/models/buildings/japanese_castle_3_s.jpg)<br>`japanese_castle_3_s` | ![Japanese three-tier keep](../docs/images/models/buildings/japanese_castle_3_m.jpg)<br>`japanese_castle_3_m` | ![Japanese five-tier keep](../docs/images/models/buildings/japanese_castle_5_l.jpg)<br>`japanese_castle_5_l` |
+
+Nordic starter set:
+
+| | | |
+|---|---|---|
+| ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_s.jpg)<br>`nordic_house_1_s` | ![Nordic one-storey house](../docs/images/models/buildings/nordic_house_1_m.jpg)<br>`nordic_house_1_m` | ![Nordic two-storey house](../docs/images/models/buildings/nordic_house_2_m.jpg)<br>`nordic_house_2_m` |
+| ![Nordic two-storey house, large](../docs/images/models/buildings/nordic_house_2_l.jpg)<br>`nordic_house_2_l` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_s.jpg)<br>`nordic_castle_3_s` | ![Nordic three-storey keep](../docs/images/models/buildings/nordic_castle_3_m.jpg)<br>`nordic_castle_3_m` |
+| ![Nordic four-storey keep](../docs/images/models/buildings/nordic_castle_4_l.jpg)<br>`nordic_castle_4_l` | | |
 
 ### Tree detail levels
 

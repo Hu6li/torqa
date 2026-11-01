@@ -5,9 +5,8 @@
 //! interest in them or the land they stand on, halls on industrial land, chalets in the
 //! mountains, farmhouses as large buildings in the countryside, blocks from their height or
 //! size in towns, sheds from their size, and houses otherwise — in the subtropics houses built
-//! for the heat (#136). Regional architecture starts with East Asian-style houses and tiered
-//! keeps across Asia (R164), selected independently of climate. Each kind gets its own
-//! proportions and materials.
+//! for the heat (#136). Regional architecture includes East Asian and Nordic styles (R164),
+//! selected independently of climate. Each kind gets its own proportions and materials.
 
 mod models;
 mod parts;
@@ -125,6 +124,9 @@ static TROPICAL_WALLS: Colours = LazyLock::new(|| palette::list("buildings.tropi
 /// Coloured walls and ceramic roofs of the Asian starter set.
 static ASIAN_WALLS: Colours = LazyLock::new(|| palette::list("buildings.asian_walls"));
 static ASIAN_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.asian_roofs"));
+/// Painted timber walls and steep roofs of Nordic houses and keeps.
+static NORDIC_WALLS: Colours = LazyLock::new(|| palette::list("buildings.nordic_walls"));
+static NORDIC_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.nordic_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
 /// Shop fronts' frames, and awnings.
@@ -770,6 +772,9 @@ fn colours(plot: &Plot, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32
             Some(Landmark::Castle) if plot.region == Region::Asia => {
                 asian_paints(plot.building, dice)
             }
+            Some(Landmark::Castle) if plot.region == Region::Nordic => {
+                nordic_paints(plot.building, dice)
+            }
             Some(Landmark::Castle) => castle_paints(plot.building, dice),
             Some(Landmark::Lighthouse) => lighthouse_paints(dice),
             None => church_paints(plot.building, dice),
@@ -819,8 +824,10 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     // The subtropics have neither chalets nor Bernese farmhouses.
     let tropical = plot.climate.tropical_at(ground);
     let asian = plot.region == Region::Asia;
+    let nordic = plot.region == Region::Nordic;
+    let regional = asian || nordic;
     let alpine =
-        !tropical && !asian && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
+        !tropical && !regional && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     match plot.setting {
         Setting::Industrial | Setting::Commercial if area < 80.0 => Kind::Shed,
         Setting::Industrial => Kind::Hall,
@@ -831,7 +838,7 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
         Setting::Town if area > 400.0 => Kind::Block,
         Setting::Countryside if area > 1500.0 => Kind::Hall,
         _ if alpine => Kind::Chalet,
-        Setting::Countryside if area > 220.0 && !tropical && !asian => Kind::Farmhouse,
+        Setting::Countryside if area > 220.0 && !tropical && !regional => Kind::Farmhouse,
         _ => Kind::House,
     }
 }
@@ -950,6 +957,7 @@ fn design(
     match kind {
         Kind::House if tropical => recipe.tropical_house(),
         Kind::House if region == Region::Asia => recipe.japanese_house(),
+        Kind::House if region == Region::Nordic => recipe.nordic_house(),
         Kind::House => recipe.house(),
         Kind::Chalet => recipe.chalet(),
         Kind::Farmhouse => recipe.farmhouse(),
@@ -987,6 +995,24 @@ impl Recipe<'_> {
         design.overhang = 0.9;
         design.verge = 0.6;
         design.chimney = false;
+        design.gable_windows = None;
+        design
+    }
+
+    fn nordic_house(&self) -> Design {
+        let mut design = self.house();
+        let (wall, roof) = nordic_paints(self.building, self.dice);
+        design.wall = wall;
+        design.roof_paint = RoofPaint {
+            top: roof,
+            under: Paint::new(*DARK_TIMBER, Style::Boards),
+            gables: wall.with(Style::Blank),
+        };
+        design.pitch_degrees = 40.0;
+        design.max_rise = 5.5;
+        design.overhang = 0.65;
+        design.verge = 0.5;
+        design.chimney = true;
         design.gable_windows = None;
         design
     }
@@ -1660,6 +1686,17 @@ fn asian_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     (
         Paint::new(dice.tint(wall), Style::Plaster),
         Paint::new(dice.pick(2, &ASIAN_ROOFS), Style::Tiles),
+    )
+}
+
+fn nordic_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+    let wall = building.color.map_or_else(
+        || dice.pick(1, &NORDIC_WALLS),
+        |mapped| nearest(mapped, &NORDIC_WALLS),
+    );
+    (
+        Paint::new(dice.tint(wall), Style::Plaster),
+        Paint::new(dice.pick(2, &NORDIC_ROOFS), Style::Tiles),
     )
 }
 
@@ -2397,6 +2434,48 @@ mod tests {
                 .any(|(a, b)| (a - b).abs() > 0.001)
         }));
         assert!(ASIAN_ROOFS.windows(2).any(|pair| {
+            pair[0]
+                .iter()
+                .zip(pair[1].iter())
+                .any(|(a, b)| (a - b).abs() > 0.001)
+        }));
+    }
+
+    #[test]
+    fn nordic_rural_houses_keep_their_style_in_the_mountains() {
+        for id in 0..20 {
+            let building = untagged(id);
+            let plot = Plot {
+                region: Region::Nordic,
+                ..plot(&building, Setting::Countryside, false)
+            };
+            for area in [120.0, 600.0] {
+                assert_eq!(kind(&plot, area, 1500.0, &Dice(id)), Kind::House);
+            }
+            let design = design(
+                Kind::House,
+                &building,
+                true,
+                false,
+                Region::Nordic,
+                &Dice(id),
+            );
+            assert!(design.chimney);
+            assert!(NORDIC_ROOFS.contains(&design.roof_paint.top.rgb));
+        }
+    }
+
+    #[test]
+    fn nordic_buildings_have_varied_wall_and_roof_colours() {
+        assert!(NORDIC_WALLS.len() >= 7);
+        assert!(NORDIC_ROOFS.len() >= 5);
+        assert!(NORDIC_WALLS.windows(2).any(|pair| {
+            pair[0]
+                .iter()
+                .zip(pair[1].iter())
+                .any(|(a, b)| (a - b).abs() > 0.001)
+        }));
+        assert!(NORDIC_ROOFS.windows(2).any(|pair| {
             pair[0]
                 .iter()
                 .zip(pair[1].iter())

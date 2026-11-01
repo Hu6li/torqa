@@ -15,3 +15,8 @@ starter regional archetypes without network access, independently for each build
 The source is ISC-licensed, copyright 2026 country-coder contributors. The unchanged
 [upstream licence](../../orqwa-osm/data/country-coder-LICENSE.md) is already bundled for
 the traffic-territory outlines from the same source. No country-coder code is included.
+
+`nordic.json` retains the geometries for Denmark, Finland, Iceland, Norway and Sweden, plus
+the Faroe Islands, Åland, Svalbard and Jan Mayen: nine country/territory polygons from the
+same revision. Greenland and Bouvet Island are excluded. The Nordic classifier is explicit
+rather than treating all of Northern Europe as Nordic.

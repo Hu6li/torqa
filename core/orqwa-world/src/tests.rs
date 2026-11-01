@@ -42,11 +42,12 @@ impl ElevationModel for EastwardSlope {
 struct NoData;
 
 #[tokio::test]
-async fn asian_rides_place_regional_houses_and_only_mapped_castles_offline() {
+async fn regional_rides_place_houses_and_only_mapped_castles_offline() {
     for (lat, lon, expected_house, expected_castle) in [
         (35.01, 135.77, "japanese_house", "japanese_castle"),
         (37.57, 126.98, "japanese_house", "japanese_castle"),
         (26.21, 127.68, "tropical", "japanese_castle"),
+        (59.33, 18.07, "nordic_house", "nordic_castle"),
         (46.95, 7.45, "house", "castle"),
     ] {
         let xml = format!(

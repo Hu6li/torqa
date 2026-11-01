@@ -29,6 +29,7 @@ const int GARAGE = 16;
 const int LEADED = 17;
 const int ACCENT = 18;
 const int FLAT_ROOF = 19;
+const int PAINTED_WOOD = 20;
 
 uniform int pattern = 0;
 uniform bool autumn_flowers_hidden = false;
@@ -78,7 +79,7 @@ void fragment() {
 	float specular = 0.4;
 	float metallic = 0.0;
 
-	if (pattern == PLASTER) {
+	if (pattern == PLASTER || pattern == PAINTED_WOOD) {
 		tint = to_linear(COLOR.rgb);
 	} else if (pattern == TILES || pattern == ACCENT) {
 		// The building's roof colour; models without one keep the material's.
@@ -148,7 +149,8 @@ void fragment() {
 		NORMAL_MAP_DEPTH = 1.0;
 	}
 	// Walls darken towards the ground, where rain splashes and dirt collects.
-	if (pattern == PLASTER || pattern == STONE || pattern == WOOD || pattern == WOOD_DARK) {
+	if (pattern == PLASTER || pattern == STONE || pattern == WOOD || pattern == WOOD_DARK
+		|| pattern == PAINTED_WOOD) {
 		albedo *= mix(0.72, 1.0, smoothstep(-0.2, 1.4, height_up));
 	}
 

@@ -1,46 +1,58 @@
 # Regional buildings
 
-The Asian starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)) adds six houses
-and three castle keeps. Its East Asian models use Japanese architectural references. Source
-geometry is in `art/buildings/japanese.py`; catalogue entries and exported GLBs use the
-`japanese_house` and `japanese_castle` kinds.
+The regional sets (R164, [ADR 0035](adr/0035-regional-buildings.md)) add six East Asian
+houses and three tiered castle keeps, plus four Nordic painted-timber houses and three stone
+keeps. The East Asian models use Japanese architectural references. Source geometry is in
+`art/buildings/japanese.py` and `art/buildings/nordic.py`; catalogue entries and exported
+GLBs use their corresponding regional model kinds.
 
-Houses have pale plaster, exposed dark timber, recessed glazing with wooden mullions,
-deep ceramic-tiled eaves and raised ridge caps. Two-storey houses add a tiled entrance-side
-canopy. Castle keeps have a battered stone base, three or five receding roof tiers and a
-gabled upper roof, with projecting gables on broad lower tiers. They share the existing
-plaster, wood and roof-tile materials; platforms reuse the natural-rock scan through the
-`castle_stone` material name, while houses retain masonry plinths.
-These models are own-work regional archetypes, not copies of particular monuments.
+Asian houses have exposed dark timber, pale or coloured walls, recessed glazing, deep swept
+tiled eaves and ridge caps. Two-storey houses add a tiled entrance-side canopy. Their castle
+keeps have a battered stone base and three or five receding roofs. Nordic houses use tinted
+plank siding, bright trim, simple mullioned windows and steep gabled tile roofs. Nordic keeps
+have stone platforms, coloured plaster walls, four projecting corner towers and steep roofs.
+Both sets reuse existing materials and textures; platforms use the `castle_stone` material
+and existing natural-rock scan. These are own-work archetypes, not copies of particular
+monuments.
 
 Architectural references consulted for proportions and materials:
 
 - [Naramachi traditional house guide](https://naramachi-nigiwainoie.jp/english/wp-content/uploads/2018/11/machiya_guide_english.pdf):
-  tiled roofs and timber lattice on town houses.
-- [Himeji Castle history](https://www.himejicastle.jp/en/guide/history/):
-  plastered timber keeps and tiled roofs.
-- [Japan Tourism Agency: Himeji roof tiles](https://www.mlit.go.jp/tagengo-db/en/R1-00664.html):
-  flat and cylindrical tile construction. No reference images or other assets are redistributed.
+  tiled roofs and timber lattice on Japanese town houses.
+- [Himeji Castle history](https://www.himejicastle.jp/en/guide/history/): plastered timber keeps
+  and tiled roofs; [Japan Tourism Agency: Himeji roof tiles](https://www.mlit.go.jp/tagengo-db/en/R1-00664.html)
+  describes flat and cylindrical tile construction.
+- [Nordiska Museet: Härkeberga](https://www.nordiskamuseet.se/en/visit-us/our-destinations/harkeberga/):
+  a central Swedish farmstead with red timber buildings.
+- [Visit Sweden: traditional red houses](https://visitsweden.com/about-sweden/swedish-red-houses/):
+  Falun red paint and its protective use on timber facades.
+- [Visit Denmark: De Gamle Huse](https://www.visitdenmark.se/danmark/planera-resan/maribo-open-air-museum-gdk789901):
+  traditional timber-framed houses in Lolland-Falster. No reference images or other assets
+  are redistributed.
 
 ## Placement
 
-`buildings/region.rs` classifies each footprint centroid using bundled country outlines for
-the UN M49 Asia region from country-coder. See [data provenance](../core/orqwa-world/data/README.md).
-This is a coarse regional heuristic, separate from climate and inferred building use. It does
-not identify actual historic buildings.
+`buildings/region.rs` classifies each footprint centroid using bundled country outlines from
+country-coder. Asian coverage follows UN M49 region 142. Nordic coverage names Denmark,
+Finland, Iceland, Norway and Sweden, plus the Faroe Islands, Åland, Svalbard and Jan Mayen;
+Greenland and the rest of Northern Europe stay generic. See [data provenance](../core/orqwa-world/data/README.md).
+The classifier is a coarse regional heuristic, separate from climate and inferred building
+use. It does not identify actual historic buildings.
 
-Non-tropical houses use the regional house set; tropical lowlands retain their flat/red-tiled
-houses. Regional houses have eight warm, pale, green, blue, rose and ochre wall colours, and
-six charcoal, red, green and blue-gray roof colours. Altitude no longer introduces Swiss
-chalets or farmhouses in Asia. Modern building kinds retain their current models. Mapped
-castles select tiered keeps, without adding castles where
-the map marks none. Fit limits remain ±25%; shops, steep plots and unsuitable footprints
-use shells. House shells have pale walls and charcoal roofs; castle shells retain receding
-roof tiers, including at distance. Detailed timber lattice and curved eaves belong to the
-nearby models.
+Non-tropical houses use their region's set; tropical lowlands retain their flat/red-tiled
+houses. Asian houses have eight pastel, earth and cool wall colours and six dark, red, green
+and blue-gray roof colours. Nordic houses have seven red, ochre, cream, green and blue wall
+colours and five matching roof colours. Asian and Nordic mountain houses do not become Swiss
+chalets or Bernese farmhouses. Modern building kinds retain their existing models.
 
-Generator 37 changes placement and shells; existing kept worlds remain readable and offer
-regeneration. Model names and the instance buffer contract are unchanged for existing assets.
+Mapped Asian castles select tiered keeps; mapped Nordic castles select four-tower keeps.
+Other mapped castles retain their existing European models. No castle is added where the map
+marks none. Fit limits remain ±25%; shops, steep plots and unsuitable footprints use shells.
+Regional colours survive in the shells; Asian castle shells keep receding roof tiers, and
+Nordic castles use the general stone keep shell at distance.
+
+Generator 38 changes placement and shells; stored format 3 remains unchanged and older kept
+worlds can be regenerated. Existing model names and instance-buffer contracts remain valid.
 No course input changes or new network requests are needed.
 
 ## Rebuild and review
@@ -50,28 +62,26 @@ Run the existing Blender pipeline, naming the new models to leave other assets u
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/buildings/build.py -- \
   japanese_house_1_s japanese_house_1_m japanese_house_2_s japanese_house_2_m \
-  japanese_house_2_l japanese_house_hipped_1_m \
-  japanese_castle_3_s japanese_castle_3_m japanese_castle_5_l
+  japanese_house_2_l japanese_house_hipped_1_m japanese_castle_3_s \
+  japanese_castle_3_m japanese_castle_5_l \
+  nordic_house_1_s nordic_house_1_m nordic_house_2_m nordic_house_2_l \
+  nordic_castle_3_s nordic_castle_3_m nordic_castle_4_l
 ```
 
 The [model gallery](../art/README.md#buildings) shows the actual Godot materials in three
 variants. `MODELS` limits `scripts/render-models.sh`; use `GALLERY=docs/images/models` when
-refreshing committed pictures. Review both the overview and the eye-height close-ups.
-Keep ordinary houses within 5,000 triangles and keeps within 10,000.
+refreshing committed pictures. Review both the overview and the eye-height close-ups. Keep
+ordinary houses within 5,000 triangles and keeps within 10,000.
 
-| House at riding height | Three-tier castle keep |
+| Regional painted-timber houses | Regional castles |
 |---|---|
-| ![Asian house colour variants](images/japanese-buildings/house-close.jpg) | ![Asian castle colour variants](images/japanese-buildings/castle-close.jpg) |
+| ![Asian and Nordic house colour variants](images/japanese-buildings/nordic-house-close.jpg) | ![Asian and Nordic castle colour variants](images/japanese-buildings/nordic-castle-close.jpg) |
 
-Tests cover East, Southeast, South, Central and West Asian locations, nearby countries,
-tropical precedence, bounded model fitting, mountain houses, and complete offline world
-generation with mapped castles.
-The fallback-shell test checks receding keeps on both narrow and concave outlines.
-The full `scripts/check.sh` suite and `make wiki-check` pass. Rebuilding all nine models
-produces byte-identical GLBs and manifest. Exported houses contain 1,526–4,786 triangles
-across five material surfaces; keeps contain 3,276–7,952 across six. The nine GLBs total
-2,412,496 bytes.
+Tests cover Asian and Nordic country outlines, neighbouring countries, tropical precedence,
+bounded model fitting, mountain houses, regional palette variety, and complete offline world
+generation with mapped castles. The Asian fallback-shell test checks receding keeps on narrow
+and concave outlines. The full `scripts/check.sh` suite and `make wiki-check` pass.
 
 Native ride performance on an M1 at Medium remains a manual check; software renders do not
-establish that frame-rate budget. More locally distinct regional sets and house types remain
-future work.
+establish that frame-rate budget. More locally distinct architecture within the Asian and
+Nordic sets remains future work.
