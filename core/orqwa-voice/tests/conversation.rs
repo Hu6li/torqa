@@ -224,14 +224,18 @@ async fn chat(lobby: &mut JoinerLobby, probe: &Arc<Probe>, frequency: f32) -> Vo
     chat.echo_prevention(false);
     chat
 }
-async fn until(predicate: impl Fn() -> bool) {
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while !predicate() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+#[track_caller]
+fn until(predicate: impl Fn() -> bool) -> impl std::future::Future<Output = ()> {
+    let caller = std::panic::Location::caller();
+    async move {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !predicate() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|error| panic!("progress wait at {caller} failed: {error}"));
+    }
 }
 
 #[tokio::test]
