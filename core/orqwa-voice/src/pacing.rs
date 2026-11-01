@@ -25,6 +25,14 @@ impl Pacer {
         self.next = now + FRAME_TIME;
     }
 
+    pub(super) fn completed(&mut self, now: Instant) {
+        // A stall inside encoding/playback must not leave an already-due tick
+        // immediately behind the frame that has only just finished sending.
+        if now >= self.next {
+            self.defer(now);
+        }
+    }
+
     pub(super) fn wait(&self, now: Instant) -> Duration {
         self.next.saturating_duration_since(now)
     }
@@ -49,5 +57,20 @@ mod tests {
         assert!(pacer.due(now + Duration::from_secs(2)));
         assert!(!pacer.due(now + Duration::from_secs(2)));
         assert!(pacer.due(now + Duration::from_secs(2) + FRAME_TIME));
+    }
+
+    #[test]
+    fn slow_encoding_or_playback_cannot_leave_an_immediate_catch_up_tick() {
+        let now = Instant::now();
+        let mut pacer = Pacer::new(now);
+        assert!(pacer.due(now));
+        pacer.completed(now + Duration::from_millis(39));
+        assert!(!pacer.due(now + Duration::from_millis(40)));
+        assert!(pacer.due(now + Duration::from_millis(59)));
+        pacer.completed(now + Duration::from_millis(60));
+        assert_eq!(
+            pacer.wait(now + Duration::from_millis(60)),
+            Duration::from_millis(19)
+        );
     }
 }

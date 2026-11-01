@@ -270,6 +270,8 @@ cannot grow decoding, fan-out or queues. Reliable controls retain their existing
 
 The audio worker now schedules its next tick from the live tick, without accumulating missed
 transmissions, and consumes only the freshest valid frame from the four-frame capture queue.
+An overrun inside encoding or playback also defers the next tick, so completing stalled work
+cannot leave an expired deadline immediately behind the just-sent frame.
 Suppressed feedback, superseded words, stale captures and old activations never replay later.
 
 A deeper timing regression also delays the very first speech packet. Anchoring the sequence clock

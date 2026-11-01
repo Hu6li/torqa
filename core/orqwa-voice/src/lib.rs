@@ -315,7 +315,9 @@ fn run(
             send_capture(port, audio.as_mut(), &mut encoder, spurt, allowed, events);
         }
         audio.play(mixed);
-        std::thread::park_timeout(pacer.wait(Instant::now()));
+        let completed = Instant::now();
+        pacer.completed(completed);
+        std::thread::park_timeout(pacer.wait(completed));
     }
     port.disable();
     let _ = audio.microphone(None);

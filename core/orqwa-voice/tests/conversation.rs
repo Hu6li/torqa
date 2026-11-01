@@ -15,7 +15,7 @@ use orqwa_net::link::{ConnectOptions, Host, Joiner};
 use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, Rider};
 use orqwa_net::policy::AddressPolicy;
 use orqwa_net::state::{RiderState, STATE_EVERY};
-use orqwa_net::voice::VoiceFrame;
+use orqwa_net::voice::{FRAME_TIME, VoiceFrame};
 use orqwa_voice::microphone_test::MicrophoneTest;
 use orqwa_voice::{VoiceChat, VoiceEvent};
 
@@ -420,12 +420,21 @@ async fn malformed_speech_mutes_only_that_source_and_group_drop_closes_live_micr
     bad_port.enable(true);
     let activation = bad_port.microphone(true).unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let frame = VoiceFrame::new(bad.me(), activation, 0, &[0xff]).unwrap();
-    bad_port.send(frame).unwrap();
-    let event = tokio::time::timeout(Duration::from_secs(2), ben_voice.next())
-        .await
-        .unwrap()
-        .unwrap();
+    // Disposable datagrams and late playback may drop a single packet. Keep a
+    // paced malformed source audible to the decoder until isolation is observed.
+    let event = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut tick = tokio::time::interval(FRAME_TIME);
+        let mut sequence = 0;
+        loop {
+            tokio::select! {
+                event = ben_voice.next() => break event.unwrap(),
+                _ = tick.tick() => {
+                    bad_port.send(VoiceFrame::new(bad.me(), activation, sequence, &[0xff]).unwrap()).unwrap();
+                    sequence += 1;
+                },
+            }
+        }
+    }).await.unwrap();
     assert!(matches!(event,VoiceEvent::PeerMuted { peer } if peer==bad.me()));
     let before = b.heard.load(Ordering::Relaxed);
     until(|| b.heard.load(Ordering::Relaxed) > before + 3).await;
