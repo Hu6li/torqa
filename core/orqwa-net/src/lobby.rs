@@ -658,7 +658,9 @@ impl JoinerLobby {
             )
             .await;
             if let Err(error) = result {
-                if transport.ended_normally() {
+                if matches!(error, LobbyError::Lost | LobbyError::Link(LinkError::Lost))
+                    && transport.ended_normally()
+                {
                     tracing::info!(
                         peer = organizer.value(),
                         "organizer closed group connection"
@@ -1135,7 +1137,7 @@ async fn host_loop(
                     let diagnostics = controls.clone();
                     tasks.spawn(async move {
                         if let Err(error) = serve_peer(&connection, send, recv, welcome, member, shared, receive, updates, voice, epochs,initial,selection,commands).await {
-                            if connection.ended_normally() {
+                            if matches!(error, LobbyError::Lost | LobbyError::Link(LinkError::Lost)) && connection.ended_normally() {
                                 tracing::info!(peer = member.rider().value(), "peer closed group connection");
                             } else {report(&diagnostics, Some(member.rider()), "receiving peer controls", transport_error(error, &connection));}
                         }
