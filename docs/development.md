@@ -611,6 +611,16 @@ default microphone and live voice. Record distro/build, selected routes and Tech
 If trainer discovery reports no adapter, collect `bluetoothctl list`, `rfkill list` and
 `systemctl status bluetooth` separately; successful audio routing does not prove BLE availability.
 
+For macOS permission acceptance, launch the exported **ORQWA.app** from Finder on an account
+that has not granted it microphone access. Joining voice, opening Audio settings and testing
+speakers must not prompt. **Test microphone** and **Microphone on** must show Apple's microphone
+prompt; ORQWA must then appear under System Settings → Privacy & Security → Microphone.
+Allow access and verify that capture remains off until the action is tried again. Close settings
+or leave the group before answering a prompt and verify no capture starts. Also deny access,
+check the recovery guidance, allow ORQWA in System Settings, restart, and test again. The UI
+smoke test simulates these results; macOS CI checks the native bridge's compilation and the
+exported bundle description/entitlement, without opening a microphone or accepting an OS prompt.
+
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and
 [ADR 0029](adr/0029-ride-audio.md). Run the preview and asset preparation in the devcontainer.

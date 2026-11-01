@@ -175,6 +175,8 @@ jobs:
         run: |
           rustc --edition=2024 --test -D warnings core/orqwa-app/src/media/commands.rs -o "$RUNNER_TEMP/music-tests"
           "$RUNNER_TEMP/music-tests"
+      - name: Check native microphone authorization bridge
+        run: xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -fsyntax-only core/orqwa-gd/src/microphone_permission.m
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
@@ -219,6 +221,10 @@ jobs:
           test -d app/.godot
           "$godot" --headless --path app --export-release "macOS" "$PWD/dist/ORQWA-macos-arm64.zip"
           test -s dist/ORQWA-macos-arm64.zip
+      - name: Check exported microphone privacy metadata
+        run: |
+          ditto -x -k dist/ORQWA-macos-arm64.zip "$RUNNER_TEMP/macos-privacy"
+          python3 scripts/release/macos_privacy.py "$RUNNER_TEMP/macos-privacy/ORQWA.app"
       # Both files are archives already; upload them as-is instead of zipping them again.
       - uses: actions/upload-artifact@v7
         with:

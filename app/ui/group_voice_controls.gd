@@ -18,6 +18,10 @@ var _speech: Label = Label.new()
 var _speaker_test: Button = Button.new()
 var _audio_scroll: ScrollContainer = ScrollContainer.new()
 var _speaker_volume: HSlider = HSlider.new()
+var _permission_hint: Label = Label.new()
+var _settings_permission_hint: Label = Label.new()
+var _permission_waiting: bool = false
+var _permission: Callable = OrqwaCore.microphone_permission
 
 
 func _ready() -> void:
@@ -32,6 +36,9 @@ func _ready() -> void:
 	_mic.text = tr("Microphone on")
 	_deafen.text = tr("Mute all sound")
 	add_child(_mic)
+	_permission_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_permission_hint.hide()
+	add_child(_permission_hint)
 	add_child(_deafen)
 	_listen.toggled.connect(_on_listen)
 	_deafen.toggled.connect(_on_listen)
@@ -73,6 +80,10 @@ func _ready() -> void:
 	_test.text = tr("Test microphone")
 	_test.pressed.connect(_on_test)
 	fields.add_child(_test)
+	_settings_permission_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_settings_permission_hint.custom_minimum_size.x = 380
+	_settings_permission_hint.hide()
+	fields.add_child(_settings_permission_hint)
 	_level.show_percentage = false
 	_level.max_value = 1.0
 	_level.step = 0.001
@@ -147,6 +158,8 @@ func bind(orqwa: OrqwaApp) -> void:
 
 
 func update_status(status: Dictionary) -> void:
+	if _permission_waiting:
+		_show_permission(str(_permission.call(false)))
 	var voice: bool = status.get("voice", false)
 	var pending: bool = status.get("voice_pending", false)
 	var microphone: bool = status.get("microphone", false)
@@ -217,6 +230,8 @@ func update_status(status: Dictionary) -> void:
 
 func _on_test() -> void:
 	var testing: bool = _orqwa.group_status().get("microphone_test", false)
+	if not testing and not _microphone_allowed():
+		return
 	if not testing and OS.has_feature("android"):
 		if not OS.request_permission("android.permission.RECORD_AUDIO"):
 			return
@@ -235,6 +250,8 @@ func _choose_devices() -> void:
 
 
 func _voice() -> void:
+	if _mic.button_pressed and not _microphone_allowed():
+		_mic.set_pressed_no_signal(false)
 	if _mic.button_pressed and OS.has_feature("android"):
 		if not OS.request_permission("android.permission.RECORD_AUDIO"):
 			_mic.set_pressed_no_signal(false)
@@ -246,3 +263,40 @@ func _voice() -> void:
 func _on_listen(_on: bool) -> void:
 	_mic.set_pressed_no_signal(false)
 	_voice()
+
+
+func _microphone_allowed() -> bool:
+	var access: String = str(_permission.call(true))
+	_show_permission(access)
+	if access == "allowed":
+		_permission_hint.hide()
+		_settings_permission_hint.hide()
+		return true
+	return false
+
+
+func _show_permission(access: String) -> void:
+	_permission_waiting = access == "pending"
+	var message: String
+	match access:
+		"pending":
+			message = tr(
+				"Allow microphone access in the macOS prompt, then try the microphone again."
+			)
+		"allowed":
+			message = tr("Microphone access allowed. Try the microphone again when ready.")
+		"denied":
+			message = tr(
+				"Allow ORQWA in macOS System Settings → Privacy & Security → Microphone, then restart ORQWA."
+			)
+		"restricted":
+			message = tr(
+				"Microphone access is restricted by macOS. Check your device's privacy policy."
+			)
+		"unavailable":
+			message = tr("Run the downloaded ORQWA app to request microphone access on macOS.")
+		_:
+			return
+	for hint: Label in [_permission_hint, _settings_permission_hint]:
+		hint.text = message
+		hint.show()

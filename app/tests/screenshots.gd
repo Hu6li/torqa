@@ -101,6 +101,15 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		audio._audio_scroll.scroll_vertical = 100000
 		await create_timer(0.3).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-speakers-" + locale + ".png"))
+		audio.update_status({})
+		audio._show_permission("denied")
+		audio._audio_scroll.scroll_vertical = 0
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-mic-permission-" + locale + ".png")
+		)
+		audio._permission_hint.hide()
+		audio._settings_permission_hint.hide()
 		audio._settings.hide()
 	group._show_status({"phase": "connecting", "reply": "private"})
 	await create_timer(0.4).timeout

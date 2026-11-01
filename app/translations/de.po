@@ -3005,3 +3005,18 @@ msgstr "Warte auf deine Stimme…"
 
 msgid "No voice detected"
 msgstr "Keine Stimme erkannt"
+
+msgid "Allow microphone access in the macOS prompt, then try the microphone again."
+msgstr "Erlaube den Mikrofonzugriff im macOS-Dialog und versuche es dann erneut."
+
+msgid "Microphone access allowed. Try the microphone again when ready."
+msgstr "Mikrofonzugriff erlaubt. Starte den Test oder aktiviere das Mikrofon erneut, wenn du bereit bist."
+
+msgid "Allow ORQWA in macOS System Settings → Privacy & Security → Microphone, then restart ORQWA."
+msgstr "Erlaube ORQWA unter macOS-Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon und starte ORQWA neu."
+
+msgid "Microphone access is restricted by macOS. Check your device's privacy policy."
+msgstr "macOS schränkt den Mikrofonzugriff ein. Prüfe die Datenschutzvorgaben deines Geräts."
+
+msgid "Run the downloaded ORQWA app to request microphone access on macOS."
+msgstr "Starte die heruntergeladene ORQWA-App, um unter macOS den Mikrofonzugriff anzufragen."

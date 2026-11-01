@@ -343,6 +343,14 @@ msgstr ""
 msgid "All {planned} planned rides this week done."
 msgstr ""
 
+#: app/ui/group_voice_controls.gd
+msgid "Allow ORQWA in macOS System Settings → Privacy & Security → Microphone, then restart ORQWA."
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Allow microphone access in the macOS prompt, then try the microphone again."
+msgstr ""
+
 #: app/scenes/course_detail.gd
 msgid "Allow videos"
 msgstr ""
@@ -2024,6 +2032,14 @@ msgid "Microphone"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd
+msgid "Microphone access allowed. Try the microphone again when ready."
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Microphone access is restricted by macOS. Check your device's privacy policy."
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
 msgid "Microphone level"
 msgstr ""
 
@@ -2853,6 +2869,10 @@ msgstr ""
 
 #: app/scenes/button_dialog.gd
 msgid "Row 4, right"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Run the downloaded ORQWA app to request microphone access on macOS."
 msgstr ""
 
 #: app/ui/about_page.gd

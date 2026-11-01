@@ -886,6 +886,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     two-tone speaker check using the selected device and voice volume (R178).
   - [x] Linux audio defaults accept unknown ALSA route direction and prefer available desktop
     sound-server bridges; keep explicit device choices and hide the silent null route (#456).
+  - [x] macOS microphone actions explicitly request Apple's authorization, with signed audio-input
+    entitlement, permission recovery guidance and artifact privacy checks.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

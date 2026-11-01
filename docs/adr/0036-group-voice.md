@@ -176,6 +176,31 @@ References: [CPAL ALSA implementation](https://github.com/RustAudio/cpal/blob/v0
 [ALSA and sound-server routing](https://github.com/RustAudio/cpal#alsa-pipewire-and-pulseaudio),
 [WirePlumber Bluetooth monitoring](https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html).
 
+## Amendment — macOS application microphone authorization (2026-11-01)
+
+The exported application enables the audio-input signing entitlement and uses Godot's dedicated
+microphone usage-description field, including local microphone checks in the purpose string.
+CoreAudio stream creation alone was not a reliable permission prompt. Godot 4.7.2's macOS
+`OS.request_permission` handles screen recording only. A small Objective-C bridge in the
+GDExtension calls AVFoundation's authorization API on explicit **Test microphone** or
+**Microphone on**, without constructing capture or changing consent. Apple's Clang compiles
+the bridge and its completion block; no new dependency is added.
+
+The UI displays pending, denied, restricted and missing-bundle-description guidance. It polls
+the result without requesting again. Approval requires a fresh microphone action, so a late
+response cannot unmute or start a test after the rider closes settings or leaves. Joining voice,
+device enumeration and speaker tests do not request microphone access. Android keeps its
+existing permission flow; the CLI keeps its existing native-stream behavior.
+
+CI syntax-checks the Apple bridge before FFmpeg builds and inspects the exported app's actual
+Info.plist and signed audio-input entitlement before uploading it. Simulated UI tests exercise
+pending/denied/restricted results and late approval without microphone hardware. Real macOS
+first-run approval and System Settings registration remain a native acceptance check.
+
+References: [Apple microphone authorization](https://developer.apple.com/documentation/avfoundation/avcapturedevice/requestaccess(for:completionhandler:)),
+[Apple audio-input entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input),
+[Godot 4.7.2 macOS permission implementation](https://github.com/godotengine/godot/blob/4.7.2-stable/platform/macos/os_macos.mm).
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

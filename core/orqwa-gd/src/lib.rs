@@ -39,6 +39,7 @@ mod android_audio;
 mod graphics;
 mod group;
 mod log;
+mod microphone_permission;
 
 struct OrqwaExtension;
 
@@ -52,6 +53,12 @@ pub struct OrqwaCore;
 
 #[godot_api]
 impl OrqwaCore {
+    /// Queries macOS microphone access, optionally showing Apple's prompt. Never captures.
+    #[func]
+    fn microphone_permission(request: bool) -> GString {
+        microphone_permission::access(request).into()
+    }
+
     /// Version of the ORQWA core.
     #[func]
     fn version() -> GString {
