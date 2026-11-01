@@ -33,6 +33,10 @@ static func capture(main: Control, out: String) -> void:
 	app.set_paused(true)
 	var names: Array[String] = ["Alex", "Sam", "Mia", "Noah", "Luca", "Robin", "Charlie"]
 	var gaps: Array[float] = [5.0, 10.0, 18.0, 30.0, 45.0, -12.0, -25.0]
+	# Each rider's own effort and look (#422, #423).
+	var watts: Array[float] = [265.0, 240.0, 210.0, 290.0, 225.0, 185.0, 250.0]
+	var weights: Array[float] = [72.0, 80.0, 58.0, 85.0, 64.0, 70.0, 77.0]
+	var looks: Array[String] = ["female", "male", "female", "male", "male", "female", "male"]
 	var peers: Array[Dictionary] = []
 	for index: int in range(names.size()):
 		app.jump_to_distance(700.0 + gaps[index])
@@ -46,7 +50,9 @@ static func capture(main: Control, out: String) -> void:
 					"name": names[index],
 					"gap_m": gaps[index],
 					"speed_kmh": 18.0,
-					"power_w": 280.0,
+					"power_w": watts[index],
+					"watts_per_kg": watts[index] / weights[index],
+					"avatar": looks[index],
 					"cadence": 80.0,
 					"effort": 4.0,
 				},
