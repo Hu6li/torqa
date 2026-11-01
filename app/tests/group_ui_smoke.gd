@@ -12,6 +12,7 @@ func _run() -> void:
 	await _group_connections()
 	await _group_activity()
 	await _group_motion()
+	_ride_bar()
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -312,6 +313,22 @@ func _group_motion() -> void:
 	)
 	avatars.free()
 	panel.free()
+
+
+## The group ride opens from the ride's control bar (#431), and only while in a group.
+func _ride_bar() -> void:
+	var bar: RideBar = RideBar.new()
+	root.add_child(bar)
+	var group: Button = bar._group
+	_check(not group.is_visible_in_tree(), "no group button outside a group")
+	bar.show_group(true)
+	var asked: Array[bool] = []
+	bar.group_requested.connect(func() -> void: asked.append(true))
+	group.pressed.emit()
+	_check(group.is_visible_in_tree() and asked == [true], "in a group, the bar opens it")
+	bar.folded = true
+	_check(not group.is_visible_in_tree(), "it folds away with the other controls")
+	bar.free()
 
 
 func _check(condition: bool, message: String) -> void:

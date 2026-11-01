@@ -350,6 +350,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R176 | Extends R174 and R161 (2026-11-01): once a group lobby is open, its host is told when the host's own address discovery suggests that friends at other homes probably cannot connect: servers saw a different mapping each, as carrier-grade NAT often does; only IPv6 is directly reachable; or too little evidence came back. The advice is to let a friend at another home create the ride, with a link to the usage guide's check. A rider offered organizer duties gets the same advice from their own discovery before accepting. The advice is evidence, never a claim that a NAT type was proved; good connections and home-network rides show nothing, and no extra network request is made. |
 
+## Group ride view
+
+| ID | Requirement |
+|---|---|
+| R180 | Refines R164 (2026-11-01, #431): during a group ride, the in-ride group panel (participants, shared settings, voice, **Leave group**) opens from a **Group Rides icon in the ride's control bar**, beside the settings, instead of a text button at the bottom right. The icon shows only while the rider is in a group and folds away with the other controls. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

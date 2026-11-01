@@ -900,6 +900,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   discovery suggests friends at other homes probably cannot connect, with a link to the guide
 - [x] Fuzzing: libFuzzer targets for every decoder of peer or pasted input, with round-trip
   properties, regenerated seeds and a 30-second-per-target CI job
+- [x] The in-ride group panel opens from a Group Rides icon in the control bar (R180, #431)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

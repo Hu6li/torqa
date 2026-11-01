@@ -1,12 +1,14 @@
 class_name RideBar
 extends PanelContainer
 ## The ride view's controls in one slim bar at the bottom left (#189): icon buttons with
-## tooltips for the settings, the overlay, full screen and pausing, and the simulation's
+## tooltips for the settings, the group ride (#431), the overlay, full screen and pausing, and the simulation's
 ## speeds when the ride is simulated. A chevron folds the bar away to its corner and back;
 ## the keys work either way.
 
 ## The settings were asked for (S).
 signal settings_requested
+## The group ride's riders, voice and shared controls were asked for (#431).
+signal group_requested
 ## The overlay was asked for (O).
 signal overlay_requested
 ## Full screen or a window was asked for (F11, #376).
@@ -34,6 +36,7 @@ var folded: bool = false:
 var _fold: Button = Button.new()
 var _tools: HBoxContainer = HBoxContainer.new()
 var _settings: Button = Button.new()
+var _group: Button = Button.new()
 var _overlay: Button = Button.new()
 var _fullscreen: Button = Button.new()
 var _fullscreen_on: bool = false
@@ -61,6 +64,10 @@ func _init() -> void:
 	)
 	_settings.pressed.connect(settings_requested.emit)
 	_tools.add_child(_settings)
+	_icon_button(_group, "group", tr("Group Rides: riders, voice chat, shared workout, leaving"))
+	_group.pressed.connect(group_requested.emit)
+	_group.hide()
+	_tools.add_child(_group)
 	_icon_button(
 		_overlay, "overlay", tr("Only the HUD, on top of other windows, e.g. over a video (O)")
 	)
@@ -146,6 +153,11 @@ func show_paused(paused: bool) -> void:
 	_pause.tooltip_text = (
 		tr("Resume") if paused else tr("Pause the ride: the clock and the trainer wait (P)")
 	)
+
+
+## Shows the group ride's button while riding in a group, or hides it.
+func show_group(shown: bool) -> void:
+	_group.visible = shown
 
 
 ## Shows the settings button, or hides it (once the ride is over).

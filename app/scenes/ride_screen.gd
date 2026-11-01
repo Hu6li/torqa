@@ -61,7 +61,6 @@ var _moment_card: MomentCard = MomentCard.new()
 var _chime: MomentChime = MomentChime.new()
 ## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
 var _bar: RideBar = RideBar.new()
-var _group_button: Button = Button.new()
 var _group_popup: PopupPanel = PopupPanel.new()
 var _group_controls: GroupRidesTab = GroupRidesTab.new()
 var _simulating: bool = false
@@ -197,20 +196,13 @@ func _ready() -> void:
 	_bar.grow_horizontal = Control.GROW_DIRECTION_END
 	_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_bar.settings_requested.connect(_open_settings)
+	_bar.group_requested.connect(func() -> void: _group_popup.popup_centered(Vector2i(640, 480)))
 	_bar.overlay_requested.connect(func() -> void: overlay_requested.emit(true))
 	_bar.fullscreen_requested.connect(fullscreen_requested.emit)
 	_bar.back_requested.connect(closed.emit)
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
-	_group_button.text = tr("Group Rides")
-	_group_button.set_anchors_and_offsets_preset(
-		Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 24
-	)
-	_group_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_group_button.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_group_button.pressed.connect(func() -> void: _group_popup.popup_centered(Vector2i(640, 480)))
-	add_child(_group_button)
 	_group_controls.compact = true
 	var group_scroll: ScrollContainer = ScrollContainer.new()
 	group_scroll.custom_minimum_size = Vector2(320, 240)
@@ -277,9 +269,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	if _orqwa != null:
-		_group_button.visible = (
-			not is_overlay() and _orqwa.group_status().get("phase", "idle") != "idle"
-		)
+		_bar.show_group(_orqwa.group_status().get("phase", "idle") != "idle")
 	if _orqwa != null:
 		_sound.update(_orqwa, visible and not _finished)
 	if _toast_left > 0.0:

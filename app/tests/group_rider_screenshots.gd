@@ -66,7 +66,7 @@ static func capture(main: Control, out: String) -> void:
 	ride._process(1.0 / 60.0)
 	ride.set_process(false)
 	ride._toast.hide()
-	ride._group_button.show()
+	ride._bar.show_group(true)
 	ride._group_riders.show_riders(peers, false)
 	ride._minimap.set_group_riders(peers)
 	ride._profile.set_group_riders(peers)

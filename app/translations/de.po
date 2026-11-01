@@ -2466,6 +2466,9 @@ msgstr "Sommer"
 msgid "Group Rides"
 msgstr "Gruppenfahrten"
 
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
+msgstr "Gruppenfahrten: Fahrende, Sprachchat, gemeinsames Training, Verlassen"
+
 msgid "Ready"
 msgstr "Bereit"
 
