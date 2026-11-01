@@ -2935,3 +2935,35 @@ msgstr "Diese Einladung enthält Verbindungen im Heimnetz. Wähle „Im selben W
 #: app/ui/group_connection_dialog.gd
 msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
 msgstr "Prüfe deine Einladung und Verbindungsauswahl und versuche es erneut. Mehr Informationen findest du unter Technische Details."
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, friends without IPv6 internet might not reach you."
+msgstr "Als organisierende Person wärst du für Freunde ohne IPv6-Internet möglicherweise nicht erreichbar."
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, only friends on your home network could reach you."
+msgstr "Als organisierende Person wärst du nur für Freunde in deinem Heimnetz erreichbar."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably cannot reach you: your connection looks like carrier-grade NAT or a similarly strict router. Let a friend at another home create the ride."
+msgstr "Freunde in anderen Haushalten erreichen dich wahrscheinlich nicht: Deine Verbindung sieht nach Carrier-Grade-NAT (CGNAT) oder einem ähnlich strengen Router aus. Lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably could not reach you as organizer: your connection looks like carrier-grade NAT or a similarly strict router."
+msgstr "Als organisierende Person wärst du für Freunde in anderen Haushalten wahrscheinlich nicht erreichbar: Deine Verbindung sieht nach Carrier-Grade-NAT (CGNAT) oder einem ähnlich strengen Router aus."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends with IPv6 internet can reach you; others may not. If someone cannot join, let a friend at another home create the ride."
+msgstr "Freunde mit IPv6-Internet erreichen dich, andere möglicherweise nicht. Wenn jemand nicht beitreten kann, lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "How to check"
+msgstr "So prüfst du es"
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes can reach you. If nobody can join, let a friend at another home create the ride."
+msgstr "ORQWA konnte nicht feststellen, ob Freunde in anderen Haushalten dich erreichen. Wenn niemand beitreten kann, lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes could reach you as organizer."
+msgstr "ORQWA konnte nicht feststellen, ob Freunde in anderen Haushalten dich als organisierende Person erreichen würden."

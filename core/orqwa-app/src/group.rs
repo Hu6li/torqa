@@ -124,6 +124,9 @@ pub struct Snapshot {
     pub invite: String,
     /// Private joiner reply while awaiting admission.
     pub reply: String,
+    /// Whether friends at other homes can probably reach this rider as host: for the host from
+    /// its invitation, for a joiner from its reply (offered organizer duties).
+    pub reachability: Option<orqwa_net::code::Reachability>,
     /// Local assigned slot.
     pub me: u8,
     /// Original group identity, retained when transport invitations change.
@@ -206,6 +209,7 @@ impl Default for Snapshot {
             host: false,
             invite: String::new(),
             reply: String::new(),
+            reachability: None,
             me: 0,
             root: None,
             epoch: 1,

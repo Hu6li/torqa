@@ -144,6 +144,67 @@ impl NatObservation {
     }
 }
 
+/// Whether friends at other homes can probably reach a listener with these addresses (R176).
+///
+/// Discovery evidence, not proof: nothing here sees the provider's NAT itself, and a direct
+/// connection can still fail on a firewall. Riders only need it to decide who should host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reachability {
+    /// This computer has a public IPv4 address.
+    Direct,
+    /// Two servers saw the same public IPv4 mapping, so hole punching usually works.
+    Mapped,
+    /// A global IPv6 address, while IPv4 evidence is strict or missing: friends without IPv6
+    /// may not get through.
+    Ipv6,
+    /// Servers saw different IPv4 mappings: the NAT changes the port for each destination, as
+    /// carrier-grade NAT often does, so friends at other homes probably cannot connect.
+    Strict,
+    /// Fewer than two servers answered: not enough evidence either way.
+    Unknown,
+    /// Only home-network or local-test addresses.
+    Home,
+}
+
+impl Reachability {
+    /// Classifies advertised candidates with the IPv4 STUN observation that accompanies them.
+    #[must_use]
+    pub fn of(candidates: &[Candidate], nat: NatObservation) -> Self {
+        let has = |kind: CandidateKind, v4: bool| {
+            candidates
+                .iter()
+                .any(|c| c.kind == kind && c.addr.is_ipv4() == v4)
+        };
+        let internet = |c: &Candidate| c.kind != CandidateKind::Local;
+        if has(CandidateKind::Public, true) || has(CandidateKind::Router, true) {
+            Self::Direct
+        } else if nat == NatObservation::SameMapping && has(CandidateKind::Stun, true) {
+            Self::Mapped
+        } else if candidates.iter().any(|c| internet(c) && c.addr.is_ipv6()) {
+            Self::Ipv6
+        } else if nat == NatObservation::DifferentMappings {
+            Self::Strict
+        } else if candidates.iter().any(internet) {
+            Self::Unknown
+        } else {
+            Self::Home
+        }
+    }
+
+    /// A stable key for presentation.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Mapped => "mapped",
+            Self::Ipv6 => "ipv6",
+            Self::Strict => "strict",
+            Self::Unknown => "unknown",
+            Self::Home => "home",
+        }
+    }
+}
+
 /// The host's per-ride invite, authenticated by the channel through which it is exchanged.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Invite {
@@ -218,6 +279,12 @@ impl Invite {
         Ok(out)
     }
 
+    /// How friends at other homes can probably reach this host.
+    #[must_use]
+    pub fn reachability(&self) -> Reachability {
+        Reachability::of(&self.candidates, self.nat)
+    }
+
     /// Decodes only bounded, complete invite payloads, checking every destination.
     ///
     /// # Errors
@@ -255,6 +322,12 @@ impl Reply {
             return Err(CodeError::WrongRide);
         }
         Ok(())
+    }
+
+    /// How friends at other homes could probably reach this joiner if it became the host.
+    #[must_use]
+    pub fn reachability(&self) -> Reachability {
+        Reachability::of(&self.candidates, self.nat)
     }
 
     /// Validates and encodes a reply, including the joiner's certificate pin.
@@ -588,6 +661,43 @@ mod tests {
             ),
             Err(CodeError::Destination)
         );
+    }
+
+    #[test]
+    fn reachability_follows_the_strongest_evidence_without_claiming_more() {
+        let lan = AddressPolicy {
+            lan: true,
+            loopback: false,
+        };
+        let at = |kind, addr: &str| Candidate::new(kind, addr.parse().unwrap(), lan).unwrap();
+        let home = at(CandidateKind::Local, "192.168.1.2:50000");
+        let public = at(CandidateKind::Public, "1.1.1.1:50000");
+        let mapped = at(CandidateKind::Stun, "1.1.1.1:50001");
+        let v6 = at(CandidateKind::Public, "[2606:4700::1]:50000");
+        let of = Reachability::of;
+        assert_eq!(of(&[home], NatObservation::None), Reachability::Home);
+        assert_eq!(
+            of(&[home, public], NatObservation::None),
+            Reachability::Direct
+        );
+        assert_eq!(
+            of(&[home, mapped, v6], NatObservation::SameMapping),
+            Reachability::Mapped
+        );
+        // Mappings that differ per server keep a STUN candidate but cannot reach friends.
+        assert_eq!(
+            of(&[mapped], NatObservation::DifferentMappings),
+            Reachability::Strict
+        );
+        assert_eq!(
+            of(&[mapped, v6], NatObservation::DifferentMappings),
+            Reachability::Ipv6
+        );
+        assert_eq!(
+            of(&[mapped], NatObservation::OneServer),
+            Reachability::Unknown
+        );
+        assert_eq!(of(&[v6], NatObservation::None), Reachability::Ipv6);
     }
 
     #[test]

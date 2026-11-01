@@ -387,6 +387,14 @@ msgstr ""
 msgid "Apr"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, friends without IPv6 internet might not reach you."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, only friends on your home network could reach you."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "Ascending"
 msgstr ""
@@ -1519,6 +1527,18 @@ msgstr ""
 msgid "Fri"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably cannot reach you: your connection looks like carrier-grade NAT or a similarly strict router. Let a friend at another home create the ride."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably could not reach you as organizer: your connection looks like carrier-grade NAT or a similarly strict router."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends with IPv6 internet can reach you; others may not. If someone cannot join, let a friend at another home create the ride."
+msgstr ""
+
 #: app/ui/graphics_settings.gd app/ui/ride_bar.gd
 msgid "Full screen (F11)"
 msgstr ""
@@ -1701,6 +1721,10 @@ msgstr ""
 
 #: app/scenes/course_detail.gd
 msgid "How do you want to ride?"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "How to check"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -2265,6 +2289,14 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "ORQWA could not start."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes can reach you. If nobody can join, let a friend at another home create the ride."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes could reach you as organizer."
 msgstr ""
 
 #: app/scenes/courses_tab.gd

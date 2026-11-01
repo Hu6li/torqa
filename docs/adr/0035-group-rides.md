@@ -222,6 +222,18 @@ and the successor binds that pin to the reserved slot, so no secret passes throu
 predecessor. Protocol/invitation version 7 and ALPN `orqwa-group/7` require matching builds
 and fresh codes.
 
+### Reachability hint — 2026-11-01
+
+`Reachability::of` classifies a code's own candidates with its IPv4 STUN observation: a public
+IPv4 address or the same mapping from two servers reads as reachable; a global IPv6 address
+with strict or missing IPv4 evidence as IPv6 only; different mappings per server, the
+endpoint-dependent behaviour typical of carrier-grade NAT, as strict; anything else as unknown,
+or home-network only. Codes now report the IPv4 path's observation, where address sharing
+happens. The host's invite drives a warning under Invite friends, and a joiner's reply the
+same advice when organizer duties are offered. It is evidence rather than detection: nothing
+here sees the provider's NAT or a firewall, so the wording says "probably" and points to the
+usage guide's manual check. It adds no network request.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

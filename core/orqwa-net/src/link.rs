@@ -160,7 +160,9 @@ impl Local {
                 local.runtime.clone(),
             )
             .map_err(|_| LinkError::Socket)?;
-            if local.nat == crate::code::NatObservation::None {
+            // Codes report what STUN saw of IPv4, where address sharing happens.
+            let ipv4 = prober.local_addr().is_ok_and(|a| a.is_ipv4());
+            if ipv4 || local.nat == crate::code::NatObservation::None {
                 local.nat = path.nat;
             }
             local.candidates.extend(path.candidates);

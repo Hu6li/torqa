@@ -477,6 +477,9 @@ impl Coordinator {
                 } else {
                     String::new()
                 };
+                if snapshot.host {
+                    snapshot.reachability = Some(plan.invite.reachability());
+                }
                 snapshot.reply.clear();
                 snapshot.states.fill(None);
                 snapshot.workout_clock = plan

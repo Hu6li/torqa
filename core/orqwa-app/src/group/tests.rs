@@ -591,6 +591,25 @@ fn app_lobby_downloads_a_workout_starts_locally_and_survives_host_loss() {
 }
 
 #[test]
+fn host_and_joiner_learn_how_friends_could_reach_them_from_their_own_discovery() {
+    use orqwa_net::code::Reachability;
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    // Local-test addresses only: nobody at another home could connect.
+    assert_eq!(host.group().reachability, Some(Reachability::Home));
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    assert_eq!(peer.group().reachability, Some(Reachability::Home));
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
 fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
     let from = Directory::new();
     let to = Directory::new();

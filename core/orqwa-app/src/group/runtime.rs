@@ -152,6 +152,7 @@ async fn run_inner(
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
+        snapshot.reachability = Some(joiner.reply().reachability());
         updates.send_replace(snapshot.clone());
         let lobby = JoinerLobby::join(joiner, request.rider.clone())
             .await
@@ -163,6 +164,7 @@ async fn run_inner(
             .await
             .map_err(|e| e.to_string())?;
         snapshot.invite = host.invite().to_code(policy).map_err(|e| e.to_string())?;
+        snapshot.reachability = Some(host.invite().reachability());
         snapshot.host = true;
         Session::Host(HostLobby::open(host, request.rider.clone()).map_err(|e| e.to_string())?)
     };

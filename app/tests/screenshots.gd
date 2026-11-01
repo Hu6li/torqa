@@ -91,6 +91,7 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	await _group_late_screens(start, group, orqwa, out)
 	await _group_workout_screens(start, group, out)
 	await _group_handover_screens(start, group, out)
+	await _group_reach_screens(start, group, out)
 	await _group_error_screens(start, group, out)
 	print("saved group setup and joining views")
 
@@ -187,6 +188,49 @@ func _group_handover_screens(start: StartPage, group: GroupRidesTab, out: String
 		await create_timer(0.4).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-handover-" + locale + ".png"))
 		print("saved group-handover-" + locale)
+
+
+func _group_reach_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:
+	var scroll: ScrollContainer = start.get("_group_page")
+	var organizer: Dictionary = {
+		"id": 0, "name": "Rider", "ready": false, "me": true, "muted": false, "organizer": true
+	}
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._show_status(
+			{
+				"host": true,
+				"phase": "waiting",
+				"invite": "private",
+				"reachability": "strict",
+				"roster": [organizer]
+			}
+		)
+		scroll.scroll_vertical = 0
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-reach-" + locale + ".png"))
+		print("saved group-reach-" + locale)
+	TranslationServer.set_locale("en")
+	group._show_status(
+		{
+			"host": false,
+			"phase": "riding",
+			"handover": "offered",
+			"handover_offer": true,
+			"can_cancel_handover": true,
+			"reachability": "strict",
+			"roster":
+			[
+				organizer.merged({"me": false, "ready": true}, true),
+				{"id": 1, "name": "Alex", "ready": true, "me": true, "muted": false}
+			]
+		}
+	)
+	await create_timer(0.2).timeout
+	scroll.scroll_vertical = 260
+	await create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-reach-offer-en.png"))
+	print("saved group-reach-offer-en")
 
 
 func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -> void:

@@ -5,6 +5,8 @@ extends VBoxContainer
 
 signal devices_requested
 
+const HOSTING_GUIDE: String = "https://github.com/ORQWA/ORQWA/wiki/Group-rides#who-should-create-the-ride"
+
 var compact: bool = false
 var _orqwa: OrqwaApp
 var _setup: BoxContainer = BoxContainer.new()
@@ -20,6 +22,8 @@ var _connecting: VBoxContainer = VBoxContainer.new()
 var _request: Button
 var _invite: VBoxContainer = VBoxContainer.new()
 var _notice: Label = Label.new()
+var _reach: VBoxContainer = VBoxContainer.new()
+var _reach_text: Label = Label.new()
 var _roster: VBoxContainer = VBoxContainer.new()
 var _next: Label = Label.new()
 var _ready_button: Button = Button.new()
@@ -36,6 +40,7 @@ var _workout_pause: Button
 var _workout_next: Button
 var _organizer_panel: PanelContainer
 var _organizer_status: Label = Label.new()
+var _organizer_reach: Label = Label.new()
 var _organizer_change: Button
 var _organizer_accept: Button
 var _organizer_decline: Button
@@ -178,6 +183,16 @@ func _build_invitation() -> void:
 	_muted(
 		_invite, tr("1. Send your invitation privately.\n2. Add each friend's join request here.")
 	)
+	_reach_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_reach_text.add_theme_color_override("font_color", UiTheme.WARNING)
+	_reach.add_child(_reach_text)
+	var check: Button = _button(
+		_reach, tr("How to check"), func() -> void: OS.shell_open(HOSTING_GUIDE)
+	)
+	check.flat = true
+	check.add_theme_color_override("font_color", UiTheme.ACCENT)
+	check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_invite.add_child(_reach)
 	var actions: HFlowContainer = HFlowContainer.new()
 	_button(actions, tr("Copy invitation"), _copy_invite)
 	_button(actions, tr("Add a friend…"), func() -> void: _show_exchange("admit"))
@@ -262,6 +277,9 @@ func _build_organizer() -> void:
 	_label(card, tr("Ride organizer"), 20)
 	_organizer_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	card.add_child(_organizer_status)
+	_organizer_reach.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_organizer_reach.add_theme_color_override("font_color", UiTheme.WARNING)
+	card.add_child(_organizer_reach)
 	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer)
 	_organizer_accept = _button(
 		card, tr("Accept organizer duties"), func() -> void: _orqwa.group_handover_answer(true)
@@ -321,6 +339,9 @@ func _show_organizer() -> void:
 		_organizer_status.text = tr(
 			"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
 		)
+	var reach: String = _status.get("reachability", "")
+	_organizer_reach.text = _reach_warning(reach, false) if offer else ""
+	_organizer_reach.visible = not _organizer_reach.text.is_empty()
 	if handover in ["preparing", "committing"]:
 		_organizer_status.text = (
 			tr(
@@ -363,6 +384,36 @@ func _card(parent: Node) -> VBoxContainer:
 	panel.add_child(content)
 	parent.add_child(panel)
 	return content
+
+
+## Only the cases where friends at other homes may not get through; discovery is evidence,
+## not proof. A host limited to its home network chose that, so only offered duties mention it.
+func _reach_warning(reach: String, hosting: bool) -> String:
+	var hosts: Dictionary[String, String] = {
+		"strict":
+		tr(
+			"Friends at other homes probably cannot reach you: your connection looks like carrier-grade NAT or a similarly strict router. Let a friend at another home create the ride."
+		),
+		"ipv6":
+		tr(
+			"Friends with IPv6 internet can reach you; others may not. If someone cannot join, let a friend at another home create the ride."
+		),
+		"unknown":
+		tr(
+			"ORQWA could not tell whether friends at other homes can reach you. If nobody can join, let a friend at another home create the ride."
+		),
+	}
+	var organizers: Dictionary[String, String] = {
+		"strict":
+		tr(
+			"Friends at other homes probably could not reach you as organizer: your connection looks like carrier-grade NAT or a similarly strict router."
+		),
+		"ipv6": tr("As organizer, friends without IPv6 internet might not reach you."),
+		"unknown":
+		tr("ORQWA could not tell whether friends at other homes could reach you as organizer."),
+		"home": tr("As organizer, only friends on your home network could reach you."),
+	}
+	return hosts.get(reach, "") if hosting else organizers.get(reach, "")
 
 
 func _label(parent: Node, text: String, font_size: int = 15) -> Label:
@@ -460,6 +511,9 @@ func _show_status(status: Dictionary) -> void:
 	_request.disabled = reply.is_empty()
 	_body.visible = phase != "idle" and not _connecting.visible
 	_invite.visible = host and phase not in ["ended", "failed"]
+	var reach: String = _status.get("reachability", "")
+	_reach_text.text = _reach_warning(reach, true)
+	_reach.visible = not _reach_text.text.is_empty()
 	_invitation_panel.visible = _invite.visible
 	_notice.visible = not _notice.text.is_empty()
 	var invite: String = _status.get("invite", "")

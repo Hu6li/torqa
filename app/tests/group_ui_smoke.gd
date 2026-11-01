@@ -164,6 +164,18 @@ func _group_activity() -> void:
 	group.compact = true
 	group._show_status({"host": true, "phase": "riding", "invite": "private"})
 	_check(group._invitation_panel.visible, "organizers invite late friends during the ride")
+	group._show_status(
+		{"host": true, "phase": "waiting", "invite": "private", "reachability": "strict"}
+	)
+	_check(
+		group._reach.visible and not group._reach_text.text.is_empty(),
+		"a host behind strict NAT learns that friends at other homes probably cannot join"
+	)
+	for quiet: String in ["direct", "mapped", "home", ""]:
+		group._show_status(
+			{"host": true, "phase": "waiting", "invite": "private", "reachability": quiet}
+		)
+		_check(not group._reach.visible, "no reachability warning for " + quiet)
 	_check(not group._enter.visible, "existing riders cannot restart through entry")
 	group._show_status(
 		{
@@ -176,6 +188,20 @@ func _group_activity() -> void:
 	_check(
 		group._organizer_accept.visible and group._organizer_decline.visible,
 		"successor gives explicit consent"
+	)
+	_check(not group._organizer_reach.visible, "no warning without discovery evidence")
+	group._show_status(
+		{
+			"phase": "riding",
+			"handover": "offered",
+			"handover_offer": true,
+			"can_cancel_handover": true,
+			"reachability": "strict"
+		}
+	)
+	_check(
+		group._organizer_reach.visible,
+		"an offered organizer behind strict NAT is warned before accepting"
 	)
 	group._show_status({"phase": "riding", "handover": "preparing", "can_cancel_handover": true})
 	_check(

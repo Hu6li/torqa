@@ -344,6 +344,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R175 | Extends R160 (2026-11-01): a join reply binds admission to a certificate the joiner's computer creates for that ride, and TLS client authentication proves its private key, which never leaves that computer. A copied, forwarded or leaked reply admits nobody else, and a used reply cannot admit its own computer again. Codes still reveal names and addresses, so riders exchange them privately, and the invite must reach joiners unaltered because it pins the host. Planned handover binds each rider's replacement link the same way, so no admission secret passes between riders. Protocol and invitation version 7 require matching builds and fresh codes. |
 
+## Who should host a group ride
+
+| ID | Requirement |
+|---|---|
+| R176 | Extends R174 and R161 (2026-11-01): once a group lobby is open, its host is told when the host's own address discovery suggests that friends at other homes probably cannot connect: servers saw a different mapping each, as carrier-grade NAT often does; only IPv6 is directly reachable; or too little evidence came back. The advice is to let a friend at another home create the ride, with a link to the usage guide's check. A rider offered organizer duties gets the same advice from their own discovery before accepting. The advice is evidence, never a claim that a NAT type was proved; good connections and home-network rides show nothing, and no extra network request is made. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero
