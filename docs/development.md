@@ -594,6 +594,14 @@ headphones on every rider, disable **Prevent speaker echo** and verify simultane
 Issue #258 still requires listening during a real video ride; group voice changes do not
 validate WSOLA's perceptual quality or settle its fade thresholds.
 
+For R178, check the live voice indicator with speech and with a quiet microphone, then verify
+the retained result. Automated fixtures cover speech-like harmonics, silence, DC and mains
+hum; this is an activity estimate and may react to other sounds. Speaker-check tests use an
+output-only backend that rejects any microphone/capture call, assert bounded gain and automatic
+cleanup, and exercise microphone→speaker→voice restoration through the app. On hardware,
+deny microphone permission and still test the selected speakers, change voice volume, stop
+early and close the dialog. Review both settings scroll positions at the minimum window size.
+
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and
 [ADR 0029](adr/0029-ride-audio.md). Run the preview and asset preparation in the devcontainer.

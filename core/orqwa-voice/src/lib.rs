@@ -1,9 +1,11 @@
 //! Local voice capture and Opus speech; audio is never recorded or sent to a voice service.
 
+pub mod audio_test;
 pub mod codec;
 pub mod device;
 mod echo;
 pub mod microphone_test;
+mod speech_activity;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

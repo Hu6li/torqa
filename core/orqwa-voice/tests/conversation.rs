@@ -492,6 +492,8 @@ async fn microphone_test_is_temporary_local_and_never_plays_captured_samples() {
     .await
     .unwrap();
     until(|| test.level() > 0.1).await;
+    until(|| test.voice_detected()).await;
+    assert!(test.voice_heard());
     assert!(test.level().is_finite() && test.level() <= 1.0);
     assert_eq!(probe.played.load(Ordering::Relaxed), 0);
     test.close().await;

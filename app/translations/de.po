@@ -2984,3 +2984,24 @@ msgstr "Lautsprecherecho verhindern"
 
 msgid "While a friend is audible, your microphone stays quiet. Turn off for headphones."
 msgstr "Während du jemanden hörst, bleibt dein Mikrofon stumm. Für Kopfhörer ausschalten."
+
+msgid "Start a microphone test, then speak."
+msgstr "Starte einen Mikrofontest und sprich dann."
+
+msgid "Test speakers"
+msgstr "Lautsprecher testen"
+
+msgid "Stop speaker test"
+msgstr "Lautsprechertest beenden"
+
+msgid "Plays two short tones at voice volume. Your microphone stays off."
+msgstr "Spielt zwei kurze Töne in Sprachlautstärke. Dein Mikrofon bleibt aus."
+
+msgid "Voice detected"
+msgstr "Stimme erkannt"
+
+msgid "Listening for voice…"
+msgstr "Warte auf deine Stimme…"
+
+msgid "No voice detected"
+msgstr "Keine Stimme erkannt"

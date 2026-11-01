@@ -133,6 +133,21 @@ Disable **Prevent speaker echo** for full-duplex headphones. This is no adaptive
 canceller or noise suppression; competing speakers may need to take turns. No extra dependency,
 network service, protocol field or recorded speech is introduced.
 
+## Amendment — visible speech activity and speaker checks (2026-11-01, R178)
+
+The microphone worker estimates speech activity from finite, band-limited frame energy and
+zero crossings, with a short onset threshold and release hold between syllables. It rejects
+silence, DC, low mains hum and isolated transients; other speech-like sound can trigger it.
+This is local activity estimation, not speech recognition or speaker identification. The UI
+shows listening/detected states and keeps whether any voice was detected after completion.
+Changing the selected input clears its previous result. Samples are never stored or sent.
+
+A shared bounded audio-check owner also supports output-only speaker testing: two faded
+tones at voice volume, for at most two seconds. It never calls capture or microphone setup.
+The tests are mutually exclusive, close on the existing lifecycle boundaries and restore
+prior listening microphone-off. A scrollable settings body keeps every control reachable at
+the minimum window size. No dependency, audio asset, network service or protocol change.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

@@ -2197,6 +2197,11 @@ impl OrqwaApp {
     fn group_microphone_test(&mut self, enabled: bool) -> bool {
         self.command(|app| app.group_microphone_test(enabled))
     }
+    /// Plays a local tone through the selected output without opening capture.
+    #[func]
+    fn group_speaker_test(&mut self, enabled: bool) -> bool {
+        self.command(|app| app.group_speaker_test(enabled))
+    }
     /// Holds outgoing speech while friends are audible, preventing speaker feedback.
     #[func]
     fn group_voice_echo_prevention(&mut self, enabled: bool) -> bool {

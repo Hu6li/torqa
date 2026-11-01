@@ -10,7 +10,7 @@ use orqwa_net::content::{self, Source};
 use orqwa_net::link::{ConnectOptions, Host, Joiner};
 use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity};
 use orqwa_net::state::{RiderId, RiderState};
-use orqwa_voice::microphone_test::MicrophoneTest;
+use orqwa_voice::audio_test::{AudioTest, TestKind};
 use orqwa_voice::{VoiceChat, device::DeviceOptions};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
@@ -40,7 +40,7 @@ pub(super) enum Command {
     Devices,
     ChooseDevices(u64, String, String),
     Mute(RiderId, bool),
-    MicrophoneTest(u64, bool),
+    AudioTest(u64, Option<TestKind>),
     EchoPrevention(bool),
 }
 #[derive(Clone, Copy)]
@@ -125,11 +125,24 @@ impl AudioBackend {
             VoiceChat::open(port, options).await
         }
     }
-    async fn test(self, options: DeviceOptions) -> Result<MicrophoneTest, orqwa_voice::VoiceError> {
+    async fn test(
+        self,
+        kind: TestKind,
+        volume: f32,
+        options: DeviceOptions,
+    ) -> Result<AudioTest, orqwa_voice::VoiceError> {
         if let Some(factory) = self.factory {
-            MicrophoneTest::with_audio(move |stop| factory(stop)).await
+            match kind {
+                TestKind::Microphone => AudioTest::with_audio(move |stop| factory(stop)).await,
+                TestKind::Speakers => {
+                    AudioTest::with_speaker_audio(volume, move |stop| factory(stop)).await
+                }
+            }
         } else {
-            MicrophoneTest::open(options).await
+            match kind {
+                TestKind::Microphone => AudioTest::open(options).await,
+                TestKind::Speakers => AudioTest::speakers(options, volume).await,
+            }
         }
     }
 }
@@ -238,7 +251,7 @@ async fn run_inner(
     let mut device_options = DeviceOptions::default();
     let mut audio = JoinSet::new();
     let mut scans = JoinSet::new();
-    let mut microphone_test: Option<MicrophoneTest> = None;
+    let mut microphone_test: Option<AudioTest> = None;
     let mut mic_starts = JoinSet::new();
     let mut resume_voice = false;
     let mut internal = None;
@@ -315,15 +328,16 @@ async fn run_inner(
                     }
                     Command::ChooseDevices(generation,input,output) => {
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
-                        request.voice_controls.microphone_test.store(false,Ordering::Release);
+                        request.voice_controls.audio_test.store(0,Ordering::Release);
                         let restart = snapshot.voice || snapshot.voice_pending || resume_voice;
                         resume_voice=false;
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
-                        let previous_test=microphone_test.take();snapshot.microphone_test=false;snapshot.microphone_level=0.0;
+                        let previous_test=microphone_test.take();snapshot.microphone_test=false;snapshot.speaker_test=false;snapshot.microphone_voice_detected=false;snapshot.microphone_level=0.0;
                         audio.abort_all(); while audio.join_next().await.is_some() {}
                         let _gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         let previous=voice.take();snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
+                        if snapshot.input_device!=input {snapshot.microphone_checked=false;snapshot.microphone_voice_heard=false;}
                         snapshot.input_device.clone_from(&input);snapshot.output_device.clone_from(&output);
                         device_options=DeviceOptions {input:(!input.is_empty()).then_some(input),output:(!output.is_empty()).then_some(output)};
                         if restart && let Some(port)=&port {
@@ -337,23 +351,30 @@ async fn run_inner(
                         } Ok(())
                     }
                     Command::Mute(id,muted) => {if let Some(chat)=&voice {chat.mute_peer(id,muted);snapshot.muted[usize::from(id.value())]=muted;} Ok(())}
-                    Command::Volume(volume)=>{snapshot.voice_volume=volume;if let Some(chat)=&voice {let _=chat.volume(volume);}Ok(())}
+                    Command::Volume(volume)=>{
+                        snapshot.voice_volume=volume;
+                        if let Some(chat)=&voice {let _=chat.volume(volume);}
+                        if let Some(test)=&microphone_test {let _=test.volume(volume);}
+                        Ok(())
+                    }
                     Command::EchoPrevention(enabled)=>{snapshot.echo_prevention=enabled;if let Some(chat)=&voice {chat.echo_prevention(enabled);}Ok(())}
-                    Command::MicrophoneTest(generation,enabled)=>{
+                    Command::AudioTest(generation,kind)=>{
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
-                        request.voice_controls.microphone_test.store(enabled,Ordering::Release);
+                        request.voice_controls.audio_test.store(kind.map_or(0,|kind|kind as u8),Ordering::Release);
                         audio.abort_all();while audio.join_next().await.is_some() {}
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
                         let previous=voice.take();let previous_test=microphone_test.take();
                         resume_voice=resume_voice || snapshot.voice || snapshot.voice_pending;
                         snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
-                        snapshot.microphone_test=enabled;snapshot.microphone_level=0.0;
-                        if enabled {
-                            let backend=request.audio.clone();let options=device_options.clone();
+                        if snapshot.microphone_test && let Some(test)=&previous_test {snapshot.microphone_voice_heard |= test.voice_heard();}
+                        snapshot.microphone_test=kind==Some(TestKind::Microphone);snapshot.speaker_test=kind==Some(TestKind::Speakers);snapshot.microphone_level=0.0;snapshot.microphone_voice_detected=false;
+                        if snapshot.microphone_test {snapshot.microphone_checked=true;snapshot.microphone_voice_heard=false;}
+                        if let Some(kind)=kind {
+                            let volume=snapshot.voice_volume;let backend=request.audio.clone();let options=device_options.clone();
                             mic_starts.spawn(async move {
                                 if let Some(chat)=previous {chat.close().await;}
                                 if let Some(test)=previous_test {test.close().await;}
-                                backend.test(options).await.map(|test|(generation,test)).map_err(|error|error.to_string())
+                                backend.test(kind,volume,options).await.map(|test|(generation,test)).map_err(|error|error.to_string())
                             });
                         } else if resume_voice && let Some(port)=&port {
                             snapshot.voice_pending=true;
@@ -367,7 +388,7 @@ async fn run_inner(
                         } Ok(())
                     }
                     Command::Voice(generation,on,mic,deaf,volume) => {
-                        if snapshot.microphone_test {continue;}
+                        if snapshot.microphone_test || snapshot.speaker_test {continue;}
                         // Serialize generation checking and transmission changes with the UI's
                         // immediate mute gate; an older queued unmute cannot reopen it later.
                         let _gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -445,9 +466,9 @@ async fn run_inner(
                         // listening consent, but require a fresh microphone action on the new link.
                         let restart = snapshot.voice || snapshot.voice_pending || resume_voice;
                         resume_voice=false;
-                        request.voice_controls.microphone_test.store(false,Ordering::Release);
+                        request.voice_controls.audio_test.store(0,Ordering::Release);
                         mic_starts.abort_all();mic_starts=JoinSet::new();
-                        microphone_test=None;snapshot.microphone_test=false;snapshot.microphone_level=0.0;
+                        microphone_test=None;snapshot.microphone_test=false;snapshot.speaker_test=false;snapshot.microphone_voice_detected=false;snapshot.microphone_level=0.0;
                         let generation = request.voice_controls.generation.fetch_add(1,Ordering::AcqRel)+1;
                         let mut gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if let Some(old)=&port {old.enable(false);}
@@ -506,16 +527,17 @@ async fn run_inner(
             },
             result = mic_starts.join_next(), if !mic_starts.is_empty() => match result {
                 Some(Ok(Ok((generation,test)))) if generation==request.voice_controls.generation.load(Ordering::Acquire)=>microphone_test=Some(test),
-                Some(Ok(Err(error)))=>{snapshot.report(Kind::GroupVoice,error);internal=Some(Command::MicrophoneTest(request.voice_controls.generation.load(Ordering::Acquire),false));},
-                Some(Err(error)) if !error.is_cancelled()=>{snapshot.report(Kind::GroupVoice,error);internal=Some(Command::MicrophoneTest(request.voice_controls.generation.load(Ordering::Acquire),false));},
+                Some(Ok(Err(error)))=>{snapshot.report(Kind::GroupVoice,error);internal=Some(Command::AudioTest(request.voice_controls.generation.load(Ordering::Acquire),None));},
+                Some(Err(error)) if !error.is_cancelled()=>{snapshot.report(Kind::GroupVoice,error);internal=Some(Command::AudioTest(request.voice_controls.generation.load(Ordering::Acquire),None));},
                 _=>{},
             },
             _ = ticker.tick() => {
                 if let Some(test)=&mut microphone_test {
-                    snapshot.microphone_level=test.level();
+                    snapshot.microphone_level=test.level();snapshot.microphone_voice_detected=test.voice_detected();
+                    if snapshot.microphone_test {snapshot.microphone_voice_heard |= test.voice_heard();}
                     if !test.running() {
                         if let Some(error)=test.take_error(){snapshot.report(Kind::GroupVoice,error);}
-                        internal=Some(Command::MicrophoneTest(request.voice_controls.generation.load(Ordering::Acquire),false));
+                        internal=Some(Command::AudioTest(request.voice_controls.generation.load(Ordering::Acquire),None));
                     }
                 }
                 if handover.expired() {
@@ -533,6 +555,8 @@ async fn run_inner(
 fn end(snapshot: &mut Snapshot) {
     snapshot.microphone_test = false;
     snapshot.microphone_level = 0.0;
+    snapshot.speaker_test = false;
+    snapshot.microphone_voice_detected = false;
     snapshot.voice = false;
     snapshot.voice_pending = false;
     snapshot.microphone = false;

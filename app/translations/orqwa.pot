@@ -1927,6 +1927,10 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
+#: app/ui/group_voice_controls.gd
+msgid "Listening for voice…"
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "Loading %s …"
 msgstr ""
@@ -2201,6 +2205,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "No video course is loaded."
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "No voice detected"
 msgstr ""
 
 #: app/ui/ghost_picker.gd
@@ -2493,6 +2501,10 @@ msgstr ""
 
 #: app/ui/ride_options.gd
 msgid "Play the video's sound"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Plays two short tones at voice volume. Your microphone stays off."
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3027,6 +3039,10 @@ msgstr ""
 msgid "Start a group ride"
 msgstr ""
 
+#: app/ui/group_voice_controls.gd
+msgid "Start a microphone test, then speak."
+msgstr ""
+
 #: app/scenes/remote_dialog.gd
 msgid "Start a ride in ORQWA"
 msgstr ""
@@ -3073,6 +3089,10 @@ msgstr ""
 
 #: app/ui/group_voice_controls.gd
 msgid "Stop microphone test"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Stop speaker test"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs core/orqwa-upload/src/strava.rs
@@ -3129,6 +3149,10 @@ msgstr ""
 
 #: app/ui/group_voice_controls.gd
 msgid "Test microphone"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Test speakers"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3513,6 +3537,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Voice chat"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Voice detected"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

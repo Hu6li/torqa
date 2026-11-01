@@ -882,6 +882,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   - [x] Explicit ten-second local microphone meter, automatic capture cleanup and muted voice
     restoration; optional full-duplex headphone mode beside default speaker echo prevention
     (R177, #414, #429).
+  - [x] Voice activity indicator and retained microphone-check result, plus an output-only
+    two-tone speaker check using the selected device and voice volume (R178).
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

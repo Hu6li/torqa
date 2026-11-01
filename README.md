@@ -114,8 +114,8 @@ intensity stays personal, and each rider can pause locally for safety. Hand orga
 prepared friend who accepts, without restarting anyone's ride. See friends on the road, map
 and profile, with distance gaps beside the ride. The organizer chooses **Drafting** and
 **Keep together** before starting; assisted rides count for training and measured-power records,
-but set no course or climb speed records. Audio settings include a temporary local microphone
-meter and speaker echo prevention, with simultaneous speech available for headphones.
+but set no course or climb speed records. Audio settings include local microphone and speaker
+checks, visible voice detection and speaker echo prevention, with simultaneous speech for headphones.
 Optional voice starts microphone-muted
 and records no audio. The [CLI workflow](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool#ride-with-others)
 continues to support rides using a shared local GPX.

@@ -201,6 +201,14 @@ pub struct Snapshot {
     pub microphone_test: bool,
     /// Finite local test level, from zero to one; no samples enter status or networking.
     pub microphone_level: f32,
+    /// An explicit output-only speaker test is starting or playing.
+    pub speaker_test: bool,
+    /// Speech-like microphone activity detected now, briefly held between syllables.
+    pub microphone_voice_detected: bool,
+    /// At least one speech-like segment was heard in the most recent microphone check.
+    pub microphone_voice_heard: bool,
+    /// A microphone check has been requested for the current input selection.
+    pub microphone_checked: bool,
     /// Per-speaker playback mute on this computer.
     pub muted: [bool; MAX_RIDERS],
     /// Bytes stored for the current file, coalesced by the download worker.
@@ -253,6 +261,10 @@ impl Default for Snapshot {
             echo_prevention: true,
             microphone_test: false,
             microphone_level: 0.0,
+            speaker_test: false,
+            microphone_voice_detected: false,
+            microphone_voice_heard: false,
+            microphone_checked: false,
             muted: [false; MAX_RIDERS],
             received: 0,
             total: 0,
@@ -360,7 +372,7 @@ pub(crate) struct Running {
 #[derive(Default)]
 struct VoiceControls {
     generation: AtomicU64,
-    microphone_test: std::sync::atomic::AtomicBool,
+    audio_test: std::sync::atomic::AtomicU8,
     port: Mutex<Option<orqwa_net::voice::VoicePort>>,
 }
 impl Drop for Running {
@@ -710,8 +722,8 @@ impl App {
             .as_ref()
             .ok_or_else(|| error("Open a lobby first."))?
             .voice_controls;
-        if controls.microphone_test.load(Ordering::Acquire) {
-            return Err(error("Stop the microphone test before joining voice chat."));
+        if controls.audio_test.load(Ordering::Acquire) != 0 {
+            return Err(error("Stop the audio test before joining voice chat."));
         }
         let generation = controls
             .generation
@@ -758,12 +770,28 @@ impl App {
     /// # Errors
     /// Returns [`AppError`] if no group is open or its command queue is unavailable.
     pub fn group_microphone_test(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_audio_test(enabled.then_some(orqwa_voice::audio_test::TestKind::Microphone))
+    }
+    /// Plays a brief tone through the selected speakers without opening the microphone.
+    /// Previously opted-in listening resumes microphone-off when the test ends.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] for an unavailable group command queue.
+    pub fn group_speaker_test(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_audio_test(enabled.then_some(orqwa_voice::audio_test::TestKind::Speakers))
+    }
+    fn group_audio_test(
+        &self,
+        kind: Option<orqwa_voice::audio_test::TestKind>,
+    ) -> Result<(), AppError> {
         let controls = &self
             .group
             .as_ref()
             .ok_or_else(|| error("Open a lobby first."))?
             .voice_controls;
-        if controls.microphone_test.swap(enabled, Ordering::AcqRel) == enabled {
+        let requested = kind.map_or(0, |kind| kind as u8);
+        let previous = controls.audio_test.swap(requested, Ordering::AcqRel);
+        if previous == requested {
             return Ok(());
         }
         let generation = controls
@@ -771,11 +799,11 @@ impl App {
             .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
             .map_err(|_| error("Voice activation exhausted."))?
             + 1;
-        if let Err(error) = self.group_command(Command::MicrophoneTest(generation, enabled)) {
-            controls.microphone_test.store(!enabled, Ordering::Release);
+        if let Err(error) = self.group_command(Command::AudioTest(generation, kind)) {
+            controls.audio_test.store(previous, Ordering::Release);
             return Err(error);
         }
-        if enabled
+        if kind.is_some()
             && let Some(port) = controls
                 .port
                 .lock()

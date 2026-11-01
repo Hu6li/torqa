@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 struct Capture {
     live: Arc<AtomicUsize>,
     activation: Option<u32>,
+    phase: f32,
+    played: Arc<AtomicUsize>,
 }
 impl VoiceAudio for Capture {
     fn microphone(&mut self, activation: Option<u32>) -> Result<(), VoiceDeviceError> {
@@ -19,13 +21,24 @@ impl VoiceAudio for Capture {
         Ok(())
     }
     fn capture(&mut self) -> Option<CapturedVoice> {
+        let activation = self.activation?;
+        let samples = std::array::from_fn(|_| {
+            let sample = self.phase.sin() * 0.1 + (self.phase * 3.0).sin() * 0.04;
+            self.phase =
+                (self.phase + std::f32::consts::TAU * 180.0 / 48_000.0) % std::f32::consts::TAU;
+            sample
+        });
         Some(CapturedVoice {
-            activation: self.activation?,
+            activation,
             at: std::time::Instant::now(),
-            samples: [0.2; 960],
+            samples,
         })
     }
-    fn play(&mut self, _samples: PcmFrame) {}
+    fn play(&mut self, samples: PcmFrame) {
+        if samples.iter().any(|sample| sample.abs() > 0.001) {
+            self.played.fetch_add(1, Ordering::Relaxed);
+        }
+    }
     fn deafen(&mut self, _deafened: bool) {}
     fn healthy(&self) -> bool {
         true
@@ -53,6 +66,8 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
     ));
     let capture = Arc::new(AtomicUsize::new(0));
     let live = capture.clone();
+    let played = Arc::new(AtomicUsize::new(0));
+    let output = played.clone();
     let mut options = ConnectOptions::default();
     options.gather.policy.loopback = true;
     options.gather.stun_servers.clear();
@@ -62,6 +77,8 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
                 Ok(Box::new(Capture {
                     live: live.clone(),
                     activation: None,
+                    phase: 0.0,
+                    played: output.clone(),
                 }))
             })),
         },
@@ -104,11 +121,11 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         .unwrap();
     wait(&mut updates, |status| status.microphone).await;
     commands
-        .send(Command::MicrophoneTest(0, true))
+        .send(Command::AudioTest(0, Some(TestKind::Microphone)))
         .await
         .unwrap();
     wait(&mut updates, |status| {
-        status.microphone_test && status.microphone_level > 0.1
+        status.microphone_test && status.microphone_level > 0.1 && status.microphone_voice_detected
     })
     .await;
     assert!(!updates.borrow().voice && !updates.borrow().microphone);
@@ -117,22 +134,37 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         1,
         "only the local test owns capture"
     );
-    commands
-        .send(Command::MicrophoneTest(0, false))
-        .await
-        .unwrap();
+    commands.send(Command::AudioTest(0, None)).await.unwrap();
     wait(&mut updates, |status| {
         status.voice && !status.microphone_test
     })
     .await;
     let status = updates.borrow().clone();
     assert!(!status.microphone && !status.echo_prevention);
+    assert!(status.microphone_voice_heard && status.microphone_checked);
     assert!((status.voice_volume - 0.4).abs() < f32::EPSILON);
     assert_eq!(status.input_device, "test-input");
     assert_eq!(status.output_device, "test-output");
     assert_eq!(capture.load(Ordering::Acquire), 0);
     commands
-        .send(Command::MicrophoneTest(0, true))
+        .send(Command::AudioTest(0, Some(TestKind::Speakers)))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        status.speaker_test && played.load(Ordering::Relaxed) > 2
+    })
+    .await;
+    assert_eq!(
+        capture.load(Ordering::Acquire),
+        0,
+        "speaker testing never opens capture"
+    );
+    assert!(!updates.borrow().microphone_voice_detected);
+    commands.send(Command::AudioTest(0, None)).await.unwrap();
+    wait(&mut updates, |status| status.voice && !status.speaker_test).await;
+    assert!(!updates.borrow().microphone);
+    commands
+        .send(Command::AudioTest(0, Some(TestKind::Microphone)))
         .await
         .unwrap();
     wait(&mut updates, |status| {

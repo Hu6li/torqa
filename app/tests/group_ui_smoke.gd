@@ -268,6 +268,29 @@ func _group_activity() -> void:
 	_check(voice._listen.disabled and voice._mic.disabled, "local testing cannot transmit voice")
 	_check(is_equal_approx(voice._level.value, 0.65), "local microphone meter follows Rust status")
 	_check(voice._echo.button_pressed, "speaker echo prevention starts enabled")
+	voice.update_status(
+		{
+			"microphone_test": true,
+			"microphone_voice_detected": true,
+			"microphone_voice_heard": true,
+			"microphone_checked": true
+		}
+	)
+	_check(voice._speech.text == tr("Voice detected"), "speech has a visible detection indicator")
+	_check(voice._speaker_test.disabled, "microphone and speaker tests are exclusive")
+	voice.update_status({"microphone_checked": true, "microphone_voice_heard": true})
+	_check(
+		voice._speech.text == tr("Voice detected"),
+		"the completed microphone result remains visible"
+	)
+	voice.update_status({"microphone_checked": true})
+	_check(voice._speech.text == tr("No voice detected"), "a quiet test has an explicit result")
+	voice.update_status({"speaker_test": true})
+	_check(
+		voice._test.disabled and voice._listen.disabled,
+		"speaker testing keeps capture and voice disabled"
+	)
+	_check(voice._speaker_test.text == tr("Stop speaker test"), "the speaker check can be stopped")
 	voice.update_status({"echo_prevention": false})
 	_check(
 		not voice._echo.button_pressed and not voice._listen.disabled,

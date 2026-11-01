@@ -14,6 +14,10 @@ var _device_key: String = ""
 var _test: Button = Button.new()
 var _level: ProgressBar = ProgressBar.new()
 var _echo: CheckBox = CheckBox.new()
+var _speech: Label = Label.new()
+var _speaker_test: Button = Button.new()
+var _audio_scroll: ScrollContainer = ScrollContainer.new()
+var _speaker_volume: HSlider = HSlider.new()
 
 
 func _ready() -> void:
@@ -52,7 +56,7 @@ func _ready() -> void:
 	settings.pressed.connect(
 		func() -> void:
 			_orqwa.group_voice_devices()
-			_settings.popup_centered(Vector2i(440, 0))
+			_popup_settings()
 	)
 	add_child(settings)
 	_settings.title = tr("Audio settings")
@@ -75,6 +79,10 @@ func _ready() -> void:
 	_level.custom_minimum_size.y = 18
 	_level.tooltip_text = tr("Microphone level")
 	fields.add_child(_level)
+	_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_speech.custom_minimum_size.x = 380
+	_speech.text = tr("Start a microphone test, then speak.")
+	fields.add_child(_speech)
 	var test_help: Label = Label.new()
 	test_help.text = tr(
 		"Test for 10 seconds on this computer only. Voice pauses, then resumes with your microphone off."
@@ -84,6 +92,22 @@ func _ready() -> void:
 	fields.add_child(test_help)
 	fields.add_child(UiTheme.caption(tr("Speakers")))
 	fields.add_child(_outputs)
+	fields.add_child(UiTheme.caption(tr("Voice volume")))
+	_speaker_volume.max_value = 100
+	_speaker_volume.step = 5
+	_speaker_volume.value = 60
+	_speaker_volume.value_changed.connect(
+		func(value: float) -> void: _orqwa.group_voice_volume(value / 100.0)
+	)
+	fields.add_child(_speaker_volume)
+	_speaker_test.text = tr("Test speakers")
+	_speaker_test.pressed.connect(_on_speaker_test)
+	fields.add_child(_speaker_test)
+	var speaker_help: Label = Label.new()
+	speaker_help.text = tr("Plays two short tones at voice volume. Your microphone stays off.")
+	speaker_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	speaker_help.custom_minimum_size.x = 380
+	fields.add_child(speaker_help)
 	_echo.text = tr("Prevent speaker echo")
 	_echo.button_pressed = true
 	_echo.toggled.connect(func(on: bool) -> void: _orqwa.group_voice_echo_prevention(on))
@@ -98,13 +122,24 @@ func _ready() -> void:
 	for picker: OptionButton in [_inputs, _outputs]:
 		UiTheme.narrowable(picker)
 		picker.item_selected.connect(func(_index: int) -> void: _choose_devices())
-	_settings.add_child(fields)
+	_audio_scroll.custom_minimum_size = Vector2(404, 430)
+	_audio_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	fields.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_audio_scroll.add_child(fields)
+	_settings.add_child(_audio_scroll)
 	add_child(_settings)
 	_settings.visibility_changed.connect(
 		func() -> void:
 			if not _settings.visible and _orqwa != null:
 				_orqwa.group_microphone_test(false)
 	)
+
+
+func _popup_settings() -> void:
+	_audio_scroll.custom_minimum_size.y = minf(
+		640.0, maxf(300.0, get_viewport_rect().size.y - 180.0)
+	)
+	_settings.popup_centered(Vector2i(440, 0))
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -117,8 +152,26 @@ func update_status(status: Dictionary) -> void:
 	var microphone: bool = status.get("microphone", false)
 	var deafened: bool = status.get("deafened", false)
 	var testing: bool = status.get("microphone_test", false)
-	_listen.disabled = testing
+	var speaker_testing: bool = status.get("speaker_test", false)
+	var detected: bool = status.get("microphone_voice_detected", false)
+	var heard: bool = status.get("microphone_voice_heard", false)
+	var checked: bool = status.get("microphone_checked", false)
+	_listen.disabled = testing or speaker_testing
+	_test.disabled = speaker_testing
+	_speaker_test.disabled = testing
+	_speaker_test.text = tr("Stop speaker test") if speaker_testing else tr("Test speakers")
 	_test.text = tr("Stop microphone test") if testing else tr("Test microphone")
+	if detected:
+		_speech.text = tr("Voice detected")
+	elif testing:
+		_speech.text = tr("Listening for voice…")
+	elif checked:
+		_speech.text = tr("Voice detected") if heard else tr("No voice detected")
+	else:
+		_speech.text = tr("Start a microphone test, then speak.")
+	_speech.add_theme_color_override(
+		"font_color", UiTheme.SUCCESS if detected or (not testing and heard) else UiTheme.MUTED
+	)
 	_level.value = status.get("microphone_level", 0.0)
 	var prevent_echo: bool = status.get("echo_prevention", true)
 	_echo.set_pressed_no_signal(prevent_echo)
@@ -128,6 +181,7 @@ func update_status(status: Dictionary) -> void:
 	_volume.editable = voice
 	var gain: float = status.get("voice_volume", 0.6)
 	_volume.set_value_no_signal(gain * 100.0)
+	_speaker_volume.set_value_no_signal(gain * 100.0)
 	_mic.set_pressed_no_signal(microphone)
 	_deafen.set_pressed_no_signal(deafened)
 	var previous_input: String = status.get("input_device", "")
@@ -167,6 +221,11 @@ func _on_test() -> void:
 		if not OS.request_permission("android.permission.RECORD_AUDIO"):
 			return
 	_orqwa.group_microphone_test(not testing)
+
+
+func _on_speaker_test() -> void:
+	var testing: bool = _orqwa.group_status().get("speaker_test", false)
+	_orqwa.group_speaker_test(not testing)
 
 
 func _choose_devices() -> void:
