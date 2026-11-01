@@ -1,5 +1,6 @@
 class_name GroupOfferCard
 extends PanelContainer
+# gdlint: disable=max-line-length
 ## The request to organize the group ride (#424), shown to the chosen rider over the ride
 ## instead of only inside the group panel, where nobody would notice it: who asks, what
 ## organizing means and, when the rider's own discovery suggests friends could not reach

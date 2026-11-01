@@ -67,6 +67,10 @@ msgstr ""
 msgid "%s ahead"
 msgstr ""
 
+#: app/ui/group_offer_card.gd
+msgid "%s asks you to organize the ride"
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s behind"
 msgstr ""
@@ -231,7 +235,7 @@ msgstr ""
 msgid "About"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Accept organizer duties"
 msgstr ""
 
@@ -1091,7 +1095,7 @@ msgstr ""
 msgid "Dec"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Decline"
 msgstr ""
 
@@ -3651,7 +3655,7 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
 msgstr ""
 
