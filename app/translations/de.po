@@ -910,6 +910,9 @@ msgstr "Dunstig"
 msgid "Heart rate"
 msgstr "Puls"
 
+msgid "%d %% max"
+msgstr "%d %% max."
+
 msgid "Heart rate % max"
 msgstr "Puls % max."
 

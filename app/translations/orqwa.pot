@@ -3,6 +3,10 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
+#: app/ui/hud_panel.gd
+msgid "%d %% max"
+msgstr ""
+
 #: app/scenes/devices_tab.gd
 msgid "%d W"
 msgstr ""

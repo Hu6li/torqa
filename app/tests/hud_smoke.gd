@@ -74,11 +74,20 @@ func _hud_editor() -> void:
 
 ## A large power figure has the rider's W/kg, % of FTP and zone under it; without an FTP, no
 ## percentage. The line keeps the widest width it has had, so the HUD does not jump in width.
+## A large heart rate has its % of the maximum and zone under it, in the zone's colour.
 func _power_detail() -> void:
 	var hud: HudPanel = HudPanel.new()
 	root.add_child(hud)
+	hud.show_layout(PackedStringArray(["heart_rate", "speed"]))
+	var detail: Label = hud.get("_detail")
+	var heart: Dictionary = {"heart_rate_percent_max": 80.0, "heart_rate_zone": 3.0}
+	hud.show_values(heart, 3.3, 4)
+	var moderate: Color = UiTheme.HEART_RATE_ZONES[2][1]
+	_check(detail.visible and detail.text == "80 % max · Z3 Moderate", "heart line: " + detail.text)
+	_check(detail.get_theme_color("font_color") == moderate, "in the heart-rate zone's colour")
+	hud.show_values({"heart_rate_percent_max": null, "heart_rate_zone": 3.0}, 3.3, 4)
+	_check(detail.text.is_empty(), "no heart line without a maximum: " + detail.text)
 	hud.show_layout(PackedStringArray(["power", "speed"]))
-	var detail: Label = hud.get("_power_detail")
 	hud.show_values({"power": 250.0, "power_percent_ftp": 104.2}, 3.3, 4)
 	_check(detail.text == "3.3 W/kg · 104 % FTP · Z4 Threshold", "power line: " + detail.text)
 	hud.show_values({"power": 250.0, "power_percent_ftp": null}, 3.3, 4)
