@@ -3,14 +3,14 @@ use orqwa_domain::voice::{CapturedVoice, PcmFrame, VoiceAudio, VoiceDeviceError}
 use orqwa_voice::audio_test::AudioTest;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
 
 #[derive(Default)]
 struct Probe {
-    frames: AtomicUsize,
-    heard: AtomicUsize,
+    low_tone: AtomicBool,
+    high_tone: AtomicBool,
     dropped: AtomicBool,
 }
 struct Output(Arc<Probe>);
@@ -27,9 +27,18 @@ impl VoiceAudio for Output {
                 .iter()
                 .all(|value| value.is_finite() && value.abs() <= 0.0361)
         );
-        self.0.frames.fetch_add(1, Ordering::Relaxed);
         if samples.iter().any(|value| value.abs() > 0.001) {
-            self.0.heard.fetch_add(1, Ordering::Relaxed);
+            // Pitch, gain and output-only operation are the contract. Callback
+            // throughput is scheduler-dependent, especially on native CI runners.
+            let cycles = samples
+                .windows(2)
+                .filter(|pair| pair[0] <= 0.0 && pair[1] > 0.0)
+                .count();
+            if (12..=14).contains(&cycles) {
+                self.0.low_tone.store(true, Ordering::Release);
+            } else if (17..=19).contains(&cycles) {
+                self.0.high_tone.store(true, Ordering::Release);
+            }
         }
     }
     fn deafen(&mut self, _deafened: bool) {}
@@ -57,8 +66,14 @@ async fn speakers_play_at_selected_gain_and_finish_without_a_microphone() {
     })
     .await
     .unwrap();
-    assert!(probe.frames.load(Ordering::Relaxed) > 40);
-    assert!(probe.heard.load(Ordering::Relaxed) > 20);
+    assert!(
+        probe.low_tone.load(Ordering::Acquire),
+        "the first audible tone must reach output"
+    );
+    assert!(
+        probe.high_tone.load(Ordering::Acquire),
+        "the second audible tone must reach output"
+    );
     assert!(probe.dropped.load(Ordering::Acquire));
     assert!(!test.voice_detected() && !test.voice_heard());
 }
