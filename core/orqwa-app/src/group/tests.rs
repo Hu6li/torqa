@@ -23,6 +23,36 @@ impl Drop for Directory {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+/// Voice audio that hears and plays nothing, so voice restarts run without audio hardware.
+pub(super) struct Silent;
+impl orqwa_domain::voice::VoiceAudio for Silent {
+    fn microphone(&mut self, _: Option<u32>) -> Result<(), orqwa_domain::voice::VoiceDeviceError> {
+        Ok(())
+    }
+    fn capture(&mut self) -> Option<orqwa_domain::voice::CapturedVoice> {
+        None
+    }
+    fn play(&mut self, _: orqwa_domain::voice::PcmFrame) {}
+    fn deafen(&mut self, _: bool) {}
+    fn healthy(&self) -> bool {
+        true
+    }
+}
+
+/// Opens this rider's voice on [`Silent`] audio, listening with the microphone `mic`.
+fn speak(app: &mut App, other: &mut App, mic: bool) {
+    app.group
+        .as_ref()
+        .unwrap()
+        .voice_controls
+        .silent
+        .store(true, Ordering::Release);
+    app.group_voice(true, false, false, 0.6).unwrap();
+    wait(app, other, |a, _| a.group().voice);
+    app.group_voice(true, mic, false, 0.6).unwrap();
+    wait(app, other, |a, _| a.group().microphone == mic);
+}
+
 fn options() -> ConnectOptions {
     let mut options = ConnectOptions::default();
     options.gather.policy.loopback = true;
@@ -247,6 +277,7 @@ fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_group
     wait(&mut host, &mut peer, |_, p| {
         p.group().phase == Phase::Riding
     });
+    speak(&mut peer, &mut host, true);
     let seat = peer.group().me;
     // #434: the peer's network drops mid-workout, and nobody exchanges codes again.
     peer.group_command(Command::LoseConnection).unwrap();
@@ -270,7 +301,31 @@ fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_group
         peer.group().error
     );
     assert!(peer.ride.is_some(), "the local ride never stopped");
+    assert!(peer.group().microphone, "the microphone stays on as it was");
     peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
+fn changing_devices_restarts_voice_with_the_microphone_as_it_was() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut idle = to.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut idle, |h, _| {
+        h.group().phase == Phase::Waiting
+    });
+    for (mic, device) in [(true, "headset"), (false, "speakers")] {
+        speak(&mut host, &mut idle, mic);
+        host.group_voice_choose(format!("{device}-input"), format!("{device}-output"))
+            .unwrap();
+        wait(&mut host, &mut idle, |h, _| {
+            let group = h.group();
+            group.voice && !group.voice_pending && group.input_device == format!("{device}-input")
+        });
+        assert_eq!(host.group().microphone, mic, "{device}");
+    }
     host.group_leave();
 }
 
@@ -408,6 +463,9 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
             .iter()
             .all(|app| app.group().fallback == Some(fallback))
     });
+    for friend in [&mut anna, &mut ben] {
+        speak(friend, &mut host, true);
+    }
     // The organizer's network fails and its ORQWA does not come back: nobody hears it again.
     for friend in [&anna, &ben] {
         friend.group_command(Command::LoseConnection).unwrap();
@@ -424,6 +482,12 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
         anna.ride.is_some() && ben.ride.is_some(),
         "riding never stopped"
     );
+    // Voice restarts on the new organizer's links with the microphones as they were.
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        [a, b]
+            .iter()
+            .all(|app| app.group().voice && app.group().microphone)
+    });
     // The new organizer keeps a fallback too, asking the next rider at once.
     wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
         b.group().standby_offer

@@ -48,7 +48,8 @@ pub(super) enum Command {
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
     Devices,
-    ChooseDevices(u64, String, String),
+    /// New devices, and whether the microphone was on: it stays so after the restart.
+    ChooseDevices(u64, String, String, bool),
     Mute(RiderId, bool),
 }
 #[derive(Clone, Copy)]
@@ -129,6 +130,26 @@ struct Audio {
     generation: u64,
     chat: VoiceChat,
     deaf: bool,
+    /// An automatic restart keeps the microphone on if it was; a first start begins muted.
+    mic: bool,
+}
+
+/// Opens voice on `port` with the chosen devices; tests may ask for silent audio instead.
+async fn open_voice(
+    port: orqwa_net::voice::VoicePort,
+    options: DeviceOptions,
+    controls: Arc<VoiceControls>,
+) -> Result<VoiceChat, String> {
+    #[cfg(test)]
+    if controls.silent.load(Ordering::Acquire) {
+        return VoiceChat::with_audio(port, |_| Ok(Box::new(super::tests::Silent)))
+            .await
+            .map_err(|error| error.to_string());
+    }
+    let _ = controls;
+    VoiceChat::open(port, options)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 pub(super) struct Request {
@@ -299,7 +320,7 @@ async fn run_inner(
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
                     }
-                    Command::ChooseDevices(generation,input,output) => {
+                    Command::ChooseDevices(generation,input,output,mic) => {
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         let restart = snapshot.voice || snapshot.voice_pending;
                         audio.abort_all(); while audio.join_next().await.is_some() {}
@@ -310,8 +331,8 @@ async fn run_inner(
                         device_options=DeviceOptions {input:(!input.is_empty()).then_some(input),output:(!output.is_empty()).then_some(output)};
                         if restart && let Some(port)=&port {
                             snapshot.voice_pending=true;
-                            let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;
-                            audio.spawn(async move {VoiceChat::open(port,options).await.map(|chat|Audio {generation,chat,deaf}).map_err(|e|e.to_string())});
+                            let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;let controls=request.voice_controls.clone();
+                            audio.spawn(async move {open_voice(port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})});
                         } Ok(())
                     }
                     Command::Mute(id,muted) => {if let Some(chat)=&voice {chat.mute_peer(id,muted);snapshot.muted[usize::from(id.value())]=muted;} Ok(())}
@@ -330,7 +351,8 @@ async fn run_inner(
                             snapshot.microphone = chat.microphone_enabled(); snapshot.deafened = deaf;
                         } else if audio.is_empty() && let Some(port) = &port {
                             snapshot.voice_pending=true;
-                            let port = port.clone();let options=device_options.clone(); audio.spawn(async move {VoiceChat::open(port,options).await.map(|chat|Audio {generation,chat,deaf}).map_err(|e|e.to_string())});
+                            let port = port.clone();let options=device_options.clone();let controls=request.voice_controls.clone();
+                            audio.spawn(async move {open_voice(port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})});
                         } Ok(())
                     }
                 };
@@ -361,9 +383,9 @@ async fn run_inner(
                 Some(LobbyEvent::Reconnecting {until}) => {
                     if handover.reconnecting(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}
                     if !handover.old_lost {
-                        // The link closed the microphone; others' positions and the group's
-                        // workout clock come back with the connection.
-                        snapshot.reconnecting = Some(until.into_std()); snapshot.microphone = false;
+                        // Others' positions and the group's workout clock come back with the
+                        // connection; the microphone stays as it was.
+                        snapshot.reconnecting = Some(until.into_std());
                         snapshot.states.fill(None); snapshot.workout_clock = None;
                     }
                 }
@@ -411,8 +433,9 @@ async fn run_inner(
                 match handover.event(&session,snapshot,event) {
                     Ok(Some(replacement)) => {
                         // Close transmission synchronously before replacing any audio owner. Keep
-                        // listening consent, but require a fresh microphone action on the new link.
+                        // listening consent, and the microphone as it was, on the new link.
                         let restart = snapshot.voice || snapshot.voice_pending;
+                        let mic = voice.as_ref().is_some_and(VoiceChat::microphone_enabled);
                         let generation = request.voice_controls.generation.fetch_add(1,Ordering::AcqRel)+1;
                         let mut gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if let Some(old)=&port {old.enable(false);}
@@ -422,13 +445,13 @@ async fn run_inner(
                         gate.clone_from(&port);drop(gate);
                         session.state(*local.borrow());
                         if restart && let Some(port)=&port {
-                            let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;
+                            let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;let controls=request.voice_controls.clone();
                             snapshot.voice_pending=true;
                             audio.spawn(async move {
                                 // Exclusive native devices must finish their bounded cleanup
                                 // before the replacement opens them; transport polling continues.
                                 if let Some(chat)=previous {chat.close().await;}
-                                VoiceChat::open(port,options).await.map(|chat|Audio {generation,chat,deaf}).map_err(|error|error.to_string())
+                                open_voice(port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})
                             });
                         }
                     }
@@ -458,10 +481,12 @@ async fn run_inner(
                 }
             },
             result = audio.join_next(), if !audio.is_empty() => match result {
-                Some(Ok(Ok(Audio {generation,chat,deaf}))) if generation==request.voice_controls.generation.load(Ordering::Acquire) => {
+                Some(Ok(Ok(Audio {generation,chat,deaf,mic}))) if generation==request.voice_controls.generation.load(Ordering::Acquire) => {
                     let _=chat.volume(snapshot.voice_volume);chat.deafen(deaf);
                     for (index,muted) in snapshot.muted.iter().enumerate() {if *muted && let Ok(id)=u8::try_from(index) && let Ok(id)=RiderId::new(id) {chat.mute_peer(id,true);}}
-                    voice = Some(chat); snapshot.voice = true;snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = deaf;
+                    if mic && !deaf && let Err(error) = chat.microphone(true) {snapshot.report(Kind::GroupVoice,error);}
+                    snapshot.microphone = chat.microphone_enabled();
+                    voice = Some(chat); snapshot.voice = true;snapshot.voice_pending=false; snapshot.deafened = deaf;
                 }
                 Some(Ok(Err(error))) => {snapshot.voice_pending=false;snapshot.report(Kind::GroupVoice,error);},
                 Some(Err(error)) if !error.is_cancelled() => {snapshot.voice_pending=false;snapshot.report(Kind::GroupVoice,error);},

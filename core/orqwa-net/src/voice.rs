@@ -621,11 +621,11 @@ impl VoiceHandle {
     pub fn uplink(&self, connection: Connection) {
         lock(&self.0).uplink = Some(connection);
     }
-    /// The connection to the organizer was lost (#434): transmission stops at once and queued
-    /// speech is dropped. Listening consent stays, for the reconnected link to carry on.
+    /// The connection to the organizer was lost (#434): nothing is sent any more and queued
+    /// speech is dropped. Listening consent and the microphone stay as they were, for the
+    /// reconnected link to carry on with.
     pub fn interrupt(&self) {
         let mut room = lock(&self.0);
-        room.microphone = false;
         room.uplink = None;
         for speaker in &mut room.speakers {
             speaker.inbox.clear();

@@ -57,7 +57,7 @@ func _ready() -> void:
 	var fields: VBoxContainer = VBoxContainer.new()
 	fields.add_theme_constant_override("separation", 12)
 	var help: Label = Label.new()
-	help.text = tr("Changing devices reconnects voice chat with your microphone off.")
+	help.text = tr("Changing devices reconnects voice chat with your microphone as it was.")
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size.x = 380
 	fields.add_child(help)

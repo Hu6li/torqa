@@ -612,7 +612,7 @@ msgid "Change organizer…"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd
-msgid "Changing devices reconnects voice chat with your microphone off."
+msgid "Changing devices reconnects voice chat with your microphone as it was."
 msgstr ""
 
 #: app/translations/extra-msgids.txt
@@ -832,7 +832,7 @@ msgid "Connected as %s"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
-msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone off."
+msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone as it was."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd

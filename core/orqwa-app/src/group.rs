@@ -382,6 +382,9 @@ pub(crate) struct Running {
 struct VoiceControls {
     generation: AtomicU64,
     port: Mutex<Option<orqwa_net::voice::VoicePort>>,
+    /// Voice opens on silent audio instead of the computer's devices.
+    #[cfg(test)]
+    silent: std::sync::atomic::AtomicBool,
 }
 impl Drop for Running {
     fn drop(&mut self) {
@@ -797,7 +800,7 @@ impl App {
     pub fn group_voice_devices(&self) -> Result<(), AppError> {
         self.group_command(Command::Devices)
     }
-    /// Selects native devices, restarting opted-in voice with the microphone muted.
+    /// Selects native devices, restarting opted-in voice with the microphone as it was.
     ///
     /// # Errors
     /// Returns [`AppError`] for excessive device IDs or an unavailable queue.
@@ -815,15 +818,18 @@ impl App {
             .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
             .map_err(|_| error("Voice activation exhausted."))?
             + 1;
+        // Mute at once while the devices change, then restart as it was.
+        let mut mic = false;
         if let Some(port) = controls
             .port
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
         {
+            mic = port.transmitting().is_some();
             port.enable(false);
         }
-        self.group_command(Command::ChooseDevices(generation, input, output))
+        self.group_command(Command::ChooseDevices(generation, input, output, mic))
     }
     /// Mutes one speaker locally without changing anyone else's audio.
     ///

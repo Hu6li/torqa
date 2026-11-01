@@ -380,7 +380,7 @@ func _show_organizer() -> void:
 	if handover in ["preparing", "committing"]:
 		_organizer_status.text = (
 			tr(
-				"Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone off."
+				"Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone as it was."
 			)
 			% _status.get("successor_name", "")
 		)

@@ -303,8 +303,8 @@ and the usual selection, readiness, running clock and workout sample.
 its actor again on each new connection. It tries every five seconds, or at once on **Reconnect
 now**, until five minutes have passed. A used credential means the host has not noticed the
 loss yet and is retried; a released one ends the attempts. The welcome must name the same
-seat, organizer, root and epoch. Transmission closes as soon as the loss is noticed; listening
-consent is sent again on the new link, and the microphone stays off until enabled. The owner
+seat, organizer, root and epoch. Nothing is sent once the loss is noticed; listening consent is
+sent again on the new link, and the microphone stays as it was (ADR 0037, 2026-11-01). The owner
 hears `Reconnecting { until }`, then the roster changes and `Reconnected`. Riders still
 mid-handover leave it to the prepared successor link, or give the change up. The app runs the
 workout independently while reconnecting and takes the group's step from the next clock

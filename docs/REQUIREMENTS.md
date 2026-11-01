@@ -377,6 +377,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R187 | Extends R168, R173 and R186 (2026-11-01, #426): while a group rides, the organizer keeps a **fallback organizer** ready. Its ORQWA asks the first rider in joining order who is prepared, connected and, by their own discovery, reachable from other homes (R176); that rider is asked **once** over the ride, *Stand in as organizer* or *Decline*, and on Decline the next one is asked. The organizer may choose another fallback, who must accept too. Everyone prepares a standby link to the fallback in advance, as for a planned organizer change. If the organizer's connection stays lost for about **a minute**, the link's timeout and 30 seconds of failed reconnections, and no rider connected to the fallback still reaches the organizer, the fallback **takes over** and everyone rides on with course position, workout step and recordings; so does the group when the organizer leaves. The new organizer at once chooses the **next fallback** the same way. The old organizer, if its ORQWA is still open when its connection returns, **rejoins as a rider**. Riders accept a takeover only once they lost the organizer themselves. Protocol and invitation version 12 require matching builds and fresh codes. |
 
+## Microphone kept across voice restarts
+
+| ID | Requirement |
+|---|---|
+| R188 | Refines R169, R173, R186 and R187 (2026-11-01): every **automatic** voice restart keeps the **microphone as it was**, on if it was on and off if it was off: reconnecting after a lost connection, a fallback organizer's takeover, a planned organizer handover and changing audio devices. Listening, volume, deafen and per-rider mutes are kept as before. Joining voice still starts with the microphone off, and Voice off, Mute all sound and a failed device still turn it off. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

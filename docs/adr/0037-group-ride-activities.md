@@ -218,7 +218,7 @@ admission and transfer protocol.
 Audio device selection remains available during voice. The app synchronously disables
 transmission and advances its activation generation before queueing the switch. The owner
 cancels pending startup, reconnects opted-in voice and retains playback gain, deafen and
-per-speaker mutes. The microphone always requires fresh explicit consent after reconnection.
+per-speaker mutes. The microphone comes back as it was since 2026-11-01, see below.
 Selected device IDs and playback gain in the snapshot keep lobby and in-ride controls consistent.
 Device enumeration has its own single-job budget, independent of pending voice startup, so
 opening audio settings cannot consume or suppress the rider's voice activation request.
@@ -340,7 +340,8 @@ The switch keeps local recording, course position, assistance eligibility, worko
 membership generations and the original monotonic start. It clears old peer motion history
 and blends assistance to the new reference over two seconds. Voice closes the old transmission
 gate synchronously, replaces the port and reconnects previously opted-in listening with a fresh
-generation and microphone off; device choices, gain, deafen and local mutes remain personal.
+generation and the microphone as it was (2026-11-01, below); device choices, gain, deafen and
+local mutes remain personal.
 The new host shares its already verified content and publishes a fresh invitation. No extra
 service, endpoint, package or dependency version is introduced.
 
@@ -378,6 +379,18 @@ The voice roster check required an epoch for the first slot, assuming it is the 
 After a handover that rider may be gone, which would have dropped every listener. It now
 requires the organizer's slot. Protocol/invitation version 12 and ALPN `orqwa-group/12`
 require matching builds and fresh codes.
+
+### Microphone kept across voice restarts — 2026-11-01
+
+Every automatic voice restart now keeps the microphone as it was, on if it was on and off if it
+was off: a device change, a planned organizer handover and a fallback's takeover. Each still
+closes transmission synchronously before the old owner goes, and records first whether the
+microphone was transmitting. The restarted chat re-applies it once its devices are open, unless
+the rider is deafened. A first start of voice still begins muted, and Voice off, Mute all sound
+and device failures still close the microphone. While a link reconnects (R186) the microphone
+stays as it was too, sending nothing until the new link carries it. This supersedes the earlier
+rule that a microphone always needs a fresh action after a restart, at the rider's request. App
+tests open voice on silent audio, so these restarts are tested without audio hardware.
 
 ### Courses riders already have — 2026-11-01
 

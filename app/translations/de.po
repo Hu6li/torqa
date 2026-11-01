@@ -2557,8 +2557,8 @@ msgstr "Audioeinstellungen…"
 msgid "Cancel joining"
 msgstr "Beitritt abbrechen"
 
-msgid "Changing devices reconnects voice chat with your microphone off."
-msgstr "Ein Gerätewechsel verbindet den Sprachchat neu. Dein Mikrofon ist danach aus."
+msgid "Changing devices reconnects voice chat with your microphone as it was."
+msgstr "Ein Gerätewechsel verbindet den Sprachchat neu. Dein Mikrofon bleibt, wie es war."
 
 msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
 msgstr "Wähle eine Strecke, ein Training oder beides. Alle erhalten automatisch eine Kopie."
@@ -2911,8 +2911,8 @@ msgid "Would you like to organize this ride? You will control the workout and we
 msgstr "Möchtest du diese Fahrt organisieren? Du steuerst das Workout und lässt neue Personen beitreten. Mit deiner Zustimmung werden Verbindungsadressen innerhalb dieser Gruppe geteilt. Deine Verbindungseinstellungen gelten weiterhin."
 
 #: app/scenes/group_rides_tab.gd
-msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone off."
-msgstr "Alle werden mit %s verbunden. Fahre weiter; deine Aufzeichnung läuft weiter. Der Sprachchat verbindet sich neu, dein Mikrofon bleibt aus."
+msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone as it was."
+msgstr "Alle werden mit %s verbunden. Fahre weiter; deine Aufzeichnung läuft weiter. Der Sprachchat verbindet sich neu, dein Mikrofon bleibt, wie es war."
 
 #: app/scenes/group_rides_tab.gd
 msgid "Organizer"
