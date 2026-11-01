@@ -26,6 +26,8 @@ var editable: bool = false:
 var _indicated: _Cell = null
 var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
+## The grid's figures by id; the large one is left out of the zone bars, its power line
+## already coloured by zone.
 var _cells: Dictionary[String, _Cell] = {}
 var _power_detail: Label = Label.new()
 
@@ -59,7 +61,6 @@ func show_layout(layout: PackedStringArray) -> void:
 		return
 	var main_id: String = layout[0]
 	var main: _Cell = _Cell.new(self, main_id, 0, false)
-	_cells[main_id] = main
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
 	# Power figures get the rider's W/kg, % of FTP and zone underneath.
@@ -133,7 +134,8 @@ func show_values(values: Dictionary, watts_per_kg: Variant, power_zone: Variant)
 
 
 ## The zone each figure's value lies in (`ride_state()["metric_zones"]`, #432), as a bar in
-## the zone's colour down the figure's left edge; none where a figure has no zone.
+## the zone's colour down the left edge of the figures under the large one; none where a
+## figure has no zone.
 func show_zones(zones: Dictionary) -> void:
 	for id: String in _cells:
 		var scale: String = catalogue[id]["zones"]
@@ -243,9 +245,9 @@ func _show_power_detail(watts_per_kg: Variant, percent_ftp: Variant, zone: Varia
 	_power_detail.custom_minimum_size.x = maxf(_power_detail.custom_minimum_size.x, width)
 
 
-## One figure of the HUD, with a bar in the colour of its value's zone down its left edge. In an
-## editable HUD it can be dragged elsewhere, and dropping a figure on it places that one before
-## or after it, shown by an accent line.
+## One figure of the HUD, under the large one with a bar in the colour of its value's zone down
+## its left edge. In an editable HUD it can be dragged elsewhere, and dropping a figure on it
+## places that one before or after it, shown by an accent line.
 class _Cell:
 	extends VBoxContainer
 
