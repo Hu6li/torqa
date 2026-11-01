@@ -183,6 +183,27 @@ func _group_activity() -> void:
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
 	)
 	_check(group._retry.visible, "activity retry remains available beside standard error history")
+	# The organizer sees who stands by and may choose another (#426).
+	var standing: Array = [
+		{"id": 0, "name": "Me", "ready": true, "me": true, "organizer": true},
+		{"id": 1, "name": "Sam", "ready": true, "me": false, "fallback": true},
+	]
+	group._show_status(
+		{"host": true, "phase": "riding", "can_choose_fallback": true, "roster": standing}
+	)
+	var tagged: Label = group._roster.get_child(1).get_child(1).get_child(1)
+	_check(tagged.text.ends_with("Fallback organizer"), "the fallback is tagged: %s" % tagged.text)
+	_check(
+		group._fallback_change.visible and not group._fallback_change.disabled,
+		"the organizer can choose another fallback"
+	)
+	group._show_status(
+		{"host": false, "phase": "riding", "standby_offer": true, "roster": standing}
+	)
+	_check(
+		group._organizer_panel.visible and group._organizer_accept.text == "Stand in as organizer",
+		"a request to stand in shows in the panel"
+	)
 	# A rider whose connection was lost keeps trying by themselves (#434).
 	var away: Array = [
 		{"id": 0, "name": "Host", "ready": true, "me": false},
@@ -399,6 +420,17 @@ func _offer_card() -> void:
 	_check(card._warning.visible, "a reason to doubt reaching the rider is shown")
 	card._decline.pressed.emit()
 	_check(answers == [true, false] and not card.visible, "declining answers too")
+	# Standing in should the organizer be lost (#426) says so, and is answered the same way.
+	card.show_offer("Alex", "", true)
+	_check(
+		"stand in" in card._title.text and card._accept.text == "Stand in as organizer",
+		"a standby request: %s / %s" % [card._title.text, card._accept.text]
+	)
+	_check("about a minute" in card._text.text, "it says when standing in would happen")
+	card._accept.pressed.emit()
+	_check(answers == [true, false, true], "standing in is accepted like organizing")
+	card.show_offer("Alex", "")
+	_check(card._accept.text == "Accept organizer duties", "an organizer request is itself again")
 	card.free()
 
 
@@ -432,6 +464,11 @@ func _organizer_offer() -> void:
 	_check(card._warning.visible, "with the warning about reaching the rider")
 	ride._show_group({"phase": "riding", "roster": roster})
 	_check(not card.visible, "a withdrawn request goes")
+	ride._show_group({"phase": "riding", "roster": roster, "standby_offer": true})
+	_check(
+		card.visible and card._accept.text == "Stand in as organizer",
+		"a request to stand in comes over the ride too"
+	)
 	main.free()
 
 

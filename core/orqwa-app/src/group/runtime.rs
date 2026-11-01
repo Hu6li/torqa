@@ -33,6 +33,8 @@ pub(super) enum Command {
     WorkoutPause(bool),
     WorkoutSkip(Duration),
     Handover(RiderId),
+    /// Ask this rider to stand in as fallback organizer (#426).
+    Fallback(RiderId),
     HandoverAnswer(bool),
     HandoverCancel,
     Remove(RiderId),
@@ -254,6 +256,7 @@ async fn run_inner(
                 }
                 let result = match command {
                     Command::Handover(id) => handover.propose(&session,snapshot,id),
+                    Command::Fallback(id) => handover.choose_fallback(&session,snapshot,id),
                     Command::HandoverAnswer(accepted) => handover.answer(&session,snapshot,accepted),
                     Command::HandoverCancel => {
                         if snapshot.host || snapshot.successor == Some(snapshot.me) {handover.cancel(&session,snapshot)}
@@ -346,10 +349,12 @@ async fn run_inner(
                     let index=usize::from(id.value());
                     snapshot.generations[index]=snapshot.generations[index].checked_add(1).ok_or("Rider membership exhausted.")?;
                     snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None;
+                    handover.membership(&session,snapshot);
                 }
                 Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
-                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.away[index] = false;}
+                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.away[index] = false;
+                    handover.membership(&session,snapshot);}
                 // A rider whose connection was lost keeps their seat while reconnecting (#434).
                 Some(LobbyEvent::Away {id}) => {let index = usize::from(id.value()); snapshot.away[index] = true; snapshot.states[index] = None;}
                 Some(LobbyEvent::Back {id}) => snapshot.away[usize::from(id.value())] = false,
@@ -363,7 +368,7 @@ async fn run_inner(
                     }
                 }
                 Some(LobbyEvent::Reconnected) => {
-                    snapshot.reconnecting = None;
+                    snapshot.reconnecting = None; handover.reconnected();
                     // A download the lost connection cut off starts again on the new one.
                     if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
                 }
@@ -469,6 +474,11 @@ async fn run_inner(
                 _ => {},
             },
             _ = ticker.tick() => {
+                // A standby is background work: when it fails, it is prepared again later.
+                if let Err(error) = handover.tick(&session,snapshot) {
+                    tracing::debug!(%error, "fallback organizer standby failed");
+                    if handover.fail(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}
+                }
                 if handover.expired() {
                     snapshot.report(Kind::GroupRide,"The organizer change timed out. The current ride can continue.");
                     if handover.fail(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}

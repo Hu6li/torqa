@@ -45,6 +45,9 @@ var _organizer_panel: PanelContainer
 var _organizer_status: Label = Label.new()
 var _organizer_reach: Label = Label.new()
 var _organizer_change: Button
+var _fallback_change: Button
+## Whether the organizer picker chooses a fallback rather than the next organizer (#426).
+var _picking_fallback: bool = false
 var _organizer_accept: Button
 var _organizer_decline: Button
 var _organizer_cancel: Button
@@ -290,7 +293,8 @@ func _build_organizer() -> void:
 	_organizer_reach.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_organizer_reach.add_theme_color_override("font_color", UiTheme.WARNING)
 	card.add_child(_organizer_reach)
-	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer)
+	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer.bind(false))
+	_fallback_change = _button(card, tr("Choose fallback organizer…"), _choose_organizer.bind(true))
 	_organizer_accept = _button(
 		card, tr("Accept organizer duties"), func() -> void: _orqwa.group_handover_answer(true)
 	)
@@ -303,13 +307,21 @@ func _build_organizer() -> void:
 	)
 
 
-func _choose_organizer() -> void:
+func _choose_organizer(fallback: bool) -> void:
+	_picking_fallback = fallback
+	_organizer_picker.title = (
+		tr("Choose a fallback organizer") if fallback else tr("Choose a new organizer")
+	)
 	for child: Node in _organizer_choices.get_children():
 		_organizer_choices.remove_child(child)
 		child.queue_free()
 	_muted(
 		_organizer_choices,
-		tr("Choose a friend who is ready. They must accept before anything changes.")
+		(
+			tr("Choose a friend who takes over if your connection is lost. They must accept.")
+			if fallback
+			else tr("Choose a friend who is ready. They must accept before anything changes.")
+		)
 	)
 	for rider: Dictionary in _status.get("roster", []):
 		if rider["me"] or not rider["ready"]:
@@ -320,7 +332,10 @@ func _choose_organizer() -> void:
 			_organizer_choices,
 			rider_name,
 			func() -> void:
-				_orqwa.group_handover(id)
+				if _picking_fallback:
+					_orqwa.group_fallback(id)
+				else:
+					_orqwa.group_handover(id)
 				_organizer_picker.hide()
 		)
 		choice.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -331,11 +346,17 @@ func _show_organizer() -> void:
 	var phase: String = _status.get("phase", "idle")
 	var handover: String = _status.get("handover", "idle")
 	var host: bool = _status.get("host", false)
-	var offer: bool = _status.get("handover_offer", false)
-	_organizer_panel.visible = phase == "riding" and (host or handover != "idle")
+	var standby: bool = _status.get("standby_offer", false)
+	var offer: bool = _status.get("handover_offer", false) or standby
+	_organizer_panel.visible = phase == "riding" and (host or handover != "idle" or standby)
 	_organizer_change.visible = host and handover == "idle"
 	_organizer_change.disabled = not _status.get("can_handover", false)
+	_fallback_change.visible = host and handover == "idle"
+	_fallback_change.disabled = not _status.get("can_choose_fallback", false)
 	_organizer_accept.visible = offer
+	_organizer_accept.text = (
+		tr("Stand in as organizer") if standby else tr("Accept organizer duties")
+	)
 	_organizer_decline.visible = offer
 	_organizer_cancel.visible = _status.get("can_cancel_handover", false) and not offer
 	_organizer_status.text = tr(
@@ -348,6 +369,10 @@ func _show_organizer() -> void:
 	if offer:
 		_organizer_status.text = tr(
 			"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
+		)
+	if standby:
+		_organizer_status.text = tr(
+			"Stand in as organizer if the organizer's connection is lost? After about a minute without them you would take over, so the group rides on. Accepting shares connection addresses with everyone in this group now, using your connection settings."
 		)
 	var reach: String = _status.get("reachability", "")
 	_organizer_reach.text = reach_warning(reach, false) if offer else ""
@@ -715,6 +740,9 @@ func _show_roster(phase: String, host: bool) -> void:
 			state.text += " · " + GroupRidersPanel.effort(rider)
 		if rider.get("organizer", false):
 			state.text += " · " + tr("Organizer")
+		# Takes over if the organizer's connection is lost (#426).
+		if rider.get("fallback", false):
+			state.text += " · " + tr("Fallback organizer")
 		row.add_child(text)
 		if not rider["me"] and _status.get("voice", false):
 			var speaker: int = rider["id"]

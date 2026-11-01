@@ -2,6 +2,8 @@
 //!
 //! A prepared successor cannot commit until the current organizer reveals a fresh secret.
 //! The commitment binds that proof to the exact group, epoch, membership, activity and pin.
+//! A standby is prepared the same way but kept for the ride: the organizer gives its fallback
+//! the proof in advance, to take over only if the organizer is lost (#426).
 
 use std::fmt;
 use std::time::Duration;
@@ -263,6 +265,8 @@ pub enum Message {
         epoch: u64,
         /// Intended successor.
         successor: RiderId,
+        /// To stand in only if the organizer is lost, rather than to take over now (#426).
+        standby: bool,
     },
     /// Explicit consent or rejection from the offered rider.
     Decision {
@@ -320,6 +324,29 @@ pub enum Message {
         /// Current organizer's revealed proof.
         proof: Proof,
     },
+    /// Every standby link is ready: the proof for the fallback to take over if the organizer is
+    /// lost, sent privately to the fallback only (#426).
+    Proof {
+        /// Standby being established.
+        epoch: u64,
+        /// The commit secret, held back until a takeover.
+        proof: Proof,
+    },
+    /// The standby is established; everyone keeps their link to the fallback (#426).
+    Standby {
+        /// Established standby.
+        epoch: u64,
+    },
+    /// Over a standby link: this rider has lost the organizer (#426).
+    Lost {
+        /// Standby this report is for.
+        epoch: u64,
+    },
+    /// Over a standby link: this rider reaches the organizer again.
+    Found {
+        /// Standby this report is for.
+        epoch: u64,
+    },
 }
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -341,6 +368,10 @@ impl Message {
             | Self::Cancel { epoch }
             | Self::Failed { epoch }
             | Self::Commit { epoch, .. }
+            | Self::Proof { epoch, .. }
+            | Self::Standby { epoch }
+            | Self::Lost { epoch }
+            | Self::Found { epoch }
             | Self::Preparing { epoch, .. } => *epoch,
             Self::Plan(plan) => plan.context.epoch,
         }
@@ -357,6 +388,10 @@ impl Message {
             Self::Failed { .. } => 8,
             Self::Commit { .. } => 9,
             Self::Preparing { .. } => 10,
+            Self::Proof { .. } => 11,
+            Self::Standby { .. } => 12,
+            Self::Lost { .. } => 13,
+            Self::Found { .. } => 14,
         };
         if self.epoch() < 2 {
             return Err(LobbyError::Protocol);
@@ -364,7 +399,9 @@ impl Message {
         let mut bytes = vec![kind];
         bytes.extend_from_slice(&self.epoch().to_be_bytes());
         match self {
-            Self::Offer { successor, .. } => bytes.push(successor.value()),
+            Self::Offer {
+                successor, standby, ..
+            } => bytes.extend_from_slice(&[successor.value(), u8::from(*standby)]),
             Self::Decision { accepted, .. } => bytes.push(u8::from(*accepted)),
             Self::Invite { invite, .. } => blob(
                 &mut bytes,
@@ -387,9 +424,15 @@ impl Message {
                 )?;
             }
             Self::Ready { rider, .. } => bytes.push(rider.value()),
-            Self::Commit { proof, .. } => bytes.extend_from_slice(&proof.0),
+            Self::Commit { proof, .. } | Self::Proof { proof, .. } => {
+                bytes.extend_from_slice(&proof.0);
+            }
             Self::Preparing { group_at, .. } => duration(&mut bytes, *group_at)?,
-            Self::Cancel { .. } | Self::Failed { .. } => {}
+            Self::Cancel { .. }
+            | Self::Failed { .. }
+            | Self::Standby { .. }
+            | Self::Lost { .. }
+            | Self::Found { .. } => {}
         }
         if bytes.len() > 1000 {
             return Err(LobbyError::Protocol);
@@ -410,6 +453,7 @@ impl Message {
             1 => Self::Offer {
                 epoch,
                 successor: reader.rider()?,
+                standby: reader.boolean()?,
             },
             2 => Self::Decision {
                 epoch,
@@ -441,6 +485,13 @@ impl Message {
                 epoch,
                 group_at: reader.duration()?,
             },
+            11 => Self::Proof {
+                epoch,
+                proof: Proof(reader.take()?),
+            },
+            12 => Self::Standby { epoch },
+            13 => Self::Lost { epoch },
+            14 => Self::Found { epoch },
             _ => return Err(LobbyError::Protocol),
         };
         if !reader.0.is_empty() {
@@ -701,6 +752,12 @@ mod tests {
             Message::Offer {
                 epoch: 2,
                 successor: RiderId::new(3).unwrap(),
+                standby: false,
+            },
+            Message::Offer {
+                epoch: 2,
+                successor: RiderId::new(3).unwrap(),
+                standby: true,
             },
             Message::Decision {
                 epoch: 2,
@@ -726,7 +783,14 @@ mod tests {
             },
             Message::Cancel { epoch: 2 },
             Message::Failed { epoch: 2 },
-            Message::Commit { epoch: 2, proof },
+            Message::Commit {
+                epoch: 2,
+                proof: proof.clone(),
+            },
+            Message::Proof { epoch: 2, proof },
+            Message::Standby { epoch: 2 },
+            Message::Lost { epoch: 2 },
+            Message::Found { epoch: 2 },
         ] {
             let bytes = message.encode().unwrap();
             assert_eq!(Message::decode(&bytes).unwrap().epoch(), 2);
@@ -737,14 +801,19 @@ mod tests {
             extra.push(0);
             assert!(Message::decode(&extra).is_err());
         }
-        let mut offer = Message::Offer {
+        let offer = Message::Offer {
             epoch: 2,
             successor: RiderId::HOST,
+            standby: true,
         }
         .encode()
         .unwrap();
-        offer[9] = 8;
-        assert!(Message::decode(&offer).is_err());
+        let mut nobody = offer.clone();
+        nobody[9] = 8;
+        assert!(Message::decode(&nobody).is_err());
+        let mut maybe = offer;
+        maybe[10] = 2;
+        assert!(Message::decode(&maybe).is_err(), "a standby or not");
         let mut decision = Message::Decision {
             epoch: 2,
             accepted: true,

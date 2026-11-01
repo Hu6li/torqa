@@ -20,6 +20,9 @@ pub struct Replacement {
     pub activity: SharedActivity,
     /// Original shared start on this computer's monotonic clock.
     pub start: Instant,
+    /// Kept for the ride as the organizer's fallback, which takes over itself only if the
+    /// organizer is lost; until then it holds the seats of riders the network loses (#426).
+    pub standby: bool,
 }
 
 pub(super) struct Prepared {
@@ -103,9 +106,17 @@ impl Prepared {
                 mask
             }
         });
+        // A standby takes over after losing riders, the organizer among them, never with
+        // anyone unplanned (#426); a planned change needs everyone.
+        let planned = self.replacement.plan.context.members;
+        let complete = if self.replacement.standby {
+            members & !planned == 0
+        } else {
+            members == planned
+        };
         if epoch != self.replacement.plan.context.epoch
             || !self.replacement.plan.accepts(proof)
-            || members != self.replacement.plan.context.members
+            || !complete
         {
             return Err(LobbyError::Protocol);
         }
@@ -419,6 +430,7 @@ mod tests {
                     workout: Some(file),
                 },
                 start: Instant::now().checked_sub(Duration::from_mins(5)).unwrap(),
+                standby: false,
             },
         )
         .unwrap();
@@ -591,6 +603,149 @@ mod tests {
         })
         .await
         .unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    async fn standby(
+        host: &HostLobby,
+        id: RiderId,
+        plan: &Plan,
+        roster: &Roster,
+        selection: &Selection,
+    ) -> JoinerLobby {
+        let joiner = Joiner::lobby(plan.invite.clone(), &options())
+            .await
+            .unwrap();
+        host.admit_as(joiner.reply(), id).await.unwrap();
+        JoinerLobby::standby(
+            joiner,
+            roster[usize::from(id.value())].clone().unwrap(),
+            id,
+            plan.clone(),
+            roster.clone(),
+            selection.clone(),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)] // one standby's whole life: preparation, loss, takeover and return
+    async fn a_standby_holds_lost_riders_takes_over_by_itself_and_commits_them_when_back() {
+        let directory = std::env::temp_dir().join(format!(
+            "orqwa-standby-{:x?}",
+            crate::crypto::random::<8>().unwrap()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let file = directory.join("workout.oqw");
+        std::fs::write(&file, b"frozen workout").unwrap();
+        let mut roster: Roster = std::array::from_fn(|_| None);
+        for (slot, name) in [(0, "Original"), (3, "Fallback"), (5, "Friend")] {
+            roster[slot] = Some(Rider {
+                name: name.into(),
+                mass: Kilograms(83.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
+            });
+        }
+        let selection = Selection {
+            revision: 7,
+            name: "Together".into(),
+            course: None,
+            course_key: None,
+            workout: Some(ContentId::of(ContentKind::Workout, b"frozen workout").unwrap()),
+            assistance: Assistance::default(),
+        };
+        let fallback = RiderId::new(3).unwrap();
+        let transport = Host::lobby("Fallback", &options()).await.unwrap();
+        let root = crate::code::RideId([1; 16]);
+        let context = Context::new(root, 2, RiderId::HOST, fallback, &roster, &selection).unwrap();
+        let workout = Some(WorkoutPosition {
+            elapsed: Duration::from_mins(1),
+            paused: false,
+            sequence: 4,
+        });
+        let (plan, proof) = Plan::prepare(
+            context.clone(),
+            transport.invite().clone(),
+            Duration::from_mins(1),
+            workout,
+        )
+        .unwrap();
+        let (_, wrong) = Plan::prepare(
+            context,
+            transport.invite().clone(),
+            Duration::from_mins(1),
+            workout,
+        )
+        .unwrap();
+        let mut host = HostLobby::prepare(
+            transport,
+            Replacement {
+                plan: plan.clone(),
+                roster: roster.clone(),
+                activity: SharedActivity {
+                    selection: selection.clone(),
+                    course: None,
+                    workout: Some(file),
+                },
+                start: Instant::now().checked_sub(Duration::from_mins(2)).unwrap(),
+                standby: true,
+            },
+        )
+        .unwrap();
+        let host_voice = host.take_voice().unwrap();
+        let original = standby(&host, RiderId::HOST, &plan, &roster, &selection).await;
+        let mut friend = standby(&host, RiderId::new(5).unwrap(), &plan, &roster, &selection).await;
+        // #426: the organizer's network fails; its standby link goes with it, without a goodbye.
+        super::super::current(&original.connection).close_for_reconnect();
+        host_event(
+            &mut host,
+            |event| matches!(event, LobbyEvent::Away {id} if *id == RiderId::HOST),
+        )
+        .await;
+        // Only the proof the organizer gave in advance takes over; the ready answer is a barrier.
+        host.take_over(2, wrong, None).unwrap();
+        let _ = host.ready(7, true).await;
+        assert!(!host_voice.alive(), "a wrong proof takes nothing over");
+        host.take_over(2, proof, None).unwrap();
+        host_event(&mut host, |event| {
+            matches!(
+                event,
+                LobbyEvent::Handover {
+                    message: Message::Commit { .. },
+                    ..
+                }
+            )
+        })
+        .await;
+        assert!(host_voice.alive());
+        client_event(&mut friend, |event| {
+            matches!(
+                event,
+                LobbyEvent::Handover {
+                    message: Message::Commit { .. },
+                    ..
+                }
+            )
+        })
+        .await;
+        // The organizer's ORQWA is back: its standby link reconnects and learns of the takeover.
+        let mut original = original;
+        original.reconnect();
+        client_event(&mut original, |event| {
+            matches!(
+                event,
+                LobbyEvent::Handover {
+                    message: Message::Commit { .. },
+                    ..
+                }
+            )
+        })
+        .await;
+        assert_eq!(original.organizer(), fallback);
+        drop((original, friend));
+        host.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

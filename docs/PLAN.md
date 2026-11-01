@@ -910,6 +910,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   downloading it; organizers share their own copy, renamed or not (R185, #435)
 - [x] A rider whose connection is lost keeps their seat for five minutes and reconnects by
   themselves, without new codes (R186, #434)
+- [x] A fallback organizer stands by while riding and takes over if the organizer is lost; the
+  next one is chosen at once, and the old organizer rejoins as a rider (R187, #426)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

@@ -344,6 +344,41 @@ generation and microphone off; device choices, gain, deafen and local mutes rema
 The new host shares its already verified content and publishes a fresh invitation. No extra
 service, endpoint, package or dependency version is introduced.
 
+### Fallback organizer — 2026-11-01
+
+Riders reach only the organizer, so once it is lost nobody can reach anyone else (#426). A
+fallback is therefore prepared **while the organizer is there**: a standby is the planned
+handover's preparation (offer, consent, fresh listener, plan, private replies, prepared links)
+kept for the ride instead of committed. `Offer` carries a `standby` flag. Once every standby
+link is ready the organizer sends the fallback the proof privately (`Proof`) and announces
+`Standby`; it never commits. Prepared standby links stay idle, without state or voice, and
+reconnect like any link (R186); the fallback's prepared lobby holds their seats too.
+
+While riding, the organizer offers the standby to the first prepared, connected rider in
+joining order who has not declined. That rider's app declines by itself when its own discovery
+suggests friends could not reach it (R176: strict, IPv6-only or unknown), accepts by itself a
+standby renewed after it consented once in this group, and otherwise asks over the ride. A
+refusal, a consent timeout or the fallback's own failure marks that rider declined for this
+organizer; another rider's failed standby link pauses offers for 30 seconds instead. A change of riders invalidates the
+plan's bindings, so the organizer cancels and renews the standby. A planned change replaces the
+standby, and each new organizer, after a planned change or a takeover, renews it.
+
+Each rider counts the organizer lost from 30 seconds after its link began reconnecting, or at
+once after its link ended; the organizer counts itself lost when every rider is away. Riders
+report `Lost`, and `Found` again, over their standby links. The fallback takes over when it has
+lost the organizer itself and no rider connected to it still reaches the organizer. Its own
+`take_over` activates the prepared lobby with the proof it holds and continues the workout
+from the last clock it heard. The commit goes to every connected standby link, and to each
+held seat's rider on return in the rejoin prelude, which is how the old organizer rejoins as a
+rider. A standby activates without riders who left it, the old organizer among them, but never
+with anyone unplanned. Riders accept the takeover only once they lost the organizer
+themselves, so a misbehaving fallback can gather no rider who still reaches the organizer.
+
+The voice roster check required an epoch for the first slot, assuming it is the organizer's.
+After a handover that rider may be gone, which would have dropped every listener. It now
+requires the organizer's slot. Protocol/invitation version 12 and ALPN `orqwa-group/12`
+require matching builds and fresh codes.
+
 ### Courses riders already have — 2026-11-01
 
 A joiner found an existing course only under its hash-derived name (#435). A `.tqc` sent

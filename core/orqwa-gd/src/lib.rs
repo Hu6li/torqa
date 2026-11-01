@@ -2162,6 +2162,14 @@ impl OrqwaApp {
         };
         self.command(|app| app.group_remove(id))
     }
+    /// Asks a prepared friend to stand in as fallback organizer instead (#426).
+    #[func]
+    fn group_fallback(&mut self, id: i64) -> bool {
+        let Ok(id) = u8::try_from(id) else {
+            return false;
+        };
+        self.command(|app| app.group_fallback(id))
+    }
     /// Offers organizer duties to a prepared friend.
     #[func]
     fn group_handover(&mut self, id: i64) -> bool {

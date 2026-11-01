@@ -2865,6 +2865,27 @@ msgstr "%s bittet dich, die Fahrt zu organisieren"
 msgid "Accept organizer duties"
 msgstr "Organisation übernehmen"
 
+msgid "%s asks you to stand in as organizer"
+msgstr "%s bittet dich, die Organisation zu vertreten"
+
+msgid "Stand in as organizer"
+msgstr "Organisation vertreten"
+
+msgid "Stand in as organizer if the organizer's connection is lost? After about a minute without them you would take over, so the group rides on. Accepting shares connection addresses with everyone in this group now, using your connection settings."
+msgstr "Möchtest du die Organisation vertreten, falls ihre Verbindung abbricht? Nach etwa einer Minute ohne sie würdest du übernehmen, damit die Gruppe weiterfährt. Mit deiner Zustimmung werden jetzt Verbindungsadressen innerhalb dieser Gruppe geteilt. Deine Verbindungseinstellungen gelten weiterhin."
+
+msgid "Fallback organizer"
+msgstr "Vertretung"
+
+msgid "Choose fallback organizer…"
+msgstr "Vertretung wählen…"
+
+msgid "Choose a fallback organizer"
+msgstr "Vertretung auswählen"
+
+msgid "Choose a friend who takes over if your connection is lost. They must accept."
+msgstr "Wähle eine Person, die übernimmt, wenn deine Verbindung abbricht. Sie muss zustimmen."
+
 #: app/scenes/group_rides_tab.gd
 msgid "Decline"
 msgstr "Ablehnen"

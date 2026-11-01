@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Old Torqa codes are deliberately incompatible with the new security contract.
-pub const VERSION: u8 = 11;
+pub const VERSION: u8 = 12;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;

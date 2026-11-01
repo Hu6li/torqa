@@ -1,13 +1,13 @@
 class_name GroupOfferCard
 extends PanelContainer
 # gdlint: disable=max-line-length
-## The request to organize the group ride (#424), shown to the chosen rider over the ride
-## instead of only inside the group panel, where nobody would notice it: who asks, what
-## organizing means and, when the rider's own discovery suggests friends could not reach
-## them, that warning. It stays until answered, or until the organizer cancels or the change
-## times out; the ride goes on meanwhile.
+## The request to organize the group ride (#424), or to stand in should the organizer be lost
+## (#426), shown to the chosen rider over the ride instead of only inside the group panel,
+## where nobody would notice it: who asks, what organizing means and, when the rider's own
+## discovery suggests friends could not reach them, that warning. It stays until answered, or
+## until the organizer cancels or the request times out; the ride goes on meanwhile.
 
-## The rider accepted organizer duties, or declined them.
+## The rider accepted organizer duties or standing in, or declined them.
 signal answered(accept: bool)
 
 const WIDTH: float = 520.0
@@ -41,9 +41,6 @@ func _init() -> void:
 	box.add_child(_title)
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_text.add_theme_color_override("font_color", UiTheme.MUTED)
-	_text.text = tr(
-		"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
-	)
 	box.add_child(_text)
 	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_warning.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -55,7 +52,6 @@ func _init() -> void:
 	_decline.text = tr("Decline")
 	_decline.pressed.connect(_answer.bind(false))
 	buttons.add_child(_decline)
-	_accept.text = tr("Accept organizer duties")
 	_accept.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	# The remote's first arrow reaches the answer without a mouse.
 	_accept.add_to_group(RemoteNavigation.FIRST)
@@ -65,9 +61,24 @@ func _init() -> void:
 	add_child(box)
 
 
-## Asks the rider to take over from `organizer`, with `warning` about reaching them, if any.
-func show_offer(organizer: String, warning: String) -> void:
-	_title.text = tr("%s asks you to organize the ride") % organizer
+## Asks the rider to take over from `organizer`, or with `standby` to stand in should the
+## organizer be lost, with `warning` about reaching them, if any.
+func show_offer(organizer: String, warning: String, standby: bool = false) -> void:
+	_title.text = (
+		tr("%s asks you to stand in as organizer") % organizer
+		if standby
+		else tr("%s asks you to organize the ride") % organizer
+	)
+	_text.text = (
+		tr(
+			"Stand in as organizer if the organizer's connection is lost? After about a minute without them you would take over, so the group rides on. Accepting shares connection addresses with everyone in this group now, using your connection settings."
+		)
+		if standby
+		else tr(
+			"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
+		)
+	)
+	_accept.text = tr("Stand in as organizer") if standby else tr("Accept organizer duties")
 	_warning.text = warning
 	_warning.visible = not warning.is_empty()
 	# Wrapped labels are measured at the width they have: before the first layout, none.

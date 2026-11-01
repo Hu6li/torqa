@@ -318,6 +318,120 @@ fn a_rider_reconnecting_keeps_the_start_and_an_organizer_change_waiting() {
     assert!(riding.can_handover());
 }
 
+#[track_caller]
+fn wait3(apps: [&mut App; 3], condition: impl Fn(&App, &App, &App) -> bool) {
+    let [a, b, c] = apps;
+    let until = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < until {
+        for app in [&mut *a, &mut *b, &mut *c] {
+            app.update(Duration::from_millis(16));
+        }
+        if condition(a, b, c) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let state = |app: &App| {
+        let group = app.group();
+        format!(
+            "{} host {} organizer {} reconnecting {} error {:?}",
+            group.phase.key(),
+            group.host,
+            group.organizer,
+            group.reconnecting.is_some(),
+            group.error
+        )
+    };
+    panic!(
+        "group timed out: {} / {} / {}",
+        state(a),
+        state(b),
+        state(c)
+    );
+}
+
+/// The organizer and two friends riding a shared workout together.
+fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+    for app in [&mut *host, &mut *anna, &mut *ben] {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(180.0),
+            cadence: Rpm(85.0),
+            heart: None,
+        }))
+        .unwrap();
+    }
+    host.group_open(None, options()).unwrap();
+    wait3([host, anna, ben], |h, _, _| !h.group().invite.is_empty());
+    for (count, friend) in [(2, &mut *anna), (3, &mut *ben)] {
+        friend
+            .group_open(Some(host.group().invite), options())
+            .unwrap();
+        wait(host, friend, |_, f| !f.group().reply.is_empty());
+        host.group_admit(friend.group().reply).unwrap();
+        wait(host, friend, |h, f| {
+            h.group().roster.iter().flatten().count() == count && f.group().phase == Phase::Waiting
+        });
+    }
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait3([host, anna, ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().prepared && app.trainer_connected())
+    });
+    for app in [&*host, &*anna, &*ben] {
+        app.group_ready(true).unwrap();
+    }
+    wait3([host, anna, ben], |h, _, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait3([host, anna, ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.ride_state().is_some() && app.group().phase == Phase::Riding)
+    });
+}
+
+#[test]
+fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at_once() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ride_in_three(&mut host, &mut anna, &mut ben);
+    // #426: the organizer asks the first friend who joined to stand in, and only her.
+    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
+        a.group().standby_offer
+    });
+    assert!(!ben.group().standby_offer);
+    anna.group_handover_answer(true).unwrap();
+    let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(fallback))
+    });
+    // The organizer's network fails and its ORQWA does not come back: nobody hears it again.
+    for friend in [&anna, &ben] {
+        friend.group_command(Command::LoseConnection).unwrap();
+    }
+    host.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().host
+            && b.group().organizer == fallback
+            && [a, b]
+                .iter()
+                .all(|app| app.group().phase == Phase::Riding && app.group().reconnecting.is_none())
+    });
+    assert!(
+        anna.ride.is_some() && ben.ride.is_some(),
+        "riding never stopped"
+    );
+    // The new organizer keeps a fallback too, asking the next rider at once.
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().standby_offer
+    });
+    anna.group_leave();
+    ben.group_leave();
+}
+
 #[test]
 #[allow(clippy::too_many_lines)] // consent, rollback, two authority changes and late entry share one real group lifecycle
 fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority() {
@@ -371,10 +485,14 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
     wait(&mut host, &mut peer, |h, p| {
         !h.group().host && p.group().host
     });
+    // Every proposal used an epoch, the declined and cancelled ones and the standby offers
+    // the organizer keeps making in the background (#426) too.
+    let first = peer.group().epoch;
+    assert!(first >= 4, "epoch {first}");
     for app in [&host, &peer] {
         let group = app.group();
         assert_eq!(group.root, root);
-        assert_eq!(group.epoch, 4);
+        assert_eq!(group.epoch, first);
         assert_eq!(group.organizer, peer_id);
         assert_eq!(group.generations, generations);
         assert!(group.workout_clock.unwrap().paused);
@@ -418,7 +536,7 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
         p.group().can_enter() && p.trainer_connected()
     });
     assert_eq!(late.group().root, root);
-    assert_eq!(late.group().epoch, 4);
+    assert_eq!(late.group().epoch, first);
     assert_eq!(late.group().organizer, peer_id);
     late.group_enter().unwrap();
     wait(&mut peer, &mut late, |_, p| p.ride_state().is_some());
@@ -431,12 +549,13 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
     wait(&mut host, &mut peer, |h, p| {
         h.group().host && !p.group().host && late.group().organizer == 0
     });
-    assert_eq!(host.group().epoch, 5);
+    let second = host.group().epoch;
+    assert!(second > first, "epoch {second} after {first}");
     assert_eq!(peer.group().organizer, 0);
     assert_eq!(host.group().root, root);
     late.update(Duration::from_millis(16));
     assert!(late.ride_state().is_some());
-    assert_eq!(late.group().epoch, 5);
+    assert_eq!(late.group().epoch, second);
     // Losing the new host preserves both the old host's local recording and independent timing.
     host.group_leave();
     wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);

@@ -638,7 +638,9 @@ impl VoiceHandle {
     pub fn install_epochs(&self, epochs: [u64; MAX_RIDERS]) -> Result<(), VoiceError> {
         let mut room = lock(&self.0);
         let me = room.me;
-        if epochs[0] == 0 || epochs[usize::from(me.value())] == 0 {
+        // The organizer need not be the first rider after a handover; the first may be gone.
+        if epochs[usize::from(room.organizer.value())] == 0 || epochs[usize::from(me.value())] == 0
+        {
             return Err(VoiceError::Invalid);
         }
         for (index, epoch) in epochs.into_iter().enumerate() {
@@ -798,6 +800,26 @@ mod tests {
                     .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn after_a_handover_the_first_rider_may_be_gone_but_the_organizer_must_be_heard() {
+        let now = Instant::now();
+        let organizer = RiderId::new(3).unwrap();
+        let me = RiderId::new(5).unwrap();
+        let (_port, owner, _changes) = channel_for(me, organizer);
+        let mut memberships = crate::state::StateInbox::new(now);
+        owner
+            .0
+            .join(memberships.join(organizer, now).unwrap(), None);
+        let mut epochs = [0; MAX_RIDERS];
+        epochs[3] = 1;
+        epochs[5] = 2;
+        // The original organizer in the first seat has left the group, or is reconnecting.
+        owner.0.install_epochs(epochs).unwrap();
+        epochs[3] = 0;
+        epochs[0] = 7;
+        assert_eq!(owner.0.install_epochs(epochs), Err(VoiceError::Invalid));
     }
 
     #[test]

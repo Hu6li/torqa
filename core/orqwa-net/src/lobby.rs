@@ -299,6 +299,7 @@ enum Command {
     AdmitAs(Reply, RiderId, oneshot::Sender<Result<(), LobbyError>>),
     Handover(Option<RiderId>, crate::handover::Message),
     PeerHandover(Membership, crate::handover::Message),
+    TakeOver(u64, crate::handover::Proof, Option<WorkoutClock>),
 }
 
 /// The host's lobby owner. Dropping it aborts its actor, peer tasks and transport listeners.
@@ -494,6 +495,23 @@ impl HostLobby {
             .try_send(Command::Handover(recipient, message))
             .map_err(|_| LobbyError::Lost)
     }
+    /// Takes over as the group's organizer from a standby whose organizer was lost (#426),
+    /// committing with the `proof` it was given in advance and continuing the shared workout
+    /// from `clock`, the last one heard. The commit goes to every rider connected now and to
+    /// each held seat's rider when they reconnect. Fire-and-forget like [`HostLobby::handover`].
+    ///
+    /// # Errors
+    /// Returns [`LobbyError::Lost`] for a stopped or full command queue.
+    pub fn take_over(
+        &self,
+        epoch: u64,
+        proof: crate::handover::Proof,
+        clock: Option<WorkoutClock>,
+    ) -> Result<(), LobbyError> {
+        self.commands
+            .try_send(Command::TakeOver(epoch, proof, clock))
+            .map_err(|_| LobbyError::Lost)
+    }
     /// Disconnects one joiner so an unavailable participant need not block countdown.
     ///
     /// # Errors
@@ -596,7 +614,7 @@ impl JoinerLobby {
     /// # Errors
     /// Returns [`LobbyError`] for invalid metadata, transport, timeout or protocol failures.
     pub async fn join(joiner: Joiner, rider: Rider) -> Result<Self, LobbyError> {
-        Self::join_inner(joiner, rider, None).await
+        Self::join_inner(joiner, rider, None, false).await
     }
     /// Prepares a pinned replacement link while retaining the original rider identity.
     /// The caller checks the plan against its live group and local policy before opening the joiner.
@@ -610,6 +628,30 @@ impl JoinerLobby {
         plan: crate::handover::Plan,
         roster: Roster,
         selection: crate::activity::Selection,
+    ) -> Result<Self, LobbyError> {
+        Self::prepared(joiner, rider, id, (plan, roster, selection), false).await
+    }
+    /// Prepares a standby link to the organizer's fallback like [`JoinerLobby::prepare`], kept
+    /// for the ride and reconnected like any other link until the fallback takes over (#426).
+    ///
+    /// # Errors
+    /// Returns [`LobbyError`] for changed bindings, a wrong assigned identity or invalid welcome.
+    pub async fn standby(
+        joiner: Joiner,
+        rider: Rider,
+        id: RiderId,
+        plan: crate::handover::Plan,
+        roster: Roster,
+        selection: crate::activity::Selection,
+    ) -> Result<Self, LobbyError> {
+        Self::prepared(joiner, rider, id, (plan, roster, selection), true).await
+    }
+    async fn prepared(
+        joiner: Joiner,
+        rider: Rider,
+        id: RiderId,
+        (plan, roster, selection): (crate::handover::Plan, Roster, crate::activity::Selection),
+        standby: bool,
     ) -> Result<Self, LobbyError> {
         let context = crate::handover::Context::new(
             plan.context.root,
@@ -626,12 +668,13 @@ impl JoinerLobby {
             .reply()
             .matches(&plan.invite)
             .map_err(LinkError::from)?;
-        Self::join_inner(joiner, rider, Some((id, plan, roster))).await
+        Self::join_inner(joiner, rider, Some((id, plan, roster)), standby).await
     }
     async fn join_inner(
         joiner: Joiner,
         rider: Rider,
         prepared: Option<(RiderId, crate::handover::Plan, Roster)>,
+        standby: bool,
     ) -> Result<Self, LobbyError> {
         rider.validate()?;
         let route = joiner.reply().route;
@@ -700,6 +743,7 @@ impl JoinerLobby {
             me,
             organizer,
             prepared,
+            standby,
             roster,
             away: [false; MAX_RIDERS],
         };
@@ -888,6 +932,8 @@ struct Link {
     me: RiderId,
     organizer: RiderId,
     prepared: Option<crate::handover::Plan>,
+    /// A standby link, reconnected like any other while it waits for a takeover (#426).
+    standby: bool,
     roster: Roster,
     away: [bool; MAX_RIDERS],
 }
@@ -986,8 +1032,12 @@ async fn supervise(
     let mut resumed = false;
     loop {
         let result = client_actor(&connection, send, recv, &mut link, resumed).await;
-        // Mid-handover, the prepared successor link takes over instead.
-        if !lost(&connection, &result) || !link.app_lobby || link.prepared.is_some() {
+        // Mid-handover, the prepared successor link takes over instead; a standby link waits
+        // for a takeover all ride long, so it reconnects too.
+        if !lost(&connection, &result)
+            || !link.app_lobby
+            || (link.prepared.is_some() && !link.standby)
+        {
             return;
         }
         let until = Instant::now() + RECONNECT_WINDOW;
@@ -1074,6 +1124,8 @@ struct Away {
     client: crate::code::Fingerprint,
     /// Whether the rider had entered the running ride, and so may send state at once.
     entered: bool,
+    /// Held while a standby took over (#426): the rider learns of it on returning.
+    missed: bool,
 }
 
 fn event(control: &mpsc::Sender<LobbyEvent>, event: LobbyEvent) -> Result<(), LobbyError> {
@@ -1104,6 +1156,31 @@ fn leave(
     roster[usize::from(id.value())] = None;
     broadcast(peers, &Message::Left(id));
     event(controls, LobbyEvent::Left { id })
+}
+
+/// Makes a prepared successor's lobby the group's authority: everyone in the roster is ready
+/// for the frozen revision, ride state and voice open. Its commit then goes to the riders.
+fn activated(
+    revision: u64,
+    roster: &Roster,
+    activities: &mut Activities,
+    shared: &Shared,
+    local: &mut watch::Receiver<Option<RiderState>>,
+    voice: &VoiceHandle,
+) -> Result<(), LobbyError> {
+    for (slot, rider) in roster.iter().enumerate() {
+        if rider.is_some() {
+            activities.ready(rider_id(slot), revision, true)?;
+        }
+    }
+    {
+        let mut mailbox = lock(shared);
+        mailbox.active = true;
+        mailbox.entered = std::array::from_fn(|id| roster[id].is_some());
+    }
+    drop(local.borrow_and_update());
+    voice.activate();
+    Ok(())
 }
 
 /// Tells a rider just connected which seats are held for riders reconnecting (#434).
@@ -1286,6 +1363,8 @@ async fn host_loop(
     }
     let mut tasks = JoinSet::new();
     let mut away: [Option<Away>; MAX_RIDERS] = [None; MAX_RIDERS];
+    // A standby's takeover, for riders who were away when it happened (#426).
+    let mut committed: Option<crate::handover::Message> = None;
     let mut ticker = interval(STATE_EVERY);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -1395,17 +1474,27 @@ async fn host_loop(
                         && let Some(prepared) = &mut prepared && !prepared.active {
                         match prepared.activate(epoch, proof, &roster) {
                             Ok(true) => {
-                                let revision = prepared.replacement.plan.context.revision;
-                                for (slot, rider) in roster.iter().enumerate() {if rider.is_some() {activities.ready(rider_id(slot), revision, true)?;}}
-                                {let mut mailbox = lock(&shared); mailbox.active = true; mailbox.entered = std::array::from_fn(|id| roster[id].is_some());}
-                                drop(local.borrow_and_update());
-                                voice.activate();
+                                activated(prepared.replacement.plan.context.revision, &roster, &mut activities, &shared, local, voice)?;
                                 broadcast(&peers, &Message::Handover(message.clone()));
                                 event(controls, LobbyEvent::Handover {sender: organizer, message})?;
                             }
                             _ => if let Some(peer) = &peers[slot] {peer.connection.close();},
                         }
                     } else {event(controls, LobbyEvent::Handover {sender: member.rider(), message})?;}
+                }
+                // The organizer was lost: this standby takes over by itself (#426).
+                Some(Command::TakeOver(epoch, proof, clock)) => {
+                    if let Some(prepared) = prepared.as_mut().filter(|prepared| prepared.replacement.standby && !prepared.active)
+                        && prepared.activate(epoch, &proof, &roster).is_ok_and(|changed| changed)
+                    {
+                        activated(prepared.replacement.plan.context.revision, &roster, &mut activities, &shared, local, voice)?;
+                        if let Some(clock) = clock.filter(|clock| clock.revision == prepared.replacement.plan.context.revision) {timeline = Some(Timeline::from_clock(clock));}
+                        for seat in away.iter_mut().flatten() {seat.missed = true; seat.entered = true;}
+                        let message = crate::handover::Message::Commit {epoch, proof};
+                        broadcast(&peers, &Message::Handover(message.clone()));
+                        committed = Some(message.clone());
+                        event(controls, LobbyEvent::Handover {sender: organizer, message})?;
+                    }
                 }
                 Some(Command::Remove(id)) => {
                     let slot = usize::from(id.value());
@@ -1445,6 +1534,8 @@ async fn host_loop(
                         event(controls, LobbyEvent::Back { id })?;
                         lock(&shared).entered[slot] = seat.entered;
                         let mut prelude = vec![Message::Rejoined(seat.entered)];
+                        // A standby rider away at the takeover commits on returning (#426).
+                        if let Some(commit) = committed.clone().filter(|_| seat.missed) {prelude.push(Message::Handover(commit));}
                         prelude.extend(held_seats(&away));
                         let welcome = Message::Welcome(id, organizer, authority.0, authority.1, roster.clone());
                         let peer = serve(&mut tasks, Admitted {connection, send, recv, member, welcome, prelude}, &shared, states, voice, &activities, &mut timeline, command_sender)?;
@@ -1484,10 +1575,11 @@ async fn host_loop(
                         let entered = std::mem::take(&mut lock(&shared).entered[slot]);
                         let client = peer.connection.client();
                         // Hold the seat of a rider the network lost; one leaving frees it (#434).
-                        if lost && activities.enabled && prepared.as_ref().is_none_or(|prepared| prepared.active) && let Some(client) = client {
+                        // A standby holds seats before any takeover too, for riders to come back.
+                        if lost && activities.enabled && prepared.as_ref().is_none_or(|prepared| prepared.active || prepared.replacement.standby) && let Some(client) = client {
                             let until = Instant::now() + RECONNECT_WINDOW;
                             host.hold(client, until, peer.connection.peer_address());
-                            away[slot] = Some(Away {until, client, entered});
+                            away[slot] = Some(Away {until, client, entered, missed: false});
                             broadcast(&peers, &Message::Away(id));
                             broadcast(&peers, &Message::VoiceRoster(voice.epochs()));
                             event(controls, LobbyEvent::Away { id })?;
@@ -1668,7 +1760,8 @@ async fn client_actor(
     link: &mut Link,
     resumed: bool,
 ) -> Result<(), LobbyError> {
-    let (me, organizer, app_lobby) = (link.me, link.organizer, link.app_lobby);
+    let (me, organizer, app_lobby, standby) =
+        (link.me, link.organizer, link.app_lobby, link.standby);
     let Link {
         controls,
         states,
@@ -1784,7 +1877,9 @@ async fn client_actor(
                         Message::Handover(message) if app_lobby => {
                             if let crate::handover::Message::Commit {epoch, ref proof} = message && let Some(plan) = prepared.as_ref() {
                                 let members = roster.iter().enumerate().fold(0_u8, |mask, (id, rider)| if rider.is_some() {mask | (1 << id)} else {mask});
-                                if epoch != plan.context.epoch || !plan.accepts(proof) || members != plan.context.members {return Err(LobbyError::Protocol);}
+                                // A standby's commit may name fewer riders than planned, never others (#426).
+                                let complete = if standby {members & !plan.context.members == 0} else {members == plan.context.members};
+                                if epoch != plan.context.epoch || !plan.accepts(proof) || !complete {return Err(LobbyError::Protocol);}
                                 drop(local.borrow_and_update());
                                 entered = true; voice.0.activate(); *prepared = None;
                             }

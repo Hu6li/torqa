@@ -651,13 +651,16 @@ func _on_moment(moment: Dictionary) -> void:
 func _show_group(status: Dictionary) -> void:
 	var phase: String = status.get("phase", "idle")
 	_bar.show_group(phase != "idle")
-	var offered: bool = status.get("handover_offer", false)
+	var standby: bool = status.get("standby_offer", false)
+	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
 		_offered = offered
 		_offer_pending = offered
 		if offered:
 			var reach: String = status.get("reachability", "")
-			_offer.show_offer(_organizer(status), _group_controls.reach_warning(reach, false))
+			_offer.show_offer(
+				_organizer(status), _group_controls.reach_warning(reach, false), standby
+			)
 			_play_chime()
 	_offer.visible = _offer_pending and not is_overlay()
 

@@ -71,6 +71,10 @@ msgstr ""
 msgid "%s asks you to organize the ride"
 msgstr ""
 
+#: app/ui/group_offer_card.gd
+msgid "%s asks you to stand in as organizer"
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s behind"
 msgstr ""
@@ -640,7 +644,15 @@ msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Choose a fallback organizer"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Choose a friend who is ready. They must accept before anything changes."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Choose a friend who takes over if your connection is lost. They must accept."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -657,6 +669,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Choose an activity to get started."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Choose fallback organizer…"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1401,6 +1417,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Fake trainer (200 W, for testing)"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Fallback organizer"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3029,6 +3049,14 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "Speed"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+msgid "Stand in as organizer"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+msgid "Stand in as organizer if the organizer's connection is lost? After about a minute without them you would take over, so the group rides on. Accepting shares connection addresses with everyone in this group now, using your connection settings."
 msgstr ""
 
 #: app/ui/zones_editor.gd

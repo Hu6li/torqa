@@ -163,7 +163,11 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         crate::handover::Message::Offer {
             epoch: 2,
             successor: anna,
+            standby: true,
         },
+        crate::handover::Message::Standby { epoch: 2 },
+        crate::handover::Message::Lost { epoch: 2 },
+        crate::handover::Message::Found { epoch: 2 },
         crate::handover::Message::Decision {
             epoch: 2,
             accepted: true,

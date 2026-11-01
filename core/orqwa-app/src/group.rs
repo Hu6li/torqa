@@ -216,6 +216,10 @@ pub struct Snapshot {
     pub reconnecting: Option<Instant>,
     /// Riders whose connection was lost, with their seats held while they reconnect (#434).
     pub away: [bool; MAX_RIDERS],
+    /// The rider standing by to take over if the organizer is lost (#426).
+    pub fallback: Option<u8>,
+    /// This rider is asked to stand in as organizer if the organizer is lost.
+    pub standby_offer: bool,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -265,6 +269,8 @@ impl Default for Snapshot {
             total: 0,
             reconnecting: None,
             away: [false; MAX_RIDERS],
+            fallback: None,
+            standby_offer: false,
         }
     }
 }
@@ -670,6 +676,14 @@ impl App {
         )
     }
 
+    /// Asks rider `id` to stand in as fallback organizer instead of the automatic choice
+    /// (#426); they must accept before anything changes.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] for invalid slots or an unavailable queue.
+    pub fn group_fallback(&self, id: u8) -> Result<(), AppError> {
+        self.group_command(Command::Fallback(RiderId::new(id).map_err(error)?))
+    }
     /// Tries to reconnect to the organizer now rather than after the pause between attempts
     /// (#434); the connection keeps trying by itself until the seat is given up.
     ///
