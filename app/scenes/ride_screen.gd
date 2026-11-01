@@ -269,7 +269,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	if _orqwa != null:
-		_bar.show_group(_orqwa.group_status().get("phase", "idle") != "idle")
+		var phase: String = _orqwa.group_status().get("phase", "idle")
+		_bar.show_group(phase != "idle")
 	if _orqwa != null:
 		_sound.update(_orqwa, visible and not _finished)
 	if _toast_left > 0.0:
