@@ -371,6 +371,14 @@ func _organizer_offer() -> void:
 	}
 	ride._show_group(offer)
 	_check(card.visible and "Alex" in card._title.text, "the request comes over the ride")
+	ride.show()
+	for frame: int in range(3):
+		await process_frame
+	var bottom: float = ride.size.y - RideScreen.OFFER_BOTTOM
+	_check(
+		card.size.y < 360 and absf(card.get_rect().end.y - bottom) < 1.0,
+		"as tall as its lines, above the controls: %s" % card.get_rect()
+	)
 	_check(card._warning.visible, "with the warning about reaching the rider")
 	ride._show_group({"phase": "riding", "roster": roster})
 	_check(not card.visible, "a withdrawn request goes")

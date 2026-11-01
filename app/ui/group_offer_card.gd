@@ -24,6 +24,9 @@ var _decline: Button = Button.new()
 
 func _init() -> void:
 	hide()
+	# Measured before their first layout, the wrapped lines stand a word to a line; an
+	# anchored panel grows to that and would never shrink back by itself.
+	minimum_size_changed.connect(_fit)
 	var style: StyleBoxFlat = UiTheme.panel(0.94)
 	style.border_color = Color(UiTheme.ACCENT, 0.7)
 	style.set_border_width_all(0)
@@ -72,8 +75,15 @@ func show_offer(organizer: String, warning: String) -> void:
 	custom_minimum_size.x = width
 	for label: Label in [_title, _text, _warning]:
 		label.custom_minimum_size.x = width - 2.0 * PADDING
-	reset_size()
 	show()
+	_fit()
+
+
+## As tall as its content, keeping its bottom where it is anchored.
+func _fit() -> void:
+	var bottom: float = position.y + size.y
+	reset_size()
+	position.y = bottom - size.y
 
 
 func _answer(accept: bool) -> void:
