@@ -890,8 +890,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     entitlement, permission recovery guidance and artifact privacy checks.
   - [x] Preserve background lobby/voice reader failures in terminal logs and Technical details,
     distinguish partial-control timeouts and remove disconnected remote riders from ended rosters.
-  - [ ] Reproduce and resolve #428's disconnect 2–5 seconds after a joiner enables listening,
-    reported with macOS organizers and Windows/macOS joiners before microphone activation.
+  - [x] Reproduce and fix microphone sequence rejection after packet delay/loss (#428): keep
+    one timing anchor per microphone activation and preserve actual transport-close errors.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

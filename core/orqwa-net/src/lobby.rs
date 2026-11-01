@@ -1454,7 +1454,10 @@ async fn client_actor(
                 states.send_replace(inbox.drain(Instant::now().into_std()));
             },
             result = readers.join_next() => return Err(reader_result(result)),
-            _ = connection.accept_bi() => return Err(LobbyError::Protocol),
+            stream = connection.accept_bi() => {
+                let _ = stream?;
+                return Err(LobbyError::Protocol);
+            },
         }
     }
 }
@@ -1493,6 +1496,32 @@ mod tests {
             observer.close().await;
             peer.close().await;
             host.close().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn organizer_closure_does_not_invent_an_invalid_control_message() {
+        for _ in 0..16 {
+            let host = host().await;
+            let mut peer = join(&host, "Peer").await;
+            host.close().await;
+            timeout(Duration::from_secs(2), async {
+                loop {
+                    match peer.next().await {
+                        Some(LobbyEvent::Failed { error, .. }) => {
+                            assert!(
+                                !matches!(error.as_ref(), LobbyError::Protocol),
+                                "ordinary close was reported as invalid control traffic"
+                            );
+                        }
+                        Some(LobbyEvent::HostLeft) | None => break,
+                        _ => {}
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            peer.close().await;
         }
     }
 

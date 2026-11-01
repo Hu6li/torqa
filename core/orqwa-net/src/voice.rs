@@ -15,15 +15,26 @@ pub const JITTER_FRAMES: usize = 8;
 const PREBUFFER: Duration = Duration::from_millis(60);
 const IDLE: Duration = Duration::from_millis(250);
 const BURST: u8 = 10;
+// Sender and receiver monotonic clocks are independent; do not accumulate tiny
+// clock differences into a false sequence violation over a long conversation.
+const CLOCK_SKEW_DIVISOR: u32 = 100;
 const HEADER: usize = 19;
 pub(crate) const TAG: u8 = 0x81;
 
 /// Invalid voice traffic. Errors never include audio, credentials or peer-controlled text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum VoiceError {
-    /// Incorrect format, size, spurt, ordering or authenticated speaker.
+    /// Incorrect format, size, spurt or authenticated speaker.
     #[error("The voice packet is invalid.")]
     Invalid,
+    /// Sequence progress exceeds the microphone activation's elapsed time and jitter allowance.
+    #[error("The voice sequence advanced too quickly (received {received}, limit {limit}).")]
+    Sequence {
+        /// Received counter, without any audio payload.
+        received: u32,
+        /// Highest plausible counter for the current activation.
+        limit: u32,
+    },
     /// More than fifty frames per second beyond the bounded jitter burst.
     #[error("The peer is sending too many voice packets.")]
     Flood,
@@ -152,6 +163,7 @@ pub struct VoiceInbox {
     frames: [Option<VoiceFrame>; JITTER_FRAMES],
     spurt: u32,
     latest: Option<(u32, Instant)>,
+    origin: Option<(u32, Instant)>,
     next: u32,
     play_at: Option<Instant>,
     missing: u8,
@@ -168,6 +180,7 @@ impl VoiceInbox {
             frames: [None; JITTER_FRAMES],
             spurt: 0,
             latest: None,
+            origin: None,
             next: 0,
             play_at: None,
             missing: 0,
@@ -199,14 +212,25 @@ impl VoiceInbox {
             return Ok(false);
         }
         let new_spurt = frame.spurt > self.spurt;
-        if !new_spurt && let Some((latest, at)) = self.latest {
-            let allowed =
+        // A late arrival must not restart the microphone's sequence clock: a fresh
+        // packet can follow it immediately after loss or a change in network delay.
+        if !new_spurt && let Some((sequence, at)) = self.origin {
+            let frames =
                 u32::try_from(now.saturating_duration_since(at).as_nanos() / FRAME_TIME.as_nanos())
-                    .unwrap_or(u32::MAX)
-                    .saturating_add(u32::from(BURST));
-            if frame.sequence > latest.saturating_add(allowed) {
-                return Err(VoiceError::Invalid);
+                    .unwrap_or(u32::MAX);
+            let allowed = frames
+                .saturating_add(frames / CLOCK_SKEW_DIVISOR)
+                .saturating_add(u32::from(BURST));
+            let limit = sequence.saturating_add(allowed);
+            if frame.sequence > limit {
+                return Err(VoiceError::Sequence {
+                    received: frame.sequence,
+                    limit,
+                });
             }
+        }
+        if new_spurt {
+            self.origin = Some((frame.sequence, now));
         }
         let idle = self
             .latest
@@ -837,7 +861,10 @@ mod tests {
         inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
         assert_eq!(
             inbox.ingest(&bytes(RiderId::HOST, u32::MAX), now),
-            Err(VoiceError::Invalid)
+            Err(VoiceError::Sequence {
+                received: u32::MAX,
+                limit: u32::from(BURST)
+            })
         );
         for sequence in 1..1000 {
             let arrival =
@@ -848,6 +875,67 @@ mod tests {
                     .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn delayed_microphone_packets_cannot_move_the_sequence_clock_forward() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        // Frame 50 was emitted at 1 s but delayed by 500 ms; frame 75 arrives
+        // promptly after it. Both respect the microphone's 50 Hz source rate.
+        inbox
+            .ingest(&bytes(RiderId::HOST, 50), now + Duration::from_millis(1500))
+            .unwrap();
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 75), now + Duration::from_millis(1501)),
+            Ok(true)
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 76), now + Duration::from_millis(1520)),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn successive_small_future_jumps_cannot_accumulate_sequence_allowance() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        inbox
+            .ingest(&bytes(RiderId::HOST, 11), now + FRAME_TIME)
+            .unwrap();
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 22), now + FRAME_TIME * 2),
+            Err(VoiceError::Sequence {
+                received: 22,
+                limit: 12
+            })
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 12), now + FRAME_TIME * 3),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn independent_clocks_do_not_accumulate_false_sequence_errors_during_long_activations() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        let later = now + Duration::from_mins(30);
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 90_045), later), Ok(true));
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 90_911), later),
+            Err(VoiceError::Sequence {
+                received: 90_911,
+                limit: 90_910
+            })
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 90_046), later + FRAME_TIME),
+            Ok(true)
+        );
     }
 
     #[test]
@@ -929,7 +1017,10 @@ mod tests {
         assert_eq!(inbox.ingest(&packet(1, 51), now), Ok(false));
         assert_eq!(
             inbox.ingest(&packet(2, u32::MAX), now),
-            Err(VoiceError::Invalid)
+            Err(VoiceError::Sequence {
+                received: u32::MAX,
+                limit: u32::from(BURST)
+            })
         );
         assert_eq!(inbox.ingest(&packet(2, 1), now), Ok(true));
     }

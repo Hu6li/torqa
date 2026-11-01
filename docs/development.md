@@ -612,13 +612,15 @@ If trainer discovery reports no adapter, collect `bluetoothctl list`, `rfkill li
 `systemctl status bluetooth` separately; successful audio routing does not prove BLE availability.
 
 For #428, use matching stack builds with a macOS organizer and Windows or macOS joiner. Enable
-**Join voice chat** on the joiner with its microphone off and observe at least six seconds.
-Record both build IDs, selected output devices, lobby phase, and the organizer/peer terminal
-diagnostics and Technical details before leaving. Distinguish native audio startup failure from
-control framing/timeout, consent-rate rejection and transport loss; the original reader error
-now reaches the diagnostic path. Verify both remote rosters clear after disconnection. The
-loopback protocol regression does not currently reproduce this native failure;
-it must not be reported as resolved until that reproduction is understood and retested.
+**Join voice chat** on both, then **Microphone on** on the joiner and speak for at least fifteen
+seconds. Verify the organizer keeps hearing the joiner and both remain connected. Repeat with
+packet loss or changing latency if available, and after mute/unmute. The sequence-clock regression
+reproduces valid frame 50 arriving late at 1.5 s and frame 75 arriving promptly at 1.501 s; the
+old arrival-relative guard rejects frame 75. A separate loopback regression checks that organizer
+closure is not mislabeled as invalid control traffic, and the simulated-device Opus conversation
+checks sustained capture/playback. Impossible jumps and ingress floods must still be rejected.
+Record both build IDs, selected devices and terminal/Technical details for native failures; the
+synthetic jitter reproduction does not replace acceptance on the originally affected computers.
 
 For macOS permission acceptance, launch the exported **ORQWA.app** from Finder on an account
 that has not granted it microphone access. Joining voice, opening Audio settings and testing

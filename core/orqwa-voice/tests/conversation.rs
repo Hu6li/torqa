@@ -290,6 +290,47 @@ async fn speech_is_opt_in_does_not_echo_and_mute_deafen_and_voice_exit_preserve_
 }
 
 #[tokio::test]
+async fn sustained_joiner_microphone_preserves_an_organizer_that_is_listening() {
+    let mut host = host().await;
+    let mut peer = join(&host, "Speaking peer").await;
+    let output = Arc::new(Probe::default());
+    let probe = output.clone();
+    let host_voice = VoiceChat::with_audio(host.take_voice().unwrap(), move |_| {
+        Ok(Box::new(Audio {
+            probe,
+            activation: None,
+            phase: 0.0,
+            frequency: 440.0,
+            deafened: false,
+        }))
+    })
+    .await
+    .unwrap();
+    let input = Arc::new(Probe::default());
+    let peer_voice = chat(&mut peer, &input, 660.0).await;
+    peer_voice.microphone(true).unwrap();
+    let mut previous = 0;
+    for _ in 0..5 {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert!(
+            peer_voice.microphone_enabled(),
+            "peer disconnected during sustained capture"
+        );
+        let heard = output.heard.load(Ordering::Acquire);
+        assert!(
+            heard > previous,
+            "organizer keeps receiving the peer's audio"
+        );
+        previous = heard;
+    }
+    host.start(Duration::from_secs(1)).await.unwrap();
+    peer_voice.close().await;
+    host_voice.close().await;
+    peer.close().await;
+    host.close().await;
+}
+
+#[tokio::test]
 async fn malformed_speech_mutes_only_that_source_and_group_drop_closes_live_microphones() {
     let host = host().await;
     let mut anna = join(&host, "Anna").await;

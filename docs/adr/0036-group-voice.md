@@ -205,9 +205,9 @@ References: [Apple microphone authorization](https://developer.apple.com/documen
 
 The earlier ownership fix does not establish that #428 is resolved. The reported reproduction
 is a macOS organizer and a Windows or macOS joiner: **Join voice chat** disconnects the joiner
-after roughly 2–5 seconds, before microphone activation. This is not specific to a cross-platform
-pair. The hardware-free encrypted app/CLI listening regressions currently preserve the connection;
-the native reproduction's cause remains open.
+after roughly 2–5 seconds. The affected case has the joiner's microphone on: the organizer accepts
+listening consent, then reports invalid voice traffic. Silent listening regressions alone do not
+exercise this path. The sequence-timing correction below covers a reproduced cause of this error.
 
 Lobby actors previously discarded their results and replaced a failed reader's original cause
 with a generic protocol/lost error. Preserve reader results, voice validation errors, control
@@ -220,8 +220,31 @@ After group end, remove remote roster entries and readiness while retaining the 
 Linux loopback tests cover normal listening for longer than the reported delay, reader-error
 propagation, two-second partial-control timeout, offending-peer isolation and close-text privacy.
 The macOS/Windows jobs also run the lobby protocol regressions. These tests do not substitute
-for reproducing the reported native-device sequence. Keep #428 open and collect
-the organizer's newly visible operation/cause diagnostic from the affected build.
+for acceptance on the affected native devices; retain both sides' diagnostics if a failure recurs.
+
+## Amendment — stable microphone sequence clock (2026-11-01, #428)
+
+The future-sequence guard previously measured from the most recently accepted packet's arrival.
+After loss or a change in delay, a late packet could shift that reference forward and make the
+next fresh packet look impossibly early. A deterministic reproduction receives frame 0 at time 0,
+frame 50 at 1.5 s after 500 ms of delay, then frame 75 at 1.501 s. This respects a 50 Hz source,
+but the old guard rejected frame 75 as invalid and disconnected the sender.
+
+Keep one sequence/time anchor per microphone activation, independently of latest arrivals and
+playback flushes. The ten-frame jitter allowance and nominal 50 Hz sequence clock now cover the
+whole activation, with 1% allowance for independent machine clocks over long conversations.
+The separate ingress budget still enforces its original 50 Hz rate. A delayed packet cannot
+restart the clock. Impossible jumps still fail without
+changing ordering; repeated small jumps can no longer accumulate a new allowance each time.
+Ingress budgets, sender/membership binding, epochs, fixed jitter buffers and privacy stay intact.
+An impossible jump now reports its counter and allowed limit, never audio. No protocol change.
+
+The peer's stream-accept branch also treated any result, including transport closure, as an
+unexpected organizer stream. Propagate the transport error; continue to reject an actual extra
+stream. This avoids a misleading invalid-control diagnostic after the organizer closes a link.
+Both regressions fail with their old guards restored. A fifteen-second encrypted Opus test keeps
+the organizer listening and the joiner transmitting through simulated devices. macOS/Windows CI
+also runs the deterministic voice-clock regressions; physical-device acceptance remains manual.
 
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
