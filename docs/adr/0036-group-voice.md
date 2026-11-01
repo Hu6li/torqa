@@ -201,6 +201,28 @@ References: [Apple microphone authorization](https://developer.apple.com/documen
 [Apple audio-input entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input),
 [Godot 4.7.2 macOS permission implementation](https://github.com/godotengine/godot/blob/4.7.2-stable/platform/macos/os_macos.mm).
 
+## Amendment — observable peer-listening disconnects (2026-11-01, #428)
+
+The earlier ownership fix does not establish that #428 is resolved. The reported reproduction
+is a macOS organizer and a Windows or macOS joiner: **Join voice chat** disconnects the joiner
+after roughly 2–5 seconds, before microphone activation. This is not specific to a cross-platform
+pair. The hardware-free encrypted app/CLI listening regressions currently preserve the connection;
+the native reproduction's cause remains open.
+
+Lobby actors previously discarded their results and replaced a failed reader's original cause
+with a generic protocol/lost error. Preserve reader results, voice validation errors, control
+rate-limit errors and the two-second partial-frame/write deadlines. Emit locally constructed
+operation/rider/cause diagnostics to tracing and the existing application Technical details
+path, with a bounded failure event before membership departure or connection end. Ordinary
+remote closes remain informational. Transport categories never copy peer-supplied close text.
+After group end, remove remote roster entries and readiness while retaining the local rider.
+
+Linux loopback tests cover normal listening for longer than the reported delay, reader-error
+propagation, two-second partial-control timeout, offending-peer isolation and close-text privacy.
+The macOS/Windows jobs also run the lobby protocol regressions. These tests do not substitute
+for reproducing the reported native-device sequence. Keep #428 open and collect
+the organizer's newly visible operation/cause diagnostic from the affected build.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

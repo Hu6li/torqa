@@ -888,6 +888,10 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
     sound-server bridges; keep explicit device choices and hide the silent null route (#456).
   - [x] macOS microphone actions explicitly request Apple's authorization, with signed audio-input
     entitlement, permission recovery guidance and artifact privacy checks.
+  - [x] Preserve background lobby/voice reader failures in terminal logs and Technical details,
+    distinguish partial-control timeouts and remove disconnected remote riders from ended rosters.
+  - [ ] Reproduce and resolve #428's disconnect 2–5 seconds after a joiner enables listening,
+    reported with macOS organizers and Windows/macOS joiners before microphone activation.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

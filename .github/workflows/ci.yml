@@ -193,6 +193,8 @@ jobs:
         if: steps.ffmpeg.outputs.cache-hit != 'true'
         run: scripts/build-ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
       - run: echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
+      - name: Test native group voice controls and disconnect diagnostics
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
       - name: Build GDExtension
         run: scripts/build-gdext.sh release
       - name: Build CLI
@@ -297,6 +299,8 @@ jobs:
           sh scripts/build-ffmpeg.sh "$env:RUNNER_TEMP\ffmpeg"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - run: '"FFMPEG_DIR=$env:RUNNER_TEMP\ffmpeg" >> $env:GITHUB_ENV'
+      - name: Test native group voice controls and disconnect diagnostics
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
       - name: Build GDExtension and CLI
         run: |
           sh scripts/build-gdext.sh release

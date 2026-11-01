@@ -457,6 +457,7 @@ async fn run_inner(
                 Some(LobbyEvent::Workout(clock)) => {snapshot.workout_clock = Some(clock);}
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
                 Some(LobbyEvent::Expired) => snapshot.report(Kind::GroupRide,"An admission reply expired. Exchange fresh codes."),
+                Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
                 Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },
             event = handover.next() => {
@@ -563,6 +564,12 @@ fn end(snapshot: &mut Snapshot) {
     snapshot.start = None;
     snapshot.phase = Phase::Ended;
     snapshot.states.fill(None);
+    for (index, rider) in snapshot.roster.iter_mut().enumerate() {
+        if index != usize::from(snapshot.me) {
+            *rider = None;
+        }
+    }
+    snapshot.ready.fill(false);
     snapshot.handover = super::Handover::Idle;
     snapshot.successor = None;
 }

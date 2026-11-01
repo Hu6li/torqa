@@ -58,6 +58,82 @@ async fn wait(updates: &mut watch::Receiver<Snapshot>, predicate: impl Fn(&Snaps
 }
 
 #[tokio::test]
+async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_removed() {
+    let directory = std::env::temp_dir().join(format!(
+        "orqwa-peer-audio-{:x?}",
+        orqwa_net::code::RideId::generate().unwrap().0
+    ));
+    let mut options = ConnectOptions::default();
+    options.gather.policy.loopback = true;
+    options.gather.stun_servers.clear();
+    let host = Host::lobby("Organizer", &options).await.unwrap();
+    let host = HostLobby::open(
+        host,
+        Rider {
+            name: "Organizer".into(),
+            mass: Kilograms(83.0),
+        },
+    )
+    .unwrap();
+    let live = Arc::new(AtomicUsize::new(0));
+    let capture = live.clone();
+    let request = Request {
+        audio: AudioBackend {
+            factory: Some(Arc::new(move |_| {
+                Ok(Box::new(Capture {
+                    live: capture.clone(),
+                    activation: None,
+                    phase: 0.0,
+                    played: Arc::default(),
+                }))
+            })),
+        },
+        voice_controls: Arc::default(),
+        invite: Some(host.invite().to_code(options.gather.policy).unwrap()),
+        rider: Rider {
+            name: "Listening peer".into(),
+            mass: Kilograms(83.0),
+        },
+        options: options.clone(),
+        data: directory.join("data"),
+        temporary: directory.join("temporary"),
+    };
+    let (commands, receive) = mpsc::channel(8);
+    let (send, mut updates) = watch::channel(Snapshot::default());
+    let (_local, local) = watch::channel(None);
+    let task = tokio::spawn(run(request, receive, send, local));
+    wait(&mut updates, |status| !status.reply.is_empty()).await;
+    let reply = Reply::from_code(&updates.borrow().reply, options.gather.policy).unwrap();
+    host.admit(&reply).await.unwrap();
+    wait(&mut updates, |status| status.phase == Phase::Waiting).await;
+    commands
+        .send(Command::Voice(0, true, false, false, 0.6))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        status.voice || !status.error.is_empty()
+    })
+    .await;
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    let status = updates.borrow().clone();
+    assert!(status.voice, "listening failed: {}", status.error);
+    assert!(status.phase == Phase::Waiting, "{}", status.error);
+    assert_eq!(
+        live.load(Ordering::Acquire),
+        0,
+        "listening opens no microphone"
+    );
+    assert_eq!(status.roster.iter().flatten().count(), 2);
+    host.remove(RiderId::new(status.me).unwrap()).unwrap();
+    wait(&mut updates, |status| status.phase == Phase::Ended).await;
+    assert_eq!(updates.borrow().roster.iter().flatten().count(), 1);
+    drop(commands);
+    task.await.unwrap();
+    host.close().await;
+    tokio::fs::remove_dir_all(directory).await.unwrap();
+}
+
+#[tokio::test]
 #[allow(clippy::too_many_lines)] // one lifecycle checks exclusive capture and retained controls across start/stop/leave
 async fn microphone_testing_restores_listening_muted_and_group_leave_releases_capture() {
     let directory = std::env::temp_dir().join(format!(

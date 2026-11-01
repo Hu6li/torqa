@@ -95,6 +95,18 @@ pub enum LinkError {
     /// The authenticated peer went away or spoke an invalid protocol.
     #[error("The connection to the peer ended or used an invalid protocol.")]
     Lost,
+    /// The negotiated QUIC idle timeout expired without communication.
+    #[error("The group connection timed out without receiving packets from the peer.")]
+    IdleTimeout,
+    /// The peer's transport was reset, for example by a process restart.
+    #[error("The peer reset the group connection.")]
+    Reset,
+    /// The remote application closed the connection, without copying its supplied reason.
+    #[error("The peer closed the group connection.")]
+    PeerClosed,
+    /// The peer's transport rejected the connection, without copying its supplied reason.
+    #[error("The peer's QUIC transport rejected the group connection.")]
+    Transport,
     /// Local TLS configuration/certificate generation failed; contains only local diagnostics.
     #[error("Encryption could not be configured: {0}")]
     Encryption(String),
@@ -262,6 +274,23 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
+    pub(crate) fn ended_normally(&self) -> bool {
+        matches!(self.0.quic.close_reason(), Some(quinn::ConnectionError::ApplicationClosed(close)) if close.error_code == VarInt::from_u32(0))
+    }
+
+    pub(crate) fn failure(&self) -> LinkError {
+        match self.0.quic.close_reason() {
+            Some(quinn::ConnectionError::TimedOut) => LinkError::IdleTimeout,
+            Some(quinn::ConnectionError::Reset) => LinkError::Reset,
+            Some(quinn::ConnectionError::ApplicationClosed(_)) => LinkError::PeerClosed,
+            Some(
+                quinn::ConnectionError::TransportError(_)
+                | quinn::ConnectionError::ConnectionClosed(_),
+            ) => LinkError::Transport,
+            _ => LinkError::Lost,
+        }
+    }
+
     /// At the host, the joiner certificate this connection proved and was admitted with.
     pub(crate) fn client(&self) -> Option<Fingerprint> {
         self.0.client
@@ -1015,6 +1044,29 @@ mod tests {
         let peer = joined(&mut host).await;
         peer.close();
         drop(client);
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn disconnect_diagnostics_never_copy_peer_supplied_close_text() {
+        let mut host = host().await;
+        let joiner = joiner(&host).await;
+        host.admit(joiner.reply()).unwrap();
+        let client = joiner.connect().await.unwrap();
+        let peer = joined(&mut host).await;
+        peer.0.quic.close(
+            VarInt::from_u32(42),
+            b"private peer-controlled text\nforged log line",
+        );
+        timeout(Duration::from_secs(1), client.closed())
+            .await
+            .unwrap();
+        assert!(!client.ended_normally());
+        assert!(matches!(client.failure(), LinkError::PeerClosed));
+        assert_eq!(
+            client.failure().to_string(),
+            "The peer closed the group connection."
+        );
         host.close().await;
     }
 

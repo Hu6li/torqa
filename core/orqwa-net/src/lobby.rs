@@ -118,11 +118,35 @@ pub enum LobbyEvent {
     Expired,
     /// The host or networking task ended. The local ride continues.
     HostLeft,
+    /// Local networking diagnostics, delivered before departure/end. Never peer-supplied text.
+    Failed {
+        /// Affected admitted rider, or `None` for the local organizer task.
+        peer: Option<RiderId>,
+        /// Original bounded protocol, transport or queue failure.
+        error: Arc<LobbyError>,
+        /// Local operation that failed; never copied from a remote message.
+        operation: &'static str,
+    },
 }
 
 /// Bounded lobby failures, without copying peer-supplied diagnostics.
 #[derive(Debug, thiserror::Error)]
 pub enum LobbyError {
+    /// Invalid or excessive voice traffic, retaining its specific cause.
+    #[error(transparent)]
+    Voice(#[from] voice::VoiceError),
+    /// Consent/readiness controls exceeded the bounded input allowance.
+    #[error("The peer sent group controls too quickly.")]
+    ControlFlood,
+    /// A local networking reader panicked or stopped without a result.
+    #[error("The group networking reader stopped unexpectedly.")]
+    Worker,
+    /// A started reliable control frame did not finish within its deadline.
+    #[error("The peer started a group control message but did not finish it within two seconds.")]
+    ControlTimeout,
+    /// A reliable group control could not be sent within its deadline.
+    #[error("Sending a group control message timed out after two seconds.")]
+    WriteTimeout,
     /// Activity state, membership or revision mismatch.
     #[error(transparent)]
     Activity(#[from] crate::activity::ActivityError),
@@ -552,6 +576,7 @@ impl JoinerLobby {
             .map_err(LinkError::from)?;
         Self::join_inner(joiner, rider, Some((id, plan, roster))).await
     }
+    #[allow(clippy::too_many_lines)] // one admission owns identity checks, stream handoff and failure reporting
     async fn join_inner(
         joiner: Joiner,
         rider: Rider,
@@ -612,7 +637,9 @@ impl JoinerLobby {
         let (readiness, ready) = mpsc::channel(8);
         let content_connection = connection.clone();
         tasks.spawn(async move {
-            let _ = client_actor(
+            let diagnostics = control.clone();
+            let transport = connection.clone();
+            let result = client_actor(
                 connection,
                 me,
                 roster,
@@ -630,6 +657,21 @@ impl JoinerLobby {
                 prepared,
             )
             .await;
+            if let Err(error) = result {
+                if transport.ended_normally() {
+                    tracing::info!(
+                        peer = organizer.value(),
+                        "organizer closed group connection"
+                    );
+                    return;
+                }
+                report(
+                    &diagnostics,
+                    Some(organizer),
+                    "receiving organizer controls",
+                    transport_error(error, &transport),
+                );
+            }
         });
         Ok(Self {
             me,
@@ -846,7 +888,7 @@ async fn host_actor(
     prepared: Option<Prepared>,
     authority: (RideId, u64),
 ) {
-    let _ = host_loop(
+    let result = host_loop(
         &mut host,
         me,
         &mut commands,
@@ -862,6 +904,43 @@ async fn host_actor(
         authority,
     )
     .await;
+    if let Err(error) = result {
+        report(&controls, None, "running organizer lobby", error);
+    }
+}
+
+fn report(
+    controls: &mpsc::Sender<LobbyEvent>,
+    peer: Option<RiderId>,
+    operation: &'static str,
+    error: LobbyError,
+) {
+    tracing::warn!(?peer, operation, %error, "group networking failed");
+    let _ = event(
+        controls,
+        LobbyEvent::Failed {
+            peer,
+            error: Arc::new(error),
+            operation,
+        },
+    );
+}
+
+fn reader_result(
+    result: Option<Result<Result<(), LobbyError>, tokio::task::JoinError>>,
+) -> LobbyError {
+    match result {
+        Some(Ok(Err(error))) => error,
+        _ => LobbyError::Worker,
+    }
+}
+
+fn transport_error(error: LobbyError, connection: &Connection) -> LobbyError {
+    if matches!(error, LobbyError::Lost | LobbyError::Link(LinkError::Lost)) {
+        connection.failure().into()
+    } else {
+        error
+    }
 }
 
 #[allow(clippy::too_many_arguments)] // bounded actor channels and independent voice mailbox
@@ -1053,7 +1132,15 @@ async fn host_loop(
                     }
                     lock(&shared).entered[slot] = false;
                     let initial = initial; let selection = activities.selected.subscribe(); let commands = command_sender.clone();
-                    tasks.spawn(async move { let _ = serve_peer(&connection, send, recv, welcome, member, shared, receive, updates, voice, epochs,initial,selection,commands).await; connection.close(); Done::Left(member) });
+                    let diagnostics = controls.clone();
+                    tasks.spawn(async move {
+                        if let Err(error) = serve_peer(&connection, send, recv, welcome, member, shared, receive, updates, voice, epochs,initial,selection,commands).await {
+                            if connection.ended_normally() {
+                                tracing::info!(peer = member.rider().value(), "peer closed group connection");
+                            } else {report(&diagnostics, Some(member.rider()), "receiving peer controls", transport_error(error, &connection));}
+                        }
+                        connection.close(); Done::Left(member)
+                    });
                 }
                 Some(Ok(Done::Left(member))) => {
                     let slot = usize::from(member.rider().value());
@@ -1089,6 +1176,7 @@ async fn host_loop(
 }
 
 #[allow(clippy::too_many_arguments)] // one bounded peer worker owns both stream halves and mailboxes
+#[allow(clippy::too_many_lines)] // reader validation, diagnostics and socket teardown share one peer lifetime
 async fn serve_peer(
     connection: &Connection,
     mut send: SendStream,
@@ -1124,7 +1212,7 @@ async fn serve_peer(
         };
         timeout(WRITE_WAIT, wire::write(&mut send, &message))
             .await
-            .map_err(|_| LobbyError::Lost)??;
+            .map_err(|_| LobbyError::WriteTimeout)??;
     }
     let mut readers = JoinSet::new();
     let mut transfers = JoinSet::new();
@@ -1135,15 +1223,18 @@ async fn serve_peer(
         let mut budget = voice::IncomingBudget::controls();
         loop {
             let message = wire::read(&mut recv).await?;
-            budget.charge().map_err(|_| LobbyError::Protocol)?;
+            budget.charge().map_err(|_| LobbyError::ControlFlood)?;
             match message {
                 Message::VoiceEnabled(enabled) => {
                     if enabled && !lock(&receiver_shared).active {
                         return Err(LobbyError::Protocol);
                     }
-                    receiver_voice
-                        .consent(member, enabled)
-                        .map_err(|_| LobbyError::Protocol)?;
+                    receiver_voice.consent(member, enabled)?;
+                    tracing::info!(
+                        peer = member.rider().value(),
+                        enabled,
+                        "peer group voice listening changed"
+                    );
                 }
                 Message::Handover(message) => commands
                     .try_send(Command::PeerHandover(member, message))
@@ -1168,7 +1259,7 @@ async fn serve_peer(
                     Some(Control::Start(at)) => Message::Start(u32::try_from(at.saturating_duration_since(Instant::now()).as_millis()).map_err(|_| LobbyError::Protocol)?),
                     None => return Ok(()),
                 };
-                timeout(WRITE_WAIT, wire::write(&mut send, &message)).await.map_err(|_| LobbyError::Lost)??;
+                timeout(WRITE_WAIT, wire::write(&mut send, &message)).await.map_err(|_| LobbyError::WriteTimeout)??;
             },
             changed = states.changed() => {
                 changed.map_err(|_| LobbyError::Lost)?;
@@ -1181,7 +1272,7 @@ async fn serve_peer(
                 let bytes = bytes?;
                 if !lock(&shared).active {return Err(LobbyError::Protocol);}
                 if bytes.first() == Some(&voice::TAG) {
-                    voice.ingest(member,&bytes).map_err(|_| LobbyError::Protocol)?;
+                    voice.ingest(member,&bytes)?;
                     continue;
                 }
                 let mut mailbox = lock(&shared);
@@ -1189,7 +1280,7 @@ async fn serve_peer(
                 if !mailbox.entered[usize::from(member.rider().value())] { return Err(LobbyError::Protocol); }
                 mailbox.inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?;
             },
-            _ = readers.join_next() => return Err(LobbyError::Protocol),
+            result = readers.join_next() => return Err(reader_result(result)),
             stream = connection.accept_bi() => {
                 transfer_budget.charge().map_err(|_|LobbyError::Protocol)?;
                 let (send,recv) = stream?;
@@ -1263,11 +1354,12 @@ async fn client_actor(
                     if !late || entered || requested.is_some() || revision != selection_revision { continue; }
                     requested = Some(revision);
                 }
-                timeout(WRITE_WAIT,wire::write(&mut send,&message)).await.map_err(|_| LobbyError::Lost)??;
+                timeout(WRITE_WAIT,wire::write(&mut send,&message)).await.map_err(|_| LobbyError::WriteTimeout)??;
             },
             changed = voice_changes.changed(), if voice_control_open => {
                 let enabled = if changed.is_ok() { *voice_changes.borrow_and_update() } else { voice_control_open = false; false };
-                timeout(WRITE_WAIT,wire::write(&mut send,&Message::VoiceEnabled(enabled))).await.map_err(|_| LobbyError::Lost)??;
+                timeout(WRITE_WAIT,wire::write(&mut send,&Message::VoiceEnabled(enabled))).await.map_err(|_| LobbyError::WriteTimeout)??;
+                tracing::info!(peer = me.value(), enabled, "sent group voice listening change");
             },
             message = incoming.recv() => {
                 if app_lobby && control_period.elapsed()>=Duration::from_secs(1) {count=0;control_period=Instant::now();}
@@ -1279,7 +1371,7 @@ async fn client_actor(
                     Message::Readiness(id,revision,ready) if app_lobby && revision==selection_revision && roster[usize::from(id.value())].is_some() => {
                         event(&controls,LobbyEvent::Readiness {id,revision,ready})?;
                     }
-                    Message::VoiceRoster(epochs) => voice.0.install_epochs(epochs).map_err(|_| LobbyError::Protocol)?,
+                    Message::VoiceRoster(epochs) => voice.0.install_epochs(epochs)?,
                     Message::Joined(id, rider) if (app_lobby || start.is_none()) && roster[usize::from(id.value())].is_none() && id != me => {
                         let index = usize::from(id.value()); members[index] = Some(inbox.join(id, Instant::now().into_std())?);
                         voice.0.join(members[index].ok_or(LobbyError::Protocol)?,None);
@@ -1326,12 +1418,12 @@ async fn client_actor(
             bytes = connection.read_datagram() => {
                 let bytes = bytes?;
                 if bytes.first() == Some(&voice::TAG) {
-                    voice_packets.charge().map_err(|_| LobbyError::Protocol)?;
+                    voice_packets.charge()?;
                     if prepared.is_some() {continue;}
                     let id = RiderId::new(*bytes.get(2).ok_or(LobbyError::Protocol)?)?;
                     if id == me { return Err(LobbyError::Protocol); }
                     if let Some(member) = members[usize::from(id.value())] {
-                        voice.0.ingest(member,&bytes).map_err(|_| LobbyError::Protocol)?;
+                        voice.0.ingest(member,&bytes)?;
                     }
                     continue;
                 }
@@ -1359,7 +1451,7 @@ async fn client_actor(
                 }
                 states.send_replace(inbox.drain(Instant::now().into_std()));
             },
-            _ = readers.join_next() => return Err(LobbyError::Lost),
+            result = readers.join_next() => return Err(reader_result(result)),
             _ = connection.accept_bi() => return Err(LobbyError::Protocol),
         }
     }
@@ -1372,6 +1464,35 @@ mod tests {
     use crate::link::ConnectOptions;
     use crate::policy::AddressPolicy;
     use orqwa_domain::units::{Meters, Watts};
+
+    #[tokio::test]
+    async fn enabling_peer_listening_preserves_lobby_and_subsequent_controls() {
+        for app_lobby in [false, true] {
+            let transport = if app_lobby {
+                Host::lobby("Host", &options()).await.unwrap()
+            } else {
+                Host::open("Host", "Voice test", RouteHash([9; 32]), &options())
+                    .await
+                    .unwrap()
+            };
+            let host = HostLobby::open(transport, rider("Host")).unwrap();
+            let mut peer = join(&host, "Audio peer").await;
+            let port = peer.take_voice().unwrap();
+            port.enable(true);
+            tokio::time::sleep(Duration::from_secs(6)).await;
+            assert!(port.alive(), "enabling listening must preserve the group");
+            let observer = join(&host, "Observer").await;
+            client_event(
+                &mut peer,
+                |event| matches!(event, LobbyEvent::Joined { id, .. } if *id == observer.me()),
+            )
+            .await;
+            port.disable();
+            observer.close().await;
+            peer.close().await;
+            host.close().await;
+        }
+    }
 
     #[tokio::test]
     async fn organizer_authority_does_not_require_rider_zero() {
@@ -2078,9 +2199,64 @@ mod tests {
             timeout(Duration::from_secs(1), connection.closed())
                 .await
                 .unwrap();
+            let failure = host_event(&mut host, |event| {
+                matches!(event, LobbyEvent::Failed { .. })
+            })
+            .await;
+            let LobbyEvent::Failed {
+                peer,
+                error,
+                operation,
+            } = failure
+            else {
+                panic!("diagnostic");
+            };
+            assert_eq!(peer, Some(id));
+            assert_eq!(operation, "receiving peer controls");
+            assert!(
+                matches!(
+                    (attack, error.as_ref()),
+                    (0, LobbyError::Voice(voice::VoiceError::Invalid))
+                        | (1, LobbyError::Voice(voice::VoiceError::Flood))
+                        | (2, LobbyError::ControlFlood)
+                ),
+                "original reader/voice error must reach the organizer: {error}"
+            );
             host_event(&mut host, |event| matches!(event, LobbyEvent::Left { .. })).await;
             assert!(!host.tasks.is_empty());
             host.close().await;
         }
+    }
+
+    #[tokio::test]
+    async fn a_partial_control_reports_its_timeout_before_the_peer_departs() {
+        let mut host = host().await;
+        let (connection, mut send, _recv, id) = raw_join(&host).await;
+        send.write_all(&[0]).await.unwrap();
+        let failure = timeout(Duration::from_secs(4), async {
+            loop {
+                if let Some(LobbyEvent::Failed { peer, error, .. }) = host.next().await {
+                    break (peer, error);
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(failure.0, Some(id));
+        assert!(matches!(failure.1.as_ref(), LobbyError::ControlTimeout));
+        host_event(
+            &mut host,
+            |event| matches!(event, LobbyEvent::Left {id: peer} if *peer == id),
+        )
+        .await;
+        connection.close();
+        let mut healthy = join(&host, "Healthy").await;
+        host.start(Duration::from_secs(1)).await.unwrap();
+        client_event(&mut healthy, |event| {
+            matches!(event, LobbyEvent::Start { .. })
+        })
+        .await;
+        healthy.close().await;
+        host.close().await;
     }
 }

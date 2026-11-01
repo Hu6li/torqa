@@ -480,7 +480,14 @@ impl App {
             .ok_or_else(|| error("Open a lobby first."))?
             .commands
             .try_send(command)
-            .map_err(|_| error("The group is busy or disconnected. Retry or leave the lobby."))
+            .map_err(|failure| match failure {
+                mpsc::error::TrySendError::Full(_) => {
+                    error("The group command queue is full. Retry in a moment.")
+                }
+                mpsc::error::TrySendError::Closed(_) => error(
+                    "The group networking task has ended. Leave the lobby before reconnecting.",
+                ),
+            })
     }
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {

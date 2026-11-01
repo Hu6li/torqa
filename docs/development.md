@@ -611,6 +611,15 @@ default microphone and live voice. Record distro/build, selected routes and Tech
 If trainer discovery reports no adapter, collect `bluetoothctl list`, `rfkill list` and
 `systemctl status bluetooth` separately; successful audio routing does not prove BLE availability.
 
+For #428, use matching stack builds with a macOS organizer and Windows or macOS joiner. Enable
+**Join voice chat** on the joiner with its microphone off and observe at least six seconds.
+Record both build IDs, selected output devices, lobby phase, and the organizer/peer terminal
+diagnostics and Technical details before leaving. Distinguish native audio startup failure from
+control framing/timeout, consent-rate rejection and transport loss; the original reader error
+now reaches the diagnostic path. Verify both remote rosters clear after disconnection. The
+loopback protocol regression does not currently reproduce this native failure;
+it must not be reported as resolved until that reproduction is understood and retested.
+
 For macOS permission acceptance, launch the exported **ORQWA.app** from Finder on an account
 that has not granted it microphone access. Joining voice, opening Audio settings and testing
 speakers must not prompt. **Test microphone** and **Microphone on** must show Apple's microphone

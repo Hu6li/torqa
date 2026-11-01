@@ -287,6 +287,13 @@ impl Others {
                 self.distances.insert(id, state.distance.0);
             }
             LobbyEvent::Expired => println!("A reply expired; ask for a fresh reply."),
+            LobbyEvent::Failed {
+                peer,
+                error,
+                operation,
+            } => {
+                eprintln!("Group networking failed while {operation} (rider {peer:?}): {error}");
+            }
             LobbyEvent::Start { .. }
             | LobbyEvent::HostLeft
             | LobbyEvent::Selection(_)
