@@ -898,6 +898,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   replacement links use the same binding
 - [x] Reachability hint (R176): hosts, and riders offered organizer duties, are told when their own
   discovery suggests friends at other homes probably cannot connect, with a link to the guide
+- [x] Fuzzing: libFuzzer targets for every decoder of peer or pasted input, with round-trip
+  properties, regenerated seeds and a 30-second-per-target CI job
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

@@ -76,7 +76,7 @@ fn rider(bytes: &mut Vec<u8>, rider: &Rider) -> Result<(), LobbyError> {
     Ok(())
 }
 
-fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
+pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
     let mut bytes = vec![crate::code::VERSION];
     match message {
         Message::Hello(route, who) => {
@@ -240,7 +240,7 @@ impl Reader<'_> {
     }
 }
 
-fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
     if bytes.len() > MAX_FRAME {
         return Err(LobbyError::Protocol);
     }

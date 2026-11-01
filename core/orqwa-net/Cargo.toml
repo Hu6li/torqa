@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Exposes the property checks the fuzz targets in core/fuzz drive; never enabled in builds.
+fuzzing = []
+
 [dependencies]
 base64.workspace = true
 netdev.workspace = true

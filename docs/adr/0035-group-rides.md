@@ -234,6 +234,19 @@ same advice when organizer duties are offered. It is evidence rather than detect
 here sees the provider's NAT or a firewall, so the wording says "probably" and points to the
 usage guide's manual check. It adds no network request.
 
+### Fuzzing — 2026-11-01
+
+Every decoder that reads a peer's or a pasted code's bytes has a libFuzzer target in `core/fuzz`:
+invite/reply codes, lobby and handover controls, voice and state datagrams, activity selections,
+normalized workouts, STUN responses and the shared-course archive validator. Beyond "never panic",
+each target checks that what a decoder accepts encodes again into an accepted, identical form
+(binary codes and voice packets byte for byte), so a host cannot admit input it later fails to
+forward. The properties live in `orqwa-net` behind a `fuzzing` feature, and stable unit tests run
+them over valid seeds, every truncation and every bit flip. Seeds come from the same encoders on
+each run, so they never go stale. CI runs each target for 30 seconds on every change with a
+pinned nightly toolchain and cargo-fuzz in the dev image; the fuzz crate is its own workspace, so
+the app never builds with nightly. Its lock follows the main one, and cargo-deny checks it too.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

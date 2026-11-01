@@ -19,6 +19,10 @@ workspace's existing Tokio and domain types. The STUN codec is original code bas
 published test-vector data in [RFC 5769](https://www.rfc-editor.org/rfc/rfc5769.html).
 No third-party STUN implementation code is copied.
 
+The decoders that read peers' input are fuzzed with [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)
+(MIT OR Apache-2.0) and [libfuzzer-sys](https://github.com/rust-fuzz/libfuzzer) (MIT OR Apache-2.0,
+with LLVM's libFuzzer under the NCSA licence). Neither is part of the app or CLI.
+
 Group voice uses [CPAL](https://github.com/RustAudio/cpal) 0.18.2 (Apache-2.0) for native
 capture/playback and [opusic-c](https://github.com/DoumanAsh/opusic-c) 1.6.1 (BSD-3-Clause),
 through opusic-sys 0.7.6, for bundled [Opus](https://opus-codec.org/) 1.6.1 speech (BSD-3-Clause).

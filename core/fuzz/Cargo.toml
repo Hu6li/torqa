@@ -1,0 +1,83 @@
+# Fuzz targets for the decoders that read untrusted group-ride input (ADR 0035). A workspace
+# of its own: libFuzzer needs a nightly toolchain, which the app never builds with.
+# Run them with scripts/fuzz.sh in the dev container.
+[package]
+name = "orqwa-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+orqwa-net = { path = "../orqwa-net", features = ["fuzzing"] }
+orqwa-storage = { path = "../orqwa-storage" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "codes"
+path = "fuzz_targets/codes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "controls"
+path = "fuzz_targets/controls.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "handover"
+path = "fuzz_targets/handover.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "voice"
+path = "fuzz_targets/voice.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "state"
+path = "fuzz_targets/state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "selection"
+path = "fuzz_targets/selection.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "workout"
+path = "fuzz_targets/workout.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stun"
+path = "fuzz_targets/stun.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "course"
+path = "fuzz_targets/course.rs"
+test = false
+doc = false
+bench = false

@@ -33,6 +33,8 @@ allow = [
     "WTFPL",
     # Public-domain dedication (to_method, via rav1d); GPL-compatible (FSF).
     "CC0-1.0",
+    # LLVM's libFuzzer, bundled by libfuzzer-sys for the fuzz targets only; GPL-compatible (FSF).
+    "NCSA",
 ]
 
 [licenses.private]
