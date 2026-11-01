@@ -5,8 +5,9 @@
 //! interest in them or the land they stand on, halls on industrial land, chalets in the
 //! mountains, farmhouses as large buildings in the countryside, blocks from their height or
 //! size in towns, sheds from their size, and houses otherwise — in the subtropics houses built
-//! for the heat (#136). Regional architecture starts with Japanese houses and tiered keeps
-//! (R164), selected independently of climate. Each kind gets its own proportions and materials.
+//! for the heat (#136). Regional architecture starts with East Asian-style houses and tiered
+//! keeps across Asia (R164), selected independently of climate. Each kind gets its own
+//! proportions and materials.
 
 mod models;
 mod parts;
@@ -121,9 +122,9 @@ static CASTLE_WALLS: Colours = LazyLock::new(|| palette::list("buildings.castle_
 static BEACON: Colours = LazyLock::new(|| palette::list("buildings.beacon"));
 /// Houses in the subtropics: whites and pale pastels.
 static TROPICAL_WALLS: Colours = LazyLock::new(|| palette::list("buildings.tropical_walls"));
-/// Pale plaster and charcoal ceramic roofs of the Japanese starter set.
-static JAPANESE_WALLS: Colours = LazyLock::new(|| palette::list("buildings.japanese_walls"));
-static JAPANESE_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.japanese_roofs"));
+/// Coloured walls and ceramic roofs of the Asian starter set.
+static ASIAN_WALLS: Colours = LazyLock::new(|| palette::list("buildings.asian_walls"));
+static ASIAN_ROOFS: Colours = LazyLock::new(|| palette::list("buildings.asian_roofs"));
 /// Spires: slate, copper green, coral tiles.
 static SPIRES: Colours = LazyLock::new(|| palette::list("buildings.spires"));
 /// Shop fronts' frames, and awnings.
@@ -178,7 +179,7 @@ pub(crate) enum Kind {
     Public,
     /// A hotel: balconies all along its fronts, an entrance under a canopy.
     Hotel,
-    /// A castle: a European keep with corner towers, or a regional tiered Japanese keep.
+    /// A castle: a European keep with corner towers, or a regional tiered Asian keep.
     Castle,
     /// A lighthouse: a round tower in bands of colour, a lantern on top.
     Lighthouse,
@@ -617,7 +618,7 @@ fn shell(
 ) {
     let Some(design) = design else {
         match landmark(plot) {
-            Some(Landmark::Castle) if plot.region == Region::Japan => {
+            Some(Landmark::Castle) if plot.region == Region::Asia => {
                 japanese_castle(b, plot, rect, dice, fit);
             }
             Some(Landmark::Castle) => castle(b, plot, area, rect, dice, fit),
@@ -766,8 +767,8 @@ fn colours(plot: &Plot, design: Option<&Design>, dice: &Dice) -> ([f32; 3], [f32
         )
     } else {
         let (wall, roof) = match landmark(plot) {
-            Some(Landmark::Castle) if plot.region == Region::Japan => {
-                japanese_paints(plot.building, dice)
+            Some(Landmark::Castle) if plot.region == Region::Asia => {
+                asian_paints(plot.building, dice)
             }
             Some(Landmark::Castle) => castle_paints(plot.building, dice),
             Some(Landmark::Lighthouse) => lighthouse_paints(dice),
@@ -817,9 +818,9 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     }
     // The subtropics have neither chalets nor Bernese farmhouses.
     let tropical = plot.climate.tropical_at(ground);
-    let japanese = plot.region == Region::Japan;
+    let asian = plot.region == Region::Asia;
     let alpine =
-        !tropical && !japanese && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
+        !tropical && !asian && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     match plot.setting {
         Setting::Industrial | Setting::Commercial if area < 80.0 => Kind::Shed,
         Setting::Industrial => Kind::Hall,
@@ -830,7 +831,7 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
         Setting::Town if area > 400.0 => Kind::Block,
         Setting::Countryside if area > 1500.0 => Kind::Hall,
         _ if alpine => Kind::Chalet,
-        Setting::Countryside if area > 220.0 && !tropical && !japanese => Kind::Farmhouse,
+        Setting::Countryside if area > 220.0 && !tropical && !asian => Kind::Farmhouse,
         _ => Kind::House,
     }
 }
@@ -948,7 +949,7 @@ fn design(
     };
     match kind {
         Kind::House if tropical => recipe.tropical_house(),
-        Kind::House if region == Region::Japan => recipe.japanese_house(),
+        Kind::House if region == Region::Asia => recipe.japanese_house(),
         Kind::House => recipe.house(),
         Kind::Chalet => recipe.chalet(),
         Kind::Farmhouse => recipe.farmhouse(),
@@ -973,7 +974,7 @@ struct Recipe<'a> {
 impl Recipe<'_> {
     fn japanese_house(&self) -> Design {
         let mut design = self.house();
-        let (wall, roof) = japanese_paints(self.building, self.dice);
+        let (wall, roof) = asian_paints(self.building, self.dice);
         design.walls = storeys(if self.dice.roll(3) < 0.35 { 1.0 } else { 2.0 });
         design.wall = wall;
         design.roof_paint = RoofPaint {
@@ -1651,14 +1652,14 @@ fn castle_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     (wall, roof)
 }
 
-fn japanese_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
+fn asian_paints(building: &Building, dice: &Dice) -> (Paint, Paint) {
     let wall = building.color.map_or_else(
-        || dice.pick(1, &JAPANESE_WALLS),
-        |mapped| nearest(mapped, &JAPANESE_WALLS),
+        || dice.pick(1, &ASIAN_WALLS),
+        |mapped| nearest(mapped, &ASIAN_WALLS),
     );
     (
         Paint::new(dice.tint(wall), Style::Plaster),
-        Paint::new(dice.pick(2, &JAPANESE_ROOFS), Style::Tiles),
+        Paint::new(dice.pick(2, &ASIAN_ROOFS), Style::Tiles),
     )
 }
 
@@ -1671,7 +1672,7 @@ fn japanese_castle(
     dice: &Dice,
     fit: Option<Fit>,
 ) {
-    let (wall, roof) = japanese_paints(plot.building, dice);
+    let (wall, roof) = asian_paints(plot.building, dice);
     let stone = Paint::new(*STONE, Style::Blank);
     let platform = b.ground + 3.0;
     let outline = rect.map_or_else(|| plot.footprint.clone(), |r| r.corners());
@@ -2366,11 +2367,11 @@ mod tests {
     }
 
     #[test]
-    fn japanese_rural_houses_keep_their_architecture_in_the_mountains() {
+    fn asian_rural_houses_keep_their_architecture_in_the_mountains() {
         for id in 0..30 {
             let building = untagged(id);
             let plot = Plot {
-                region: Region::Japan,
+                region: Region::Asia,
                 ..plot(&building, Setting::Countryside, false)
             };
             for area in [120.0, 600.0] {
@@ -2378,22 +2379,33 @@ mod tests {
                     assert_eq!(kind(&plot, area, elevation, &Dice(id)), Kind::House);
                 }
             }
-            let design = design(
-                Kind::House,
-                &building,
-                true,
-                false,
-                Region::Japan,
-                &Dice(id),
-            );
+            let design = design(Kind::House, &building, true, false, Region::Asia, &Dice(id));
             assert!(!design.chimney);
             assert!(design.overhang >= 0.9);
-            assert!(JAPANESE_ROOFS.contains(&design.roof_paint.top.rgb));
+            assert!(ASIAN_ROOFS.contains(&design.roof_paint.top.rgb));
         }
     }
 
     #[test]
-    fn japanese_castle_shells_keep_a_receding_silhouette_without_a_fitting_model() {
+    fn asian_buildings_have_distinct_wall_and_roof_colours() {
+        assert!(ASIAN_WALLS.len() >= 8);
+        assert!(ASIAN_ROOFS.len() >= 6);
+        assert!(ASIAN_WALLS.windows(2).any(|pair| {
+            pair[0]
+                .iter()
+                .zip(pair[1].iter())
+                .any(|(a, b)| (a - b).abs() > 0.001)
+        }));
+        assert!(ASIAN_ROOFS.windows(2).any(|pair| {
+            pair[0]
+                .iter()
+                .zip(pair[1].iter())
+                .any(|(a, b)| (a - b).abs() > 0.001)
+        }));
+    }
+
+    #[test]
+    fn asian_castle_shells_keep_a_receding_silhouette_without_a_fitting_model() {
         let building = untagged(7);
         for (outline, rectangular) in [
             (
@@ -2414,7 +2426,7 @@ mod tests {
         ] {
             let plot = Plot {
                 footprint: outline,
-                region: Region::Japan,
+                region: Region::Asia,
                 landmark: Some(Landmark::Castle),
                 ..plot(&building, Setting::Town, false)
             };

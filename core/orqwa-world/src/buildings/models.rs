@@ -79,7 +79,7 @@ pub(crate) struct Fit {
 pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
     let kind = match wanted.kind {
         Kind::House if wanted.tropical => "tropical",
-        Kind::House if wanted.region == Region::Japan => "japanese_house",
+        Kind::House if wanted.region == Region::Asia => "japanese_house",
         Kind::House => "house",
         Kind::Chalet => "chalet",
         Kind::Farmhouse => "farmhouse",
@@ -89,7 +89,7 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Office => "office",
         Kind::Public => "public",
         Kind::Hotel => "hotel",
-        Kind::Castle if wanted.region == Region::Japan => "japanese_castle",
+        Kind::Castle if wanted.region == Region::Asia => "japanese_castle",
         Kind::Castle => "castle",
         Kind::Lighthouse => "lighthouse",
         Kind::Block | Kind::Hall => return None,
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn japanese_models_stay_in_their_region_and_keep_tropical_houses() {
+    fn asian_models_stay_in_their_region_and_keep_tropical_houses() {
         for (kind, half_length, half_width, storeys) in [
             (Kind::House, 6.0, 4.5, 1),
             (Kind::House, 6.0, 4.5, 2),
@@ -338,7 +338,7 @@ mod tests {
             let wanted = Wanted {
                 kind,
                 tropical: false,
-                region: Region::Japan,
+                region: Region::Asia,
                 chapel: false,
                 storeys: Some(storeys),
                 hipped: kind == Kind::Castle,
@@ -372,7 +372,7 @@ mod tests {
         let wanted = Wanted {
             kind: Kind::Castle,
             tropical: false,
-            region: Region::Japan,
+            region: Region::Asia,
             chapel: false,
             storeys: None,
             hipped: true,

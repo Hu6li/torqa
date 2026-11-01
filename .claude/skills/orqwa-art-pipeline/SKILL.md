@@ -151,12 +151,12 @@ all maps, normal-map import on normals, and keep these six textures with their s
 
 ## Regional buildings
 
-Japanese buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
+Asian buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
 `japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional
 wall/roof colours aligned with Rust placement. Castle model tiers, first eave height and
 footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`; review the
-nearby and distant silhouettes together. Region outlines and climate are independent; see
-`docs/regional-buildings.md` before extending the set to another region.
+nearby and distant silhouettes together. Asian outlines and climate are independent; see
+`docs/regional-buildings.md` before extending the regional set.
 
 ## Tree LODs
 

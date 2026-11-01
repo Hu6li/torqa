@@ -1,8 +1,9 @@
 # Regional buildings
 
-The Japanese starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)) adds six houses
-and three castle keeps. Source geometry is in `art/buildings/japanese.py`; catalogue entries
-and exported GLBs use the `japanese_house` and `japanese_castle` kinds.
+The Asian starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)) adds six houses
+and three castle keeps. Its East Asian models use Japanese architectural references. Source
+geometry is in `art/buildings/japanese.py`; catalogue entries and exported GLBs use the
+`japanese_house` and `japanese_castle` kinds.
 
 Houses have pale plaster, exposed dark timber, recessed glazing with wooden mullions,
 deep ceramic-tiled eaves and raised ridge caps. Two-storey houses add a tiled entrance-side
@@ -23,14 +24,16 @@ Architectural references consulted for proportions and materials:
 
 ## Placement
 
-`buildings/region.rs` classifies each footprint centroid using the bundled Japan polygon
-from country-coder. See [data provenance](../core/orqwa-world/data/README.md). This is a
-coarse regional heuristic, separate from climate and inferred building use. It does not
-identify actual historic buildings. Other Asian countries keep their current scenery.
+`buildings/region.rs` classifies each footprint centroid using bundled country outlines for
+the UN M49 Asia region from country-coder. See [data provenance](../core/orqwa-world/data/README.md).
+This is a coarse regional heuristic, separate from climate and inferred building use. It does
+not identify actual historic buildings.
 
-Temperate houses use the Japanese set; tropical lowlands retain their flat/red-tiled
-houses. Altitude no longer introduces Swiss chalets in Japan. Modern building kinds retain
-their current models. Mapped castles select Japanese keeps, without adding castles where
+Non-tropical houses use the regional house set; tropical lowlands retain their flat/red-tiled
+houses. Regional houses have eight warm, pale, green, blue, rose and ochre wall colours, and
+six charcoal, red, green and blue-gray roof colours. Altitude no longer introduces Swiss
+chalets or farmhouses in Asia. Modern building kinds retain their current models. Mapped
+castles select tiered keeps, without adding castles where
 the map marks none. Fit limits remain ±25%; shops, steep plots and unsuitable footprints
 use shells. House shells have pale walls and charcoal roofs; castle shells retain receding
 roof tiers, including at distance. Detailed timber lattice and curved eaves belong to the
@@ -58,10 +61,11 @@ Keep ordinary houses within 5,000 triangles and keeps within 10,000.
 
 | House at riding height | Three-tier castle keep |
 |---|---|
-| ![Japanese house](images/japanese-buildings/house-close.jpg) | ![Japanese castle keep](images/japanese-buildings/castle-close.jpg) |
+| ![Asian house colour variants](images/japanese-buildings/house-close.jpg) | ![Asian castle colour variants](images/japanese-buildings/castle-close.jpg) |
 
-Tests cover islands and nearby countries, tropical precedence, bounded model fitting,
-Japanese mountain houses, and complete offline world generation with mapped castles.
+Tests cover East, Southeast, South, Central and West Asian locations, nearby countries,
+tropical precedence, bounded model fitting, mountain houses, and complete offline world
+generation with mapped castles.
 The fallback-shell test checks receding keeps on both narrow and concave outlines.
 The full `scripts/check.sh` suite and `make wiki-check` pass. Rebuilding all nine models
 produces byte-identical GLBs and manifest. Exported houses contain 1,526–4,786 triangles
@@ -69,5 +73,5 @@ across five material surfaces; keeps contain 3,276–7,952 across six. The nine 
 2,412,496 bytes.
 
 Native ride performance on an M1 at Medium remains a manual check; software renders do not
-establish that frame-rate budget. Broader Asian regional sets and more local house types
-remain future work.
+establish that frame-rate budget. More locally distinct regional sets and house types remain
+future work.

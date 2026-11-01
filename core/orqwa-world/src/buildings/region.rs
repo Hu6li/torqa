@@ -2,36 +2,66 @@
 
 use std::sync::LazyLock;
 
-/// The first regional set; other places keep their existing architecture.
+/// Asian rides use the East Asian starter archetypes; other places keep their architecture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Region {
     Generic,
-    Japan,
+    Asia,
 }
 
 type Polygon = Vec<Vec<[f64; 2]>>;
 
-static JAPAN: LazyLock<Vec<Polygon>> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../data/japan.json"))
-        .expect("bundled Japan outlines are valid JSON")
+struct BoundedPolygon {
+    rings: Polygon,
+    bounds: (f64, f64, f64, f64),
+}
+
+static ASIA: LazyLock<Vec<BoundedPolygon>> = LazyLock::new(|| {
+    let polygons: Vec<Polygon> = serde_json::from_str(include_str!("../../data/asia.json"))
+        .expect("bundled Asian outlines are valid JSON");
+    polygons
+        .into_iter()
+        .filter_map(|rings| {
+            let outer = rings.first()?;
+            let bounds = outer.iter().fold(
+                (
+                    f64::INFINITY,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::NEG_INFINITY,
+                ),
+                |(min_lon, min_lat, max_lon, max_lat), [lon, lat]| {
+                    (
+                        min_lon.min(*lon),
+                        min_lat.min(*lat),
+                        max_lon.max(*lon),
+                        max_lat.max(*lat),
+                    )
+                },
+            );
+            Some(BoundedPolygon { rings, bounds })
+        })
+        .collect()
 });
 
 impl Region {
     pub(crate) fn at((lat, lon): (f64, f64)) -> Self {
-        // Avoid walking island outlines for buildings far outside this set's region.
-        if (17.0..=46.0).contains(&lat)
-            && (122.0..=156.0).contains(&lon)
-            && JAPAN.iter().any(|polygon| {
-                polygon
+        // UN M49 Asia region polygons (142), with per-island bounds to keep lookups cheap.
+        if ASIA.iter().any(|polygon| {
+            let (min_lon, min_lat, max_lon, max_lat) = polygon.bounds;
+            (min_lat..=max_lat).contains(&lat)
+                && (min_lon..=max_lon).contains(&lon)
+                && polygon
+                    .rings
                     .first()
                     .is_some_and(|ring| contains(ring, (lat, lon)))
-                    && !polygon
-                        .iter()
-                        .skip(1)
-                        .any(|ring| contains(ring, (lat, lon)))
-            })
-        {
-            Self::Japan
+                && !polygon
+                    .rings
+                    .iter()
+                    .skip(1)
+                    .any(|ring| contains(ring, (lat, lon)))
+        }) {
+            Self::Asia
         } else {
             Self::Generic
         }
@@ -54,27 +84,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn japanese_architecture_follows_islands_rather_than_a_latitude_band() {
-        // Kyoto, Matsumoto, Sapporo, Shikoku, Kyushu, Okinawa, Ishigaki and Tsushima.
+    fn asian_architecture_follows_country_outlines_across_latitudes_and_longitudes() {
+        // Japan, Korea, China, India, Thailand, Indonesia, Saudi Arabia and Asian Russia.
         for place in [
             (35.01, 135.77),
-            (36.24, 137.97),
-            (43.06, 141.35),
-            (33.84, 132.77),
-            (32.80, 130.71),
-            (26.21, 127.68),
-            (24.34, 124.16),
-            (34.20, 129.29),
-        ] {
-            assert_eq!(Region::at(place), Region::Japan, "{place:?}");
-        }
-        // Nearby Korea, Taiwan, China and Russia, plus the existing Swiss fixtures.
-        for place in [
-            (35.18, 129.08),
             (37.57, 126.98),
-            (25.03, 121.56),
             (31.23, 121.47),
-            (43.12, 131.89),
+            (28.61, 77.21),
+            (13.75, 100.50),
+            (-6.21, 106.85),
+            (24.71, 46.68),
+            (61.52, 105.32),
+        ] {
+            assert_eq!(Region::at(place), Region::Asia, "{place:?}");
+        }
+        // Europe, Africa, the Americas, Australia and Switzerland remain generic.
+        for place in [
+            (48.86, 2.35),
+            (-1.29, 36.82),
+            (40.71, -74.01),
+            (-33.87, 151.21),
             (46.95, 7.45),
         ] {
             assert_eq!(Region::at(place), Region::Generic, "{place:?}");

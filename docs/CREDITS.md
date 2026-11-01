@@ -9,7 +9,7 @@ libraries (LGPL 2.1 or later) and every Rust crate, from `core/orqwa-app/notices
 
 ## Models
 
-The Japanese house and castle starter set (R164) is own work, scripted in
+The East Asian house and castle archetypes for Asian rides (R164) are own work, scripted in
 `art/buildings/japanese.py` (GPL-3.0), reusing the project's existing materials.
 Architectural references are listed in [regional buildings](regional-buildings.md);
 no reference imagery or third-party models are bundled.
@@ -86,9 +86,9 @@ The Blender skills in `.claude/skills/blender-*` are from
 
 ## Data
 
-The offline Japanese architecture classifier (`core/orqwa-world/data/japan.json`) retains
-Japan's unchanged polygon from the same pinned, ISC-licensed country-coder source used
-below. Its provenance and the bundled licence are linked in
+The offline Asian architecture classifier (`core/orqwa-world/data/asia.json`) retains
+Asia's unchanged country polygons from the same pinned, ISC-licensed country-coder source
+used below. Its provenance and the bundled licence are linked in
 [the data README](../core/orqwa-world/data/README.md).
 
 Country/territory traffic-side defaults are factual reference data cross-checked against
