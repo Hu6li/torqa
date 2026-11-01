@@ -680,6 +680,7 @@ mod tests {
                 revision: 1,
                 name: "Workout".into(),
                 course: None,
+                course_key: None,
                 workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
                 assistance: Assistance::default(),
             }),

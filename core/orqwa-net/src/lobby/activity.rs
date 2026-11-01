@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::activity::{ActivityLobby, Participant, Selection};
+use crate::activity::{ActivityLobby, ContentKind, Participant, Selection};
 use crate::content::{self, ContentError, Source};
 
 use super::{LobbyError, MAX_RIDERS, Message, RecvStream, RiderId, SendStream, rider_id, watch};
@@ -146,7 +146,9 @@ pub(super) async fn transfer(
     }
     .ok_or(ContentError::Mismatch)?;
     let mut source = Source::open(&path, id.kind()).await?;
-    if source.id() != id {
+    // A course goes as this rider's own copy, which may be renamed or show another map
+    // picture than the one selected (#435); the receiver checks its course key.
+    if id.kind() == ContentKind::Workout && source.id() != id {
         return Err(ContentError::Mismatch);
     }
     content::send(&mut send, &mut source).await

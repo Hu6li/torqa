@@ -9,7 +9,7 @@ use std::time::Duration;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_domain::workout::{Cue, Intensity, Plan, Step, Target};
 
-use crate::activity::{Assistance, ContentId, ContentKind, Selection};
+use crate::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use crate::code::{
     Candidate, CandidateKind, Fingerprint, Invite, NatObservation, Reply, RideId, RouteHash,
 };
@@ -243,6 +243,7 @@ fn selection_seed() -> Selection {
         revision: 1,
         name: "Col du Galibier".into(),
         course: Some(ContentId::new(ContentKind::Course, 4096, [5; 32]).expect("course")),
+        course_key: Some(CourseKey([7; 32])),
         workout: Some(ContentId::new(ContentKind::Workout, 512, [6; 32]).expect("workout")),
         assistance: Assistance {
             drafting: true,

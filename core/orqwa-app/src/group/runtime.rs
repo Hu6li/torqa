@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use orqwa_domain::workout::Plan;
-use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
+use orqwa_net::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use orqwa_net::code::{Invite, Reply};
 use orqwa_net::content::{self, Source};
 use orqwa_net::link::{ConnectOptions, Host, Joiner};
@@ -557,22 +557,23 @@ async fn chosen(
     revision: u64,
 ) -> Result<SharedActivity, String> {
     let mut name = String::new();
-    let course_id = if let Some(path) = &course {
+    let (course_id, course_key) = if let Some(path) = &course {
         let file = path.clone();
-        let manifest =
-            tokio::task::spawn_blocking(move || orqwa_storage::course::shared::validate(&file))
-                .await
-                .map_err(|e| e.to_string())?
-                .map_err(|e| e.to_string())?;
+        let (manifest, key) = tokio::task::spawn_blocking(move || {
+            let manifest = orqwa_storage::course::shared::validate(&file)?;
+            Ok::<_, orqwa_storage::course::CourseError>((manifest, course_key(&file)?))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
         name = manifest.name;
-        Some(
-            Source::open(path, ContentKind::Course)
-                .await
-                .map_err(|e| e.to_string())?
-                .id(),
-        )
+        let id = Source::open(path, ContentKind::Course)
+            .await
+            .map_err(|e| e.to_string())?
+            .id();
+        (Some(id), Some(key))
     } else {
-        None
+        (None, None)
     };
     let (workout, workout_id) = if let Some(plan) = plan {
         if name.is_empty() {
@@ -595,6 +596,7 @@ async fn chosen(
         revision,
         name,
         course: course_id,
+        course_key,
         workout: workout_id,
         assistance: Assistance::default(),
     };
@@ -628,21 +630,37 @@ async fn download(
         tokio::fs::create_dir_all(&library)
             .await
             .map_err(|e| e.to_string())?;
-        let path = library.join(id.basename());
-        if path.is_file()
-            && Source::open(&path, id.kind())
-                .await
-                .is_ok_and(|s| s.id() == id)
-        {
+        let kept = match selection.course_key {
+            Some(key) if id.kind() == ContentKind::Course => {
+                let library = library.clone();
+                tokio::task::spawn_blocking(move || own_course(&library, key))
+                    .await
+                    .map_err(|e| e.to_string())?
+            }
+            _ => {
+                let path = library.join(id.basename());
+                (path.is_file()
+                    && Source::open(&path, id.kind())
+                        .await
+                        .is_ok_and(|s| s.id() == id))
+                .then_some(path)
+            }
+        };
+        if let Some(path) = kept {
             files[index] = Some(path);
             continue;
         }
         let received = content::fetch(connection, id, &library, Some(progress))
             .await
             .map_err(|e| e.to_string())?;
+        let key = selection.course_key;
         let validated = received
             .validate(move |path| match id.kind() {
-                ContentKind::Course => orqwa_storage::course::shared::validate(path).is_ok(),
+                // The sender's own copy may differ in bytes, never in its course (#435).
+                ContentKind::Course => {
+                    orqwa_storage::course::shared::validate(path).is_ok()
+                        && key.is_some_and(|key| course_key(path).is_ok_and(|own| own == key))
+                }
                 ContentKind::Workout => std::fs::read(path)
                     .is_ok_and(|bytes| orqwa_net::workout::decode(&bytes).is_ok()),
             })
@@ -657,4 +675,27 @@ async fn download(
     }
     let [course, workout] = files;
     Ok((course, workout))
+}
+
+fn course_key(path: &Path) -> Result<CourseKey, orqwa_storage::course::CourseError> {
+    orqwa_storage::course::key_material(path).map(|material| CourseKey::of(&material))
+}
+
+/// The course in `library` with `key`, if the rider has it already under whatever name and
+/// map picture (#435): riding it needs no download. Reads only each course's zip directory
+/// and manifest, so the whole library is looked through every time.
+fn own_course(library: &Path, key: CourseKey) -> Option<PathBuf> {
+    let mut courses: Vec<PathBuf> = std::fs::read_dir(library)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|e| e == orqwa_storage::course::EXTENSION)
+        })
+        .collect();
+    courses.sort();
+    courses
+        .into_iter()
+        .find(|path| course_key(path).is_ok_and(|own| own == key))
 }

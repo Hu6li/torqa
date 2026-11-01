@@ -3,6 +3,7 @@ use crate::{App, TrainerChoice};
 use orqwa_devices::fake::FakeRider;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Rpm, Watts};
+use std::path::Path;
 use std::time::Duration;
 
 struct Directory(PathBuf);
@@ -610,31 +611,101 @@ fn host_and_joiner_learn_how_friends_could_reach_them_from_their_own_discovery()
     host.group_leave();
 }
 
-#[test]
-fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
+fn sample_course() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc")
+}
+
+/// The course a friend with the `library` laid out by `prepare` rides when they join after the
+/// organizer has chosen the sample course.
+fn course_on_joining(to: &Directory, prepare: impl FnOnce(&Path)) -> PathBuf {
     let from = Directory::new();
-    let to = Directory::new();
     let mut host = from.app();
     let mut peer = to.app();
-    let source =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc");
+    std::fs::create_dir_all(peer.courses_dir()).unwrap();
+    prepare(&peer.courses_dir());
     host.group_open(None, options()).unwrap();
     wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
-    host.group_select(Some(source.clone()), None).unwrap();
+    host.group_select(Some(sample_course()), None).unwrap();
     wait(&mut host, &mut peer, |h, _| h.group().selection.is_some());
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
     host.group_admit(peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |_, p| p.group().course.is_some());
-    let downloaded = peer.group().course.unwrap();
-    assert!(downloaded.starts_with(peer.courses_dir()));
-    assert_eq!(
-        std::fs::read(&source).unwrap(),
-        std::fs::read(downloaded).unwrap()
-    );
+    let course = peer.group().course.unwrap();
     peer.group_leave();
     host.group_leave();
+    course
+}
+
+fn library(to: &Directory) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(to.0.join("data/courses"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
+    let to = Directory::new();
+    let downloaded = course_on_joining(&to, |_| {});
+    assert!(downloaded.starts_with(to.0.join("data/courses")));
+    assert_eq!(
+        std::fs::read(sample_course()).unwrap(),
+        std::fs::read(downloaded).unwrap()
+    );
+}
+
+#[test]
+fn a_friend_rides_their_own_copy_of_the_course_under_any_name_without_downloading_it() {
+    use orqwa_storage::course;
+    // #435: the organizer sent the course beforehand; the friend imported it under their own
+    // name, and it has found its countries and drawn its map picture since.
+    let to = Directory::new();
+    let own = to.0.join("data/courses/Twann mit Freunden.tqc");
+    let ridden = course_on_joining(&to, |library| {
+        std::fs::copy(sample_course(), &own).unwrap();
+        let mut manifest = course::read_manifest(&own).unwrap();
+        manifest.name = "Twann mit Freunden".to_owned();
+        manifest.countries = Some(Vec::new());
+        course::rewrite_manifest(&own, &manifest).unwrap();
+        course::set_preview(&own, b"PNG").unwrap();
+        assert!(own.starts_with(library));
+    });
+    assert_eq!(ridden, own);
+    assert_eq!(library(&to), [own]);
+}
+
+#[test]
+fn a_changed_earlier_download_keeps_its_name_and_the_course_arrives_beside_it() {
+    use orqwa_net::activity::{ContentId, ContentKind};
+    use orqwa_storage::course;
+    let id = ContentId::of(
+        ContentKind::Course,
+        &std::fs::read(sample_course()).unwrap(),
+    )
+    .unwrap();
+    let to = Directory::new();
+    let changed = to.0.join("data/courses").join(id.basename());
+    let downloaded = course_on_joining(&to, |_| {
+        // Received in an earlier ride, then ridden alone with map detail: another course now.
+        std::fs::copy(sample_course(), &changed).unwrap();
+        let mut manifest = course::read_manifest(&changed).unwrap();
+        manifest.map_detail = vec!["switzerland".to_owned()];
+        course::rewrite_manifest(&changed, &manifest).unwrap();
+    });
+    assert_ne!(downloaded, changed);
+    assert_eq!(
+        std::fs::read(sample_course()).unwrap(),
+        std::fs::read(&downloaded).unwrap()
+    );
+    assert_eq!(
+        course::read_manifest(&changed).unwrap().map_detail,
+        ["switzerland"]
+    );
+    assert_eq!(library(&to).len(), 2);
 }
 
 #[test]

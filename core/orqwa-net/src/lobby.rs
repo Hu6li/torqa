@@ -1510,6 +1510,7 @@ mod tests {
                 revision: 1,
                 name: "Together".into(),
                 course: None,
+                course_key: None,
                 workout: Some(id),
                 assistance: Assistance::default(),
             },
@@ -1658,6 +1659,7 @@ mod tests {
             revision: 1,
             name: "Together".into(),
             course: None,
+            course_key: None,
             workout: Some(source.id()),
             assistance: Assistance::default(),
         };
@@ -1715,6 +1717,62 @@ mod tests {
             })
             .await
             .is_err()
+        );
+        drop(client);
+        drop(host);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_organizer_shares_its_own_copy_of_the_course_but_only_the_selected_workout() {
+        use crate::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
+        use crate::content;
+        let path = std::env::temp_dir().join(format!(
+            "orqwa-own-copy-{:x?}",
+            crate::crypto::random::<8>().unwrap()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        // #435: an organizer after a handover rides the copy they renamed; so may a host.
+        let course = path.join("renamed.tqc");
+        std::fs::write(&course, b"renamed course").unwrap();
+        let workout = path.join("changed.oqw");
+        std::fs::write(&workout, b"changed workout").unwrap();
+        let selection = Selection {
+            revision: 1,
+            name: "Together".into(),
+            course: Some(ContentId::of(ContentKind::Course, b"selected course").unwrap()),
+            course_key: Some(CourseKey([1; 32])),
+            workout: Some(ContentId::of(ContentKind::Workout, b"selected workout").unwrap()),
+            assistance: Assistance::default(),
+        };
+        let host = HostLobby::open(
+            Host::lobby("Host", &options()).await.unwrap(),
+            rider("Host"),
+        )
+        .unwrap();
+        let mut client = join(&host, "Friend").await;
+        host.select(SharedActivity {
+            selection: selection.clone(),
+            course: Some(course),
+            workout: Some(workout),
+        })
+        .await
+        .unwrap();
+        client_event(&mut client, |e| matches!(e, LobbyEvent::Selection(_))).await;
+        let link = client.content_link().unwrap();
+        let received = content::fetch(&link, selection.course.unwrap(), &path, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            received.id(),
+            ContentId::of(ContentKind::Course, b"renamed course").unwrap()
+        );
+        assert_eq!(std::fs::read(received.path()).unwrap(), b"renamed course");
+        drop(received);
+        assert!(
+            content::fetch(&link, selection.workout.unwrap(), &path, None)
+                .await
+                .is_err()
         );
         drop(client);
         drop(host);

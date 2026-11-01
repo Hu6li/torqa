@@ -906,6 +906,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   in the roster (R183, #422, #423)
 - [x] Every rider's preparation stage and percentage in the participant list, a spinner and the
   world-building progress on one's own page (R184, #419, #420)
+- [x] A rider who has the selected course, under any name, rides their own copy without
+  downloading it; organizers share their own copy, renamed or not (R185, #435)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
 - [ ] Manual acceptance across two home networks and on native trainers; document networks
   that cannot connect without a relay without weakening the resource or trust limits

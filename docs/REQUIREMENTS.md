@@ -359,6 +359,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 | R183 | Extends R164 (2026-11-01, #422, #423): in a group ride, every rider's **power and W/kg** show beside their name in the riders panel and under their name on the road, the W/kg from their **own weight** without the bicycle; and others see each rider with the **avatar** chosen in their profile, no longer always the default. The roster carries the weight and the avatar; heart rate stays private. Protocol and invitation version 8 require matching builds and fresh codes. |
 | R184 | Extends R165 and R169 (2026-11-01, #419, #420): while the activity is prepared, the participant list shows for every rider not yet ready **what they are doing and how far they have got**, *Downloading · 40 %* or *Building the world · 70 %*, until they are ready. A rider's own page keeps a **spinner** turning while it connects, receives and prepares the ride, and shows how far its world is built. Protocol and invitation version 9 require matching builds and fresh codes. |
 
+## Courses riders already have
+
+| ID | Requirement |
+|---|---|
+| R185 | Refines R165 (2026-11-01, #435): a rider who already has the selected course **rides their own copy and downloads nothing**, whatever they named it and whatever map picture or countries it shows, e.g. a `.tqc` the organizer sent beforehand or one received in an earlier ride. The selection carries a key of what the course rides on (its route, terrain and map data and the other manifest facts) without the name, map picture and countries, and each joiner looks through their course library for it. A downloaded course may likewise be the sender's own copy, renamed or with another picture, so an organizer after a handover shares theirs: its bytes are checked against what the transfer announces, and its key against the selection's. A course received earlier and changed since keeps its name and contents; the new download is saved beside it. Protocol and invitation version 10 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

@@ -601,6 +601,7 @@ mod tests {
             revision: 7,
             name: "Ride".into(),
             course: None,
+            course_key: None,
             workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
             assistance: Assistance::default(),
         };
