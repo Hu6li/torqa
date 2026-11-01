@@ -13,6 +13,8 @@ func _run() -> void:
 	await _group_activity()
 	await _group_motion()
 	_ride_bar()
+	_offer_card()
+	await _organizer_offer()
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -329,6 +331,50 @@ func _ride_bar() -> void:
 	bar.folded = true
 	_check(not group.is_visible_in_tree(), "it folds away with the other controls")
 	bar.free()
+
+
+## The request to organize says who asks and what it means, warns only when the rider's own
+## discovery suggests friends could not reach them, and goes once answered (#424).
+func _offer_card() -> void:
+	var card: GroupOfferCard = GroupOfferCard.new()
+	root.add_child(card)
+	card.show_offer("Alex", "")
+	_check(card.visible and "Alex" in card._title.text, "the request says who asks")
+	_check(not card._warning.visible, "no warning without a reason")
+	var answers: Array[bool] = []
+	card.answered.connect(func(accept: bool) -> void: answers.append(accept))
+	card._accept.pressed.emit()
+	_check(answers == [true] and not card.visible, "accepting answers and closes it")
+	card.show_offer("Alex", "Friends could not reach you.")
+	_check(card._warning.visible, "a reason to doubt reaching the rider is shown")
+	card._decline.pressed.emit()
+	_check(answers == [true, false] and not card.visible, "declining answers too")
+	card.free()
+
+
+## Over the ride, the request shows when it comes and goes when the organizer withdraws it;
+## the group's button shows only in a group (#431).
+func _organizer_offer() -> void:
+	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	root.add_child(main)
+	await process_frame
+	var ride: RideScreen = main.get_node("RideScreen")
+	var card: GroupOfferCard = ride._offer
+	var group: Button = ride._bar._group
+	var roster: Array = [{"name": "Alex", "organizer": true}, {"name": "Sam", "me": true}]
+	ride._show_group({"phase": "idle"})
+	_check(not group.visible and not card.visible, "nothing of the group outside one")
+	ride._show_group({"phase": "riding", "roster": roster})
+	_check(group.visible and not card.visible, "in a group its button, and no request")
+	var offer: Dictionary = {
+		"phase": "riding", "roster": roster, "handover_offer": true, "reachability": "strict"
+	}
+	ride._show_group(offer)
+	_check(card.visible and "Alex" in card._title.text, "the request comes over the ride")
+	_check(card._warning.visible, "with the warning about reaching the rider")
+	ride._show_group({"phase": "riding", "roster": roster})
+	_check(not card.visible, "a withdrawn request goes")
+	main.free()
 
 
 func _check(condition: bool, message: String) -> void:

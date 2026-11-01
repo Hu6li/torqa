@@ -340,7 +340,7 @@ func _show_organizer() -> void:
 			"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
 		)
 	var reach: String = _status.get("reachability", "")
-	_organizer_reach.text = _reach_warning(reach, false) if offer else ""
+	_organizer_reach.text = reach_warning(reach, false) if offer else ""
 	_organizer_reach.visible = not _organizer_reach.text.is_empty()
 	if handover in ["preparing", "committing"]:
 		_organizer_status.text = (
@@ -386,9 +386,11 @@ func _card(parent: Node) -> VBoxContainer:
 	return content
 
 
-## Only the cases where friends at other homes may not get through; discovery is evidence,
-## not proof. A host limited to its home network chose that, so only offered duties mention it.
-func _reach_warning(reach: String, hosting: bool) -> String:
+## What `reach` (the status's `reachability`) means for a host, or for a rider offered organizer
+## duties: only the cases where friends at other homes may not get through; discovery is
+## evidence, not proof. A host limited to its home network chose that, so only offered duties
+## mention it.
+func reach_warning(reach: String, hosting: bool) -> String:
 	var hosts: Dictionary[String, String] = {
 		"strict":
 		tr(
@@ -512,7 +514,7 @@ func _show_status(status: Dictionary) -> void:
 	_body.visible = phase != "idle" and not _connecting.visible
 	_invite.visible = host and phase not in ["ended", "failed"]
 	var reach: String = _status.get("reachability", "")
-	_reach_text.text = _reach_warning(reach, true)
+	_reach_text.text = reach_warning(reach, true)
 	_reach.visible = not _reach_text.text.is_empty()
 	_invitation_panel.visible = _invite.visible
 	_notice.visible = not _notice.text.is_empty()

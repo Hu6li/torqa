@@ -355,6 +355,7 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 | ID | Requirement |
 |---|---|
 | R180 | Refines R164 (2026-11-01, #431): during a group ride, the in-ride group panel (participants, shared settings, voice, **Leave group**) opens from a **Group Rides icon in the ride's control bar**, beside the settings, instead of a text button at the bottom right. The icon shows only while the rider is in a group and folds away with the other controls. |
+| R181 | Refines R168 and R173 (2026-11-01, #424): the rider offered organizer duties sees the request **over the ride**, above the control bar with a chime, not only inside the group panel: who asks, what organizing means, and the reachability warning when their own discovery suggests friends could not reach them (R176). **Accept organizer duties** and **Decline** answer it there; the request stays until answered, withdrawn or timed out, and the ride goes on meanwhile. The overlay leaves it out. |
 
 ## Test hardware available
 

@@ -81,6 +81,15 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-riders-chase.png"))
 	root.get_texture().get_image().save_jpg(out.path_join("group-riders-chase.jpg"), 0.82)
 	print("saved group-riders-chase")
+	# The request to organize the ride, over the ride (#424).
+	var roster: Array = [{"name": "Alex", "organizer": true}, {"name": "Sam", "me": true}]
+	ride._show_group({"phase": "riding", "roster": roster, "handover_offer": true})
+	for frame: int in range(5):
+		await tree.process_frame
+	root.get_texture().get_image().save_png(out.path_join("group-offer.png"))
+	root.get_texture().get_image().save_jpg(out.path_join("group-offer.jpg"), 0.82)
+	print("saved group-offer")
+	ride._show_group({"phase": "riding", "roster": roster})
 	if root.size.y < 800:
 		var scroll: ScrollContainer = ride.get_node("RightColumnScroll")
 		scroll.scroll_vertical = 100000

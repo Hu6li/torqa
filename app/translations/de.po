@@ -2840,6 +2840,9 @@ msgid "Change organizer…"
 msgstr "Organisation übergeben…"
 
 #: app/scenes/group_rides_tab.gd
+msgid "%s asks you to organize the ride"
+msgstr "%s bittet dich, die Fahrt zu organisieren"
+
 msgid "Accept organizer duties"
 msgstr "Organisation übernehmen"
 
