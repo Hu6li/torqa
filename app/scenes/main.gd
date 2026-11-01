@@ -34,6 +34,7 @@ func _ready() -> void:
 	UiScale.apply(get_window())
 	UiScale.size_new(get_window())
 	theme = UiTheme.build()
+	_failures.standalone = true
 	add_child(_failures)
 	# Anchored at the bottom right, as wide as set and as tall as it needs, growing upward.
 	_failures.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
