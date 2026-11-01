@@ -26,6 +26,7 @@ var editable: bool = false:
 var _indicated: _Cell = null
 var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
+var _cells: Dictionary[String, _Cell] = {}
 var _power_detail: Label = Label.new()
 
 
@@ -44,6 +45,7 @@ func _init() -> void:
 func show_layout(layout: PackedStringArray) -> void:
 	_layout = layout
 	_values.clear()
+	_cells.clear()
 	# The W/kg line moves to the new large figure rather than being freed with the old one.
 	_power_detail.get_parent().remove_child(_power_detail)
 	for child: Node in get_children():
@@ -57,6 +59,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		return
 	var main_id: String = layout[0]
 	var main: _Cell = _Cell.new(self, main_id, 0, false)
+	_cells[main_id] = main
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
 	# Power figures get the rider's W/kg, % of FTP and zone underneath.
@@ -79,6 +82,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		var id: String = layout[i]
 		var cell: _Cell = _Cell.new(self, id, i, true)
 		cell.custom_minimum_size = Vector2(98, 0)
+		_cells[id] = cell
 		cell.add_child(UiTheme.caption(_caption(id)))
 		cell.add_child(_value_row(id, 24))
 		grid.add_child(cell)
@@ -128,12 +132,33 @@ func show_values(values: Dictionary, watts_per_kg: Variant, power_zone: Variant)
 	_show_power_detail(watts_per_kg, values.get("power_percent_ftp"), power_zone)
 
 
+## The zone each figure's value lies in (`ride_state()["metric_zones"]`, #432), as a bar in
+## the zone's colour down the figure's left edge; none where a figure has no zone.
+func show_zones(zones: Dictionary) -> void:
+	for id: String in _cells:
+		var scale: String = catalogue[id]["zones"]
+		_cells[id].show_zone(_zone_color(scale, zones.get(id)))
+
+
 ## Typical values, so a layout can be judged before riding with it.
 func show_samples() -> void:
 	var samples: Dictionary = {}
+	var zones: Dictionary = {}
 	for id: String in catalogue:
 		samples[id] = catalogue[id]["sample"]
+		zones[id] = catalogue[id]["sample_zone"]
 	show_values(samples, samples["watts_per_kg"], samples["power_zone"])
+	show_zones(zones)
+
+
+static func _zone_color(scale: String, zone: Variant) -> Color:
+	if zone == null:
+		return Color.TRANSPARENT
+	var palette: Array[Array] = (
+		UiTheme.HEART_RATE_ZONES if scale == "heart_rate" else UiTheme.POWER_ZONES
+	)
+	var number: int = zone
+	return palette[clampi(number - 1, 0, palette.size() - 1)][1]
 
 
 func _caption(id: String) -> String:
@@ -218,8 +243,9 @@ func _show_power_detail(watts_per_kg: Variant, percent_ftp: Variant, zone: Varia
 	_power_detail.custom_minimum_size.x = maxf(_power_detail.custom_minimum_size.x, width)
 
 
-## One figure of the HUD. In an editable HUD it can be dragged elsewhere, and dropping a figure
-## on it places that one before or after it, shown by an accent line.
+## One figure of the HUD, with a bar in the colour of its value's zone down its left edge. In an
+## editable HUD it can be dragged elsewhere, and dropping a figure on it places that one before
+## or after it, shown by an accent line.
 class _Cell:
 	extends VBoxContainer
 
@@ -232,6 +258,7 @@ class _Cell:
 	var _sideways: bool
 	## 0 none, 1 before, 2 after.
 	var _mark: int = 0
+	var _zone: Color = Color.TRANSPARENT
 
 	func _init(panel: HudPanel, id: String, index: int, sideways: bool) -> void:
 		_panel = panel
@@ -242,6 +269,11 @@ class _Cell:
 		if panel.editable:
 			mouse_filter = Control.MOUSE_FILTER_STOP
 			mouse_default_cursor_shape = Control.CURSOR_DRAG
+
+	func show_zone(color: Color) -> void:
+		if color != _zone:
+			_zone = color
+			queue_redraw()
 
 	func mark(where: int) -> void:
 		if where != _mark:
@@ -270,6 +302,9 @@ class _Cell:
 		_panel.drop_requested.emit(HudPanel.dragged(data), _index + (1 if _after(at) else 0))
 
 	func _draw() -> void:
+		# Where the line before a grid figure goes while dragging, which then covers it.
+		if _zone.a > 0.0:
+			draw_rect(Rect2(-MARK_WIDTH - 4.0, 0.0, MARK_WIDTH, size.y), _zone)
 		if _mark == 0:
 			return
 		var color: Color = UiTheme.ACCENT

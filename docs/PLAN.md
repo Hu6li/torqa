@@ -196,6 +196,8 @@ Built in rideable steps:
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
+- [x] A bar in the zone's colour beside each power and heart-rate figure, by the zone of the
+  figure's own value: 3 s, 10 s, average and normalized power by theirs (R179, #432)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
