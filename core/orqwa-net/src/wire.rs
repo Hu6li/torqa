@@ -35,6 +35,12 @@ pub(crate) enum Message {
     Handover(crate::handover::Message),
     Enter(u64),
     Entry(u64, Option<crate::lobby::RideProgress>),
+    /// A rider's connection was lost; their seat is held while they reconnect (#434).
+    Away(RiderId),
+    /// A rider whose seat was held is connected again.
+    Back(RiderId),
+    /// Opens a reconnected rider's own link: whether they had entered the running ride.
+    Rejoined(bool),
 }
 
 pub(crate) async fn write(send: &mut SendStream, message: &Message) -> Result<(), LobbyError> {
@@ -131,6 +137,9 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
             rider(&mut bytes, who)?;
         }
         Message::Left(id) => bytes.extend_from_slice(&[4, id.value()]),
+        Message::Away(id) => bytes.extend_from_slice(&[18, id.value()]),
+        Message::Back(id) => bytes.extend_from_slice(&[19, id.value()]),
+        Message::Rejoined(entered) => bytes.extend_from_slice(&[20, u8::from(*entered)]),
         Message::Start(millis) => {
             bytes.push(5);
             bytes.extend_from_slice(&millis.to_be_bytes());
@@ -330,6 +339,13 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
         }
         3 => Message::Joined(reader.id()?, reader.rider()?),
         4 => Message::Left(reader.id()?),
+        18 => Message::Away(reader.id()?),
+        19 => Message::Back(reader.id()?),
+        20 => Message::Rejoined(match reader.byte()? {
+            0 => false,
+            1 => true,
+            _ => return Err(LobbyError::Protocol),
+        }),
         5 => {
             let millis = u32::from_be_bytes(reader.take()?);
             if millis > 60_000 {
@@ -431,6 +447,32 @@ mod tests {
         let mut percent = valid;
         percent[percent_at] = 101;
         assert!(decode(&percent).is_err(), "more than everything");
+    }
+
+    #[test]
+    fn reconnection_controls_name_a_valid_rider_and_a_plain_flag() {
+        let anna = RiderId::new(1).unwrap();
+        for message in [
+            Message::Away(anna),
+            Message::Back(anna),
+            Message::Rejoined(true),
+            Message::Rejoined(false),
+        ] {
+            let bytes = encode(&message).unwrap();
+            assert_eq!(encode(&decode(&bytes).unwrap()).unwrap(), bytes);
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+            let mut extra = bytes;
+            extra.push(0);
+            assert!(decode(&extra).is_err());
+        }
+        let mut nobody = encode(&Message::Away(anna)).unwrap();
+        nobody[2] = 8;
+        assert!(decode(&nobody).is_err(), "no ninth rider");
+        let mut maybe = encode(&Message::Rejoined(true)).unwrap();
+        maybe[2] = 2;
+        assert!(decode(&maybe).is_err(), "entered or not");
     }
 
     #[test]

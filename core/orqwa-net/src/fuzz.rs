@@ -155,6 +155,9 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Preparation(1, crate::lobby::Stage::Downloading, 40),
         Message::Preparations(anna, 1, crate::lobby::Stage::Preparing, 75),
         Message::Enter(1),
+        Message::Away(anna),
+        Message::Back(anna),
+        Message::Rejoined(true),
     ];
     let handover = [
         crate::handover::Message::Offer {

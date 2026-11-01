@@ -33,6 +33,7 @@ var _start: Button = Button.new()
 var _enter: Button = Button.new()
 var _devices: Button
 var _retry: Button
+var _reconnect: Button
 var _voice_controls: GroupVoiceControls = GroupVoiceControls.new()
 var _voice_panel: VBoxContainer = VBoxContainer.new()
 var _invitation_panel: PanelContainer
@@ -242,6 +243,7 @@ func _build_roster() -> void:
 	card.add_child(_enter)
 	_devices = _button(card, tr("Connect your trainer…"), func() -> void: devices_requested.emit())
 	_retry = _button(card, tr("Retry download"), func() -> void: _orqwa.group_retry())
+	_reconnect = _button(card, tr("Reconnect now"), func() -> void: _orqwa.group_reconnect())
 
 
 func _build_dialogs() -> void:
@@ -602,6 +604,16 @@ func _show_status(status: Dictionary) -> void:
 		)
 	if entering:
 		_next.text = tr("Joining your friends…")
+	# The connection to the organizer was lost and comes back by itself (#434).
+	var reconnect: float = _status.get("reconnect_s", 0.0)
+	if reconnect > 0.0:
+		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
+		_next.text = (
+			tr("Trying for another %s. You keep your place in the group.")
+			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
+		)
+		_working.visible = true
+	_reconnect.visible = reconnect > 0.0
 	_enter.visible = late and not underway
 	_enter.disabled = not trainer or not _status.get("can_enter", false)
 	_ready_button.visible = not underway and not late
@@ -680,8 +692,14 @@ func _show_roster(phase: String, host: bool) -> void:
 			state.text = tr("No signal") if rider["ready"] else tr("Getting ready")
 			if rider["me"]:
 				state.text = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
+		# Their seat is held while their connection comes back (#434).
+		var away: bool = rider.get("away", false)
+		if away:
+			state.text = tr("Reconnecting…", "group_rider")
 		var live: bool = (
-			rider["ready"] and (phase != "riding" or rider["me"] or rider.get("present", false))
+			not away
+			and rider["ready"]
+			and (phase != "riding" or rider["me"] or rider.get("present", false))
 		)
 		state.add_theme_color_override("font_color", UiTheme.SUCCESS if live else UiTheme.MUTED)
 		if rider["me"]:

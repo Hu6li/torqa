@@ -365,6 +365,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R185 | Refines R165 (2026-11-01, #435): a rider who already has the selected course **rides their own copy and downloads nothing**, whatever they named it and whatever map picture or countries it shows, e.g. a `.tqc` the organizer sent beforehand or one received in an earlier ride. The selection carries a key of what the course rides on (its route, terrain and map data and the other manifest facts) without the name, map picture and countries, and each joiner looks through their course library for it. A downloaded course may likewise be the sender's own copy, renamed or with another picture, so an organizer after a handover shares theirs: its bytes are checked against what the transfer announces, and its key against the selection's. A course received earlier and changed since keeps its name and contents; the new download is saved beside it. Protocol and invitation version 10 require matching builds and fresh codes. |
 
+## Reconnecting lost riders
+
+| ID | Requirement |
+|---|---|
+| R186 | Extends R164 and R167 (2026-11-01, #434): a rider whose connection to the organizer is **lost** keeps their **seat for five minutes** and **reconnects by themselves**, without new codes: only their own per-ride certificate takes that seat back, with the same name, readiness and prepared activity, nothing downloaded again. Meanwhile their local ride and recording continue, the microphone is off, and a shared workout runs on independently until the reconnection takes up the group's current step. Their page shows *Connection lost. Reconnecting…* with the time left and **Reconnect now**; the others see *Reconnecting…* beside their name. Before the start a held seat keeps **Start group ride** waiting until the rider is back or removed, and organizer changes wait too. **Leave group** frees the seat at once; after five minutes it is given up. A lost organizer is reconnected the same way while their ORQWA stays open at the same addresses. A group whose connection has ended no longer suggests a retry that does not exist. Protocol and invitation version 11 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

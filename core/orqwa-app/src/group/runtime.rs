@@ -37,6 +37,11 @@ pub(super) enum Command {
     HandoverCancel,
     Remove(RiderId),
     Retry,
+    /// Try to reconnect to the organizer now (#434).
+    Reconnect,
+    /// Lose the connection to the organizer as a failing network would.
+    #[cfg(test)]
+    LoseConnection,
     Failure(String),
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
@@ -283,15 +288,10 @@ async fn run_inner(
                         Ok(())
                     },
                     Command::Remove(id) => match &session {Session::Host(l)=>l.remove(id).map_err(|e|e.to_string()),Session::Join(_)=>Err("Only the host removes riders.".into())},
-                    Command::Retry => {
-                        if let (Session::Join(l),Some(selection)) = (&session,&snapshot.selection) {
-                            jobs.abort_all(); while jobs.join_next().await.is_some() {}
-                            let link = l.content_link().ok_or("The group connection ended.")?;
-                            let selection = selection.clone(); let data = request.data.clone();
-                            snapshot.phase = Phase::Downloading; snapshot.error.clear();snapshot.activity_failed=false;
-                            let progress=progress.clone();jobs.spawn(async move {download(&link,&selection,&data,&progress).await.map(|(c,w)|Prepared::Join(c,w))});
-                        } Ok(())
-                    }
+                    Command::Retry => {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await}
+                    Command::Reconnect => {if let Session::Join(lobby) = &session {lobby.reconnect();} Ok(())}
+                    #[cfg(test)]
+                    Command::LoseConnection => {if let Session::Join(lobby) = &session {lobby.lose_connection();} Ok(())}
                     Command::Failure(error) => {snapshot.activity_error(error); Ok(())}
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
@@ -349,7 +349,24 @@ async fn run_inner(
                 }
                 Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
-                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None;}
+                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.away[index] = false;}
+                // A rider whose connection was lost keeps their seat while reconnecting (#434).
+                Some(LobbyEvent::Away {id}) => {let index = usize::from(id.value()); snapshot.away[index] = true; snapshot.states[index] = None;}
+                Some(LobbyEvent::Back {id}) => snapshot.away[usize::from(id.value())] = false,
+                Some(LobbyEvent::Reconnecting {until}) => {
+                    if handover.reconnecting(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}
+                    if !handover.old_lost {
+                        // The link closed the microphone; others' positions and the group's
+                        // workout clock come back with the connection.
+                        snapshot.reconnecting = Some(until.into_std()); snapshot.microphone = false;
+                        snapshot.states.fill(None); snapshot.workout_clock = None;
+                    }
+                }
+                Some(LobbyEvent::Reconnected) => {
+                    snapshot.reconnecting = None;
+                    // A download the lost connection cut off starts again on the new one.
+                    if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
+                }
                 Some(LobbyEvent::Readiness {id,revision,ready}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.ready[usize::from(id.value())] = ready; if ready {snapshot.preparation[usize::from(id.value())] = None;}},
                 Some(LobbyEvent::Preparation {id,revision,stage,percent}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) && !snapshot.ready[usize::from(id.value())] {snapshot.preparation[usize::from(id.value())] = Some((stage,percent));},
                 Some(LobbyEvent::Selection(selection)) => {
@@ -464,7 +481,35 @@ async fn run_inner(
     }
 }
 
+async fn download_again(
+    session: &Session,
+    snapshot: &mut Snapshot,
+    jobs: &mut JoinSet<Result<Prepared, String>>,
+    progress: &watch::Sender<content::Progress>,
+    data: &Path,
+) -> Result<(), String> {
+    if let (Session::Join(lobby), Some(selection)) = (session, &snapshot.selection) {
+        jobs.abort_all();
+        while jobs.join_next().await.is_some() {}
+        let link = lobby.content_link().ok_or("The group connection ended.")?;
+        let selection = selection.clone();
+        let data = data.to_owned();
+        snapshot.phase = Phase::Downloading;
+        snapshot.error.clear();
+        snapshot.activity_failed = false;
+        let progress = progress.clone();
+        jobs.spawn(async move {
+            download(&link, &selection, &data, &progress)
+                .await
+                .map(|(c, w)| Prepared::Join(c, w))
+        });
+    }
+    Ok(())
+}
+
 fn end(snapshot: &mut Snapshot) {
+    snapshot.reconnecting = None;
+    snapshot.away = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.voice = false;
     snapshot.voice_pending = false;
     snapshot.microphone = false;
