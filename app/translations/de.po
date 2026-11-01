@@ -28,6 +28,9 @@ msgstr "Auch Niedrig lag unter 60 fps. Versuche ein kleineres Fenster."
 msgid "Tested at %d × %d pixels."
 msgstr "Getestet mit %d × %d Pixeln."
 
+msgid "+%d earlier"
+msgstr "+%d frühere"
+
 msgid "%d W  ·  %.1f W/kg"
 msgstr "%d W  ·  %.1f W/kg"
 

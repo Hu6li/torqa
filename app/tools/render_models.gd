@@ -12,10 +12,27 @@ const GROUPS: PackedStringArray = ["buildings", "vegetation", "props"]
 ## Plaster and roof colour (indices into the palette's walls and tiles, or a plant's colours)
 ## and variant (shutters below 0.25, flowers above 0.65 hidden).
 const VARIANTS: Array = [[0, 0, 0.5], [2, 1, 0.3], [1, 2, 0.9]]
+## Regional houses show warm, green, and blue façades with matching roof colours.
+const REGIONAL_VARIANTS: Dictionary[String, Array] = {
+	"japanese_house": [[0, 0, 0.5], [3, 2, 0.3], [5, 4, 0.9]],
+	"japanese_castle": [[0, 0, 0.5], [3, 2, 0.3], [5, 4, 0.9]],
+	"nordic_house": [[0, 0, 0.5], [2, 2, 0.3], [6, 4, 0.9]],
+	"nordic_castle": [[0, 0, 0.5], [2, 2, 0.3], [6, 4, 0.9]],
+	"french_house": [[0, 0, 0.5], [1, 2, 0.3], [4, 3, 0.9]],
+	"french_castle": [[0, 0, 0.5], [1, 2, 0.3], [4, 3, 0.9]],
+	"french_city": [[0, 0, 0.5], [1, 1, 0.3], [4, 2, 0.9]],
+}
 ## The palette colours of walls and roofs (accents for modern buildings, bands for
 ## lighthouses) by kind, as the world paints them (core/orqwa-world/src/buildings/mod.rs);
 ## other kinds take plaster and tiles.
 const BUILDING_COLOURS: Dictionary[String, Array] = {
+	"japanese_house": ["buildings.asian_walls", "buildings.asian_roofs"],
+	"japanese_castle": ["buildings.asian_walls", "buildings.asian_roofs"],
+	"nordic_house": ["buildings.nordic_walls", "buildings.nordic_roofs"],
+	"nordic_castle": ["buildings.nordic_walls", "buildings.nordic_roofs"],
+	"french_house": ["buildings.french_walls", "buildings.french_roofs"],
+	"french_castle": ["buildings.french_walls", "buildings.french_roofs"],
+	"french_city": ["buildings.french_city_walls", "buildings.french_city_roofs"],
 	"church": ["buildings.light_walls", "buildings.tiles"],
 	"chapel": ["buildings.light_walls", "buildings.tiles"],
 	"castle": ["buildings.castle_walls", "buildings.tiles"],
@@ -163,7 +180,7 @@ func _kinds(group: String) -> Dictionary:
 ## Instance colour and custom data of each variant of `model`, a `kind` of `group`.
 func _colours(group: String, model: String, kind: String) -> Array[Array]:
 	var colours: Array[Array] = []
-	for variant: Array in VARIANTS:
+	for variant: Array in REGIONAL_VARIANTS.get(kind, VARIANTS):
 		if group == "props":
 			# Coloured by material, the same everywhere.
 			colours.append([Color.WHITE, Color(0.0, 0.0, 0.0, 0.0)])
