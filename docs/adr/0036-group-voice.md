@@ -85,6 +85,19 @@ cleanup, eight-rider voice with ride state, sample-rate conversion and unchanged
 No tests capture a real microphone, contact public STUN or assert home-router compatibility.
 App/GUI voice controls and native microphone/headphone acceptance remain follow-up work.
 
+## Amendment — retiring local audio workers (2026-11-01, #428, #441)
+
+Every audio worker claims a local ownership generation before opening devices. A replacement
+starts microphone-muted and invalidates its predecessor's port. Late startup, capture, playback
+and cleanup from a retired worker cannot alter the replacement's consent, microphone or queued
+speech. The unscoped application port still closes transmission synchronously for mute/leave.
+This generation is local only: no protocol, roster, connection or rider identity changes.
+
+Device replacements must also wait for the previous worker's bounded close before opening
+exclusive native devices. A stalled OS driver may outlive that wait, but its stale port stays
+inert. The regression test holds an old backend inside playback until a replacement is speaking,
+then releases it and checks that new microphone consent and group state survive its cleanup.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).

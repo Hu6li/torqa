@@ -272,13 +272,16 @@ async fn run_inner(
                         audio.abort_all(); while audio.join_next().await.is_some() {}
                         let _gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
-                        voice=None;snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
+                        let previous=voice.take();snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
                         snapshot.input_device.clone_from(&input);snapshot.output_device.clone_from(&output);
                         device_options=DeviceOptions {input:(!input.is_empty()).then_some(input),output:(!output.is_empty()).then_some(output)};
                         if restart && let Some(port)=&port {
                             snapshot.voice_pending=true;
                             let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;
-                            audio.spawn(async move {VoiceChat::open(port,options).await.map(|chat|Audio {generation,chat,deaf}).map_err(|e|e.to_string())});
+                            audio.spawn(async move {
+                                if let Some(chat)=previous {chat.close().await;}
+                                VoiceChat::open(port,options).await.map(|chat|Audio {generation,chat,deaf}).map_err(|e|e.to_string())
+                            });
                         } Ok(())
                     }
                     Command::Mute(id,muted) => {if let Some(chat)=&voice {chat.mute_peer(id,muted);snapshot.muted[usize::from(id.value())]=muted;} Ok(())}

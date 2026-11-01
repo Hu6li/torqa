@@ -86,6 +86,7 @@ impl VoiceChat {
         + Send
         + 'static,
     ) -> Result<Self, VoiceError> {
+        let port = port.claim()?;
         let controls = Arc::new(Controls {
             stop: Arc::new(AtomicBool::new(false)),
             volume: AtomicU32::new(0.6_f32.to_bits()),

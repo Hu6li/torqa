@@ -1,8 +1,9 @@
 //! Real pinned QUIC and Opus with simulated audio devices; no microphone or public server.
 
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
+    mpsc,
 };
 use std::time::{Duration, Instant};
 
@@ -23,6 +24,8 @@ struct Probe {
     microphone: AtomicBool,
     heard: AtomicUsize,
     dropped: AtomicBool,
+    stall: Mutex<Option<mpsc::Receiver<()>>>,
+    stalled: AtomicBool,
 }
 struct Audio {
     probe: Arc<Probe>,
@@ -57,6 +60,11 @@ impl VoiceAudio for Audio {
         })
     }
     fn play(&mut self, samples: PcmFrame) {
+        let stall = self.probe.stall.lock().unwrap().take();
+        if let Some(stall) = stall {
+            self.probe.stalled.store(true, Ordering::Release);
+            let _ = stall.recv();
+        }
         assert!(
             samples
                 .iter()
@@ -72,6 +80,70 @@ impl VoiceAudio for Audio {
     fn healthy(&self) -> bool {
         true
     }
+}
+
+#[tokio::test]
+async fn a_retired_audio_worker_cannot_disable_its_replacement_or_disconnect_the_group() {
+    let mut host = host().await;
+    let mut rider = join(&host, "Restarting audio").await;
+    let port = rider.take_voice().unwrap();
+    let retired = Arc::new(Probe::default());
+    let (release, stalled) = mpsc::channel();
+    *retired.stall.lock().unwrap() = Some(stalled);
+    let probe = retired.clone();
+    let old = VoiceChat::with_audio(port.clone(), move |_| {
+        Ok(Box::new(Audio {
+            probe,
+            activation: None,
+            phase: 0.0,
+            frequency: 440.0,
+            deafened: false,
+        }))
+    })
+    .await
+    .unwrap();
+    until(|| retired.stalled.load(Ordering::Acquire)).await;
+    drop(old);
+    let current = Arc::new(Probe::default());
+    let probe = current.clone();
+    let replacement = VoiceChat::with_audio(port.clone(), move |_| {
+        Ok(Box::new(Audio {
+            probe,
+            activation: None,
+            phase: 0.0,
+            frequency: 660.0,
+            deafened: false,
+        }))
+    })
+    .await
+    .unwrap();
+    replacement.microphone(true).unwrap();
+    until(|| current.microphone.load(Ordering::Acquire)).await;
+    release.send(()).unwrap();
+    until(|| retired.dropped.load(Ordering::Acquire)).await;
+    assert!(
+        replacement.microphone_enabled(),
+        "retired cleanup must not revoke new consent"
+    );
+    assert!(port.alive(), "audio restarts must preserve group ownership");
+    replacement.close().await;
+    let start = host.start(Duration::from_secs(1)).await.unwrap();
+    tokio::time::sleep_until(start + STATE_EVERY).await;
+    rider
+        .send_state(RiderState {
+            distance: Meters(23.0),
+            ..RiderState::default()
+        })
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if matches!(host.next().await, Some(LobbyEvent::State { id, state }) if id == rider.me() && state.distance == Meters(23.0)) {
+                break;
+            }
+        }
+    }).await.unwrap();
+    rider.close().await;
+    host.close().await;
 }
 impl Drop for Audio {
     fn drop(&mut self) {

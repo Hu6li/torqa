@@ -875,6 +875,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
 - [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
   previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
+  - [x] Retired voice workers cannot revoke a replacement's consent or microphone on delayed
+    cleanup; device replacements await bounded native-stream release (#428, #441).
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

@@ -324,6 +324,7 @@ struct Room {
     speakers: [Speaker; MAX_RIDERS],
     uplink: Option<Connection>,
     next_epoch: u64,
+    audio_owner: u64,
 }
 
 pub(crate) struct IncomingBudget {
@@ -378,6 +379,7 @@ fn lock(room: &Arc<Mutex<Room>>) -> MutexGuard<'_, Room> {
 pub struct VoicePort {
     room: Arc<Mutex<Room>>,
     consent: tokio::sync::watch::Sender<bool>,
+    audio_owner: Option<u64>,
 }
 pub(crate) struct VoiceOwner(pub VoiceHandle);
 #[derive(Clone)]
@@ -403,6 +405,7 @@ pub(crate) fn channel_for(
         muted: 0,
         uplink: None,
         next_epoch: 0,
+        audio_owner: 0,
         speakers: std::array::from_fn(|index| Speaker {
             member: None,
             consent: false,
@@ -419,6 +422,7 @@ pub(crate) fn channel_for(
         VoicePort {
             room: room.clone(),
             consent,
+            audio_owner: None,
         },
         VoiceOwner(VoiceHandle(room)),
         changes,
@@ -426,6 +430,43 @@ pub(crate) fn channel_for(
 }
 
 impl VoicePort {
+    fn current(&self, room: &Room) -> bool {
+        self.audio_owner
+            .is_none_or(|owner| owner == room.audio_owner)
+    }
+    /// Claims a fresh local audio lifetime, starting muted and without listening consent.
+    /// Retired workers cannot send, play or revoke a replacement's consent during cleanup.
+    /// The original port remains usable for immediate UI mute/leave controls.
+    ///
+    /// # Errors
+    /// Returns [`VoiceError::Disabled`] if closed, superseded or the owner counter is exhausted.
+    pub fn claim(&self) -> Result<Self, VoiceError> {
+        let mut room = lock(&self.room);
+        if !room.open || !self.current(&room) {
+            return Err(VoiceError::Disabled);
+        }
+        room.audio_owner = room
+            .audio_owner
+            .checked_add(1)
+            .ok_or(VoiceError::Disabled)?;
+        room.microphone = false;
+        room.enabled = false;
+        let me = usize::from(room.me.value());
+        room.speakers[me].consent = false;
+        for speaker in &mut room.speakers {
+            speaker.inbox.clear();
+        }
+        self.consent.send_if_modified(|enabled| {
+            let changed = *enabled;
+            *enabled = false;
+            changed
+        });
+        Ok(Self {
+            room: self.room.clone(),
+            consent: self.consent.clone(),
+            audio_owner: Some(room.audio_owner),
+        })
+    }
     /// This audio sender's authenticated roster number.
     #[must_use]
     pub fn me(&self) -> RiderId {
@@ -434,11 +475,15 @@ impl VoicePort {
     /// Whether the group owner still exists. Audio adapters must stop capture on `false`.
     #[must_use]
     pub fn alive(&self) -> bool {
-        lock(&self.room).open
+        let room = lock(&self.room);
+        room.open && self.current(&room)
     }
     /// Opts in to receiving speech. Disabling also mutes transmission and drops queued audio.
     pub fn enable(&self, enabled: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         let enabled = enabled && room.open;
         let changed = room.enabled != enabled;
         room.enabled = enabled;
@@ -460,6 +505,9 @@ impl VoicePort {
     /// Returns [`VoiceError::Disabled`] if closed, deafened, not opted in or counter exhausted.
     pub fn microphone(&self, enabled: bool) -> Result<u32, VoiceError> {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return Err(VoiceError::Disabled);
+        }
         if enabled && (!room.open || !room.enabled || room.deafened) {
             return Err(VoiceError::Disabled);
         }
@@ -473,12 +521,16 @@ impl VoicePort {
     #[must_use]
     pub fn transmitting(&self) -> Option<u32> {
         let room = lock(&self.room);
-        (room.open && room.enabled && room.microphone && !room.deafened).then_some(room.spurt)
+        (self.current(&room) && room.open && room.enabled && room.microphone && !room.deafened)
+            .then_some(room.spurt)
     }
     /// Silences all received audio, clears pending speech and mutes the microphone.
     /// Undeafening leaves the microphone muted until explicitly enabled again.
     pub fn deafen(&self, deafened: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         room.deafened = deafened;
         if deafened {
             room.microphone = false;
@@ -490,11 +542,15 @@ impl VoicePort {
     /// Whether local playback is deafened.
     #[must_use]
     pub fn deafened(&self) -> bool {
-        lock(&self.room).deafened
+        let room = lock(&self.room);
+        !self.current(&room) || room.deafened
     }
     /// Silences one speaker locally without affecting anyone else's conversation.
     pub fn mute_peer(&self, peer: RiderId, muted: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         let bit = 1 << peer.value();
         if muted {
             room.muted |= bit;
@@ -510,7 +566,8 @@ impl VoicePort {
     /// Returns [`VoiceError`] for invalid state, closed/muted gates or a local frame flood.
     pub fn send(&self, frame: VoiceFrame) -> Result<(), VoiceError> {
         let mut room = lock(&self.room);
-        if !room.open
+        if !self.current(&room)
+            || !room.open
             || !room.enabled
             || !room.microphone
             || room.deafened
@@ -541,12 +598,15 @@ impl VoicePort {
     #[must_use]
     pub fn playout(&self, now: Instant) -> [VoicePlayback; MAX_RIDERS] {
         let mut room = lock(&self.room);
-        let enabled = room.open && room.enabled && !room.deafened;
+        let current = self.current(&room);
+        let enabled = current && room.open && room.enabled && !room.deafened;
         let me = room.me;
         let muted = room.muted;
         std::array::from_fn(|index| {
             let speaker = &mut room.speakers[index];
-            let action = if !enabled
+            let action = if !current {
+                Playout::Silence
+            } else if !enabled
                 || index == usize::from(me.value())
                 || muted & (1 << index) != 0
                 || speaker.member.is_none()
