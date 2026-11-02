@@ -111,21 +111,51 @@ impl Session {
         }
     }
 }
-/// This rider's preparation as last told to the group (#419): on a change of stage at once,
-/// otherwise at most every `EVERY`, which keeps well within the host's control budget.
+/// This rider's preparation as last told to the group (#419): on a change of stage or once
+/// done at once, otherwise at most every `EVERY`, which keeps well within the host's control
+/// budget.
 #[derive(Default)]
 struct Reported(Option<(u64, Stage, u8, tokio::time::Instant)>);
 impl Reported {
     const EVERY: Duration = Duration::from_secs(2);
     fn report(&mut self, session: &Session, revision: u64, stage: Stage, percent: u8) {
-        let now = tokio::time::Instant::now();
+        if self.due(revision, stage, percent, tokio::time::Instant::now()) {
+            session.preparation(revision, stage, percent);
+        }
+    }
+    /// Whether to tell the group, remembering it as told if so. Nothing follows the end of
+    /// preparing to supersede it: held back, the rider would show as still building until ready.
+    fn due(&mut self, revision: u64, stage: Stage, percent: u8, now: tokio::time::Instant) -> bool {
         let due = self.0.is_none_or(|(r, s, p, at)| {
-            r != revision || s != stage || (p != percent && now.duration_since(at) >= Self::EVERY)
+            r != revision
+                || s != stage
+                || (p != percent && (percent == 100 || now.duration_since(at) >= Self::EVERY))
         });
         if due {
-            session.preparation(revision, stage, percent);
             self.0 = Some((revision, stage, percent, now));
         }
+        due
+    }
+}
+#[cfg(test)]
+mod reported_tests {
+    use super::{Reported, Stage};
+
+    #[test]
+    fn a_course_prepared_quickly_still_tells_the_group_it_is_done() {
+        let start = tokio::time::Instant::now();
+        let mut reported = Reported::default();
+        assert!(reported.due(1, Stage::Preparing, 50, start));
+        let soon = start + Reported::EVERY / 4;
+        assert!(
+            !reported.due(1, Stage::Preparing, 55, soon),
+            "progress is told a few times only"
+        );
+        assert!(
+            reported.due(1, Stage::Preparing, 100, soon),
+            "done is told at once"
+        );
+        assert!(!reported.due(1, Stage::Preparing, 100, soon), "and once");
     }
 }
 /// A friend's copy of what the organizer is choosing (#418): one fetch at a time, at most
