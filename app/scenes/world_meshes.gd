@@ -41,6 +41,9 @@ static func _surface(arrays: Dictionary) -> Array:
 	surface[Mesh.ARRAY_VERTEX] = vertices
 	surface[Mesh.ARRAY_NORMAL] = normals
 	surface[Mesh.ARRAY_TEX_UV] = uvs
+	if arrays.has("uv2"):
+		var uv2: PackedVector2Array = arrays["uv2"]
+		surface[Mesh.ARRAY_TEX_UV2] = uv2
 	if not colors.is_empty():
 		surface[Mesh.ARRAY_COLOR] = colors
 	surface[Mesh.ARRAY_INDEX] = indices

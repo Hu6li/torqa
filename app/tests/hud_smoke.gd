@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless checks of the ride HUD: its editor (R51, R54), the line under a large power
-## figure and the minimap.
+## figure, the zone bars beside the figures and the minimap.
 ## Run: godot --headless --path app -s res://tests/hud_smoke.gd
 
 var _failed: bool = false
@@ -13,6 +13,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_hud_editor()
 	_power_detail()
+	_zone_bars()
 	await _minimap()
 	if not _failed:
 		print("HUD SMOKE TEST PASSED")
@@ -73,11 +74,20 @@ func _hud_editor() -> void:
 
 ## A large power figure has the rider's W/kg, % of FTP and zone under it; without an FTP, no
 ## percentage. The line keeps the widest width it has had, so the HUD does not jump in width.
+## A large heart rate has its % of the maximum and zone under it, in the zone's colour.
 func _power_detail() -> void:
 	var hud: HudPanel = HudPanel.new()
 	root.add_child(hud)
+	hud.show_layout(PackedStringArray(["heart_rate", "speed"]))
+	var detail: Label = hud.get("_detail")
+	var heart: Dictionary = {"heart_rate_percent_max": 80.0, "heart_rate_zone": 3.0}
+	hud.show_values(heart, 3.3, 4)
+	var moderate: Color = UiTheme.HEART_RATE_ZONES[2][1]
+	_check(detail.visible and detail.text == "80 % max · Z3 Moderate", "heart line: " + detail.text)
+	_check(detail.get_theme_color("font_color") == moderate, "in the heart-rate zone's colour")
+	hud.show_values({"heart_rate_percent_max": null, "heart_rate_zone": 3.0}, 3.3, 4)
+	_check(detail.text.is_empty(), "no heart line without a maximum: " + detail.text)
 	hud.show_layout(PackedStringArray(["power", "speed"]))
-	var detail: Label = hud.get("_power_detail")
 	hud.show_values({"power": 250.0, "power_percent_ftp": 104.2}, 3.3, 4)
 	_check(detail.text == "3.3 W/kg · 104 % FTP · Z4 Threshold", "power line: " + detail.text)
 	hud.show_values({"power": 250.0, "power_percent_ftp": null}, 3.3, 4)
@@ -92,6 +102,48 @@ func _power_detail() -> void:
 	hud.show_layout(PackedStringArray(["speed", "power"]))
 	_check(not detail.visible, "no power line under another figure")
 	hud.free()
+
+
+## Each figure under the large one with a zone has a bar in that zone's colour (#432): power
+## figures in the power zones' colours, heart-rate figures in the heart-rate zones'; none
+## without a zone, e.g. for a rider without an FTP. The large figure has none: its power line
+## is coloured already. The editor's example values show theirs.
+func _zone_bars() -> void:
+	var hud: HudPanel = HudPanel.new()
+	root.add_child(hud)
+	hud.show_layout(PackedStringArray(["speed", "power", "heart_rate", "cadence", "avg_power"]))
+	hud.show_zones({"power": 5, "heart_rate": 2, "cadence": null, "avg_power": 3})
+	var vo2max: Color = UiTheme.POWER_ZONES[4][1]
+	var tempo: Color = UiTheme.POWER_ZONES[2][1]
+	var light: Color = UiTheme.HEART_RATE_ZONES[1][1]
+	_check(_zone_bar(hud, "power") == vo2max, "power in its zone's colour")
+	_check(_zone_bar(hud, "avg_power") == tempo, "the average in its own")
+	_check(_zone_bar(hud, "heart_rate") == light, "heart rate in its zones' colours")
+	_check(_zone_bar(hud, "cadence").a == 0.0, "no bar beside a figure without zones")
+	hud.show_zones({"power": null, "heart_rate": 2})
+	_check(_zone_bar(hud, "power").a == 0.0, "no bar without a zone")
+	hud.show_layout(PackedStringArray(["power", "heart_rate"]))
+	hud.show_zones({"power": 5, "heart_rate": 2})
+	_check(_zone_bar(hud, "power").a == 0.0, "none beside the large figure")
+	_check(_zone_bar(hud, "heart_rate") == light, "but under it")
+	hud.free()
+	var editor: HudEditor = HudEditor.new()
+	root.add_child(editor)
+	editor.edit(PackedStringArray(["speed", "power", "heart_rate"]), false)
+	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
+	for id: String in ["power", "heart_rate"]:
+		_check(_zone_bar(preview, id).a > 0.0, "an example bar for " + id)
+	editor.free()
+
+
+## The colour of the bar beside the figure `id`, transparent for none or the large figure.
+func _zone_bar(hud: HudPanel, id: String) -> Color:
+	var cells: Dictionary = hud.get("_cells")
+	if not cells.has(id):
+		return Color.TRANSPARENT
+	var cell: Control = cells[id]
+	var color: Color = cell.get("_zone")
+	return color
 
 
 func _available_chips(editor: HudEditor) -> Array[Node]:

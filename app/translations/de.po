@@ -28,6 +28,9 @@ msgstr "Auch Niedrig lag unter 60 fps. Versuche ein kleineres Fenster."
 msgid "Tested at %d × %d pixels."
 msgstr "Getestet mit %d × %d Pixeln."
 
+msgid "+%d earlier"
+msgstr "+%d frühere"
+
 msgid "%d W  ·  %.1f W/kg"
 msgstr "%d W  ·  %.1f W/kg"
 
@@ -859,8 +862,8 @@ msgstr "Fr"
 msgid "Full screen (F11)"
 msgstr "Vollbild (F11)"
 
-msgid "Exit full screen (F11)"
-msgstr "Vollbild verlassen (F11)"
+msgid "Exit full screen (Esc or F11)"
+msgstr "Vollbild verlassen (Esc oder F11)"
 
 msgid "Full view"
 msgstr "Vollständige Ansicht"
@@ -906,6 +909,9 @@ msgstr "Dunstig"
 
 msgid "Heart rate"
 msgstr "Puls"
+
+msgid "%d %% max"
+msgstr "%d %% max."
 
 msgid "Heart rate % max"
 msgstr "Puls % max."
@@ -2461,6 +2467,15 @@ msgstr "Jahreszeit"
 
 msgid "Summer"
 msgstr "Sommer"
+
+msgid "Autumn"
+msgstr "Herbst"
+
+msgid "Spring"
+msgstr "Frühling"
+
+msgid "Winter"
+msgstr "Winter"
 
 msgid "Group rides"
 msgstr "Gruppenfahrten"

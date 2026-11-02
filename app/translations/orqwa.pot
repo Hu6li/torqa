@@ -3,6 +3,10 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
+#: app/ui/hud_panel.gd
+msgid "%d %% max"
+msgstr ""
+
 #: app/scenes/devices_tab.gd
 msgid "%d W"
 msgstr ""
@@ -141,6 +145,10 @@ msgstr ""
 
 #: app/ui/workout_editor.gd
 msgid "+ Step"
+msgstr ""
+
+#: app/ui/failure_details.gd
+msgid "+%d earlier"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -397,6 +405,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Automatic: a cadence sensor, else the power meter, else the trainer"
+msgstr ""
+
+#: core/orqwa-domain/src/season.rs
+msgid "Autumn"
 msgstr ""
 
 #: app/ui/hud_editor.gd
@@ -1176,7 +1188,7 @@ msgid "Exchange codes privately. Codes reveal connection addresses; replies cont
 msgstr ""
 
 #: app/ui/ride_bar.gd
-msgid "Exit full screen (F11)"
+msgid "Exit full screen (Esc or F11)"
 msgstr ""
 
 #: app/scenes/history_screen.gd
@@ -2643,6 +2655,10 @@ msgstr ""
 msgid "Speed"
 msgstr ""
 
+#: core/orqwa-domain/src/season.rs
+msgid "Spring"
+msgstr ""
+
 #: app/ui/zones_editor.gd
 msgid "Standard zones"
 msgstr ""
@@ -3193,6 +3209,10 @@ msgstr ""
 
 #: app/ui/ride_options.gd
 msgid "Wind sound"
+msgstr ""
+
+#: core/orqwa-domain/src/season.rs
+msgid "Winter"
 msgstr ""
 
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs

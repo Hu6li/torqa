@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://shaders/winter.gdshaderinc"
 // Materials of the Blender-made building models (R89, ADR 0020, art/buildings): textures baked
 // in Blender (plaster, clay tiles, slate, boards, masonry, gravel) by the models' coordinates in
 // metres, tinted by palette colours; glass dark and reflective, metal and copper with a sheen,
@@ -28,8 +29,10 @@ const int GARAGE = 16;
 const int LEADED = 17;
 const int ACCENT = 18;
 const int FLAT_ROOF = 19;
+const int PAINTED_WOOD = 20;
 
 uniform int pattern = 0;
+uniform bool autumn_flowers_hidden = false;
 uniform vec3 color : source_color = vec3(0.8);
 uniform vec4 shutter_colors[4] : source_color;
 uniform vec4 flower_colors[3] : source_color;
@@ -43,6 +46,7 @@ varying vec3 roof_tint;
 varying float variant;
 varying vec3 world_position;
 varying float height_up;
+varying vec3 winter_normal;
 
 // A number in [0, 1) for the lattice point `p`, exact far from the origin (see ground.gdshaderinc).
 float hash(vec2 p) {
@@ -63,15 +67,19 @@ void vertex() {
 	variant = INSTANCE_CUSTOM.a;
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	height_up = VERTEX.y;
+	winter_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 }
 
 void fragment() {
+	if (pattern == FLOWERS && autumn_flowers_hidden) {
+		discard;
+	}
 	vec3 tint = color;
 	float roughness = 0.9;
 	float specular = 0.4;
 	float metallic = 0.0;
 
-	if (pattern == PLASTER) {
+	if (pattern == PLASTER || pattern == PAINTED_WOOD) {
 		tint = to_linear(COLOR.rgb);
 	} else if (pattern == TILES || pattern == ACCENT) {
 		// The building's roof colour; models without one keep the material's.
@@ -105,7 +113,8 @@ void fragment() {
 	} else if (pattern == SHEET) {
 		// Standing seams every half metre along the roof.
 		float seam = 1.0 - smoothstep(0.0, 0.03, abs(fract(UV.x * 2.0) - 0.5) - 0.47);
-		tint = color * (1.0 - 0.25 * seam);
+		tint = (roof_tint.r + roof_tint.g + roof_tint.b > 0.0 ? to_linear(roof_tint) : color)
+			* (1.0 - 0.25 * seam);
 		metallic = 0.5;
 		roughness = 0.5;
 	} else if (pattern == FRAME) {
@@ -126,6 +135,9 @@ void fragment() {
 	}
 
 	vec3 albedo = tint;
+	if (pattern == FLOWERS && winter_strength > 0.5 && world_position.y > winter_deciduous_from) {
+		discard;
+	}
 	if (textured) {
 		vec2 uv = UV / tile;
 		vec3 texel = texture(albedo_texture, uv).rgb;
@@ -138,10 +150,15 @@ void fragment() {
 		NORMAL_MAP_DEPTH = 1.0;
 	}
 	// Walls darken towards the ground, where rain splashes and dirt collects.
-	if (pattern == PLASTER || pattern == STONE || pattern == WOOD || pattern == WOOD_DARK) {
+	if (pattern == PLASTER || pattern == STONE || pattern == WOOD || pattern == WOOD_DARK
+		|| pattern == PAINTED_WOOD) {
 		albedo *= mix(0.72, 1.0, smoothstep(-0.2, 1.4, height_up));
 	}
 
+	float snow = winter_cover(world_position, winter_normal);
+	albedo = mix(albedo, winter_snow_color.rgb, snow);
+	roughness = mix(roughness, 0.8, snow);
+	metallic *= 1.0 - snow;
 	ALBEDO = albedo;
 	ROUGHNESS = roughness;
 	SPECULAR = specular;
