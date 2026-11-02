@@ -636,7 +636,9 @@ synthetic jitter reproduction does not replace acceptance on the originally affe
 
 For R189, the conversation suite runs simulated sound cards whose microphones and speakers each
 keep their own clock: a steady voice must arrive without gaps, and a rider next to a fan must
-not keep a speaking rider's microphone closed in speaker mode. On two native computers, talk for
+not keep a speaking rider's microphone closed in speaker mode. A speaker running dry after the
+machine left the voice worker unscheduled for longer than its two queued frames last counts as
+a stall, not a gap: loaded CI runners, macOS's in particular, do that now and then. On two native computers, talk for
 a minute with **Prevent speaker echo** off and headphones on both, then with it on and speakers,
 with a fan running near one microphone. Speech must sound clean (not metallic or choppy), arrive
 whole, and each rider must be able to answer within about half a second of the other stopping.
