@@ -875,6 +875,30 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
 - [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
   previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
+  - [x] Retired voice workers cannot revoke a replacement's consent or microphone on delayed
+    cleanup; device replacements await bounded native-stream release (#428, #441).
+  - [x] Rebuild invalidated native voice streams after Bluetooth sample-rate changes, retaining
+    local controls with a finite recovery budget; harmless route notifications keep playing (#413).
+  - [x] Explicit ten-second local microphone meter, automatic capture cleanup and muted voice
+    restoration; optional full-duplex headphone mode beside default speaker echo prevention
+    (R177, #414, #429).
+  - [x] Voice activity indicator and retained microphone-check result, plus an output-only
+    two-tone speaker check using the selected device and voice volume (R178).
+  - [x] Linux audio defaults accept unknown ALSA route direction and prefer available desktop
+    sound-server bridges; keep explicit device choices and hide the silent null route (#456).
+  - [x] macOS microphone actions explicitly request Apple's authorization, with signed audio-input
+    entitlement, permission recovery guidance and artifact privacy checks.
+  - [x] Preserve background lobby/voice reader failures in terminal logs and Technical details,
+    distinguish partial-control timeouts and remove disconnected remote riders from ended rosters.
+  - [x] Reproduce and fix microphone sequence rejection after packet delay/loss (#428): keep
+    one timing anchor per microphone activation and preserve actual transport-close errors.
+  - [x] Recover from voice/state arrival bursts without disconnecting the group (R179, #428),
+    separate delivery quotas from persistent raw abuse, pace live capture without catch-up
+    and recover current speech after an initially delayed packet, slower capture or a stalled
+    listener evicting jitter history.
+  - [x] Clean, continuous voice between computers (R189): playback paced by each speaker,
+    every fresh capture sent, pulled jitter buffers with Opus in-band recovery, band-limited
+    resampling, level-keeping soft mixing and an echo gate that reacts only to speech.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

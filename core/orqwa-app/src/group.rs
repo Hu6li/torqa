@@ -205,6 +205,20 @@ pub struct Snapshot {
     pub output_device: String,
     /// Local playback gain, retained when devices reconnect.
     pub voice_volume: f32,
+    /// Speaker mode suppresses outgoing speech during remote playback and its short echo tail.
+    pub echo_prevention: bool,
+    /// An explicitly requested, temporary local microphone level test is starting or running.
+    pub microphone_test: bool,
+    /// Finite local test level, from zero to one; no samples enter status or networking.
+    pub microphone_level: f32,
+    /// An explicit output-only speaker test is starting or playing.
+    pub speaker_test: bool,
+    /// Speech-like microphone activity detected now, briefly held between syllables.
+    pub microphone_voice_detected: bool,
+    /// At least one speech-like segment was heard in the most recent microphone check.
+    pub microphone_voice_heard: bool,
+    /// A microphone check has been requested for the current input selection.
+    pub microphone_checked: bool,
     /// Per-speaker playback mute on this computer.
     pub muted: [bool; MAX_RIDERS],
     /// Bytes stored for the current file, coalesced by the download worker.
@@ -260,6 +274,13 @@ impl Default for Snapshot {
             input_device: String::new(),
             output_device: String::new(),
             voice_volume: 0.6,
+            echo_prevention: true,
+            microphone_test: false,
+            microphone_level: 0.0,
+            speaker_test: false,
+            microphone_voice_detected: false,
+            microphone_voice_heard: false,
+            microphone_checked: false,
             muted: [false; MAX_RIDERS],
             received: 0,
             total: 0,
@@ -375,6 +396,7 @@ pub(crate) struct Running {
 #[derive(Default)]
 struct VoiceControls {
     generation: AtomicU64,
+    audio_test: std::sync::atomic::AtomicU8,
     port: Mutex<Option<orqwa_net::voice::VoicePort>>,
 }
 impl Drop for Running {
@@ -442,6 +464,7 @@ impl App {
         let voice_controls = Arc::new(VoiceControls::default());
         let token = orqwa_net::code::RideId::generate().map_err(error)?;
         let request = runtime::Request {
+            audio: runtime::AudioBackend::default(),
             voice_controls: Arc::clone(&voice_controls),
             invite,
             options,
@@ -744,6 +767,9 @@ impl App {
             .as_ref()
             .ok_or_else(|| error("Open a lobby first."))?
             .voice_controls;
+        if controls.audio_test.load(Ordering::Acquire) != 0 {
+            return Err(error("Stop the audio test before joining voice chat."));
+        }
         let generation = controls
             .generation
             .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
@@ -782,6 +808,63 @@ impl App {
     /// Returns [`AppError`] if the queue is unavailable.
     pub fn group_voice_devices(&self) -> Result<(), AppError> {
         self.group_command(Command::Devices)
+    }
+    /// Starts/stops a ten-second local meter, pausing voice with transmission closed.
+    /// Previously opted-in listening resumes microphone-off when testing ends.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if no group is open or its command queue is unavailable.
+    pub fn group_microphone_test(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_audio_test(enabled.then_some(orqwa_voice::audio_test::TestKind::Microphone))
+    }
+    /// Plays a brief tone through the selected speakers without opening the microphone.
+    /// Previously opted-in listening resumes microphone-off when the test ends.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] for an unavailable group command queue.
+    pub fn group_speaker_test(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_audio_test(enabled.then_some(orqwa_voice::audio_test::TestKind::Speakers))
+    }
+    fn group_audio_test(
+        &self,
+        kind: Option<orqwa_voice::audio_test::TestKind>,
+    ) -> Result<(), AppError> {
+        let controls = &self
+            .group
+            .as_ref()
+            .ok_or_else(|| error("Open a lobby first."))?
+            .voice_controls;
+        let requested = kind.map_or(0, |kind| kind as u8);
+        let previous = controls.audio_test.swap(requested, Ordering::AcqRel);
+        if previous == requested {
+            return Ok(());
+        }
+        let generation = controls
+            .generation
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
+            .map_err(|_| error("Voice activation exhausted."))?
+            + 1;
+        if let Err(error) = self.group_command(Command::AudioTest(generation, kind)) {
+            controls.audio_test.store(previous, Ordering::Release);
+            return Err(error);
+        }
+        if kind.is_some()
+            && let Some(port) = controls
+                .port
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+        {
+            port.enable(false);
+        }
+        Ok(())
+    }
+    /// Sets the local speaker echo gate; headphones may use full-duplex speech instead.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if the group command queue is unavailable.
+    pub fn group_voice_echo_prevention(&self, enabled: bool) -> Result<(), AppError> {
+        self.group_command(Command::EchoPrevention(enabled))
     }
     /// Selects native devices, restarting opted-in voice with the microphone muted.
     ///
