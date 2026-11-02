@@ -84,6 +84,12 @@ func _choice(key: String) -> void:
 	option.button_group = _buttons
 	option.custom_minimum_size.y = 32
 	option.toggled.connect(func(on: bool) -> void: _selected(key, on))
+	# The whole card is the choice, so keyboard and remote focus ring the card, not a box
+	# inside it. Focus is hidden or shown again without leaving the button, which then only
+	# redraws: the card redraws with it.
+	option.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	option.draw.connect(panel.queue_redraw)
+	panel.draw.connect(_draw_focus.bind(panel, option))
 	_choices[key] = option
 	box.add_child(option)
 	var help: Label = Label.new()
@@ -104,7 +110,15 @@ func _choice(key: String) -> void:
 
 func _card_selected(option: CheckBox) -> void:
 	option.button_pressed = true
-	option.grab_focus()
+	# The remote's arrows go on from the chosen card; a click or tap shows only the selection.
+	option.grab_focus(true)
+
+
+## On the card's edge rather than outside it, where the scrolling page would cut it off.
+func _draw_focus(panel: PanelContainer, option: CheckBox) -> void:
+	if option.has_focus(true):
+		var ring: StyleBoxFlat = UiTheme.focus_ring(UiTheme.RADIUS, 0)
+		panel.draw_style_box(ring, Rect2(Vector2.ZERO, panel.size))
 
 
 func ask_create() -> void:
