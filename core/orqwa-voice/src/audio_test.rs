@@ -133,9 +133,16 @@ impl AudioTest {
                         let wait = if kind == TestKind::Speakers {
                             // Tones follow the speaker's clock like speech does, so the
                             // check sounds exactly as clean as a friend will.
-                            let due = audio
-                                .playback_queued()
-                                .map_or(1, |queued| crate::PLAYBACK_QUEUE.saturating_sub(queued));
+                            let due = if let Some(queued) = audio.playback_queued() {
+                                crate::PLAYBACK_QUEUE.saturating_sub(queued)
+                            } else {
+                                // Without a device clock, wall time stands in for it: a late
+                                // wakeup skips ahead instead of stretching the check.
+                                let now = u32::try_from(started.elapsed().as_millis() / 20)
+                                    .unwrap_or(u32::MAX);
+                                played = played.max(now);
+                                1
+                            };
                             for _ in 0..due {
                                 audio.play(test_tone(
                                     played,

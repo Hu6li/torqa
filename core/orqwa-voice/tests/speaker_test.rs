@@ -78,6 +78,48 @@ async fn speakers_play_at_selected_gain_and_finish_without_a_microphone() {
     assert!(!test.voice_detected() && !test.voice_heard());
 }
 
+/// A speaker backend on a busy machine: each frame takes longer to hand over than it plays.
+struct Slow(Output);
+impl VoiceAudio for Slow {
+    fn microphone(&mut self, activation: Option<u32>) -> Result<(), VoiceDeviceError> {
+        self.0.microphone(activation)
+    }
+    fn capture(&mut self) -> Option<CapturedVoice> {
+        self.0.capture()
+    }
+    fn play(&mut self, samples: PcmFrame) {
+        std::thread::sleep(Duration::from_millis(30));
+        self.0.play(samples);
+    }
+    fn deafen(&mut self, deafened: bool) {
+        self.0.deafen(deafened);
+    }
+    fn healthy(&self) -> bool {
+        true
+    }
+}
+
+#[tokio::test]
+async fn late_wakeups_still_reach_the_second_tone_within_the_check() {
+    let probe = Arc::new(Probe::default());
+    let output = probe.clone();
+    let test = AudioTest::with_speaker_audio(0.3, move |_| Ok(Box::new(Slow(Output(output)))))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while test.running() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(probe.low_tone.load(Ordering::Acquire));
+    assert!(
+        probe.high_tone.load(Ordering::Acquire),
+        "a slow worker must not stretch the check past its second tone"
+    );
+}
+
 #[tokio::test]
 async fn stop_releases_output_and_invalid_gain_never_opens_it() {
     let probe = Arc::new(Probe::default());
