@@ -1,17 +1,20 @@
 //! Group view dictionaries; membership, readiness and lifecycle remain in the app core.
 use godot::prelude::*;
-use orqwa_app::App;
+use orqwa_app::{App, group::GroupView};
 use std::time::Duration;
 
-pub(super) fn riders(app: &App) -> VarArray {
+pub(super) fn riders(app: &App, view: &GroupView) -> VarArray {
     let mut peers = VarArray::new();
     let state = app.ride_state();
-    let local = state.as_ref().map_or(0.0, |s| s.distance.0);
+    let local = view.distance.map_or_else(
+        || state.as_ref().map_or(0.0, |s| s.distance.0),
+        |distance| distance.0,
+    );
     let route = state
         .filter(|s| s.position.is_some())
         .and_then(|_| app.route());
     let projection = route.map(orqwa_routes::LocalProjection::for_route);
-    for peer in app.group_riders() {
+    for peer in &view.riders {
         let generation = peer.generation.to_string();
         let mut dict = vdict! {
             "id" => i64::from(peer.id), "generation" => generation.as_str(), "name" => peer.name.as_str(),
@@ -47,6 +50,7 @@ pub(super) fn riders(app: &App) -> VarArray {
 
 pub(super) fn status(app: &App) -> VarDictionary {
     let status = app.group();
+    let view = app.group_view();
     let mut roster = VarArray::new();
     let mut devices = VarArray::new();
     for (id, name, input, output) in &status.devices {
@@ -55,13 +59,14 @@ pub(super) fn status(app: &App) -> VarDictionary {
                 .to_variant(),
         );
     }
-    let local = app.ride_state().map_or(0.0, |s| s.distance.0);
+    let local = view.distance.map_or(0.0, |distance| distance.0);
     for (id, rider) in status.roster.iter().enumerate() {
         let Some(rider) = rider else {
             continue;
         };
         let sample = status.states[id].filter(|(_, at)| at.elapsed() < Duration::from_secs(2));
-        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>sample.is_some(),"gap_m"=>sample.map_or(0.0,|(s,_)|s.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0),"watts_per_kg"=>sample.map_or(0.0,|(s,_)|s.power.0/rider.weight.0.max(1.0)),
+        let peer = view.riders.iter().find(|peer| usize::from(peer.id) == id);
+        roster.push(&vdict!{"id"=>i64::try_from(id).unwrap_or(0),"name"=>rider.name.as_str(),"organizer"=>id==usize::from(status.organizer),"ready"=>status.ready[id],"me"=>id==usize::from(status.me),"muted"=>status.muted[id],"present"=>peer.is_some(),"gap_m"=>peer.map_or(0.0,|peer|peer.distance.0-local),"power_w"=>sample.map_or(0.0,|(s,_)|s.power.0),"watts_per_kg"=>sample.map_or(0.0,|(s,_)|s.power.0/rider.weight.0.max(1.0)),
             // How far a rider not yet ready has got preparing the activity (#419).
             "stage"=>match status.preparation[id] {Some((orqwa_app::group::Stage::Downloading,_))=>"downloading",Some((orqwa_app::group::Stage::Preparing,_))=>"preparing",None=>""},
             "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent)),

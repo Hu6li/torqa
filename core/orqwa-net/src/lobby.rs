@@ -167,7 +167,8 @@ pub enum LobbyEvent {
         /// Typed, bounded proposal or preparation message.
         message: crate::handover::Message,
     },
-    /// One validated latest sample, at most five times per second per rider.
+    /// One validated latest sample, at most five times per second per rider. App lobbies
+    /// include the local rider's host-accepted echo, for consistent group presentation.
     State {
         /// Authenticated sender assigned by the host.
         id: RiderId,
@@ -236,6 +237,7 @@ struct Events {
     clock: watch::Receiver<Option<WorkoutClock>>,
     pending: States,
     me: RiderId,
+    include_local: bool,
     ended: bool,
     active: [bool; MAX_RIDERS],
 }
@@ -274,10 +276,9 @@ impl Events {
             }
             for (id, state) in self.pending.iter_mut().enumerate() {
                 let id = rider_id(id);
-                if let Some(state) = state
-                    .take()
-                    .filter(|_| id != self.me && self.active[usize::from(id.value())])
-                {
+                if let Some(state) = state.take().filter(|_| {
+                    (id != self.me || self.include_local) && self.active[usize::from(id.value())]
+                }) {
                     return Some(LobbyEvent::State { id, state });
                 }
             }
@@ -301,15 +302,19 @@ fn events(
     controls: mpsc::Receiver<LobbyEvent>,
     states: watch::Receiver<States>,
     clock: watch::Receiver<Option<WorkoutClock>>,
+    include_local: bool,
 ) -> Events {
+    let mut active = [false; MAX_RIDERS];
+    active[usize::from(me.value())] = include_local;
     Events {
         controls,
         states,
         clock,
         pending: [None; MAX_RIDERS],
         me,
+        include_local,
         ended: false,
-        active: [false; MAX_RIDERS],
+        active,
     }
 }
 
@@ -413,6 +418,7 @@ impl HostLobby {
             prepared,
             (root, epoch),
         ));
+        let include_local = invite.route == RouteHash::LOBBY;
         Ok(Self {
             organizer,
             root,
@@ -422,7 +428,7 @@ impl HostLobby {
             state,
             progress,
             preview,
-            events: events(organizer, controls, updates, clock_updates),
+            events: events(organizer, controls, updates, clock_updates, include_local),
             tasks,
             voice: Some(voice),
         })
@@ -819,7 +825,13 @@ impl JoinerLobby {
             root,
             epoch,
             state,
-            events: events(me, controls, updates, clock_updates),
+            events: events(
+                me,
+                controls,
+                updates,
+                clock_updates,
+                route == RouteHash::LOBBY,
+            ),
             tasks,
             voice: Some(voice),
             connection: current,
@@ -1310,6 +1322,7 @@ fn serve(
         commands.clone(),
         controls.clone(),
     );
+    let app_lobby = activities.enabled;
     tasks.spawn(async move {
         let result = serve_peer(
             &connection,
@@ -1327,6 +1340,7 @@ fn serve(
             selection,
             shown,
             commands,
+            app_lobby,
         )
         .await;
         let stalled = matches!(result, Err(LobbyError::Link(LinkError::Timeout)));
@@ -1784,6 +1798,7 @@ async fn serve_peer(
     selected: watch::Receiver<Option<SharedActivity>>,
     shown: watch::Receiver<Option<activity::Shown>>,
     commands: mpsc::Sender<Command>,
+    app_lobby: bool,
 ) -> Result<(), LobbyError> {
     timeout_at(
         connection.admission_deadline(),
@@ -1872,7 +1887,7 @@ async fn serve_peer(
                 changed.map_err(|_| LobbyError::Lost)?;
                 let snapshot = *states.borrow_and_update();
                 for (id, state) in snapshot.iter().enumerate().filter_map(|(id,state)| state.map(|state| (rider_id(id), state))) {
-                    if id != member.rider() { connection.send_datagram(&state.datagram(id)?)?; }
+                    if id != member.rider() || app_lobby { connection.send_datagram(&state.datagram(id)?)?; }
                 }
             },
             bytes = connection.read_datagram() => {
@@ -1939,9 +1954,11 @@ async fn client_actor(
     let mut inbox = StateInbox::new(Instant::now().into_std());
     let mut members = [None; MAX_RIDERS];
     for (id, rider) in roster.iter().enumerate() {
-        if rider.is_some() && rider_id(id) != me {
+        if rider.is_some() && (rider_id(id) != me || app_lobby) {
             members[id] = Some(inbox.join(rider_id(id), Instant::now().into_std())?);
-            voice.0.join(members[id].ok_or(LobbyError::Protocol)?, None);
+            if rider_id(id) != me {
+                voice.0.join(members[id].ok_or(LobbyError::Protocol)?, None);
+            }
         }
     }
     let mut start = None;
@@ -2085,7 +2102,7 @@ async fn client_actor(
                     if prepared.is_some() {continue;}
                     let id = RiderId::new(*bytes.get(1).ok_or(LobbyError::Protocol)?)?;
                     let Some(elapsed) = peer_elapsed(start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
-                    if id == me { return Err(LobbyError::Protocol); }
+                    if id == me && !app_lobby { return Err(LobbyError::Protocol); }
                     // A datagram sent before a reliable departure may arrive after it.
                     if let Some(member) = members[usize::from(id.value())] { inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?; }
                 },
@@ -2112,7 +2129,9 @@ async fn client_actor(
     }
     .await;
     for member in members.into_iter().flatten() {
-        voice.0.leave(member);
+        if member.rider() != me {
+            voice.0.leave(member);
+        }
     }
     result
 }
@@ -2123,7 +2142,7 @@ mod tests {
     use crate::discovery::GatherOptions;
     use crate::link::ConnectOptions;
     use crate::policy::AddressPolicy;
-    use orqwa_domain::units::{Meters, Watts};
+    use orqwa_domain::units::{Meters, MetersPerSecond, Rpm, Watts};
 
     #[tokio::test]
     async fn enabling_peer_listening_preserves_lobby_and_subsequent_controls() {
@@ -2430,7 +2449,7 @@ mod tests {
         assert!(host.start(Duration::from_secs(1)).await.is_err());
         client.ready(1, true).unwrap();
         timeout(Duration::from_secs(2),async {loop {if matches!(host.next().await,Some(LobbyEvent::Readiness {id,ready:true,..}) if id==client.me()) {break;}}}).await.unwrap();
-        host.start(Duration::from_secs(1)).await.unwrap();
+        let start = host.start(Duration::from_secs(1)).await.unwrap();
         client_event(&mut client, |e| matches!(e, LobbyEvent::Start { .. })).await;
         assert!(
             host.select(SharedActivity {
@@ -2441,9 +2460,52 @@ mod tests {
             .await
             .is_err()
         );
+        assert_accepted_echoes(&mut host, &mut client, start).await;
         drop(client);
         drop(host);
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    async fn assert_accepted_echoes(
+        host: &mut HostLobby,
+        client: &mut JoinerLobby,
+        start: Instant,
+    ) {
+        async fn accepted(events: &mut Events) -> States {
+            let mut seen = [None; MAX_RIDERS];
+            while seen.iter().flatten().count() < 2 {
+                if let Some(LobbyEvent::State { id, state }) = events.next().await {
+                    seen[usize::from(id.value())] = Some(state);
+                }
+            }
+            seen
+        }
+        tokio::time::sleep_until(start).await;
+        let state = RiderState {
+            at: start.elapsed(),
+            distance: Meters(100.0),
+            speed: MetersPerSecond(10.0),
+            power: Watts(180.0),
+            cadence: Rpm(85.0),
+        };
+        host.send_state(state).unwrap();
+        client
+            .send_state(RiderState {
+                distance: Meters(100.5),
+                ..state
+            })
+            .unwrap();
+        let (organizer, friend) = timeout(Duration::from_secs(2), async {
+            tokio::join!(accepted(&mut host.events), accepted(&mut client.events))
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            organizer, friend,
+            "both riders receive the same accepted samples, including themselves"
+        );
+        assert_eq!(organizer[0].unwrap().distance, Meters(100.0));
+        assert_eq!(organizer[1].unwrap().distance, Meters(100.5));
     }
 
     #[tokio::test]
@@ -3421,7 +3483,7 @@ mod tests {
         let (send, receive) = mpsc::channel(CONTROL_CAPACITY);
         let (states, updates) = watch::channel([None; MAX_RIDERS]);
         let (clock, clock_updates) = watch::channel(None);
-        let mut events = events(RiderId::HOST, receive, updates, clock_updates);
+        let mut events = events(RiderId::HOST, receive, updates, clock_updates, false);
         let id = rider_id(1);
         send.try_send(LobbyEvent::Joined {
             id,

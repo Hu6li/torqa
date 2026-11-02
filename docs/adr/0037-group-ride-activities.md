@@ -229,8 +229,9 @@ opening audio settings cannot consume or suppress the rider's voice activation r
 
 The app now renders up to seven remote riders beside the local rider and ghosts, with
 matching map/profile markers and HUD distance gaps. Eight fixed histories are bound to
-local membership generations. Positions interpolate 100 ms behind packet arrival,
-extrapolate for at most 300 ms, hold briefly, then disappear after two seconds. Reordered,
+local membership generations. Initially, positions interpolated 100 ms behind packet arrival
+(superseded by Shared rider playback below), extrapolated for at most 300 ms, held briefly,
+then disappeared after two seconds. Reordered,
 invalid and departed state cannot extend a previous membership's motion. Heart rate is
 absent from remote motion and never leaves the local activity.
 
@@ -466,3 +467,44 @@ and selections cannot name it. A malformed or unfetchable preview is only not sh
 
 Previews add a fuzz target with round-trip properties and seeds. Protocol/invitation
 version 13 and ALPN `orqwa-group/13` require matching builds and fresh codes.
+
+### Shared rider playback — 2026-11-02
+
+The arrival-time smoother treated each packet's journey as riding time. Two retained
+samples and a 100 ms delay could not cover even the 200 ms publication interval, much less
+host fan-out and receiver coalescing. A delayed packet changed interpolation speed or
+replaced an extrapolated position with an older one. Each computer also compared these
+delayed friends against its live local rider, so two friends could both see themselves ahead.
+
+App lobbies now return every host-accepted state to every rider, including its sender.
+The organizer consumes the same validated, wire-rounded state as its friends. State events
+include the local echo only for app lobbies; legacy CLI behavior stays unchanged. The same
+eight slots, 5 Hz limits and bounded mailboxes apply, with at most eight forwarded streams
+per connection as the existing receive budget already permits. Self-echoed state remains
+authenticated by the organizer's link; peers still cannot assert another sender. Voice
+continues to refuse self packets. Protocol/invitation version 14 and ALPN `orqwa-group/14`
+prevent older clients interpreting the new echo as a protocol violation.
+
+Each membership keeps sixteen samples indexed by their shared-clock source timestamps.
+All avatars, including the local rider, play 800 ms behind the shared clock: three 200 ms
+publication/coalescing periods plus 200 ms for ordinary network jitter. Arrival times only
+measure freshness. A monotone cubic uses endpoint speeds without overshooting a stopped
+rider; power and cadence interpolate between the same samples. Missing samples can predict
+at most 300 ms before holding. The greater of source and arrival age retires state after two
+seconds, so a freshly delivered old packet cannot revive a stale rider. Reentry, backward
+course jumps, authority changes and reused memberships discard incompatible history.
+
+The app supplies one view with the local presentation distance and all peers. The road,
+map/profile markers and both gaps panels use it; the binding's `position_m` is distinct from
+live `distance_m`. Before a local accepted echo, or while reconnecting, peers are omitted
+rather than compared against a different timeline. Physics, HUD values, trainer controls,
+workouts and recording retain live local state. Assistance predicts on the current clock
+and excludes the local echo. Outgoing state is stamped after each frame's physics step.
+
+Deterministic frame traces cover differing local clock epochs, jitter up to 510 ms, reordered
+delivery, bursts, isolated loss, close overtakes, acceleration, stopping and stale reentry.
+Loopback transport tests check identical host-accepted samples on both computers including
+self echoes; app tests check presentation/recording isolation and own-echo assistance
+exclusion. No service, endpoint, dependency or rider control changes. The shared start still
+uses the existing half-RTT estimate; arbitrary network outages cannot provide exact current
+positions. Cross-home and native trainer acceptance remain manual.

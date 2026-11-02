@@ -428,6 +428,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R192 | Extends R160, R174 and R176 (2026-11-02, #415): under **More connection options**, a rider may name their own **STUN servers** for finding their internet address, instead of the public ones: up to four, each as a name or IP address with an optional port (3478 unless given), separated by commas; `stun:` addresses as WebRTC configurations write them are taken too. Left empty, the field shows the public servers it then asks. A group ride's every address lookup, including a fallback organizer's, asks the servers named when it was created or joined, and the computer keeps them for later rides (R78) once a ride is confirmed with the lookup on. They can be changed only while the lookup is on, and **Same home Wi-Fi** still asks none. A server that cannot be asked is pointed out while typing; confirming then shows it, even in folded options, and connects nothing. The field tells riders that two or more servers let ORQWA tell whether friends can reach them (R176). The CLI's `--stun` reads a server the same way. |
 
+## Smooth, consistent group positions
+
+| ID | Requirement |
+|---|---|
+| R193 | Refines R164 and R179 (2026-11-02): group riders move continuously between position updates, including through ordinary delivery jitter, short bursts and isolated packet loss. Every screen presents its own rider and friends from the same host-accepted samples at the same buffered time on the shared ride clock, so network delay cannot make each rider appear ahead of the other. Road avatars, map/profile markers and distance gaps use that presentation together. Fixed motion histories, limited prediction and stale/departed membership removal remain bounded. Local trainer control, telemetry, HUD measurements and recordings stay live; a rider never drafts their own delayed position. Protocol and invitation version 14 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

@@ -3725,15 +3725,19 @@ impl App {
         }
     }
 
+    fn poll_events(&mut self, events: &mut Vec<AppEvent>) {
+        self.poll_jobs(events);
+        self.poll_trainer(events);
+        self.poll_sensors(events);
+        self.poll_shift_inputs(events);
+        self.poll_phone_remote(events);
+        self.poll_group(events);
+    }
+
     /// Processes everything that happened since the last call and advances the ride by `dt`.
     pub fn update(&mut self, dt: Duration) -> Vec<AppEvent> {
         let mut events = Vec::new();
-        self.poll_jobs(&mut events);
-        self.poll_trainer(&mut events);
-        self.poll_sensors(&mut events);
-        self.poll_shift_inputs(&mut events);
-        self.poll_phone_remote(&mut events);
-        self.poll_group(&mut events);
+        self.poll_events(&mut events);
 
         if let Some(active) = &mut self.ride
             && active.started.is_some()
@@ -3832,6 +3836,9 @@ impl App {
                 sound.follow(time);
             }
         }
+        // Stamp the position after this frame's physics step, rather than publishing the
+        // previous frame's distance with a newer group-clock timestamp.
+        self.publish_group_state();
         self.watch_video(&mut events);
         events
     }

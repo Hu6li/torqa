@@ -321,7 +321,7 @@ func _process(delta: float) -> void:
 		return
 	var grade: float = state["grade"]
 	var elevation: float = state["elevation_m"]
-	var distance_m: float = state["distance_m"]
+	var distance_m: float = state["position_m"]
 	var x_m: float = state["x"]
 	var y_m: float = state["y"]
 	var heading: float = state["heading"]
