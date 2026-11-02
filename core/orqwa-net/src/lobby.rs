@@ -2417,13 +2417,7 @@ mod tests {
             rider.ready(1, true).unwrap();
         }
         host.ready(1, true).await.unwrap();
-        for id in [anna.me(), ben.me()] {
-            host_event(
-                &mut host,
-                |e| matches!(e, LobbyEvent::Readiness {id: who, ready: true, ..} if *who == id),
-            )
-            .await;
-        }
+        all_ready(&mut host, vec![anna.me(), ben.me()]).await;
         // #434: Anna's network drops and she never gets back.
         let gone = anna.me();
         lose(&anna);
@@ -2486,13 +2480,7 @@ mod tests {
             rider.ready(1, true).unwrap();
         }
         host.ready(1, true).await.unwrap();
-        for id in [anna.me(), ben.me()] {
-            host_event(
-                &mut host,
-                |e| matches!(e, LobbyEvent::Readiness {id: who, ready: true, ..} if *who == id),
-            )
-            .await;
-        }
+        all_ready(&mut host, vec![anna.me(), ben.me()]).await;
         host.start(Duration::from_millis(1000)).await.unwrap();
         for rider in [&mut anna, &mut ben] {
             client_event(rider, |e| matches!(e, LobbyEvent::Start { .. })).await;
@@ -2638,6 +2626,21 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+    /// Waits for every rider's readiness in whatever order the organizer receives it: waiting
+    /// for one rider at a time would discard another's that arrived first.
+    async fn all_ready(host: &mut HostLobby, mut riders: Vec<RiderId>) {
+        while !riders.is_empty() {
+            let LobbyEvent::Readiness { id, .. } = host_event(
+                host,
+                |e| matches!(e, LobbyEvent::Readiness {id, ready: true, ..} if riders.contains(id)),
+            )
+            .await
+            else {
+                unreachable!("only readiness matches");
+            };
+            riders.retain(|rider| *rider != id);
+        }
     }
     async fn host_event(
         host: &mut HostLobby,
