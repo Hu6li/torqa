@@ -12,6 +12,8 @@ mkdir -p "$out"
 "$root/scripts/build-gdext.sh" debug >/dev/null
 # Weeks of made-up rides, so the history and the Analysis tab (R61) have something to show.
 if [ "${SCREENSHOT_ERRORS_ONLY:-}" != 1 ] && [ "${SCREENSHOT_SETTINGS_ONLY:-}" != 1 ] \
+    && [ "${SCREENSHOT_GROUP_ONLY:-}" != 1 ] \
+    && [ "${SCREENSHOT_GROUP_RIDERS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GRAPHICS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_SUMMARY_ONLY:-}" != 1 ]; then
     cargo run -q --manifest-path "$root/core/Cargo.toml" -p orqwa-cli -- sample-rides --weeks 16
@@ -27,7 +29,7 @@ fi
 size="${SCREENSHOT_SIZE:-1600x900}"
 # Software rendering is slow; a broken script would otherwise leave Godot running forever.
 output="$(SCREENSHOT_DIR="$out" ORQWA_RENDER_SOFTWARE=1 timeout 1800 xvfb-run -a -s "-screen 0 ${size}x24" \
-    godot --path "$root/app" --rendering-driver vulkan --resolution "$size" \
+    godot --path "$root/app" --rendering-driver vulkan --audio-driver Dummy --resolution "$size" \
     -s res://tests/screenshots.gd 2>&1)" || { echo "$output"; exit 1; }
 echo "$output" | grep -E "saved|world generated|overlay window" || true
 if echo "$output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then

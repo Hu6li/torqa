@@ -1,14 +1,14 @@
 class_name StartPage
 extends Control
-## The start page (R38): tabs for Courses, Workouts (R58), History, Analysis (R61), Profile and
-## Devices, and the cog at the top right for the settings (R83). The ride view is separate;
+## The start page (R38): tabs for Courses, Workouts (R58), Group Rides, History, Analysis (R61),
+## Profile and Devices, and the cog at the top right for settings (R83). The ride view is separate;
 ## riding starts from a course's detail page or the Workouts tab.
 
 ## A ride has started with `options` (`RideOptions.options()`); a workout's also carry
 ## `workout` (`WorkoutsTab.workout()`) and `on_course`.
 signal ride_started(options: Dictionary)
 
-enum Tab { COURSES, WORKOUTS, HISTORY, ANALYSIS, PROFILE, DEVICES }
+enum Tab { COURSES, WORKOUTS, GROUP_RIDES, HISTORY, ANALYSIS, PROFILE, DEVICES }
 
 ## Where the wordmark's letters sit in its drawing (its viewBox): their baseline is this share
 ## of its height above the bottom, the middle of their capitals this share above the baseline.
@@ -29,6 +29,8 @@ var _history: HistoryScreen = (
 var _analysis: AnalysisTab = AnalysisTab.new()
 var _profile: ProfileTab = ProfileTab.new()
 var _devices: DevicesTab = DevicesTab.new()
+var _group: GroupRidesTab = GroupRidesTab.new()
+var _group_page: ScrollContainer = ScrollContainer.new()
 ## This computer's graphics and the About tab (R83), behind [member _settings_button].
 var _settings: SettingsDialog = SettingsDialog.new()
 var _settings_button: Button = Button.new()
@@ -48,6 +50,8 @@ func bind(orqwa: OrqwaApp) -> void:
 	_analysis.bind(orqwa)
 	_profile.bind(orqwa)
 	_devices.bind(orqwa)
+	_group.bind(orqwa)
+	_orqwa.group_started.connect(_group_started, CONNECT_DEFERRED)
 	_settings.bind(orqwa)
 
 
@@ -95,6 +99,7 @@ func _ready() -> void:
 	for page: Array in [
 		[_courses_page, "Courses"],
 		[_workouts, "Workouts"],
+		[_group_page, "Group Rides"],
 		[_history, "History"],
 		[_analysis, "Analysis"],
 		[_profile, "Profile"],
@@ -119,6 +124,10 @@ func _ready() -> void:
 	_detail.course_changed.connect(_courses.refresh)
 	_workouts.start_requested.connect(_on_workout_requested)
 	_workouts.ready_to_start.connect(_start_workout)
+	_group.devices_requested.connect(func() -> void: _tabs.current_tab = Tab.DEVICES)
+	_group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiTheme.scroll_down_only(_group_page)
+	_group_page.add_child(_group)
 	_profile.profile_changed.connect(_courses.refresh)
 	_tabs.tab_changed.connect(_on_tab_changed)
 	_tab_bar.tab_changed.connect(func(tab: int) -> void: _tabs.current_tab = tab)
@@ -158,6 +167,9 @@ func _on_tab_clicked(tab: int) -> void:
 
 
 func _open_course(course: Dictionary) -> void:
+	if _group_active():
+		_tabs.current_tab = Tab.GROUP_RIDES
+		return
 	_courses.hide()
 	_detail.show()
 	_detail.open(course)
@@ -192,6 +204,9 @@ func _on_tab_changed(tab: int) -> void:
 
 ## Riding needs a trainer: without one, the Devices tab says what to do (R41).
 func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
+	if _group_active():
+		_tabs.current_tab = Tab.GROUP_RIDES
+		return
 	_detail.show_status("")
 	if not _devices.connect_selected():
 		_detail.show_status(tr("No trainer connected — choose one under Devices."))
@@ -202,6 +217,9 @@ func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
 
 
 func _on_workout_requested(workout: Dictionary, course_path: String) -> void:
+	if _group_active():
+		_tabs.current_tab = Tab.GROUP_RIDES
+		return
 	if not _devices.connect_selected():
 		_workouts.show_status(tr("No trainer connected — choose one under Devices."))
 		_tabs.current_tab = Tab.DEVICES
@@ -236,3 +254,15 @@ func _start_ride() -> void:
 	var flat_descents: bool = options["flat_descents"]
 	if _orqwa.start_ride(difficulty, flat_descents, ghost):
 		ride_started.emit(options)
+
+
+func _group_active() -> bool:
+	return _orqwa.group_status().get("phase", "idle") != "idle"
+
+
+func _group_started(on_course: bool, workout: bool) -> void:
+	var options: Dictionary = _detail.ride_options()
+	options["on_course"] = on_course
+	if workout:
+		options["workout"] = {"kind": "plan", "id": _orqwa.group_status()["workout_id"]}
+	ride_started.emit(options)

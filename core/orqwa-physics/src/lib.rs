@@ -19,6 +19,78 @@ const MAX_STEP: Duration = Duration::from_millis(50);
 /// (or terrain-model artefacts) slowly instead of stalling.
 const MIN_DRIVE_SPEED: f64 = 0.1;
 
+/// Local group assistance, applied to virtual motion and slope simulation, never measured power.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GroupEffect {
+    drag_share: f64,
+    grade_offset: GradePercent,
+}
+
+impl Default for GroupEffect {
+    fn default() -> Self {
+        Self {
+            drag_share: 1.0,
+            grade_offset: GradePercent(0.0),
+        }
+    }
+}
+
+impl GroupEffect {
+    /// Critically damped keep-together spring: 2 gradient percentage points at a 50 m gap,
+    /// with relative-speed damping derived from gravity and that stiffness. The caller
+    /// removes its position dead zone and fades stale sources; this bounds the force.
+    #[must_use]
+    pub fn band(gap: Meters, relative_speed: MetersPerSecond) -> GradePercent {
+        const STIFFNESS: f64 = 2.0 / 50.0;
+        if !gap.0.is_finite() || !relative_speed.0.is_finite() {
+            return GradePercent(0.0);
+        }
+        let frequency = (GRAVITY * STIFFNESS / 100.0).sqrt();
+        let damping = 2.0 * frequency * 100.0 / GRAVITY;
+        GradePercent((-STIFFNESS * gap.0 + damping * relative_speed.0).clamp(-2.0, 2.0))
+    }
+
+    /// Limits aerodynamic shelter to 30% and the keep-together gradient to ±2 percentage points.
+    /// Non-finite inputs disable assistance rather than entering the integrator or trainer.
+    #[must_use]
+    pub fn new(drag_share: f64, grade_offset: GradePercent) -> Self {
+        if !drag_share.is_finite() || !grade_offset.0.is_finite() {
+            return Self::default();
+        }
+        Self {
+            drag_share: drag_share.clamp(0.7, 1.0),
+            grade_offset: GradePercent(grade_offset.0.clamp(-2.0, 2.0)),
+        }
+    }
+
+    /// The rider's setup with aerodynamic shelter, retaining mass and all other parameters.
+    #[must_use]
+    pub fn setup(self, setup: RiderSetup) -> RiderSetup {
+        RiderSetup {
+            cda: SquareMeters(setup.cda.0 * self.drag_share),
+            ..setup
+        }
+    }
+
+    /// The effective gradient for virtual motion, before personal trainer difficulty.
+    #[must_use]
+    pub fn grade(self, grade: GradePercent) -> GradePercent {
+        GradePercent(grade.0 + self.grade_offset.0)
+    }
+
+    /// Share of aerodynamic drag remaining after shelter.
+    #[must_use]
+    pub fn drag_share(self) -> f64 {
+        self.drag_share
+    }
+
+    /// Keep-together gradient offset, in percentage points.
+    #[must_use]
+    pub fn grade_offset(self) -> GradePercent {
+        self.grade_offset
+    }
+}
+
 /// Rider, bike and environment parameters (R13).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RiderSetup {
@@ -232,6 +304,67 @@ impl Motion {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn group_effect_is_bounded_and_neutral_is_identical_to_solo() {
+        let setup = RiderSetup::default();
+        assert_eq!(GroupEffect::default().setup(setup), setup);
+        assert_eq!(
+            GroupEffect::default().grade(GradePercent(8.0)),
+            GradePercent(8.0)
+        );
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                GroupEffect::new(invalid, GradePercent(0.0)),
+                GroupEffect::default()
+            );
+            assert_eq!(
+                GroupEffect::new(0.7, GradePercent(invalid)),
+                GroupEffect::default()
+            );
+        }
+        let limited = GroupEffect::new(-100.0, GradePercent(1000.0));
+        assert_eq!(limited.drag_share(), 0.7);
+        assert_eq!(limited.grade_offset(), GradePercent(2.0));
+        assert_eq!(limited.setup(setup).mass, setup.mass);
+    }
+
+    #[test]
+    fn group_band_settles_without_overshooting_and_brakes_a_fast_catch_up() {
+        // At equal power and mass on flat ground the band should close a gap gently,
+        // rather than repeatedly shooting the rider past the organizer.
+        let setup = RiderSetup::default();
+        let speed = 10.0;
+        let power = Watts(
+            (setup.mass.0 * GRAVITY * setup.crr
+                + 0.5 * setup.air_density.0 * setup.cda.0 * speed * speed)
+                * speed
+                / setup.drivetrain_efficiency,
+        );
+        for step in [
+            Duration::from_secs_f64(1.0 / 60.0),
+            Duration::from_millis(200),
+        ] {
+            let mut motion = Motion::moving_at(MetersPerSecond(speed));
+            let mut gap = 10.0;
+            let mut seconds = 0.0;
+            while seconds < 300.0 {
+                let grade =
+                    GroupEffect::band(Meters(gap), MetersPerSecond(motion.speed().0 - speed));
+                let covered = motion.step(&setup, power, grade, MetersPerSecond(0.0), step);
+                let next = gap + speed * step.as_secs_f64() - covered.0;
+                assert!(next >= -0.01 && next <= gap + 0.001, "gap: {gap} -> {next}");
+                gap = next;
+                seconds += step.as_secs_f64();
+            }
+            assert!(gap < 0.1, "band should settle: {gap}");
+        }
+        assert!(GroupEffect::band(Meters(10.0), MetersPerSecond(2.0)).0 > 0.0);
+        assert_eq!(
+            GroupEffect::band(Meters(f64::NAN), MetersPerSecond(0.0)),
+            GradePercent(0.0)
+        );
+    }
 
     #[test]
     fn virtual_gears_step_evenly_from_low_to_high() {

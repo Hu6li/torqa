@@ -62,6 +62,8 @@ pub struct RideRecord {
     /// Sped up or moved along in simulation (#53): not the rider's own effort, so it counts
     /// towards no records and no analysis.
     pub simulated: bool,
+    /// Drafting or keep together was enabled; speed records are excluded, measured power is real.
+    pub assisted: bool,
     /// What the analysis across rides keeps of the ride (R62); `None` until it is computed
     /// from the FIT file, or if an older ORQWA computed less than this one keeps.
     pub analysis: Option<RideAnalysis>,
@@ -147,6 +149,8 @@ struct RideFile {
     rider_mass_kg: Option<f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     simulated: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    assisted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     analysis: Option<AnalysisFile>,
 }
@@ -226,6 +230,7 @@ impl From<&RideRecord> for RideFile {
             ftp_estimate_w: r.ftp_estimate.map(|w| w.0),
             rider_mass_kg: r.rider_mass.map(|m| m.0),
             simulated: r.simulated,
+            assisted: r.assisted,
             analysis: r.analysis.as_ref().map(AnalysisFile::from),
             uploads: r.uploads.clone(),
             route_time_s: r.route_time.map(|t| t.as_secs_f64()),
@@ -270,6 +275,7 @@ impl From<RideFile> for RideRecord {
             ftp_estimate: f.ftp_estimate_w.map(Watts),
             rider_mass: f.rider_mass_kg.map(Kilograms),
             simulated: f.simulated,
+            assisted: f.assisted,
             analysis: f
                 .analysis
                 .filter(|a| a.version >= ANALYSIS_VERSION)
@@ -414,6 +420,21 @@ mod tests {
         dir
     }
 
+    #[test]
+    fn assisted_metadata_round_trips_without_excluding_measured_training_data() {
+        let mut ride = record();
+        ride.assisted = true;
+        let encoded = serde_json::to_string(&RideFile::from(&ride)).unwrap();
+        let restored = RideRecord::from(serde_json::from_str::<RideFile>(&encoded).unwrap());
+        assert!(restored.assisted);
+        assert!(!restored.simulated);
+        assert_eq!(restored.summary.avg_power, ride.summary.avg_power);
+        let mut old = serde_json::from_str::<serde_json::Value>(&encoded).unwrap();
+        old.as_object_mut().unwrap().remove("assisted");
+        let legacy = RideRecord::from(serde_json::from_value::<RideFile>(old).unwrap());
+        assert!(!legacy.assisted);
+    }
+
     fn record() -> RideRecord {
         RideRecord {
             route: "Gurten".to_owned(),
@@ -440,6 +461,7 @@ mod tests {
             ftp_estimate: Some(Watts(245.0)),
             rider_mass: Some(Kilograms(72.5)),
             simulated: false,
+            assisted: false,
             analysis: Some(RideAnalysis {
                 power_curve: PowerCurve(vec![
                     (Duration::from_secs(1), Watts(612.5)),

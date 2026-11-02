@@ -241,3 +241,14 @@ Godot still owns the drag threshold and inertia. `touch_smoke.gd` sends touch pr
 and releases through the viewport and checks scrolling without activation over course cards,
 history-style buttons, checkboxes, menus and panels, followed by ordinary taps, mouse clicks,
 keyboard acceptance and text editing. No Rust, Android plugin or network change is needed.
+
+## Amendment 2026-10-28: native audio and the minimum Android API
+
+The Rust extension's compiler/linker and bindgen now target API 29, matching the already
+documented Android 10 minimum. The plugin's `minSdk` and Godot's Android export preset enforce
+the same minimum, so Android refuses installation on older versions rather than failing to
+load the native extension. SDK/NDK versions and desktop builds are unchanged.
+
+CPAL's Android backend links `libaaudio`, [available since API 26](https://developer.android.com/ndk/guides/stable_apis#aaudio).
+The former API 24 linker could not find this library once voice became an app dependency.
+FFmpeg's API 24 static libraries remain compatible with the extension's newer target.

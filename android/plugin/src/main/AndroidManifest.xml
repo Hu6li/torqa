@@ -11,6 +11,8 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Group voice opens capture only after explicit microphone enable and runtime consent. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Course videos a sync app put in ORQWA's shared folder (R149): Android 16 lets an app
          read only the videos it wrote there itself unless it may read videos. Asked for only

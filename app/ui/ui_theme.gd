@@ -174,6 +174,13 @@ static func build() -> Theme:
 	return theme
 
 
+## Stable group identities, shared by road avatars, map/profile marks and the gaps panel.
+static func group_color(id: int) -> Color:
+	var purple: Color = POWER_ZONES[6][1]
+	var colors: Array[Color] = [ACCENT, GHOST_COLOR, SUCCESS, WARNING, DANGER, purple, TEXT, MUTED]
+	return colors[posmod(id, colors.size())]
+
+
 ## The translucent card used for HUD and setup panels; opaque with `alpha` 1, for a panel
 ## over other windows rather than the 3D scene.
 static func panel(alpha: float = PANEL.a) -> StyleBoxFlat:

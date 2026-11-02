@@ -491,6 +491,7 @@ func _ready() -> void:
 	# Inherited scenes replace scripts before ready; create owned nodes only once.
 	_avatar = RiderAvatar.new()
 	_ghost = RiderAvatar.new()
+	add_child(GroupRidersWorld.new())
 	_horizon_ground = MeshInstance3D.new()
 	_horizon_water = MeshInstance3D.new()
 	_railways = MeshInstance3D.new()

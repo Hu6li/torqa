@@ -73,6 +73,13 @@ func _run() -> void:
 	summary.call("_show_ride", record_ride)
 	var records: PowerRecordBadges = summary.get("_power_records")
 	_check(records.visible and records.get_child_count() == 2, "only power PRs get badges")
+	record_ride["assisted"] = true
+	summary.call("_show_ride", record_ride)
+	_check(
+		summary._assisted.visible and records.visible,
+		"assisted rides are labelled and keep real power records"
+	)
+	record_ride["assisted"] = false
 	var five_seconds: Label = records.get_child(0)
 	var one_minute: Label = records.get_child(1)
 	_check(

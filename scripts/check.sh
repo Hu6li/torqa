@@ -36,6 +36,7 @@ if $quick; then
         case "$path" in
             core/Cargo.lock | core/Cargo.toml | core/deny.toml | core/about.*)
                 rust=true; deps=true; release=true ;;
+            core/fuzz/*) rust=true; deps=true ;;
             core/orqwa-*/*)
                 rust=true; crates="$crates $(echo "$path" | cut -d/ -f2)" ;;
             core/*) rust=true ;;
@@ -90,6 +91,8 @@ if $release; then
 fi
 if $rust; then
     cargo fmt --all --check
+    # The fuzz targets are a workspace of their own (scripts/fuzz.sh builds and runs them).
+    cargo fmt --manifest-path fuzz/Cargo.toml --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     if $quick && [ -n "$(echo "$crates" | tr -d ' ')" ] && ! $deps; then
         # Only the changed crates' tests; the full run also tests the crates depending on them.
@@ -101,6 +104,7 @@ if $rust; then
 fi
 if $deps; then
     cargo deny --all-features check
+    cargo deny --manifest-path fuzz/Cargo.toml --config deny.toml check
     # The crates' licence notices the About tab shows are those of today's dependencies (R83).
     "$root/scripts/notices.sh" --check
 fi
@@ -159,6 +163,8 @@ ride_output="$(run_godot -s res://tests/ride_smoke.gd)"
 echo "$ride_output" | grep "RIDE SMOKE TEST PASSED"
 ui_output="$(run_godot -s res://tests/ui_smoke.gd)"
 echo "$ui_output" | grep "UI SMOKE TEST PASSED"
+group_ui_output="$(run_godot -s res://tests/group_ui_smoke.gd)"
+echo "$group_ui_output" | grep "GROUP UI SMOKE TEST PASSED"
 seasons_output="$(run_godot -s res://tests/seasons_smoke.gd)"
 echo "$seasons_output" | grep "SEASONS SMOKE TEST PASSED"
 touch_output="$(run_godot -s res://tests/touch_smoke.gd)"

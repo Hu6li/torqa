@@ -7,6 +7,7 @@ pub mod ambient;
 pub mod analysis;
 pub mod failure;
 pub mod graphics;
+pub mod group;
 use failure::{Failure, Kind};
 mod detail;
 #[cfg(test)]
@@ -312,6 +313,13 @@ pub const READING_AGE: Duration = Duration::from_secs(5);
 /// Something that happened since the last [`App::update`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppEvent {
+    /// A prepared group ride reached its common start target.
+    GroupRideStarted {
+        /// The activity has a course.
+        on_course: bool,
+        /// The activity has a structured workout.
+        workout: bool,
+    },
     /// A scan finished.
     DevicesFound(Vec<DeviceInfo>),
     /// Preparing a course advanced.
@@ -514,6 +522,14 @@ impl Reporter {
     }
 }
 
+fn release_trainer(trainer: Option<&DeviceHandle>) {
+    if let Some(trainer) = trainer
+        && let Err(error) = trainer.try_control(TrainerControl::Resistance(Percent(0.0)))
+    {
+        warn!(%error, "cannot free the trainer");
+    }
+}
+
 /// Feeds `ride` the shifts `input` asks for, passes on its other controls, and reports when it
 /// connects or drops, `was_connected` telling how it was at the last update.
 fn drive_shift_input(
@@ -547,6 +563,7 @@ fn drive_shift_input(
     }
 }
 
+#[allow(clippy::struct_excessive_bools)] // playback state and independent recording eligibility
 struct ActiveRide {
     ride: Ride,
     /// The name it goes into the history by, for a workout without a course; rides on a course
@@ -584,6 +601,8 @@ struct ActiveRide {
     paused: bool,
     /// Sped up or jumped: its times are not real, so it counts towards no records.
     simulated: bool,
+    /// Group assistance was enabled; speed records are excluded while power metrics remain real.
+    assisted: bool,
 }
 
 impl ActiveRide {
@@ -732,6 +751,7 @@ pub struct App {
     keys: orqwa_devices::shift::KeyboardKeys,
     /// The phone remote while it is on (#228): a shift input beside them.
     remote: Option<remote::RunningRemote>,
+    group: Option<group::Running>,
     /// What its page says, in the rider's language.
     remote_texts: remote::RemoteTexts,
     /// Identifier of the connected controller, to avoid reconnecting it.
@@ -830,6 +850,7 @@ impl App {
             shift_inputs_connected: vec![true],
             keys,
             remote: None,
+            group: None,
             remote_texts: remote::RemoteTexts::default(),
             controller_id: None,
             buttons: Arc::new(orqwa_devices::shift::Assignments::new(|model| {
@@ -872,6 +893,12 @@ impl App {
     /// # Errors
     /// [`AppError::UnknownProfile`] if there is no such profile.
     pub fn select_profile(&mut self, id: &str) -> Result<(), AppError> {
+        if self.group.is_some() {
+            return Err(AppError::Reported(Failure::new(
+                Kind::GroupRide,
+                "Leave the group before switching rider profiles.",
+            )));
+        }
         let profile = profiles::load(&self.data_dir, id).map_err(|_| AppError::UnknownProfile)?;
         self.profile = StoredProfile {
             id: id.to_owned(),
@@ -998,6 +1025,15 @@ impl App {
     /// reports [`AppEvent::RouteLoaded`] like [`App::load_route`]. Its 3D world is built only
     /// when asked for with [`App::build_world`].
     pub fn open_course(&mut self, path: PathBuf) {
+        if self.group.is_some() {
+            return;
+        }
+        self.open_course_mode(path, false);
+    }
+    pub(crate) fn open_shared_course(&mut self, path: PathBuf) {
+        self.open_course_mode(path, true);
+    }
+    fn open_course_mode(&mut self, path: PathBuf, shared: bool) {
         let used = self.start_loading(true);
         let load = self.load;
         self.naming = None;
@@ -1008,8 +1044,12 @@ impl App {
         let cache = self.cache_dir.clone();
         // A course in the library takes the map detail of the regions here (R144): its file
         // is brought up to date, and its kept world built again with it.
-        let ready = orqwa_osm::detail::installed(&cache.join("osm"));
-        let in_library = path.starts_with(self.courses_dir());
+        let ready = if shared {
+            Vec::new()
+        } else {
+            orqwa_osm::detail::installed(&cache.join("osm"))
+        };
+        let in_library = !shared && path.starts_with(self.courses_dir());
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
@@ -1086,7 +1126,7 @@ impl App {
                 if !outdated_preview {
                     map = course_map(&imported.route, (&cache, true), &used, &mut report).await;
                 }
-                if map.is_none() {
+                if map.is_none() && !shared {
                     map = course_map(&imported.route, (&cache, false), &used, &mut report).await;
                 }
                 imported.course_map = map;
@@ -2781,6 +2821,7 @@ impl App {
         descent: DescentMode,
         ghost: &GhostChoice,
     ) -> Result<(), AppError> {
+        self.check_group_start()?;
         let route = self.route.clone().ok_or(AppError::NoRoute)?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
@@ -2818,6 +2859,7 @@ impl App {
         descent: DescentMode,
         name: &str,
     ) -> Result<(), AppError> {
+        self.check_group_start()?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
@@ -2846,6 +2888,7 @@ impl App {
             .chain(orqwa_workouts::library(&orqwa_workouts::library_dir(
                 &self.data_dir,
             )))
+            .chain(self.shared_workouts())
             .collect()
     }
 
@@ -2869,6 +2912,9 @@ impl App {
         plan: &orqwa_domain::workout::Plan,
         replace: Option<&str>,
     ) -> Result<String, AppError> {
+        let replace = replace.filter(|id| {
+            Path::new(id).parent() != Some(self.data_dir.join("shared-workouts").as_path())
+        });
         let dir = orqwa_workouts::library_dir(&self.data_dir);
         orqwa_workouts::save(&dir, plan, self.profile.profile.ftp, replace)
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveWorkout, e)))
@@ -2879,6 +2925,13 @@ impl App {
     /// # Errors
     /// [`AppError::Reported`] for built-ins and files that cannot be deleted.
     pub fn delete_workout(&mut self, id: &str) -> Result<(), AppError> {
+        let path = Path::new(id);
+        if path.parent() == Some(self.data_dir.join("shared-workouts").as_path())
+            && path.extension().is_some_and(|e| e == "oqw")
+        {
+            return std::fs::remove_file(path)
+                .map_err(|e| AppError::Reported(Failure::new(Kind::DeleteWorkout, e)));
+        }
         orqwa_workouts::delete(&orqwa_workouts::library_dir(&self.data_dir), id)
             .map_err(|e| AppError::Reported(Failure::new(Kind::DeleteWorkout, e)))
     }
@@ -2888,6 +2941,16 @@ impl App {
     /// # Errors
     /// [`AppError::Reported`] if it cannot be read.
     pub fn structured_workout(&self, id: &str) -> Result<Workout, AppError> {
+        if let Some(entry) = self
+            .shared_workouts()
+            .into_iter()
+            .find(|entry| entry.id == id)
+        {
+            return Ok(Workout::Structured {
+                plan: Arc::new(entry.plan),
+                ftp: self.profile.profile.ftp,
+            });
+        }
         let planned = self
             .planned_workouts()
             .into_iter()
@@ -2917,6 +2980,12 @@ impl App {
 
     /// Changes the workout of the current workout, e.g. its target power or heart rate.
     pub fn change_workout(&mut self, workout: Workout) {
+        if matches!(
+            self.group().phase,
+            group::Phase::Countdown | group::Phase::Riding
+        ) {
+            return;
+        }
         if let Some(active) = &mut self.ride {
             active.ride.change_workout(workout);
         }
@@ -2997,6 +3066,7 @@ impl App {
             time_scale: 1.0,
             paused: false,
             simulated: false,
+            assisted: false,
         });
     }
 
@@ -3012,11 +3082,7 @@ impl App {
         }
         active.paused = paused;
         if paused {
-            if let Some(trainer) = &self.trainer
-                && let Err(error) = trainer.try_control(TrainerControl::Resistance(Percent(0.0)))
-            {
-                warn!(%error, "cannot free the trainer");
-            }
+            release_trainer(self.trainer.as_ref());
         } else {
             active.ride.resend_control();
         }
@@ -3051,6 +3117,9 @@ impl App {
 
     /// Goes on with the next step of a structured workout (#139); whether there was one.
     pub fn skip_step(&mut self) -> bool {
+        if let Some(skipped) = self.group_skip_step() {
+            return skipped;
+        }
         self.ride
             .as_mut()
             .is_some_and(|active| active.ride.skip_step())
@@ -3084,10 +3153,7 @@ impl App {
             });
         if saved.is_ok() {
             let route = active.ride.route();
-            let finished = samples
-                .last()
-                .zip(route)
-                .is_some_and(|(s, route)| s.distance.0 >= route.length().0 - 1.0);
+            let finished = active.ride.is_finished();
             // A simulated ride's times are not real: like a ride known only from its FIT file,
             // it counts towards no records; neither does a workout without a route.
             let real = !active.simulated;
@@ -3101,26 +3167,41 @@ impl App {
                 summary: summarize(samples, self.profile.profile.ftp),
                 route_key: route.filter(|_| real).map(Route::key),
                 route_time: route
-                    .filter(|_| finished && real)
+                    .filter(|_| {
+                        finished
+                            && real
+                            && !active.assisted
+                            && active.ride.entry_distance().0 == 0.0
+                    })
                     .and_then(|route| effort(samples, Meters(0.0), route.length()))
                     .map(|e| e.elapsed),
                 climbs: route
                     .map_or(&[][..], Route::climbs)
                     .iter()
-                    .filter(|_| real)
+                    .filter(|_| real && !active.assisted)
                     .filter_map(|c| {
-                        effort(samples, c.start, c.end).map(|e| ClimbTime {
-                            start: c.start,
-                            end: c.end,
-                            elapsed: e.elapsed,
-                            avg_power: e.avg_power,
-                        })
+                        (c.start.0 >= active.ride.entry_distance().0)
+                            .then(|| {
+                                effort(
+                                    samples,
+                                    Meters(c.start.0 - active.ride.entry_distance().0),
+                                    Meters(c.end.0 - active.ride.entry_distance().0),
+                                )
+                            })
+                            .flatten()
+                            .map(|e| ClimbTime {
+                                start: c.start,
+                                end: c.end,
+                                elapsed: e.elapsed,
+                                avg_power: e.avg_power,
+                            })
                     })
                     .collect(),
                 name: None,
                 ftp_estimate: active.ride.ftp_estimate(),
                 rider_mass: Some(self.profile.profile.rider_mass),
                 simulated: active.simulated,
+                assisted: active.assisted,
                 analysis: Some(analyse(samples)),
                 uploads: std::collections::BTreeMap::new(),
             };
@@ -3185,14 +3266,23 @@ impl App {
                         other.route_key.is_some() && other.route_key == record.route_key
                     })
                     .collect();
-                let best_route = same_route.iter().filter_map(|r| r.route_time).min();
+                let best_route = same_route
+                    .iter()
+                    .filter(|r| !r.assisted)
+                    .filter_map(|r| r.route_time)
+                    .min();
                 HistoryEntry {
                     fit: fit.clone(),
-                    route_record: record.route_time.is_some() && record.route_time == best_route,
+                    route_record: !record.assisted
+                        && record.route_time.is_some()
+                        && record.route_time == best_route,
                     climb_records: record
                         .climbs
                         .iter()
-                        .map(|climb| Some(climb.elapsed) == best_climb_time(&same_route, climb))
+                        .map(|climb| {
+                            !record.assisted
+                                && Some(climb.elapsed) == best_climb_time(&same_route, climb)
+                        })
                         .collect(),
                     power_records: analysis::power_records(record, &power_bests),
                     record: record.clone(),
@@ -3233,7 +3323,11 @@ impl App {
             .collect();
         RouteRecords {
             ridden: !same_route.is_empty(),
-            route: same_route.iter().filter_map(|r| r.route_time).min(),
+            route: same_route
+                .iter()
+                .filter(|r| !r.assisted)
+                .filter_map(|r| r.route_time)
+                .min(),
             climbs: route
                 .climbs()
                 .iter()
@@ -3446,6 +3540,7 @@ impl App {
                     .history()
                     .into_iter()
                     .filter(|h| h.record.route_key.as_deref() == Some(key.as_str()))
+                    .filter(|h| !h.record.assisted)
                     .filter_map(|h| h.record.route_time.map(|t| (t, h.fit)))
                     .min_by_key(|(t, _)| *t)
                     .ok_or_else(|| unavailable("no finished ride on this route yet".to_owned()))?;
@@ -3497,7 +3592,14 @@ impl App {
             .iter()
             .enumerate()
             .find(|(_, c)| c.start.0 <= state.distance.0 && state.distance.0 < c.end.0)?;
-        let started = time_at(active.ride.samples(), climb.start).unwrap_or(state.elapsed);
+        if climb.start.0 < active.ride.entry_distance().0 {
+            return None;
+        }
+        let started = time_at(
+            active.ride.samples(),
+            Meters(climb.start.0 - active.ride.entry_distance().0),
+        )
+        .unwrap_or(state.elapsed);
         Some(ClimbProgress {
             index,
             climb: *climb,
@@ -3585,6 +3687,7 @@ impl App {
             ftp_estimate: None,
             rider_mass: None,
             simulated: false,
+            assisted: false,
             analysis: Some(analyse(&samples)),
             uploads: std::collections::BTreeMap::new(),
         };
@@ -3630,6 +3733,7 @@ impl App {
         self.poll_sensors(&mut events);
         self.poll_shift_inputs(&mut events);
         self.poll_phone_remote(&mut events);
+        self.poll_group(&mut events);
 
         if let Some(active) = &mut self.ride
             && active.started.is_some()
@@ -3682,7 +3786,11 @@ impl App {
             // Samples arrive once a second, so a climb is timed once a sample lies past its top.
             let climbs = active.ride.route().map_or(&[][..], Route::climbs);
             while let Some(climb) = climbs.get(active.next_climb)
-                && let Some(done) = effort(active.ride.samples(), climb.start, climb.end)
+                && let Some(done) = effort(
+                    active.ride.samples(),
+                    Meters(climb.start.0 - active.ride.entry_distance().0),
+                    Meters(climb.end.0 - active.ride.entry_distance().0),
+                )
             {
                 events.push(AppEvent::Moment(moments::climb_topped(
                     active.next_climb,
@@ -3694,12 +3802,14 @@ impl App {
                         .get(active.next_climb)
                         .copied()
                         .flatten(),
-                    !active.simulated,
+                    !active.simulated && !active.assisted,
                 )));
                 active.next_climb += 1;
             }
             // The finish is the summary's to tell (R113).
             if active.ride.is_finished() {
+                // A shared last-step skip can finish before another ERG update reaches the trainer.
+                release_trainer(self.trainer.as_ref());
                 active.finished = true;
                 events.push(AppEvent::RideFinished);
             } else {
@@ -4251,6 +4361,7 @@ fn thin(points: &[(f64, f64)]) -> Vec<[f32; 2]> {
 fn best_climb_time(records: &[&RideRecord], climb: &ClimbTime) -> Option<Duration> {
     records
         .iter()
+        .filter(|r| !r.assisted)
         .flat_map(|r| r.climbs.iter())
         .filter(|other| other.same_climb(climb))
         .map(|other| other.elapsed)
@@ -5320,7 +5431,11 @@ mod tests {
         assert_eq!(record.route_key, None, "a simulated ride sets no records");
         assert_eq!(record.climbs.len(), 0);
         assert!(record.simulated);
-        assert_eq!(app.history()[0].power_records, [], "nor power records");
+        assert_eq!(
+            app.history()[0].power_records,
+            [Duration::ZERO; 0],
+            "nor power records"
+        );
         app.shutdown();
     }
 
@@ -5434,6 +5549,7 @@ mod tests {
             ftp_estimate: None,
             rider_mass: None,
             simulated: false,
+            assisted: false,
             analysis: None,
             uploads: std::collections::BTreeMap::new(),
         };

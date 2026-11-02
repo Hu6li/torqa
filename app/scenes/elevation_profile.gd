@@ -24,6 +24,7 @@ var jumpable: bool = false:
 var _profile: PackedVector2Array = PackedVector2Array()
 var _rider_distance: float = 0.0
 var _ghost_distance: float = -1.0
+var _peers: Array[Dictionary] = []
 ## `[start m, end m, colour]` per climb.
 var _climbs: Array[Array] = []
 var _min_elevation: float = 0.0
@@ -68,6 +69,12 @@ func set_rider_distance(distance_m: float) -> void:
 	queue_redraw()
 
 
+## The current group riders, in the same identity colours as the road and map.
+func set_group_riders(peers: Array) -> void:
+	_peers.assign(peers)
+	queue_redraw()
+
+
 func _draw() -> void:
 	if _profile.size() < 2:
 		return
@@ -95,6 +102,11 @@ func _draw() -> void:
 		var to: float = _to_screen(Vector2(end_m, 0.0)).x
 		draw_rect(Rect2(from, bottom - 3.0, to - from, 3.0), color)
 
+	for peer: Dictionary in _peers:
+		var id: int = peer["id"]
+		var distance: float = peer["distance_m"]
+		var position: Vector2 = _to_screen(Vector2(distance, _elevation_at(distance)))
+		draw_circle(position, 4.0, UiTheme.group_color(id))
 	if _ghost_distance >= 0.0:
 		var ghost: Vector2 = _to_screen(Vector2(_ghost_distance, _elevation_at(_ghost_distance)))
 		draw_circle(ghost, 4.0, UiTheme.GHOST_COLOR)

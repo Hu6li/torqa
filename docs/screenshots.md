@@ -13,12 +13,15 @@ screens remain in the [remote guide](https://github.com/ORQWA/ORQWA/wiki/Devices
 | ![Overview camera](images/app/ride-overview.jpg) | ![Planned workouts](images/workouts/planned.png) |
 | ![Video course](images/readme/video-course.jpg) | ![Workout editor](images/workouts/editor.png) |
 | ![A moment of the ride: a climb record on its card](images/app/ride-moment.png) | |
+| ![Group riders, map markers and gaps](images/groups/riders.jpg) | ![Assisted group ride summary](images/groups/assisted-summary.png) |
 
 Video footage: “Le petit Menglonnais” by [Fred Van Gestel](https://cycling.vangestel.online/indoor/videos/france/le-petit-menglonnais/),
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). That screenshot has the
 same licence; the footage is used only in documentation.
 
 ## Courses, setup and analysis
+
+![Group ride activity previews and invitations](images/groups/lobby-en.png)
 
 | Before riding | After riding |
 |---|---|

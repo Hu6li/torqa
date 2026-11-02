@@ -279,6 +279,26 @@ road and land-use data, with mapped green spaces preserved.
 |---|---|
 | R115 | Refines R89 (2026-10-22): **boulders and cliffs read as natural rock at riding and overview distances**: asymmetric boulders with weathered broken faces, irregular intersecting fractures and broad mineral variation on exposed rock, without repeating masonry courses. Fine grain fades with distance while larger face variation remains legible. Existing kept worlds receive the material and model improvements without regeneration. |
 
+## Riding together
+
+| ID | Requirement |
+|---|---|
+| R159 | Extends R27 (2026-10-27, replaces unmerged #241/#247): **group rides** for up to eight riders including the host, each on their own trainer on the same locally held course, with a common countdown. Each keeps their own physics and settings; no drafting or late joining. The others are shown beside ghosts, on the map and profile and in a gaps panel in the later app integration. Each saves only their own activity; others' heart rate stays private. The first implementation is a developer CLI. |
+| R160 | Extends R2 and R3 (2026-10-27, replaces unmerged #243/#246): group rides connect **directly without an ORQWA server or relay**, using invite/reply codes passed through an authenticated private channel chosen by the riders. Connections are encrypted, the invite pins the host's certificate, replies bind admission to the particular ride and course, and only joiners explicitly admitted by the host get in. Codes disclose their names, course metadata and advertised addresses; replies contain a secret and must be kept private. Public STUN discovery can be switched off, LAN addresses require an explicit mode, and router port forwarding is independently off until requested. Ordinary rides do not start group networking. |
+| R161 | Extends R159 and R160 (2026-10-27): connecting succeeds or **fails within one minute**, including discovery and admission, with what may help and no promise that every network can connect without a relay. Connection attempts, pending admissions, messages and state queues have fixed budgets; a peer flooding or sending invalid data cannot create unbounded work or memory. State is at most 5 Hz with only the latest per rider retained, physical values and timestamps are validated, and imported codes cannot silently probe local/special addresses. Leaving, cancelling or dropping a session closes its listeners and stops its tasks and router renewal; finite leases bound a mapping the router cannot remove. Losing a rider or the host never stops the local ride. See ADR 0035. |
+| R162 | Extends R159 and R160 (2026-10-28): group riders can **talk by voice**, including while waiting in the lobby, without a third-party voice service. For reliability and few connections, the ride host forwards compressed speech through the existing encrypted group connections; other joiners' addresses stay private. Voice is opt-in, starts listening with the microphone muted, opens capture only after explicit unmute, and provides microphone mute, deafen, per-speaker local mute, volume and device selection. The host can access forwarded speech; any admitted rider opting into voice can listen. Voice is never recorded, added to FIT files, uploaded or transcribed. The first implementation is the developer CLI, using headphones. |
+| R163 | Extends R161 and R162 (2026-10-28): voice has independent fixed packet, ingress, jitter, capture and playback budgets. Invalid/oversized packets, forged speakers and sustained floods cannot grow work or memory indefinitely. Membership epochs stop delayed speech and decoder state from crossing reused rider slots; microphone activations stop buffered speech from an earlier activation being sent after mute/unmute. Compressed speech is checked for mono and exactly 20 ms before bounded decoding. Congestion drops disposable speech while reserving transport space for ride state. Voice setup/device work runs outside the trainer loop, device failures preserve the ride, and leaving or dropping an owner disables transmission and closes normal audio streams. OS-stalled backends remain gated off and release handles on return. Router forwarding remains deferred. See ADR 0036. |
+
+## Group ride application integration
+
+| ID | Requirement |
+|---|---|
+| R164 | Extends R159–R163 (2026-10-28): a **Group rides** tab creates and joins private lobbies for at most eight riders, using invite/reply codes. The host selects a 3D course, structured workout or workout on a course after creating the lobby. Everyone sees the roster, preparation progress and selected activity. All admitted participants must be ready before the shared countdown. During riding, peers appear in the 3D world, map/profile and gaps panel, with optional voice controls. Logic stays in Rust and Godot presents it. Video distribution, constant-power/heart-rate group modes and FTP tests are outside this delivery. |
+| R165 | Extends R164 and supersedes R159's preexisting-file requirement for app lobbies (2026-10-28): peers automatically **download the selected course and workout directly from the host** through authenticated reliable streams, with bounded buffering/work, deadlines, progress, cancellation and retry. Exact verified content is reused; new content passes bounded format validation before atomic library import, never overwriting existing files. Course archives are checked before cache extraction. Selection revisions and rider membership generations prevent obsolete preparation from satisfying readiness. Workouts retain both FTP-relative and absolute targets; each rider uses their own FTP. |
+| R166 | Extends R13 and R164 and supersedes R159's no-drafting limit for app rides (2026-10-28): the host configures independent **Drafting** and **Keep together** toggles before countdown, both on by default, visible to all and frozen at start. Drafting reduces aerodynamic drag behind nearby group riders with bounded shelter and consistent simulation-mode resistance. Keep together individually assists riders behind the host and restrains those ahead while pedaling, so differing abilities can ride together. Assistance is computed locally from validated group state, fades with stale sources and does not change measured power/cadence/heart rate or ERG targets. Assisted rides are identified in summaries and set no course/climb speed records; genuine measured-power records and training metrics remain eligible. |
+| R167 | Extends R164 and supersedes R159's no-late-joining limit for app rides (2026-10-28): riders may **join during a ride**, downloading and preparing without delaying existing participants, then explicitly entering near the host and at the current workout step. Entry adds no fictitious recorded distance, samples or records for skipped sections. The host coordinates group workout pause/resume and skips; intensity remains personal and every rider can pause locally for safety, resuming at the current group step. |
+| R168 | Extends R164 (2026-10-28): the host may **hand over** to a connected, prepared rider who explicitly accepts. Existing authenticated links coordinate fresh credentials and pinned replacement connections before a new authority epoch commits. Preserve rider identity, activity/rules, workout time and personal recording; reject stale authority and transition assistance smoothly. Bound handover work and duration, retain the original host on preparation failure and explain necessary address sharing. Unexpected host loss ends group networking/voice and preserves local rides; automatic crash recovery is outside scope. |
+
 ## MVP definition
 
 Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mode → save a FIT file.
@@ -298,6 +318,97 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 
 | R159 | Refines R156 (2026-10-27, #350): Autumn has no meadow flowers: every stored flower position is rendered as a grass tuft. Building flower-box blooms are hidden as well; returning to another season restores its own flower population without changing the kept world. |
 | R162 | Refines R156 (2026-10-28, #350): distant autumn woods include coherent orange/russet broadleaf-dominant collections among greener evergreen areas. Forest streets carry scattered fallen leaves and denser roadside drifts; open fields, clearings, tropical evergreen lowlands and ridden tunnel interiors remain clear. Leaves react to rain, preserve markings and change no riding physics. Kept courses receive the presentation without regeneration or new map requests. |
+
+## Guided group setup
+
+| ID | Requirement |
+|---|---|
+| R169 | Refines R164 and R162 (2026-10-28): group setup uses plain-language create/join actions and guided private invitation exchange. Course choices preview their map, elevation and key figures; workout choices preview power and duration before explicit sharing. Voice microphone and speaker choices remain usable during voice chat; changing devices reconnects opted-in voice with the microphone muted, retaining volume and local rider mutes. Lobby and in-ride controls reflect the same device choices. |
+
+## Consistent group failures
+
+| ID | Requirement |
+|---|---|
+| R170 | Refines R74, R162 and R164 (2026-10-29): asynchronous group activity and voice failures, including Android-native failures, use the application's translated explanations with original **Technical details** and **Dismiss** controls. A dismissed occurrence stays hidden through status refreshes; a new occurrence is reported again. Dismiss does not pause the local ride or leave the group, and an activity download can still be retried after a voice failure. Shared activities must publish atomically on Android shared storage without overwriting existing library content; native voice startup must initialize the embedded Android host before device access. |
+
+## Entering ongoing rides
+
+| ID | Requirement |
+|---|---|
+| R171 | Refines R167 (2026-10-30): an admitted late joiner prepares the frozen activity independently, connects a trainer and explicitly chooses **Join ride now**. Entry uses recent organizer progress, starts near the organizer at rest and at the current structured-workout step, and cannot restart an already entered ride. Course position is independent of personal elapsed time and recorded distance; skipped sections add no samples or speed records. Complete later unassisted climbs and genuine measured-power training remain eligible. If the organizer is not actively riding, entry can be retried without stopping the group. The CLI retains its original pre-countdown admission workflow. |
+
+## Shared workout timing
+
+| ID | Requirement |
+|---|---|
+| R172 | Refines R167 (2026-10-30): the organizer controls a structured workout's **shared clock**, pause/resume and forward step skips through ordered authenticated updates. Pause holds the step and releases workout resistance while personal riding/recording can continue. FTP and intensity remain personal. Local safety pause stops only that rider and resumes at the current group step without invented samples, time or distance. Shared plans cannot be replaced while riding in the group; all input paths enforce organizer-only shared skips. Clock snapshots have fixed bounds and coalesce for slow consumers; leaving or losing the group resumes independent workout timing. |
+
+| R173 | Refines R168 (2026-10-31): planned organizer changes require an explicit offer and successor acceptance, preserve original rider slots and group identity across fresh pinned links, and commit only with the old organizer's bound proof after every replacement connection is ready. Consent expires after 30 seconds and preparation after 60 seconds; cancelled proposals consume epochs. Precommit failure retains the old authority; a revealed commit cannot restore it. Keep personal recording, course position, workout clock/pause, intensity and eligibility intact, blend assistance over two seconds and reconnect opted-in listening microphone-off. Use existing address permissions and explain address sharing. The new organizer supplies a fresh invitation and verified content to later joiners. Unexpected loss preserves solo riding without electing a replacement. |
+
+## Guided group connections
+
+| ID | Requirement |
+|---|---|
+| R174 | Refines R169 and R161 (2026-10-31): creating a group ride and joining from an invitation show a connection popup with plain-language choices for separate homes, one home Wi-Fi/router, and a mixture. Explain each choice and optional public address lookup without requiring network terminology. Inspect invitations offline, retain pasted text when going Back, and start no discovery or connections before confirmation. Home-network access remains explicit, separate-home mode cannot silently acquire it, and same-home mode uses no public lookup services. Preserve the existing bounded transport and classified Technical details/Dismiss error reporting. |
+
+## Group codes safe to copy
+
+| ID | Requirement |
+|---|---|
+| R175 | Extends R160 (2026-11-01): a join reply binds admission to a certificate the joiner's computer creates for that ride, and TLS client authentication proves its private key, which never leaves that computer. A copied, forwarded or leaked reply admits nobody else, and a used reply cannot admit its own computer again. Codes still reveal names and addresses, so riders exchange them privately, and the invite must reach joiners unaltered because it pins the host. Planned handover binds each rider's replacement link the same way, so no admission secret passes between riders. Protocol and invitation version 7 require matching builds and fresh codes. |
+
+## Who should host a group ride
+
+| ID | Requirement |
+|---|---|
+| R176 | Extends R174 and R161 (2026-11-01): once a group lobby is open, its host is told when the host's own address discovery suggests that friends at other homes probably cannot connect: servers saw a different mapping each, as carrier-grade NAT often does; only IPv6 is directly reachable; or too little evidence came back. The advice is to let a friend at another home create the ride, with a link to the usage guide's check. A rider offered organizer duties gets the same advice from their own discovery before accepting. The advice is evidence, never a claim that a NAT type was proved; good connections and home-network rides show nothing, and no extra network request is made. |
+
+## Local group audio checks
+
+| ID | Requirement |
+|---|---|
+| R177 | Extends R162 and R169 (2026-11-01, #414, #429): group **Audio settings** offer an explicit **Test microphone** action and level meter, using the selected input without playback, transmission or recording. The test stops after ten seconds, on Stop, closing its dialog, changing devices or leaving the group. It temporarily pauses voice and restores previously opted-in listening with the microphone off. A default-on **Prevent speaker echo** setting holds outgoing speech while a friend is audible and for a short echo tail; riders using headphones can turn it off for simultaneous conversation. Device choices, volume and local rider mutes survive testing. |
+| R178 | Refines R177 (2026-11-01): the microphone check visibly shows **Voice detected** when it estimates speech activity, keeps the result after the check and reports when none was detected. **Test speakers** plays two short tones through the selected output at the adjustable voice volume for two seconds, without opening a microphone, requesting microphone permission or sending audio. Only one local audio check runs at once. Both checks stop on Stop, closing Audio settings, changing devices or leaving the group, and restore previously joined listening with the microphone off. |
+
+## Group audio continuity
+
+| ID | Requirement |
+|---|---|
+| R179 | Refines R161–R163 (2026-11-01, #428): ordinary speech and microphone silence must preserve the group connection, participant list and ride controls. Short delivery bursts and audio-worker stalls discard excess or superseded media and automatically resume current speech and rider positions, including when the first audio packet was delayed. Existing fixed queues and media-work budgets remain bounded; sustained raw traffic abuse is detected separately from transient delivery-budget exhaustion and affects only the offending connection. Sender wakeups never replay missed capture ticks or queued old speech. |
+| R189 | Refines R162, R177 and R179 (2026-11-01): group voice must sound **clean and continuous** between any two computers. Playback follows each listener's own speaker and every fresh microphone frame is sent in order, so sound cards running at slightly different rates never cut words into pieces or insert gaps; speech captured more than about 120 ms earlier is still never sent. A late packet is stretched by concealment and a lost one rebuilt from the next packet's recovery data, without letting delay build up. Devices at other sample rates (16/24 kHz Bluetooth headsets, 44.1 kHz interfaces) are converted with band-limited filtering. A voice keeps its level when other microphones open; loud overlaps are rounded off, not clipped. **Prevent speaker echo** holds the microphone only while a friend is *speaking*, voiced sound above their background, so an open microphone's fan or room noise never keeps another rider's microphone closed. |
+
+## Group ride view
+
+| ID | Requirement |
+|---|---|
+| R180 | Refines R164 (2026-11-01, #431): during a group ride, the in-ride group panel (participants, shared settings, voice, **Leave group**) opens from a **Group Rides icon in the ride's control bar**, beside the settings, instead of a text button at the bottom right. The icon shows only while the rider is in a group and folds away with the other controls. |
+| R181 | Refines R168 and R173 (2026-11-01, #424): the rider offered organizer duties sees the request **over the ride**, above the control bar with a chime, not only inside the group panel: who asks, what organizing means, and the reachability warning when their own discovery suggests friends could not reach them (R176). **Accept organizer duties** and **Decline** answer it there; the request stays until answered, withdrawn or timed out, and the ride goes on meanwhile. The overlay leaves it out. |
+| R183 | Extends R164 (2026-11-01, #422, #423): in a group ride, every rider's **power and W/kg** show beside their name in the riders panel and under their name on the road, the W/kg from their **own weight** without the bicycle; and others see each rider with the **avatar** chosen in their profile, no longer always the default. The roster carries the weight and the avatar; heart rate stays private. Protocol and invitation version 8 require matching builds and fresh codes. |
+| R184 | Extends R165 and R169 (2026-11-01, #419, #420): while the activity is prepared, the participant list shows for every rider not yet ready **what they are doing and how far they have got**, *Downloading · 40 %* or *Building the world · 70 %*, until they are ready. A rider's own page keeps a **spinner** turning while it connects, receives and prepares the ride, and shows how far its world is built. Protocol and invitation version 9 require matching builds and fresh codes. |
+
+## Courses riders already have
+
+| ID | Requirement |
+|---|---|
+| R185 | Refines R165 (2026-11-01, #435): a rider who already has the selected course **rides their own copy and downloads nothing**, whatever they named it and whatever map picture or countries it shows, e.g. a `.tqc` the organizer sent beforehand or one received in an earlier ride. The selection carries a key of what the course rides on (its route, terrain and map data and the other manifest facts) without the name, map picture and countries, and each joiner looks through their course library for it. A downloaded course may likewise be the sender's own copy, renamed or with another picture, so an organizer after a handover shares theirs: its bytes are checked against what the transfer announces, and its key against the selection's. A course received earlier and changed since keeps its name and contents; the new download is saved beside it. Protocol and invitation version 10 require matching builds and fresh codes. |
+
+## Reconnecting lost riders
+
+| ID | Requirement |
+|---|---|
+| R186 | Extends R164 and R167 (2026-11-01, #434): a rider whose connection to the organizer is **lost** keeps their **seat for five minutes** and **reconnects by themselves**, without new codes: only their own per-ride certificate takes that seat back, with the same name, readiness and prepared activity, nothing downloaded again. Meanwhile their local ride and recording continue, the microphone is off, and a shared workout runs on independently until the reconnection takes up the group's current step. Their page shows *Connection lost. Reconnecting…* with the time left and **Reconnect now**; the others see *Reconnecting…* beside their name. Before the start a held seat keeps **Start group ride** waiting until the rider is back or removed, and organizer changes wait too. **Leave group** frees the seat at once; after five minutes it is given up. A lost organizer is reconnected the same way while their ORQWA stays open at the same addresses. A group whose connection has ended no longer suggests a retry that does not exist. Protocol and invitation version 11 require matching builds and fresh codes. |
+
+## Fallback organizer
+
+| ID | Requirement |
+|---|---|
+| R187 | Extends R168, R173 and R186 (2026-11-01, #426): while a group rides, the organizer keeps a **fallback organizer** ready. Its ORQWA asks the first rider in joining order who is prepared, connected and, by their own discovery, reachable from other homes (R176); that rider is asked **once** over the ride, *Stand in as organizer* or *Decline*, and on Decline the next one is asked. The organizer may choose another fallback, who must accept too. Everyone prepares a standby link to the fallback in advance, as for a planned organizer change. If the organizer's connection stays lost for about **a minute**, the link's timeout and 30 seconds of failed reconnections, and no rider connected to the fallback still reaches the organizer, the fallback **takes over** and everyone rides on with course position, workout step and recordings; so does the group when the organizer leaves. The new organizer at once chooses the **next fallback** the same way. The old organizer, if its ORQWA is still open when its connection returns, **rejoins as a rider**. Riders accept a takeover only once they lost the organizer themselves. Protocol and invitation version 12 require matching builds and fresh codes. |
+
+## Microphone kept across voice restarts
+
+| ID | Requirement |
+|---|---|
+| R188 | Refines R169, R173, R186 and R187 (2026-11-01): every **automatic** voice restart keeps the **microphone as it was**, on if it was on and off if it was off: reconnecting after a lost connection, a fallback organizer's takeover, a planned organizer handover and changing audio devices. Listening, volume, deafen and per-rider mutes are kept as before. Joining voice still starts with the microphone off, and Voice off, Mute all sound and a failed device still turn it off. |
 
 ## Test hardware available
 

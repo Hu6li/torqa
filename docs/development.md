@@ -33,6 +33,8 @@ does the same.
 | Render screenshots of the start page, a ride, the summary and the analysis (software Vulkan, with 16 weeks of made-up rides) into `screenshots/` | `scripts/screenshots.sh` |
 | Render only the English/German error-details views, without preparing a route | `SCREENSHOT_ERRORS_ONLY=1 scripts/screenshots.sh` |
 | Render only Graphics settings, without preparing a route or kept world | `SCREENSHOT_GRAPHICS_ONLY=1 scripts/screenshots.sh` |
+| Render English/German group setup and connection popups, activity previews, late entry, shared workout controls and organizer consent, with local-only hosting and presentation fixtures | `SCREENSHOT_GROUP_ONLY=1 scripts/screenshots.sh` |
+| Render seven group avatars, distance gaps and map/profile markers on an offline course using presentation fixtures | `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` |
 | Render the screenshots in another window size, e.g. the smallest the layouts are made for (R94) | `SCREENSHOT_SIZE=1024x640 scripts/screenshots.sh` |
 | Render the standard views of the 3D world (before and after a visual change) into `screenshots/views/` | `scripts/render-views.sh` |
 | Count what a course's world draws at chosen places (draw calls, primitives), with each kind of geometry, effect or panel taken away in turn; frame times need a Mac ([Measuring frame rate](#measuring-frame-rate)) | `scripts/perf/software.sh` |
@@ -42,7 +44,8 @@ does the same.
 | Redraw the wordmark and the lockups in `docs/brand/` after changing their geometry ([ADR 0026](adr/0026-the-name-orqwa.md)) | `python3 scripts/brand/wordmark.py` |
 | Regenerate the boot splash PNG after a logo change | `scripts/render-splash.sh` |
 | Refresh the translation template after text changes | `python3 scripts/i18n/extract.py` |
-| Refresh the crates' licence notices the About tab shows, after changing dependencies ([ADR 0018](adr/0018-about-and-notices.md)) | `scripts/notices.sh` |
+| Fuzz the decoders that read group riders' input (codes, controls, voice, state, workouts, STUN, shared courses), each target for N seconds; a finding leaves its input in `core/fuzz/artifacts/` | `scripts/fuzz.sh [N]` |
+| Refresh the app's About notices and the CLI's packaged dependency/Opus licence file, after changing dependencies ([ADR 0018](adr/0018-about-and-notices.md)) | `scripts/notices.sh` |
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
 
@@ -571,6 +574,84 @@ the container sees. CI sets them to a pull request's own branch and last commit,
 the merge with main; a release, built from its tag, names its commit alone.
 
 ### Riding audio
+
+For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.
+They use pinned loopback QUIC, real Opus and simulated devices, including delayed old-worker
+cleanup and recoverable device failures. Native Bluetooth acceptance remains manual: switch
+speakers during listening, enable the headset microphone, then repeat mute/deafen and device
+changes during a ride. Check that a rate transition resumes sound, a manual choice starts
+microphone-off, and permission/disconnect errors leave the group and local ride intact. Record
+the OS, headset, chosen input/output and Technical details for failures. Test separately from
+container checks; no real microphone or Bluetooth device is available inside Docker on macOS.
+
+For R177, simulated-device tests check that local microphone metering never calls playback,
+releases capture on close and after ten seconds, and retains permission diagnostics. Encrypted
+conversation tests cover the speaker gate and full-duplex headphones independently. On native
+devices, test before joining voice and while speaking, close the settings dialog mid-test,
+switch input during testing, and leave the group. Verify that only the level meter moves,
+capture ends and opted-in listening returns microphone-off. With speakers, take turns; with
+headphones on every rider, disable **Prevent speaker echo** and verify simultaneous speech.
+Issue #258 still requires listening during a real video ride; group voice changes do not
+validate WSOLA's perceptual quality or settle its fade thresholds.
+
+For R178, check the live voice indicator with speech and with a quiet microphone, then verify
+the retained result. Automated fixtures cover speech-like harmonics, silence, DC and mains
+hum; this is an activity estimate and may react to other sounds. Speaker-check tests use an
+output-only backend that rejects any microphone/capture call, assert bounded gain and automatic
+cleanup, and exercise microphone→speaker→voice restoration through the app. On hardware,
+deny microphone permission and still test the selected speakers, change voice volume, stop
+early and close the dialog. Review both settings scroll positions at the minimum window size.
+
+For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
+private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global
+environment is changed in parallel tests, no native audio stream is started and no hardware is
+used. The ignored child test is launched by its three parent regressions. On a Linux desktop,
+select the Bluetooth headset in the system's Sound settings, then test ORQWA's default speakers,
+default microphone and live voice. Record distro/build, selected routes and Technical details.
+If trainer discovery reports no adapter, collect `bluetoothctl list`, `rfkill list` and
+`systemctl status bluetooth` separately; successful audio routing does not prove BLE availability.
+
+For #428, use matching stack builds with a macOS organizer and Windows or macOS joiner. Enable
+**Join voice chat** on both, then **Microphone on** on the joiner and speak for at least fifteen
+seconds. Verify the organizer keeps hearing the joiner and both remain connected. Repeat with
+packet loss or changing latency if available, and after mute/unmute. The sequence-clock regression
+reproduces valid frame 50 arriving late at 1.5 s and frame 75 arriving promptly at 1.501 s; the
+old arrival-relative guard rejects frame 75. A separate loopback regression checks that organizer
+closure is not mislabeled as invalid control traffic, and the simulated-device Opus conversation
+checks sustained capture/playback. Also test several short words separated by silence, both
+microphones on, and several simultaneous speakers. Brief delivery bursts must preserve both
+participant lists, consent, countdown and riding; fresh speech and positions must resume without
+rejoining. The loopback suite exercises per-speaker and aggregate overflow in both directions,
+delayed first speech, a full room's audio workers stalling/resuming, and stale words being
+dropped while a short backlog of current speech is all sent. Huge sequence jumps remain invalid; three consecutive overloaded raw-datagram
+windows close only the abusive connection. macOS/Windows CI also runs the simulated Opus/device
+conversations and live pacing tests, without opening physical audio devices.
+The deterministic playback tests also cover lost and late packets, network jitter, sound
+cards a fraction of a percent apart, slower senders, and a listener that stops consuming while
+the fixed jitter window evicts history. Native audio integration tests use
+`cargo test -p orqwa-voice --locked -- --test-threads=1` so one full room's real-time threads run
+at a time; keep the eight-rider and stall coverage inside that room.
+Record both build IDs, selected devices and terminal/Technical details for native failures; the
+synthetic jitter reproduction does not replace acceptance on the originally affected computers.
+
+For R189, the conversation suite runs simulated sound cards whose microphones and speakers each
+keep their own clock: a steady voice must arrive without gaps, and a rider next to a fan must
+not keep a speaking rider's microphone closed in speaker mode. On two native computers, talk for
+a minute with **Prevent speaker echo** off and headphones on both, then with it on and speakers,
+with a fan running near one microphone. Speech must sound clean (not metallic or choppy), arrive
+whole, and each rider must be able to answer within about half a second of the other stopping.
+Repeat with a Bluetooth headset's microphone, which runs at 16 or 24 kHz. Record both builds,
+devices and sample rates (Audio MIDI Setup on macOS) for any failure.
+
+For macOS permission acceptance, launch the exported **ORQWA.app** from Finder on an account
+that has not granted it microphone access. Joining voice, opening Audio settings and testing
+speakers must not prompt. **Test microphone** and **Microphone on** must show Apple's microphone
+prompt; ORQWA must then appear under System Settings → Privacy & Security → Microphone.
+Allow access and verify that capture remains off until the action is tried again. Close settings
+or leave the group before answering a prompt and verify no capture starts. Also deny access,
+check the recovery guidance, allow ORQWA in System Settings, restart, and test again. The UI
+smoke test simulates these results; macOS CI checks the native bridge's compilation and the
+exported bundle description/entitlement, without opening a microphone or accepting an OS prompt.
 
 The Rust ambient mixer, its CC0 texture sources, regeneration command and a WAV listening
 preview are documented in [the audio README](../core/orqwa-app/audio/README.md) and

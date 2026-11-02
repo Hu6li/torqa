@@ -35,6 +35,7 @@ var jumpable: bool = false:
 ## Metres east/north of the route start.
 var _ghost: Vector2 = Vector2.ZERO
 var _ghost_shown: bool = false
+var _peers: Array[Dictionary] = []
 var _track: PackedVector2Array = PackedVector2Array()
 ## The track's extent, for the whole-route view.
 var _bounds: Rect2 = Rect2()
@@ -91,6 +92,12 @@ func set_rider(position_m: Vector2, heading: float) -> void:
 	_rider = position_m
 	_heading = heading
 	_place_map()
+
+
+## Marks the current authenticated group riders without rebuilding the background map.
+func set_group_riders(peers: Array) -> void:
+	_peers.assign(peers)
+	_marks.queue_redraw()
 
 
 func _ready() -> void:
@@ -160,6 +167,15 @@ func _draw_map() -> void:
 
 func _draw_marks() -> void:
 	var view: Transform2D = _view()
+	for peer: Dictionary in _peers:
+		if not peer.has("x"):
+			continue
+		var id: int = peer["id"]
+		var east: float = peer["x"]
+		var north: float = peer["y"]
+		var position: Vector2 = view * Vector2(east, north)
+		_marks.draw_circle(position, 6.0, Color(0, 0, 0, 0.35))
+		_marks.draw_circle(position, 4.5, UiTheme.group_color(id))
 	if _ghost_shown:
 		_marks.draw_circle(view * _ghost, 6.0, Color(0, 0, 0, 0.35))
 		_marks.draw_circle(view * _ghost, 4.5, UiTheme.GHOST_COLOR)

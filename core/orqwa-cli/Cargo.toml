@@ -14,6 +14,8 @@ path = "src/main.rs"
 [dependencies]
 orqwa-app.workspace = true
 orqwa-domain.workspace = true
+orqwa-net.workspace = true
+orqwa-voice.workspace = true
 orqwa-devices.workspace = true
 orqwa-osm.workspace = true
 orqwa-physics.workspace = true

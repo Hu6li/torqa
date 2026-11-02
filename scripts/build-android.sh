@@ -20,13 +20,13 @@ case "$profile" in
 esac
 
 # ORQWA's core, with FFmpeg as the image builds it for Android and bindgen reading Android's
-# headers. API 24 (Android 7) is the oldest Godot's Android build supports.
+# headers. Match ORQWA's Android 10 minimum: API 24 has no AAudio for group voice.
 # shellcheck disable=SC2086 # cargo_flags is intentionally empty or a single flag
 FFMPEG_DIR=/opt/ffmpeg-android \
-    CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$bin/aarch64-linux-android24-clang" \
-    CC_aarch64_linux_android="$bin/aarch64-linux-android24-clang" \
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$bin/aarch64-linux-android29-clang" \
+    CC_aarch64_linux_android="$bin/aarch64-linux-android29-clang" \
     AR_aarch64_linux_android="$bin/llvm-ar" \
-    BINDGEN_EXTRA_CLANG_ARGS="--target=aarch64-linux-android24 --sysroot=$bin/../sysroot" \
+    BINDGEN_EXTRA_CLANG_ARGS="--target=aarch64-linux-android29 --sysroot=$bin/../sysroot" \
     cargo build --manifest-path "$root/core/Cargo.toml" -p orqwa-gd --locked \
     --target "$triple" $cargo_flags
 

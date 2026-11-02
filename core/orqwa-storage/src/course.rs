@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+pub mod shared;
+
 /// File extension of course files.
 pub const EXTENSION: &str = "tqc";
 /// The course file format written by this version; newer formats are rejected.
@@ -411,6 +413,47 @@ pub fn fingerprint(path: &Path) -> Result<String, CourseError> {
     Ok(format!("{:016x}", hasher.finish()))
 }
 
+/// What two copies of a course share however each rider named and showed theirs (#435), as
+/// bytes to hash: its manifest without the name and countries, and every other entry but the
+/// map picture by its path, checksum and size from the file's directory, so nothing else is
+/// unpacked. A course renamed, imported under another name or given a map picture keeps its
+/// key material; a change to its route, data or other manifest fields changes it.
+///
+/// # Errors
+/// [`CourseError::NewerFormat`] for files from a newer ORQWA, or an I/O, zip or manifest error.
+pub fn key_material(path: &Path) -> Result<Vec<u8>, CourseError> {
+    let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
+    manifest_of(&mut zip)?;
+    let mut json = String::new();
+    zip.by_name(MANIFEST)?.read_to_string(&mut json)?;
+    // Keys come out sorted, so a rewritten manifest gives the same bytes.
+    let mut manifest: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json)?;
+    manifest.remove("name");
+    manifest.remove("countries");
+    let mut entries = Vec::new();
+    for index in 0..zip.len() {
+        let entry = zip.by_index_raw(index)?;
+        let name = entry.name()?.into_owned();
+        if ![MANIFEST, PREVIEW, CORRIDOR_PREVIEW].contains(&name.as_str()) {
+            entries.push((name, entry.crc32(), entry.size()));
+        }
+    }
+    // Rewriting a course moves its entries around; their order says nothing.
+    entries.sort();
+    let mut material = Vec::new();
+    let mut put = |bytes: &[u8]| {
+        material.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+        material.extend_from_slice(bytes);
+    };
+    put(&serde_json::to_vec(&manifest)?);
+    for (name, crc, size) in entries {
+        put(name.as_bytes());
+        put(&crc.to_be_bytes());
+        put(&size.to_be_bytes());
+    }
+    Ok(material)
+}
+
 /// Puts `manifest` into the course's file, and the `files` under `data_root`'s directory
 /// `under` (e.g. `osm/detail-v1`) in place of those it carried there; the rest stays as it was.
 /// Its fingerprint changes with them, so a world kept of it is built again.
@@ -634,6 +677,54 @@ mod tests {
         write(&copy, &manifest(), "<gpx>other</gpx>", &data, &[]).unwrap();
         assert_ne!(fingerprint(&copy).unwrap(), first);
         assert!(fingerprint(&dir.join("missing.tqc")).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_course_key_leaves_out_its_name_map_picture_and_countries() {
+        let dir = temp_dir("key");
+        let data = dir.join("data");
+        std::fs::create_dir_all(data.join("terrain")).unwrap();
+        let tile = data.join("terrain/12_2134_1445.webp");
+        std::fs::write(&tile, b"tile").unwrap();
+        let tiles = std::slice::from_ref(&tile);
+        let shared = dir.join("shared.tqc");
+        write(&shared, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
+        let key = key_material(&shared).unwrap();
+
+        // #435: the friend imported it under their own name, it found its countries and got
+        // a new map picture; its bytes differ, but it is the course the host shares.
+        let own = dir.join("own.tqc");
+        std::fs::copy(&shared, &own).unwrap();
+        let mut renamed = manifest();
+        renamed.name = "Bielersee".to_owned();
+        renamed.countries = Some(vec![CourseCountry {
+            code: "CH".to_owned(),
+            names: BTreeMap::new(),
+        }]);
+        set_preview(&own, b"PNG").unwrap();
+        rewrite_manifest(&own, &renamed).unwrap();
+        assert_ne!(
+            std::fs::read(&own).unwrap(),
+            std::fs::read(&shared).unwrap()
+        );
+        assert_eq!(key_material(&own).unwrap(), key);
+
+        // Other terrain, another track or map detail make another course.
+        let other = dir.join("other.tqc");
+        std::fs::write(&tile, b"newer tile").unwrap();
+        write(&other, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
+        assert_ne!(key_material(&other).unwrap(), key);
+        std::fs::write(&tile, b"tile").unwrap();
+        write(&other, &manifest(), "<gpx>other</gpx>", &data, tiles).unwrap();
+        assert_ne!(key_material(&other).unwrap(), key);
+        let mut detailed = manifest();
+        detailed.map_detail = vec!["switzerland".to_owned()];
+        write(&other, &detailed, "<gpx>route</gpx>", &data, tiles).unwrap();
+        assert_ne!(key_material(&other).unwrap(), key);
+        write(&other, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
+        assert_eq!(key_material(&other).unwrap(), key);
+        assert!(key_material(&dir.join("missing.tqc")).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

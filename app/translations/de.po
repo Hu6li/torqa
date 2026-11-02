@@ -2063,6 +2063,7 @@ msgstr "V-Sync"
 
 msgid "View distance"
 msgstr "Sichtweite"
+
 msgid "A phone or tablet on the same Wi-Fi shifts and controls the ride"
 msgstr "Ein Smartphone oder Tablet im selben WLAN schaltet und steuert die Fahrt"
 
@@ -2476,3 +2477,607 @@ msgstr "Frühling"
 
 msgid "Winter"
 msgstr "Winter"
+
+msgid "Group Rides"
+msgstr "Gruppenfahrten"
+
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
+msgstr "Gruppenfahrten: Fahrende, Sprachchat, gemeinsames Training, Verlassen"
+
+msgid "Ready"
+msgstr "Bereit"
+
+msgid "Start group ride"
+msgstr "Gruppenfahrt starten"
+
+msgid "Retry download"
+msgstr "Download wiederholen"
+
+msgid "Leave group"
+msgstr "Gruppe verlassen"
+
+msgid "Microphone"
+msgstr "Mikrofon"
+
+msgid "Voice volume"
+msgstr "Sprachlautstärke"
+
+msgid "Default microphone"
+msgstr "Standardmikrofon"
+
+msgid "Default speakers"
+msgstr "Standardlautsprecher"
+
+msgid "Starting in %s seconds…"
+msgstr "Start in %s Sekunden…"
+
+msgid "Group ride in progress"
+msgstr "Gruppenfahrt läuft"
+
+msgid "Group connection ended. Your local ride continues."
+msgstr "Gruppenverbindung beendet. Deine lokale Fahrt läuft weiter."
+
+msgid "Connection lost. Reconnecting… Your local ride continues."
+msgstr "Verbindung unterbrochen. Verbinde erneut… Deine lokale Fahrt läuft weiter."
+
+msgid "Trying for another %s. You keep your place in the group."
+msgstr "ORQWA versucht es noch %s lang. Dein Platz in der Gruppe bleibt reserviert."
+
+msgid "Reconnect now"
+msgstr "Jetzt erneut verbinden"
+
+msgctxt "group_rider"
+msgid "Reconnecting…"
+msgstr "Verbindet sich erneut…"
+
+msgid "%s ft"
+msgstr "%s ft"
+
+msgid "%s m"
+msgstr "%s m"
+
+msgid "Could not complete the group ride action."
+msgstr "Die Aktion für die Gruppenfahrt konnte nicht abgeschlossen werden."
+
+msgid "%.1f / %.1f MiB"
+msgstr "%.1f / %.1f MiB"
+
+msgid "%s · power based on your FTP"
+msgstr "%s · Leistung anhand deiner FTP"
+
+msgid "1. Send your invitation privately.\n2. Add each friend's join request here."
+msgstr "1. Sende deine Einladung privat.\n2. Füge hier die Beitrittsanfragen deiner Freunde hinzu."
+
+msgid "Add a friend"
+msgstr "Freund hinzufügen"
+
+msgid "Add a friend…"
+msgstr "Freund hinzufügen…"
+
+msgid "Add friend"
+msgstr "Freund hinzufügen"
+
+msgid "All set? Let your friends know you're ready."
+msgstr "Alles parat? Sag deinen Freunden, dass du bereit bist."
+
+msgid "Ask the organizer for an invitation, then paste it here to join their ride."
+msgstr "Lass dir eine Einladung schicken und füge sie hier ein, um mitzufahren."
+
+msgid "Audio settings"
+msgstr "Audioeinstellungen"
+
+msgid "Audio settings…"
+msgstr "Audioeinstellungen…"
+
+msgid "Cancel joining"
+msgstr "Beitritt abbrechen"
+
+msgid "Changing devices reconnects voice chat with your microphone as it was."
+msgstr "Ein Gerätewechsel verbindet den Sprachchat neu. Dein Mikrofon bleibt, wie es war."
+
+msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
+msgstr "Wähle eine Strecke, ein Training oder beides. Alle erhalten automatisch eine Kopie."
+
+msgid "Choose an activity to get started."
+msgstr "Wähle zuerst eine Aktivität."
+
+msgid "Choose the ride and invite your friends. You decide when everyone starts."
+msgstr "Wähle die Fahrt und lade deine Freunde ein. Du bestimmst, wann ihr startet."
+
+msgid "Choose who starts the ride. You'll be riding together in a few steps."
+msgstr "Wähle, wer die Fahrt organisiert. In wenigen Schritten fahrt ihr gemeinsam los."
+
+msgid "Chosen by the organizer. Your copy downloads automatically."
+msgstr "Für eure Gruppe gewählt. Deine Kopie wird automatisch heruntergeladen."
+
+msgid "Connect your trainer, then tell the group you're ready."
+msgstr "Verbinde deinen Trainer und sag der Gruppe, dass du bereit bist."
+
+msgid "Connect your trainer…"
+msgstr "Trainer verbinden…"
+
+msgid "Connecting to your friends…"
+msgstr "Verbindung zu deinen Freunden wird hergestellt…"
+
+msgid "Copied · send it to the organizer"
+msgstr "Kopiert · an die organisierende Person senden"
+
+msgid "Copy invitation"
+msgstr "Einladung kopieren"
+
+msgid "Copy join request"
+msgstr "Beitrittsanfrage kopieren"
+
+msgid "Copy your request and send it privately to the organizer. They'll let you in."
+msgstr "Kopiere deine Anfrage und sende sie privat an die Person, die die Fahrt organisiert. Sie lässt dich rein."
+
+msgid "Could not connect. Leave the group and ask for a fresh invitation."
+msgstr "Keine Verbindung möglich. Verlasse die Gruppe und lass dir eine neue Einladung schicken."
+
+msgid "Course"
+msgstr "Strecke"
+
+msgid "Create a ride"
+msgstr "Fahrt erstellen"
+
+msgid "Creating your ride…"
+msgstr "Deine Fahrt wird erstellt…"
+
+msgid "Everyone is ready. Start when you like!"
+msgstr "Alle sind bereit. Du kannst starten!"
+
+msgid "Find my internet address automatically"
+msgstr "Meine Internetadresse automatisch ermitteln"
+
+msgid "Free ride · no workout"
+msgstr "Freie Fahrt · ohne Training"
+
+msgid "Downloading · %d %%"
+msgstr "Lädt herunter · %d %%"
+
+msgid "Building the world · %d %%"
+msgstr "3D-Welt wird erstellt · %d %%"
+
+msgid "Getting ready"
+msgstr "Macht sich bereit"
+
+msgid "Getting your activity from the organizer…"
+msgstr "Eure Aktivität wird heruntergeladen…"
+
+msgid "Getting your ride ready…"
+msgstr "Deine Fahrt wird vorbereitet…"
+
+msgid "I'm ready"
+msgstr "Ich bin bereit"
+
+msgid "Invitation copied. Send it privately to your friends."
+msgstr "Einladung kopiert. Sende sie privat an deine Freunde."
+
+msgid "Invite friends"
+msgstr "Freunde einladen"
+
+msgid "Invite your friends, then choose what to ride."
+msgstr "Lade deine Freunde ein und wähle eure Fahrt."
+
+msgid "Join a ride"
+msgstr "Bei einer Fahrt mitmachen"
+
+msgid "Join a ride…"
+msgstr "Bei einer Fahrt mitmachen…"
+
+msgid "Join ride"
+msgstr "Mitfahren"
+
+msgid "Join voice chat"
+msgstr "Am Sprachchat teilnehmen"
+
+msgid "Joining friends?"
+msgstr "Bei Freunden mitfahren?"
+
+msgid "Keep this page open. Requests expire after one minute; if needed, ask for a fresh invitation."
+msgstr "Lass diese Seite offen. Anfragen laufen nach einer Minute ab. Lass dir bei Bedarf eine neue Einladung schicken."
+
+msgid "Microphone on"
+msgstr "Mikrofon an"
+
+msgid "Mute"
+msgstr "Stummschalten"
+
+msgid "Mute all sound"
+msgstr "Gesamten Ton stummschalten"
+
+msgid "Mute this rider for me"
+msgstr "Diese Person für mich stummschalten"
+
+msgid "No course · workout only"
+msgstr "Ohne Strecke · nur Training"
+
+msgid "Paste invitation here"
+msgstr "Einladung hier einfügen"
+
+msgid "Paste join request here"
+msgstr "Beitrittsanfrage hier einfügen"
+
+msgid "Paste the invitation your organizer sent you."
+msgstr "Füge die Einladung ein, die du für die Fahrt erhalten hast."
+
+msgid "Paste the join request your friend sent back. Only add people you invited."
+msgstr "Füge die Beitrittsanfrage ein, die dein Freund zurückgeschickt hat. Füge nur eingeladene Personen hinzu."
+
+msgid "Preparing your ride…"
+msgstr "Deine Fahrt wird vorbereitet…"
+
+msgid "Ready ✓ · click to undo"
+msgstr "Bereit ✓ · zum Zurücknehmen klicken"
+
+msgid "Remove from group"
+msgstr "Aus der Gruppe entfernen"
+
+msgid "Ride with friends"
+msgstr "Mit Freunden fahren"
+
+msgid "Send your join request"
+msgstr "Sende deine Beitrittsanfrage"
+
+msgid "Shared with everyone"
+msgstr "Mit allen geteilt"
+
+msgid "Speakers"
+msgstr "Lautsprecher"
+
+msgid "Start a group ride"
+msgstr "Eine Gruppenfahrt starten"
+
+msgid "That didn't work. Paste the entire invitation or request, or ask for a fresh one."
+msgstr "Das hat nicht geklappt. Füge die ganze Einladung oder Anfrage ein oder lass dir eine neue schicken."
+
+msgid "Use headphones. Your microphone starts off."
+msgstr "Nutze Kopfhörer. Dein Mikrofon ist anfangs aus."
+
+msgid "Use this activity"
+msgstr "Diese Aktivität verwenden"
+
+msgid "Voice chat"
+msgstr "Sprachchat"
+
+msgid "Volume"
+msgstr "Lautstärke"
+
+msgid "Waiting for the organizer to choose an activity."
+msgstr "Warte, bis eine Aktivität für euch gewählt wurde."
+
+msgid "What are we riding?"
+msgstr "Was fahren wir?"
+
+msgid "You"
+msgstr "Du"
+
+msgid "You're in! The organizer is choosing your ride."
+msgstr "Du bist dabei! Eure Fahrt wird ausgewählt."
+
+msgid "You're ready. The organizer will start the ride."
+msgstr "Du bist bereit. Die Fahrt wird gleich gestartet."
+
+msgid "You're ready. Waiting for the rest of the group."
+msgstr "Du bist bereit. Warte auf den Rest der Gruppe."
+
+msgid "Your group"
+msgstr "Deine Gruppe"
+
+msgid "Your ride is ready. Let's get everyone to the start."
+msgstr "Deine Fahrt ist vorbereitet. Macht euch bereit für den Start."
+
+msgid "Assisted group ride"
+msgstr "Gruppenfahrt mit Unterstützung"
+
+msgid "Assisted group ride · speed records excluded"
+msgstr "Gruppenfahrt mit Unterstützung · keine Geschwindigkeitsrekorde"
+
+msgid "Assisted rides count for training, but do not set speed records."
+msgstr "Fahrten mit Unterstützung zählen für dein Training, aber nicht für Geschwindigkeitsrekorde."
+
+msgid "Drafting"
+msgstr "Windschatten"
+
+msgid "Drafting off"
+msgstr "Windschatten aus"
+
+msgid "Drafting on"
+msgstr "Windschatten an"
+
+msgid "Help everyone stay with the organizer while pedaling."
+msgstr "Hilft allen beim Treten, bei der organisierenden Person zu bleiben."
+
+msgid "Keep together"
+msgstr "Gruppe zusammenhalten"
+
+msgid "Keep together off"
+msgstr "Gruppe zusammenhalten aus"
+
+msgid "Keep together on"
+msgstr "Gruppe zusammenhalten an"
+
+msgid "No signal"
+msgstr "Kein Signal"
+
+msgid "Save effort when riding behind friends."
+msgstr "Spare Kraft, wenn du hinter anderen fährst."
+
+
+msgid "Could not prepare the shared activity."
+msgstr "Die gemeinsame Aktivität konnte nicht vorbereitet werden."
+
+msgid "Download stopped. Try again when you're ready."
+msgstr "Der Download wurde gestoppt. Versuche es erneut, wenn du bereit bist."
+
+msgid "Voice is unavailable. Check your audio devices and microphone permission."
+msgstr "Der Sprachchat ist nicht verfügbar. Prüfe deine Audiogeräte und die Mikrofonberechtigung."
+
+msgid "Join ride now"
+msgstr "Jetzt mitfahren"
+
+msgid "Your friends are already riding. Get ready and join when you like."
+msgstr "Deine Freunde fahren bereits. Bereite dich vor und steige ein, wenn du bereit bist."
+
+msgid "Connect your trainer to join your friends."
+msgstr "Verbinde deinen Trainer, um mit deinen Freunden zu fahren."
+
+msgid "Join near the organizer at the current workout step. Your recording starts now."
+msgstr "Steige in der Nähe der organisierenden Person im aktuellen Trainingsabschnitt ein. Deine Aufzeichnung beginnt jetzt."
+
+msgid "Joining your friends…"
+msgstr "Du steigst in die gemeinsame Fahrt ein…"
+
+msgid "Group workout"
+msgstr "Gruppentraining"
+
+msgid "Your intensity stays personal. Pause in the ride controls stops only your own ride."
+msgstr "Deine Intensität bleibt individuell. Pause in der Fahrsteuerung hält nur deine eigene Fahrt an."
+
+msgid "Pause workout for everyone"
+msgstr "Training für alle pausieren"
+
+msgid "Next step for everyone"
+msgstr "Nächster Abschnitt für alle"
+
+msgid "Workout paused for the group. You can pedal freely."
+msgstr "Das Gruppentraining ist pausiert. Du kannst frei weiterfahren."
+
+msgid "The organizer controls workout timing for everyone."
+msgstr "Die organisierende Person steuert die Trainingsabschnitte für alle."
+
+msgid "Resume workout for everyone"
+msgstr "Training für alle fortsetzen"
+
+msgid "Workout paused"
+msgstr "Training pausiert"
+
+msgid "Use Group Rides for the shared workout. Your intensity stays personal."
+msgstr "Das gemeinsame Training wird unter Gruppenfahrten gesteuert. Deine Intensität bleibt individuell."
+
+msgid "Group workout complete"
+msgstr "Gruppentraining abgeschlossen"
+
+msgid "Riding"
+msgstr "Unterwegs"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Choose a new organizer"
+msgstr "Neue Organisation auswählen"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Ride organizer"
+msgstr "Organisation der Fahrt"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Change organizer…"
+msgstr "Organisation übergeben…"
+
+#: app/scenes/group_rides_tab.gd
+msgid "%s asks you to organize the ride"
+msgstr "%s bittet dich, die Fahrt zu organisieren"
+
+msgid "Accept organizer duties"
+msgstr "Organisation übernehmen"
+
+msgid "%s asks you to stand in as organizer"
+msgstr "%s bittet dich, die Organisation zu vertreten"
+
+msgid "Stand in as organizer"
+msgstr "Organisation vertreten"
+
+msgid "Stand in as organizer if the organizer's connection is lost? After about a minute without them you would take over, so the group rides on. Accepting shares connection addresses with everyone in this group now, using your connection settings."
+msgstr "Möchtest du die Organisation vertreten, falls ihre Verbindung abbricht? Nach etwa einer Minute ohne sie würdest du übernehmen, damit die Gruppe weiterfährt. Mit deiner Zustimmung werden jetzt Verbindungsadressen innerhalb dieser Gruppe geteilt. Deine Verbindungseinstellungen gelten weiterhin."
+
+msgid "Fallback organizer"
+msgstr "Vertretung"
+
+msgid "Choose fallback organizer…"
+msgstr "Vertretung wählen…"
+
+msgid "Choose a fallback organizer"
+msgstr "Vertretung auswählen"
+
+msgid "Choose a friend who takes over if your connection is lost. They must accept."
+msgstr "Wähle eine Person, die übernimmt, wenn deine Verbindung abbricht. Sie muss zustimmen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Decline"
+msgstr "Ablehnen"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Cancel organizer change"
+msgstr "Übergabe abbrechen"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Choose a friend who is ready. They must accept before anything changes."
+msgstr "Wähle eine Person, die bereit ist. Die Übergabe beginnt erst nach ihrer Zustimmung."
+
+#: app/scenes/group_rides_tab.gd
+msgid "You choose who organizes the ride. Your recording continues when you hand over."
+msgstr "Du bestimmst, wer die Fahrt organisiert. Deine Aufzeichnung läuft bei der Übergabe weiter."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Waiting for %s to accept organizer duties."
+msgstr "Warten auf die Zustimmung von %s zur Übernahme der Organisation."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
+msgstr "Möchtest du diese Fahrt organisieren? Du steuerst das Workout und lässt neue Personen beitreten. Mit deiner Zustimmung werden Verbindungsadressen innerhalb dieser Gruppe geteilt. Deine Verbindungseinstellungen gelten weiterhin."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Connecting everyone to %s. Keep riding; your recording continues. Voice reconnects with your microphone as it was."
+msgstr "Alle werden mit %s verbunden. Fahre weiter; deine Aufzeichnung läuft weiter. Der Sprachchat verbindet sich neu, dein Mikrofon bleibt, wie es war."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Organizer"
+msgstr "Organisation"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Where will everyone ride?"
+msgstr "Wo fährt eure Gruppe?"
+
+#: app/scenes/group_rides_tab.gd
+msgid "Continue"
+msgstr "Weiter"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Create ride"
+msgstr "Fahrt erstellen"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Separate homes"
+msgstr "Jede Person zu Hause"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone uses their own home internet connection. Recommended for riding with friends online."
+msgstr "Alle nutzen ihren eigenen Internetanschluss zu Hause. Empfohlen, wenn ihr euch online zum Fahren trefft."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Same home Wi-Fi"
+msgstr "Im selben WLAN"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
+msgstr "Alle sind mit demselben WLAN oder Router verbunden. Erlaubt Verbindungen im Heimnetz, ohne die Internetadresse abzufragen."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some together, some elsewhere"
+msgstr "Einige zusammen, andere woanders"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Some friends share a Wi-Fi network; others join from another home. Allows both home-network and internet connections."
+msgstr "Einige teilen sich ein WLAN, andere fahren zu Hause an einem anderen Ort. Erlaubt Verbindungen im Heimnetz und über das Internet."
+
+#: app/ui/group_connection_dialog.gd
+msgid "More connection options"
+msgstr "Weitere Verbindungsoptionen"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
+msgstr "Hilft Personen an anderen Orten, dich zu erreichen. Fragt öffentliche Dienste nach deiner Internetadresse; Fahrtdaten und Sprache werden nicht an sie gesendet. Schalte dies nur aus, wenn du ohne die Abfrage eine Verbindung herstellen kannst."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group will ride before inviting friends."
+msgstr "Wähle vor dem Einladen, wo eure Gruppe fährt."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Organizer: %s"
+msgstr "Organisiert von %s"
+
+#: app/ui/group_connection_dialog.gd
+msgid "Choose where your group is riding. Nothing connects before you confirm."
+msgstr "Wähle, wo eure Gruppe fährt. Ohne deine Bestätigung wird keine Verbindung hergestellt."
+
+#: app/ui/group_connection_dialog.gd
+msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
+msgstr "Diese Einladung enthält Verbindungen im Heimnetz. Wähle „Im selben WLAN“ oder „Einige zusammen, andere woanders“. Für „Jede Person zu Hause“ bitte die organisierende Person um eine neue Einladung."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
+msgstr "Prüfe deine Einladung und Verbindungsauswahl und versuche es erneut. Mehr Informationen findest du unter Technische Details."
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, friends without IPv6 internet might not reach you."
+msgstr "Als organisierende Person wärst du für Freunde ohne IPv6-Internet möglicherweise nicht erreichbar."
+
+#: app/scenes/group_rides_tab.gd
+msgid "As organizer, only friends on your home network could reach you."
+msgstr "Als organisierende Person wärst du nur für Freunde in deinem Heimnetz erreichbar."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably cannot reach you: your connection looks like carrier-grade NAT or a similarly strict router. Let a friend at another home create the ride."
+msgstr "Freunde in anderen Haushalten erreichen dich wahrscheinlich nicht: Deine Verbindung sieht nach Carrier-Grade-NAT (CGNAT) oder einem ähnlich strengen Router aus. Lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends at other homes probably could not reach you as organizer: your connection looks like carrier-grade NAT or a similarly strict router."
+msgstr "Als organisierende Person wärst du für Freunde in anderen Haushalten wahrscheinlich nicht erreichbar: Deine Verbindung sieht nach Carrier-Grade-NAT (CGNAT) oder einem ähnlich strengen Router aus."
+
+#: app/scenes/group_rides_tab.gd
+msgid "Friends with IPv6 internet can reach you; others may not. If someone cannot join, let a friend at another home create the ride."
+msgstr "Freunde mit IPv6-Internet erreichen dich, andere möglicherweise nicht. Wenn jemand nicht beitreten kann, lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "How to check"
+msgstr "So prüfst du es"
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes can reach you. If nobody can join, let a friend at another home create the ride."
+msgstr "ORQWA konnte nicht feststellen, ob Freunde in anderen Haushalten dich erreichen. Wenn niemand beitreten kann, lass eine Person aus einem anderen Haushalt die Fahrt erstellen."
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not tell whether friends at other homes could reach you as organizer."
+msgstr "ORQWA konnte nicht feststellen, ob Freunde in anderen Haushalten dich als organisierende Person erreichen würden."
+msgid "Test microphone"
+msgstr "Mikrofon testen"
+
+msgid "Stop microphone test"
+msgstr "Mikrofontest beenden"
+
+msgid "Microphone level"
+msgstr "Mikrofonpegel"
+
+msgid "Test for 10 seconds on this computer only. Voice pauses, then resumes with your microphone off."
+msgstr "Teste das Mikrofon 10 Sekunden lang nur auf diesem Computer. Der Sprachchat pausiert und wird danach mit ausgeschaltetem Mikrofon fortgesetzt."
+
+msgid "Prevent speaker echo"
+msgstr "Lautsprecherecho verhindern"
+
+msgid "While a friend is speaking, your microphone stays quiet. Turn off for headphones."
+msgstr "Während jemand spricht, bleibt dein Mikrofon stumm. Für Kopfhörer ausschalten."
+
+msgid "Start a microphone test, then speak."
+msgstr "Starte einen Mikrofontest und sprich dann."
+
+msgid "Test speakers"
+msgstr "Lautsprecher testen"
+
+msgid "Stop speaker test"
+msgstr "Lautsprechertest beenden"
+
+msgid "Plays two short tones at voice volume. Your microphone stays off."
+msgstr "Spielt zwei kurze Töne in Sprachlautstärke. Dein Mikrofon bleibt aus."
+
+msgid "Voice detected"
+msgstr "Stimme erkannt"
+
+msgid "Listening for voice…"
+msgstr "Warte auf deine Stimme…"
+
+msgid "No voice detected"
+msgstr "Keine Stimme erkannt"
+
+msgid "Allow microphone access in the macOS prompt, then try the microphone again."
+msgstr "Erlaube den Mikrofonzugriff im macOS-Dialog und versuche es dann erneut."
+
+msgid "Microphone access allowed. Try the microphone again when ready."
+msgstr "Mikrofonzugriff erlaubt. Starte den Test oder aktiviere das Mikrofon erneut, wenn du bereit bist."
+
+msgid "Allow ORQWA in macOS System Settings → Privacy & Security → Microphone, then restart ORQWA."
+msgstr "Erlaube ORQWA unter macOS-Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon und starte ORQWA neu."
+
+msgid "Microphone access is restricted by macOS. Check your device's privacy policy."
+msgstr "macOS schränkt den Mikrofonzugriff ein. Prüfe die Datenschutzvorgaben deines Geräts."
+
+msgid "Run the downloaded ORQWA app to request microphone access on macOS."
+msgstr "Starte die heruntergeladene ORQWA-App, um unter macOS den Mikrofonzugriff anzufragen."

@@ -365,6 +365,8 @@ func _show_ride(index: int) -> void:
 	_title.placeholder_text = _default_name(ride)
 	_title.text = ride_name
 	_subtitle.text = UiTheme.date(start)
+	if ride.get("assisted", false):
+		_subtitle.text += " · " + tr("Assisted group ride")
 	_export_status.hide()
 	_recap.show_ride(_orqwa, path)
 	_fill_stats(ride)

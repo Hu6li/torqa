@@ -11,7 +11,7 @@ android {
     compileSdk 36
 
     defaultConfig {
-        minSdk 24
+        minSdk 29
         // Kept in release builds: btleplug's Java is reached only from Rust, which R8 cannot see.
         consumerProguardFiles 'consumer-rules.pro'
     }

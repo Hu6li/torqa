@@ -10,6 +10,7 @@ pub mod estimate;
 pub mod fitness;
 pub mod ftp_estimate;
 pub mod ghost;
+pub mod group;
 pub mod workout;
 
 use std::time::Duration;
@@ -18,7 +19,9 @@ use orqwa_domain::recording::{Location, Sample};
 use orqwa_domain::shifting::Shift;
 use orqwa_domain::telemetry::{CadenceSource, Telemetry, TrainerControl};
 use orqwa_domain::units::{GradePercent, Meters, MetersPerSecond, Percent, Rpm, Watts};
-use orqwa_physics::{DescentMode, GEARS, Motion, RiderSetup, VirtualGears, trainer_grade};
+use orqwa_physics::{
+    DescentMode, GEARS, GroupEffect, Motion, RiderSetup, VirtualGears, trainer_grade,
+};
 use orqwa_routes::{Route, RoutePosition};
 use workout::{Workout, WorkoutControl, WorkoutState};
 
@@ -78,8 +81,10 @@ pub struct Gear {
 pub struct RideState {
     /// Time since the start.
     pub elapsed: Duration,
-    /// Distance covered.
+    /// Absolute position along the course or shared flat road.
     pub distance: Meters,
+    /// Distance actually ridden since local entry; excludes a late join's starting offset.
+    pub ridden: Meters,
     /// Distance left to the finish; `None` without a route.
     pub remaining: Option<Meters>,
     /// Virtual speed.
@@ -133,7 +138,10 @@ pub struct Ride {
     workout: Option<WorkoutControl>,
     config: RideConfig,
     motion: Motion,
+    group_effect: GroupEffect,
     distance: Meters,
+    entry_distance: Meters,
+    entered: bool,
     elapsed: Duration,
     telemetry: Telemetry,
     /// Each device's latest power and cadence, which `telemetry` shows the rider's of.
@@ -177,7 +185,10 @@ impl Ride {
             workout,
             config,
             motion: Motion::default(),
+            group_effect: GroupEffect::default(),
             distance: Meters(0.0),
+            entry_distance: Meters(0.0),
+            entered: false,
             elapsed: Duration::ZERO,
             telemetry: Telemetry::default(),
             readings: Readings::default(),
@@ -250,6 +261,14 @@ impl Ride {
     /// or the workout's power should change.
     pub fn tick(&mut self, dt: Duration) -> Option<TrainerControl> {
         if self.is_finished() {
+            // A shared skip may finish between ticks; retain only the actual local endpoint.
+            if self
+                .samples
+                .last()
+                .is_some_and(|last| last.elapsed < self.elapsed)
+            {
+                self.record();
+            }
             return None;
         }
         // Samples sit on a whole-second grid, so FIT timestamps are exact.
@@ -258,11 +277,12 @@ impl Ride {
             self.next_sample += SAMPLE_INTERVAL;
         }
 
-        let grade = self.road_grade();
+        let grade = self.group_effect.grade(self.road_grade());
+        let setup = self.group_effect.setup(self.config.setup);
         let power = self.telemetry.power.unwrap_or(Watts(0.0));
         let covered = self
             .motion
-            .step(&self.config.setup, power, grade, MetersPerSecond(0.0), dt);
+            .step(&setup, power, grade, MetersPerSecond(0.0), dt);
         self.distance = Meters(self.distance.0 + covered.0);
         if let Some(route) = &self.route {
             self.distance = Meters(self.distance.0.min(route.length().0));
@@ -283,6 +303,12 @@ impl Ride {
     /// was freed of its resistance, so the last control sent no longer holds.
     pub fn resend_control(&mut self) {
         self.last_control = None;
+    }
+
+    /// Updates bounded local group assistance. Telemetry, samples and ERG targets retain the
+    /// rider's real power; normal trainer control throttling also applies to these changes.
+    pub fn set_group_effect(&mut self, effect: GroupEffect) {
+        self.group_effect = effect;
     }
 
     /// Changes trainer difficulty and descent mode during the ride (R48); the trainer gets the
@@ -365,6 +391,75 @@ impl Ride {
         }
     }
 
+    /// Enters an already running ride before the first local tick. No samples, personal time,
+    /// telemetry or speed are invented. Course position and recorded distance remain separate.
+    /// Returns false for repeated entry, invalid coordinates or a mismatched workout.
+    pub fn enter_group(&mut self, distance: Meters, workout: Option<Duration>) -> bool {
+        if self.elapsed != Duration::ZERO
+            || !self.samples.is_empty()
+            || !distance.0.is_finite()
+            || distance.0 < 0.0
+            || self.entered
+            || workout.is_some() != self.workout.is_some()
+        {
+            return false;
+        }
+        if let Some(time) = workout
+            && !self
+                .workout
+                .as_mut()
+                .is_some_and(|control| control.seek(time))
+        {
+            return false;
+        }
+        let end = self
+            .route
+            .as_ref()
+            .map_or(10_000_000.0, |route| (route.length().0 - 0.01).max(0.0));
+        self.distance = Meters(distance.0.min(end));
+        self.entry_distance = self.distance;
+        self.entered = true;
+        self.last_control = None;
+        true
+    }
+
+    /// Absolute course position at local entry, excluded from recorded distance.
+    #[must_use]
+    pub const fn entry_distance(&self) -> Meters {
+        self.entry_distance
+    }
+
+    /// Current structured-workout time, including completed plans and skipped steps.
+    #[must_use]
+    pub fn workout_elapsed(&self) -> Option<Duration> {
+        self.workout.as_ref().and_then(WorkoutControl::elapsed)
+    }
+
+    /// Follows organizer workout time without changing local elapsed time, distance, samples,
+    /// FTP or intensity. `None` returns to independent timing after leaving or losing a group.
+    /// A shared workout pause releases trainer resistance while physical riding may continue.
+    pub fn sync_group_workout(&mut self, time: Option<(Duration, bool)>) -> bool {
+        let Some(control) = &mut self.workout else {
+            return false;
+        };
+        let before = control.paused();
+        let step = control.step();
+        let previous = control.elapsed();
+        if !control.sync(time) {
+            return false;
+        }
+        if before != control.paused()
+            || step != control.step()
+            || time.is_none()
+            || time.is_some_and(|(elapsed, _)| {
+                previous.is_some_and(|old| old.abs_diff(elapsed) > Duration::from_millis(500))
+            })
+        {
+            self.last_control = None;
+        }
+        true
+    }
+
     /// Moves the rider to `distance` along the route, keeping their speed — for simulated
     /// rides (#53). The trainer gets the gradient there on the next tick.
     pub fn jump_to(&mut self, distance: Meters) {
@@ -392,6 +487,7 @@ impl Ride {
         RideState {
             elapsed: self.elapsed,
             distance: self.distance,
+            ridden: Meters((self.distance.0 - self.entry_distance.0).max(0.0)),
             remaining: self
                 .route
                 .as_ref()
@@ -454,11 +550,19 @@ impl Ride {
 
     fn control_update(&mut self) -> Option<TrainerControl> {
         // A free step of a structured workout simulates the road like a ride without one.
-        let control = if let Some(power) = self.workout.as_ref().and_then(WorkoutControl::power) {
+        let control = if self.workout.as_ref().is_some_and(WorkoutControl::paused) {
+            TrainerControl::Resistance(Percent(0.0))
+        } else if let Some(power) = self.workout.as_ref().and_then(WorkoutControl::power) {
             TrainerControl::TargetPower(power)
         } else {
-            let grade = trainer_grade(self.road_grade(), self.config.difficulty);
-            let road = self.config.setup.simulation_parameters(grade);
+            let grade = trainer_grade(
+                self.group_effect.grade(self.road_grade()),
+                self.config.difficulty,
+            );
+            let road = self
+                .group_effect
+                .setup(self.config.setup)
+                .simulation_parameters(grade);
             TrainerControl::Simulation(match self.config.gears {
                 Some(gears) => gears.in_gear(road, self.gear),
                 None => road,
@@ -491,7 +595,7 @@ impl Ride {
         self.samples.push(Sample {
             elapsed: self.elapsed,
             location,
-            distance: self.distance,
+            distance: Meters((self.distance.0 - self.entry_distance.0).max(0.0)),
             speed: self.motion.speed(),
             power: self.telemetry.power,
             cadence: self.telemetry.cadence,
@@ -528,6 +632,60 @@ mod tests {
     use orqwa_domain::units::{BeatsPerMinute, Kilograms, Rpm};
     use orqwa_domain::workout::{Cue, Intensity, Plan, Step, Target};
     use workout::{EffortTest, HeartRateHold, RampTest};
+
+    #[tokio::test]
+    async fn late_entry_sets_position_and_workout_without_inventing_recorded_riding() {
+        let route = route(&[0.0], 5000.0).await;
+        let plan = std::sync::Arc::new(Plan {
+            name: "Late entry".into(),
+            description: String::new(),
+            steps: vec![
+                Step {
+                    duration: Duration::from_secs(60),
+                    target: Target::Power {
+                        from: Intensity::Ftp(0.5),
+                        to: Intensity::Ftp(0.5),
+                    },
+                    cadence: None,
+                },
+                Step {
+                    duration: Duration::from_secs(60),
+                    target: Target::Power {
+                        from: Intensity::Ftp(0.8),
+                        to: Intensity::Ftp(0.8),
+                    },
+                    cadence: None,
+                },
+            ],
+            cues: vec![],
+        });
+        let mut ride = Ride::new(route, RideConfig::default()).with_workout(Workout::Structured {
+            plan,
+            ftp: Watts(300.0),
+        });
+        assert!(ride.enter_group(Meters(1000.0), Some(Duration::from_secs(75))));
+        assert_eq!(ride.state().distance, Meters(1000.0));
+        assert_eq!(ride.state().ridden, Meters(0.0));
+        assert_eq!(ride.state().elapsed, Duration::ZERO);
+        assert_eq!(ride.state().speed, MetersPerSecond(0.0));
+        assert_eq!(ride.samples(), []);
+        assert_eq!(
+            ride.state().workout.unwrap().target_power,
+            Some(Watts(240.0))
+        );
+        assert!(!ride.enter_group(Meters(2000.0), Some(Duration::from_secs(90))));
+        ride.on_telemetry(&Telemetry {
+            power: Some(Watts(180.0)),
+            ..Telemetry::default()
+        });
+        ride.tick(Duration::from_secs(1));
+        assert_eq!(ride.samples()[0].elapsed, Duration::ZERO);
+        assert_eq!(ride.samples()[0].distance, Meters(0.0));
+        assert_eq!(ride.samples()[0].power, Some(Watts(180.0)));
+        assert!(ride.samples()[0].location.is_some());
+        assert!(ride.state().ridden.0 < 10.0);
+        assert_eq!(ride.state().distance.0 - ride.state().ridden.0, 1000.0);
+    }
 
     use super::*;
 
@@ -567,6 +725,47 @@ mod tests {
         (0..seconds * 4)
             .filter_map(|_| ride.tick(Duration::from_millis(250)))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn group_assistance_changes_motion_and_simulation_but_keeps_power_and_erg_real() {
+        let route = route(&[0.0], 10_000.0).await;
+        let config = RideConfig {
+            difficulty: Percent(100.0),
+            ..RideConfig::default()
+        };
+        let mut solo = Ride::new(route.clone(), config);
+        let mut group = Ride::new(route.clone(), config);
+        group.set_group_effect(GroupEffect::new(0.7, GradePercent(-2.0)));
+        let solo_controls = pedal(&mut solo, 200.0, 60);
+        let group_controls = pedal(&mut group, 200.0, 60);
+        assert!(group.state().distance.0 > solo.state().distance.0);
+        let TrainerControl::Simulation(normal) = solo_controls[0] else {
+            panic!("solo slope control");
+        };
+        let TrainerControl::Simulation(assisted) = group_controls[0] else {
+            panic!("group slope control");
+        };
+        assert!((assisted.cw.0 - normal.cw.0 * 0.7).abs() < 1e-9);
+        assert_eq!(assisted.grade, GradePercent(-2.0));
+        assert!(
+            group
+                .samples()
+                .iter()
+                .all(|s| s.power == Some(Watts(200.0)))
+        );
+        let mut erg = Ride::new(route, config).with_workout(Workout::ConstantPower(Watts(240.0)));
+        erg.set_group_effect(GroupEffect::new(0.65, GradePercent(-2.0)));
+        let controls = pedal(&mut erg, 180.0, 10);
+        assert!(
+            controls
+                .iter()
+                .all(|c| *c == TrainerControl::TargetPower(Watts(240.0)))
+        );
+        assert!(erg.samples().iter().all(|s| s.power == Some(Watts(180.0))));
+        group.set_group_effect(GroupEffect::default());
+        let controls = pedal(&mut group, 200.0, 2);
+        assert!(controls.iter().any(|c| matches!(c, TrainerControl::Simulation(p) if p.grade==GradePercent(0.0) && (p.cw.0-normal.cw.0).abs()<1e-9)));
     }
 
     fn grade_of(control: &TrainerControl) -> f64 {
@@ -707,6 +906,54 @@ mod tests {
         assert!(ride.skip_step() && ride.skip_step());
         assert!(ride.is_finished());
         assert!(!ride.skip_step(), "nothing left to skip");
+    }
+
+    #[test]
+    fn shared_workout_time_preserves_own_intensity_recording_and_safe_trainer_control() {
+        let mut ride = Ride::workout(
+            Workout::Structured {
+                plan: plan(),
+                ftp: Watts(300.0),
+            },
+            RideConfig::default(),
+        );
+        assert_eq!(ride.step_intensity(2), Some(Percent(110.0)));
+        assert!(ride.sync_group_workout(Some((Duration::from_secs(10), true))));
+        let controls = pedal(&mut ride, 180.0, 5);
+        assert_eq!(controls[0], TrainerControl::Resistance(Percent(0.0)));
+        assert_eq!(ride.workout_elapsed(), Some(Duration::from_secs(10)));
+        assert_eq!(ride.state().elapsed, Duration::from_secs(5));
+        assert!(
+            !ride.skip_step(),
+            "shared step changes require organizer authority"
+        );
+        assert!(
+            ride.samples()
+                .iter()
+                .all(|sample| sample.power == Some(Watts(180.0)))
+        );
+        ride.sync_group_workout(Some((Duration::from_secs(70), false)));
+        let resumed = ride.tick(Duration::from_millis(10));
+        assert_eq!(resumed, Some(TrainerControl::TargetPower(Watts(132.0))));
+        assert_eq!(ride.state().workout.unwrap().intensity, Percent(110.0));
+        assert_eq!(ride.workout_elapsed(), Some(Duration::from_secs(70)));
+        ride.sync_group_workout(None);
+        ride.tick(Duration::from_secs(1));
+        assert_eq!(ride.workout_elapsed(), Some(Duration::from_secs(71)));
+        assert!(
+            !ride.sync_group_workout(None),
+            "repeated independent snapshots must not reset trainer throttling"
+        );
+        let recorded = ride.state().elapsed;
+        ride.sync_group_workout(Some((plan().duration(), false)));
+        assert!(ride.is_finished());
+        assert_eq!(ride.tick(Duration::from_secs(1)), None);
+        assert_eq!(ride.samples().last().unwrap().elapsed, recorded);
+        assert_eq!(
+            ride.state().elapsed,
+            recorded,
+            "skipping the final step adds no riding time"
+        );
     }
 
     #[test]

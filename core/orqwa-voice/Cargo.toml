@@ -1,0 +1,19 @@
+[package]
+name = "orqwa-voice"
+description = "Local voice capture, bounded Opus speech and playback for ORQWA group rides"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cpal.workspace = true
+opusic-c.workspace = true
+orqwa-domain.workspace = true
+orqwa-net.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[lints]
+workspace = true

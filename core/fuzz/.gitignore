@@ -1,0 +1,5 @@
+# Written by scripts/fuzz.sh and libFuzzer; seeds are regenerated from the crates' tests.
+/target/
+/corpus/
+/artifacts/
+/coverage/

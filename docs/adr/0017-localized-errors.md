@@ -33,3 +33,16 @@ translated summary: it usually says what to do next (wait, tick the scope box, c
   must never be reinterpreted as formatting instructions.
 - Gettext contexts distinguish the ride action from the ride settings tab. The individually
   reviewed German wording lives directly in the catalogue, with completeness checks.
+
+## Amendment 2026-10-29: asynchronous group and native Android failures
+
+Group transfer, preparation and voice errors now carry classified failures through ordinary
+application events, rather than a second raw-message dialog. Each occurrence has a local
+monotonic revision so repeated status snapshots do not resurrect dismissed errors; a new
+occurrence of the same cause still appears. Activity retry state is independent of the latest
+voice/admission failure. The existing bounded session history and translated summaries apply.
+
+Native voice errors retain their operation and CPAL cause, including worker-start failures,
+timeouts and caught device-factory panics. Callback diagnostics hold at most one cause and
+never microphone samples. Android package-installer errors also enter the existing update
+failure path. The shared Dismiss control updates when the interface language changes.

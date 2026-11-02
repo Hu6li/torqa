@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["orqwa-domain", "orqwa-terrain", "orqwa-video", "orqwa-osm", "orqwa-routes", "orqwa-physics", "orqwa-devices", "orqwa-storage", "orqwa-workouts", "orqwa-session", "orqwa-world", "orqwa-upload", "orqwa-remote", "orqwa-update", "orqwa-app", "orqwa-gd", "orqwa-cli"]
+members = ["orqwa-domain", "orqwa-terrain", "orqwa-video", "orqwa-osm", "orqwa-routes", "orqwa-physics", "orqwa-devices", "orqwa-storage", "orqwa-workouts", "orqwa-session", "orqwa-world", "orqwa-upload", "orqwa-remote", "orqwa-update", "orqwa-app", "orqwa-gd", "orqwa-cli", "orqwa-net", "orqwa-voice"]
 
 [workspace.package]
 version = "0.5.4"
@@ -12,6 +12,7 @@ publish = false
 [workspace.dependencies]
 orqwa-app = { path = "orqwa-app" }
 orqwa-domain = { path = "orqwa-domain" }
+orqwa-net = { path = "orqwa-net" }
 orqwa-osm = { path = "orqwa-osm" }
 orqwa-devices = { path = "orqwa-devices" }
 orqwa-physics = { path = "orqwa-physics" }
@@ -25,9 +26,13 @@ orqwa-remote = { path = "orqwa-remote" }
 orqwa-video = { path = "orqwa-video" }
 orqwa-workouts = { path = "orqwa-workouts" }
 orqwa-world = { path = "orqwa-world" }
+orqwa-voice = { path = "orqwa-voice" }
 anyhow = "1.0.104"
+base64 = "0.23.1"
 btleplug = "0.13.5"
 clap = { version = "4.6.7", features = ["derive"] }
+cpal = { version = "0.18.2", default-features = false }
+opusic-c = "1.6.1"
 # FFmpeg's libraries come prebuilt by scripts/build-ffmpeg.sh (a pinned release, verified),
 # found through FFMPEG_DIR and linked statically (ADR 0010).
 ffmpeg-next = { version = "9.0.0", default-features = false, features = ["codec", "format", "software-scaling", "static"] }
@@ -40,6 +45,11 @@ futures = "0.3.34"
 geo-types = "0.7.20"
 image-webp = "0.2.4"
 mvt-reader = "2.5.0"
+netdev = "0.47.0"
+# Already used by CPAL; its embedded Android host needs the app's VM/context initialized.
+ndk-context = "0.1.1"
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "aws_lc_rs"] }
 png = "0.18.1"
 # Protocol Buffers for OpenStreetMap's PBF files; already in use under mvt-reader.
 prost = "0.14.4"
@@ -48,6 +58,7 @@ quick-xml = "0.42.0"
 # orqwa-video turns it on for x86_64, whose assembly the package has (ADR 0010).
 rav1d = { version = "1.1.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
 reqwest = "0.13.5"
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std"] }
 # SQLite compiled in: no system library to find on any platform (ADR 0002, R79).
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rustyfit = "0.10.3"

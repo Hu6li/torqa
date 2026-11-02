@@ -9,6 +9,7 @@ pub mod shifting;
 pub mod telemetry;
 pub mod units;
 pub mod upload;
+pub mod voice;
 pub mod workout;
 
 /// Human-readable application name.

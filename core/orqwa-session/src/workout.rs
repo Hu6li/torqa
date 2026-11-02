@@ -318,6 +318,8 @@ pub struct WorkoutState {
     pub progress: Option<Progress>,
     /// The share of its powers the workout asks for, 100 % as planned.
     pub intensity: Percent,
+    /// The organizer paused the workout clock; personal safety pause is separate.
+    pub paused: bool,
 }
 
 /// Where a structured workout stands.
@@ -371,6 +373,8 @@ pub(crate) struct WorkoutControl {
     gave_way: bool,
     /// The share of the planned powers asked for, in percent.
     intensity: f64,
+    shared: bool,
+    paused: bool,
 }
 
 impl WorkoutControl {
@@ -390,6 +394,8 @@ impl WorkoutControl {
             failing_for: Duration::ZERO,
             gave_way: false,
             intensity: 100.0,
+            shared: false,
+            paused: false,
         }
     }
 
@@ -420,6 +426,9 @@ impl WorkoutControl {
 
     /// The power for the trainer now; `None` lets it simulate the road.
     pub(crate) fn power(&self) -> Option<Watts> {
+        if self.paused {
+            return None;
+        }
         match &self.workout {
             Workout::Structured { plan, ftp } => plan
                 .at(self.elapsed, *ftp)?
@@ -456,6 +465,9 @@ impl WorkoutControl {
     /// last step the workout is finished. Whether a step was skipped: an FTP test takes the
     /// FTP from the times of its steps, so it cannot skip any.
     pub(crate) fn skip_step(&mut self) -> bool {
+        if self.shared {
+            return false;
+        }
         let Workout::Structured { plan, ftp } = &self.workout else {
             return false;
         };
@@ -463,6 +475,46 @@ impl WorkoutControl {
             return false;
         };
         self.elapsed += at.left;
+        true
+    }
+
+    pub(crate) const fn paused(&self) -> bool {
+        self.paused
+    }
+
+    pub(crate) fn step(&self) -> Option<usize> {
+        match &self.workout {
+            Workout::Structured { plan, ftp } => plan.at(self.elapsed, *ftp).map(|at| at.step),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn sync(&mut self, time: Option<(Duration, bool)>) -> bool {
+        if !matches!(self.workout, Workout::Structured { .. }) {
+            return false;
+        }
+        if time.is_none() && !self.shared {
+            return false;
+        }
+        self.shared = time.is_some();
+        if let Some((elapsed, paused)) = time {
+            self.seek(elapsed);
+            self.paused = paused;
+        } else {
+            self.paused = false;
+        }
+        true
+    }
+
+    pub(crate) fn elapsed(&self) -> Option<Duration> {
+        matches!(self.workout, Workout::Structured { .. }).then_some(self.elapsed)
+    }
+
+    pub(crate) fn seek(&mut self, time: Duration) -> bool {
+        let Workout::Structured { plan, .. } = &self.workout else {
+            return false;
+        };
+        self.elapsed = time.min(plan.duration());
         true
     }
 
@@ -501,6 +553,7 @@ impl WorkoutControl {
                 _ => None,
             },
             intensity: Percent(self.intensity),
+            paused: self.paused,
         }
     }
 
@@ -564,6 +617,9 @@ impl WorkoutControl {
 
     /// Advances by `dt` with the latest measurements.
     pub(crate) fn update(&mut self, telemetry: &Telemetry, dt: Duration) {
+        if self.shared {
+            return;
+        }
         self.elapsed += dt;
         if let Workout::RampTest(test) = &self.workout {
             // Only the steps count: a slow start in the warm-up is no failure.

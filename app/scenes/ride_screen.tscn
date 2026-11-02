@@ -28,24 +28,31 @@ layout_mode = 2
 theme_override_constants/separation = 12
 script = ExtResource("4_hud")
 
-[node name="RightColumn" type="VBoxContainer" parent="."]
+[node name="RightColumnScroll" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = -324.0
 offset_top = 24.0
 offset_right = -24.0
-offset_bottom = 480.0
+offset_bottom = -86.0
 grow_horizontal = 0
+horizontal_scroll_mode = 0
+
+[node name="RightColumn" type="VBoxContainer" parent="RightColumnScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="MapPanel" type="Panel" parent="RightColumn"]
+[node name="MapPanel" type="Panel" parent="RightColumnScroll/RightColumn"]
 clip_children = 2
-custom_minimum_size = Vector2(300, 300)
+custom_minimum_size = Vector2(0, 300)
 layout_mode = 2
 
-[node name="Minimap" type="Control" parent="RightColumn/MapPanel"]
+[node name="Minimap" type="Control" parent="RightColumnScroll/RightColumn/MapPanel"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -55,17 +62,17 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_minimap")
 
-[node name="ProfilePanel" type="PanelContainer" parent="RightColumn"]
+[node name="ProfilePanel" type="PanelContainer" parent="RightColumnScroll/RightColumn"]
 layout_mode = 2
 
-[node name="Rows" type="VBoxContainer" parent="RightColumn/ProfilePanel"]
+[node name="Rows" type="VBoxContainer" parent="RightColumnScroll/RightColumn/ProfilePanel"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Header" type="HBoxContainer" parent="RightColumn/ProfilePanel/Rows"]
+[node name="Header" type="HBoxContainer" parent="RightColumnScroll/RightColumn/ProfilePanel/Rows"]
 layout_mode = 2
 
-[node name="Caption" type="Label" parent="RightColumn/ProfilePanel/Rows/Header"]
+[node name="Caption" type="Label" parent="RightColumnScroll/RightColumn/ProfilePanel/Rows/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.64, 0.68, 0.74, 1)
@@ -73,13 +80,13 @@ theme_override_font_sizes/font_size = 11
 text = "Elevation"
 uppercase = true
 
-[node name="ProfileInfo" type="Label" parent="RightColumn/ProfilePanel/Rows/Header"]
+[node name="ProfileInfo" type="Label" parent="RightColumnScroll/RightColumn/ProfilePanel/Rows/Header"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 2
 
-[node name="Profile" type="Control" parent="RightColumn/ProfilePanel/Rows"]
+[node name="Profile" type="Control" parent="RightColumnScroll/RightColumn/ProfilePanel/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 86)
 layout_mode = 2

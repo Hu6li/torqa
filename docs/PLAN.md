@@ -26,6 +26,10 @@ core/                      Rust workspace (tokio + tracing)
   orqwa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
   orqwa-upload/            uploads to training platforms (intervals.icu, Strava) behind
                            ActivityUploader, the OAuth login in the browser
+  orqwa-net/               (Phase 13) bounded group networking, invite codes, discovery,
+                           pinned QUIC connections and the lobby (ADR 0035)
+  orqwa-voice/             local microphone/playback behind VoiceAudio, bounded Opus speech
+                           and mixing for group rides (ADR 0036)
   orqwa-remote/            the remote for a phone or tablet: a page on the local network,
                            a ShiftInput
                            (ADR 0019)
@@ -838,6 +842,8 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   the core's log in Android's log; picked files copied from `content://` addresses
 - [x] B — an `android` CI job beside the others, building the APK on every pull request (its
   own image cached in GHCR like the dev image); on releases only with D
+- [x] Align native compiler/bindgen, plugin and APK minimum on Android 10 (API 29), including
+  the AAudio library required by group voice
 - [x] C — fitting Android, tried on the Tab S7 on 2026-10-20:
   - [x] profiles, rides and courses in the app's `files` folder, not the cache Android may clear
   - [x] saving to places picked in Android's save dialog (ride export), as opening already does
@@ -864,6 +870,111 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   - [ ] tried on the Tab S7: the move, and rides and courses synced both ways with a computer
   - [x] synced course videos on Android 16: **Allow videos** asks for Photos and videos (R149)
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
+
+### Phase 13 — Group rides (R159–R169, [ADR 0035](adr/0035-group-rides.md))
+
+Application-owned replacements for the unmerged #241/#243/#246/#247 stack, based on current
+main. Each step has its own PR and preserves the security limits in ADR 0035.
+
+- [x] Protocol foundation: bounded binary invite/reply payloads with ride/certificate/course
+  binding, destination policy, a connection admission budget, validated state datagrams and a
+  fixed-size, rate-limited latest-state mailbox; no socket or CLI integration in this step
+- [x] Discovery: bounded text codes, cryptographic STUN transactions, selected-interface candidates and
+  `orqwa-cli net-check`; usage/firewall documentation with the first network command
+- [ ] Optional router mappings, deferred: separately reviewed library selection, opt-in
+  short-lived leases and bounded cleanup; no mappings are created by the initial network stack
+- [x] Transport: per-ride pinned QUIC, reply/credential binding and replay protection, bounded
+  handshakes before TLS, finite probing, one connection deadline, owner-drop cleanup and
+  `orqwa-cli net-ping`
+- [x] Lobby and CLI ride: bounded membership/control events, coalesced and rate-limited
+  validated state, countdown, dropouts and `orqwa-cli ride-together` with fake trainers
+- [x] CLI voice (R162–R163, [ADR 0036](adr/0036-group-voice.md)): opt-in, microphone muted
+  initially, bounded Opus over existing encrypted host links, device selection, mute/deafen,
+  per-speaker mute, volume and hardware-free conversation/security tests
+- [x] Activity/content foundation (R164–R165, [ADR 0037](adr/0037-group-ride-activities.md)):
+  bounded content identities and selection revisions, generation-bound readiness, normalized
+  workout wire data preserving absolute watts/FTP shares, bounded authenticated-stream
+  transfer helpers, validated atomic publication and a pre-extraction course validator;
+  existing lobby actors and CLI remain unchanged in this step
+- [x] Course-independent lobby admission and versioned activity/readiness controls; integrate
+  current-selection content serving into the bounded lobby actors and update CLI callers
+- [x] Session/app integration: interpolated remote riders beside ghosts, map/profile markers
+  and gaps; remote telemetry never substitutes for local measurements or supplies trainer commands
+- [x] Group Rides tab, third after Workouts, and in-ride panel: private-code admission, activity selection,
+  automatic retained downloads, byte progress/retry, local preparation, trainer readiness,
+  common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
+- [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
+  previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
+  - [x] Retired voice workers cannot revoke a replacement's consent or microphone on delayed
+    cleanup; device replacements await bounded native-stream release (#428, #441).
+  - [x] Rebuild invalidated native voice streams after Bluetooth sample-rate changes, retaining
+    local controls with a finite recovery budget; harmless route notifications keep playing (#413).
+  - [x] Explicit ten-second local microphone meter, automatic capture cleanup and muted voice
+    restoration; optional full-duplex headphone mode beside default speaker echo prevention
+    (R177, #414, #429).
+  - [x] Voice activity indicator and retained microphone-check result, plus an output-only
+    two-tone speaker check using the selected device and voice volume (R178).
+  - [x] Linux audio defaults accept unknown ALSA route direction and prefer available desktop
+    sound-server bridges; keep explicit device choices and hide the silent null route (#456).
+  - [x] macOS microphone actions explicitly request Apple's authorization, with signed audio-input
+    entitlement, permission recovery guidance and artifact privacy checks.
+  - [x] Preserve background lobby/voice reader failures in terminal logs and Technical details,
+    distinguish partial-control timeouts and remove disconnected remote riders from ended rosters.
+  - [x] Reproduce and fix microphone sequence rejection after packet delay/loss (#428): keep
+    one timing anchor per microphone activation and preserve actual transport-close errors.
+  - [x] Recover from voice/state arrival bursts without disconnecting the group (R179, #428),
+    separate delivery quotas from persistent raw abuse, pace live capture without catch-up
+    and recover current speech after an initially delayed packet, slower capture or a stalled
+    listener evicting jitter history.
+  - [x] Clean, continuous voice between computers (R189): playback paced by each speaker,
+    every fresh capture sent, pulled jitter buffers with Opus in-band recovery, band-limited
+    resampling, level-keeping soft mixing and an echo gate that reacts only to speech.
+- [x] Android group runtime: atomic publication on shared storage without hard links,
+  embedded AAudio context initialization, and classified group/voice diagnostics through the
+  application's translated Technical details / Dismiss history
+- [ ] QR sharing using existing support
+- [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
+  individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
+- [x] Late joining (R167): independent preparation, explicit entry near the host at the current
+  workout step, separate course position and recorded distance, no records for skipped sections
+- [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
+  personal intensity and local safety pause with current-step resume
+- [x] Planned host handover (R168): successor consent, pinned replacement links, authority
+  epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
+- [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups
+  during create/join, inspect invitations offline, and confirm before discovery or connections
+- [x] Connection reliability: hosts refresh their advertised STUN mapping while waiting for the
+  first rider, IPv6 candidates first, the host's lobby handshake keeps the admission deadline,
+  and state arriving shortly before the host's start no longer drops a rider; the usage guides
+  say a host must not be behind carrier-grade NAT and how to check
+- [x] Joiner certificates (R175): replies name a per-ride client certificate proved by TLS
+  instead of carrying a bearer secret, so a copied reply admits nobody else; handover
+  replacement links use the same binding
+- [x] Reachability hint (R176): hosts, and riders offered organizer duties, are told when their own
+  discovery suggests friends at other homes probably cannot connect, with a link to the guide
+- [x] Fuzzing: libFuzzer targets for every decoder of peer or pasted input, with round-trip
+  properties, regenerated seeds and a 30-second-per-target CI job
+- [x] The in-ride group panel opens from a Group Rides icon in the control bar (R180, #431)
+- [x] A rider offered organizer duties answers the request over the ride (R181, #424)
+- [x] Riders' power and W/kg beside their names, and their own avatars, from weight and avatar
+  in the roster (R183, #422, #423)
+- [x] Every rider's preparation stage and percentage in the participant list, a spinner and the
+  world-building progress on one's own page (R184, #419, #420)
+- [x] A rider who has the selected course, under any name, rides their own copy without
+  downloading it; organizers share their own copy, renamed or not (R185, #435)
+- [x] A rider whose connection is lost keeps their seat for five minutes and reconnects by
+  themselves, without new codes (R186, #434)
+- [x] A fallback organizer stands by while riding and takes over if the organizer is lost; the
+  next one is chosen at once, and the old organizer rejoins as a rider (R187, #426)
+- [x] Voice restarts (reconnect, takeover, handover, device change) keep the microphone as it
+  was (R188)
+- [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
+  given up or the organizer restarted (follow-up to #434)
+- [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
+- [ ] Manual acceptance across two home networks and on native trainers; document networks
+  that cannot connect without a relay without weakening the resource or trust limits
+- **Exit:** riders behind separate routers join deliberately, ride together and continue alone
+  after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
 ### The name ORQWA (R102, [ADR 0026](adr/0026-the-name-orqwa.md))
 "Torqa" is taken by another registered app; the project becomes ORQWA (orca, torque and watt).

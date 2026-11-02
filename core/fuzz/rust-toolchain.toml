@@ -1,0 +1,5 @@
+# libFuzzer's sanitizer coverage needs nightly. Keep this date equal to RUST_FUZZ_TOOLCHAIN in
+# .devcontainer/Dockerfile, which installs it.
+[toolchain]
+channel = "nightly-2026-10-31"
+profile = "minimal"

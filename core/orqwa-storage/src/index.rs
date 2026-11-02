@@ -237,6 +237,7 @@ mod tests {
             ftp_estimate: None,
             rider_mass: None,
             simulated: false,
+            assisted: false,
             analysis: None,
             uploads: BTreeMap::new(),
         }

@@ -7,6 +7,32 @@ The app's settings show these credits and every licence notice of the software b
 on their About tab (R83, ADR 0018): ORQWA's GPL, the Godot engine and its components, FFmpeg's
 libraries (LGPL 2.1 or later) and every Rust crate, from `core/orqwa-app/notices/`.
 
+## Group networking
+
+Group networking in the app and CLI uses [rustls](https://github.com/rustls/rustls)
+(Apache-2.0 OR ISC OR MIT), [base64](https://github.com/marshallpierce/rust-base64)
+(MIT OR Apache-2.0), [netdev](https://github.com/shellrow/netdev) (MIT),
+[Quinn](https://github.com/quinn-rs/quinn) (MIT OR Apache-2.0) and
+[rcgen](https://github.com/rustls/rcgen) (MIT OR Apache-2.0), beside the
+workspace's existing Tokio and domain types. The STUN codec is original code based on
+[RFC 8489](https://www.rfc-editor.org/rfc/rfc8489.html); interoperability tests use the
+published test-vector data in [RFC 5769](https://www.rfc-editor.org/rfc/rfc5769.html).
+No third-party STUN implementation code is copied.
+
+The decoders that read peers' input are fuzzed with [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)
+(MIT OR Apache-2.0) and [libfuzzer-sys](https://github.com/rust-fuzz/libfuzzer) (MIT OR Apache-2.0,
+with LLVM's libFuzzer under the NCSA licence). Neither is part of the app or CLI.
+
+Group voice uses [CPAL](https://github.com/RustAudio/cpal) 0.18.2 (Apache-2.0) for native
+capture/playback and [opusic-c](https://github.com/DoumanAsh/opusic-c) 1.6.1 (BSD-3-Clause),
+through opusic-sys 0.7.6, for bundled [Opus](https://opus-codec.org/) 1.6.1 speech (BSD-3-Clause).
+Opus's copyright and redistribution conditions are preserved in
+`core/orqwa-voice/notices/opus.txt`. CLI archives carry `VOICE-LICENSES.txt`, generated from
+the complete CLI dependency graph plus that bundled-C notice by `scripts/notices.sh`.
+The graphical app now uses the same voice implementation; its About notices include the
+native audio dependencies and the bundled Opus copyright/licence notice too.
+No speech recording or third-party voice service is used.
+
 ## Models
 
 The East Asian house and castle archetypes for Asian rides, Nordic painted-timber houses and

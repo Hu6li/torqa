@@ -97,6 +97,7 @@ pub fn write(args: &SampleRidesArgs) -> Result<()> {
                 ftp_estimate: None,
                 rider_mass: Some(profile.rider_mass),
                 simulated: false,
+                assisted: false,
                 analysis: Some(analyse(&samples)),
                 uploads: std::collections::BTreeMap::new(),
             };

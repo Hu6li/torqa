@@ -15,6 +15,7 @@ var _name: String = ""
 var _title: EditableTitle = EditableTitle.new(tr("Rename the ride"))
 var _stats: ReflowGrid = ReflowGrid.new()
 var _power_records: PowerRecordBadges = PowerRecordBadges.new()
+var _assisted: Label = Label.new()
 var _recap: RideRecap = RideRecap.new()
 var _confirm_discard: ConfirmationDialog = ConfirmationDialog.new()
 
@@ -31,6 +32,11 @@ func _ready() -> void:
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 24)
 	rows.add_child(_title)
+	_assisted.text = tr("Assisted group ride · speed records excluded")
+	_assisted.add_theme_color_override("font_color", UiTheme.MUTED)
+	_assisted.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_assisted.custom_minimum_size.x = 480
+	rows.add_child(_assisted)
 	_title.edit_finished.connect(_rename)
 	rows.add_child(_recap)
 	_stats.max_columns = 3
@@ -75,8 +81,12 @@ func _show_ride(ride: Dictionary) -> void:
 	_recap.show_ride(_orqwa, _path)
 	_fill_stats(ride)
 	_power_records.show_ride(ride)
+	_assisted.visible = ride.get("assisted", false)
 	var height: int = 420 if _power_records.visible else 340
-	UiScale.popup(self, Vector2i(640, height + (40 if _recap.visible else 0)))
+	UiScale.popup(
+		self,
+		Vector2i(640, height + (40 if _recap.visible else 0) + (40 if _assisted.visible else 0))
+	)
 	get_ok_button().grab_focus()
 
 

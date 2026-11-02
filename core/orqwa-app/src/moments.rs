@@ -620,6 +620,7 @@ mod tests {
                 all_out: false,
             }),
             intensity: orqwa_domain::units::Percent(100.0),
+            paused: false,
         }
     }
 
@@ -717,6 +718,7 @@ mod tests {
             ftp_estimate: None,
             rider_mass: None,
             simulated: false,
+            assisted: false,
             analysis: None,
             uploads: std::collections::BTreeMap::new(),
         }

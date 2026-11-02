@@ -56,7 +56,9 @@ func show_state(workout: Variant, heart_rate: Variant) -> float:
 		return 0.0
 	var info: Dictionary = workout
 	var progress: Dictionary = info["progress"] if info["progress"] != null else {}
-	if info["target_power_w"] == null:
+	if info.get("paused", false):
+		_target.text = tr("Workout paused")
+	elif info["target_power_w"] == null:
 		# An FTP test's efforts are free steps too (#125), but meant all out.
 		_target.text = tr("All out") if progress.get("all_out", false) else tr("Free ride")
 	else:

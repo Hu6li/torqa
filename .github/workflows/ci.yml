@@ -112,6 +112,55 @@ jobs:
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" core/target app/.godot ~/.cargo/registry
 
+  fuzz:
+    name: Fuzz untrusted decoders (dev container)
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            core/target
+            core/fuzz/target
+          key: fuzz-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-${{ hashFiles('core/Cargo.lock', 'core/fuzz/Cargo.lock') }}
+          restore-keys: |
+            fuzz-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-
+      - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
+          docker pull "$IMAGE" || docker build -f .devcontainer/Dockerfile -t "$IMAGE" .
+      # Thirty seconds per target catches shallow regressions on every change; the seeds start
+      # each target from valid encodings, so even short runs reach deep into the formats.
+      - name: Fuzz each target for thirty seconds
+        run: |
+          mkdir -p ~/.cargo/registry core/target core/fuzz/target
+          docker run --rm \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$PWD:/workspaces/orqwa" \
+            -v "$HOME/.cargo/registry:/usr/local/cargo/registry" \
+            -w /workspaces/orqwa \
+            "$IMAGE" scripts/fuzz.sh 30
+      - name: Keep the inputs that failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: core/fuzz/artifacts
+          if-no-files-found: ignore
+      - name: Hand the build directories back to the runner's user
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" core/target core/fuzz ~/.cargo/registry
+
   macos:
     name: macOS app (arm64)
     # Docker on macOS has no Bluetooth/Metal, so macOS builds happen natively on the runner.
@@ -126,13 +175,22 @@ jobs:
         run: |
           rustc --edition=2024 --test -D warnings core/orqwa-app/src/media/commands.rs -o "$RUNNER_TEMP/music-tests"
           "$RUNNER_TEMP/music-tests"
+      - name: Check native microphone authorization bridge
+        run: xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -fsyntax-only core/orqwa-gd/src/microphone_permission.m
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
       # FFmpeg's assembly needs nasm.
       - name: Install FFmpeg build tools
-        run: brew install nasm
+        run: brew install nasm cmake
       # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
+      - name: Test native group voice controls and disconnect diagnostics
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
+      - name: Test native voice jitter validation
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
+      - name: Test native voice pacing and simulated conversations
+        # Each conversation already stresses up to eight riders and owns real-time audio threads.
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked -- --test-threads=1
       - id: ffmpeg
         uses: actions/cache@v6
         with:
@@ -149,7 +207,8 @@ jobs:
           cargo build --manifest-path core/Cargo.toml -p orqwa-cli --release --locked
           mkdir -p dist
           # Artifacts drop the executable bit; a tarball keeps it.
-          tar -czf dist/orqwa-cli-macos-arm64.tar.gz -C core/target/release orqwa-cli
+          cp core/orqwa-cli/notices/VOICE-LICENSES.txt core/target/release/
+          tar -czf dist/orqwa-cli-macos-arm64.tar.gz -C core/target/release orqwa-cli VOICE-LICENSES.txt
       - name: Install Godot and export templates
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
@@ -169,6 +228,10 @@ jobs:
           test -d app/.godot
           "$godot" --headless --path app --export-release "macOS" "$PWD/dist/ORQWA-macos-arm64.zip"
           test -s dist/ORQWA-macos-arm64.zip
+      - name: Check exported microphone privacy metadata
+        run: |
+          ditto -x -k dist/ORQWA-macos-arm64.zip "$RUNNER_TEMP/macos-privacy"
+          python3 scripts/release/macos_privacy.py "$RUNNER_TEMP/macos-privacy/ORQWA.app"
       # Both files are archives already; upload them as-is instead of zipping them again.
       - uses: actions/upload-artifact@v7
         with:
@@ -230,6 +293,13 @@ jobs:
             ForEach-Object { "$($_.Name)=$($_.Value)" } >> $env:GITHUB_ENV
           Get-Command cl, link, make, sh, awk, nasm | Format-Table Name, Source -AutoSize
       # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
+      - name: Test native group voice controls and disconnect diagnostics
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib lobby::tests
+      - name: Test native voice jitter validation
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-net --locked --lib voice::tests
+      - name: Test native voice pacing and simulated conversations
+        # Each conversation already stresses up to eight riders and owns real-time audio threads.
+        run: cargo test --manifest-path core/Cargo.toml -p orqwa-voice --locked -- --test-threads=1
       - id: ffmpeg
         uses: actions/cache@v6
         with:
@@ -248,7 +318,7 @@ jobs:
           cargo build --manifest-path core/Cargo.toml -p orqwa-cli --release --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive core/target/release/orqwa-cli.exe dist/orqwa-cli-windows-x86_64.zip
+          Compress-Archive -Path core/target/release/orqwa-cli.exe,core/orqwa-cli/notices/VOICE-LICENSES.txt -DestinationPath dist/orqwa-cli-windows-x86_64.zip
       - name: Install Godot and export templates
         run: |
           $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
@@ -375,7 +445,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libdbus-1-dev pkg-config libclang-dev nasm libfontconfig1
+            libdbus-1-dev pkg-config libclang-dev nasm libfontconfig1 libasound2-dev cmake
       # FFmpeg's libraries, built once per release and platform (ADR 0010) and cached.
       - id: ffmpeg
         uses: actions/cache@v6
@@ -393,7 +463,8 @@ jobs:
           cargo build --manifest-path core/Cargo.toml -p orqwa-cli --release --locked
           mkdir -p dist
           # Artifacts drop the executable bit; a tarball keeps it.
-          tar -czf "dist/orqwa-cli-linux-${{ matrix.arch }}.tar.gz" -C core/target/release orqwa-cli
+          cp core/orqwa-cli/notices/VOICE-LICENSES.txt core/target/release/
+          tar -czf "dist/orqwa-cli-linux-${{ matrix.arch }}.tar.gz" -C core/target/release orqwa-cli VOICE-LICENSES.txt
       - name: Install Godot and export templates
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
