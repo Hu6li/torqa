@@ -26,11 +26,14 @@ var _reach: VBoxContainer = VBoxContainer.new()
 var _reach_text: Label = Label.new()
 var _roster: VBoxContainer = VBoxContainer.new()
 var _next: Label = Label.new()
+## Turns while ORQWA connects, receives or prepares the ride and the rider can only wait (#420).
+var _working: Spinner = Spinner.new(18.0)
 var _ready_button: Button = Button.new()
 var _start: Button = Button.new()
 var _enter: Button = Button.new()
 var _devices: Button
 var _retry: Button
+var _reconnect: Button
 var _voice_controls: GroupVoiceControls = GroupVoiceControls.new()
 var _voice_panel: VBoxContainer = VBoxContainer.new()
 var _invitation_panel: PanelContainer
@@ -210,7 +213,13 @@ func _build_roster() -> void:
 	card.add_child(HSeparator.new())
 	_next.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_next.add_theme_color_override("font_color", UiTheme.MUTED)
-	card.add_child(_next)
+	_next.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var next_row: HBoxContainer = HBoxContainer.new()
+	next_row.add_theme_constant_override("separation", 10)
+	_working.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	next_row.add_child(_working)
+	next_row.add_child(_next)
+	card.add_child(next_row)
 	_progress.show_percentage = false
 	_progress.custom_minimum_size.y = 6
 	card.add_child(_progress)
@@ -234,6 +243,7 @@ func _build_roster() -> void:
 	card.add_child(_enter)
 	_devices = _button(card, tr("Connect your trainer…"), func() -> void: devices_requested.emit())
 	_retry = _button(card, tr("Retry download"), func() -> void: _orqwa.group_retry())
+	_reconnect = _button(card, tr("Reconnect now"), func() -> void: _orqwa.group_reconnect())
 
 
 func _build_dialogs() -> void:
@@ -340,7 +350,7 @@ func _show_organizer() -> void:
 			"Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
 		)
 	var reach: String = _status.get("reachability", "")
-	_organizer_reach.text = _reach_warning(reach, false) if offer else ""
+	_organizer_reach.text = reach_warning(reach, false) if offer else ""
 	_organizer_reach.visible = not _organizer_reach.text.is_empty()
 	if handover in ["preparing", "committing"]:
 		_organizer_status.text = (
@@ -386,9 +396,11 @@ func _card(parent: Node) -> VBoxContainer:
 	return content
 
 
-## Only the cases where friends at other homes may not get through; discovery is evidence,
-## not proof. A host limited to its home network chose that, so only offered duties mention it.
-func _reach_warning(reach: String, hosting: bool) -> String:
+## What `reach` (the status's `reachability`) means for a host, or for a rider offered organizer
+## duties: only the cases where friends at other homes may not get through; discovery is
+## evidence, not proof. A host limited to its home network chose that, so only offered duties
+## mention it.
+func reach_warning(reach: String, hosting: bool) -> String:
 	var hosts: Dictionary[String, String] = {
 		"strict":
 		tr(
@@ -512,7 +524,7 @@ func _show_status(status: Dictionary) -> void:
 	_body.visible = phase != "idle" and not _connecting.visible
 	_invite.visible = host and phase not in ["ended", "failed"]
 	var reach: String = _status.get("reachability", "")
-	_reach_text.text = _reach_warning(reach, true)
+	_reach_text.text = reach_warning(reach, true)
 	_reach.visible = not _reach_text.text.is_empty()
 	_invitation_panel.visible = _invite.visible
 	_notice.visible = not _notice.text.is_empty()
@@ -546,6 +558,15 @@ func _show_status(status: Dictionary) -> void:
 	_progress.max_value = maxf(1, total)
 	_progress.value = received
 	_bytes.text = tr("%.1f / %.1f MiB") % [received / 1048576, total / 1048576]
+	# Building the course's world takes longest; the group hears how far it has got too.
+	var built: int = _own_percent() if phase == "preparing" else 0
+	if built > 0:
+		_progress.visible = true
+		_bytes.visible = true
+		_progress.max_value = 100
+		_progress.value = built
+		_bytes.text = tr("Building the world · %d %%") % built
+	_working.visible = phase in ["connecting", "downloading", "preparing"] and not can_retry
 	var trainer: bool = _orqwa.trainer_connected()
 	_next.text = (
 		tr("Choose an activity to get started.")
@@ -583,6 +604,16 @@ func _show_status(status: Dictionary) -> void:
 		)
 	if entering:
 		_next.text = tr("Joining your friends…")
+	# The connection to the organizer was lost and comes back by itself (#434).
+	var reconnect: float = _status.get("reconnect_s", 0.0)
+	if reconnect > 0.0:
+		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
+		_next.text = (
+			tr("Trying for another %s. You keep your place in the group.")
+			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
+		)
+		_working.visible = true
+	_reconnect.visible = reconnect > 0.0
 	_enter.visible = late and not underway
 	_enter.disabled = not trainer or not _status.get("can_enter", false)
 	_ready_button.visible = not underway and not late
@@ -606,6 +637,15 @@ func _show_status(status: Dictionary) -> void:
 	if key != _roster_key:
 		_roster_key = key
 		_show_roster(phase, host)
+
+
+## This rider's preparation as the group heard it (#419), 0 before the first report.
+func _own_percent() -> int:
+	for rider: Dictionary in _status.get("roster", []):
+		if rider.get("me", false):
+			var percent: int = rider.get("percent", 0)
+			return percent
+	return 0
 
 
 func _show_workout_controls() -> void:
@@ -641,12 +681,25 @@ func _show_roster(phase: String, host: bool) -> void:
 		var label: Label = _label(text, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		var state: Label = _label(text, tr("Ready") if rider["ready"] else tr("Getting ready"), 13)
+		# How far each friend has got (#419), until they are ready.
+		var stage: String = rider.get("stage", "")
+		var percent: int = rider.get("percent", 0)
+		if not rider["ready"] and stage == "downloading":
+			state.text = tr("Downloading · %d %%") % percent
+		elif not rider["ready"] and stage == "preparing" and percent < 100:
+			state.text = tr("Building the world · %d %%") % percent
 		if phase == "riding":
 			state.text = tr("No signal") if rider["ready"] else tr("Getting ready")
 			if rider["me"]:
 				state.text = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
+		# Their seat is held while their connection comes back (#434).
+		var away: bool = rider.get("away", false)
+		if away:
+			state.text = tr("Reconnecting…", "group_rider")
 		var live: bool = (
-			rider["ready"] and (phase != "riding" or rider["me"] or rider.get("present", false))
+			not away
+			and rider["ready"]
+			and (phase != "riding" or rider["me"] or rider.get("present", false))
 		)
 		state.add_theme_color_override("font_color", UiTheme.SUCCESS if live else UiTheme.MUTED)
 		if rider["me"]:
@@ -659,6 +712,7 @@ func _show_roster(phase: String, host: bool) -> void:
 				if imperial
 				else tr("%s m") % roundi(gap)
 			)
+			state.text += " · " + GroupRidersPanel.effort(rider)
 		if rider.get("organizer", false):
 			state.text += " · " + tr("Organizer")
 		row.add_child(text)

@@ -1,7 +1,9 @@
 use super::*;
 use crate::{App, TrainerChoice};
 use orqwa_devices::fake::FakeRider;
-use orqwa_domain::units::{Rpm, Watts};
+use orqwa_domain::profile::Avatar;
+use orqwa_domain::units::{Kilograms, Rpm, Watts};
+use std::path::Path;
 use std::time::Duration;
 
 struct Directory(PathBuf);
@@ -233,6 +235,87 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
             && host.group().can_control_workout()
             && peer.group().workout_clock.is_some()
     });
+}
+
+#[test]
+fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_groups_workout_step() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Riding
+    });
+    let seat = peer.group().me;
+    // #434: the peer's network drops mid-workout, and nobody exchanges codes again.
+    peer.group_command(Command::LoseConnection).unwrap();
+    // A later command the runtime has processed shows the connection is gone first.
+    peer.group_voice_volume(0.5).unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        (p.group().voice_volume - 0.5).abs() < f32::EPSILON
+    });
+    // The organizer pauses meanwhile: only a new connection can tell the peer.
+    host.group_workout_pause(true).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        p.ride_state().unwrap().workout.unwrap().paused
+            && p.group().reconnecting.is_none()
+            && !h.group().away.contains(&true)
+    });
+    assert_eq!(peer.group().me, seat);
+    assert!(
+        peer.group().phase == Phase::Riding,
+        "{} {}",
+        peer.group().phase.key(),
+        peer.group().error
+    );
+    assert!(peer.ride.is_some(), "the local ride never stopped");
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
+fn a_rider_reconnecting_keeps_the_start_and_an_organizer_change_waiting() {
+    let rider = Rider {
+        name: "Anna".into(),
+        mass: Kilograms(80.0),
+        weight: Kilograms(70.0),
+        avatar: Avatar::Female,
+    };
+    let mut lobby = Snapshot {
+        host: true,
+        prepared: true,
+        selection: Some(Selection {
+            revision: 1,
+            name: "Workout".into(),
+            course: None,
+            course_key: None,
+            workout: Some(
+                orqwa_net::activity::ContentId::of(
+                    orqwa_net::activity::ContentKind::Workout,
+                    b"workout",
+                )
+                .unwrap(),
+            ),
+            assistance: Assistance::default(),
+        }),
+        ready: [true; MAX_RIDERS],
+        ..Snapshot::default()
+    };
+    lobby.roster[0] = Some(rider.clone());
+    lobby.roster[1] = Some(rider);
+    assert!(lobby.can_start());
+    // #434: until the rider is back or removed.
+    lobby.away[1] = true;
+    assert!(!lobby.can_start());
+    let mut riding = Snapshot {
+        phase: Phase::Riding,
+        start: Some(Instant::now()),
+        ..lobby.clone()
+    };
+    assert!(!riding.can_handover());
+    riding.away[1] = false;
+    assert!(riding.can_handover());
 }
 
 #[test]
@@ -609,31 +692,101 @@ fn host_and_joiner_learn_how_friends_could_reach_them_from_their_own_discovery()
     host.group_leave();
 }
 
-#[test]
-fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
+fn sample_course() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc")
+}
+
+/// The course a friend with the `library` laid out by `prepare` rides when they join after the
+/// organizer has chosen the sample course.
+fn course_on_joining(to: &Directory, prepare: impl FnOnce(&Path)) -> PathBuf {
     let from = Directory::new();
-    let to = Directory::new();
     let mut host = from.app();
     let mut peer = to.app();
-    let source =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc");
+    std::fs::create_dir_all(peer.courses_dir()).unwrap();
+    prepare(&peer.courses_dir());
     host.group_open(None, options()).unwrap();
     wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
-    host.group_select(Some(source.clone()), None).unwrap();
+    host.group_select(Some(sample_course()), None).unwrap();
     wait(&mut host, &mut peer, |h, _| h.group().selection.is_some());
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
     host.group_admit(peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |_, p| p.group().course.is_some());
-    let downloaded = peer.group().course.unwrap();
-    assert!(downloaded.starts_with(peer.courses_dir()));
-    assert_eq!(
-        std::fs::read(&source).unwrap(),
-        std::fs::read(downloaded).unwrap()
-    );
+    let course = peer.group().course.unwrap();
     peer.group_leave();
     host.group_leave();
+    course
+}
+
+fn library(to: &Directory) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(to.0.join("data/courses"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
+    let to = Directory::new();
+    let downloaded = course_on_joining(&to, |_| {});
+    assert!(downloaded.starts_with(to.0.join("data/courses")));
+    assert_eq!(
+        std::fs::read(sample_course()).unwrap(),
+        std::fs::read(downloaded).unwrap()
+    );
+}
+
+#[test]
+fn a_friend_rides_their_own_copy_of_the_course_under_any_name_without_downloading_it() {
+    use orqwa_storage::course;
+    // #435: the organizer sent the course beforehand; the friend imported it under their own
+    // name, and it has found its countries and drawn its map picture since.
+    let to = Directory::new();
+    let own = to.0.join("data/courses/Twann mit Freunden.tqc");
+    let ridden = course_on_joining(&to, |library| {
+        std::fs::copy(sample_course(), &own).unwrap();
+        let mut manifest = course::read_manifest(&own).unwrap();
+        manifest.name = "Twann mit Freunden".to_owned();
+        manifest.countries = Some(Vec::new());
+        course::rewrite_manifest(&own, &manifest).unwrap();
+        course::set_preview(&own, b"PNG").unwrap();
+        assert!(own.starts_with(library));
+    });
+    assert_eq!(ridden, own);
+    assert_eq!(library(&to), [own]);
+}
+
+#[test]
+fn a_changed_earlier_download_keeps_its_name_and_the_course_arrives_beside_it() {
+    use orqwa_net::activity::{ContentId, ContentKind};
+    use orqwa_storage::course;
+    let id = ContentId::of(
+        ContentKind::Course,
+        &std::fs::read(sample_course()).unwrap(),
+    )
+    .unwrap();
+    let to = Directory::new();
+    let changed = to.0.join("data/courses").join(id.basename());
+    let downloaded = course_on_joining(&to, |_| {
+        // Received in an earlier ride, then ridden alone with map detail: another course now.
+        std::fs::copy(sample_course(), &changed).unwrap();
+        let mut manifest = course::read_manifest(&changed).unwrap();
+        manifest.map_detail = vec!["switzerland".to_owned()];
+        course::rewrite_manifest(&changed, &manifest).unwrap();
+    });
+    assert_ne!(downloaded, changed);
+    assert_eq!(
+        std::fs::read(sample_course()).unwrap(),
+        std::fs::read(&downloaded).unwrap()
+    );
+    assert_eq!(
+        course::read_manifest(&changed).unwrap().map_detail,
+        ["switzerland"]
+    );
+    assert_eq!(library(&to).len(), 2);
 }
 
 #[test]
@@ -715,6 +868,7 @@ fn changing_devices_mutes_immediately_and_supersedes_an_older_queued_unmute() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one two-rider lobby checks shared rules, preparation and readiness together
 fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     let from = Directory::new();
     let to = Directory::new();
@@ -722,6 +876,10 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     let mut peer = to.app();
     host.profile.profile.ftp = Watts(200.0);
     peer.profile.profile.ftp = Watts(300.0);
+    // Each rider's own weight and look reach the others (#422, #423).
+    host.profile.profile.rider_mass = Kilograms(80.0);
+    peer.profile.profile.rider_mass = Kilograms(68.0);
+    peer.profile.profile.avatar = Avatar::Male;
     host.connect_trainer(TrainerChoice::Fake(FakeRider {
         power: Watts(180.0),
         cadence: Rpm(85.0),
@@ -748,11 +906,21 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     wait(&mut host, &mut peer, |h, p| {
         h.group().prepared && p.group().prepared
     });
+    // Each hears that the other has prepared (#419), until they say they are ready.
+    let done = Some((Stage::Preparing, 100));
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().preparation[1] == done && p.group().preparation[0] == done
+    });
     let received = peer.group().workout;
     assert!(host.group().assistance.drafting && host.group().assistance.keep_together);
     host.group_ready(true).unwrap();
     peer.group_ready(true).unwrap();
     wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    assert_eq!(
+        host.group().preparation[1],
+        None,
+        "ready, nothing left to report"
+    );
     host.group_assistance(false, true).unwrap();
     wait(&mut host, &mut peer, |h, p| {
         !h.group().ready[0] && !p.group().ready[1] && !p.group().assistance.drafting
@@ -786,6 +954,15 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     assert!((peer.ride_state().unwrap().telemetry.power.unwrap().0 - 120.0).abs() < 2.0);
     assert!((host.group_riders()[0].power.0 - 120.0).abs() < 2.0);
     assert!((peer.group_riders()[0].power.0 - 80.0).abs() < 2.0);
+    let (joiner, organizer) = (&host.group_riders()[0], &peer.group_riders()[0]);
+    assert_eq!(
+        (joiner.weight, joiner.avatar),
+        (Kilograms(68.0), Avatar::Male)
+    );
+    assert_eq!(
+        (organizer.weight, organizer.avatar),
+        (Kilograms(80.0), Avatar::Female)
+    );
     peer.set_paused(true);
     wait(&mut host, &mut peer, |h, _| {
         h.group_riders()
