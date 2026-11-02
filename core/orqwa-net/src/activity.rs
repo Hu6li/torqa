@@ -23,6 +23,8 @@ pub enum ContentKind {
     Course,
     /// A structured workout preserving FTP shares and absolute watt targets.
     Workout,
+    /// What the organizer is choosing (#418), served from memory: shown, never saved.
+    Preview,
 }
 
 impl ContentKind {
@@ -32,18 +34,21 @@ impl ContentKind {
         match self {
             Self::Course => MAX_COURSE_BYTES,
             Self::Workout => MAX_WORKOUT_BYTES,
+            Self::Preview => crate::preview::MAX_PREVIEW_BYTES,
         }
     }
     pub(crate) const fn tag(self) -> u8 {
         match self {
             Self::Course => 1,
             Self::Workout => 2,
+            Self::Preview => 3,
         }
     }
     pub(crate) fn from_tag(tag: u8) -> Result<Self, ActivityError> {
         match tag {
             1 => Ok(Self::Course),
             2 => Ok(Self::Workout),
+            3 => Ok(Self::Preview),
             _ => Err(ActivityError::Invalid),
         }
     }
@@ -105,6 +110,7 @@ impl ContentId {
         name.push_str(match self.kind {
             ContentKind::Course => ".tqc",
             ContentKind::Workout => ".oqw",
+            ContentKind::Preview => ".preview",
         });
         name
     }
@@ -442,6 +448,13 @@ impl Input<'_> {
             .map_err(|_| ActivityError::Invalid)?;
         self.0 = &self.0[len..];
         Ok(value.into())
+    }
+}
+impl<'a> Input<'a> {
+    pub(crate) fn bytes(&mut self, len: usize) -> Result<&'a [u8], ActivityError> {
+        let bytes = self.0.get(..len).ok_or(ActivityError::Invalid)?;
+        self.0 = &self.0[len..];
+        Ok(bytes)
     }
 }
 

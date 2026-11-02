@@ -23,6 +23,8 @@ same licence; the footage is used only in documentation.
 
 ![Group ride activity previews and invitations](images/groups/lobby-en.png)
 
+![A friend sees what the organizer is choosing](images/groups/preview-en.png)
+
 | Before riding | After riding |
 |---|---|
 | | ![Quick finish summary](images/app/summary-quick.png) |

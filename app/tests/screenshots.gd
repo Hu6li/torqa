@@ -119,12 +119,54 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-invitation-de.png"))
 	group._exchange.hide()
 	orqwa.group_leave()
+	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
 	await _group_workout_screens(start, group, out)
 	await _group_handover_screens(start, group, out)
 	await _group_reach_screens(start, group, out)
 	await _group_error_screens(start, group, out)
 	print("saved group setup and joining views")
+
+
+## What a friend sees while the organizer chooses (#418), from this rider's own library.
+func _group_preview_screens(
+	start: StartPage, group: GroupRidesTab, orqwa: OrqwaApp, out: String
+) -> void:
+	var course: Dictionary = {}
+	for entry: Dictionary in orqwa.courses():
+		var video: String = entry.get("video", "")
+		if course.is_empty() and video.is_empty():
+			var path: String = entry["path"]
+			course = entry.duplicate()
+			course["picture"] = orqwa.course_preview(path)
+	var workout: Dictionary = {}
+	for entry: Dictionary in orqwa.workouts():
+		if entry["id"] == "builtin:sweet-spot-3x10":
+			workout = entry
+	_check(not course.is_empty() and not workout.is_empty(), "a course and workout to preview")
+	var scroll: ScrollContainer = start.get("_group_page")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._preview_key = "fixture"
+		group._picker.show_preview({"course": course, "workout": workout})
+		group._show_status(
+			{
+				"phase": "waiting",
+				"host": false,
+				"preview": "fixture",
+				"roster":
+				[
+					{"id": 0, "name": "Alex", "ready": false, "me": false, "organizer": true},
+					{"id": 1, "name": "Rider", "ready": false, "me": true}
+				]
+			}
+		)
+		scroll.scroll_vertical = 0
+		await create_timer(0.4).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-preview-" + locale + ".png"))
+		print("saved group-preview-" + locale)
+	group._picker.show_preview({})
+	group._preview_key = ""
 
 
 func _group_late_screens(

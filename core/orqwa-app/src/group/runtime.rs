@@ -11,13 +11,15 @@ use orqwa_net::link::{ConnectOptions, Host, Joiner};
 use orqwa_net::lobby::{
     HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity, Stage,
 };
+use orqwa_net::preview::Preview;
 use orqwa_net::state::{RiderId, RiderState};
 use orqwa_voice::audio_test::{AudioTest, TestKind};
 use orqwa_voice::{VoiceChat, device::DeviceOptions};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 
-use super::{Phase, Snapshot, VoiceControls};
+use super::preview::Choice;
+use super::{Phase, Previewed, Snapshot, VoiceControls};
 use crate::Kind;
 use std::sync::{Arc, atomic::Ordering};
 
@@ -125,6 +127,102 @@ impl Reported {
         }
     }
 }
+/// A friend's copy of what the organizer is choosing (#418): one fetch at a time, at most
+/// every [`Previews::EVERY`], of the latest the organizer named.
+#[derive(Default)]
+struct Previews {
+    wanted: Option<ContentId>,
+    asked: Option<std::time::Instant>,
+    /// Not asked for again until the organizer names another, or the link comes back.
+    failed: Option<ContentId>,
+    fetching: JoinSet<(ContentId, Result<Preview, String>)>,
+}
+impl Previews {
+    /// Keeps well within the organizer's request budget, one a second, beside downloads.
+    const EVERY: Duration = Duration::from_secs(2);
+    fn named(&mut self, snapshot: &mut Snapshot, id: Option<ContentId>) {
+        self.wanted = id;
+        if id.is_none() {
+            self.fetching.abort_all();
+            snapshot.preview = None;
+        }
+    }
+    fn fetch(&mut self, session: &Session, snapshot: &Snapshot) {
+        let (Session::Join(lobby), Some(id)) = (session, self.wanted) else {
+            return;
+        };
+        if !self.fetching.is_empty()
+            || self.failed == Some(id)
+            || snapshot.start.is_some()
+            || snapshot
+                .preview
+                .as_ref()
+                .is_some_and(|shown| shown.id == id)
+            || self.asked.is_some_and(|at| at.elapsed() < Self::EVERY)
+        {
+            return;
+        }
+        let Some(link) = lobby.content_link() else {
+            return;
+        };
+        self.asked = Some(std::time::Instant::now());
+        self.fetching.spawn(async move {
+            let preview = content::fetch_preview(&link, id)
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|bytes| Preview::decode(&bytes).map_err(|error| error.to_string()));
+            (id, preview)
+        });
+    }
+    fn fetched(
+        &mut self,
+        snapshot: &mut Snapshot,
+        id: ContentId,
+        preview: Result<Preview, String>,
+    ) {
+        match preview {
+            Ok(preview) if self.wanted == Some(id) => {
+                snapshot.preview = Some(Arc::new(Previewed { id, preview }));
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::debug!(%error, "the organizer's preview is unavailable");
+                if self.wanted == Some(id) {
+                    self.failed = Some(id);
+                }
+            }
+        }
+    }
+}
+
+/// Shows friends the organizer's `choice` (#418), unless it is nothing or what they share
+/// already. Building it reads the course file, off the group's task.
+async fn browse(
+    session: &Session,
+    snapshot: &Snapshot,
+    building: &mut JoinSet<Result<Preview, String>>,
+    choice: Choice,
+    shared: Option<&Choice>,
+) {
+    let Session::Host(lobby) = session else {
+        return;
+    };
+    if snapshot.start.is_some() {
+        return;
+    }
+    building.abort_all();
+    while building.join_next().await.is_some() {}
+    if choice.is_empty() || shared == Some(&choice) {
+        let _ = lobby.preview(None);
+        return;
+    }
+    building.spawn(async move {
+        tokio::task::spawn_blocking(move || super::preview::build(&choice))
+            .await
+            .map_err(|error| error.to_string())?
+    });
+}
+
 enum Prepared {
     Host(SharedActivity),
     Join(Option<PathBuf>, Option<PathBuf>),
@@ -217,6 +315,8 @@ pub(super) struct Request {
     pub(super) options: ConnectOptions,
     pub(super) data: PathBuf,
     pub(super) temporary: PathBuf,
+    /// What the organizer's activity picker has, to show friends (#418).
+    pub(super) choices: watch::Receiver<Option<Choice>>,
 }
 struct Directory(PathBuf);
 impl Drop for Directory {
@@ -320,9 +420,15 @@ async fn run_inner(
         total: 0,
     });
     let mut reported = Reported::default();
+    let mut choices = request.choices.clone();
+    // The organizer's last shared choice, its preview's builder, and a friend's previews.
+    let mut shared_choice: Option<Choice> = None;
+    let mut building = JoinSet::new();
+    let mut previews = Previews::default();
     let mut ticker = tokio::time::interval(Duration::from_millis(200));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
+        previews.fetch(&session, snapshot);
         updates.send_replace(snapshot.clone());
         tokio::select! {
             event=voice_event(&mut voice)=>{
@@ -348,6 +454,10 @@ async fn run_inner(
                     Command::Admit(text) => match &session {Session::Host(l)=>match Reply::from_code(&text,policy) {Ok(reply)=>l.admit(&reply).await.map_err(|e|e.to_string()),Err(e)=>Err(e.to_string())},Session::Join(_)=>Err("Only the host can admit riders.".into())},
                     Command::Select(course,plan) => {
                         if snapshot.start.is_some() || !snapshot.host {continue;}
+                        // What is shared now needs no preview (#418).
+                        building.abort_all(); while building.join_next().await.is_some() {}
+                        shared_choice = Some(Choice {course: course.clone(), plan: plan.clone()});
+                        if let Session::Host(lobby) = &session {let _ = lobby.preview(None);}
                         jobs.abort_all(); while jobs.join_next().await.is_some() {}
                         next_revision = next_revision.checked_add(1).ok_or("Activity revision exhausted.")?;
                         let revision = next_revision; let dir = temp.0.clone();
@@ -498,7 +608,7 @@ async fn run_inner(
                     }
                 }
                 Some(LobbyEvent::Reconnected) => {
-                    snapshot.reconnecting = None; handover.reconnected();
+                    snapshot.reconnecting = None; handover.reconnected(); previews.failed = None;
                     // A download the lost connection cut off starts again on the new one.
                     if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
                 }
@@ -521,8 +631,9 @@ async fn run_inner(
                         progress.send_replace(content::Progress {received:0,total:0});let progress=progress.clone();jobs.spawn(async move {download(&link,&selection,&data,&progress).await.map(|(c,w)|Prepared::Join(c,w))});
                     }
                 }
-                Some(LobbyEvent::Start {at}) => {snapshot.start = Some(at.into_std()); snapshot.phase = Phase::Countdown;}
-                Some(LobbyEvent::Running {at}) => {snapshot.start = Some(at.into_std()); snapshot.late = true;}
+                Some(LobbyEvent::Preview(id)) => previews.named(snapshot, id),
+                Some(LobbyEvent::Start {at}) => {snapshot.start = Some(at.into_std()); snapshot.phase = Phase::Countdown; previews.named(snapshot, None);}
+                Some(LobbyEvent::Running {at}) => {snapshot.start = Some(at.into_std()); snapshot.late = true; previews.named(snapshot, None);}
                 Some(LobbyEvent::Entry {revision,progress}) => {
                     if snapshot.entering && snapshot.selection.as_ref().is_some_and(|selected| selected.revision == revision) {
                         snapshot.entering = false;
@@ -578,6 +689,16 @@ async fn run_inner(
                     reported.report(&session,selection.revision,Stage::Downloading,percent);
                 }}},
             changed=local.changed()=>{if changed.is_ok(){session.state(*local.borrow_and_update());}},
+            Ok(()) = choices.changed(), if snapshot.host => {
+                let choice = choices.borrow_and_update().clone().unwrap_or_default();
+                browse(&session, snapshot, &mut building, choice, shared_choice.as_ref()).await;
+            },
+            result = building.join_next(), if !building.is_empty() => match result {
+                Some(Ok(Ok(preview))) => if let Session::Host(lobby) = &session && snapshot.start.is_none() && let Err(error) = lobby.preview(Some(&preview)) {tracing::debug!(%error, "the preview could not be shown");},
+                Some(Ok(Err(error))) => tracing::debug!(%error, "the preview could not be made"),
+                _ => {},
+            },
+            Some(result) = previews.fetching.join_next(), if !previews.fetching.is_empty() => if let Ok((id, preview)) = result {previews.fetched(snapshot, id, preview);},
             result = jobs.join_next(), if !jobs.is_empty() => {
                 match result {
                     Some(Ok(Ok(Prepared::Host(mut selected)))) => {
@@ -671,6 +792,7 @@ async fn download_again(
 }
 
 fn end(snapshot: &mut Snapshot) {
+    snapshot.preview = None;
     snapshot.microphone_test = false;
     snapshot.microphone_level = 0.0;
     snapshot.speaker_test = false;
@@ -882,6 +1004,8 @@ async fn download(
                 }
                 ContentKind::Workout => std::fs::read(path)
                     .is_ok_and(|bytes| orqwa_net::workout::decode(&bytes).is_ok()),
+                // A selection never names one; a preview is never stored.
+                ContentKind::Preview => false,
             })
             .await
             .map_err(|e| e.to_string())?;

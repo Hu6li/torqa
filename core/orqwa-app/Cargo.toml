@@ -24,6 +24,7 @@ orqwa-remote.workspace = true
 orqwa-workouts.workspace = true
 orqwa-video.workspace = true
 orqwa-world.workspace = true
+png.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time", "fs", "sync"] }
 tracing.workspace = true

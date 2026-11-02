@@ -306,6 +306,8 @@ impl Others {
             LobbyEvent::Start { .. }
             | LobbyEvent::HostLeft
             | LobbyEvent::Selection(_)
+            // CLI rides choose their course before anyone joins: nothing to preview (#418).
+            | LobbyEvent::Preview(_)
             | LobbyEvent::Readiness { .. }
             | LobbyEvent::Preparation { .. }
             | LobbyEvent::Running { .. }

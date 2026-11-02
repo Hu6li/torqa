@@ -1,11 +1,18 @@
-//! App-lobby selection, readiness and selected-content serving.
+//! App-lobby selection, readiness, previews and selected-content serving.
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::activity::{ActivityLobby, ContentKind, Participant, Selection};
+use tokio::time::Instant;
+
+use crate::activity::{ActivityLobby, ContentId, ContentKind, Participant, Selection};
 use crate::content::{self, ContentError, Source};
 
 use super::{LobbyError, MAX_RIDERS, Message, RecvStream, RiderId, SendStream, rider_id, watch};
+
+/// Riders hear of a new preview at most this often, however fast the organizer browses.
+const PREVIEW_EVERY: Duration = Duration::from_millis(500);
 
 /// A host-selected descriptor and its two locally owned source paths. Paths never go on wire.
 #[derive(Clone, Debug)]
@@ -29,12 +36,23 @@ impl SharedActivity {
     }
 }
 
+/// What the organizer is choosing (#418), served from memory to riders who ask for it.
+#[derive(Clone, Debug)]
+pub(crate) struct Shown {
+    pub(crate) id: ContentId,
+    pub(crate) bytes: Arc<[u8]>,
+}
+
 pub(super) struct Activities {
     pub(super) enabled: bool,
     lobby: ActivityLobby,
     members: [Option<Participant>; MAX_RIDERS],
     ready: [bool; MAX_RIDERS],
     pub(super) selected: watch::Sender<Option<SharedActivity>>,
+    pub(super) shown: watch::Sender<Option<Shown>>,
+    /// The preview riders last heard of, and when.
+    announced: (Option<ContentId>, Option<Instant>),
+    started: bool,
 }
 impl Activities {
     pub(super) fn new(enabled: bool, organizer: RiderId) -> Result<Self, LobbyError> {
@@ -42,12 +60,16 @@ impl Activities {
         let mut members = [None; MAX_RIDERS];
         members[usize::from(organizer.value())] = Some(lobby.join(organizer)?);
         let (selected, _) = watch::channel(None);
+        let (shown, _) = watch::channel(None);
         Ok(Self {
             enabled,
             lobby,
             members,
             ready: [false; MAX_RIDERS],
             selected,
+            shown,
+            announced: (None, None),
+            started: false,
         })
     }
     pub(super) fn joined(&mut self, id: RiderId) -> Result<(), LobbyError> {
@@ -95,7 +117,28 @@ impl Activities {
         if self.enabled {
             self.lobby.start()?;
         }
+        // The activity is frozen: nothing is left to choose, so nothing to preview.
+        self.started = true;
+        self.shown.send_replace(None);
+        self.announced = (None, None);
         Ok(())
+    }
+    /// Takes the organizer's latest preview, until the countdown.
+    pub(super) fn show(&mut self, shown: Option<Shown>) {
+        if self.enabled && !self.started {
+            self.shown.send_replace(shown);
+        }
+    }
+    /// Tells riders of a changed preview, unless they heard of one within [`PREVIEW_EVERY`].
+    pub(super) fn announcement(&mut self, now: Instant) -> Option<Message> {
+        let current = self.shown.borrow().as_ref().map(|shown| shown.id);
+        if current == self.announced.0
+            || self.announced.1.is_some_and(|at| now < at + PREVIEW_EVERY)
+        {
+            return None;
+        }
+        self.announced = (current, Some(now));
+        Some(Message::Preview(current))
     }
     pub(super) fn can_enter(&self, id: RiderId, revision: u64) -> bool {
         self.enabled
@@ -119,6 +162,9 @@ impl Activities {
     }
     pub(super) fn initial(&self) -> Vec<Message> {
         let mut messages = Vec::new();
+        if let Some(shown) = self.shown.borrow().as_ref() {
+            messages.push(Message::Preview(Some(shown.id)));
+        }
         if let Some(selected) = self.lobby.selection() {
             messages.push(Message::Selection(selected.clone()));
             for (id, ready) in self.ready.iter().enumerate() {
@@ -131,12 +177,40 @@ impl Activities {
     }
 }
 
+/// Serves one request for the selected activity or the preview, cancelled when that changes.
 pub(super) async fn transfer(
     mut send: SendStream,
     mut recv: RecvStream,
-    selected: SharedActivity,
+    mut selected: watch::Receiver<Option<SharedActivity>>,
+    mut shown: watch::Receiver<Option<Shown>>,
 ) -> Result<(), ContentError> {
     let id = content::requested(&mut recv).await?;
+    if id.kind() == ContentKind::Preview {
+        let preview = shown
+            .borrow_and_update()
+            .clone()
+            .filter(|preview| preview.id == id)
+            .ok_or(ContentError::Mismatch)?;
+        return tokio::select! {
+            result = content::send_preview(&mut send, id, &preview.bytes) => result,
+            _ = shown.changed() => Err(ContentError::Interrupted),
+        };
+    }
+    let current = selected
+        .borrow_and_update()
+        .clone()
+        .ok_or(ContentError::Mismatch)?;
+    tokio::select! {
+        result = activity(send, id, current) => result,
+        _ = selected.changed() => Err(ContentError::Interrupted),
+    }
+}
+
+async fn activity(
+    mut send: SendStream,
+    id: ContentId,
+    selected: SharedActivity,
+) -> Result<(), ContentError> {
     let path = if selected.selection.course == Some(id) {
         selected.course
     } else if selected.selection.workout == Some(id) {

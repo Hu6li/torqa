@@ -150,7 +150,8 @@ the CLI is rebuilt against the same protocol while preserving its course-bound w
 ride ID and certificate still bind admission. Content hashes are checked after admission.
 
 Selected content is held in a watch channel. Each peer may have one owned transfer worker,
-which is cancelled on selection changes or departure. A completed worker is reaped before
+and since 2026-11-02 a second one for the organizer's preview (see below), each
+cancelled on changes to what it serves or departure. A completed worker is reaped before
 accepting the next file request. Only the selected course/workout identity is served. Ready
 controls and file requests have independent ingress budgets; file requests allow a burst
 of eight and sustained one per second, charged before spawning a transfer task. Ready
@@ -211,7 +212,8 @@ Shared pause/resume/skips and planned authority handover remain separate roadmap
 The tab starts with two actions: create a ride or join one. Invitation exchange is guided
 with copy/paste dialogs; connection policy and audio devices live in separate settings.
 Course and workout choices preview immediately using the existing map, elevation and power
-charts, and require explicit confirmation before sharing. Readiness names the rider's next
+charts, and require explicit confirmation before sharing; since 2026-11-02 friends see that
+preview too (see below). Readiness names the rider's next
 action, including trainer connection. These are presentation changes over the existing
 admission and transfer protocol.
 
@@ -430,3 +432,37 @@ Publication still never replaces a file. When a hash-derived name holds other by
 content takes the next free `-2` … `-8` name beside it. It reuses a name that already holds
 identical bytes, as before. Selection encoding version 2 and protocol/invitation version 10
 with ALPN `orqwa-group/10` require matching builds and fresh codes.
+
+### Previews before sharing — 2026-11-02
+
+Friends saw nothing of a course until the organizer shared it, and then started downloading
+and building it (#418), so a group could not talk over what to ride. Every rider now sees the
+preview the organizer's picker shows, as the organizer browses: the course's map picture,
+elevation profile and figures, and the workout's power chart by the rider's own FTP, with its
+duration and description. Choosing nothing, sharing the activity or going back to what is
+shared puts the preview away; so does the countdown.
+
+A preview is its own bounded encoding (`orqwa_net::preview`): a printable name, finite
+figures, at most 256 track and 256 profile points, an optional PNG of at most 512 KiB and an
+optional workout in the shared encoding without its cues, 1 MiB in all. It is never written to
+disk, published or ridden, and carries no route, map data or path. A course with a larger
+picture is previewed without it. The organizer's app builds it on a blocking worker from the
+course's manifest and map picture, halving pictures wider than 640 pixels with a box filter
+through the workspace's existing `png` crate: the link's flow-control windows make every
+kilobyte take time, and half the size arrives about three times sooner.
+
+The organizer's lobby holds the latest preview in memory and names it in a `Preview` control
+of its content identity, a new `ContentKind::Preview`, at most every 500 ms however fast the
+organizer browses; newcomers learn the current one with the selection. Riders fetch it with
+the existing request header on a separate reliable stream into memory, checking the
+announced identity, exact length, clean end and SHA-256. Each rider has at most one preview
+request at a time and asks at most every two seconds, for the latest named, within the same
+request budget as downloads (a burst of eight, one a second). The organizer serves a preview
+only while it is the current one, cancelling the transfer when it changes, and a selection
+only while it is selected, as before. Both may run beside each other: each peer may now have
+two transfer workers, and QUIC allows three bidirectional streams, the third for previews;
+a peer opening more is disconnected as before. Downloads to disk refuse the preview kind,
+and selections cannot name it. A malformed or unfetchable preview is only not shown.
+
+Previews add a fuzz target with round-trip properties and seeds. Protocol/invitation
+version 13 and ALPN `orqwa-group/13` require matching builds and fresh codes.

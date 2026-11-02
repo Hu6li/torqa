@@ -94,6 +94,7 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
     .unwrap();
     let live = Arc::new(AtomicUsize::new(0));
     let capture = live.clone();
+    let choices = watch::channel(None);
     let request = Request {
         audio: AudioBackend {
             factory: Some(Arc::new(move |_| {
@@ -118,6 +119,7 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
         options: options.clone(),
         data: directory.join("data"),
         temporary: directory.join("temporary"),
+        choices: choices.1,
     };
     let (commands, receive) = mpsc::channel(8);
     let (send, mut updates) = watch::channel(Snapshot::default());
@@ -168,6 +170,7 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
     let mut options = ConnectOptions::default();
     options.gather.policy.loopback = true;
     options.gather.stun_servers.clear();
+    let choices = watch::channel(None);
     let request = Request {
         audio: AudioBackend {
             factory: Some(Arc::new(move |_| {
@@ -192,6 +195,7 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         options,
         data: directory.join("data"),
         temporary: directory.join("temporary"),
+        choices: choices.1,
     };
     let (commands, receive) = mpsc::channel(8);
     let (send, mut updates) = watch::channel(Snapshot::default());

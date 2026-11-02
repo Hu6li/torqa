@@ -16,6 +16,7 @@ pub mod limits;
 pub mod link;
 pub mod lobby;
 pub mod policy;
+pub mod preview;
 mod runtime;
 pub mod state;
 pub mod stun;

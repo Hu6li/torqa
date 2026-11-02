@@ -30,6 +30,8 @@ const CHUNK: usize = 16 * 1024;
 pub const TRANSFER_WINDOW: Duration = Duration::from_mins(15);
 /// Maximum time without a completed read or write while transferring.
 pub const IDLE_WINDOW: Duration = Duration::from_secs(30);
+/// A preview's whole-transfer budget (#418): it is small, and only worth showing while current.
+pub const PREVIEW_WINDOW: Duration = Duration::from_mins(1);
 
 /// A transfer failed; peer-supplied text is never included in these diagnostics.
 #[derive(Debug, thiserror::Error)]
@@ -385,7 +387,9 @@ pub async fn receive(
         .map_err(|_| ContentError::Timeout)?
         .map_err(|_| ContentError::Interrupted)?;
     let id = identity(&bytes)?;
-    if id != expected && (id.kind(), expected.kind()) != (ContentKind::Course, ContentKind::Course)
+    if (id != expected
+        && (id.kind(), expected.kind()) != (ContentKind::Course, ContentKind::Course))
+        || id.kind() == ContentKind::Preview
     {
         return Err(ContentError::Mismatch);
     }
@@ -499,6 +503,79 @@ pub async fn serve(
         return Err(ContentError::Mismatch);
     }
     self::send(send, source).await
+}
+
+/// Fetches the organizer's preview `id` into memory (#418): exactly the announced bytes, for
+/// [`crate::preview::Preview::decode`]; nothing reaches the disk. The caller keeps to one
+/// preview request at a time, within the lobby's request budget.
+///
+/// # Errors
+/// Returns [`ContentError`] for another kind, a changed or interrupted preview, a length or
+/// hash mismatch and timeouts.
+pub async fn fetch_preview(
+    connection: &Connection,
+    id: ContentId,
+) -> Result<Vec<u8>, ContentError> {
+    if id.kind() != ContentKind::Preview {
+        return Err(ContentError::Mismatch);
+    }
+    let deadline = Instant::now() + PREVIEW_WINDOW;
+    let (mut send, mut recv) = timeout_at(end(deadline), connection.open_bi())
+        .await
+        .map_err(|_| ContentError::Timeout)?
+        .map_err(|_| ContentError::Interrupted)?;
+    timeout_at(end(deadline), send.write_all(&header(id)))
+        .await
+        .map_err(|_| ContentError::Timeout)?
+        .map_err(|_| ContentError::Interrupted)?;
+    send.finish().map_err(|_| ContentError::Interrupted)?;
+    let mut announced = [0; HEADER];
+    timeout_at(end(deadline), recv.read_exact(&mut announced))
+        .await
+        .map_err(|_| ContentError::Timeout)?
+        .map_err(|_| ContentError::Interrupted)?;
+    if identity(&announced)? != id {
+        return Err(ContentError::Mismatch);
+    }
+    // At most `MAX_PREVIEW_BYTES`, which the identity's kind enforces.
+    let mut preview = vec![0; usize::try_from(id.bytes()).map_err(|_| ContentError::Mismatch)?];
+    for chunk in preview.chunks_mut(CHUNK) {
+        timeout_at(end(deadline), recv.read_exact(chunk))
+            .await
+            .map_err(|_| ContentError::Timeout)?
+            .map_err(|_| ContentError::Interrupted)?;
+    }
+    let mut extra = [0];
+    if timeout_at(end(deadline), recv.read(&mut extra))
+        .await
+        .map_err(|_| ContentError::Timeout)?
+        .map_err(|_| ContentError::Interrupted)?
+        .is_some()
+        || crate::crypto::sha256(&preview) != id.hash()
+    {
+        return Err(ContentError::Mismatch);
+    }
+    Ok(preview)
+}
+
+/// Sends a preview held in memory, answering a request already read by [`requested`].
+pub(crate) async fn send_preview(
+    send: &mut SendStream,
+    id: ContentId,
+    preview: &[u8],
+) -> Result<(), ContentError> {
+    let deadline = Instant::now() + PREVIEW_WINDOW;
+    timeout_at(end(deadline), send.write_all(&header(id)))
+        .await
+        .map_err(|_| ContentError::Timeout)?
+        .map_err(|_| ContentError::Interrupted)?;
+    for chunk in preview.chunks(CHUNK) {
+        timeout_at(end(deadline), send.write_all(chunk))
+            .await
+            .map_err(|_| ContentError::Timeout)?
+            .map_err(|_| ContentError::Interrupted)?;
+    }
+    send.finish().map_err(|_| ContentError::Interrupted)
 }
 
 /// Reads a bounded request naming content, never a local path.
@@ -677,6 +754,50 @@ mod tests {
         let mut other = header(workout);
         other.extend_from_slice(b"workout");
         assert!(raw(other, selected, &to.0).await.is_err());
+        assert!(to.empty());
+    }
+    async fn preview_answered(
+        id: ContentId,
+        response: Option<Vec<u8>>,
+    ) -> Result<Vec<u8>, ContentError> {
+        let (_host, client, peer) = pair().await;
+        let serve = async {
+            let (mut send, mut recv) = peer.accept_bi().await.unwrap();
+            assert_eq!(requested(&mut recv).await.unwrap(), id);
+            match response {
+                Some(bytes) => send.write_all(&bytes).await.unwrap(),
+                None => send_preview(&mut send, id, b"preview").await.unwrap(),
+            }
+            let _ = send.finish();
+            send.stopped().await.ok();
+        };
+        let (fetched, ()) = tokio::join!(fetch_preview(&client, id), serve);
+        fetched
+    }
+    #[tokio::test]
+    async fn a_preview_arrives_in_memory_and_only_as_exactly_the_bytes_announced() {
+        let id = ContentId::of(ContentKind::Preview, b"preview").unwrap();
+        assert_eq!(preview_answered(id, None).await.unwrap(), b"preview");
+        for body in [b"changed".as_slice(), b"short", b"preview plus more"] {
+            let mut bytes = header(id);
+            bytes.extend_from_slice(body);
+            assert!(preview_answered(id, Some(bytes)).await.is_err());
+        }
+        let other = ContentId::of(ContentKind::Preview, b"another").unwrap();
+        let mut bytes = header(other);
+        bytes.extend_from_slice(b"another");
+        assert!(preview_answered(id, Some(bytes)).await.is_err());
+        // Only previews are fetched into memory, and a preview is never stored.
+        let (_host, client, _peer) = pair().await;
+        let course = ContentId::of(ContentKind::Course, b"course").unwrap();
+        assert!(matches!(
+            fetch_preview(&client, course).await,
+            Err(ContentError::Mismatch)
+        ));
+        let to = Directory::new();
+        let mut stored = header(id);
+        stored.extend_from_slice(b"preview");
+        assert!(raw(stored, id, &to.0).await.is_err());
         assert!(to.empty());
     }
     async fn staged(to: &Path) -> (ContentId, Validated) {

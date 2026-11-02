@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Fuzzes the decoders that read untrusted group-ride input (ADR 0035): codes, lobby and
-# handover controls, voice and state datagrams, selections, workouts, STUN and shared courses.
+# handover controls, voice and state datagrams, selections, workouts, previews, STUN and
+# shared courses.
 # Each target runs for the given number of seconds (default 30). Inside the dev container;
 # CI runs it on every change. A finding stops with its input under core/fuzz/artifacts/.
 set -eu

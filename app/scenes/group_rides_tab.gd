@@ -66,6 +66,8 @@ var _roster_key: String = ""
 ## Each rider's speaker icon, by rider ID, shown while they are heard speaking.
 var _speaking: Dictionary[int, TextureRect] = {}
 var _activity_key: String = ""
+## Names the organizer's preview the picker shows a friend (#418), "" for none.
+var _preview_key: String = ""
 var _elapsed: float = 0.0
 
 
@@ -99,6 +101,9 @@ func _ready() -> void:
 	_activity_panel.add_child(_picker)
 	_build_rules()
 	_picker.chosen.connect(_select_activity)
+	_picker.browsed.connect(
+		func(course: String, workout: String) -> void: _orqwa.group_preview(course, workout)
+	)
 	_body.add_child(_activity_panel)
 	_sidebar.add_theme_constant_override("separation", 16)
 	_sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -558,7 +563,14 @@ func _show_status(status: Dictionary) -> void:
 	var invite: String = _status.get("invite", "")
 	for action: Node in _invite.find_children("*", "Button", true, false):
 		(action as Button).disabled = invite.is_empty() or _status.get("handover", "idle") != "idle"
-	_activity_panel.visible = not compact and (host or (not name.is_empty() and prepared))
+	# What the organizer is choosing, for friends to talk over before it is shared (#418).
+	var preview_key: String = _status.get("preview", "")
+	if preview_key != _preview_key:
+		_preview_key = preview_key
+		_picker.show_preview({} if preview_key.is_empty() else _orqwa.group_preview_data())
+	_activity_panel.visible = (
+		not compact and (host or (not name.is_empty() and prepared) or _picker.previewing())
+	)
 	var course_path: String = _status.get("course_path", "")
 	var workout_id: String = _status.get("workout_id", "")
 	var activity_failed: bool = _status.get("activity_failed", false)

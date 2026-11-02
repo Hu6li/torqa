@@ -111,6 +111,14 @@ pub fn workout(data: &[u8]) {
     }
 }
 
+/// Previews of what the organizer is choosing (#418), which riders fetch and show.
+pub fn preview(data: &[u8]) {
+    if let Ok(preview) = crate::preview::Preview::decode(data) {
+        let bytes = preview.encode().expect("an accepted preview encodes");
+        assert_eq!(crate::preview::Preview::decode(&bytes), Ok(preview));
+    }
+}
+
 /// STUN responses; the first twelve bytes are the transaction the reader expects.
 pub fn stun(data: &[u8]) {
     if let Some((transaction, response)) = data.split_first_chunk::<12>() {
@@ -158,6 +166,8 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Away(anna),
         Message::Back(anna),
         Message::Rejoined(true),
+        Message::Preview(Some(preview_id())),
+        Message::Preview(None),
     ];
     let handover = [
         crate::handover::Message::Offer {
@@ -210,6 +220,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
             crate::workout::encode(&plan()).expect("valid workout"),
         ),
         ("stun", stun_seed()),
+        ("preview", preview_seed()),
     ];
     for message in &controls {
         seeds.push(("controls", crate::wire::encode(message).expect("valid")));
@@ -257,6 +268,30 @@ fn selection_seed() -> Selection {
             keep_together: false,
         },
     }
+}
+
+fn preview_id() -> ContentId {
+    ContentId::new(ContentKind::Preview, 2048, [8; 32]).expect("preview")
+}
+
+fn preview_seed() -> Vec<u8> {
+    crate::preview::Preview {
+        course: Some(crate::preview::CoursePreview {
+            name: "Col du Galibier".into(),
+            length: Meters(34_800.0),
+            climbing: Meters(2120.0),
+            steepest: 10.1,
+            track: vec![[0.0, 0.0], [850.5, 1200.0], [-40.0, 2400.0]],
+            profile: vec![[0.0, 720.0], [17_000.0, 1400.0], [34_800.0, 2642.0]],
+            picture: b"\x89PNG\r\n\x1a\n picture".to_vec(),
+        }),
+        workout: Some(Plan {
+            cues: Vec::new(),
+            ..plan()
+        }),
+    }
+    .encode()
+    .expect("valid preview")
 }
 
 fn plan() -> Plan {
@@ -322,6 +357,7 @@ mod tests {
             "selection" => selection,
             "workout" => workout,
             "stun" => stun,
+            "preview" => preview,
             _ => panic!("unknown fuzz target {target}"),
         }
     }
@@ -381,6 +417,7 @@ mod tests {
                 seed[..12].try_into().expect("transaction"),
             )
             .is_some(),
+            "preview" => crate::preview::Preview::decode(seed).is_ok(),
             _ => false,
         };
         for (target, seed) in seeds() {

@@ -191,6 +191,49 @@ func _group_activity() -> void:
 	_check(
 		picker._course.disabled and not picker._apply.visible, "joiners preview the shared choice"
 	)
+	# Friends see what the organizer is choosing before it is shared (#418).
+	var browsed: Array = []
+	picker.browsed.connect(func(c: String, w: String) -> void: browsed.append([c, w]))
+	picker.show_selection(true, "", "")
+	picker._course.select(1)
+	picker._course.item_selected.emit(1)
+	_check(browsed == [[picker.course(), ""]], "the organizer's choice goes to friends")
+	picker.show_selection(false, "", "")
+	_check(browsed.size() == 1, "a friend's picker sends nothing")
+	var listed: Dictionary = app.courses()[0]
+	var shown_course: Dictionary = listed.duplicate()
+	var path: String = listed["path"]
+	shown_course["picture"] = app.course_preview(path)
+	shown_course.erase("path")
+	var shown_workout: Dictionary = app.workouts()[0]
+	var shown_name: String = shown_course["name"]
+	picker.show_preview({"course": shown_course, "workout": shown_workout})
+	_check(
+		picker.previewing() and not picker._course.visible and picker._course_name.visible,
+		"a friend sees the course the organizer is choosing, by name"
+	)
+	_check(
+		picker._course_name.text == shown_name,
+		"named as the organizer has it: %s" % picker._course_name.text
+	)
+	_check(
+		picker._map.visible and picker._elevation.visible and picker._chart.visible,
+		"with its map, elevation and the workout's power"
+	)
+	_check(
+		picker._course_caption.text == "Course preview" and not picker._hint.visible,
+		"plainly called a preview"
+	)
+	picker.show_preview({"course": {}, "workout": shown_workout})
+	_check(
+		not picker._course_preview.visible and picker._workout_preview.visible,
+		"a workout alone previews without a course"
+	)
+	picker.show_preview({})
+	_check(
+		not picker.previewing() and picker._course.visible and picker._hint.visible,
+		"the shared activity shows again once the preview is gone"
+	)
 	# How far everyone has got (#419), and something turning while this rider waits (#420).
 	var roster: Array = [
 		{"id": 0, "name": "Host", "ready": false, "me": false, "stage": "preparing", "percent": 70},
