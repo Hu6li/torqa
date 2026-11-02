@@ -1,9 +1,11 @@
 //! Pinned QUIC, one-use admission, finite probing and owner-controlled endpoint lifetimes.
+//! A host may hold an admitted rider's credential after a lost connection, so the same
+//! certificate reconnects without new codes (#434).
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::net::{SocketAddr, UdpSocket as StdSocket};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -37,6 +39,15 @@ const ACK_WAIT: u8 = 2;
 const ACK_REPLAY: u8 = 3;
 const ACK_INVALID: u8 = 4;
 const ACK_EXPIRED: u8 = 5;
+/// Application close code asking the peer to reconnect: the connection failed, not the rider.
+const RECONNECT: VarInt = VarInt::from_u32(2);
+/// How often a host holding a credential probes the rider's last addresses, to keep its own
+/// NAT open for the reconnection; a few bytes each, bounded by the hold and a packet budget.
+const HOLD_PROBE_EVERY: Duration = Duration::from_secs(2);
+const HOLD_PROBE_LIMIT: usize = 1024;
+const OPEN: u8 = 0;
+const LOST: u8 = 1;
+const LEFT: u8 = 2;
 
 /// Explicit network choices and the shared connection window.
 #[derive(Clone, Debug)]
@@ -227,11 +238,21 @@ async fn probe(
     deadline: Instant,
     stop: Arc<AtomicBool>,
 ) {
+    probe_every(probers, targets, deadline, stop, PROBE_EVERY, PROBE_LIMIT).await;
+}
+
+async fn probe_every(
+    probers: Vec<StdSocket>,
+    targets: Vec<SocketAddr>,
+    deadline: Instant,
+    stop: Arc<AtomicBool>,
+    every: Duration,
+    limit: usize,
+) {
     let mut packets = 0;
-    while Instant::now() < deadline && !stop.load(Ordering::Relaxed) && packets < PROBE_LIMIT {
+    while Instant::now() < deadline && !stop.load(Ordering::Relaxed) && packets < limit {
         for target in &targets {
-            if Instant::now() >= deadline || packets >= PROBE_LIMIT || stop.load(Ordering::Relaxed)
-            {
+            if Instant::now() >= deadline || packets >= limit || stop.load(Ordering::Relaxed) {
                 return;
             }
             if let Some(socket) = probers.iter().find(|p| {
@@ -242,7 +263,7 @@ async fn probe(
                 packets += 1;
             }
         }
-        sleep_until((Instant::now() + PROBE_EVERY).min(deadline)).await;
+        sleep_until((Instant::now() + every).min(deadline)).await;
     }
 }
 
@@ -250,8 +271,11 @@ struct LiveConnection {
     quic: quinn::Connection,
     client: Option<Fingerprint>,
     deadline: Instant,
+    /// Why it ended, recorded before this side closes it: a local close replaces the
+    /// transport's reason. [`OPEN`], [`LOST`] or [`LEFT`].
+    ended: AtomicU8,
     _permit: Option<ConnectionPermit>,
-    _owner: Option<Local>,
+    _owner: Option<Arc<Local>>,
 }
 
 impl Drop for LiveConnection {
@@ -364,7 +388,46 @@ impl Connection {
     }
     /// Closes the connection immediately; queued state is disposable.
     pub fn close(&self) {
+        self.end(LEFT);
         self.0.quic.close(VarInt::from_u32(0), b"closed");
+    }
+    /// Closes a connection that stalled, telling the peer to reconnect rather than leave.
+    pub(crate) fn close_for_reconnect(&self) {
+        self.end(LOST);
+        self.0.quic.close(RECONNECT, b"reconnect");
+    }
+    /// Whether it ended because the network failed, not by a deliberate close (#434): it
+    /// timed out, or either side closed it for the other to reconnect. The first reason
+    /// sticks, so a later local close cannot turn a peer's leaving into a lost connection.
+    pub(crate) fn lost(&self) -> bool {
+        self.end(OPEN) == LOST
+    }
+    // Records why the connection ended, the transport's reason first, else `local`'s, and
+    // returns what is recorded. `OPEN` only reads, and leaves an open connection unrecorded.
+    // A reset means the peer forgot the connection, as after closing it for a reconnection
+    // whose close was lost; holding a seat too long costs less than dropping one in use.
+    fn end(&self, local: u8) -> u8 {
+        let reason = match self.0.quic.close_reason() {
+            Some(quinn::ConnectionError::TimedOut | quinn::ConnectionError::Reset) => LOST,
+            Some(quinn::ConnectionError::ApplicationClosed(close))
+                if close.error_code == RECONNECT =>
+            {
+                LOST
+            }
+            Some(_) => LEFT,
+            None => local,
+        };
+        if reason == OPEN {
+            return self.0.ended.load(Ordering::Acquire);
+        }
+        match self
+            .0
+            .ended
+            .compare_exchange(OPEN, reason, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => reason,
+            Err(recorded) => recorded,
+        }
     }
 }
 
@@ -387,6 +450,8 @@ struct Admission {
     expires: Instant,
     state: AdmissionState,
     stop: Arc<AtomicBool>,
+    /// The reply's addresses, probed again while the credential is held.
+    targets: Vec<SocketAddr>,
 }
 struct Shared {
     admissions: Mutex<HashMap<Fingerprint, Admission>>,
@@ -531,6 +596,7 @@ impl Host {
                     expires,
                     state: AdmissionState::Pending,
                     stop: stop.clone(),
+                    targets: reply.candidates.iter().map(|c| c.addr()).collect(),
                 },
             );
         }
@@ -546,8 +612,10 @@ impl Host {
             sleep_until(expires).await;
             let timed_out = {
                 let mut admissions = shared.admissions();
+                // A credential held since is no longer this admission's to expire.
                 if let Some(entry) = admissions.get_mut(&client)
                     && entry.state == AdmissionState::Pending
+                    && entry.expires == expires
                 {
                     entry.state = AdmissionState::Expired;
                     entry.stop.store(true, Ordering::Relaxed);
@@ -565,7 +633,44 @@ impl Host {
 
     /// Revokes a pending reply without removing its replay-prevention tombstone.
     pub fn revoke(&mut self, reply: &Reply) {
-        if let Some(entry) = self.shared.admissions().get_mut(&reply.client) {
+        self.release(reply.client);
+    }
+
+    /// Lets the rider whose connection with `client` was lost reconnect with the same
+    /// certificate until `until` (#434), probing their last address and the reply's so this
+    /// computer's NAT lets them in. Only a credential that was already used can be held: it
+    /// never admits anyone new, and its tombstone keeps it out of the admission budget.
+    pub(crate) fn hold(&mut self, client: Fingerprint, until: Instant, last: SocketAddr) {
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut targets = {
+            let mut admissions = self.shared.admissions();
+            let Some(entry) = admissions
+                .get_mut(&client)
+                .filter(|entry| entry.state == AdmissionState::Used)
+            else {
+                return;
+            };
+            entry.state = AdmissionState::Pending;
+            entry.expires = until;
+            entry.stop = stop.clone();
+            entry.targets.clone()
+        };
+        if !targets.contains(&last) {
+            targets.insert(0, last);
+        }
+        self.tasks.spawn(probe_every(
+            self.local.probers(),
+            targets,
+            until,
+            stop,
+            HOLD_PROBE_EVERY,
+            HOLD_PROBE_LIMIT,
+        ));
+    }
+
+    /// Ends a held or pending credential for good; the rider needs fresh codes to come back.
+    pub(crate) fn release(&mut self, client: Fingerprint) {
+        if let Some(entry) = self.shared.admissions().get_mut(&client) {
             entry.state = AdmissionState::Expired;
             entry.stop.store(true, Ordering::Relaxed);
         }
@@ -674,7 +779,11 @@ fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, O
     }
     entry.state = AdmissionState::Used;
     entry.stop.store(true, Ordering::Relaxed);
-    (ACK_OK, Some(entry.expires))
+    // A held credential may last minutes; the lobby handshake still gets one connection window.
+    (
+        ACK_OK,
+        Some(entry.expires.min(Instant::now() + PUNCH_WINDOW)),
+    )
 }
 
 async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: ConnectionPermit) {
@@ -707,6 +816,7 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
                 // AUTH_WAIT bounds only the credential exchange. The lobby handshake that
                 // follows shares the admission's one deadline (R161), as the joiner's does.
                 deadline: expires,
+                ended: AtomicU8::new(OPEN),
                 _permit: Some(permit),
                 _owner: None,
             }));
@@ -796,7 +906,14 @@ impl Joiner {
     ///
     /// # Errors
     /// Returns [`LinkError`] for expiry, wrong host, replay or transport failure.
-    pub async fn connect(mut self) -> Result<Connection, LinkError> {
+    pub async fn connect(self) -> Result<Connection, LinkError> {
+        self.connect_resumable()
+            .await
+            .map(|(connection, _)| connection)
+    }
+
+    /// Connects like [`Joiner::connect`], also keeping what reaching the host again needs.
+    pub(crate) async fn connect_resumable(mut self) -> Result<(Connection, Resume), LinkError> {
         loop {
             let round = Instant::now();
             if round >= self.deadline {
@@ -806,21 +923,31 @@ impl Joiner {
                     LinkError::Timeout
                 });
             }
-            if let Some(quic) = self.reach().await? {
-                let result = self.authenticate(&quic).await;
-                match result {
-                    Ok(true) => {
+            let local = self.local.as_ref().ok_or(LinkError::Lost)?;
+            let end = (round + self.retry).min(self.deadline);
+            if let Some(quic) = reach(local, &self.invite, &self.client, self.retry, end).await {
+                match authenticate(&quic, &self.invite, self.deadline).await {
+                    Ok(ACK_OK) => {
                         self.tasks.abort_all();
-                        return Ok(Connection(Arc::new(LiveConnection {
-                            quic,
-                            client: None,
-                            deadline: self.deadline,
-                            _permit: None,
-                            _owner: self.local.take(),
-                        })));
+                        let local = Arc::new(self.local.take().ok_or(LinkError::Lost)?);
+                        let resume = Resume {
+                            local: local.clone(),
+                            invite: self.invite.clone(),
+                            client: self.client.clone(),
+                            retry: self.retry,
+                        };
+                        return Ok((live(quic, self.deadline, local), resume));
                     }
-                    Ok(false) => {
+                    Ok(ACK_WAIT) => {
                         quic.close(VarInt::from_u32(0), b"waiting for reply");
+                    }
+                    Ok(ACK_REPLAY | ACK_EXPIRED) => {
+                        quic.close(VarInt::from_u32(1), b"admission failed");
+                        return Err(LinkError::Replay);
+                    }
+                    Ok(_) => {
+                        quic.close(VarInt::from_u32(1), b"admission failed");
+                        return Err(LinkError::Lost);
                     }
                     Err(error) => {
                         quic.close(VarInt::from_u32(1), b"admission failed");
@@ -831,54 +958,108 @@ impl Joiner {
             sleep_until((round + self.retry).min(self.deadline)).await;
         }
     }
+}
 
-    async fn reach(&self) -> Result<Option<quinn::Connection>, LinkError> {
-        let Some(local) = &self.local else {
-            return Err(LinkError::Lost);
-        };
-        let end = (Instant::now() + self.retry).min(self.deadline);
-        let mut attempts = JoinSet::new();
-        let stagger = (self.retry
-            / u32::try_from(self.invite.candidates.len() + 1).expect("bounded candidates"))
+fn live(quic: quinn::Connection, deadline: Instant, local: Arc<Local>) -> Connection {
+    Connection(Arc::new(LiveConnection {
+        quic,
+        client: None,
+        deadline,
+        ended: AtomicU8::new(OPEN),
+        _permit: None,
+        _owner: Some(local),
+    }))
+}
+
+async fn reach(
+    local: &Local,
+    invite: &Invite,
+    client: &quinn::ClientConfig,
+    retry: Duration,
+    end: Instant,
+) -> Option<quinn::Connection> {
+    let mut attempts = JoinSet::new();
+    let stagger = (retry / u32::try_from(invite.candidates.len() + 1).expect("bounded candidates"))
         .min(Duration::from_millis(250));
-        for (index, candidate) in self.invite.candidates.iter().enumerate() {
-            let Some(endpoint) = local.endpoint(candidate.addr()) else {
-                continue;
-            };
-            let endpoint = endpoint.clone();
-            let client = self.client.clone();
-            let address = candidate.addr();
-            let delay = stagger * u32::try_from(index).expect("bounded candidates");
-            attempts.spawn(async move {
-                // Give a working path time to win before spending another TLS/rate permit.
-                sleep_until(Instant::now() + delay).await;
-                if Instant::now() >= end {
-                    return Err(LinkError::Timeout);
-                }
-                let connecting = endpoint
-                    .connect_with(client, address, tls::SERVER_NAME)
-                    .map_err(|_| LinkError::Lost)?;
-                until(end, connecting).await
-            });
-        }
-        while let Some(result) = attempts.join_next().await {
-            if let Ok(Ok(connection)) = result {
-                return Ok(Some(connection));
+    for (index, candidate) in invite.candidates.iter().enumerate() {
+        let Some(endpoint) = local.endpoint(candidate.addr()) else {
+            continue;
+        };
+        let endpoint = endpoint.clone();
+        let client = client.clone();
+        let address = candidate.addr();
+        let delay = stagger * u32::try_from(index).expect("bounded candidates");
+        attempts.spawn(async move {
+            // Give a working path time to win before spending another TLS/rate permit.
+            sleep_until(Instant::now() + delay).await;
+            if Instant::now() >= end {
+                return Err(LinkError::Timeout);
             }
-        }
-        Ok(None)
+            let connecting = endpoint
+                .connect_with(client, address, tls::SERVER_NAME)
+                .map_err(|_| LinkError::Lost)?;
+            until(end, connecting).await
+        });
     }
+    while let Some(result) = attempts.join_next().await {
+        if let Ok(Ok(connection)) = result {
+            return Some(connection);
+        }
+    }
+    None
+}
 
-    async fn authenticate(&self, connection: &quinn::Connection) -> Result<bool, LinkError> {
-        let (mut send, mut recv) = until(self.deadline, connection.open_bi()).await?;
-        until(self.deadline, send.write_all(&auth_message(&self.invite))).await?;
-        send.finish().map_err(|_| LinkError::Lost)?;
-        let ack = until(self.deadline, recv.read_to_end(1)).await?;
-        match ack.as_slice() {
-            [ACK_OK] => Ok(true),
-            [ACK_WAIT] => Ok(false),
-            [ACK_REPLAY | ACK_EXPIRED] => Err(LinkError::Replay),
-            _ => Err(LinkError::Lost),
+async fn authenticate(
+    connection: &quinn::Connection,
+    invite: &Invite,
+    deadline: Instant,
+) -> Result<u8, LinkError> {
+    let (mut send, mut recv) = until(deadline, connection.open_bi()).await?;
+    until(deadline, send.write_all(&auth_message(invite))).await?;
+    send.finish().map_err(|_| LinkError::Lost)?;
+    match until(deadline, recv.read_to_end(1)).await?.as_slice() {
+        [ack] => Ok(*ack),
+        _ => Err(LinkError::Lost),
+    }
+}
+
+/// What a joiner keeps to reach the same host again after a lost connection (#434): the
+/// invitation, its own per-ride certificate and its sockets. No new codes or discovery.
+pub(crate) struct Resume {
+    local: Arc<Local>,
+    invite: Invite,
+    client: quinn::ClientConfig,
+    retry: Duration,
+}
+
+impl Resume {
+    /// One attempt to reconnect, within at most one connection window from now.
+    ///
+    /// # Errors
+    /// [`LinkError::Replay`] once the host no longer holds this rider's seat, so retrying is
+    /// pointless; [`LinkError::Timeout`] if the host was unreachable or has not yet noticed
+    /// the loss; [`LinkError::Lost`] for an invalid answer.
+    pub(crate) async fn connect(&self) -> Result<Connection, LinkError> {
+        let end = Instant::now() + self.retry;
+        let quic = reach(&self.local, &self.invite, &self.client, self.retry, end)
+            .await
+            .ok_or(LinkError::Timeout)?;
+        let deadline = Instant::now() + PUNCH_WINDOW;
+        match authenticate(&quic, &self.invite, end.max(Instant::now() + AUTH_WAIT)).await {
+            Ok(ACK_OK) => Ok(live(quic, deadline, self.local.clone())),
+            // The host still counts the old connection, or never knew this one.
+            Ok(ACK_REPLAY | ACK_WAIT) => {
+                quic.close(VarInt::from_u32(0), b"waiting for the host");
+                Err(LinkError::Timeout)
+            }
+            Ok(ACK_EXPIRED) => {
+                quic.close(VarInt::from_u32(0), b"seat released");
+                Err(LinkError::Replay)
+            }
+            Ok(_) | Err(_) => {
+                quic.close(VarInt::from_u32(1), b"admission failed");
+                Err(LinkError::Lost)
+            }
         }
     }
 }
@@ -1372,5 +1553,65 @@ mod tests {
         );
         drop((held, clients, pending));
         host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_held_credential_lets_only_its_rider_back_once_until_released() {
+        let mut host = host().await;
+        let first = joiner(&host).await;
+        host.admit(first.reply()).unwrap();
+        let (client, resume) = first.connect_resumable().await.unwrap();
+        let peer = joined(&mut host).await;
+        let pin = peer.client().unwrap();
+        // While the host still counts the connection, a second one only waits (#434).
+        assert!(matches!(resume.connect().await, Err(LinkError::Timeout)));
+        host.hold(
+            pin,
+            Instant::now() + Duration::from_secs(10),
+            peer.peer_address(),
+        );
+        drop((client, peer));
+        let again = resume.connect().await.unwrap();
+        let back = joined(&mut host).await;
+        assert_eq!(back.client(), Some(pin));
+        again.send_datagram(&[9]).unwrap();
+        assert_eq!(back.read_datagram().await.unwrap(), vec![9]);
+        // Used again: another attempt waits, and a released seat turns it away for good.
+        assert!(matches!(resume.connect().await, Err(LinkError::Timeout)));
+        host.release(pin);
+        // A host waiting for nobody accepts no handshake at all, so the rider cannot tell yet.
+        assert!(matches!(resume.connect().await, Err(LinkError::Timeout)));
+        let other = joiner(&host).await;
+        host.admit(other.reply()).unwrap();
+        assert!(matches!(resume.connect().await, Err(LinkError::Replay)));
+        drop((again, back, resume, other));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_connection_closed_for_reconnecting_counts_as_lost_and_a_goodbye_does_not() {
+        for reconnect in [true, false] {
+            let mut host = host().await;
+            let joiner = joiner(&host).await;
+            host.admit(joiner.reply()).unwrap();
+            let client = joiner.connect().await.unwrap();
+            let peer = joined(&mut host).await;
+            assert!(!client.lost() && !peer.lost());
+            if reconnect {
+                peer.close_for_reconnect();
+            } else {
+                peer.close();
+            }
+            timeout(Duration::from_secs(1), client.closed())
+                .await
+                .unwrap();
+            assert_eq!(client.lost(), reconnect);
+            assert_eq!(peer.lost(), reconnect);
+            // Closing again later cannot change why it ended.
+            client.close_for_reconnect();
+            assert_eq!(client.lost(), reconnect);
+            drop((client, peer));
+            host.close().await;
+        }
     }
 }

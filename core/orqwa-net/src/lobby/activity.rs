@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::activity::{ActivityLobby, Participant, Selection};
+use crate::activity::{ActivityLobby, ContentKind, Participant, Selection};
 use crate::content::{self, ContentError, Source};
 
 use super::{LobbyError, MAX_RIDERS, Message, RecvStream, RiderId, SendStream, rider_id, watch};
@@ -105,6 +105,18 @@ impl Activities {
                 .selection()
                 .is_some_and(|selected| selected.revision == revision)
     }
+    /// Whether `id` may tell the group how far it has prepared `revision` (#419): a member
+    /// not yet ready, for the current selection.
+    pub(super) fn preparing(&self, id: RiderId, revision: u64) -> bool {
+        let slot = usize::from(id.value());
+        self.enabled
+            && self.members[slot].is_some()
+            && !self.ready[slot]
+            && self
+                .lobby
+                .selection()
+                .is_some_and(|selected| selected.revision == revision)
+    }
     pub(super) fn initial(&self) -> Vec<Message> {
         let mut messages = Vec::new();
         if let Some(selected) = self.lobby.selection() {
@@ -134,7 +146,9 @@ pub(super) async fn transfer(
     }
     .ok_or(ContentError::Mismatch)?;
     let mut source = Source::open(&path, id.kind()).await?;
-    if source.id() != id {
+    // A course goes as this rider's own copy, which may be renamed or show another map
+    // picture than the one selected (#435); the receiver checks its course key.
+    if id.kind() == ContentKind::Workout && source.id() != id {
         return Err(ContentError::Mismatch);
     }
     content::send(&mut send, &mut source).await

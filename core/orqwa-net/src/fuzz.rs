@@ -9,7 +9,7 @@ use std::time::Duration;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_domain::workout::{Cue, Intensity, Plan, Step, Target};
 
-use crate::activity::{Assistance, ContentId, ContentKind, Selection};
+use crate::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use crate::code::{
     Candidate, CandidateKind, Fingerprint, Invite, NatObservation, Reply, RideId, RouteHash,
 };
@@ -133,6 +133,8 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
     let rider = Rider {
         name: "Anna".into(),
         mass: Kilograms(80.0),
+        weight: Kilograms(70.0),
+        avatar: orqwa_domain::profile::Avatar::Female,
     };
     let anna = RiderId::new(1).expect("valid rider");
     let mut roster: crate::lobby::Roster = std::array::from_fn(|_| None);
@@ -150,7 +152,12 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Selection(selection.clone()),
         Message::Ready(1, true),
         Message::Readiness(anna, 1, true),
+        Message::Preparation(1, crate::lobby::Stage::Downloading, 40),
+        Message::Preparations(anna, 1, crate::lobby::Stage::Preparing, 75),
         Message::Enter(1),
+        Message::Away(anna),
+        Message::Back(anna),
+        Message::Rejoined(true),
     ];
     let handover = [
         crate::handover::Message::Offer {
@@ -239,6 +246,7 @@ fn selection_seed() -> Selection {
         revision: 1,
         name: "Col du Galibier".into(),
         course: Some(ContentId::new(ContentKind::Course, 4096, [5; 32]).expect("course")),
+        course_key: Some(CourseKey([7; 32])),
         workout: Some(ContentId::new(ContentKind::Workout, 512, [6; 32]).expect("workout")),
         assistance: Assistance {
             drafting: true,
