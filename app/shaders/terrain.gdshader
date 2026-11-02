@@ -9,6 +9,13 @@ shader_type spatial;
 
 #include "res://shaders/ground.gdshaderinc"
 #include "res://shaders/rock.gdshaderinc"
+#include "res://shaders/winter.gdshaderinc"
+
+uniform sampler2D winter_ground_mask : filter_linear, repeat_disable;
+uniform vec2 winter_ground_origin = vec2(0.0);
+uniform vec2 winter_ground_size = vec2(0.0);
+#include "res://shaders/spring.gdshaderinc"
+#include "res://shaders/autumn.gdshaderinc"
 
 uniform sampler2D grass_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -70,6 +77,20 @@ void vertex() {
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	cover = COLOR;
+	if (winter_strength > 0.0) {
+		float clearance = 1.0;
+		if (winter_ground_size.x > 0.0) {
+			vec2 cell = (world_position.xz - winter_ground_origin) / winter_ground_size;
+			if (all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(1.0)))) {
+				clearance = textureLod(winter_ground_mask, cell, 0.0).r;
+			}
+		}
+		float depth = winter_depth(world_position) * winter_ground_cover(world_position, world_normal)
+			* clearance * (1.0 - smoothstep(0.3, 0.7, cover.a));
+		depth *= 0.85 + 0.15 * ground_noise(world_position.xz / 11.0);
+		VERTEX.y += depth;
+		world_position.y += depth;
+	}
 }
 
 float distance2(vec3 colour, vec3 kind) {
@@ -176,6 +197,16 @@ void fragment() {
 	if (canopy > 0.001) {
 		vec3 crowns;
 		vec3 crowns_n = from_above(canopy_albedo, canopy_normal, canopy_tile, 1.0, crowns);
+		vec2 patch = floor(world_position.xz / 24.0);
+		vec3 blossom = spring_colour(patch);
+		float brightness = dot(crowns, vec3(0.2126, 0.7152, 0.0722));
+		crowns = mix(crowns, blossom * brightness * 2.0, spring_amount(patch, world_position.y) * 0.35);
+		// Broadleaf-dominant groves turn orange/russet; other collections retain evergreen green.
+		float grove = autumn_collection(world_position.xz);
+		vec3 autumn_crown = mix(autumn_colors[1].rgb, autumn_colors[3].rgb, autumn_noise(world_position.xz / 75.0));
+		float autumn_light = max(dot(autumn_crown, vec3(0.2126, 0.7152, 0.0722)), 0.03);
+		crowns = mix(crowns, autumn_crown * brightness / autumn_light * 1.18,
+			autumn_amount(world_position.y) * mix(0.18, 1.0, grove));
 		floor_colour = mix(floor_colour, crowns, far);
 		floor_normal = normalize(mix(floor_normal, crowns_n, far));
 	}
@@ -219,6 +250,7 @@ void fragment() {
 	// Snow above the snow line, thinning out over a hundred metres, gone from steep faces.
 	float snow = smoothstep(snow_line - 60.0, snow_line + 60.0, world_position.y + (ground_noise(world_position.xz / 30.0) - 0.5) * 120.0);
 	snow *= smoothstep(0.6, 0.8, world_normal.y) * (1.0 - bed);
+	snow = mix(snow, winter_ground_cover(world_position, world_normal) * (1.0 - bed), winter_strength);
 	albedo = mix(albedo, snow_color, snow);
 	normal = normalize(mix(normal, world_normal, snow * 0.7));
 	roughness = mix(roughness, 0.7, snow);

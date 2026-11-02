@@ -4,9 +4,9 @@ crown of many such cards reads as foliage, not as a solid shape.
 
 Run in the art container:
     scripts/art.sh blender --background --factory-startup --python art/vegetation/foliage.py \
-        -- [--out DIR]
+        -- [--out DIR] [--blossoms-only]
 
-Writes leaves_albedo.webp and needles_albedo.webp (RGBA, lossless: the edges of the leaves are
+Writes leaves_albedo.webp, needles_albedo.webp and blossoms_albedo.png (RGBA, lossless: edges are
 in the alpha channel) into app/assets/textures. Shapes are drawn with numpy from fixed seeds,
 so rebuilds give the same files.
 """
@@ -113,6 +113,52 @@ def needles():
     return rgb, alpha
 
 
+def blossom(rgb, alpha, centre, radius, angle, tone):
+    """Five rounded petals and a warm stamen centre, at a few centimetres on the real card."""
+    cx, cy = centre
+    left, right = max(0, int((cx - radius) * SIZE) - 2), min(SIZE, int((cx + radius) * SIZE) + 3)
+    top, bottom = max(0, int((cy - radius) * SIZE) - 2), min(SIZE, int((cy + radius) * SIZE) + 3)
+    if right <= left or bottom <= top:
+        return
+    rx, ry = GRID_X[top:bottom, left:right] - cx, GRID_Y[top:bottom, left:right] - cy
+    distance = np.hypot(rx, ry)
+    phase = np.arctan2(ry, rx) - angle
+    boundary = radius * (0.78 + 0.22 * np.cos(phase * 5))
+    coverage = np.clip((boundary - distance) * SIZE, 0, 1)
+    shade = tone * (0.76 + 0.19 * np.clip(distance / radius, 0, 1)
+                    + 0.05 * np.cos(phase * 5))
+    centre_mask = np.exp(-(distance / (radius * 0.22)) ** 4)
+    for channel, warm in enumerate((0.65, 0.46, 0.14)):
+        value = shade * (1 - centre_mask) + warm * centre_mask
+        patch = rgb[top:bottom, left:right, channel]
+        patch[:] = patch * (1 - coverage) + value * coverage
+    np.maximum(alpha[top:bottom, left:right], coverage, out=alpha[top:bottom, left:right])
+
+
+def blossoms():
+    """Loose clusters of real petal silhouettes along the same twig fan as the leaf cards."""
+    rgb, alpha = canvas()
+    rng = np.random.default_rng(350)
+    branches = []
+    for index in range(5):
+        angle = -math.pi / 2 + (index - 2) * 0.45
+        start = (0.5, 0.98)
+        end = (0.5 + math.cos(angle) * 0.75, 0.98 + math.sin(angle) * 0.75)
+        twig(rgb, alpha, start, end, 0.005, 0.6)
+        branches.append((start, end))
+    for _ in range(75):
+        start, end = branches[rng.integers(len(branches))]
+        along = rng.uniform(0.2, 1.0)
+        cluster = (start[0] + (end[0] - start[0]) * along,
+                   start[1] + (end[1] - start[1]) * along)
+        for _ in range(rng.integers(3, 6)):
+            centre = (cluster[0] + rng.uniform(-0.05, 0.05),
+                      cluster[1] + rng.uniform(-0.05, 0.05))
+            blossom(rgb, alpha, centre, rng.uniform(0.014, 0.024),
+                    rng.uniform(0, math.tau), rng.uniform(0.78, 0.98))
+    return rgb, alpha
+
+
 def save(rgb, alpha, path):
     image = bpy.data.images.new(os.path.basename(path), SIZE, SIZE, alpha=True)
     image.colorspace_settings.name = "Non-Color"
@@ -121,7 +167,7 @@ def save(rgb, alpha, path):
     scene = bpy.context.scene
     scene.view_settings.view_transform = "Raw"
     settings = scene.render.image_settings
-    settings.file_format = "WEBP"
+    settings.file_format = "PNG" if path.endswith(".png") else "WEBP"
     settings.color_mode = "RGBA"
     settings.quality = 100
     image.save_render(path, scene=scene)
@@ -132,9 +178,13 @@ def main():
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     out = args[args.index("--out") + 1] if "--out" in args else OUT
     os.makedirs(out, exist_ok=True)
-    for name, draw in (("leaves", leaves), ("needles", needles)):
+    recipes = (("blossoms", blossoms),) if "--blossoms-only" in args else (
+        ("leaves", leaves), ("needles", needles), ("blossoms", blossoms))
+    for name, draw in recipes:
         rgb, alpha = draw()
-        save(rgb, alpha, os.path.join(out, f"{name}_albedo.webp"))
+        # Keep the small blossom mask in PNG: the emulated WebP encoder damaged its alpha.
+        suffix = "png" if name == "blossoms" else "webp"
+        save(rgb, alpha, os.path.join(out, f"{name}_albedo.{suffix}"))
 
 
 main()

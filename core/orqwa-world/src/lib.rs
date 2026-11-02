@@ -14,6 +14,7 @@ mod climate;
 pub mod course_map;
 mod drape;
 mod earthworks;
+mod forest_mask;
 mod foundations;
 mod horizon;
 mod junctions;
@@ -27,6 +28,8 @@ mod riding;
 mod road;
 mod roundabouts;
 mod route_distances;
+mod seasonal_snow;
+mod snow_ground;
 pub mod stored;
 mod streets;
 mod structures;
@@ -45,6 +48,7 @@ use tracing::{info, warn};
 
 pub use benchmark::benchmark;
 pub use climate::{SeasonClimate, season_climate};
+pub use forest_mask::{ForestMask, forest_mask};
 pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{FlatMap, MapFeature, minimap};
@@ -52,13 +56,15 @@ pub use props::{Label, Props};
 pub use riding::RoadWidths;
 use road::RoadIndex;
 pub use route_distances::{DENSE_FOREST, DISTANCE_STEP, RouteDistances, route_distances};
+pub use seasonal_snow::{Snowbank, road_snow_exposure, snow_depth, snowbanks};
+pub use snow_ground::{SnowGroundMask, snow_ground_mask};
 pub use vegetation::Trees;
 
 /// What worlds look like. Raise it whenever a change makes the same course come out
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 36;
+pub const GENERATOR: u32 = 39;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -491,6 +497,7 @@ fn buildings_by_chunk<'a>(
             purpose: None,
             landmark: None,
             climate,
+            region: buildings::Region::at(projection.unproject(e, n)),
         });
     }
     buildings::mark_churches(&mut plots, &project(&map.churches));
