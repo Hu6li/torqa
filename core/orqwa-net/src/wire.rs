@@ -5,12 +5,17 @@ use std::time::Duration;
 use quinn::{RecvStream, SendStream};
 use tokio::time::timeout;
 
+use orqwa_domain::profile::Avatar;
+
 use crate::code::RouteHash;
-use crate::lobby::{LobbyError, Rider, Roster};
+use crate::lobby::{LobbyError, Rider, Roster, Stage};
 use crate::state::{MAX_RIDERS, RiderId};
 
 const MAX_FRAME: usize = 1024;
 
+// Controls are decoded and handled one at a time: a welcome's full roster, about 400 bytes, on
+// the stack costs less than an allocation for every control.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub(crate) enum Message {
     Hello(RouteHash, Rider),
@@ -23,11 +28,19 @@ pub(crate) enum Message {
     Selection(crate::activity::Selection),
     Ready(u64, bool),
     Readiness(RiderId, u64, bool),
+    Preparation(u64, crate::lobby::Stage, u8),
+    Preparations(RiderId, u64, crate::lobby::Stage, u8),
     Running(i64),
     Workout(crate::lobby::timing::WorkoutSample),
     Handover(crate::handover::Message),
     Enter(u64),
     Entry(u64, Option<crate::lobby::RideProgress>),
+    /// A rider's connection was lost; their seat is held while they reconnect (#434).
+    Away(RiderId),
+    /// A rider whose seat was held is connected again.
+    Back(RiderId),
+    /// Opens a reconnected rider's own link: whether they had entered the running ride.
+    Rejoined(bool),
 }
 
 pub(crate) async fn write(send: &mut SendStream, message: &Message) -> Result<(), LobbyError> {
@@ -73,9 +86,28 @@ fn rider(bytes: &mut Vec<u8>, rider: &Rider) -> Result<(), LobbyError> {
     bytes.push(u8::try_from(rider.name.len()).map_err(|_| LobbyError::Protocol)?);
     bytes.extend_from_slice(rider.name.as_bytes());
     bytes.extend_from_slice(&rider.mass.0.to_be_bytes());
+    bytes.extend_from_slice(&rider.weight.0.to_be_bytes());
+    bytes.push(match rider.avatar {
+        Avatar::Female => 0,
+        Avatar::Male => 1,
+    });
     Ok(())
 }
 
+fn stage_byte(stage: Stage) -> u8 {
+    match stage {
+        Stage::Downloading => 0,
+        Stage::Preparing => 1,
+    }
+}
+
+fn percent_byte(percent: u8) -> Result<u8, LobbyError> {
+    (percent <= 100)
+        .then_some(percent)
+        .ok_or(LobbyError::Protocol)
+}
+
+#[allow(clippy::too_many_lines)] // one arm per control: the wire format reads as one table
 pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
     let mut bytes = vec![crate::code::VERSION];
     match message {
@@ -105,6 +137,9 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
             rider(&mut bytes, who)?;
         }
         Message::Left(id) => bytes.extend_from_slice(&[4, id.value()]),
+        Message::Away(id) => bytes.extend_from_slice(&[18, id.value()]),
+        Message::Back(id) => bytes.extend_from_slice(&[19, id.value()]),
+        Message::Rejoined(entered) => bytes.extend_from_slice(&[20, u8::from(*entered)]),
         Message::Start(millis) => {
             bytes.push(5);
             bytes.extend_from_slice(&millis.to_be_bytes());
@@ -126,6 +161,14 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
         }
         Message::Readiness(id, revision, ready) => {
             bytes.extend_from_slice(&[10, id.value(), u8::from(*ready)]);
+            bytes.extend_from_slice(&revision.to_be_bytes());
+        }
+        Message::Preparation(revision, stage, percent) => {
+            bytes.extend_from_slice(&[16, stage_byte(*stage), percent_byte(*percent)?]);
+            bytes.extend_from_slice(&revision.to_be_bytes());
+        }
+        Message::Preparations(id, revision, stage, percent) => {
+            bytes.extend_from_slice(&[17, id.value(), stage_byte(*stage), percent_byte(*percent)?]);
             bytes.extend_from_slice(&revision.to_be_bytes());
         }
         Message::Handover(message) => {
@@ -186,6 +229,16 @@ impl Reader<'_> {
     fn id(&mut self) -> Result<RiderId, LobbyError> {
         Ok(RiderId::new(self.byte()?)?)
     }
+    fn stage(&mut self) -> Result<Stage, LobbyError> {
+        match self.byte()? {
+            0 => Ok(Stage::Downloading),
+            1 => Ok(Stage::Preparing),
+            _ => Err(LobbyError::Protocol),
+        }
+    }
+    fn percent(&mut self) -> Result<u8, LobbyError> {
+        percent_byte(self.byte()?)
+    }
     fn rider(&mut self) -> Result<Rider, LobbyError> {
         let len = usize::from(self.byte()?);
         if len == 0 || len > crate::code::MAX_NAME_BYTES {
@@ -197,6 +250,12 @@ impl Reader<'_> {
         let rider = Rider {
             name: name.into(),
             mass: orqwa_domain::units::Kilograms(f64::from_be_bytes(self.take()?)),
+            weight: orqwa_domain::units::Kilograms(f64::from_be_bytes(self.take()?)),
+            avatar: match self.byte()? {
+                0 => Avatar::Female,
+                1 => Avatar::Male,
+                _ => return Err(LobbyError::Protocol),
+            },
         };
         rider.validate()?;
         Ok(rider)
@@ -240,6 +299,7 @@ impl Reader<'_> {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per control: the wire format reads as one table
 pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
     if bytes.len() > MAX_FRAME {
         return Err(LobbyError::Protocol);
@@ -279,6 +339,13 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
         }
         3 => Message::Joined(reader.id()?, reader.rider()?),
         4 => Message::Left(reader.id()?),
+        18 => Message::Away(reader.id()?),
+        19 => Message::Back(reader.id()?),
+        20 => Message::Rejoined(match reader.byte()? {
+            0 => false,
+            1 => true,
+            _ => return Err(LobbyError::Protocol),
+        }),
         5 => {
             let millis = u32::from_be_bytes(reader.take()?);
             if millis > 60_000 {
@@ -327,6 +394,15 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
             Message::Running(age)
         }
         12 => Message::Enter(u64::from_be_bytes(reader.take()?)),
+        16 => {
+            let (stage, percent) = (reader.stage()?, reader.percent()?);
+            Message::Preparation(u64::from_be_bytes(reader.take()?), stage, percent)
+        }
+        17 => {
+            let id = reader.id()?;
+            let (stage, percent) = (reader.stage()?, reader.percent()?);
+            Message::Preparations(id, u64::from_be_bytes(reader.take()?), stage, percent)
+        }
         13 => reader.entry()?,
         14 => reader.workout()?,
         15 => {
@@ -348,25 +424,89 @@ mod tests {
     use orqwa_domain::units::Kilograms;
 
     #[test]
+    fn preparation_reports_carry_their_stage_and_a_percentage_up_to_100() {
+        let anna = RiderId::new(1).unwrap();
+        for message in [
+            Message::Preparation(3, Stage::Downloading, 0),
+            Message::Preparations(anna, 3, Stage::Preparing, 100),
+        ] {
+            let bytes = encode(&message).unwrap();
+            let decoded = decode(&bytes).unwrap();
+            assert_eq!(encode(&decoded).unwrap(), bytes, "{message:?}");
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+        }
+        assert!(encode(&Message::Preparation(3, Stage::Downloading, 101)).is_err());
+        let valid = encode(&Message::Preparations(anna, 3, Stage::Preparing, 50)).unwrap();
+        // The version and tag, then the rider, stage and percent before the revision.
+        let (stage_at, percent_at) = (3, 4);
+        let mut stage = valid.clone();
+        stage[stage_at] = 2;
+        assert!(decode(&stage).is_err(), "a stage nobody knows");
+        let mut percent = valid;
+        percent[percent_at] = 101;
+        assert!(decode(&percent).is_err(), "more than everything");
+    }
+
+    #[test]
+    fn reconnection_controls_name_a_valid_rider_and_a_plain_flag() {
+        let anna = RiderId::new(1).unwrap();
+        for message in [
+            Message::Away(anna),
+            Message::Back(anna),
+            Message::Rejoined(true),
+            Message::Rejoined(false),
+        ] {
+            let bytes = encode(&message).unwrap();
+            assert_eq!(encode(&decode(&bytes).unwrap()).unwrap(), bytes);
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+            let mut extra = bytes;
+            extra.push(0);
+            assert!(decode(&extra).is_err());
+        }
+        let mut nobody = encode(&Message::Away(anna)).unwrap();
+        nobody[2] = 8;
+        assert!(decode(&nobody).is_err(), "no ninth rider");
+        let mut maybe = encode(&Message::Rejoined(true)).unwrap();
+        maybe[2] = 2;
+        assert!(decode(&maybe).is_err(), "entered or not");
+    }
+
+    #[test]
     fn untrusted_controls_reject_truncation_trailing_data_duplicate_ids_and_invalid_riders() {
         let who = Rider {
             name: "Anna".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(74.0),
+            avatar: Avatar::Male,
         };
         let valid = encode(&Message::Hello(RouteHash([1; 32]), who.clone())).unwrap();
-        assert!(matches!(decode(&valid), Ok(Message::Hello(_, _))));
+        assert!(matches!(decode(&valid), Ok(Message::Hello(_, ref sent)) if *sent == who));
         for len in 0..valid.len() {
             assert!(decode(&valid[..len]).is_err());
         }
         let mut extra = valid.clone();
         extra.push(0);
         assert!(decode(&extra).is_err());
-        for mass in [f64::NAN, f64::INFINITY, -1.0, 1000.0] {
+        // Mass, then weight, then the avatar end a rider.
+        let (mass_at, weight_at, avatar_at) = (valid.len() - 17, valid.len() - 9, valid.len() - 1);
+        for mass in [f64::NAN, f64::INFINITY, -1.0, 1000.0, 70.0] {
             let mut invalid = valid.clone();
-            let at = invalid.len() - 8;
-            invalid[at..].copy_from_slice(&mass.to_be_bytes());
-            assert!(decode(&invalid).is_err());
+            invalid[mass_at..weight_at].copy_from_slice(&mass.to_be_bytes());
+            assert!(decode(&invalid).is_err(), "mass {mass}");
         }
+        // A weight above the rider-plus-bicycle mass is as invalid as one out of range.
+        for weight in [f64::NAN, f64::INFINITY, 10.0, 90.0] {
+            let mut invalid = valid.clone();
+            invalid[weight_at..avatar_at].copy_from_slice(&weight.to_be_bytes());
+            assert!(decode(&invalid).is_err(), "weight {weight}");
+        }
+        let mut unknown = valid.clone();
+        unknown[avatar_at] = 2;
+        assert!(decode(&unknown).is_err(), "an avatar nobody knows");
         let mut roster: Roster = std::array::from_fn(|_| None);
         roster[0] = Some(who.clone());
         roster[1] = Some(who);
@@ -380,7 +520,8 @@ mod tests {
         .unwrap();
         assert!(decode(&welcome).is_ok());
         let mut duplicate = welcome;
-        duplicate[43] = 0;
+        // The second rider's slot, after the first's id, name, mass, weight and avatar.
+        duplicate[52] = 0;
         assert!(decode(&duplicate).is_err());
         assert!(decode(&vec![0; MAX_FRAME + 1]).is_err());
         assert!(decode(&[crate::code::VERSION, 5, 0, 1, 0, 0]).is_err());

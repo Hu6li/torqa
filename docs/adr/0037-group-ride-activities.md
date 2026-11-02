@@ -343,3 +343,42 @@ gate synchronously, replaces the port and reconnects previously opted-in listeni
 generation and microphone off; device choices, gain, deafen and local mutes remain personal.
 The new host shares its already verified content and publishes a fresh invitation. No extra
 service, endpoint, package or dependency version is introduced.
+
+### Courses riders already have — 2026-11-01
+
+A joiner found an existing course only under its hash-derived name (#435). A `.tqc` sent
+beforehand and imported under the rider's own name was downloaded again, and so was any copy
+the app had changed since: renaming, importing, a new map picture, countries or map detail
+rewrite the archive. Worse, a received `<hash>.tqc` changed since then made publication fail,
+so the rider could not prepare that course again.
+
+Each course selection now also carries a **course key**: SHA-256 of key material the storage
+layer reads from the archive without unpacking it. The material is the manifest without its
+`name` and `countries`, serialized with sorted keys, followed by every other entry except
+the map picture (`map.png`, legacy `preview.png`) by path, stored CRC-32 and uncompressed
+size, sorted by path and length-prefixed. Renaming, importing under another name, a new
+picture or countries keep the key; other route, data or manifest changes, map detail among
+them, change it. Before downloading, a joiner keys every `.tqc` in its library, which costs a
+zip directory and manifest per course, so no index or cache is kept, and rides the first
+match without downloading. Courses open in shared mode in a group, so the match is not
+changed while riding.
+
+Transfers keep checking exact bytes. A workout response must name the requested identity. A
+course response may announce the sender's own copy instead, renamed or with another picture:
+the receiver checks its kind and size limit before creating a temporary file, its streaming
+SHA-256 against the announced identity, then the course validator and the course key against
+the selection's before publication. The serving lobby sends its local course as it is now. So
+a successor riding their renamed copy after a handover still serves late joiners, and so does
+a host whose file changed after selecting it.
+
+CRC-32 is not collision resistant, so a hostile organizer could make another course match a
+key. That gains nothing over selecting that course: a match only picks a course the joiner
+already has, and a forged download still passes the shared validator. It does not reach
+riders who are already prepared. Exact SHA-256 of whole files was rejected because the app's
+own rewrites change bytes, and hashing decompressed contents because it costs seconds per
+large course.
+
+Publication still never replaces a file. When a hash-derived name holds other bytes, the
+content takes the next free `-2` … `-8` name beside it. It reuses a name that already holds
+identical bytes, as before. Selection encoding version 2 and protocol/invitation version 10
+with ALPN `orqwa-group/10` require matching builds and fresh codes.
