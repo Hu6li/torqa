@@ -13,9 +13,56 @@ fn main() {
     if os == "linux" && arch == "x86_64" {
         println!("cargo:rustc-cdylib-link-arg=-Wl,-Bsymbolic");
     }
+    if os == "macos" {
+        microphone(&arch);
+    }
     commit();
     branch();
     println!("cargo:rerun-if-changed=build.rs");
+}
+
+/// Clang supplies Apple's block ABI; no third-party Objective-C runtime wrapper is needed.
+fn microphone(arch: &str) {
+    let out =
+        std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo output directory"));
+    let object = out.join("microphone.o");
+    let archive = out.join("liborqwa_microphone.a");
+    let apple_arch = if arch == "aarch64" { "arm64" } else { arch };
+    let status = Command::new("xcrun")
+        .args(["--sdk", "macosx", "clang", "-arch", apple_arch])
+        .args([
+            "-mmacosx-version-min=11.0",
+            "-fobjc-arc",
+            "-fblocks",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-c",
+        ])
+        .arg("src/microphone_permission.m")
+        .arg("-o")
+        .arg(&object)
+        .status()
+        .expect("Apple Clang for microphone authorization");
+    assert!(
+        status.success(),
+        "compiling microphone authorization failed"
+    );
+    let status = Command::new("xcrun")
+        .args(["ar", "crs"])
+        .arg(archive)
+        .arg(object)
+        .status()
+        .expect("Apple archive tool");
+    assert!(
+        status.success(),
+        "archiving microphone authorization failed"
+    );
+    println!("cargo:rustc-link-search=native={}", out.display());
+    println!("cargo:rustc-link-lib=static=orqwa_microphone");
+    println!("cargo:rustc-link-lib=framework=AVFoundation");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rerun-if-changed=src/microphone_permission.m");
 }
 
 /// The commit the About tab shows (R83, R130, ADR 0018), as `ORQWA_COMMIT`, cut to seven

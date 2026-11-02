@@ -341,7 +341,7 @@ mod tests {
         voice.enable(true);
         assert!(
             voice
-                .playout(Instant::now())
+                .playout()
                 .iter()
                 .all(|item| matches!(item.action, Playout::Silence))
         );
@@ -524,14 +524,8 @@ mod tests {
                     .send(VoiceFrame::new(RiderId::HOST, spurt, sequence, b"speech").unwrap())
                     .unwrap();
                 tokio::time::sleep(Duration::from_millis(20)).await;
-                host_heard |= matches!(
-                    host_voice.playout(Instant::now())[0].action,
-                    Playout::Frame(_)
-                );
-                other_heard |= matches!(
-                    other_voice.playout(Instant::now())[0].action,
-                    Playout::Frame(_)
-                );
+                host_heard |= matches!(host_voice.playout()[0].action, Playout::Frame(_));
+                other_heard |= matches!(other_voice.playout()[0].action, Playout::Frame(_));
                 if host_heard && other_heard {
                     return;
                 }

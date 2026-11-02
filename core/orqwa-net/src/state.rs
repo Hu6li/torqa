@@ -174,8 +174,8 @@ struct Slot {
 /// Admission creates a [`Membership`] for the connection. Ingest charges the traffic budget
 /// before parsing, rejects invalid state and replaces one pending value. Draining emits at
 /// most one latest value per rider per 200 ms; membership/control events belong in a separate
-/// bounded channel. A sustained flood returns [`StateError::Flood`] so the transport can close
-/// that peer immediately instead of continuing to parse or enqueue its traffic.
+/// bounded channel. Excess delivery is discarded before parsing; the transport separately
+/// detects sustained raw traffic abuse without mistaking a delayed batch for a flood.
 #[derive(Debug)]
 pub struct StateInbox {
     slots: [Slot; MAX_RIDERS],
@@ -234,7 +234,7 @@ impl StateInbox {
     /// current connection. `Ok(false)` discards a reordered or duplicate sample.
     ///
     /// # Errors
-    /// Returns [`StateError`] for a stale/forged connection, malformed packet or traffic flood.
+    /// Returns [`StateError`] for a stale/forged connection or malformed packet.
     pub fn ingest(
         &mut self,
         membership: Membership,
@@ -261,7 +261,7 @@ impl StateInbox {
             slot.refilled = now.checked_sub(remainder).unwrap_or(now);
         }
         if slot.tokens == 0 {
-            return Err(StateError::Flood);
+            return Ok(false);
         }
         slot.tokens -= 1;
         let state = RiderState::from_datagram(bytes, membership.rider, elapsed)?;
@@ -399,21 +399,41 @@ mod tests {
             );
         }
         let bytes = state(0).datagram(member.rider()).unwrap();
-        assert_eq!(
-            inbox.ingest(member, &bytes, Duration::ZERO, now),
-            Err(StateError::Flood)
-        );
+        assert_eq!(inbox.ingest(member, &bytes, Duration::ZERO, now), Ok(false));
         assert_eq!(
             inbox.ingest(member, &bytes, Duration::ZERO, now + STATE_EVERY),
             Ok(true)
         );
         assert_eq!(
             inbox.ingest(member, &bytes, Duration::ZERO, now + STATE_EVERY),
-            Err(StateError::Flood)
+            Ok(false)
         );
         assert_eq!(
             inbox.ingest(member, &bytes, Duration::ZERO, now + 2 * STATE_EVERY),
             Ok(false)
+        );
+    }
+
+    #[test]
+    fn delayed_state_bursts_resume_without_replacing_the_current_membership() {
+        let now = Instant::now();
+        let mut inbox = StateInbox::new(now);
+        let member = inbox.join(RiderId::HOST, now).unwrap();
+        for ms in 0..50 {
+            let bytes = state(ms).datagram(member.rider()).unwrap();
+            assert_eq!(
+                inbox.ingest(member, &bytes, Duration::from_secs(1), now),
+                Ok(ms < u64::from(STATE_BURST))
+            );
+        }
+        let bytes = state(200).datagram(member.rider()).unwrap();
+        assert_eq!(
+            inbox.ingest(member, &bytes, Duration::from_secs(1), now + STATE_EVERY),
+            Ok(true)
+        );
+        assert_eq!(
+            inbox.drain(now + STATE_EVERY)[0].unwrap().at,
+            Duration::from_millis(200)
         );
     }
 

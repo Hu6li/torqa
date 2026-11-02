@@ -71,15 +71,46 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	audio.update_status(
 		{
 			"voice": true,
+			"microphone_test": true,
+			"microphone_level": 0.65,
 			"input_device": "headset",
 			"output_device": "headset",
 			"devices": [{"id": "headset", "name": "USB Headset", "input": true, "output": true}]
 		}
 	)
-	audio._settings.popup_centered(Vector2i(440, 0))
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-audio-de.png"))
-	audio._settings.hide()
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group.refresh()
+		audio.update_status(
+			{
+				"microphone_test": true,
+				"microphone_level": 0.65,
+				"microphone_voice_detected": true,
+				"microphone_voice_heard": true,
+				"microphone_checked": true
+			}
+		)
+		audio._audio_scroll.scroll_vertical = 0
+		audio._popup_settings()
+		await create_timer(0.4).timeout
+		print("saved audio dialog ", locale, ": ", audio._settings.size)
+		root.get_texture().get_image().save_png(out.path_join("group-audio-" + locale + ".png"))
+		audio.update_status(
+			{"speaker_test": true, "microphone_checked": true, "microphone_voice_heard": true}
+		)
+		audio._audio_scroll.scroll_vertical = 100000
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-speakers-" + locale + ".png"))
+		audio.update_status({})
+		audio._show_permission("denied")
+		audio._audio_scroll.scroll_vertical = 0
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-mic-permission-" + locale + ".png")
+		)
+		audio._permission_hint.hide()
+		audio._settings_permission_hint.hide()
+		audio._settings.hide()
 	group._show_status({"phase": "connecting", "reply": "private"})
 	await create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-joining-de.png"))
@@ -858,8 +889,14 @@ func _error_details(out_dir: String) -> void:
 		# The rider's profile selects its language at bind time; this fixture chooses one.
 		TranslationServer.set_locale(locale)
 		var orqwa: OrqwaApp = _main.get_node("Orqwa")
+		# Two failures, so the card (#436) counts the earlier one under the newest.
+		orqwa.ride_detail("/missing-earlier.fit", 10)
 		orqwa.ride_detail("/missing-261.fit", 10)
 		var details: FailureDetails = _main.get("_failures")
+		if locale == "en":
+			await create_timer(0.5).timeout
+			root.get_texture().get_image().save_png(out_dir.path_join("error-card.png"))
+			print("saved error-card.png")
 		var toggle: Button = details.get("_toggle")
 		toggle.button_pressed = true
 		await create_timer(0.5).timeout

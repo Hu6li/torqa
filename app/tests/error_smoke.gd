@@ -61,8 +61,27 @@ func _run() -> void:
 	_check(not history.visible and not panel.visible, "dismissed details hide until the next")
 	history.report(failure)
 	_check(history.visible and rows.get_child_count() == 2, "dismissing forgets earlier failures")
-	# Anchored as the main scene anchors it: it grows upward to fit, the panel opaque, the
-	# message above the buttons rather than behind them.
+	var message: Label = history.get("_message")
+	var sign: Control = history.get("_sign")
+	var earlier: Label = history.get("_earlier")
+	var card: PanelContainer = history.get("_card")
+	_check(not message.visible and not sign.visible, "beside a status, only the buttons show")
+	_check(card.mouse_filter == Control.MOUSE_FILTER_IGNORE, "and the room beside them stays free")
+	# Anchored as the main scene anchors it, on its own (#436): it grows upward to fit, the
+	# panel opaque, the list above the card rather than behind it.
+	history.standalone = true
+	_check(sign.visible and message.visible, "on its own, a warning sign and the message")
+	_check(message.text == FailureDetails.summary(failure), "the card says what failed")
+	_check(not earlier.visible, "with nothing earlier to count")
+	var card_box: StyleBoxFlat = card.get_theme_stylebox("panel")
+	_check(
+		(
+			card_box.border_color == UiTheme.DANGER
+			and card_box.border_width_left == FailureDetails.STRIPE
+			and is_equal_approx(card_box.bg_color.a, 1.0)
+		),
+		"an opaque card with a red edge"
+	)
 	history.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	history.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	history.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -76,13 +95,14 @@ func _run() -> void:
 		await process_frame
 	var repeated: Label = rows.get_child(1)
 	_check(not repeated.visible, "a diagnostic only repeating the message is left out")
-	var buttons: Control = toggle.get_parent()
+	_check(message.text == "No trainer connected.", "the card shows the newest failure")
+	_check(earlier.text == "+1 frühere", "and counts the ones before it: %s" % earlier.text)
 	_check(
-		panel.get_global_rect().end.y <= buttons.get_global_rect().position.y + 0.5,
-		(
-			"the panel ends above the buttons: %s, %s"
-			% [panel.get_global_rect(), buttons.get_global_rect()]
-		)
+		panel.get_global_rect().end.y <= card.get_global_rect().position.y + 0.5,
+		"the panel ends above the card: %s, %s" % [panel.get_global_rect(), card.get_global_rect()]
+	)
+	_check(
+		card.get_global_rect().has_point(toggle.get_global_rect().get_center()), "buttons inside"
 	)
 	var box: StyleBoxFlat = panel.get_theme_stylebox("panel")
 	_check(is_equal_approx(box.bg_color.a, 1.0), "the panel is opaque")
@@ -94,6 +114,14 @@ func _run() -> void:
 		),
 		"the list shows all it holds, or scrolls past the maximum"
 	)
+	_check(
+		scroll.size.y <= rows.get_combined_minimum_size().y + 0.5,
+		"and is no taller than it: %s, %s" % [scroll.size.y, rows.get_combined_minimum_size().y]
+	)
+	TranslationServer.set_locale("en")
+	await process_frame
+	_check(earlier.text == "+1 earlier", "the count follows the language: %s" % earlier.text)
+	_check(message.text == "No trainer connected.", "and so does the message")
 	history.clear()
 	TranslationServer.set_locale("en")
 	await process_frame

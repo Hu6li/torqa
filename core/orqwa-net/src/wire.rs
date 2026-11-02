@@ -78,7 +78,7 @@ pub(crate) async fn read(recv: &mut RecvStream) -> Result<Message, LobbyError> {
         decode(&bytes[..len])
     })
     .await
-    .map_err(|_| LobbyError::Lost)?
+    .map_err(|_| LobbyError::ControlTimeout)?
 }
 
 fn rider(bytes: &mut Vec<u8>, rider: &Rider) -> Result<(), LobbyError> {

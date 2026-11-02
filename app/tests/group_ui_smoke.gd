@@ -12,12 +12,69 @@ func _run() -> void:
 	await _group_connections()
 	await _group_activity()
 	await _group_motion()
+	await _microphone_permissions()
 	_ride_bar()
 	_offer_card()
 	await _organizer_offer()
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## A permission result must never start capture after the rider's action has returned.
+func _microphone_permissions() -> void:
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	var voice: GroupVoiceControls = GroupVoiceControls.new()
+	voice.bind(app)
+	root.add_child(voice)
+	await process_frame
+	var requests: Array[bool] = []
+	voice._permission = func(request: bool) -> String:
+		requests.append(request)
+		return "pending"
+	voice._on_test()
+	_check(requests == [true], "testing explicitly requests microphone permission")
+	_check(_microphone_off(app), "pending permission opens no capture")
+	_check(voice._permission_waiting, "the OS prompt has visible pending guidance")
+	voice._permission = func(request: bool) -> String:
+		requests.append(request)
+		return "allowed"
+	voice._settings.hide()
+	voice.update_status({})
+	_check(requests == [true, false], "waiting polls authorization without requesting again")
+	_check(_microphone_off(app), "late approval never starts a test or unmutes")
+	_check(not voice._permission_waiting, "approval ends polling and asks the rider to retry")
+	for access: String in ["denied", "restricted", "unavailable"]:
+		voice._permission = func(_request: bool) -> String: return access
+		voice._mic.set_pressed_no_signal(true)
+		voice._voice()
+		_check(not voice._mic.button_pressed, access + " keeps the microphone off")
+		voice._on_test()
+		_check(_microphone_off(app), access + " cannot start a test")
+		_check(voice._settings_permission_hint.visible, access + " explains how to recover")
+	requests.clear()
+	voice._permission = func(request: bool) -> String:
+		requests.append(request)
+		return "allowed"
+	voice._on_listen(false)
+	voice.update_status({"speaker_test": true})
+	_check(requests.is_empty(), "listening and presenting speaker checks request no microphone")
+	_check(voice._microphone_allowed(), "authorized microphone action may continue")
+	_check(not voice._permission_hint.visible, "retry clears the permission guidance")
+	if not OS.has_feature("macos"):
+		_check(
+			OrqwaCore.microphone_permission(false) == "allowed", "other platforms keep their flow"
+		)
+	voice.free()
+	app.free()
+	await process_frame
+
+
+func _microphone_off(app: OrqwaApp) -> bool:
+	var testing: bool = app.group_status().get("microphone_test", false)
+	var mic: bool = app.group_status().get("microphone", false)
+	return not testing and not mic
 
 
 ## Cancelling setup grants no network access; joining inspects the code before connecting.
@@ -329,6 +386,40 @@ func _group_activity() -> void:
 	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
 	voice.update_status({"voice": true, "deafened": true, "microphone": false})
 	_check(voice._mic.disabled, "mute all sound prevents microphone activation")
+	voice.update_status(
+		{"microphone_test": true, "microphone_level": 0.65, "echo_prevention": true}
+	)
+	_check(voice._listen.disabled and voice._mic.disabled, "local testing cannot transmit voice")
+	_check(is_equal_approx(voice._level.value, 0.65), "local microphone meter follows Rust status")
+	_check(voice._echo.button_pressed, "speaker echo prevention starts enabled")
+	voice.update_status(
+		{
+			"microphone_test": true,
+			"microphone_voice_detected": true,
+			"microphone_voice_heard": true,
+			"microphone_checked": true
+		}
+	)
+	_check(voice._speech.text == tr("Voice detected"), "speech has a visible detection indicator")
+	_check(voice._speaker_test.disabled, "microphone and speaker tests are exclusive")
+	voice.update_status({"microphone_checked": true, "microphone_voice_heard": true})
+	_check(
+		voice._speech.text == tr("Voice detected"),
+		"the completed microphone result remains visible"
+	)
+	voice.update_status({"microphone_checked": true})
+	_check(voice._speech.text == tr("No voice detected"), "a quiet test has an explicit result")
+	voice.update_status({"speaker_test": true})
+	_check(
+		voice._test.disabled and voice._listen.disabled,
+		"speaker testing keeps capture and voice disabled"
+	)
+	_check(voice._speaker_test.text == tr("Stop speaker test"), "the speaker check can be stopped")
+	voice.update_status({"echo_prevention": false})
+	_check(
+		not voice._echo.button_pressed and not voice._listen.disabled,
+		"headphone mode and stopped test follow status"
+	)
 	group.free()
 	app.free()
 

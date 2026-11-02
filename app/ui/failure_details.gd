@@ -7,6 +7,16 @@ extends VBoxContainer
 const HISTORY_LIMIT: int = 20
 ## The tallest the list of failures grows before it scrolls.
 const MAX_HEIGHT: float = 240.0
+## The red edge that marks the card as an error, like the blue one under a moment's (R124).
+const STRIPE: int = 4
+
+## On its own at the window's corner (#436): a red card with a warning sign and the newest
+## failure, so it reads as an error at a glance. Beside a status that already says what went
+## wrong, as in the account dialog, only the buttons show.
+var standalone: bool = false:
+	set(value):
+		standalone = value
+		_show_card()
 
 var _failures: Array[Dictionary] = []
 var _toggle: Button = Button.new()
@@ -14,6 +24,11 @@ var _dismiss: Button = Button.new()
 var _panel: PanelContainer = PanelContainer.new()
 var _scroll: ScrollContainer = ScrollContainer.new()
 var _rows: VBoxContainer = VBoxContainer.new()
+var _card: PanelContainer = PanelContainer.new()
+var _sign: TextureRect = TextureRect.new()
+var _message: Label = Label.new()
+var _earlier: Label = Label.new()
+var _buttons: HBoxContainer = HBoxContainer.new()
 
 
 func _init() -> void:
@@ -33,17 +48,69 @@ func _init() -> void:
 	_panel.add_child(_scroll)
 	add_child(_panel)
 	_panel.hide()
-	var buttons: HBoxContainer = HBoxContainer.new()
-	buttons.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_build_card()
+	_show_card()
+	hide()
+
+
+func _build_card() -> void:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 12)
+	_sign.texture = UiIcons.texture("warning", 24, UiTheme.DANGER)
+	_sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sign.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(_sign)
+	var column: VBoxContainer = VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 10)
+	# Already in the rider's language, with file and device names left as they are.
+	_message.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_message)
+	_buttons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_buttons.alignment = BoxContainer.ALIGNMENT_END
+	_earlier.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_earlier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_earlier.add_theme_color_override("font_color", UiTheme.MUTED)
+	_buttons.add_child(_earlier)
 	_dismiss.text = tr("Dismiss")
 	_dismiss.pressed.connect(clear)
-	buttons.add_child(_dismiss)
+	_buttons.add_child(_dismiss)
 	_toggle.text = tr("Technical details")
 	_toggle.toggle_mode = true
-	_toggle.toggled.connect(_panel.set_visible)
-	buttons.add_child(_toggle)
-	add_child(buttons)
-	hide()
+	_toggle.toggled.connect(_show_details)
+	_buttons.add_child(_toggle)
+	column.add_child(_buttons)
+	row.add_child(column)
+	_card.add_child(row)
+	add_child(_card)
+
+
+## The card's look on its own, or bare buttons that leave the room beside them to the page.
+func _show_card() -> void:
+	if standalone:
+		var box: StyleBoxFlat = UiTheme.panel(1.0)
+		box.border_color = UiTheme.DANGER
+		box.set_border_width_all(0)
+		box.border_width_left = STRIPE
+		_card.add_theme_stylebox_override("panel", box)
+	else:
+		_card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_card.mouse_filter = Control.MOUSE_FILTER_STOP if standalone else Control.MOUSE_FILTER_IGNORE
+	_buttons.size_flags_horizontal = (
+		Control.SIZE_EXPAND_FILL if standalone else Control.SIZE_SHRINK_END
+	)
+	_sign.visible = standalone
+	_show_newest()
+
+
+func _show_newest() -> void:
+	_message.visible = standalone and not _failures.is_empty()
+	_message.text = summary(_failures[0]) if _message.visible else ""
+	_earlier.visible = standalone and _failures.size() > 1
+	_earlier.text = tr("+%d earlier") % (_failures.size() - 1) if _earlier.visible else ""
 
 
 ## Arguments are substituted after translation and remain untouched, even if they contain %s.
@@ -84,6 +151,7 @@ func _notification(what: int) -> void:
 
 
 func _refresh() -> void:
+	_show_newest()
 	for child: Node in _rows.get_children():
 		_rows.remove_child(child)
 		child.queue_free()
@@ -103,6 +171,15 @@ func _refresh() -> void:
 		details.visible = not _same(details.text, message)
 		_rows.add_child(details)
 	_fit.call_deferred()
+
+
+func _show_details(on: bool) -> void:
+	_panel.visible = on
+	if on and is_inside_tree():
+		# Fitted while hidden, the wrapped rows had no width and stood a word to a line. The
+		# shown panel gives them one as it is laid out, by the next frame.
+		await get_tree().process_frame
+		_fit()
 
 
 ## The list as tall as its rows, up to `MAX_HEIGHT`. Wrapped text is as tall as the width it

@@ -147,8 +147,10 @@ the countdown. Before it, state-mailbox generations protect reused slots from st
 
 State passes through the fixed eight-slot mailbox before 5 Hz fan-out. Both local updates and
 outbound snapshots use watch channels that replace a single value. Incoming datagrams charge
-budgets before parsing; malformed values, forged senders, future timestamps and sustained floods
-close the offender. A joiner also bounds total forwarded traffic and control-message count.
+budgets before parsing; exhausted media allowances discard disposable packets and recover on
+refill. Malformed values, forged senders and future timestamps still close the offender. A separate
+connection guard detects sustained raw datagram floods (ADR 0036's burst-recovery amendment).
+A joiner also bounds total forwarded traffic and control-message count.
 Fractional refill time is preserved so legitimate 5 Hz jitter does not consume the allowance.
 Candidate attempts are staggered to avoid spending multiple TLS permits when one path works.
 
