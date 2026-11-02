@@ -2,7 +2,7 @@ extends SceneTree
 ## A fixed material review at 700 m: the real ground, foliage, LOD-capable meshes and flowers.
 ## Run with software Vulkan and SEASON/OUT_DIR; this does not generate or download a course.
 
-const ALTITUDE: float = 700.0
+var _altitude: float = 700.0
 
 
 func _initialize() -> void:
@@ -10,6 +10,9 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	var altitude: String = OS.get_environment("ALTITUDE")
+	if not altitude.is_empty():
+		_altitude = float(altitude)
 	var orqwa: OrqwaApp = OrqwaApp.new()
 	root.add_child(orqwa)
 	var world: RideWorld = (load("res://scenes/world.tscn") as PackedScene).instantiate()
@@ -33,10 +36,10 @@ func _run() -> void:
 		_model(
 			world,
 			kind,
-			Vector3(float(index % 4) * 10.0 - 15.0, ALTITUDE, float(index / 4) * -16.0),
+			Vector3(float(index % 4) * 10.0 - 15.0, _altitude, float(index / 4) * -16.0),
 			colours[index % colours.size()]
 		)
-	_model(world, "rock_pair", Vector3(16, ALTITUDE, 10), Palette.colors("plants.rocks")[0])
+	_model(world, "rock_pair", Vector3(16, _altitude, 10), Palette.colors("plants.rocks")[0])
 	var flowers: MultiMesh = MultiMesh.new()
 	flowers.transform_format = MultiMesh.TRANSFORM_3D
 	flowers.mesh = world.get("_flower_mesh")
@@ -46,7 +49,7 @@ func _run() -> void:
 			index,
 			Transform3D(
 				Basis.IDENTITY,
-				Vector3(float(index % 4) * 0.6 - 0.9, ALTITUDE, 12.0 + float(index / 4) * 0.6)
+				Vector3(float(index % 4) * 0.6 - 0.9, _altitude, 12.0 + float(index / 4) * 0.6)
 			)
 		)
 	var small: Dictionary = OrqwaApp.small_plants_for_season(
@@ -63,13 +66,28 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	var camera: Camera3D = world.get("_camera")
 	camera.fov = 45.0
-	camera.look_at_from_position(Vector3(20, ALTITUDE + 7, 25), Vector3(0, ALTITUDE + 4, -5))
+	camera.look_at_from_position(Vector3(20, _altitude + 7, 25), Vector3(0, _altitude + 4, -5))
 	await _save(out.path_join(season.to_lower() + "-trees.png"))
 	camera.fov = 70.0
 	camera.look_at_from_position(
-		Vector3(1.4, ALTITUDE + 0.7, 15.4), Vector3(0, ALTITUDE + 0.4, 12.5)
+		Vector3(1.4, _altitude + 0.7, 15.4), Vector3(0, _altitude + 0.4, 12.5)
 	)
 	await _save(out.path_join(season.to_lower() + "-flowers.png"))
+	if season == "Winter":
+		await _roof(world, camera, out)
+		await _blanket(world, camera, out)
+	if season == "Spring":
+		_model(
+			world,
+			"broadleaf_round",
+			Vector3(0, _altitude, 0),
+			Palette.colors("plants.broadleaves")[0]
+		)
+		camera.fov = 55.0
+		camera.look_at_from_position(Vector3(1, _altitude + 3, 10), Vector3(0, _altitude + 3, 0))
+		await _save(out.path_join("spring-blossom.png"))
+	if season == "Autumn" or OS.get_environment("FOREST_REVIEW") == "1":
+		await SeasonAutumnReview.render(world, camera, out, season)
 	quit()
 
 
@@ -110,8 +128,47 @@ func _ground(world: RideWorld) -> void:
 		Vector2(-100, 100)
 	]:
 		tool.set_uv(point)
-		tool.add_vertex(Vector3(point.x, ALTITUDE, point.y))
+		tool.add_vertex(Vector3(point.x, _altitude, point.y))
 	var ground: MeshInstance3D = MeshInstance3D.new()
 	ground.mesh = tool.commit()
 	ground.material_override = world.get("_terrain_material")
 	world.add_child(ground)
+
+
+func _roof(world: RideWorld, camera: Camera3D, out: String) -> void:
+	var house: MultiMesh = MultiMesh.new()
+	house.transform_format = MultiMesh.TRANSFORM_3D
+	house.use_colors = true
+	house.use_custom_data = true
+	house.mesh = BuildingModels.mesh("chalet_2_m")
+	house.instance_count = 1
+	house.set_instance_transform(0, Transform3D(Basis.IDENTITY, Vector3(0, _altitude, 12)))
+	house.set_instance_color(0, Palette.colors("buildings.light_walls")[0])
+	house.set_instance_custom_data(0, Palette.colors("buildings.tiles")[0])
+	var node: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	node.multimesh = house
+	world.add_child(node)
+	camera.fov = 55.0
+	camera.look_at_from_position(Vector3(14, _altitude + 12, 26), Vector3(0, _altitude + 3, 12))
+	await _save(out.path_join("winter-roof.png"))
+
+
+func _blanket(world: RideWorld, camera: Camera3D, out: String) -> void:
+	# A one-metre stake with ten-centimetre bands makes the blanket's actual depth visible.
+	for index: int in range(10):
+		var marker: MeshInstance3D = MeshInstance3D.new()
+		var box: BoxMesh = BoxMesh.new()
+		box.size = Vector3(0.08, 0.1, 0.08)
+		marker.mesh = box
+		marker.position = Vector3(14.8, _altitude + float(index) * 0.1 + 0.05, 10.0)
+		var material: StandardMaterial3D = StandardMaterial3D.new()
+		material.albedo_color = Palette.color(
+			"props.pole_red" if index % 2 == 0 else "road.marking"
+		)
+		marker.material_override = material
+		world.add_child(marker)
+	camera.fov = 50.0
+	camera.look_at_from_position(
+		Vector3(18.5, _altitude + 1.4, 14), Vector3(15.5, _altitude + 0.4, 10)
+	)
+	await _save(out.path_join("winter-blanket.png"))
