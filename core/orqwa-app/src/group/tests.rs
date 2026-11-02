@@ -501,6 +501,40 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
 }
 
 #[test]
+fn when_the_organizer_leaves_the_fallback_takes_over_with_voice_as_it_was() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ride_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
+        a.group().standby_offer
+    });
+    anna.group_handover_answer(true).unwrap();
+    let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(fallback))
+    });
+    speak(&mut anna, &mut host, true);
+    speak(&mut ben, &mut host, false);
+    // R187: leaving on purpose ends the organizer's links at once, voice's with them.
+    host.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().host
+            && b.group().organizer == fallback
+            && [a, b].iter().all(|app| app.group().phase == Phase::Riding)
+    });
+    // R188: voice comes back on the new organizer's links, each microphone as it was.
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().voice && b.group().voice && !b.group().voice_pending
+    });
+    assert!(anna.group().microphone, "Anna's microphone was on");
+    assert!(!ben.group().microphone, "Ben's microphone was off");
+    anna.group_leave();
+    ben.group_leave();
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // consent, rollback, two authority changes and late entry share one real group lifecycle
 fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority() {
     let from = Directory::new();

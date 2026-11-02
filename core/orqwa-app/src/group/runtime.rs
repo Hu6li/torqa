@@ -13,6 +13,7 @@ use orqwa_net::lobby::{
 };
 use orqwa_net::preview::Preview;
 use orqwa_net::state::{RiderId, RiderState};
+use orqwa_net::voice::VoicePort;
 use orqwa_voice::audio_test::{AudioTest, TestKind};
 use orqwa_voice::{VoiceChat, device::DeviceOptions};
 use tokio::sync::{mpsc, watch};
@@ -411,7 +412,8 @@ async fn run_inner(
     let mut scans = JoinSet::new();
     let mut microphone_test: Option<AudioTest> = None;
     let mut mic_starts = JoinSet::new();
-    let mut resume_voice = false;
+    // Voice to restart once a link allows, and whether with the microphone on.
+    let mut resume_voice: Option<bool> = None;
     let mut internal = None;
     let mut jobs = JoinSet::new();
     let mut next_revision = 0u64;
@@ -435,7 +437,12 @@ async fn run_inner(
                 match event {
                     Some(orqwa_voice::VoiceEvent::PeerMuted {peer})=>{snapshot.muted[usize::from(peer.value())]=true;snapshot.report(Kind::GroupVoice,"A speaker sent invalid audio and was muted locally.");}
                     Some(orqwa_voice::VoiceEvent::DeviceUnavailable {error})=>{voice=None;snapshot.voice=false;snapshot.microphone=false;snapshot.report(Kind::GroupVoice,error);}
-                    Some(orqwa_voice::VoiceEvent::Stopped)|None=>{voice=None;snapshot.voice=false;snapshot.microphone=false;}
+                    Some(orqwa_voice::VoiceEvent::Stopped)|None=>{
+                        // The organizer's link ended under voice, as when they leave: a fallback
+                        // taking over restarts it with the microphone as it was (#426, R188).
+                        if !port.as_ref().is_some_and(VoicePort::alive) {resume_voice=Some(snapshot.microphone);}
+                        voice=None;snapshot.voice=false;snapshot.microphone=false;
+                    }
                 }
             },
             command = async {if let Some(command)=internal.take() {Some(command)} else {commands.recv().await}} => {
@@ -495,8 +502,8 @@ async fn run_inner(
                     Command::ChooseDevices(generation,input,output,mic) => {
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         request.voice_controls.audio_test.store(0,Ordering::Release);
-                        let restart = snapshot.voice || snapshot.voice_pending || resume_voice;
-                        resume_voice=false;
+                        let restart = snapshot.voice || snapshot.voice_pending || resume_voice.is_some();
+                        resume_voice=None;
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
                         let previous_test=microphone_test.take();snapshot.microphone_test=false;snapshot.speaker_test=false;snapshot.microphone_voice_detected=false;snapshot.microphone_level=0.0;
                         audio.abort_all(); while audio.join_next().await.is_some() {}
@@ -530,7 +537,7 @@ async fn run_inner(
                         audio.abort_all();while audio.join_next().await.is_some() {}
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
                         let previous=voice.take();let previous_test=microphone_test.take();
-                        resume_voice=resume_voice || snapshot.voice || snapshot.voice_pending;
+                        resume_voice=resume_voice.or((snapshot.voice || snapshot.voice_pending).then_some(false));
                         snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
                         if snapshot.microphone_test && let Some(test)=&previous_test {snapshot.microphone_voice_heard |= test.voice_heard();}
                         snapshot.microphone_test=kind==Some(TestKind::Microphone);snapshot.speaker_test=kind==Some(TestKind::Speakers);snapshot.microphone_level=0.0;snapshot.microphone_voice_detected=false;
@@ -542,7 +549,7 @@ async fn run_inner(
                                 if let Some(test)=previous_test {test.close().await;}
                                 backend.test(kind,volume,options).await.map(|test|(generation,test)).map_err(|error|error.to_string())
                             });
-                        } else if resume_voice && let Some(port)=&port {
+                        } else if resume_voice.is_some() && let Some(port)=&port {
                             snapshot.voice_pending=true;
                             // A test leaves voice listening with the microphone off.
                             let backend=request.audio.clone();let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;let controls=request.voice_controls.clone();
@@ -551,7 +558,7 @@ async fn run_inner(
                                 if let Some(test)=previous_test {test.close().await;}
                                 open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})
                             });
-                            resume_voice=false;
+                            resume_voice=None;
                         } Ok(())
                     }
                     Command::Voice(generation,on,mic,deaf,volume) => {
@@ -561,6 +568,8 @@ async fn run_inner(
                         let _gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         snapshot.voice_volume=volume;
+                        // A later choice can close a microphone kept for a restart, never open it.
+                        resume_voice=resume_voice.filter(|_| on).map(|was| was && mic && !deaf);
                         if !on {audio.abort_all(); voice = None; snapshot.voice = false; snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = false;}
                         else if let Some(chat) = &voice {
                             let configured = (|| {chat.deafen(deaf); chat.volume(volume).map_err(|e|e.to_string())?;
@@ -654,9 +663,9 @@ async fn run_inner(
                     Ok(Some(replacement)) => {
                         // Close transmission synchronously before replacing any audio owner. Keep
                         // listening consent, and the microphone as it was, on the new link.
-                        let restart = snapshot.voice || snapshot.voice_pending || resume_voice;
-                        let mic = voice.as_ref().is_some_and(VoiceChat::microphone_enabled);
-                        resume_voice=false;
+                        let restart = snapshot.voice || snapshot.voice_pending || resume_voice.is_some();
+                        let mic = voice.as_ref().map_or(resume_voice == Some(true), |chat| microphone(chat, port.as_ref(), snapshot.microphone));
+                        resume_voice=None;
                         request.voice_controls.audio_test.store(0,Ordering::Release);
                         mic_starts.abort_all();mic_starts=JoinSet::new();
                         microphone_test=None;snapshot.microphone_test=false;snapshot.speaker_test=false;snapshot.microphone_voice_detected=false;snapshot.microphone_level=0.0;
@@ -758,7 +767,7 @@ async fn run_inner(
                 }
                 if let Some(start) = snapshot.start && std::time::Instant::now()>=start
                     && (!snapshot.late || snapshot.entry.is_some()) {snapshot.phase = Phase::Riding;}
-                if let Some(chat) = &voice {snapshot.microphone = chat.microphone_enabled();}
+                if let Some(chat) = &voice {snapshot.microphone = microphone(chat, port.as_ref(), snapshot.microphone);}
                 snapshot.speaking = voice.as_ref().map_or([false; orqwa_net::state::MAX_RIDERS], VoiceChat::speaking);
             }
         }
@@ -871,6 +880,14 @@ async fn change_rules(
     }
     snapshot.assistance = rules;
     Ok(())
+}
+
+/// The microphone as the rider has it: live while the organizer's link lives, else `was`, how
+/// it last was, for a fallback taking over to restore (#426, R188).
+fn microphone(chat: &VoiceChat, port: Option<&VoicePort>, was: bool) -> bool {
+    // Read before the link: an ended link stays ended, so a microphone found closed on a link
+    // still alive afterwards was closed by the rider.
+    chat.microphone_enabled() || (was && !port.is_some_and(VoicePort::alive))
 }
 
 async fn voice_event(voice: &mut Option<VoiceChat>) -> Option<orqwa_voice::VoiceEvent> {
