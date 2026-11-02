@@ -14,7 +14,7 @@ use godot::classes::{Engine, INode, Image, Node, TranslationServer};
 use godot::prelude::*;
 use orqwa_app::analysis::{BestEffort, Comparison};
 use orqwa_app::failure::{Failure, Kind};
-use orqwa_app::hud::MetricKind;
+use orqwa_app::hud::{MetricKind, Zones};
 use orqwa_app::media::MediaCommand;
 use orqwa_app::moments::Moment;
 use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, TrainerChoice, paths};
@@ -2954,7 +2954,8 @@ impl OrqwaApp {
     }
 
     /// The ride state: `{elapsed_s, distance_m, speed_kmh, power, cadence, heart_rate,
-    /// watts_per_kg, power_zone, heart_rate_zone, metrics, workout}`, and on a route also
+    /// watts_per_kg, power_zone, heart_rate_zone, metrics, metric_zones, workout}`, and on a
+    /// route also
     /// `{remaining_m, grade, elevation_m, x, y, rider_x, rider_y, heading, curvature, ghost, climb}`; sensor
     /// values and what derives from them are `null` when unknown. Empty when not riding.
     /// `workout` is `{target_power_w, target_heart_rate, intensity_pct, progress}` in a
@@ -2981,6 +2982,7 @@ impl OrqwaApp {
         let rider = &app.profile().profile;
         let zone =
             |value: Option<u8>| value.map_or_else(Variant::nil, |z| i64::from(z).to_variant());
+        let values = app.hud_values();
         let mut dict = vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "paused" => app.is_paused(),
@@ -2992,7 +2994,8 @@ impl OrqwaApp {
             "watts_per_kg" => &optional(t.power.map(|p| rider.watts_per_kg(p))),
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
-            "metrics" => &hud_values(app),
+            "metrics" => &hud_values(&values),
+            "metric_zones" => &hud_zones(&orqwa_app::hud::zones(&values, rider)),
             "gear" => &state.gear.map_or_else(Variant::nil, |g| {
                 vdict! {
                     "number" => i64::try_from(g.number).unwrap_or(0),
@@ -3060,13 +3063,16 @@ impl OrqwaApp {
         dict
     }
 
-    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind, sample}]`, with `kind` one of
-    /// `number`, `speed`, `distance`, `elevation`, `duration`, `grade`, `zone`. Values come in
-    /// `ride_state()["metrics"]` in km/h, km, m and s.
+    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind, sample, zones,
+    /// sample_zone}]`, with `kind` one of `number`, `speed`, `distance`, `elevation`,
+    /// `duration`, `grade`, `zone`. Values come in `ride_state()["metrics"]` in km/h, km, m and
+    /// s, and their zones (#432) in `ride_state()["metric_zones"]`: `zones` names the scale,
+    /// `power`, `heart_rate` or empty, and `sample_zone` is the sample's, or `null`.
     #[func]
     fn hud_metrics() -> VarArray {
         let mut array = VarArray::new();
-        for metric in orqwa_app::hud::METRICS {
+        let sample_zones = orqwa_app::hud::sample_zones();
+        for (metric, &(_, sample_zone)) in orqwa_app::hud::METRICS.iter().zip(&sample_zones) {
             let kind = match metric.kind {
                 MetricKind::Number => "number",
                 MetricKind::Speed => "speed",
@@ -3084,6 +3090,12 @@ impl OrqwaApp {
                     "decimals" => i64::from(metric.decimals),
                     "kind" => kind,
                     "sample" => metric.sample,
+                    "zones" => match metric.zones {
+                        Some((Zones::Power, _)) => "power",
+                        Some((Zones::HeartRate, _)) => "heart_rate",
+                        None => "",
+                    },
+                    "sample_zone" => &sample_zone.map_or_else(Variant::nil, |z| i64::from(z).to_variant()),
                 }
                 .to_variant(),
             );
@@ -3208,6 +3220,86 @@ impl OrqwaApp {
             .as_ref()
             .and_then(App::world)
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
+    }
+
+    /// Disposable, spatially bounded snow banks outside the retained ridden road.
+    #[func]
+    fn winter_snowbanks(&self) -> VarArray {
+        let Some(app) = self.app.as_ref() else {
+            return VarArray::new();
+        };
+        let (Some(world), Some(route)) = (app.world(), app.route()) else {
+            return VarArray::new();
+        };
+        let latitude = route.points().first().map_or(45.0, |point| point.lat);
+        let climate = orqwa_world::season_climate(latitude, orqwa_domain::season::Season::Winter);
+        orqwa_world::snowbanks(&world.road, route.points(), Meters(climate.snow_line))
+            .into_iter()
+            .map(|bank| {
+                let [x, y, z] = bank.center;
+                vdict! { "center" => Vector3::new(x, y, z), "mesh" => &mesh_arrays(&bank.mesh) }
+                    .to_variant()
+            })
+            .collect()
+    }
+
+    /// Conservative road/paving clearance for the raised winter ground blanket.
+    #[func]
+    fn winter_ground_mask(&self) -> VarDictionary {
+        let Some(world) = self.app.as_ref().and_then(App::world) else {
+            return VarDictionary::new();
+        };
+        let mask = orqwa_world::snow_ground_mask(world);
+        let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
+        else {
+            return VarDictionary::new();
+        };
+        if width == 0 || height == 0 {
+            return VarDictionary::new();
+        }
+        let pixels = PackedByteArray::from(mask.pixels);
+        let Some(image) = Image::create_from_data(width, height, false, ImageFormat::R8, &pixels)
+        else {
+            return VarDictionary::new();
+        };
+        vdict! {
+            "image" => &image,
+            "origin" => Vector2::new(mask.origin[0], mask.origin[1]),
+            "size" => vector2(f64::from(width) * f64::from(mask.cell), f64::from(height) * f64::from(mask.cell)),
+        }
+    }
+
+    /// Retained woodland coverage for autumn road litter, with tunnel interiors excluded.
+    #[func]
+    fn autumn_forest_mask(&self) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let Some((land, corridor)) = app.minimap() else {
+            return VarDictionary::new();
+        };
+        let empty = orqwa_world::FlatMap::default();
+        let mut mask = orqwa_world::forest_mask(&[land.map_or(&empty, |map| &map.areas), corridor]);
+        if let (Some(world), Some(route)) = (app.world(), app.route()) {
+            mask.clear_tunnels(&world.road, route.points());
+        }
+        let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
+        else {
+            return VarDictionary::new();
+        };
+        if width == 0 || height == 0 {
+            return VarDictionary::new();
+        }
+        let data = PackedByteArray::from(mask.pixels);
+        let Some(image) = Image::create_from_data(width, height, false, ImageFormat::R8, &data)
+        else {
+            return VarDictionary::new();
+        };
+        vdict! {
+            "image" => &image,
+            "origin" => Vector2::new(mask.origin[0], mask.origin[1]),
+            "size" => vector2(f64::from(width) * f64::from(mask.cell), f64::from(height) * f64::from(mask.cell)),
+        }
     }
 
     /// How far the land around the loaded route lies from it, for the ground's distant canopy
@@ -3386,10 +3478,22 @@ impl OrqwaApp {
     /// along the route in metres.
     #[func]
     fn road_mesh(&self) -> VarDictionary {
-        self.app
-            .as_ref()
-            .and_then(App::world)
-            .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.road))
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        let Some(world) = app.world() else {
+            return VarDictionary::new();
+        };
+        let mut arrays = mesh_arrays(&world.road);
+        if let Some(route) = app.route() {
+            let exposure: PackedVector2Array =
+                orqwa_world::road_snow_exposure(&world.road, route.points())
+                    .into_iter()
+                    .map(|[x, y]| Vector2::new(x, y))
+                    .collect();
+            arrays.set("uv2", &exposure);
+        }
+        arrays
     }
 
     /// `(distance m, elevation m)` points of the loaded route, at most `max_points`.
@@ -3724,12 +3828,24 @@ fn control_name(control: Control) -> &'static str {
 }
 
 /// Live HUD values as `{id: value or null}`.
-fn hud_values(app: &App) -> VarDictionary {
-    let mut values = VarDictionary::new();
-    for (id, value) in app.hud_values() {
-        values.set(id, &value.map_or_else(Variant::nil, |v| v.to_variant()));
+fn hud_values(values: &[(&'static str, Option<f64>)]) -> VarDictionary {
+    let mut dict = VarDictionary::new();
+    for &(id, value) in values {
+        dict.set(id, &value.map_or_else(Variant::nil, |v| v.to_variant()));
     }
-    values
+    dict
+}
+
+/// The zone of each HUD metric's value by id, `null` where it has none.
+fn hud_zones(zones: &[(&'static str, Option<u8>)]) -> VarDictionary {
+    let mut dict = VarDictionary::new();
+    for &(id, zone) in zones {
+        dict.set(
+            id,
+            &zone.map_or_else(Variant::nil, |z| i64::from(z).to_variant()),
+        );
+    }
+    dict
 }
 
 /// Zone bounds as percentages, for the rider settings.

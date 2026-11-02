@@ -244,3 +244,30 @@ Canopy shells, geometry rising from the wood outlines for volume and ridgeline s
 are the next step; they change the generator and stored format. A prototype lifting forest
 ground showed the look but also flat slabs, chunk seams where it switched, and nearby forest
 covered when it started too near. See [the measurements](../benchmarks/distant-forest.md).
+
+### Selected winter snow depth (2026-10-27, R161)
+
+Winter's road-edge snow needs a silhouette, so its rounded banks are disposable geometry
+derived from the retained wearing surface and shoulders. Their height follows the same
+latitude snow line as the materials, with deeper banks higher above it. Joining-street
+openings and structures are excluded. Spatial batches keep long courses bounded on screen.
+The street material adds broken cover and paired tyre grooves; runtime UV2 derived from
+route tags excludes tunnel interiors. Neither overlay changes course inputs, generated or
+stored meshes, collision, or resistance, so generator and stored-format versions stay put.
+
+The same depth profile displaces natural ground and boulder caps, with greater load on
+inclined surfaces at higher elevations (R163). A bounded clearance image of the retained
+road, railway, street, track and urban-paving triangles conservatively excludes their
+surroundings from the raised blanket. World-space sampling keeps chunks and horizon land
+consistent, while the original road and collision datum stay intact. The image and shader
+displacements are disposable presentation data; kept-world contracts remain unchanged.
+
+### Autumn woodland collections and road litter (2026-10-28, R162)
+
+Broad low-frequency colour fields distinguish orange/russet broadleaf-dominant collections
+from greener evergreen areas in the distant canopy, preserving its baked crown relief.
+Road litter samples a bounded image rasterized from the retained coarse and detailed flat
+maps, keeping clearings and water and excluding ridden tunnels. Pointed leaf silhouettes,
+edge-biased drifts, physical scale, rain response and subpixel filtering live in the road
+material. No texture download, stored data or generated geometry changes; season selection
+remains reversible and has no effect on resistance or grip.

@@ -66,6 +66,10 @@ scripts/art.sh blender --background --factory-startup --python art/textures/buil
   `compress/normal_map=1` for normal maps (Godot writes other defaults on first import: fix
   them, then re-import).
 - Keep recipes neutral in hue where the app tints per instance (walls, roofs, leaves).
+- Spring's `foliage.py --blossoms-only` draws `blossoms_albedo.png`: transparent five-petal
+  twig clusters on the existing leaf-card UVs. Keep this small mask lossless PNG (the
+  emulated WebP encoder introduced line artifacts), with VRAM compression and mipmaps on
+  import. Review petal silhouettes close up and the selected crowns on Low too.
 - Where a recipe does not look real, a CC0 scan may replace it (ADR 0020): keep the original
   under `art/sources/<name>/` with `SOURCE.md`, convert it to the same names and formats in a
   script, and credit it in `docs/CREDITS.md`.
@@ -144,6 +148,21 @@ all maps, normal-map import on normals, and keep these six textures with their s
   buildings and forests thousands of trees. Print face counts when building (build.py does).
 - Exports are deterministic: rebuilding unchanged scripts must give byte-identical `.glb`s.
   If a rebuild changes files you did not touch, find out why before committing.
+
+## Regional buildings
+
+Asian buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
+`japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional
+wall/roof colours aligned with Rust placement. Castle model tiers, first eave height and
+footprint shrink must agree with `japanese_castle` shells in `buildings/mod.rs`; review the
+nearby and distant silhouettes together. Nordic buildings (`art/buildings/nordic.py`) use
+the `nordic_wood` instance-tinted plank material and their own country outlines, palette and
+model kinds. Keep the Nordic castle's distant generic keep visually compatible. Asian and
+Nordic outlines are independent of climate. French models (`art/buildings/french.py`) use
+the French palette and a simplified metropolitan-France/Corsica outline; keep their pale
+village houses, limestone city façades with zinc mansards, and slate-roofed château silhouettes
+aligned with the French region selector. See
+`docs/regional-buildings.md` before extending the regional sets.
 
 ## Tree LODs
 

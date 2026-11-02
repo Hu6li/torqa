@@ -10,6 +10,8 @@ signal drop_requested(id: String, index: int)
 const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 const POWER_METRICS: Array[String] = ["power", "power_3s", "power_10s"]
+## A large heart rate gets its % of the maximum and zone underneath, as power gets its own.
+const HEART_RATE_METRIC: String = "heart_rate"
 ## Drag data carries the metric id under this key.
 const DRAG_KEY: String = "hud_metric"
 
@@ -26,7 +28,11 @@ var editable: bool = false:
 var _indicated: _Cell = null
 var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
-var _power_detail: Label = Label.new()
+## The grid's figures by id; the large one is left out of the zone bars, its line underneath
+## already coloured by zone.
+var _cells: Dictionary[String, _Cell] = {}
+## The line under a large power or heart-rate figure.
+var _detail: Label = Label.new()
 
 
 func _init() -> void:
@@ -35,33 +41,35 @@ func _init() -> void:
 		var id: String = metric["id"]
 		catalogue[id] = metric
 	# Kept in the tree between layouts, so it is freed with the panel.
-	_power_detail.hide()
-	_power_detail.add_theme_font_size_override("font_size", 13)
-	add_child(_power_detail)
+	_detail.hide()
+	_detail.add_theme_font_size_override("font_size", 13)
+	add_child(_detail)
 
 
 ## Rebuilds the figures for `layout`; values show "--" until `show_values` or `show_samples`.
 func show_layout(layout: PackedStringArray) -> void:
 	_layout = layout
 	_values.clear()
+	_cells.clear()
 	# The W/kg line moves to the new large figure rather than being freed with the old one.
-	_power_detail.get_parent().remove_child(_power_detail)
+	_detail.get_parent().remove_child(_detail)
 	for child: Node in get_children():
 		remove_child(child)
 		child.queue_free()
-	_power_detail.text = ""
-	_power_detail.custom_minimum_size.x = 0.0
+	_detail.text = ""
+	_detail.custom_minimum_size.x = 0.0
 	if layout.is_empty():
-		_power_detail.hide()
-		add_child(_power_detail)
+		_detail.hide()
+		add_child(_detail)
 		return
 	var main_id: String = layout[0]
 	var main: _Cell = _Cell.new(self, main_id, 0, false)
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
-	# Power figures get the rider's W/kg, % of FTP and zone underneath.
-	_power_detail.visible = main_id in POWER_METRICS
-	main.add_child(_power_detail)
+	# Power figures get the rider's W/kg, % of FTP and zone underneath; heart rate its % of the
+	# maximum and zone.
+	_detail.visible = main_id in POWER_METRICS or main_id == HEART_RATE_METRIC
+	main.add_child(_detail)
 	add_child(main)
 	if layout.size() == 1:
 		return
@@ -79,6 +87,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		var id: String = layout[i]
 		var cell: _Cell = _Cell.new(self, id, i, true)
 		cell.custom_minimum_size = Vector2(98, 0)
+		_cells[id] = cell
 		cell.add_child(UiTheme.caption(_caption(id)))
 		cell.add_child(_value_row(id, 24))
 		grid.add_child(cell)
@@ -121,19 +130,44 @@ func _indicate(cell: _Cell, after: bool) -> void:
 
 
 ## Live values (`ride_state()["metrics"]`), with W/kg and power zone for the power line; its
-## % of FTP is among the values.
+## % of FTP, and the heart rate's % of the maximum and zone, are among the values.
 func show_values(values: Dictionary, watts_per_kg: Variant, power_zone: Variant) -> void:
 	for id: String in _values:
 		_values[id].text = _format(catalogue[id], values.get(id))
-	_show_power_detail(watts_per_kg, values.get("power_percent_ftp"), power_zone)
+	if _layout.is_empty() or _layout[0] != HEART_RATE_METRIC:
+		_show_power_detail(watts_per_kg, values.get("power_percent_ftp"), power_zone)
+	else:
+		_show_heart_rate_detail(values.get("heart_rate_percent_max"), values.get("heart_rate_zone"))
+
+
+## The zone each figure's value lies in (`ride_state()["metric_zones"]`, #432), as a bar in
+## the zone's colour down the left edge of the figures under the large one; none where a
+## figure has no zone.
+func show_zones(zones: Dictionary) -> void:
+	for id: String in _cells:
+		var scale: String = catalogue[id]["zones"]
+		_cells[id].show_zone(_zone_color(scale, zones.get(id)))
 
 
 ## Typical values, so a layout can be judged before riding with it.
 func show_samples() -> void:
 	var samples: Dictionary = {}
+	var zones: Dictionary = {}
 	for id: String in catalogue:
 		samples[id] = catalogue[id]["sample"]
+		zones[id] = catalogue[id]["sample_zone"]
 	show_values(samples, samples["watts_per_kg"], samples["power_zone"])
+	show_zones(zones)
+
+
+static func _zone_color(scale: String, zone: Variant) -> Color:
+	if zone == null:
+		return Color.TRANSPARENT
+	var palette: Array[Array] = (
+		UiTheme.HEART_RATE_ZONES if scale == "heart_rate" else UiTheme.POWER_ZONES
+	)
+	var number: int = zone
+	return palette[clampi(number - 1, 0, palette.size() - 1)][1]
 
 
 func _caption(id: String) -> String:
@@ -198,7 +232,7 @@ func _format(metric: Dictionary, value: Variant) -> String:
 ## the percentage for a rider without an FTP.
 func _show_power_detail(watts_per_kg: Variant, percent_ftp: Variant, zone: Variant) -> void:
 	if watts_per_kg == null or zone == null:
-		_power_detail.text = ""
+		_detail.text = ""
 		return
 	var ratio: float = watts_per_kg
 	var zone_number: int = zone
@@ -210,16 +244,39 @@ func _show_power_detail(watts_per_kg: Variant, percent_ftp: Variant, zone: Varia
 		var percent: float = percent_ftp
 		parts.append("%d %% FTP" % roundi(percent))
 	parts.append("Z%d %s" % [index + 1, tr(zone_name)])
-	_power_detail.text = " · ".join(parts)
-	_power_detail.add_theme_color_override("font_color", color)
+	_show_detail(" · ".join(parts), color)
+
+
+## "80 % max · Z3 Moderate", coloured by zone (#432); empty without a heart rate, or for a
+## rider without the maximum the zones are set on.
+func _show_heart_rate_detail(percent_max: Variant, zone: Variant) -> void:
+	if percent_max == null or zone == null:
+		_detail.text = ""
+		return
+	var percent: float = percent_max
+	var zone_value: float = zone
+	var zone_number: int = roundi(zone_value)
+	var index: int = clampi(zone_number - 1, 0, UiTheme.HEART_RATE_ZONES.size() - 1)
+	var zone_name: String = UiTheme.HEART_RATE_ZONES[index][0]
+	var color: Color = UiTheme.HEART_RATE_ZONES[index][1]
+	var parts: PackedStringArray = PackedStringArray(
+		[tr("%d %% max") % roundi(percent), "Z%d %s" % [index + 1, tr(zone_name)]]
+	)
+	_show_detail(" · ".join(parts), color)
+
+
+func _show_detail(text: String, color: Color) -> void:
+	_detail.text = text
+	_detail.add_theme_color_override("font_color", color)
 	# Zone 7's line is wider than the HUD's grid. Keeping the widest width so far stops the HUD
 	# from jumping in width each time a sprint crosses between zones 6 and 7.
-	var width: float = _power_detail.get_minimum_size().x
-	_power_detail.custom_minimum_size.x = maxf(_power_detail.custom_minimum_size.x, width)
+	var width: float = _detail.get_minimum_size().x
+	_detail.custom_minimum_size.x = maxf(_detail.custom_minimum_size.x, width)
 
 
-## One figure of the HUD. In an editable HUD it can be dragged elsewhere, and dropping a figure
-## on it places that one before or after it, shown by an accent line.
+## One figure of the HUD, under the large one with a bar in the colour of its value's zone down
+## its left edge. In an editable HUD it can be dragged elsewhere, and dropping a figure on it
+## places that one before or after it, shown by an accent line.
 class _Cell:
 	extends VBoxContainer
 
@@ -232,6 +289,7 @@ class _Cell:
 	var _sideways: bool
 	## 0 none, 1 before, 2 after.
 	var _mark: int = 0
+	var _zone: Color = Color.TRANSPARENT
 
 	func _init(panel: HudPanel, id: String, index: int, sideways: bool) -> void:
 		_panel = panel
@@ -242,6 +300,11 @@ class _Cell:
 		if panel.editable:
 			mouse_filter = Control.MOUSE_FILTER_STOP
 			mouse_default_cursor_shape = Control.CURSOR_DRAG
+
+	func show_zone(color: Color) -> void:
+		if color != _zone:
+			_zone = color
+			queue_redraw()
 
 	func mark(where: int) -> void:
 		if where != _mark:
@@ -270,6 +333,9 @@ class _Cell:
 		_panel.drop_requested.emit(HudPanel.dragged(data), _index + (1 if _after(at) else 0))
 
 	func _draw() -> void:
+		# Where the line before a grid figure goes while dragging, which then covers it.
+		if _zone.a > 0.0:
+			draw_rect(Rect2(-MARK_WIDTH - 4.0, 0.0, MARK_WIDTH, size.y), _zone)
 		if _mark == 0:
 			return
 		var color: Color = UiTheme.ACCENT
