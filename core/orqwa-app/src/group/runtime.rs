@@ -411,12 +411,13 @@ async fn run_inner(
         .map_err(|e| e.to_string())?;
     let mut session = if let Some(invite) = request.invite {
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
+        // Taken before the joiner starts its own, so never later than the reply's real end.
+        let until = std::time::Instant::now() + request.options.window;
         let joiner = Joiner::lobby(invite, &request.options)
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
         snapshot.reachability = Some(joiner.reply().reachability());
-        let until = std::time::Instant::now() + request.options.window;
         snapshot.reply_until = Some(until);
         updates.send_replace(snapshot.clone());
         let lobby = JoinerLobby::join(joiner, request.rider.clone())
