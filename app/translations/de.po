@@ -2514,9 +2514,6 @@ msgstr "Standardlautsprecher"
 msgid "Starting in %s seconds…"
 msgstr "Start in %s Sekunden…"
 
-msgid "Group ride in progress"
-msgstr "Gruppenfahrt läuft"
-
 msgid "Group connection ended. Your local ride continues."
 msgstr "Gruppenverbindung beendet. Deine lokale Fahrt läuft weiter."
 
@@ -2548,27 +2545,6 @@ msgstr "%.1f / %.1f MiB"
 msgid "%s · power based on your FTP"
 msgstr "%s · Leistung anhand deiner FTP"
 
-msgid "All set? Let your friends know you're ready."
-msgstr "Alles parat? Sag deinen Freunden, dass du bereit bist."
-
-msgid "Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
-msgstr "Wähle eine Strecke, ein Training oder beides. Deine Freunde sehen beim Auswählen eine Vorschau und erhalten eine Kopie, sobald du die Aktivität verwendest."
-
-msgid "Choose an activity to get started."
-msgstr "Wähle zuerst eine Aktivität."
-
-msgid "Choose who starts the ride. You'll be riding together in a few steps."
-msgstr "Wähle, wer die Fahrt organisiert. In wenigen Schritten fahrt ihr gemeinsam los."
-
-msgid "Chosen by the organizer. Your copy downloads automatically."
-msgstr "Für eure Gruppe gewählt. Deine Kopie wird automatisch heruntergeladen."
-
-msgid "Connect your trainer, then tell the group you're ready."
-msgstr "Verbinde deinen Trainer und sag der Gruppe, dass du bereit bist."
-
-msgid "Connect your trainer…"
-msgstr "Trainer verbinden…"
-
 msgid "Connecting to your friends…"
 msgstr "Verbindung zu deinen Freunden wird hergestellt…"
 
@@ -2587,9 +2563,6 @@ msgstr "Fahrt erstellen"
 msgid "Creating your ride…"
 msgstr "Deine Fahrt wird erstellt…"
 
-msgid "Everyone is ready. Start when you like!"
-msgstr "Alle sind bereit. Du kannst starten!"
-
 msgid "Find my internet address automatically"
 msgstr "Meine Internetadresse automatisch ermitteln"
 
@@ -2605,9 +2578,6 @@ msgstr "3D-Welt wird erstellt · %d %%"
 msgid "Getting ready"
 msgstr "Macht sich bereit"
 
-msgid "Getting your activity from the organizer…"
-msgstr "Eure Aktivität wird heruntergeladen…"
-
 msgid "Getting your ride ready…"
 msgstr "Deine Fahrt wird vorbereitet…"
 
@@ -2616,9 +2586,6 @@ msgstr "Ich bin bereit"
 
 msgid "Invite friends"
 msgstr "Freunde einladen"
-
-msgid "Invite your friends, then choose what to ride."
-msgstr "Lade deine Freunde ein und wähle eure Fahrt."
 
 msgid "Join ride"
 msgstr "Mitfahren"
@@ -2704,6 +2671,33 @@ msgstr "Warte auf %s…"
 msgid "New reply"
 msgstr "Neue Antwort"
 
+msgid "%s is choosing the ride"
+msgstr "%s wählt die Fahrt"
+
+msgid "Chosen by %s"
+msgstr "Gewählt von %s"
+
+msgid "Share with the group"
+msgstr "Mit der Gruppe teilen"
+
+msgid "Shared with the group"
+msgstr "Mit der Gruppe geteilt"
+
+msgid "Connect your trainer"
+msgstr "Trainer verbinden"
+
+msgid "Everyone is ready"
+msgstr "Alle sind bereit"
+
+msgid "Waiting for %s"
+msgstr "Warte auf %s"
+
+msgid "You're ready. %s starts the ride."
+msgstr "Du bist bereit. %s startet die Fahrt."
+
+msgid "Group ride"
+msgstr "Gruppenfahrt"
+
 msgid "Join voice chat"
 msgstr "Am Sprachchat teilnehmen"
 
@@ -2770,17 +2764,8 @@ msgstr "Gesamten Ton stummschalten"
 msgid "No course · workout only"
 msgstr "Ohne Strecke · nur Training"
 
-msgid "Preparing your ride…"
-msgstr "Deine Fahrt wird vorbereitet…"
-
-msgid "Ready ✓ · click to undo"
-msgstr "Bereit ✓ · zum Zurücknehmen klicken"
-
 msgid "Ride with friends"
 msgstr "Mit Freunden fahren"
-
-msgid "Shared with everyone"
-msgstr "Mit allen geteilt"
 
 msgid "Speakers"
 msgstr "Lautsprecher"
@@ -2788,17 +2773,11 @@ msgstr "Lautsprecher"
 msgid "Start a group ride"
 msgstr "Eine Gruppenfahrt starten"
 
-msgid "Use this activity"
-msgstr "Diese Aktivität verwenden"
-
 msgid "Voice chat"
 msgstr "Sprachchat"
 
 msgid "Volume"
 msgstr "Lautstärke"
-
-msgid "Waiting for the organizer to choose an activity."
-msgstr "Warte, bis eine Aktivität für euch gewählt wurde."
 
 msgid "What are we riding?"
 msgstr "Was fahren wir?"
@@ -2806,20 +2785,8 @@ msgstr "Was fahren wir?"
 msgid "You"
 msgstr "Du"
 
-msgid "You're in! The organizer is choosing your ride."
-msgstr "Du bist dabei! Eure Fahrt wird ausgewählt."
-
-msgid "You're ready. The organizer will start the ride."
-msgstr "Du bist bereit. Die Fahrt wird gleich gestartet."
-
-msgid "You're ready. Waiting for the rest of the group."
-msgstr "Du bist bereit. Warte auf den Rest der Gruppe."
-
 msgid "Your group"
 msgstr "Deine Gruppe"
-
-msgid "Your ride is ready. Let's get everyone to the start."
-msgstr "Deine Fahrt ist vorbereitet. Macht euch bereit für den Start."
 
 msgid "Assisted group ride"
 msgstr "Gruppenfahrt mit Unterstützung"
@@ -2872,9 +2839,6 @@ msgstr "Jetzt mitfahren"
 
 msgid "Your friends are already riding. Get ready and join when you like."
 msgstr "Deine Freunde fahren bereits. Bereite dich vor und steige ein, wenn du bereit bist."
-
-msgid "Connect your trainer to join your friends."
-msgstr "Verbinde deinen Trainer, um mit deinen Freunden zu fahren."
 
 msgid "Join near the organizer at the current workout step. Your recording starts now."
 msgstr "Steige in der Nähe der organisierenden Person im aktuellen Trainingsabschnitt ein. Deine Aufzeichnung beginnt jetzt."
@@ -2966,10 +2930,6 @@ msgstr "Übergabe abbrechen"
 #: app/scenes/group_rides_tab.gd
 msgid "Choose a friend who is ready. They must accept before anything changes."
 msgstr "Wähle eine Person, die bereit ist. Die Übergabe beginnt erst nach ihrer Zustimmung."
-
-#: app/scenes/group_rides_tab.gd
-msgid "You choose who organizes the ride. Your recording continues when you hand over."
-msgstr "Du bestimmst, wer die Fahrt organisiert. Deine Aufzeichnung läuft bei der Übergabe weiter."
 
 #: app/scenes/group_rides_tab.gd
 msgid "Waiting for %s to accept organizer duties."

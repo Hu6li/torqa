@@ -106,6 +106,38 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_jpg(out.path_join("group-voice-ride.jpg"), 0.82)
 	print("saved group-voice-ride")
 	settings.hide()
+	# The group's window during the ride: riders beside voice and the workout (R196).
+	var friend: Dictionary = {"ready": true, "me": false, "present": true}
+	var alex: Dictionary = friend.duplicate()
+	alex.merge({"id": 1, "name": "Alex", "speaking": true, "gap_m": 14.0})
+	alex.merge({"power_w": 230.0, "watts_per_kg": 3.2})
+	var mia: Dictionary = friend.duplicate()
+	mia.merge({"id": 2, "name": "Mia", "muted": true, "fallback": true, "gap_m": -31.0})
+	mia.merge({"power_w": 210.0, "watts_per_kg": 3.0})
+	var window: Dictionary = {
+		"phase": "riding",
+		"host": true,
+		"invite": "orqwa:invitation",
+		"voice": true,
+		"microphone": true,
+		"echo_prevention": false,
+		"workout_shared": true,
+		"can_control_workout": true,
+		"can_choose_fallback": true,
+		"roster":
+		[{"id": 0, "name": "Rider", "ready": true, "me": true, "organizer": true}, alex, mia],
+	}
+	ride._group_controls.set_process(false)
+	UiScale.popup(ride._group_window, Vector2i(980, 600))
+	for frame: int in range(3):
+		await tree.process_frame
+	ride._group_controls._show_status(window)
+	for frame: int in range(5):
+		await tree.process_frame
+	root.get_texture().get_image().save_png(out.path_join("group-window.png"))
+	root.get_texture().get_image().save_jpg(out.path_join("group-window.jpg"), 0.82)
+	print("saved group-window")
+	ride._group_window.hide()
 	ride._show_group({"phase": "riding", "roster": roster})
 	if root.size.y < 800:
 		var scroll: ScrollContainer = ride.get_node("RightColumnScroll")

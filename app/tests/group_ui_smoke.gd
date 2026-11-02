@@ -13,6 +13,7 @@ func _run() -> void:
 	await _group_activity()
 	await _group_motion()
 	await _microphone_permissions()
+	await _ride_window_columns()
 	_ride_bar()
 	_offer_card()
 	await _organizer_offer()
@@ -69,6 +70,69 @@ func _microphone_permissions() -> void:
 	voice.free()
 	app.free()
 	await process_frame
+
+
+## One main button follows the rider's next step; a line says what the group waits for (R196).
+func _next_steps(step: GroupNextStep) -> void:
+	var preparing: Dictionary = {"phase": "ready", "host": true, "prepared": true}
+	step.show_status(preparing, false, "Me", 0, true)
+	_check(step._main.text == "Connect your trainer", "without a trainer, connecting comes first")
+	step.show_status(preparing, false, "Me", 0, false)
+	_check(not step._main.visible, "unless the trainer cannot be connected from here")
+	step.show_status(preparing, true, "Me", 0, true)
+	_check(
+		step._main.text == "I'm ready" and not step._main.disabled and not step._undo.visible,
+		"then the rider says they are ready"
+	)
+	var waiting: Dictionary = preparing.duplicate()
+	waiting["ready"] = true
+	waiting["roster"] = [
+		{"name": "Me", "ready": true, "me": true},
+		{"name": "Mia", "ready": false, "me": false},
+	]
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(
+		step._main.text == "Start group ride" and step._main.disabled and step._undo.visible,
+		"the organizer can start once everyone is ready, or take readiness back"
+	)
+	_check(step._line.text == "Waiting for Mia", "and sees who the group waits for")
+	waiting["can_start"] = true
+	waiting["roster"][1]["ready"] = true
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(
+		not step._main.disabled and step._line.text == "Everyone is ready", "then starts the ride"
+	)
+	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true, "ready": true}
+	step.show_status(friend, true, "Alex", 0, true)
+	_check(
+		not step._main.visible and step._undo.visible, "a ready friend only takes readiness back"
+	)
+	_check(step._line.text == "You're ready. Alex starts the ride.", "and knows who starts it")
+	var late: Dictionary = {"phase": "ready", "late": true, "prepared": true, "can_enter": true}
+	step.show_status(late, true, "Alex", 0, true)
+	_check(step._main.text == "Join ride now", "friends joining late enter explicitly")
+	await process_frame
+
+
+## In the ride's window, voice and the workout make a second column beside the riders (R196).
+func _ride_window_columns() -> void:
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	var group: GroupRidesTab = GroupRidesTab.new()
+	group.compact = true
+	group.bind(app)
+	root.add_child(group)
+	await process_frame
+	_check(
+		(
+			group._side_right.visible
+			and group._voice_controls.get_parent().get_parent().get_parent() == group._side_right
+		),
+		"voice sits in the second column"
+	)
+	_check(group._leave == null, "the window has its own way to leave")
+	group.free()
+	app.free()
 
 
 func _riders(app: OrqwaApp) -> int:
@@ -283,9 +347,16 @@ func _group_activity() -> void:
 	_check(not picker._apply.disabled, "a preview is not shared until confirmed")
 	picker.show_selection(true, course, workout)
 	_check(picker._apply.disabled, "shared activity has an acknowledgement")
+	picker.set_organizer("Alex", "Ride")
 	picker.show_selection(false, course, workout)
 	_check(
-		picker._course.disabled and not picker._apply.visible, "joiners preview the shared choice"
+		(
+			not picker._course.visible
+			and picker._course_name.visible
+			and not picker._apply.visible
+			and picker._hint.text == "Chosen by Alex"
+		),
+		"friends see the shared choice by name, never the pickers (R196)"
 	)
 	# Friends see what the organizer is choosing before it is shared (#418).
 	var browsed: Array = []
@@ -296,6 +367,10 @@ func _group_activity() -> void:
 	_check(browsed == [[picker.course(), ""]], "the organizer's choice goes to friends")
 	picker.show_selection(false, "", "")
 	_check(browsed.size() == 1, "a friend's picker sends nothing")
+	_check(
+		picker._waiting.visible and picker._waiting_text.text == "Alex is choosing the ride",
+		"friends see who is choosing"
+	)
 	var listed: Dictionary = app.courses()[0]
 	var shown_course: Dictionary = listed.duplicate()
 	var path: String = listed["path"]
@@ -327,8 +402,8 @@ func _group_activity() -> void:
 	)
 	picker.show_preview({})
 	_check(
-		not picker.previewing() and picker._course.visible and picker._hint.visible,
-		"the shared activity shows again once the preview is gone"
+		not picker.previewing() and picker._waiting.visible and not picker._course.visible,
+		"friends wait for the organizer again once the preview is gone"
 	)
 	# How far everyone has got (#419), and something turning while this rider waits (#420).
 	var roster: Array = [
@@ -351,13 +426,16 @@ func _group_activity() -> void:
 	_check(states[0] == "Building the world · 70 %", "a friend building: %s" % states[0])
 	_check(states[1] == "Downloading · 40 %", "a friend downloading: %s" % states[1])
 	_check(states[3] == "Ready", "a ready friend: %s" % states[3])
-	_check(group._working.visible, "it turns while this rider's ride is prepared")
+	var step: GroupNextStep = group._next_step
+	_check(step._working.visible, "it turns while this rider's ride is prepared")
 	_check(
-		group._progress.visible and is_equal_approx(group._progress.value, 55.0),
+		step._progress.visible and is_equal_approx(step._progress.value, 55.0),
 		"and shows how far the world is built"
 	)
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
-	_check(not group._working.visible, "nothing turns once it is prepared")
+	_check(not step._working.visible, "nothing turns once it is prepared")
+	_check(group._activity_panel.visible, "friends have the activity column too (R196)")
+	await _next_steps(step)
 	# Who is speaking (R190), this rider too, and who is muted here (R194): the voice buttons
 	# follow without rebuilding the rows.
 	var voice_status: Dictionary = {
@@ -424,11 +502,17 @@ func _group_activity() -> void:
 		{"host": true, "phase": "countdown", "drafting": false, "keep_together": true}
 	)
 	_check(group._drafting.disabled and group._together.disabled, "rules freeze at countdown")
-	_check(group._rule_summary.visible, "riders see the frozen rules during the ride")
+	_check(
+		group._rules_text.visible and not group._rules.visible,
+		"riders read the frozen rules during the ride"
+	)
 	group._show_status(
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
 	)
-	_check(group._retry.visible, "activity retry remains available beside standard error history")
+	_check(
+		group._next_step._retry.visible,
+		"activity retry remains available beside standard error history"
+	)
 	# The organizer sees who stands by and may choose another (#426).
 	var standing: Array = [
 		{"id": 0, "name": "Me", "ready": true, "me": true, "organizer": true},
@@ -457,21 +541,22 @@ func _group_activity() -> void:
 	]
 	group._show_status({"host": false, "phase": "riding", "reconnect_s": 272.4, "roster": away})
 	_check(
-		group._reconnect.visible and group._working.visible,
+		group._next_step._reconnect.visible and group._next_step._working.visible,
 		"reconnecting turns and offers to try now"
 	)
-	_check(group._next.text.contains("4:32"), "and says how long: %s" % group._next.text)
+	var line: String = group._next_step._line.text
+	_check(line.contains("4:32"), "and says how long: %s" % line)
 	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
 	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
 	group._show_status({"host": false, "phase": "riding", "roster": away})
-	_check(not group._reconnect.visible, "a connected rider has nothing to retry")
+	_check(not group._next_step._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")
 	group._show_status(
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}
 	)
 	_check(
-		group._enter.visible and not group._ready_button.visible,
-		"late joiners get one explicit entry action"
+		group._next_step._action == "devices" and not group._next_step._undo.visible,
+		"late joiners connect their trainer before their one explicit entry"
 	)
 	_check(not group._picker._apply.visible, "late joiners cannot change the running selection")
 	group.compact = true
@@ -489,7 +574,7 @@ func _group_activity() -> void:
 			{"host": true, "phase": "waiting", "invite": "private", "reachability": quiet}
 		)
 		_check(not group._invite._reach.visible, "no reachability warning for " + quiet)
-	_check(not group._enter.visible, "existing riders cannot restart through entry")
+	_check(group._next_step._action != "enter", "existing riders cannot restart through entry")
 	group._show_status(
 		{
 			"phase": "riding",

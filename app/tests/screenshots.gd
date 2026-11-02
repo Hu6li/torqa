@@ -196,6 +196,21 @@ func _group_preview_screens(
 		print("saved group-preview-" + locale)
 	group._picker.show_preview({})
 	group._preview_key = ""
+	# Before Alex looks at anything, friends see who is choosing (R196).
+	TranslationServer.set_locale("de")
+	group._show_status(
+		{
+			"phase": "waiting",
+			"host": false,
+			"roster":
+			[
+				{"id": 0, "name": "Alex", "ready": false, "me": false, "organizer": true},
+				{"id": 1, "name": "Rider", "ready": false, "me": true}
+			]
+		}
+	)
+	await create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-choosing-de.png"))
 
 
 func _group_late_screens(

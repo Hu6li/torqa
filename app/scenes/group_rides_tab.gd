@@ -1,7 +1,9 @@
 class_name GroupRidesTab
 extends VBoxContainer
 # gdlint: disable=max-line-length
-## Rider-facing setup; membership, transfers and readiness belong to the Rust core.
+## Rider-facing setup; membership, transfers and readiness belong to the Rust core. What is
+## ridden on the left, the group on the right, the same for organizer and friends (R196); in
+## the ride's window (`compact`), the riders on the left and voice and workout on the right.
 
 signal devices_requested
 
@@ -13,12 +15,17 @@ var _orqwa: OrqwaApp
 var _setup: BoxContainer = BoxContainer.new()
 var _body: BoxContainer = BoxContainer.new()
 var _sidebar: VBoxContainer = VBoxContainer.new()
+## The second column of the ride's window: voice and the shared workout.
+var _side_right: VBoxContainer = VBoxContainer.new()
+var _leave: Button
 var _activity_panel: PanelContainer = PanelContainer.new()
 var _picker: GroupActivityPicker = GroupActivityPicker.new()
 var _stage: Label = Label.new()
 var _drafting: CheckBox = CheckBox.new()
 var _together: CheckBox = CheckBox.new()
 var _rule_summary: Label = Label.new()
+var _rules: Control
+var _rules_text: Label = Label.new()
 var _connecting: HBoxContainer = HBoxContainer.new()
 ## Keeps the joining steps readable on a wide window instead of stretched across it.
 var _connecting_gap: Control = Control.new()
@@ -29,15 +36,8 @@ var _roster: VBoxContainer = VBoxContainer.new()
 ## Friends whose reply the organizer added and who are still connecting (R195).
 var _admitting: VBoxContainer = VBoxContainer.new()
 var _add: GroupAddRow = GroupAddRow.new()
-var _next: Label = Label.new()
-## Turns while ORQWA connects, receives or prepares the ride and the rider can only wait (#420).
-var _working: Spinner = Spinner.new(18.0)
-var _ready_button: Button = Button.new()
-var _start: Button = Button.new()
-var _enter: Button = Button.new()
-var _devices: Button
-var _retry: Button
-var _reconnect: Button
+var _next_step: GroupNextStep = GroupNextStep.new()
+var _next_separator: HSeparator
 var _voice_controls: GroupVoiceControls = GroupVoiceControls.new()
 var _invitation_panel: PanelContainer
 var _workout_panel: PanelContainer
@@ -56,8 +56,6 @@ var _organizer_decline: Button
 var _organizer_cancel: Button
 var _organizer_picker: AcceptDialog = AcceptDialog.new()
 var _organizer_choices: VBoxContainer = VBoxContainer.new()
-var _progress: ProgressBar = ProgressBar.new()
-var _bytes: Label = Label.new()
 var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
 var _status: Dictionary = {}
 var _roster_key: String = ""
@@ -76,6 +74,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_voice_controls.bind(orqwa)
 	_connection.bind(orqwa)
 	_add.bind(orqwa)
+	_next_step.bind(orqwa)
 	if is_node_ready():
 		refresh()
 
@@ -83,7 +82,12 @@ func bind(orqwa: OrqwaApp) -> void:
 func _ready() -> void:
 	add_theme_constant_override("separation", 18)
 	if not compact:
-		_label(self, tr("Ride with friends"), 26)
+		var header: HBoxContainer = HBoxContainer.new()
+		_label(header, tr("Ride with friends"), 26)
+		_leave = _button(header, tr("Leave group"), func() -> void: _orqwa.group_leave())
+		_leave.custom_minimum_size.x = 150
+		_leave.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		add_child(header)
 	_stage.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_stage.add_theme_color_override("font_color", UiTheme.MUTED)
 	add_child(_stage)
@@ -105,18 +109,20 @@ func _ready() -> void:
 		func(course: String, workout: String) -> void: _orqwa.group_preview(course, workout)
 	)
 	_body.add_child(_activity_panel)
-	_sidebar.add_theme_constant_override("separation", 16)
-	_sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_sidebar.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	_body.add_child(_sidebar)
+	for column: VBoxContainer in [_sidebar, _side_right]:
+		column.add_theme_constant_override("separation", 14)
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		_body.add_child(column)
+	# In the ride's window, voice and the workout make a second column beside the riders.
+	var right: VBoxContainer = _side_right if compact else _sidebar
 	_build_invitation()
 	_build_roster()
 	_build_organizer()
-	_build_workout_controls()
-	var audio: VBoxContainer = _card(_sidebar)
+	var audio: VBoxContainer = _card(right)
 	_label(audio, tr("Voice chat"), 20)
 	audio.add_child(_voice_controls)
-	_button(_sidebar, tr("Leave group"), func() -> void: _orqwa.group_leave())
+	_build_workout_controls(right)
 	_build_dialogs()
 	resized.connect(_reflow)
 	visibility_changed.connect(refresh)
@@ -128,15 +134,21 @@ func _build_rules() -> void:
 	var row: HFlowContainer = HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 24)
 	_drafting.text = tr("Drafting")
-	_drafting.tooltip_text = tr("Save effort when riding behind friends.")
+	var assisted: String = tr("Assisted rides count for training, but do not set speed records.")
+	_drafting.tooltip_text = tr("Save effort when riding behind friends.") + "\n" + assisted
 	_together.text = tr("Keep together")
-	_together.tooltip_text = tr("Help everyone stay with the organizer while pedaling.")
+	_together.tooltip_text = (
+		tr("Help everyone stay with the organizer while pedaling.") + "\n" + assisted
+	)
 	for option: CheckBox in [_drafting, _together]:
 		option.button_pressed = true
 		option.toggled.connect(_change_rules)
 		row.add_child(option)
 	_picker.options.add_child(row)
-	_muted(_picker.options, tr("Assisted rides count for training, but do not set speed records."))
+	_rules = row
+	# Friends read the rules; only the organizer sets them.
+	_rules_text.add_theme_color_override("font_color", UiTheme.MUTED)
+	_picker.options.add_child(_rules_text)
 
 
 func _change_rules(_on: bool) -> void:
@@ -183,40 +195,10 @@ func _build_roster() -> void:
 	_admitting.add_theme_constant_override("separation", 12)
 	card.add_child(_admitting)
 	card.add_child(_add)
-	card.add_child(HSeparator.new())
-	_next.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_next.add_theme_color_override("font_color", UiTheme.MUTED)
-	_next.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var next_row: HBoxContainer = HBoxContainer.new()
-	next_row.add_theme_constant_override("separation", 10)
-	_working.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	next_row.add_child(_working)
-	next_row.add_child(_next)
-	card.add_child(next_row)
-	_progress.show_percentage = false
-	_progress.custom_minimum_size.y = 6
-	card.add_child(_progress)
-	_bytes.add_theme_color_override("font_color", UiTheme.MUTED)
-	card.add_child(_bytes)
-	_ready_button.text = tr("I'm ready")
-	_ready_button.toggle_mode = true
-	_ready_button.custom_minimum_size.y = 44
-	_ready_button.toggled.connect(func(on: bool) -> void: _orqwa.group_ready(on))
-	card.add_child(_ready_button)
-	_start.text = tr("Start group ride")
-	_start.custom_minimum_size.y = 52
-	_start.add_theme_font_size_override("font_size", 20)
-	_start.add_theme_stylebox_override("normal", UiTheme.accent_button())
-	_start.pressed.connect(func() -> void: _orqwa.group_start())
-	card.add_child(_start)
-	_enter.text = tr("Join ride now")
-	_enter.custom_minimum_size.y = 52
-	_enter.add_theme_stylebox_override("normal", UiTheme.accent_button())
-	_enter.pressed.connect(func() -> void: _orqwa.group_enter())
-	card.add_child(_enter)
-	_devices = _button(card, tr("Connect your trainer…"), func() -> void: devices_requested.emit())
-	_retry = _button(card, tr("Retry download"), func() -> void: _orqwa.group_retry())
-	_reconnect = _button(card, tr("Reconnect now"), func() -> void: _orqwa.group_reconnect())
+	_next_separator = HSeparator.new()
+	card.add_child(_next_separator)
+	_next_step.devices_requested.connect(devices_requested.emit)
+	card.add_child(_next_step)
 
 
 func _build_dialogs() -> void:
@@ -306,9 +288,7 @@ func _show_organizer() -> void:
 	)
 	_organizer_decline.visible = offer
 	_organizer_cancel.visible = _status.get("can_cancel_handover", false) and not offer
-	_organizer_status.text = tr(
-		"You choose who organizes the ride. Your recording continues when you hand over."
-	)
+	_organizer_status.text = ""
 	if handover == "offered":
 		_organizer_status.text = (
 			tr("Waiting for %s to accept organizer duties.") % _status.get("successor_name", "")
@@ -331,32 +311,40 @@ func _show_organizer() -> void:
 			)
 			% _status.get("successor_name", "")
 		)
+	_organizer_status.visible = not _organizer_status.text.is_empty()
 
 
-func _build_workout_controls() -> void:
-	var card: VBoxContainer = _card(_sidebar)
+func _build_workout_controls(parent: VBoxContainer) -> void:
+	var card: VBoxContainer = _card(parent)
 	_workout_panel = card.get_parent() as PanelContainer
 	_label(card, tr("Group workout"), 20)
 	_workout_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	card.add_child(_workout_status)
-	_muted(
-		card,
-		tr("Your intensity stays personal. Pause in the ride controls stops only your own ride.")
+	_workout_status.tooltip_text = tr(
+		"Your intensity stays personal. Pause in the ride controls stops only your own ride."
 	)
+	_workout_status.mouse_filter = Control.MOUSE_FILTER_PASS
+	card.add_child(_workout_status)
+	var buttons: HFlowContainer = HFlowContainer.new()
+	buttons.add_theme_constant_override("h_separation", 8)
+	buttons.add_theme_constant_override("v_separation", 8)
+	card.add_child(buttons)
 	_workout_pause = _button(
-		card,
+		buttons,
 		tr("Pause workout for everyone"),
 		func() -> void:
 			var paused: bool = _status.get("workout_paused", false)
 			_orqwa.group_workout_pause(not paused)
 	)
-	_workout_next = _button(card, tr("Next step for everyone"), func() -> void: _orqwa.skip_step())
+	_workout_next = _button(
+		buttons, tr("Next step for everyone"), func() -> void: _orqwa.skip_step()
+	)
 
 
 func _reflow() -> void:
 	_setup.vertical = size.x < 760
 	_connecting_gap.visible = size.x >= 1100
-	_body.vertical = size.x < 760 or compact
+	_body.vertical = size.x < 760
+	_side_right.visible = compact
 
 
 func _card(parent: Node) -> VBoxContainer:
@@ -446,10 +434,7 @@ func _show_status(status: Dictionary) -> void:
 	_status = status
 	var phase: String = _status.get("phase", "idle")
 	var host: bool = _status.get("host", false)
-	var prepared: bool = _status.get("prepared", false)
 	var late: bool = _status.get("late", false)
-	var entering: bool = _status.get("entering", false)
-	var ready: bool = _status.get("ready", false)
 	var name: String = _status.get("name", "")
 	var countdown: float = _status.get("countdown_s", 0.0)
 	var can_retry: bool = _status.get("can_retry", false)
@@ -465,31 +450,29 @@ func _show_status(status: Dictionary) -> void:
 		+ " · "
 		+ (tr("Keep together on") if together else tr("Keep together off"))
 	)
-	_rule_summary.visible = (
-		phase in ["countdown", "riding"]
-		or (late and not name.is_empty())
-		or (not host and not name.is_empty() and phase in ["downloading", "preparing"])
-	)
+	_rule_summary.visible = compact and phase in ["countdown", "riding"]
+	_rules.visible = host and not underway and not late
+	_rules_text.text = _rule_summary.text
+	_rules_text.visible = not _rules.visible
+	# Only what the columns below do not show already (R196).
 	var captions: Dictionary = {
-		"idle": tr("Choose who starts the ride. You'll be riding together in a few steps."),
 		"connecting": tr("Creating your ride…") if host else tr("Connecting to your friends…"),
-		"waiting":
-		(
-			tr("Invite your friends, then choose what to ride.")
-			if host
-			else tr("You're in! The organizer is choosing your ride.")
-		),
-		"downloading": tr("Getting your activity from the organizer…"),
-		"preparing": tr("Preparing your ride…"),
-		"ready": tr("Your ride is ready. Let's get everyone to the start."),
 		"countdown": tr("Starting in %s seconds…") % ceili(countdown),
-		"riding": tr("Group ride in progress"),
 		"ended": tr("Group connection ended. Your local ride continues."),
 		"failed": tr("Could not connect. Leave the group and ask for a fresh invitation."),
 	}
 	_stage.text = captions.get(phase, "")
 	if late and not underway:
 		_stage.text = tr("Your friends are already riding. Get ready and join when you like.")
+	if can_retry:
+		_stage.text = ""
+	# The connection to the organizer was lost and comes back by itself (#434).
+	var reconnect: float = _status.get("reconnect_s", 0.0)
+	if reconnect > 0.0:
+		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
+	_stage.visible = not _stage.text.is_empty()
+	if _leave != null:
+		_leave.visible = phase != "idle"
 	_setup.visible = phase == "idle" and not compact
 	# Not added in time, the joiner makes a new reply on the same page (R195).
 	var expired: bool = _status.get("reply_expired", false)
@@ -514,9 +497,10 @@ func _show_status(status: Dictionary) -> void:
 	if preview_key != _preview_key:
 		_preview_key = preview_key
 		_picker.show_preview({} if preview_key.is_empty() else _orqwa.group_preview_data())
-	_activity_panel.visible = (
-		not compact and (host or (not name.is_empty() and prepared) or _picker.previewing())
-	)
+	# Always there beside the group, also while friends wait for the organizer (R196).
+	_activity_panel.visible = not compact
+	var organizer: String = _organizer_name()
+	_picker.set_organizer(organizer, name)
 	var course_path: String = _status.get("course_path", "")
 	var workout_id: String = _status.get("workout_id", "")
 	var activity_failed: bool = _status.get("activity_failed", false)
@@ -536,79 +520,9 @@ func _show_status(status: Dictionary) -> void:
 			"" if activity_failed else course_path,
 			"" if activity_failed else workout_id
 		)
-	var received: float = _status.get("received", 0)
-	var total: float = _status.get("total", 0)
-	_progress.visible = phase == "downloading" and total > 0
-	_bytes.visible = _progress.visible
-	_progress.max_value = maxf(1, total)
-	_progress.value = received
-	_bytes.text = tr("%.1f / %.1f MiB") % [received / 1048576, total / 1048576]
-	# Building the course's world takes longest; the group hears how far it has got too.
-	var built: int = _own_percent() if phase == "preparing" else 0
-	if built > 0:
-		_progress.visible = true
-		_bytes.visible = true
-		_progress.max_value = 100
-		_progress.value = built
-		_bytes.text = tr("Building the world · %d %%") % built
-	_working.visible = phase in ["connecting", "downloading", "preparing"] and not can_retry
 	var trainer: bool = _orqwa.trainer_connected()
-	_next.text = (
-		tr("Choose an activity to get started.")
-		if host
-		else tr("Waiting for the organizer to choose an activity.")
-	)
-	if not name.is_empty():
-		_next.text = tr("Getting your ride ready…")
-	if prepared:
-		_next.text = (
-			tr("Connect your trainer, then tell the group you're ready.")
-			if not trainer
-			else tr("All set? Let your friends know you're ready.")
-		)
-	if ready:
-		_next.text = (
-			tr("You're ready. Waiting for the rest of the group.")
-			if host
-			else tr("You're ready. The organizer will start the ride.")
-		)
-	if _status.get("can_start", false):
-		_next.text = tr("Everyone is ready. Start when you like!")
-	if underway:
-		_next.text = _stage.text
-	elif can_retry:
-		_next.text = tr("Download stopped. Try again when you're ready.")
-		_stage.text = _next.text
-	if late and not underway and prepared:
-		_next.text = (
-			tr("Connect your trainer to join your friends.")
-			if not trainer
-			else tr(
-				"Join near the organizer at the current workout step. Your recording starts now."
-			)
-		)
-	if entering:
-		_next.text = tr("Joining your friends…")
-	# The connection to the organizer was lost and comes back by itself (#434).
-	var reconnect: float = _status.get("reconnect_s", 0.0)
-	if reconnect > 0.0:
-		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
-		_next.text = (
-			tr("Trying for another %s. You keep your place in the group.")
-			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
-		)
-		_working.visible = true
-	_reconnect.visible = reconnect > 0.0
-	_enter.visible = late and not underway
-	_enter.disabled = not trainer or not _status.get("can_enter", false)
-	_ready_button.visible = not underway and not late
-	_ready_button.disabled = not prepared or (not trainer and not ready)
-	_ready_button.set_pressed_no_signal(ready)
-	_ready_button.text = tr("Ready ✓ · click to undo") if ready else tr("I'm ready")
-	_start.visible = host and not underway and not compact
-	_start.disabled = not _status.get("can_start", false)
-	_devices.visible = not compact and not underway and not trainer
-	_retry.visible = can_retry
+	_next_step.show_status(_status, trainer, organizer, _own_percent(), not compact)
+	_next_separator.visible = _next_step.visible
 	_voice_controls.update_status(_status)
 	_show_workout_controls()
 	_show_organizer()
@@ -631,6 +545,15 @@ func _show_status(status: Dictionary) -> void:
 		_roster_key = key
 		_show_roster(phase, host)
 	_show_voice_buttons()
+
+
+## Who organizes the ride: from the group once in it, else as the invitation named them.
+func _organizer_name() -> String:
+	for rider: Dictionary in _status.get("roster", []):
+		if rider.get("organizer", false):
+			var rider_name: String = rider.get("name", "")
+			return rider_name
+	return _connection.organizer()
 
 
 ## This rider's preparation as the group heard it (#419), 0 before the first report.

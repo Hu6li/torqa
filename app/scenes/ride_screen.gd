@@ -63,7 +63,9 @@ var _moment_card: MomentCard = MomentCard.new()
 var _chime: MomentChime = MomentChime.new()
 ## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
 var _bar: RideBar = RideBar.new()
-var _group_popup: PopupPanel = PopupPanel.new()
+## The group ride's riders, voice, shared workout and leaving (R180), at least as large as the
+## ride's settings, in two columns (R196).
+var _group_window: AcceptDialog = AcceptDialog.new()
 var _offer: GroupOfferCard = GroupOfferCard.new()
 ## Asked to organize the group ride and not yet answered (#424).
 var _offer_pending: bool = false
@@ -202,7 +204,7 @@ func _ready() -> void:
 	_bar.grow_horizontal = Control.GROW_DIRECTION_END
 	_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_bar.settings_requested.connect(_open_settings)
-	_bar.group_requested.connect(func() -> void: _group_popup.popup_centered(Vector2i(640, 480)))
+	_bar.group_requested.connect(func() -> void: UiScale.popup(_group_window, Vector2i(980, 600)))
 	_bar.microphone_requested.connect(_group_controls.toggle_microphone)
 	_bar.overlay_requested.connect(func() -> void: overlay_requested.emit(true))
 	_bar.fullscreen_requested.connect(fullscreen_requested.emit)
@@ -210,13 +212,7 @@ func _ready() -> void:
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
-	_group_controls.compact = true
-	var group_scroll: ScrollContainer = ScrollContainer.new()
-	group_scroll.custom_minimum_size = Vector2(320, 240)
-	_group_controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	group_scroll.add_child(_group_controls)
-	_group_popup.add_child(group_scroll)
-	add_child(_group_popup)
+	_build_group_window()
 	# Above the control bar, where it covers neither the HUD, the moments nor the map.
 	_offer.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_offer.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -649,6 +645,23 @@ func _on_moment(moment: Dictionary) -> void:
 
 
 ## The chime of a moment, unless the app's sounds are off (R125).
+func _build_group_window() -> void:
+	_group_controls.compact = true
+	_group_window.theme = UiTheme.build()
+	_group_window.title = tr("Group ride")
+	_group_window.ok_button_text = tr("Done")
+	_group_window.min_size = Vector2i(860, 480)
+	var leave: Button = _group_window.add_button(tr("Leave group"), false, "leave")
+	UiTheme.danger_button(leave)
+	_group_window.custom_action.connect(
+		func(_action: StringName) -> void:
+			_group_window.hide()
+			_orqwa.group_leave()
+	)
+	_group_window.add_child(UiTheme.scrolling(_group_controls))
+	add_child(_group_window)
+
+
 ## The group's button while in a group (#431), and a request to organize the ride (#424) until
 ## answered or withdrawn; the overlay is too small for it.
 func _show_group(status: Dictionary) -> void:

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "%.1f / %.1f MiB"
 msgstr ""
 
@@ -121,6 +121,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "%s has no timestamps for a ghost rider."
+msgstr ""
+
+#: app/ui/group_activity_picker.gd
+msgid "%s is choosing the ride"
 msgstr ""
 
 #: app/ui/course_settings.gd
@@ -335,10 +339,6 @@ msgstr ""
 msgid "All out"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "All set? Let your friends know you're ready."
-msgstr ""
-
 #: app/scenes/profile_tab.gd
 msgid "All settings"
 msgstr ""
@@ -543,7 +543,7 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_next_step.gd
 msgid "Building the world · %d %%"
 msgstr ""
 
@@ -639,10 +639,6 @@ msgstr ""
 msgid "Choose a country, or a part of a large one: it downloads faster."
 msgstr ""
 
-#: app/ui/group_activity_picker.gd
-msgid "Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
-msgstr ""
-
 #: app/scenes/group_rides_tab.gd
 msgid "Choose a fallback organizer"
 msgstr ""
@@ -668,10 +664,6 @@ msgid "Choose a workout file"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
-msgid "Choose an activity to get started."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
 msgid "Choose fallback organizer…"
 msgstr ""
 
@@ -683,12 +675,8 @@ msgstr ""
 msgid "Choose where your group will ride before inviting friends."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Choose who starts the ride. You'll be riding together in a few steps."
-msgstr ""
-
 #: app/ui/group_activity_picker.gd
-msgid "Chosen by the organizer. Your copy downloads automatically."
+msgid "Chosen by %s"
 msgstr ""
 
 #: app/scenes/world.gd
@@ -807,16 +795,8 @@ msgstr ""
 msgid "Connect %s first."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Connect your trainer to join your friends."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Connect your trainer, then tell the group you're ready."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Connect your trainer…"
+#: app/ui/group_next_step.gd
+msgid "Connect your trainer"
 msgstr ""
 
 #: app/scenes/devices_tab.gd app/ui/ride_devices.gd
@@ -1199,7 +1179,7 @@ msgstr ""
 msgid "Distance"
 msgstr ""
 
-#: app/scenes/button_dialog.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/scenes/ride_settings_dialog.gd app/scenes/ride_summary_dialog.gd app/scenes/settings_dialog.gd app/ui/group_voice_dialog.gd
+#: app/scenes/button_dialog.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/scenes/ride_screen.gd app/scenes/ride_settings_dialog.gd app/scenes/ride_summary_dialog.gd app/scenes/settings_dialog.gd app/ui/group_voice_dialog.gd
 msgid "Done"
 msgstr ""
 
@@ -1227,7 +1207,7 @@ msgstr ""
 msgid "Download it from its release page."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Download stopped. Try again when you're ready."
 msgstr ""
 
@@ -1347,8 +1327,8 @@ msgstr ""
 msgid "Every ride you planned this week is done, all {planned} of them!"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Everyone is ready. Start when you like!"
+#: app/ui/group_next_step.gd
+msgid "Everyone is ready"
 msgstr ""
 
 #: app/ui/group_connection_dialog.gd
@@ -1599,11 +1579,7 @@ msgstr ""
 msgid "Getting ready"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Getting your activity from the organizer…"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Getting your ride ready…"
 msgstr ""
 
@@ -1643,8 +1619,8 @@ msgstr ""
 msgid "Group connection ended. Your local ride continues."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Group ride in progress"
+#: app/scenes/ride_screen.gd
+msgid "Group ride"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1771,7 +1747,7 @@ msgstr ""
 msgid "How to check"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "I'm ready"
 msgstr ""
 
@@ -1819,10 +1795,6 @@ msgstr ""
 msgid "Invite friends"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Invite your friends, then choose what to ride."
-msgstr ""
-
 #: app/ui/update_dialog.gd
 msgid "It is under Security & privacy; then check for updates again."
 msgstr ""
@@ -1851,7 +1823,7 @@ msgstr ""
 msgid "Join friends"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Join near the organizer at the current workout step. Your recording starts now."
 msgstr ""
 
@@ -1859,7 +1831,7 @@ msgstr ""
 msgid "Join ride"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Join ride now"
 msgstr ""
 
@@ -1875,7 +1847,7 @@ msgstr ""
 msgid "Joining %s's ride"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Joining your friends…"
 msgstr ""
 
@@ -1951,7 +1923,7 @@ msgstr ""
 msgid "Later"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/scenes/ride_screen.gd
 msgid "Leave group"
 msgstr ""
 
@@ -2323,7 +2295,7 @@ msgstr ""
 msgid "Not found: %s. Wake the devices, then scan again."
 msgstr ""
 
-#: app/ui/course_settings.gd
+#: app/ui/course_settings.gd app/ui/group_next_step.gd
 msgid "Not ready"
 msgstr ""
 
@@ -2639,10 +2611,6 @@ msgstr ""
 msgid "Preparing %s…"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Preparing your ride…"
-msgstr ""
-
 #: app/scenes/button_dialog.gd
 msgid "Press"
 msgstr ""
@@ -2699,10 +2667,6 @@ msgstr ""
 msgid "Ready in %s"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Ready ✓ · click to undo"
-msgstr ""
-
 #: app/ui/group_voice_dialog.gd
 msgid "Recommended"
 msgstr ""
@@ -2711,7 +2675,7 @@ msgstr ""
 msgid "Reconnect devices"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Reconnect now"
 msgstr ""
 
@@ -2783,7 +2747,7 @@ msgstr ""
 msgid "Resume workout for everyone"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Retry download"
 msgstr ""
 
@@ -3028,7 +2992,11 @@ msgid "Share of the road gradient you feel on the trainer"
 msgstr ""
 
 #: app/ui/group_activity_picker.gd
-msgid "Shared with everyone"
+msgid "Share with the group"
+msgstr ""
+
+#: app/ui/group_activity_picker.gd
+msgid "Shared with the group"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3147,7 +3115,7 @@ msgstr ""
 msgid "Start as overlay"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Start group ride"
 msgstr ""
 
@@ -3495,7 +3463,7 @@ msgstr ""
 msgid "Tree density"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Trying for another %s. You keep your place in the group."
 msgstr ""
 
@@ -3581,10 +3549,6 @@ msgstr ""
 
 #: app/scenes/ride_settings_dialog.gd
 msgid "Use Group Rides for the shared workout. Your intensity stays personal."
-msgstr ""
-
-#: app/ui/group_activity_picker.gd
-msgid "Use this activity"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3683,6 +3647,10 @@ msgstr ""
 msgid "W/kg"
 msgstr ""
 
+#: app/ui/group_next_step.gd
+msgid "Waiting for %s"
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "Waiting for %s to accept organizer duties."
 msgstr ""
@@ -3693,10 +3661,6 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Waiting for a phone or tablet…"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Waiting for the organizer to choose an activity."
 msgstr ""
 
 #: app/scenes/ride_screen.gd
@@ -3843,10 +3807,6 @@ msgstr ""
 msgid "You"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "You choose who organizes the ride. Your recording continues when you hand over."
-msgstr ""
-
 #: app/ui/moment_lines.gd
 msgid "You held that step right on target, nicely done!"
 msgstr ""
@@ -3855,20 +3815,12 @@ msgstr ""
 msgid "You're halfway there and going really well!"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "You're in! The organizer is choosing your ride."
-msgstr ""
-
 #: app/ui/moment_lines.gd
 msgid "You're over the top of climb {n}, which averaged {grade}. Get your breath back!"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "You're ready. The organizer will start the ride."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "You're ready. Waiting for the rest of the group."
+#: app/ui/group_next_step.gd
+msgid "You're ready. %s starts the ride."
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3937,10 +3889,6 @@ msgstr ""
 
 #: app/ui/group_joining_card.gd
 msgid "Your reply"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Your ride is ready. Let's get everyone to the start."
 msgstr ""
 
 #: app/scenes/history_screen.gd

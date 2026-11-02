@@ -981,6 +981,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
   **+** seat in the group list for each friend's reply with one-line reasons when it adds
   nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)
+- [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
+  what was chosen by name, one main button for the next step with **Not ready**, and the
+  in-ride group window at least as large as the ride's settings, in two columns (R196)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
