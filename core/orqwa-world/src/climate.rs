@@ -23,7 +23,19 @@ pub struct SeasonClimate {
 pub fn season_climate(latitude: f64, season: orqwa_domain::season::Season) -> SeasonClimate {
     let tropical = Climate::at(latitude) == Climate::Tropical;
     let snow_line = match season {
-        orqwa_domain::season::Season::Summer => {
+        orqwa_domain::season::Season::Winter => {
+            let latitude = latitude.abs();
+            if tropical {
+                4200.0
+            } else if latitude < 40.0 {
+                1800.0 - (latitude - TROPICAL_LATITUDE) / 13.0 * 1200.0
+            } else {
+                (600.0 - (latitude - 40.0) * 40.0).max(0.0)
+            }
+        }
+        orqwa_domain::season::Season::Summer
+        | orqwa_domain::season::Season::Spring
+        | orqwa_domain::season::Season::Autumn => {
             if tropical {
                 4500.0
             } else {
@@ -70,6 +82,20 @@ impl Climate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn winter_snow_is_climate_dependent_and_the_same_in_both_hemispheres() {
+        use orqwa_domain::season::Season;
+        for latitude in [1.0, 24.0, 32.0, 47.0, 60.0] {
+            let north = season_climate(latitude, Season::Winter);
+            let south = season_climate(-latitude, Season::Winter);
+            assert_eq!(north.snow_line, south.snow_line);
+            assert!(north.snow_line < season_climate(latitude, Season::Summer).snow_line);
+        }
+        assert!(season_climate(1.0, Season::Winter).snow_line > 4000.0);
+        assert!(season_climate(32.0, Season::Winter).snow_line > 1000.0);
+        assert!(season_climate(47.0, Season::Winter).snow_line < 500.0);
+    }
 
     #[test]
     fn summer_keeps_tropical_lowlands_evergreen_and_snow_high_above_them() {

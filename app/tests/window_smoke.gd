@@ -49,6 +49,8 @@ func _fullscreen() -> void:
 	_press(KEY_ENTER, true)
 	_check(orqwa.fullscreen(), "Alt+Enter as well")
 
+	await _escape(main, headless)
+
 	var box: CheckBox = _button_with_text(main, "Full screen (F11)")
 	_check(box != null, "a check box in the settings")
 	if box != null:
@@ -81,6 +83,41 @@ func _fullscreen() -> void:
 	main.free()
 
 
+## Escape leaves full screen before it goes back (#439); the remote's Back only goes back, so a
+## TV by the trainer stays full screen.
+func _escape(main: Control, headless: bool) -> void:
+	var orqwa: OrqwaApp = main.get_node("Orqwa")
+	var start: StartPage = main.get_node("StartPage")
+	var detail: Control = start.get("_detail")
+	var courses: Control = start.get("_courses")
+	FullScreen.set_on(root, orqwa, false)
+	courses.hide()
+	detail.show()
+	_press(KEY_ESCAPE)
+	_check(courses.visible and not orqwa.fullscreen(), "in a window, Escape goes back")
+	if headless:
+		return
+	courses.hide()
+	detail.show()
+	FullScreen.set_on(root, orqwa, true)
+	await _settle()
+	_press(KEY_ESCAPE)
+	await _settle()
+	_check(not FullScreen.is_on(root) and not orqwa.fullscreen(), "Escape leaves full screen")
+	_check(detail.visible, "leaving full screen stays on the course")
+	_press(KEY_ESCAPE)
+	_check(courses.visible, "the next Escape goes back")
+	courses.hide()
+	detail.show()
+	FullScreen.set_on(root, orqwa, true)
+	await _settle()
+	RemoteNavigation.step(root, "back")
+	await _settle()
+	_check(courses.visible and FullScreen.is_on(root), "the remote's Back stays in full screen")
+	FullScreen.set_on(root, orqwa, false)
+	await _settle()
+
+
 ## The ride bar switches the app's window in both directions, follows the other controls and
 ## still works after being folded. Run on a display as well: headless has no window mode.
 func _ride_fullscreen(main: Control, ride: RideScreen, box: CheckBox, headless: bool) -> void:
@@ -98,7 +135,7 @@ func _ride_fullscreen(main: Control, ride: RideScreen, box: CheckBox, headless: 
 	if not headless:
 		_check(FullScreen.is_on(root), "the ride button fills the app's window")
 		_check(
-			button.icon != expand and button.tooltip_text == "Exit full screen (F11)",
+			button.icon != expand and button.tooltip_text == "Exit full screen (Esc or F11)",
 			"full screen offers a different icon and a way back to a window"
 		)
 		var start: StartPage = main.get_node("StartPage")

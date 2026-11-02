@@ -1,4 +1,13 @@
 shader_type spatial;
+#include "res://shaders/winter.gdshaderinc"
+
+varying vec3 winter_position;
+varying vec3 winter_normal;
+
+void vertex() {
+	winter_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	winter_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
+}
 // Building shells (R89, ADR 0020): buildings drawn by the world itself — far away, and up close
 // where no model fits. Walls of textured plaster or boards, roofs of clay tiles or gravel
 // (textures baked in Blender, tinted by the surface's palette colour), with window rectangles
@@ -136,7 +145,9 @@ void fragment() {
 		// A soft shade where walls meet the ground.
 		color *= mix(0.72, 1.0, smoothstep(0.0, 1.4, uv.y));
 	}
-	ALBEDO = color;
+	float snow = wall ? 0.0 : winter_cover(winter_position, winter_normal);
+	ALBEDO = mix(color, winter_snow_color.rgb, snow);
+	roughness = mix(roughness, 0.8, snow);
 	ROUGHNESS = roughness;
 	SPECULAR = specular;
 }
