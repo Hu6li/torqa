@@ -357,6 +357,27 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 | R177 | Extends R162 and R169 (2026-11-01, #414, #429): group **Audio settings** offer an explicit **Test microphone** action and level meter, using the selected input without playback, transmission or recording. The test stops after ten seconds, on Stop, closing its dialog, changing devices or leaving the group. It temporarily pauses voice and restores previously opted-in listening with the microphone off. A default-on **Prevent speaker echo** setting holds outgoing speech while a friend is audible and for a short echo tail; riders using headphones can turn it off for simultaneous conversation. Device choices, volume and local rider mutes survive testing. |
 | R178 | Refines R177 (2026-11-01): the microphone check visibly shows **Voice detected** when it estimates speech activity, keeps the result after the check and reports when none was detected. **Test speakers** plays two short tones through the selected output at the adjustable voice volume for two seconds, without opening a microphone, requesting microphone permission or sending audio. Only one local audio check runs at once. Both checks stop on Stop, closing Audio settings, changing devices or leaving the group, and restore previously joined listening with the microphone off. |
 
+## Group ride view
+
+| ID | Requirement |
+|---|---|
+| R180 | Refines R164 (2026-11-01, #431): during a group ride, the in-ride group panel (participants, shared settings, voice, **Leave group**) opens from a **Group Rides icon in the ride's control bar**, beside the settings, instead of a text button at the bottom right. The icon shows only while the rider is in a group and folds away with the other controls. |
+| R181 | Refines R168 and R173 (2026-11-01, #424): the rider offered organizer duties sees the request **over the ride**, above the control bar with a chime, not only inside the group panel: who asks, what organizing means, and the reachability warning when their own discovery suggests friends could not reach them (R176). **Accept organizer duties** and **Decline** answer it there; the request stays until answered, withdrawn or timed out, and the ride goes on meanwhile. The overlay leaves it out. |
+| R183 | Extends R164 (2026-11-01, #422, #423): in a group ride, every rider's **power and W/kg** show beside their name in the riders panel and under their name on the road, the W/kg from their **own weight** without the bicycle; and others see each rider with the **avatar** chosen in their profile, no longer always the default. The roster carries the weight and the avatar; heart rate stays private. Protocol and invitation version 8 require matching builds and fresh codes. |
+| R184 | Extends R165 and R169 (2026-11-01, #419, #420): while the activity is prepared, the participant list shows for every rider not yet ready **what they are doing and how far they have got**, *Downloading · 40 %* or *Building the world · 70 %*, until they are ready. A rider's own page keeps a **spinner** turning while it connects, receives and prepares the ride, and shows how far its world is built. Protocol and invitation version 9 require matching builds and fresh codes. |
+
+## Courses riders already have
+
+| ID | Requirement |
+|---|---|
+| R185 | Refines R165 (2026-11-01, #435): a rider who already has the selected course **rides their own copy and downloads nothing**, whatever they named it and whatever map picture or countries it shows, e.g. a `.tqc` the organizer sent beforehand or one received in an earlier ride. The selection carries a key of what the course rides on (its route, terrain and map data and the other manifest facts) without the name, map picture and countries, and each joiner looks through their course library for it. A downloaded course may likewise be the sender's own copy, renamed or with another picture, so an organizer after a handover shares theirs: its bytes are checked against what the transfer announces, and its key against the selection's. A course received earlier and changed since keeps its name and contents; the new download is saved beside it. Protocol and invitation version 10 require matching builds and fresh codes. |
+
+## Reconnecting lost riders
+
+| ID | Requirement |
+|---|---|
+| R186 | Extends R164 and R167 (2026-11-01, #434): a rider whose connection to the organizer is **lost** keeps their **seat for five minutes** and **reconnects by themselves**, without new codes: only their own per-ride certificate takes that seat back, with the same name, readiness and prepared activity, nothing downloaded again. Meanwhile their local ride and recording continue, the microphone is off, and a shared workout runs on independently until the reconnection takes up the group's current step. Their page shows *Connection lost. Reconnecting…* with the time left and **Reconnect now**; the others see *Reconnecting…* beside their name. Before the start a held seat keeps **Start group ride** waiting until the rider is back or removed, and organizer changes wait too. **Leave group** frees the seat at once; after five minutes it is given up. A lost organizer is reconnected the same way while their ORQWA stays open at the same addresses. A group whose connection has ended no longer suggests a retry that does not exist. Protocol and invitation version 11 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

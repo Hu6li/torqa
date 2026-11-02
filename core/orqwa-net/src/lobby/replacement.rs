@@ -205,12 +205,15 @@ mod tests {
             roster[id] = Some(Rider {
                 name: name.into(),
                 mass: Kilograms(80.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             });
         }
         let selection = Selection {
             revision: 1,
             name: "Workout".into(),
             course: None,
+            course_key: None,
             workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
             assistance: Assistance::default(),
         };
@@ -363,12 +366,15 @@ mod tests {
             roster[slot] = Some(Rider {
                 name: name.into(),
                 mass: Kilograms(83.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             });
         }
         let selection = Selection {
             revision: 7,
             name: "Together".into(),
             course: None,
+            course_key: None,
             workout: Some(workout_id),
             assistance: Assistance::default(),
         };
@@ -532,6 +538,8 @@ mod tests {
             Rider {
                 name: "Late".into(),
                 mass: Kilograms(75.0),
+                weight: Kilograms(70.0),
+                avatar: orqwa_domain::profile::Avatar::Female,
             },
         )
         .await

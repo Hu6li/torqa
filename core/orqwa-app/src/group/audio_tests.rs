@@ -72,6 +72,8 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
         Rider {
             name: "Organizer".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
     )
     .unwrap();
@@ -93,6 +95,8 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
         rider: Rider {
             name: "Listening peer".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
         options: options.clone(),
         data: directory.join("data"),
@@ -163,6 +167,8 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         rider: Rider {
             name: "Testing audio".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
         options,
         data: directory.join("data"),
