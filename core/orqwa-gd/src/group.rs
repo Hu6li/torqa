@@ -80,5 +80,38 @@ pub(super) fn status(app: &App) -> VarDictionary {
     // Asked to stand in as organizer if the organizer is lost; the organizer may pick another.
     "standby_offer"=>status.standby_offer,"can_choose_fallback"=>status.host && status.phase==orqwa_app::group::Phase::Riding && status.handover==orqwa_app::group::Handover::Idle,
     // How long this rider keeps trying to reconnect, 0 while connected (#434).
-    "reconnect_s"=>status.reconnecting.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64())}
+    "reconnect_s"=>status.reconnecting.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),
+    // Names the organizer's preview, "" without one (#418); `group_preview_data()` has it.
+    "preview"=>status.preview.as_ref().map_or_else(String::new,|shown|shown.id.basename())}
+}
+
+/// `shown` as `OrqwaApp.group_preview_data()` describes it (#418).
+pub(super) fn preview(app: &App, shown: &orqwa_app::group::Previewed) -> VarDictionary {
+    let preview = &shown.preview;
+    let course = preview
+        .course
+        .as_ref()
+        .map_or_else(VarDictionary::new, |course| {
+            vdict! {
+                "name" => course.name.as_str(),
+                "length_m" => course.length.0,
+                "elevation_gain_m" => course.climbing.0,
+                "max_grade" => course.steepest,
+                "track" => &super::points(&course.track),
+                "profile" => &super::points(&course.profile),
+                "picture" => &PackedByteArray::from(course.picture.as_slice()),
+            }
+        });
+    let workout = preview
+        .workout
+        .as_ref()
+        .map_or_else(VarDictionary::new, |plan| {
+            vdict! {
+                "name" => plan.name.as_str(),
+                "description" => plan.description.as_str(),
+                "duration_s" => plan.duration().as_secs_f64(),
+                "steps" => &super::plan_steps(plan, app.profile().profile.ftp, false),
+            }
+        });
+    vdict! {"course" => &course, "workout" => &workout}
 }

@@ -660,7 +660,7 @@ msgid "Choose a country, or a part of a large one: it downloads faster."
 msgstr ""
 
 #: app/ui/group_activity_picker.gd
-msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
+msgid "Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1093,6 +1093,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Course preparation stopped unexpectedly."
+msgstr ""
+
+#: app/ui/group_activity_picker.gd
+msgid "Course preview"
 msgstr ""
 
 #: app/scenes/settings_dialog.gd app/scenes/start_page.gd
@@ -3781,6 +3785,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Workout paused for the group. You can pedal freely."
+msgstr ""
+
+#: app/ui/group_activity_picker.gd
+msgid "Workout preview"
 msgstr ""
 
 #: app/scenes/ride_screen.gd

@@ -19,11 +19,12 @@ use crate::limits::MAX_CONNECTIONS;
 use crate::link::LinkError;
 
 pub(crate) const SERVER_NAME: &str = "orqwa";
-pub(crate) const ALPN: &[u8] = b"orqwa-group/12";
+pub(crate) const ALPN: &[u8] = b"orqwa-group/13";
 
 fn transport() -> Arc<TransportConfig> {
     let mut config = TransportConfig::default();
-    config.max_concurrent_bidi_streams(VarInt::from_u32(2));
+    // Controls, a download of the selected activity and one of the preview (#418).
+    config.max_concurrent_bidi_streams(VarInt::from_u32(3));
     config.max_concurrent_uni_streams(VarInt::from_u32(0));
     config.stream_receive_window(VarInt::from_u32(4096));
     config.receive_window(VarInt::from_u32(8192));

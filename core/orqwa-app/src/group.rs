@@ -19,6 +19,7 @@ use std::time::Instant;
 use tokio::sync::{mpsc, watch};
 pub mod connection;
 mod handover;
+mod preview;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -51,6 +52,14 @@ pub struct GroupRider {
     pub cadence: Rpm,
     /// Heard speaking now, as their voice plays here.
     pub speaking: bool,
+}
+
+/// What the organizer is choosing, as friends see it before it is shared (#418).
+pub struct Previewed {
+    /// Identifies this preview: another one means the organizer chose something else.
+    pub id: orqwa_net::activity::ContentId,
+    /// The course, the workout or both, to show.
+    pub preview: orqwa_net::preview::Preview,
 }
 
 /// Current connection/preparation phase, independent of presentation language.
@@ -238,6 +247,8 @@ pub struct Snapshot {
     pub fallback: Option<u8>,
     /// This rider is asked to stand in as organizer if the organizer is lost.
     pub standby_offer: bool,
+    /// What the organizer is choosing before sharing it, for a friend to see (#418).
+    pub preview: Option<Arc<Previewed>>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -297,6 +308,7 @@ impl Default for Snapshot {
             away: [false; MAX_RIDERS],
             fallback: None,
             standby_offer: false,
+            preview: None,
         }
     }
 }
@@ -386,6 +398,8 @@ impl Snapshot {
 }
 pub(crate) struct Running {
     commands: mpsc::Sender<Command>,
+    /// What the organizer's activity picker has, latest only (#418).
+    choices: watch::Sender<Option<preview::Choice>>,
     snapshot: watch::Receiver<Snapshot>,
     task: tokio::task::JoinHandle<()>,
     states: watch::Sender<Option<runtime::Local>>,
@@ -474,6 +488,7 @@ impl App {
             ..Snapshot::default()
         });
         let (states, local) = watch::channel(None);
+        let (choices, chosen) = watch::channel(None);
         let rider = &self.profile.profile;
         let voice_controls = Arc::new(VoiceControls::default());
         let token = orqwa_net::code::RideId::generate().map_err(error)?;
@@ -490,12 +505,14 @@ impl App {
             },
             data: self.data_dir.clone(),
             temporary: self.cache_dir.join(format!("group-{:x?}", token.0)),
+            choices: chosen,
         };
         let task = self
             .runtime
             .spawn(runtime::run(request, receive, send, local));
         self.group = Some(Running {
             commands,
+            choices,
             snapshot,
             task,
             states,
@@ -579,6 +596,31 @@ impl App {
         if let Some(group) = &mut self.group {
             workout.unwrap_or("").clone_into(&mut group.workout_id);
         }
+        Ok(())
+    }
+
+    /// Shows friends what the organizer is choosing before sharing it (#418): the course at
+    /// `course` and the library workout `workout`, as the activity picker has them. Nothing,
+    /// or what is shared already, puts the preview away. Only the latest choice counts, so
+    /// browsing quickly never fills the group's command queue.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] without a lobby.
+    pub fn group_preview(
+        &self,
+        course: Option<PathBuf>,
+        workout: Option<&str>,
+    ) -> Result<(), AppError> {
+        let group = self
+            .group
+            .as_ref()
+            .ok_or_else(|| error("Open a lobby first."))?;
+        let plan = workout
+            .and_then(|id| self.workouts().into_iter().find(|w| w.id == id))
+            .map(|w| w.plan);
+        group
+            .choices
+            .send_replace(Some(preview::Choice { course, plan }));
         Ok(())
     }
 

@@ -41,6 +41,8 @@ pub(crate) enum Message {
     Back(RiderId),
     /// Opens a reconnected rider's own link: whether they had entered the running ride.
     Rejoined(bool),
+    /// What the organizer is choosing, for riders to fetch; none once put away (#418).
+    Preview(Option<crate::activity::ContentId>),
 }
 
 pub(crate) async fn write(send: &mut SendStream, message: &Message) -> Result<(), LobbyError> {
@@ -140,6 +142,15 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
         Message::Away(id) => bytes.extend_from_slice(&[18, id.value()]),
         Message::Back(id) => bytes.extend_from_slice(&[19, id.value()]),
         Message::Rejoined(entered) => bytes.extend_from_slice(&[20, u8::from(*entered)]),
+        Message::Preview(id) => {
+            bytes.extend_from_slice(&[21, u8::from(id.is_some())]);
+            if let Some(id) = id {
+                if id.kind() != crate::activity::ContentKind::Preview {
+                    return Err(LobbyError::Protocol);
+                }
+                id.write(&mut bytes);
+            }
+        }
         Message::Start(millis) => {
             bytes.push(5);
             bytes.extend_from_slice(&millis.to_be_bytes());
@@ -261,6 +272,16 @@ impl Reader<'_> {
         Ok(rider)
     }
 
+    fn preview(&mut self) -> Result<crate::activity::ContentId, LobbyError> {
+        let mut input = crate::activity::Input(self.0);
+        let id = crate::activity::ContentId::read(&mut input).map_err(|_| LobbyError::Protocol)?;
+        if id.kind() != crate::activity::ContentKind::Preview {
+            return Err(LobbyError::Protocol);
+        }
+        self.0 = input.0;
+        Ok(id)
+    }
+
     fn entry(&mut self) -> Result<Message, LobbyError> {
         let present = self.byte()?;
         let revision = u64::from_be_bytes(self.take()?);
@@ -344,6 +365,11 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
         20 => Message::Rejoined(match reader.byte()? {
             0 => false,
             1 => true,
+            _ => return Err(LobbyError::Protocol),
+        }),
+        21 => Message::Preview(match reader.byte()? {
+            0 => None,
+            1 => Some(reader.preview()?),
             _ => return Err(LobbyError::Protocol),
         }),
         5 => {
@@ -473,6 +499,29 @@ mod tests {
         let mut maybe = encode(&Message::Rejoined(true)).unwrap();
         maybe[2] = 2;
         assert!(decode(&maybe).is_err(), "entered or not");
+    }
+
+    #[test]
+    fn preview_controls_name_only_a_preview_or_none() {
+        use crate::activity::{ContentId, ContentKind};
+        let id = ContentId::of(ContentKind::Preview, b"preview").unwrap();
+        for message in [Message::Preview(Some(id)), Message::Preview(None)] {
+            let bytes = encode(&message).unwrap();
+            assert_eq!(encode(&decode(&bytes).unwrap()).unwrap(), bytes);
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+            let mut extra = bytes;
+            extra.push(0);
+            assert!(decode(&extra).is_err());
+        }
+        // A course is fetched only as the selected activity, never as something to look at.
+        let course = ContentId::of(ContentKind::Course, b"course").unwrap();
+        assert!(encode(&Message::Preview(Some(course))).is_err());
+        let mut named = encode(&Message::Preview(Some(id))).unwrap();
+        // The version, the tag and the flag, then the kind.
+        named[3] = 1;
+        assert!(decode(&named).is_err());
     }
 
     #[test]

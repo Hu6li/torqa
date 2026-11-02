@@ -2124,6 +2124,34 @@ impl OrqwaApp {
             )
         })
     }
+    /// Shows friends what the organizer is choosing before sharing it (#418): an optional
+    /// course path and structured workout id, as the activity picker has them. Does nothing
+    /// without a lobby.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_preview(&mut self, course: GString, workout: GString) {
+        let (course, workout) = (course.to_string(), workout.to_string());
+        if let Some(app) = self.app.as_ref() {
+            let _ = app.group_preview(
+                (!course.is_empty()).then(|| PathBuf::from(&course)),
+                (!workout.is_empty()).then_some(workout.as_str()),
+            );
+        }
+    }
+    /// What the organizer is choosing (#418), for a friend's activity panel; empty without a
+    /// preview, whose `group_status()` `preview` names it. `{course, workout}`, each empty
+    /// when not chosen: `course` as `courses()` lists one, without a path but with its map
+    /// `picture` (a PNG, empty without one); `workout` as `workouts()` does, its steps for
+    /// the active rider's FTP.
+    #[func]
+    fn group_preview_data(&self) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        app.group()
+            .preview
+            .map_or_else(VarDictionary::new, |shown| group::preview(app, &shown))
+    }
     /// Marks the local prepared rider ready or not ready.
     #[func]
     fn group_ready(&mut self, ready: bool) -> bool {

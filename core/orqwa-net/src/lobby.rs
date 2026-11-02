@@ -33,6 +33,8 @@ use timing::Timeline;
 pub use timing::WorkoutClock;
 
 const CONTROL_CAPACITY: usize = 32;
+/// Simultaneous transfers to one rider: the selected activity and the organizer's preview.
+const MAX_TRANSFERS: usize = 2;
 const WRITE_WAIT: Duration = Duration::from_secs(2);
 /// How long the organizer holds the seat of a rider whose connection was lost, and how long
 /// that rider keeps trying to reconnect (#434).
@@ -84,6 +86,9 @@ pub enum Stage {
 pub enum LobbyEvent {
     /// The host selected new content; previous local preparation is obsolete.
     Selection(crate::activity::Selection),
+    /// What the organizer is choosing, to fetch with [`crate::content::fetch_preview`]
+    /// (#418); none once it is shared or put away, and none after the countdown.
+    Preview(Option<crate::activity::ContentId>),
     /// One current participant verified/prepared this revision, or withdrew readiness.
     Readiness {
         /// Authenticated roster slot, including the local rider.
@@ -335,6 +340,7 @@ pub struct HostLobby {
     commands: mpsc::Sender<Command>,
     state: watch::Sender<Option<RiderState>>,
     progress: watch::Sender<Option<(RideProgress, Instant)>>,
+    preview: watch::Sender<Option<activity::Shown>>,
     events: Events,
     tasks: JoinSet<()>,
     voice: Option<VoicePort>,
@@ -385,6 +391,7 @@ impl HostLobby {
         let (clock, clock_updates) = watch::channel(None);
         let (state, local) = watch::channel(None);
         let (progress, progress_updates) = watch::channel(None);
+        let (preview, previews) = watch::channel(None);
         let (voice, owner, _changes) = voice::channel_for(organizer, organizer);
         if prepared.is_some() {
             owner.0.suspend();
@@ -400,6 +407,7 @@ impl HostLobby {
             owner,
             commands.clone(),
             progress_updates,
+            previews,
             clock,
             organizer,
             prepared,
@@ -413,6 +421,7 @@ impl HostLobby {
             commands,
             state,
             progress,
+            preview,
             events: events(organizer, controls, updates, clock_updates),
             tasks,
             voice: Some(voice),
@@ -490,6 +499,28 @@ impl HostLobby {
             Err(mpsc::error::TrySendError::Closed(_)) => Err(LobbyError::Lost),
             _ => Ok(()),
         }
+    }
+    /// Shows every rider what the organizer is choosing before sharing it, or nothing (#418).
+    /// Only the latest counts: riders hear of a change within about half a second and fetch
+    /// it themselves. Ignored from the countdown on.
+    ///
+    /// # Errors
+    /// Returns [`LobbyError::Activity`] for a preview out of bounds.
+    pub fn preview(&self, preview: Option<&crate::preview::Preview>) -> Result<(), LobbyError> {
+        let shown = preview
+            .map(|preview| {
+                let bytes = preview.encode()?;
+                Ok::<_, LobbyError>(activity::Shown {
+                    id: crate::activity::ContentId::of(
+                        crate::activity::ContentKind::Preview,
+                        &bytes,
+                    )?,
+                    bytes: bytes.into(),
+                })
+            })
+            .transpose()?;
+        self.preview.send_replace(shown);
+        Ok(())
     }
     /// Privately binds a replacement admission credential to its original stable identity.
     ///
@@ -1272,9 +1303,10 @@ fn serve(
         control,
     };
     let (shared, updates, epochs) = (shared.clone(), states.subscribe(), voice.epochs());
-    let (voice, selection, commands, diagnostics) = (
+    let (voice, selection, shown, commands, diagnostics) = (
         voice.clone(),
         activities.selected.subscribe(),
+        activities.shown.subscribe(),
         commands.clone(),
         controls.clone(),
     );
@@ -1293,6 +1325,7 @@ fn serve(
             epochs,
             initial,
             selection,
+            shown,
             commands,
         )
         .await;
@@ -1339,6 +1372,7 @@ async fn host_actor(
     voice: VoiceOwner,
     command_sender: mpsc::Sender<Command>,
     progress: watch::Receiver<Option<(RideProgress, Instant)>>,
+    mut previews: watch::Receiver<Option<activity::Shown>>,
     clock: watch::Sender<Option<WorkoutClock>>,
     organizer: RiderId,
     prepared: Option<Prepared>,
@@ -1354,6 +1388,7 @@ async fn host_actor(
         &voice.0,
         &command_sender,
         &progress,
+        &mut previews,
         &clock,
         organizer,
         prepared,
@@ -1439,6 +1474,7 @@ async fn host_loop(
     voice: &VoiceHandle,
     command_sender: &mpsc::Sender<Command>,
     progress: &watch::Receiver<Option<(RideProgress, Instant)>>,
+    previews: &mut watch::Receiver<Option<activity::Shown>>,
     clock: &watch::Sender<Option<WorkoutClock>>,
     organizer: RiderId,
     mut prepared: Option<Prepared>,
@@ -1703,6 +1739,8 @@ async fn host_loop(
                 _ => {}
             },
             _ = ticker.tick() => {
+                if previews.has_changed().unwrap_or(false) {activities.show(previews.borrow_and_update().clone());}
+                if let Some(message) = activities.announcement(Instant::now()) {broadcast(&peers, &message);}
                 for (slot, seat) in away.iter_mut().enumerate() {
                     if let Some(held) = seat.take_if(|held| held.until <= Instant::now()) {
                         host.release(held.client);
@@ -1744,6 +1782,7 @@ async fn serve_peer(
     epochs: [u64; MAX_RIDERS],
     initial: Vec<Message>,
     selected: watch::Receiver<Option<SharedActivity>>,
+    shown: watch::Receiver<Option<activity::Shown>>,
     commands: mpsc::Sender<Command>,
 ) -> Result<(), LobbyError> {
     timeout_at(
@@ -1853,10 +1892,10 @@ async fn serve_peer(
             stream = connection.accept_bi() => {
                 transfer_budget.charge().map_err(|_|LobbyError::Protocol)?;
                 let (send,recv) = stream?;
-                if transfers.try_join_next().is_none() && !transfers.is_empty() {return Err(LobbyError::Protocol);}
-                let mut changes = selected.clone();
-                let selection = changes.borrow_and_update().clone().ok_or(LobbyError::Protocol)?;
-                transfers.spawn(async move {tokio::select! {result = activity::transfer(send,recv,selection) => result,_ = changes.changed() => Err(crate::content::ContentError::Interrupted)}});
+                while transfers.try_join_next().is_some() {}
+                // One download of the selected activity, and one of the preview (#418).
+                if transfers.len() >= MAX_TRANSFERS {return Err(LobbyError::Protocol);}
+                transfers.spawn(activity::transfer(send,recv,selected.clone(),shown.clone()));
             },
             _ = transfers.join_next(), if !transfers.is_empty() => {},
         }
@@ -1950,6 +1989,8 @@ async fn client_actor(
                         Message::Selection(selection) if app_lobby && start.is_none() && selection.revision>selection_revision => {
                             selection_revision = selection.revision; event(controls,LobbyEvent::Selection(selection))?;
                         }
+                        // Nothing is chosen any more once the countdown began (#418).
+                        Message::Preview(id) if app_lobby => if start.is_none() {event(controls,LobbyEvent::Preview(id))?;},
                         Message::Readiness(id,revision,ready) if app_lobby && revision==selection_revision && roster[usize::from(id.value())].is_some() => {
                             event(controls,LobbyEvent::Readiness {id,revision,ready})?;
                         }
@@ -2459,6 +2500,141 @@ mod tests {
         drop(client);
         drop(host);
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    fn previewed(name: &str) -> crate::preview::Preview {
+        crate::preview::Preview {
+            course: Some(crate::preview::CoursePreview {
+                name: name.into(),
+                length: Meters(18_400.0),
+                climbing: Meters(1210.0),
+                steepest: 12.5,
+                track: vec![[0.0, 0.0], [120.0, 450.0]],
+                profile: vec![[0.0, 434.0], [18_400.0, 1607.0]],
+                picture: Vec::new(),
+            }),
+            workout: None,
+        }
+    }
+    fn preview_id(name: &str) -> crate::activity::ContentId {
+        use crate::activity::{ContentId, ContentKind};
+        ContentId::of(ContentKind::Preview, &previewed(name).encode().unwrap()).unwrap()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)] // one lobby follows a preview from browsing to the countdown
+    async fn friends_see_what_the_organizer_chooses_beside_a_download_until_the_countdown() {
+        use crate::activity::{Assistance, ContentKind, CourseKey, Selection};
+        use crate::content::{self, Progress, Source};
+        use crate::preview::Preview;
+        let path = directory("previews");
+        let mut host = HostLobby::open(
+            Host::lobby("Host", &options()).await.unwrap(),
+            rider("Host"),
+        )
+        .unwrap();
+        let mut client = join(&host, "Friend").await;
+        let link = client.content_link().unwrap();
+        // Before anything is shared, friends see what the organizer is looking at.
+        host.preview(Some(&previewed("Chasseral"))).unwrap();
+        let shown = preview_id("Chasseral");
+        client_event(
+            &mut client,
+            |e| matches!(e, LobbyEvent::Preview(Some(id)) if *id == shown),
+        )
+        .await;
+        let fetched = content::fetch_preview(&link, shown).await.unwrap();
+        assert_eq!(Preview::decode(&fetched).unwrap(), previewed("Chasseral"));
+        // Browsing on, friends hear of the latest; what it replaced is no longer served.
+        for name in ["Weissenstein", "Grenchenberg", "Balmberg"] {
+            host.preview(Some(&previewed(name))).unwrap();
+        }
+        let latest = preview_id("Balmberg");
+        client_event(
+            &mut client,
+            |e| matches!(e, LobbyEvent::Preview(Some(id)) if *id == latest),
+        )
+        .await;
+        assert!(content::fetch_preview(&link, shown).await.is_err());
+        // A friend joining now sees it at once.
+        let mut late = join(&host, "Late").await;
+        client_event(
+            &mut late,
+            |e| matches!(e, LobbyEvent::Preview(Some(id)) if *id == latest),
+        )
+        .await;
+        // A preview arrives beside a download of the shared course, which it leaves going.
+        let file = path.join("course.tqc");
+        let bytes: Vec<u8> = (0..1024 * 1024_u32)
+            .map(|n| u8::try_from(n % 251).unwrap())
+            .collect();
+        std::fs::write(&file, &bytes).unwrap();
+        let source = Source::open(&file, ContentKind::Course).await.unwrap();
+        host.select(SharedActivity {
+            selection: Selection {
+                revision: 1,
+                name: "Balmberg".into(),
+                course: Some(source.id()),
+                course_key: Some(CourseKey::of(b"Balmberg")),
+                workout: None,
+                assistance: Assistance::default(),
+            },
+            course: Some(file),
+            workout: None,
+        })
+        .await
+        .unwrap();
+        client_event(&mut client, |e| matches!(e, LobbyEvent::Selection(_))).await;
+        let (progress, mut seen) = watch::channel(Progress {
+            received: 0,
+            total: 0,
+        });
+        let download = content::fetch(&link, source.id(), &path, Some(&progress));
+        tokio::pin!(download);
+        tokio::select! {
+            _ = &mut download => panic!("the whole course arrived at once"),
+            _ = seen.wait_for(|p| p.received > 0) => {},
+        }
+        host.preview(Some(&previewed("Hasenmatt"))).unwrap();
+        let next = preview_id("Hasenmatt");
+        client_event(
+            &mut client,
+            |e| matches!(e, LobbyEvent::Preview(Some(id)) if *id == next),
+        )
+        .await;
+        let fetched = content::fetch_preview(&link, next).await.unwrap();
+        assert_eq!(Preview::decode(&fetched).unwrap(), previewed("Hasenmatt"));
+        let received = download.await.unwrap();
+        assert_eq!(std::fs::read(received.path()).unwrap(), bytes);
+        drop(received);
+        // Putting it away tells everyone.
+        host.preview(None).unwrap();
+        client_event(&mut client, |e| matches!(e, LobbyEvent::Preview(None))).await;
+        // From the countdown on, the activity is frozen and nothing more is previewed.
+        host.ready(1, true).await.unwrap();
+        for rider in [&client, &late] {
+            rider.ready(1, true).unwrap();
+        }
+        all_ready(&mut host, vec![client.me(), late.me()]).await;
+        host.start(Duration::from_secs(1)).await.unwrap();
+        client_event(&mut client, |e| matches!(e, LobbyEvent::Start { .. })).await;
+        host.preview(Some(&previewed("Too late"))).unwrap();
+        let quiet = timeout(Duration::from_secs(1), async {
+            loop {
+                if matches!(client.next().await, Some(LobbyEvent::Preview(_))) {
+                    break;
+                }
+            }
+        })
+        .await;
+        assert!(quiet.is_err(), "a preview after the countdown");
+        assert!(
+            content::fetch_preview(&link, preview_id("Too late"))
+                .await
+                .is_err()
+        );
+        drop((client, late, host));
+        std::fs::remove_dir_all(&path).unwrap();
     }
 
     /// An app lobby sharing a short workout, so it can be started.

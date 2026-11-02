@@ -977,6 +977,72 @@ fn a_changed_earlier_download_keeps_its_name_and_the_course_arrives_beside_it() 
 }
 
 #[test]
+fn friends_see_what_the_organizer_chooses_until_it_is_shared() {
+    use orqwa_storage::course;
+    const WORKOUT: &str = "builtin:recovery-30";
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Waiting
+    });
+    // #418: the organizer looks at a course and a workout; their friend sees both, without
+    // anything downloaded, to talk it over.
+    host.group_preview(Some(sample_course()), Some(WORKOUT))
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        p.group()
+            .preview
+            .is_some_and(|shown| shown.preview.workout.is_some())
+    });
+    let shown = peer.group().preview.unwrap();
+    let manifest = course::read_manifest(&sample_course()).unwrap();
+    let previewed = shown.preview.course.as_ref().unwrap();
+    assert_eq!(previewed.name, manifest.name);
+    assert_eq!(previewed.profile, manifest.profile);
+    let full = course::preview(&sample_course()).unwrap().len();
+    assert!(
+        (1..full).contains(&previewed.picture.len()),
+        "the map picture at half its size"
+    );
+    assert_eq!(
+        shown.preview.workout.as_ref().unwrap().steps,
+        orqwa_workouts::load(WORKOUT).unwrap().steps
+    );
+    assert!(peer.group().selection.is_none());
+    assert!(!to.0.join("data/courses").exists() || library(&to).is_empty());
+    // Once shared, it needs no preview; looking at something else shows that instead ...
+    host.group_select(Some(sample_course()), Some(WORKOUT))
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().selection.is_some() && p.group().preview.is_none()
+    });
+    host.group_preview(Some(sample_course()), None).unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        p.group()
+            .preview
+            .is_some_and(|shown| shown.preview.workout.is_none())
+    });
+    // ... until the organizer is back at what everyone shares, or at nothing.
+    host.group_preview(Some(sample_course()), Some(WORKOUT))
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().preview.is_none());
+    host.group_preview(None, Some(WORKOUT)).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().preview.is_some());
+    host.group_preview(None, None).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().preview.is_none());
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
 fn voice_off_closes_the_transmission_gate_synchronously_without_opening_audio_devices() {
     let from = Directory::new();
     let to = Directory::new();

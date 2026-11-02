@@ -2031,6 +2031,7 @@ dependencies = [
  "orqwa-voice",
  "orqwa-workouts",
  "orqwa-world",
+ "png",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",

@@ -76,6 +76,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "preview"
+path = "fuzz_targets/preview.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "course"
 path = "fuzz_targets/course.rs"
 test = false

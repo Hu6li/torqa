@@ -416,6 +416,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R190 | Extends R162 and R189 (2026-11-02): group voice shows **who is speaking**. A small speaker beside a rider's name, in the participant list and in the ride's **Group Rides** panel, appears while their speech plays on this computer and stays between words, going within a second after they stop. Beside the rider's own name it appears while their open microphone sends speech, so not while **Prevent speaker echo** holds it. It counts only speech, voiced sound above the rider's own background, like the echo gate: a fan or room noise on an open microphone shows nobody speaking. A friend muted on this computer, or everyone while deafened, is never shown speaking. It is worked out on each computer from the audio it plays or sends, with no protocol change. |
 
+## Previews of what the organizer is choosing
+
+| ID | Requirement |
+|---|---|
+| R191 | Extends R164, R165 and R169 (2026-11-02, #418): while the organizer chooses what to ride, every rider in the group sees a **preview** of it before it is shared, to talk it over: the course's map picture, elevation profile, length, climbing and steepest gradient, and the workout's power chart by the rider's own FTP, duration and description, labelled **Course preview** and **Workout preview**. It follows the organizer's choices as they browse, within about two seconds, and goes once the organizer shares the activity, goes back to what is shared or chooses nothing, and from the countdown on. Nothing is downloaded into the library or prepared for a preview: it carries no route, map data or file names, keeps within fixed size, rate and transfer limits, and never holds up or interrupts the download of what is shared. Protocol and invitation version 13 require matching builds and fresh codes. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

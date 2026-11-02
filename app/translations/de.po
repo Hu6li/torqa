@@ -1834,6 +1834,9 @@ msgstr "Arbeit"
 msgid "Workout"
 msgstr "Training"
 
+msgid "Workout preview"
+msgstr "Trainingsvorschau"
+
 msgid "Workout editor"
 msgstr "Trainingseditor"
 
@@ -2575,8 +2578,8 @@ msgstr "Beitritt abbrechen"
 msgid "Changing devices reconnects voice chat with your microphone as it was."
 msgstr "Ein Gerätewechsel verbindet den Sprachchat neu. Dein Mikrofon bleibt, wie es war."
 
-msgid "Choose a course, a workout, or both. Everyone gets a copy automatically."
-msgstr "Wähle eine Strecke, ein Training oder beides. Alle erhalten automatisch eine Kopie."
+msgid "Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
+msgstr "Wähle eine Strecke, ein Training oder beides. Deine Freunde sehen beim Auswählen eine Vorschau und erhalten eine Kopie, sobald du die Aktivität verwendest."
 
 msgid "Choose an activity to get started."
 msgstr "Wähle zuerst eine Aktivität."
@@ -2616,6 +2619,9 @@ msgstr "Keine Verbindung möglich. Verlasse die Gruppe und lass dir eine neue Ei
 
 msgid "Course"
 msgstr "Strecke"
+
+msgid "Course preview"
+msgstr "Streckenvorschau"
 
 msgid "Create a ride"
 msgstr "Fahrt erstellen"
