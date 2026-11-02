@@ -31,7 +31,8 @@ func show_riders(peers: Array, delta: float) -> void:
 			avatar.queue_free()
 			avatar = null
 		if avatar == null:
-			avatar = GroupRiderAvatar.new(id, generation)
+			var look: String = peer.get("avatar", "")
+			avatar = GroupRiderAvatar.new(id, generation, look)
 			_avatars[id] = avatar
 			add_child(avatar)
 		avatar.show_state(peer, delta)

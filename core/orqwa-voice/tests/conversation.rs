@@ -200,6 +200,8 @@ async fn host() -> HostLobby {
         Rider {
             name: "Host".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
     )
     .unwrap()
@@ -214,6 +216,8 @@ async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
         Rider {
             name: name.into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
     )
     .await

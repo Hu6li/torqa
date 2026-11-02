@@ -225,6 +225,9 @@ operation/rider/cause diagnostics to tracing and the existing application Techni
 path, with a bounded failure event before membership departure or connection end. Ordinary
 remote closes remain informational. Transport categories never copy peer-supplied close text.
 After group end, remove remote roster entries and readiness while retaining the local rider.
+With reconnection (#434, merged into this stack later), a stalled write closes the link for a
+reconnection instead of failing with a write timeout. A network loss the group reconnects from
+is logged with its transport cause, not reported, because the rider is shown as reconnecting.
 
 Linux loopback tests cover normal listening for longer than the reported delay, reader-error
 propagation, two-second partial-control timeout, offending-peer isolation and close-text privacy.

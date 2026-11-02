@@ -50,6 +50,11 @@ const PATHS: Dictionary[String, String] = {
 		+ '<rect x="4" y="14" width="6" height="6" rx="1"/>'
 		+ '<path d="M14 14h2v2M20 14v6h-6M17 17v3"/>'
 	),
+	"group":
+	(
+		'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.4 2.7-6 6-6s6 2.6 6 6"/>'
+		+ '<path d="M15.5 4.9a3.2 3.2 0 0 1 0 6.2"/><path d="M17.5 14.3c2 .8 3.5 2.9 3.5 5.7"/>'
+	),
 	"ascending": '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
 	"descending": '<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>',
 }

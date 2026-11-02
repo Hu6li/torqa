@@ -2466,6 +2466,9 @@ msgstr "Sommer"
 msgid "Group Rides"
 msgstr "Gruppenfahrten"
 
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
+msgstr "Gruppenfahrten: Fahrende, Sprachchat, gemeinsames Training, Verlassen"
+
 msgid "Ready"
 msgstr "Bereit"
 
@@ -2498,6 +2501,19 @@ msgstr "Gruppenfahrt läuft"
 
 msgid "Group connection ended. Your local ride continues."
 msgstr "Gruppenverbindung beendet. Deine lokale Fahrt läuft weiter."
+
+msgid "Connection lost. Reconnecting… Your local ride continues."
+msgstr "Verbindung unterbrochen. Verbinde erneut… Deine lokale Fahrt läuft weiter."
+
+msgid "Trying for another %s. You keep your place in the group."
+msgstr "ORQWA versucht es noch %s lang. Dein Platz in der Gruppe bleibt reserviert."
+
+msgid "Reconnect now"
+msgstr "Jetzt erneut verbinden"
+
+msgctxt "group_rider"
+msgid "Reconnecting…"
+msgstr "Verbindet sich erneut…"
 
 msgid "%s ft"
 msgstr "%s ft"
@@ -2600,6 +2616,12 @@ msgstr "Meine Internetadresse automatisch ermitteln"
 
 msgid "Free ride · no workout"
 msgstr "Freie Fahrt · ohne Training"
+
+msgid "Downloading · %d %%"
+msgstr "Lädt herunter · %d %%"
+
+msgid "Building the world · %d %%"
+msgstr "3D-Welt wird erstellt · %d %%"
 
 msgid "Getting ready"
 msgstr "Macht sich bereit"
@@ -2837,6 +2859,9 @@ msgid "Change organizer…"
 msgstr "Organisation übergeben…"
 
 #: app/scenes/group_rides_tab.gd
+msgid "%s asks you to organize the ride"
+msgstr "%s bittet dich, die Fahrt zu organisieren"
+
 msgid "Accept organizer duties"
 msgstr "Organisation übernehmen"
 

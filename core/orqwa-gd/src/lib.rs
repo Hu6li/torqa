@@ -2156,6 +2156,11 @@ impl OrqwaApp {
     fn group_retry(&mut self) -> bool {
         self.command(App::group_retry)
     }
+    /// Tries to reconnect to the organizer now; it keeps trying by itself meanwhile (#434).
+    #[func]
+    fn group_reconnect(&mut self) -> bool {
+        self.command(|app| app.group_reconnect())
+    }
     /// Removes an unavailable participant on the host.
     #[func]
     fn group_remove(&mut self, id: i64) -> bool {
