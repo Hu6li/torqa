@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use orqwa_domain::workout::Plan;
-use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
+use orqwa_net::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use orqwa_net::code::{Invite, Reply};
 use orqwa_net::content::{self, Source};
 use orqwa_net::link::{ConnectOptions, Host, Joiner};
-use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity};
+use orqwa_net::lobby::{
+    HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity, Stage,
+};
 use orqwa_net::state::{RiderId, RiderState};
 use orqwa_voice::{VoiceChat, device::DeviceOptions};
 use tokio::sync::{mpsc, watch};
@@ -23,6 +25,8 @@ pub(super) enum Command {
     Select(Option<PathBuf>, Option<Plan>),
     Assistance(Assistance),
     Prepared(u64),
+    /// How far building the selected course's world has got, 0–100 (#419).
+    Preparing(u8),
     Ready(bool),
     Start,
     Enter,
@@ -33,6 +37,11 @@ pub(super) enum Command {
     HandoverCancel,
     Remove(RiderId),
     Retry,
+    /// Try to reconnect to the organizer now (#434).
+    Reconnect,
+    /// Lose the connection to the organizer as a failing network would.
+    #[cfg(test)]
+    LoseConnection,
     Failure(String),
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
@@ -74,6 +83,13 @@ impl Session {
             Self::Join(l) => l.ready(revision, ready).map_err(|e| e.to_string()),
         }
     }
+    fn preparation(&self, revision: u64, stage: Stage, percent: u8) {
+        // Advisory: the next report, or readiness, supersedes a lost one.
+        let _ = match self {
+            Self::Host(lobby) => lobby.preparation(revision, stage, percent),
+            Self::Join(lobby) => lobby.preparation(revision, stage, percent),
+        };
+    }
     fn state(&self, local: Option<Local>) {
         if let Self::Host(lobby) = self {
             let _ = lobby.progress(local.and_then(|local| local.progress));
@@ -83,6 +99,23 @@ impl Session {
                 Self::Host(lobby) => lobby.send_state(local.state),
                 Self::Join(lobby) => lobby.send_state(local.state),
             };
+        }
+    }
+}
+/// This rider's preparation as last told to the group (#419): on a change of stage at once,
+/// otherwise at most every `EVERY`, which keeps well within the host's control budget.
+#[derive(Default)]
+struct Reported(Option<(u64, Stage, u8, tokio::time::Instant)>);
+impl Reported {
+    const EVERY: Duration = Duration::from_secs(2);
+    fn report(&mut self, session: &Session, revision: u64, stage: Stage, percent: u8) {
+        let now = tokio::time::Instant::now();
+        let due = self.0.is_none_or(|(r, s, p, at)| {
+            r != revision || s != stage || (p != percent && now.duration_since(at) >= Self::EVERY)
+        });
+        if due {
+            session.preparation(revision, stage, percent);
+            self.0 = Some((revision, stage, percent, now));
         }
     }
 }
@@ -201,6 +234,7 @@ async fn run_inner(
         received: 0,
         total: 0,
     });
+    let mut reported = Reported::default();
     let mut ticker = tokio::time::interval(Duration::from_millis(200));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -235,7 +269,8 @@ async fn run_inner(
                         jobs.spawn(async move {chosen(course,plan,dir,revision).await.map(Prepared::Host)}); Ok(())
                     }
                     Command::Assistance(rules) => change_rules(&session,snapshot,&mut next_revision,rules,jobs.is_empty()).await,
-                    Command::Prepared(revision) => {if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.prepared = true; snapshot.phase = Phase::Ready;} Ok(())}
+                    Command::Prepared(revision) => {if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.prepared = true; snapshot.phase = Phase::Ready; reported.report(&session,revision,Stage::Preparing,100);} Ok(())}
+                    Command::Preparing(percent) => {if snapshot.phase==Phase::Preparing && let Some(selection)=&snapshot.selection {reported.report(&session,selection.revision,Stage::Preparing,percent.min(99));} Ok(())}
                     Command::Ready(ready) => {
                         if !snapshot.prepared {continue;}
                         session.ready(snapshot.selection.as_ref().ok_or("Select an activity first.")?.revision,ready).await
@@ -253,15 +288,10 @@ async fn run_inner(
                         Ok(())
                     },
                     Command::Remove(id) => match &session {Session::Host(l)=>l.remove(id).map_err(|e|e.to_string()),Session::Join(_)=>Err("Only the host removes riders.".into())},
-                    Command::Retry => {
-                        if let (Session::Join(l),Some(selection)) = (&session,&snapshot.selection) {
-                            jobs.abort_all(); while jobs.join_next().await.is_some() {}
-                            let link = l.content_link().ok_or("The group connection ended.")?;
-                            let selection = selection.clone(); let data = request.data.clone();
-                            snapshot.phase = Phase::Downloading; snapshot.error.clear();snapshot.activity_failed=false;
-                            let progress=progress.clone();jobs.spawn(async move {download(&link,&selection,&data,&progress).await.map(|(c,w)|Prepared::Join(c,w))});
-                        } Ok(())
-                    }
+                    Command::Retry => {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await}
+                    Command::Reconnect => {if let Session::Join(lobby) = &session {lobby.reconnect();} Ok(())}
+                    #[cfg(test)]
+                    Command::LoseConnection => {if let Session::Join(lobby) = &session {lobby.lose_connection();} Ok(())}
                     Command::Failure(error) => {snapshot.activity_error(error); Ok(())}
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
@@ -322,18 +352,36 @@ async fn run_inner(
                 }
                 Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
-                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None;}
-                Some(LobbyEvent::Readiness {id,revision,ready}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.ready[usize::from(id.value())] = ready;},
+                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.away[index] = false;}
+                // A rider whose connection was lost keeps their seat while reconnecting (#434).
+                Some(LobbyEvent::Away {id}) => {let index = usize::from(id.value()); snapshot.away[index] = true; snapshot.states[index] = None;}
+                Some(LobbyEvent::Back {id}) => snapshot.away[usize::from(id.value())] = false,
+                Some(LobbyEvent::Reconnecting {until}) => {
+                    if handover.reconnecting(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}
+                    if !handover.old_lost {
+                        // The link closed the microphone; others' positions and the group's
+                        // workout clock come back with the connection.
+                        snapshot.reconnecting = Some(until.into_std()); snapshot.microphone = false;
+                        snapshot.states.fill(None); snapshot.workout_clock = None;
+                    }
+                }
+                Some(LobbyEvent::Reconnected) => {
+                    snapshot.reconnecting = None;
+                    // A download the lost connection cut off starts again on the new one.
+                    if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
+                }
+                Some(LobbyEvent::Readiness {id,revision,ready}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) {snapshot.ready[usize::from(id.value())] = ready; if ready {snapshot.preparation[usize::from(id.value())] = None;}},
+                Some(LobbyEvent::Preparation {id,revision,stage,percent}) => if snapshot.selection.as_ref().is_some_and(|s|s.revision==revision) && !snapshot.ready[usize::from(id.value())] {snapshot.preparation[usize::from(id.value())] = Some((stage,percent));},
                 Some(LobbyEvent::Selection(selection)) => {
                     if snapshot.start.is_some() {continue;}
                     if snapshot.selection.as_ref().is_some_and(|s|s.revision==selection.revision) {continue;}
                     let retained=snapshot.prepared && snapshot.selection.as_ref().is_some_and(|s|s.course==selection.course&&s.workout==selection.workout);
                     snapshot.assistance=selection.assistance;
                     if retained && jobs.is_empty() {
-                        snapshot.selection=Some(selection);snapshot.ready.fill(false);snapshot.phase=Phase::Ready;continue;
+                        snapshot.selection=Some(selection);snapshot.ready.fill(false);snapshot.preparation.fill(None);snapshot.phase=Phase::Ready;continue;
                     }
                     jobs.abort_all(); while jobs.join_next().await.is_some() {}
-                    snapshot.selection = Some(selection.clone()); snapshot.ready.fill(false); snapshot.prepared = false; snapshot.error.clear();snapshot.activity_failed=false;
+                    snapshot.selection = Some(selection.clone()); snapshot.ready.fill(false); snapshot.preparation.fill(None); snapshot.prepared = false; snapshot.error.clear();snapshot.activity_failed=false;
                     snapshot.course = None; snapshot.workout = None; snapshot.plan=None;snapshot.workout_id.clear();
                     if let Session::Join(l) = &session {
                         let link = l.content_link().ok_or("The group connection ended.")?; let data = request.data.clone();
@@ -386,7 +434,11 @@ async fn run_inner(
                     Err(error)=>{snapshot.report(Kind::GroupRide,error);if handover.fail(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
                 }
             },
-            changed=latest_progress.changed()=>{if changed.is_ok(){let p=*latest_progress.borrow_and_update();snapshot.received=p.received;snapshot.total=p.total;}},
+            changed=latest_progress.changed()=>{if changed.is_ok(){let p=*latest_progress.borrow_and_update();snapshot.received=p.received;snapshot.total=p.total;
+                if p.total>0 && let Some(selection)=&snapshot.selection {
+                    let percent=u8::try_from(p.received.min(p.total)*100/p.total).unwrap_or(100);
+                    reported.report(&session,selection.revision,Stage::Downloading,percent);
+                }}},
             changed=local.changed()=>{if changed.is_ok(){session.state(*local.borrow_and_update());}},
             result = jobs.join_next(), if !jobs.is_empty() => {
                 match result {
@@ -432,7 +484,35 @@ async fn run_inner(
     }
 }
 
+async fn download_again(
+    session: &Session,
+    snapshot: &mut Snapshot,
+    jobs: &mut JoinSet<Result<Prepared, String>>,
+    progress: &watch::Sender<content::Progress>,
+    data: &Path,
+) -> Result<(), String> {
+    if let (Session::Join(lobby), Some(selection)) = (session, &snapshot.selection) {
+        jobs.abort_all();
+        while jobs.join_next().await.is_some() {}
+        let link = lobby.content_link().ok_or("The group connection ended.")?;
+        let selection = selection.clone();
+        let data = data.to_owned();
+        snapshot.phase = Phase::Downloading;
+        snapshot.error.clear();
+        snapshot.activity_failed = false;
+        let progress = progress.clone();
+        jobs.spawn(async move {
+            download(&link, &selection, &data, &progress)
+                .await
+                .map(|(c, w)| Prepared::Join(c, w))
+        });
+    }
+    Ok(())
+}
+
 fn end(snapshot: &mut Snapshot) {
+    snapshot.reconnecting = None;
+    snapshot.away = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.voice = false;
     snapshot.voice_pending = false;
     snapshot.microphone = false;
@@ -525,22 +605,23 @@ async fn chosen(
     revision: u64,
 ) -> Result<SharedActivity, String> {
     let mut name = String::new();
-    let course_id = if let Some(path) = &course {
+    let (course_id, course_key) = if let Some(path) = &course {
         let file = path.clone();
-        let manifest =
-            tokio::task::spawn_blocking(move || orqwa_storage::course::shared::validate(&file))
-                .await
-                .map_err(|e| e.to_string())?
-                .map_err(|e| e.to_string())?;
+        let (manifest, key) = tokio::task::spawn_blocking(move || {
+            let manifest = orqwa_storage::course::shared::validate(&file)?;
+            Ok::<_, orqwa_storage::course::CourseError>((manifest, course_key(&file)?))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
         name = manifest.name;
-        Some(
-            Source::open(path, ContentKind::Course)
-                .await
-                .map_err(|e| e.to_string())?
-                .id(),
-        )
+        let id = Source::open(path, ContentKind::Course)
+            .await
+            .map_err(|e| e.to_string())?
+            .id();
+        (Some(id), Some(key))
     } else {
-        None
+        (None, None)
     };
     let (workout, workout_id) = if let Some(plan) = plan {
         if name.is_empty() {
@@ -563,6 +644,7 @@ async fn chosen(
         revision,
         name,
         course: course_id,
+        course_key,
         workout: workout_id,
         assistance: Assistance::default(),
     };
@@ -596,21 +678,37 @@ async fn download(
         tokio::fs::create_dir_all(&library)
             .await
             .map_err(|e| e.to_string())?;
-        let path = library.join(id.basename());
-        if path.is_file()
-            && Source::open(&path, id.kind())
-                .await
-                .is_ok_and(|s| s.id() == id)
-        {
+        let kept = match selection.course_key {
+            Some(key) if id.kind() == ContentKind::Course => {
+                let library = library.clone();
+                tokio::task::spawn_blocking(move || own_course(&library, key))
+                    .await
+                    .map_err(|e| e.to_string())?
+            }
+            _ => {
+                let path = library.join(id.basename());
+                (path.is_file()
+                    && Source::open(&path, id.kind())
+                        .await
+                        .is_ok_and(|s| s.id() == id))
+                .then_some(path)
+            }
+        };
+        if let Some(path) = kept {
             files[index] = Some(path);
             continue;
         }
         let received = content::fetch(connection, id, &library, Some(progress))
             .await
             .map_err(|e| e.to_string())?;
+        let key = selection.course_key;
         let validated = received
             .validate(move |path| match id.kind() {
-                ContentKind::Course => orqwa_storage::course::shared::validate(path).is_ok(),
+                // The sender's own copy may differ in bytes, never in its course (#435).
+                ContentKind::Course => {
+                    orqwa_storage::course::shared::validate(path).is_ok()
+                        && key.is_some_and(|key| course_key(path).is_ok_and(|own| own == key))
+                }
                 ContentKind::Workout => std::fs::read(path)
                     .is_ok_and(|bytes| orqwa_net::workout::decode(&bytes).is_ok()),
             })
@@ -625,4 +723,27 @@ async fn download(
     }
     let [course, workout] = files;
     Ok((course, workout))
+}
+
+fn course_key(path: &Path) -> Result<CourseKey, orqwa_storage::course::CourseError> {
+    orqwa_storage::course::key_material(path).map(|material| CourseKey::of(&material))
+}
+
+/// The course in `library` with `key`, if the rider has it already under whatever name and
+/// map picture (#435): riding it needs no download. Reads only each course's zip directory
+/// and manifest, so the whole library is looked through every time.
+fn own_course(library: &Path, key: CourseKey) -> Option<PathBuf> {
+    let mut courses: Vec<PathBuf> = std::fs::read_dir(library)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|e| e == orqwa_storage::course::EXTENSION)
+        })
+        .collect();
+    courses.sort();
+    courses
+        .into_iter()
+        .find(|path| course_key(path).is_ok_and(|own| own == key))
 }

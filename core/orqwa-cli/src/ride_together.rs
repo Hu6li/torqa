@@ -46,6 +46,9 @@ pub(crate) struct RideTogetherArgs {
     /// Your own rider plus bicycle mass in kilograms (20–300).
     #[arg(long, default_value_t = 83.0)]
     mass: f64,
+    /// Your own weight without the bicycle in kilograms, for the others' W/kg (at most --mass).
+    #[arg(long, default_value_t = 75.0)]
+    weight: f64,
     /// Use cached terrain/map data only; peer networking is controlled separately.
     #[arg(long)]
     offline: bool,
@@ -102,6 +105,10 @@ pub(crate) async fn run(args: &RideTogetherArgs) -> Result<()> {
         "mass must be from 20 to 300 kg"
     );
     ensure!(
+        args.weight.is_finite() && (20.0..=args.mass).contains(&args.weight),
+        "weight must be from 20 kg up to the rider-plus-bike mass"
+    );
+    ensure!(
         args.difficulty.is_finite() && (0.0..=100.0).contains(&args.difficulty),
         "difficulty must be from 0 to 100 percent"
     );
@@ -138,6 +145,8 @@ async fn with_devices(
     let me = Rider {
         name: args.name.clone(),
         mass: Kilograms(args.mass),
+        weight: Kilograms(args.weight),
+        avatar: orqwa_domain::profile::Avatar::default(),
     };
     let mut group = if let Some(code) = &args.join {
         let invite = Invite::from_code(code, options.gather.policy)?;
@@ -291,10 +300,16 @@ impl Others {
             | LobbyEvent::HostLeft
             | LobbyEvent::Selection(_)
             | LobbyEvent::Readiness { .. }
+            | LobbyEvent::Preparation { .. }
             | LobbyEvent::Running { .. }
             | LobbyEvent::Entry { .. }
             | LobbyEvent::Workout(_)
-            | LobbyEvent::Handover { .. } => {}
+            | LobbyEvent::Handover { .. }
+            // CLI rides are course lobbies, which never hold a seat for reconnecting (#434).
+            | LobbyEvent::Away { .. }
+            | LobbyEvent::Back { .. }
+            | LobbyEvent::Reconnecting { .. }
+            | LobbyEvent::Reconnected => {}
         }
     }
     fn gaps(&self, mine: f64) -> String {
