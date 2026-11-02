@@ -5,7 +5,8 @@ extends VBoxContainer
 
 signal devices_requested
 
-const HOSTING_GUIDE: String = "https://github.com/ORQWA/ORQWA/wiki/Group-rides#who-should-create-the-ride"
+## Riders in a group, the organizer included.
+const MAX_RIDERS: int = 8
 
 var compact: bool = false
 var _orqwa: OrqwaApp
@@ -18,13 +19,16 @@ var _stage: Label = Label.new()
 var _drafting: CheckBox = CheckBox.new()
 var _together: CheckBox = CheckBox.new()
 var _rule_summary: Label = Label.new()
-var _connecting: VBoxContainer = VBoxContainer.new()
-var _request: Button
-var _invite: VBoxContainer = VBoxContainer.new()
-var _notice: Label = Label.new()
-var _reach: VBoxContainer = VBoxContainer.new()
-var _reach_text: Label = Label.new()
+var _connecting: HBoxContainer = HBoxContainer.new()
+## Keeps the joining steps readable on a wide window instead of stretched across it.
+var _connecting_gap: Control = Control.new()
+var _join: GroupJoinCard = GroupJoinCard.new()
+var _joining: GroupJoiningCard = GroupJoiningCard.new()
+var _invite: GroupInviteCard = GroupInviteCard.new()
 var _roster: VBoxContainer = VBoxContainer.new()
+## Friends whose reply the organizer added and who are still connecting (R195).
+var _admitting: VBoxContainer = VBoxContainer.new()
+var _add: GroupAddRow = GroupAddRow.new()
 var _next: Label = Label.new()
 ## Turns while ORQWA connects, receives or prepares the ride and the rider can only wait (#420).
 var _working: Spinner = Spinner.new(18.0)
@@ -55,11 +59,6 @@ var _organizer_choices: VBoxContainer = VBoxContainer.new()
 var _progress: ProgressBar = ProgressBar.new()
 var _bytes: Label = Label.new()
 var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
-var _exchange: ConfirmationDialog = ConfirmationDialog.new()
-var _paste: LineEdit = LineEdit.new()
-var _exchange_help: Label = Label.new()
-var _exchange_error: Label = Label.new()
-var _exchange_kind: String = "join"
 var _status: Dictionary = {}
 var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
@@ -76,6 +75,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_picker.bind(orqwa)
 	_voice_controls.bind(orqwa)
 	_connection.bind(orqwa)
+	_add.bind(orqwa)
 	if is_node_ready():
 		refresh()
 
@@ -148,65 +148,31 @@ func _build_setup() -> void:
 	add_child(_setup)
 	var host: VBoxContainer = _card(_setup)
 	_label(host, tr("Start a group ride"), 22)
-	_muted(host, tr("Choose the ride and invite your friends. You decide when everyone starts."))
 	var create: Button = _button(
 		host, tr("Create a ride"), func() -> void: _connection.ask_create()
 	)
 	create.custom_minimum_size.y = 48
 	create.add_theme_stylebox_override("normal", UiTheme.accent_button())
-	var join: VBoxContainer = _card(_setup)
-	_label(join, tr("Joining friends?"), 22)
-	_muted(join, tr("Ask the organizer for an invitation, then paste it here to join their ride."))
-	var join_button: Button = _button(
-		join, tr("Join a ride…"), func() -> void: _show_exchange("join")
+	_card(_setup).add_child(_join)
+	_join.invitation_entered.connect(
+		func(invitation: String) -> void: _connection.ask_join(invitation)
 	)
-	join_button.custom_minimum_size.y = 48
 
 
 func _build_connecting() -> void:
 	add_child(_connecting)
-	var card: VBoxContainer = _card(_connecting)
-	_label(card, tr("Send your join request"), 22)
-	_muted(
-		card, tr("Copy your request and send it privately to the organizer. They'll let you in.")
-	)
-	_request = _button(card, tr("Copy join request"), _copy_request)
-	_request.add_theme_stylebox_override("normal", UiTheme.accent_button())
-	_muted(
-		card,
-		tr(
-			"Keep this page open. Requests expire after one minute; if needed, ask for a fresh invitation."
-		)
-	)
-	_button(card, tr("Cancel joining"), func() -> void: _orqwa.group_leave())
+	_card(_connecting).add_child(_joining)
+	_connecting_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_connecting_gap.size_flags_stretch_ratio = 0.6
+	_connecting.add_child(_connecting_gap)
+	_joining.cancelled.connect(func() -> void: _orqwa.group_leave())
+	_joining.renewed.connect(func() -> void: _connection.renew())
 
 
 func _build_invitation() -> void:
 	var card: VBoxContainer = _card(_sidebar)
 	_invitation_panel = card.get_parent() as PanelContainer
 	card.add_child(_invite)
-	_invite.add_theme_constant_override("separation", 10)
-	_label(_invite, tr("Invite friends"), 20)
-	_muted(
-		_invite, tr("1. Send your invitation privately.\n2. Add each friend's join request here.")
-	)
-	_reach_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_reach_text.add_theme_color_override("font_color", UiTheme.WARNING)
-	_reach.add_child(_reach_text)
-	var check: Button = _button(
-		_reach, tr("How to check"), func() -> void: OS.shell_open(HOSTING_GUIDE)
-	)
-	check.flat = true
-	check.add_theme_color_override("font_color", UiTheme.ACCENT)
-	check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_invite.add_child(_reach)
-	var actions: HFlowContainer = HFlowContainer.new()
-	_button(actions, tr("Copy invitation"), _copy_invite)
-	_button(actions, tr("Add a friend…"), func() -> void: _show_exchange("admit"))
-	_invite.add_child(actions)
-	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_notice.add_theme_color_override("font_color", UiTheme.SUCCESS)
-	_invite.add_child(_notice)
 
 
 func _build_roster() -> void:
@@ -214,6 +180,9 @@ func _build_roster() -> void:
 	_label(card, tr("Your group"), 20)
 	_roster.add_theme_constant_override("separation", 12)
 	card.add_child(_roster)
+	_admitting.add_theme_constant_override("separation", 12)
+	card.add_child(_admitting)
+	card.add_child(_add)
 	card.add_child(HSeparator.new())
 	_next.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_next.add_theme_color_override("font_color", UiTheme.MUTED)
@@ -251,32 +220,9 @@ func _build_roster() -> void:
 
 
 func _build_dialogs() -> void:
-	for dialog: AcceptDialog in [_exchange]:
-		dialog.theme = UiTheme.build()
-		add_child(dialog)
-	_exchange.dialog_hide_on_ok = false
-	var fields: VBoxContainer = VBoxContainer.new()
-	fields.add_theme_constant_override("separation", 14)
-	_exchange_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_exchange_help.custom_minimum_size.x = 480
-	fields.add_child(_exchange_help)
-	_paste.max_length = 2048
-	_paste.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_paste.text_changed.connect(
-		func(value: String) -> void:
-			_exchange.get_ok_button().disabled = value.strip_edges().is_empty()
-	)
-	_paste.text_submitted.connect(func(_value: String) -> void: _submit_exchange())
-	fields.add_child(_paste)
-	_exchange_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_exchange_error.custom_minimum_size.x = 480
-	_exchange_error.add_theme_color_override("font_color", UiTheme.DANGER)
-	fields.add_child(_exchange_error)
-	_exchange.add_child(fields)
-	_exchange.confirmed.connect(_submit_exchange)
 	add_child(_connection)
-	_connection.started.connect(_connection_started)
-	_connection.join_cancelled.connect(func() -> void: _exchange.popup_centered(Vector2i(540, 0)))
+	_connection.started.connect(_join.clear)
+	_connection.join_cancelled.connect(_join.focus)
 	_organizer_picker.theme = UiTheme.build()
 	_organizer_picker.title = tr("Choose a new organizer")
 	_organizer_choices.add_theme_constant_override("separation", 12)
@@ -409,6 +355,7 @@ func _build_workout_controls() -> void:
 
 func _reflow() -> void:
 	_setup.vertical = size.x < 760
+	_connecting_gap.visible = size.x >= 1100
 	_body.vertical = size.x < 760 or compact
 
 
@@ -544,19 +491,24 @@ func _show_status(status: Dictionary) -> void:
 	if late and not underway:
 		_stage.text = tr("Your friends are already riding. Get ready and join when you like.")
 	_setup.visible = phase == "idle" and not compact
-	_connecting.visible = phase == "connecting" and not host and not compact
+	# Not added in time, the joiner makes a new reply on the same page (R195).
+	var expired: bool = _status.get("reply_expired", false)
+	_connecting.visible = (
+		not host and not compact and (phase == "connecting" or (phase == "failed" and expired))
+	)
+	if expired:
+		_stage.text = ""
 	var reply: String = _status.get("reply", "")
-	_request.disabled = reply.is_empty()
+	var reply_s: float = _status.get("reply_s", 0.0)
+	_joining.show_joining(_connection.organizer(), reply, reply_s, expired)
 	_body.visible = phase != "idle" and not _connecting.visible
-	_invite.visible = host and phase not in ["ended", "failed"]
+	var inviting: bool = host and phase not in ["ended", "failed"]
+	_invitation_panel.visible = inviting
 	var reach: String = _status.get("reachability", "")
-	_reach_text.text = reach_warning(reach, true)
-	_reach.visible = not _reach_text.text.is_empty()
-	_invitation_panel.visible = _invite.visible
-	_notice.visible = not _notice.text.is_empty()
 	var invite: String = _status.get("invite", "")
-	for action: Node in _invite.find_children("*", "Button", true, false):
-		(action as Button).disabled = invite.is_empty() or _status.get("handover", "idle") != "idle"
+	var handing_over: bool = _status.get("handover", "idle") != "idle"
+	_invite.show_invite("" if handing_over else invite, reach_warning(reach, true))
+	_show_admissions(inviting and not handing_over)
 	# What the organizer is choosing, for friends to talk over before it is shared (#418).
 	var preview_key: String = _status.get("preview", "")
 	if preview_key != _preview_key:
@@ -842,62 +794,31 @@ func _select_activity(course: String, workout: String) -> void:
 	_update()
 
 
-func _show_exchange(kind: String) -> void:
-	_exchange_kind = kind
-	_exchange.title = tr("Join a ride") if kind == "join" else tr("Add a friend")
-	_exchange_help.text = (
-		tr("Paste the invitation your organizer sent you.")
-		if kind == "join"
-		else tr("Paste the join request your friend sent back. Only add people you invited.")
-	)
-	_exchange.ok_button_text = tr("Continue") if kind == "join" else tr("Add friend")
-	_paste.placeholder_text = (
-		tr("Paste invitation here") if kind == "join" else tr("Paste join request here")
-	)
-	_paste.clear()
-	_exchange_error.text = ""
-	_exchange_error.hide()
-	_exchange.get_ok_button().disabled = true
-	_exchange.popup_centered(Vector2i(540, 0))
-	_paste.grab_focus()
+## Friends still connecting after the organizer added their reply, then the seat for the next
+## one while the ride has room (R195).
+func _show_admissions(inviting: bool) -> void:
+	var admitting: int = _status.get("admitting", 0) if inviting else 0
+	while _admitting.get_child_count() > admitting:
+		var row: Node = _admitting.get_child(_admitting.get_child_count() - 1)
+		_admitting.remove_child(row)
+		row.queue_free()
+	while _admitting.get_child_count() < admitting:
+		_admitting.add_child(_connecting_row())
+	var roster: Array = _status.get("roster", [])
+	_add.visible = inviting and roster.size() + admitting < MAX_RIDERS
+	var refusal: String = _status.get("refusal", "")
+	var refusals: int = _status.get("refusals", 0)
+	_add.show_refusal(refusal, refusals)
 
 
-func _submit_exchange() -> void:
-	var value: String = _paste.text.strip_edges()
-	if value.is_empty():
-		return
-	if _exchange_kind == "join":
-		_exchange.hide()
-		if _connection.ask_join(value):
-			return
-		_exchange.popup_centered(Vector2i(540, 0))
-	var accepted: bool = _orqwa.group_admit(value) if _exchange_kind != "join" else false
-	if accepted:
-		_request.text = tr("Copy join request")
-		_exchange.hide()
-		_paste.clear()
-	else:
-		_exchange_error.show()
-		_exchange_error.text = tr(
-			"That didn't work. Paste the entire invitation or request, or ask for a fresh one."
-		)
-	_update()
-
-
-func _connection_started() -> void:
-	_notice.text = ""
-	_request.text = tr("Copy join request")
-	_paste.clear()
-	_update()
-
-
-func _copy_invite() -> void:
-	var invite: String = _status.get("invite", "")
-	DisplayServer.clipboard_set(invite)
-	_notice.text = tr("Invitation copied. Send it privately to your friends.")
-
-
-func _copy_request() -> void:
-	var reply: String = _status.get("reply", "")
-	DisplayServer.clipboard_set(reply)
-	_request.text = tr("Copied · send it to the organizer")
+func _connecting_row() -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var slot: CenterContainer = CenterContainer.new()
+	slot.custom_minimum_size = Vector2(36, 36)
+	slot.add_child(Spinner.new(26.0))
+	row.add_child(slot)
+	var label: Label = _label(row, tr("Connecting…"), 17)
+	label.add_theme_color_override("font_color", UiTheme.MUTED)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return row

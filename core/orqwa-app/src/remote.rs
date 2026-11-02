@@ -3,7 +3,9 @@
 //! (#139, R84); whether it is on, its port and its secret address are this computer's (R78).
 
 use orqwa_domain::shifting::{ButtonMap, ControllerModel, Press};
-pub use orqwa_remote::{NAME as REMOTE_NAME, QrCode, Texts as RemoteTexts, words as remote_words};
+pub use orqwa_remote::{
+    NAME as REMOTE_NAME, QrCode, Texts as RemoteTexts, qr_code, words as remote_words,
+};
 use orqwa_remote::{RemoteServer, RemoteState};
 use orqwa_storage::computer::{self, PhoneRemote};
 

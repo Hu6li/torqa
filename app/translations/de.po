@@ -2548,35 +2548,14 @@ msgstr "%.1f / %.1f MiB"
 msgid "%s · power based on your FTP"
 msgstr "%s · Leistung anhand deiner FTP"
 
-msgid "1. Send your invitation privately.\n2. Add each friend's join request here."
-msgstr "1. Sende deine Einladung privat.\n2. Füge hier die Beitrittsanfragen deiner Freunde hinzu."
-
-msgid "Add a friend"
-msgstr "Freund hinzufügen"
-
-msgid "Add a friend…"
-msgstr "Freund hinzufügen…"
-
-msgid "Add friend"
-msgstr "Freund hinzufügen"
-
 msgid "All set? Let your friends know you're ready."
 msgstr "Alles parat? Sag deinen Freunden, dass du bereit bist."
-
-msgid "Ask the organizer for an invitation, then paste it here to join their ride."
-msgstr "Lass dir eine Einladung schicken und füge sie hier ein, um mitzufahren."
-
-msgid "Cancel joining"
-msgstr "Beitritt abbrechen"
 
 msgid "Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
 msgstr "Wähle eine Strecke, ein Training oder beides. Deine Freunde sehen beim Auswählen eine Vorschau und erhalten eine Kopie, sobald du die Aktivität verwendest."
 
 msgid "Choose an activity to get started."
 msgstr "Wähle zuerst eine Aktivität."
-
-msgid "Choose the ride and invite your friends. You decide when everyone starts."
-msgstr "Wähle die Fahrt und lade deine Freunde ein. Du bestimmst, wann ihr startet."
 
 msgid "Choose who starts the ride. You'll be riding together in a few steps."
 msgstr "Wähle, wer die Fahrt organisiert. In wenigen Schritten fahrt ihr gemeinsam los."
@@ -2592,18 +2571,6 @@ msgstr "Trainer verbinden…"
 
 msgid "Connecting to your friends…"
 msgstr "Verbindung zu deinen Freunden wird hergestellt…"
-
-msgid "Copied · send it to the organizer"
-msgstr "Kopiert · an die organisierende Person senden"
-
-msgid "Copy invitation"
-msgstr "Einladung kopieren"
-
-msgid "Copy join request"
-msgstr "Beitrittsanfrage kopieren"
-
-msgid "Copy your request and send it privately to the organizer. They'll let you in."
-msgstr "Kopiere deine Anfrage und sende sie privat an die Person, die die Fahrt organisiert. Sie lässt dich rein."
 
 msgid "Could not connect. Leave the group and ask for a fresh invitation."
 msgstr "Keine Verbindung möglich. Verlasse die Gruppe und lass dir eine neue Einladung schicken."
@@ -2647,23 +2614,95 @@ msgstr "Deine Fahrt wird vorbereitet…"
 msgid "I'm ready"
 msgstr "Ich bin bereit"
 
-msgid "Invitation copied. Send it privately to your friends."
-msgstr "Einladung kopiert. Sende sie privat an deine Freunde."
-
 msgid "Invite friends"
 msgstr "Freunde einladen"
 
 msgid "Invite your friends, then choose what to ride."
 msgstr "Lade deine Freunde ein und wähle eure Fahrt."
 
-msgid "Join a ride"
-msgstr "Bei einer Fahrt mitmachen"
-
-msgid "Join a ride…"
-msgstr "Bei einer Fahrt mitmachen…"
-
 msgid "Join ride"
 msgstr "Mitfahren"
+
+msgid "Invitation"
+msgstr "Einladung"
+
+msgid "Send this invitation by chat, email or text message."
+msgstr "Sende diese Einladung per Chat, E-Mail oder SMS."
+
+msgid "Show QR code"
+msgstr "QR-Code zeigen"
+
+msgid "Copied"
+msgstr "Kopiert"
+
+msgid "Scan with your phone, then send the text to your friends."
+msgstr "Scanne den Code mit deinem Handy und sende den Text an deine Freunde."
+
+msgid "Paste the reply a friend sent back"
+msgstr "Füge die zurückgeschickte Antwort ein"
+
+msgid "That's your invitation. Paste the reply your friend sent back."
+msgstr "Das ist deine Einladung. Füge die zurückgeschickte Antwort ein."
+
+msgid "That's not a reply. Paste the whole reply your friend sent."
+msgstr "Das ist keine Antwort. Füge die ganze zurückgeschickte Antwort ein."
+
+msgid "That reply cannot be added. Ask your friend for a new one."
+msgstr "Diese Antwort kann nicht hinzugefügt werden. Bitte um eine neue."
+
+msgid "That reply answers another invitation. Ask your friend to use this one."
+msgstr "Diese Antwort gehört zu einer anderen Einladung. Bitte um eine Antwort auf diese Einladung."
+
+msgid "That reply was added already."
+msgstr "Diese Antwort wurde schon hinzugefügt."
+
+msgid "No more friends can be added to this ride."
+msgstr "Zu dieser Fahrt können keine weiteren Freunde hinzukommen."
+
+msgid "The ride has started. No more friends can be added."
+msgstr "Die Fahrt hat begonnen. Es können keine weiteren Freunde hinzukommen."
+
+msgid "Too late. Ask your friend for a new reply."
+msgstr "Zu spät. Bitte um eine neue Antwort."
+
+msgid "Join friends"
+msgstr "Bei Freunden mitfahren"
+
+msgid "Paste the invitation you received"
+msgstr "Füge die erhaltene Einladung ein"
+
+msgid "Join"
+msgstr "Beitreten"
+
+msgid "That's a reply. Paste the invitation the organizer sent you."
+msgstr "Das ist eine Antwort. Füge die Einladung ein, die du erhalten hast."
+
+msgid "That's not an invitation. Paste the whole invitation the organizer sent you."
+msgstr "Das ist keine Einladung. Füge die ganze Einladung ein, die du erhalten hast."
+
+msgid "Joining %s's ride"
+msgstr "Beitritt zur Fahrt von %s"
+
+msgid "Send this reply to %s by chat, email or text message"
+msgstr "Sende diese Antwort per Chat, E-Mail oder SMS an %s"
+
+msgid "Your reply"
+msgstr "Deine Antwort"
+
+msgid "Scan with your phone, then send the text to %s."
+msgstr "Scanne den Code mit deinem Handy und sende den Text an %s."
+
+msgid "%s adds you"
+msgstr "%s fügt dich hinzu"
+
+msgid "%s didn't add you in time"
+msgstr "%s hat dich nicht rechtzeitig hinzugefügt"
+
+msgid "Waiting for %s…"
+msgstr "Warte auf %s…"
+
+msgid "New reply"
+msgstr "Neue Antwort"
 
 msgid "Join voice chat"
 msgstr "Am Sprachchat teilnehmen"
@@ -2722,12 +2761,6 @@ msgstr "%s aus der Gruppe entfernen"
 msgid "Friends' voices; 0 mutes them"
 msgstr "Stimmen deiner Freunde; 0 schaltet sie stumm"
 
-msgid "Joining friends?"
-msgstr "Bei Freunden mitfahren?"
-
-msgid "Keep this page open. Requests expire after one minute; if needed, ask for a fresh invitation."
-msgstr "Lass diese Seite offen. Anfragen laufen nach einer Minute ab. Lass dir bei Bedarf eine neue Einladung schicken."
-
 msgid "Microphone on"
 msgstr "Mikrofon an"
 
@@ -2736,18 +2769,6 @@ msgstr "Gesamten Ton stummschalten"
 
 msgid "No course · workout only"
 msgstr "Ohne Strecke · nur Training"
-
-msgid "Paste invitation here"
-msgstr "Einladung hier einfügen"
-
-msgid "Paste join request here"
-msgstr "Beitrittsanfrage hier einfügen"
-
-msgid "Paste the invitation your organizer sent you."
-msgstr "Füge die Einladung ein, die du für die Fahrt erhalten hast."
-
-msgid "Paste the join request your friend sent back. Only add people you invited."
-msgstr "Füge die Beitrittsanfrage ein, die dein Freund zurückgeschickt hat. Füge nur eingeladene Personen hinzu."
 
 msgid "Preparing your ride…"
 msgstr "Deine Fahrt wird vorbereitet…"
@@ -2758,9 +2779,6 @@ msgstr "Bereit ✓ · zum Zurücknehmen klicken"
 msgid "Ride with friends"
 msgstr "Mit Freunden fahren"
 
-msgid "Send your join request"
-msgstr "Sende deine Beitrittsanfrage"
-
 msgid "Shared with everyone"
 msgstr "Mit allen geteilt"
 
@@ -2769,9 +2787,6 @@ msgstr "Lautsprecher"
 
 msgid "Start a group ride"
 msgstr "Eine Gruppenfahrt starten"
-
-msgid "That didn't work. Paste the entire invitation or request, or ask for a fresh one."
-msgstr "Das hat nicht geklappt. Füge die ganze Einladung oder Anfrage ein oder lass dir eine neue schicken."
 
 msgid "Use this activity"
 msgstr "Diese Aktivität verwenden"
@@ -2975,10 +2990,6 @@ msgstr "Organisation"
 #: app/ui/group_connection_dialog.gd
 msgid "Where will everyone ride?"
 msgstr "Wo fährt eure Gruppe?"
-
-#: app/scenes/group_rides_tab.gd
-msgid "Continue"
-msgstr "Weiter"
 
 #: app/ui/group_connection_dialog.gd
 msgid "Create ride"

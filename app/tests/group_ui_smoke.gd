@@ -71,6 +71,11 @@ func _microphone_permissions() -> void:
 	await process_frame
 
 
+func _riders(app: OrqwaApp) -> int:
+	var roster: Array = app.group_status()["roster"]
+	return roster.size()
+
+
 func _microphone_off(app: OrqwaApp) -> bool:
 	var testing: bool = app.group_status().get("microphone_test", false)
 	var mic: bool = app.group_status().get("microphone", false)
@@ -172,29 +177,79 @@ func _group_connections() -> void:
 	_check(
 		str(peer.group_status()["phase"]) == "idle", "incompatible invitation starts no networking"
 	)
-	joining._show_exchange("join")
-	joining._paste.text = invitation
-	joining._submit_exchange()
+	# Pasted into the home page's field, the reply instead, or the message it came in (R195).
+	var join: GroupJoinCard = joining._join
+	join._field.text = "orqwa:nothing"
+	join._submit()
+	_check(join._error.visible and not joining._connection.visible, "a wrong paste says so")
+	join._field.text = "Ride with me tonight: " + invitation + " See you!"
+	join._submit()
 	_check(
 		joining._connection.visible and str(peer.group_status()["phase"]) == "idle",
 		"pasted invitation opens connection choices offline"
 	)
+	_check(not joining._connection.organizer().is_empty(), "the organizer is named from it")
 	_check(
 		joining._connection._mode.is_empty(), "invitation cannot silently grant home-network access"
 	)
 	joining._connection.get_cancel_button().pressed.emit()
 	await process_frame
 	_check(
-		joining._exchange.visible and joining._paste.text == invitation,
-		"Back preserves the invitation"
+		join._field.text.contains(invitation) and not joining._connection.visible,
+		"Back keeps the invitation in the field"
 	)
-	joining._submit_exchange()
+	join._submit()
 	joining._connection._choices["home"].button_pressed = true
 	joining._connection._confirm()
 	until = Time.get_ticks_msec() + 5000
 	while str(peer.group_status()["reply"]).is_empty() and Time.get_ticks_msec() < until:
 		await process_frame
 	_check(not str(peer.group_status()["reply"]).is_empty(), "join starts only after confirmation")
+	_check(join._field.text.is_empty(), "the field empties once joining has started")
+	joining._show_status(peer.group_status())
+	_check(
+		(
+			joining._connecting.visible
+			and joining._joining._code._field.text == str(peer.group_status()["reply"])
+		),
+		"the joiner sees the reply to send"
+	)
+	# The organizer adds the reply from their own field, here pasted with its message.
+	var organizer: GroupRidesTab = GroupRidesTab.new()
+	organizer.bind(host)
+	root.add_child(organizer)
+	await process_frame
+	organizer._show_status(host.group_status())
+	_check(organizer._add.visible, "the organizer has a seat to fill")
+	organizer._add._field.text = invitation
+	organizer._add._submit()
+	_check(
+		(
+			organizer._add._error.text
+			== tr("That's your invitation. Paste the reply your friend sent back.")
+		),
+		"their own invitation is told apart from a reply"
+	)
+	var reply: String = peer.group_status()["reply"]
+	organizer._add._field.text = "Here: " + reply
+	organizer._add._edited(organizer._add._field.text)
+	_check(not organizer._add._error.visible, "editing clears the message")
+	organizer._add._submit()
+	until = Time.get_ticks_msec() + 10000
+	while _riders(host) < 2 and Time.get_ticks_msec() < until:
+		await process_frame
+	_check(_riders(host) == 2, "the friend joins")
+	organizer._add._field.text = reply
+	organizer._add._submit()
+	until = Time.get_ticks_msec() + 3000
+	while str(host.group_status()["refusal"]).is_empty() and Time.get_ticks_msec() < until:
+		await process_frame
+	organizer._show_status(host.group_status())
+	_check(
+		organizer._add._error.text == tr("That reply was added already."),
+		"the same reply twice says why it adds nobody"
+	)
+	organizer.free()
 	peer.group_leave()
 	host.group_leave()
 	joining.free()
@@ -426,14 +481,14 @@ func _group_activity() -> void:
 		{"host": true, "phase": "waiting", "invite": "private", "reachability": "strict"}
 	)
 	_check(
-		group._reach.visible and not group._reach_text.text.is_empty(),
+		group._invite._reach.visible and not group._invite._reach_text.text.is_empty(),
 		"a host behind strict NAT learns that friends at other homes probably cannot join"
 	)
 	for quiet: String in ["direct", "mapped", "home", ""]:
 		group._show_status(
 			{"host": true, "phase": "waiting", "invite": "private", "reachability": quiet}
 		)
-		_check(not group._reach.visible, "no reachability warning for " + quiet)
+		_check(not group._invite._reach.visible, "no reachability warning for " + quiet)
 	_check(not group._enter.visible, "existing riders cannot restart through entry")
 	group._show_status(
 		{

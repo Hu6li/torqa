@@ -67,6 +67,10 @@ msgstr ""
 msgid "%s (copy)"
 msgstr ""
 
+#: app/ui/group_joining_card.gd
+msgid "%s adds you"
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s ahead"
 msgstr ""
@@ -85,6 +89,10 @@ msgstr ""
 
 #: app/scenes/ride_screen.gd
 msgid "%s connected"
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "%s didn't add you in time"
 msgstr ""
 
 #: app/scenes/ride_screen.gd
@@ -169,10 +177,6 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "1. Import the GPX route of the ride shown in the video."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "1. Send your invitation privately.\n2. Add each friend's join request here."
 msgstr ""
 
 #: app/ui/workout_options.gd
@@ -267,7 +271,7 @@ msgstr ""
 msgid "Activity: %s"
 msgstr ""
 
-#: app/ui/workout_editor.gd
+#: app/ui/group_add_row.gd app/ui/workout_editor.gd
 msgid "Add"
 msgstr ""
 
@@ -279,24 +283,12 @@ msgstr ""
 msgid "Add a ZWO, ERG, MRC or FIT workout file"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Add a friend"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Add a friend…"
-msgstr ""
-
 #: app/ui/region_picker.gd
 msgid "Add a region"
 msgstr ""
 
 #: app/ui/course_settings.gd
 msgid "Add a region…"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Add friend"
 msgstr ""
 
 #: app/ui/video_align_dialog.gd
@@ -425,10 +417,6 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "Ascent to go"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Ask the organizer for an invitation, then paste it here to join their ride."
 msgstr ""
 
 #: app/ui/course_settings.gd
@@ -575,12 +563,8 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_voice_dialog.gd app/ui/workout_editor.gd
+#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_joining_card.gd app/ui/group_voice_dialog.gd app/ui/workout_editor.gd
 msgid "Cancel"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Cancel joining"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -691,10 +675,6 @@ msgstr ""
 msgid "Choose fallback organizer…"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Choose the ride and invite your friends. You decide when everyone starts."
-msgstr ""
-
 #: app/ui/group_connection_dialog.gd
 msgid "Choose where your group is riding. Nothing connects before you confirm."
 msgstr ""
@@ -771,7 +751,7 @@ msgstr ""
 msgid "Climbing"
 msgstr ""
 
-#: app/scenes/minimap.gd
+#: app/scenes/minimap.gd app/ui/code_qr_dialog.gd
 msgid "Close"
 msgstr ""
 
@@ -855,7 +835,7 @@ msgstr ""
 msgid "Connecting to your friends…"
 msgstr ""
 
-#: app/scenes/devices_tab.gd app/ui/ride_devices.gd
+#: app/scenes/devices_tab.gd app/scenes/group_rides_tab.gd app/ui/ride_devices.gd
 msgid "Connecting…"
 msgstr ""
 
@@ -875,32 +855,16 @@ msgstr ""
 msgid "Constant power %d W"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Continue"
+#: app/ui/group_code_row.gd
+msgid "Copied"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Copied · send it to the organizer"
-msgstr ""
-
-#: app/ui/about_page.gd
+#: app/ui/about_page.gd app/ui/group_code_row.gd
 msgid "Copy"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Copy invitation"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Copy join request"
 msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Copy the version, e.g. for a bug report"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Copy your request and send it privately to the organizer. They'll let you in."
 msgstr ""
 
 #: core/orqwa-app/src/import.rs
@@ -1803,7 +1767,7 @@ msgstr ""
 msgid "How do you want to ride?"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_invite_card.gd
 msgid "How to check"
 msgstr ""
 
@@ -1847,11 +1811,11 @@ msgstr ""
 msgid "Intervals"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Invitation copied. Send it privately to your friends."
+#: app/ui/group_invite_card.gd
+msgid "Invitation"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_invite_card.gd
 msgid "Invite friends"
 msgstr ""
 
@@ -1879,12 +1843,12 @@ msgstr ""
 msgid "Jan"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Join a ride"
+#: app/ui/group_join_card.gd
+msgid "Join"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Join a ride…"
+#: app/ui/group_join_card.gd
+msgid "Join friends"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1907,8 +1871,8 @@ msgstr ""
 msgid "Join voice chat"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Joining friends?"
+#: app/ui/group_joining_card.gd
+msgid "Joining %s's ride"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1937,10 +1901,6 @@ msgstr ""
 
 #: app/ui/course_settings.gd
 msgid "Keep rendered worlds on this computer for instant startup of a 3D ride."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Keep this page open. Requests expire after one minute; if needed, ask for a fresh invitation."
 msgstr ""
 
 #: app/scenes/remote_dialog.gd
@@ -2219,6 +2179,10 @@ msgstr ""
 msgid "New address"
 msgstr ""
 
+#: app/ui/group_joining_card.gd
+msgid "New reply"
+msgstr ""
+
 #: app/scenes/profile_dialog.gd
 msgid "New rider"
 msgstr ""
@@ -2273,6 +2237,10 @@ msgstr ""
 
 #: app/ui/ride_devices.gd
 msgid "No devices connected yet: connect them under Devices on the start page."
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "No more friends can be added to this ride."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2531,20 +2499,12 @@ msgstr ""
 msgid "Pair moments of the video with places on the route."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Paste invitation here"
+#: app/ui/group_join_card.gd
+msgid "Paste the invitation you received"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Paste join request here"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Paste the invitation your organizer sent you."
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "Paste the join request your friend sent back. Only add people you invited."
+#: app/ui/group_add_row.gd
+msgid "Paste the reply a friend sent back"
 msgstr ""
 
 #: app/scenes/overlay_hud.gd app/scenes/remote_dialog.gd
@@ -3003,6 +2963,14 @@ msgstr ""
 msgid "Scan the code with a phone or tablet on the same Wi-Fi, or open the address in its browser."
 msgstr ""
 
+#: app/ui/group_joining_card.gd
+msgid "Scan with your phone, then send the text to %s."
+msgstr ""
+
+#: app/ui/group_invite_card.gd
+msgid "Scan with your phone, then send the text to your friends."
+msgstr ""
+
 #: app/scenes/devices_tab.gd
 msgid "Scanning…"
 msgstr ""
@@ -3027,8 +2995,12 @@ msgstr ""
 msgid "Season"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "Send your join request"
+#: app/ui/group_invite_card.gd
+msgid "Send this invitation by chat, email or text message."
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "Send this reply to %s by chat, email or text message"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -3085,6 +3057,10 @@ msgstr ""
 
 #: app/ui/hud_editor.gd
 msgid "Show"
+msgstr ""
+
+#: app/ui/group_code_row.gd
+msgid "Show QR code"
 msgstr ""
 
 #: app/scenes/history_screen.gd
@@ -3263,8 +3239,16 @@ msgstr ""
 msgid "Testing %s… Keep this window in front."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "That didn't work. Paste the entire invitation or request, or ask for a fresh one."
+#: app/ui/group_add_row.gd
+msgid "That reply answers another invitation. Ask your friend to use this one."
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "That reply cannot be added. Ask your friend for a new one."
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "That reply was added already."
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3279,12 +3263,28 @@ msgstr ""
 msgid "That was your first time on {course}. Next time you'll know what's coming!"
 msgstr ""
 
+#: app/ui/group_join_card.gd
+msgid "That's a reply. Paste the invitation the organizer sent you."
+msgstr ""
+
 #: app/ui/moment_lines.gd
 msgid "That's all {planned} rides you planned this week. Well done!"
 msgstr ""
 
+#: app/ui/group_add_row.gd
+msgid "That's not a reply. Paste the whole reply your friend sent."
+msgstr ""
+
+#: app/ui/group_join_card.gd
+msgid "That's not an invitation. Paste the whole invitation the organizer sent you."
+msgstr ""
+
 #: app/ui/moment_lines.gd
 msgid "That's ride {rides} of the {planned} you planned this week, nice work!"
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "That's your invitation. Paste the reply your friend sent back."
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3337,6 +3337,10 @@ msgstr ""
 
 #: app/scenes/ride_settings_dialog.gd
 msgid "The ride ends and nothing is saved."
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "The ride has started. No more friends can be added."
 msgstr ""
 
 #: app/ui/profile_form.gd
@@ -3449,6 +3453,10 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "To go"
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "Too late. Ask your friend for a new reply."
 msgstr ""
 
 #: app/ui/course_settings.gd
@@ -3677,6 +3685,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Waiting for %s to accept organizer duties."
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "Waiting for %s…"
 msgstr ""
 
 #: app/scenes/devices_tab.gd
@@ -3921,6 +3933,10 @@ msgstr ""
 
 #: app/scenes/analysis_tab.gd
 msgid "Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W."
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "Your reply"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd

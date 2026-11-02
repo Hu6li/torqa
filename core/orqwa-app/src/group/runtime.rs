@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 
 use super::preview::Choice;
-use super::{Phase, Previewed, Snapshot, VoiceControls};
+use super::{Phase, Previewed, Refusal, Snapshot, VoiceControls};
 use crate::Kind;
 use std::sync::{Arc, atomic::Ordering};
 
@@ -267,6 +267,22 @@ struct Audio {
 }
 
 /// Opens voice on `port` with the chosen devices; app tests may ask for silent audio instead.
+/// Why the organizer's reply added nobody, in words for the rider beside their field (R195);
+/// `None` for failures that are no fault of the paste.
+fn refusal(error: &orqwa_net::lobby::LobbyError) -> Option<Refusal> {
+    use orqwa_net::code::CodeError;
+    use orqwa_net::link::LinkError;
+    use orqwa_net::lobby::LobbyError;
+    match error {
+        LobbyError::Link(LinkError::Code(CodeError::WrongRide)) => Some(Refusal::OtherRide),
+        LobbyError::Link(LinkError::Code(_)) => Some(Refusal::Invalid),
+        LobbyError::Link(LinkError::Replay) => Some(Refusal::Again),
+        LobbyError::Link(LinkError::Full) => Some(Refusal::Full),
+        LobbyError::Started => Some(Refusal::Started),
+        _ => None,
+    }
+}
+
 async fn open_voice(
     backend: AudioBackend,
     port: orqwa_net::voice::VoicePort,
@@ -371,7 +387,9 @@ pub(super) async fn run(
     if let Err(error) = run_inner(request, &mut commands, &updates, &mut snapshot, &mut local).await
     {
         snapshot.phase = Phase::Failed;
-        snapshot.report(Kind::GroupRide, error);
+        if !snapshot.reply_expired {
+            snapshot.report(Kind::GroupRide, error);
+        }
         snapshot.invite.clear();
         snapshot.reply.clear();
     }
@@ -398,10 +416,17 @@ async fn run_inner(
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
         snapshot.reachability = Some(joiner.reply().reachability());
+        let until = std::time::Instant::now() + request.options.window;
+        snapshot.reply_until = Some(until);
         updates.send_replace(snapshot.clone());
         let lobby = JoinerLobby::join(joiner, request.rider.clone())
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                // Not added in time: the rider makes a new reply rather than read a failure.
+                snapshot.reply_expired = std::time::Instant::now() >= until;
+                e.to_string()
+            })?;
+        snapshot.reply_until = None;
         snapshot.me = lobby.me().value();
         Session::Join(lobby)
     } else {
@@ -488,7 +513,19 @@ async fn run_inner(
                         if snapshot.host || snapshot.successor == Some(snapshot.me) {handover.cancel(&session,snapshot)}
                         else {Err("Only the organizer or selected successor can cancel this request.".into())}
                     }
-                    Command::Admit(text) => match &session {Session::Host(l)=>match Reply::from_code(&text,policy) {Ok(reply)=>l.admit(&reply).await.map_err(|e|e.to_string()),Err(e)=>Err(e.to_string())},Session::Join(_)=>Err("Only the host can admit riders.".into())},
+                    Command::Admit(text) => match &session {
+                        Session::Host(l) => {
+                            // Shown beside the organizer's field, not as a failure (R195).
+                            snapshot.refusal = Refusal::None;
+                            if let Ok(reply) = Reply::from_code(&text,policy) {
+                                match l.admit(&reply).await {
+                                    Ok(()) => {snapshot.admitting = snapshot.admitting.saturating_add(1); Ok(())}
+                                    Err(error) => refusal(&error).map_or_else(|| Err(error.to_string()), |refused| {snapshot.refuse(refused); Ok(())}),
+                                }
+                            } else {snapshot.refuse(Refusal::Invalid); Ok(())}
+                        }
+                        Session::Join(_) => Err("Only the host can admit riders.".into()),
+                    },
                     Command::Select(course,plan) => {
                         if snapshot.start.is_some() || !snapshot.host {continue;}
                         // What is shared now needs no preview (#418).
@@ -628,6 +665,7 @@ async fn run_inner(
                     if snapshot.handover==super::Handover::Committing {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
                     let index=usize::from(id.value());
+                    snapshot.admitting = snapshot.admitting.saturating_sub(1);
                     snapshot.generations[index]=snapshot.generations[index].checked_add(1).ok_or("Rider membership exhausted.")?;
                     snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None;
                     handover.membership(&session,snapshot);
@@ -686,7 +724,7 @@ async fn run_inner(
                 }
                 Some(LobbyEvent::Workout(clock)) => {snapshot.workout_clock = Some(clock);}
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
-                Some(LobbyEvent::Expired) => snapshot.report(Kind::GroupRide,"An admission reply expired. Exchange fresh codes."),
+                Some(LobbyEvent::Expired) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Late);}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
                 Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },

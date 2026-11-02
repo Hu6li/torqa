@@ -100,6 +100,40 @@ pub enum Handover {
     /// The authorized commit is completing on the replacement links.
     Committing,
 }
+/// Why a friend's pasted reply did not add them (R195), shown beside the field it came from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Refusal {
+    /// Nothing went wrong, or the organizer has pasted since.
+    #[default]
+    None,
+    /// The paste is no reply at all.
+    Invalid,
+    /// The reply answers another invitation, e.g. of an earlier ride.
+    OtherRide,
+    /// This reply was added already.
+    Again,
+    /// The ride takes no more replies.
+    Full,
+    /// The ride has started and takes nobody new.
+    Started,
+    /// The friend's computer did not connect within the reply's minute.
+    Late,
+}
+impl Refusal {
+    /// Stable presentation key for translated status text; empty for none.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Invalid => "invalid",
+            Self::OtherRide => "other_ride",
+            Self::Again => "again",
+            Self::Full => "full",
+            Self::Started => "started",
+            Self::Late => "late",
+        }
+    }
+}
 impl Handover {
     /// Stable presentation key for translated status text.
     #[must_use]
@@ -142,6 +176,17 @@ pub struct Snapshot {
     pub invite: String,
     /// Private joiner reply while awaiting admission.
     pub reply: String,
+    /// When the joiner's reply stops being accepted: it must be added before then.
+    pub reply_until: Option<std::time::Instant>,
+    /// The organizer did not add this joiner before their reply ran out; a new reply from the
+    /// same invitation may still be made.
+    pub reply_expired: bool,
+    /// Replies the organizer added whose riders are still connecting.
+    pub admitting: u8,
+    /// Why the organizer's last pasted reply added nobody.
+    pub refusal: Refusal,
+    /// Counts refusals, so the same one twice is told twice.
+    pub refusals: u32,
     /// Whether friends at other homes can probably reach this rider as host: for the host from
     /// its invitation, for a joiner from its reply (offered organizer duties).
     pub reachability: Option<orqwa_net::code::Reachability>,
@@ -259,6 +304,11 @@ impl Default for Snapshot {
             host: false,
             invite: String::new(),
             reply: String::new(),
+            reply_until: None,
+            reply_expired: false,
+            admitting: 0,
+            refusal: Refusal::None,
+            refusals: 0,
             reachability: None,
             me: 0,
             root: None,
@@ -315,6 +365,11 @@ impl Default for Snapshot {
     }
 }
 impl Snapshot {
+    /// Tells the organizer why their pasted reply added nobody (R195).
+    pub(crate) fn refuse(&mut self, refusal: Refusal) {
+        self.refusal = refusal;
+        self.refusals = self.refusals.wrapping_add(1);
+    }
     fn report(&mut self, kind: Kind, details: impl std::fmt::Display) {
         let failure = Failure::new(kind, details);
         self.error.clone_from(&failure.details);
@@ -567,11 +622,13 @@ impl App {
     ///
     /// # Errors
     /// Returns [`AppError`] for excessive input or a full/stopped command queue.
-    pub fn group_admit(&self, reply: String) -> Result<(), AppError> {
+    pub fn group_admit(&self, reply: &str) -> Result<(), AppError> {
         if reply.len() > MAX_PASTE_BYTES {
             return Err(error("The reply is too large."));
         }
-        self.group_command(Command::Admit(reply))
+        // The reply as pasted, maybe inside a message (R195).
+        let code = connection::pasted_reply(reply).unwrap_or(reply).to_owned();
+        self.group_command(Command::Admit(code))
     }
     /// Selects a 3D course and/or a structured workout from the rider's libraries.
     ///

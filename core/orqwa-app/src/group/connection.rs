@@ -1,6 +1,6 @@
 //! Offline connection choices. Previewing an invitation never starts discovery or probes.
 
-use orqwa_net::code::{Invite, RouteHash};
+use orqwa_net::code::{Invite, Reply, RouteHash};
 use orqwa_net::policy::AddressPolicy;
 use orqwa_net::stun;
 use orqwa_storage::computer;
@@ -62,21 +62,83 @@ pub struct InvitationPreview {
     pub requires_home: bool,
 }
 
+/// Inspection only: connecting rechecks the policy the rider chose, and transport repeats that
+/// check before any operation.
+const INSPECTION: AddressPolicy = AddressPolicy {
+    lan: true,
+    loopback: false,
+};
+
+/// Finding a code in a paste reads any address: what it permits is checked when it is used.
+const EXTRACTION: AddressPolicy = AddressPolicy {
+    lan: true,
+    loopback: true,
+};
+
+/// The codes `text` may be, as riders paste them (R195): alone, wrapped over lines by a
+/// messenger, or inside a message ("here: orqwa:… thanks"). The whole text comes first, so a
+/// wrapped code keeps all its lines, then each word that begins like a code.
+fn candidates(text: &str) -> impl Iterator<Item = &str> {
+    let whole = text.trim();
+    std::iter::once(whole).chain(
+        text.split_whitespace()
+            .filter(move |word| word.starts_with("orqwa:") && *word != whole),
+    )
+}
+
+/// The invitation in a paste, ready to read; `None` if it holds none.
+#[must_use]
+pub fn pasted_invitation(text: &str) -> Option<&str> {
+    candidates(text).find(|code| Invite::from_code(code, EXTRACTION).is_ok())
+}
+
+/// The reply in a paste, ready to read; `None` if it holds none.
+#[must_use]
+pub fn pasted_reply(text: &str) -> Option<&str> {
+    candidates(text).find(|code| Reply::from_code(code, EXTRACTION).is_ok())
+}
+
+/// Which group code a paste holds, to tell riders who pasted the other one (R195).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CodeKind {
+    /// An organizer's invitation.
+    Invitation,
+    /// A friend's reply to one.
+    Reply,
+    /// Neither.
+    None,
+}
+impl CodeKind {
+    /// Stable presentation key; empty for none.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Invitation => "invitation",
+            Self::Reply => "reply",
+            Self::None => "",
+        }
+    }
+}
+
+/// Which group code `text` holds, read offline without reporting anything.
+#[must_use]
+pub fn code_kind(text: &str) -> CodeKind {
+    if pasted_invitation(text).is_some() {
+        CodeKind::Invitation
+    } else if pasted_reply(text).is_some() {
+        CodeKind::Reply
+    } else {
+        CodeKind::None
+    }
+}
+
 /// Validates a pasted lobby invitation entirely offline, without granting its permissions.
 ///
 /// # Errors
 /// Returns [`AppError`] for an invalid, oversized, incompatible or non-lobby invitation.
 pub fn invitation(text: &str) -> Result<InvitationPreview, AppError> {
-    // This permissive parse is inspection only. group_connect rechecks the actual chosen
-    // policy before creating an owner; transport repeats that check before any operation.
-    let parsed = Invite::from_code(
-        text,
-        AddressPolicy {
-            lan: true,
-            loopback: false,
-        },
-    )
-    .map_err(error)?;
+    let code = pasted_invitation(text).unwrap_or(text);
+    let parsed = Invite::from_code(code, INSPECTION).map_err(error)?;
     if parsed.route != RouteHash::LOBBY {
         return Err(error("Ask the organizer for a group ride invitation."));
     }
@@ -135,6 +197,7 @@ impl App {
         lookup: bool,
     ) -> Result<(), AppError> {
         let options = self.connect_options(mode, lookup);
+        let invite = invite.map(|text| pasted_invitation(&text).unwrap_or(&text).to_owned());
         if let Some(text) = &invite {
             let parsed = Invite::from_code(text, options.gather.policy).map_err(error)?;
             if parsed.route != RouteHash::LOBBY {
@@ -251,6 +314,58 @@ mod tests {
         );
         drop((first, again));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pasted_codes_are_found_alone_wrapped_or_in_a_message_and_told_apart() {
+        let invite = Invite {
+            ride: RideId([1; 16]),
+            fingerprint: Fingerprint([2; 32]),
+            route: RouteHash::LOBBY,
+            host: "Alex".into(),
+            course: "Group ride".into(),
+            candidates: vec![
+                Candidate::new(
+                    CandidateKind::Public,
+                    "1.1.1.1:50000".parse().unwrap(),
+                    INSPECTION,
+                )
+                .unwrap(),
+            ],
+            nat: NatObservation::None,
+        };
+        let reply = Reply {
+            ride: invite.ride,
+            fingerprint: invite.fingerprint,
+            route: invite.route,
+            client: Fingerprint([3; 32]),
+            candidates: invite.candidates.clone(),
+            nat: NatObservation::None,
+        };
+        let invitation_code = invite.to_code(INSPECTION).unwrap();
+        let reply_code = reply.to_code(INSPECTION).unwrap();
+        assert_eq!(code_kind(&invitation_code), CodeKind::Invitation);
+        assert_eq!(code_kind(&reply_code), CodeKind::Reply);
+        assert_eq!(code_kind("see you at seven"), CodeKind::None);
+        // Pasted with the message it came in.
+        let message = format!("Join us tonight: {invitation_code} See you!");
+        assert_eq!(pasted_invitation(&message), Some(invitation_code.as_str()));
+        assert_eq!(invitation(&message).unwrap().organizer, "Alex");
+        let answer = format!("Here is mine:\n{reply_code}\nthanks");
+        assert_eq!(pasted_reply(&answer), Some(reply_code.as_str()));
+        assert_eq!(code_kind(&answer), CodeKind::Reply);
+        // Wrapped over lines by a messenger.
+        let wrapped: String = invitation_code
+            .as_bytes()
+            .chunks(40)
+            .map(|line| std::str::from_utf8(line).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(code_kind(&wrapped), CodeKind::Invitation);
+        assert!(
+            pasted_reply(&invitation_code).is_none(),
+            "an invitation is no reply"
+        );
     }
 
     #[test]

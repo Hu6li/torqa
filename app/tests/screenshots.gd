@@ -146,13 +146,7 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		root.get_texture().get_image().save_png(out.path_join("group-voice-" + locale + ".png"))
 		scroll.scroll_vertical = 0
 		audio.update_status({})
-	group._show_status({"phase": "connecting", "reply": "private"})
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-joining-de.png"))
-	group._show_exchange("join")
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-invitation-de.png"))
-	group._exchange.hide()
+	await GroupCodeScreenshots.capture(self, group, str(orqwa.group_status()["invite"]), out)
 	orqwa.group_leave()
 	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
