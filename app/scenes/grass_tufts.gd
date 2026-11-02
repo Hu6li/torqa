@@ -11,6 +11,7 @@ static func mesh(flower: bool) -> ArrayMesh:
 	var tool: SurfaceTool = SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	tool.set_normal(Vector3.UP)
+	tool.set_uv2(Vector2.ZERO)
 	# Many thin blades bending over in two segments read as grass (ADR 0020); a few broad ones
 	# read as an agave.
 	var blades: int = 3 if flower else 40
@@ -34,10 +35,7 @@ static func mesh(flower: bool) -> ArrayMesh:
 		_add_blade(tool, root, middle, side * width, side * width * 0.6, base, halfway, 0.0, 0.6)
 		_add_blade(tool, middle, tip, side * width * 0.6, Vector3.ZERO, halfway, top, 0.6, 1.0)
 		if flower:
-			# A head: two crossed petals' quads at the tip, marked by alpha 0.
-			var head: Color = Color(1, 1, 1, 0)
-			for axis: Vector3 in [side, out]:
-				_add_quad(tool, tip - axis * 0.045, tip + axis * 0.045, Vector3.UP * 0.05, head)
+			_flower(tool, tip)
 	return tool.commit()
 
 
@@ -79,8 +77,19 @@ static func _add_blade(
 		tool.add_vertex(position)
 
 
-static func _add_quad(tool: SurfaceTool, a: Vector3, b: Vector3, up: Vector3, color: Color) -> void:
-	for position: Vector3 in [a, b, b + up, a, b + up, a + up]:
-		tool.set_color(color)
-		tool.set_uv(Vector2(0.5, 1.0))
-		tool.add_vertex(position)
+static func _flower(tool: SurfaceTool, center: Vector3) -> void:
+	# Five cupped petals catch light from above and from road height. UV2 keeps the head's
+	# centre so the seasonal shader opens it without moving its stem.
+	tool.set_uv2(Vector2(center.x, center.z))
+	tool.set_color(Color(1, 1, 1, 0))
+	tool.set_uv(Vector2(0.5, 1.0))
+	for petal: int in range(5):
+		var angle: float = float(petal) * TAU / 5.0
+		var direction: Vector3 = Vector3(cos(angle), 0, sin(angle))
+		var side: Vector3 = Vector3(-direction.z, 0, direction.x)
+		var outer: Vector3 = center + direction * 0.075 + Vector3.UP * 0.025
+		var left: Vector3 = center + direction * 0.045 - side * 0.028 + Vector3.UP * 0.012
+		var right: Vector3 = center + direction * 0.045 + side * 0.028 + Vector3.UP * 0.012
+		for point: Vector3 in [center, left, outer, center, outer, right]:
+			tool.add_vertex(point)
+	tool.set_uv2(Vector2.ZERO)

@@ -65,9 +65,28 @@
     "palms": ["#5a7a34", "#66843a", "#52722f", "#6f8a3c"],
     "tropical": ["#4f7a2e", "#5b8636", "#46702a", "#62883a"]
   },
+  "winter": {
+    "snow": "#e6edf1",
+    "dormant": "#76604a"
+  },
+  "spring": {
+    "blossom": ["#e5c4cf", "#ebded9", "#d9a9bb", "#f0d4dc"],
+    "flowers": ["#e5c449", "#ede5d7", "#cd83a8", "#a18bc1"]
+  },
+  "autumn": {
+    "leaves": ["#a94e32", "#c16f32", "#b68a36", "#913c32"]
+  },
   "buildings": {
     "walls": ["#e9e4d8", "#e6d6bc", "#dcc6a6", "#c9b49c", "#efe9df", "#d8d4c6"],
     "light_walls": ["#ece8de", "#e4dfd3", "#e9e2d4", "#dfd9cd"],
+    "asian_walls": ["#e8e3d7", "#d9d2c3", "#eee9de", "#d6a18b", "#a9c2b1", "#9fb9ce", "#d2a9b7", "#d5bd80"],
+    "asian_roofs": ["#484b50", "#55585c", "#62615e", "#873f37", "#52685c", "#4c657d"],
+    "nordic_walls": ["#a84434", "#bd5d43", "#d3a34a", "#e8dcbe", "#e8e7df", "#849380", "#829caf"],
+    "nordic_roofs": ["#41464a", "#5c433c", "#424f46", "#4e6171", "#754133"],
+    "french_walls": ["#e8dcc3", "#dfc79d", "#eee7d9", "#c8d5d0", "#c9a58e", "#d9d3c6"],
+    "french_roofs": ["#42464d", "#55575a", "#783f31", "#9b4f35", "#6b6258"],
+    "french_city_walls": ["#dfd2bd", "#e7ddca", "#d2c3aa", "#e8e2d7", "#d5c6ae"],
+    "french_city_roofs": ["#51545b", "#62656a", "#75777a", "#4a4e54"],
     "timber": ["#5a3f2c", "#6a4a33", "#4e3727", "#7a5a3e"],
     "wood_dark": "#3a2a20",
     "wood_light": "#a07a52",

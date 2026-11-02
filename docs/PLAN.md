@@ -200,6 +200,10 @@ Built in rideable steps:
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
+- [x] A bar in the zone's colour beside each power and heart-rate figure under the large one,
+  by the zone of the figure's own value: 3 s, 10 s, average and normalized power by theirs
+  (R179, R182, #432); a large heart rate has its % of the maximum and zone underneath, coloured
+  like the power line (R182)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
@@ -230,6 +234,8 @@ Built in rideable steps:
 - [x] i18n: all texts translatable, German translation, language per rider (R24)
 - [x] German reviewed text by text (#261): contextual translations and classified core errors
   with localized explanations, unchanged diagnostic details and session error history (R74)
+- [x] Failures at the bottom right on a card with a red edge and a warning sign, the newest
+  explained and earlier ones counted (R178, #436)
 
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
 - [x] Video decoding in the core: frame for any moment, forward/backward/seek, scaled to 1080p
@@ -389,6 +395,8 @@ Built in rideable steps:
   the choice is kept and ORQWA starts that way
 - [x] Full-screen button beside Overlay in the ride control bar (R150, #376), with an
   icon and tooltip that follow the window when switched by the keyboard or settings too
+- [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
+  full screen (R177, #439)
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter
@@ -453,6 +461,18 @@ physically based materials and light, restyled group by group.
 - [x] Tropical worlds (#136): palms, banana plants and tropical shrubs, and houses built for
   the heat (flat roofs with water tanks, low red-tiled hipped roofs) within 27° of the
   equator below 1,200 m
+- [x] Asian architecture starter set (R164, [ADR 0035](adr/0035-regional-buildings.md)):
+  six East Asian timber-and-plaster houses with varied pastel/earth/green/blue walls and
+  roofs, and three tiered castle keeps, selected per building from bundled Asian outlines.
+  Regional distant/fallback shells; tropical houses retained.
+  [Assets and validation](regional-buildings.md).
+- [x] Nordic regional architecture (R164): four painted-timber houses and three stone keeps,
+  selected for Denmark, Finland, Iceland, Norway, Sweden and Nordic territories from bundled
+  outlines. Red, ochre, cream, green and blue walls and roofs; castles remain mapped POIs.
+- [x] French regional architecture (R164): four plastered village houses, two five- and
+  six-storey Haussmann-inspired city houses and three château-inspired stone keeps for
+  metropolitan France and Corsica. [Assets and validation](regional-buildings.md).
+- [ ] More locally distinct architecture sets and house/landmark types across Asia.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [x] **Benchmark graphics** in Settings → Graphics (R151, #353): offline calibration with
@@ -479,11 +499,21 @@ physically based materials and light, restyled group by group.
     distance; ways through woods hidden under them rather than ended by distance
 - [x] Summer season baseline (#350, R154): a remembered Season selector beside Weather and
   Time of day, available before and during 3D rides; green foliage and meadows by default.
+- [x] Spring flowers and blossom (#350, R155): open five-petal meadow flowers and pink/white
+  blossom among green broadleaves, including their LODs and distant mixed canopy. Flowering
+  crowns use petal-shaped twig-cluster cards rather than recoloured leaves (R160).
 - [x] Summer meadows are predominantly grass, retaining only a sparse 10% of the existing
   flower clumps (R158), with the other positions filled by full grass tufts.
-- [ ] Spring flowers and blossom (#350).
-- [ ] Autumn red and orange broadleaf foliage (#350).
-- [ ] Winter snow where the route's climate and elevation allow it (#350).
+- [x] Autumn red, orange and gold broadleaf foliage (#350, R156), with the distant mixed
+  canopy following it; conifers and tropical lowlands retain their green.
+- [x] Autumn has grass instead of meadow flowers and no flower-box blooms (R159).
+- [x] Autumn has stronger orange/russet distant woodland collections and fallen leaves on
+  forest streets, with open clearings, tropical lowlands and ridden tunnels excluded (R162).
+- [x] Winter snow where the route's climate and elevation allow it (#350, R157), on ground,
+  foliage and rocks; dormant broadleaves and small plants. Raised roadside banks deepen
+  with altitude, street snow has paired tyre tracks, and tunnels remain clear (R161).
+  Natural-ground blankets and boulder caps gain actual depth with altitude too, with
+  greater surface coverage and retained-road/paving clearance (R163).
 - [x] Graphics details below the preset (R90): shadows, ambient occlusion, reflections, bloom,
   view distance, grass, anti-aliasing, render scale, frame rate limit and V-Sync, each Auto or
   its own value, kept per computer

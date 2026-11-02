@@ -305,6 +305,8 @@ func _process(delta: float) -> void:
 	_show_gear(state["gear"])
 	var metrics: Dictionary = state["metrics"]
 	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
+	var zones: Dictionary = state["metric_zones"]
+	_hud.show_zones(zones)
 	_chart.heart_rate_target = _workout_panel.show_state(state["workout"], state["heart_rate"])
 	if _chart_panel.visible:
 		_chart_left -= delta

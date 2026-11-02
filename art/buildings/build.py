@@ -30,7 +30,9 @@ OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models",
 # Colours of the materials in Blender's preview; the app replaces the materials by name.
 PREVIEW = {
     "plaster": (0.86, 0.83, 0.77),
+    "nordic_wood": (0.58, 0.19, 0.12),
     "stone": (0.6, 0.58, 0.55),
+    "castle_stone": (0.56, 0.55, 0.51),
     "wood": (0.45, 0.3, 0.17),
     "wood_dark": (0.28, 0.18, 0.1),
     "frame": (0.93, 0.93, 0.91),

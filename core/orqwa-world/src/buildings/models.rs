@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use super::shape::Rect;
-use super::{Dice, Kind};
+use super::{Dice, Kind, Region};
 
 /// The manifest the model build writes next to the models.
 const MANIFEST: &str = include_str!("../../../../app/assets/models/buildings/models.json");
@@ -22,7 +22,8 @@ pub(crate) struct Model {
     #[serde(skip)]
     pub(crate) name: String,
     /// `house`, `chalet`, `farmhouse`, `church`, `chapel`, `shed`, `office`, `public`,
-    /// `hotel`, `castle`, `lighthouse` or `tropical` (houses of the subtropics).
+    /// `hotel`, `castle`, `lighthouse`, `tropical`, `japanese_house`, `japanese_castle`,
+    /// `nordic_house`, `nordic_castle`, `french_house`, `french_castle` or `french_city`.
     kind: String,
     /// `gable`, `hipped` or `flat`.
     pub(crate) roof: String,
@@ -59,6 +60,7 @@ pub(crate) struct Wanted {
     pub(crate) kind: Kind,
     /// Houses in the subtropics are built for the heat.
     pub(crate) tropical: bool,
+    pub(crate) region: Region,
     /// Small churches are chapels.
     pub(crate) chapel: bool,
     pub(crate) storeys: Option<u32>,
@@ -78,6 +80,9 @@ pub(crate) struct Fit {
 pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
     let kind = match wanted.kind {
         Kind::House if wanted.tropical => "tropical",
+        Kind::House if wanted.region == Region::Asia => "japanese_house",
+        Kind::House if wanted.region == Region::France => "french_house",
+        Kind::House if wanted.region == Region::Nordic => "nordic_house",
         Kind::House => "house",
         Kind::Chalet => "chalet",
         Kind::Farmhouse => "farmhouse",
@@ -87,6 +92,10 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Office => "office",
         Kind::Public => "public",
         Kind::Hotel => "hotel",
+        Kind::Block if wanted.region == Region::France => "french_city",
+        Kind::Castle if wanted.region == Region::Asia => "japanese_castle",
+        Kind::Castle if wanted.region == Region::France => "french_castle",
+        Kind::Castle if wanted.region == Region::Nordic => "nordic_castle",
         Kind::Castle => "castle",
         Kind::Lighthouse => "lighthouse",
         Kind::Block | Kind::Hall => return None,
@@ -161,6 +170,7 @@ mod tests {
         let wanted = Wanted {
             kind: Kind::House,
             tropical: false,
+            region: Region::Generic,
             chapel: false,
             storeys: Some(2),
             hipped: false,
@@ -191,6 +201,7 @@ mod tests {
             let wanted = Wanted {
                 kind: Kind::House,
                 tropical: false,
+                region: Region::Generic,
                 chapel: false,
                 storeys: Some(storeys),
                 hipped,
@@ -219,6 +230,7 @@ mod tests {
             let wanted = Wanted {
                 kind,
                 tropical: false,
+                region: Region::Generic,
                 chapel: false,
                 storeys: Some(storeys),
                 hipped,
@@ -248,6 +260,7 @@ mod tests {
             let wanted = Wanted {
                 kind,
                 tropical: false,
+                region: Region::Generic,
                 chapel: false,
                 storeys: None,
                 hipped: false,
@@ -270,6 +283,7 @@ mod tests {
             let wanted = Wanted {
                 kind: Kind::House,
                 tropical: true,
+                region: Region::Generic,
                 chapel: false,
                 storeys: Some(storeys),
                 hipped,
@@ -285,6 +299,7 @@ mod tests {
         let temperate = Wanted {
             kind: Kind::House,
             tropical: false,
+            region: Region::Generic,
             chapel: false,
             storeys: Some(2),
             hipped: false,
@@ -299,6 +314,7 @@ mod tests {
         let wanted = Wanted {
             kind: Kind::Chalet,
             tropical: false,
+            region: Region::Generic,
             chapel: false,
             storeys: None,
             hipped: false,
@@ -310,5 +326,158 @@ mod tests {
             ..wanted
         };
         assert!(fitting(&Rect::square((0.0, 0.0), (1.0, 0.0), 8.0), block, &Dice(1)).is_none());
+    }
+
+    #[test]
+    fn asian_models_stay_in_their_region_and_keep_tropical_houses() {
+        for (kind, half_length, half_width, storeys) in [
+            (Kind::House, 6.0, 4.5, 1),
+            (Kind::House, 6.0, 4.5, 2),
+            (Kind::Castle, 11.0, 8.0, 3),
+            (Kind::Castle, 17.0, 12.0, 5),
+        ] {
+            let rect = Rect {
+                half_length,
+                half_width,
+                ..Rect::square((0.0, 0.0), (1.0, 0.0), 1.0)
+            };
+            let wanted = Wanted {
+                kind,
+                tropical: false,
+                region: Region::Asia,
+                chapel: false,
+                storeys: Some(storeys),
+                hipped: kind == Kind::Castle,
+            };
+            let fit = fitting(&rect, wanted, &Dice(7)).expect("regional model");
+            assert!(fit.model.name.starts_with("japanese_"));
+            assert_eq!(fit.model.storeys, Some(storeys));
+            let generic = Wanted {
+                region: Region::Generic,
+                ..wanted
+            };
+            assert!(
+                !fitting(&rect, generic, &Dice(7))
+                    .unwrap()
+                    .model
+                    .name
+                    .starts_with("japanese_")
+            );
+            if kind == Kind::House {
+                let tropical = Wanted {
+                    tropical: true,
+                    ..wanted
+                };
+                assert_eq!(
+                    fitting(&rect, tropical, &Dice(7)).unwrap().model.kind,
+                    "tropical"
+                );
+            }
+        }
+        // Missing regional sizes keep a regional shell instead of borrowing a European keep.
+        let wanted = Wanted {
+            kind: Kind::Castle,
+            tropical: false,
+            region: Region::Asia,
+            chapel: false,
+            storeys: None,
+            hipped: true,
+        };
+        let narrow = Rect {
+            half_length: 17.0,
+            half_width: 5.0,
+            ..Rect::square((0.0, 0.0), (1.0, 0.0), 1.0)
+        };
+        assert!(fitting(&narrow, wanted, &Dice(7)).is_none());
+    }
+
+    #[test]
+    fn nordic_models_stay_in_their_region_and_keep_tropical_houses() {
+        for (kind, half_length, half_width, storeys, prefix) in [
+            (Kind::House, 6.0, 4.5, 2, "nordic_house"),
+            (Kind::Castle, 11.5, 8.0, 3, "nordic_castle"),
+        ] {
+            let rect = Rect {
+                half_length,
+                half_width,
+                ..Rect::square((0.0, 0.0), (1.0, 0.0), 1.0)
+            };
+            let wanted = Wanted {
+                kind,
+                tropical: false,
+                region: Region::Nordic,
+                chapel: false,
+                storeys: Some(storeys),
+                hipped: false,
+            };
+            let fit = fitting(&rect, wanted, &Dice(19)).expect("Nordic model");
+            assert!(fit.model.name.starts_with(prefix));
+            if kind == Kind::Castle {
+                let eaves = 3.0 + f64::from(storeys) * 3.3;
+                assert!((fit.model.eaves - eaves).abs() < 0.001);
+            }
+            let generic = Wanted {
+                region: Region::Generic,
+                ..wanted
+            };
+            assert!(
+                !fitting(&rect, generic, &Dice(19))
+                    .unwrap()
+                    .model
+                    .name
+                    .starts_with("nordic_")
+            );
+            if kind == Kind::House {
+                let tropical = Wanted {
+                    tropical: true,
+                    ..wanted
+                };
+                assert_eq!(
+                    fitting(&rect, tropical, &Dice(19)).unwrap().model.kind,
+                    "tropical"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn french_models_are_selected_only_in_france() {
+        for (kind, prefix) in [
+            (Kind::House, "french_house"),
+            (Kind::Castle, "french_castle"),
+            (Kind::Block, "french_city"),
+        ] {
+            let (half_length, half_width, storeys) = match kind {
+                Kind::House => (6.0, 4.5, 2),
+                Kind::Castle => (11.5, 8.0, 3),
+                Kind::Block => (14.0, 8.0, 5),
+                _ => unreachable!(),
+            };
+            let rect = Rect {
+                half_length,
+                half_width,
+                ..Rect::square((0.0, 0.0), (1.0, 0.0), 1.0)
+            };
+            let wanted = Wanted {
+                kind,
+                tropical: false,
+                region: Region::France,
+                chapel: false,
+                storeys: Some(storeys),
+                hipped: true,
+            };
+            let fit = fitting(&rect, wanted, &Dice(23)).expect("French model");
+            assert!(fit.model.name.starts_with(prefix));
+            let generic = Wanted {
+                region: Region::Generic,
+                ..wanted
+            };
+            let generic_fit = fitting(&rect, generic, &Dice(23));
+            if kind == Kind::Block {
+                assert!(generic_fit.is_none());
+            } else {
+                assert!(!generic_fit.unwrap().model.name.starts_with("french_"));
+            }
+        }
     }
 }
