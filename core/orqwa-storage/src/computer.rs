@@ -1,9 +1,9 @@
 //! Settings of this computer (R78, #257): how detailed the 3D world is drawn (R43), the
 //! graphics options set apart from that preset (R90), whether the app fills the screen (#218),
-//! the phone remote (#228) and whether courses' worlds are kept (R101) depend on the machine in
-//! front of the rider, so they live in `computer.toml` next to the cache, never in the data
-//! directory, which a rider may share between computers (R30): there the last one to save
-//! would win.
+//! the phone remote (#228), whether courses' worlds are kept (R101) and the servers group rides
+//! ask for its internet address (R192) depend on the machine in front of the rider, so they live
+//! in `computer.toml` next to the cache, never in the data directory, which a rider may share
+//! between computers (R30): there the last one to save would win.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -37,6 +37,9 @@ struct ComputerFile {
     keep_worlds: Option<bool>,
     /// Whether regions' map detail is downloaded for courses (ADR 0033); off unless turned on.
     map_detail: Option<bool>,
+    /// The address lookup (STUN) servers group rides ask (R192); ORQWA's own when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    stun_servers: Vec<String>,
 }
 
 /// The phone remote on this computer (#228): a phone pairs with the computer it rides beside.
@@ -251,6 +254,24 @@ pub fn set_map_detail(file: &Path, on: bool) -> Result<(), ProfileError> {
     save(file, &computer)
 }
 
+/// The address lookup (STUN) servers the rider named for group rides on this computer (R192),
+/// as they were saved; empty when ORQWA asks its own. Lookups depend on the network the
+/// computer is on, so they are kept with it.
+#[must_use]
+pub fn stun_servers(file: &Path) -> Vec<String> {
+    read(file).stun_servers
+}
+
+/// Remembers the address lookup servers for group rides; empty for ORQWA's own.
+///
+/// # Errors
+/// [`ProfileError`] if the file cannot be written.
+pub fn set_stun_servers(file: &Path, servers: &[String]) -> Result<(), ProfileError> {
+    let mut computer = read(file);
+    computer.stun_servers = servers.to_vec();
+    save(file, &computer)
+}
+
 /// The phone remote as set on this computer.
 #[must_use]
 pub fn phone_remote(file: &Path) -> PhoneRemote {
@@ -364,6 +385,28 @@ mod tests {
         set_map_detail(&file, false).unwrap();
         assert!(!map_detail(&file));
         assert!(keep_worlds(&file));
+    }
+
+    #[test]
+    fn group_rides_ask_the_named_lookup_servers_until_cleared() {
+        let file = temp_file("stun-servers");
+        assert_eq!(
+            stun_servers(&file),
+            Vec::<String>::new(),
+            "ORQWA's own for a new computer"
+        );
+        let named = vec![
+            "stun.example.org:3478".to_owned(),
+            "192.0.2.1:3479".to_owned(),
+        ];
+
+        set_stun_servers(&file, &named).unwrap();
+        set_map_detail(&file, true).unwrap();
+
+        assert_eq!(stun_servers(&file), named, "kept beside other settings");
+        set_stun_servers(&file, &[]).unwrap();
+        assert_eq!(stun_servers(&file), Vec::<String>::new());
+        assert!(map_detail(&file));
     }
 
     #[test]

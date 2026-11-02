@@ -43,7 +43,8 @@ The existing Android phase, requirements and usage-wiki ADR keep their identifie
 
 - No networking starts merely because the app opens. A developer explicitly runs a network
   command. Ordinary rides remain offline. Public STUN discovery has a separate switch;
-  turning it off does not enable or disable router forwarding.
+  turning it off does not enable or disable router forwarding. Riders may name their own
+  servers instead of the public ones (R192, see below).
 - Advertise addresses of a selected interface, using the default interface when none is
   selected. Do not enumerate every VPN/container/interface address into an invite. LAN
   candidates require explicit LAN mode; loopback is a separate, explicit local-test mode.
@@ -316,6 +317,21 @@ A lost organizer is reconnected only while its app keeps the lobby at the same a
 Rejoining with fresh codes during a local ride is left for a follow-up. Course lobbies (CLI)
 are unchanged. No relay or server is added. Protocol/invitation version 11 and ALPN
 `orqwa-group/11` require matching builds and fresh codes.
+
+### Own lookup servers — 2026-11-02
+
+Riders who would rather not ask Google and Cloudflare, or whose network allows only its own
+STUN server, name up to four servers under More connection options (R192, #415). `stun::server`
+reads what they type, and the CLI's `--stun`, into the `host:port` discovery resolves: a name or
+IP address, the port 3478 unless given, and the `stun:` scheme of WebRTC configurations, while
+`stuns:` is refused rather than asked without TLS. Names are checked as DNS host names, so a
+mistyped address is pointed out instead of becoming a DNS query, and the existing bounds still
+apply: four servers, 260 bytes, destinations filtered by address policy after resolution.
+The servers are kept per computer in `computer.toml`, as the network decides which ones work,
+and replace the public list for every lookup of a ride; Same home Wi-Fi and a lookup turned off
+still ask none. With a single server the codes carry no second observation, so the
+reachability hint (R176) reads such a host as unknown; the field says so. Nothing in invites
+or the protocol changes.
 
 ## Consequences
 

@@ -2096,6 +2096,41 @@ impl OrqwaApp {
         };
         self.command(|app| app.group_connect((!text.is_empty()).then_some(text), mode, lookup))
     }
+    /// The address lookup servers named for this computer's group rides (R192), each as
+    /// `host:port`; empty while ORQWA asks its own, [`Self::default_stun_servers`].
+    #[func]
+    fn stun_servers(&self) -> PackedStringArray {
+        self.app
+            .as_ref()
+            .map(App::stun_servers)
+            .unwrap_or_default()
+            .iter()
+            .map(GString::from)
+            .collect()
+    }
+    /// Names the address lookup servers for this computer's group rides from the rider's
+    /// text: up to four, as host or host:port, separated by commas; empty for ORQWA's own.
+    /// False if they cannot be asked or saved, keeping those named before.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn set_stun_servers(&mut self, text: GString) -> bool {
+        let text = text.to_string();
+        self.command(|app| app.set_stun_servers(&text))
+    }
+    /// Whether `text` names servers [`Self::set_stun_servers`] takes, as the rider types.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn stun_servers_valid(text: GString) -> bool {
+        orqwa_app::group::connection::stun_servers_valid(&text.to_string())
+    }
+    /// The servers a group ride's address lookup asks unless the rider names others.
+    #[func]
+    fn default_stun_servers() -> PackedStringArray {
+        orqwa_app::group::connection::DEFAULT_STUN_SERVERS
+            .iter()
+            .map(|s| GString::from(*s))
+            .collect()
+    }
     /// Leaves the group without stopping or discarding a local ride.
     #[func]
     fn group_leave(&mut self) {

@@ -26,6 +26,9 @@ var _more: Button = Button.new()
 var _advanced: VBoxContainer = VBoxContainer.new()
 var _lookup: CheckBox = CheckBox.new()
 var _lookup_preference: bool = true
+var _servers_caption: Label = UiTheme.caption("")
+var _servers: LineEdit = LineEdit.new()
+var _servers_help: Label = Label.new()
 var _error: Label = Label.new()
 
 
@@ -55,11 +58,19 @@ func _ready() -> void:
 	_more.pressed.connect(func() -> void: _advanced.visible = not _advanced.visible)
 	_content.add_child(_more)
 	_advanced.add_theme_constant_override("separation", 8)
-	_lookup.toggled.connect(func(on: bool) -> void: _lookup_preference = on)
+	_lookup.toggled.connect(_lookup_toggled)
 	_advanced.add_child(_lookup)
 	_explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_explanation.add_theme_color_override("font_color", UiTheme.MUTED)
 	_advanced.add_child(_explanation)
+	_advanced.add_child(_servers_caption)
+	_servers.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_servers.placeholder_text = ", ".join(OrqwaApp.default_stun_servers())
+	_servers.max_length = 1200
+	_servers.text_changed.connect(func(_text: String) -> void: _update_servers())
+	_advanced.add_child(_servers)
+	_servers_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_advanced.add_child(_servers_help)
 	_content.add_child(_advanced)
 	_text(_error)
 	_error.add_theme_color_override("font_color", UiTheme.DANGER)
@@ -151,6 +162,8 @@ func _begin(selected: String) -> void:
 	cancel_button_text = tr("Back") if _joining else tr("Cancel")
 	_error.hide()
 	_advanced.hide()
+	# Edits not confirmed last time are dropped: what is shown is what a lookup asks.
+	_servers.text = ", ".join(_orqwa.stun_servers())
 	# Release the previous group's selection without turning it into consent for a new ride.
 	_buttons.allow_unpress = true
 	for option: CheckBox in _choices.values():
@@ -195,11 +208,43 @@ func _update_choice() -> void:
 	if not _more.visible:
 		_advanced.hide()
 	_lookup.set_pressed_no_signal(_lookup_preference and _mode != "home")
+	_update_servers()
+
+
+func _lookup_toggled(on: bool) -> void:
+	_lookup_preference = on
+	_update_servers()
+
+
+## Servers are named for the lookup, so they can be changed only while it is on.
+func _update_servers() -> void:
+	_servers.editable = _lookup.button_pressed
+	var wrong: bool = _servers.editable and not _servers_valid()
+	_servers_help.text = (
+		tr("Enter up to four servers, each as name or name:port, separated by commas.")
+		if wrong
+		else tr(
+			"The services that find your internet address. Leave this empty for the public ones shown, or enter up to four of your own as name:port, separated by commas. With two or more, ORQWA can tell whether friends can reach you."
+		)
+	)
+	_servers_help.add_theme_color_override("font_color", UiTheme.DANGER if wrong else UiTheme.MUTED)
+
+
+func _servers_valid() -> bool:
+	return OrqwaApp.stun_servers_valid(_servers.text)
 
 
 func _confirm() -> void:
 	if get_ok_button().disabled:
 		return
+	if _lookup.button_pressed:
+		if not _servers_valid():
+			# The mistake may be in options the rider folded away again.
+			_advanced.show()
+			_servers.grab_focus()
+			return
+		if not _orqwa.set_stun_servers(_servers.text):
+			return
 	if _orqwa.group_connect(_invite, _mode, _lookup.button_pressed):
 		_invite = ""
 		hide()
@@ -253,6 +298,7 @@ func _translate() -> void:
 		_descriptions[key].text = captions[key][1]
 	_more.text = tr("More connection options")
 	_lookup.text = tr("Find my internet address automatically")
+	_servers_caption.text = tr("STUN servers")
 	_explanation.text = tr(
 		"Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
 	)

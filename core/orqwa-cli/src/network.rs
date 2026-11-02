@@ -75,8 +75,9 @@ pub(crate) struct NetworkArgs {
     /// Ask no public STUN server and send no STUN DNS requests.
     #[arg(long, global = true, conflicts_with = "stun")]
     no_stun: bool,
-    /// Use these STUN host:port addresses instead of the defaults (at most four).
-    #[arg(long, global = true)]
+    /// Use this STUN server instead of the defaults, as host or host:port (3478 unless given);
+    /// repeat for up to four.
+    #[arg(long, global = true, value_parser = orqwa_net::stun::server)]
     stun: Vec<String>,
 }
 
@@ -171,6 +172,30 @@ mod tests {
                 "1.1.1.1:3478"
             ])
             .is_err()
+        );
+    }
+
+    #[test]
+    fn named_stun_servers_take_the_default_port_and_refuse_what_cannot_be_asked() {
+        let cli = crate::Cli::try_parse_from([
+            "orqwa-cli",
+            "net-check",
+            "--stun",
+            "stun.example.org",
+            "--stun",
+            "stun:192.0.2.1:3479",
+        ])
+        .unwrap();
+        let crate::Command::NetCheck(args) = cli.command else {
+            panic!("net-check");
+        };
+        assert_eq!(
+            args.network.options().stun_servers,
+            ["stun.example.org:3478", "192.0.2.1:3479"]
+        );
+        assert!(
+            crate::Cli::try_parse_from(["orqwa-cli", "net-check", "--stun", "stuns:x.example"])
+                .is_err()
         );
     }
 }

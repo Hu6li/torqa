@@ -150,7 +150,9 @@ func _nested_pages() -> void:
 
 
 func _connection_choices() -> void:
+	var orqwa: OrqwaApp = OrqwaApp.new()
 	var dialog: GroupConnectionDialog = GroupConnectionDialog.new()
+	dialog.bind(orqwa)
 	root.add_child(dialog)
 	dialog.ask_create()
 	dialog.hide()
@@ -187,6 +189,7 @@ func _connection_choices() -> void:
 	)
 	scroll.free()
 	dialog.free()
+	orqwa.free()
 
 
 func _page(content: Control) -> ScrollContainer:

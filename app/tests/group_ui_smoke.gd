@@ -77,6 +77,46 @@ func _microphone_off(app: OrqwaApp) -> bool:
 	return not testing and not mic
 
 
+## Riders may name their own lookup servers (R192); mistakes are shown, never asked.
+func _lookup_servers(host: OrqwaApp, connection: GroupConnectionDialog) -> void:
+	_check(not connection._servers.editable, "servers are named only for a lookup")
+	_check(
+		connection._servers.text.is_empty() and "stun." in connection._servers.placeholder_text,
+		"the public servers are shown until others are named"
+	)
+	connection._lookup.button_pressed = true
+	connection._servers.text = "stun.example.org:0"
+	connection._servers.text_changed.emit(connection._servers.text)
+	_check(
+		connection._servers_help.get_theme_color("font_color") == UiTheme.DANGER,
+		"a server that cannot be asked is pointed out while typing"
+	)
+	connection._advanced.hide()
+	connection._confirm()
+	await process_frame
+	_check(
+		(
+			connection.visible
+			and connection._advanced.visible
+			and str(host.group_status()["phase"]) == "idle"
+		),
+		"confirming shows the mistake in folded options and starts no networking"
+	)
+	connection._cancel()
+	_check(host.set_stun_servers("stun:stun.example.org 192.0.2.1:3479"), "servers named")
+	connection.ask_create()
+	var named: String = "stun.example.org:3478, 192.0.2.1:3479"
+	_check(connection._servers.text == named, "the named servers are shown as a lookup asks them")
+	connection._servers.text = "typo:x"
+	connection._cancel()
+	connection.ask_create()
+	_check(connection._servers.text == named, "edits not confirmed are dropped")
+	_check(host.set_stun_servers(""), "the public servers again")
+	connection._lookup.button_pressed = false
+	connection._cancel()
+	connection.ask_create()
+
+
 ## Cancelling setup grants no network access; joining inspects the code before connecting.
 func _group_connections() -> void:
 	var host: OrqwaApp = OrqwaApp.new()
@@ -107,6 +147,7 @@ func _group_connections() -> void:
 		not connection._lookup.button_pressed,
 		"opening setup again preserves an explicit lookup opt-out"
 	)
+	await _lookup_servers(host, connection)
 	connection._choices["home"].button_pressed = true
 	_check(
 		not connection._lookup.button_pressed and not connection._more.visible,

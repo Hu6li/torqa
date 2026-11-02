@@ -2,9 +2,19 @@
 
 use orqwa_net::code::{Invite, RouteHash};
 use orqwa_net::policy::AddressPolicy;
+use orqwa_net::stun;
+use orqwa_storage::computer;
 
 use super::{ConnectOptions, error};
-use crate::{App, AppError};
+use crate::{App, AppError, Failure, Kind};
+
+pub use orqwa_net::discovery::DEFAULT_STUN_SERVERS;
+
+/// Whether `text` names servers [`App::set_stun_servers`] takes, checked as the rider types.
+#[must_use]
+pub fn stun_servers_valid(text: &str) -> bool {
+    stun::servers(text).is_ok()
+}
 
 /// A rider-facing description of where the group is riding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,14 +38,17 @@ impl ConnectionMode {
         }
     }
 
-    /// Creates the existing bounded transport options after explicit confirmation.
-    /// Home mode performs no public address discovery, even if lookup was previously selected.
+    /// Creates the existing bounded transport options after explicit confirmation. A lookup
+    /// asks `servers` instead of ORQWA's own unless that is empty (R192). Home mode performs
+    /// no public address discovery, even if lookup was previously selected.
     #[must_use]
-    pub fn options(self, lookup: bool) -> ConnectOptions {
+    pub fn options(self, lookup: bool, servers: &[String]) -> ConnectOptions {
         let mut options = ConnectOptions::default();
         options.gather.policy.lan = self != Self::Internet;
         if self == Self::Home || !lookup {
             options.gather.stun_servers.clear();
+        } else if !servers.is_empty() {
+            options.gather.stun_servers = servers.to_vec();
         }
         options
     }
@@ -78,6 +91,39 @@ pub fn invitation(text: &str) -> Result<InvitationPreview, AppError> {
 }
 
 impl App {
+    /// The address lookup servers named for this computer's group rides (R192), each as
+    /// discovery resolves it; empty while ORQWA asks its own. Entries of a hand-edited file
+    /// that cannot be asked are left out, and a fifth onwards, as discovery refuses them.
+    #[must_use]
+    pub fn stun_servers(&self) -> Vec<String> {
+        let mut servers: Vec<String> = Vec::new();
+        for server in computer::stun_servers(&self.computer) {
+            if let Ok(server) = stun::server(&server)
+                && !servers.contains(&server)
+                && servers.len() < stun::MAX_SERVERS
+            {
+                servers.push(server);
+            }
+        }
+        servers
+    }
+
+    /// Names the address lookup servers this computer's group rides ask from now on, read
+    /// from `text` as [`stun::servers`] reads it; empty text goes back to ORQWA's own.
+    ///
+    /// # Errors
+    /// [`AppError`] if an address cannot be asked or more than four are named, keeping the
+    /// servers named before, or if they cannot be saved.
+    pub fn set_stun_servers(&mut self, text: &str) -> Result<(), AppError> {
+        let servers = stun::servers(text).map_err(error)?;
+        computer::set_stun_servers(&self.computer, &servers)
+            .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))
+    }
+
+    fn connect_options(&self, mode: ConnectionMode, lookup: bool) -> ConnectOptions {
+        mode.options(lookup, &self.stun_servers())
+    }
+
     /// Confirms a guided connection choice before starting any discovery or admission.
     ///
     /// # Errors
@@ -88,7 +134,7 @@ impl App {
         mode: ConnectionMode,
         lookup: bool,
     ) -> Result<(), AppError> {
-        let options = mode.options(lookup);
+        let options = self.connect_options(mode, lookup);
         if let Some(text) = &invite {
             let parsed = Invite::from_code(text, options.gather.policy).map_err(error)?;
             if parsed.route != RouteHash::LOBBY {
@@ -106,13 +152,13 @@ mod tests {
 
     #[test]
     fn home_and_internet_choices_keep_discovery_and_local_permissions_explicit() {
-        let internet = ConnectionMode::Internet.options(true);
+        let internet = ConnectionMode::Internet.options(true, &[]);
         assert!(!internet.gather.policy.lan && !internet.gather.policy.loopback);
         assert_ne!(internet.gather.stun_servers, Vec::<String>::new());
-        let home = ConnectionMode::Home.options(true);
+        let home = ConnectionMode::Home.options(true, &[]);
         assert!(home.gather.policy.lan && !home.gather.policy.loopback);
         assert_eq!(home.gather.stun_servers, Vec::<String>::new());
-        let mixed = ConnectionMode::Mixed.options(true);
+        let mixed = ConnectionMode::Mixed.options(true, &[]);
         assert!(mixed.gather.policy.lan && !mixed.gather.stun_servers.is_empty());
         for mode in [
             ConnectionMode::Internet,
@@ -120,12 +166,91 @@ mod tests {
             ConnectionMode::Mixed,
         ] {
             assert_eq!(
-                mode.options(false).gather.stun_servers,
+                mode.options(false, &[]).gather.stun_servers,
                 Vec::<String>::new()
             );
-            assert!(!mode.options(false).gather.policy.loopback);
+            assert!(!mode.options(false, &[]).gather.policy.loopback);
         }
         assert!(ConnectionMode::from_key("unexpected").is_none());
+    }
+
+    #[test]
+    fn named_lookup_servers_replace_the_defaults_only_where_a_lookup_is_made() {
+        let named = vec!["stun.example.org:3478".to_owned()];
+        for mode in [ConnectionMode::Internet, ConnectionMode::Mixed] {
+            assert_eq!(mode.options(true, &named).gather.stun_servers, named);
+            assert_eq!(
+                mode.options(false, &named).gather.stun_servers,
+                Vec::<String>::new()
+            );
+        }
+        assert_eq!(
+            ConnectionMode::Home
+                .options(true, &named)
+                .gather
+                .stun_servers,
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn named_lookup_servers_are_kept_for_the_computer_until_cleared() {
+        let token = orqwa_net::code::RideId::generate().unwrap();
+        let dir = std::env::temp_dir().join(format!("orqwa-lookup-servers-{:x?}", token.0));
+        let app = || App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let mut first = app();
+        let defaults = ConnectionMode::Internet
+            .options(true, &[])
+            .gather
+            .stun_servers;
+        assert_eq!(first.stun_servers(), Vec::<String>::new());
+        assert_eq!(
+            first
+                .connect_options(ConnectionMode::Internet, true)
+                .gather
+                .stun_servers,
+            defaults
+        );
+
+        first
+            .set_stun_servers("stun:stun.example.org, 192.0.2.1:3479")
+            .unwrap();
+        let named = vec![
+            "stun.example.org:3478".to_owned(),
+            "192.0.2.1:3479".to_owned(),
+        ];
+        let mut again = app();
+        assert_eq!(again.stun_servers(), named, "kept for the next start");
+        assert_eq!(
+            again
+                .connect_options(ConnectionMode::Mixed, true)
+                .gather
+                .stun_servers,
+            named
+        );
+        assert!(again.set_stun_servers("stun.example.org:0").is_err());
+        assert!(
+            again
+                .set_stun_servers("a.example b.example c.example d.example e.example")
+                .is_err()
+        );
+        assert_eq!(
+            again.stun_servers(),
+            named,
+            "a mistake keeps what was named"
+        );
+
+        again.set_stun_servers(" ").unwrap();
+        assert_eq!(again.stun_servers(), Vec::<String>::new());
+        assert_eq!(
+            again
+                .connect_options(ConnectionMode::Internet, true)
+                .gather
+                .stun_servers,
+            defaults
+        );
+        drop((first, again));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -165,7 +290,11 @@ mod tests {
         let code = invite.to_code(policy).unwrap();
         assert!(invitation(&code).unwrap().requires_home);
         assert!(
-            Invite::from_code(&code, ConnectionMode::Internet.options(true).gather.policy).is_err(),
+            Invite::from_code(
+                &code,
+                ConnectionMode::Internet.options(true, &[]).gather.policy
+            )
+            .is_err(),
             "inspection cannot grant LAN access"
         );
         assert!(invitation("orqwa:invalid").is_err());

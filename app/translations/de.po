@@ -3003,6 +3003,18 @@ msgstr "Diese Einladung enthält Verbindungen im Heimnetz. Wähle „Im selben W
 msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
 msgstr "Prüfe deine Einladung und Verbindungsauswahl und versuche es erneut. Mehr Informationen findest du unter Technische Details."
 
+#: app/ui/group_connection_dialog.gd
+msgid "STUN servers"
+msgstr "STUN-Server"
+
+#: app/ui/group_connection_dialog.gd
+msgid "The services that find your internet address. Leave this empty for the public ones shown, or enter up to four of your own as name:port, separated by commas. With two or more, ORQWA can tell whether friends can reach you."
+msgstr "Die Dienste, die deine Internetadresse ermitteln. Lass das Feld leer für die angezeigten öffentlichen oder gib bis zu vier eigene als Name:Port ein, durch Kommas getrennt. Mit zwei oder mehr erkennt ORQWA, ob dich Personen an anderen Orten erreichen können."
+
+#: app/ui/group_connection_dialog.gd
+msgid "Enter up to four servers, each as name or name:port, separated by commas."
+msgstr "Gib bis zu vier Server ein, jeweils als Name oder Name:Port, durch Kommas getrennt."
+
 #: app/scenes/group_rides_tab.gd
 msgid "As organizer, friends without IPv6 internet might not reach you."
 msgstr "Als organisierende Person wärst du für Freunde ohne IPv6-Internet möglicherweise nicht erreichbar."
