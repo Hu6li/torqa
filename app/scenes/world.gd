@@ -595,6 +595,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_chunk_count = _orqwa.world_chunk_count()
 	_road.mesh = WorldMeshes.from_arrays(_orqwa.road_mesh())
 	_road.material_override = _road_material
+	WinterSnowbanks.apply(self, _orqwa, _seasons.season == "Winter")
+	AutumnForest.apply(self, _orqwa, _seasons.season == "Autumn")
 	var land: Dictionary = _orqwa.horizon_meshes()
 	var ground: Dictionary = land["ground"]
 	var lakes: Dictionary = land["water"]

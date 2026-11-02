@@ -576,8 +576,14 @@ func _error_details(out_dir: String) -> void:
 		# The rider's profile selects its language at bind time; this fixture chooses one.
 		TranslationServer.set_locale(locale)
 		var orqwa: OrqwaApp = _main.get_node("Orqwa")
+		# Two failures, so the card (#436) counts the earlier one under the newest.
+		orqwa.ride_detail("/missing-earlier.fit", 10)
 		orqwa.ride_detail("/missing-261.fit", 10)
 		var details: FailureDetails = _main.get("_failures")
+		if locale == "en":
+			await create_timer(0.5).timeout
+			root.get_texture().get_image().save_png(out_dir.path_join("error-card.png"))
+			print("saved error-card.png")
 		var toggle: Button = details.get("_toggle")
 		toggle.button_pressed = true
 		await create_timer(0.5).timeout
