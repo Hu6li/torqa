@@ -638,6 +638,7 @@ async fn run_inner(
                 if let Some(start) = snapshot.start && std::time::Instant::now()>=start
                     && (!snapshot.late || snapshot.entry.is_some()) {snapshot.phase = Phase::Riding;}
                 if let Some(chat) = &voice {snapshot.microphone = chat.microphone_enabled();}
+                snapshot.speaking = voice.as_ref().map_or([false; orqwa_net::state::MAX_RIDERS], VoiceChat::speaking);
             }
         }
     }
@@ -676,6 +677,7 @@ fn end(snapshot: &mut Snapshot) {
     snapshot.microphone_voice_detected = false;
     snapshot.reconnecting = None;
     snapshot.away = [false; orqwa_net::state::MAX_RIDERS];
+    snapshot.speaking = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.voice = false;
     snapshot.voice_pending = false;
     snapshot.microphone = false;

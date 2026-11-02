@@ -7,10 +7,11 @@ mod echo;
 pub mod microphone_test;
 mod pacing;
 mod resample;
+mod speech;
 mod speech_activity;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,7 @@ use orqwa_net::voice::{Playout, VoicePort};
 use tokio::sync::{mpsc, oneshot};
 
 use codec::{SpeechDecoder, SpeechEncoder};
+use speech::Speaking;
 
 /// Playback frames kept queued ahead of the speaker, covering a late worker wakeup.
 const PLAYBACK_QUEUE: usize = 2;
@@ -69,6 +71,17 @@ struct Controls {
     volume: AtomicU32,
     flush: AtomicU32,
     echo_prevention: AtomicBool,
+    /// One bit per rider slot: who is speaking now.
+    speaking: AtomicU8,
+}
+const _: () = assert!(MAX_RIDERS <= 8, "one bit per rider in Controls::speaking");
+
+/// One friend's voice as it plays here.
+struct Voice {
+    /// Their current stream; a new one gets a fresh decoder.
+    epoch: u64,
+    decoder: SpeechDecoder,
+    speaking: Speaking,
 }
 
 /// Owns one local voice thread and its audio devices. Starts listening with the mic muted.
@@ -108,6 +121,7 @@ impl VoiceChat {
             volume: AtomicU32::new(0.6_f32.to_bits()),
             flush: AtomicU32::new(0),
             echo_prevention: AtomicBool::new(false),
+            speaking: AtomicU8::new(0),
         });
         let (ready, receive) = oneshot::channel();
         let (send, events) = mpsc::channel(8);
@@ -212,6 +226,14 @@ impl VoiceChat {
         self.wake();
         Ok(())
     }
+    /// Who is speaking now, by rider slot: friends while their speech plays here (never one
+    /// muted here, nobody while deafened), and this rider while their open microphone sends
+    /// speech. Shown a moment longer, so a rider does not flicker off between words.
+    #[must_use]
+    pub fn speaking(&self) -> [bool; MAX_RIDERS] {
+        let speaking = self.controls.speaking.load(Ordering::Relaxed);
+        std::array::from_fn(|slot| speaking & (1 << slot) != 0)
+    }
     /// Waits for the next bounded local status event.
     pub async fn next(&mut self) -> Option<VoiceEvent> {
         self.events.recv().await
@@ -252,6 +274,7 @@ impl Drop for VoiceChat {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one owner paces playback, capture, recovery and who speaks
 fn run(
     port: &VoicePort,
     controls: &Controls,
@@ -276,7 +299,8 @@ fn run(
     }
     port.enable(true);
     let _ = ready.send(Ok(()));
-    let mut decoders: [Option<(u64, SpeechDecoder)>; MAX_RIDERS] = std::array::from_fn(|_| None);
+    let mut voices: [Option<Voice>; MAX_RIDERS] = std::array::from_fn(|_| None);
+    let mut own = Speaking::default();
     let mut activation = None;
     let mut playback = (false, 0);
     let mut pacer = pacing::Pacer::new(Instant::now());
@@ -291,6 +315,7 @@ fn run(
             }
             activation = port.transmitting();
             speaker_gate.restart();
+            own = Speaking::default();
         }
         let output = (port.deafened(), controls.flush.load(Ordering::Relaxed));
         if output != playback {
@@ -300,7 +325,7 @@ fn run(
         if !audio.healthy() {
             let error = match audio.recover() {
                 Ok(true) => {
-                    decoders.fill_with(|| None);
+                    voices.fill_with(|| None);
                     pacer.defer(Instant::now());
                     continue;
                 }
@@ -320,7 +345,7 @@ fn run(
         for _ in 0..due.min(MAX_FRAMES_PER_WAKE) {
             let mixed = mix(
                 port,
-                &mut decoders,
+                &mut voices,
                 f32::from_bits(controls.volume.load(Ordering::Relaxed)),
                 events,
             );
@@ -332,9 +357,21 @@ fn run(
                 .echo_prevention
                 .load(Ordering::Acquire)
                 .then_some(&mut speaker_gate);
-            send_captures(port, audio.as_mut(), &mut encoder, spurt, gate, events);
+            send_captures(
+                port,
+                audio.as_mut(),
+                &mut encoder,
+                spurt,
+                &mut own,
+                gate,
+                events,
+            );
         }
         let now = Instant::now();
+        let sending = activation.is_some().then_some((port.me(), &own));
+        controls
+            .speaking
+            .store(speaking(&voices, sending, now), Ordering::Relaxed);
         pacer.completed(now);
         let wait = if queued.is_some() {
             POLL
@@ -344,10 +381,29 @@ fn run(
         std::thread::park_timeout(wait);
     }
     port.disable();
+    controls.speaking.store(0, Ordering::Relaxed);
     let _ = audio.microphone(None);
     audio.deafen(true);
     drop(audio);
     let _ = events.try_send(VoiceEvent::Stopped);
+}
+
+/// Who is speaking now, one bit per rider slot: friends as they play here, and this rider
+/// while their microphone is open.
+fn speaking(
+    voices: &[Option<Voice>; MAX_RIDERS],
+    own: Option<(RiderId, &Speaking)>,
+    now: Instant,
+) -> u8 {
+    let friends = voices
+        .iter()
+        .enumerate()
+        .fold(0, |speaking, (slot, voice)| {
+            let speaks = voice.as_ref().is_some_and(|voice| voice.speaking.at(now));
+            speaking | (u8::from(speaks) << slot)
+        });
+    own.filter(|(_, own)| own.at(now))
+        .map_or(friends, |(me, _)| friends | (1 << me.value()))
 }
 
 fn send_captures(
@@ -355,6 +411,7 @@ fn send_captures(
     audio: &mut dyn VoiceAudio,
     encoder: &mut SpeechEncoder,
     spurt: u32,
+    own: &mut Speaking,
     mut gate: Option<&mut echo::SpeakerGate>,
     events: &mpsc::Sender<VoiceEvent>,
 ) {
@@ -374,6 +431,8 @@ fn send_captures(
         if let Some(gate) = gate.as_deref_mut() {
             gate.apply(&mut captured.samples, captured.at);
         }
+        // As friends will hear it: not while a friend's speech holds the microphone.
+        own.observe(&captured.samples, captured.at);
         if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
             let _ = port.send(frame);
         } else {
@@ -388,43 +447,48 @@ fn send_captures(
 
 fn mix(
     port: &VoicePort,
-    decoders: &mut [Option<(u64, SpeechDecoder)>; MAX_RIDERS],
+    voices: &mut [Option<Voice>; MAX_RIDERS],
     volume: f32,
     events: &mpsc::Sender<VoiceEvent>,
 ) -> PcmFrame {
     let actions = port.playout();
+    let now = Instant::now();
     let mut mixed = [0.0; FRAME_SAMPLES];
     for (id, playback) in actions.into_iter().enumerate() {
         let action = playback.action;
         if matches!(action, Playout::Silence) {
-            decoders[id] = None;
+            voices[id] = None;
             continue;
         }
-        if decoders[id]
+        if voices[id]
             .as_ref()
-            .is_none_or(|(epoch, _)| *epoch != playback.epoch)
+            .is_none_or(|voice| voice.epoch != playback.epoch)
         {
-            decoders[id] = SpeechDecoder::new()
-                .ok()
-                .map(|decoder| (playback.epoch, decoder));
+            voices[id] = SpeechDecoder::new().ok().map(|decoder| Voice {
+                epoch: playback.epoch,
+                decoder,
+                speaking: Speaking::default(),
+            });
         }
-        let Some((_, decoder)) = &mut decoders[id] else {
+        let Some(voice) = &mut voices[id] else {
             continue;
         };
         let result = match action {
-            Playout::Frame(frame) => decoder.decode(&frame),
-            Playout::Recover(frame) => decoder.recover(&frame),
-            Playout::Conceal => decoder.conceal(),
+            Playout::Frame(frame) => voice.decoder.decode(&frame),
+            Playout::Recover(frame) => voice.decoder.recover(&frame),
+            Playout::Conceal => voice.decoder.conceal(),
             Playout::Silence => continue,
         };
         if let Ok(samples) = result {
+            // Before the playback volume: turning friends down here hides nobody speaking.
+            voice.speaking.observe(&samples, now);
             for (sum, sample) in mixed.iter_mut().zip(samples) {
                 *sum += sample;
             }
         } else {
             let peer = RiderId::new(u8::try_from(id).unwrap_or(0)).unwrap_or(RiderId::HOST);
             port.mute_peer(peer, true);
-            decoders[id] = None;
+            voices[id] = None;
             let _ = events.try_send(VoiceEvent::PeerMuted { peer });
         }
     }

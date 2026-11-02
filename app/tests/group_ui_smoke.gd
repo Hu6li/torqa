@@ -219,6 +219,23 @@ func _group_activity() -> void:
 	)
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
 	_check(not group._working.visible, "nothing turns once it is prepared")
+	# Who is speaking (R190), this rider too; the rows stay as they are while it changes.
+	var rows: Array[Node] = group._roster.get_children()
+	roster[1]["speaking"] = true
+	roster[2]["speaking"] = true
+	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	_check(group._roster.get_children() == rows, "speaking does not rebuild the riders' rows")
+	_check(
+		(
+			group._speaking[1].modulate.a == 1.0
+			and group._speaking[2].modulate.a == 1.0
+			and group._speaking[0].modulate.a == 0.0
+		),
+		"a speaker beside each rider heard speaking, none beside a quiet one"
+	)
+	roster[1]["speaking"] = false
+	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	_check(group._speaking[1].modulate.a == 0.0, "the speaker goes when they stop")
 	group._show_status({"host": true, "phase": "waiting", "drafting": true, "keep_together": true})
 	_check(
 		not group._drafting.disabled and not group._together.disabled, "organizer sets both rules"
@@ -459,6 +476,14 @@ func _group_motion() -> void:
 	# Others see the rider as they chose to look (#423) and their effort (#422).
 	_check(first._avatar.rider == "male", "the rider's own avatar")
 	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
+	var speaker: TextureRect = panel._speaking[1]
+	_check(speaker.modulate.a == 0.0, "no speaker beside a quiet rider")
+	peer["speaking"] = true
+	panel.show_riders([peer], false)
+	_check(
+		panel._speaking[1] == speaker and speaker.modulate.a == 1.0,
+		"a speaker beside the name of a rider heard speaking"
+	)
 	_check("252 W · 3.4 W/kg" in first._name.text, "and under it on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)

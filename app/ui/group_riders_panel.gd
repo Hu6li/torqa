@@ -1,11 +1,12 @@
 class_name GroupRidersPanel
 extends PanelContainer
-## Current group members beside the map: their power and W/kg (#422) and locally
-## interpolated distance gaps.
+## Current group members beside the map: who is speaking, their power and W/kg (#422) and
+## locally interpolated distance gaps.
 
 var _rows: VBoxContainer = VBoxContainer.new()
 var _labels: Dictionary[int, Label] = {}
 var _efforts: Dictionary[int, Label] = {}
+var _speaking: Dictionary[int, TextureRect] = {}
 var _key: String = ""
 
 
@@ -29,6 +30,7 @@ func show_riders(peers: Array, imperial: bool) -> void:
 		_key = key
 		_labels.clear()
 		_efforts.clear()
+		_speaking.clear()
 		for child: Node in _rows.get_children():
 			_rows.remove_child(child)
 			child.queue_free()
@@ -37,6 +39,11 @@ func show_riders(peers: Array, imperial: bool) -> void:
 			row.add_theme_constant_override("separation", 12)
 			var id: int = peer["id"]
 			var rider_name: String = peer["name"]
+			var heading: HBoxContainer = HBoxContainer.new()
+			heading.add_theme_constant_override("separation", 6)
+			heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			_speaking[id] = speaking_icon()
+			heading.add_child(_speaking[id])
 			var label: Label = Label.new()
 			label.text = rider_name
 			label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -45,7 +52,8 @@ func show_riders(peers: Array, imperial: bool) -> void:
 			label.custom_minimum_size.x = 70
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			label.add_theme_color_override("font_color", UiTheme.group_color(id))
-			row.add_child(label)
+			heading.add_child(label)
+			row.add_child(heading)
 			var effort_label: Label = Label.new()
 			effort_label.add_theme_font_size_override("font_size", 13)
 			effort_label.add_theme_color_override("font_color", UiTheme.MUTED)
@@ -58,6 +66,8 @@ func show_riders(peers: Array, imperial: bool) -> void:
 			_rows.add_child(row)
 	for peer: Dictionary in peers:
 		var id: int = peer["id"]
+		var speaking: bool = peer.get("speaking", false)
+		show_speaking(_speaking[id], speaking)
 		_efforts[id].text = effort(peer)
 		var gap: float = peer["gap_m"]
 		var distance: String = (
@@ -66,6 +76,21 @@ func show_riders(peers: Array, imperial: bool) -> void:
 			else tr("%s m") % roundi(absf(gap))
 		)
 		_labels[id].text = tr("%s ahead") % distance if gap >= 0 else tr("%s behind") % distance
+
+
+## The small speaker beside a rider's name while they are heard speaking. Hidden, it keeps
+## its room, so names do not shift as riders start and stop talking.
+static func speaking_icon() -> TextureRect:
+	var icon: TextureRect = TextureRect.new()
+	icon.texture = UiIcons.texture("speaking", 16, UiTheme.SUCCESS)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	show_speaking(icon, false)
+	return icon
+
+
+static func show_speaking(icon: TextureRect, speaking: bool) -> void:
+	icon.modulate.a = 1.0 if speaking else 0.0
 
 
 ## A rider's power and power per kilogram, e.g. "250 W · 3.4 W/kg".

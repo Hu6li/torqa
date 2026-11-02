@@ -49,6 +49,8 @@ pub struct GroupRider {
     pub power: Watts,
     /// Peer measured cadence for animation.
     pub cadence: Rpm,
+    /// Heard speaking now, as their voice plays here.
+    pub speaking: bool,
 }
 
 /// Current connection/preparation phase, independent of presentation language.
@@ -221,6 +223,8 @@ pub struct Snapshot {
     pub microphone_checked: bool,
     /// Per-speaker playback mute on this computer.
     pub muted: [bool; MAX_RIDERS],
+    /// Riders speaking now: friends as their voices play here, this rider as they are sent.
+    pub speaking: [bool; MAX_RIDERS],
     /// Bytes stored for the current file, coalesced by the download worker.
     pub received: u64,
     /// Expected current-file size; zero before a transfer begins.
@@ -286,6 +290,7 @@ impl Default for Snapshot {
             microphone_voice_heard: false,
             microphone_checked: false,
             muted: [false; MAX_RIDERS],
+            speaking: [false; MAX_RIDERS],
             received: 0,
             total: 0,
             reconnecting: None,
@@ -628,6 +633,7 @@ impl App {
                     speed: peer.speed,
                     power: peer.power,
                     cadence: peer.cadence,
+                    speaking: snapshot.speaking[id],
                 })
             })
             .collect()
