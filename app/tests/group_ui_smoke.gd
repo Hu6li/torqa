@@ -12,6 +12,9 @@ func _run() -> void:
 	await _group_connections()
 	await _group_activity()
 	await _group_motion()
+	_ride_bar()
+	_offer_card()
+	await _organizer_offer()
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -131,6 +134,34 @@ func _group_activity() -> void:
 	_check(
 		picker._course.disabled and not picker._apply.visible, "joiners preview the shared choice"
 	)
+	# How far everyone has got (#419), and something turning while this rider waits (#420).
+	var roster: Array = [
+		{"id": 0, "name": "Host", "ready": false, "me": false, "stage": "preparing", "percent": 70},
+		{
+			"id": 1,
+			"name": "Sam",
+			"ready": false,
+			"me": false,
+			"stage": "downloading",
+			"percent": 40
+		},
+		{"id": 2, "name": "Me", "ready": false, "me": true, "stage": "preparing", "percent": 55},
+		{"id": 3, "name": "Mia", "ready": true, "me": false, "stage": "", "percent": 0},
+	]
+	group._show_status({"host": false, "phase": "preparing", "name": "Ride", "roster": roster})
+	var states: Array[String] = []
+	for row: Node in group._roster.get_children():
+		states.append((row.get_child(1).get_child(1) as Label).text)
+	_check(states[0] == "Building the world · 70 %", "a friend building: %s" % states[0])
+	_check(states[1] == "Downloading · 40 %", "a friend downloading: %s" % states[1])
+	_check(states[3] == "Ready", "a ready friend: %s" % states[3])
+	_check(group._working.visible, "it turns while this rider's ride is prepared")
+	_check(
+		group._progress.visible and is_equal_approx(group._progress.value, 55.0),
+		"and shows how far the world is built"
+	)
+	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	_check(not group._working.visible, "nothing turns once it is prepared")
 	group._show_status({"host": true, "phase": "waiting", "drafting": true, "keep_together": true})
 	_check(
 		not group._drafting.disabled and not group._together.disabled, "organizer sets both rules"
@@ -152,6 +183,21 @@ func _group_activity() -> void:
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
 	)
 	_check(group._retry.visible, "activity retry remains available beside standard error history")
+	# A rider whose connection was lost keeps trying by themselves (#434).
+	var away: Array = [
+		{"id": 0, "name": "Host", "ready": true, "me": false},
+		{"id": 1, "name": "Sam", "ready": true, "me": false, "away": true},
+	]
+	group._show_status({"host": false, "phase": "riding", "reconnect_s": 272.4, "roster": away})
+	_check(
+		group._reconnect.visible and group._working.visible,
+		"reconnecting turns and offers to try now"
+	)
+	_check(group._next.text.contains("4:32"), "and says how long: %s" % group._next.text)
+	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
+	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
+	group._show_status({"host": false, "phase": "riding", "roster": away})
+	_check(not group._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")
 	group._show_status(
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}
@@ -298,6 +344,9 @@ func _group_motion() -> void:
 		"cadence": 85.0,
 		"effort": 4.0,
 		"curvature": 0.0,
+		"power_w": 252.0,
+		"watts_per_kg": 3.36,
+		"avatar": "male",
 	}
 	avatars.show_riders([peer], 1.0 / 60.0)
 	panel.show_riders([peer], false)
@@ -306,6 +355,10 @@ func _group_motion() -> void:
 		first.generation == "1" and panel.visible, "fresh membership appears on the road and HUD"
 	)
 	_check(panel._labels[1].text == "12 m ahead", "relative gap uses metric distance")
+	# Others see the rider as they chose to look (#423) and their effort (#422).
+	_check(first._avatar.rider == "male", "the rider's own avatar")
+	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
+	_check("252 W · 3.4 W/kg" in first._name.text, "and under it on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)
 	_check(panel._labels[1].text == "39 ft behind", "gap follows direction and rider units")
@@ -323,6 +376,74 @@ func _group_motion() -> void:
 	)
 	avatars.free()
 	panel.free()
+
+
+## The group ride opens from the ride's control bar (#431), and only while in a group.
+func _ride_bar() -> void:
+	var bar: RideBar = RideBar.new()
+	root.add_child(bar)
+	var group: Button = bar._group
+	_check(not group.is_visible_in_tree(), "no group button outside a group")
+	bar.show_group(true)
+	var asked: Array[bool] = []
+	bar.group_requested.connect(func() -> void: asked.append(true))
+	group.pressed.emit()
+	_check(group.is_visible_in_tree() and asked == [true], "in a group, the bar opens it")
+	bar.folded = true
+	_check(not group.is_visible_in_tree(), "it folds away with the other controls")
+	bar.free()
+
+
+## The request to organize says who asks and what it means, warns only when the rider's own
+## discovery suggests friends could not reach them, and goes once answered (#424).
+func _offer_card() -> void:
+	var card: GroupOfferCard = GroupOfferCard.new()
+	root.add_child(card)
+	card.show_offer("Alex", "")
+	_check(card.visible and "Alex" in card._title.text, "the request says who asks")
+	_check(not card._warning.visible, "no warning without a reason")
+	var answers: Array[bool] = []
+	card.answered.connect(func(accept: bool) -> void: answers.append(accept))
+	card._accept.pressed.emit()
+	_check(answers == [true] and not card.visible, "accepting answers and closes it")
+	card.show_offer("Alex", "Friends could not reach you.")
+	_check(card._warning.visible, "a reason to doubt reaching the rider is shown")
+	card._decline.pressed.emit()
+	_check(answers == [true, false] and not card.visible, "declining answers too")
+	card.free()
+
+
+## Over the ride, the request shows when it comes and goes when the organizer withdraws it;
+## the group's button shows only in a group (#431).
+func _organizer_offer() -> void:
+	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	root.add_child(main)
+	await process_frame
+	var ride: RideScreen = main.get_node("RideScreen")
+	var card: GroupOfferCard = ride._offer
+	var group: Button = ride._bar._group
+	var roster: Array = [{"name": "Alex", "organizer": true}, {"name": "Sam", "me": true}]
+	ride._show_group({"phase": "idle"})
+	_check(not group.visible and not card.visible, "nothing of the group outside one")
+	ride._show_group({"phase": "riding", "roster": roster})
+	_check(group.visible and not card.visible, "in a group its button, and no request")
+	var offer: Dictionary = {
+		"phase": "riding", "roster": roster, "handover_offer": true, "reachability": "strict"
+	}
+	ride._show_group(offer)
+	_check(card.visible and "Alex" in card._title.text, "the request comes over the ride")
+	ride.show()
+	for frame: int in range(3):
+		await process_frame
+	var bottom: float = ride.size.y - RideScreen.OFFER_BOTTOM
+	_check(
+		card.size.y < 360 and absf(card.get_rect().end.y - bottom) < 1.0,
+		"as tall as its lines, above the controls: %s" % card.get_rect()
+	)
+	_check(card._warning.visible, "with the warning about reaching the rider")
+	ride._show_group({"phase": "riding", "roster": roster})
+	_check(not card.visible, "a withdrawn request goes")
+	main.free()
 
 
 func _check(condition: bool, message: String) -> void:

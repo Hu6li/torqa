@@ -1,10 +1,13 @@
 //! App group lobbies: owned background networking and local course preparation.
 
 use crate::{App, AppError, AppEvent, DescentMode, Failure, GhostChoice, Kind, Workout};
+use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
+/// What a rider preparing the activity is doing (#419).
+pub use orqwa_net::lobby::Stage;
 use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
 use orqwa_net::state::{MAX_RIDERS, RiderId, RiderState};
 use std::path::PathBuf;
@@ -34,6 +37,10 @@ pub struct GroupRider {
     pub name: String,
     /// Rider and bike mass, for avatar effort only.
     pub mass: Kilograms,
+    /// The rider's own weight, for their power per kilogram (#422).
+    pub weight: Kilograms,
+    /// How the rider looks on the bike (#423).
+    pub avatar: Avatar,
     /// Smoothed course distance.
     pub distance: Meters,
     /// Peer virtual speed.
@@ -149,6 +156,9 @@ pub struct Snapshot {
     pub assistance: Assistance,
     /// Readiness for the selected revision.
     pub ready: [bool; MAX_RIDERS],
+    /// How far each rider not yet ready has got preparing the selected revision, and what
+    /// they are doing (#419); this rider's own too, as the group heard it.
+    pub preparation: [Option<(Stage, u8)>; MAX_RIDERS],
     /// Whether local preparation completed.
     pub prepared: bool,
     /// Verified local course.
@@ -207,6 +217,11 @@ pub struct Snapshot {
     pub received: u64,
     /// Expected current-file size; zero before a transfer begins.
     pub total: u64,
+    /// This rider's connection to the organizer was lost: reconnecting by itself until then,
+    /// when the organizer gives the seat up (#434).
+    pub reconnecting: Option<Instant>,
+    /// Riders whose connection was lost, with their seats held while they reconnect (#434).
+    pub away: [bool; MAX_RIDERS],
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -227,6 +242,7 @@ impl Default for Snapshot {
             generations: [0; MAX_RIDERS],
             assistance: Assistance::default(),
             ready: [false; MAX_RIDERS],
+            preparation: [None; MAX_RIDERS],
             prepared: false,
             course: None,
             workout: None,
@@ -256,6 +272,8 @@ impl Default for Snapshot {
             muted: [false; MAX_RIDERS],
             received: 0,
             total: 0,
+            reconnecting: None,
+            away: [false; MAX_RIDERS],
         }
     }
 }
@@ -309,6 +327,8 @@ impl Snapshot {
             && self.prepared
             && self.phase == Phase::Riding
             && self.handover == Handover::Idle
+            // Everyone must take part in the change, so nobody may be reconnecting (#434).
+            && !self.away.contains(&true)
             && self
                 .roster
                 .iter()
@@ -324,13 +344,15 @@ impl Snapshot {
             .is_some_and(|(clock, plan)| clock.position(Instant::now()) >= plan.duration())
     }
 
-    /// Only the prepared host with every admitted participant ready can start.
+    /// Only the prepared host with every admitted participant ready, none of them
+    /// reconnecting (#434), can start.
     #[must_use]
     pub fn can_start(&self) -> bool {
         self.host
             && self.prepared
             && self.start.is_none()
             && self.selection.is_some()
+            && !self.away.contains(&true)
             && self
                 .roster
                 .iter()
@@ -345,6 +367,8 @@ pub(crate) struct Running {
     task: tokio::task::JoinHandle<()>,
     states: watch::Sender<Option<runtime::Local>>,
     preparing: Option<(u64, u64)>,
+    /// The world-building percentage last passed to the runtime, which tells the group (#419).
+    built: u8,
     prepared: u64,
     launched: bool,
     launching: bool,
@@ -435,6 +459,8 @@ impl App {
             rider: Rider {
                 name: rider.name.clone(),
                 mass: Kilograms(rider.rider_mass.0 + rider.bike_mass.0),
+                weight: rider.rider_mass,
+                avatar: rider.avatar,
             },
             data: self.data_dir.clone(),
             temporary: self.cache_dir.join(format!("group-{:x?}", token.0)),
@@ -448,6 +474,7 @@ impl App {
             task,
             states,
             preparing: None,
+            built: 0,
             prepared: 0,
             launched: false,
             launching: false,
@@ -468,7 +495,15 @@ impl App {
             .ok_or_else(|| error("Open a lobby first."))?
             .commands
             .try_send(command)
-            .map_err(|_| error("The group is busy or disconnected. Retry or leave the lobby."))
+            .map_err(|failed| match failed {
+                mpsc::error::TrySendError::Full(_) => {
+                    error("The group is busy. Try again in a moment.")
+                }
+                // Nothing is left to retry: the connection gave up reconnecting (#434).
+                mpsc::error::TrySendError::Closed(_) => {
+                    error("The group connection has ended. Leave the group to keep riding alone.")
+                }
+            })
     }
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {
@@ -566,6 +601,8 @@ impl App {
                     generation: peer.generation,
                     name: rider.name.clone(),
                     mass: rider.mass,
+                    weight: rider.weight,
+                    avatar: rider.avatar,
                     distance: peer.distance,
                     speed: peer.speed,
                     power: peer.power,
@@ -644,6 +681,14 @@ impl App {
         )
     }
 
+    /// Tries to reconnect to the organizer now rather than after the pause between attempts
+    /// (#434); the connection keeps trying by itself until the seat is given up.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] if the command queue is unavailable.
+    pub fn group_reconnect(&self) -> Result<(), AppError> {
+        self.group_command(Command::Reconnect)
+    }
     /// Retries a failed content transfer/preparation.
     ///
     /// # Errors
@@ -876,8 +921,10 @@ impl App {
                     self.open_shared_course(course.clone());
                     if let Some(g) = &mut self.group {
                         g.preparing = Some((revision, self.load));
+                        g.built = 0;
                     }
                 } else if group.preparing == Some((revision, self.load)) {
+                    self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
                         self.build_world();
                     }
@@ -985,7 +1032,10 @@ impl App {
 
     fn sync_group_workout(&mut self, snapshot: &Snapshot) {
         if let Some(active) = &mut self.ride {
-            if matches!(snapshot.phase, Phase::Ended | Phase::Failed) {
+            // Reconnecting rides on alone; the group's next clock takes the workout back (#434).
+            if matches!(snapshot.phase, Phase::Ended | Phase::Failed)
+                || snapshot.reconnecting.is_some()
+            {
                 active.ride.sync_group_workout(None);
             } else if let Some(clock) = snapshot.workout_clock {
                 active
@@ -1096,6 +1146,23 @@ impl App {
             group.states.send_replace(None);
         }
     }
+    /// Passes how far the course's preparation has got to the runtime, in steps of a few
+    /// percent so the bounded command queue stays free for the rider's own actions.
+    fn report_building(&mut self, events: &[AppEvent]) {
+        let Some(percent) = events.iter().rev().find_map(|event| match event {
+            AppEvent::LoadProgress { stage, done, total } => Some(built(*stage, *done, *total)),
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(group) = &self.group
+            && percent >= group.built.saturating_add(5)
+            && self.group_command(Command::Preparing(percent)).is_ok()
+            && let Some(group) = &mut self.group
+        {
+            group.built = percent;
+        }
+    }
     fn group_prepared(&mut self, revision: u64) {
         if let Some(g) = &mut self.group
             && g.commands.try_send(Command::Prepared(revision)).is_ok()
@@ -1144,4 +1211,52 @@ fn blend(
             from.grade_offset().0 + (to.grade_offset().0 - from.grade_offset().0) * weight,
         ),
     )
+}
+
+/// How much of preparing a course is done, 0–99, from its current step (#419): the steps
+/// follow each other in this order, and building the world takes the most time.
+fn built(stage: crate::import::LoadStage, done: usize, total: usize) -> u8 {
+    use crate::import::LoadStage;
+    let (from, to) = match stage {
+        LoadStage::Route => (0, 5),
+        LoadStage::Map => (5, 30),
+        LoadStage::Elevation => (30, 45),
+        LoadStage::CourseMap => (45, 50),
+        LoadStage::Countries => (50, 55),
+        LoadStage::World => (55, 99),
+    };
+    let share = done.min(total) * usize::from(to - from) / total.max(1);
+    from + u8::try_from(share).unwrap_or(to - from)
+}
+
+#[cfg(test)]
+mod built_tests {
+    use super::built;
+    use crate::import::LoadStage;
+
+    #[test]
+    fn preparing_a_course_only_ever_gets_further_and_waits_below_100_for_the_world() {
+        let steps = [
+            LoadStage::Route,
+            LoadStage::Map,
+            LoadStage::Elevation,
+            LoadStage::CourseMap,
+            LoadStage::Countries,
+            LoadStage::World,
+        ];
+        let mut last = 0;
+        for stage in steps {
+            for done in 0..=10 {
+                let percent = built(stage, done, 10);
+                assert!(percent >= last, "{stage:?} {done}: {percent} after {last}");
+                last = percent;
+            }
+        }
+        assert_eq!(last, 99, "done only once the world is ready");
+        assert_eq!(
+            built(LoadStage::World, 3, 0),
+            55,
+            "a step with nothing to count"
+        );
+    }
 }

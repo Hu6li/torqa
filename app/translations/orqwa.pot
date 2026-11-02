@@ -67,6 +67,10 @@ msgstr ""
 msgid "%s ahead"
 msgstr ""
 
+#: app/ui/group_offer_card.gd
+msgid "%s asks you to organize the ride"
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s behind"
 msgstr ""
@@ -231,7 +235,7 @@ msgstr ""
 msgid "About"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Accept organizer duties"
 msgstr ""
 
@@ -527,6 +531,10 @@ msgstr ""
 msgid "Building 3D world"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Building the world · %d %%"
+msgstr ""
+
 #: app/scenes/devices_tab.gd app/scenes/history_screen.gd app/ui/ride_devices.gd app/ui/workout_editor.gd core/orqwa-app/src/hud.rs
 msgid "Cadence"
 msgstr ""
@@ -819,6 +827,10 @@ msgstr ""
 msgid "Connecting…"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Connection lost. Reconnecting… Your local ride continues."
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "Connect…"
 msgstr ""
@@ -1091,7 +1103,7 @@ msgstr ""
 msgid "Dec"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Decline"
 msgstr ""
 
@@ -1233,6 +1245,10 @@ msgstr ""
 
 #: core/orqwa-app/src/import.rs
 msgid "Downloading the course map"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Downloading · %d %%"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1599,8 +1615,12 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
-#: app/scenes/ride_screen.gd app/scenes/start_page.gd app/ui/group_riders_panel.gd
+#: app/scenes/start_page.gd app/ui/group_riders_panel.gd
 msgid "Group Rides"
+msgstr ""
+
+#: app/ui/ride_bar.gd
+msgid "Group Rides: riders, voice chat, shared workout, leaving"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -2639,6 +2659,10 @@ msgstr ""
 msgid "Reconnect devices"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Reconnect now"
+msgstr ""
+
 #: app/scenes/remote_dialog.gd
 msgid "Reconnecting to ORQWA…"
 msgstr ""
@@ -3359,6 +3383,10 @@ msgstr ""
 msgid "Tree density"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Trying for another %s. You keep your place in the group."
+msgstr ""
+
 #: app/ui/ui_theme.gd
 msgid "Tue"
 msgstr ""
@@ -3671,7 +3699,7 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
 msgid "Would you like to organize this ride? You will control the workout and welcome new riders. Accepting shares connection addresses with everyone in this group, using your connection settings."
 msgstr ""
 
@@ -3917,6 +3945,11 @@ msgstr ""
 
 #: app/scenes/history_screen.gd
 msgid "★ Personal record"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgctxt "group_rider"
+msgid "Reconnecting…"
 msgstr ""
 
 #: app/scenes/course_detail.gd
