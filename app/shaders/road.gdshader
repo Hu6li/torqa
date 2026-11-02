@@ -9,6 +9,8 @@ render_mode cull_disabled;
 // road (beyond, the skirts), UV.y is the distance along the route in metres.
 
 #include "res://shaders/ground.gdshaderinc"
+#include "res://shaders/winter.gdshaderinc"
+#include "res://shaders/autumn_litter.gdshaderinc"
 #include "res://shaders/bridge_surface.gdshaderinc"
 
 uniform sampler2D asphalt_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -33,6 +35,7 @@ uniform float asphalt_tile = 2.5;
 uniform float gravel_tile = 1.5;
 // 0 dry, 1 soaked: darker asphalt with a sheen.
 uniform float wetness : hint_range(0.0, 1.0) = 0.0;
+uniform bool winter_exposure_mask = false;
 
 #include "res://shaders/puddles.gdshaderinc"
 
@@ -139,6 +142,23 @@ void fragment() {
 		vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), 0.8);
 	albedo = mix(albedo, texture(grass_albedo, grass_uv).rgb * vec3(0.34, 0.44, 0.27), verge);
 	normal = normalize(mix(normal, grass_bent, verge));
+	// Settled street snow, worn into paired wheel grooves in each traffic lane.
+	float lane_width = road_width / lanes;
+	float lane_x = mod(across, lane_width) - lane_width * 0.5;
+	float wander = sin(along * 0.09) * 0.045 + sin(along * 0.027) * 0.07;
+	float axle_half = min(0.72, lane_width * 0.26);
+	float tyre = abs(abs(lane_x + wander) - axle_half);
+	float groove = 1.0 - smoothstep(0.09, 0.18 + fwidth(across), tyre);
+	float settled = clamp((world_position.y - winter_snow_line) / 1800.0, 0.0, 1.0);
+	float patches = ground_noise(vec2(across * 2.7, along * 0.21));
+	float street_snow = smoothstep(0.22 - settled * 0.18, 0.78 - settled * 0.28, patches);
+	street_snow = mix(street_snow, 0.96, smoothstep(lane_width * 0.32, lane_width * 0.49, abs(lane_x)));
+	street_snow *= 1.0 - groove * 0.95;
+	float snow = winter_cover(world_position, world_normal) * mix(street_snow, 1.0, verge);
+	snow *= winter_exposure_mask ? UV2.x : 1.0;
+	albedo = mix(albedo, winter_snow_color.rgb, snow);
+	normal = normalize(mix(normal, world_normal, snow * 0.7));
+	roughness = mix(roughness, 0.8, snow);
 	roughness = mix(roughness, 0.92, verge);
 
 	// Rain darkens and smooths the asphalt, gravel less.
@@ -149,6 +169,9 @@ void fragment() {
 	float water = puddle(world_xz, world_normal, clamp(abs(UV.x - 0.5) * 2.0, 0.0, 1.0)) * (1.0 - shoulder) * (1.0 - verge);
 	ALBEDO = mix(albedo, puddle_color * 0.6, water * 0.6);
 	ROUGHNESS = mix(roughness, 0.08, water);
+	if (FRONT_FACING && world_normal.y > 0.1 && COLOR.a > 0.01) {
+		autumn_litter(world_position, clamp(abs(UV.x - 0.5) * 2.0, 0.0, 1.0), marking, wetness, ALBEDO, ROUGHNESS);
+	}
 	SPECULAR = mix(0.4, 0.5, max(wet, water));
 	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(normal, world_normal, water)), 0.0)).xyz);
 	float structure = 1.0 - step(0.01, COLOR.a);
