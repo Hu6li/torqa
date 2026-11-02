@@ -1367,6 +1367,10 @@ msgstr ""
 msgid "Enter a name for the course."
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "Enter up to four servers, each as name or name:port, separated by commas."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "Estimated time"
 msgstr ""
@@ -2940,6 +2944,10 @@ msgid "Rust libraries"
 msgstr ""
 
 #: app/ui/group_connection_dialog.gd
+msgid "STUN servers"
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
 msgid "Same home Wi-Fi"
 msgstr ""
 
@@ -3353,6 +3361,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "The selected platform is not supported."
+msgstr ""
+
+#: app/ui/group_connection_dialog.gd
+msgid "The services that find your internet address. Leave this empty for the public ones shown, or enter up to four of your own as name:port, separated by commas. With two or more, ORQWA can tell whether friends can reach you."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

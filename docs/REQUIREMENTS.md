@@ -422,6 +422,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R191 | Extends R164, R165 and R169 (2026-11-02, #418): while the organizer chooses what to ride, every rider in the group sees a **preview** of it before it is shared, to talk it over: the course's map picture, elevation profile, length, climbing and steepest gradient, and the workout's power chart by the rider's own FTP, duration and description, labelled **Course preview** and **Workout preview**. It follows the organizer's choices as they browse, within about two seconds, and goes once the organizer shares the activity, goes back to what is shared or chooses nothing, and from the countdown on. Nothing is downloaded into the library or prepared for a preview: it carries no route, map data or file names, keeps within fixed size, rate and transfer limits, and never holds up or interrupts the download of what is shared. Protocol and invitation version 13 require matching builds and fresh codes. |
 
+## Own address lookup servers
+
+| ID | Requirement |
+|---|---|
+| R192 | Extends R160, R174 and R176 (2026-11-02, #415): under **More connection options**, a rider may name their own **STUN servers** for finding their internet address, instead of the public ones: up to four, each as a name or IP address with an optional port (3478 unless given), separated by commas; `stun:` addresses as WebRTC configurations write them are taken too. Left empty, the field shows the public servers it then asks. A group ride's every address lookup, including a fallback organizer's, asks the servers named when it was created or joined, and the computer keeps them for later rides (R78) once a ride is confirmed with the lookup on. They can be changed only while the lookup is on, and **Same home Wi-Fi** still asks none. A server that cannot be asked is pointed out while typing; confirming then shows it, even in folded options, and connects nothing. The field tells riders that two or more servers let ORQWA tell whether friends can reach them (R176). The CLI's `--stun` reads a server the same way. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

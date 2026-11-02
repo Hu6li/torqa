@@ -14,6 +14,95 @@ const HEADER: usize = 20;
 const MAX_MESSAGE: usize = 576;
 /// At most four explicitly configured discovery servers; bounds DNS and outgoing requests.
 pub const MAX_SERVERS: usize = 4;
+/// The longest server address resolved; bounds what a configuration can make DNS look up.
+pub const MAX_SERVER_LEN: usize = 260;
+/// The port of a server named without one (RFC 8489 section 9).
+pub const DEFAULT_PORT: u16 = 3478;
+
+/// A named server cannot be asked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ServerError {
+    /// Neither a host name nor an IP address, each with an optional port 1–65535.
+    #[error("not a STUN server address; write it as host or host:port")]
+    Address,
+    /// More different servers than [`MAX_SERVERS`].
+    #[error("at most four STUN servers can be asked")]
+    TooMany,
+}
+
+/// Reads a server address as discovery resolves it, `host:port`. Takes a host name or IP
+/// address with an optional port, 3478 unless given, and the `stun:` scheme that WebRTC
+/// configurations write (RFC 7064), so their entries can be pasted.
+///
+/// # Errors
+/// [`ServerError::Address`] for anything else; `stuns:` too, as STUN over TLS is not spoken.
+pub fn server(text: &str) -> Result<String, ServerError> {
+    let text = text.trim();
+    let text = match text.get(..5) {
+        Some(scheme) if scheme.eq_ignore_ascii_case("stun:") => &text[5..],
+        _ => text,
+    };
+    if text.is_empty() || text.len() > MAX_SERVER_LEN {
+        return Err(ServerError::Address);
+    }
+    if let Ok(addr) = text.parse::<SocketAddr>() {
+        return (addr.port() != 0)
+            .then(|| addr.to_string())
+            .ok_or(ServerError::Address);
+    }
+    let bracketed = text.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
+    if let Ok(ip) = bracketed.unwrap_or(text).parse::<IpAddr>() {
+        return Ok(SocketAddr::new(ip, DEFAULT_PORT).to_string());
+    }
+    let (host, port) = match text.split_once(':') {
+        Some((host, port)) if port.bytes().all(|b| b.is_ascii_digit()) => (
+            host,
+            port.parse()
+                .ok()
+                .filter(|port| *port != 0)
+                .ok_or(ServerError::Address)?,
+        ),
+        Some(_) => return Err(ServerError::Address),
+        None => (text, DEFAULT_PORT),
+    };
+    let label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    };
+    // A numeric last label is a malformed address ("1.2.3"), which resolvers may still
+    // read as some other IPv4 address; no top-level domain is numeric.
+    let top = host.rsplit('.').next().unwrap_or(host);
+    if host.len() > 253 || !host.split('.').all(label) || top.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ServerError::Address);
+    }
+    Ok(format!("{}:{port}", host.to_ascii_lowercase()))
+}
+
+/// Reads up to [`MAX_SERVERS`] addresses as [`server`] does, separated by commas, semicolons
+/// or white space; a server named twice counts once. Empty text names none.
+///
+/// # Errors
+/// [`ServerError`] for the first address that cannot be asked, or a fifth server.
+pub fn servers(text: &str) -> Result<Vec<String>, ServerError> {
+    let mut servers = Vec::new();
+    for item in text
+        .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
+        .filter(|item| !item.is_empty())
+    {
+        let server = server(item)?;
+        if !servers.contains(&server) {
+            if servers.len() == MAX_SERVERS {
+                return Err(ServerError::TooMany);
+            }
+            servers.push(server);
+        }
+    }
+    Ok(servers)
+}
 
 /// A Binding request with a caller-supplied cryptographically random transaction ID.
 #[must_use]
@@ -159,7 +248,7 @@ pub async fn discover(
     };
     let mut asks: Vec<Ask> = Vec::with_capacity(MAX_SERVERS);
     for server in servers.iter().take(MAX_SERVERS) {
-        if server.len() > 260 {
+        if server.len() > MAX_SERVER_LEN {
             continue;
         }
         if let Ok(Ok(mut addresses)) = timeout_at(deadline, lookup_host(server.as_str())).await
@@ -288,6 +377,70 @@ mod tests {
         assert_eq!(indication[4..8], COOKIE);
         assert_eq!(indication[8..], TRANSACTION);
         assert_eq!(parse_binding_response(&indication, &TRANSACTION), None);
+    }
+
+    #[test]
+    fn named_servers_are_read_as_discovery_resolves_them() {
+        for (named, read) in [
+            ("stun.example.org", "stun.example.org:3478"),
+            (" Stun.Example.org:19302 ", "stun.example.org:19302"),
+            ("stun:stun.example.org:5349", "stun.example.org:5349"),
+            ("STUN:stun.example.org", "stun.example.org:3478"),
+            ("192.0.2.1", "192.0.2.1:3478"),
+            ("192.0.2.1:3479", "192.0.2.1:3479"),
+            ("2001:db8::1", "[2001:db8::1]:3478"),
+            ("[2001:db8::1]", "[2001:db8::1]:3478"),
+            ("[2001:db8::1]:3479", "[2001:db8::1]:3479"),
+            ("localhost:3478", "localhost:3478"),
+        ] {
+            assert_eq!(server(named).as_deref(), Ok(read), "{named}");
+        }
+        let long = format!("{}.org", "a.".repeat(130));
+        for named in [
+            "",
+            "stun:",
+            "stuns:stun.example.org",
+            "https://stun.example.org",
+            "stun.example.org:0",
+            "stun.example.org:65536",
+            "stun.example.org:+80",
+            "stun.example.org:",
+            "stun.example.org:80:81",
+            "192.0.2.1:0",
+            "1.2.3",
+            "-stun.example.org",
+            "stun..example.org",
+            "stun_server.example.org",
+            "stün.example.org",
+            &long,
+        ] {
+            assert_eq!(server(named), Err(ServerError::Address), "{named}");
+        }
+    }
+
+    #[test]
+    fn up_to_four_different_servers_can_be_named_in_one_line() {
+        assert_eq!(servers(""), Ok(vec![]));
+        assert_eq!(servers(" , \n"), Ok(vec![]));
+        assert_eq!(
+            servers("stun.example.org, 192.0.2.1:3479;stun.example.net\nstun.example.org:3478"),
+            Ok(vec![
+                "stun.example.org:3478".to_owned(),
+                "192.0.2.1:3479".to_owned(),
+                "stun.example.net:3478".to_owned(),
+            ])
+        );
+        assert_eq!(
+            servers("a.example a.example b.example c.example d.example")
+                .unwrap()
+                .len(),
+            4
+        );
+        assert_eq!(
+            servers("a.example b.example c.example d.example e.example"),
+            Err(ServerError::TooMany)
+        );
+        assert_eq!(servers("a.example, nope:x"), Err(ServerError::Address));
     }
 
     #[tokio::test]

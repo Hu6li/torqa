@@ -27,6 +27,18 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 			out.path_join("group-connection-create-" + locale + ".png")
 		)
 		group._connection.hide()
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		group._connection.ask_create()
+		group._connection._more.pressed.emit()
+		await process_frame
+		await process_frame
+		group._connection._scroll.ensure_control_visible(group._connection._servers_help)
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-connection-options-" + locale + ".png")
+		)
+		group._connection.hide()
 	group._connection.ask_create()
 	group._connection._choices["home"].button_pressed = true
 	group._connection._confirm()

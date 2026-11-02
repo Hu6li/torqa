@@ -973,6 +973,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   was (R188)
 - [x] Every rider sees a preview of the course and workout the organizer is choosing, before
   it is shared: map picture, elevation, figures and power chart, nothing downloaded (R191, #418)
+- [x] Riders name their own STUN servers under More connection options, kept per computer;
+  the CLI's `--stun` takes the same forms (R192, #415)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

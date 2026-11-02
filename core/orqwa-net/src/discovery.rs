@@ -84,7 +84,10 @@ pub async fn bind(
     deadline: Instant,
 ) -> Result<Vec<BoundSocket>, GatherError> {
     if options.stun_servers.len() > stun::MAX_SERVERS
-        || options.stun_servers.iter().any(|s| s.len() > 260)
+        || options
+            .stun_servers
+            .iter()
+            .any(|s| s.len() > stun::MAX_SERVER_LEN)
         || options.interface.as_ref().is_some_and(|s| s.len() > 128)
         || (options.policy.loopback && options.interface.is_some())
     {
