@@ -21,6 +21,14 @@ No third-party STUN implementation code is copied.
 
 ## Models
 
+The East Asian house and castle archetypes for Asian rides, Nordic painted-timber houses and
+stone keeps, and French village houses, Haussmann-inspired city houses and château-inspired
+keeps (R164) are own work,
+scripted in `art/buildings/japanese.py`, `art/buildings/nordic.py` and
+`art/buildings/french.py` (GPL-3.0), reusing the project's existing materials and textures.
+Architectural references are listed in [regional buildings](regional-buildings.md); no
+reference imagery or third-party models are bundled.
+
 The fractured boulders and shared cliff/boulder weathering shader (R115) are own work
 (GPL-3.0). The rock albedo and OpenGL normal are converted from
 [Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry) by **Dimitrios Savva**
@@ -92,6 +100,12 @@ The Blender skills in `.claude/skills/blender-*` are from
 **MIT**; see `.claude/skills/README.md`.
 
 ## Data
+
+The offline Asian and Nordic architecture classifiers (`core/orqwa-world/data/asia.json` and
+`nordic.json`) retain their unchanged country polygons from the same pinned, ISC-licensed
+country-coder source used below. The French classifier uses a small hand-drawn outline of
+metropolitan France and Corsica (`france.json`). Their provenance and the bundled licence are linked in
+[the data README](../core/orqwa-world/data/README.md).
 
 Country/territory traffic-side defaults are factual reference data cross-checked against
 [World Standards' driving-side list](https://www.worldstandards.eu/cars/list-of-left-driving-countries/).

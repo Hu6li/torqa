@@ -11,6 +11,7 @@ global uniform float wind_time;
 
 #include "res://shaders/ground.gdshaderinc"
 #include "res://shaders/rock.gdshaderinc"
+#include "res://shaders/winter.gdshaderinc"
 
 uniform int kind = 0;
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -26,6 +27,8 @@ uniform float wind_strength : hint_range(0.0, 1.0) = 0.1;
 varying vec3 tint;
 varying vec3 model_position;
 varying vec3 model_normal;
+varying vec3 winter_position;
+varying vec3 winter_normal;
 
 vec3 to_linear(vec3 srgb) {
 	return mix(srgb / 12.92, pow((srgb + 0.055) / 1.055, vec3(2.4)), step(0.04045, srgb));
@@ -34,6 +37,12 @@ vec3 to_linear(vec3 srgb) {
 void vertex() {
 	model_position = VERTEX;
 	model_normal = NORMAL;
+	winter_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	winter_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
+	if (kind == 3 && winter_strength > 0.0) {
+		float depth = winter_depth(winter_position) * winter_cover(winter_position, winter_normal);
+		VERTEX += (inverse(MODEL_MATRIX) * vec4(0.0, depth, 0.0, 0.0)).xyz;
+	}
 	// Each plant sways out of step with its neighbours: the phase follows where it stands.
 	vec2 place = MODEL_MATRIX[3].xz;
 	float phase = place.x * 0.13 + place.y * 0.07;
@@ -73,7 +82,8 @@ void fragment() {
 		NORMAL_MAP = vec3(texture(normal_texture, uv).rg, 1.0);
 		NORMAL_MAP_DEPTH = 1.0;
 	}
-	ALBEDO = albedo;
+	float snow = winter_cover(winter_position, winter_normal);
+	ALBEDO = mix(albedo, winter_snow_color.rgb, snow);
 	ROUGHNESS = roughness;
 	SPECULAR = 0.3;
 }
