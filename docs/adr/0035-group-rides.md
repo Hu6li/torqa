@@ -247,6 +247,74 @@ each run, so they never go stale. CI runs each target for 30 seconds on every ch
 pinned nightly toolchain and cargo-fuzz in the dev image; the fuzz crate is its own workspace, so
 the app never builds with nightly. Its lock follows the main one, and cargo-deny checks it too.
 
+### Rider weight and avatar — 2026-11-01
+
+Riders saw each other's names and gaps but not their effort, and every friend rode as the
+default avatar (#422, #423). A roster entry now carries, beside the name and the rider-plus-bike
+mass, the rider's **own weight** and **avatar**. Others show each rider's power and power per
+kilogram beside their name in the riders panel and under it on the road, and draw them as they
+chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
+unknown avatar is a protocol error. The rider-plus-bike mass already revealed about as much as
+the weight, so sharing it with the group adds little; heart rate stays private as before.
+Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
+
+### Preparation progress — 2026-11-01
+
+Riders waited for each other without knowing who was still downloading or building the world
+(#419), and a rider's own page went quiet once the download finished (#420). Each rider now
+reports what it is doing for the current selection, **downloading** or **preparing**, and how
+far it has got in percent: a new joiner-to-host control the host checks against the current
+revision and the rider's readiness, then forwards to everyone, the organizer's own report
+included. Reports are advisory and rate-limited by the sender, at a change of stage and at most
+every two seconds otherwise, well within the host's existing control budget; a full queue
+drops one, as the next supersedes it, and readiness ends them. Preparing a course reports the
+app's own build steps on one scale, so the percentage only grows. Protocol/invitation version
+9 and ALPN `orqwa-group/9` require matching builds and fresh codes.
+
+### Reconnecting lost riders — 2026-11-01
+
+A rider whose connection dropped could not come back (#434): the host freed their slot at
+once, admission credentials are used once, and the app refused to join while a local ride ran.
+Its failure text suggested a retry that did not exist. In app lobbies the host now **holds the
+seat** of a rider the network lost for five minutes, and that rider **reconnects by itself**
+with the same per-ride certificate, without new codes.
+
+**Lost or left.** A connection counts as lost after an idle timeout or a stateless reset, or
+when either side closed it with application code 2 (`reconnect`); any other close, code 0
+included, is a goodbye. Each side records the reason before closing locally, as a local close
+replaces the transport's reason, and the first reason sticks. Only a control that misses its
+two-second write window, or a peer too slow to take its control queue, is closed for reconnect.
+A control stream that ends is a goodbye, since a leaving organizer's stream ends before its
+close arrives. A reset counts as lost because a reconnect close lost on the way ends that way;
+a goodbye lost the same way merely holds a seat the organizer can remove.
+
+**Host.** A held seat keeps the roster entry, activity membership, readiness and whether the
+rider had entered the running ride; its state mailbox and voice speaker go, and the others get
+`Away(id)`. The rider's used credential is re-armed until the seat's end: no other certificate
+can take it, and it stays within the admission table's bound. While it is pending the host
+accepts handshakes, as for any admission, and probes the rider's last address and reply
+candidates every two seconds, at most 1,024 packets, to keep its own NAT open. Removal or the
+end of the five minutes releases the credential. A held seat refuses the start (`NotReady`).
+A returning rider gets the same slot with a new mailbox membership and voice epoch; the others
+get `Back(id)`, and the rider first `Rejoined(entered)`, then the held seats, the voice roster
+and the usual selection, readiness, running clock and workout sample.
+
+**Joiner.** The joiner keeps its endpoint, certificate and invitation, and a supervisor runs
+its actor again on each new connection. It tries every five seconds, or at once on **Reconnect
+now**, until five minutes have passed. A used credential means the host has not noticed the
+loss yet and is retried; a released one ends the attempts. The welcome must name the same
+seat, organizer, root and epoch. Transmission closes as soon as the loss is noticed; listening
+consent is sent again on the new link, and the microphone stays off until enabled. The owner
+hears `Reconnecting { until }`, then the roster changes and `Reconnected`. Riders still
+mid-handover leave it to the prepared successor link, or give the change up. The app runs the
+workout independently while reconnecting and takes the group's step from the next clock
+sample, and restarts a download the loss cut off; start and handover wait for absent riders.
+
+A lost organizer is reconnected only while its app keeps the lobby at the same addresses.
+Rejoining with fresh codes during a local ride is left for a follow-up. Course lobbies (CLI)
+are unchanged. No relay or server is added. Protocol/invitation version 11 and ALPN
+`orqwa-group/11` require matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

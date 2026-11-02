@@ -87,6 +87,8 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         rider: Rider {
             name: "Testing audio".into(),
             mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
         },
         options,
         data: directory.join("data"),
