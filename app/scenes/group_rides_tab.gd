@@ -63,6 +63,8 @@ var _exchange_error: Label = Label.new()
 var _exchange_kind: String = "join"
 var _status: Dictionary = {}
 var _roster_key: String = ""
+## Each rider's speaker icon, by rider ID, shown while they are heard speaking.
+var _speaking: Dictionary[int, TextureRect] = {}
 var _activity_key: String = ""
 var _elapsed: float = 0.0
 
@@ -652,8 +654,15 @@ func _show_status(status: Dictionary) -> void:
 	_voice_controls.update_status(_status)
 	_show_workout_controls()
 	_show_organizer()
+	var riders: Array[Dictionary] = []
+	for rider: Dictionary in _status.get("roster", []):
+		var listed: Dictionary = rider.duplicate()
+		# Who speaks changes several times a second; the icons follow without rebuilding the
+		# rows, and their buttons, under the rider's pointer.
+		listed.erase("speaking")
+		riders.append(listed)
 	var key: String = (
-		str(_status.get("roster", []))
+		str(riders)
 		+ str(_status.get("voice", false))
 		+ str(_status.get("local_paused", false))
 		+ phase
@@ -662,6 +671,11 @@ func _show_status(status: Dictionary) -> void:
 	if key != _roster_key:
 		_roster_key = key
 		_show_roster(phase, host)
+	for rider: Dictionary in _status.get("roster", []):
+		var id: int = rider["id"]
+		var speaking: bool = rider.get("speaking", false)
+		if _speaking.has(id):
+			GroupRidersPanel.show_speaking(_speaking[id], speaking)
 
 
 ## This rider's preparation as the group heard it (#419), 0 before the first report.
@@ -696,6 +710,7 @@ func _show_roster(phase: String, host: bool) -> void:
 	for child: Node in _roster.get_children():
 		_roster.remove_child(child)
 		child.queue_free()
+	_speaking.clear()
 	for rider: Dictionary in _status.get("roster", []):
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -703,8 +718,18 @@ func _show_roster(phase: String, host: bool) -> void:
 		row.add_child(UiTheme.initial(rider_name, 36))
 		var text: VBoxContainer = VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var label: Label = _label(text, rider_name, 17)
+		var heading: HBoxContainer = HBoxContainer.new()
+		heading.add_theme_constant_override("separation", 6)
+		text.add_child(heading)
+		var label: Label = _label(heading, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		# As wide as the name, so the speaker comes right after it.
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.size_flags_horizontal = Control.SIZE_FILL
+		var speaking: TextureRect = GroupRidersPanel.speaking_icon()
+		heading.add_child(speaking)
+		var rider_id: int = rider["id"]
+		_speaking[rider_id] = speaking
 		var state: Label = _label(text, tr("Ready") if rider["ready"] else tr("Getting ready"), 13)
 		# How far each friend has got (#419), until they are ready.
 		var stage: String = rider.get("stage", "")

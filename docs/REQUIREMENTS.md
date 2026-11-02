@@ -410,6 +410,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R188 | Refines R169, R173, R186 and R187 (2026-11-01): every **automatic** voice restart keeps the **microphone as it was**, on if it was on and off if it was off: reconnecting after a lost connection, a fallback organizer's takeover, a planned organizer handover and changing audio devices. Listening, volume, deafen and per-rider mutes are kept as before. Joining voice still starts with the microphone off, and Voice off, Mute all sound and a failed device still turn it off. |
 
+## Who is speaking
+
+| ID | Requirement |
+|---|---|
+| R190 | Extends R162 and R189 (2026-11-02): group voice shows **who is speaking**. A small speaker beside a rider's name, in the participant list and in the ride's **Group Rides** panel, appears while their speech plays on this computer and stays between words, going within a second after they stop. Beside the rider's own name it appears while their open microphone sends speech, so not while **Prevent speaker echo** holds it. It counts only speech, voiced sound above the rider's own background, like the echo gate: a fan or room noise on an open microphone shows nobody speaking. A friend muted on this computer, or everyone while deafened, is never shown speaking. It is worked out on each computer from the audio it plays or sends, with no protocol change. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

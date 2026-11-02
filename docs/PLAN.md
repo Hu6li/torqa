@@ -929,6 +929,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   - [x] Clean, continuous voice between computers (R189): playback paced by each speaker,
     every fresh capture sent, pulled jitter buffers with Opus in-band recovery, band-limited
     resampling, level-keeping soft mixing and an echo gate that reacts only to speech.
+  - [x] Who is speaking (R190): a small speaker beside each name in the participant list and
+    the Group Rides panel, from the echo gate's speech detection on each voice as it plays and
+    on the rider's own microphone as it is sent.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history

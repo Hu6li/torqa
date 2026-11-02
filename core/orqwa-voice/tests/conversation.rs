@@ -926,3 +926,59 @@ async fn background_noise_on_an_open_microphone_does_not_silence_the_other_rider
     ben.close().await;
     host.close().await;
 }
+
+/// A rider talking: words of 300 ms, 200 ms apart, with their quiet room between them.
+fn talking(frame: u32) -> PcmFrame {
+    if frame % 25 < 15 {
+        steady_voice(frame)
+    } else {
+        fan(frame).map(|sample| sample * 0.1)
+    }
+}
+
+#[tokio::test]
+async fn riders_are_shown_speaking_while_their_words_play_and_never_for_their_fan() {
+    let host = host().await;
+    let mut anna = join(&host, "Anna, by a fan").await;
+    let mut ben = join(&host, "Ben, talking").await;
+    let (anna_voice, _) = sound_card(&mut anna, 20.0, 20.0, fan).await;
+    let (ben_voice, _) = sound_card(&mut ben, 20.0, 20.0, talking).await;
+    // On headphones, so neither microphone is held while the other plays.
+    anna_voice.echo_prevention(false);
+    ben_voice.echo_prevention(false);
+    let (a, b) = (
+        usize::from(anna.me().value()),
+        usize::from(ben.me().value()),
+    );
+    assert!(
+        !anna_voice.speaking().contains(&true),
+        "nobody before a microphone opens"
+    );
+    anna_voice.microphone(true).unwrap();
+    ben_voice.microphone(true).unwrap();
+    // Ben sees himself speaking as he is sent, Anna as she hears him.
+    until(|| anna_voice.speaking()[b] && ben_voice.speaking()[b]).await;
+    // For two seconds Anna's fan plays at Ben's: she is never shown speaking, and Ben stays
+    // shown through his words and the pauses between them.
+    let mut shown = 0;
+    for _ in 0..100 {
+        assert!(!ben_voice.speaking()[a], "Anna's fan, as Ben hears it");
+        assert!(!anna_voice.speaking()[a], "Anna's fan, as she sends it");
+        shown += usize::from(anna_voice.speaking()[b]);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(shown >= 95, "Ben shown speaking in {shown} of 100 looks");
+    // Muted here, Ben is not shown here; he is again when unmuted.
+    anna_voice.mute_peer(ben.me(), true);
+    until(|| !anna_voice.speaking()[b]).await;
+    anna_voice.mute_peer(ben.me(), false);
+    until(|| anna_voice.speaking()[b]).await;
+    // A closed microphone is nobody speaking.
+    ben_voice.microphone(false).unwrap();
+    until(|| !anna_voice.speaking()[b] && !ben_voice.speaking()[b]).await;
+    anna_voice.close().await;
+    ben_voice.close().await;
+    anna.close().await;
+    ben.close().await;
+    host.close().await;
+}

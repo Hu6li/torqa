@@ -17,7 +17,7 @@ pub(super) fn riders(app: &App) -> VarArray {
             "id" => i64::from(peer.id), "generation" => generation.as_str(), "name" => peer.name.as_str(),
             "distance_m" => peer.distance.0, "gap_m" => peer.distance.0-local,
             "speed_kmh" => peer.speed.as_kilometers_per_hour(), "power_w" => peer.power.0,
-            "cadence" => peer.cadence.0,
+            "cadence" => peer.cadence.0, "speaking" => peer.speaking,
             // Effort drives the avatar's motion only, from the rider-and-bike mass.
             "effort" => peer.power.0 / peer.mass.0.max(1.0),
             // The roster keeps weights within its bounds; never a division by zero.
@@ -67,6 +67,8 @@ pub(super) fn status(app: &App) -> VarDictionary {
             "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent)),
             // Their connection was lost and their seat is held while they reconnect (#434).
             "away"=>status.away[id],
+            // Heard speaking now; this rider too, while their microphone sends speech.
+            "speaking"=>status.speaking[id],
             // Standing by to take over if the organizer is lost (#426).
             "fallback"=>status.fallback==u8::try_from(id).ok()}.to_variant());
     }

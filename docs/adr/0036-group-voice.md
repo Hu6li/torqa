@@ -376,6 +376,34 @@ speech (at most three gaps or quiet frames in 250) and that a rider by a fan nev
 speaking one. Each fails with the previous timer pacing or gate respectively. Physical-device
 acceptance stays manual.
 
+## Amendment — who is speaking (2026-11-02, R190)
+
+Riders could not tell who was talking. Each computer now works it out from the audio it
+already handles, so nothing is added to the protocol or the voice header and there is no new
+dependency:
+
+- **Friends, as they play here.** Each friend's decoded frames, before the local volume, go
+  through the speech test the echo gate uses: voiced sound with a pitch, above −46 dBFS and
+  about 10 dB above that friend's own background, for two frames in a row. A per-friend
+  detector learns each background separately, so a fan on one open microphone neither shows
+  that rider speaking nor hides a quieter speaker. A friend muted locally, every friend while
+  deafened, and a friend whose stream has ended play silence here and are not shown.
+- **This rider, as they are sent.** The same test runs on each captured frame after the echo
+  gate, so the rider is shown speaking only while friends can hear them.
+- A rider stays shown for 500 ms after their last speech frame, so the indicator does not
+  flicker between syllables. The voice worker publishes one bit per rider slot after every
+  wake; the app copies it into the group snapshot on its 200 ms tick, and the UI shows a small
+  speaker beside the name without rebuilding the participant rows.
+
+Alternatives considered: a speaking flag in each voice packet would cost a protocol version
+and trust the sender's own detector; a plain level threshold on received audio would show
+riders by a fan as speaking all the time, the fault R189 removed from the echo gate.
+
+Unit tests cover words with pauses (shown throughout, gone after the hold), single clicks and
+loud fans (never shown). Real QUIC and Opus with simulated sound cards check that a talking
+rider is shown to a friend and to themselves, a rider by a fan to nobody, and that a local
+mute or a closed microphone clears the indicator.
+
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).
