@@ -12,19 +12,37 @@ pub const FRAME_TIME: Duration = Duration::from_millis(20);
 pub const MAX_AUDIO_BYTES: usize = 256;
 /// Fixed reorder capacity per speaker: at most 160 ms, never an accumulating audio queue.
 pub const JITTER_FRAMES: usize = 8;
-const PREBUFFER: Duration = Duration::from_millis(60);
+/// Frames buffered before a speaker starts playing: the one playing and one spare.
+const START_DEPTH: u32 = 2;
+/// Output frames a speaker waits for that depth before a very short word plays anyway.
+const START_WAIT: u8 = 3;
+/// Consecutive output frames concealed while a speaker's packets are late.
+const MAX_CONCEAL: u8 = 3;
+/// Output frames over which a speaker's smallest spare depth is measured before trimming.
+const TRIM_WINDOW: u8 = 50;
 const IDLE: Duration = Duration::from_millis(250);
 const BURST: u8 = 10;
+// Sender and receiver monotonic clocks are independent; do not accumulate tiny
+// clock differences into a false sequence violation over a long conversation.
+const CLOCK_SKEW_DIVISOR: u32 = 100;
 const HEADER: usize = 19;
 pub(crate) const TAG: u8 = 0x81;
 
 /// Invalid voice traffic. Errors never include audio, credentials or peer-controlled text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum VoiceError {
-    /// Incorrect format, size, spurt, ordering or authenticated speaker.
+    /// Incorrect format, size, spurt or authenticated speaker.
     #[error("The voice packet is invalid.")]
     Invalid,
-    /// More than fifty frames per second beyond the bounded jitter burst.
+    /// Sequence progress exceeds the microphone activation's elapsed time and jitter allowance.
+    #[error("The voice sequence advanced too quickly (received {received}, limit {limit}).")]
+    Sequence {
+        /// Received counter, without any audio payload.
+        received: u32,
+        /// Highest plausible counter for the current activation.
+        limit: u32,
+    },
+    /// A hard packet budget has been exhausted.
     #[error("The peer is sending too many voice packets.")]
     Flood,
     /// The voice owner is closed, disabled or microphone transmission is muted.
@@ -126,12 +144,16 @@ impl VoiceFrame {
     }
 }
 
-/// One due playback action. Missing frames get at most sixty milliseconds of concealment.
+/// One playback action for the next 20 ms of output. Missing frames get at most sixty
+/// milliseconds of concealment.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // fixed stack-owned frames avoid real-time heap allocations
 pub enum Playout {
     /// Decode this one compressed frame.
     Frame(VoiceFrame),
+    /// Rebuild the lost frame before this one from the recovery copy it carries. The frame
+    /// itself stays queued and plays next.
+    Recover(VoiceFrame),
     /// Request one 20 ms packet-loss-concealment frame from the existing decoder.
     Conceal,
     /// Produce silence, without decoding or replaying old speech.
@@ -147,14 +169,25 @@ pub struct VoicePlayback {
 }
 
 /// A fixed-size, rate-limited jitter buffer for one authenticated speaker.
+///
+/// Playback pulls one frame per 20 ms of output, timed by the listener's speaker rather than
+/// a wall clock. Speech that runs dry is stretched by concealment, so the buffer grows to fit
+/// the network's jitter; a buffer that stays deeper than needed for a second plays closer to
+/// live again. The speaker's and listener's sound cards never run at exactly the same rate,
+/// and this keeps their difference from becoming skipped words or growing delay.
 pub struct VoiceInbox {
     speaker: RiderId,
     frames: [Option<VoiceFrame>; JITTER_FRAMES],
     spurt: u32,
     latest: Option<(u32, Instant)>,
+    origin: Option<(u32, Instant)>,
+    admitted_at: Instant,
     next: u32,
-    play_at: Option<Instant>,
+    playing: bool,
+    waited: u8,
     missing: u8,
+    spare: u32,
+    measured: u8,
     tokens: u8,
     refilled: Instant,
 }
@@ -168,9 +201,14 @@ impl VoiceInbox {
             frames: [None; JITTER_FRAMES],
             spurt: 0,
             latest: None,
+            origin: None,
+            admitted_at: now,
             next: 0,
-            play_at: None,
+            playing: false,
+            waited: 0,
             missing: 0,
+            spare: u32::MAX,
+            measured: 0,
             tokens: BURST,
             refilled: now,
         }
@@ -179,7 +217,8 @@ impl VoiceInbox {
     /// Old/duplicate frames are discarded. Excessive future sequence jumps never alter ordering.
     ///
     /// # Errors
-    /// Returns [`VoiceError`] for a forged/malformed packet or sustained flood.
+    /// Returns [`VoiceError`] for a forged/malformed packet or invalid sequence.
+    /// Brief ingress excess is discarded before parsing, without ending the group.
     pub fn ingest(&mut self, bytes: &[u8], now: Instant) -> Result<bool, VoiceError> {
         let elapsed = now.saturating_duration_since(self.refilled);
         let added = u8::try_from(elapsed.as_nanos() / FRAME_TIME.as_nanos()).unwrap_or(BURST);
@@ -191,7 +230,7 @@ impl VoiceInbox {
             self.refilled = now.checked_sub(remainder).unwrap_or(now);
         }
         if self.tokens == 0 {
-            return Err(VoiceError::Flood);
+            return Ok(false);
         }
         self.tokens -= 1;
         let frame = VoiceFrame::parse(bytes, self.speaker)?;
@@ -199,19 +238,34 @@ impl VoiceInbox {
             return Ok(false);
         }
         let new_spurt = frame.spurt > self.spurt;
-        if !new_spurt && let Some((latest, at)) = self.latest {
-            let allowed =
+        // A late arrival must not restart the microphone's sequence clock: a fresh
+        // packet can follow it immediately after loss or a change in network delay.
+        if !new_spurt && let Some((sequence, at)) = self.origin {
+            let frames =
                 u32::try_from(now.saturating_duration_since(at).as_nanos() / FRAME_TIME.as_nanos())
-                    .unwrap_or(u32::MAX)
-                    .saturating_add(u32::from(BURST));
-            if frame.sequence > latest.saturating_add(allowed) {
-                return Err(VoiceError::Invalid);
+                    .unwrap_or(u32::MAX);
+            let allowed = frames
+                .saturating_add(frames / CLOCK_SKEW_DIVISOR)
+                .saturating_add(u32::from(BURST));
+            let limit = sequence.saturating_add(allowed);
+            if frame.sequence > limit {
+                return Err(VoiceError::Sequence {
+                    received: frame.sequence,
+                    limit,
+                });
             }
+        }
+        if new_spurt {
+            // The first arrival may itself be delayed. Buffer admission is an
+            // earlier bound; using receipt time can reject live speech forever
+            // after that initial delay disappears. Packet budgets bound actual work.
+            self.origin = Some((frame.sequence, self.admitted_at));
         }
         let idle = self
             .latest
             .is_none_or(|(_, at)| now.saturating_duration_since(at) >= IDLE);
-        if new_spurt || idle || self.play_at.is_none() {
+        let drained = !self.playing && self.frames.iter().all(Option::is_none);
+        if new_spurt || idle || drained {
             if !new_spurt
                 && self
                     .latest
@@ -222,25 +276,21 @@ impl VoiceInbox {
             self.frames.fill(None);
             self.latest = None;
             self.next = frame.sequence;
-            self.play_at = Some(now + PREBUFFER);
             self.spurt = frame.spurt;
-            self.missing = 0;
+            self.restart();
         }
+        // Playback only ever moves past frames it played, rebuilt or trimmed.
         if frame.sequence < self.next {
             return Ok(false);
         }
-        let index = usize::try_from(frame.sequence % u32::try_from(JITTER_FRAMES).unwrap_or(8))
-            .unwrap_or(0);
+        let index = slot(frame.sequence);
         if self.frames[index].is_some_and(|old| old.sequence == frame.sequence) {
             return Ok(false);
         }
-        if frame.sequence.saturating_sub(self.next) >= u32::try_from(JITTER_FRAMES).unwrap_or(8) {
-            self.next = frame.sequence - u32::try_from(JITTER_FRAMES - 1).unwrap_or(7);
-            for queued in &mut self.frames {
-                if queued.is_some_and(|old| old.sequence < self.next) {
-                    *queued = None;
-                }
-            }
+        if frame.sequence.saturating_sub(self.next) >= window() {
+            // A listener that stopped pulling keeps only the newest window, never a backlog.
+            self.next = frame.sequence - (window() - 1);
+            self.evict();
         }
         if self
             .latest
@@ -251,57 +301,108 @@ impl VoiceInbox {
         self.frames[index] = Some(frame);
         Ok(true)
     }
-    /// Takes at most one due frame. Delayed consumers skip old speech instead of replaying it.
+    /// Takes the next 20 ms of this speaker's speech; call once per output frame.
     #[must_use]
-    pub fn playout(&mut self, now: Instant) -> Playout {
-        let Some(at) = self.play_at else {
-            return Playout::Silence;
-        };
-        if now < at {
-            return Playout::Silence;
-        }
-        if self
-            .latest
-            .is_some_and(|(_, last)| now.saturating_duration_since(last) >= IDLE)
-        {
-            self.clear();
-            return Playout::Silence;
-        }
-        let skipped =
-            u32::try_from(now.saturating_duration_since(at).as_nanos() / FRAME_TIME.as_nanos())
-                .unwrap_or(u32::MAX);
-        self.next = self.next.saturating_add(skipped);
-        let advance = FRAME_TIME.saturating_mul(skipped.saturating_add(1));
-        self.play_at = Some(at.checked_add(advance).unwrap_or(now + FRAME_TIME));
-        let wanted = self.next;
-        self.next = self.next.saturating_add(1);
-        for queued in &mut self.frames {
-            if queued.is_some_and(|old| old.sequence < wanted) {
-                *queued = None;
+    pub fn playout(&mut self) -> Playout {
+        if !self.playing {
+            let Some(first) = self.earliest() else {
+                return Playout::Silence;
+            };
+            self.waited = self.waited.saturating_add(1);
+            // Start with one frame in hand for network jitter; a single short word that
+            // never fills it still plays after a few frames.
+            let depth = self.newest().saturating_sub(first).saturating_add(1);
+            if depth < START_DEPTH && self.waited < START_WAIT {
+                return Playout::Silence;
             }
-        }
-        let index =
-            usize::try_from(wanted % u32::try_from(JITTER_FRAMES).unwrap_or(8)).unwrap_or(0);
-        if let Some(frame) = self.frames[index]
-            .take()
-            .filter(|frame| frame.sequence == wanted)
-        {
+            self.next = first;
+            self.playing = true;
             self.missing = 0;
+        }
+        self.trim();
+        if let Some(frame) = self.frames[slot(self.next)]
+            .take()
+            .filter(|frame| frame.sequence == self.next)
+        {
+            self.next = self.next.saturating_add(1);
+            self.missing = 0;
+            self.measure();
             return Playout::Frame(frame);
         }
-        self.missing = self.missing.saturating_add(1);
-        if self.missing <= 3 {
-            Playout::Conceal
-        } else {
-            Playout::Silence
+        if let Some(later) = self.earliest() {
+            // Lost on the way: rebuild one frame, then carry on with the speech that came.
+            let action = if later == self.next.saturating_add(1) {
+                self.frames[slot(later)].map_or(Playout::Conceal, Playout::Recover)
+            } else {
+                Playout::Conceal
+            };
+            self.next = later;
+            self.missing = 0;
+            return action;
         }
+        // Nothing has arrived yet: stretch rather than skip, so late speech still plays.
+        self.missing = self.missing.saturating_add(1);
+        if self.missing <= MAX_CONCEAL {
+            self.spare = 0;
+            return Playout::Conceal;
+        }
+        self.restart();
+        Playout::Silence
     }
     /// Discards buffered speech when a rider is muted, leaves or the listener deafens.
     pub fn clear(&mut self) {
         self.frames.fill(None);
-        self.play_at = None;
-        self.missing = 0;
+        self.restart();
     }
+    fn restart(&mut self) {
+        self.playing = false;
+        self.waited = 0;
+        self.missing = 0;
+        self.spare = u32::MAX;
+        self.measured = 0;
+    }
+    fn newest(&self) -> u32 {
+        self.latest.map_or(self.next, |(sequence, _)| sequence)
+    }
+    fn earliest(&self) -> Option<u32> {
+        self.frames
+            .iter()
+            .flatten()
+            .map(|frame| frame.sequence)
+            .filter(|sequence| *sequence >= self.next)
+            .min()
+    }
+    fn evict(&mut self) {
+        for queued in &mut self.frames {
+            if queued.is_some_and(|old| old.sequence < self.next) {
+                *queued = None;
+            }
+        }
+    }
+    fn measure(&mut self) {
+        let spare = self.newest().saturating_add(1).saturating_sub(self.next);
+        self.spare = self.spare.min(spare);
+        self.measured = self.measured.saturating_add(1);
+    }
+    fn trim(&mut self) {
+        if self.measured < TRIM_WINDOW {
+            return;
+        }
+        // Speech queued beyond one spare frame for a whole second only adds delay.
+        if self.spare != u32::MAX && self.spare > 1 {
+            self.next = self.next.saturating_add(self.spare - 1);
+            self.evict();
+        }
+        self.spare = u32::MAX;
+        self.measured = 0;
+    }
+}
+
+fn window() -> u32 {
+    u32::try_from(JITTER_FRAMES).unwrap_or(8)
+}
+fn slot(sequence: u32) -> usize {
+    usize::try_from(sequence % window()).unwrap_or(0)
 }
 
 struct Speaker {
@@ -324,6 +425,7 @@ struct Room {
     speakers: [Speaker; MAX_RIDERS],
     uplink: Option<Connection>,
     next_epoch: u64,
+    audio_owner: u64,
 }
 
 pub(crate) struct IncomingBudget {
@@ -350,7 +452,12 @@ impl IncomingBudget {
         }
     }
     pub fn charge(&mut self) -> Result<(), VoiceError> {
-        let now = Instant::now();
+        self.accept().then_some(()).ok_or(VoiceError::Flood)
+    }
+    pub fn accept(&mut self) -> bool {
+        self.accept_at(Instant::now())
+    }
+    fn accept_at(&mut self, now: Instant) -> bool {
         let elapsed = now.saturating_duration_since(self.refilled);
         let period = self.period;
         let added = u16::try_from(elapsed.as_nanos() / period.as_nanos()).unwrap_or(self.burst);
@@ -361,10 +468,10 @@ impl IncomingBudget {
             self.refilled = now.checked_sub(remainder).unwrap_or(now);
         }
         if self.tokens == 0 {
-            return Err(VoiceError::Flood);
+            return false;
         }
         self.tokens -= 1;
-        Ok(())
+        true
     }
 }
 fn lock(room: &Arc<Mutex<Room>>) -> MutexGuard<'_, Room> {
@@ -378,6 +485,7 @@ fn lock(room: &Arc<Mutex<Room>>) -> MutexGuard<'_, Room> {
 pub struct VoicePort {
     room: Arc<Mutex<Room>>,
     consent: tokio::sync::watch::Sender<bool>,
+    audio_owner: Option<u64>,
 }
 pub(crate) struct VoiceOwner(pub VoiceHandle);
 #[derive(Clone)]
@@ -403,6 +511,7 @@ pub(crate) fn channel_for(
         muted: 0,
         uplink: None,
         next_epoch: 0,
+        audio_owner: 0,
         speakers: std::array::from_fn(|index| Speaker {
             member: None,
             consent: false,
@@ -419,6 +528,7 @@ pub(crate) fn channel_for(
         VoicePort {
             room: room.clone(),
             consent,
+            audio_owner: None,
         },
         VoiceOwner(VoiceHandle(room)),
         changes,
@@ -426,6 +536,43 @@ pub(crate) fn channel_for(
 }
 
 impl VoicePort {
+    fn current(&self, room: &Room) -> bool {
+        self.audio_owner
+            .is_none_or(|owner| owner == room.audio_owner)
+    }
+    /// Claims a fresh local audio lifetime, starting muted and without listening consent.
+    /// Retired workers cannot send, play or revoke a replacement's consent during cleanup.
+    /// The original port remains usable for immediate UI mute/leave controls.
+    ///
+    /// # Errors
+    /// Returns [`VoiceError::Disabled`] if closed, superseded or the owner counter is exhausted.
+    pub fn claim(&self) -> Result<Self, VoiceError> {
+        let mut room = lock(&self.room);
+        if !room.open || !self.current(&room) {
+            return Err(VoiceError::Disabled);
+        }
+        room.audio_owner = room
+            .audio_owner
+            .checked_add(1)
+            .ok_or(VoiceError::Disabled)?;
+        room.microphone = false;
+        room.enabled = false;
+        let me = usize::from(room.me.value());
+        room.speakers[me].consent = false;
+        for speaker in &mut room.speakers {
+            speaker.inbox.clear();
+        }
+        self.consent.send_if_modified(|enabled| {
+            let changed = *enabled;
+            *enabled = false;
+            changed
+        });
+        Ok(Self {
+            room: self.room.clone(),
+            consent: self.consent.clone(),
+            audio_owner: Some(room.audio_owner),
+        })
+    }
     /// This audio sender's authenticated roster number.
     #[must_use]
     pub fn me(&self) -> RiderId {
@@ -434,11 +581,15 @@ impl VoicePort {
     /// Whether the group owner still exists. Audio adapters must stop capture on `false`.
     #[must_use]
     pub fn alive(&self) -> bool {
-        lock(&self.room).open
+        let room = lock(&self.room);
+        room.open && self.current(&room)
     }
     /// Opts in to receiving speech. Disabling also mutes transmission and drops queued audio.
     pub fn enable(&self, enabled: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         let enabled = enabled && room.open;
         let changed = room.enabled != enabled;
         room.enabled = enabled;
@@ -460,6 +611,9 @@ impl VoicePort {
     /// Returns [`VoiceError::Disabled`] if closed, deafened, not opted in or counter exhausted.
     pub fn microphone(&self, enabled: bool) -> Result<u32, VoiceError> {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return Err(VoiceError::Disabled);
+        }
         if enabled && (!room.open || !room.enabled || room.deafened) {
             return Err(VoiceError::Disabled);
         }
@@ -473,12 +627,16 @@ impl VoicePort {
     #[must_use]
     pub fn transmitting(&self) -> Option<u32> {
         let room = lock(&self.room);
-        (room.open && room.enabled && room.microphone && !room.deafened).then_some(room.spurt)
+        (self.current(&room) && room.open && room.enabled && room.microphone && !room.deafened)
+            .then_some(room.spurt)
     }
     /// Silences all received audio, clears pending speech and mutes the microphone.
     /// Undeafening leaves the microphone muted until explicitly enabled again.
     pub fn deafen(&self, deafened: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         room.deafened = deafened;
         if deafened {
             room.microphone = false;
@@ -490,11 +648,15 @@ impl VoicePort {
     /// Whether local playback is deafened.
     #[must_use]
     pub fn deafened(&self) -> bool {
-        lock(&self.room).deafened
+        let room = lock(&self.room);
+        !self.current(&room) || room.deafened
     }
     /// Silences one speaker locally without affecting anyone else's conversation.
     pub fn mute_peer(&self, peer: RiderId, muted: bool) {
         let mut room = lock(&self.room);
+        if !self.current(&room) {
+            return;
+        }
         let bit = 1 << peer.value();
         if muted {
             room.muted |= bit;
@@ -507,10 +669,12 @@ impl VoicePort {
     /// send buffered speech after mute/unmute, and transport congestion drops disposable audio.
     ///
     /// # Errors
-    /// Returns [`VoiceError`] for invalid state, closed/muted gates or a local frame flood.
+    /// Returns [`VoiceError`] for invalid state, closed/muted gates or an invalid sequence.
+    /// Local media-budget exhaustion drops the frame without closing the voice session.
     pub fn send(&self, frame: VoiceFrame) -> Result<(), VoiceError> {
         let mut room = lock(&self.room);
-        if !room.open
+        if !self.current(&room)
+            || !room.open
             || !room.enabled
             || !room.microphone
             || room.deafened
@@ -537,16 +701,20 @@ impl VoicePort {
         }
         Ok(())
     }
-    /// Takes one due frame per remote speaker without holding a lock during audio decoding.
+    /// Takes the next 20 ms per remote speaker; call once per output frame, paced by the
+    /// speaker device. No lock is held during audio decoding.
     #[must_use]
-    pub fn playout(&self, now: Instant) -> [VoicePlayback; MAX_RIDERS] {
+    pub fn playout(&self) -> [VoicePlayback; MAX_RIDERS] {
         let mut room = lock(&self.room);
-        let enabled = room.open && room.enabled && !room.deafened;
+        let current = self.current(&room);
+        let enabled = current && room.open && room.enabled && !room.deafened;
         let me = room.me;
         let muted = room.muted;
         std::array::from_fn(|index| {
             let speaker = &mut room.speakers[index];
-            let action = if !enabled
+            let action = if !current {
+                Playout::Silence
+            } else if !enabled
                 || index == usize::from(me.value())
                 || muted & (1 << index) != 0
                 || speaker.member.is_none()
@@ -554,7 +722,7 @@ impl VoicePort {
                 speaker.inbox.clear();
                 Playout::Silence
             } else {
-                speaker.inbox.playout(now)
+                speaker.inbox.playout()
             };
             VoicePlayback {
                 epoch: speaker.epoch,
@@ -748,40 +916,150 @@ mod tests {
         for _ in 0..BURST {
             assert_eq!(inbox.ingest(&[], now), Err(VoiceError::Invalid));
         }
-        assert_eq!(
-            inbox.ingest(&bytes(RiderId::HOST, 0), now),
-            Err(VoiceError::Flood)
-        );
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 0), now), Ok(false));
         assert_eq!(
             inbox.ingest(&bytes(RiderId::HOST, 0), now + FRAME_TIME),
             Ok(true)
         );
     }
+
     #[test]
-    fn jitter_reorders_but_slow_consumers_skip_history_and_mute_discards_audio() {
+    fn a_delayed_speech_batch_drops_excess_and_resumes_with_fresh_audio() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        let delayed = now + Duration::from_millis(500);
+        for sequence in 1..=25 {
+            assert_eq!(
+                inbox.ingest(&bytes(RiderId::HOST, sequence), delayed),
+                Ok(sequence <= u32::from(BURST))
+            );
+        }
+        let fresh = delayed + FRAME_TIME;
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 26), fresh), Ok(true));
+        // Recovery stays within the bounded playout window, never a growing backlog.
+        assert!((0..=8).any(|_| matches!(
+            inbox.playout(),
+            Playout::Frame(frame) if frame.sequence == 26
+        )));
+    }
+
+    #[test]
+    fn aggregate_media_budget_recovers_without_borrowing_from_future_time() {
+        let mut budget = IncomingBudget::new();
+        let now = budget.refilled;
+        for _ in 0..80 {
+            assert!(budget.accept_at(now));
+        }
+        for _ in 0..1000 {
+            assert!(!budget.accept_at(now));
+        }
+        assert!(!budget.accept_at(now + Duration::from_micros(2499)));
+        assert!(budget.accept_at(now + Duration::from_micros(2500)));
+        assert!(!budget.accept_at(now + Duration::from_micros(2500)));
+        for _ in 0..80 {
+            assert!(budget.accept_at(now + Duration::from_secs(1)));
+        }
+        assert!(!budget.accept_at(now + Duration::from_secs(1)));
+    }
+    #[test]
+    fn reordered_speech_plays_in_order_and_mute_discards_what_is_queued() {
         let now = Instant::now();
         let mut inbox = VoiceInbox::new(RiderId::HOST, now);
         for sequence in [0, 2, 1] {
             inbox.ingest(&bytes(RiderId::HOST, sequence), now).unwrap();
         }
-        assert!(matches!(inbox.playout(now), Playout::Silence));
         for sequence in 0..3 {
-            let Playout::Frame(frame) = inbox.playout(now + PREBUFFER + FRAME_TIME * sequence)
-            else {
-                panic!("frame");
+            let Playout::Frame(frame) = inbox.playout() else {
+                panic!("frame {sequence}");
             };
             assert_eq!(frame.sequence, sequence);
         }
-        assert!(matches!(
-            inbox.playout(now + Duration::from_secs(1)),
-            Playout::Silence
-        ));
+        // Late speech is stretched for at most sixty milliseconds, then the speaker is quiet.
+        for _ in 0..MAX_CONCEAL {
+            assert!(matches!(inbox.playout(), Playout::Conceal));
+        }
+        assert!(matches!(inbox.playout(), Playout::Silence));
+        for sequence in 3..6 {
+            inbox
+                .ingest(&bytes(RiderId::HOST, sequence), now + FRAME_TIME * sequence)
+                .unwrap();
+        }
         inbox.clear();
-        assert!(matches!(
-            inbox.playout(now + Duration::from_secs(2)),
-            Playout::Silence
-        ));
+        for _ in 0..=START_WAIT {
+            assert!(matches!(inbox.playout(), Playout::Silence));
+        }
     }
+
+    /// What one listener plays, pulling once per 20 ms of output, while packets arrive at
+    /// `arrivals[k]` milliseconds for sequence `k` (`None` = lost on the way).
+    fn listen(arrivals: &[Option<f64>], pulls: usize) -> Vec<Playout> {
+        let origin = Instant::now();
+        let at = |ms: f64| origin + Duration::from_secs_f64(ms / 1000.0);
+        let mut inbox = VoiceInbox::new(RiderId::HOST, origin);
+        let mut pending: Vec<(f64, u32)> = arrivals
+            .iter()
+            .enumerate()
+            .filter_map(|(sequence, ms)| Some(((*ms)?, u32::try_from(sequence).ok()?)))
+            .collect();
+        pending.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut pending = pending.into_iter().peekable();
+        (0..pulls)
+            .map(|pull| {
+                #[allow(clippy::cast_precision_loss)]
+                let now = 5.0 + 20.0 * pull as f64;
+                while let Some((ms, sequence)) = pending.next_if(|(ms, _)| *ms <= now) {
+                    inbox
+                        .ingest(&bytes(RiderId::HOST, sequence), at(ms))
+                        .unwrap();
+                }
+                inbox.playout()
+            })
+            .collect()
+    }
+    fn played(playback: &[Playout]) -> Vec<u32> {
+        playback
+            .iter()
+            .filter_map(|action| match action {
+                Playout::Frame(frame) => Some(frame.sequence),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_lost_packet_is_rebuilt_from_the_next_one_and_speech_carries_on() {
+        let lost = [2, 5, 6];
+        let arrivals: Vec<_> = (0..10_u32)
+            .map(|sequence| (!lost.contains(&sequence)).then_some(f64::from(sequence) * 20.0))
+            .collect();
+        let playback = listen(&arrivals, 10);
+        let actions: Vec<String> = playback
+            .iter()
+            .map(|action| match action {
+                Playout::Frame(frame) => format!("play {}", frame.sequence),
+                Playout::Recover(frame) => format!("rebuild before {}", frame.sequence),
+                Playout::Conceal => "conceal".into(),
+                Playout::Silence => "silence".into(),
+            })
+            .collect();
+        assert_eq!(
+            actions,
+            [
+                "silence",
+                "play 0",
+                "play 1",
+                "rebuild before 3",
+                "play 3",
+                "play 4",
+                "conceal",
+                "conceal",
+                "play 7",
+                "play 8"
+            ]
+        );
+    }
+
     #[test]
     fn future_sequences_cannot_poison_ordering_and_correctly_paced_jitter_is_allowed() {
         let now = Instant::now();
@@ -789,7 +1067,10 @@ mod tests {
         inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
         assert_eq!(
             inbox.ingest(&bytes(RiderId::HOST, u32::MAX), now),
-            Err(VoiceError::Invalid)
+            Err(VoiceError::Sequence {
+                received: u32::MAX,
+                limit: u32::from(BURST)
+            })
         );
         for sequence in 1..1000 {
             let arrival =
@@ -820,6 +1101,81 @@ mod tests {
         epochs[3] = 0;
         epochs[0] = 7;
         assert_eq!(owner.0.install_epochs(epochs), Err(VoiceError::Invalid));
+    }
+
+    #[test]
+    fn delayed_microphone_packets_cannot_move_the_sequence_clock_forward() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        // Frame 50 was emitted at 1 s but delayed by 500 ms; frame 75 arrives
+        // promptly after it. Both respect the microphone's 50 Hz source rate.
+        inbox
+            .ingest(&bytes(RiderId::HOST, 50), now + Duration::from_millis(1500))
+            .unwrap();
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 75), now + Duration::from_millis(1501)),
+            Ok(true)
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 76), now + Duration::from_millis(1520)),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn a_delayed_first_packet_cannot_make_all_following_live_speech_look_too_fast() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        // A stall starts before any speech arrives. The first old frame must not
+        // establish a clock that permanently rejects the source's fresh frames.
+        let resumed = now + Duration::from_secs(1);
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 0), resumed), Ok(true));
+        for sequence in 50..100 {
+            let at = resumed + FRAME_TIME * (sequence - 50) + Duration::from_millis(1);
+            assert_eq!(inbox.ingest(&bytes(RiderId::HOST, sequence), at), Ok(true));
+        }
+    }
+
+    #[test]
+    fn successive_small_future_jumps_cannot_accumulate_sequence_allowance() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        inbox
+            .ingest(&bytes(RiderId::HOST, 11), now + FRAME_TIME)
+            .unwrap();
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 22), now + FRAME_TIME * 2),
+            Err(VoiceError::Sequence {
+                received: 22,
+                limit: 12
+            })
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 12), now + FRAME_TIME * 3),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn independent_clocks_do_not_accumulate_false_sequence_errors_during_long_activations() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        inbox.ingest(&bytes(RiderId::HOST, 0), now).unwrap();
+        let later = now + Duration::from_mins(30);
+        assert_eq!(inbox.ingest(&bytes(RiderId::HOST, 90_045), later), Ok(true));
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 90_911), later),
+            Err(VoiceError::Sequence {
+                received: 90_911,
+                limit: 90_910
+            })
+        );
+        assert_eq!(
+            inbox.ingest(&bytes(RiderId::HOST, 90_046), later + FRAME_TIME),
+            Ok(true)
+        );
     }
 
     #[test]
@@ -859,7 +1215,10 @@ mod tests {
             .scoped(4)
             .datagram();
         owner.0.ingest(fresh, &current.0[..current.1]).unwrap();
-        let playback = port.playout(Instant::now() + PREBUFFER);
+        let playback = (0..START_WAIT)
+            .map(|_| port.playout())
+            .find(|playback| !matches!(playback[1].action, Playout::Silence))
+            .expect("the new speaker is heard");
         assert_eq!(playback[1].epoch, 4);
         let Playout::Frame(frame) = &playback[1].action else {
             panic!("new speaker frame");
@@ -901,27 +1260,93 @@ mod tests {
         assert_eq!(inbox.ingest(&packet(1, 51), now), Ok(false));
         assert_eq!(
             inbox.ingest(&packet(2, u32::MAX), now),
-            Err(VoiceError::Invalid)
+            Err(VoiceError::Sequence {
+                received: u32::MAX,
+                limit: u32::from(BURST)
+            })
         );
         assert_eq!(inbox.ingest(&packet(2, 1), now), Ok(true));
     }
 
     #[test]
-    fn small_playback_clock_jitter_keeps_continuous_speech_without_decoder_resets() {
-        let origin = Instant::now();
-        let mut inbox = VoiceInbox::new(RiderId::HOST, origin);
-        for sequence in 0..100_u32 {
-            let arrival = origin + FRAME_TIME * sequence;
+    fn network_jitter_keeps_continuous_speech_without_concealment() {
+        // Up to 16 ms between the earliest and latest arrival of evenly sent frames.
+        let arrivals: Vec<_> = (0..500_u32)
+            .map(|sequence| Some(f64::from(sequence) * 20.0 + f64::from((sequence * 7) % 17)))
+            .collect();
+        let playback = listen(&arrivals, 500);
+        let heard = played(&playback);
+        assert!(heard.windows(2).all(|pair| pair[1] == pair[0] + 1));
+        assert!(heard.len() > 490, "heard {}", heard.len());
+        assert!(
+            !playback
+                .iter()
+                .skip_while(|action| matches!(action, Playout::Silence))
+                .any(|action| matches!(action, Playout::Conceal | Playout::Silence))
+        );
+    }
+
+    #[test]
+    fn sound_cards_running_at_different_rates_neither_skip_words_nor_drift_behind() {
+        // Real devices differ by up to a few hundred parts per million; exaggerate it.
+        for period in [19.9, 20.1] {
+            let arrivals: Vec<_> = (0..3000_u32)
+                .map(|sequence| Some(f64::from(sequence) * period))
+                .collect();
+            let playback = listen(&arrivals, 2950);
+            let heard = played(&playback);
+            let concealed = playback
+                .iter()
+                .filter(|action| matches!(action, Playout::Conceal))
+                .count();
+            let skipped: u32 = heard.windows(2).map(|pair| pair[1] - pair[0] - 1).sum();
+            // A 0.5 % difference is 15 frames in 3000; each is absorbed once, not repeatedly.
+            assert!(concealed <= 20, "{period} ms: concealed {concealed}");
+            assert!(skipped <= 20, "{period} ms: skipped {skipped}");
+            // Delay stays small: the last frame played is close behind the last one sent.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let sent = ((5.0 + 20.0 * 2949.0) / period) as u32;
+            let behind = sent - heard.last().copied().unwrap_or(0);
+            assert!(behind <= 4, "{period} ms: {behind} frames behind");
+        }
+    }
+
+    #[test]
+    fn a_slow_speaker_is_stretched_rather_than_cut_into_pieces() {
+        // A sender at half speed: every frame it does send is still played.
+        let arrivals: Vec<_> = (0..250_u32)
+            .map(|sequence| Some(f64::from(sequence) * 40.0))
+            .collect();
+        let heard = played(&listen(&arrivals, 500));
+        assert!(heard.len() > 240, "heard {} of 250 frames", heard.len());
+    }
+
+    #[test]
+    fn a_stalled_listener_skips_history_beyond_the_window_and_then_catches_up_with_live() {
+        let now = Instant::now();
+        let mut inbox = VoiceInbox::new(RiderId::HOST, now);
+        for sequence in 0..=50 {
             inbox
-                .ingest(&bytes(RiderId::HOST, sequence), arrival)
+                .ingest(&bytes(RiderId::HOST, sequence), now + FRAME_TIME * sequence)
                 .unwrap();
-            if sequence >= 3 {
-                let playback = arrival + Duration::from_millis(13 + u64::from(sequence % 2));
-                let Playout::Frame(frame) = inbox.playout(playback) else {
-                    panic!("continuous playout at {sequence}");
-                };
-                assert_eq!(frame.sequence, sequence - 3);
+        }
+        let Playout::Frame(frame) = inbox.playout() else {
+            panic!("a live producer must still be audible after listener scheduling stalls");
+        };
+        assert!(
+            frame.sequence > 50 - window(),
+            "old speech beyond the jitter window must be skipped, not replayed"
+        );
+        // Live speech keeps coming; within two seconds playback is close behind it again.
+        let mut last = frame.sequence;
+        for sequence in 51..=150 {
+            inbox
+                .ingest(&bytes(RiderId::HOST, sequence), now + FRAME_TIME * sequence)
+                .unwrap();
+            if let Playout::Frame(frame) = inbox.playout() {
+                last = frame.sequence;
             }
         }
+        assert!(150 - last <= 2, "{} frames behind", 150 - last);
     }
 }

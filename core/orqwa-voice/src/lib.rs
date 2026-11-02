@@ -1,7 +1,13 @@
 //! Local voice capture and Opus speech; audio is never recorded or sent to a voice service.
 
+pub mod audio_test;
 pub mod codec;
 pub mod device;
+mod echo;
+pub mod microphone_test;
+mod pacing;
+mod resample;
+mod speech_activity;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -10,10 +16,19 @@ use std::time::{Duration, Instant};
 
 use orqwa_domain::voice::{FRAME_SAMPLES, PcmFrame, VoiceAudio, VoiceDeviceError};
 use orqwa_net::state::{MAX_RIDERS, RiderId};
-use orqwa_net::voice::{FRAME_TIME, Playout, VoicePort};
+use orqwa_net::voice::{Playout, VoicePort};
 use tokio::sync::{mpsc, oneshot};
 
 use codec::{SpeechDecoder, SpeechEncoder};
+
+/// Playback frames kept queued ahead of the speaker, covering a late worker wakeup.
+const PLAYBACK_QUEUE: usize = 2;
+/// How often the worker tops up playback and sends captured speech.
+const POLL: Duration = Duration::from_millis(5);
+/// Captured speech older than this would arrive too late to belong to the conversation.
+const CAPTURE_FRESH: Duration = Duration::from_millis(120);
+/// Frames handled per wakeup in each direction, whatever a backend reports.
+const MAX_FRAMES_PER_WAKE: usize = 8;
 
 /// Bounded local status messages, without audio or credentials.
 #[derive(Debug)]
@@ -53,6 +68,7 @@ struct Controls {
     stop: Arc<AtomicBool>,
     volume: AtomicU32,
     flush: AtomicU32,
+    echo_prevention: AtomicBool,
 }
 
 /// Owns one local voice thread and its audio devices. Starts listening with the mic muted.
@@ -86,10 +102,12 @@ impl VoiceChat {
         + Send
         + 'static,
     ) -> Result<Self, VoiceError> {
+        let port = port.claim()?;
         let controls = Arc::new(Controls {
             stop: Arc::new(AtomicBool::new(false)),
             volume: AtomicU32::new(0.6_f32.to_bits()),
             flush: AtomicU32::new(0),
+            echo_prevention: AtomicBool::new(false),
         });
         let (ready, receive) = oneshot::channel();
         let (send, events) = mpsc::channel(8);
@@ -158,6 +176,15 @@ impl VoiceChat {
     #[must_use]
     pub fn microphone_enabled(&self) -> bool {
         self.port.transmitting().is_some()
+    }
+    /// Prevents speaker feedback by holding outgoing speech while a friend's speech is audible,
+    /// including a short echo tail; background noise does not hold it. Disable for
+    /// full-duplex conversation with headphones.
+    pub fn echo_prevention(&self, enabled: bool) {
+        self.controls
+            .echo_prevention
+            .store(enabled, Ordering::Release);
+        self.wake();
     }
     /// Silences playback and mutes the microphone; undeafening keeps the microphone muted.
     pub fn deafen(&self, deafened: bool) {
@@ -252,7 +279,8 @@ fn run(
     let mut decoders: [Option<(u64, SpeechDecoder)>; MAX_RIDERS] = std::array::from_fn(|_| None);
     let mut activation = None;
     let mut playback = (false, 0);
-    let mut next = Instant::now();
+    let mut pacer = pacing::Pacer::new(Instant::now());
+    let mut speaker_gate = echo::SpeakerGate::new();
     while !controls.stop.load(Ordering::Acquire) && port.alive() {
         let requested = port.transmitting();
         if requested != activation {
@@ -262,6 +290,7 @@ fn run(
                 let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             }
             activation = port.transmitting();
+            speaker_gate.restart();
         }
         let output = (port.deafened(), controls.flush.load(Ordering::Relaxed));
         if output != playback {
@@ -269,47 +298,50 @@ fn run(
             playback = output;
         }
         if !audio.healthy() {
-            let error = audio.failure();
+            let error = match audio.recover() {
+                Ok(true) => {
+                    decoders.fill_with(|| None);
+                    pacer.defer(Instant::now());
+                    continue;
+                }
+                Ok(false) => audio.failure(),
+                Err(error) => error,
+            };
             let _ = events.try_send(VoiceEvent::DeviceUnavailable { error });
             break;
         }
-        let now = Instant::now();
-        if now < next {
-            std::thread::park_timeout(next.saturating_duration_since(now));
-            continue;
+        // The speaker's clock sets the pace: each frame it takes is mixed once, so the
+        // microphone, worker and speaker never drift apart into skipped or doubled speech.
+        let queued = audio.playback_queued();
+        let due = match queued {
+            Some(queued) => PLAYBACK_QUEUE.saturating_sub(queued),
+            None => usize::from(pacer.due(Instant::now())),
+        };
+        for _ in 0..due.min(MAX_FRAMES_PER_WAKE) {
+            let mixed = mix(
+                port,
+                &mut decoders,
+                f32::from_bits(controls.volume.load(Ordering::Relaxed)),
+                events,
+            );
+            speaker_gate.observe(&mixed, Instant::now());
+            audio.play(mixed);
         }
         if let Some(spurt) = activation {
-            // Old captures and previous microphone activations never become delayed speech.
-            while let Some(captured) = audio.capture() {
-                if captured.activation != spurt || captured.at.elapsed() > FRAME_TIME * 3 {
-                    continue;
-                }
-                if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
-                    let _ = port.send(frame);
-                } else {
-                    let _ = port.microphone(false);
-                    let _ = events.try_send(VoiceEvent::DeviceUnavailable {
-                        error: VoiceDeviceError::new(
-                            "encoding voice frame",
-                            "Opus encoding failed",
-                        ),
-                    });
-                }
-                break;
-            }
+            let gate = controls
+                .echo_prevention
+                .load(Ordering::Acquire)
+                .then_some(&mut speaker_gate);
+            send_captures(port, audio.as_mut(), &mut encoder, spurt, gate, events);
         }
-        audio.play(mix(
-            port,
-            &mut decoders,
-            f32::from_bits(controls.volume.load(Ordering::Relaxed)),
-            events,
-        ));
-        next += FRAME_TIME;
         let now = Instant::now();
-        if now > next + FRAME_TIME {
-            next = now + FRAME_TIME;
-        }
-        std::thread::park_timeout(next.saturating_duration_since(now));
+        pacer.completed(now);
+        let wait = if queued.is_some() {
+            POLL
+        } else {
+            pacer.wait(now).min(POLL)
+        };
+        std::thread::park_timeout(wait);
     }
     port.disable();
     let _ = audio.microphone(None);
@@ -318,15 +350,50 @@ fn run(
     let _ = events.try_send(VoiceEvent::Stopped);
 }
 
+fn send_captures(
+    port: &VoicePort,
+    audio: &mut dyn VoiceAudio,
+    encoder: &mut SpeechEncoder,
+    spurt: u32,
+    mut gate: Option<&mut echo::SpeakerGate>,
+    events: &mpsc::Sender<VoiceEvent>,
+) {
+    // Every fresh frame is sent, in order: dropping any cuts a hole into the words.
+    for _ in 0..MAX_FRAMES_PER_WAKE {
+        let Some(mut captured) = audio.capture() else {
+            break;
+        };
+        if captured.activation != spurt {
+            continue;
+        }
+        if captured.at.elapsed() > CAPTURE_FRESH {
+            // Old captures never become delayed speech; listeners conceal the gap.
+            let _ = encoder.skip(spurt);
+            continue;
+        }
+        if let Some(gate) = gate.as_deref_mut() {
+            gate.apply(&mut captured.samples, captured.at);
+        }
+        if let Ok(frame) = encoder.encode(&captured.samples, port.me(), spurt) {
+            let _ = port.send(frame);
+        } else {
+            let _ = port.microphone(false);
+            let _ = events.try_send(VoiceEvent::DeviceUnavailable {
+                error: VoiceDeviceError::new("encoding voice frame", "Opus encoding failed"),
+            });
+            break;
+        }
+    }
+}
+
 fn mix(
     port: &VoicePort,
     decoders: &mut [Option<(u64, SpeechDecoder)>; MAX_RIDERS],
     volume: f32,
     events: &mpsc::Sender<VoiceEvent>,
 ) -> PcmFrame {
-    let actions = port.playout(Instant::now());
+    let actions = port.playout();
     let mut mixed = [0.0; FRAME_SAMPLES];
-    let mut speakers = 0_u8;
     for (id, playback) in actions.into_iter().enumerate() {
         let action = playback.action;
         if matches!(action, Playout::Silence) {
@@ -346,11 +413,11 @@ fn mix(
         };
         let result = match action {
             Playout::Frame(frame) => decoder.decode(&frame),
+            Playout::Recover(frame) => decoder.recover(&frame),
             Playout::Conceal => decoder.conceal(),
             Playout::Silence => continue,
         };
         if let Ok(samples) = result {
-            speakers += 1;
             for (sum, sample) in mixed.iter_mut().zip(samples) {
                 *sum += sample;
             }
@@ -361,9 +428,41 @@ fn mix(
             let _ = events.try_send(VoiceEvent::PeerMuted { peer });
         }
     }
-    let gain = volume / f32::from(speakers.max(1));
+    // Each voice keeps its level whoever else has a microphone open; only loud overlaps
+    // are rounded off, never clipped.
     for sample in &mut mixed {
-        *sample = (*sample * gain).clamp(-0.9, 0.9);
+        *sample = limit(*sample * volume);
     }
     mixed
+}
+
+fn limit(sample: f32) -> f32 {
+    const KNEE: f32 = 0.5;
+    const ROOM: f32 = 0.4;
+    let level = sample.abs();
+    if level <= KNEE {
+        sample
+    } else {
+        (KNEE + ROOM * ((level - KNEE) / ROOM).tanh()).copysign(sample)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mixing_keeps_quiet_speech_exact_and_rounds_off_loud_overlaps_below_full_scale() {
+        for sample in [0.0, 0.1, -0.3, 0.5] {
+            assert!((limit(sample) - sample).abs() < f32::EPSILON);
+        }
+        let mut previous = 0.0;
+        for step in 0..=400 {
+            #[allow(clippy::cast_precision_loss)]
+            let value = limit(step as f32 / 100.0);
+            assert!(value >= previous && value <= 0.9, "{value}");
+            previous = value;
+        }
+        assert!((limit(-2.0) + limit(2.0)).abs() < f32::EPSILON);
+    }
 }

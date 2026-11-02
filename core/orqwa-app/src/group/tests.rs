@@ -221,6 +221,10 @@ fn late_workout_entry_is_explicit_and_records_only_the_riders_own_effort() {
     wait(&mut host, &mut peer, |_, peer| {
         peer.group().phase == Phase::Ended
     });
+    assert!(
+        peer.group().roster[usize::from(peer.group().organizer)].is_none(),
+        "disconnected organizer is removed from the live roster"
+    );
     let elapsed = peer.ride_state().unwrap().elapsed;
     peer.update(Duration::from_secs(1));
     assert!(
