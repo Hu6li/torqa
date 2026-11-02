@@ -167,6 +167,24 @@ func _connection_choices() -> void:
 	_check(dialog._mode == "internet", "swiping connection cards does not change permissions")
 	await _tap(scroll, dialog._panels["home"])
 	_check(dialog._mode == "home", "tapping a connection card still selects it")
+	var home: CheckBox = dialog._choices["home"]
+	_check(
+		home.has_focus() and not home.has_focus(true),
+		"a tapped connection card shows only its selection, no focus ring"
+	)
+	_check(
+		home.get_theme_stylebox("focus") is StyleBoxEmpty,
+		"the option inside a connection card never draws a focus box of its own"
+	)
+	var down: InputEventAction = InputEventAction.new()
+	down.action = "ui_down"
+	down.pressed = true
+	root.push_input(down)
+	await _settle()
+	_check(
+		dialog._choices["mixed"].has_focus(true),
+		"the remote's arrows go on from the tapped card, showing where they are"
+	)
 	scroll.free()
 	dialog.free()
 
