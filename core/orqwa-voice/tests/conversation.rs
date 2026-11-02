@@ -600,7 +600,13 @@ async fn a_device_rate_change_recovers_without_rejoining_or_reopening_microphone
         !anna_voice.microphone_enabled(),
         "recovery cannot unmute a muted microphone"
     );
-    assert!(!a.microphone.load(Ordering::Acquire));
+    // The worker may rebuild the devices one wakeup before it applies the mute.
+    until(|| !a.microphone.load(Ordering::Acquire)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        !a.microphone.load(Ordering::Acquire),
+        "the muted microphone stays closed after recovery"
+    );
     anna_voice.close().await;
     ben_voice.close().await;
     anna.close().await;
