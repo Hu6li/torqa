@@ -203,6 +203,7 @@ func _ready() -> void:
 	_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_bar.settings_requested.connect(_open_settings)
 	_bar.group_requested.connect(func() -> void: _group_popup.popup_centered(Vector2i(640, 480)))
+	_bar.microphone_requested.connect(_group_controls.toggle_microphone)
 	_bar.overlay_requested.connect(func() -> void: overlay_requested.emit(true))
 	_bar.fullscreen_requested.connect(fullscreen_requested.emit)
 	_bar.back_requested.connect(closed.emit)
@@ -653,6 +654,9 @@ func _on_moment(moment: Dictionary) -> void:
 func _show_group(status: Dictionary) -> void:
 	var phase: String = status.get("phase", "idle")
 	_bar.show_group(phase != "idle")
+	var voice: bool = status.get("voice", false)
+	var microphone: bool = status.get("microphone", false)
+	_bar.show_microphone(voice, microphone)
 	var standby: bool = status.get("standby_offer", false)
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:

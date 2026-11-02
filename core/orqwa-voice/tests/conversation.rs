@@ -713,13 +713,15 @@ async fn microphone_test_is_temporary_local_and_never_plays_captured_samples() {
 }
 
 #[tokio::test]
-async fn microphone_test_closes_itself_after_ten_seconds() {
+async fn microphone_test_closes_itself_at_its_limit() {
     let probe = Arc::new(Probe::default());
     let device = probe.clone();
-    let test = MicrophoneTest::with_audio(move |_| Ok(Box::new(audio(device, 440.0))))
-        .await
-        .unwrap();
-    tokio::time::timeout(Duration::from_secs(12), async {
+    let test = MicrophoneTest::with_audio_limited(Duration::from_secs(1), move |_| {
+        Ok(Box::new(audio(device, 440.0)))
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
         while test.running() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }

@@ -1,14 +1,16 @@
 class_name RideBar
 extends PanelContainer
 ## The ride view's controls in one slim bar at the bottom left (#189): icon buttons with
-## tooltips for the settings, the group ride (#431), the overlay, full screen and pausing, and
-## the simulation's speeds when the ride is simulated. A chevron folds the bar away to its
-## corner and back; the keys work either way.
+## tooltips for the settings, the group ride (#431) and its microphone (R194), the overlay,
+## full screen and pausing, and the simulation's speeds when the ride is simulated. A chevron
+## folds the bar away to its corner and back; the keys work either way.
 
 ## The settings were asked for (S).
 signal settings_requested
 ## The group ride's riders, voice and shared controls were asked for (#431).
 signal group_requested
+## The rider's microphone in group voice should switch on or off (R194).
+signal microphone_requested
 ## The overlay was asked for (O).
 signal overlay_requested
 ## Full screen or a window was asked for (F11, #376).
@@ -37,6 +39,7 @@ var _fold: Button = Button.new()
 var _tools: HBoxContainer = HBoxContainer.new()
 var _settings: Button = Button.new()
 var _group: Button = Button.new()
+var _microphone: Button = Button.new()
 var _overlay: Button = Button.new()
 var _fullscreen: Button = Button.new()
 var _fullscreen_on: bool = false
@@ -68,6 +71,10 @@ func _init() -> void:
 	_group.pressed.connect(group_requested.emit)
 	_group.hide()
 	_tools.add_child(_group)
+	_icon_button(_microphone, "microphone", tr("Turn your microphone off"))
+	_microphone.pressed.connect(microphone_requested.emit)
+	_microphone.hide()
+	_tools.add_child(_microphone)
 	_icon_button(
 		_overlay, "overlay", tr("Only the HUD, on top of other windows, e.g. over a video (O)")
 	)
@@ -160,6 +167,20 @@ func show_paused(paused: bool) -> void:
 ## Shows the group ride's button while riding in a group, or hides it.
 func show_group(shown: bool) -> void:
 	_group.visible = shown
+
+
+## Shows the microphone button while in group voice, struck through while the microphone is
+## off (R194); hidden otherwise.
+func show_microphone(shown: bool, on: bool) -> void:
+	_microphone.visible = shown
+	_microphone.icon = (
+		UiIcons.texture("microphone", ICON)
+		if on
+		else UiIcons.texture("microphone_off", ICON, UiTheme.DANGER)
+	)
+	_microphone.tooltip_text = (
+		tr("Turn your microphone off") if on else tr("Turn your microphone on")
+	)
 
 
 ## Shows the settings button, or hides it (once the ride is over).

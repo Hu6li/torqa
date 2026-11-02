@@ -2290,7 +2290,7 @@ impl OrqwaApp {
     fn group_voice_echo_prevention(&mut self, enabled: bool) -> bool {
         self.command(|app| app.group_voice_echo_prevention(enabled))
     }
-    /// Selects native devices, reconnecting active voice with the microphone muted.
+    /// Selects native devices, reconnecting active voice with the microphone as it was.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_voice_choose(&mut self, input: GString, output: GString) -> bool {

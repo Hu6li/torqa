@@ -35,7 +35,6 @@ var _devices: Button
 var _retry: Button
 var _reconnect: Button
 var _voice_controls: GroupVoiceControls = GroupVoiceControls.new()
-var _voice_panel: VBoxContainer = VBoxContainer.new()
 var _invitation_panel: PanelContainer
 var _workout_panel: PanelContainer
 var _workout_status: Label = Label.new()
@@ -63,8 +62,9 @@ var _exchange_error: Label = Label.new()
 var _exchange_kind: String = "join"
 var _status: Dictionary = {}
 var _roster_key: String = ""
-## Each rider's speaker icon, by rider ID, shown while they are heard speaking.
-var _speaking: Dictionary[int, TextureRect] = {}
+## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
+## friend's speaker on theirs, lit while they are heard speaking (R190, R194).
+var _voice_buttons: Dictionary[int, Button] = {}
 var _activity_key: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
@@ -114,14 +114,8 @@ func _ready() -> void:
 	_build_organizer()
 	_build_workout_controls()
 	var audio: VBoxContainer = _card(_sidebar)
-	var voice: Button = _button(
-		audio, tr("Voice chat"), func() -> void: _voice_panel.visible = not _voice_panel.visible
-	)
-	voice.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	voice.icon = UiIcons.texture("down")
-	_voice_panel.add_child(_voice_controls)
-	_voice_panel.hide()
-	audio.add_child(_voice_panel)
+	_label(audio, tr("Voice chat"), 20)
+	audio.add_child(_voice_controls)
 	_button(_sidebar, tr("Leave group"), func() -> void: _orqwa.group_leave())
 	_build_dialogs()
 	resized.connect(_reflow)
@@ -669,9 +663,10 @@ func _show_status(status: Dictionary) -> void:
 	var riders: Array[Dictionary] = []
 	for rider: Dictionary in _status.get("roster", []):
 		var listed: Dictionary = rider.duplicate()
-		# Who speaks changes several times a second; the icons follow without rebuilding the
-		# rows, and their buttons, under the rider's pointer.
+		# Who speaks changes several times a second; the voice buttons follow without
+		# rebuilding the rows, and their buttons, under the rider's pointer.
 		listed.erase("speaking")
+		listed.erase("muted")
 		riders.append(listed)
 	var key: String = (
 		str(riders)
@@ -683,11 +678,7 @@ func _show_status(status: Dictionary) -> void:
 	if key != _roster_key:
 		_roster_key = key
 		_show_roster(phase, host)
-	for rider: Dictionary in _status.get("roster", []):
-		var id: int = rider["id"]
-		var speaking: bool = rider.get("speaking", false)
-		if _speaking.has(id):
-			GroupRidersPanel.show_speaking(_speaking[id], speaking)
+	_show_voice_buttons()
 
 
 ## This rider's preparation as the group heard it (#419), 0 before the first report.
@@ -722,7 +713,8 @@ func _show_roster(phase: String, host: bool) -> void:
 	for child: Node in _roster.get_children():
 		_roster.remove_child(child)
 		child.queue_free()
-	_speaking.clear()
+	_voice_buttons.clear()
+	var removable: bool = host and phase not in ["countdown", "riding", "ended"]
 	for rider: Dictionary in _status.get("roster", []):
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -730,18 +722,8 @@ func _show_roster(phase: String, host: bool) -> void:
 		row.add_child(UiTheme.initial(rider_name, 36))
 		var text: VBoxContainer = VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var heading: HBoxContainer = HBoxContainer.new()
-		heading.add_theme_constant_override("separation", 6)
-		text.add_child(heading)
-		var label: Label = _label(heading, rider_name, 17)
+		var label: Label = _label(text, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-		# As wide as the name, so the speaker comes right after it.
-		label.autowrap_mode = TextServer.AUTOWRAP_OFF
-		label.size_flags_horizontal = Control.SIZE_FILL
-		var speaking: TextureRect = GroupRidersPanel.speaking_icon()
-		heading.add_child(speaking)
-		var rider_id: int = rider["id"]
-		_speaking[rider_id] = speaking
 		var state: Label = _label(text, tr("Ready") if rider["ready"] else tr("Getting ready"), 13)
 		# How far each friend has got (#419), until they are ready.
 		var stage: String = rider.get("stage", "")
@@ -781,22 +763,77 @@ func _show_roster(phase: String, host: bool) -> void:
 		if rider.get("fallback", false):
 			state.text += " · " + tr("Fallback organizer")
 		row.add_child(text)
-		if not rider["me"] and _status.get("voice", false):
-			var speaker: int = rider["id"]
-			var mute: Button = Button.new()
-			mute.text = tr("Mute")
-			mute.tooltip_text = tr("Mute this rider for me")
-			mute.toggle_mode = true
-			var muted: bool = rider.get("muted", false)
-			mute.set_pressed_no_signal(muted)
-			mute.toggled.connect(func(on: bool) -> void: _orqwa.group_voice_mute(speaker, on))
-			row.add_child(mute)
-		if host and not rider["me"] and phase not in ["countdown", "riding", "ended"]:
-			var id: int = rider["id"]
+		var id: int = rider["id"]
+		var me: bool = rider["me"]
+		if _status.get("voice", false):
+			var voice: Button = Button.new()
+			voice.focus_mode = Control.FOCUS_NONE
+			voice.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			voice.pressed.connect(_voice_pressed.bind(id, me))
+			row.add_child(voice)
+			_voice_buttons[id] = voice
+		if removable:
 			var remove: Button = _button(row, "", func() -> void: _orqwa.group_remove(id))
-			remove.icon = UiIcons.texture("cross")
-			remove.tooltip_text = tr("Remove from group")
+			remove.icon = UiIcons.texture("bin")
+			remove.tooltip_text = tr("Remove %s from the group") % rider_name
+			remove.focus_mode = Control.FOCUS_NONE
+			remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			UiTheme.danger_button(remove)
+			if me:
+				# Nobody removes themselves; it keeps the voice buttons in one column.
+				remove.disabled = true
+				remove.modulate.a = 0.0
+				remove.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_roster.add_child(row)
+
+
+## Each voice button as the rider's voice is now: this rider's microphone on or off, a friend
+## muted here or heard speaking.
+func _show_voice_buttons() -> void:
+	for rider: Dictionary in _status.get("roster", []):
+		var id: int = rider["id"]
+		if not _voice_buttons.has(id):
+			continue
+		var button: Button = _voice_buttons[id]
+		var speaking: bool = rider.get("speaking", false)
+		var icon: String = "speaker"
+		var color: Color = UiTheme.SUCCESS if speaking else UiTheme.MUTED
+		var rider_name: String = rider["name"]
+		if rider["me"]:
+			var on: bool = _status.get("microphone", false)
+			icon = "microphone" if on else "microphone_off"
+			if not on:
+				color = UiTheme.DANGER
+			elif not speaking:
+				color = UiTheme.TEXT
+			button.tooltip_text = (
+				tr("Turn your microphone off") if on else tr("Turn your microphone on")
+			)
+			button.disabled = _status.get("deafened", false)
+		elif rider.get("muted", false):
+			icon = "speaker_off"
+			color = UiTheme.DANGER
+			button.tooltip_text = tr("Unmute %s") % rider_name
+		else:
+			button.tooltip_text = tr("Mute %s for you") % rider_name
+		button.icon = UiIcons.texture(icon, 20, color)
+
+
+func _voice_pressed(id: int, me: bool) -> void:
+	if me:
+		_voice_controls.toggle_microphone()
+		return
+	for rider: Dictionary in _status.get("roster", []):
+		if rider["id"] == id:
+			var muted: bool = rider.get("muted", false)
+			_orqwa.group_voice_mute(id, not muted)
+
+
+## Switches this rider's microphone on or off, e.g. from the ride's bar.
+func toggle_microphone() -> void:
+	# The ride's panel may be closed, its status not followed meanwhile.
+	_voice_controls.update_status(_orqwa.group_status())
+	_voice_controls.toggle_microphone()
 
 
 func _select_activity(course: String, workout: String) -> void:

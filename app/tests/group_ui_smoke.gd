@@ -33,34 +33,34 @@ func _microphone_permissions() -> void:
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "pending"
-	voice._on_test()
-	_check(requests == [true], "testing explicitly requests microphone permission")
+	_check(not voice.microphone_allowed(), "a pending prompt does not open the microphone")
+	_check(requests == [true], "turning the microphone on explicitly requests permission")
 	_check(_microphone_off(app), "pending permission opens no capture")
 	_check(voice._permission_waiting, "the OS prompt has visible pending guidance")
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "allowed"
-	voice._settings.hide()
 	voice.update_status({})
 	_check(requests == [true, false], "waiting polls authorization without requesting again")
-	_check(_microphone_off(app), "late approval never starts a test or unmutes")
+	_check(_microphone_off(app), "late approval never starts a check or unmutes")
 	_check(not voice._permission_waiting, "approval ends polling and asks the rider to retry")
+	var dialog: GroupVoiceDialog = voice._dialog
 	for access: String in ["denied", "restricted", "unavailable"]:
 		voice._permission = func(_request: bool) -> String: return access
-		voice._mic.set_pressed_no_signal(true)
-		voice._voice()
-		_check(not voice._mic.button_pressed, access + " keeps the microphone off")
-		voice._on_test()
-		_check(_microphone_off(app), access + " cannot start a test")
-		_check(voice._settings_permission_hint.visible, access + " explains how to recover")
+		voice._set_microphone(true)
+		_check(_microphone_off(app), access + " keeps the microphone off")
+		dialog._microphone_on.button_pressed = true
+		_check(not dialog._microphone_on.button_pressed, access + " keeps the join window's off")
+		_check(_microphone_off(app), access + " cannot start a check")
+		_check(dialog.permission_hint.visible, access + " explains how to recover")
 	requests.clear()
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "allowed"
-	voice._on_listen(false)
+	dialog._play_sound()
 	voice.update_status({"speaker_test": true})
-	_check(requests.is_empty(), "listening and presenting speaker checks request no microphone")
-	_check(voice._microphone_allowed(), "authorized microphone action may continue")
+	_check(requests.is_empty(), "listening and speaker checks request no microphone")
+	_check(voice.microphone_allowed(), "authorized microphone action may continue")
 	_check(not voice._permission_hint.visible, "retry clears the permission guidance")
 	if not OS.has_feature("macos"):
 		_check(
@@ -303,23 +303,56 @@ func _group_activity() -> void:
 	)
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
 	_check(not group._working.visible, "nothing turns once it is prepared")
-	# Who is speaking (R190), this rider too; the rows stay as they are while it changes.
+	# Who is speaking (R190), this rider too, and who is muted here (R194): the voice buttons
+	# follow without rebuilding the rows.
+	var voice_status: Dictionary = {
+		"host": false, "phase": "ready", "name": "Ride", "roster": roster, "voice": true
+	}
+	voice_status["microphone"] = true
+	group._show_status(voice_status)
 	var rows: Array[Node] = group._roster.get_children()
 	roster[1]["speaking"] = true
 	roster[2]["speaking"] = true
-	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	roster[3]["muted"] = true
+	group._show_status(voice_status)
 	_check(group._roster.get_children() == rows, "speaking does not rebuild the riders' rows")
+	var buttons: Dictionary[int, Button] = group._voice_buttons
 	_check(
-		(
-			group._speaking[1].modulate.a == 1.0
-			and group._speaking[2].modulate.a == 1.0
-			and group._speaking[0].modulate.a == 0.0
-		),
-		"a speaker beside each rider heard speaking, none beside a quiet one"
+		buttons[1].icon == UiIcons.texture("speaker", 20, UiTheme.SUCCESS),
+		"a friend heard speaking lights their speaker"
 	)
+	_check(
+		buttons[0].icon == UiIcons.texture("speaker", 20, UiTheme.MUTED),
+		"a quiet friend's speaker stays grey"
+	)
+	_check(
+		buttons[2].icon == UiIcons.texture("microphone", 20, UiTheme.SUCCESS),
+		"this rider's microphone lights while it sends speech"
+	)
+	_check(
+		buttons[3].icon == UiIcons.texture("speaker_off", 20, UiTheme.DANGER),
+		"a friend muted here is struck through"
+	)
+	_check(buttons[3].tooltip_text == tr("Unmute %s") % "Mia", "its tooltip says what it does")
 	roster[1]["speaking"] = false
-	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
-	_check(group._speaking[1].modulate.a == 0.0, "the speaker goes when they stop")
+	voice_status["microphone"] = false
+	group._show_status(voice_status)
+	_check(
+		buttons[1].icon == UiIcons.texture("speaker", 20, UiTheme.MUTED),
+		"the speaker goes grey when they stop"
+	)
+	_check(
+		buttons[2].icon == UiIcons.texture("microphone_off", 20, UiTheme.DANGER),
+		"this rider's microphone, off, is struck through"
+	)
+	group._show_status({"host": true, "phase": "waiting", "roster": roster})
+	var bins: int = 0
+	for row: Node in group._roster.get_children():
+		var last: Button = row.get_child(row.get_child_count() - 1) as Button
+		if last != null and last.icon == UiIcons.texture("bin") and not last.disabled:
+			bins += 1
+	_check(bins == 3, "the organizer may remove each friend, not themselves")
+	roster[3]["muted"] = false
 	group._show_status({"host": true, "phase": "waiting", "drafting": true, "keep_together": true})
 	_check(
 		not group._drafting.disabled and not group._together.disabled, "organizer sets both rules"
@@ -460,67 +493,71 @@ func _group_activity() -> void:
 		"joiners see workout status without organizer buttons"
 	)
 	var voice: GroupVoiceControls = group._voice_controls
-	voice.update_status({"voice": true, "microphone": false, "devices": []})
-	_check(
-		not voice._inputs.disabled and not voice._outputs.disabled,
-		"devices can change during voice"
-	)
-	_check(not voice._mic.button_pressed, "listening does not imply microphone consent")
-	voice.update_status({"voice_pending": true})
-	_check(
-		not voice._inputs.disabled and not voice._outputs.disabled,
-		"devices can change during startup"
-	)
+	voice.update_status({"voice": false})
+	_check(voice._join.visible and not voice._joined.visible, "voice starts with a way to join")
 	voice.update_status(
+		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
+	)
+	_check(not voice._join.visible and voice._joined.visible, "in voice, its controls show")
+	_check(
+		voice._headphones.button_pressed and not voice._speakers.button_pressed,
+		"headphones follow the session's echo prevention"
+	)
+	_check(
+		not voice._microphone.button_pressed and voice._microphone.text == tr("Microphone off"),
+		"listening does not imply microphone consent"
+	)
+	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
+	voice.update_status({"voice": true, "deafened": true, "microphone": false})
+	_check(voice._microphone.disabled, "mute all sound prevents microphone activation")
+	voice.update_status({"speaker_test": true})
+	_check(voice._joined.visible, "a sound check pauses voice without leaving it")
+	voice.update_status({})
+	_check(voice._join.visible, "out of voice, joining is offered again")
+	var dialog: GroupVoiceDialog = voice._dialog
+	dialog.ask_join()
+	_check(
+		dialog._choice.visible and not dialog._check.visible,
+		"joining first asks how the rider listens"
+	)
+	dialog._listen_with(false)
+	_check(
+		dialog._check.visible and dialog._output_caption.text == tr("Headphones"),
+		"then checks the sound of the headphones chosen"
+	)
+	_check(not dialog._inputs.visible, "the microphone starts off, its picker hidden")
+	dialog.update_status(
 		{
-			"voice": true,
 			"input_device": "headset",
 			"output_device": "headset",
-			"voice_volume": 0.4,
+			"microphone_level": 0.65,
+			"microphone_voice_detected": true,
 			"devices": [{"id": "headset", "name": "Headset", "input": true, "output": true}]
 		}
 	)
-	var input: String = voice._inputs.get_selected_metadata()
-	var output: String = voice._outputs.get_selected_metadata()
+	var input: String = dialog._inputs.get_selected_metadata()
+	var output: String = dialog._outputs.get_selected_metadata()
 	_check(input == "headset", "selected microphone follows the session")
 	_check(output == "headset", "selected speakers follow the session")
-	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
-	voice.update_status({"voice": true, "deafened": true, "microphone": false})
-	_check(voice._mic.disabled, "mute all sound prevents microphone activation")
-	voice.update_status(
-		{"microphone_test": true, "microphone_level": 0.65, "echo_prevention": true}
-	)
-	_check(voice._listen.disabled and voice._mic.disabled, "local testing cannot transmit voice")
-	_check(is_equal_approx(voice._level.value, 0.65), "local microphone meter follows Rust status")
-	_check(voice._echo.button_pressed, "speaker echo prevention starts enabled")
-	voice.update_status(
-		{
-			"microphone_test": true,
-			"microphone_voice_detected": true,
-			"microphone_voice_heard": true,
-			"microphone_checked": true
-		}
-	)
-	_check(voice._speech.text == tr("Voice detected"), "speech has a visible detection indicator")
-	_check(voice._speaker_test.disabled, "microphone and speaker tests are exclusive")
-	voice.update_status({"microphone_checked": true, "microphone_voice_heard": true})
+	_check(is_equal_approx(dialog._level.value, 0.65), "the meter follows Rust status")
+	_check(dialog._heard.text == tr("Voice detected"), "speech has a visible indicator")
+	dialog.update_status({"speaker_test": true})
+	_check(dialog._play.disabled, "one sound check at a time")
+	dialog._on_action(&"back")
+	_check(dialog._choice.visible, "back returns to how the rider listens")
+	dialog.hide()
+	dialog.update_status({"microphone": true, "echo_prevention": true})
+	dialog.ask_devices()
 	_check(
-		voice._speech.text == tr("Voice detected"),
-		"the completed microphone result remains visible"
+		dialog._check.visible and not dialog._back.visible,
+		"in voice, the devices open without asking again"
 	)
-	voice.update_status({"microphone_checked": true})
-	_check(voice._speech.text == tr("No voice detected"), "a quiet test has an explicit result")
-	voice.update_status({"speaker_test": true})
 	_check(
-		voice._test.disabled and voice._listen.disabled,
-		"speaker testing keeps capture and voice disabled"
+		dialog._microphone_on.button_pressed and dialog._inputs.visible,
+		"the window shows the microphone as it is"
 	)
-	_check(voice._speaker_test.text == tr("Stop speaker test"), "the speaker check can be stopped")
-	voice.update_status({"echo_prevention": false})
-	_check(
-		not voice._echo.button_pressed and not voice._listen.disabled,
-		"headphone mode and stopped test follow status"
-	)
+	_check(dialog._output_caption.text == tr("Speakers"), "and how the rider listens")
+	dialog.hide()
 	group.free()
 	app.free()
 
@@ -599,8 +636,23 @@ func _ride_bar() -> void:
 	bar.group_requested.connect(func() -> void: asked.append(true))
 	group.pressed.emit()
 	_check(group.is_visible_in_tree() and asked == [true], "in a group, the bar opens it")
+	var microphone: Button = bar._microphone
+	_check(not microphone.is_visible_in_tree(), "no microphone button outside voice")
+	bar.show_microphone(true, false)
+	_check(
+		(
+			microphone.is_visible_in_tree()
+			and microphone.tooltip_text == tr("Turn your microphone on")
+		),
+		"in voice, the bar switches the microphone"
+	)
+	var switched: Array[bool] = []
+	bar.microphone_requested.connect(func() -> void: switched.append(true))
+	microphone.pressed.emit()
+	_check(switched == [true], "pressing it asks for the switch")
 	bar.folded = true
 	_check(not group.is_visible_in_tree(), "it folds away with the other controls")
+	_check(not microphone.is_visible_in_tree(), "the microphone button too")
 	bar.free()
 
 

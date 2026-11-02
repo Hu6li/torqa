@@ -220,11 +220,13 @@ pub struct Snapshot {
     pub echo_prevention: bool,
     /// An explicitly requested, temporary local microphone level test is starting or running.
     pub microphone_test: bool,
-    /// Finite local test level, from zero to one; no samples enter status or networking.
+    /// Finite microphone level from zero to one, of the check or else of the open microphone
+    /// in voice; no samples enter status or networking.
     pub microphone_level: f32,
     /// An explicit output-only speaker test is starting or playing.
     pub speaker_test: bool,
-    /// Speech-like microphone activity detected now, briefly held between syllables.
+    /// Speech-like microphone activity detected now, in the check or as voice sends it,
+    /// briefly held between syllables.
     pub microphone_voice_detected: bool,
     /// At least one speech-like segment was heard in the most recent microphone check.
     pub microphone_voice_heard: bool,
@@ -813,7 +815,8 @@ impl App {
     pub fn group_handover_cancel(&self) -> Result<(), AppError> {
         self.group_command(Command::HandoverCancel)
     }
-    /// Configures opted-in voice. First activation starts with the microphone muted.
+    /// Configures opted-in voice. Joining opens the microphone only when `mic` asks for it,
+    /// the rider's explicit choice when joining.
     ///
     /// # Errors
     /// Returns [`AppError`] for invalid volume or unavailable queue.
@@ -874,8 +877,9 @@ impl App {
     pub fn group_voice_devices(&self) -> Result<(), AppError> {
         self.group_command(Command::Devices)
     }
-    /// Starts/stops a ten-second local meter, pausing voice with transmission closed.
-    /// Previously opted-in listening resumes microphone-off when testing ends.
+    /// Starts/stops a local meter, pausing voice with transmission closed; it stops by itself
+    /// after [`orqwa_voice::audio_test::MICROPHONE_CHECK`]. Previously opted-in listening
+    /// resumes with the microphone as it was when testing ends.
     ///
     /// # Errors
     /// Returns [`AppError`] if no group is open or its command queue is unavailable.
@@ -883,7 +887,7 @@ impl App {
         self.group_audio_test(enabled.then_some(orqwa_voice::audio_test::TestKind::Microphone))
     }
     /// Plays a brief tone through the selected speakers without opening the microphone.
-    /// Previously opted-in listening resumes microphone-off when the test ends.
+    /// Previously opted-in listening resumes with the microphone as it was when the test ends.
     ///
     /// # Errors
     /// Returns [`AppError`] for an unavailable group command queue.

@@ -567,7 +567,8 @@ async fn run_inner(
                         audio.abort_all();while audio.join_next().await.is_some() {}
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
                         let previous=voice.take();let previous_test=microphone_test.take();
-                        resume_voice=resume_voice.or((snapshot.voice || snapshot.voice_pending).then_some(false));
+                        // Voice comes back after the check with the microphone as it was (R188).
+                        resume_voice=resume_voice.or((snapshot.voice || snapshot.voice_pending).then_some(snapshot.microphone));
                         snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
                         if snapshot.microphone_test && let Some(test)=&previous_test {snapshot.microphone_voice_heard |= test.voice_heard();}
                         snapshot.microphone_test=kind==Some(TestKind::Microphone);snapshot.speaker_test=kind==Some(TestKind::Speakers);snapshot.microphone_level=0.0;snapshot.microphone_voice_detected=false;
@@ -581,12 +582,12 @@ async fn run_inner(
                             });
                         } else if resume_voice.is_some() && let Some(port)=&port {
                             snapshot.voice_pending=true;
-                            // A test leaves voice listening with the microphone off.
                             let backend=request.audio.clone();let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;let controls=request.voice_controls.clone();
+                            let mic=resume_voice.unwrap_or(false);
                             audio.spawn(async move {
                                 if let Some(chat)=previous {chat.close().await;}
                                 if let Some(test)=previous_test {test.close().await;}
-                                open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})
+                                open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})
                             });
                             resume_voice=None;
                         } Ok(())
@@ -609,7 +610,8 @@ async fn run_inner(
                         } else if audio.is_empty() && let Some(port) = &port {
                             snapshot.voice_pending=true;
                             let backend=request.audio.clone();let port = port.clone();let options=device_options.clone();let controls=request.voice_controls.clone();
-                            audio.spawn(async move {open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})});
+                            // Joining with the microphone on is the rider's explicit choice (R194).
+                            audio.spawn(async move {open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})});
                         } Ok(())
                     }
                 };
@@ -799,6 +801,12 @@ async fn run_inner(
                     && (!snapshot.late || snapshot.entry.is_some()) {snapshot.phase = Phase::Riding;}
                 if let Some(chat) = &voice {snapshot.microphone = microphone(chat, port.as_ref(), snapshot.microphone);}
                 snapshot.speaking = voice.as_ref().map_or([false; orqwa_net::state::MAX_RIDERS], VoiceChat::speaking);
+                // Without a check, the meter follows the open microphone in voice itself.
+                if microphone_test.is_none() {
+                    let sending = voice.as_ref().filter(|_| snapshot.microphone);
+                    snapshot.microphone_level = sending.map_or(0.0, VoiceChat::microphone_level);
+                    snapshot.microphone_voice_detected = sending.is_some() && snapshot.speaking[usize::from(snapshot.me)];
+                }
             }
         }
     }

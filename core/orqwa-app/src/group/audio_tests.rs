@@ -158,7 +158,7 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one lifecycle checks exclusive capture and retained controls across start/stop/leave
-async fn microphone_testing_restores_listening_muted_and_group_leave_releases_capture() {
+async fn audio_checks_restore_voice_with_the_microphone_as_it_was_and_leaving_releases_capture() {
     let directory = std::env::temp_dir().join(format!(
         "orqwa-mic-ui-{:x?}",
         orqwa_net::code::RideId::generate().unwrap().0
@@ -241,17 +241,25 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         "only the local test owns capture"
     );
     commands.send(Command::AudioTest(0, None)).await.unwrap();
+    // The microphone was on before the check, so voice sends again afterwards (R188, R194).
     wait(&mut updates, |status| {
-        status.voice && !status.microphone_test
+        status.voice && !status.microphone_test && status.microphone
     })
     .await;
     let status = updates.borrow().clone();
-    assert!(!status.microphone && !status.echo_prevention);
+    assert!(!status.echo_prevention);
     assert!(status.microphone_voice_heard && status.microphone_checked);
     assert!((status.voice_volume - 0.4).abs() < f32::EPSILON);
     assert_eq!(status.input_device, "test-input");
     assert_eq!(status.output_device, "test-output");
-    assert_eq!(capture.load(Ordering::Acquire), 0);
+    // The voice worker opens capture as it takes the restored microphone up.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while capture.load(Ordering::Acquire) != 1 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("voice owns capture again");
     commands
         .send(Command::AudioTest(0, Some(TestKind::Speakers)))
         .await
@@ -266,6 +274,22 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
         "speaker testing never opens capture"
     );
     assert!(!updates.borrow().microphone_voice_detected);
+    commands.send(Command::AudioTest(0, None)).await.unwrap();
+    wait(&mut updates, |status| {
+        status.voice && !status.speaker_test && status.microphone
+    })
+    .await;
+    // Muted by the rider, the microphone stays off after a check.
+    commands
+        .send(Command::Voice(0, true, false, false, 0.4))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| !status.microphone).await;
+    commands
+        .send(Command::AudioTest(0, Some(TestKind::Speakers)))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| status.speaker_test).await;
     commands.send(Command::AudioTest(0, None)).await.unwrap();
     wait(&mut updates, |status| status.voice && !status.speaker_test).await;
     assert!(!updates.borrow().microphone);
@@ -286,5 +310,76 @@ async fn microphone_testing_restores_listening_muted_and_group_leave_releases_ca
     })
     .await
     .unwrap();
+    tokio::fs::remove_dir_all(directory).await.unwrap();
+}
+
+#[tokio::test]
+async fn joining_with_the_microphone_on_sends_at_once_and_shows_its_level() {
+    let directory = std::env::temp_dir().join(format!(
+        "orqwa-mic-join-{:x?}",
+        orqwa_net::code::RideId::generate().unwrap().0
+    ));
+    let capture = Arc::new(AtomicUsize::new(0));
+    let live = capture.clone();
+    let mut options = ConnectOptions::default();
+    options.gather.policy.loopback = true;
+    options.gather.stun_servers.clear();
+    let choices = watch::channel(None);
+    let request = Request {
+        audio: AudioBackend {
+            factory: Some(Arc::new(move |_| {
+                Ok(Box::new(Capture {
+                    live: live.clone(),
+                    activation: None,
+                    opened: None,
+                    produced: 0,
+                    phase: 0.0,
+                    played: Arc::default(),
+                }))
+            })),
+        },
+        voice_controls: Arc::default(),
+        invite: None,
+        rider: Rider {
+            name: "Talking at once".into(),
+            mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        },
+        options,
+        data: directory.join("data"),
+        temporary: directory.join("temporary"),
+        choices: choices.1,
+    };
+    let (commands, receive) = mpsc::channel(8);
+    let (send, mut updates) = watch::channel(Snapshot::default());
+    let (_local, local) = watch::channel(None);
+    let task = tokio::spawn(run(request, receive, send, local));
+    wait(&mut updates, |status| status.phase == Phase::Waiting).await;
+    // Chosen in the join window (R194): voice opens with the microphone sending.
+    commands
+        .send(Command::Voice(0, true, true, false, 0.6))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        status.voice
+            && status.microphone
+            && status.microphone_level > 0.1
+            && status.microphone_voice_detected
+    })
+    .await;
+    assert!(!updates.borrow().microphone_test, "no separate check runs");
+    assert_eq!(capture.load(Ordering::Acquire), 1);
+    commands
+        .send(Command::Voice(0, true, false, false, 0.6))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        status.voice && !status.microphone && status.microphone_level < 0.001
+    })
+    .await;
+    assert!(!updates.borrow().microphone_voice_detected);
+    drop(commands);
+    task.await.unwrap();
     tokio::fs::remove_dir_all(directory).await.unwrap();
 }

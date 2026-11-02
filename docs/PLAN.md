@@ -975,6 +975,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   it is shared: map picture, elevation, figures and power chart, nothing downloaded (R191, #418)
 - [x] Riders name their own STUN servers under More connection options, kept per computer;
   the CLI's `--stun` takes the same forms (R192, #415)
+- [x] Voice is joined through a guided window asked every time: headphones or speakers, then a
+  sound check with an optional open microphone; one voice button per rider, a red bin to
+  remove, a microphone button in the ride's bar and voice volume in its settings (R194)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

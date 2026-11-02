@@ -95,6 +95,17 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-offer.png"))
 	root.get_texture().get_image().save_jpg(out.path_join("group-offer.jpg"), 0.82)
 	print("saved group-offer")
+	# In voice: the microphone in the bar, off here, and voice volume in the settings (R194).
+	ride._show_group({"phase": "riding", "roster": roster, "voice": true, "microphone": false})
+	ride._open_settings()
+	var settings: RideSettingsDialog = ride._settings_dialog
+	settings._options.show_voice(true, 60.0)
+	for frame: int in range(5):
+		await tree.process_frame
+	root.get_texture().get_image().save_png(out.path_join("group-voice-ride.png"))
+	root.get_texture().get_image().save_jpg(out.path_join("group-voice-ride.jpg"), 0.82)
+	print("saved group-voice-ride")
+	settings.hide()
 	ride._show_group({"phase": "riding", "roster": roster})
 	if root.size.y < 800:
 		var scroll: ScrollContainer = ride.get_node("RightColumnScroll")

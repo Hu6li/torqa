@@ -3,7 +3,28 @@ extends RefCounted
 ## Line icons for the interface's buttons, drawn from small SVGs in a theme colour: crisp at
 ## any size, and no image files to keep. Each is the paths of a 24 × 24 drawing.
 
+const MICROPHONE: String = (
+	'<rect x="9" y="2.5" width="6" height="11.5" rx="3"/>'
+	+ '<path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5v3.5"/><path d="M8.5 21h7"/>'
+)
+const SPEAKER: String = (
+	'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="COLOR"/>'
+	+ '<path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/>'
+)
+## Strikes an icon through: the line's surroundings are cut out of it, so it reads on any
+## background.
+const STRUCK_OPEN: String = (
+	'<defs><mask id="strike"><rect width="24" height="24" fill="white" stroke="none"/>'
+	+ '<path d="M3.5 3.5l17 17" stroke="black" stroke-width="5.5"/></mask></defs>'
+	+ '<g mask="url(#strike)">'
+)
+const STRUCK_CLOSE: String = '</g><path d="M3.5 3.5l17 17"/>'
+
 const PATHS: Dictionary[String, String] = {
+	"microphone": MICROPHONE,
+	"microphone_off": STRUCK_OPEN + MICROPHONE + STRUCK_CLOSE,
+	"speaker": SPEAKER,
+	"speaker_off": STRUCK_OPEN + SPEAKER + STRUCK_CLOSE,
 	"cog":
 	(
 		'<circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22'
@@ -62,11 +83,7 @@ const PATHS: Dictionary[String, String] = {
 	),
 	"ascending": '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
 	"descending": '<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>',
-	"speaking":
-	(
-		'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="COLOR"/>'
-		+ '<path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/>'
-	),
+	"speaking": SPEAKER,
 }
 static var _cache: Dictionary[String, ImageTexture] = {}
 

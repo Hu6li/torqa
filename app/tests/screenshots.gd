@@ -80,49 +80,72 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	# Use bounded presentation fixtures to review crowded and joining states without contacts.
 	group.set_process(false)
 	var audio: GroupVoiceControls = group._voice_controls
-	audio.update_status(
-		{
-			"voice": true,
-			"microphone_test": true,
-			"microphone_level": 0.65,
-			"input_device": "headset",
-			"output_device": "headset",
-			"devices": [{"id": "headset", "name": "USB Headset", "input": true, "output": true}]
-		}
-	)
+	var dialog: GroupVoiceDialog = audio._dialog
+	var devices: Dictionary = {
+		"input_device": "headset",
+		"output_device": "headset",
+		"devices": [{"id": "headset", "name": "USB Headset", "input": true, "output": true}]
+	}
 	for locale: String in ["en", "de"]:
 		TranslationServer.set_locale(locale)
 		group.refresh()
-		audio.update_status(
-			{
-				"microphone_test": true,
-				"microphone_level": 0.65,
-				"microphone_voice_detected": true,
-				"microphone_voice_heard": true,
-				"microphone_checked": true
-			}
-		)
-		audio._audio_scroll.scroll_vertical = 0
-		audio._popup_settings()
+		audio.update_status(devices)
+		# Joining voice asks how the rider listens, then checks their sound (R194).
+		dialog.ask_join()
 		await create_timer(0.4).timeout
-		print("saved audio dialog ", locale, ": ", audio._settings.size)
-		root.get_texture().get_image().save_png(out.path_join("group-audio-" + locale + ".png"))
-		audio.update_status(
-			{"speaker_test": true, "microphone_checked": true, "microphone_voice_heard": true}
+		root.get_texture().get_image().save_png(
+			out.path_join("group-voice-join-" + locale + ".png")
 		)
-		audio._audio_scroll.scroll_vertical = 100000
-		await create_timer(0.3).timeout
-		root.get_texture().get_image().save_png(out.path_join("group-speakers-" + locale + ".png"))
-		audio.update_status({})
+		dialog._listen_with(false)
+		dialog._show_microphone(true)
+		var checking: Dictionary = devices.duplicate()
+		checking.merge(
+			{"microphone_test": true, "microphone_level": 0.65, "microphone_voice_detected": true}
+		)
+		audio.update_status(checking)
+		await create_timer(0.4).timeout
+		print("saved voice check ", locale, ": ", dialog.size)
+		root.get_texture().get_image().save_png(
+			out.path_join("group-voice-check-" + locale + ".png")
+		)
+		audio.update_status(devices)
 		audio._show_permission("denied")
-		audio._audio_scroll.scroll_vertical = 0
 		await create_timer(0.3).timeout
 		root.get_texture().get_image().save_png(
 			out.path_join("group-mic-permission-" + locale + ".png")
 		)
 		audio._permission_hint.hide()
-		audio._settings_permission_hint.hide()
-		audio._settings.hide()
+		dialog.permission_hint.hide()
+		dialog.hide()
+		# In voice: the voice card, and a voice button and a bin beside each rider.
+		var talking: Dictionary = devices.duplicate()
+		talking.merge(
+			{
+				"phase": "waiting",
+				"host": true,
+				"invite": "orqwa:invitation",
+				"voice": true,
+				"microphone": true,
+				"echo_prevention": false,
+				"roster":
+				[
+					{"id": 0, "name": "Rider", "ready": false, "me": true, "organizer": true},
+					{"id": 1, "name": "Alex", "ready": true, "me": false, "speaking": true},
+					{"id": 2, "name": "Mia", "ready": false, "me": false, "muted": true}
+				]
+			}
+		)
+		group._show_status(talking)
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-voice-riders-" + locale + ".png")
+		)
+		var scroll: ScrollContainer = start.get("_group_page")
+		scroll.scroll_vertical = 100000
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(out.path_join("group-voice-" + locale + ".png"))
+		scroll.scroll_vertical = 0
+		audio.update_status({})
 	group._show_status({"phase": "connecting", "reply": "private"})
 	await create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-joining-de.png"))
@@ -339,7 +362,6 @@ func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -
 				}
 			)
 		)
-		group._voice_panel.show()
 		history.clear()
 		history.report(
 			{
