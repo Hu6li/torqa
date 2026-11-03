@@ -4,6 +4,12 @@ extends SceneTree
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
 const COURSE_OPTIONS: Dictionary = {"time": "Midday", "weather": "Clear", "camera": 0}
+## The idle delay the checks run with, so they take seconds rather than a minute.
+const DELAY: float = 1.0
+## Short of the delay, though two in a row are past it.
+const SOON: float = DELAY * 0.65
+## Well past the delay.
+const IDLE: float = DELAY * 1.5
 
 var _failed: bool = false
 
@@ -28,6 +34,11 @@ func _run() -> void:
 func _idle_pointer() -> void:
 	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()
 	root.add_child(main)
+	# Only which views show matters: drawing the 3D world in software took most of the run.
+	root.disable_3d = true
+	var pointer: IdlePointer = main.get("_idle_pointer")
+	_check(is_equal_approx(pointer.delay_seconds, 3.0), "the pointer idles for three seconds")
+	pointer.delay_seconds = DELAY
 	var button: Button = Button.new()
 	button.text = "Pointer input"
 	button.position = Vector2(20, 20)
@@ -43,13 +54,13 @@ func _idle_pointer() -> void:
 	await _settle()
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(30, 30), Vector2.ONE)
-	await create_timer(1.6).timeout
-	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the pointer has a three-second grace")
+	await create_timer(SOON).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the pointer has a grace before hiding")
 	_pointer_motion(Vector2(40, 30), Vector2(10, 0))
-	await create_timer(1.6).timeout
+	await create_timer(SOON).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "movement restarts the idle delay")
-	await create_timer(1.6).timeout
-	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "three idle seconds hide the pointer")
+	await create_timer(SOON).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "the idle delay hides the pointer")
 	_pointer_motion(Vector2(40, 30), Vector2.ZERO)
 	_press(KEY_SHIFT)
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "zero motion and keys keep it hidden")
@@ -61,14 +72,14 @@ func _idle_pointer() -> void:
 	held.pressed = true
 	Input.parse_input_event(held)
 	await _settle()
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "holding a mouse button keeps it visible")
 	held.pressed = false
 	Input.parse_input_event(held)
 	await _settle()
 	clicked[0] = false
 	root.mode = Window.MODE_FULLSCREEN
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "the pointer also hides in full screen")
 	for pressed: bool in [true, false]:
 		var event: InputEventMouseButton = InputEventMouseButton.new()
@@ -78,7 +89,7 @@ func _idle_pointer() -> void:
 		root.push_input(event)
 		_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "a click restores the pointer")
 	_check(clicked[0], "restoring the pointer does not consume the click")
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	var dialog: AcceptDialog = AcceptDialog.new()
 	main.add_child(dialog)
 	dialog.popup_centered(Vector2i(300, 200))
@@ -89,18 +100,18 @@ func _idle_pointer() -> void:
 	await _settle()
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(50, 30), Vector2.ONE)
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	root.mouse_exited.emit()
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "leaving the window restores the pointer")
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "outside the window it stays visible")
 	root.mouse_entered.emit()
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "returning to the window restarts idling")
 	root.focus_exited.emit()
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "losing focus restores the pointer")
 	root.focus_entered.emit()
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "regaining focus restarts idling")
 	await _course_views(main)
 	root.remove_child(main)
@@ -116,11 +127,11 @@ func _idle_pointer() -> void:
 func _inactive_views(main: Control) -> void:
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(30, 30), Vector2.ONE)
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the start page keeps its pointer")
 	var start: StartPage = main.get_node("StartPage")
 	start.ride_started.emit({"workout": {"kind": "power", "power_w": 180.0}, "on_course": false})
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "a plain workout keeps its pointer")
 	var ride: RideScreen = main.get_node("RideScreen")
 	ride.closed.emit()
@@ -131,7 +142,7 @@ func _course_views(main: Control) -> void:
 	var ride: RideScreen = main.get_node("RideScreen")
 	ride.closed.emit()
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "leaving a course restores the pointer")
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(
 		Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the start page stays visible after a ride"
 	)
@@ -142,14 +153,14 @@ func _course_views(main: Control) -> void:
 	await _settle()
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(30, 30), Vector2.ONE)
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "a workout with 3D hides the idle pointer")
 	ride.overlay_requested.emit(true)
 	await _settle()
 	_check(
 		Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "entering the overlay restores the pointer"
 	)
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the HUD-only overlay keeps its pointer")
 	ride.overlay_requested.emit(false)
 	await _settle()
@@ -162,7 +173,7 @@ func _course_views(main: Control) -> void:
 	await _settle()
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(30, 30), Vector2.ONE)
-	await create_timer(3.2).timeout
+	await create_timer(IDLE).timeout
 	_check(
 		Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "a workout with video hides the idle pointer"
 	)
