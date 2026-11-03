@@ -45,7 +45,7 @@ func _ready() -> void:
 	pages.custom_minimum_size.x = 600
 	pages.add_child(_choice)
 	pages.add_child(_check)
-	add_child(pages)
+	add_child(UiTheme.scrolling(pages))
 	_build_choice()
 	_build_check()
 
@@ -61,7 +61,7 @@ func ask_join() -> void:
 	ok_button_text = tr("Join voice")
 	_show_microphone(false)
 	_show_page(false)
-	popup_centered()
+	UiScale.popup(self, Vector2i(680, 240))
 
 
 ## Opens the window to change devices while in voice, asking first how the rider listens.
@@ -72,7 +72,7 @@ func ask_devices() -> void:
 	var microphone: bool = _status.get("microphone", false)
 	_show_microphone(microphone)
 	_show_page(false)
-	popup_centered()
+	UiScale.popup(self, Vector2i(680, 240))
 
 
 func _build_choice() -> void:
@@ -227,7 +227,8 @@ func _show_page(check: bool) -> void:
 	get_ok_button().visible = check
 	# Choosing is the first page's only way on; its button closes the window instead.
 	_back.text = tr("Back") if check else tr("Cancel")
-	reset_size()
+	if visible:
+		UiScale.popup(self, Vector2i(680, 420 if check else 240))
 
 
 ## Headphones let everyone talk at once; speakers hold the microphone while a friend speaks.
@@ -282,7 +283,6 @@ func _show_microphone(on: bool) -> void:
 	(_microphone_off if on else _microphone_on).set_pressed_no_signal(false)
 	for control: Control in _input_row:
 		control.visible = on
-	reset_size()
 
 
 ## Before joining, the meter is a check of its own; in voice it follows the open microphone.
