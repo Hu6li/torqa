@@ -1751,6 +1751,10 @@ msgstr ""
 msgid "How to check"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "I'm ready"
+msgstr ""
+
 #: app/ui/update_dialog.gd
 msgid "If Advanced Protection is on, turn it off in Android's settings."
 msgstr ""
@@ -2287,7 +2291,7 @@ msgstr ""
 msgid "Not found: %s. Wake the devices, then scan again."
 msgstr ""
 
-#: app/ui/course_settings.gd
+#: app/scenes/group_rides_tab.gd app/ui/course_settings.gd
 msgid "Not ready"
 msgstr ""
 
@@ -2657,10 +2661,6 @@ msgstr ""
 
 #: app/ui/preparation_log.gd
 msgid "Ready in %s"
-msgstr ""
-
-#: app/ui/group_next_step.gd
-msgid "Ready? Press the flag beside your name."
 msgstr ""
 
 #: app/ui/group_voice_dialog.gd

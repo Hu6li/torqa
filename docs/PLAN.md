@@ -982,7 +982,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   empty seat in the group list for each friend's reply with one-line reasons when it adds
   nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)
 - [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
-  what was chosen by name, a ready flag beside the rider's name, one main button, and the
+  what was chosen by name, a readiness pill on every row, the rider's own their button, one main button, and the
   in-ride group window at least as large as the ride's settings, in two columns (R196)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)

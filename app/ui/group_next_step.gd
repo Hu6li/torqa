@@ -2,7 +2,7 @@ class_name GroupNextStep
 extends VBoxContainer
 ## What the rider does next in a group ride (R196): one main button, always the same size,
 ## following the steps: connect the trainer, then start the ride as organizer or join friends
-## already riding. Readiness is the flag beside the rider's own name. A line says what the
+## already riding. Readiness is the pill beside the rider's own name. A line says what the
 ## group is waiting for, with how far the ride is prepared.
 
 ## The rider wants to connect their trainer.
@@ -104,7 +104,7 @@ func show_status(
 	_working.visible = (
 		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
 	)
-	_show_line(status, organizer, reconnect, trainer)
+	_show_line(status, organizer, reconnect)
 	# Nothing to do and nothing to wait for, e.g. while riding: the block makes no room.
 	visible = (
 		_main.visible or _line.visible or _progress.visible or _retry.visible or _reconnect.visible
@@ -129,7 +129,7 @@ func _show_progress(status: Dictionary, percent: int) -> void:
 
 
 ## The one line worth reading: what the group waits for, never what the main button says.
-func _show_line(status: Dictionary, organizer: String, reconnect: float, trainer: bool) -> void:
+func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void:
 	var phase: String = status.get("phase", "idle")
 	var host: bool = status.get("host", false)
 	var name: String = status.get("name", "")
@@ -141,8 +141,6 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float, trainer
 	var good: bool = false
 	if not name.is_empty() and not prepared and not underway:
 		text = tr("Getting your ride ready…")
-	if prepared and trainer and not ready and not late and not underway:
-		text = tr("Ready? Press the flag beside your name.")
 	if late and prepared and not underway:
 		text = tr("Join near the organizer at the current workout step. Your recording starts now.")
 	elif ready and host and not underway:

@@ -2695,8 +2695,8 @@ msgstr "Du bist bereit. %s startet die Fahrt."
 msgid "Group ride"
 msgstr "Gruppenfahrt"
 
-msgid "Ready? Press the flag beside your name."
-msgstr "Bereit? Drücke die Fahne neben deinem Namen."
+msgid "I'm ready"
+msgstr "Ich bin bereit"
 
 msgid "Tell the group you're ready"
 msgstr "Sag der Gruppe, dass du bereit bist"

@@ -84,10 +84,6 @@ func _next_steps(step: GroupNextStep) -> void:
 		step._main.text == "Start group ride" and step._main.disabled,
 		"the organizer's button waits for everyone to be ready"
 	)
-	_check(
-		step._line.text == "Ready? Press the flag beside your name.",
-		"readiness is the flag beside the rider's name"
-	)
 	var waiting: Dictionary = preparing.duplicate()
 	waiting["ready"] = true
 	waiting["roster"] = [
@@ -429,7 +425,9 @@ func _group_activity() -> void:
 		states.append((row.get_child(1).get_child(1) as Label).text)
 	_check(states[0] == "Building the world · 70 %", "a friend building: %s" % states[0])
 	_check(states[1] == "Downloading · 40 %", "a friend downloading: %s" % states[1])
-	_check(states[3] == "Ready", "a ready friend: %s" % states[3])
+	_check(states[3].is_empty(), "a ready friend's line leaves readiness to the pill")
+	var pill: Label = group._roster.get_child(3).get_child(2).get_child(0) as Label
+	_check(pill != null and pill.text == "Ready", "a ready friend shows a Ready pill")
 	var step: GroupNextStep = group._next_step
 	_check(step._working.visible, "it turns while this rider's ride is prepared")
 	_check(
@@ -439,21 +437,29 @@ func _group_activity() -> void:
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
 	_check(not step._working.visible, "nothing turns once it is prepared")
 	_check(group._activity_panel.visible, "friends have the activity column too (R196)")
-	# This rider's ready flag sits beside their microphone, friends' rows keep its column.
+	# Readiness is a pill on every row; this rider's is their button (R196).
 	group._show_status({"host": false, "phase": "ready", "prepared": true, "roster": roster})
-	var flag: Button = group._ready_flag
+	var own: Button = group._ready_pill
 	_check(
-		flag != null and flag.get_parent() == group._roster.get_child(2),
-		"the flag is on this rider's own row"
+		own != null and own.get_parent() == group._roster.get_child(2),
+		"this rider's pill is on their own row"
 	)
 	_check(
-		flag.disabled and flag.tooltip_text == "Connect your trainer first",
-		"without a trainer it says why it waits"
+		(
+			own.text == "I'm ready"
+			and own.disabled
+			and own.tooltip_text == "Connect your trainer first"
+		),
+		"it says what it does, and why it waits without a trainer"
 	)
-	var others: Button = group._roster.get_child(0).get_child(-1) as Button
+	var waiting_pill: Label = group._roster.get_child(0).get_child(2).get_child(0) as Label
+	_check(waiting_pill.text == "Not ready", "a friend not yet ready shows a quiet pill")
+	group._show_status(
+		{"host": false, "phase": "ready", "prepared": true, "ready": true, "roster": roster}
+	)
 	_check(
-		others.modulate.a == 0.0 and others.disabled,
-		"friends' rows keep an empty slot, so the icons line up"
+		group._ready_pill.text == "Ready" and not group._ready_pill.disabled,
+		"once ready it reads like the friends' pills and takes readiness back"
 	)
 	await _next_steps(step)
 	# Who is speaking (R190), this rider too, and who is muted here (R194): the voice buttons
@@ -575,8 +581,8 @@ func _group_activity() -> void:
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}
 	)
 	_check(
-		group._next_step._action == "devices" and group._ready_flag == null,
-		"late joiners connect their trainer before their one explicit entry, without a flag"
+		group._next_step._action == "devices" and group._ready_pill == null,
+		"late joiners connect their trainer before their one explicit entry, without a pill"
 	)
 	_check(not group._picker._apply.visible, "late joiners cannot change the running selection")
 	group.compact = true

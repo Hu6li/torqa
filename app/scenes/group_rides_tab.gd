@@ -9,6 +9,8 @@ signal devices_requested
 
 ## Riders in a group, the organizer included.
 const MAX_RIDERS: int = 8
+## The readiness pills are this wide, so they stand in one column.
+const PILL_WIDTH: float = 132.0
 
 var compact: bool = false
 var _orqwa: OrqwaApp
@@ -62,8 +64,8 @@ var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
 ## friend's speaker on theirs, lit while they are heard speaking (R190, R194).
 var _voice_buttons: Dictionary[int, Button] = {}
-## This rider's own ready flag before the start (R196), null while there is none.
-var _ready_flag: Button
+## This rider's own readiness pill before the start (R196), null while there is none.
+var _ready_pill: Button
 var _activity_key: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
@@ -548,7 +550,7 @@ func _show_status(status: Dictionary) -> void:
 		_roster_key = key
 		_show_roster(phase, host)
 	_show_voice_buttons()
-	_show_ready_flag()
+	_show_ready_pill()
 
 
 ## Who organizes the ride: from the group once in it, else as the invitation named them.
@@ -593,11 +595,12 @@ func _show_roster(phase: String, host: bool) -> void:
 		_roster.remove_child(child)
 		child.queue_free()
 	_voice_buttons.clear()
-	_ready_flag = null
+	_ready_pill = null
 	var before: bool = phase not in ["countdown", "riding", "ended"]
 	var removable: bool = host and before
-	# This rider says they are ready beside their own name (R196), friends joining late enter.
-	var readying: bool = before and not _status.get("late", false)
+	# Readiness as a pill on every row, this rider's their button (R196); friends joining
+	# late enter instead.
+	var pills: bool = before and not _status.get("late", false)
 	for rider: Dictionary in _status.get("roster", []):
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -607,44 +610,15 @@ func _show_roster(phase: String, host: bool) -> void:
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var label: Label = _label(text, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-		var state: Label = _label(text, tr("Ready") if rider["ready"] else tr("Getting ready"), 13)
-		# How far each friend has got (#419), until they are ready.
-		var stage: String = rider.get("stage", "")
-		var percent: int = rider.get("percent", 0)
-		if not rider["ready"] and stage == "downloading":
-			state.text = tr("Downloading · %d %%") % percent
-		elif not rider["ready"] and stage == "preparing" and percent < 100:
-			state.text = tr("Building the world · %d %%") % percent
-		if phase == "riding":
-			state.text = tr("No signal") if rider["ready"] else tr("Getting ready")
-			if rider["me"]:
-				state.text = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
-		# Their seat is held while their connection comes back (#434).
-		var away: bool = rider.get("away", false)
-		if away:
-			state.text = tr("Reconnecting…", "group_rider")
+		var state: Label = _label(text, _rider_state(rider, phase, pills), 13)
 		var live: bool = (
-			not away
+			not pills
+			and not rider.get("away", false)
 			and rider["ready"]
 			and (phase != "riding" or rider["me"] or rider.get("present", false))
 		)
 		state.add_theme_color_override("font_color", UiTheme.SUCCESS if live else UiTheme.MUTED)
-		if rider["me"]:
-			state.text += " · " + tr("You")
-		if phase == "riding" and rider.get("present", false):
-			var imperial: bool = _orqwa.profile().get("units", "metric") == "imperial"
-			var gap: float = rider["gap_m"]
-			state.text = (
-				tr("%s ft") % roundi(gap / HudPanel.METERS_PER_FOOT)
-				if imperial
-				else tr("%s m") % roundi(gap)
-			)
-			state.text += " · " + GroupRidersPanel.effort(rider)
-		if rider.get("organizer", false):
-			state.text += " · " + tr("Organizer")
-		# Takes over if the organizer's connection is lost (#426).
-		if rider.get("fallback", false):
-			state.text += " · " + tr("Fallback organizer")
+		state.visible = not state.text.is_empty()
 		row.add_child(text)
 		var id: int = rider["id"]
 		var me: bool = rider["me"]
@@ -655,25 +629,100 @@ func _show_roster(phase: String, host: bool) -> void:
 			voice.pressed.connect(_voice_pressed.bind(id, me))
 			row.add_child(voice)
 			_voice_buttons[id] = voice
-		if me and readying:
-			_ready_flag = _button(row, "", func() -> void: _orqwa.group_ready(not _is_ready()))
-			_ready_flag.focus_mode = Control.FOCUS_NONE
-			_ready_flag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		elif removable or readying:
+		if pills and me:
+			_ready_pill = _button(row, "", func() -> void: _orqwa.group_ready(not _is_ready()))
+			_ready_pill.focus_mode = Control.FOCUS_NONE
+			_ready_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_ready_pill.custom_minimum_size.x = PILL_WIDTH
+			_ready_pill.add_theme_font_size_override("font_size", 14)
+		elif pills:
+			var ready: bool = rider["ready"]
+			row.add_child(_pill(ready))
+		if removable:
 			var remove: Button = _button(row, "", func() -> void: _orqwa.group_remove(id))
 			remove.icon = UiIcons.texture("bin")
 			remove.tooltip_text = tr("Remove %s from the group") % rider_name
 			remove.focus_mode = Control.FOCUS_NONE
 			remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			UiTheme.danger_button(remove)
-			if me or not removable:
-				# Keeps the buttons beside the names in columns: nobody removes themselves, and
-				# only the organizer removes anyone.
+			if me:
+				# Nobody removes themselves; it keeps the pills in one column.
 				remove.disabled = true
 				remove.modulate.a = 0.0
 				remove.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_roster.add_child(row)
-	_show_ready_flag()
+	_show_ready_pill()
+
+
+## The line below a rider's name: before the start how far they have got (#419), unless the
+## pills beside it say whether they are ready; while riding where they are and their effort;
+## their seat held while they reconnect (#434); and who they are to the group.
+func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
+	var parts: PackedStringArray = []
+	var ready: bool = rider["ready"]
+	var stage: String = rider.get("stage", "")
+	var percent: int = rider.get("percent", 0)
+	if phase == "riding" and rider.get("present", false):
+		var imperial: bool = _orqwa.profile().get("units", "metric") == "imperial"
+		var gap: float = rider["gap_m"]
+		parts.append(
+			(
+				tr("%s ft") % roundi(gap / HudPanel.METERS_PER_FOOT)
+				if imperial
+				else tr("%s m") % roundi(gap)
+			)
+		)
+		parts.append(GroupRidersPanel.effort(rider))
+	elif phase == "riding":
+		parts.append(tr("No signal") if ready else tr("Getting ready"))
+		if rider["me"]:
+			parts[0] = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
+	elif not ready and stage == "downloading":
+		parts.append(tr("Downloading · %d %%") % percent)
+	elif not ready and stage == "preparing" and percent < 100:
+		parts.append(tr("Building the world · %d %%") % percent)
+	elif not pills:
+		parts.append(tr("Ready") if ready else tr("Getting ready"))
+	if rider.get("away", false):
+		parts = PackedStringArray([tr("Reconnecting…", "group_rider")])
+	if rider["me"] and not (phase == "riding" and rider.get("present", false)):
+		parts.append(tr("You"))
+	if rider.get("organizer", false):
+		parts.append(tr("Organizer"))
+	# Takes over if the organizer's connection is lost (#426).
+	if rider.get("fallback", false):
+		parts.append(tr("Fallback organizer"))
+	return " · ".join(parts)
+
+
+## A friend's readiness: green when ready, quiet while not.
+func _pill(ready: bool) -> PanelContainer:
+	var pill: PanelContainer = PanelContainer.new()
+	pill.custom_minimum_size.x = PILL_WIDTH
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var color: Color = UiTheme.SUCCESS if ready else UiTheme.MUTED
+	pill.add_theme_stylebox_override("panel", _pill_box(color, ready))
+	var word: Label = Label.new()
+	word.text = tr("Ready") if ready else tr("Not ready")
+	word.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	word.add_theme_font_size_override("font_size", 14)
+	word.add_theme_color_override("font_color", color)
+	pill.add_child(word)
+	return pill
+
+
+static func _pill_box(color: Color, strong: bool) -> StyleBoxFlat:
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = Color(color, 0.18 if strong else 0.08)
+	box.border_color = Color(color, 0.6 if strong else 0.25)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(15)
+	box.content_margin_left = 12
+	box.content_margin_right = 12
+	box.content_margin_top = 6
+	box.content_margin_bottom = 6
+	box.anti_aliasing = true
+	return box
 
 
 func _is_ready() -> bool:
@@ -681,19 +730,33 @@ func _is_ready() -> bool:
 	return ready
 
 
-## The flag beside this rider's name: green once they said they are ready, inviting while
-## they can, and saying why not while their ride is prepared or their trainer missing.
-func _show_ready_flag() -> void:
-	if _ready_flag == null:
+## This rider's pill, their way to say they are ready: inviting while they can, green once
+## they are (pressing it again takes it back), and saying why it waits while their ride is
+## prepared or their trainer is missing.
+func _show_ready_pill() -> void:
+	if _ready_pill == null:
 		return
 	var ready: bool = _is_ready()
 	var prepared: bool = _status.get("prepared", false)
 	var trainer: bool = _orqwa.trainer_connected()
-	var color: Color = UiTheme.SUCCESS if ready else UiTheme.ACCENT
-	_ready_flag.disabled = not ready and (not prepared or not trainer)
-	if _ready_flag.disabled:
-		color = UiTheme.MUTED
-	_ready_flag.icon = UiIcons.texture("flag", 20, color)
+	_ready_pill.disabled = not ready and (not prepared or not trainer)
+	_ready_pill.text = tr("Ready") if ready else tr("I'm ready")
+	var box: StyleBoxFlat = _pill_box(UiTheme.SUCCESS, true)
+	var font: Color = UiTheme.SUCCESS
+	if not ready:
+		box = _pill_box(UiTheme.ACCENT, true)
+		box.bg_color = UiTheme.ACCENT
+		font = UiTheme.TEXT
+	var hover: StyleBoxFlat = box.duplicate()
+	hover.bg_color = hover.bg_color.lightened(0.12)
+	for state: String in ["normal", "pressed", "focus"]:
+		_ready_pill.add_theme_stylebox_override(state, box)
+	_ready_pill.add_theme_stylebox_override("hover", hover)
+	# Waiting, it still looks like this rider's button, not like a friend's Not ready.
+	_ready_pill.add_theme_stylebox_override("disabled", _pill_box(UiTheme.ACCENT, false))
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color"]:
+		_ready_pill.add_theme_color_override(state, font)
+	_ready_pill.add_theme_color_override("font_disabled_color", Color(UiTheme.ACCENT, 0.7))
 	var tip: String = tr("Tell the group you're ready")
 	if ready:
 		tip = tr("You're ready. Press to take it back.")
@@ -701,12 +764,7 @@ func _show_ready_flag() -> void:
 		tip = tr("Your ride is still being prepared")
 	elif not trainer:
 		tip = tr("Connect your trainer first")
-	_ready_flag.tooltip_text = tip
-	var box: StyleBoxFlat = UiTheme.button_chip() if ready else null
-	if box == null:
-		_ready_flag.remove_theme_stylebox_override("normal")
-	else:
-		_ready_flag.add_theme_stylebox_override("normal", box)
+	_ready_pill.tooltip_text = tip
 
 
 ## Each voice button as the rider's voice is now: this rider's microphone on or off, a friend
