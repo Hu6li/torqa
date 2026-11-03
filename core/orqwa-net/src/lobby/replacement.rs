@@ -151,6 +151,7 @@ mod tests {
                 ..GatherOptions::default()
             },
             window: Duration::from_secs(2),
+            ..ConnectOptions::default()
         }
     }
     async fn client_event(

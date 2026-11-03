@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, ensure};
 use clap::{Args, Subcommand};
 use orqwa_net::code::{Invite, Reply};
-use orqwa_net::link::{ConnectOptions, Connection, Host, HostEvent, Joiner};
+use orqwa_net::link::{Connection, Host, HostEvent, Joiner};
 use tokio::task::JoinSet;
 use tokio::time::{sleep, timeout};
 
@@ -28,10 +28,7 @@ enum Role {
 }
 
 pub(crate) async fn run(args: NetPingArgs) -> Result<()> {
-    let options = ConnectOptions {
-        gather: args.network.options(),
-        ..ConnectOptions::default()
-    };
+    let options = args.network.connect_options();
     let route = orqwa_net::crypto::route_hash(b"orqwa-net-ping/1");
     match args.role {
         Role::Host => {

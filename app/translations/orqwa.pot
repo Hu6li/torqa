@@ -87,6 +87,18 @@ msgstr ""
 msgid "%s behind"
 msgstr ""
 
+#: app/ui/group_joining_card.gd
+msgid "%s chose Same home Wi-Fi"
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "%s chose Separate homes"
+msgstr ""
+
+#: app/ui/group_joining_card.gd
+msgid "%s chose Some together, some elsewhere"
+msgstr ""
+
 #: app/scenes/ride_screen.gd
 msgid "%s connected"
 msgstr ""
@@ -495,7 +507,7 @@ msgstr ""
 msgid "B (right pod)"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/group_connection_dialog.gd app/ui/group_voice_dialog.gd app/ui/ride_bar.gd
+#: app/scenes/course_detail.gd app/scenes/history_screen.gd app/scenes/remote_dialog.gd app/ui/group_voice_dialog.gd app/ui/ride_bar.gd
 msgid "Back"
 msgstr ""
 
@@ -631,10 +643,6 @@ msgstr ""
 msgid "Check for updates"
 msgstr ""
 
-#: app/ui/group_connection_dialog.gd
-msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
-msgstr ""
-
 #: app/scenes/account_dialog.gd
 msgid "Checking…"
 msgstr ""
@@ -676,11 +684,7 @@ msgid "Choose fallback organizer…"
 msgstr ""
 
 #: app/ui/group_connection_dialog.gd
-msgid "Choose where your group is riding. Nothing connects before you confirm."
-msgstr ""
-
-#: app/ui/group_connection_dialog.gd
-msgid "Choose where your group will ride before inviting friends."
+msgid "Choose where your group will ride before inviting friends. Friends who join connect the same way."
 msgstr ""
 
 #: app/ui/group_activity_picker.gd
@@ -1867,10 +1871,6 @@ msgstr ""
 msgid "Join near the organizer at the current workout step. Your recording starts now."
 msgstr ""
 
-#: app/ui/group_connection_dialog.gd
-msgid "Join ride"
-msgstr ""
-
 #: app/ui/group_next_step.gd
 msgid "Join ride now"
 msgstr ""
@@ -2387,6 +2387,14 @@ msgstr ""
 msgid "ORQWA could not connect. Go back to ORQWA to try again."
 msgstr ""
 
+#: app/ui/group_connection_dialog.gd
+msgid "ORQWA could not create the ride. See Technical details for more information."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not join with this invitation. See Technical details for more information."
+msgstr ""
+
 #: core/orqwa-app/src/failure.rs
 msgid "ORQWA could not start."
 msgstr ""
@@ -2509,10 +2517,6 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Organizer"
-msgstr ""
-
-#: app/ui/group_connection_dialog.gd
-msgid "Organizer: %s"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3449,10 +3453,6 @@ msgstr ""
 
 #: app/ui/update_dialog.gd
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
-msgstr ""
-
-#: app/ui/group_connection_dialog.gd
-msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

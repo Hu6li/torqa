@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep_until, timeout_at};
 
-use crate::code::{CodeError, Fingerprint, Invite, Reply, RideId, RouteHash, valid_name};
+use crate::code::{CodeError, Fingerprint, Invite, Reply, RideId, RouteHash, Setup, valid_name};
 use crate::crypto::{RandomError, random};
 use crate::discovery::{self, GatherError, GatherOptions};
 use crate::limits::{ConnectionBudget, ConnectionPermit, MAX_CONNECTIONS};
@@ -56,6 +56,8 @@ pub struct ConnectOptions {
     pub gather: GatherOptions,
     /// At most one minute, starting before discovery. Shorter windows are useful for tests.
     pub window: Duration,
+    /// The connection choice a host's invite tells its riders; [`Self::new`] gathers by it.
+    pub setup: Setup,
 }
 
 impl Default for ConnectOptions {
@@ -63,7 +65,27 @@ impl Default for ConnectOptions {
         Self {
             gather: GatherOptions::default(),
             window: PUNCH_WINDOW,
+            setup: Setup::default(),
         }
+    }
+}
+
+impl ConnectOptions {
+    /// Connects as `setup` says: home-network addresses unless friends ride at separate
+    /// homes, and a lookup asking `servers`, or ORQWA's own while that is empty (R192).
+    #[must_use]
+    pub fn new(setup: Setup, servers: &[String]) -> Self {
+        let mut options = Self {
+            setup,
+            ..Self::default()
+        };
+        options.gather.policy.lan = setup.lan();
+        if !setup.lookup() {
+            options.gather.stun_servers.clear();
+        } else if !servers.is_empty() {
+            options.gather.stun_servers = servers.to_vec();
+        }
+        options
     }
 }
 
@@ -520,6 +542,7 @@ impl Host {
             course: course.to_owned(),
             candidates: local.candidates.clone(),
             nat: local.nat,
+            setup: options.setup,
         };
         invite.encode(options.gather.policy)?;
         let (send, events) = mpsc::channel(MAX_CONNECTIONS);
@@ -1073,6 +1096,7 @@ impl Drop for Joiner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::code::ConnectionMode;
     use crate::policy::AddressPolicy;
     use tokio::time::{sleep, timeout};
 
@@ -1087,10 +1111,67 @@ mod tests {
                 stun_servers: Vec::new(),
             },
             window: Duration::from_secs(1),
+            ..ConnectOptions::default()
         }
     }
     fn route() -> RouteHash {
         RouteHash([7; 32])
+    }
+
+    #[test]
+    fn home_and_internet_choices_keep_discovery_and_local_permissions_explicit() {
+        let internet = ConnectOptions::new(Setup::new(ConnectionMode::Internet, true), &[]);
+        assert!(!internet.gather.policy.lan && !internet.gather.policy.loopback);
+        assert_ne!(internet.gather.stun_servers, Vec::<String>::new());
+        let home = ConnectOptions::new(Setup::new(ConnectionMode::Home, true), &[]);
+        assert!(home.gather.policy.lan && !home.gather.policy.loopback);
+        assert_eq!(home.gather.stun_servers, Vec::<String>::new());
+        let mixed = ConnectOptions::new(Setup::new(ConnectionMode::Mixed, true), &[]);
+        assert!(mixed.gather.policy.lan && !mixed.gather.stun_servers.is_empty());
+        for mode in [
+            ConnectionMode::Internet,
+            ConnectionMode::Home,
+            ConnectionMode::Mixed,
+        ] {
+            assert_eq!(
+                ConnectOptions::new(Setup::new(mode, false), &[])
+                    .gather
+                    .stun_servers,
+                Vec::<String>::new()
+            );
+            assert!(
+                !ConnectOptions::new(Setup::new(mode, false), &[])
+                    .gather
+                    .policy
+                    .loopback
+            );
+        }
+        assert!(ConnectionMode::from_key("unexpected").is_none());
+    }
+
+    #[test]
+    fn named_lookup_servers_replace_the_defaults_only_where_a_lookup_is_made() {
+        let named = vec!["stun.example.org:3478".to_owned()];
+        for mode in [ConnectionMode::Internet, ConnectionMode::Mixed] {
+            assert_eq!(
+                ConnectOptions::new(Setup::new(mode, true), &named)
+                    .gather
+                    .stun_servers,
+                named
+            );
+            assert_eq!(
+                ConnectOptions::new(Setup::new(mode, false), &named)
+                    .gather
+                    .stun_servers,
+                Vec::<String>::new()
+            );
+        }
+        assert_eq!(
+            ConnectOptions::new(Setup::new(ConnectionMode::Home, true), &named)
+                .gather
+                .stun_servers,
+            Vec::<String>::new()
+        );
     }
     async fn host() -> Host {
         Host::open("Anna", "Galibier", route(), &options())

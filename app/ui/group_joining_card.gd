@@ -2,7 +2,8 @@ class_name GroupJoiningCard
 extends VBoxContainer
 ## Joining a friend's ride (R195), in two steps: send the reply to the organizer outside
 ## ORQWA, then wait while the reply's minute runs out to be added. Not added in time, the
-## rider makes a new reply from the same invitation instead of asking for another.
+## rider makes a new reply from the same invitation instead of asking for another. Below the
+## title, where everyone rides, as the organizer chose for the whole group (R197).
 
 ## The rider gives up joining.
 signal cancelled
@@ -10,6 +11,7 @@ signal cancelled
 signal renewed
 
 var _title: Label = Label.new()
+var _where: Label = Label.new()
 var _send: Label = Label.new()
 var _code: GroupCodeRow = GroupCodeRow.new()
 var _added: Label = Label.new()
@@ -24,6 +26,10 @@ func _ready() -> void:
 	_title.add_theme_font_size_override("font_size", 22)
 	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	add_child(_title)
+	_where.add_theme_color_override("font_color", UiTheme.MUTED)
+	_where.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_where.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	add_child(_where)
 	_step("1", _send)
 	_code.qr_title = tr("Your reply")
 	add_child(_indented(_code))
@@ -74,10 +80,20 @@ func _indented(control: Control) -> MarginContainer:
 	return margin
 
 
-## Shows the ride of `organizer` being joined, the `reply` to send them, the `seconds` left
-## for it, and whether it ran out (`expired`) before they added the rider.
-func show_joining(organizer: String, reply: String, seconds: float, expired: bool) -> void:
+## Shows the ride of `organizer` being joined, where they said everyone rides (`mode`, as
+## the connection choice's keys), the `reply` to send them, the `seconds` left for it, and
+## whether it ran out (`expired`) before they added the rider.
+func show_joining(
+	organizer: String, mode: String, reply: String, seconds: float, expired: bool
+) -> void:
 	_title.text = tr("Joining %s's ride") % organizer
+	var where: Dictionary[String, String] = {
+		"internet": tr("%s chose Separate homes") % organizer,
+		"home": tr("%s chose Same home Wi-Fi") % organizer,
+		"mixed": tr("%s chose Some together, some elsewhere") % organizer,
+	}
+	_where.text = where.get(mode, "")
+	_where.visible = not _where.text.is_empty()
 	_send.text = tr("Send this reply to %s by chat, email or text message") % organizer
 	_code.qr_hint = tr("Scan with your phone, then send the text to %s.") % organizer
 	_code.show_code("" if expired else reply)

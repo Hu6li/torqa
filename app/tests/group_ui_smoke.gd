@@ -186,7 +186,7 @@ func _lookup_servers(host: OrqwaApp, connection: GroupConnectionDialog) -> void:
 	connection.ask_create()
 
 
-## Cancelling setup grants no network access; joining inspects the code before connecting.
+## Cancelling setup grants no network access; joining follows the organizer's choice.
 func _group_connections() -> void:
 	var host: OrqwaApp = OrqwaApp.new()
 	root.add_child(host)
@@ -234,41 +234,25 @@ func _group_connections() -> void:
 	joining.bind(peer)
 	root.add_child(joining)
 	await process_frame
-	_check(
-		not peer.group_connect(invitation, "internet", true),
-		"home-network permission is checked before creating a connection owner"
-	)
-	_check(
-		str(peer.group_status()["phase"]) == "idle", "incompatible invitation starts no networking"
-	)
 	# Pasted into the home page's field, the reply instead, or the message it came in (R195).
 	var join: GroupJoinCard = joining._join
 	join._field.text = "orqwa:nothing"
 	join._submit()
-	_check(join._error.visible and not joining._connection.visible, "a wrong paste says so")
+	_check(
+		join._error.visible and str(peer.group_status()["phase"]) == "idle", "a wrong paste says so"
+	)
+	# Joining asks nothing: the organizer chose for the group (R197).
 	join._field.text = "Ride with me tonight: " + invitation + " See you!"
 	join._submit()
-	_check(
-		joining._connection.visible and str(peer.group_status()["phase"]) == "idle",
-		"pasted invitation opens connection choices offline"
-	)
-	_check(not joining._connection.organizer().is_empty(), "the organizer is named from it")
-	_check(
-		joining._connection._mode.is_empty(), "invitation cannot silently grant home-network access"
-	)
-	joining._connection.get_cancel_button().pressed.emit()
-	await process_frame
-	_check(
-		join._field.text.contains(invitation) and not joining._connection.visible,
-		"Back keeps the invitation in the field"
-	)
-	join._submit()
-	joining._connection._choices["home"].button_pressed = true
-	joining._connection._confirm()
+	_check(not joining._connection.visible, "joining asks no connection choice")
+	var organizer_name: String = joining._joined.get("organizer", "")
+	_check(not organizer_name.is_empty(), "the organizer is named from the invitation")
+	var joined_mode: String = joining._joined.get("mode", "")
+	_check(joined_mode == "home", "the joiner rides as the organizer chose")
 	until = Time.get_ticks_msec() + 5000
 	while str(peer.group_status()["reply"]).is_empty() and Time.get_ticks_msec() < until:
 		await process_frame
-	_check(not str(peer.group_status()["reply"]).is_empty(), "join starts only after confirmation")
+	_check(not str(peer.group_status()["reply"]).is_empty(), "joining starts at once")
 	_check(join._field.text.is_empty(), "the field empties once joining has started")
 	joining._show_status(peer.group_status())
 	_check(
@@ -277,6 +261,10 @@ func _group_connections() -> void:
 			and joining._joining._code._field.text == str(peer.group_status()["reply"])
 		),
 		"the joiner sees the reply to send"
+	)
+	_check(
+		joining._joining._where.text == tr("%s chose Same home Wi-Fi") % organizer_name,
+		"the joiner is told where everyone rides"
 	)
 	# The organizer adds the reply from their own field, here pasted with its message.
 	var organizer: GroupRidesTab = GroupRidesTab.new()

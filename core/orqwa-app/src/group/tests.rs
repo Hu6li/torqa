@@ -3,6 +3,7 @@ use crate::{App, TrainerChoice};
 use orqwa_devices::fake::FakeRider;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Rpm, Watts};
+use orqwa_net::code::{ConnectionMode, Setup};
 use std::path::Path;
 use std::time::Duration;
 
@@ -53,10 +54,12 @@ fn speak(app: &mut App, other: &mut App, mic: bool) {
     wait(app, other, |a, _| a.group().microphone == mic);
 }
 
+/// A local test rides on one computer, as a group does on one home network.
 fn options() -> ConnectOptions {
     let mut options = ConnectOptions::default();
     options.gather.policy.loopback = true;
     options.gather.stun_servers.clear();
+    options.setup = Setup::new(ConnectionMode::Home, false);
     options
 }
 
@@ -961,14 +964,27 @@ fn host_and_joiner_learn_how_friends_could_reach_them_from_their_own_discovery()
     let to = Directory::new();
     let mut host = from.app();
     let mut peer = to.app();
-    host.group_open(None, options()).unwrap();
+    // With friends elsewhere, local-test addresses only reach nobody at another home.
+    let mut mixed = options();
+    mixed.setup = Setup::new(ConnectionMode::Mixed, false);
+    host.group_open(None, mixed).unwrap();
     wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
-    // Local-test addresses only: nobody at another home could connect.
     assert_eq!(host.group().reachability, Some(Reachability::Home));
+    // The joiner is judged by the organizer's choice in the invitation, not its own.
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
     assert_eq!(peer.group().reachability, Some(Reachability::Home));
+    peer.group_leave();
+    host.group_leave();
+    // On one home network nobody joins from another home: there is nothing to warn about.
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    assert_eq!(host.group().reachability, Some(Reachability::Together));
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    assert_eq!(peer.group().reachability, Some(Reachability::Together));
     peer.group_leave();
     host.group_leave();
 }

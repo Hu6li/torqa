@@ -1,31 +1,21 @@
 class_name GroupConnectionDialog
 extends ConfirmationDialog
 # gdlint: disable=max-line-length
-## Connection consent at the moment it is needed; Rust validates codes and selects permissions.
+## Where the organizer's group rides, asked when creating a ride; Rust selects permissions.
+## Friends joining connect as the invitation says, without being asked (R197).
 
 signal started
-signal join_cancelled
 
 var _orqwa: OrqwaApp
-var _invite: String = ""
-var _joining: bool = false
-var _requires_home: bool = false
 var _mode: String = ""
 var _choices: Dictionary[String, CheckBox] = {}
 var _panels: Dictionary[String, PanelContainer] = {}
 var _descriptions: Dictionary[String, Label] = {}
-var _organizer_name: String = ""
-## The last confirmed join, for a new reply after the organizer did not add the rider (R195).
-var _last_invite: String = ""
-var _last_mode: String = ""
-var _last_lookup: bool = true
 var _explanation: Label = Label.new()
 var _buttons: ButtonGroup = ButtonGroup.new()
 var _scroll: ScrollContainer = ScrollContainer.new()
 var _content: VBoxContainer = VBoxContainer.new()
 var _intro: Label = Label.new()
-var _organizer: Label = Label.new()
-var _hint: Label = Label.new()
 var _more: Button = Button.new()
 var _advanced: VBoxContainer = VBoxContainer.new()
 var _lookup: CheckBox = CheckBox.new()
@@ -51,12 +41,8 @@ func _ready() -> void:
 	_scroll.add_child(_content)
 	add_child(_scroll)
 	_text(_intro)
-	_organizer.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_text(_organizer)
 	for key: String in ["internet", "home", "mixed"]:
 		_choice(key)
-	_text(_hint)
-	_hint.add_theme_color_override("font_color", UiTheme.MUTED)
 	_more.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_more.icon = UiIcons.texture("down")
 	_more.pressed.connect(func() -> void: _advanced.visible = not _advanced.visible)
@@ -137,46 +123,18 @@ func _draw_focus(panel: PanelContainer, option: CheckBox) -> void:
 
 
 func ask_create() -> void:
-	_invite = ""
-	_joining = false
-	_requires_home = false
-	_organizer.hide()
-	_intro.text = tr("Choose where your group will ride before inviting friends.")
-	_begin("internet")
-
-
-func ask_join(invite: String) -> bool:
-	var preview: Dictionary = _orqwa.group_invitation(invite)
-	if preview.is_empty():
-		return false
-	_invite = invite
-	_joining = true
-	_requires_home = preview["requires_home"]
-	var name: String = preview["organizer"]
-	_organizer_name = name
-	_organizer.show()
-	_intro.text = tr("Choose where your group is riding. Nothing connects before you confirm.")
-	_begin("" if _requires_home else "internet")
-	return true
-
-
-func _begin(selected: String) -> void:
 	_translate()
-	ok_button_text = tr("Join ride") if _joining else tr("Create ride")
-	cancel_button_text = tr("Back") if _joining else tr("Cancel")
 	_error.hide()
 	_advanced.hide()
 	# Edits not confirmed last time are dropped: what is shown is what a lookup asks.
 	_servers.text = ", ".join(_orqwa.stun_servers())
-	# Release the previous group's selection without turning it into consent for a new ride.
+	# Every ride starts from the usual choice, not the last group's.
 	_buttons.allow_unpress = true
 	for option: CheckBox in _choices.values():
 		option.set_pressed_no_signal(false)
 	_buttons.allow_unpress = false
-	_mode = ""
-	if not selected.is_empty():
-		_choices[selected].set_pressed_no_signal(true)
-		_mode = selected
+	_mode = "internet"
+	_choices[_mode].set_pressed_no_signal(true)
 	_update_choice()
 	var viewport: Vector2i = get_tree().root.size
 	_scroll.custom_minimum_size = Vector2i(mini(560, viewport.x - 72), mini(470, viewport.y - 160))
@@ -198,16 +156,7 @@ func _update_choice() -> void:
 			style.border_color = UiTheme.ACCENT
 			style.bg_color = Color(UiTheme.ACCENT, 0.08)
 		_panels[key].add_theme_stylebox_override("panel", style)
-	var incompatible: bool = _requires_home and _mode == "internet"
-	get_ok_button().disabled = _mode.is_empty() or incompatible
-	_hint.text = (
-		tr(
-			"This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
-		)
-		if _requires_home
-		else ""
-	)
-	_hint.visible = incompatible
+	get_ok_button().disabled = _mode.is_empty()
 	_more.visible = _mode in ["internet", "mixed"]
 	if not _more.visible:
 		_advanced.hide()
@@ -249,39 +198,18 @@ func _confirm() -> void:
 			return
 		if not _orqwa.set_stun_servers(_servers.text):
 			return
-	if _orqwa.group_connect(_invite, _mode, _lookup.button_pressed):
-		_last_invite = _invite
-		_last_mode = _mode
-		_last_lookup = _lookup.button_pressed
-		_invite = ""
+	if _orqwa.group_create(_mode, _lookup.button_pressed):
 		hide()
 		started.emit()
 	else:
 		_error.text = tr(
-			"Check your invitation and connection choice, then try again. See Technical details for more information."
+			"ORQWA could not create the ride. See Technical details for more information."
 		)
 		_error.show()
 
 
-## The organizer of the ride being joined, as their invitation names them.
-func organizer() -> String:
-	return _organizer_name
-
-
-## Makes a new reply from the same invitation and choices, after the organizer did not add the
-## rider in time (R195): no new invitation is needed.
-func renew() -> bool:
-	if _last_invite.is_empty():
-		return false
-	_orqwa.group_leave()
-	return _orqwa.group_connect(_last_invite, _last_mode, _last_lookup)
-
-
 func _cancel() -> void:
 	hide()
-	_invite = ""
-	if _joining:
-		join_cancelled.emit()
 
 
 func _notification(what: int) -> void:
@@ -323,12 +251,9 @@ func _translate() -> void:
 	_explanation.text = tr(
 		"Helps friends in other homes reach you. Contacts public address lookup services; your ride data and voice are not sent to them. Turn this off only if you know you can connect without it."
 	)
-	_intro.text = (
-		tr("Choose where your group is riding. Nothing connects before you confirm.")
-		if _joining
-		else tr("Choose where your group will ride before inviting friends.")
+	_intro.text = tr(
+		"Choose where your group will ride before inviting friends. Friends who join connect the same way."
 	)
-	_organizer.text = tr("Organizer: %s") % _organizer_name
-	ok_button_text = tr("Join ride") if _joining else tr("Create ride")
-	cancel_button_text = tr("Back") if _joining else tr("Cancel")
+	ok_button_text = tr("Create ride")
+	cancel_button_text = tr("Cancel")
 	_update_choice()

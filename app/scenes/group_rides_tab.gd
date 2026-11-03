@@ -59,6 +59,10 @@ var _organizer_cancel: Button
 var _organizer_picker: AcceptDialog = AcceptDialog.new()
 var _organizer_choices: VBoxContainer = VBoxContainer.new()
 var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
+## The invitation last joined, for a new reply when the organizer did not add the rider in
+## time (R195), and its offline preview: the organizer and where everyone rides (R197).
+var _joined_invite: String = ""
+var _joined: Dictionary = {}
 var _status: Dictionary = {}
 var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
@@ -170,9 +174,33 @@ func _build_setup() -> void:
 	create.custom_minimum_size.y = 48
 	create.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_card(_setup).add_child(_join)
-	_join.invitation_entered.connect(
-		func(invitation: String) -> void: _connection.ask_join(invitation)
-	)
+	_join.invitation_entered.connect(_join_ride)
+
+
+## Joins as the organizer chose, which the invitation says: nothing to ask (R197).
+func _join_ride(invitation: String) -> void:
+	var preview: Dictionary = _orqwa.group_invitation(invitation)
+	if preview.is_empty() or not _orqwa.group_join(invitation):
+		(
+			_join
+			. show_error(
+				tr(
+					"ORQWA could not join with this invitation. See Technical details for more information."
+				)
+			)
+		)
+		return
+	_joined = preview
+	_joined_invite = invitation
+	_join.clear()
+
+
+## A new reply from the same invitation, the last one having run out (R195).
+func _renew_reply() -> void:
+	if _joined_invite.is_empty():
+		return
+	_orqwa.group_leave()
+	_orqwa.group_join(_joined_invite)
 
 
 func _build_connecting() -> void:
@@ -182,7 +210,7 @@ func _build_connecting() -> void:
 	_connecting_gap.size_flags_stretch_ratio = 0.6
 	_connecting.add_child(_connecting_gap)
 	_joining.cancelled.connect(func() -> void: _orqwa.group_leave())
-	_joining.renewed.connect(func() -> void: _connection.renew())
+	_joining.renewed.connect(_renew_reply)
 
 
 func _build_invitation() -> void:
@@ -208,7 +236,6 @@ func _build_roster() -> void:
 func _build_dialogs() -> void:
 	add_child(_connection)
 	_connection.started.connect(_join.clear)
-	_connection.join_cancelled.connect(_join.focus)
 	_organizer_picker.theme = UiTheme.build()
 	_organizer_picker.title = tr("Choose a new organizer")
 	_organizer_choices.add_theme_constant_override("separation", 12)
@@ -363,8 +390,9 @@ func _card(parent: Node) -> VBoxContainer:
 
 ## What `reach` (the status's `reachability`) means for a host, or for a rider offered organizer
 ## duties: only the cases where friends at other homes may not get through; discovery is
-## evidence, not proof. A host limited to its home network chose that, so only offered duties
-## mention it.
+## evidence, not proof. A group on one home network has nobody elsewhere to warn about (R197),
+## and a host who turned the lookup off with only home addresses chose that, so only offered
+## duties mention it.
 func reach_warning(reach: String, hosting: bool) -> String:
 	var hosts: Dictionary[String, String] = {
 		"strict":
@@ -487,7 +515,9 @@ func _show_status(status: Dictionary) -> void:
 		_stage.text = ""
 	var reply: String = _status.get("reply", "")
 	var reply_s: float = _status.get("reply_s", 0.0)
-	_joining.show_joining(_connection.organizer(), reply, reply_s, expired)
+	var invited_by: String = _joined.get("organizer", "")
+	var mode: String = _joined.get("mode", "")
+	_joining.show_joining(invited_by, mode, reply, reply_s, expired)
 	_body.visible = phase != "idle" and not _connecting.visible
 	var inviting: bool = host and phase not in ["ended", "failed"]
 	_invitation_panel.visible = inviting
@@ -559,7 +589,8 @@ func _organizer_name() -> String:
 		if rider.get("organizer", false):
 			var rider_name: String = rider.get("name", "")
 			return rider_name
-	return _connection.organizer()
+	var invited_by: String = _joined.get("organizer", "")
+	return invited_by
 
 
 ## This rider's preparation as the group heard it (#419), 0 before the first report.

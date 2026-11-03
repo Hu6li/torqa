@@ -2,7 +2,9 @@
 
 use anyhow::Result;
 use clap::Args;
+use orqwa_net::code::{ConnectionMode, Setup};
 use orqwa_net::discovery::{self, GatherOptions};
+use orqwa_net::link::ConnectOptions;
 use orqwa_net::policy::AddressPolicy;
 use tokio::time::Instant;
 
@@ -98,6 +100,22 @@ impl NetworkArgs {
         }
         options
     }
+
+    /// Connection options whose invites tell the app's riders to connect alike (R197):
+    /// `--lan` invites friends at home and elsewhere.
+    pub(crate) fn connect_options(&self) -> ConnectOptions {
+        let mode = if self.lan {
+            ConnectionMode::Mixed
+        } else {
+            ConnectionMode::Internet
+        };
+        let gather = self.options();
+        ConnectOptions {
+            setup: Setup::new(mode, !gather.stun_servers.is_empty()),
+            gather,
+            ..ConnectOptions::default()
+        }
+    }
 }
 
 #[derive(Args)]
@@ -130,6 +148,7 @@ pub(crate) async fn check(args: &NetCheckArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
+    use orqwa_net::code::{ConnectionMode, Setup};
 
     #[test]
     fn pasted_input_discards_oversized_and_invalid_lines_then_recovers() {
@@ -172,6 +191,29 @@ mod tests {
                 "1.1.1.1:3478"
             ])
             .is_err()
+        );
+    }
+
+    #[test]
+    fn invites_tell_the_apps_riders_how_the_cli_connects() {
+        let setup = |flags: &[&str]| {
+            let cli =
+                crate::Cli::try_parse_from(["orqwa-cli", "net-check"].iter().chain(flags).copied())
+                    .unwrap();
+            let crate::Command::NetCheck(args) = cli.command else {
+                panic!("net-check");
+            };
+            args.network.connect_options().setup
+        };
+        assert_eq!(setup(&[]), Setup::new(ConnectionMode::Internet, true));
+        assert_eq!(setup(&["--lan"]), Setup::new(ConnectionMode::Mixed, true));
+        assert_eq!(
+            setup(&["--lan", "--no-stun"]),
+            Setup::new(ConnectionMode::Mixed, false)
+        );
+        assert_eq!(
+            setup(&["--loopback"]),
+            Setup::new(ConnectionMode::Internet, false)
         );
     }
 

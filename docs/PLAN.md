@@ -993,6 +993,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
   what was chosen by name, a readiness pill on every row, the rider's own their button, one main button, and the
   in-ride group window at least as large as the ride's settings, in two columns (R196)
+- [x] The organizer chooses where everyone rides for the whole group: the invitation carries it,
+  friends join without a question, and one home network warns nobody about reachability and
+  lets anyone stand in as fallback organizer (R197)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
