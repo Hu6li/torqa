@@ -54,6 +54,15 @@ pub struct GroupRider {
     pub speaking: bool,
 }
 
+/// One coherent presentation of local and remote course positions on the group clock.
+#[derive(Default)]
+pub struct GroupView {
+    /// The local rider's accepted, buffered position, absent before its first echo or on loss.
+    pub distance: Option<Meters>,
+    /// Other current memberships at exactly the same presentation time.
+    pub riders: Vec<GroupRider>,
+}
+
 /// What the organizer is choosing, as friends see it before it is shared (#418).
 pub struct Previewed {
     /// Identifies this preview: another one means the organizer chose something else.
@@ -235,7 +244,7 @@ pub struct Snapshot {
     pub entry: Option<RideProgress>,
     /// Latest organizer-owned workout time, separate from personal recording and local pause.
     pub workout_clock: Option<WorkoutClock>,
-    /// Latest peer samples and local arrival times.
+    /// Latest host-accepted samples, including our own echo, and local arrival times.
     pub states: [Option<(RiderState, Instant)>; MAX_RIDERS],
     /// Diagnostic details under a translated error caption.
     pub error: String,
@@ -713,16 +722,32 @@ impl App {
     /// memberships and mismatched reused slots are omitted rather than left on screen.
     #[must_use]
     pub fn group_riders(&self) -> Vec<GroupRider> {
+        self.group_view().riders
+    }
+
+    /// Samples local and remote presentation together. Trainer control, recording and HUD
+    /// measurements keep using [`Self::ride_state`], never these delayed positions.
+    #[must_use]
+    pub fn group_view(&self) -> GroupView {
         let Some(group) = &self.group else {
-            return Vec::new();
+            return GroupView::default();
         };
         let snapshot = group.snapshot.borrow();
         if snapshot.phase != Phase::Riding || !group.launched || self.ride.is_none() {
-            return Vec::new();
+            return GroupView::default();
         }
-        group
-            .peers
-            .view(Instant::now())
+        let now = Instant::now();
+        let Some(start) = snapshot.start else {
+            return GroupView::default();
+        };
+        let view = group.peers.view(now, now.saturating_duration_since(start));
+        let local = view[usize::from(snapshot.me)]
+            .filter(|r| r.generation == snapshot.generations[usize::from(snapshot.me)]);
+        // Wait for our own accepted position before comparing against anyone else's.
+        let Some(local) = local else {
+            return GroupView::default();
+        };
+        let riders = view
             .iter()
             .enumerate()
             .filter_map(|(id, peer)| {
@@ -745,7 +770,11 @@ impl App {
                     speaking: snapshot.speaking[id],
                 })
             })
-            .collect()
+            .collect();
+        GroupView {
+            distance: Some(local.distance),
+            riders,
+        }
     }
     /// Sets readiness after preparation; becoming ready also requires a connected trainer.
     ///
@@ -1117,7 +1146,6 @@ impl App {
         }
         self.sync_group_workout(&snapshot);
         self.update_group_motion(&snapshot);
-        self.publish_group_state(&snapshot);
     }
 
     fn report_group_failure(&mut self, snapshot: &Snapshot, events: &mut Vec<AppEvent>) {
@@ -1224,8 +1252,9 @@ impl App {
             group.peers = orqwa_session::group::Riders::default();
         }
         for id in 0..MAX_RIDERS {
-            if id == usize::from(snapshot.me)
-                || snapshot.roster[id].is_none()
+            if snapshot.roster[id].is_none()
+                || snapshot.away[id]
+                || snapshot.reconnecting.is_some()
                 || snapshot.phase != Phase::Riding
             {
                 group.peers.clear(id);
@@ -1251,8 +1280,16 @@ impl App {
                 && state.telemetry.power.is_some_and(|p| p.0 > 0.0)
                 && state.telemetry.cadence.is_none_or(|c| c.0 > 0.0);
             let rules = snapshot.assistance;
+            let now = Instant::now();
+            let mut current = group.peers.current(
+                now,
+                snapshot.start.map_or(std::time::Duration::ZERO, |start| {
+                    now.saturating_duration_since(start)
+                }),
+            );
+            current[usize::from(snapshot.me)] = None;
             let effect = orqwa_session::group::assistance(
-                &group.peers.view(Instant::now()),
+                &current,
                 state.distance,
                 state.speed,
                 pedaling,
@@ -1277,10 +1314,11 @@ impl App {
             active.ride.set_group_effect(effect);
         }
     }
-    fn publish_group_state(&self, snapshot: &Snapshot) {
+    pub(crate) fn publish_group_state(&self) {
         if let Some(g) = &self.group
             && let Some(state) = self.ride_state()
         {
+            let snapshot = g.snapshot.borrow();
             let at = snapshot.start.map_or(state.elapsed, |at| at.elapsed());
             let stopped = self
                 .ride

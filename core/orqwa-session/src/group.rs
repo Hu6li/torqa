@@ -1,4 +1,4 @@
-//! Fixed-size, membership-bound remote motion and individual group assistance (R164, R166).
+//! Fixed-size, membership-bound group playback and individual assistance (R164, R166, R193).
 //! No received measurement is substituted for the local rider's telemetry or ERG target.
 
 use orqwa_domain::units::{GradePercent, Meters, MetersPerSecond, Rpm, Watts};
@@ -9,13 +9,17 @@ use std::time::{Duration, Instant};
 pub const MAX_RIDERS: usize = 8;
 /// Stop showing or assisting from a rider after two seconds without a fresh sample.
 pub const STALE: Duration = Duration::from_secs(2);
-const DELAY: Duration = Duration::from_millis(100);
+/// Shared presentation delay, covering publication, host fan-out and receiver coalescing
+/// (three 200 ms periods), with 200 ms left for network jitter. Local avatars use it too.
+pub const DELAY: Duration = Duration::from_millis(800);
 const EXTRAPOLATE: Duration = Duration::from_millis(300);
+// More than the complete freshness window at 5 Hz; independent of session length.
+const HISTORY: usize = 16;
 
 /// One validated remote measurement. Heart rate deliberately has no representation here.
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
-    /// Elapsed time since the shared start, for rejecting reordered samples.
+    /// Elapsed time since the shared start, for playback and rejecting reordered samples.
     pub elapsed: Duration,
     /// Distance along the shared course.
     pub distance: Meters,
@@ -47,13 +51,13 @@ pub struct Rider {
     pub generation: u64,
     /// Smoothed route distance.
     pub distance: Meters,
-    /// Latest measured virtual speed.
+    /// Virtual speed at the presented position.
     pub speed: MetersPerSecond,
-    /// Latest measured peer power; never an input to local recording or ERG.
+    /// Presented peer power; never an input to local recording or ERG.
     pub power: Watts,
-    /// Latest measured peer cadence.
+    /// Presented peer cadence.
     pub cadence: Rpm,
-    /// Age since the newest sample arrived locally.
+    /// The greater of arrival age and source age on the shared clock.
     pub age: Duration,
 }
 
@@ -65,8 +69,30 @@ struct Received {
 #[derive(Clone, Copy, Debug)]
 struct Slot {
     generation: u64,
-    previous: Option<Received>,
-    latest: Received,
+    samples: [Option<Received>; HISTORY],
+    len: usize,
+}
+impl Slot {
+    fn latest(&self) -> Received {
+        self.samples[self.len - 1].expect("a motion history is never empty")
+    }
+
+    fn sample(&self, target: Duration) -> Sample {
+        let mut previous = self.samples[0]
+            .expect("a motion history is never empty")
+            .sample;
+        for next in self.samples[1..self.len].iter().flatten() {
+            if target <= next.sample.elapsed {
+                return interpolate(previous, next.sample, target);
+            }
+            previous = next.sample;
+        }
+        let ahead = target.saturating_sub(previous.elapsed).min(EXTRAPOLATE);
+        Sample {
+            distance: Meters(previous.distance.0 + previous.speed.0 * ahead.as_secs_f64()),
+            ..previous
+        }
+    }
 }
 
 /// Exactly eight motion histories, independent of networking, device work and rendering.
@@ -85,21 +111,30 @@ impl Riders {
         if generation == 0 || !sample.valid() {
             return false;
         }
-        let mut previous = None;
-        if let Some(old) = slot.filter(|s| s.generation == generation) {
-            if at <= old.latest.at || sample.elapsed <= old.latest.sample.elapsed {
+        if let Some(old) = slot.as_mut().filter(|s| s.generation == generation) {
+            let latest = old.latest();
+            if at < latest.at || sample.elapsed <= latest.sample.elapsed {
                 return false;
             }
-            if at.duration_since(old.latest.at) < STALE
-                && sample.distance.0 >= old.latest.sample.distance.0
+            if at.duration_since(latest.at) < STALE
+                && sample.elapsed.saturating_sub(latest.sample.elapsed) < STALE
+                && sample.distance.0 >= latest.sample.distance.0
             {
-                previous = Some(old.latest);
+                if old.len == HISTORY {
+                    old.samples.copy_within(1..HISTORY, 0);
+                    old.len -= 1;
+                }
+                old.samples[old.len] = Some(Received { sample, at });
+                old.len += 1;
+                return true;
             }
         }
+        let mut samples = [None; HISTORY];
+        samples[0] = Some(Received { sample, at });
         *slot = Some(Slot {
             generation,
-            previous,
-            latest: Received { sample, at },
+            samples,
+            len: 1,
         });
         true
     }
@@ -111,42 +146,68 @@ impl Riders {
         }
     }
 
-    /// Renders 100 ms behind arrival time, extrapolates for at most 300 ms, then holds the
-    /// position until stale. Future local timestamps and stale slots never appear.
+    /// Plays every rider, including the local rider's accepted echo, at the same position
+    /// on the shared clock. Packet arrival times affect freshness only, never motion speed.
     #[must_use]
-    pub fn view(&self, now: Instant) -> [Option<Rider>; MAX_RIDERS] {
+    pub fn view(&self, now: Instant, elapsed: Duration) -> [Option<Rider>; MAX_RIDERS] {
+        self.at(now, elapsed, elapsed.saturating_sub(DELAY))
+    }
+
+    /// Predicts current positions for assistance against the live local simulation. The
+    /// presentation delay must never make a rider draft their own echo or lag the organizer.
+    #[must_use]
+    pub fn current(&self, now: Instant, elapsed: Duration) -> [Option<Rider>; MAX_RIDERS] {
+        self.at(now, elapsed, elapsed)
+    }
+
+    fn at(&self, now: Instant, elapsed: Duration, target: Duration) -> [Option<Rider>; MAX_RIDERS] {
         std::array::from_fn(|id| {
-            let slot = self.slots[id]?;
-            let age = now.checked_duration_since(slot.latest.at)?;
+            let slot = self.slots[id].as_ref()?;
+            let latest = slot.latest();
+            let age = now
+                .checked_duration_since(latest.at)?
+                .max(elapsed.saturating_sub(latest.sample.elapsed));
             if age >= STALE {
                 return None;
             }
-            let sample = slot.latest.sample;
-            let target = now.checked_sub(DELAY).unwrap_or(now);
-            let distance = if target >= slot.latest.at {
-                sample.distance.0
-                    + sample.speed.0
-                        * target
-                            .duration_since(slot.latest.at)
-                            .min(EXTRAPOLATE)
-                            .as_secs_f64()
-            } else if let Some(previous) = slot.previous {
-                let span = slot.latest.at.duration_since(previous.at).as_secs_f64();
-                let fraction = target.saturating_duration_since(previous.at).as_secs_f64() / span;
-                previous.sample.distance.0
-                    + (sample.distance.0 - previous.sample.distance.0) * fraction.clamp(0.0, 1.0)
-            } else {
-                sample.distance.0
-            };
+            let sample = slot.sample(target);
             Some(Rider {
                 generation: slot.generation,
-                distance: Meters(distance),
+                distance: sample.distance,
                 speed: sample.speed,
                 power: sample.power,
                 cadence: sample.cadence,
                 age,
             })
         })
+    }
+}
+
+// Monotone cubic Hermite interpolation preserves endpoint speeds without overshooting a
+// stopped rider. Limiting both tangents also handles rounded wire positions and pauses.
+fn interpolate(a: Sample, b: Sample, target: Duration) -> Sample {
+    let span = b.elapsed.saturating_sub(a.elapsed).as_secs_f64();
+    let t = (target.saturating_sub(a.elapsed).as_secs_f64() / span).clamp(0.0, 1.0);
+    let distance = b.distance.0 - a.distance.0;
+    let mut from = a.speed.0 * span;
+    let mut to = b.speed.0 * span;
+    let length = from.hypot(to);
+    if length > 3.0 * distance {
+        let scale = 3.0 * distance / length;
+        from *= scale;
+        to *= scale;
+    }
+    Sample {
+        elapsed: target,
+        distance: Meters(
+            a.distance.0
+                + (-2.0 * t + 3.0) * t * t * distance
+                + ((t - 2.0) * t + 1.0) * t * from
+                + (t - 1.0) * t * t * to,
+        ),
+        speed: MetersPerSecond(a.speed.0 + (b.speed.0 - a.speed.0) * t),
+        power: Watts(a.power.0 + (b.power.0 - a.power.0) * t),
+        cadence: Rpm(a.cadence.0 + (b.cadence.0 - a.cadence.0) * t),
     }
 }
 
@@ -204,23 +265,31 @@ mod tests {
     fn smooths_packets_limits_extrapolation_and_retires_stale_members() {
         let at = Instant::now();
         let mut riders = Riders::default();
-        assert!(riders.observe(1, 1, sample(1, 10.0), at));
-        assert!(riders.observe(1, 1, sample(2, 12.0), at + Duration::from_millis(200)));
-        let view = riders.view(at + Duration::from_millis(200))[1].unwrap();
+        let mut first = sample(1, 10.0);
+        first.elapsed = Duration::ZERO;
+        let mut next = sample(1, 12.0);
+        next.elapsed = Duration::from_millis(200);
+        assert!(riders.observe(1, 1, first, at));
+        assert!(riders.observe(1, 1, next, at + Duration::from_millis(200)));
+        let view =
+            riders.view(at + Duration::from_millis(900), Duration::from_millis(900))[1].unwrap();
         assert!((view.distance.0 - 11.0).abs() < 1e-9);
-        let held = riders.view(at + Duration::from_secs(1))[1].unwrap();
+        let held =
+            riders.view(at + Duration::from_secs(1), Duration::from_millis(1500))[1].unwrap();
         assert!((held.distance.0 - 15.0).abs() < 1e-9);
-        assert!(riders.view(at + Duration::from_secs(3))[1].is_none());
-        assert!(!riders.observe(1, 1, sample(1, 99.0), at + Duration::from_millis(300)));
+        assert!(riders.view(at + Duration::from_secs(3), Duration::from_secs(3))[1].is_none());
+        assert!(!riders.observe(1, 1, first, at + Duration::from_millis(300)));
         assert!(riders.observe(1, 2, sample(1, 30.0), at + Duration::from_millis(400)));
         assert_eq!(
-            riders.view(at + Duration::from_millis(400))[1]
+            riders.view(at + Duration::from_millis(400), Duration::from_millis(400))[1]
                 .unwrap()
                 .distance,
             Meters(30.0)
         );
         riders.clear(1);
-        assert!(riders.view(at + Duration::from_millis(400))[1].is_none());
+        assert!(
+            riders.view(at + Duration::from_millis(400), Duration::from_millis(400))[1].is_none()
+        );
     }
     #[test]
     fn rejects_invalid_and_future_local_data_and_keeps_a_fixed_budget() {
@@ -230,7 +299,140 @@ mod tests {
         assert!(!riders.observe(1, 0, sample(1, 0.0), at));
         assert!(!riders.observe(1, 1, sample(1, f64::NAN), at));
         riders.observe(1, 1, sample(1, 0.0), at + Duration::from_secs(1));
-        assert!(riders.view(at)[1].is_none());
+        assert!(riders.view(at, Duration::ZERO)[1].is_none());
+    }
+
+    #[test]
+    fn jitter_loss_and_bursts_keep_both_screens_smooth_and_agree_on_overtakes() {
+        // Separate local Instant epochs, with the same shared start age. The organizer sees
+        // its own accepted state sooner, but must not get an advantage in the displayed gap.
+        let starts = [Instant::now(), Instant::now() + Duration::from_secs(100)];
+        let mut screens = vec![Riders::default(), Riders::default()].into_boxed_slice();
+        let mut packets: [Vec<_>; 2] = std::array::from_fn(|screen| {
+            let mut packets = Vec::new();
+            for sequence in 0..=50_u64 {
+                for id in 0..2 {
+                    if screen == 1 && id == 0 && sequence % 9 == 3 {
+                        continue; // a lost packet, never replayed
+                    }
+                    let ms = sequence * 200;
+                    let seconds = Duration::from_millis(ms).as_secs_f64();
+                    let speed = if id == 0 { 10.0 } else { 10.5 };
+                    let distance = if id == 0 { 100.0 } else { 99.0 } + speed * seconds;
+                    let delay = if screen == 0 && id == 0 {
+                        0
+                    } else {
+                        [90, 330, 160, 510, 110][usize::try_from(sequence % 5).unwrap()]
+                    };
+                    let mut state = sample(0, distance);
+                    state.elapsed = Duration::from_millis(ms);
+                    state.speed = MetersPerSecond(speed);
+                    packets.push((ms + delay, id, state));
+                }
+            }
+            packets.sort_by_key(|packet| packet.0);
+            packets.reverse();
+            packets
+        });
+        let mut previous = [[None::<f64>; 2]; 2];
+        for ms in (0..=9500).step_by(10) {
+            let elapsed = Duration::from_millis(ms);
+            let mut gaps = [0.0; 2];
+            for screen in 0..2 {
+                while packets[screen].last().is_some_and(|p| p.0 <= ms) {
+                    let (arrival, id, state) = packets[screen].pop().unwrap();
+                    screens[screen].observe(
+                        id,
+                        1,
+                        state,
+                        starts[screen] + Duration::from_millis(arrival),
+                    );
+                }
+                if ms < 1000 {
+                    continue;
+                }
+                let view = screens[screen].view(starts[screen] + elapsed, elapsed);
+                for id in 0..2 {
+                    let rider = view[id].unwrap();
+                    let speed = if id == 0 { 10.0 } else { 10.5 };
+                    let expected = if id == 0 { 100.0 } else { 99.0 }
+                        + speed * elapsed.saturating_sub(DELAY).as_secs_f64();
+                    assert!(
+                        (rider.distance.0 - expected).abs() < 1e-8,
+                        "screen {screen}, rider {id}, frame {ms}: {} vs {expected}",
+                        rider.distance.0
+                    );
+                    if let Some(last) = previous[screen][id] {
+                        assert!(
+                            (rider.distance.0 - last - speed * 0.01).abs() < 1e-8,
+                            "no arrival-time speed pulses or backward corrections"
+                        );
+                    }
+                    previous[screen][id] = Some(rider.distance.0);
+                }
+                gaps[screen] = view[1].unwrap().distance.0 - view[0].unwrap().distance.0;
+            }
+            assert!((gaps[0] - gaps[1]).abs() < 1e-8, "same order at frame {ms}");
+        }
+    }
+
+    #[test]
+    fn acceleration_and_stopping_are_continuous_without_overshooting() {
+        let at = Instant::now();
+        let mut riders = Riders::default();
+        for ms in [0, 200, 400, 600] {
+            let elapsed = Duration::from_millis(ms);
+            let t = elapsed.as_secs_f64();
+            let mut state = sample(0, 100.0 + 4.0 * t + t * t);
+            state.elapsed = elapsed;
+            state.speed = MetersPerSecond(4.0 + 2.0 * t);
+            riders.observe(0, 1, state, at + elapsed);
+        }
+        for ms in (800..=1400).step_by(10) {
+            let elapsed = Duration::from_millis(ms);
+            let t = elapsed.saturating_sub(DELAY).as_secs_f64();
+            let view = riders.view(at + elapsed, elapsed)[0].unwrap();
+            assert!((view.distance.0 - (100.0 + 4.0 * t + t * t)).abs() < 1e-8);
+        }
+        let mut stopped = sample(0, 103.0);
+        stopped.elapsed = Duration::from_millis(800);
+        stopped.speed = MetersPerSecond(0.0);
+        riders.observe(0, 1, stopped, at + stopped.elapsed);
+        stopped.elapsed = Duration::from_millis(1000);
+        riders.observe(0, 1, stopped, at + stopped.elapsed);
+        let mut last = 102.76;
+        for ms in (1400..=2000).step_by(10) {
+            let elapsed = Duration::from_millis(ms);
+            let rider = riders.view(at + elapsed, elapsed)[0].unwrap();
+            assert!(rider.distance.0 >= last - 1e-8 && rider.distance.0 <= 103.0);
+            last = rider.distance.0;
+        }
+        assert_eq!(last, 103.0);
+    }
+
+    #[test]
+    fn old_source_times_cannot_revive_a_rider_and_reentry_discards_history() {
+        let at = Instant::now();
+        let mut riders = Riders::default();
+        riders.observe(1, 1, sample(1, 100.0), at);
+        assert!(
+            riders.view(at, Duration::from_secs(4))[1].is_none(),
+            "a delayed old packet is stale even when it just arrived"
+        );
+        riders.observe(1, 1, sample(4, 140.0), at + Duration::from_secs(3));
+        assert_eq!(
+            riders.view(at + Duration::from_secs(3), Duration::from_secs(4))[1]
+                .unwrap()
+                .distance,
+            Meters(140.0)
+        );
+        riders.observe(1, 2, sample(5, 20.0), at + Duration::from_secs(4));
+        assert_eq!(
+            riders.view(at + Duration::from_secs(4), Duration::from_secs(5))[1]
+                .unwrap()
+                .distance,
+            Meters(20.0)
+        );
     }
     #[test]
     fn rules_are_independent_local_and_fade_without_new_telemetry() {
@@ -238,67 +440,32 @@ mod tests {
         let mut riders = Riders::default();
         riders.observe(0, 1, sample(1, 60.0), at);
         riders.observe(2, 1, sample(1, 2.0), at);
-        let view = riders.view(at);
-        let both = assistance(
-            &view,
-            Meters(0.0),
-            MetersPerSecond(10.0),
-            true,
-            Some(0),
-            true,
-            true,
-        );
-        assert!(both.drag_share() < 1.0 && both.grade_offset().0 < 0.0);
-        assert_eq!(
+        let view = riders.current(at, Duration::from_secs(1));
+        let effect = |pedaling, organizer, drafting, keep_together| {
             assistance(
                 &view,
                 Meters(0.0),
                 MetersPerSecond(10.0),
-                false,
-                Some(0),
-                true,
-                true
-            ),
+                pedaling,
+                organizer,
+                drafting,
+                keep_together,
+            )
+        };
+        let both = effect(true, Some(0), true, true);
+        assert!(both.drag_share() < 1.0 && both.grade_offset().0 < 0.0);
+        assert_eq!(
+            effect(false, Some(0), true, true),
             GroupEffect::default(),
             "coasting supplies no assistance"
         );
         assert_eq!(
-            assistance(
-                &view,
-                Meters(0.0),
-                MetersPerSecond(10.0),
-                true,
-                None,
-                true,
-                true
-            )
-            .grade_offset(),
+            effect(true, None, true, true).grade_offset(),
             GradePercent(0.0)
         );
+        assert_eq!(effect(true, Some(0), false, true).drag_share(), 1.0);
         assert_eq!(
-            assistance(
-                &view,
-                Meters(0.0),
-                MetersPerSecond(10.0),
-                true,
-                Some(0),
-                false,
-                true
-            )
-            .drag_share(),
-            1.0
-        );
-        assert_eq!(
-            assistance(
-                &view,
-                Meters(0.0),
-                MetersPerSecond(10.0),
-                true,
-                Some(0),
-                true,
-                false
-            )
-            .grade_offset(),
+            effect(true, Some(0), true, false).grade_offset(),
             GradePercent(0.0)
         );
         assert!(
@@ -315,7 +482,7 @@ mod tests {
             .0 > 0.0
         );
         let stale = assistance(
-            &riders.view(at + STALE),
+            &riders.current(at + STALE, Duration::from_secs(1) + STALE),
             Meters(0.0),
             MetersPerSecond(10.0),
             true,
@@ -324,8 +491,12 @@ mod tests {
             true,
         );
         assert_eq!(stale, GroupEffect::default());
+        let later = riders.current(
+            at + Duration::from_millis(1500),
+            Duration::from_millis(2500),
+        );
         let fading = assistance(
-            &riders.view(at + Duration::from_millis(1500)),
+            &later,
             Meters(0.0),
             MetersPerSecond(10.0),
             true,
