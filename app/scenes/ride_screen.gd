@@ -63,8 +63,12 @@ var _moment_card: MomentCard = MomentCard.new()
 var _chime: MomentChime = MomentChime.new()
 ## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
 var _bar: RideBar = RideBar.new()
-var _group_popup: PopupPanel = PopupPanel.new()
+## The group ride's riders, voice, shared workout and leaving (R180), at least as large as the
+## ride's settings, in two columns (R196).
+var _group_window: AcceptDialog = AcceptDialog.new()
 var _offer: GroupOfferCard = GroupOfferCard.new()
+## Asks how the rider listens once voice moved to another output by itself (R194).
+var _listen: GroupListenCard = GroupListenCard.new()
 ## Asked to organize the group ride and not yet answered (#424).
 var _offer_pending: bool = false
 var _offered: bool = false
@@ -202,20 +206,15 @@ func _ready() -> void:
 	_bar.grow_horizontal = Control.GROW_DIRECTION_END
 	_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_bar.settings_requested.connect(_open_settings)
-	_bar.group_requested.connect(func() -> void: _group_popup.popup_centered(Vector2i(640, 480)))
+	_bar.group_requested.connect(func() -> void: UiScale.popup(_group_window, Vector2i(980, 600)))
+	_bar.microphone_requested.connect(_group_controls.toggle_microphone)
 	_bar.overlay_requested.connect(func() -> void: overlay_requested.emit(true))
 	_bar.fullscreen_requested.connect(fullscreen_requested.emit)
 	_bar.back_requested.connect(closed.emit)
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
-	_group_controls.compact = true
-	var group_scroll: ScrollContainer = ScrollContainer.new()
-	group_scroll.custom_minimum_size = Vector2(320, 240)
-	_group_controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	group_scroll.add_child(_group_controls)
-	_group_popup.add_child(group_scroll)
-	add_child(_group_popup)
+	_build_group_window()
 	# Above the control bar, where it covers neither the HUD, the moments nor the map.
 	_offer.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_offer.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -224,6 +223,13 @@ func _ready() -> void:
 	_offer.offset_bottom = -OFFER_BOTTOM
 	_offer.answered.connect(_answer_offer)
 	add_child(_offer)
+	_listen.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_listen.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_listen.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_listen.answered.connect(
+		func(speakers: bool) -> void: _orqwa.group_voice_echo_prevention(speakers)
+	)
+	add_child(_listen)
 	_overlay_hud.hide()
 	_overlay_hud.leave_requested.connect(func() -> void: overlay_requested.emit(false))
 	_overlay_hud.zoom_requested.connect(overlay_zoom_requested.emit)
@@ -304,7 +310,8 @@ func _process(delta: float) -> void:
 		_overlay_hud.show_state(state)
 	_show_gear(state["gear"])
 	var metrics: Dictionary = state["metrics"]
-	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
+	var details: Dictionary = state.get("metric_details", {})
+	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"], details)
 	var zones: Dictionary = state["metric_zones"]
 	_hud.show_zones(zones)
 	_chart.heart_rate_target = _workout_panel.show_state(state["workout"], state["heart_rate"])
@@ -648,11 +655,32 @@ func _on_moment(moment: Dictionary) -> void:
 
 
 ## The chime of a moment, unless the app's sounds are off (R125).
+func _build_group_window() -> void:
+	_group_controls.compact = true
+	_group_window.theme = UiTheme.build()
+	_group_window.title = tr("Group ride")
+	_group_window.ok_button_text = tr("Done")
+	_group_window.min_size = Vector2i(860, 480)
+	var leave: Button = _group_window.add_button(tr("Leave group"), false, "leave")
+	UiTheme.danger_button(leave)
+	_group_window.custom_action.connect(
+		func(_action: StringName) -> void:
+			_group_window.hide()
+			_orqwa.group_leave()
+	)
+	_group_window.add_child(UiTheme.scrolling(_group_controls))
+	add_child(_group_window)
+
+
 ## The group's button while in a group (#431), and a request to organize the ride (#424) until
 ## answered or withdrawn; the overlay is too small for it.
 func _show_group(status: Dictionary) -> void:
 	var phase: String = status.get("phase", "idle")
 	_bar.show_group(phase != "idle")
+	var voice: bool = status.get("voice", false)
+	var microphone: bool = status.get("microphone", false)
+	_bar.show_microphone(voice, microphone)
+	_show_listen(status)
 	var standby: bool = status.get("standby_offer", false)
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
@@ -665,6 +693,19 @@ func _show_group(status: Dictionary) -> void:
 			)
 			_play_chime()
 	_offer.visible = _offer_pending and not is_overlay()
+
+
+## Over the ride while the group's panel is closed, above an offer to organize if one shows.
+func _show_listen(status: Dictionary) -> void:
+	var ask: bool = status.get("ask_listening", false) and not _group_window.visible
+	if ask and not _listen.visible and not is_overlay():
+		var output: String = status.get("output_name", "")
+		_listen.ask(output)
+	if not ask or is_overlay():
+		_listen.hide()
+	var bottom: float = OFFER_BOTTOM + (_offer.size.y + 12.0 if _offer.visible else 0.0)
+	_listen.offset_top = -bottom
+	_listen.offset_bottom = -bottom
 
 
 static func _organizer(status: Dictionary) -> String:

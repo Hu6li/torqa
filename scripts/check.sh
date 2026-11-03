@@ -177,6 +177,8 @@ devices_output="$(run_godot -s res://tests/devices_smoke.gd)"
 echo "$devices_output" | grep "DEVICES SMOKE TEST PASSED"
 window_output="$(run_godot -s res://tests/window_smoke.gd)"
 echo "$window_output" | grep "WINDOW SMOKE TEST PASSED"
+dialog_output="$(run_godot -s res://tests/dialog_smoke.gd)"
+echo "$dialog_output" | grep "DIALOG SMOKE TEST PASSED"
 settings_output="$(run_godot -s res://tests/settings_smoke.gd)"
 echo "$settings_output" | grep "SETTINGS SMOKE TEST PASSED"
 benchmark_output="$(run_godot -s res://tests/benchmark_smoke.gd)"
@@ -207,5 +209,15 @@ surface_output="$(timeout 120 xvfb-run -a godot --path "$root/app" --rendering-d
 echo "$surface_output" | grep "SURFACE SMOKE TEST PASSED"
 if echo "$surface_output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
     echo "$surface_output" >&2
+    exit 1
+fi
+
+# Mouse visibility is a display feature too: the headless backend has no mouse mode.
+pointer_output="$(timeout 90 xvfb-run -a godot --path "$root/app" --audio-driver Dummy \
+    -s res://tests/idle_pointer_smoke.gd 2>&1)" \
+    || { echo "$pointer_output"; exit 1; }
+echo "$pointer_output" | grep "IDLE POINTER SMOKE TEST PASSED"
+if echo "$pointer_output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
+    echo "$pointer_output" >&2
     exit 1
 fi

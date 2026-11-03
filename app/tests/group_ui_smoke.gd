@@ -11,8 +11,10 @@ func _initialize() -> void:
 func _run() -> void:
 	await _group_connections()
 	await _group_activity()
+	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
 	await _microphone_permissions()
+	await _ride_window_columns()
 	_ride_bar()
 	_offer_card()
 	await _organizer_offer()
@@ -33,34 +35,34 @@ func _microphone_permissions() -> void:
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "pending"
-	voice._on_test()
-	_check(requests == [true], "testing explicitly requests microphone permission")
+	_check(not voice.microphone_allowed(), "a pending prompt does not open the microphone")
+	_check(requests == [true], "turning the microphone on explicitly requests permission")
 	_check(_microphone_off(app), "pending permission opens no capture")
 	_check(voice._permission_waiting, "the OS prompt has visible pending guidance")
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "allowed"
-	voice._settings.hide()
 	voice.update_status({})
 	_check(requests == [true, false], "waiting polls authorization without requesting again")
-	_check(_microphone_off(app), "late approval never starts a test or unmutes")
+	_check(_microphone_off(app), "late approval never starts a check or unmutes")
 	_check(not voice._permission_waiting, "approval ends polling and asks the rider to retry")
+	var dialog: GroupVoiceDialog = voice._dialog
 	for access: String in ["denied", "restricted", "unavailable"]:
 		voice._permission = func(_request: bool) -> String: return access
-		voice._mic.set_pressed_no_signal(true)
-		voice._voice()
-		_check(not voice._mic.button_pressed, access + " keeps the microphone off")
-		voice._on_test()
-		_check(_microphone_off(app), access + " cannot start a test")
-		_check(voice._settings_permission_hint.visible, access + " explains how to recover")
+		voice._set_microphone(true)
+		_check(_microphone_off(app), access + " keeps the microphone off")
+		dialog._microphone_on.button_pressed = true
+		_check(not dialog._microphone_on.button_pressed, access + " keeps the join window's off")
+		_check(_microphone_off(app), access + " cannot start a check")
+		_check(dialog.permission_hint.visible, access + " explains how to recover")
 	requests.clear()
 	voice._permission = func(request: bool) -> String:
 		requests.append(request)
 		return "allowed"
-	voice._on_listen(false)
+	dialog._play_sound()
 	voice.update_status({"speaker_test": true})
-	_check(requests.is_empty(), "listening and presenting speaker checks request no microphone")
-	_check(voice._microphone_allowed(), "authorized microphone action may continue")
+	_check(requests.is_empty(), "listening and speaker checks request no microphone")
+	_check(voice.microphone_allowed(), "authorized microphone action may continue")
 	_check(not voice._permission_hint.visible, "retry clears the permission guidance")
 	if not OS.has_feature("macos"):
 		_check(
@@ -69,6 +71,74 @@ func _microphone_permissions() -> void:
 	voice.free()
 	app.free()
 	await process_frame
+
+
+## One main button follows the rider's next step; a line says what the group waits for (R196).
+func _next_steps(step: GroupNextStep) -> void:
+	var preparing: Dictionary = {"phase": "ready", "host": true, "prepared": true}
+	step.show_status(preparing, false, "Me", 0, true)
+	_check(step._main.text == "Connect your trainer", "without a trainer, connecting comes first")
+	step.show_status(preparing, false, "Me", 0, false)
+	_check(not step._main.visible, "unless the trainer cannot be connected from here")
+	step.show_status(preparing, true, "Me", 0, true)
+	_check(
+		step._main.text == "Start group ride" and step._main.disabled,
+		"the organizer's button waits for everyone to be ready"
+	)
+	var waiting: Dictionary = preparing.duplicate()
+	waiting["ready"] = true
+	waiting["roster"] = [
+		{"name": "Me", "ready": true, "me": true},
+		{"name": "Mia", "ready": false, "me": false},
+	]
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(step._line.text == "Waiting for Mia", "and sees who the group waits for")
+	waiting["can_start"] = true
+	waiting["roster"][1]["ready"] = true
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(
+		not step._main.disabled and step._line.text == "Everyone is ready", "then starts the ride"
+	)
+	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true}
+	step.show_status(friend, true, "Alex", 0, true)
+	_check(not step._main.visible, "a friend with a trainer has no main button")
+	friend["ready"] = true
+	step.show_status(friend, true, "Alex", 0, true)
+	_check(step._line.text == "You're ready. Alex starts the ride.", "and knows who starts it")
+	var late: Dictionary = {"phase": "ready", "late": true, "prepared": true, "can_enter": true}
+	step.show_status(late, true, "Alex", 0, true)
+	_check(step._main.text == "Join ride now", "friends joining late enter explicitly")
+	_check(
+		step._main.custom_minimum_size.y == step._retry.custom_minimum_size.y,
+		"every step's button is the same size"
+	)
+	await process_frame
+
+
+## In the ride's window, voice and the workout make a second column beside the riders (R196).
+func _ride_window_columns() -> void:
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	var group: GroupRidesTab = GroupRidesTab.new()
+	group.compact = true
+	group.bind(app)
+	root.add_child(group)
+	await process_frame
+	_check(
+		(
+			group._side_right.visible
+			and group._voice_controls.get_parent().get_parent().get_parent() == group._side_right
+		),
+		"voice sits in the second column"
+	)
+	_check(group._leave == null, "the window has its own way to leave")
+	group.free()
+	app.free()
+
+
+func _riders(app: OrqwaApp) -> int:
+	var roster: Array = app.group_status()["roster"]
+	return roster.size()
 
 
 func _microphone_off(app: OrqwaApp) -> bool:
@@ -117,7 +187,7 @@ func _lookup_servers(host: OrqwaApp, connection: GroupConnectionDialog) -> void:
 	connection.ask_create()
 
 
-## Cancelling setup grants no network access; joining inspects the code before connecting.
+## Cancelling setup grants no network access; joining follows the organizer's choice.
 func _group_connections() -> void:
 	var host: OrqwaApp = OrqwaApp.new()
 	root.add_child(host)
@@ -165,36 +235,74 @@ func _group_connections() -> void:
 	joining.bind(peer)
 	root.add_child(joining)
 	await process_frame
+	# Pasted into the home page's field, the reply instead, or the message it came in (R195).
+	var join: GroupJoinCard = joining._join
+	join._field.text = "orqwa:nothing"
+	join._submit()
 	_check(
-		not peer.group_connect(invitation, "internet", true),
-		"home-network permission is checked before creating a connection owner"
+		join._error.visible and str(peer.group_status()["phase"]) == "idle", "a wrong paste says so"
 	)
-	_check(
-		str(peer.group_status()["phase"]) == "idle", "incompatible invitation starts no networking"
-	)
-	joining._show_exchange("join")
-	joining._paste.text = invitation
-	joining._submit_exchange()
-	_check(
-		joining._connection.visible and str(peer.group_status()["phase"]) == "idle",
-		"pasted invitation opens connection choices offline"
-	)
-	_check(
-		joining._connection._mode.is_empty(), "invitation cannot silently grant home-network access"
-	)
-	joining._connection.get_cancel_button().pressed.emit()
-	await process_frame
-	_check(
-		joining._exchange.visible and joining._paste.text == invitation,
-		"Back preserves the invitation"
-	)
-	joining._submit_exchange()
-	joining._connection._choices["home"].button_pressed = true
-	joining._connection._confirm()
+	# Joining asks nothing: the organizer chose for the group (R197).
+	join._field.text = "Ride with me tonight: " + invitation + " See you!"
+	join._submit()
+	_check(not joining._connection.visible, "joining asks no connection choice")
+	var organizer_name: String = joining._joined.get("organizer", "")
+	_check(not organizer_name.is_empty(), "the organizer is named from the invitation")
+	var joined_mode: String = joining._joined.get("mode", "")
+	_check(joined_mode == "home", "the joiner rides as the organizer chose")
 	until = Time.get_ticks_msec() + 5000
 	while str(peer.group_status()["reply"]).is_empty() and Time.get_ticks_msec() < until:
 		await process_frame
-	_check(not str(peer.group_status()["reply"]).is_empty(), "join starts only after confirmation")
+	_check(not str(peer.group_status()["reply"]).is_empty(), "joining starts at once")
+	_check(join._field.text.is_empty(), "the field empties once joining has started")
+	joining._show_status(peer.group_status())
+	_check(
+		(
+			joining._connecting.visible
+			and joining._joining._code._field.text == str(peer.group_status()["reply"])
+		),
+		"the joiner sees the reply to send"
+	)
+	_check(
+		joining._joining._where.text == tr("%s chose Same home Wi-Fi") % organizer_name,
+		"the joiner is told where everyone rides"
+	)
+	# The organizer adds the reply from their own field, here pasted with its message.
+	var organizer: GroupRidesTab = GroupRidesTab.new()
+	organizer.bind(host)
+	root.add_child(organizer)
+	await process_frame
+	organizer._show_status(host.group_status())
+	_check(organizer._add.visible, "the organizer has a seat to fill")
+	organizer._add._field.text = invitation
+	organizer._add._submit()
+	_check(
+		(
+			organizer._add._error.text
+			== tr("That's your invitation. Paste the reply your friend sent back.")
+		),
+		"their own invitation is told apart from a reply"
+	)
+	var reply: String = peer.group_status()["reply"]
+	organizer._add._field.text = "Here: " + reply
+	organizer._add._edited(organizer._add._field.text)
+	_check(not organizer._add._error.visible, "editing clears the message")
+	organizer._add._submit()
+	until = Time.get_ticks_msec() + 10000
+	while _riders(host) < 2 and Time.get_ticks_msec() < until:
+		await process_frame
+	_check(_riders(host) == 2, "the friend joins")
+	organizer._add._field.text = reply
+	organizer._add._submit()
+	until = Time.get_ticks_msec() + 3000
+	while str(host.group_status()["refusal"]).is_empty() and Time.get_ticks_msec() < until:
+		await process_frame
+	organizer._show_status(host.group_status())
+	_check(
+		organizer._add._error.text == tr("That reply was added already."),
+		"the same reply twice says why it adds nobody"
+	)
+	organizer.free()
 	peer.group_leave()
 	host.group_leave()
 	joining.free()
@@ -214,6 +322,7 @@ func _group_activity() -> void:
 	await process_frame
 	group.set_process(false)
 	var picker: GroupActivityPicker = group._picker
+	group._show_status({"host": true, "phase": "waiting"})
 	_check(picker._course.item_count > 1, "group picker offers the bundled course")
 	_check(picker._workout.item_count > 1, "group picker offers structured workouts")
 	picker._course.select(1)
@@ -228,9 +337,16 @@ func _group_activity() -> void:
 	_check(not picker._apply.disabled, "a preview is not shared until confirmed")
 	picker.show_selection(true, course, workout)
 	_check(picker._apply.disabled, "shared activity has an acknowledgement")
+	picker.set_organizer("Alex", "Ride")
 	picker.show_selection(false, course, workout)
 	_check(
-		picker._course.disabled and not picker._apply.visible, "joiners preview the shared choice"
+		(
+			not picker._course.visible
+			and picker._course_name.visible
+			and not picker._apply.visible
+			and picker._hint.text == "Chosen by Alex"
+		),
+		"friends see the shared choice by name, never the pickers (R196)"
 	)
 	# Friends see what the organizer is choosing before it is shared (#418).
 	var browsed: Array = []
@@ -241,6 +357,10 @@ func _group_activity() -> void:
 	_check(browsed == [[picker.course(), ""]], "the organizer's choice goes to friends")
 	picker.show_selection(false, "", "")
 	_check(browsed.size() == 1, "a friend's picker sends nothing")
+	_check(
+		picker._waiting.visible and picker._waiting_text.text == "Alex is choosing the ride",
+		"friends see who is choosing"
+	)
 	var listed: Dictionary = app.courses()[0]
 	var shown_course: Dictionary = listed.duplicate()
 	var path: String = listed["path"]
@@ -272,8 +392,8 @@ func _group_activity() -> void:
 	)
 	picker.show_preview({})
 	_check(
-		not picker.previewing() and picker._course.visible and picker._hint.visible,
-		"the shared activity shows again once the preview is gone"
+		not picker.previewing() and picker._waiting.visible and not picker._course.visible,
+		"friends wait for the organizer again once the preview is gone"
 	)
 	# How far everyone has got (#419), and something turning while this rider waits (#420).
 	var roster: Array = [
@@ -295,31 +415,93 @@ func _group_activity() -> void:
 		states.append((row.get_child(1).get_child(1) as Label).text)
 	_check(states[0] == "Building the world · 70 %", "a friend building: %s" % states[0])
 	_check(states[1] == "Downloading · 40 %", "a friend downloading: %s" % states[1])
-	_check(states[3] == "Ready", "a ready friend: %s" % states[3])
-	_check(group._working.visible, "it turns while this rider's ride is prepared")
+	_check(states[3].is_empty(), "a ready friend's line leaves readiness to the pill")
+	var pill: Label = group._roster.get_child(3).get_child(2).get_child(0) as Label
+	_check(pill != null and pill.text == "Ready", "a ready friend shows a Ready pill")
+	var step: GroupNextStep = group._next_step
+	_check(step._working.visible, "it turns while this rider's ride is prepared")
 	_check(
-		group._progress.visible and is_equal_approx(group._progress.value, 55.0),
+		step._progress.visible and is_equal_approx(step._progress.value, 55.0),
 		"and shows how far the world is built"
 	)
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
-	_check(not group._working.visible, "nothing turns once it is prepared")
-	# Who is speaking (R190), this rider too; the rows stay as they are while it changes.
+	_check(not step._working.visible, "nothing turns once it is prepared")
+	_check(group._activity_panel.visible, "friends have the activity column too (R196)")
+	# Readiness is a pill on every row; this rider's is their button (R196).
+	group._show_status({"host": false, "phase": "ready", "prepared": true, "roster": roster})
+	var own: Button = group._ready_pill
+	_check(
+		own != null and own.get_parent() == group._roster.get_child(2),
+		"this rider's pill is on their own row"
+	)
+	_check(
+		(
+			own.text == "I'm ready"
+			and own.disabled
+			and own.tooltip_text == "Connect your trainer first"
+		),
+		"it says what it does, and why it waits without a trainer"
+	)
+	var waiting_pill: Label = group._roster.get_child(0).get_child(2).get_child(0) as Label
+	_check(waiting_pill.text == "Not ready", "a friend not yet ready shows a quiet pill")
+	group._show_status(
+		{"host": false, "phase": "ready", "prepared": true, "ready": true, "roster": roster}
+	)
+	_check(
+		group._ready_pill.text == "Ready" and not group._ready_pill.disabled,
+		"once ready it reads like the friends' pills and takes readiness back"
+	)
+	await _next_steps(step)
+	# Who is speaking (R190), this rider too, and who is muted here (R194): the voice buttons
+	# follow without rebuilding the rows.
+	var voice_status: Dictionary = {
+		"host": false, "phase": "ready", "name": "Ride", "roster": roster, "voice": true
+	}
+	voice_status["microphone"] = true
+	group._show_status(voice_status)
 	var rows: Array[Node] = group._roster.get_children()
 	roster[1]["speaking"] = true
 	roster[2]["speaking"] = true
-	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
+	roster[3]["muted"] = true
+	group._show_status(voice_status)
 	_check(group._roster.get_children() == rows, "speaking does not rebuild the riders' rows")
+	var buttons: Dictionary[int, Button] = group._voice_buttons
 	_check(
-		(
-			group._speaking[1].modulate.a == 1.0
-			and group._speaking[2].modulate.a == 1.0
-			and group._speaking[0].modulate.a == 0.0
-		),
-		"a speaker beside each rider heard speaking, none beside a quiet one"
+		buttons[1].icon == UiIcons.texture("speaker", 20, UiTheme.SUCCESS),
+		"a friend heard speaking lights their speaker"
 	)
+	_check(
+		buttons[0].icon == UiIcons.texture("speaker", 20, UiTheme.MUTED),
+		"a quiet friend's speaker stays grey"
+	)
+	_check(
+		buttons[2].icon == UiIcons.texture("microphone", 20, UiTheme.SUCCESS),
+		"this rider's microphone lights while it sends speech"
+	)
+	_check(
+		buttons[3].icon == UiIcons.texture("speaker_off", 20, UiTheme.DANGER),
+		"a friend muted here is struck through"
+	)
+	_check(buttons[3].tooltip_text == tr("Unmute %s") % "Mia", "its tooltip says what it does")
 	roster[1]["speaking"] = false
-	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
-	_check(group._speaking[1].modulate.a == 0.0, "the speaker goes when they stop")
+	voice_status["microphone"] = false
+	group._show_status(voice_status)
+	_check(
+		buttons[1].icon == UiIcons.texture("speaker", 20, UiTheme.MUTED),
+		"the speaker goes grey when they stop"
+	)
+	_check(
+		buttons[2].icon == UiIcons.texture("microphone_off", 20, UiTheme.DANGER),
+		"this rider's microphone, off, is struck through"
+	)
+	group._show_status({"host": true, "phase": "waiting", "roster": roster})
+	var bins: int = 0
+	for row: Node in group._roster.get_children():
+		var last: Button = row.get_child(row.get_child_count() - 1) as Button
+		if last != null and last.icon == UiIcons.texture("bin") and not last.disabled:
+			bins += 1
+	_check(bins == 3, "the organizer may remove each friend, not themselves")
+	roster[3]["muted"] = false
 	group._show_status({"host": true, "phase": "waiting", "drafting": true, "keep_together": true})
 	_check(
 		not group._drafting.disabled and not group._together.disabled, "organizer sets both rules"
@@ -336,11 +518,17 @@ func _group_activity() -> void:
 		{"host": true, "phase": "countdown", "drafting": false, "keep_together": true}
 	)
 	_check(group._drafting.disabled and group._together.disabled, "rules freeze at countdown")
-	_check(group._rule_summary.visible, "riders see the frozen rules during the ride")
+	_check(
+		group._rules.visible and not group._rules_text.visible,
+		"countdown locks the organizer's rules in place"
+	)
 	group._show_status(
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
 	)
-	_check(group._retry.visible, "activity retry remains available beside standard error history")
+	_check(
+		group._next_step._retry.visible,
+		"activity retry remains available beside standard error history"
+	)
 	# The organizer sees who stands by and may choose another (#426).
 	var standing: Array = [
 		{"id": 0, "name": "Me", "ready": true, "me": true, "organizer": true},
@@ -369,21 +557,22 @@ func _group_activity() -> void:
 	]
 	group._show_status({"host": false, "phase": "riding", "reconnect_s": 272.4, "roster": away})
 	_check(
-		group._reconnect.visible and group._working.visible,
+		group._next_step._reconnect.visible and group._next_step._working.visible,
 		"reconnecting turns and offers to try now"
 	)
-	_check(group._next.text.contains("4:32"), "and says how long: %s" % group._next.text)
+	var line: String = group._next_step._line.text
+	_check(line.contains("4:32"), "and says how long: %s" % line)
 	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
 	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
 	group._show_status({"host": false, "phase": "riding", "roster": away})
-	_check(not group._reconnect.visible, "a connected rider has nothing to retry")
+	_check(not group._next_step._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")
 	group._show_status(
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}
 	)
 	_check(
-		group._enter.visible and not group._ready_button.visible,
-		"late joiners get one explicit entry action"
+		group._next_step._action == "devices" and group._ready_pill == null,
+		"late joiners connect their trainer before their one explicit entry, without a pill"
 	)
 	_check(not group._picker._apply.visible, "late joiners cannot change the running selection")
 	group.compact = true
@@ -393,15 +582,15 @@ func _group_activity() -> void:
 		{"host": true, "phase": "waiting", "invite": "private", "reachability": "strict"}
 	)
 	_check(
-		group._reach.visible and not group._reach_text.text.is_empty(),
+		group._invite._reach.visible and not group._invite._reach_text.text.is_empty(),
 		"a host behind strict NAT learns that friends at other homes probably cannot join"
 	)
 	for quiet: String in ["direct", "mapped", "home", ""]:
 		group._show_status(
 			{"host": true, "phase": "waiting", "invite": "private", "reachability": quiet}
 		)
-		_check(not group._reach.visible, "no reachability warning for " + quiet)
-	_check(not group._enter.visible, "existing riders cannot restart through entry")
+		_check(not group._invite._reach.visible, "no reachability warning for " + quiet)
+	_check(group._next_step._action != "enter", "existing riders cannot restart through entry")
 	group._show_status(
 		{
 			"phase": "riding",
@@ -460,67 +649,85 @@ func _group_activity() -> void:
 		"joiners see workout status without organizer buttons"
 	)
 	var voice: GroupVoiceControls = group._voice_controls
-	voice.update_status({"voice": true, "microphone": false, "devices": []})
-	_check(
-		not voice._inputs.disabled and not voice._outputs.disabled,
-		"devices can change during voice"
+	voice.update_status({"voice": false})
+	_check(voice._join.visible and not voice._joined.visible, "voice starts with a way to join")
+	voice.update_status(
+		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
 	)
-	_check(not voice._mic.button_pressed, "listening does not imply microphone consent")
-	voice.update_status({"voice_pending": true})
+	_check(not voice._join.visible and voice._joined.visible, "in voice, its controls show")
+	_check(not voice._ask.visible, "how the rider listens was asked when joining")
+	voice.update_status({"voice": true, "output_name": "AirPods Pro", "ask_listening": true})
 	_check(
-		not voice._inputs.disabled and not voice._outputs.disabled,
-		"devices can change during startup"
+		voice._ask.visible and voice._ask_title.text.contains("AirPods Pro"),
+		"voice moving to another output asks again, naming it (R194)"
 	)
 	voice.update_status(
+		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
+	)
+	var labels: Array[String] = []
+	for button: Node in voice._joined.find_children("*", "Button", true, false):
+		labels.append((button as Button).text)
+	_check(
+		not labels.has(tr("Microphone on")) and not labels.has(tr("Microphone off")),
+		"the microphone is switched beside the rider's name, not in the card"
+	)
+	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
+	voice.update_status({"voice": true, "deafened": true, "microphone": false})
+	var asked: Array[bool] = []
+	voice._permission = func(request: bool) -> String:
+		asked.append(request)
+		return "allowed"
+	voice.toggle_microphone()
+	_check(asked.is_empty(), "mute all sound prevents microphone activation")
+	voice.update_status({"speaker_test": true})
+	_check(voice._joined.visible, "a sound check pauses voice without leaving it")
+	voice.update_status({})
+	_check(voice._join.visible, "out of voice, joining is offered again")
+	var dialog: GroupVoiceDialog = voice._dialog
+	dialog.ask_join()
+	_check(
+		dialog._choice.visible and not dialog._check.visible,
+		"joining first asks how the rider listens"
+	)
+	dialog._listen_with(false)
+	_check(
+		dialog._check.visible and dialog._output_caption.text == tr("Headphones"),
+		"then checks the sound of the headphones chosen"
+	)
+	_check(not dialog._inputs.visible, "the microphone starts off, its picker hidden")
+	dialog.update_status(
 		{
-			"voice": true,
 			"input_device": "headset",
 			"output_device": "headset",
-			"voice_volume": 0.4,
+			"microphone_level": 0.65,
+			"microphone_voice_detected": true,
 			"devices": [{"id": "headset", "name": "Headset", "input": true, "output": true}]
 		}
 	)
-	var input: String = voice._inputs.get_selected_metadata()
-	var output: String = voice._outputs.get_selected_metadata()
+	var input: String = dialog._inputs.get_selected_metadata()
+	var output: String = dialog._outputs.get_selected_metadata()
 	_check(input == "headset", "selected microphone follows the session")
 	_check(output == "headset", "selected speakers follow the session")
-	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
-	voice.update_status({"voice": true, "deafened": true, "microphone": false})
-	_check(voice._mic.disabled, "mute all sound prevents microphone activation")
-	voice.update_status(
-		{"microphone_test": true, "microphone_level": 0.65, "echo_prevention": true}
-	)
-	_check(voice._listen.disabled and voice._mic.disabled, "local testing cannot transmit voice")
-	_check(is_equal_approx(voice._level.value, 0.65), "local microphone meter follows Rust status")
-	_check(voice._echo.button_pressed, "speaker echo prevention starts enabled")
-	voice.update_status(
-		{
-			"microphone_test": true,
-			"microphone_voice_detected": true,
-			"microphone_voice_heard": true,
-			"microphone_checked": true
-		}
-	)
-	_check(voice._speech.text == tr("Voice detected"), "speech has a visible detection indicator")
-	_check(voice._speaker_test.disabled, "microphone and speaker tests are exclusive")
-	voice.update_status({"microphone_checked": true, "microphone_voice_heard": true})
+	_check(is_equal_approx(dialog._level.value, 0.65), "the meter follows Rust status")
+	_check(dialog._heard.text == tr("Voice detected"), "speech has a visible indicator")
+	dialog.update_status({"speaker_test": true})
+	_check(dialog._play.disabled, "one sound check at a time")
+	dialog._on_action(&"back")
+	_check(dialog._choice.visible, "back returns to how the rider listens")
+	dialog.hide()
+	dialog.update_status({"microphone": true, "echo_prevention": true})
+	dialog.ask_devices()
 	_check(
-		voice._speech.text == tr("Voice detected"),
-		"the completed microphone result remains visible"
+		dialog._choice.visible and not dialog._check.visible,
+		"changing devices asks first how the rider listens"
 	)
-	voice.update_status({"microphone_checked": true})
-	_check(voice._speech.text == tr("No voice detected"), "a quiet test has an explicit result")
-	voice.update_status({"speaker_test": true})
+	dialog._listen_with(true)
 	_check(
-		voice._test.disabled and voice._listen.disabled,
-		"speaker testing keeps capture and voice disabled"
+		dialog._microphone_on.button_pressed and dialog._inputs.visible,
+		"the window shows the microphone as it is"
 	)
-	_check(voice._speaker_test.text == tr("Stop speaker test"), "the speaker check can be stopped")
-	voice.update_status({"echo_prevention": false})
-	_check(
-		not voice._echo.button_pressed and not voice._listen.disabled,
-		"headphone mode and stopped test follow status"
-	)
+	_check(dialog._output_caption.text == tr("Speakers"), "and how the rider listens")
+	dialog.hide()
 	group.free()
 	app.free()
 
@@ -599,8 +806,35 @@ func _ride_bar() -> void:
 	bar.group_requested.connect(func() -> void: asked.append(true))
 	group.pressed.emit()
 	_check(group.is_visible_in_tree() and asked == [true], "in a group, the bar opens it")
+	var listen: GroupListenCard = GroupListenCard.new()
+	root.add_child(listen)
+	var answers: Array[bool] = []
+	listen.answered.connect(func(speakers: bool) -> void: answers.append(speakers))
+	listen.ask("AirPods Pro")
+	_check(
+		listen.visible and listen._title.text.contains("AirPods Pro"),
+		"over the ride, the card names the new output"
+	)
+	(listen.get_child(0).get_child(2).get_child(0) as Button).pressed.emit()
+	_check(answers == [false] and not listen.visible, "headphones answer it and close it")
+	listen.free()
+	var microphone: Button = bar._microphone
+	_check(not microphone.is_visible_in_tree(), "no microphone button outside voice")
+	bar.show_microphone(true, false)
+	_check(
+		(
+			microphone.is_visible_in_tree()
+			and microphone.tooltip_text == tr("Turn your microphone on")
+		),
+		"in voice, the bar switches the microphone"
+	)
+	var switched: Array[bool] = []
+	bar.microphone_requested.connect(func() -> void: switched.append(true))
+	microphone.pressed.emit()
+	_check(switched == [true], "pressing it asks for the switch")
 	bar.folded = true
 	_check(not group.is_visible_in_tree(), "it folds away with the other controls")
+	_check(not microphone.is_visible_in_tree(), "the microphone button too")
 	bar.free()
 
 

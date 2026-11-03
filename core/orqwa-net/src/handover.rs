@@ -680,6 +680,7 @@ mod tests {
                 .unwrap(),
             ],
             nat: NatObservation::None,
+            setup: crate::code::Setup::default(),
         };
         (context, invite, roster, selection)
     }

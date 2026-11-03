@@ -28,6 +28,7 @@ var editable: bool = false:
 var _indicated: _Cell = null
 var _layout: PackedStringArray = PackedStringArray()
 var _values: Dictionary[String, Label] = {}
+var _tiles: Dictionary[String, Control] = {}
 ## The grid's figures by id; the large one is left out of the zone bars, its line underneath
 ## already coloured by zone.
 var _cells: Dictionary[String, _Cell] = {}
@@ -50,6 +51,7 @@ func _init() -> void:
 func show_layout(layout: PackedStringArray) -> void:
 	_layout = layout
 	_values.clear()
+	_tiles.clear()
 	_cells.clear()
 	# The W/kg line moves to the new large figure rather than being freed with the old one.
 	_detail.get_parent().remove_child(_detail)
@@ -64,6 +66,7 @@ func show_layout(layout: PackedStringArray) -> void:
 		return
 	var main_id: String = layout[0]
 	var main: _Cell = _Cell.new(self, main_id, 0, false)
+	_tiles[main_id] = main
 	main.add_child(UiTheme.caption(_caption(main_id)))
 	main.add_child(_value_row(main_id, 48))
 	# Power figures get the rider's W/kg, % of FTP and zone underneath; heart rate its % of the
@@ -86,6 +89,7 @@ func show_layout(layout: PackedStringArray) -> void:
 	for i: int in range(1, layout.size()):
 		var id: String = layout[i]
 		var cell: _Cell = _Cell.new(self, id, i, true)
+		_tiles[id] = cell
 		cell.custom_minimum_size = Vector2(98, 0)
 		_cells[id] = cell
 		cell.add_child(UiTheme.caption(_caption(id)))
@@ -131,9 +135,13 @@ func _indicate(cell: _Cell, after: bool) -> void:
 
 ## Live values (`ride_state()["metrics"]`), with W/kg and power zone for the power line; its
 ## % of FTP, and the heart rate's % of the maximum and zone, are among the values.
-func show_values(values: Dictionary, watts_per_kg: Variant, power_zone: Variant) -> void:
+func show_values(
+	values: Dictionary, watts_per_kg: Variant, power_zone: Variant, details: Dictionary = {}
+) -> void:
 	for id: String in _values:
 		_values[id].text = _format(catalogue[id], values.get(id))
+		var description: String = catalogue[id].get("description", "")
+		_tiles[id].tooltip_text = details.get(id, tr(description))
 	if _layout.is_empty() or _layout[0] != HEART_RATE_METRIC:
 		_show_power_detail(watts_per_kg, values.get("power_percent_ftp"), power_zone)
 	else:
@@ -296,6 +304,8 @@ class _Cell:
 		_id = id
 		_index = index
 		_sideways = sideways
+		var description: String = panel.catalogue[id].get("description", "")
+		tooltip_text = tr(description)
 		add_theme_constant_override("separation", 0)
 		if panel.editable:
 			mouse_filter = Control.MOUSE_FILTER_STOP

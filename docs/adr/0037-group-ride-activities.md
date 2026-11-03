@@ -127,6 +127,10 @@ The popup uses the existing touch-scroll helper and native release actions for w
 selection, so finger swipes scroll without changing connection permissions. Gesture tests
 exercise the popup's actual cards as well as tap selection.
 
+Amended 2026-11-03 (R197, ADR 0035 "The organizer's connection choice"): only the organizer
+sees the popup. The invitation carries the choice and joiners follow it without a popup;
+the joining page names it instead.
+
 The first step implements activity/readiness types, normalized workout wire encoding,
 streaming content helpers and a course archive validator. Tests exercise the existing real
 pinned loopback transport, content corruption/truncation/trailing data, atomic publication,

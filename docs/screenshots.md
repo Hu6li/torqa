@@ -25,6 +25,12 @@ same licence; the footage is used only in documentation.
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)
 
+The group countdown locks choices while keeping the course preview in place.
+
+| Ready to start | Counting down |
+|---|---|
+| ![Group ready to start](images/groups/countdown-ready-en.png) | ![Course preview during countdown](images/groups/countdown-en.png) |
+
 | Before riding | After riding |
 |---|---|
 | | ![Quick finish summary](images/app/summary-quick.png) |
@@ -34,6 +40,14 @@ same licence; the footage is used only in documentation.
 | ![Rider profile](images/app/profile.png) | ![Fitness and fatigue](images/app/analysis-fitness.png) |
 | ![HUD editor](images/app/hud-editor.jpg) | ![Weekly training](images/app/analysis-weekly.png) |
 | ![Graphics settings](images/app/settings-graphics.png) | ![Progress over time](images/app/analysis-progress.png) |
+
+| Calories in the HUD | Optional calorie inputs |
+|---|---|
+| ![Calories and Work](images/calories/hud-en.png) | ![Age advances each New Year](images/calories/age-en.png) |
+
+| Full HUD in a small window | German |
+|---|---|
+| ![Both HUD columns scrolled at 1024 × 640](images/calories/hud-full-small-en.png) | ![Both HUD columns in German](images/calories/hud-full-small-de.png) |
 
 ## Cities and woodland
 

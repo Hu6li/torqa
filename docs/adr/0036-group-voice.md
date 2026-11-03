@@ -407,3 +407,41 @@ mute or a closed microphone clears the indicator.
 Sources: [CPAL](https://github.com/RustAudio/cpal),
 [Opus 1.6.1](https://opus-codec.org/downloads/),
 [Opus packet format](https://www.rfc-editor.org/rfc/rfc6716.html).
+
+## Amendment — guided joining and the open microphone's level (2026-11-02, R194)
+
+Riders found the voice setup wordy and left **Prevent speaker echo** on with headphones, so
+speech was held more than needed. Joining now goes through a window that asks every time and
+remembers nothing: **Headphones** or **Speakers** sets the echo gate before voice opens, and
+the rider checks their sound first.
+
+- **Consent.** The window's **Microphone** starts **Off**. Switching it **On** asks for
+  microphone permission in context and runs the capture-only check, nobody hearing it; **Join
+  voice** then opens voice with transmission on. Choosing On is the explicit consent that the
+  muted start stood for, so the first activation may now carry `mic`; joining with Off still
+  opens no capture and asks for no permission.
+- **The check's bound.** The window keeps the microphone check running while it is shown, so
+  its fixed ten seconds became a bound of two minutes (`MICROPHONE_CHECK`), still ended by Off,
+  closing the window, joining, a device change or leaving.
+- **Level in voice.** **Audio devices…** in voice must not pause conversation for a meter.
+  The voice worker therefore publishes the open microphone's peak level per wake, mapped like
+  the check's, before the echo gate holds it; it is zero while the microphone is closed. Only
+  that number reaches the snapshot, as with the check.
+- **After a check.** A sound check during voice now brings voice back with the microphone as it
+  was, as every other automatic restart does (R188), instead of always off: otherwise playing
+  the test sound in voice would silently mute the rider.
+
+- **Following the output.** A separate Headphones | Speakers switch would be forgotten when
+  riders change headphones, leaving the echo gate wrong for the new device. CPAL already
+  reroutes a stream built on the default output when the system's default moves and reports
+  `DeviceChanged`; the backend now takes that as the output having moved, reads the new
+  default's name and tells it, and tells the name of whatever output it opens or rebuilds.
+  The app remembers which output the rider last answered for (the next one voice opens after
+  joining or choosing devices, else the current one when they answer) and asks again,
+  `ask_listening`, while voice plays on another. Only names cross into the snapshot.
+
+Tests open a check with a one-second limit to prove it closes itself, join with the
+microphone on and see capture, level and speech at once, and restore voice after checks with
+the microphone on when it was on and off when the rider had muted it. A backend that moves its
+output is asked about again until the rider answers, but not after choosing devices right
+after being asked; an output rerouted by CPAL marks the move without invalidating the stream.

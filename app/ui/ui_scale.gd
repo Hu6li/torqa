@@ -52,21 +52,19 @@ static func size_new(window: Window) -> void:
 		window.position = usable.position + (usable.size - size) / 2
 
 
-## Pops `dialog` up in the middle of the window, `wanted` large (interface units) where the
-## window has room, else as large as fits with its title bar; its content then scrolls.
+## Opens `dialog` centered at an initial `wanted` size (interface units). Content grows it
+## while the app has room; only content beyond those bounds needs scrolling.
 static func popup(dialog: Window, wanted: Vector2i) -> void:
-	var room: Vector2i = Vector2i(dialog.get_parent().get_viewport().get_visible_rect().size)
-	var title: int = dialog.get_theme_constant("title_height")
-	var fits: Vector2i = room - Vector2i(2 * DIALOG_MARGIN, title + 2 * DIALOG_MARGIN)
-	var size: Vector2i = wanted.min(fits)
-	var rect: Rect2i = Rect2i((room - size) / 2 + Vector2i(0, roundi(title / 2.0)), size)
-	dialog.popup(rect)
+	var bounds: WindowBounds = WindowBounds.attach(dialog)
+	bounds.wanted = wanted
+	bounds.resize_to_wanted()
+	dialog.popup(bounds.centered_rect())
 	# Text that wraps measured its height at the dialog's width before it opened, often far
 	# too narrow, and the dialog grew to that height; laid out at its own width, it fits again.
 	await dialog.get_tree().process_frame
 	if is_instance_valid(dialog) and dialog.visible:
-		dialog.size = rect.size
-		dialog.position = rect.position
+		bounds.resize_to_wanted()
+		dialog.position = bounds.centered_rect().position
 
 
 ## The scale the system gives its own interface on `screen`.

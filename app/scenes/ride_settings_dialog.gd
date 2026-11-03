@@ -2,8 +2,9 @@ class_name RideSettingsDialog
 extends AcceptDialog
 ## Everything that can be changed during a ride, in one place (R48): the workout (R56), the
 ## ride options (camera, difficulty, descents, time of day, weather), the rider's HUD and
-## profile (R98), applied as they change; the devices, to reconnect them (R69); plus finishing
-## and saving, or aborting without saving after a confirmation (R49).
+## profile (R98), applied as they change; the devices, to reconnect them (R69); group voice's
+## volume beside the ride's sounds (R194); plus finishing and saving, or aborting without
+## saving after a confirmation (R49).
 
 signal options_changed(options: Dictionary)
 signal workout_changed(workout: Dictionary)
@@ -55,6 +56,11 @@ func _ready() -> void:
 	_translate_ride_tab()
 	_workout.changed.connect(_on_workout_changed)
 	_options.changed.connect(func() -> void: options_changed.emit(_options.options()))
+	_options.voice_volume_changed.connect(
+		func(volume: float) -> void:
+			if _orqwa != null:
+				_orqwa.group_voice_volume(volume / 100.0)
+	)
 	_hud.layout_changed.connect(func(layout: PackedStringArray) -> void: hud_changed.emit(layout))
 	_profile.changed.connect(_on_profile_changed)
 	add_button(tr("Abort without saving"), true, "abort")
@@ -117,6 +123,10 @@ func edit(
 		_workout.set_workout(workout)
 	_options.set_options(options)
 	_options.show_option_groups(world_options, not world_options, workout.is_empty())
+	var group: Dictionary = {} if _orqwa == null else _orqwa.group_status()
+	var gain: float = group.get("voice_volume", 0.6)
+	var voice: bool = group.get("voice", false)
+	_options.show_voice(voice, gain * 100.0)
 	_imperial = imperial
 	_hud.edit(layout, imperial)
 	if _orqwa != null:

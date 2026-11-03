@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 
 use super::preview::Choice;
-use super::{Phase, Previewed, Snapshot, VoiceControls};
+use super::{Phase, Previewed, Refusal, Snapshot, VoiceControls};
 use crate::Kind;
 use std::sync::{Arc, atomic::Ordering};
 
@@ -111,21 +111,51 @@ impl Session {
         }
     }
 }
-/// This rider's preparation as last told to the group (#419): on a change of stage at once,
-/// otherwise at most every `EVERY`, which keeps well within the host's control budget.
+/// This rider's preparation as last told to the group (#419): on a change of stage or once
+/// done at once, otherwise at most every `EVERY`, which keeps well within the host's control
+/// budget.
 #[derive(Default)]
 struct Reported(Option<(u64, Stage, u8, tokio::time::Instant)>);
 impl Reported {
     const EVERY: Duration = Duration::from_secs(2);
     fn report(&mut self, session: &Session, revision: u64, stage: Stage, percent: u8) {
-        let now = tokio::time::Instant::now();
+        if self.due(revision, stage, percent, tokio::time::Instant::now()) {
+            session.preparation(revision, stage, percent);
+        }
+    }
+    /// Whether to tell the group, remembering it as told if so. Nothing follows the end of
+    /// preparing to supersede it: held back, the rider would show as still building until ready.
+    fn due(&mut self, revision: u64, stage: Stage, percent: u8, now: tokio::time::Instant) -> bool {
         let due = self.0.is_none_or(|(r, s, p, at)| {
-            r != revision || s != stage || (p != percent && now.duration_since(at) >= Self::EVERY)
+            r != revision
+                || s != stage
+                || (p != percent && (percent == 100 || now.duration_since(at) >= Self::EVERY))
         });
         if due {
-            session.preparation(revision, stage, percent);
             self.0 = Some((revision, stage, percent, now));
         }
+        due
+    }
+}
+#[cfg(test)]
+mod reported_tests {
+    use super::{Reported, Stage};
+
+    #[test]
+    fn a_course_prepared_quickly_still_tells_the_group_it_is_done() {
+        let start = tokio::time::Instant::now();
+        let mut reported = Reported::default();
+        assert!(reported.due(1, Stage::Preparing, 50, start));
+        let soon = start + Reported::EVERY / 4;
+        assert!(
+            !reported.due(1, Stage::Preparing, 55, soon),
+            "progress is told a few times only"
+        );
+        assert!(
+            reported.due(1, Stage::Preparing, 100, soon),
+            "done is told at once"
+        );
+        assert!(!reported.due(1, Stage::Preparing, 100, soon), "and once");
     }
 }
 /// A friend's copy of what the organizer is choosing (#418): one fetch at a time, at most
@@ -237,6 +267,22 @@ struct Audio {
 }
 
 /// Opens voice on `port` with the chosen devices; app tests may ask for silent audio instead.
+/// Why the organizer's reply added nobody, in words for the rider beside their field (R195);
+/// `None` for failures that are no fault of the paste.
+fn refusal(error: &orqwa_net::lobby::LobbyError) -> Option<Refusal> {
+    use orqwa_net::code::CodeError;
+    use orqwa_net::link::LinkError;
+    use orqwa_net::lobby::LobbyError;
+    match error {
+        LobbyError::Link(LinkError::Code(CodeError::WrongRide)) => Some(Refusal::OtherRide),
+        LobbyError::Link(LinkError::Code(_)) => Some(Refusal::Invalid),
+        LobbyError::Link(LinkError::Replay) => Some(Refusal::Again),
+        LobbyError::Link(LinkError::Full) => Some(Refusal::Full),
+        LobbyError::Started => Some(Refusal::Started),
+        _ => None,
+    }
+}
+
 async fn open_voice(
     backend: AudioBackend,
     port: orqwa_net::voice::VoicePort,
@@ -341,7 +387,9 @@ pub(super) async fn run(
     if let Err(error) = run_inner(request, &mut commands, &updates, &mut snapshot, &mut local).await
     {
         snapshot.phase = Phase::Failed;
-        snapshot.report(Kind::GroupRide, error);
+        if !snapshot.reply_expired {
+            snapshot.report(Kind::GroupRide, error);
+        }
         snapshot.invite.clear();
         snapshot.reply.clear();
     }
@@ -363,15 +411,24 @@ async fn run_inner(
         .map_err(|e| e.to_string())?;
     let mut session = if let Some(invite) = request.invite {
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
+        let mode = invite.setup.mode();
+        // Taken before the joiner starts its own, so never later than the reply's real end.
+        let until = std::time::Instant::now() + request.options.window;
         let joiner = Joiner::lobby(invite, &request.options)
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
-        snapshot.reachability = Some(joiner.reply().reachability());
+        snapshot.reachability = Some(joiner.reply().reachability(mode));
+        snapshot.reply_until = Some(until);
         updates.send_replace(snapshot.clone());
         let lobby = JoinerLobby::join(joiner, request.rider.clone())
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                // Not added in time: the rider makes a new reply rather than read a failure.
+                snapshot.reply_expired = std::time::Instant::now() >= until;
+                e.to_string()
+            })?;
+        snapshot.reply_until = None;
         snapshot.me = lobby.me().value();
         Session::Join(lobby)
     } else {
@@ -411,6 +468,9 @@ async fn run_inner(
     let mut audio = JoinSet::new();
     let mut scans = JoinSet::new();
     let mut microphone_test: Option<AudioTest> = None;
+    // The output the rider last said how they listen on; `None` takes the next one voice
+    // opens, as after joining or choosing devices right after being asked (R194).
+    let mut listening_for: Option<String> = None;
     let mut mic_starts = JoinSet::new();
     // Voice to restart once a link allows, and whether with the microphone on.
     let mut resume_voice: Option<bool> = None;
@@ -458,7 +518,19 @@ async fn run_inner(
                         if snapshot.host || snapshot.successor == Some(snapshot.me) {handover.cancel(&session,snapshot)}
                         else {Err("Only the organizer or selected successor can cancel this request.".into())}
                     }
-                    Command::Admit(text) => match &session {Session::Host(l)=>match Reply::from_code(&text,policy) {Ok(reply)=>l.admit(&reply).await.map_err(|e|e.to_string()),Err(e)=>Err(e.to_string())},Session::Join(_)=>Err("Only the host can admit riders.".into())},
+                    Command::Admit(text) => match &session {
+                        Session::Host(l) => {
+                            // Shown beside the organizer's field, not as a failure (R195).
+                            snapshot.refusal = Refusal::None;
+                            if let Ok(reply) = Reply::from_code(&text,policy) {
+                                match l.admit(&reply).await {
+                                    Ok(()) => {snapshot.admitting = snapshot.admitting.saturating_add(1); Ok(())}
+                                    Err(error) => refusal(&error).map_or_else(|| Err(error.to_string()), |refused| {snapshot.refuse(refused); Ok(())}),
+                                }
+                            } else {snapshot.refuse(Refusal::Invalid); Ok(())}
+                        }
+                        Session::Join(_) => Err("Only the host can admit riders.".into()),
+                    },
                     Command::Select(course,plan) => {
                         if snapshot.start.is_some() || !snapshot.host {continue;}
                         // What is shared now needs no preview (#418).
@@ -502,6 +574,7 @@ async fn run_inner(
                     Command::ChooseDevices(generation,input,output,mic) => {
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         request.voice_controls.audio_test.store(0,Ordering::Release);
+                        listening_for=None;
                         let restart = snapshot.voice || snapshot.voice_pending || resume_voice.is_some();
                         resume_voice=None;
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
@@ -530,14 +603,21 @@ async fn run_inner(
                         if let Some(test)=&microphone_test {let _=test.volume(volume);}
                         Ok(())
                     }
-                    Command::EchoPrevention(enabled)=>{snapshot.echo_prevention=enabled;if let Some(chat)=&voice {chat.echo_prevention(enabled);}Ok(())}
+                    Command::EchoPrevention(enabled)=>{
+                        snapshot.echo_prevention=enabled;
+                        if let Some(chat)=&voice {chat.echo_prevention(enabled);}
+                        listening_for=(!snapshot.output_name.is_empty()).then(||snapshot.output_name.clone());
+                        snapshot.ask_listening=false;
+                        Ok(())
+                    }
                     Command::AudioTest(generation,kind)=>{
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         request.voice_controls.audio_test.store(kind.map_or(0,|kind|kind as u8),Ordering::Release);
                         audio.abort_all();while audio.join_next().await.is_some() {}
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
                         let previous=voice.take();let previous_test=microphone_test.take();
-                        resume_voice=resume_voice.or((snapshot.voice || snapshot.voice_pending).then_some(false));
+                        // Voice comes back after the check with the microphone as it was (R188).
+                        resume_voice=resume_voice.or((snapshot.voice || snapshot.voice_pending).then_some(snapshot.microphone));
                         snapshot.voice=false;snapshot.voice_pending=false;snapshot.microphone=false;
                         if snapshot.microphone_test && let Some(test)=&previous_test {snapshot.microphone_voice_heard |= test.voice_heard();}
                         snapshot.microphone_test=kind==Some(TestKind::Microphone);snapshot.speaker_test=kind==Some(TestKind::Speakers);snapshot.microphone_level=0.0;snapshot.microphone_voice_detected=false;
@@ -551,12 +631,12 @@ async fn run_inner(
                             });
                         } else if resume_voice.is_some() && let Some(port)=&port {
                             snapshot.voice_pending=true;
-                            // A test leaves voice listening with the microphone off.
                             let backend=request.audio.clone();let port=port.clone();let options=device_options.clone();let deaf=snapshot.deafened;let controls=request.voice_controls.clone();
+                            let mic=resume_voice.unwrap_or(false);
                             audio.spawn(async move {
                                 if let Some(chat)=previous {chat.close().await;}
                                 if let Some(test)=previous_test {test.close().await;}
-                                open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})
+                                open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})
                             });
                             resume_voice=None;
                         } Ok(())
@@ -570,7 +650,7 @@ async fn run_inner(
                         snapshot.voice_volume=volume;
                         // A later choice can close a microphone kept for a restart, never open it.
                         resume_voice=resume_voice.filter(|_| on).map(|was| was && mic && !deaf);
-                        if !on {audio.abort_all(); voice = None; snapshot.voice = false; snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = false;}
+                        if !on {listening_for=None; snapshot.ask_listening=false; audio.abort_all(); voice = None; snapshot.voice = false; snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = false;}
                         else if let Some(chat) = &voice {
                             let configured = (|| {chat.deafen(deaf); chat.volume(volume).map_err(|e|e.to_string())?;
                             chat.microphone(mic && !deaf).map_err(|e|e.to_string())?; Ok::<(),String>(())})();
@@ -579,7 +659,8 @@ async fn run_inner(
                         } else if audio.is_empty() && let Some(port) = &port {
                             snapshot.voice_pending=true;
                             let backend=request.audio.clone();let port = port.clone();let options=device_options.clone();let controls=request.voice_controls.clone();
-                            audio.spawn(async move {open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic:false})});
+                            // Joining with the microphone on is the rider's explicit choice (R194).
+                            audio.spawn(async move {open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})});
                         } Ok(())
                     }
                 };
@@ -596,6 +677,7 @@ async fn run_inner(
                     if snapshot.handover==super::Handover::Committing {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
                     let index=usize::from(id.value());
+                    snapshot.admitting = snapshot.admitting.saturating_sub(1);
                     snapshot.generations[index]=snapshot.generations[index].checked_add(1).ok_or("Rider membership exhausted.")?;
                     snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None;
                     handover.membership(&session,snapshot);
@@ -654,7 +736,7 @@ async fn run_inner(
                 }
                 Some(LobbyEvent::Workout(clock)) => {snapshot.workout_clock = Some(clock);}
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
-                Some(LobbyEvent::Expired) => snapshot.report(Kind::GroupRide,"An admission reply expired. Exchange fresh codes."),
+                Some(LobbyEvent::Expired) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Late);}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
                 Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },
@@ -769,6 +851,18 @@ async fn run_inner(
                     && (!snapshot.late || snapshot.entry.is_some()) {snapshot.phase = Phase::Riding;}
                 if let Some(chat) = &voice {snapshot.microphone = microphone(chat, port.as_ref(), snapshot.microphone);}
                 snapshot.speaking = voice.as_ref().map_or([false; orqwa_net::state::MAX_RIDERS], VoiceChat::speaking);
+                snapshot.output_name = voice.as_ref().map_or_else(String::new, VoiceChat::output_name);
+                if snapshot.voice && !snapshot.output_name.is_empty() {
+                    let known = listening_for.get_or_insert_with(|| snapshot.output_name.clone());
+                    // Another device took over, e.g. headphones plugged in: ask again.
+                    snapshot.ask_listening = *known != snapshot.output_name;
+                }
+                // Without a check, the meter follows the open microphone in voice itself.
+                if microphone_test.is_none() {
+                    let sending = voice.as_ref().filter(|_| snapshot.microphone);
+                    snapshot.microphone_level = sending.map_or(0.0, VoiceChat::microphone_level);
+                    snapshot.microphone_voice_detected = sending.is_some() && snapshot.speaking[usize::from(snapshot.me)];
+                }
             }
         }
     }

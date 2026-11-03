@@ -65,9 +65,32 @@ The headless display has no window mode. The display run checks entering and lea
 screen from the ride bar, synchronization with the keyboard, graphics setting and system
 window controls, and restoring full screen after the overlay (#376, R150).
 
+The idle-pointer smoke test also needs a display: `scripts/check.sh` runs it with Xvfb.
+To run it alone, use `timeout 90 xvfb-run -a godot --path app --audio-driver Dummy
+-s res://tests/idle_pointer_smoke.gd`. It checks the idle delay, movement and clicks over
+controls, windowed and full-screen hiding in 3D/video rides and workouts, keeping it visible
+in menus, plain workouts and the overlay, and restoring it for other windows (R200–R201).
+
 The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.md) for them and a
 gallery of every model); Blender runs in its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
+
+Application subwindows are bounded automatically by the `DialogWindows` autoload and
+`WindowBounds` (R202, #485). A new `Window` subclass needs no special base class or popup
+method: its size and position use the viewport that actually embeds it, including when opened
+inside another dialog. Windows grow to fit their body before falling back to scrolling (R203),
+including bodies already in a scroll container. Width settles before wrapped height is measured;
+spare width is tried when wrapped text would exceed the available height. The window supplies
+its own panel margins and fixed action-row size. Existing scrolling bodies
+are retained, and a larger app window restores room to show their content. Prefer responsive
+layouts and explicit scrolling bodies for their intended presentation;
+`UiScale.popup(window, preferred_size)` sets an initial size rather than a content limit.
+The automatic guard also covers direct `popup_centered()`,
+`popup()` and `show()` calls, later content changes and dragging/resizing.
+`godot --headless --path app -s res://tests/dialog_smoke.gd` reproduces the microphone-permission
+and solo fallback-organizer failures and checks the general rule on standard window classes in
+English/German at 1× and 2× scale. For display validation, run it with `xvfb-run`, the Dummy audio
+driver and `DIALOG_SCREENSHOT_DIR` set to an existing output directory.
 
 Worlds can be kept across updates (R101, [ADR 0025](adr/0025-kept-worlds.md)): a change that
 makes courses come out differently raises `orqwa_world::GENERATOR`, so their pages offer to
@@ -383,6 +406,12 @@ produces bright halos under lavapipe. They wait for route preparation and stream
 the route views pause the rider at fixed positions. The graphics settings in the app are
 unchanged. Both app and route runners check their capture script compiles before rendering.
 
+For the Calories figure and its optional profile inputs (R193, ADR 0038),
+`SCREENSHOT_CALORIES_ONLY=1 scripts/screenshots.sh` captures English and German HUD editors,
+profile settings and a fake-trainer workout without generating a course. Set
+`SCREENSHOT_DIR` and an isolated `XDG_DATA_HOME` as above; `SCREENSHOT_SIZE=1024x640` also
+checks scrolling at the minimum window size. Do not run rendering alongside checks.
+
 Additional UI fixtures use the same real controls without hardware or account credentials:
 
 `SCREENSHOT_SUMMARY_ONLY=1 scripts/screenshots.sh` captures just the quick finish dialog over
@@ -582,6 +611,15 @@ first log line (`ORQWA 0.2.1 (main@0ad9af1)`), as Git reports them while buildin
 `scripts/dev.sh` sets them from the host: a worktree's Git directory lies outside the checkout
 the container sees. CI sets them to a pull request's own branch and last commit, as it builds
 the merge with main; a release, built from its tag, names its commit alone.
+
+### Group lobby layout
+
+`group_ui_smoke.gd` includes the countdown layout regression (R204). It checks the map,
+elevation and workout preview bounds through the countdown for organizer and friend views,
+course-only, workout-only and combined activities, in English and German at 1600 × 900 and
+1024 × 640. Activity editing permission is separate from the organizer's preview layout:
+countdown disables the existing choices and rules, and replaces the readiness line. Review
+the [ready and countdown screenshots](screenshots.md#courses-setup-and-analysis) together.
 
 ### Riding audio
 

@@ -11,7 +11,7 @@ use orqwa_devices::DeviceEvent;
 use orqwa_domain::shifting::ButtonMap;
 use orqwa_domain::units::{Kilograms, Percent};
 use orqwa_net::code::{Invite, Reply};
-use orqwa_net::link::{ConnectOptions, Host, Joiner};
+use orqwa_net::link::{Host, Joiner};
 use orqwa_net::lobby::{HostLobby, JoinerLobby, LobbyEvent, Rider};
 use orqwa_net::state::{RiderId, RiderState, STATE_EVERY};
 use orqwa_physics::RiderSetup;
@@ -138,10 +138,7 @@ async fn with_devices(
     args: &RideTogetherArgs,
     devices: &mut Devices,
 ) -> Result<()> {
-    let options = ConnectOptions {
-        gather: args.network.options(),
-        ..ConnectOptions::default()
-    };
+    let options = args.network.connect_options();
     let me = Rider {
         name: args.name.clone(),
         mass: Kilograms(args.mass),

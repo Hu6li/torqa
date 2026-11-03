@@ -206,6 +206,13 @@ Built in rideable steps:
   like the power line (R182)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
+- [x] Calories in the HUD (R197, #475, ADR 0038): a separate kcal figure, powered by measured
+  work, optional heart-rate inputs or an explicitly assumed effort; short caption, method
+  and missing-interval details in tooltips, per-rider selection and the overlay
+  - [x] Age advances each local New Year from an inferred birth year (R198), with existing
+    ages carried over and an unchanged settings form preserving its age reference year
+  - [x] Wheel/pan reach the last available figure and touch swipes preserve tap-to-add;
+    the full preview scrolls when needed in a small window (R51, R94)
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
@@ -397,6 +404,9 @@ Built in rideable steps:
   icon and tooltip that follow the window when switched by the keyboard or settings too
 - [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
   full screen (R177, #439)
+- [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a
+  3D world or video; movement or a click restores it. Menus, plain workouts, summaries and
+  the overlay keep it visible (R200–R201, #477)
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter
@@ -426,6 +436,12 @@ Built in rideable steps:
   - [x] The interface at the screen's scale rather than stretched to the window (R94): a
     smaller window shows less, not smaller text; the layouts reflow down to 1024 × 640
     (`ReflowGrid`, a wrapping gallery toolbar, scrolling pages) and dialogs fit the window
+  - [x] Dialog bounds persist through first-open layout, tab changes and application resizing;
+    their titles and action buttons stay inside the application window (R199)
+  - [x] Every application subwindow inherits bounds automatically, including nested windows,
+    standard Godot popups and future dialogs; overflowing bodies scroll (R202, #485)
+  - [x] Shared sizing grows windows to fit their content first, including existing scrolling
+    bodies; scrolling is reserved for content that exceeds the available room (R203, #485)
   - [x] Pages that scroll keep their scroll bar's room: the gallery no longer reflows without
     end at some widths, which crashed the app when macOS zoomed its window
   - [x] The course's ride options and growing build log scroll within their panel, with Ride
@@ -938,7 +954,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history
-- [ ] QR sharing using existing support
+- [x] QR sharing using existing support: invitations and replies as plain-text QR codes (R195)
 - [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
   individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
@@ -978,6 +994,20 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   it is shared: map picture, elevation, figures and power chart, nothing downloaded (R191, #418)
 - [x] Riders name their own STUN servers under More connection options, kept per computer;
   the CLI's `--stun` takes the same forms (R192, #415)
+- [x] Voice is joined through a guided window asked every time: headphones or speakers, then a
+  sound check with an optional open microphone; one voice button per rider, a red bin to
+  remove, a microphone button in the ride's bar and voice volume in its settings (R194)
+- [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
+  empty seat in the group list for each friend's reply with one-line reasons when it adds
+  nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)
+- [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
+  what was chosen by name, a readiness pill on every row, the rider's own their button, one main button, and the
+  in-ride group window at least as large as the ride's settings, in two columns (R196)
+- [x] The organizer chooses where everyone rides for the whole group: the invitation carries it,
+  friends join without a question, and one home network warns nobody about reachability and
+  lets anyone stand in as fallback organizer (R197)
+- [x] Countdown keeps the course map, elevation and workout preview in place for organizer
+  and friends; choices and shared rules lock without switching preview layouts (R204)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

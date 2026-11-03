@@ -20,11 +20,16 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TestKind {
-    /// Capture for ten seconds, displaying level and estimated speech activity.
+    /// Capture while it is wanted, at most [`MICROPHONE_CHECK`], displaying level and
+    /// estimated speech activity.
     Microphone = 1,
     /// Play two short tones for two seconds, without opening capture.
     Speakers = 2,
 }
+
+/// The longest a microphone check runs: the rider's join window keeps it going while they
+/// look at its meter, and the bound closes the microphone should nothing stop it.
+pub const MICROPHONE_CHECK: Duration = Duration::from_mins(2);
 
 struct Controls {
     stop: Arc<AtomicBool>,
@@ -60,7 +65,21 @@ impl AudioTest {
         + Send
         + 'static,
     ) -> Result<Self, VoiceError> {
-        Self::start(TestKind::Microphone, 0.6, factory).await
+        Self::with_audio_limited(MICROPHONE_CHECK, factory).await
+    }
+
+    /// Like [`Self::with_audio`], closing itself after `limit` instead of
+    /// [`MICROPHONE_CHECK`], so the bound can be checked without waiting for it.
+    ///
+    /// # Errors
+    /// Returns [`VoiceError`] for device, worker or startup failures.
+    pub async fn with_audio_limited(
+        limit: Duration,
+        factory: impl FnOnce(Arc<AtomicBool>) -> Result<Box<dyn VoiceAudio>, VoiceDeviceError>
+        + Send
+        + 'static,
+    ) -> Result<Self, VoiceError> {
+        Self::start(TestKind::Microphone, 0.6, limit, factory).await
     }
 
     /// Plays two short tones through the selected speakers at the voice volume.
@@ -85,13 +104,14 @@ impl AudioTest {
         + Send
         + 'static,
     ) -> Result<Self, VoiceError> {
-        Self::start(TestKind::Speakers, volume, factory).await
+        Self::start(TestKind::Speakers, volume, Duration::from_secs(2), factory).await
     }
 
     #[allow(clippy::too_many_lines)] // one owner keeps startup, direction-specific work and cleanup together
     async fn start(
         kind: TestKind,
         volume: f32,
+        limit: Duration,
         factory: impl FnOnce(Arc<AtomicBool>) -> Result<Box<dyn VoiceAudio>, VoiceDeviceError>
         + Send
         + 'static,
@@ -122,8 +142,7 @@ impl AudioTest {
                         let _ = ready.send(Ok(()));
                     }
                     let started = Instant::now();
-                    let until = started
-                        + Duration::from_secs(if kind == TestKind::Microphone { 10 } else { 2 });
+                    let until = started + limit;
                     let mut detector = SpeechActivity::default();
                     let mut played = 0;
                     while !worker.stop.load(Ordering::Acquire) && Instant::now() < until {
@@ -174,12 +193,9 @@ impl AudioTest {
                                     }
                                 }
                             }
-                            let level = if peak > 0.0 {
-                                ((peak.log10() * 20.0 + 60.0) / 60.0).clamp(0.0, 1.0)
-                            } else {
-                                0.0
-                            };
-                            worker.level.store(level.to_bits(), Ordering::Relaxed);
+                            worker
+                                .level
+                                .store(crate::meter(peak).to_bits(), Ordering::Relaxed);
                             worker
                                 .voice
                                 .store(detector.detected(Instant::now()), Ordering::Release);

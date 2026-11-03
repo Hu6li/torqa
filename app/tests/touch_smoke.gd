@@ -17,6 +17,7 @@ func _run() -> void:
 	await _course_card()
 	await _nested_pages()
 	await _connection_choices()
+	await _hud_figures()
 	if not _failed:
 		print("TOUCH SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -190,6 +191,31 @@ func _connection_choices() -> void:
 	scroll.free()
 	dialog.free()
 	orqwa.free()
+
+
+func _hud_figures() -> void:
+	var dialog: ProfileDialog = ProfileDialog.new()
+	root.add_child(dialog)
+	dialog.edit({"id": "r", "name": "Rider"}, PackedStringArray(["power"]))
+	dialog.hide()
+	var editor: HudEditor = dialog.get("_hud")
+	editor.get_parent().remove_child(editor)
+	root.add_child(editor)
+	editor.show()
+	editor.position = Vector2(20, 20)
+	editor.size = Vector2(740, 400)
+	await _settle()
+	var scroll: ScrollContainer = editor.get_child(1).get_child(1)
+	var figures: VBoxContainer = scroll.get_child(0)
+	var chip: Control = figures.get_child(0)
+	await _swipe(scroll, chip)
+	var button: Button = chip.get_child(0).get_child(1)
+	await _swipe(scroll, button)
+	_check(editor.layout() == PackedStringArray(["power"]), "swiping HUD figures adds nothing")
+	await _tap(scroll, button)
+	_check(editor.layout().size() == 2, "tapping + still adds a HUD figure after swiping")
+	editor.free()
+	dialog.free()
 
 
 func _page(content: Control) -> ScrollContainer:

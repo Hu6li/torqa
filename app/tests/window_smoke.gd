@@ -4,6 +4,21 @@ extends SceneTree
 ## Run: godot --headless --path app -s res://tests/window_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
+const FULL_HUD: PackedStringArray = [
+	"power",
+	"speed",
+	"distance",
+	"elevation_gain",
+	"grade",
+	"elapsed",
+	"time_remaining",
+	"remaining",
+	"ascent_remaining",
+	"heart_rate",
+	"heart_rate_percent_max",
+	"heart_rate_zone",
+	"gear",
+]
 
 var _failed: bool = false
 
@@ -18,6 +33,7 @@ func _run() -> void:
 		await _fixed_scale()
 		await _reflow_grid()
 		await _gallery_settles()
+		await _popup_bounds()
 		var ride: String = await _record_ride()
 		for locale: String in ["en", "de"]:
 			await _small_window(locale, ride)
@@ -368,7 +384,9 @@ func _small_window(locale: String, ride: String) -> void:
 	settings_dialog.open()
 	await _dialog_fits(settings_dialog, room, locale)
 	var rider_dialog: ProfileDialog = start.find_children("*", "ProfileDialog", true, false)[0]
-	rider_dialog.edit(orqwa.profile(), orqwa.hud_layout())
+	rider_dialog.edit(orqwa.profile(), FULL_HUD)
+	await _dialog_fits(rider_dialog, room, locale)
+	rider_dialog.edit(orqwa.profile(), FULL_HUD)
 	await _dialog_fits(rider_dialog, room, locale)
 	var editor: WorkoutEditor = start.find_children("*", "WorkoutEditor", true, false)[0]
 	editor.edit({}, 200.0)
@@ -481,6 +499,32 @@ func _need(control: Control) -> Vector2:
 	return need
 
 
+## Minimum sizes can spike while wrapped content settles on the first opening (R94).
+## Dialogs must remain bounded then, and when the application window shrinks while open.
+func _popup_bounds() -> void:
+	root.size = Vector2i(1600, 900)
+	var dialog: AcceptDialog = AcceptDialog.new()
+	dialog.theme = UiTheme.build()
+	dialog.min_size = Vector2i(600, 400)
+	var heading: Label = Label.new()
+	heading.text = "Content whose wrapping settles after the dialog opens"
+	dialog.add_child(heading)
+	root.add_child(dialog)
+	UiScale.popup(dialog, Vector2i(960, 780))
+	await _settle()
+	root.size = Vector2i(1024, 640)
+	await _settle()
+	_assert_dialog_inside(dialog, root.get_visible_rect().size, "open dialog after resize")
+	# Reproduce the temporary large minimum before a wrapping container has its final width.
+	heading.custom_minimum_size.y = 1800
+	await _settle()
+	_assert_dialog_inside(dialog, root.get_visible_rect().size, "temporary content minimum")
+	heading.custom_minimum_size.y = 0
+	await _settle()
+	_assert_dialog_inside(dialog, root.get_visible_rect().size, "first opening after reflow")
+	dialog.free()
+
+
 ## Whether `dialog`, just opened, fits `room` with its title and lies inside it; closes it.
 func _dialog_fits(dialog: Window, room: Vector2, locale: String) -> void:
 	await _settle()
@@ -491,11 +535,30 @@ func _dialog_fits(dialog: Window, room: Vector2, locale: String) -> void:
 		dialog.visible and need.x <= room.x and need.y + title <= room.y,
 		"%s fits %s: needs %s" % [what, room, need]
 	)
+	_assert_dialog_inside(dialog, room, what)
+	for node: Node in dialog.find_children("*", "TabContainer", true, false):
+		var tabs: TabContainer = node as TabContainer
+		for tab: int in range(tabs.get_tab_count()):
+			tabs.current_tab = tab
+			await _settle()
+			_assert_dialog_inside(dialog, room, what + ", " + tabs.get_tab_control(tab).name)
+			need = Vector2(dialog.min_size).max(dialog.get_contents_minimum_size())
+			_check(
+				need.x <= room.x and need.y + title <= room.y,
+				(
+					"%s, %s content fits %s: needs %s"
+					% [what, tabs.get_tab_control(tab).name, room, need]
+				)
+			)
+	dialog.hide()
+
+
+func _assert_dialog_inside(dialog: Window, room: Vector2, what: String) -> void:
+	var title: float = dialog.get_theme_constant("title_height")
 	var frame: Rect2 = Rect2(
 		Vector2(dialog.position) - Vector2(0, title), Vector2(dialog.size) + Vector2(0, title)
 	)
 	_check(Rect2(Vector2.ZERO, room).encloses(frame), "%s inside the window: %s" % [what, frame])
-	dialog.hide()
 
 
 func _settle() -> void:

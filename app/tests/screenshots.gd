@@ -49,18 +49,6 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		await process_frame
 	var phase: String = orqwa.group_status().get("phase", "idle")
 	_check(phase == "waiting", "local lobby opened")
-	for locale: String in ["en", "de"]:
-		TranslationServer.set_locale(locale)
-		_check(
-			group._connection.ask_join(str(orqwa.group_status()["invite"])),
-			"invitation inspected offline"
-		)
-		group._connection._choices["home"].button_pressed = true
-		await create_timer(0.3).timeout
-		root.get_texture().get_image().save_png(
-			out.path_join("group-connection-join-" + locale + ".png")
-		)
-		group._connection.hide()
 	var picker: GroupActivityPicker = group._picker
 	_check(picker._course.item_count > 1, "bundled course available for preview")
 	for locale: String in ["en", "de"]:
@@ -79,57 +67,8 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		scroll.scroll_vertical = 0
 	# Use bounded presentation fixtures to review crowded and joining states without contacts.
 	group.set_process(false)
-	var audio: GroupVoiceControls = group._voice_controls
-	audio.update_status(
-		{
-			"voice": true,
-			"microphone_test": true,
-			"microphone_level": 0.65,
-			"input_device": "headset",
-			"output_device": "headset",
-			"devices": [{"id": "headset", "name": "USB Headset", "input": true, "output": true}]
-		}
-	)
-	for locale: String in ["en", "de"]:
-		TranslationServer.set_locale(locale)
-		group.refresh()
-		audio.update_status(
-			{
-				"microphone_test": true,
-				"microphone_level": 0.65,
-				"microphone_voice_detected": true,
-				"microphone_voice_heard": true,
-				"microphone_checked": true
-			}
-		)
-		audio._audio_scroll.scroll_vertical = 0
-		audio._popup_settings()
-		await create_timer(0.4).timeout
-		print("saved audio dialog ", locale, ": ", audio._settings.size)
-		root.get_texture().get_image().save_png(out.path_join("group-audio-" + locale + ".png"))
-		audio.update_status(
-			{"speaker_test": true, "microphone_checked": true, "microphone_voice_heard": true}
-		)
-		audio._audio_scroll.scroll_vertical = 100000
-		await create_timer(0.3).timeout
-		root.get_texture().get_image().save_png(out.path_join("group-speakers-" + locale + ".png"))
-		audio.update_status({})
-		audio._show_permission("denied")
-		audio._audio_scroll.scroll_vertical = 0
-		await create_timer(0.3).timeout
-		root.get_texture().get_image().save_png(
-			out.path_join("group-mic-permission-" + locale + ".png")
-		)
-		audio._permission_hint.hide()
-		audio._settings_permission_hint.hide()
-		audio._settings.hide()
-	group._show_status({"phase": "connecting", "reply": "private"})
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-joining-de.png"))
-	group._show_exchange("join")
-	await create_timer(0.4).timeout
-	root.get_texture().get_image().save_png(out.path_join("group-invitation-de.png"))
-	group._exchange.hide()
+	await GroupVoiceScreenshots.capture(self, start, group, out)
+	await GroupCodeScreenshots.capture(self, group, str(orqwa.group_status()["invite"]), out)
 	orqwa.group_leave()
 	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
@@ -179,6 +118,21 @@ func _group_preview_screens(
 		print("saved group-preview-" + locale)
 	group._picker.show_preview({})
 	group._preview_key = ""
+	# Before Alex looks at anything, friends see who is choosing (R196).
+	TranslationServer.set_locale("de")
+	group._show_status(
+		{
+			"phase": "waiting",
+			"host": false,
+			"roster":
+			[
+				{"id": 0, "name": "Alex", "ready": false, "me": false, "organizer": true},
+				{"id": 1, "name": "Rider", "ready": false, "me": true}
+			]
+		}
+	)
+	await create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-choosing-de.png"))
 
 
 func _group_late_screens(
@@ -339,7 +293,6 @@ func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -
 				}
 			)
 		)
-		group._voice_panel.show()
 		history.clear()
 		history.report(
 			{
@@ -367,7 +320,15 @@ func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -
 
 func _initialize() -> void:
 	_create_main()
-	_run.call_deferred()
+	if OS.get_environment("SCREENSHOT_CALORIES_ONLY") == "1":
+		_calories_only.call_deferred()
+	else:
+		_run.call_deferred()
+
+
+func _calories_only() -> void:
+	await CalorieScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
 
 
 func _create_main() -> void:

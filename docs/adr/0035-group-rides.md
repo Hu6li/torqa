@@ -333,6 +333,30 @@ still ask none. With a single server the codes carry no second observation, so t
 reachability hint (R176) reads such a host as unknown; the field says so. Nothing in invites
 or the protocol changes.
 
+### The organizer's connection choice — 2026-11-03
+
+Each rider used to choose where the group rides, so a joiner could pick differently from the
+organizer, and the reachability hint judged a rider's addresses without knowing the group's.
+On one home network a provider's IPv6 address beside the home address read as IPv6 only: the
+organizer was warned that friends elsewhere might not get through, and the fallback organizer
+(R187) was declined automatically, while a mixed ride could pick a fallback reachable only at
+home (R197). The invite now carries the organizer's `Setup`, the connection mode and whether
+riders look up their addresses, as two bytes after the STUN observation (version 14), and one
+encoding per choice: one home network never looks up. `ConnectOptions::new` derives the
+address policy and STUN list from it, so joining needs no question: the app reads the
+invitation offline, checks its addresses against the policy its own setup permits, so an
+invitation for separate homes cannot carry home-network addresses, and connects with the
+joiner's own lookup servers (R192). The joining page names the choice, as the organizer's
+dialog did before connecting. A successor's listener reuses those options, so a handover or
+takeover invites later friends the same way.
+
+`Reachability::of` takes the mode: a ride on one home network reads as `Together`, which warns
+nobody and may stand in, as reachable IPv4 does; home-network-only addresses no longer may.
+Choosing for the whole group lets an invitation grant home-network access; destinations stay
+bounded by the existing policy, port and count limits, and it comes from the private channel
+the invitation is already trusted through. The CLI maps `--lan` to the mixed choice, so the
+app can still join its invitations.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and
