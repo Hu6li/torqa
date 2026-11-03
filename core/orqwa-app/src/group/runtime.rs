@@ -441,6 +441,9 @@ async fn run_inner(
     let mut audio = JoinSet::new();
     let mut scans = JoinSet::new();
     let mut microphone_test: Option<AudioTest> = None;
+    // The output the rider last said how they listen on; `None` takes the next one voice
+    // opens, as after joining or choosing devices right after being asked (R194).
+    let mut listening_for: Option<String> = None;
     let mut mic_starts = JoinSet::new();
     // Voice to restart once a link allows, and whether with the microphone on.
     let mut resume_voice: Option<bool> = None;
@@ -532,6 +535,7 @@ async fn run_inner(
                     Command::ChooseDevices(generation,input,output,mic) => {
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         request.voice_controls.audio_test.store(0,Ordering::Release);
+                        listening_for=None;
                         let restart = snapshot.voice || snapshot.voice_pending || resume_voice.is_some();
                         resume_voice=None;
                         mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
@@ -560,7 +564,13 @@ async fn run_inner(
                         if let Some(test)=&microphone_test {let _=test.volume(volume);}
                         Ok(())
                     }
-                    Command::EchoPrevention(enabled)=>{snapshot.echo_prevention=enabled;if let Some(chat)=&voice {chat.echo_prevention(enabled);}Ok(())}
+                    Command::EchoPrevention(enabled)=>{
+                        snapshot.echo_prevention=enabled;
+                        if let Some(chat)=&voice {chat.echo_prevention(enabled);}
+                        listening_for=(!snapshot.output_name.is_empty()).then(||snapshot.output_name.clone());
+                        snapshot.ask_listening=false;
+                        Ok(())
+                    }
                     Command::AudioTest(generation,kind)=>{
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
                         request.voice_controls.audio_test.store(kind.map_or(0,|kind|kind as u8),Ordering::Release);
@@ -601,7 +611,7 @@ async fn run_inner(
                         snapshot.voice_volume=volume;
                         // A later choice can close a microphone kept for a restart, never open it.
                         resume_voice=resume_voice.filter(|_| on).map(|was| was && mic && !deaf);
-                        if !on {audio.abort_all(); voice = None; snapshot.voice = false; snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = false;}
+                        if !on {listening_for=None; snapshot.ask_listening=false; audio.abort_all(); voice = None; snapshot.voice = false; snapshot.voice_pending=false; snapshot.microphone = false; snapshot.deafened = false;}
                         else if let Some(chat) = &voice {
                             let configured = (|| {chat.deafen(deaf); chat.volume(volume).map_err(|e|e.to_string())?;
                             chat.microphone(mic && !deaf).map_err(|e|e.to_string())?; Ok::<(),String>(())})();
@@ -801,6 +811,12 @@ async fn run_inner(
                     && (!snapshot.late || snapshot.entry.is_some()) {snapshot.phase = Phase::Riding;}
                 if let Some(chat) = &voice {snapshot.microphone = microphone(chat, port.as_ref(), snapshot.microphone);}
                 snapshot.speaking = voice.as_ref().map_or([false; orqwa_net::state::MAX_RIDERS], VoiceChat::speaking);
+                snapshot.output_name = voice.as_ref().map_or_else(String::new, VoiceChat::output_name);
+                if snapshot.voice && !snapshot.output_name.is_empty() {
+                    let known = listening_for.get_or_insert_with(|| snapshot.output_name.clone());
+                    // Another device took over, e.g. headphones plugged in: ask again.
+                    snapshot.ask_listening = *known != snapshot.output_name;
+                }
                 // Without a check, the meter follows the open microphone in voice itself.
                 if microphone_test.is_none() {
                     let sending = voice.as_ref().filter(|_| snapshot.microphone);

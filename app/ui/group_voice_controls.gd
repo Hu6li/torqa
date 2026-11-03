@@ -1,14 +1,16 @@
 class_name GroupVoiceControls
 extends VBoxContainer
 ## Voice in the group, shared by the lobby and the ride (R162, R194): joining through the
-## guided window, then how the rider listens, the volume, the microphone, muting all sound,
-## the devices and leaving.
+## guided window, then the volume, the microphone, muting all sound, the devices and leaving.
+## How the rider listens is asked when joining or changing devices, and again here when
+## voice moved to another output by itself.
 
 var _orqwa: OrqwaApp
 var _join: Button = Button.new()
 var _joined: VBoxContainer = VBoxContainer.new()
-var _headphones: Button = Button.new()
-var _speakers: Button = Button.new()
+## Asks again how the rider listens once voice plays on another output.
+var _ask: VBoxContainer = VBoxContainer.new()
+var _ask_title: Label = Label.new()
 var _volume: HSlider = HSlider.new()
 var _volume_label: Label = Label.new()
 var _microphone: Button = Button.new()
@@ -32,28 +34,8 @@ func _ready() -> void:
 	add_child(_join)
 	_joined.add_theme_constant_override("separation", 12)
 	add_child(_joined)
-	var line: HFlowContainer = HFlowContainer.new()
-	line.add_theme_constant_override("h_separation", 16)
-	line.add_theme_constant_override("v_separation", 10)
-	var listening: HBoxContainer = HBoxContainer.new()
-	listening.add_theme_constant_override("separation", 4)
-	var group: ButtonGroup = ButtonGroup.new()
-	for option: Array in [[_headphones, tr("Headphones")], [_speakers, tr("Speakers")]]:
-		var button: Button = option[0]
-		var label: String = option[1]
-		button.text = label
-		button.toggle_mode = true
-		button.button_group = group
-		button.custom_minimum_size.x = 112
-		button.add_theme_stylebox_override("pressed", UiTheme.button_chip())
-		button.add_theme_stylebox_override("hover_pressed", UiTheme.button_chip())
-		listening.add_child(button)
-	_headphones.tooltip_text = tr("Everyone talks freely")
-	_speakers.tooltip_text = tr("One at a time")
-	_speakers.toggled.connect(func(on: bool) -> void: _orqwa.group_voice_echo_prevention(on))
-	line.add_child(listening)
-	line.add_child(_volume_row())
-	_joined.add_child(line)
+	_build_ask()
+	_joined.add_child(_volume_row())
 	var actions: HFlowContainer = HFlowContainer.new()
 	actions.add_theme_constant_override("h_separation", 8)
 	actions.add_theme_constant_override("v_separation", 8)
@@ -91,6 +73,33 @@ func _ready() -> void:
 	add_child(_dialog)
 	_dialog.bind(_orqwa)
 	_show()
+
+
+func _build_ask() -> void:
+	_ask.add_theme_constant_override("separation", 8)
+	_ask_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Says the device's name, which is never translated.
+	_ask_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_ask_title.add_theme_color_override("font_color", UiTheme.WARNING)
+	_ask.add_child(_ask_title)
+	var buttons: HBoxContainer = HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	for choice: Array in [
+		[tr("Headphones"), tr("Everyone talks freely"), false],
+		[tr("Speakers"), tr("One at a time"), true]
+	]:
+		var button: Button = Button.new()
+		var label: String = choice[0]
+		var meaning: String = choice[1]
+		var speakers: bool = choice[2]
+		button.text = label
+		button.tooltip_text = meaning
+		button.custom_minimum_size.x = 130
+		button.pressed.connect(func() -> void: _orqwa.group_voice_echo_prevention(speakers))
+		buttons.add_child(button)
+	_ask.add_child(buttons)
+	_ask.hide()
+	_joined.add_child(_ask)
 
 
 func _volume_row() -> HBoxContainer:
@@ -162,9 +171,9 @@ func _show() -> void:
 	_join.visible = not _in_voice
 	_join.disabled = _dialog.visible
 	_joined.visible = _in_voice
-	var speakers: bool = _status.get("echo_prevention", true)
-	(_speakers if speakers else _headphones).set_pressed_no_signal(true)
-	(_headphones if speakers else _speakers).set_pressed_no_signal(false)
+	var output: String = _status.get("output_name", "")
+	_ask.visible = _status.get("ask_listening", false)
+	_ask_title.text = tr("Voice now plays on %s. How are you listening?") % output
 	var gain: float = _status.get("voice_volume", 0.6)
 	_volume.set_value_no_signal(gain * 100.0)
 	_volume_label.text = "%d %%" % roundi(gain * 100.0)

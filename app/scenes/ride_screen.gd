@@ -65,6 +65,8 @@ var _chime: MomentChime = MomentChime.new()
 var _bar: RideBar = RideBar.new()
 var _group_popup: PopupPanel = PopupPanel.new()
 var _offer: GroupOfferCard = GroupOfferCard.new()
+## Asks how the rider listens once voice moved to another output by itself (R194).
+var _listen: GroupListenCard = GroupListenCard.new()
 ## Asked to organize the group ride and not yet answered (#424).
 var _offer_pending: bool = false
 var _offered: bool = false
@@ -225,6 +227,13 @@ func _ready() -> void:
 	_offer.offset_bottom = -OFFER_BOTTOM
 	_offer.answered.connect(_answer_offer)
 	add_child(_offer)
+	_listen.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_listen.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_listen.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_listen.answered.connect(
+		func(speakers: bool) -> void: _orqwa.group_voice_echo_prevention(speakers)
+	)
+	add_child(_listen)
 	_overlay_hud.hide()
 	_overlay_hud.leave_requested.connect(func() -> void: overlay_requested.emit(false))
 	_overlay_hud.zoom_requested.connect(overlay_zoom_requested.emit)
@@ -657,6 +666,7 @@ func _show_group(status: Dictionary) -> void:
 	var voice: bool = status.get("voice", false)
 	var microphone: bool = status.get("microphone", false)
 	_bar.show_microphone(voice, microphone)
+	_show_listen(status)
 	var standby: bool = status.get("standby_offer", false)
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
@@ -669,6 +679,19 @@ func _show_group(status: Dictionary) -> void:
 			)
 			_play_chime()
 	_offer.visible = _offer_pending and not is_overlay()
+
+
+## Over the ride while the group's panel is closed, above an offer to organize if one shows.
+func _show_listen(status: Dictionary) -> void:
+	var ask: bool = status.get("ask_listening", false) and not _group_popup.visible
+	if ask and not _listen.visible and not is_overlay():
+		var output: String = status.get("output_name", "")
+		_listen.ask(output)
+	if not ask or is_overlay():
+		_listen.hide()
+	var bottom: float = OFFER_BOTTOM + (_offer.size.y + 12.0 if _offer.visible else 0.0)
+	_listen.offset_top = -bottom
+	_listen.offset_bottom = -bottom
 
 
 static func _organizer(status: Dictionary) -> String:

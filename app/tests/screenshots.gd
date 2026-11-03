@@ -144,6 +144,13 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 		scroll.scroll_vertical = 100000
 		await create_timer(0.3).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-voice-" + locale + ".png"))
+		# Voice moved to headphones plugged in: the rider is asked again (R194).
+		talking.merge({"output_name": "AirPods Pro", "ask_listening": true})
+		group._show_status(talking)
+		await create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-voice-moved-" + locale + ".png")
+		)
 		scroll.scroll_vertical = 0
 		audio.update_status({})
 	group._show_status({"phase": "connecting", "reply": "private"})

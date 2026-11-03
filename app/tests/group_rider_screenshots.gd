@@ -106,6 +106,14 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_jpg(out.path_join("group-voice-ride.jpg"), 0.82)
 	print("saved group-voice-ride")
 	settings.hide()
+	# Voice moved to headphones plugged in: asked again over the ride (R194).
+	var moved: Dictionary = {"phase": "riding", "roster": roster, "voice": true}
+	moved.merge({"microphone": true, "output_name": "AirPods Pro", "ask_listening": true})
+	ride._show_group(moved)
+	for frame: int in range(5):
+		await tree.process_frame
+	root.get_texture().get_image().save_jpg(out.path_join("group-voice-moved-ride.jpg"), 0.82)
+	print("saved group-voice-moved-ride")
 	ride._show_group({"phase": "riding", "roster": roster})
 	if root.size.y < 800:
 		var scroll: ScrollContainer = ride.get_node("RightColumnScroll")
