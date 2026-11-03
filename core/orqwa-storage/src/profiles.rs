@@ -79,6 +79,9 @@ struct ProfileFile {
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct CalorieFile {
+    birth_year: Option<u16>,
+    /// Legacy fixed age, interpreted in the year this profile was last saved.
+    #[serde(skip_serializing_if = "Option::is_none")]
     age: Option<u8>,
     sex: Option<String>,
     effort: Option<String>,
@@ -87,7 +90,8 @@ struct CalorieFile {
 impl From<CalorieProfile> for CalorieFile {
     fn from(profile: CalorieProfile) -> Self {
         Self {
-            age: profile.age,
+            birth_year: profile.birth_year,
+            age: None,
             sex: profile.sex.map(|sex| match sex {
                 CalorieSex::Female => "female".to_owned(),
                 CalorieSex::Male => "male".to_owned(),
@@ -101,10 +105,11 @@ impl From<CalorieProfile> for CalorieFile {
     }
 }
 
-impl From<CalorieFile> for CalorieProfile {
-    fn from(file: CalorieFile) -> Self {
-        Self {
-            age: file.age.filter(|age| (18..=100).contains(age)),
+impl CalorieFile {
+    fn into_profile(self, reference_year: u16) -> CalorieProfile {
+        let file = self;
+        let mut profile = CalorieProfile {
+            birth_year: file.birth_year,
             sex: match file.sex.as_deref() {
                 Some("female") => Some(CalorieSex::Female),
                 Some("male") => Some(CalorieSex::Male),
@@ -116,7 +121,11 @@ impl From<CalorieFile> for CalorieProfile {
                 Some("hard") => Some(CalorieEffort::Hard),
                 _ => None,
             },
+        };
+        if profile.birth_year.is_none() {
+            profile.set_age(file.age, reference_year);
         }
+        profile
     }
 }
 
@@ -219,15 +228,16 @@ fn shares(percent: &[f64]) -> Vec<f64> {
     percent.iter().map(|p| p / 100.0).collect()
 }
 
-impl From<ProfileFile> for Profile {
-    fn from(f: ProfileFile) -> Self {
-        Self {
+impl ProfileFile {
+    fn into_profile(self, reference_year: u16) -> Profile {
+        let f = self;
+        Profile {
             name: f.name,
             rider_mass: Kilograms(f.rider_mass_kg),
             bike_mass: Kilograms(f.bike_mass_kg),
             ftp: Watts(f.ftp_w),
             max_heart_rate: BeatsPerMinute(f.max_heart_rate_bpm),
-            calories: f.calories.into(),
+            calories: f.calories.into_profile(reference_year),
             units: match f.units {
                 Units::Metric => UnitSystem::Metric,
                 Units::Imperial => UnitSystem::Imperial,
@@ -617,8 +627,18 @@ pub fn list(data_dir: &Path) -> Vec<StoredProfile> {
 /// # Errors
 /// If the file is missing or not a valid profile.
 pub fn load(data_dir: &Path, id: &str) -> Result<Profile, ProfileError> {
-    let text = std::fs::read_to_string(profile_dir(data_dir, id).join(PROFILE_FILE))?;
-    Ok(toml::from_str::<ProfileFile>(&text)?.into())
+    let path = profile_dir(data_dir, id).join(PROFILE_FILE);
+    let text = std::fs::read_to_string(&path)?;
+    let file = toml::from_str::<ProfileFile>(&text)?;
+    // Legacy ages have no reference year. The last save's timestamp is the available anchor;
+    // conversion stays read-only, and the next explicit save stores the inferred birth year.
+    let reference_year = std::fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(orqwa_domain::calendar::utc_year)
+        .or_else(|| orqwa_domain::calendar::utc_year(std::time::SystemTime::now()))
+        .unwrap_or(0);
+    Ok(file.into_profile(reference_year))
 }
 
 /// Writes a profile atomically, creating its directory.
@@ -1375,7 +1395,7 @@ mod tests {
             heart_rate_zones: [0.55, 0.65, 0.75, 0.85],
             default_difficulty: Percent(65.0),
             calories: CalorieProfile {
-                age: Some(40),
+                birth_year: Some(1986),
                 sex: Some(CalorieSex::Female),
                 effort: Some(CalorieEffort::Easy),
             },
@@ -1405,11 +1425,52 @@ mod tests {
     #[test]
     fn older_profiles_do_not_assume_calorie_inputs_from_avatar() {
         let file: ProfileFile = toml::from_str("name = 'Rider'\navatar = 'male'\n").unwrap();
-        let profile = Profile::from(file);
+        let profile = file.into_profile(2026);
         assert_eq!(profile.calories, CalorieProfile::default());
         let file: ProfileFile =
             toml::from_str("[calories]\nage = 12\nsex = 'unknown'\neffort = 'unknown'\n").unwrap();
-        assert_eq!(Profile::from(file).calories, CalorieProfile::default());
+        assert_eq!(file.into_profile(2026).calories, CalorieProfile::default());
+    }
+
+    #[test]
+    fn legacy_calorie_age_uses_the_last_save_year_and_persists_a_stable_birth_year() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let dir = temp_dir("legacy-calorie-age");
+        let path = profile_dir(&dir, "rider").join(PROFILE_FILE);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "name = 'Older rider'\nftp_w = 250.0\n[calories]\nage = 40\nsex = 'female'\neffort = 'easy'\n";
+        std::fs::write(&path, original).unwrap();
+        let modified_in = |year| {
+            let day = orqwa_domain::calendar::days_from_civil(year, 6, 1);
+            let time = UNIX_EPOCH + Duration::from_secs(u64::try_from(day * 86_400).unwrap());
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(time))
+                .unwrap();
+        };
+        modified_in(2026);
+        let profile = load(&dir, "rider").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            original,
+            "loading stays read-only"
+        );
+        assert_eq!(profile.calories.birth_year, Some(1986));
+        assert_eq!(profile.calories.age(2027), Some(41));
+        assert_eq!(profile.calories.sex, Some(CalorieSex::Female));
+        assert_eq!(profile.calories.effort, Some(CalorieEffort::Easy));
+        assert_eq!(profile.name, "Older rider");
+        assert_eq!(profile.ftp, Watts(250.0));
+        save(&dir, "rider", &profile).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("birth_year = 1986"));
+        assert!(!written.lines().any(|line| line.starts_with("age =")));
+        modified_in(2028);
+        let reopened = load(&dir, "rider").unwrap();
+        assert_eq!(reopened, profile, "later saves never rebase the birth year");
+        assert_eq!(reopened.calories.age(2028), Some(42));
     }
 
     #[test]

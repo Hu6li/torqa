@@ -68,12 +68,30 @@ pub enum CalorieEffort {
 /// Optional inputs for calorie estimates. Missing inputs never borrow from the avatar or FTP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CalorieProfile {
-    /// Age in years; the heart-rate equation is used only for adults, 18–100 years.
-    pub age: Option<u8>,
+    /// Approximate birth year inferred from the entered age; no birthday is collected.
+    pub birth_year: Option<u16>,
     /// Sex-specific heart-rate equation, chosen explicitly.
     pub sex: Option<CalorieSex>,
     /// Rough fallback, off unless the rider chooses an effort.
     pub effort: Option<CalorieEffort>,
+}
+
+impl CalorieProfile {
+    /// Age in a calendar year. The calorie estimator separately checks its supported range.
+    #[must_use]
+    pub fn age(self, year: u16) -> Option<u8> {
+        self.birth_year
+            .and_then(|birth| year.checked_sub(birth))
+            .and_then(|age| u8::try_from(age).ok())
+    }
+
+    /// Records an entered adult age in its calendar year; unset or invalid ages clear it.
+    pub fn set_age(&mut self, age: Option<u8>, year: u16) {
+        self.birth_year = age
+            .filter(|age| *age >= 18)
+            .and_then(|age| year.checked_sub(u16::from(age)))
+            .filter(|birth| *birth > 0);
+    }
 }
 
 /// What the rider shifts with on the trainer (R9, ADR 0003).
@@ -415,6 +433,46 @@ mod tests {
         assert_eq!(
             Profile::sane_heart_rate_zones(&[0.55, 0.65, 0.75, 0.85]),
             [0.55, 0.65, 0.75, 0.85]
+        );
+    }
+
+    #[test]
+    fn calorie_age_advances_by_calendar_year_without_rebasing_or_inventing_an_age() {
+        let mut inputs = CalorieProfile::default();
+        assert_eq!(inputs.age(2026), None);
+        inputs.set_age(Some(40), 2026);
+        assert_eq!(inputs.birth_year, Some(1986));
+        assert_eq!(inputs.age(2026), Some(40));
+        assert_eq!(inputs.age(2027), Some(41));
+        assert_eq!(inputs.age(2030), Some(44));
+        assert_eq!(
+            inputs.age(2025),
+            Some(39),
+            "clock rollback is not an extra birthday"
+        );
+        inputs.set_age(Some(41), 2027);
+        assert_eq!(
+            inputs.birth_year,
+            Some(1986),
+            "resaving the current age keeps the anchor"
+        );
+        inputs.set_age(Some(0), 2027);
+        assert_eq!(inputs.birth_year, None);
+        assert_eq!(inputs.age(2030), None);
+        inputs.set_age(Some(17), 2026);
+        assert_eq!(inputs.birth_year, None);
+        inputs.birth_year = Some(2030);
+        assert_eq!(
+            inputs.age(2026),
+            None,
+            "a future birth year cannot underflow"
+        );
+        inputs.set_age(Some(100), 2026);
+        assert_eq!(inputs.age(2026), Some(100));
+        assert_eq!(
+            inputs.age(2027),
+            Some(101),
+            "the displayed age keeps advancing"
         );
     }
 

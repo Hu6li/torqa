@@ -609,12 +609,12 @@ struct ActiveRide {
 
 impl ActiveRide {
     /// Refreshes estimates together when recording advances, independently of frame rate.
-    fn refresh_estimates(&mut self, profile: &Profile) -> bool {
+    fn refresh_estimates(&mut self, profile: &Profile, year: u16) -> bool {
         let samples = self.ride.samples();
         if samples.len() == self.summary.0 {
             return false;
         }
-        self.calories.update(samples, profile);
+        self.calories.update(samples, profile, year);
         let summary = summarize(samples, profile.ftp);
         self.time_to_go.update(summary.elapsed, || {
             let power = estimate::expected_power(profile.ftp, summary.avg_power, summary.elapsed);
@@ -778,6 +778,8 @@ pub struct App {
     /// Click's + and −).
     buttons: Arc<orqwa_devices::shift::Assignments>,
     profile: StoredProfile,
+    /// Front ends supply their local calendar year; UTC is the fallback before binding.
+    calendar_year: u16,
     /// The training platforms rides can be uploaded to and the uploads under way (R29).
     uploads: uploads::UploadState,
     updates: updates::UpdateState,
@@ -875,6 +877,7 @@ impl App {
                 profiles::button_map(&data_dir, &profile.id, model)
             })),
             profile,
+            calendar_year: orqwa_domain::calendar::utc_year(SystemTime::now()).unwrap_or(0),
             uploads: uploads::UploadState::new(uploads::platforms()),
             updates: updates::UpdateState::default(),
             detail: detail::DetailState::default(),
@@ -902,6 +905,20 @@ impl App {
     #[must_use]
     pub fn profile(&self) -> &StoredProfile {
         &self.profile
+    }
+
+    /// Updates the local calendar year, including an open or paused ride's calorie estimate.
+    /// Front ends supply their system calendar; invalid years leave the current value alone.
+    pub fn set_calendar_year(&mut self, year: u16) {
+        if year == 0 || year == self.calendar_year {
+            return;
+        }
+        self.calendar_year = year;
+        if let Some(active) = &mut self.ride {
+            active
+                .calories
+                .update(active.ride.samples(), &self.profile.profile, year);
+        }
     }
 
     /// Switches to another rider, remembered for the next start. The devices in use that are
@@ -963,7 +980,9 @@ impl App {
                 active
                     .ride
                     .change_rider(setup, virtual_gears(profile.drivetrain), profile.ftp);
-                active.calories.update(active.ride.samples(), profile);
+                active
+                    .calories
+                    .update(active.ride.samples(), profile, self.calendar_year);
             }
         }
         Ok(id)
@@ -3786,7 +3805,7 @@ impl App {
             {
                 warn!(%error, "cannot control trainer");
             }
-            if active.refresh_estimates(&self.profile.profile) {
+            if active.refresh_estimates(&self.profile.profile, self.calendar_year) {
                 let samples = active.ride.samples();
                 let workout = active.ride.state().workout;
                 events.extend(
@@ -4868,6 +4887,49 @@ mod tests {
         app.finish_ride();
         assert!(!app.ambient_sound_active());
         assert_eq!(app.ambient_sound(2_400), [] as [[f32; 2]; 0]);
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_paused_ride_refreshes_heart_rate_calories_at_local_new_year() {
+        use orqwa_domain::profile::{CalorieProfile, CalorieSex};
+        use orqwa_domain::units::BeatsPerMinute;
+        let dir = temp_dir("calorie-new-year");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_calendar_year(2026);
+        app.profile.profile.calories = CalorieProfile {
+            birth_year: Some(1986),
+            sex: Some(CalorieSex::Male),
+            effort: None,
+        };
+        let mut ride = Ride::workout(Workout::ConstantPower(Watts(200.0)), RideConfig::default());
+        ride.on_telemetry(&Telemetry {
+            heart_rate: Some(BeatsPerMinute(150.0)),
+            ..Telemetry::default()
+        });
+        let _ = ride.tick(Duration::from_secs(1));
+        app.begin(
+            ride,
+            Some("Age".to_owned()),
+            RouteRecords::default(),
+            None,
+            (None, None),
+        );
+        let active = app.ride.as_mut().unwrap();
+        active.refresh_estimates(&app.profile.profile, 2026);
+        app.set_paused(true);
+        let before = app.hud_calories().energy.unwrap().0;
+        app.set_calendar_year(2027);
+        let after = app.hud_calories();
+        assert!(app.is_paused());
+        assert!((after.energy.unwrap().0 - before - 201.7 / 60.0).abs() < 0.00001);
+        app.set_calendar_year(0);
+        app.update(Duration::from_secs(1));
+        assert_eq!(
+            app.hud_calories(),
+            after,
+            "an invalid year or pause adds no effort"
+        );
         app.shutdown();
     }
 

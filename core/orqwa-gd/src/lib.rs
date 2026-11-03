@@ -215,6 +215,7 @@ impl INode for OrqwaApp {
     fn ready(&mut self) {
         // Courses from before ORQWA knew countries, or prepared offline, learn them (#230).
         if let Some(app) = self.app.as_mut() {
+            app.set_calendar_year(current_calendar_year());
             app.fill_in_countries(false);
             // Courses deleted on another computer, or an update, may leave kept worlds no
             // course needs (R101).
@@ -231,6 +232,7 @@ impl INode for OrqwaApp {
         let Some(app) = self.app.as_mut() else {
             return;
         };
+        app.set_calendar_year(current_calendar_year());
         let events = app.update(Duration::from_secs_f64(delta.max(0.0)));
         // A course imported from a file, or prepared offline, may not know its countries yet.
         if events.iter().any(|e| matches!(e, AppEvent::CourseAdded(_))) {
@@ -2999,6 +3001,12 @@ impl OrqwaApp {
             })
     }
 
+    /// Current local calendar year, also used to date an age entered in a settings form.
+    #[func]
+    fn calendar_year() -> i64 {
+        i64::from(current_calendar_year())
+    }
+
     /// How far a rider at `speed_kmh` leans into a bend of `curvature` (1 / radius, positive to
     /// the right, as in `ride_state()`): radians, positive to the right (R46).
     #[func]
@@ -3130,6 +3138,7 @@ impl OrqwaApp {
         let Some(app) = self.app.as_mut() else {
             return GString::new();
         };
+        app.set_calendar_year(current_calendar_year());
         match app.save_profile(id.as_deref(), profile) {
             Ok(id) => {
                 self.signals().profile_changed().emit();
@@ -4542,7 +4551,9 @@ fn map_color(feature: MapFeature, style: MapStyle) -> Color {
 /// `rides_per_week` 0 for none.
 /// `calorie_age` is an optional adult age (0 unset), `calorie_sex` is `female`, `male` or empty,
 /// and `calorie_effort` is `easy`, `moderate`, `hard` or empty (no assumed effort).
+/// `calorie_age_year` dates the displayed age so an open form can preserve it across New Year.
 fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
+    let year = current_calendar_year();
     vdict! {
         "id" => id,
         "name" => p.name.as_str(),
@@ -4550,7 +4561,8 @@ fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
         "bike_mass_kg" => p.bike_mass.0,
         "ftp_w" => p.ftp.0,
         "max_heart_rate_bpm" => p.max_heart_rate.0,
-        "calorie_age" => i64::from(p.calories.age.unwrap_or(0)),
+        "calorie_age" => i64::from(p.calories.age(year).unwrap_or(0)),
+        "calorie_age_year" => i64::from(year),
         "calorie_sex" => match p.calories.sex {
             Some(CalorieSex::Female) => "female",
             Some(CalorieSex::Male) => "male",
@@ -4606,12 +4618,8 @@ fn calorie_profile(data: &VarDictionary) -> CalorieProfile {
             .map(|value| value.to_string())
             .unwrap_or_default()
     };
-    CalorieProfile {
-        age: data
-            .get("calorie_age")
-            .and_then(|value| value.try_to::<i64>().ok())
-            .and_then(|value| u8::try_from(value).ok())
-            .filter(|age| (18..=100).contains(age)),
+    let mut profile = CalorieProfile {
+        birth_year: None,
         sex: match text("calorie_sex").as_str() {
             "female" => Some(CalorieSex::Female),
             "male" => Some(CalorieSex::Male),
@@ -4623,7 +4631,28 @@ fn calorie_profile(data: &VarDictionary) -> CalorieProfile {
             "hard" => Some(CalorieEffort::Hard),
             _ => None,
         },
-    }
+    };
+    let age = data
+        .get("calorie_age")
+        .and_then(|value| value.try_to::<i64>().ok())
+        .and_then(|value| u8::try_from(value).ok());
+    let year = data
+        .get("calorie_age_year")
+        .and_then(|value| value.try_to::<i64>().ok())
+        .and_then(|value| u16::try_from(value).ok())
+        .filter(|year| (1..=9999).contains(year))
+        .unwrap_or_else(current_calendar_year);
+    profile.set_age(age, year);
+    profile
+}
+
+fn current_calendar_year() -> u16 {
+    godot::classes::Time::singleton()
+        .get_date_dict_from_system()
+        .get("year")
+        .and_then(|value| value.try_to::<i64>().ok())
+        .and_then(|year| u16::try_from(year).ok())
+        .unwrap_or(0)
 }
 
 fn calorie_details(estimate: orqwa_session::calories::Estimate) -> String {

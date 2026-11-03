@@ -19,6 +19,7 @@ static func capture(main: Control, out: String) -> void:
 	)
 	app.set_hud_layout(layout)
 	for locale: String in ["en", "de"]:
+		Input.warp_mouse(Vector2(10, 10))
 		TranslationServer.set_locale(locale)
 		dialog.edit(app.profile(), layout)
 		var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
@@ -34,6 +35,11 @@ static func capture(main: Control, out: String) -> void:
 		scroll.ensure_control_visible(effort)
 		await tree.create_timer(0.4).timeout
 		_save(main, out, "profile-" + locale)
+		var age: SpinBox = form.get("_calorie_age")
+		var age_caption: Control = form.get_child(age.get_index() - 1)
+		Input.warp_mouse(Vector2(dialog.position) + age_caption.get_global_rect().get_center())
+		await tree.create_timer(1.0).timeout
+		_save(main, out, "age-" + locale)
 		dialog.hide()
 	TranslationServer.set_locale("en")
 	app.connect_fake_trainer(200.0, 85.0)

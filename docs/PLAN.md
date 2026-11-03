@@ -209,6 +209,8 @@ Built in rideable steps:
 - [x] Calories in the HUD (R193, #475, ADR 0038): a separate kcal figure, powered by measured
   work, optional heart-rate inputs or an explicitly assumed effort; short caption, method
   and missing-interval details in tooltips, per-rider selection and the overlay
+  - [x] Age advances each local New Year from an inferred birth year (R194), with existing
+    ages carried over and an unchanged settings form preserving its age reference year
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb

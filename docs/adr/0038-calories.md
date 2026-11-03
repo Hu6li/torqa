@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-11-03
-- Requirement: R193; issue #475
+- Requirements: R193–R194; issue #475
 
 ## Context
 
@@ -38,6 +38,28 @@ to kcal would answer a different question from calories burned.
 - Save optional inputs under `[calories]` in the rider's `profile.toml`. Older profiles have
   no fallback until the rider opts in. No new dependency, network request, ride-file field
   or FIT-export change is needed for this HUD feature.
+
+## Amendment — 2026-11-03: age advances each New Year
+
+- Keep the optional **Age** field and infer an approximate `birth_year` when it is entered.
+  Resolve the age from the front end's local calendar year, so it increases on January 1,
+  rather than an unknown birthday. No exact date of birth is collected. Invalid or unset
+  ages stay unavailable to the heart-rate model; 0 explicitly clears the stored year.
+  An age above 100 remains visible and keeps advancing, while the heart-rate calorie model
+  no longer uses it.
+- The settings form retains the year of the displayed age. Only editing Age updates that
+  reference year; saving another field or an unchanged form must not infer a later birth
+  year. An application or settings restart resolves the current age from the stored year.
+- The Godot boundary supplies the local system year to Rust, including while a ride is
+  paused. The calorie cache includes the year, so a year change refreshes heart-rate
+  estimates even without a new sample. The application uses the UTC year until a front end
+  supplies its local calendar.
+- Profiles from the earlier fixed-age implementation are read without rewriting them:
+  interpret `age` in the UTC year of their last modification, or the current UTC year if
+  the filesystem provides no timestamp. The next explicit profile save stores `birth_year`
+  and omits the legacy age. Once a birth year exists it wins over any legacy age.
+- Reuse the existing Gregorian calendar helpers in `orqwa-domain`, re-exported through the
+  original session fitness paths. Add no time library or other dependency.
 
 ## Meaning and limits
 

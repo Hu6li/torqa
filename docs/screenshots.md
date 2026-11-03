@@ -37,7 +37,7 @@ same licence; the footage is used only in documentation.
 
 | Calories in the HUD | Optional calorie inputs |
 |---|---|
-| ![Calories and Work](images/calories/hud-en.png) | ![Calorie profile settings](images/calories/profile-en.png) |
+| ![Calories and Work](images/calories/hud-en.png) | ![Age advances each New Year](images/calories/age-en.png) |
 
 ## Cities and woodland
 

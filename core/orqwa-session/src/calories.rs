@@ -39,16 +39,17 @@ pub struct Estimate {
 /// Incremental calorie estimate, refreshed only for new samples or changed rider inputs.
 #[derive(Debug, Default)]
 pub struct Calories {
-    settings: Option<(CalorieProfile, Kilograms)>,
+    settings: Option<(CalorieProfile, Kilograms, u16)>,
     sampled: usize,
     estimate: Estimate,
 }
 
 impl Calories {
     /// Adds new one-second ride samples. Changed calorie inputs recompute the ride so far;
-    /// pauses add no samples, and timestamp gaps never invent riding.
-    pub fn update(&mut self, samples: &[Sample], profile: &Profile) {
-        let settings = (profile.calories, profile.rider_mass);
+    /// `year` is the local calendar year and also invalidates the cache when it changes.
+    /// Pauses add no samples, and timestamp gaps never invent riding.
+    pub fn update(&mut self, samples: &[Sample], profile: &Profile, year: u16) {
+        let settings = (profile.calories, profile.rider_mass, year);
         if self.settings != Some(settings) || samples.len() < self.sampled {
             *self = Self {
                 settings: Some(settings),
@@ -56,7 +57,7 @@ impl Calories {
             };
         }
         for sample in &samples[self.sampled..] {
-            if let Some((energy, basis)) = energy(sample, profile) {
+            if let Some((energy, basis)) = energy(sample, profile, year) {
                 self.estimate.energy = Some(Joules(
                     self.estimate.energy.unwrap_or_default().0 + energy.0,
                 ));
@@ -79,7 +80,7 @@ impl Calories {
     }
 }
 
-fn energy(sample: &Sample, profile: &Profile) -> Option<(Joules, Basis)> {
+fn energy(sample: &Sample, profile: &Profile, year: u16) -> Option<(Joules, Basis)> {
     // Zero power is a measurement too: coasting must not fall back to elevated heart rate.
     if let Some(power) = sample.power.filter(|p| p.0.is_finite() && p.0 >= 0.0) {
         return Some((Joules(power.0 / EFFICIENCY), Basis::Power));
@@ -91,7 +92,10 @@ fn energy(sample: &Sample, profile: &Profile) -> Option<(Joules, Basis)> {
     if let Some(heart_rate) = sample
         .heart_rate
         .filter(|h| h.0.is_finite() && (30.0..=250.0).contains(&h.0))
-        && let Some(age) = profile.calories.age.filter(|a| (18..=100).contains(a))
+        && let Some(age) = profile
+            .calories
+            .age(year)
+            .filter(|age| (18..=100).contains(age))
         && let Some(sex) = profile.calories.sex
     {
         // Published regression gives kJ/min, not kcal/min. No resting allowance is added.
@@ -140,7 +144,7 @@ mod tests {
     fn rider() -> Profile {
         Profile {
             calories: CalorieProfile {
-                age: Some(40),
+                birth_year: Some(1986),
                 sex: Some(CalorieSex::Male),
                 effort: Some(CalorieEffort::Moderate),
             },
@@ -150,7 +154,7 @@ mod tests {
 
     fn estimate(samples: &[Sample], profile: &Profile) -> Estimate {
         let mut calories = Calories::default();
-        calories.update(samples, profile);
+        calories.update(samples, profile, 2026);
         calories.estimate()
     }
 
@@ -206,17 +210,17 @@ mod tests {
         let mut calories = Calories::default();
         let profile = rider();
         let mut samples = vec![sample(Some(0.0), Some(150.0))];
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert_eq!(calories.estimate().energy, Some(Joules(0.0)));
         samples.push(sample(Some(240.0), Some(150.0)));
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert_eq!(calories.estimate().energy, Some(Joules(1_000.0)));
         samples.push(sample(None, Some(150.0)));
         samples.push(sample(None, None));
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         let total = calories.estimate();
         assert_eq!(total.basis, Some(Basis::Mixed));
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert_eq!(
             calories.estimate(),
             total,
@@ -226,7 +230,7 @@ mod tests {
             elapsed: Duration::from_secs(3_600),
             ..sample(Some(240.0), None)
         });
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert!(
             (calories.estimate().energy.unwrap().0 - total.energy.unwrap().0 - 1_000.0).abs()
                 < 0.001
@@ -238,13 +242,35 @@ mod tests {
         let samples = [sample(Some(240.0), None), sample(None, Some(150.0))];
         let mut calories = Calories::default();
         let mut profile = Profile::default();
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert_eq!(calories.estimate().energy, Some(Joules(1_000.0)));
         assert!(calories.estimate().incomplete);
         profile.calories = rider().calories;
-        calories.update(&samples, &profile);
+        calories.update(&samples, &profile, 2026);
         assert!(!calories.estimate().incomplete);
         assert!((calories.estimate().energy.unwrap().0 - 2_041.935).abs() < 0.001);
+    }
+
+    #[test]
+    fn new_year_refreshes_the_cached_heart_rate_estimate_without_new_samples() {
+        let mut profile = rider();
+        profile.calories.effort = None;
+        let samples = vec![sample(None, Some(150.0)); 60];
+        let mut calories = Calories::default();
+        calories.update(&samples, &profile, 2026);
+        let before = calories.estimate();
+        calories.update(&samples, &profile, 2027);
+        let after = calories.estimate();
+        assert_eq!(after.basis, Some(Basis::HeartRate));
+        assert!((after.energy.unwrap().0 - before.energy.unwrap().0 - 201.7).abs() < 0.001);
+        calories.update(&samples, &profile, 2027);
+        assert_eq!(calories.estimate(), after, "a year is applied only once");
+        calories.update(&samples, &profile, 2026);
+        assert_eq!(
+            calories.estimate(),
+            before,
+            "clock rollback derives the original age"
+        );
     }
 
     #[test]
@@ -259,8 +285,13 @@ mod tests {
             estimate(&[sample(None, Some(30.0))], &profile).energy,
             Some(Joules(0.0))
         );
-        profile.calories.age = Some(12);
+        profile.calories.birth_year = Some(2014);
         profile.calories.effort = None;
+        assert_eq!(
+            estimate(&[sample(None, Some(150.0))], &profile).energy,
+            None
+        );
+        profile.calories.birth_year = Some(1925);
         assert_eq!(
             estimate(&[sample(None, Some(150.0))], &profile).energy,
             None

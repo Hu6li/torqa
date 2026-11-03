@@ -3130,8 +3130,8 @@ msgstr "Nicht angegeben"
 msgid "Only recorded seconds with enough information are included."
 msgstr "Nur aufgezeichnete Sekunden mit ausreichenden Angaben sind enthalten."
 
-msgid "Optional age (18–100) for heart-rate calories. 0 means not set. Power needs no age."
-msgstr "Optionales Alter (18–100) für Kalorien aus der Herzfrequenz. 0 heisst nicht angegeben. Bei Leistung ist kein Alter nötig."
+msgid "Optional age for heart-rate calories (18–100). Increases each New Year. 0 means not set."
+msgstr "Optionales Alter für Kalorien aus der Herzfrequenz (18–100). Steigt zu jedem Jahreswechsel. 0 heisst nicht angegeben."
 
 msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
 msgstr "Optionales Geschlecht für Kalorien aus der Herzfrequenz. Unabhängig von deinem Avatar. Bei Leistung ist kein Geschlecht nötig."

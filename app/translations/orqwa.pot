@@ -2500,7 +2500,7 @@ msgid "Optimal"
 msgstr ""
 
 #: app/ui/profile_form.gd
-msgid "Optional age (18–100) for heart-rate calories. 0 means not set. Power needs no age."
+msgid "Optional age for heart-rate calories (18–100). Increases each New Year. 0 means not set."
 msgstr ""
 
 #: app/ui/profile_form.gd

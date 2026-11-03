@@ -1,6 +1,7 @@
 //! Core domain types and plugin interfaces of ORQWA.
 
 pub mod battery;
+pub mod calendar;
 pub mod files;
 pub mod profile;
 pub mod recording;

@@ -39,6 +39,8 @@ var _cog: SpinBox = _spin(9.0, 36.0, 1.0, " T")
 var _teeth_rows: Array[Control] = []
 var _difficulty_row: Array[Control] = []
 var _calorie_age: SpinBox = _spin(0.0, 100.0, 1.0, "")
+## Input metadata; the core infers a birth year without rebasing an unchanged open form.
+var _calorie_age_year: int = 0
 var _calorie_sex: OptionButton = OptionButton.new()
 var _calorie_effort: OptionButton = OptionButton.new()
 
@@ -73,7 +75,7 @@ func _init() -> void:
 	)
 	_drivetrain.item_selected.connect(func(_index: int) -> void: _show_teeth())
 	_calorie_age.tooltip_text = tr(
-		"Optional age (18–100) for heart-rate calories. 0 means not set. Power needs no age."
+		"Optional age for heart-rate calories (18–100). Increases each New Year. 0 means not set."
 	)
 	_calorie_sex.add_item(tr("Not set"))
 	_calorie_sex.add_item(tr("Female"))
@@ -129,7 +131,9 @@ func _init() -> void:
 			_teeth_rows.append_array([caption, field])
 		elif field == _difficulty:
 			_difficulty_row.append_array([caption, field])
-		if field is SpinBox:
+		if field == _calorie_age:
+			_calorie_age.value_changed.connect(_on_calorie_age_changed)
+		elif field is SpinBox:
 			(field as SpinBox).value_changed.connect(func(_value: float) -> void: changed.emit())
 		else:
 			(field as OptionButton).item_selected.connect(func(_index: int) -> void: changed.emit())
@@ -138,6 +142,7 @@ func _init() -> void:
 ## Shows `profile` (shaped like `OrqwaApp.profile()`; a new rider's if it has no fields)
 ## without emitting `changed`.
 func edit(profile: Dictionary) -> void:
+	_calorie_age_year = profile.get("calorie_age_year", OrqwaApp.calendar_year())
 	for field: Array in [
 		[_rider_mass, "rider_mass_kg", 75.0],
 		[_bike_mass, "bike_mass_kg", 8.0],
@@ -151,6 +156,8 @@ func edit(profile: Dictionary) -> void:
 	]:
 		var spin: SpinBox = field[0]
 		var value: float = profile.get(field[1], field[2])
+		if spin == _calorie_age:
+			spin.max_value = maxf(100.0, value)
 		spin.set_value_no_signal(value)
 	_units.select(maxi(UNITS.find(profile.get("units", "metric")), 0))
 	_language.select(0)
@@ -186,6 +193,7 @@ func profile() -> Dictionary:
 		"chainring": _chainring.value,
 		"cog": _cog.value,
 		"calorie_age": roundi(_calorie_age.value),
+		"calorie_age_year": _calorie_age_year,
 		"calorie_sex": CALORIE_SEXES[_calorie_sex.selected],
 		"calorie_effort": CALORIE_EFFORTS[_calorie_effort.selected],
 	}
@@ -193,6 +201,11 @@ func profile() -> Dictionary:
 
 func ftp() -> float:
 	return _ftp.value
+
+
+func _on_calorie_age_changed(_age: float) -> void:
+	_calorie_age_year = OrqwaApp.calendar_year()
+	changed.emit()
 
 
 func max_heart_rate() -> float:
