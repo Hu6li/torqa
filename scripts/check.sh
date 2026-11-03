@@ -211,7 +211,7 @@ if echo "$surface_output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
 fi
 
 # Mouse visibility is a display feature too: the headless backend has no mouse mode.
-pointer_output="$(timeout 60 xvfb-run -a godot --path "$root/app" --audio-driver Dummy \
+pointer_output="$(timeout 90 xvfb-run -a godot --path "$root/app" --audio-driver Dummy \
     -s res://tests/idle_pointer_smoke.gd 2>&1)" \
     || { echo "$pointer_output"; exit 1; }
 echo "$pointer_output" | grep "IDLE POINTER SMOKE TEST PASSED"

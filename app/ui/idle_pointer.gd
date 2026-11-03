@@ -1,8 +1,21 @@
 class_name IdlePointer
 extends Node
-## Keeps an idle pointer out of the view without capturing it (#477, R200).
+## Keeps an idle pointer out of course views without capturing it (#477, R200–R201).
 
 const DELAY_SECONDS: float = 3.0
+
+## Enabled only while a ride shows its 3D world or video.
+var enabled: bool = false:
+	set(value):
+		if enabled == value:
+			return
+		enabled = value
+		if not is_node_ready():
+			return
+		if enabled:
+			_restart()
+		else:
+			_suspend()
 
 var _timer: Timer = Timer.new()
 var _inside: bool = false
@@ -24,6 +37,8 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not enabled:
+		return
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion != null:
 		# Godot also sends motion events when the pointer has not moved.
@@ -52,7 +67,7 @@ func _restart() -> void:
 	_show_pointer()
 	# Closing an embedded dialog can restore focus while its parent scene is leaving.
 	var window: Window = get_window()
-	if window != null and _inside and window.has_focus():
+	if enabled and window != null and _inside and window.has_focus():
 		_timer.start()
 
 
@@ -64,7 +79,8 @@ func _suspend() -> void:
 func _hide_pointer() -> void:
 	var window: Window = get_window()
 	if (
-		window == null
+		not enabled
+		or window == null
 		or not _inside
 		or not window.has_focus()
 		or Input.get_mouse_button_mask() != 0

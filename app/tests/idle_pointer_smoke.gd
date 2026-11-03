@@ -1,8 +1,9 @@
 extends SceneTree
-## Display checks for the idle mouse pointer (#477, R200).
+## Display checks for the idle mouse pointer in course views (#477, R200–R201).
 ## Run: xvfb-run -a godot --path app --audio-driver Dummy -s res://tests/idle_pointer_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
+const COURSE_OPTIONS: Dictionary = {"time": "Midday", "weather": "Clear", "camera": 0}
 
 var _failed: bool = false
 
@@ -35,6 +36,10 @@ func _idle_pointer() -> void:
 	var clicked: Array[bool] = [false]
 	button.pressed.connect(func() -> void: clicked[0] = true)
 	root.grab_focus()
+	await _settle()
+	await _inactive_views(main)
+	var start: StartPage = main.get_node("StartPage")
+	start.ride_started.emit(COURSE_OPTIONS.duplicate())
 	await _settle()
 	root.mouse_entered.emit()
 	_pointer_motion(Vector2(30, 30), Vector2.ONE)
@@ -97,6 +102,7 @@ func _idle_pointer() -> void:
 	root.focus_entered.emit()
 	await create_timer(3.2).timeout
 	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "regaining focus restarts idling")
+	await _course_views(main)
 	root.remove_child(main)
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "leaving the scene restores the pointer")
 	root.focus_entered.emit()
@@ -104,6 +110,62 @@ func _idle_pointer() -> void:
 	main.free()
 	root.mode = Window.MODE_WINDOWED
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "closing the view restores the pointer")
+
+
+## The normal start/ride signals cover the views that must never hide the pointer (R201).
+func _inactive_views(main: Control) -> void:
+	root.mouse_entered.emit()
+	_pointer_motion(Vector2(30, 30), Vector2.ONE)
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the start page keeps its pointer")
+	var start: StartPage = main.get_node("StartPage")
+	start.ride_started.emit({"workout": {"kind": "power", "power_w": 180.0}, "on_course": false})
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "a plain workout keeps its pointer")
+	var ride: RideScreen = main.get_node("RideScreen")
+	ride.closed.emit()
+
+
+## A course workout hides it over 3D or video, with immediate restoration on leaving (R201).
+func _course_views(main: Control) -> void:
+	var ride: RideScreen = main.get_node("RideScreen")
+	ride.closed.emit()
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "leaving a course restores the pointer")
+	await create_timer(3.2).timeout
+	_check(
+		Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the start page stays visible after a ride"
+	)
+	var start: StartPage = main.get_node("StartPage")
+	var options: Dictionary = COURSE_OPTIONS.duplicate()
+	options.merge({"workout": {"kind": "power", "power_w": 180.0}, "on_course": true})
+	start.ride_started.emit(options)
+	await _settle()
+	root.mouse_entered.emit()
+	_pointer_motion(Vector2(30, 30), Vector2.ONE)
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "a workout with 3D hides the idle pointer")
+	ride.overlay_requested.emit(true)
+	await _settle()
+	_check(
+		Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "entering the overlay restores the pointer"
+	)
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the HUD-only overlay keeps its pointer")
+	ride.overlay_requested.emit(false)
+	await _settle()
+	# Video visibility is a presentation fixture; no decoder or course download is needed.
+	var world: RideWorld = main.get_node("World")
+	world.hide()
+	var video: VideoView = main.get("_video")
+	video.show()
+	root.grab_focus()
+	await _settle()
+	root.mouse_entered.emit()
+	_pointer_motion(Vector2(30, 30), Vector2.ONE)
+	await create_timer(3.2).timeout
+	_check(
+		Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "a workout with video hides the idle pointer"
+	)
 
 
 func _pointer_motion(position: Vector2, relative: Vector2) -> void:
