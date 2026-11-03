@@ -49,15 +49,17 @@ static func capture(tree: SceneTree, start: StartPage, group: GroupRidesTab, out
 		var talking: Dictionary = devices.duplicate()
 		talking.merge(
 			{
-				"phase": "waiting",
+				"phase": "ready",
 				"host": true,
+				"prepared": true,
+				"ready": true,
 				"invite": "orqwa:invitation",
 				"voice": true,
 				"microphone": true,
 				"echo_prevention": false,
 				"roster":
 				[
-					{"id": 0, "name": "Rider", "ready": false, "me": true, "organizer": true},
+					{"id": 0, "name": "Rider", "ready": true, "me": true, "organizer": true},
 					{"id": 1, "name": "Alex", "ready": true, "me": false, "speaking": true},
 					{"id": 2, "name": "Mia", "ready": false, "me": false, "muted": true}
 				]

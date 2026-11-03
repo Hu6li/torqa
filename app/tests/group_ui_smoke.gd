@@ -81,8 +81,12 @@ func _next_steps(step: GroupNextStep) -> void:
 	_check(not step._main.visible, "unless the trainer cannot be connected from here")
 	step.show_status(preparing, true, "Me", 0, true)
 	_check(
-		step._main.text == "I'm ready" and not step._main.disabled and not step._undo.visible,
-		"then the rider says they are ready"
+		step._main.text == "Start group ride" and step._main.disabled,
+		"the organizer's button waits for everyone to be ready"
+	)
+	_check(
+		step._line.text == "Ready? Press the flag beside your name.",
+		"readiness is the flag beside the rider's name"
 	)
 	var waiting: Dictionary = preparing.duplicate()
 	waiting["ready"] = true
@@ -91,10 +95,6 @@ func _next_steps(step: GroupNextStep) -> void:
 		{"name": "Mia", "ready": false, "me": false},
 	]
 	step.show_status(waiting, true, "Me", 0, true)
-	_check(
-		step._main.text == "Start group ride" and step._main.disabled and step._undo.visible,
-		"the organizer can start once everyone is ready, or take readiness back"
-	)
 	_check(step._line.text == "Waiting for Mia", "and sees who the group waits for")
 	waiting["can_start"] = true
 	waiting["roster"][1]["ready"] = true
@@ -102,15 +102,19 @@ func _next_steps(step: GroupNextStep) -> void:
 	_check(
 		not step._main.disabled and step._line.text == "Everyone is ready", "then starts the ride"
 	)
-	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true, "ready": true}
+	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true}
 	step.show_status(friend, true, "Alex", 0, true)
-	_check(
-		not step._main.visible and step._undo.visible, "a ready friend only takes readiness back"
-	)
+	_check(not step._main.visible, "a friend with a trainer has no main button")
+	friend["ready"] = true
+	step.show_status(friend, true, "Alex", 0, true)
 	_check(step._line.text == "You're ready. Alex starts the ride.", "and knows who starts it")
 	var late: Dictionary = {"phase": "ready", "late": true, "prepared": true, "can_enter": true}
 	step.show_status(late, true, "Alex", 0, true)
 	_check(step._main.text == "Join ride now", "friends joining late enter explicitly")
+	_check(
+		step._main.custom_minimum_size.y == step._retry.custom_minimum_size.y,
+		"every step's button is the same size"
+	)
 	await process_frame
 
 
@@ -435,6 +439,22 @@ func _group_activity() -> void:
 	group._show_status({"host": false, "phase": "ready", "name": "Ride", "roster": roster})
 	_check(not step._working.visible, "nothing turns once it is prepared")
 	_check(group._activity_panel.visible, "friends have the activity column too (R196)")
+	# This rider's ready flag sits beside their microphone, friends' rows keep its column.
+	group._show_status({"host": false, "phase": "ready", "prepared": true, "roster": roster})
+	var flag: Button = group._ready_flag
+	_check(
+		flag != null and flag.get_parent() == group._roster.get_child(2),
+		"the flag is on this rider's own row"
+	)
+	_check(
+		flag.disabled and flag.tooltip_text == "Connect your trainer first",
+		"without a trainer it says why it waits"
+	)
+	var others: Button = group._roster.get_child(0).get_child(-1) as Button
+	_check(
+		others.modulate.a == 0.0 and others.disabled,
+		"friends' rows keep an empty slot, so the icons line up"
+	)
 	await _next_steps(step)
 	# Who is speaking (R190), this rider too, and who is muted here (R194): the voice buttons
 	# follow without rebuilding the rows.
@@ -555,8 +575,8 @@ func _group_activity() -> void:
 		{"host": false, "phase": "ready", "late": true, "prepared": true, "can_enter": true}
 	)
 	_check(
-		group._next_step._action == "devices" and not group._next_step._undo.visible,
-		"late joiners connect their trainer before their one explicit entry"
+		group._next_step._action == "devices" and group._ready_flag == null,
+		"late joiners connect their trainer before their one explicit entry, without a flag"
 	)
 	_check(not group._picker._apply.visible, "late joiners cannot change the running selection")
 	group.compact = true

@@ -1,9 +1,9 @@
 class_name GroupNextStep
 extends VBoxContainer
-## What the rider does next in a group ride (R196): one main button following the steps,
-## connect the trainer, say they are ready, then start the ride as organizer or join friends
-## already riding; **Not ready** takes readiness back. A line says what the group is waiting
-## for, with how far the ride is prepared, without explaining what the button says.
+## What the rider does next in a group ride (R196): one main button, always the same size,
+## following the steps: connect the trainer, then start the ride as organizer or join friends
+## already riding. Readiness is the flag beside the rider's own name. A line says what the
+## group is waiting for, with how far the ride is prepared.
 
 ## The rider wants to connect their trainer.
 signal devices_requested
@@ -15,10 +15,9 @@ var _working: Spinner = Spinner.new(18.0)
 var _progress: ProgressBar = ProgressBar.new()
 var _bytes: Label = Label.new()
 var _main: Button = Button.new()
-var _undo: Button = Button.new()
 var _retry: Button = Button.new()
 var _reconnect: Button = Button.new()
-## What the main button does now: `devices`, `ready`, `start` or `enter`.
+## What the main button does now: `devices`, `start` or `enter`.
 var _action: String = ""
 
 
@@ -42,33 +41,23 @@ func _ready() -> void:
 	add_child(_progress)
 	_bytes.add_theme_color_override("font_color", UiTheme.MUTED)
 	add_child(_bytes)
-	var buttons: HBoxContainer = HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 10)
-	_undo.text = tr("Not ready")
-	_undo.custom_minimum_size = Vector2(130, 48)
-	_undo.pressed.connect(func() -> void: _orqwa.group_ready(false))
-	buttons.add_child(_undo)
-	_main.custom_minimum_size.y = 48
-	_main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_main.add_theme_font_size_override("font_size", 19)
 	_main.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_main.pressed.connect(_act)
-	buttons.add_child(_main)
-	add_child(buttons)
 	_retry.text = tr("Retry download")
 	_retry.pressed.connect(func() -> void: _orqwa.group_retry())
-	add_child(_retry)
 	_reconnect.text = tr("Reconnect now")
 	_reconnect.pressed.connect(func() -> void: _orqwa.group_reconnect())
-	add_child(_reconnect)
+	# Every step's button the same size, whichever is next.
+	for button: Button in [_main, _retry, _reconnect]:
+		button.custom_minimum_size.y = 48
+		button.add_theme_font_size_override("font_size", 17)
+		add_child(button)
 
 
 func _act() -> void:
 	match _action:
 		"devices":
 			devices_requested.emit()
-		"ready":
-			_orqwa.group_ready(true)
 		"start":
 			_orqwa.group_start()
 		"enter":
@@ -83,9 +72,7 @@ func show_status(
 ) -> void:
 	var phase: String = status.get("phase", "idle")
 	var host: bool = status.get("host", false)
-	var prepared: bool = status.get("prepared", false)
 	var late: bool = status.get("late", false)
-	var ready: bool = status.get("ready", false)
 	var underway: bool = phase in ["countdown", "riding", "ended"]
 	var can_retry: bool = status.get("can_retry", false)
 	_show_progress(status, percent)
@@ -94,15 +81,12 @@ func show_status(
 		_action = "enter" if trainer else "devices"
 	elif not underway and not trainer:
 		_action = "devices"
-	elif not underway and not ready:
-		_action = "ready"
 	elif not underway and host:
 		_action = "start"
 	if _action == "devices" and not devices:
 		_action = ""
 	var labels: Dictionary[String, String] = {
 		"devices": tr("Connect your trainer"),
-		"ready": tr("I'm ready"),
 		"start": tr("Start group ride"),
 		"enter": tr("Join ride now"),
 	}
@@ -111,26 +95,19 @@ func show_status(
 	var entering: bool = status.get("entering", false)
 	_main.disabled = (
 		entering
-		or (_action == "ready" and not prepared)
 		or (_action == "start" and not status.get("can_start", false))
 		or (_action == "enter" and not status.get("can_enter", false))
 	)
-	_undo.visible = ready and not underway and not late
 	_retry.visible = can_retry
 	var reconnect: float = status.get("reconnect_s", 0.0)
 	_reconnect.visible = reconnect > 0.0
 	_working.visible = (
 		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
 	)
-	_show_line(status, organizer, reconnect)
+	_show_line(status, organizer, reconnect, trainer)
 	# Nothing to do and nothing to wait for, e.g. while riding: the block makes no room.
 	visible = (
-		_main.visible
-		or _undo.visible
-		or _line.visible
-		or _progress.visible
-		or _retry.visible
-		or _reconnect.visible
+		_main.visible or _line.visible or _progress.visible or _retry.visible or _reconnect.visible
 	)
 
 
@@ -152,7 +129,7 @@ func _show_progress(status: Dictionary, percent: int) -> void:
 
 
 ## The one line worth reading: what the group waits for, never what the main button says.
-func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void:
+func _show_line(status: Dictionary, organizer: String, reconnect: float, trainer: bool) -> void:
 	var phase: String = status.get("phase", "idle")
 	var host: bool = status.get("host", false)
 	var name: String = status.get("name", "")
@@ -164,6 +141,8 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 	var good: bool = false
 	if not name.is_empty() and not prepared and not underway:
 		text = tr("Getting your ride ready…")
+	if prepared and trainer and not ready and not late and not underway:
+		text = tr("Ready? Press the flag beside your name.")
 	if late and prepared and not underway:
 		text = tr("Join near the organizer at the current workout step. Your recording starts now.")
 	elif ready and host and not underway:

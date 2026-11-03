@@ -62,6 +62,8 @@ var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
 ## friend's speaker on theirs, lit while they are heard speaking (R190, R194).
 var _voice_buttons: Dictionary[int, Button] = {}
+## This rider's own ready flag before the start (R196), null while there is none.
+var _ready_flag: Button
 var _activity_key: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
@@ -538,6 +540,7 @@ func _show_status(status: Dictionary) -> void:
 		str(riders)
 		+ str(_status.get("voice", false))
 		+ str(_status.get("local_paused", false))
+		+ str(_status.get("late", false))
 		+ phase
 		+ TranslationServer.get_locale()
 	)
@@ -545,6 +548,7 @@ func _show_status(status: Dictionary) -> void:
 		_roster_key = key
 		_show_roster(phase, host)
 	_show_voice_buttons()
+	_show_ready_flag()
 
 
 ## Who organizes the ride: from the group once in it, else as the invitation named them.
@@ -589,7 +593,11 @@ func _show_roster(phase: String, host: bool) -> void:
 		_roster.remove_child(child)
 		child.queue_free()
 	_voice_buttons.clear()
-	var removable: bool = host and phase not in ["countdown", "riding", "ended"]
+	_ready_flag = null
+	var before: bool = phase not in ["countdown", "riding", "ended"]
+	var removable: bool = host and before
+	# This rider says they are ready beside their own name (R196), friends joining late enter.
+	var readying: bool = before and not _status.get("late", false)
 	for rider: Dictionary in _status.get("roster", []):
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -647,19 +655,58 @@ func _show_roster(phase: String, host: bool) -> void:
 			voice.pressed.connect(_voice_pressed.bind(id, me))
 			row.add_child(voice)
 			_voice_buttons[id] = voice
-		if removable:
+		if me and readying:
+			_ready_flag = _button(row, "", func() -> void: _orqwa.group_ready(not _is_ready()))
+			_ready_flag.focus_mode = Control.FOCUS_NONE
+			_ready_flag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		elif removable or readying:
 			var remove: Button = _button(row, "", func() -> void: _orqwa.group_remove(id))
 			remove.icon = UiIcons.texture("bin")
 			remove.tooltip_text = tr("Remove %s from the group") % rider_name
 			remove.focus_mode = Control.FOCUS_NONE
 			remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			UiTheme.danger_button(remove)
-			if me:
-				# Nobody removes themselves; it keeps the voice buttons in one column.
+			if me or not removable:
+				# Keeps the buttons beside the names in columns: nobody removes themselves, and
+				# only the organizer removes anyone.
 				remove.disabled = true
 				remove.modulate.a = 0.0
 				remove.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_roster.add_child(row)
+	_show_ready_flag()
+
+
+func _is_ready() -> bool:
+	var ready: bool = _status.get("ready", false)
+	return ready
+
+
+## The flag beside this rider's name: green once they said they are ready, inviting while
+## they can, and saying why not while their ride is prepared or their trainer missing.
+func _show_ready_flag() -> void:
+	if _ready_flag == null:
+		return
+	var ready: bool = _is_ready()
+	var prepared: bool = _status.get("prepared", false)
+	var trainer: bool = _orqwa.trainer_connected()
+	var color: Color = UiTheme.SUCCESS if ready else UiTheme.ACCENT
+	_ready_flag.disabled = not ready and (not prepared or not trainer)
+	if _ready_flag.disabled:
+		color = UiTheme.MUTED
+	_ready_flag.icon = UiIcons.texture("flag", 20, color)
+	var tip: String = tr("Tell the group you're ready")
+	if ready:
+		tip = tr("You're ready. Press to take it back.")
+	elif not prepared:
+		tip = tr("Your ride is still being prepared")
+	elif not trainer:
+		tip = tr("Connect your trainer first")
+	_ready_flag.tooltip_text = tip
+	var box: StyleBoxFlat = UiTheme.button_chip() if ready else null
+	if box == null:
+		_ready_flag.remove_theme_stylebox_override("normal")
+	else:
+		_ready_flag.add_theme_stylebox_override("normal", box)
 
 
 ## Each voice button as the rider's voice is now: this rider's microphone on or off, a friend

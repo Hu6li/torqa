@@ -799,6 +799,10 @@ msgstr ""
 msgid "Connect your trainer"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Connect your trainer first"
+msgstr ""
+
 #: app/scenes/devices_tab.gd app/ui/ride_devices.gd
 msgid "Connected"
 msgstr ""
@@ -1747,10 +1751,6 @@ msgstr ""
 msgid "How to check"
 msgstr ""
 
-#: app/ui/group_next_step.gd
-msgid "I'm ready"
-msgstr ""
-
 #: app/ui/update_dialog.gd
 msgid "If Advanced Protection is on, turn it off in Android's settings."
 msgstr ""
@@ -2287,7 +2287,7 @@ msgstr ""
 msgid "Not found: %s. Wake the devices, then scan again."
 msgstr ""
 
-#: app/ui/course_settings.gd app/ui/group_next_step.gd
+#: app/ui/course_settings.gd
 msgid "Not ready"
 msgstr ""
 
@@ -2657,6 +2657,10 @@ msgstr ""
 
 #: app/ui/preparation_log.gd
 msgid "Ready in %s"
+msgstr ""
+
+#: app/ui/group_next_step.gd
+msgid "Ready? Press the flag beside your name."
 msgstr ""
 
 #: app/ui/group_voice_dialog.gd
@@ -3177,6 +3181,10 @@ msgstr ""
 
 #: app/ui/failure_details.gd
 msgid "Technical details"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Tell the group you're ready"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -3823,6 +3831,10 @@ msgstr ""
 msgid "You're ready. %s starts the ride."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "You're ready. Press to take it back."
+msgstr ""
+
 #: app/ui/moment_lines.gd
 msgid "You've never been up climb {n} faster than that, {gain} quicker than before!"
 msgstr ""
@@ -3889,6 +3901,10 @@ msgstr ""
 
 #: app/ui/group_joining_card.gd
 msgid "Your reply"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Your ride is still being prepared"
 msgstr ""
 
 #: app/scenes/history_screen.gd

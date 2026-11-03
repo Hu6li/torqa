@@ -2581,9 +2581,6 @@ msgstr "Macht sich bereit"
 msgid "Getting your ride ready…"
 msgstr "Deine Fahrt wird vorbereitet…"
 
-msgid "I'm ready"
-msgstr "Ich bin bereit"
-
 msgid "Invite friends"
 msgstr "Freunde einladen"
 
@@ -2697,6 +2694,21 @@ msgstr "Du bist bereit. %s startet die Fahrt."
 
 msgid "Group ride"
 msgstr "Gruppenfahrt"
+
+msgid "Ready? Press the flag beside your name."
+msgstr "Bereit? Drücke die Fahne neben deinem Namen."
+
+msgid "Tell the group you're ready"
+msgstr "Sag der Gruppe, dass du bereit bist"
+
+msgid "You're ready. Press to take it back."
+msgstr "Du bist bereit. Drücke, um es zurückzunehmen."
+
+msgid "Your ride is still being prepared"
+msgstr "Deine Fahrt wird noch vorbereitet"
+
+msgid "Connect your trainer first"
+msgstr "Verbinde zuerst deinen Trainer"
 
 msgid "Join voice chat"
 msgstr "Am Sprachchat teilnehmen"
