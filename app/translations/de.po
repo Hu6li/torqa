@@ -2701,9 +2701,6 @@ msgstr "Teilnehmen"
 msgid "Play test sound"
 msgstr "Testton abspielen"
 
-msgid "Microphone off"
-msgstr "Mikrofon aus"
-
 msgid "Mute all"
 msgstr "Alles stumm"
 
@@ -2733,9 +2730,6 @@ msgstr "Bei Freunden mitfahren?"
 
 msgid "Keep this page open. Requests expire after one minute; if needed, ask for a fresh invitation."
 msgstr "Lass diese Seite offen. Anfragen laufen nach einer Minute ab. Lass dir bei Bedarf eine neue Einladung schicken."
-
-msgid "Microphone on"
-msgstr "Mikrofon an"
 
 msgid "Mute all sound"
 msgstr "Gesamten Ton stummschalten"
