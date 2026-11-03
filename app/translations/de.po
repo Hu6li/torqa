@@ -2584,9 +2584,6 @@ msgstr "Deine Fahrt wird vorbereitet…"
 msgid "Invite friends"
 msgstr "Freunde einladen"
 
-msgid "Join ride"
-msgstr "Mitfahren"
-
 msgid "Invitation"
 msgstr "Einladung"
 
@@ -2646,6 +2643,22 @@ msgstr "Das ist keine Einladung. Füge die ganze Einladung ein, die du erhalten 
 
 msgid "Joining %s's ride"
 msgstr "Beitritt zur Fahrt von %s"
+
+#: app/ui/group_joining_card.gd
+msgid "%s chose Separate homes"
+msgstr "Gewählt von %s: Jede Person zu Hause"
+
+#: app/ui/group_joining_card.gd
+msgid "%s chose Same home Wi-Fi"
+msgstr "Gewählt von %s: Im selben WLAN"
+
+#: app/ui/group_joining_card.gd
+msgid "%s chose Some together, some elsewhere"
+msgstr "Gewählt von %s: Einige zusammen, andere woanders"
+
+#: app/scenes/group_rides_tab.gd
+msgid "ORQWA could not join with this invitation. See Technical details for more information."
+msgstr "ORQWA konnte mit dieser Einladung nicht beitreten. Mehr Informationen findest du unter Technische Details."
 
 msgid "Send this reply to %s by chat, email or text message"
 msgstr "Sende diese Antwort per Chat, E-Mail oder SMS an %s"
@@ -2999,24 +3012,12 @@ msgid "Helps friends in other homes reach you. Contacts public address lookup se
 msgstr "Hilft Personen an anderen Orten, dich zu erreichen. Fragt öffentliche Dienste nach deiner Internetadresse; Fahrtdaten und Sprache werden nicht an sie gesendet. Schalte dies nur aus, wenn du ohne die Abfrage eine Verbindung herstellen kannst."
 
 #: app/ui/group_connection_dialog.gd
-msgid "Choose where your group will ride before inviting friends."
-msgstr "Wähle vor dem Einladen, wo eure Gruppe fährt."
+msgid "Choose where your group will ride before inviting friends. Friends who join connect the same way."
+msgstr "Wähle vor dem Einladen, wo eure Gruppe fährt. Wer beitritt, verbindet sich genauso."
 
 #: app/ui/group_connection_dialog.gd
-msgid "Organizer: %s"
-msgstr "Organisiert von %s"
-
-#: app/ui/group_connection_dialog.gd
-msgid "Choose where your group is riding. Nothing connects before you confirm."
-msgstr "Wähle, wo eure Gruppe fährt. Ohne deine Bestätigung wird keine Verbindung hergestellt."
-
-#: app/ui/group_connection_dialog.gd
-msgid "This invitation includes home Wi-Fi connections. Choose Same home Wi-Fi or Some together, some elsewhere. For Separate homes, ask the organizer for a new invitation."
-msgstr "Diese Einladung enthält Verbindungen im Heimnetz. Wähle „Im selben WLAN“ oder „Einige zusammen, andere woanders“. Für „Jede Person zu Hause“ bitte die organisierende Person um eine neue Einladung."
-
-#: app/ui/group_connection_dialog.gd
-msgid "Check your invitation and connection choice, then try again. See Technical details for more information."
-msgstr "Prüfe deine Einladung und Verbindungsauswahl und versuche es erneut. Mehr Informationen findest du unter Technische Details."
+msgid "ORQWA could not create the ride. See Technical details for more information."
+msgstr "ORQWA konnte die Fahrt nicht erstellen. Mehr Informationen findest du unter Technische Details."
 
 #: app/ui/group_connection_dialog.gd
 msgid "STUN servers"

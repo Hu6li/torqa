@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Old Torqa codes are deliberately incompatible with the new security contract.
-pub const VERSION: u8 = 13;
+pub const VERSION: u8 = 14;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;
@@ -144,6 +144,113 @@ impl NatObservation {
     }
 }
 
+/// Where the organizer said the group rides, which every rider of the group follows (R197).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ConnectionMode {
+    /// Friends use separate home internet connections; home-network addresses stay forbidden.
+    #[default]
+    Internet,
+    /// Everyone shares one router; nobody looks up a public address.
+    Home,
+    /// Some friends share a router and others use the internet.
+    Mixed,
+}
+
+impl ConnectionMode {
+    /// Decodes a stable presentation key.
+    #[must_use]
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "internet" => Some(Self::Internet),
+            "home" => Some(Self::Home),
+            "mixed" => Some(Self::Mixed),
+            _ => None,
+        }
+    }
+
+    /// A stable key for presentation.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Internet => "internet",
+            Self::Home => "home",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+/// The organizer's connection choice. The invite carries it so that joiners, and whoever
+/// organizes after a handover, connect the same way without being asked (R197).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Setup {
+    mode: ConnectionMode,
+    lookup: bool,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self::new(ConnectionMode::Internet, true)
+    }
+}
+
+impl Setup {
+    /// Riding as `mode`, looking up internet addresses if `lookup`; one home network never does.
+    #[must_use]
+    pub const fn new(mode: ConnectionMode, lookup: bool) -> Self {
+        Self {
+            mode,
+            lookup: lookup && !matches!(mode, ConnectionMode::Home),
+        }
+    }
+
+    /// Where everyone rides.
+    #[must_use]
+    pub const fn mode(self) -> ConnectionMode {
+        self.mode
+    }
+
+    /// Whether riders look up their internet address from STUN servers.
+    #[must_use]
+    pub const fn lookup(self) -> bool {
+        self.lookup
+    }
+
+    /// Whether riders may connect to home-network addresses.
+    #[must_use]
+    pub const fn lan(self) -> bool {
+        !matches!(self.mode, ConnectionMode::Internet)
+    }
+
+    fn put(self, out: &mut Vec<u8>) {
+        out.push(match self.mode {
+            ConnectionMode::Internet => 1,
+            ConnectionMode::Home => 2,
+            ConnectionMode::Mixed => 3,
+        });
+        out.push(u8::from(self.lookup));
+    }
+
+    fn read(reader: &mut Reader<'_>) -> Result<Self, CodeError> {
+        let mode = match reader.byte()? {
+            1 => ConnectionMode::Internet,
+            2 => ConnectionMode::Home,
+            3 => ConnectionMode::Mixed,
+            _ => return Err(CodeError::Invalid),
+        };
+        let lookup = match reader.byte()? {
+            0 => false,
+            1 => true,
+            _ => return Err(CodeError::Invalid),
+        };
+        let setup = Self::new(mode, lookup);
+        // One encoding per choice, as for every other field.
+        if setup.lookup != lookup {
+            return Err(CodeError::Invalid);
+        }
+        Ok(setup)
+    }
+}
+
 /// Whether friends at other homes can probably reach a listener with these addresses (R176).
 ///
 /// Discovery evidence, not proof: nothing here sees the provider's NAT itself, and a direct
@@ -164,12 +271,18 @@ pub enum Reachability {
     Unknown,
     /// Only home-network or local-test addresses.
     Home,
+    /// The group rides on one home network, so nobody joins from another home (R197).
+    Together,
 }
 
 impl Reachability {
-    /// Classifies advertised candidates with the IPv4 STUN observation that accompanies them.
+    /// Classifies advertised candidates with the IPv4 STUN observation that accompanies them,
+    /// for a group riding as `mode`.
     #[must_use]
-    pub fn of(candidates: &[Candidate], nat: NatObservation) -> Self {
+    pub fn of(candidates: &[Candidate], nat: NatObservation, mode: ConnectionMode) -> Self {
+        if mode == ConnectionMode::Home {
+            return Self::Together;
+        }
         let has = |kind: CandidateKind, v4: bool| {
             candidates
                 .iter()
@@ -201,6 +314,7 @@ impl Reachability {
             Self::Strict => "strict",
             Self::Unknown => "unknown",
             Self::Home => "home",
+            Self::Together => "together",
         }
     }
 }
@@ -222,6 +336,8 @@ pub struct Invite {
     pub candidates: Vec<Candidate>,
     /// What STUN observed, if enabled.
     pub nat: NatObservation,
+    /// How the organizer chose to connect, for every rider to follow.
+    pub setup: Setup,
 }
 
 /// An answer bound to an invite's ride, certificate and route; exchange it privately.
@@ -276,13 +392,14 @@ impl Invite {
         put_name(&mut out, &self.course)?;
         put_candidates(&mut out, &self.candidates, policy)?;
         out.push(self.nat.byte());
+        self.setup.put(&mut out);
         Ok(out)
     }
 
     /// How friends at other homes can probably reach this host.
     #[must_use]
     pub fn reachability(&self) -> Reachability {
-        Reachability::of(&self.candidates, self.nat)
+        Reachability::of(&self.candidates, self.nat, self.setup.mode)
     }
 
     /// Decodes only bounded, complete invite payloads, checking every destination.
@@ -296,6 +413,7 @@ impl Invite {
         let course = reader.name()?;
         let candidates = reader.candidates(policy)?;
         let nat = NatObservation::from_byte(reader.byte()?)?;
+        let setup = Setup::read(&mut reader)?;
         reader.end()?;
         Ok(Self {
             ride,
@@ -305,6 +423,7 @@ impl Invite {
             course,
             candidates,
             nat,
+            setup,
         })
     }
 }
@@ -324,10 +443,11 @@ impl Reply {
         Ok(())
     }
 
-    /// How friends at other homes could probably reach this joiner if it became the host.
+    /// How friends at other homes could probably reach this joiner if it became the host of
+    /// a group riding as `mode`.
     #[must_use]
-    pub fn reachability(&self) -> Reachability {
-        Reachability::of(&self.candidates, self.nat)
+    pub fn reachability(&self, mode: ConnectionMode) -> Reachability {
+        Reachability::of(&self.candidates, self.nat, mode)
     }
 
     /// Validates and encodes a reply, including the joiner's certificate pin.
@@ -540,6 +660,7 @@ mod tests {
                 .unwrap(),
             ],
             nat: NatObservation::OneServer,
+            setup: Setup::default(),
         }
     }
 
@@ -674,7 +795,14 @@ mod tests {
         let public = at(CandidateKind::Public, "1.1.1.1:50000");
         let mapped = at(CandidateKind::Stun, "1.1.1.1:50001");
         let v6 = at(CandidateKind::Public, "[2606:4700::1]:50000");
-        let of = Reachability::of;
+        let of = |candidates: &[Candidate], nat| {
+            let reach = Reachability::of(candidates, nat, ConnectionMode::Mixed);
+            assert_eq!(
+                reach,
+                Reachability::of(candidates, nat, ConnectionMode::Internet)
+            );
+            reach
+        };
         assert_eq!(of(&[home], NatObservation::None), Reachability::Home);
         assert_eq!(
             of(&[home, public], NatObservation::None),
@@ -698,6 +826,70 @@ mod tests {
             Reachability::Unknown
         );
         assert_eq!(of(&[v6], NatObservation::None), Reachability::Ipv6);
+    }
+
+    #[test]
+    fn a_group_on_one_home_network_has_nobody_to_reach_from_another_home() {
+        let lan = AddressPolicy {
+            lan: true,
+            loopback: false,
+        };
+        let at = |kind, addr: &str| Candidate::new(kind, addr.parse().unwrap(), lan).unwrap();
+        // A provider's IPv6 beside the home address once warned like a strict router did.
+        let candidates = [
+            at(CandidateKind::Local, "192.168.1.2:50000"),
+            at(CandidateKind::Public, "[2606:4700::1]:50000"),
+        ];
+        assert_eq!(
+            Reachability::of(&candidates, NatObservation::None, ConnectionMode::Home),
+            Reachability::Together
+        );
+        let mut invite = invite(lan);
+        invite.candidates = candidates.to_vec();
+        invite.nat = NatObservation::None;
+        invite.setup = Setup::new(ConnectionMode::Home, false);
+        assert_eq!(invite.reachability(), Reachability::Together);
+        invite.setup = Setup::new(ConnectionMode::Mixed, false);
+        assert_eq!(invite.reachability(), Reachability::Ipv6);
+    }
+
+    #[test]
+    fn the_invite_carries_the_organizers_connection_choice() {
+        let lan = AddressPolicy {
+            lan: true,
+            loopback: false,
+        };
+        for mode in [
+            ConnectionMode::Internet,
+            ConnectionMode::Home,
+            ConnectionMode::Mixed,
+        ] {
+            assert_eq!(ConnectionMode::from_key(mode.key()), Some(mode));
+            for lookup in [false, true] {
+                let mut invite = invite(lan);
+                invite.setup = Setup::new(mode, lookup);
+                let decoded = Invite::decode(&invite.encode(lan).unwrap(), lan).unwrap();
+                assert_eq!(decoded.setup.mode(), mode);
+                assert_eq!(
+                    decoded.setup.lookup(),
+                    lookup && mode != ConnectionMode::Home
+                );
+                assert_eq!(decoded.setup.lan(), mode != ConnectionMode::Internet);
+            }
+        }
+        let bytes = invite(lan).encode(lan).unwrap();
+        let lookup = bytes.len() - 1;
+        let mode = lookup - 1;
+        for (at, value) in [(mode, 0), (mode, 4), (lookup, 2)] {
+            let mut forged = bytes.clone();
+            forged[at] = value;
+            assert_eq!(Invite::decode(&forged, lan), Err(CodeError::Invalid));
+        }
+        // One home network never looks up, so no invite may claim it does.
+        let mut forged = bytes;
+        forged[mode] = 2;
+        forged[lookup] = 1;
+        assert_eq!(Invite::decode(&forged, lan), Err(CodeError::Invalid));
     }
 
     #[test]

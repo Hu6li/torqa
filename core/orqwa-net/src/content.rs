@@ -639,6 +639,7 @@ mod tests {
                 ..GatherOptions::default()
             },
             window: Duration::from_secs(10),
+            ..ConnectOptions::default()
         };
         let mut host = Host::open("Anna", "Test", RouteHash([7; 32]), &options)
             .await

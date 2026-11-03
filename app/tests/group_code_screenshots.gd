@@ -7,6 +7,7 @@ extends RefCounted
 ## the organizer's invitation, a friend connecting, a wrong paste and the QR code.
 static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: String) -> void:
 	var root: Window = tree.root
+	group._joined = {"organizer": "Alex", "mode": "internet"}
 	for locale: String in ["en", "de"]:
 		TranslationServer.set_locale(locale)
 		group._show_status({"phase": "connecting", "reply": invite, "reply_s": 48.0})
@@ -15,6 +16,7 @@ static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: 
 	group._show_status({"phase": "failed", "reply_expired": true})
 	await tree.create_timer(0.3).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-joining-expired-en.png"))
+	group._joined = {}
 	TranslationServer.set_locale("en")
 	var roster: Array[Dictionary] = [
 		{"id": 0, "name": "Rider", "ready": false, "me": true, "organizer": true},

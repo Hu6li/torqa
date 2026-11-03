@@ -255,11 +255,12 @@ impl Coordinator {
         }
     }
 
-    /// Whether friends at other homes can probably reach this rider as organizer (R176).
+    /// Whether every friend in the group can probably reach this rider as organizer (R176):
+    /// from other homes, or anyone when the group rides on one home network (R197).
     fn reachable(snapshot: &Snapshot) -> bool {
         matches!(
             snapshot.reachability,
-            Some(Reachability::Direct | Reachability::Mapped | Reachability::Home)
+            Some(Reachability::Direct | Reachability::Mapped | Reachability::Together)
         )
     }
 
@@ -1087,6 +1088,28 @@ mod tests {
     use super::*;
     use orqwa_domain::units::Kilograms;
     use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
+
+    #[test]
+    fn a_fallback_must_be_reachable_by_everyone_the_group_has() {
+        let stands_in = |reach| {
+            Coordinator::reachable(&Snapshot {
+                reachability: Some(reach),
+                ..Snapshot::default()
+            })
+        };
+        assert!(stands_in(Reachability::Direct) && stands_in(Reachability::Mapped));
+        // On one home network, a provider's IPv6 address or none at all changes nothing.
+        assert!(stands_in(Reachability::Together));
+        // With friends elsewhere, home addresses alone reach none of them.
+        for reach in [
+            Reachability::Home,
+            Reachability::Ipv6,
+            Reachability::Strict,
+            Reachability::Unknown,
+        ] {
+            assert!(!stands_in(reach), "{reach:?}");
+        }
+    }
 
     #[tokio::test]
     async fn expiry_cancels_owned_preparation_without_restoring_stale_proposals() {

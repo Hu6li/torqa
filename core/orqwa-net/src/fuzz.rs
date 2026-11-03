@@ -11,7 +11,8 @@ use orqwa_domain::workout::{Cue, Intensity, Plan, Step, Target};
 
 use crate::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use crate::code::{
-    Candidate, CandidateKind, Fingerprint, Invite, NatObservation, Reply, RideId, RouteHash,
+    Candidate, CandidateKind, ConnectionMode, Fingerprint, Invite, NatObservation, Reply, RideId,
+    RouteHash, Setup,
 };
 use crate::lobby::Rider;
 use crate::policy::AddressPolicy;
@@ -253,6 +254,7 @@ fn invite() -> Invite {
             .expect("local"),
         ],
         nat: NatObservation::SameMapping,
+        setup: Setup::new(ConnectionMode::Mixed, true),
     }
 }
 

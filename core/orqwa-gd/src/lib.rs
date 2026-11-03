@@ -2068,11 +2068,13 @@ impl OrqwaApp {
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_open(&mut self, invite: GString, lan: bool, stun: bool) -> bool {
-        let mut options = orqwa_app::group::ConnectOptions::default();
-        options.gather.policy.lan = lan;
-        if !stun {
-            options.gather.stun_servers.clear();
-        }
+        use orqwa_app::group::connection::{ConnectionMode, Setup};
+        let mode = if lan {
+            ConnectionMode::Mixed
+        } else {
+            ConnectionMode::Internet
+        };
+        let options = orqwa_app::group::ConnectOptions::new(Setup::new(mode, stun), &[]);
         let text = invite.to_string();
         self.command(|app| app.group_open((!text.is_empty()).then_some(text), options))
     }
@@ -2082,7 +2084,7 @@ impl OrqwaApp {
     fn group_invitation(&mut self, invite: GString) -> VarDictionary {
         match orqwa_app::group::connection::invitation(&invite.to_string()) {
             Ok(preview) => {
-                vdict! {"organizer"=>preview.organizer.as_str(),"requires_home"=>preview.requires_home}
+                vdict! {"organizer"=>preview.organizer.as_str(),"mode"=>preview.mode.key()}
             }
             Err(error) => {
                 self.report_failure(&Failure::from(error));
@@ -2115,16 +2117,23 @@ impl OrqwaApp {
             "modules" => &modules,
         }
     }
-    /// Starts networking only after the rider confirms the guided popup.
+    /// Creates a ride once the organizer confirmed where everyone rides, `"internet"`,
+    /// `"home"` or `"mixed"`, and whether to look up their address (R197).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
-    fn group_connect(&mut self, invite: GString, mode: GString, lookup: bool) -> bool {
-        let text = invite.to_string();
+    fn group_create(&mut self, mode: GString, lookup: bool) -> bool {
         let Some(mode) = orqwa_app::group::connection::ConnectionMode::from_key(&mode.to_string())
         else {
             return false;
         };
-        self.command(|app| app.group_connect((!text.is_empty()).then_some(text), mode, lookup))
+        self.command(|app| app.group_create(mode, lookup))
+    }
+    /// Joins the ride a pasted invitation is for, connecting as its organizer chose (R197).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_join(&mut self, invite: GString) -> bool {
+        let text = invite.to_string();
+        self.command(|app| app.group_join(&text))
     }
     /// The address lookup servers named for this computer's group rides (R192), each as
     /// `host:port`; empty while ORQWA asks its own, [`Self::default_stun_servers`].

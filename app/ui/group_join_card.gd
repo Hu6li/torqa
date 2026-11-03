@@ -43,12 +43,6 @@ func _ready() -> void:
 	add_child(_error)
 
 
-## Puts the cursor into the field, e.g. after the rider went back from the connection choice;
-## the invitation pasted stays there.
-func focus() -> void:
-	_field.grab_focus()
-
-
 ## Empties the field once joining has started.
 func clear() -> void:
 	_field.clear()
@@ -62,15 +56,16 @@ func _submit() -> void:
 		return
 	match OrqwaApp.group_code_kind(text):
 		"reply":
-			_show_error(tr("That's a reply. Paste the invitation the organizer sent you."))
+			show_error(tr("That's a reply. Paste the invitation the organizer sent you."))
 		"":
-			_show_error(
+			show_error(
 				tr("That's not an invitation. Paste the whole invitation the organizer sent you.")
 			)
 		_:
 			invitation_entered.emit(text)
 
 
-func _show_error(message: String) -> void:
+## Says in one line below the field why joining did not start; editing the field clears it.
+func show_error(message: String) -> void:
 	_error.text = message
 	_error.show()
