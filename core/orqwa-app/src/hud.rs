@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use orqwa_domain::profile::Profile;
 use orqwa_domain::recording::{RideSummary, Sample};
-use orqwa_domain::units::{BeatsPerMinute, Watts};
+use orqwa_domain::units::{BeatsPerMinute, Joules, Watts};
 use orqwa_routes::Route;
 use orqwa_session::RideState;
 
@@ -51,6 +51,8 @@ pub struct Metric {
     pub kind: MetricKind,
     /// A typical value, in the units of [`values`], for previews of a layout.
     pub sample: f64,
+    /// Optional explanation shown in the editor and as a tooltip.
+    pub description: &'static str,
     /// The zones its value falls in, and the metric in watts or beats per minute that places
     /// it there: itself, or the live figure it is worked out from (W/kg from the power).
     pub zones: Option<(Zones, &'static str)>,
@@ -71,11 +73,19 @@ const fn metric(
         decimals,
         kind,
         sample,
+        description: "",
         zones: None,
     }
 }
 
 impl Metric {
+    const fn described(self, description: &'static str) -> Self {
+        Self {
+            description,
+            ..self
+        }
+    }
+
     /// The metric read against `zones`, placed there by the value of the metric `by`.
     const fn zoned(self, zones: Zones, by: &'static str) -> Self {
         Self {
@@ -193,6 +203,9 @@ pub const METRICS: &[Metric] = &[
     metric("intensity", "Intensity", "", 2, MetricKind::Number, 0.86),
     metric("training_stress", "TSS", "", 0, MetricKind::Number, 38.0),
     metric("work", "Work", "kJ", 0, MetricKind::Number, 412.0),
+    metric("calories", "Calories", "kcal", 0, MetricKind::Number, 410.0).described(
+        "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+    ),
 ];
 
 // i18n-end
@@ -234,7 +247,8 @@ pub fn sanitize(layout: &[String]) -> Vec<String> {
 
 /// Live value of every metric, in metric display units (km/h, km, m, s); `None` where unknown,
 /// e.g. heart rate without a strap, or the road without a route. `summary` summarises the
-/// samples so far, `time_to_go` is the estimated time to the finish (R66).
+/// samples so far, `time_to_go` is the estimated time to the finish (R66), and `calories` the
+/// estimated metabolic energy (#475), distinct from mechanical work.
 #[must_use]
 pub fn values(
     state: &RideState,
@@ -243,6 +257,7 @@ pub fn values(
     route: Option<&Route>,
     profile: &Profile,
     time_to_go: Option<Duration>,
+    calories: Option<Joules>,
 ) -> Vec<(&'static str, Option<f64>)> {
     let t = state.telemetry;
     let power = t.power;
@@ -291,6 +306,9 @@ pub fn values(
                 "intensity" => summary.intensity_factor,
                 "training_stress" => summary.training_stress,
                 "work" => summary.work.map(|w| w.0 / 1000.0),
+                "calories" => {
+                    calories.map(|energy| energy.0 / orqwa_session::calories::JOULES_PER_KCAL)
+                }
                 _ => None,
             };
             (metric.id, value)
@@ -421,10 +439,18 @@ mod tests {
             gear: None,
         };
         let value = |state: &RideState, id: &str| {
-            values(state, &[], &RideSummary::default(), None, &profile, None)
-                .into_iter()
-                .find(|&(metric, _)| metric == id)
-                .and_then(|(_, value)| value)
+            values(
+                state,
+                &[],
+                &RideSummary::default(),
+                None,
+                &profile,
+                None,
+                None,
+            )
+            .into_iter()
+            .find(|&(metric, _)| metric == id)
+            .and_then(|(_, value)| value)
         };
 
         assert!((value(&state, "power_percent_ftp").unwrap() - 110.0).abs() < 1e-9);
@@ -490,7 +516,7 @@ mod tests {
             avg_power: Some(Watts(200.0)),
             ..RideSummary::default()
         };
-        let values = values(&state, &samples, &summary, None, &profile, None);
+        let values = values(&state, &samples, &summary, None, &profile, None, None);
         let zones = zones(&values, &profile);
 
         for id in ["power", "watts_per_kg", "power_percent_ftp", "power_zone"] {
@@ -526,7 +552,15 @@ mod tests {
             ..Profile::default()
         };
         let state = riding(275.0, 171.0);
-        let values = values(&state, &[], &RideSummary::default(), None, &profile, None);
+        let values = values(
+            &state,
+            &[],
+            &RideSummary::default(),
+            None,
+            &profile,
+            None,
+            None,
+        );
         let zones = zones(&values, &profile);
 
         assert!(zones.iter().all(|&(_, zone)| zone.is_none()), "{zones:?}");

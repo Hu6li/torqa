@@ -319,6 +319,10 @@ msgstr ""
 msgid "Against the period before"
 msgstr ""
 
+#: app/ui/profile_form.gd
+msgid "Age for calories"
+msgstr ""
+
 #: app/ui/video_align_dialog.gd
 msgid "Align"
 msgstr ""
@@ -549,6 +553,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd app/scenes/history_screen.gd app/ui/ride_devices.gd app/ui/workout_editor.gd core/orqwa-app/src/hud.rs
 msgid "Cadence"
+msgstr ""
+
+#: core/orqwa-app/src/hud.rs
+msgid "Calories"
 msgstr ""
 
 #: app/ui/ride_options.gd
@@ -1271,6 +1279,10 @@ msgstr ""
 msgid "Each press shifts, changes the view, controls music or the workout, or does nothing."
 msgstr ""
 
+#: app/ui/profile_form.gd
+msgid "Easy effort"
+msgstr ""
+
 #: core/orqwa-session/src/workout.rs
 msgid "Easy for 10 minutes"
 msgstr ""
@@ -1313,6 +1325,22 @@ msgstr ""
 
 #: app/ui/group_connection_dialog.gd
 msgid "Enter up to four servers, each as name or name:port, separated by commas."
+msgstr ""
+
+#: core/orqwa-gd/src/lib.rs
+msgid "Estimated calories based on different sources during this ride."
+msgstr ""
+
+#: core/orqwa-gd/src/lib.rs
+msgid "Estimated calories based on heart rate, age, sex and weight."
+msgstr ""
+
+#: core/orqwa-gd/src/lib.rs
+msgid "Estimated calories based on power (24% efficiency)."
+msgstr ""
+
+#: core/orqwa-app/src/hud.rs
+msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -1413,6 +1441,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Feb"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Female"
 msgstr ""
 
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd
@@ -1657,6 +1689,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Hard"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Hard effort"
 msgstr ""
 
 #: app/scenes/world.gd
@@ -2003,6 +2039,10 @@ msgstr ""
 msgid "MSAA 4×"
 msgstr ""
 
+#: app/ui/profile_form.gd
+msgid "Male"
+msgstr ""
+
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd
 msgid "Male rider"
 msgstr ""
@@ -2073,6 +2113,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Moderate"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Moderate effort"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -2187,6 +2231,10 @@ msgstr ""
 msgid "Next: free ride for %s"
 msgstr ""
 
+#: core/orqwa-gd/src/lib.rs
+msgid "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "No country"
 msgstr ""
@@ -2205,6 +2253,10 @@ msgstr ""
 
 #: app/ui/ride_devices.gd
 msgid "No devices connected yet: connect them under Devices on the start page."
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "No estimate"
 msgstr ""
 
 #: app/ui/group_add_row.gd
@@ -2293,6 +2345,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd app/ui/course_settings.gd
 msgid "Not ready"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Not set"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -2407,6 +2463,10 @@ msgstr ""
 msgid "One minute all out!"
 msgstr ""
 
+#: core/orqwa-gd/src/lib.rs
+msgid "Only recorded seconds with enough information are included."
+msgstr ""
+
 #: app/scenes/workouts_tab.gd
 msgid "Only the HUD, on top of other windows, e.g. over a video"
 msgstr ""
@@ -2437,6 +2497,14 @@ msgstr ""
 
 #: app/ui/fitness_chart.gd
 msgid "Optimal"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Optional age (18–100) for heart-rate calories. 0 means not set. Power needs no age."
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -2839,6 +2907,14 @@ msgstr ""
 msgid "Rolling"
 msgstr ""
 
+#: core/orqwa-gd/src/lib.rs
+msgid "Rough calorie estimate based on your assumed effort and weight."
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Rough estimate without power or usable heart rate. Counts time even without pedalling."
+msgstr ""
+
 #: app/scenes/minimap.gd
 msgid "Route"
 msgstr ""
@@ -2977,6 +3053,10 @@ msgstr ""
 
 #: app/scenes/settings_dialog.gd app/scenes/start_page.gd
 msgid "Settings"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Sex for calories"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3753,6 +3833,10 @@ msgstr ""
 
 #: core/orqwa-domain/src/season.rs
 msgid "Winter"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "Without sensors"
 msgstr ""
 
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs

@@ -584,6 +584,8 @@ struct ActiveRide {
     /// Summary of the samples so far and how many it covers, refreshed once per new sample
     /// rather than every frame.
     summary: (usize, RideSummary),
+    /// Per-second calorie sources, cached independently of rendering.
+    calories: orqwa_session::calories::Calories,
     /// Estimated time to the finish (R66).
     time_to_go: estimate::TimeToGo,
     ghost: Option<Ghost>,
@@ -606,6 +608,22 @@ struct ActiveRide {
 }
 
 impl ActiveRide {
+    /// Refreshes estimates together when recording advances, independently of frame rate.
+    fn refresh_estimates(&mut self, profile: &Profile) -> bool {
+        let samples = self.ride.samples();
+        if samples.len() == self.summary.0 {
+            return false;
+        }
+        self.calories.update(samples, profile);
+        let summary = summarize(samples, profile.ftp);
+        self.time_to_go.update(summary.elapsed, || {
+            let power = estimate::expected_power(profile.ftp, summary.avg_power, summary.elapsed);
+            self.ride.time_to_finish(power)
+        });
+        self.summary = (samples.len(), summary);
+        true
+    }
+
     fn shift(&mut self, shift: Shift) {
         let before = self.ride.state().gear;
         self.ride.shift(shift);
@@ -945,6 +963,7 @@ impl App {
                 active
                     .ride
                     .change_rider(setup, virtual_gears(profile.drivetrain), profile.ftp);
+                active.calories.update(active.ride.samples(), profile);
             }
         }
         Ok(id)
@@ -3048,6 +3067,7 @@ impl App {
             steps: moments::StepsHeld::new(self.profile.profile.ftp),
             greeting,
             summary: (0, RideSummary::default()),
+            calories: orqwa_session::calories::Calories::default(),
             time_to_go: estimate::TimeToGo::default(),
             ghost,
             player,
@@ -3481,7 +3501,18 @@ impl App {
             active.ride.route(),
             &self.profile.profile,
             active.time_to_go.at(state.elapsed),
+            active.calories.estimate().energy,
         )
+    }
+
+    /// The Calories tile's estimate and the sources used for its recorded seconds (#475).
+    #[must_use]
+    pub fn hud_calories(&self) -> orqwa_session::calories::Estimate {
+        self.ride
+            .as_ref()
+            .map_or_else(orqwa_session::calories::Estimate::default, |active| {
+                active.calories.estimate()
+            })
     }
 
     /// Tells the music app to play/pause or skip (R26), in the background; failures are
@@ -3755,15 +3786,8 @@ impl App {
             {
                 warn!(%error, "cannot control trainer");
             }
-            let samples = active.ride.samples();
-            if samples.len() != active.summary.0 {
-                let ftp = self.profile.profile.ftp;
-                let summary = summarize(samples, ftp);
-                active.time_to_go.update(summary.elapsed, || {
-                    let power = estimate::expected_power(ftp, summary.avg_power, summary.elapsed);
-                    active.ride.time_to_finish(power)
-                });
-                active.summary = (samples.len(), summary);
+            if active.refresh_estimates(&self.profile.profile) {
+                let samples = active.ride.samples();
                 let workout = active.ride.state().workout;
                 events.extend(
                     active
@@ -4813,7 +4837,10 @@ mod tests {
             }
             app.ride_state().unwrap()
         };
-        let before = ride(&mut app, 60);
+        // Let the fake trainer report and record a full second with measured power.
+        let before = ride(&mut app, 120);
+        let calories_before = app.hud_calories();
+        assert!(calories_before.energy.unwrap().0 > 0.0);
         assert!(before.distance.0 > 1.0, "{before:?}");
         assert!(app.ambient_sound_active());
         assert_eq!(app.ambient_sound(2_400).len(), 2_400);
@@ -4826,6 +4853,11 @@ mod tests {
         let paused = ride(&mut app, 30);
         assert_eq!(paused.distance, before.distance);
         assert_eq!(paused.elapsed, before.elapsed);
+        assert_eq!(
+            app.hud_calories(),
+            calories_before,
+            "pausing adds no calories"
+        );
         // ...resumed, the ride goes on from there.
         assert!(!app.set_paused(false));
         assert!(!app.is_paused());

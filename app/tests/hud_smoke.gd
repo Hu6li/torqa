@@ -14,6 +14,7 @@ func _run() -> void:
 	_hud_editor()
 	_power_detail()
 	_zone_bars()
+	_calories()
 	await _minimap()
 	if not _failed:
 		print("HUD SMOKE TEST PASSED")
@@ -133,6 +134,39 @@ func _zone_bars() -> void:
 	var preview: HudPanel = editor.find_children("*", "HudPanel", true, false)[0]
 	for id: String in ["power", "heart_rate"]:
 		_check(_zone_bar(preview, id).a > 0.0, "an example bar for " + id)
+	editor.free()
+
+
+## Calories keeps its short caption and kcal, with unavailable values and method details.
+func _calories() -> void:
+	var hud: HudPanel = HudPanel.new()
+	root.add_child(hud)
+	for imperial: bool in [false, true]:
+		hud.imperial = imperial
+		hud.show_layout(PackedStringArray(["calories", "work"]))
+		var metric: Dictionary = hud.catalogue["calories"]
+		_check(
+			str(metric["caption"]) == "Calories" and str(metric["unit"]) == "kcal",
+			"short calorie title and unit"
+		)
+		hud.show_values({"calories": null}, null, null)
+		var values: Dictionary = hud.get("_values")
+		var figure: Label = values["calories"]
+		_check(figure.text == "--", "no estimate without enough information")
+		hud.show_values(
+			{"calories": 717.02, "work": 720.0}, null, null, {"calories": "Based on power"}
+		)
+		_check(figure.text == "717", "calories do not follow distance units")
+		var tile: Control = figure.get_parent().get_parent()
+		_check(tile.tooltip_text == "Based on power", "method in tooltip, not the title")
+		var work: Label = values["work"]
+		_check(work.text == "720", "mechanical work remains separate")
+	hud.free()
+	var editor: HudEditor = HudEditor.new()
+	root.add_child(editor)
+	editor.edit(PackedStringArray(["power"]), false)
+	editor.place("calories", 1)
+	_expect(editor.layout(), ["power", "calories"], "calories are selectable per rider")
 	editor.free()
 
 

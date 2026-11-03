@@ -3084,3 +3084,66 @@ msgstr "macOS schränkt den Mikrofonzugriff ein. Prüfe die Datenschutzvorgaben 
 
 msgid "Run the downloaded ORQWA app to request microphone access on macOS."
 msgstr "Starte die heruntergeladene ORQWA-App, um unter macOS den Mikrofonzugriff anzufragen."
+
+msgid "Age for calories"
+msgstr "Alter für Kalorien"
+
+msgid "Calories"
+msgstr "Kalorien"
+
+msgid "Easy effort"
+msgstr "Leichte Belastung"
+
+msgid "Estimated calories based on different sources during this ride."
+msgstr "Geschätzte Kalorien aus verschiedenen Quellen während dieser Fahrt."
+
+msgid "Estimated calories based on heart rate, age, sex and weight."
+msgstr "Geschätzte Kalorien aus Herzfrequenz, Alter, Geschlecht und Gewicht."
+
+msgid "Estimated calories based on power (24% efficiency)."
+msgstr "Geschätzte Kalorien aus der Leistung (24 % Wirkungsgrad)."
+
+msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+msgstr "Geschätzte Kalorien. Verwendet zuerst die Leistung, dann die Herzfrequenz mit deinem Alter und Geschlecht. Ohne beides kannst du in den Fahrereinstellungen eine Belastung annehmen."
+
+msgid "Female"
+msgstr "Weiblich"
+
+msgid "Hard effort"
+msgstr "Hohe Belastung"
+
+msgid "Male"
+msgstr "Männlich"
+
+msgid "Moderate effort"
+msgstr "Mittlere Belastung"
+
+msgid "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
+msgstr "Keine Kalorienschätzung. Verbinde eine Leistungsquelle, ergänze Alter und Geschlecht für die Herzfrequenz oder wähle in den Fahrereinstellungen eine angenommene Belastung."
+
+msgid "No estimate"
+msgstr "Keine Schätzung"
+
+msgid "Not set"
+msgstr "Nicht angegeben"
+
+msgid "Only recorded seconds with enough information are included."
+msgstr "Nur aufgezeichnete Sekunden mit ausreichenden Angaben sind enthalten."
+
+msgid "Optional age (18–100) for heart-rate calories. 0 means not set. Power needs no age."
+msgstr "Optionales Alter (18–100) für Kalorien aus der Herzfrequenz. 0 heisst nicht angegeben. Bei Leistung ist kein Alter nötig."
+
+msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+msgstr "Optionales Geschlecht für Kalorien aus der Herzfrequenz. Unabhängig von deinem Avatar. Bei Leistung ist kein Geschlecht nötig."
+
+msgid "Rough calorie estimate based on your assumed effort and weight."
+msgstr "Grobe Kalorienschätzung aus deiner angenommenen Belastung und deinem Gewicht."
+
+msgid "Rough estimate without power or usable heart rate. Counts time even without pedalling."
+msgstr "Grobe Schätzung ohne Leistung oder nutzbare Herzfrequenz. Zählt die Zeit auch ohne Treten."
+
+msgid "Sex for calories"
+msgstr "Geschlecht für Kalorien"
+
+msgid "Without sensors"
+msgstr "Ohne Sensoren"

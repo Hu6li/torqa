@@ -35,6 +35,10 @@ same licence; the footage is used only in documentation.
 | ![HUD editor](images/app/hud-editor.jpg) | ![Weekly training](images/app/analysis-weekly.png) |
 | ![Graphics settings](images/app/settings-graphics.png) | ![Progress over time](images/app/analysis-progress.png) |
 
+| Calories in the HUD | Optional calorie inputs |
+|---|---|
+| ![Calories and Work](images/calories/hud-en.png) | ![Calorie profile settings](images/calories/profile-en.png) |
+
 ## Cities and woodland
 
 The same woodland view on Low and Ultra graphics.

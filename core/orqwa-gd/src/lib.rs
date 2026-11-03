@@ -21,7 +21,10 @@ use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, TrainerChoice, paths};
 use orqwa_app::{library, view};
 use orqwa_devices::ble::{ControllerModel, DeviceKind};
 use orqwa_devices::fake::{FakeHeart, FakeRider};
-use orqwa_domain::profile::{Avatar, Drivetrain, MapStyle, Profile, UnitSystem, Voice};
+use orqwa_domain::profile::{
+    Avatar, CalorieEffort, CalorieProfile, CalorieSex, Drivetrain, MapStyle, Profile, UnitSystem,
+    Voice,
+};
 use orqwa_domain::shifting::{BUTTONS, ButtonAction, Control, Press, Shift};
 use orqwa_domain::telemetry::CadenceSource;
 use orqwa_domain::units::{
@@ -2985,6 +2988,7 @@ impl OrqwaApp {
     /// The active rider: `{id, name, rider_mass_kg, bike_mass_kg, ftp_w, max_heart_rate_bpm,
     /// units, language, avatar}` with `units` either `"metric"` or `"imperial"`, `language` a
     /// locale code, empty for the system language, and `avatar` either `"female"` or `"male"`.
+    /// Optional calorie inputs are described by [`profile_dict`].
     #[func]
     fn profile(&self) -> VarDictionary {
         self.app
@@ -3053,6 +3057,7 @@ impl OrqwaApp {
             bike_mass: Kilograms(number("bike_mass_kg", defaults.bike_mass.0)),
             ftp: Watts(number("ftp_w", defaults.ftp.0)),
             max_heart_rate: BeatsPerMinute(number("max_heart_rate_bpm", defaults.max_heart_rate.0)),
+            calories: calorie_profile(&data),
             power_zones: Profile::sane_power_zones(&shares(&data, "power_zones_pct")),
             heart_rate_zones: Profile::sane_heart_rate_zones(&shares(
                 &data,
@@ -3162,6 +3167,7 @@ impl OrqwaApp {
     /// test), else `null`. `x`/`y` are metres east/north of the route start, as in `track()`;
     /// `heading` is the direction of travel in radians clockwise from north, `curvature` how
     /// sharply the road bends there (1 / radius, positive to the right).
+    /// `metric_details` holds localized per-metric tooltips, including the calorie sources.
     /// `rider_x`/`rider_y` place the avatar in the local traffic lane; `x`/`y` stay on the
     /// route centre line for the map. The ghost has both pairs too.
     #[func]
@@ -3191,6 +3197,9 @@ impl OrqwaApp {
             "power_zone" => &zone(t.power.map(|p| rider.power_zone(p))),
             "heart_rate_zone" => &zone(t.heart_rate.map(|h| rider.heart_rate_zone(h))),
             "metrics" => &hud_values(&values),
+            "metric_details" => &vdict! {
+                "calories" => calorie_details(app.hud_calories()).as_str(),
+            },
             "metric_zones" => &hud_zones(&orqwa_app::hud::zones(&values, rider)),
             "gear" => &state.gear.map_or_else(Variant::nil, |g| {
                 vdict! {
@@ -3259,7 +3268,7 @@ impl OrqwaApp {
         dict
     }
 
-    /// Every metric the HUD can show: `[{id, caption, unit, decimals, kind, sample, zones,
+    /// Every metric the HUD can show: `[{id, caption, description, unit, decimals, kind, sample, zones,
     /// sample_zone}]`, with `kind` one of `number`, `speed`, `distance`, `elevation`,
     /// `duration`, `grade`, `zone`. Values come in `ride_state()["metrics"]` in km/h, km, m and
     /// s, and their zones (#432) in `ride_state()["metric_zones"]`: `zones` names the scale,
@@ -3282,6 +3291,7 @@ impl OrqwaApp {
                 &vdict! {
                     "id" => metric.id,
                     "caption" => metric.caption,
+                    "description" => metric.description,
                     "unit" => metric.unit,
                     "decimals" => i64::from(metric.decimals),
                     "kind" => kind,
@@ -4530,6 +4540,8 @@ fn map_color(feature: MapFeature, style: MapStyle) -> Color {
 /// heart_rate_zones_pct, default_difficulty_pct, map_style, voice, rides_per_week}` with `map_style`
 /// either `"coloured"` or `"dark"`, `voice` (R124) `"casual"`, `"plain"` or `"off"` and
 /// `rides_per_week` 0 for none.
+/// `calorie_age` is an optional adult age (0 unset), `calorie_sex` is `female`, `male` or empty,
+/// and `calorie_effort` is `easy`, `moderate`, `hard` or empty (no assumed effort).
 fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
     vdict! {
         "id" => id,
@@ -4538,6 +4550,18 @@ fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
         "bike_mass_kg" => p.bike_mass.0,
         "ftp_w" => p.ftp.0,
         "max_heart_rate_bpm" => p.max_heart_rate.0,
+        "calorie_age" => i64::from(p.calories.age.unwrap_or(0)),
+        "calorie_sex" => match p.calories.sex {
+            Some(CalorieSex::Female) => "female",
+            Some(CalorieSex::Male) => "male",
+            None => "",
+        },
+        "calorie_effort" => match p.calories.effort {
+            Some(CalorieEffort::Easy) => "easy",
+            Some(CalorieEffort::Moderate) => "moderate",
+            Some(CalorieEffort::Hard) => "hard",
+            None => "",
+        },
         "units" => match p.units {
             UnitSystem::Metric => "metric",
             UnitSystem::Imperial => "imperial",
@@ -4573,6 +4597,62 @@ fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
             Voice::Off => "off",
         },
     }
+}
+
+fn calorie_profile(data: &VarDictionary) -> CalorieProfile {
+    let text = |key: &str| {
+        data.get(key)
+            .and_then(|value| value.try_to::<GString>().ok())
+            .map(|value| value.to_string())
+            .unwrap_or_default()
+    };
+    CalorieProfile {
+        age: data
+            .get("calorie_age")
+            .and_then(|value| value.try_to::<i64>().ok())
+            .and_then(|value| u8::try_from(value).ok())
+            .filter(|age| (18..=100).contains(age)),
+        sex: match text("calorie_sex").as_str() {
+            "female" => Some(CalorieSex::Female),
+            "male" => Some(CalorieSex::Male),
+            _ => None,
+        },
+        effort: match text("calorie_effort").as_str() {
+            "easy" => Some(CalorieEffort::Easy),
+            "moderate" => Some(CalorieEffort::Moderate),
+            "hard" => Some(CalorieEffort::Hard),
+            _ => None,
+        },
+    }
+}
+
+fn calorie_details(estimate: orqwa_session::calories::Estimate) -> String {
+    use orqwa_session::calories::Basis;
+    let tr = |message: &str| {
+        TranslationServer::singleton()
+            .translate(message)
+            .to_string()
+    };
+    // i18n-begin
+    let mut details = tr(match estimate.basis {
+        Some(Basis::Power) => "Estimated calories based on power (24% efficiency).",
+        Some(Basis::HeartRate) => "Estimated calories based on heart rate, age, sex and weight.",
+        Some(Basis::AssumedEffort) => {
+            "Rough calorie estimate based on your assumed effort and weight."
+        }
+        Some(Basis::Mixed) => "Estimated calories based on different sources during this ride.",
+        None => {
+            "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
+        }
+    });
+    if estimate.incomplete && estimate.energy.is_some() {
+        details.push('\n');
+        details.push_str(&tr(
+            "Only recorded seconds with enough information are included.",
+        ));
+    }
+    // i18n-end
+    details
 }
 
 /// The voice a dictionary shaped like `profile()` names (R124), the casual one by default.

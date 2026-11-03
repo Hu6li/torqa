@@ -21,7 +21,9 @@ func _init() -> void:
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var hud_column: VBoxContainer = VBoxContainer.new()
 	hud_column.add_theme_constant_override("separation", 8)
-	hud_column.add_child(UiTheme.caption(tr("HUD — drop figures where you want them")))
+	var hud_heading: Label = UiTheme.caption(tr("HUD — drop figures where you want them"))
+	hud_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hud_column.add_child(hud_heading)
 	var frame: PanelContainer = PanelContainer.new()
 	frame.custom_minimum_size = Vector2(280, 0)
 	frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -39,7 +41,11 @@ func _init() -> void:
 	var list_column: VBoxContainer = VBoxContainer.new()
 	list_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list_column.add_theme_constant_override("separation", 8)
-	list_column.add_child(UiTheme.caption(tr("Available — drag in to add, drop here to remove")))
+	var available_heading: Label = UiTheme.caption(
+		tr("Available — drag in to add, drop here to remove")
+	)
+	available_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_column.add_child(available_heading)
 	var scroll: _DropArea = _DropArea.new(self)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size = Vector2(240, 260)
@@ -135,6 +141,8 @@ class _Chip:
 		var row: HBoxContainer = HBoxContainer.new()
 		var label: Label = Label.new()
 		label.text = tr(caption)
+		var description: String = editor._preview.catalogue[id].get("description", "")
+		tooltip_text = tr(description)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
 		var button: Button = Button.new()

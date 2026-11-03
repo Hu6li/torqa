@@ -45,6 +45,37 @@ pub enum Voice {
     Off,
 }
 
+/// The sex-specific heart-rate calorie equation; independent of the rider's avatar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalorieSex {
+    /// The female equation.
+    Female,
+    /// The male equation.
+    Male,
+}
+
+/// An explicitly assumed effort when neither power nor usable heart rate is available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalorieEffort {
+    /// Light stationary cycling (3.5 MET).
+    Easy,
+    /// General stationary cycling (6.8 MET).
+    Moderate,
+    /// Vigorous stationary cycling (10.8 MET).
+    Hard,
+}
+
+/// Optional inputs for calorie estimates. Missing inputs never borrow from the avatar or FTP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CalorieProfile {
+    /// Age in years; the heart-rate equation is used only for adults, 18–100 years.
+    pub age: Option<u8>,
+    /// Sex-specific heart-rate equation, chosen explicitly.
+    pub sex: Option<CalorieSex>,
+    /// Rough fallback, off unless the rider chooses an effort.
+    pub effort: Option<CalorieEffort>,
+}
+
 /// What the rider shifts with on the trainer (R9, ADR 0003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Drivetrain {
@@ -83,6 +114,8 @@ pub struct Profile {
     pub ftp: Watts,
     /// Maximum heart rate: the base of the heart-rate zones.
     pub max_heart_rate: BeatsPerMinute,
+    /// Optional inputs used when calorie estimates cannot use measured power.
+    pub calories: CalorieProfile,
     /// Display units.
     pub units: UnitSystem,
     /// User interface language as a locale code (e.g. `de`); empty for the system language.
@@ -115,6 +148,7 @@ impl Default for Profile {
             bike_mass: Kilograms(8.0),
             ftp: Watts(200.0),
             max_heart_rate: BeatsPerMinute(185.0),
+            calories: CalorieProfile::default(),
             units: UnitSystem::Metric,
             language: String::new(),
             avatar: Avatar::Female,

@@ -373,6 +373,12 @@ produces bright halos under lavapipe. They wait for route preparation and stream
 the route views pause the rider at fixed positions. The graphics settings in the app are
 unchanged. Both app and route runners check their capture script compiles before rendering.
 
+For the Calories figure and its optional profile inputs (R193, ADR 0038),
+`SCREENSHOT_CALORIES_ONLY=1 scripts/screenshots.sh` captures English and German HUD editors,
+profile settings and a fake-trainer workout without generating a course. Set
+`SCREENSHOT_DIR` and an isolated `XDG_DATA_HOME` as above; `SCREENSHOT_SIZE=1024x640` also
+checks scrolling at the minimum window size. Do not run rendering alongside checks.
+
 Additional UI fixtures use the same real controls without hardware or account credentials:
 
 `SCREENSHOT_SUMMARY_ONLY=1 scripts/screenshots.sh` captures just the quick finish dialog over

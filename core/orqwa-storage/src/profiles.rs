@@ -6,7 +6,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use orqwa_domain::profile::{Avatar, Drivetrain, MapStyle, Profile, UnitSystem, Voice};
+use orqwa_domain::profile::{
+    Avatar, CalorieEffort, CalorieProfile, CalorieSex, Drivetrain, MapStyle, Profile, UnitSystem,
+    Voice,
+};
 use orqwa_domain::shifting::{ButtonAction, ButtonMap, ControllerModel, Press};
 use orqwa_domain::telemetry::CadenceSource;
 use orqwa_domain::units::{BeatsPerMinute, Kilograms, Percent, Watts};
@@ -55,6 +58,7 @@ struct ProfileFile {
     bike_mass_kg: f64,
     ftp_w: f64,
     max_heart_rate_bpm: f64,
+    calories: CalorieFile,
     units: Units,
     language: String,
     avatar: AvatarFile,
@@ -70,6 +74,50 @@ struct ProfileFile {
     power_zones_pct: Vec<f64>,
     heart_rate_zones_pct: Vec<f64>,
     default_difficulty_pct: f64,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct CalorieFile {
+    age: Option<u8>,
+    sex: Option<String>,
+    effort: Option<String>,
+}
+
+impl From<CalorieProfile> for CalorieFile {
+    fn from(profile: CalorieProfile) -> Self {
+        Self {
+            age: profile.age,
+            sex: profile.sex.map(|sex| match sex {
+                CalorieSex::Female => "female".to_owned(),
+                CalorieSex::Male => "male".to_owned(),
+            }),
+            effort: profile.effort.map(|effort| match effort {
+                CalorieEffort::Easy => "easy".to_owned(),
+                CalorieEffort::Moderate => "moderate".to_owned(),
+                CalorieEffort::Hard => "hard".to_owned(),
+            }),
+        }
+    }
+}
+
+impl From<CalorieFile> for CalorieProfile {
+    fn from(file: CalorieFile) -> Self {
+        Self {
+            age: file.age.filter(|age| (18..=100).contains(age)),
+            sex: match file.sex.as_deref() {
+                Some("female") => Some(CalorieSex::Female),
+                Some("male") => Some(CalorieSex::Male),
+                _ => None,
+            },
+            effort: match file.effort.as_deref() {
+                Some("easy") => Some(CalorieEffort::Easy),
+                Some("moderate") => Some(CalorieEffort::Moderate),
+                Some("hard") => Some(CalorieEffort::Hard),
+                _ => None,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -126,6 +174,7 @@ impl From<&Profile> for ProfileFile {
             bike_mass_kg: p.bike_mass.0,
             ftp_w: p.ftp.0,
             max_heart_rate_bpm: p.max_heart_rate.0,
+            calories: p.calories.into(),
             units: match p.units {
                 UnitSystem::Metric => Units::Metric,
                 UnitSystem::Imperial => Units::Imperial,
@@ -178,6 +227,7 @@ impl From<ProfileFile> for Profile {
             bike_mass: Kilograms(f.bike_mass_kg),
             ftp: Watts(f.ftp_w),
             max_heart_rate: BeatsPerMinute(f.max_heart_rate_bpm),
+            calories: f.calories.into(),
             units: match f.units {
                 Units::Metric => UnitSystem::Metric,
                 Units::Imperial => UnitSystem::Imperial,
@@ -1324,6 +1374,11 @@ mod tests {
             power_zones: [0.5, 0.7, 0.85, 1.0, 1.15, 1.4],
             heart_rate_zones: [0.55, 0.65, 0.75, 0.85],
             default_difficulty: Percent(65.0),
+            calories: CalorieProfile {
+                age: Some(40),
+                sex: Some(CalorieSex::Female),
+                effort: Some(CalorieEffort::Easy),
+            },
             ..Profile::default()
         };
         let anna = Profile {
@@ -1345,6 +1400,16 @@ mod tests {
             }
         );
         std::fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn older_profiles_do_not_assume_calorie_inputs_from_avatar() {
+        let file: ProfileFile = toml::from_str("name = 'Rider'\navatar = 'male'\n").unwrap();
+        let profile = Profile::from(file);
+        assert_eq!(profile.calories, CalorieProfile::default());
+        let file: ProfileFile =
+            toml::from_str("[calories]\nage = 12\nsex = 'unknown'\neffort = 'unknown'\n").unwrap();
+        assert_eq!(Profile::from(file).calories, CalorieProfile::default());
     }
 
     #[test]
