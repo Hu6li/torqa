@@ -114,6 +114,7 @@ static func capture(main: Control, out: String) -> void:
 		await tree.process_frame
 	root.get_texture().get_image().save_jpg(out.path_join("group-voice-moved-ride.jpg"), 0.82)
 	print("saved group-voice-moved-ride")
+	ride._show_group({"phase": "riding", "roster": roster})
 	# The group's window during the ride: riders beside voice and the workout (R196).
 	var friend: Dictionary = {"ready": true, "me": false, "present": true}
 	var alex: Dictionary = friend.duplicate()
