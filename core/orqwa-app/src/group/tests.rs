@@ -134,6 +134,93 @@ fn wait(host: &mut App, peer: &mut App, condition: impl Fn(&App, &App) -> bool) 
 }
 
 #[test]
+fn buffered_group_positions_never_replace_live_telemetry_recording_or_assistance() {
+    let directory = Directory::new();
+    let mut app = directory.app();
+    app.group_open(None, options()).unwrap();
+    // Supply an authenticated-state fixture without depending on network scheduling.
+    app.group.as_mut().unwrap().task.abort();
+    let config = app.ride_config(orqwa_domain::units::Percent(100.0), DescentMode::Coast);
+    app.begin(
+        crate::Ride::workout(Workout::ConstantPower(Watts(200.0)), config),
+        None,
+        crate::RouteRecords::default(),
+        None,
+        (None, None),
+    );
+    let ride = &mut app.ride.as_mut().unwrap().ride;
+    ride.on_telemetry(&orqwa_domain::telemetry::Telemetry {
+        power: Some(Watts(200.0)),
+        cadence: Some(Rpm(85.0)),
+        ..Default::default()
+    });
+    for _ in 0..20 {
+        ride.tick(Duration::from_millis(100));
+    }
+    let before = app.ride_state().unwrap();
+    let recorded = app.ride_samples().to_vec();
+    let now = Instant::now();
+    let mut snapshot = Snapshot {
+        phase: Phase::Riding,
+        start: Some(now.checked_sub(Duration::from_secs(2)).unwrap()),
+        ..Snapshot::default()
+    };
+    snapshot.roster[0] = Some(Rider {
+        name: "Local".into(),
+        mass: Kilograms(83.0),
+        weight: Kilograms(75.0),
+        avatar: Avatar::Female,
+    });
+    snapshot.generations[0] = 1;
+    for ms in [1000, 1200, 1400, 1600, 1800, 2000] {
+        snapshot.states[0] = Some((
+            RiderState {
+                at: Duration::from_millis(ms),
+                distance: Meters(100.0),
+                speed: MetersPerSecond(0.0),
+                power: Watts(4000.0),
+                cadence: Rpm(250.0),
+            },
+            now.checked_sub(Duration::from_millis(2000 - ms)).unwrap(),
+        ));
+        app.update_group_motion(&snapshot);
+    }
+    let (updates, receive) = watch::channel(snapshot.clone());
+    {
+        let group = app.group.as_mut().unwrap();
+        group.snapshot = receive;
+        group.launched = true;
+    }
+    assert_eq!(app.group_view().distance, Some(Meters(100.0)));
+    assert!(
+        app.group_view().riders.is_empty(),
+        "one rider cannot see their own echo as a peer"
+    );
+    assert_eq!(
+        app.group.as_ref().unwrap().effect,
+        orqwa_physics::GroupEffect::default(),
+        "one rider cannot draft or get keep-together assistance from their own echo"
+    );
+    let after = app.ride_state().unwrap();
+    assert_eq!(after.distance, before.distance);
+    assert_eq!(after.elapsed, before.elapsed);
+    assert_eq!(after.telemetry.power, Some(Watts(200.0)));
+    assert_eq!(after.telemetry.cadence, Some(Rpm(85.0)));
+    assert_eq!(app.ride_samples().len(), recorded.len());
+    for (actual, expected) in app.ride_samples().iter().zip(recorded) {
+        assert_eq!(actual.distance, expected.distance);
+        assert_eq!(actual.power, expected.power);
+    }
+    snapshot.reconnecting = Some(now + Duration::from_secs(30));
+    app.update_group_motion(&snapshot);
+    updates.send_replace(snapshot);
+    assert!(
+        app.group_view().distance.is_none(),
+        "reconnecting discards old accepted motion"
+    );
+}
+
+#[test]
 fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly() {
     let (one, two, three) = (Directory::new(), Directory::new(), Directory::new());
     let (mut host, mut peer, mut late) = (one.app(), two.app(), three.app());
@@ -1318,6 +1405,10 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     assert!((host.group_riders()[0].power.0 - 120.0).abs() < 2.0);
     assert!((peer.group_riders()[0].power.0 - 80.0).abs() < 2.0);
     let (joiner, organizer) = (&host.group_riders()[0], &peer.group_riders()[0]);
+    assert!(
+        host.group_view().distance.is_some() && peer.group_view().distance.is_some(),
+        "each road view uses the local accepted echo alongside the remote rider"
+    );
     assert_eq!(
         (joiner.weight, joiner.avatar),
         (Kilograms(68.0), Avatar::Male)

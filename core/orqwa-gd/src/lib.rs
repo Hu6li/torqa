@@ -3187,7 +3187,9 @@ impl OrqwaApp {
     /// sharply the road bends there (1 / radius, positive to the right).
     /// `metric_details` holds localized per-metric tooltips, including the calorie sources.
     /// `rider_x`/`rider_y` place the avatar in the local traffic lane; `x`/`y` stay on the
-    /// route centre line for the map. The ghost has both pairs too.
+    /// route centre line for the map. The ghost has both pairs too. `position_m` is the
+    /// presented route distance: in a group it follows the same buffered clock as peers,
+    /// while `distance_m`, HUD measurements and recording remain live.
     #[func]
     fn ride_state(&self) -> VarDictionary {
         let Some(app) = self.app.as_ref() else {
@@ -3202,11 +3204,14 @@ impl OrqwaApp {
         let zone =
             |value: Option<u8>| value.map_or_else(Variant::nil, |z| i64::from(z).to_variant());
         let values = app.hud_values();
+        let group_view = app.group_view();
+        let distance = group_view.distance.unwrap_or(state.distance);
         let mut dict = vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "paused" => app.is_paused(),
-            "peers" => &group::riders(app),
+            "peers" => &group::riders(app, &group_view),
             "distance_m" => state.distance.0,
+            "position_m" => distance.0,
             "speed_kmh" => state.speed.as_kilometers_per_hour(),
             "power" => &optional(t.power.map(|p| p.0)),
             "cadence" => &optional(t.cadence.map(|c| c.0)),
@@ -3231,11 +3236,12 @@ impl OrqwaApp {
         };
         // A ride without a route (a workout on its own) has no place: the loaded route, if
         // any, is not the one ridden.
-        let (Some(position), Some(route)) = (state.position, app.route()) else {
+        let (Some(_), Some(route)) = (state.position, app.route()) else {
             return dict;
         };
+        let position = route.position(distance);
         let (x, y) = LocalProjection::for_route(route).project(position.lat, position.lon);
-        let (rider_x, rider_y) = app.rider_position(state.distance, false).unwrap_or((x, y));
+        let (rider_x, rider_y) = app.rider_position(distance, false).unwrap_or((x, y));
         dict.extend_dictionary(
             &vdict! {
                 "remaining_m" => state.remaining.map_or(0.0, |r| r.0),
