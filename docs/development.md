@@ -680,7 +680,8 @@ A tag does not set the version. The About tab, the first log line, the CLI and t
 read `version` in `core/Cargo.toml`; the macOS bundle reads `application/short_version` and
 `application/version` in `app/export_presets.cfg`, the Windows `.exe` `application/file_version`
 and `application/product_version` there, with a fourth number 0 (`0.3.1.0`). First set the new
-version in all those places and update `core/Cargo.lock` to match:
+version in all those places and update `core/Cargo.lock` and the fuzz targets'
+`core/fuzz/Cargo.lock` to match (CI's fuzz job builds `--locked`):
 `make release-version VERSION=0.3.1` does both in the container, refusing anything but three
 numbers (the macOS bundle's version allows no more). Commit that, re-render the About
 screenshot with `scripts/screenshots.sh` (it shows the version and the commit) and merge both.
