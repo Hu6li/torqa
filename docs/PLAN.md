@@ -193,6 +193,8 @@ Built in rideable steps:
 - [x] Multiple rider profiles (TOML), power and heart-rate zones, W/kg, metric/imperial display
 - [x] Zones shown and adjustable per rider (#173); a rider's default trainer difficulty (#175);
   riders deleted with their rides, after asking
+  - [x] Group ride settings show the active profile's default difficulty from the first ride
+    after startup, independently of unopened or previously visited course options (R14, R48).
 - [x] Customizable HUD (R23); an ascent-to-go figure (#174); power in % of FTP and heart
   rate in % of the maximum; % of FTP also under a large power figure, beside W/kg and zone
 - [x] Estimated time to the finish (R66, #231): on the course page at 75 % of FTP, as a
@@ -999,6 +1001,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Voice is joined through a guided window asked every time: headphones or speakers, then a
   sound check with an optional open microphone; one voice button per rider, a red bin to
   remove, a microphone button in the ride's bar and voice volume in its settings (R194)
+  - [x] Joining releases any local audio check in the same activation, including while riding
+    alone; refusals keep the join window open and failures use the existing application
+    error card and Technical details history (R170, R194).
 - [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
   empty seat in the group list for each friend's reply with one-line reasons when it adds
   nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)

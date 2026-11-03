@@ -1,6 +1,8 @@
 extends SceneTree
 ## Group setup and activity preview behavior (R169).
 
+const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+
 var _failed: bool = false
 
 
@@ -13,7 +15,9 @@ func _run() -> void:
 	await _group_activity()
 	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
+	await _group_profile_difficulty()
 	await _microphone_permissions()
+	await _voice_failures()
 	await _ride_window_columns()
 	_ride_bar()
 	_offer_card()
@@ -21,6 +25,88 @@ func _run() -> void:
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## Voice uses the same error card and history as other application errors.
+func _voice_failures() -> void:
+	var main: Control = MAIN_SCENE.instantiate()
+	root.add_child(main)
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var ride: RideScreen = main.get_node("RideScreen")
+	var history: FailureDetails = main.get("_failures")
+	var voice: GroupVoiceControls = ride._group_controls._voice_controls
+	ride._group_window.popup_centered(Vector2i(980, 600))
+	await process_frame
+	var dialog: GroupVoiceDialog = voice._dialog
+	dialog.ask_join()
+	dialog._listen_with(false)
+	history.clear()
+	# No lobby is open: this is a real synchronous command failure through the native bridge.
+	dialog._confirm()
+	_check(dialog.visible, "a refused voice join keeps its dialog open for retry")
+	_check(history.visible, "a refused voice join uses the shared application error card")
+	_check(history._failures.size() == 1, "the failure is reported once to the shared history")
+	_check(
+		not str(history._failures[0].get("details", "")).is_empty(),
+		"the shared history retains the original technical cause"
+	)
+	dialog.hide()
+	ride._group_window.hide()
+	history._toggle.button_pressed = true
+	_check(history._panel.visible, "standard technical details explain the failed voice join")
+	history._dismiss.pressed.emit()
+	_check(not history.visible, "standard Dismiss clears the shared failure history")
+	var failure: Dictionary = {
+		"message": "Voice is unavailable. Check your audio devices and microphone permission.",
+		"details": "simulated output-device failure"
+	}
+	app.failure_reported.emit(failure)
+	_check(history.visible, "asynchronous voice failures use that same application error card")
+	_check(
+		history._failures.size() == 1, "a new failure appears after the earlier one was dismissed"
+	)
+	main.free()
+	await process_frame
+
+
+## A fresh group ride must show the difficulty the engine takes from the active profile.
+func _group_profile_difficulty() -> void:
+	var setup: OrqwaApp = OrqwaApp.new()
+	root.add_child(setup)
+	var previous: String = setup.profile()["id"]
+	var rider: String = setup.save_profile(
+		"", {"name": "Group difficulty check", "default_difficulty_pct": 100.0}
+	)
+	setup.free()
+	var main: Control = MAIN_SCENE.instantiate()
+	root.add_child(main)
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var start: StartPage = main.get_node("StartPage")
+	var ride: RideScreen = main.get_node("RideScreen")
+	# No course page has initialized its options since this app instance opened.
+	app.group_started.emit(true, false)
+	for i: int in range(4):
+		await process_frame
+	var difficulty: float = ride._options["difficulty"]
+	_check(is_equal_approx(difficulty, 100.0), "the first group ride uses the saved 100% default")
+	ride._bar.settings_requested.emit()
+	var shown: float = ride._settings_dialog._options.options()["difficulty"]
+	_check(is_equal_approx(shown, 100.0), "the ride settings show the saved difficulty too")
+	ride._settings_dialog.hide()
+	# A previously visited course must not override the profile on a later group start either.
+	start._detail._options.set_difficulty(25.0)
+	var profile: Dictionary = app.profile()
+	profile["default_difficulty_pct"] = 75.0
+	app.save_profile(rider, profile)
+	app.group_started.emit(true, false)
+	for i: int in range(4):
+		await process_frame
+	difficulty = ride._options["difficulty"]
+	_check(is_equal_approx(difficulty, 75.0), "a group start ignores stale course difficulty")
+	app.select_profile(previous)
+	app.delete_profile(rider)
+	main.free()
+	await process_frame
 
 
 ## A permission result must never start capture after the rider's action has returned.
@@ -871,7 +957,7 @@ func _offer_card() -> void:
 ## Over the ride, the request shows when it comes and goes when the organizer withdraws it;
 ## the group's button shows only in a group (#431).
 func _organizer_offer() -> void:
-	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	await process_frame
 	var ride: RideScreen = main.get_node("RideScreen")

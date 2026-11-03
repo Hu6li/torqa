@@ -49,6 +49,11 @@ does the same.
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
 
+The group UI smoke suite reopens the app with a saved 100% trainer-difficulty profile and
+starts its first group ride without visiting a course page. It checks the ride options and
+settings, then changes the profile to 75% with stale course controls at 25% and starts another
+group ride. Both starts must show the active profile's value (R14, R48).
+
 For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
 deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
 stopping, then `cargo test -p orqwa-net` and `cargo test -p orqwa-app group::tests` for
@@ -652,6 +657,15 @@ output-only backend that rejects any microphone/capture call, assert bounded gai
 cleanup, and exercise microphone→speaker→voice restoration through the app. On hardware,
 deny microphone permission and still test the selected speakers, change voice volume, stop
 early and close the dialog. Review both settings scroll positions at the minimum window size.
+
+The `joining_voice_` app regressions cover a solo group workout and joining directly from a
+microphone or speaker check, microphone on and off, with a stop command already superseded
+by the join. Simulated audio verifies that check capture is released before voice opens.
+The group UI smoke test checks refused joins remain open and synchronous/asynchronous failures
+reach the existing application error card, Technical details history and Dismiss controls.
+On hardware, repeat the checks during a solo group ride and with friends, press **Join voice**
+before the check finishes, and retry after selecting an unavailable device. Verify riding
+continues and failures use the same bottom-right card as other application errors.
 
 For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
 private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global

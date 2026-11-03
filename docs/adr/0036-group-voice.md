@@ -445,3 +445,12 @@ microphone on and see capture, level and speech at once, and restore voice after
 the microphone on when it was on and off when the rider had muted it. A backend that moves its
 output is asked about again until the rider answers, but not after choosing devices right
 after being asked; an output rerouted by CPAL marks the move without invalidating the stream.
+
+### Joining from a local check — 2026-11-03
+
+The app's explicit join owns both audio-check cleanup and voice startup in one activation.
+A queued stop superseded by that activation cannot suppress joining. The actor cancels pending
+check startup and releases its capture/output before opening voice, preserving the microphone
+choice made in the join window. A refused command leaves that window open. Failures use the
+existing classified application error path and shared bottom-right error card, retaining its
+Technical details and Dismiss controls without a separate voice error presentation.
