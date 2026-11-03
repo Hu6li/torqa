@@ -474,3 +474,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R199 | Refines R94 (2026-11-03): settings dialogs, including their title and action buttons, stay inside the application window on their first opening, after switching tabs or reflowing content, and while the application window is resized. A temporary content minimum must not enlarge a dialog beyond those bounds. Tall content scrolls, including either column of the HUD editor with all 13 figures selected; available figures stay reachable with the mouse wheel. |
+
+## Idle mouse pointer
+
+| ID | Requirement |
+|---|---|
+| R200 | Extends R25 (2026-11-03, #477): the main window's **mouse pointer hides after three seconds without mouse activity**, in a window and full screen. Moving the mouse or clicking shows it immediately, including over controls, without consuming the input. Keyboard and remote controls do not reveal it, nor do motion events without movement. A held mouse button keeps it visible. Leaving the window, switching focus to a dialog or another app, and closing the view restore the pointer. |

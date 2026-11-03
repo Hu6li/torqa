@@ -33,6 +33,7 @@ func _ready() -> void:
 	print("ORQWA %s" % OrqwaCore.version() + ("" if build.is_empty() else " (%s)" % build))
 	UiScale.apply(get_window())
 	UiScale.size_new(get_window())
+	add_child(IdlePointer.new())
 	theme = UiTheme.build()
 	_failures.standalone = true
 	add_child(_failures)
