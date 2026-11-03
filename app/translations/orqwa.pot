@@ -3199,7 +3199,7 @@ msgstr ""
 msgid "Start group ride"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_next_step.gd
 msgid "Starting in %s seconds…"
 msgstr ""
 

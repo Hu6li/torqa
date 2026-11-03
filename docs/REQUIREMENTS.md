@@ -481,3 +481,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R200 | Extends R25 (2026-11-03, #477): the main window's **mouse pointer hides after three seconds without mouse activity**, in a window and full screen. Moving the mouse or clicking shows it immediately, including over controls, without consuming the input. Keyboard and remote controls do not reveal it, nor do motion events without movement. A held mouse button keeps it visible. Leaving the window, switching focus to a dialog or another app, and closing the view restore the pointer. *Scope refined by R201.* |
 | R201 | Refines R200 (2026-11-03, #477): idle pointer hiding applies **only during a ride or workout showing a 3D world or video**. The start page, course pages, history, summaries, workouts without a course and the HUD-only overlay keep the pointer visible. Leaving the course view restores it immediately; entering a 3D or video ride starts a fresh three-second delay. |
+
+## Group countdown layout
+
+| ID | Requirement |
+|---|---|
+| R202 | Refines R53 and R196 (2026-11-03): starting a group ride keeps the lobby's **course map, elevation profile and workout preview in the same positions and sizes throughout the countdown**, for the organizer and friends, with or without a shared workout. The organizer's activity choices and shared rules become disabled in place; the countdown replaces the readiness message without adding a row above the map. Window resizing still reflows the layout normally. |

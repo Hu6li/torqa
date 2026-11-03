@@ -468,9 +468,9 @@ func _show_status(status: Dictionary) -> void:
 	var host: bool = _status.get("host", false)
 	var late: bool = _status.get("late", false)
 	var name: String = _status.get("name", "")
-	var countdown: float = _status.get("countdown_s", 0.0)
 	var can_retry: bool = _status.get("can_retry", false)
 	var underway: bool = phase in ["countdown", "riding", "ended"]
+	var show_choices: bool = host and not late and (not underway or phase == "countdown")
 	var drafting: bool = _status.get("drafting", true)
 	var together: bool = _status.get("keep_together", true)
 	_drafting.set_pressed_no_signal(drafting)
@@ -483,13 +483,12 @@ func _show_status(status: Dictionary) -> void:
 		+ (tr("Keep together on") if together else tr("Keep together off"))
 	)
 	_rule_summary.visible = compact and phase in ["countdown", "riding"]
-	_rules.visible = host and not underway and not late
+	_rules.visible = show_choices
 	_rules_text.text = _rule_summary.text
 	_rules_text.visible = not _rules.visible
 	# Only what the columns below do not show already (R196).
 	var captions: Dictionary = {
 		"connecting": tr("Creating your ride…") if host else tr("Connecting to your friends…"),
-		"countdown": tr("Starting in %s seconds…") % ceili(countdown),
 		"ended": tr("Group connection ended. Your local ride continues."),
 		"failed": tr("Could not connect. Leave the group and ask for a fresh invitation."),
 	}
@@ -542,6 +541,7 @@ func _show_status(status: Dictionary) -> void:
 		course_path
 		+ workout_id
 		+ str(host)
+		+ str(show_choices)
 		+ str(underway)
 		+ str(activity_failed)
 		+ TranslationServer.get_locale()
@@ -550,9 +550,10 @@ func _show_status(status: Dictionary) -> void:
 		_activity_key = activity_key
 		_picker.refresh()
 		_picker.show_selection(
-			host and not underway and not late,
+			show_choices,
 			"" if activity_failed else course_path,
-			"" if activity_failed else workout_id
+			"" if activity_failed else workout_id,
+			underway
 		)
 	var trainer: bool = _orqwa.trainer_connected()
 	_next_step.show_status(_status, trainer, organizer, _own_percent(), not compact)

@@ -11,6 +11,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await _group_connections()
 	await _group_activity()
+	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
 	await _microphone_permissions()
 	await _ride_window_columns()
@@ -321,6 +322,7 @@ func _group_activity() -> void:
 	await process_frame
 	group.set_process(false)
 	var picker: GroupActivityPicker = group._picker
+	group._show_status({"host": true, "phase": "waiting"})
 	_check(picker._course.item_count > 1, "group picker offers the bundled course")
 	_check(picker._workout.item_count > 1, "group picker offers structured workouts")
 	picker._course.select(1)
@@ -517,8 +519,8 @@ func _group_activity() -> void:
 	)
 	_check(group._drafting.disabled and group._together.disabled, "rules freeze at countdown")
 	_check(
-		group._rules_text.visible and not group._rules.visible,
-		"riders read the frozen rules during the ride"
+		group._rules.visible and not group._rules_text.visible,
+		"countdown locks the organizer's rules in place"
 	)
 	group._show_status(
 		{"host": false, "phase": "waiting", "name": "Recovery 30", "can_retry": true}
