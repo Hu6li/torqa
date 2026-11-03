@@ -15,6 +15,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_rider_drivetrain()
+	_calorie_profile()
+	_calorie_age_years()
 	_ride_profile()
 	await _pause_opens_settings()
 	if not _failed:
@@ -59,9 +61,95 @@ func _rider_drivetrain() -> void:
 	dialog.free()
 
 
-## The ride settings' Profile tab (R98): the rider's figures, drivetrain and zones change
-## during the ride, the whole profile reaching it; the trainer difficulty rides start with is
-## left to the rider settings.
+## Optional calorie inputs round-trip through the form, Rust boundary and profile storage.
+func _calorie_profile() -> void:
+	var form: ProfileForm = ProfileForm.new()
+	root.add_child(form)
+	form.edit({})
+	var initial: Dictionary = form.profile()
+	var initial_age: int = initial["calorie_age"]
+	_check(
+		initial_age == 0 and str(initial["calorie_sex"]) == "", "optional demographics start unset"
+	)
+	_check(str(initial["calorie_effort"]) == "", "no assumed calories by default")
+	form.edit(
+		{"avatar": "male", "calorie_age": 40, "calorie_sex": "female", "calorie_effort": "hard"}
+	)
+	var edited: Dictionary = form.profile()
+	var edited_age: int = edited["calorie_age"]
+	_check(
+		str(edited["calorie_sex"]) == "female" and str(edited["avatar"]) == "male",
+		"sex independent of avatar"
+	)
+	_check(
+		edited_age == 40 and str(edited["calorie_effort"]) == "hard",
+		"calorie choices kept by the form"
+	)
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	edited["name"] = "Calorie profile check"
+	var previous: Dictionary = app.profile()
+	var previous_id: String = previous["id"]
+	var id: String = app.save_profile("", edited)
+	var saved: Dictionary = app.profile()
+	var saved_age: int = saved["calorie_age"]
+	_check(not id.is_empty() and saved_age == 40, "age through Rust and storage")
+	_check(
+		str(saved["calorie_sex"]) == "female" and str(saved["calorie_effort"]) == "hard",
+		"fallbacks through Rust and storage"
+	)
+	app.select_profile(previous_id)
+	app.delete_profile(id)
+	app.free()
+	form.free()
+
+
+## A form opened in an earlier year preserves its age until explicitly edited or cleared.
+func _calorie_age_years() -> void:
+	var year: int = OrqwaApp.calendar_year()
+	var form: ProfileForm = ProfileForm.new()
+	root.add_child(form)
+	form.edit({"calorie_age": 40, "calorie_age_year": year - 1, "calorie_sex": "female"})
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	var previous_id: String = app.profile()["id"]
+	var fields: Dictionary = form.profile()
+	fields["name"] = "Annual age check"
+	var id: String = app.save_profile("", fields)
+	var age_now: int = app.profile()["calorie_age"]
+	_check(age_now == 41, "an old age reference advances at New Year")
+	var ftp: SpinBox = form.get("_ftp")
+	ftp.value = 260.0
+	app.save_profile(id, form.profile())
+	age_now = app.profile()["calorie_age"]
+	_check(age_now == 41, "an unrelated edit does not rebase the birth year")
+	var age: SpinBox = form.get("_calorie_age")
+	age.value = 39.0
+	app.save_profile(id, form.profile())
+	age_now = app.profile()["calorie_age"]
+	_check(age_now == 39, "an explicit age edit is dated this year")
+	var reopened: OrqwaApp = OrqwaApp.new()
+	root.add_child(reopened)
+	var age_reopened: int = reopened.profile()["calorie_age"]
+	_check(age_reopened == 39, "the inferred birth year survives restart")
+	reopened.free()
+	form.edit({"calorie_age": 100, "calorie_age_year": year - 1})
+	app.save_profile(id, form.profile())
+	form.edit(app.profile())
+	app.save_profile(id, form.profile())
+	age_now = app.profile()["calorie_age"]
+	_check(age_now == 101, "age stays visible beyond the heart-rate model's supported range")
+	age.value = 0.0
+	app.save_profile(id, form.profile())
+	age_now = app.profile()["calorie_age"]
+	_check(age_now == 0, "zero clears the birth year")
+	app.select_profile(previous_id)
+	app.delete_profile(id)
+	app.free()
+	form.free()
+
+
+## The ride settings' Profile tab (R98) forwards the whole profile and its zones.
 func _ride_profile() -> void:
 	var dialog: RideSettingsDialog = RideSettingsDialog.new()
 	root.add_child(dialog)

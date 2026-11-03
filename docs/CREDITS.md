@@ -153,6 +153,15 @@ ones (`core/orqwa-osm/src/iso.rs`) is taken from Debian's
 LGPL 2.1 or later). The test tiles in `core/fixtures/countries/` are cut from OpenFreeMap
 tiles: © OpenFreeMap, © OpenMapTiles, data © OpenStreetMap contributors (ODbL 1.0).
 
+## Calorie estimates
+
+Heart-rate estimates use the published regression of Keytel et al.,
+[*Prediction of energy expenditure from heart rate monitoring during submaximal exercise*](https://pubmed.ncbi.nlm.nih.gov/15966347/),
+Journal of Sports Sciences (2005), DOI 10.1080/02640410470001730089.
+Optional assumed efforts use stationary-cycling MET values from Herrmann et al.'s
+[2024 Compendium of Physical Activities](https://pacompendium.com/bicycling/).
+The implementation and assumptions are described in [ADR 0038](adr/0038-calories.md).
+
 ## Documentation images
 
 The Alpenbrevet river comparison screenshots are ORQWA renders of the project owner's

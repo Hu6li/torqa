@@ -310,7 +310,8 @@ func _process(delta: float) -> void:
 		_overlay_hud.show_state(state)
 	_show_gear(state["gear"])
 	var metrics: Dictionary = state["metrics"]
-	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"])
+	var details: Dictionary = state.get("metric_details", {})
+	_hud.show_values(metrics, state["watts_per_kg"], state["power_zone"], details)
 	var zones: Dictionary = state["metric_zones"]
 	_hud.show_zones(zones)
 	_chart.heart_rate_target = _workout_panel.show_state(state["workout"], state["heart_rate"])

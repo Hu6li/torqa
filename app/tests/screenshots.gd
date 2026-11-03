@@ -332,7 +332,15 @@ func _group_error_screens(start: StartPage, group: GroupRidesTab, out: String) -
 
 func _initialize() -> void:
 	_create_main()
-	_run.call_deferred()
+	if OS.get_environment("SCREENSHOT_CALORIES_ONLY") == "1":
+		_calories_only.call_deferred()
+	else:
+		_run.call_deferred()
+
+
+func _calories_only() -> void:
+	await CalorieScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
 
 
 func _create_main() -> void:

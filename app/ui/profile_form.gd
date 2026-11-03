@@ -15,6 +15,8 @@ const DRIVETRAINS: Array[String] = ["cassette", "single_cog"]
 const MAP_STYLES: Array[String] = ["coloured", "dark"]
 ## How the ride's moments are told (R124).
 const VOICES: Array[String] = ["casual", "plain", "off"]
+const CALORIE_SEXES: Array[String] = ["", "female", "male"]
+const CALORIE_EFFORTS: Array[String] = ["", "easy", "moderate", "hard"]
 ## Interface languages: locale code and name in that language; "" follows the system.
 const LANGUAGES: Array[Array] = [["", "System language"], ["en", "English"], ["de", "Deutsch"]]
 
@@ -36,6 +38,11 @@ var _chainring: SpinBox = _spin(20.0, 60.0, 1.0, " T")
 var _cog: SpinBox = _spin(9.0, 36.0, 1.0, " T")
 var _teeth_rows: Array[Control] = []
 var _difficulty_row: Array[Control] = []
+var _calorie_age: SpinBox = _spin(0.0, 100.0, 1.0, "")
+## Input metadata; the core infers a birth year without rebasing an unchanged open form.
+var _calorie_age_year: int = 0
+var _calorie_sex: OptionButton = OptionButton.new()
+var _calorie_effort: OptionButton = OptionButton.new()
 
 
 func _init() -> void:
@@ -67,6 +74,22 @@ func _init() -> void:
 		"On a single cog such as the Zwift Cog, ORQWA shifts 24 virtual gears: ↑ and ↓ while riding"
 	)
 	_drivetrain.item_selected.connect(func(_index: int) -> void: _show_teeth())
+	_calorie_age.tooltip_text = tr(
+		"Optional age for heart-rate calories (18–100). Increases each New Year. 0 means not set."
+	)
+	_calorie_sex.add_item(tr("Not set"))
+	_calorie_sex.add_item(tr("Female"))
+	_calorie_sex.add_item(tr("Male"))
+	_calorie_sex.tooltip_text = tr(
+		"Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+	)
+	_calorie_effort.add_item(tr("No estimate"))
+	_calorie_effort.add_item(tr("Easy effort"))
+	_calorie_effort.add_item(tr("Moderate effort"))
+	_calorie_effort.add_item(tr("Hard effort"))
+	_calorie_effort.tooltip_text = tr(
+		"Rough estimate without power or usable heart rate. Counts time even without pedalling."
+	)
 	# Language names stay in their own language; only "System language" is translated.
 	_language.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	for language: Array in LANGUAGES:
@@ -89,11 +112,17 @@ func _init() -> void:
 		["Drivetrain", _drivetrain],
 		["Chainring", _chainring],
 		["Cog", _cog],
+		["Age", _calorie_age],
+		["Sex", _calorie_sex],
+		["Calories", _calorie_effort],
 	]:
 		# i18n-end
 		var caption: Label = Label.new()
 		caption.text = row[0]
 		var field: Control = row[1]
+		if field in [_calorie_age, _calorie_sex, _calorie_effort]:
+			caption.tooltip_text = field.tooltip_text
+			caption.mouse_filter = Control.MOUSE_FILTER_PASS
 		# The fields grow with the dialog rather than staying fixed in the middle (R53).
 		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		add_child(caption)
@@ -102,7 +131,9 @@ func _init() -> void:
 			_teeth_rows.append_array([caption, field])
 		elif field == _difficulty:
 			_difficulty_row.append_array([caption, field])
-		if field is SpinBox:
+		if field == _calorie_age:
+			_calorie_age.value_changed.connect(_on_calorie_age_changed)
+		elif field is SpinBox:
 			(field as SpinBox).value_changed.connect(func(_value: float) -> void: changed.emit())
 		else:
 			(field as OptionButton).item_selected.connect(func(_index: int) -> void: changed.emit())
@@ -111,6 +142,7 @@ func _init() -> void:
 ## Shows `profile` (shaped like `OrqwaApp.profile()`; a new rider's if it has no fields)
 ## without emitting `changed`.
 func edit(profile: Dictionary) -> void:
+	_calorie_age_year = profile.get("calorie_age_year", OrqwaApp.calendar_year())
 	for field: Array in [
 		[_rider_mass, "rider_mass_kg", 75.0],
 		[_bike_mass, "bike_mass_kg", 8.0],
@@ -120,9 +152,12 @@ func edit(profile: Dictionary) -> void:
 		[_rides_per_week, "rides_per_week", 0.0],
 		[_chainring, "chainring", 50.0],
 		[_cog, "cog", 14.0],
+		[_calorie_age, "calorie_age", 0.0],
 	]:
 		var spin: SpinBox = field[0]
 		var value: float = profile.get(field[1], field[2])
+		if spin == _calorie_age:
+			spin.max_value = maxf(100.0, value)
 		spin.set_value_no_signal(value)
 	_units.select(maxi(UNITS.find(profile.get("units", "metric")), 0))
 	_language.select(0)
@@ -133,6 +168,8 @@ func edit(profile: Dictionary) -> void:
 	_avatar.select(maxi(RiderAvatar.RIDERS.find(avatar), 0))
 	_map_style.select(maxi(MAP_STYLES.find(profile.get("map_style", "coloured")), 0))
 	_voice.select(maxi(VOICES.find(profile.get("voice", "casual")), 0))
+	_calorie_sex.select(maxi(CALORIE_SEXES.find(profile.get("calorie_sex", "")), 0))
+	_calorie_effort.select(maxi(CALORIE_EFFORTS.find(profile.get("calorie_effort", "")), 0))
 	var drivetrain: String = profile.get("drivetrain", "single_cog")
 	_drivetrain.select(maxi(DRIVETRAINS.find(drivetrain), 0))
 	_show_teeth()
@@ -155,11 +192,20 @@ func profile() -> Dictionary:
 		"drivetrain": DRIVETRAINS[_drivetrain.selected],
 		"chainring": _chainring.value,
 		"cog": _cog.value,
+		"calorie_age": roundi(_calorie_age.value),
+		"calorie_age_year": _calorie_age_year,
+		"calorie_sex": CALORIE_SEXES[_calorie_sex.selected],
+		"calorie_effort": CALORIE_EFFORTS[_calorie_effort.selected],
 	}
 
 
 func ftp() -> float:
 	return _ftp.value
+
+
+func _on_calorie_age_changed(_age: float) -> void:
+	_calorie_age_year = OrqwaApp.calendar_year()
+	changed.emit()
 
 
 func max_heart_rate() -> float:

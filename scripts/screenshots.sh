@@ -3,6 +3,7 @@
 # be checked without a GPU. Runs inside the dev container; images go to screenshots/.
 # SCREENSHOT_SETTINGS_ONLY=1 captures settings without generating a course or sample rides.
 # SCREENSHOT_GRAPHICS_ONLY=1 captures Graphics alone without preparing a kept world.
+# SCREENSHOT_CALORIES_ONLY=1 captures the calorie HUD, optional profile inputs and workout.
 # SCREENSHOT_RIDE_OPTIONS_ONLY=1 stops after course detail and the ride's settings.
 set -eu
 
@@ -15,6 +16,7 @@ if [ "${SCREENSHOT_ERRORS_ONLY:-}" != 1 ] && [ "${SCREENSHOT_SETTINGS_ONLY:-}" !
     && [ "${SCREENSHOT_GROUP_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GROUP_RIDERS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GRAPHICS_ONLY:-}" != 1 ] \
+    && [ "${SCREENSHOT_CALORIES_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_SUMMARY_ONLY:-}" != 1 ]; then
     cargo run -q --manifest-path "$root/core/Cargo.toml" -p orqwa-cli -- sample-rides --weeks 16
 fi

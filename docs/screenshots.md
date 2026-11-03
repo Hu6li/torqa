@@ -35,6 +35,14 @@ same licence; the footage is used only in documentation.
 | ![HUD editor](images/app/hud-editor.jpg) | ![Weekly training](images/app/analysis-weekly.png) |
 | ![Graphics settings](images/app/settings-graphics.png) | ![Progress over time](images/app/analysis-progress.png) |
 
+| Calories in the HUD | Optional calorie inputs |
+|---|---|
+| ![Calories and Work](images/calories/hud-en.png) | ![Age advances each New Year](images/calories/age-en.png) |
+
+| Full HUD in a small window | German |
+|---|---|
+| ![Both HUD columns scrolled at 1024 × 640](images/calories/hud-full-small-en.png) | ![Both HUD columns in German](images/calories/hud-full-small-de.png) |
+
 ## Cities and woodland
 
 The same woodland view on Low and Ultra graphics.

@@ -6,6 +6,7 @@
 //! the same engine runs headless in the CLI, in tests and behind the 3D world.
 
 pub mod analysis;
+pub mod calories;
 pub mod estimate;
 pub mod fitness;
 pub mod ftp_estimate;

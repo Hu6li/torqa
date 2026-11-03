@@ -457,3 +457,16 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R164 | Extends R45 and R89 (2026-11-01): **Asian, Nordic and French rides** select regional houses and castle models from bundled outlines, independently of climate. Asian rides use East Asian timber-and-plaster houses and tiered keeps with varied pastel, earth, green and blue colours. Nordic rides use painted-timber houses with pale trim, steep gables and stone keeps with four corner towers, in varied red, ochre, cream, green and blue. French rides in metropolitan France and Corsica use plastered village houses, five- and six-storey Haussmann-inspired city apartments, and château-inspired stone keeps, with varied pale limestone walls, zinc roofs and slate or terracotta roofs. Asian, Nordic and French mountain houses do not become Swiss chalets or Bernese farmhouses; tropical lowland houses retain their existing set. Castles still require mapped castle points. Region selection works offline, and fallback/distant shells retain regional colours and broad silhouettes. Models are scripted, exported and reviewed through the existing asset pipeline. |
+
+## Calories in the HUD
+
+| ID | Requirement |
+|---|---|
+| R197 | Extends R23 and R98 (2026-11-03, #475): a rider may choose **Calories**, in **kcal**, in their HUD before or during a ride, including the overlay, independently of metric/imperial units. **Work** remains mechanical work in kJ. Each recorded second uses measured power first, including zero watts, then heart rate with explicitly supplied optional age, sex and weight, then a rough effort the rider may opt into. Age and sex are independent of the avatar; no effort is assumed by default. Without enough information show `--`; tooltips name the source and disclose unestimated intervals. Pauses add no calories and changing sensors never counts a second twice. Rider settings remember the optional inputs and apply changes to the estimate so far. All calculation is in Rust, with no extra dependency or internet access. See ADR 0038. |
+| R198 | Refines R197 (2026-11-03, #475): **Age** advances automatically at the start of each local calendar year using an approximate birth year inferred when it is entered; no birthday is requested. The field stays **Age**, with the New Year behaviour explained on hover. Reopening settings or the app shows the current age, a live or paused ride follows the new year, and saving other settings does not reset the annual increase. An explicit age edit takes effect in the year it is entered; 0 clears it and an unset age stays unset. Previously saved fixed ages are carried over. |
+
+## Settings dialog bounds
+
+| ID | Requirement |
+|---|---|
+| R199 | Refines R94 (2026-11-03): settings dialogs, including their title and action buttons, stay inside the application window on their first opening, after switching tabs or reflowing content, and while the application window is resized. A temporary content minimum must not enlarge a dialog beyond those bounds. Tall content scrolls, including either column of the HUD editor with all 13 figures selected; available figures stay reachable with the mouse wheel. |
