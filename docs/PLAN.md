@@ -916,6 +916,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   current-selection content serving into the bounded lobby actors and update CLI callers
 - [x] Session/app integration: interpolated remote riders beside ghosts, map/profile markers
   and gaps; remote telemetry never substitutes for local measurements or supplies trainer commands
+- [x] Smooth and consistent group positions (R193): host-accepted local echoes and remote
+  samples share one buffered playback clock, bounded source-time histories and monotone
+  interpolation; road/map/profile/gaps agree while measurements, recording and assistance stay live
 - [x] Group Rides tab, third after Workouts, and in-ride panel: private-code admission, activity selection,
   automatic retained downloads, byte progress/retry, local preparation, trainer readiness,
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
