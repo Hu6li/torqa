@@ -164,6 +164,11 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 			tr("Trying for another %s. You keep your place in the group.")
 			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
 		)
+	# The countdown replaces readiness here so no new row shifts the course preview (R204).
+	if phase == "countdown" and not late and reconnect <= 0.0:
+		var countdown: float = status.get("countdown_s", 0.0)
+		text = tr("Starting in %s seconds…") % ceili(countdown)
+		good = false
 	_line.text = text
 	_line.visible = not text.is_empty()
 	_line.add_theme_color_override("font_color", UiTheme.SUCCESS if good else UiTheme.MUTED)

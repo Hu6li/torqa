@@ -602,6 +602,15 @@ first log line (`ORQWA 0.2.1 (main@0ad9af1)`), as Git reports them while buildin
 the container sees. CI sets them to a pull request's own branch and last commit, as it builds
 the merge with main; a release, built from its tag, names its commit alone.
 
+### Group lobby layout
+
+`group_ui_smoke.gd` includes the countdown layout regression (R204). It checks the map,
+elevation and workout preview bounds through the countdown for organizer and friend views,
+course-only, workout-only and combined activities, in English and German at 1600 × 900 and
+1024 × 640. Activity editing permission is separate from the organizer's preview layout:
+countdown disables the existing choices and rules, and replaces the readiness line. Review
+the [ready and countdown screenshots](screenshots.md#courses-setup-and-analysis) together.
+
 ### Riding audio
 
 For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.

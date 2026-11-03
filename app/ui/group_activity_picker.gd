@@ -32,6 +32,8 @@ var _apply: Button = Button.new()
 var _courses: Array = []
 var _workouts: Array = []
 var _editable: bool = true
+## Countdown locks the organizer's choices while keeping their preview columns in place.
+var _show_choices: bool = true
 var _active_course: String = ""
 var _active_workout: String = ""
 ## What the organizer is choosing, for a friend (#418): shown instead of the shared activity.
@@ -180,17 +182,21 @@ func refresh() -> void:
 	_preview()
 
 
-## Locks a received selection; host drafts remain untouched by polling.
-func show_selection(editable: bool, course_path: String, workout_id: String) -> void:
+## Friends see names; the organizer keeps their pickers, disabled while `locked`.
+## Unlocked organizer drafts remain untouched by polling.
+func show_selection(
+	organizer: bool, course_path: String, workout_id: String, locked: bool = false
+) -> void:
 	_active_course = course_path
 	_active_workout = workout_id
-	if editable != _editable or not editable:
+	if organizer != _show_choices or not organizer or locked:
 		_select(_course, course_path)
 		_select(_workout, workout_id)
-	_editable = editable
-	_course.disabled = not editable
-	_workout.disabled = not editable
-	_apply.visible = editable
+	_show_choices = organizer
+	_editable = organizer and not locked
+	_course.disabled = not _editable
+	_workout.disabled = not _editable
+	_apply.visible = organizer
 	_preview()
 
 
@@ -234,22 +240,22 @@ func _preview() -> void:
 	_workout_caption.text = tr("Workout preview") if previewing else tr("Workout")
 	# Friends see names, never the organizer's pickers (R196).
 	var chosen: bool = not _active_course.is_empty() or not _active_workout.is_empty()
-	var waiting: bool = not _editable and not previewing and not chosen
+	var waiting: bool = not _show_choices and not previewing and not chosen
 	_waiting.visible = waiting
 	_waiting_text.text = tr("%s is choosing the ride") % _organizer
 	_previews.visible = not waiting
 	options.visible = not waiting
 	_hint.text = tr("Chosen by %s") % _organizer
-	_hint.visible = not _editable and not previewing and chosen
-	_course.visible = _editable and not previewing
-	_workout.visible = _editable and not previewing
+	_hint.visible = not _show_choices and not previewing and chosen
+	_course.visible = _show_choices and not previewing
+	_workout.visible = _show_choices and not previewing
 	_course_preview.visible = (
-		(_editable and not previewing)
+		(_show_choices and not previewing)
 		or (previewing and not shown_course.is_empty())
 		or (not previewing and not _active_course.is_empty())
 	)
 	_workout_preview.visible = (
-		(_editable and not previewing)
+		(_show_choices and not previewing)
 		or (previewing and not shown_workout.is_empty())
 		or (not previewing and not _active_workout.is_empty())
 	)
@@ -261,7 +267,7 @@ func _preview() -> void:
 	_figures.hide()
 	var entry: Dictionary = shown_course if previewing else _library_course()
 	_course_name.text = entry.get("name", "")
-	_course_name.visible = not _editable or previewing
+	_course_name.visible = not _show_choices or previewing
 	if not entry.is_empty():
 		var track: PackedVector2Array = entry.get("track", PackedVector2Array())
 		var profile: PackedVector2Array = entry.get("profile", PackedVector2Array())
@@ -281,7 +287,7 @@ func _preview() -> void:
 			_figures.add_child(label)
 	if (
 		chosen
-		and not _editable
+		and not _show_choices
 		and not previewing
 		and entry.is_empty()
 		and _library_workout().is_empty()
@@ -294,7 +300,7 @@ func _preview() -> void:
 	_duration.hide()
 	var plan: Dictionary = shown_workout if previewing else _library_workout()
 	_workout_name.text = plan.get("name", "")
-	_workout_name.visible = not _editable or previewing
+	_workout_name.visible = not _show_choices or previewing
 	if not plan.is_empty():
 		var steps: Array = plan["steps"]
 		var ftp: float = _orqwa.profile().get("ftp_w", 200.0)
@@ -307,7 +313,8 @@ func _preview() -> void:
 		_description.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		_description.visible = not _description.text.is_empty()
 	_apply.disabled = (
-		(course().is_empty() and workout().is_empty())
+		not _editable
+		or (course().is_empty() and workout().is_empty())
 		or (course() == _active_course and workout() == _active_workout)
 	)
 	_apply.text = (

@@ -25,6 +25,12 @@ same licence; the footage is used only in documentation.
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)
 
+The group countdown locks choices while keeping the course preview in place.
+
+| Ready to start | Counting down |
+|---|---|
+| ![Group ready to start](images/groups/countdown-ready-en.png) | ![Course preview during countdown](images/groups/countdown-en.png) |
+
 | Before riding | After riding |
 |---|---|
 | | ![Quick finish summary](images/app/summary-quick.png) |
