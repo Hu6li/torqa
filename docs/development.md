@@ -65,6 +65,19 @@ The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.m
 gallery of every model); Blender runs in its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
 
+Application subwindows are bounded automatically by the `DialogWindows` autoload and
+`WindowBounds` (R202, #485). A new `Window` subclass needs no special base class or popup
+method: its size and position use the viewport that actually embeds it, including when opened
+inside another dialog. Oversized bodies receive scrolling while `AcceptDialog` keeps its action
+row fixed; existing scrolling bodies are retained. Prefer responsive layouts and explicit
+scrolling bodies for their intended presentation; `UiScale.popup(window, preferred_size)` still
+sets a comfortable initial size. The automatic guard also covers direct `popup_centered()`,
+`popup()` and `show()` calls, later content changes and dragging/resizing.
+`godot --headless --path app -s res://tests/dialog_smoke.gd` reproduces the microphone-permission
+and solo fallback-organizer failures and checks the general rule on standard window classes in
+English/German at 1× and 2× scale. For display validation, run it with `xvfb-run`, the Dummy audio
+driver and `DIALOG_SCREENSHOT_DIR` set to an existing output directory.
+
 Worlds can be kept across updates (R101, [ADR 0025](adr/0025-kept-worlds.md)): a change that
 makes courses come out differently raises `orqwa_world::GENERATOR`, so their pages offer to
 regenerate them; one that kept worlds could no longer be read or drawn with raises

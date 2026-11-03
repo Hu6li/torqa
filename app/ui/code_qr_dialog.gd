@@ -21,7 +21,7 @@ func _ready() -> void:
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.custom_minimum_size.x = 420
 	box.add_child(_hint)
-	add_child(box)
+	add_child(UiTheme.scrolling(box))
 
 
 ## Shows `code` (as `OrqwaApp.qr_code()` gives it) titled `heading`, with `hint` below it.
@@ -32,5 +32,4 @@ func show_code(heading: String, code: Dictionary, hint: String) -> void:
 	var pixels: int = clampi(floori(MAX_SIDE / maxi(side, 1)), 3, QrImage.MODULE_PIXELS)
 	_code.texture = QrImage.texture(code, pixels)
 	_hint.text = hint
-	reset_size()
-	popup_centered()
+	UiScale.popup(self, Vector2i(520, 560))

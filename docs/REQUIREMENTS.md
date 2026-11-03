@@ -481,3 +481,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R200 | Extends R25 (2026-11-03, #477): the main window's **mouse pointer hides after three seconds without mouse activity**, in a window and full screen. Moving the mouse or clicking shows it immediately, including over controls, without consuming the input. Keyboard and remote controls do not reveal it, nor do motion events without movement. A held mouse button keeps it visible. Leaving the window, switching focus to a dialog or another app, and closing the view restore the pointer. *Scope refined by R201.* |
 | R201 | Refines R200 (2026-11-03, #477): idle pointer hiding applies **only during a ride or workout showing a 3D world or video**. The start page, course pages, history, summaries, workouts without a course and the HUD-only overlay keep the pointer visible. Leaving the course view restores it immediately; entering a 3D or video ride starts a fresh three-second delay. |
+
+## All application subwindows stay inside the app
+
+| ID | Requirement |
+|---|---|
+| R202 | Extends R199 (2026-11-03, #485): all application subwindows inherit containment automatically, including current and future dialogs, confirmation messages, popup panels, menus and embedded file choosers, regardless of whether they open with a sizing helper, a standard popup method or visibility alone. Their decorated frame and dialog action row stay inside the application window after opening, reopening, dragging, content changes and app resizing, including nested dialogs and Retina scaling. Oversized bodies remain reachable by scrolling; a transient wrapped-text minimum cannot force a larger window. The microphone-permission guidance and organizer/fallback picker are explicit regressions, including a solo group ride. |
