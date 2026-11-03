@@ -61,37 +61,36 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 <table>
   <tr>
     <td width="50%">🚴 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#devices">Smart trainers</a></b><br>
-      Bluetooth FTMS and Tacx FE-C (SIM, ERG, resistance) plus heart-rate straps; reconnects after dropouts</td>
+      Bluetooth FTMS and Tacx FE-C trainers, heart-rate straps</td>
     <td width="50%">🗺️ <b><a href="https://github.com/ORQWA/ORQWA/wiki/Courses#import-a-course">Any GPX in 3D</a></b><br>
-      Real terrain and OpenStreetMap, with seasons, weather and time of day. Online once to import, offline ever after</td>
+      A world from real terrain and OpenStreetMap, with seasons, weather and time of day</td>
   </tr>
   <tr>
     <td colspan="2">👥 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Group-rides">Group rides</a></b><br>
-      Up to eight riders, peer to peer: no server in between, no account, just an invite in your chat. Talk, draft and stick together</td>
+      Up to eight riders with voice chat, peer to peer with no server in between</td>
   </tr>
   <tr>
     <td>🎬 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Video-courses">Video courses</a></b><br>
-      GoPro, Incyclist, Tacx RLV or any video matched to a GPX; it plays at your speed</td>
+      GoPro, Incyclist, Tacx RLV or any video with a GPX, played at your speed</td>
     <td>💪 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Workouts">Workouts</a></b><br>
-      Power or heart-rate targets, ZWO / ERG / MRC / FIT, an editor and three FTP tests</td>
+      ZWO, ERG, MRC and FIT, power or heart-rate targets, an editor and FTP tests</td>
   </tr>
   <tr>
     <td>⚙️ <b><a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#virtual-gears">Virtual gears</a></b><br>
-      24 gears on one cog: shift from the keyboard, Di2 hoods, a Zwift Click or <a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#remote">your phone</a></td>
+      24 gears, shifted from the keyboard, Shimano Di2, a Zwift Click or <a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#remote">your phone</a></td>
     <td>🪟 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Overlay">Overlay</a></b><br>
-      Just your HUD, on top of a video or any other window</td>
+      Your HUD on top of any other window</td>
   </tr>
   <tr>
     <td>👻 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Ghosts-and-pacers">Ghosts &amp; pacers</a></b><br>
-      Race your best ride, a friend's activity or a pacer at your FTP</td>
+      Your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Ride-history">History &amp; records</a></b><br>
-      Power curve, fitness and records per course and climb; <a href="https://github.com/ORQWA/ORQWA/wiki/Uploading-rides">upload to intervals.icu and Strava</a></td>
+      Power curve, fitness and records per course and climb, <a href="https://github.com/ORQWA/ORQWA/wiki/Uploading-rides">upload to intervals.icu and Strava</a></td>
   </tr>
 </table>
 
-📴 Ride offline · ⚖️ realistic physics · 🎛️ a HUD your way ·
-🔊 [wind and bike sound](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#wind-and-bicycle-sound) ·
-🎉 [cheers for climbs and records](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#moments) · 🌍 English and German ·
+📴 Works offline · ⚖️ realistic physics · 🎛️ customizable HUD ·
+🔊 [wind and bike sound](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#wind-and-bicycle-sound) · 🌍 English and German ·
 🖥️ macOS, Windows, Linux and Android tablets
 
 **Planned:** hardware video decoding, the overlay on Windows and Linux — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
