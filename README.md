@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/ORQWA/ORQWA/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/ORQWA/ORQWA/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ORQWA/ORQWA" alt="License: GPL-3.0"></a>
-  <a href="docs/development.md#builds"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platforms: macOS, Windows, Linux"></a>
+  <a href="docs/development.md#builds"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android-blue" alt="Platforms: macOS, Windows, Linux, Android"></a>
   <img src="https://img.shields.io/badge/Rust-000000?logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/Godot-4-478CBF?logo=godotengine&logoColor=white" alt="Godot 4">
 </p>
@@ -62,7 +62,11 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
     <td width="50%">🚴 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#devices">Smart trainers</a></b><br>
       Bluetooth FTMS and Tacx FE-C over Bluetooth (SIM, ERG, resistance), plus heart-rate straps; your devices reconnect at start and after dropouts</td>
     <td width="50%">🗺️ <b><a href="https://github.com/ORQWA/ORQWA/wiki/Courses#import-a-course">Any GPX in 3D</a></b><br>
-      A stylized world from real terrain and OpenStreetMap, with weather and time of day. Network is only needed once on import, then it works completely offline.</td>
+      A world built from real terrain and OpenStreetMap, with seasons, weather and time of day. Network is only needed once on import, then it works completely offline.</td>
+  </tr>
+  <tr>
+    <td colspan="2">👥 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Group-rides">Group rides</a></b><br>
+      Ride a 3D course or a workout with up to seven friends, peer to peer: no server in between and no account, just an invitation you send by chat. Optional voice chat, drafting and keeping the group together</td>
   </tr>
   <tr>
     <td>🎬 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Video-courses">Video courses</a></b><br>
@@ -86,7 +90,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 </table>
 
 📴 Ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
-🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows and Linux
+🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows, Linux and Android tablets
 
 [Wind and bicycle sound](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#wind-and-bicycle-sound)
 follows your speed, pedaling and coasting in 3D, with independent volume controls.
@@ -104,30 +108,22 @@ remain available separately after notifications disappear.
 The [usage wiki](https://github.com/ORQWA/ORQWA/wiki) covers riding and every feature. Start
 with [Getting started](https://github.com/ORQWA/ORQWA/wiki/Getting-started); testers can ride a
 trainer without the app with the [command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool).
-The **[Group Rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides)** tab creates or joins
-private eight-rider lobbies. A popup explains the connection choices before creating a ride;
-friends joining connect as the organizer chose.
-The host selects a 3D course or structured workout, which friends see a preview of while the
-host chooses; participants receive it directly once shared, and everyone starts together once
-ready. Friends can also join later,
-prepare independently and enter near the organizer at the current workout step; their
-recording starts at entry. The organizer coordinates workout pause/resume and skips;
-intensity stays personal, and each rider can pause locally for safety. Hand organizer duties to a
-prepared friend who accepts, without restarting anyone's ride. See friends on the road, map
-and profile, with distance gaps beside the ride. The organizer chooses **Drafting** and
-**Keep together** before starting; assisted rides count for training and measured-power records,
-but set no course or climb speed records. Optional voice asks each time whether you listen on
-headphones or speakers and lets you check your sound first; the microphone opens only when you
-choose, and no audio is recorded. The [CLI workflow](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool#ride-with-others)
-continues to support rides using a shared local GPX.
+[Group rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides) connect friends directly
+to the organizer's computer, so the organizer needs a connection others can reach (not behind
+carrier-grade NAT). The organizer picks the course or workout and everyone gets a copy; friends
+can join late, and the ride goes on if the organizer hands over or drops out. Rides with
+drafting or keep together count for training and power records, not for course or climb speed
+records. Voice opens your microphone only when you choose and records nothing. The
+[command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool#ride-with-others)
+rides together on a shared GPX.
 
 [Syncing between devices](https://github.com/ORQWA/ORQWA/wiki/Syncing-between-devices) explains
 how to share ride history, courses and rider settings through a file-sync client such as Nextcloud.
 
 ## Download
 
-Tagged builds for macOS (Apple silicon), Windows and Linux are published on the
-[Releases page](https://github.com/ORQWA/ORQWA/releases), with the app and CLI
+Tagged builds for macOS (Apple silicon), Windows, Linux and Android tablets are published on
+the [Releases page](https://github.com/ORQWA/ORQWA/releases), with the app and CLI
 archives attached. Between releases, download artifacts from the
 [CI runs on `main`](https://github.com/ORQWA/ORQWA/actions/workflows/ci.yml?query=branch%3Amain)
 while signed in to GitHub. [docs/development.md](docs/development.md#builds) explains the files.
