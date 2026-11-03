@@ -431,6 +431,17 @@ the rider checks their sound first.
   was, as every other automatic restart does (R188), instead of always off: otherwise playing
   the test sound in voice would silently mute the rider.
 
+- **Following the output.** A separate Headphones | Speakers switch would be forgotten when
+  riders change headphones, leaving the echo gate wrong for the new device. CPAL already
+  reroutes a stream built on the default output when the system's default moves and reports
+  `DeviceChanged`; the backend now takes that as the output having moved, reads the new
+  default's name and tells it, and tells the name of whatever output it opens or rebuilds.
+  The app remembers which output the rider last answered for (the next one voice opens after
+  joining or choosing devices, else the current one when they answer) and asks again,
+  `ask_listening`, while voice plays on another. Only names cross into the snapshot.
+
 Tests open a check with a one-second limit to prove it closes itself, join with the
 microphone on and see capture, level and speech at once, and restore voice after checks with
-the microphone on when it was on and off when the rider had muted it.
+the microphone on when it was on and off when the rider had muted it. A backend that moves its
+output is asked about again until the rider answers, but not after choosing devices right
+after being asked; an output rerouted by CPAL marks the move without invalidating the stream.

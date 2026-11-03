@@ -2,8 +2,9 @@ class_name GroupVoiceDialog
 extends AcceptDialog
 ## The guided window for voice (R194). Joining asks every time how the rider listens, as
 ## headphones let everyone talk at once while speakers need the microphone held while a friend
-## speaks, then lets them check their sound before anything is sent. In voice, its second page
-## changes the devices. Nothing is remembered: every join asks again.
+## speaks, then lets them check their sound before anything is sent. In voice, it changes the
+## devices the same way, asking first, so the answer always fits the device chosen. Nothing is
+## remembered: every join asks again.
 
 ## Says whether the microphone may open, asking the system first (`GroupVoiceControls`).
 var allowed: Callable = func() -> bool: return true
@@ -63,16 +64,14 @@ func ask_join() -> void:
 	popup_centered()
 
 
-## Opens the sound check alone, to change devices while in voice.
+## Opens the window to change devices while in voice, asking first how the rider listens.
 func ask_devices() -> void:
 	_joining = false
 	title = tr("Audio devices")
 	ok_button_text = tr("Done")
-	var speakers: bool = _status.get("echo_prevention", true)
-	_output_caption.text = tr("Speakers") if speakers else tr("Headphones")
 	var microphone: bool = _status.get("microphone", false)
 	_show_microphone(microphone)
-	_show_page(true)
+	_show_page(false)
 	popup_centered()
 
 
@@ -227,7 +226,6 @@ func _show_page(check: bool) -> void:
 	_check.visible = check
 	get_ok_button().visible = check
 	# Choosing is the first page's only way on; its button closes the window instead.
-	_back.visible = _joining or not check
 	_back.text = tr("Back") if check else tr("Cancel")
 	reset_size()
 
@@ -242,12 +240,13 @@ func _listen_with(speakers: bool) -> void:
 func _on_action(action: StringName) -> void:
 	if action != &"back":
 		return
-	if _check.visible and _joining:
+	if not _check.visible:
+		hide()
+		return
+	if _joining:
 		_show_microphone(false)
 		_meter(false)
-		_show_page(false)
-	else:
-		hide()
+	_show_page(false)
 
 
 func _confirm() -> void:

@@ -1355,7 +1355,7 @@ msgstr ""
 msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
 msgstr ""
 
-#: app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
+#: app/ui/group_listen_card.gd app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
 msgid "Everyone talks freely"
 msgstr ""
 
@@ -1683,7 +1683,7 @@ msgstr ""
 msgid "Hazy"
 msgstr ""
 
-#: app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
+#: app/ui/group_listen_card.gd app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
 msgid "Headphones"
 msgstr ""
 
@@ -1759,7 +1759,7 @@ msgstr ""
 msgid "How ORQWA tells you of climbs topped, milestones and records during the ride"
 msgstr ""
 
-#: app/ui/group_voice_dialog.gd
+#: app/ui/group_listen_card.gd app/ui/group_voice_dialog.gd
 msgid "How are you listening?"
 msgstr ""
 
@@ -2431,7 +2431,7 @@ msgstr ""
 msgid "On its own (HUD only)"
 msgstr ""
 
-#: app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
+#: app/ui/group_listen_card.gd app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
 msgid "One at a time"
 msgstr ""
 
@@ -3107,7 +3107,7 @@ msgstr ""
 msgid "Sound"
 msgstr ""
 
-#: app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
+#: app/ui/group_listen_card.gd app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd
 msgid "Speakers"
 msgstr ""
 
@@ -3669,6 +3669,14 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Voice is unavailable. Check your audio devices and microphone permission."
+msgstr ""
+
+#: app/ui/group_listen_card.gd
+msgid "Voice now plays on %s"
+msgstr ""
+
+#: app/ui/group_voice_controls.gd
+msgid "Voice now plays on %s. How are you listening?"
 msgstr ""
 
 #: app/ui/group_voice_controls.gd app/ui/group_voice_dialog.gd

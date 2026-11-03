@@ -75,6 +75,8 @@ struct Controls {
     speaking: AtomicU8,
     /// The open microphone's latest level, as [`meter`] gives it; zero while it is closed.
     level: AtomicU32,
+    /// The name of the output speech plays on, empty until the backend tells it.
+    output: std::sync::Mutex<String>,
 }
 const _: () = assert!(MAX_RIDERS <= 8, "one bit per rider in Controls::speaking");
 
@@ -125,6 +127,7 @@ impl VoiceChat {
             echo_prevention: AtomicBool::new(false),
             speaking: AtomicU8::new(0),
             level: AtomicU32::new(0.0_f32.to_bits()),
+            output: std::sync::Mutex::new(String::new()),
         });
         let (ready, receive) = oneshot::channel();
         let (send, events) = mpsc::channel(8);
@@ -244,6 +247,16 @@ impl VoiceChat {
     pub fn microphone_level(&self) -> f32 {
         f32::from_bits(self.controls.level.load(Ordering::Relaxed))
     }
+    /// The name of the output friends are heard on, e.g. `AirPods Pro`; it follows the system
+    /// when the default output moves to another device. Empty while unknown.
+    #[must_use]
+    pub fn output_name(&self) -> String {
+        self.controls
+            .output
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
     /// Waits for the next bounded local status event.
     pub async fn next(&mut self) -> Option<VoiceEvent> {
         self.events.recv().await
@@ -327,6 +340,12 @@ fn run(
             speaker_gate.restart();
             own = Speaking::default();
             controls.level.store(0.0_f32.to_bits(), Ordering::Relaxed);
+        }
+        if let Some(name) = audio.output_changed() {
+            *controls
+                .output
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = name;
         }
         let output = (port.deafened(), controls.flush.load(Ordering::Relaxed));
         if output != playback {

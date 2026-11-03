@@ -2707,6 +2707,12 @@ msgstr "Neue Antwort"
 msgid "Join voice chat"
 msgstr "Am Sprachchat teilnehmen"
 
+msgid "Voice now plays on %s"
+msgstr "Der Sprachchat läuft jetzt über %s"
+
+msgid "Voice now plays on %s. How are you listening?"
+msgstr "Der Sprachchat läuft jetzt über %s. Womit hörst du zu?"
+
 msgid "Audio devices"
 msgstr "Audiogeräte"
 

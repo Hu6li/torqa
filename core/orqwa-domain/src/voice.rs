@@ -73,6 +73,13 @@ pub trait VoiceAudio {
     fn recover(&mut self) -> Result<bool, VoiceDeviceError> {
         Ok(false)
     }
+    /// The name of the output speech plays on when it is new since the last call: once it
+    /// opens, and again when another device takes over, e.g. headphones plugged in while the
+    /// system's default output follows them. `None` while unchanged or if the backend cannot
+    /// tell.
+    fn output_changed(&mut self) -> Option<String> {
+        None
+    }
     /// Takes the diagnostic for an asynchronous device failure. Backends without a more
     /// specific cause still report the operation without exposing microphone samples.
     fn failure(&mut self) -> VoiceDeviceError {

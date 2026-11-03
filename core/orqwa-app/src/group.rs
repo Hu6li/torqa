@@ -263,6 +263,12 @@ pub struct Snapshot {
     pub voice_volume: f32,
     /// Speaker mode suppresses outgoing speech during remote playback and its short echo tail.
     pub echo_prevention: bool,
+    /// The output friends are heard on, by name; it changes when the system's default output
+    /// moves to another device, and riders are asked again how they listen (R194).
+    pub output_name: String,
+    /// Voice plays on another output than the one the rider said how they listen on: ask
+    /// again, as the echo setting may no longer suit it (R194).
+    pub ask_listening: bool,
     /// An explicitly requested, temporary local microphone level test is starting or running.
     pub microphone_test: bool,
     /// Finite microphone level from zero to one, of the check or else of the open microphone
@@ -346,6 +352,8 @@ impl Default for Snapshot {
             output_device: String::new(),
             voice_volume: 0.6,
             echo_prevention: true,
+            output_name: String::new(),
+            ask_listening: false,
             microphone_test: false,
             microphone_level: 0.0,
             speaker_test: false,

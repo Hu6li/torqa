@@ -102,9 +102,17 @@ struct Gates {
     revision: AtomicU32,
     invalidated: AtomicU8,
     failure: Mutex<Option<VoiceDeviceError>>,
+    /// The system moved a default output elsewhere, e.g. to headphones plugged in; CPAL
+    /// rerouted the stream itself.
+    moved: AtomicBool,
 }
 impl Gates {
     fn fail(&self, error: cpal::Error, stream: u8) {
+        if error.kind() == cpal::ErrorKind::DeviceChanged && stream == OUTPUT {
+            // Nothing to rebuild; only the rider may now listen differently (R194).
+            self.moved.store(true, Ordering::Release);
+            return;
+        }
         // CPAL recovers buffer underruns/overruns itself. A dropped audio buffer is not
         // a lost device and must not tear down the whole conversation during a slow frame.
         if matches!(
@@ -199,8 +207,19 @@ pub struct NativeAudio {
     capture_receive: Receiver<CapturedVoice>,
     speaker: Speaker,
     recovery: RecoveryBudget,
+    /// The output's name, and whether it was told since it last changed.
+    output_name: Option<String>,
+    output_told: bool,
 }
 impl NativeAudio {
+    /// Notes `name` as the output's, to be told once if it is another device.
+    fn tell_output(&mut self, name: String) {
+        if self.output_name.as_ref() != Some(&name) {
+            self.output_name = Some(name);
+            self.output_told = false;
+        }
+    }
+
     pub(crate) fn capture_only(options: DeviceOptions, stop: Arc<AtomicBool>) -> Self {
         let gates = Arc::new(Gates {
             stop,
@@ -209,6 +228,7 @@ impl NativeAudio {
             revision: AtomicU32::new(0),
             invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
+            moved: AtomicBool::new(false),
         });
         let (capture_send, capture_receive) = sync_channel(4);
         Self {
@@ -223,6 +243,8 @@ impl NativeAudio {
                 since: Instant::now(),
                 attempts: 0,
             },
+            output_name: None,
+            output_told: true,
         }
     }
     /// Opens output only. Capture is constructed lazily by [`VoiceAudio::microphone`].
@@ -237,8 +259,9 @@ impl NativeAudio {
             revision: AtomicU32::new(0),
             invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
+            moved: AtomicBool::new(false),
         });
-        let (output, speaker) = speakers(&options, &gates)?;
+        let (output, speaker, name) = speakers(&options, &gates)?;
         let (capture_send, capture_receive) = sync_channel(4);
         Ok(Self {
             options,
@@ -252,16 +275,20 @@ impl NativeAudio {
                 since: Instant::now(),
                 attempts: 0,
             },
+            output_name: Some(name),
+            output_told: false,
         })
     }
 }
 
+/// Opens the output with its speaker queue, and says the device's name.
 fn speakers(
     options: &DeviceOptions,
     gates: &Arc<Gates>,
-) -> Result<(Stream, Speaker), VoiceDeviceError> {
+) -> Result<(Stream, Speaker, String), VoiceDeviceError> {
     let host = cpal::default_host();
     let (device, supported) = configured(&host, options.output.as_deref(), false)?;
+    let name = device.to_string();
     let format = supported.sample_format();
     let config = configuration(&supported);
     validate(&config)?;
@@ -306,6 +333,7 @@ fn speakers(
             largest,
             rate,
         },
+        name,
     ))
 }
 
@@ -547,11 +575,25 @@ impl VoiceAudio for NativeAudio {
             self.microphone(Some(activation))?;
         }
         if output_open {
-            let (output, speaker) = speakers(&self.options, &self.gates)?;
+            let (output, speaker, name) = speakers(&self.options, &self.gates)?;
             self.output = Some(output);
             self.speaker = speaker;
+            self.tell_output(name);
         }
         Ok(true)
+    }
+    fn output_changed(&mut self) -> Option<String> {
+        if self.gates.moved.swap(false, Ordering::AcqRel)
+            && self.options.output.is_none()
+            && let Some(device) = cpal::default_host().default_output_device()
+        {
+            self.tell_output(device.to_string());
+        }
+        if self.output_told {
+            return None;
+        }
+        self.output_told = true;
+        self.output_name.clone()
     }
     fn failure(&mut self) -> VoiceDeviceError {
         self.gates
@@ -741,6 +783,7 @@ mod tests {
             revision: AtomicU32::new(0),
             invalidated: AtomicU8::new(0),
             failure: Mutex::new(None),
+            moved: AtomicBool::new(false),
         };
         gates.fail(
             cpal::Error::with_message(cpal::ErrorKind::Xrun, "buffer underrun"),
@@ -753,6 +796,15 @@ mod tests {
             gates.fail(cpal::Error::new(kind), INPUT);
         }
         assert_eq!(gates.invalidated.load(Ordering::Acquire), 0);
+        assert!(
+            !gates.moved.load(Ordering::Acquire),
+            "a microphone moving is no new output"
+        );
+        // The system rerouted the default output, e.g. to headphones: nothing to rebuild,
+        // but the rider is asked again how they listen (R194).
+        gates.fail(cpal::Error::new(cpal::ErrorKind::DeviceChanged), OUTPUT);
+        assert_eq!(gates.invalidated.load(Ordering::Acquire), 0);
+        assert!(gates.moved.load(Ordering::Acquire));
         gates.fail(
             cpal::Error::with_message(
                 cpal::ErrorKind::StreamInvalidated,

@@ -383,3 +383,120 @@ async fn joining_with_the_microphone_on_sends_at_once_and_shows_its_level() {
     task.await.unwrap();
     tokio::fs::remove_dir_all(directory).await.unwrap();
 }
+
+/// Audio whose output the system moves, as when headphones are plugged in.
+struct Rerouted {
+    next: Arc<std::sync::Mutex<Option<String>>>,
+}
+impl VoiceAudio for Rerouted {
+    fn microphone(&mut self, _activation: Option<u32>) -> Result<(), VoiceDeviceError> {
+        Ok(())
+    }
+    fn capture(&mut self) -> Option<CapturedVoice> {
+        None
+    }
+    fn play(&mut self, _samples: PcmFrame) {}
+    fn deafen(&mut self, _deafened: bool) {}
+    fn healthy(&self) -> bool {
+        true
+    }
+    fn output_changed(&mut self) -> Option<String> {
+        self.next
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+}
+
+#[tokio::test]
+async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learns_of_it() {
+    let directory = std::env::temp_dir().join(format!(
+        "orqwa-rerouted-{:x?}",
+        orqwa_net::code::RideId::generate().unwrap().0
+    ));
+    let next = Arc::new(std::sync::Mutex::new(Some("Laptop speakers".to_owned())));
+    let output = next.clone();
+    let mut options = ConnectOptions::default();
+    options.gather.policy.loopback = true;
+    options.gather.stun_servers.clear();
+    let choices = watch::channel(None);
+    let request = Request {
+        audio: AudioBackend {
+            factory: Some(Arc::new(move |_| {
+                Ok(Box::new(Rerouted {
+                    next: output.clone(),
+                }))
+            })),
+        },
+        voice_controls: Arc::default(),
+        invite: None,
+        rider: Rider {
+            name: "Listening".into(),
+            mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        },
+        options,
+        data: directory.join("data"),
+        temporary: directory.join("temporary"),
+        choices: choices.1,
+    };
+    let (commands, receive) = mpsc::channel(8);
+    let (send, mut updates) = watch::channel(Snapshot::default());
+    let (_local, local) = watch::channel(None);
+    let task = tokio::spawn(run(request, receive, send, local));
+    wait(&mut updates, |status| status.phase == Phase::Waiting).await;
+    assert!(
+        updates.borrow().output_name.is_empty(),
+        "no output before voice"
+    );
+    commands
+        .send(Command::Voice(0, true, false, false, 0.6))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        status.voice && status.output_name == "Laptop speakers"
+    })
+    .await;
+    assert!(
+        !updates.borrow().ask_listening,
+        "joining answered for the first output"
+    );
+    // Headphones plugged in: the system's default output moves, and so does voice; the rider
+    // is asked again how they listen (R194).
+    *next.lock().unwrap() = Some("AirPods Pro".to_owned());
+    wait(&mut updates, |status| {
+        status.output_name == "AirPods Pro" && status.ask_listening
+    })
+    .await;
+    commands.send(Command::EchoPrevention(false)).await.unwrap();
+    wait(&mut updates, |status| !status.ask_listening).await;
+    // Devices chosen right after being asked need no second question.
+    commands
+        .send(Command::ChooseDevices(
+            0,
+            String::new(),
+            "desk".into(),
+            false,
+        ))
+        .await
+        .unwrap();
+    *next.lock().unwrap() = Some("Desk speakers".to_owned());
+    wait(&mut updates, |status| {
+        status.voice && status.output_name == "Desk speakers"
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!updates.borrow().ask_listening);
+    commands
+        .send(Command::Voice(0, false, false, false, 0.6))
+        .await
+        .unwrap();
+    wait(&mut updates, |status| {
+        !status.voice && status.output_name.is_empty()
+    })
+    .await;
+    drop(commands);
+    task.await.unwrap();
+    tokio::fs::remove_dir_all(directory).await.unwrap();
+}
