@@ -24,18 +24,24 @@ func _init() -> void:
 	var hud_heading: Label = UiTheme.caption(tr("HUD — drop figures where you want them"))
 	hud_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud_column.add_child(hud_heading)
+	var preview_content: VBoxContainer = VBoxContainer.new()
+	preview_content.add_theme_constant_override("separation", 8)
 	var frame: PanelContainer = PanelContainer.new()
 	frame.custom_minimum_size = Vector2(280, 0)
 	frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_preview.editable = true
 	_preview.drop_requested.connect(place)
 	frame.add_child(_preview)
-	hud_column.add_child(frame)
+	preview_content.add_child(frame)
 	_hint.add_theme_color_override("font_color", UiTheme.MUTED)
 	_hint.add_theme_font_size_override("font_size", 12)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.custom_minimum_size = Vector2(280, 0)
-	hud_column.add_child(_hint)
+	preview_content.add_child(_hint)
+	var preview_scroll: ScrollContainer = UiTheme.scrolling(preview_content)
+	preview_scroll.custom_minimum_size = Vector2(280, 260)
+	preview_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hud_column.add_child(preview_scroll)
 	add_child(hud_column)
 
 	var list_column: VBoxContainer = VBoxContainer.new()

@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-11-03
-- Requirements: R193–R194; issue #475
+- Requirements: R197–R198; issue #475
 
 ## Context
 
@@ -93,3 +93,5 @@ tests cover old files, unknown optional choices, independent avatars and round t
 checks cover the short caption, kcal in either distance unit system, unavailable values,
 tooltips, HUD selection and profile inputs across the Rust boundary. Screenshot fixtures
 show the tile and its setup in English and German without generating scenery.
+Input checks exercise scrolling over available figures and their + buttons, reaching and
+adding the last figure with the wheel, and swiping without accidentally adding a figure.

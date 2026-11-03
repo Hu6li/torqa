@@ -27,6 +27,8 @@ static func capture(main: Control, out: String) -> void:
 		tabs.current_tab = hud.get_index()
 		await tree.create_timer(0.4).timeout
 		_save(main, out, "hud-" + locale)
+		await _full_hud(main, hud, out, locale)
+		hud.edit(layout, false)
 		tabs.current_tab = 0
 		await tree.process_frame
 		var scroll: ScrollContainer = tabs.get_child(0)
@@ -53,6 +55,39 @@ static func capture(main: Control, out: String) -> void:
 		await tree.create_timer(0.3).timeout
 		_save(main, out, "ride-" + locale)
 	app.finish_ride()
+
+
+static func _full_hud(main: Control, hud: HudEditor, out: String, locale: String) -> void:
+	(
+		hud
+		. edit(
+			PackedStringArray(
+				[
+					"power",
+					"speed",
+					"distance",
+					"elevation_gain",
+					"grade",
+					"elapsed",
+					"time_remaining",
+					"remaining",
+					"ascent_remaining",
+					"heart_rate",
+					"heart_rate_percent_max",
+					"heart_rate_zone",
+					"gear",
+				]
+			),
+			false
+		)
+	)
+	await main.get_tree().create_timer(0.4).timeout
+	var preview: ScrollContainer = hud.get_child(0).get_child(1)
+	var available: ScrollContainer = hud.get_child(1).get_child(1)
+	preview.scroll_vertical = ceili(preview.get_v_scroll_bar().max_value)
+	available.scroll_vertical = ceili(available.get_v_scroll_bar().max_value)
+	await main.get_tree().create_timer(0.4).timeout
+	_save(main, out, "hud-full-" + locale)
 
 
 static func _save(main: Control, out: String, file: String) -> void:

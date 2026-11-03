@@ -15,6 +15,7 @@ func _run() -> void:
 	_power_detail()
 	_zone_bars()
 	_calories()
+	await _rider_hud_scrolling()
 	await _minimap()
 	if not _failed:
 		print("HUD SMOKE TEST PASSED")
@@ -182,6 +183,87 @@ func _zone_bar(hud: HudPanel, id: String) -> Color:
 
 func _available_chips(editor: HudEditor) -> Array[Node]:
 	return editor.get_child(1).get_child(1).get_child(0).get_children()
+
+
+## The rider's available figures scroll with the pointer over a figure or its + button.
+func _rider_hud_scrolling() -> void:
+	root.size = Vector2i(1024, 640)
+	var scene: PackedScene = load("res://scenes/main.tscn")
+	var main: Control = scene.instantiate()
+	root.add_child(main)
+	var dialog: ProfileDialog = main.find_children("*", "ProfileDialog", true, false)[0]
+	dialog.edit({"id": "r", "name": "Rider"}, PackedStringArray(["power"]))
+	var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+	var editor: HudEditor = dialog.get("_hud")
+	tabs.current_tab = editor.get_index()
+	for frame: int in range(6):
+		await process_frame
+	var scroll: ScrollContainer = editor.get_child(1).get_child(1)
+	var chip: Control = _available_chips(editor)[0]
+	for control: Control in [chip, chip.get_child(0).get_child(1)]:
+		scroll.scroll_vertical = 0
+		await process_frame
+		await process_frame
+		var point: Vector2 = control.get_global_rect().get_center()
+		_pointer_scroll(dialog, point, false)
+		_check(
+			scroll.scroll_vertical > 0,
+			"wheel over an available HUD %s scrolls" % control.get_class()
+		)
+		scroll.scroll_vertical = 0
+		_pointer_scroll(dialog, point, true)
+		_check(
+			scroll.scroll_vertical > 0,
+			"trackpad gesture over an available HUD %s scrolls" % control.get_class()
+		)
+	var fixed_point: Vector2 = scroll.get_global_rect().position + Vector2(80, 60)
+	for step: int in range(60):
+		_pointer_scroll(dialog, fixed_point, false)
+		await process_frame
+	var last: Control = _available_chips(editor).back()
+	_check(
+		scroll.get_global_rect().encloses(last.get_global_rect()),
+		"mouse wheel reaches the last available figure"
+	)
+	var add: Button = last.get_child(0).get_child(1)
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = Vector2(dialog.position) + add.get_global_rect().get_center()
+	Input.parse_input_event(motion)
+	Input.flush_buffered_events()
+	var click: InputEventMouseButton = InputEventMouseButton.new()
+	click.position = motion.position
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.button_mask = MOUSE_BUTTON_MASK_LEFT
+	Input.parse_input_event(click)
+	Input.flush_buffered_events()
+	click = click.duplicate()
+	click.pressed = false
+	click.button_mask = 0
+	Input.parse_input_event(click)
+	Input.flush_buffered_events()
+	_check(editor.layout().size() == 2, "a figure reached by scrolling can be added with +")
+	main.free()
+
+
+func _pointer_scroll(dialog: Window, point: Vector2, pan_gesture: bool) -> void:
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = point
+	dialog.push_input(motion)
+	if pan_gesture:
+		var pan: InputEventPanGesture = InputEventPanGesture.new()
+		pan.position = point
+		pan.delta = Vector2(0, 3)
+		dialog.push_input(pan)
+	else:
+		var wheel: InputEventMouseButton = InputEventMouseButton.new()
+		wheel.position = point
+		wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+		wheel.pressed = true
+		dialog.push_input(wheel)
+		wheel = wheel.duplicate()
+		wheel.pressed = false
+		dialog.push_input(wheel)
 
 
 func _expect(actual: PackedStringArray, expected: Array, what: String) -> void:

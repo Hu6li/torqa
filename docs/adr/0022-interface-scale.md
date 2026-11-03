@@ -108,3 +108,20 @@ includes a long climb list and build log in English and German (R53, R94).
 
 [Review capture at 1024 × 640](../images/issues/android-course-overflow.png), with both columns
 scrolled to their last entries while Ride remains visible.
+
+## Amendment 2026-11-03: persistent dialog bounds
+
+Reapplying the requested size after one frame did not constrain later layout passes. Opening
+Rider settings or Ride settings for the first time, then switching tabs, could leave a dialog
+taller than the application, with its content no longer needing a scrollbar. Reopening it
+appeared to fix the problem because the content had already measured its width.
+
+`UiScale.popup` now sets a maximum before opening the dialog, leaving room for its title and
+margins. A child guard keeps the maximum current when the parent viewport resizes, caps an
+explicit minimum when needed, and keeps the dialog's position inside those bounds. Signal
+connections end with the dialog. The HUD preview can scroll independently of the available
+figures when its complete layout is taller than the remaining space (R199).
+
+The window checks cover a temporary oversized content minimum, resizing while open, and every
+settings tab in English and German, including all 13 HUD figures. Input checks reach the last
+available figure with the wheel and add it through window input; touch swipes still cancel taps.

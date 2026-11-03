@@ -206,11 +206,13 @@ Built in rideable steps:
   like the power line (R182)
 - [x] History & analysis: FIT + JSON summary per ride, NP / IF / TSS / kJ, charts, time in
   zones
-- [x] Calories in the HUD (R193, #475, ADR 0038): a separate kcal figure, powered by measured
+- [x] Calories in the HUD (R197, #475, ADR 0038): a separate kcal figure, powered by measured
   work, optional heart-rate inputs or an explicitly assumed effort; short caption, method
   and missing-interval details in tooltips, per-rider selection and the overlay
-  - [x] Age advances each local New Year from an inferred birth year (R194), with existing
+  - [x] Age advances each local New Year from an inferred birth year (R198), with existing
     ages carried over and an unchanged settings form preserving its age reference year
+  - [x] Wheel/pan reach the last available figure and touch swipes preserve tap-to-add;
+    the full preview scrolls when needed in a small window (R51, R94)
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
@@ -431,6 +433,8 @@ Built in rideable steps:
   - [x] The interface at the screen's scale rather than stretched to the window (R94): a
     smaller window shows less, not smaller text; the layouts reflow down to 1024 × 640
     (`ReflowGrid`, a wrapping gallery toolbar, scrolling pages) and dialogs fit the window
+  - [x] Dialog bounds persist through first-open layout, tab changes and application resizing;
+    their titles and action buttons stay inside the application window (R199)
   - [x] Pages that scroll keep their scroll bar's room: the gallery no longer reflows without
     end at some widths, which crashed the app when macOS zoomed its window
   - [x] The course's ride options and growing build log scroll within their panel, with Ride
