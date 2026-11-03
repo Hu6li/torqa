@@ -18,7 +18,8 @@
 </p>
 
 A modern, offline-first, open-source and free indoor cycling app. Import a GPX route or a ride video and
-ride it on your smart trainer, through a generated 3D world or along the video.
+ride it on your smart trainer, through a generated 3D world or along the video, alone or with
+friends.
 
 <table>
   <tr>
@@ -60,23 +61,23 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 <table>
   <tr>
     <td width="50%">🚴 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#devices">Smart trainers</a></b><br>
-      Bluetooth FTMS and Tacx FE-C over Bluetooth (SIM, ERG, resistance), plus heart-rate straps; your devices reconnect at start and after dropouts</td>
+      Bluetooth FTMS and Tacx FE-C (SIM, ERG, resistance) plus heart-rate straps; reconnects after dropouts</td>
     <td width="50%">🗺️ <b><a href="https://github.com/ORQWA/ORQWA/wiki/Courses#import-a-course">Any GPX in 3D</a></b><br>
-      A world built from real terrain and OpenStreetMap, with seasons, weather and time of day. Network is only needed once on import, then it works completely offline.</td>
+      Real terrain and OpenStreetMap, with seasons, weather and time of day. Online once to import, offline ever after</td>
   </tr>
   <tr>
     <td colspan="2">👥 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Group-rides">Group rides</a></b><br>
-      Ride a 3D course or a workout with up to seven friends, peer to peer: no server in between and no account, just an invitation you send by chat. Optional voice chat, drafting and keeping the group together</td>
+      Up to eight riders, peer to peer: no server in between, no account, just an invite in your chat. Talk, draft and stick together</td>
   </tr>
   <tr>
     <td>🎬 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Video-courses">Video courses</a></b><br>
       GoPro, Incyclist, Tacx RLV or any video matched to a GPX; it plays at your speed</td>
     <td>💪 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Workouts">Workouts</a></b><br>
-      Hold a power or a heart rate, ZWO / ERG / MRC / FIT with an editor, three FTP tests</td>
+      Power or heart-rate targets, ZWO / ERG / MRC / FIT, an editor and three FTP tests</td>
   </tr>
   <tr>
     <td>⚙️ <b><a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#virtual-gears">Virtual gears</a></b><br>
-      24 gears on a single cog, shifted from the keyboard, Shimano Di2 hood buttons, a Zwift Click (original or v2) or <a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#remote">a phone or tablet in the browser</a></td>
+      24 gears on one cog: shift from the keyboard, Di2 hoods, a Zwift Click or <a href="https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#remote">your phone</a></td>
     <td>🪟 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Overlay">Overlay</a></b><br>
       Just your HUD, on top of a video or any other window</td>
   </tr>
@@ -84,41 +85,23 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
     <td>👻 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Ghosts-and-pacers">Ghosts &amp; pacers</a></b><br>
       Race your best ride, a friend's activity or a pacer at your FTP</td>
     <td>📈 <b><a href="https://github.com/ORQWA/ORQWA/wiki/Ride-history">History &amp; records</a></b><br>
-      Your power curve and profile, fitness, progress, records per course, climb and duration,
-      FIT export and <a href="https://github.com/ORQWA/ORQWA/wiki/Uploading-rides">upload to intervals.icu and Strava</a></td>
+      Power curve, fitness and records per course and climb; <a href="https://github.com/ORQWA/ORQWA/wiki/Uploading-rides">upload to intervals.icu and Strava</a></td>
   </tr>
 </table>
 
-📴 Ride offline on any computer · ⚖️ realistic physics, adjustable difficulty ·
-🎛️ a HUD your way · 🌍 English and German · 🖥️ macOS, Windows, Linux and Android tablets
-
-[Wind and bicycle sound](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#wind-and-bicycle-sound)
-follows your speed, pedaling and coasting in 3D, with independent volume controls.
-
-[Moments](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#moments) such as a climb topped,
-a new record or halfway pop up on a card while you ride, in a cheering or plain voice.
-
-Error explanations follow your rider's language; [technical details](https://github.com/ORQWA/ORQWA/wiki/Riders#language-and-error-details)
-remain available separately after notifications disappear.
+📴 Ride offline · ⚖️ realistic physics · 🎛️ a HUD your way ·
+🔊 [wind and bike sound](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#wind-and-bicycle-sound) ·
+🎉 [cheers for climbs and records](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#moments) · 🌍 English and German ·
+🖥️ macOS, Windows, Linux and Android tablets
 
 **Planned:** hardware video decoding, the overlay on Windows and Linux — see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Using ORQWA
 
-The [usage wiki](https://github.com/ORQWA/ORQWA/wiki) covers riding and every feature. Start
-with [Getting started](https://github.com/ORQWA/ORQWA/wiki/Getting-started); testers can ride a
-trainer without the app with the [command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool).
-[Group rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides) connect friends directly
-to the organizer's computer, so the organizer needs a connection others can reach (not behind
-carrier-grade NAT). The organizer picks the course or workout and everyone gets a copy; friends
-can join late, and the ride goes on if the organizer hands over or drops out. Rides with
-drafting or keep together count for training and power records, not for course or climb speed
-records. Voice opens your microphone only when you choose and records nothing. The
-[command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool#ride-with-others)
-rides together on a shared GPX.
-
-[Syncing between devices](https://github.com/ORQWA/ORQWA/wiki/Syncing-between-devices) explains
-how to share ride history, courses and rider settings through a file-sync client such as Nextcloud.
+Start with [Getting started](https://github.com/ORQWA/ORQWA/wiki/Getting-started); the
+[usage wiki](https://github.com/ORQWA/ORQWA/wiki) covers every feature, from the
+[command-line tool](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool) to
+[syncing between devices](https://github.com/ORQWA/ORQWA/wiki/Syncing-between-devices).
 
 ## Download
 
