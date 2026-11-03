@@ -49,6 +49,11 @@ does the same.
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
 
+The group UI smoke suite reopens the app with a saved 100% trainer-difficulty profile and
+starts its first group ride without visiting a course page. It checks the ride options and
+settings, then changes the profile to 75% with stale course controls at 25% and starts another
+group ride. Both starts must show the active profile's value (R14, R48).
+
 For window-mode changes, also run the window smoke test on a virtual display in the container:
 `timeout 60 xvfb-run -a godot --path app --audio-driver Dummy -s res://tests/window_smoke.gd -- --fullscreen-only`.
 The headless display has no window mode. The display run checks entering and leaving full
