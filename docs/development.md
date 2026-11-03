@@ -49,6 +49,11 @@ does the same.
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
 
+The group UI smoke suite reopens the app with a saved 100% trainer-difficulty profile and
+starts its first group ride without visiting a course page. It checks the ride options and
+settings, then changes the profile to 75% with stale course controls at 25% and starts another
+group ride. Both starts must show the active profile's value (R14, R48).
+
 For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
 deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
 stopping, then `cargo test -p orqwa-net` and `cargo test -p orqwa-app group::tests` for
