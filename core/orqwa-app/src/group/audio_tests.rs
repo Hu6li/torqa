@@ -88,6 +88,7 @@ async fn joining_voice_after_a_check_reports_device_failure_without_ending_the_g
     }
 }
 
+#[allow(clippy::too_many_lines)] // one lifecycle keeps check, consent, startup failure and cleanup assertions together
 async fn join_after_check(kind: TestKind, mic: bool, voice_fails: bool) {
     let directory = std::env::temp_dir().join(format!(
         "orqwa-join-after-check-{:x?}",
