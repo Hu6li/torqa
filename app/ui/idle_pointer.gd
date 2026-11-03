@@ -4,6 +4,9 @@ extends Node
 
 const DELAY_SECONDS: float = 3.0
 
+## Seconds without mouse activity before the pointer hides; tests shorten it to run quickly.
+var delay_seconds: float = DELAY_SECONDS
+
 ## Enabled only while a ride shows its 3D world or video.
 var enabled: bool = false:
 	set(value):
@@ -24,7 +27,6 @@ var _subwindows: Array[Window] = []
 
 
 func _ready() -> void:
-	_timer.wait_time = DELAY_SECONDS
 	_timer.one_shot = true
 	_timer.timeout.connect(_hide_pointer)
 	add_child(_timer)
@@ -93,7 +95,7 @@ func _restart() -> void:
 	# Closing an embedded dialog can restore focus while its parent scene is leaving.
 	var window: Window = get_window()
 	if enabled and window != null and _inside and window.has_focus() and not _dialog_open():
-		_timer.start()
+		_timer.start(delay_seconds)
 
 
 func _suspend() -> void:

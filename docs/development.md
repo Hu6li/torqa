@@ -49,6 +49,16 @@ does the same.
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
 
+For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
+deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
+stopping, then `cargo test -p orqwa-net` and `cargo test -p orqwa-app group::tests` for
+accepted self echoes, recording isolation, reconnecting and organizer changes. Presentation
+uses one shared-clock buffer for local and remote riders; `OrqwaApp.ride_state().position_m`
+is the displayed route position, while `distance_m` and HUD measurements remain live.
+For manual acceptance, ride side by side across two home networks, swap who leads, pause
+and resume each rider and interrupt a connection; compare road order with map/profile markers
+and both gaps panels. Static avatar screenshots cannot verify temporal smoothness.
+
 For window-mode changes, also run the window smoke test on a virtual display in the container:
 `timeout 60 xvfb-run -a godot --path app --audio-driver Dummy -s res://tests/window_smoke.gd -- --fullscreen-only`.
 The headless display has no window mode. The display run checks entering and leaving full
@@ -61,7 +71,7 @@ To run it alone, use `timeout 90 xvfb-run -a godot --path app --audio-driver Dum
 controls, windowed and full-screen hiding in 3D/video rides and workouts, keeping it visible
 in menus, plain workouts and the overlay, and restoring it for other windows (R200–R201).
 It also keeps the real in-ride group window, a nested dialog and a popup idle past the
-three-second delay while the main window retains focus, then checks that course idling
+configured delay while the main window retains focus, then checks that course idling
 resumes after the last window closes (R205).
 
 The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.md) for them and a
