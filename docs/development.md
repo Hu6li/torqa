@@ -68,10 +68,14 @@ gallery of every model); Blender runs in its own container on the host:
 Application subwindows are bounded automatically by the `DialogWindows` autoload and
 `WindowBounds` (R202, #485). A new `Window` subclass needs no special base class or popup
 method: its size and position use the viewport that actually embeds it, including when opened
-inside another dialog. Oversized bodies receive scrolling while `AcceptDialog` keeps its action
-row fixed; existing scrolling bodies are retained. Prefer responsive layouts and explicit
-scrolling bodies for their intended presentation; `UiScale.popup(window, preferred_size)` still
-sets a comfortable initial size. The automatic guard also covers direct `popup_centered()`,
+inside another dialog. Windows grow to fit their body before falling back to scrolling (R203),
+including bodies already in a scroll container. Width settles before wrapped height is measured;
+spare width is tried when wrapped text would exceed the available height. The window supplies
+its own panel margins and fixed action-row size. Existing scrolling bodies
+are retained, and a larger app window restores room to show their content. Prefer responsive
+layouts and explicit scrolling bodies for their intended presentation;
+`UiScale.popup(window, preferred_size)` sets an initial size rather than a content limit.
+The automatic guard also covers direct `popup_centered()`,
 `popup()` and `show()` calls, later content changes and dragging/resizing.
 `godot --headless --path app -s res://tests/dialog_smoke.gd` reproduces the microphone-permission
 and solo fallback-organizer failures and checks the general rule on standard window classes in

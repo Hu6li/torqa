@@ -52,8 +52,8 @@ static func size_new(window: Window) -> void:
 		window.position = usable.position + (usable.size - size) / 2
 
 
-## Pops `dialog` up in the middle of the window, `wanted` large (interface units) where the
-## window has room, else as large as fits with its title bar; its content then scrolls.
+## Opens `dialog` centered at an initial `wanted` size (interface units). Content grows it
+## while the app has room; only content beyond those bounds needs scrolling.
 static func popup(dialog: Window, wanted: Vector2i) -> void:
 	var bounds: WindowBounds = WindowBounds.attach(dialog)
 	bounds.wanted = wanted

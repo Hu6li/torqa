@@ -440,6 +440,8 @@ Built in rideable steps:
     their titles and action buttons stay inside the application window (R199)
   - [x] Every application subwindow inherits bounds automatically, including nested windows,
     standard Godot popups and future dialogs; overflowing bodies scroll (R202, #485)
+  - [x] Shared sizing grows windows to fit their content first, including existing scrolling
+    bodies; scrolling is reserved for content that exceeds the available room (R203, #485)
   - [x] Pages that scroll keep their scroll bar's room: the gallery no longer reflows without
     end at some widths, which crashed the app when macOS zoomed its window
   - [x] The course's ride options and growing build log scroll within their panel, with Ride

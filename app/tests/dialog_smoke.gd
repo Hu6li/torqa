@@ -19,6 +19,7 @@ func _run() -> void:
 		for scale: float in [1.0, 2.0]:
 			root.content_scale_factor = scale
 			root.size = Vector2i(Vector2(1600, 900) * scale)
+			await _fit_before_scroll(locale + "-" + str(int(scale)))
 			await _automatic_windows(locale + "-" + str(int(scale)))
 			await _group_dialogs(app, locale + "-" + str(int(scale)))
 	TranslationServer.set_locale("en")
@@ -27,6 +28,73 @@ func _run() -> void:
 	if not _failed:
 		print("DIALOG SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## An initial size is a preference, not a reason to scroll content that could fit onscreen.
+func _fit_before_scroll(tag: String) -> void:
+	for helper: bool in [false, true]:
+		var windows: Array[Window] = [
+			Window.new(), AcceptDialog.new(), ConfirmationDialog.new(), PopupPanel.new()
+		]
+		for window: Window in windows:
+			root.size = Vector2i(Vector2(1600, 900) * root.content_scale_factor)
+			window.theme = UiTheme.build()
+			window.hide()
+			var body: VBoxContainer = VBoxContainer.new()
+			var fill: Control = Control.new()
+			fill.custom_minimum_size = Vector2(420, 260)
+			body.add_child(fill)
+			var last: Button = Button.new()
+			last.text = "Last control"
+			body.add_child(last)
+			var scroll: ScrollContainer = UiTheme.scrolling(body)
+			if not window is AcceptDialog:
+				scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			window.add_child(scroll)
+			root.add_child(window)
+			if helper:
+				UiScale.popup(window, Vector2i(280, 180))
+			else:
+				window.popup_centered(Vector2i(280, 180))
+			await _settle()
+			var what: String = "%s %s helper=%s" % [tag, window.get_class(), helper]
+			_window_inside(window, what)
+			_check(not scroll.get_v_scroll_bar().visible, what + " grows to fit ordinary content")
+			_check(not scroll.get_h_scroll_bar().visible, what + " grows to fit its width")
+			_check(scroll.scroll_vertical == 0, what + " shows the last control without scrolling")
+			fill.custom_minimum_size.y = 650
+			await _settle()
+			_check(not scroll.get_v_scroll_bar().visible, what + " grows for changed content")
+			root.size = Vector2i(UiScale.MIN_WINDOW_SIZE * root.content_scale_factor)
+			await _settle()
+			_window_inside(window, what + " smaller app")
+			_check(
+				scroll.get_v_scroll_bar().visible, what + " scrolls only when the app is too short"
+			)
+			root.size = Vector2i(Vector2(1600, 900) * root.content_scale_factor)
+			await _settle()
+			_window_inside(window, what + " larger app")
+			_check(not scroll.get_v_scroll_bar().visible, what + " fits again when room returns")
+			window.free()
+	# A narrow initial width can make ordinary paragraphs look taller than the screen.
+	var wrapped: AcceptDialog = AcceptDialog.new()
+	wrapped.theme = UiTheme.build()
+	var paragraph: Label = Label.new()
+	paragraph.text = "A wrapping paragraph should use the spare width before it scrolls. ".repeat(
+		40
+	)
+	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var page: ScrollContainer = UiTheme.scrolling(paragraph)
+	wrapped.add_child(page)
+	root.add_child(wrapped)
+	UiScale.popup(wrapped, Vector2i(300, 180))
+	await _settle()
+	await _settle()
+	_window_inside(wrapped, tag + " wrapped guidance")
+	_check(wrapped.size.x > 300, "wrapped guidance can use spare width")
+	_check(not page.get_v_scroll_bar().visible, "wrapped guidance fits without scrolling")
+	wrapped.free()
+	await process_frame
 
 
 ## No UiScale call or special base class: existing and future Window subclasses inherit it.
@@ -184,6 +252,11 @@ func _voice(voice: GroupVoiceControls, tag: String) -> void:
 	dialog.ask_join()
 	await _settle()
 	_inside(dialog, tag + " listening choice")
+	var choice_scroll: ScrollContainer = dialog._choice.get_parent().get_parent() as ScrollContainer
+	_check(
+		not choice_scroll.get_v_scroll_bar().visible, "the listening choices fit without scrolling"
+	)
+	await _capture(tag + "-listening")
 	dialog._listen_with(false)
 	await _settle()
 	_inside(dialog, tag + " sound check")
