@@ -12,3 +12,4 @@ wiki-prepare:
 release-version:
 	scripts/dev.sh python3 scripts/release/version.py --set "$(VERSION)"
 	scripts/dev.sh cargo update --manifest-path core/Cargo.toml --workspace
+	scripts/dev.sh cargo update --manifest-path core/fuzz/Cargo.toml --workspace
