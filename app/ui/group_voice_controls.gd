@@ -1,9 +1,10 @@
 class_name GroupVoiceControls
 extends VBoxContainer
 ## Voice in the group, shared by the lobby and the ride (R162, R194): joining through the
-## guided window, then the volume, the microphone, muting all sound, the devices and leaving.
-## How the rider listens is asked when joining or changing devices, and again here when
-## voice moved to another output by itself.
+## guided window, then the volume, muting all sound, the devices and leaving; the microphone
+## is switched beside the rider's name and in the ride's bar. How the rider listens is asked
+## when joining or changing devices, and again here when voice moved to another output by
+## itself.
 
 var _orqwa: OrqwaApp
 var _join: Button = Button.new()
@@ -13,7 +14,6 @@ var _ask: VBoxContainer = VBoxContainer.new()
 var _ask_title: Label = Label.new()
 var _volume: HSlider = HSlider.new()
 var _volume_label: Label = Label.new()
-var _microphone: Button = Button.new()
 var _deafen: Button = Button.new()
 var _devices: Button = Button.new()
 var _leave: Button = Button.new()
@@ -39,11 +39,6 @@ func _ready() -> void:
 	var actions: HFlowContainer = HFlowContainer.new()
 	actions.add_theme_constant_override("h_separation", 8)
 	actions.add_theme_constant_override("v_separation", 8)
-	_microphone.toggle_mode = true
-	_microphone.add_theme_stylebox_override("pressed", UiTheme.button_chip())
-	_microphone.add_theme_stylebox_override("hover_pressed", UiTheme.button_chip())
-	_microphone.toggled.connect(_set_microphone)
-	actions.add_child(_microphone)
 	_deafen.text = tr("Mute all")
 	_deafen.tooltip_text = tr("Mute all sound")
 	_deafen.toggle_mode = true
@@ -151,7 +146,6 @@ func toggle_microphone() -> void:
 
 func _set_microphone(on: bool) -> void:
 	if on and not microphone_allowed():
-		_microphone.set_pressed_no_signal(false)
 		return
 	_orqwa.group_voice(true, on, false, _volume.value / 100.0)
 
@@ -177,12 +171,8 @@ func _show() -> void:
 	var gain: float = _status.get("voice_volume", 0.6)
 	_volume.set_value_no_signal(gain * 100.0)
 	_volume_label.text = "%d %%" % roundi(gain * 100.0)
-	var microphone: bool = _status.get("microphone", false)
 	var deafened: bool = _status.get("deafened", false)
 	var voice: bool = _status.get("voice", false)
-	_microphone.set_pressed_no_signal(microphone)
-	_microphone.text = tr("Microphone on") if microphone else tr("Microphone off")
-	_microphone.disabled = not voice or deafened
 	_deafen.set_pressed_no_signal(deafened)
 	_deafen.disabled = not voice
 

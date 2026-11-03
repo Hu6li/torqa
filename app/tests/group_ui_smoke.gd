@@ -648,13 +648,21 @@ func _group_activity() -> void:
 	voice.update_status(
 		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
 	)
+	var labels: Array[String] = []
+	for button: Node in voice._joined.find_children("*", "Button", true, false):
+		labels.append((button as Button).text)
 	_check(
-		not voice._microphone.button_pressed and voice._microphone.text == tr("Microphone off"),
-		"listening does not imply microphone consent"
+		not labels.has(tr("Microphone on")) and not labels.has(tr("Microphone off")),
+		"the microphone is switched beside the rider's name, not in the card"
 	)
 	_check(is_equal_approx(voice._volume.value, 40.0), "volume follows the session")
 	voice.update_status({"voice": true, "deafened": true, "microphone": false})
-	_check(voice._microphone.disabled, "mute all sound prevents microphone activation")
+	var asked: Array[bool] = []
+	voice._permission = func(request: bool) -> String:
+		asked.append(request)
+		return "allowed"
+	voice.toggle_microphone()
+	_check(asked.is_empty(), "mute all sound prevents microphone activation")
 	voice.update_status({"speaker_test": true})
 	_check(voice._joined.visible, "a sound check pauses voice without leaving it")
 	voice.update_status({})

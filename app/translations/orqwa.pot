@@ -2055,14 +2055,6 @@ msgstr ""
 msgid "Microphone level"
 msgstr ""
 
-#: app/ui/group_voice_controls.gd
-msgid "Microphone off"
-msgstr ""
-
-#: app/ui/group_voice_controls.gd
-msgid "Microphone on"
-msgstr ""
-
 #: app/scenes/world.gd
 msgid "Midday"
 msgstr ""
