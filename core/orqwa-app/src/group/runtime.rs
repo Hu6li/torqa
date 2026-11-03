@@ -642,11 +642,21 @@ async fn run_inner(
                         } Ok(())
                     }
                     Command::Voice(generation,on,mic,deaf,volume) => {
-                        if snapshot.microphone_test || snapshot.speaker_test {continue;}
+                        if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
+                        let previous_test=if snapshot.microphone_test || snapshot.speaker_test {
+                            mic_starts.abort_all();while mic_starts.join_next().await.is_some() {}
+                            audio.abort_all();while audio.join_next().await.is_some() {}
+                            let test=microphone_test.take();
+                            if snapshot.microphone_test && let Some(test)=&test {snapshot.microphone_voice_heard |= test.voice_heard();}
+                            snapshot.microphone_test=false;snapshot.speaker_test=false;snapshot.microphone_level=0.0;snapshot.microphone_voice_detected=false;
+                            resume_voice=None;
+                            test
+                        } else {None};
                         // Serialize generation checking and transmission changes with the UI's
                         // immediate mute gate; an older queued unmute cannot reopen it later.
                         let _gate=request.voice_controls.port.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         if generation!=request.voice_controls.generation.load(Ordering::Acquire){continue;}
+                        request.voice_controls.audio_test.store(0,Ordering::Release);
                         snapshot.voice_volume=volume;
                         // A later choice can close a microphone kept for a restart, never open it.
                         resume_voice=resume_voice.filter(|_| on).map(|was| was && mic && !deaf);
@@ -660,7 +670,10 @@ async fn run_inner(
                             snapshot.voice_pending=true;
                             let backend=request.audio.clone();let port = port.clone();let options=device_options.clone();let controls=request.voice_controls.clone();
                             // Joining with the microphone on is the rider's explicit choice (R194).
-                            audio.spawn(async move {open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})});
+                            audio.spawn(async move {
+                                if let Some(test)=previous_test {test.close().await;}
+                                open_voice(backend,port,options,controls).await.map(|chat|Audio {generation,chat,deaf,mic})
+                            });
                         } Ok(())
                     }
                 };

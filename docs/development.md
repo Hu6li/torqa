@@ -640,6 +640,15 @@ cleanup, and exercise microphone→speaker→voice restoration through the app. 
 deny microphone permission and still test the selected speakers, change voice volume, stop
 early and close the dialog. Review both settings scroll positions at the minimum window size.
 
+The `joining_voice_` app regressions cover a solo group workout and joining directly from a
+microphone or speaker check, microphone on and off, with a stop command already superseded
+by the join. Simulated audio verifies that check capture is released before voice opens.
+The group UI smoke test checks refused joins remain open and synchronous/asynchronous failures
+retain their explanation, Technical details and Dismiss inside the foreground window.
+On hardware, repeat the checks during a solo group ride and with friends, press **Join voice**
+before the check finishes, and retry after selecting an unavailable device. Verify riding
+continues and failures remain reachable without closing the group window.
+
 For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
 private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global
 environment is changed in parallel tests, no native audio stream is started and no hardware is

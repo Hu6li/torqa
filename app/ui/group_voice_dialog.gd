@@ -10,6 +10,8 @@ extends AcceptDialog
 var allowed: Callable = func() -> bool: return true
 ## Explains a refused microphone; `GroupVoiceControls` keeps it current.
 var permission_hint: Label = Label.new()
+## Errors stay reachable while this window covers the main window's failure card.
+var failures: FailureDetails = FailureDetails.new()
 
 var _orqwa: OrqwaApp
 var _joining: bool = true
@@ -31,6 +33,7 @@ var _device_key: String = ""
 var _status: Dictionary = {}
 ## The meter is started again once a speaker check or a device change has stopped it.
 var _resume_meter: bool = false
+var _joining_voice: bool = false
 
 
 func _ready() -> void:
@@ -45,6 +48,8 @@ func _ready() -> void:
 	pages.custom_minimum_size.x = 600
 	pages.add_child(_choice)
 	pages.add_child(_check)
+	failures.standalone = true
+	pages.add_child(failures)
 	add_child(UiTheme.scrolling(pages))
 	_build_choice()
 	_build_check()
@@ -251,19 +256,23 @@ func _on_action(action: StringName) -> void:
 
 
 func _confirm() -> void:
-	hide()
 	if not _joining:
+		hide()
 		return
 	var microphone: bool = _microphone_on.button_pressed
-	_meter(false)
-	_orqwa.group_voice(true, microphone, false, _volume.value / 100.0)
+	if _orqwa.group_voice(true, microphone, false, _volume.value / 100.0):
+		_joining_voice = true
+		hide()
+		_joining_voice = false
 
 
-## Closing the window stops whichever check runs (R178).
+## Cancelling stops the check; an accepted join releases it as part of voice startup (R178).
 func _on_visibility() -> void:
 	if not visible and _orqwa != null:
 		_resume_meter = false
-		_orqwa.group_microphone_test(false)
+		# The accepted join owns check cleanup; another stop could supersede that activation.
+		if not _joining_voice:
+			_orqwa.group_microphone_test(false)
 
 
 func _on_microphone(on: bool) -> void:

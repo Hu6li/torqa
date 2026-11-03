@@ -14,6 +14,7 @@ func _run() -> void:
 	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
 	await _microphone_permissions()
+	await _voice_failures()
 	await _ride_window_columns()
 	_ride_bar()
 	_offer_card()
@@ -21,6 +22,48 @@ func _run() -> void:
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## A foreground group window must not hide the only explanation of a failed voice action.
+func _voice_failures() -> void:
+	var app: OrqwaApp = OrqwaApp.new()
+	root.add_child(app)
+	var window: AcceptDialog = AcceptDialog.new()
+	root.add_child(window)
+	var voice: GroupVoiceControls = GroupVoiceControls.new()
+	voice.bind(app)
+	window.add_child(voice)
+	window.popup_centered(Vector2i(980, 600))
+	await process_frame
+	var dialog: GroupVoiceDialog = voice._dialog
+	dialog.ask_join()
+	dialog._listen_with(false)
+	# No lobby is open: this is a real synchronous command failure through the native bridge.
+	dialog._confirm()
+	_check(dialog.visible, "a refused voice join keeps its dialog open for retry")
+	_check(dialog.failures.visible, "the join dialog explains the refusal in front of the group")
+	_check(
+		not str(dialog.failures._failures[0].get("details", "")).is_empty(),
+		"the foreground failure retains the original technical cause"
+	)
+	dialog.failures._dismiss.pressed.emit()
+	_check(not dialog.failures.visible, "the rider can dismiss the foreground failure")
+	dialog.hide()
+	var failure: Dictionary = {
+		"message": "Voice is unavailable. Check your audio devices and microphone permission.",
+		"details": "simulated output-device failure"
+	}
+	app.failure_reported.emit(failure)
+	_check(voice._failures.visible, "an asynchronous failure is visible inside the group window")
+	voice._failures._toggle.button_pressed = true
+	_check(voice._failures._panel.visible, "technical details open inside the foreground window")
+	voice._failures.clear()
+	window.hide()
+	app.failure_reported.emit(failure)
+	_check(not voice._failures.visible, "a hidden group panel does not collect unrelated errors")
+	window.free()
+	app.free()
+	await process_frame
 
 
 ## A permission result must never start capture after the rider's action has returned.

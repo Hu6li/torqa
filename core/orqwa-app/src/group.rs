@@ -881,7 +881,7 @@ impl App {
         self.group_command(Command::HandoverCancel)
     }
     /// Configures opted-in voice. Joining opens the microphone only when `mic` asks for it,
-    /// the rider's explicit choice when joining.
+    /// the rider's explicit choice when joining. Any local audio check is released first.
     ///
     /// # Errors
     /// Returns [`AppError`] for invalid volume or unavailable queue.
@@ -900,9 +900,6 @@ impl App {
             .as_ref()
             .ok_or_else(|| error("Open a lobby first."))?
             .voice_controls;
-        if controls.audio_test.load(Ordering::Acquire) != 0 {
-            return Err(error("Stop the audio test before joining voice chat."));
-        }
         let generation = controls
             .generation
             .try_update(Ordering::AcqRel, Ordering::Acquire, |g| g.checked_add(1))
@@ -923,7 +920,14 @@ impl App {
                 }
             }
         }
-        self.group_command(Command::Voice(generation, on, mic, deaf, volume))
+        // Joining and releasing a local check are one activation: a separate stop command
+        // can be superseded by this generation before the actor has released its devices.
+        let previous_test = controls.audio_test.swap(0, Ordering::AcqRel);
+        if let Err(error) = self.group_command(Command::Voice(generation, on, mic, deaf, volume)) {
+            controls.audio_test.store(previous_test, Ordering::Release);
+            return Err(error);
+        }
+        Ok(())
     }
     /// Changes playback gain without changing microphone consent or activation.
     ///

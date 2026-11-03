@@ -44,6 +44,18 @@ static func capture(tree: SceneTree, start: StartPage, group: GroupRidesTab, out
 		)
 		audio._permission_hint.hide()
 		dialog.permission_hint.hide()
+		audio._report_failure(
+			{
+				"message":
+				"Voice is unavailable. Check your audio devices and microphone permission.",
+				"details": "Output device is no longer available."
+			}
+		)
+		await tree.create_timer(0.3).timeout
+		root.get_texture().get_image().save_png(
+			out.path_join("group-voice-failure-" + locale + ".png")
+		)
+		dialog.failures.clear()
 		dialog.hide()
 		# In voice: the voice card, and a voice button and a bin beside each rider.
 		var talking: Dictionary = devices.duplicate()

@@ -18,6 +18,7 @@ var _deafen: Button = Button.new()
 var _devices: Button = Button.new()
 var _leave: Button = Button.new()
 var _permission_hint: Label = Label.new()
+var _failures: FailureDetails = FailureDetails.new()
 var _dialog: GroupVoiceDialog = GroupVoiceDialog.new()
 var _status: Dictionary = {}
 ## In voice, also while a sound check pauses it: voice comes back afterwards.
@@ -64,6 +65,8 @@ func _ready() -> void:
 	_permission_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_permission_hint.hide()
 	add_child(_permission_hint)
+	_failures.standalone = true
+	add_child(_failures)
 	_dialog.allowed = microphone_allowed
 	add_child(_dialog)
 	_dialog.bind(_orqwa)
@@ -126,8 +129,18 @@ func _volume_row() -> HBoxContainer:
 
 
 func bind(orqwa: OrqwaApp) -> void:
+	if _orqwa != null and _orqwa.failure_reported.is_connected(_report_failure):
+		_orqwa.failure_reported.disconnect(_report_failure)
 	_orqwa = orqwa
+	_orqwa.failure_reported.connect(_report_failure)
 	_dialog.bind(orqwa)
+
+
+func _report_failure(failure: Dictionary) -> void:
+	if _dialog.visible:
+		_dialog.failures.report(failure)
+	elif is_visible_in_tree():
+		_failures.report(failure)
 
 
 func _ask_join() -> void:
