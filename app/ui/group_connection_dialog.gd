@@ -15,6 +15,10 @@ var _choices: Dictionary[String, CheckBox] = {}
 var _panels: Dictionary[String, PanelContainer] = {}
 var _descriptions: Dictionary[String, Label] = {}
 var _organizer_name: String = ""
+## The last confirmed join, for a new reply after the organizer did not add the rider (R195).
+var _last_invite: String = ""
+var _last_mode: String = ""
+var _last_lookup: bool = true
 var _explanation: Label = Label.new()
 var _buttons: ButtonGroup = ButtonGroup.new()
 var _scroll: ScrollContainer = ScrollContainer.new()
@@ -246,6 +250,9 @@ func _confirm() -> void:
 		if not _orqwa.set_stun_servers(_servers.text):
 			return
 	if _orqwa.group_connect(_invite, _mode, _lookup.button_pressed):
+		_last_invite = _invite
+		_last_mode = _mode
+		_last_lookup = _lookup.button_pressed
 		_invite = ""
 		hide()
 		started.emit()
@@ -254,6 +261,20 @@ func _confirm() -> void:
 			"Check your invitation and connection choice, then try again. See Technical details for more information."
 		)
 		_error.show()
+
+
+## The organizer of the ride being joined, as their invitation names them.
+func organizer() -> String:
+	return _organizer_name
+
+
+## Makes a new reply from the same invitation and choices, after the organizer did not add the
+## rider in time (R195): no new invitation is needed.
+func renew() -> bool:
+	if _last_invite.is_empty():
+		return false
+	_orqwa.group_leave()
+	return _orqwa.group_connect(_last_invite, _last_mode, _last_lookup)
 
 
 func _cancel() -> void:

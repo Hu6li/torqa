@@ -935,7 +935,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Android group runtime: atomic publication on shared storage without hard links,
   embedded AAudio context initialization, and classified group/voice diagnostics through the
   application's translated Technical details / Dismiss history
-- [ ] QR sharing using existing support
+- [x] QR sharing using existing support: invitations and replies as plain-text QR codes (R195)
 - [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
   individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
@@ -975,6 +975,15 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   it is shared: map picture, elevation, figures and power chart, nothing downloaded (R191, #418)
 - [x] Riders name their own STUN servers under More connection options, kept per computer;
   the CLI's `--stun` takes the same forms (R192, #415)
+- [x] Voice is joined through a guided window asked every time: headphones or speakers, then a
+  sound check with an optional open microphone; one voice button per rider, a red bin to
+  remove, a microphone button in the ride's bar and voice volume in its settings (R194)
+- [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
+  empty seat in the group list for each friend's reply with one-line reasons when it adds
+  nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)
+- [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
+  what was chosen by name, a readiness pill on every row, the rider's own their button, one main button, and the
+  in-ride group window at least as large as the ride's settings, in two columns (R196)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

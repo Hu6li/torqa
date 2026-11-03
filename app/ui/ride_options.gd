@@ -4,10 +4,13 @@ extends GridContainer
 ## difficulty, descents, time of day, weather and season. Shared by the course page and
 ## the in-ride settings, so options are set the same way in both places. On video courses
 ## the video is the view, so camera, time, weather and season are hidden (R17) and the video's
-## sound can be switched instead (R26).
+## sound can be switched instead (R26). In group voice, its volume sits with the other sounds
+## (R194).
 
 ## The rider changed an option; read them with `options()`.
 signal changed
+## The rider changed group voice's volume, a percentage with zero to mute (R194).
+signal voice_volume_changed(volume: float)
 
 ## Captions and the extra third column get these widths, so grids above each other line up.
 const CAPTION_WIDTH: float = 170.0
@@ -29,6 +32,9 @@ var _wind_volume: HSlider = HSlider.new()
 var _bike_volume: HSlider = HSlider.new()
 var _wind_label: Label = Label.new()
 var _bike_label: Label = Label.new()
+var _voice_volume: HSlider = HSlider.new()
+var _voice_label: Label = Label.new()
+var _voice_row: Array[Control] = []
 ## The controls of the options that only change the 3D world, of those of video courses, and
 ## of trainer difficulty, which a workout's ERG power leaves no part in.
 var _world_rows: Array[Control] = []
@@ -66,14 +72,27 @@ func _init() -> void:
 	_row("Season", _season, null, true)
 	_row("Wind sound", _wind_volume, _wind_label, true)
 	_row("Bicycle sound", _bike_volume, _bike_label, true)
+	_row("Voice chat", _voice_volume, _voice_label)
 	_row("Sound", _video_sound, null, false, true)
 	# i18n-end
+	_voice_row.assign(get_children().slice(-6, -3))
 	for slider: HSlider in [_wind_volume, _bike_volume]:
 		slider.min_value = 0.0
 		slider.max_value = 100.0
 		slider.step = 5.0
 		slider.value = 50.0
 		slider.value_changed.connect(func(_value: float) -> void: _changed())
+	_voice_volume.min_value = 0.0
+	_voice_volume.max_value = 100.0
+	_voice_volume.step = 5.0
+	_voice_volume.value = 60.0
+	_voice_volume.tooltip_text = tr("Friends' voices; 0 mutes them")
+	_voice_volume.value_changed.connect(
+		func(value: float) -> void:
+			_update_labels()
+			voice_volume_changed.emit(value)
+	)
+	show_voice(false, 60.0)
 	_wind_volume.tooltip_text = tr("Wind and rain volume; 0 mutes them")
 	_bike_volume.tooltip_text = tr("Chain, freewheel and gear shift volume; 0 mutes them")
 	for option: OptionButton in [_camera, _time, _weather, _season]:
@@ -147,6 +166,15 @@ func set_options(options: Dictionary) -> void:
 	_update_labels()
 
 
+## Shows group voice's volume (`volume`, a percentage) beside the other sounds while the rider
+## is in voice, without emitting `voice_volume_changed`; hidden otherwise.
+func show_voice(shown: bool, volume: float) -> void:
+	for control: Control in _voice_row:
+		control.visible = shown
+	_voice_volume.set_value_no_signal(volume)
+	_update_labels()
+
+
 ## Shows the options of the 3D world and those of a video course (sound), each or not, and
 ## trainer difficulty unless riding a workout.
 func show_option_groups(world: bool, video: bool, trainer: bool = true) -> void:
@@ -171,6 +199,7 @@ func _update_labels() -> void:
 	_difficulty_label.text = "%d %%" % roundi(_difficulty.value)
 	_wind_label.text = "%d %%" % roundi(_wind_volume.value)
 	_bike_label.text = "%d %%" % roundi(_bike_volume.value)
+	_voice_label.text = "%d %%" % roundi(_voice_volume.value)
 
 
 func _row(

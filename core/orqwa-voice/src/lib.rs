@@ -73,6 +73,10 @@ struct Controls {
     echo_prevention: AtomicBool,
     /// One bit per rider slot: who is speaking now.
     speaking: AtomicU8,
+    /// The open microphone's latest level, as [`meter`] gives it; zero while it is closed.
+    level: AtomicU32,
+    /// The name of the output speech plays on, empty until the backend tells it.
+    output: std::sync::Mutex<String>,
 }
 const _: () = assert!(MAX_RIDERS <= 8, "one bit per rider in Controls::speaking");
 
@@ -122,6 +126,8 @@ impl VoiceChat {
             flush: AtomicU32::new(0),
             echo_prevention: AtomicBool::new(false),
             speaking: AtomicU8::new(0),
+            level: AtomicU32::new(0.0_f32.to_bits()),
+            output: std::sync::Mutex::new(String::new()),
         });
         let (ready, receive) = oneshot::channel();
         let (send, events) = mpsc::channel(8);
@@ -234,6 +240,23 @@ impl VoiceChat {
         let speaking = self.controls.speaking.load(Ordering::Relaxed);
         std::array::from_fn(|slot| speaking & (1 << slot) != 0)
     }
+    /// How loud the open microphone is now, from zero to one as [`meter`] gives it, before
+    /// echo prevention holds it: the rider sees their microphone working without testing it
+    /// apart, which would pause voice. Zero while the microphone is closed.
+    #[must_use]
+    pub fn microphone_level(&self) -> f32 {
+        f32::from_bits(self.controls.level.load(Ordering::Relaxed))
+    }
+    /// The name of the output friends are heard on, e.g. `AirPods Pro`; it follows the system
+    /// when the default output moves to another device. Empty while unknown.
+    #[must_use]
+    pub fn output_name(&self) -> String {
+        self.controls
+            .output
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
     /// Waits for the next bounded local status event.
     pub async fn next(&mut self) -> Option<VoiceEvent> {
         self.events.recv().await
@@ -316,6 +339,13 @@ fn run(
             activation = port.transmitting();
             speaker_gate.restart();
             own = Speaking::default();
+            controls.level.store(0.0_f32.to_bits(), Ordering::Relaxed);
+        }
+        if let Some(name) = audio.output_changed() {
+            *controls
+                .output
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = name;
         }
         let output = (port.deafened(), controls.flush.load(Ordering::Relaxed));
         if output != playback {
@@ -357,7 +387,7 @@ fn run(
                 .echo_prevention
                 .load(Ordering::Acquire)
                 .then_some(&mut speaker_gate);
-            send_captures(
+            if let Some(peak) = send_captures(
                 port,
                 audio.as_mut(),
                 &mut encoder,
@@ -365,7 +395,11 @@ fn run(
                 &mut own,
                 gate,
                 events,
-            );
+            ) {
+                controls
+                    .level
+                    .store(meter(peak).to_bits(), Ordering::Relaxed);
+            }
         }
         let now = Instant::now();
         let sending = activation.is_some().then_some((port.me(), &own));
@@ -382,6 +416,7 @@ fn run(
     }
     port.disable();
     controls.speaking.store(0, Ordering::Relaxed);
+    controls.level.store(0.0_f32.to_bits(), Ordering::Relaxed);
     let _ = audio.microphone(None);
     audio.deafen(true);
     drop(audio);
@@ -414,7 +449,8 @@ fn send_captures(
     own: &mut Speaking,
     mut gate: Option<&mut echo::SpeakerGate>,
     events: &mpsc::Sender<VoiceEvent>,
-) {
+) -> Option<f32> {
+    let mut peak = None;
     // Every fresh frame is sent, in order: dropping any cuts a hole into the words.
     for _ in 0..MAX_FRAMES_PER_WAKE {
         let Some(mut captured) = audio.capture() else {
@@ -428,6 +464,15 @@ fn send_captures(
             let _ = encoder.skip(spurt);
             continue;
         }
+        // The meter shows the microphone itself, also while a friend's speech holds it.
+        let loudest = captured
+            .samples
+            .iter()
+            .filter(|sample| sample.is_finite())
+            .fold(peak.unwrap_or(0.0_f32), |loudest, sample| {
+                loudest.max(sample.abs().min(1.0))
+            });
+        peak = Some(loudest);
         if let Some(gate) = gate.as_deref_mut() {
             gate.apply(&mut captured.samples, captured.at);
         }
@@ -442,6 +487,18 @@ fn send_captures(
             });
             break;
         }
+    }
+    peak
+}
+
+/// A level meter's position for a sample `peak` (0 to 1): -60 through 0 dBFS as zero
+/// through one, as people read microphone meters.
+#[must_use]
+pub(crate) fn meter(peak: f32) -> f32 {
+    if peak > 0.0 {
+        ((peak.log10() * 20.0 + 60.0) / 60.0).clamp(0.0, 1.0)
+    } else {
+        0.0
     }
 }
 

@@ -1,7 +1,8 @@
 class_name GroupActivityPicker
 extends VBoxContainer
 # gdlint: disable=max-line-length
-## The group activity's presentation, using the same previews as the solo ride pages.
+## The group activity's presentation, using the same previews as the solo ride pages. Only the
+## organizer chooses; friends see who is choosing, then what they look at or chose (R196).
 
 signal chosen(course: String, workout: String)
 ## The organizer changed what the picker shows; friends see it as a preview (#418).
@@ -35,6 +36,12 @@ var _active_course: String = ""
 var _active_workout: String = ""
 ## What the organizer is choosing, for a friend (#418): shown instead of the shared activity.
 var _shown: Dictionary = {}
+var _organizer: String = ""
+## The shared activity's name, shown to a friend until their copy is ready.
+var _selection: String = ""
+## Friends wait here while the organizer has neither chosen nor started looking.
+var _waiting: VBoxContainer = VBoxContainer.new()
+var _waiting_text: Label = Label.new()
 
 
 func _ready() -> void:
@@ -45,10 +52,21 @@ func _ready() -> void:
 	add_child(title)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.add_theme_color_override("font_color", UiTheme.MUTED)
-	_hint.text = tr(
-		"Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
-	)
+	_hint.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	add_child(_hint)
+	_waiting.alignment = BoxContainer.ALIGNMENT_CENTER
+	_waiting.add_theme_constant_override("separation", 18)
+	_waiting.custom_minimum_size.y = 420
+	var spinner: Spinner = Spinner.new(34.0)
+	spinner.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_waiting.add_child(spinner)
+	_waiting_text.add_theme_font_size_override("font_size", 19)
+	_waiting_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_waiting_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_waiting_text.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_waiting.add_child(_waiting_text)
+	_waiting.hide()
+	add_child(_waiting)
 	_previews.add_theme_constant_override("separation", 24)
 	for column: VBoxContainer in [_course_preview, _workout_preview]:
 		column.add_theme_constant_override("separation", 12)
@@ -86,7 +104,7 @@ func _ready() -> void:
 	_workout_preview.add_child(_description)
 	options.add_theme_constant_override("separation", 8)
 	add_child(options)
-	_apply.text = tr("Use this activity")
+	_apply.text = tr("Share with the group")
 	_apply.custom_minimum_size.y = 44
 	_apply.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_apply.pressed.connect(func() -> void: chosen.emit(course(), workout()))
@@ -173,13 +191,16 @@ func show_selection(editable: bool, course_path: String, workout_id: String) -> 
 	_course.disabled = not editable
 	_workout.disabled = not editable
 	_apply.visible = editable
-	_hint.text = (
-		tr(
-			"Choose a course, a workout, or both. Your friends see a preview while you choose and get a copy once you use it."
-		)
-		if editable
-		else tr("Chosen by the organizer. Your copy downloads automatically.")
-	)
+	_preview()
+
+
+## Names the organizer, who friends see choosing and having chosen, and the activity they
+## shared (`selection`), shown until a friend's copy is ready.
+func set_organizer(organizer: String, selection: String) -> void:
+	if organizer == _organizer and selection == _selection:
+		return
+	_organizer = organizer
+	_selection = selection
 	_preview()
 
 
@@ -211,11 +232,27 @@ func _preview() -> void:
 	var shown_workout: Dictionary = _shown.get("workout", {})
 	_course_caption.text = tr("Course preview") if previewing else tr("Course")
 	_workout_caption.text = tr("Workout preview") if previewing else tr("Workout")
-	_hint.visible = not previewing
-	_course.visible = not previewing
-	_workout.visible = not previewing
-	_course_preview.visible = not previewing or not shown_course.is_empty()
-	_workout_preview.visible = not previewing or not shown_workout.is_empty()
+	# Friends see names, never the organizer's pickers (R196).
+	var chosen: bool = not _active_course.is_empty() or not _active_workout.is_empty()
+	var waiting: bool = not _editable and not previewing and not chosen
+	_waiting.visible = waiting
+	_waiting_text.text = tr("%s is choosing the ride") % _organizer
+	_previews.visible = not waiting
+	options.visible = not waiting
+	_hint.text = tr("Chosen by %s") % _organizer
+	_hint.visible = not _editable and not previewing and chosen
+	_course.visible = _editable and not previewing
+	_workout.visible = _editable and not previewing
+	_course_preview.visible = (
+		(_editable and not previewing)
+		or (previewing and not shown_course.is_empty())
+		or (not previewing and not _active_course.is_empty())
+	)
+	_workout_preview.visible = (
+		(_editable and not previewing)
+		or (previewing and not shown_workout.is_empty())
+		or (not previewing and not _active_workout.is_empty())
+	)
 	for child: Node in _figures.get_children():
 		_figures.remove_child(child)
 		child.queue_free()
@@ -224,7 +261,7 @@ func _preview() -> void:
 	_figures.hide()
 	var entry: Dictionary = shown_course if previewing else _library_course()
 	_course_name.text = entry.get("name", "")
-	_course_name.visible = previewing
+	_course_name.visible = not _editable or previewing
 	if not entry.is_empty():
 		var track: PackedVector2Array = entry.get("track", PackedVector2Array())
 		var profile: PackedVector2Array = entry.get("profile", PackedVector2Array())
@@ -242,12 +279,22 @@ func _preview() -> void:
 			var label: Label = Label.new()
 			label.text = tr(figure[0]) + "  " + figure[1]
 			_figures.add_child(label)
+	if (
+		chosen
+		and not _editable
+		and not previewing
+		and entry.is_empty()
+		and _library_workout().is_empty()
+	):
+		# Still on its way: its name is all there is to show yet.
+		_course_name.text = _selection
+		_course_preview.visible = true
 	_chart.hide()
 	_description.hide()
 	_duration.hide()
 	var plan: Dictionary = shown_workout if previewing else _library_workout()
 	_workout_name.text = plan.get("name", "")
-	_workout_name.visible = previewing
+	_workout_name.visible = not _editable or previewing
 	if not plan.is_empty():
 		var steps: Array = plan["steps"]
 		var ftp: float = _orqwa.profile().get("ftp_w", 200.0)
@@ -264,9 +311,9 @@ func _preview() -> void:
 		or (course() == _active_course and workout() == _active_workout)
 	)
 	_apply.text = (
-		tr("Shared with everyone")
+		tr("Shared with the group")
 		if _apply.disabled and (not course().is_empty() or not workout().is_empty())
-		else tr("Use this activity")
+		else tr("Share with the group")
 	)
 
 

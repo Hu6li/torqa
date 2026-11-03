@@ -131,6 +131,66 @@ fn wait(host: &mut App, peer: &mut App, condition: impl Fn(&App, &App) -> bool) 
 }
 
 #[test]
+fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly() {
+    let (one, two, three) = (Directory::new(), Directory::new(), Directory::new());
+    let (mut host, mut peer, mut late) = (one.app(), two.app(), three.app());
+    let mut quick = options();
+    quick.window = Duration::from_secs(1);
+    host.group_open(None, quick.clone()).unwrap();
+    wait(&mut host, &mut peer, |host, _| {
+        !host.group().invite.is_empty()
+    });
+    // No reply at all: said beside the organizer's field (R195), not as a failure.
+    host.group_admit("see you at seven").unwrap();
+    wait(&mut host, &mut peer, |host, _| {
+        host.group().refusal == Refusal::Invalid
+    });
+    assert_eq!(host.group().error, "");
+    // A reply pasted with the message it came in adds the friend.
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, peer| {
+        !peer.group().reply.is_empty()
+    });
+    assert!(
+        peer.group().reply_until.is_some(),
+        "the joiner sees how long it has"
+    );
+    let reply = peer.group().reply;
+    host.group_admit(&format!("Here is mine: {reply} thanks"))
+        .unwrap();
+    wait(&mut host, &mut peer, |host, _| {
+        host.group().refusal == Refusal::None && host.group().roster.iter().flatten().count() == 2
+    });
+    assert_eq!(host.group().admitting, 0, "nobody is connecting any more");
+    host.group_admit(&reply).unwrap();
+    wait(&mut host, &mut peer, |host, _| {
+        host.group().refusal == Refusal::Again
+    });
+    // A friend whose computer never connects runs out after the reply's minute, here one second.
+    late.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut late, |_, late| {
+        !late.group().reply.is_empty()
+    });
+    let gone = late.group().reply;
+    late.group_leave();
+    host.group_admit(&gone).unwrap();
+    wait(&mut host, &mut late, |host, _| {
+        host.group().refusal == Refusal::Late
+    });
+    assert_eq!(host.group().admitting, 0);
+    assert_eq!(host.group().error, "");
+    // The joiner not added in time is told so, without a failure, and may make a new reply.
+    late.group_open(Some(host.group().invite), quick).unwrap();
+    wait(&mut host, &mut late, |_, late| {
+        late.group().phase == Phase::Failed
+    });
+    assert!(late.group().reply_expired);
+    assert!(late.group().error.is_empty(), "{}", late.group().error);
+}
+
+#[test]
 fn late_workout_entry_is_explicit_and_records_only_the_riders_own_effort() {
     let from = Directory::new();
     let to = Directory::new();
@@ -178,7 +238,7 @@ fn late_workout_entry_is_explicit_and_records_only_the_riders_own_effort() {
     wait(&mut host, &mut peer, |_, peer| {
         !peer.group().reply.is_empty()
     });
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |_, peer| {
         peer.group().can_enter() && peer.trainer_connected()
     });
@@ -247,7 +307,7 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(host, peer, |_, peer| !peer.group().reply.is_empty());
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(host, peer, |host, peer| {
         host.group().roster.iter().flatten().count() == 2 && peer.group().phase == Phase::Waiting
     });
@@ -426,7 +486,7 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
             .group_open(Some(host.group().invite), options())
             .unwrap();
         wait(host, friend, |_, f| !f.group().reply.is_empty());
-        host.group_admit(friend.group().reply).unwrap();
+        host.group_admit(&friend.group().reply).unwrap();
         wait(host, friend, |h, f| {
             h.group().roster.iter().flatten().count() == count && f.group().phase == Phase::Waiting
         });
@@ -633,7 +693,7 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
     late.group_open(Some(peer.group().invite), options())
         .unwrap();
     wait(&mut peer, &mut late, |_, p| !p.group().reply.is_empty());
-    peer.group_admit(late.group().reply).unwrap();
+    peer.group_admit(&late.group().reply).unwrap();
     wait(&mut peer, &mut late, |_, p| {
         p.group().can_enter() && p.trainer_connected()
     });
@@ -834,7 +894,7 @@ fn app_lobby_downloads_a_workout_starts_locally_and_survives_host_loss() {
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |h, p| {
         h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
     });
@@ -932,7 +992,7 @@ fn course_on_joining(to: &Directory, prepare: impl FnOnce(&Path)) -> PathBuf {
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |_, p| p.group().course.is_some());
     let course = peer.group().course.unwrap();
     peer.group_leave();
@@ -1023,7 +1083,7 @@ fn friends_see_what_the_organizer_chooses_until_it_is_shared() {
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |_, p| {
         p.group().phase == Phase::Waiting
     });
@@ -1184,7 +1244,7 @@ fn shared_rules_retain_verified_content_invalidate_ready_and_freeze_at_start() {
     peer.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
-    host.group_admit(peer.group().reply).unwrap();
+    host.group_admit(&peer.group().reply).unwrap();
     wait(&mut host, &mut peer, |h, p| {
         h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
     });

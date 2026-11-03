@@ -5,10 +5,6 @@ extends AcceptDialog
 ## Opened from the code button beside the phone remote's row under Devices. The page on the
 ## phone speaks the rider's language: its texts go to the core from here.
 
-## Pixels per module of the QR code: large enough to scan off a screen at arm's length.
-const MODULE_PIXELS: int = 6
-## Light modules around the code, as QR readers need.
-const QUIET_ZONE: int = 4
 const MIN_PORT: int = 1024
 const MAX_PORT: int = 65535
 # i18n-begin
@@ -144,21 +140,9 @@ func _send_texts() -> void:
 	_orqwa.set_phone_remote_texts(TranslationServer.get_locale().replace("_", "-"), words)
 
 
-## The remote's QR code with its quiet zone, a pixel per module: drawn without smoothing, it
-## stays sharp at any size.
+## The remote's QR code, sharp at any size.
 func _code_texture() -> ImageTexture:
-	var code: Dictionary = _orqwa.phone_remote_code()
-	if code.is_empty():
-		return null
-	var size: int = code["size"]
-	var data: PackedByteArray = code["modules"]
-	var modules: Image = Image.create_from_data(size, size, false, Image.FORMAT_L8, data)
-	var side: int = size + 2 * QUIET_ZONE
-	var image: Image = Image.create_empty(side, side, false, Image.FORMAT_L8)
-	image.fill(Color.WHITE)
-	image.blit_rect(modules, Rect2i(0, 0, size, size), Vector2i(QUIET_ZONE, QUIET_ZONE))
-	image.resize(side * MODULE_PIXELS, side * MODULE_PIXELS, Image.INTERPOLATE_NEAREST)
-	return ImageTexture.create_from_image(image)
+	return QrImage.texture(_orqwa.phone_remote_code())
 
 
 ## Another port: the code and address change with it; if the port is taken, it stays.

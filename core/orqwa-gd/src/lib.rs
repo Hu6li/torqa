@@ -2085,6 +2085,31 @@ impl OrqwaApp {
             }
         }
     }
+    /// Which group code `text` holds, `"invitation"`, `"reply"` or empty, read offline and
+    /// reporting nothing: to tell riders who pasted the other one (R195).
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn group_code_kind(text: GString) -> GString {
+        GString::from(orqwa_app::group::connection::code_kind(&text.to_string()).key())
+    }
+    /// The QR code of `text`, e.g. an invitation for a phone to pass on (R195), shaped like
+    /// [`Self::phone_remote_code`]; empty if it is too long for one.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
+    fn qr_code(text: GString) -> VarDictionary {
+        let Some(code) = orqwa_app::remote::qr_code(&text.to_string()) else {
+            return VarDictionary::new();
+        };
+        let modules: PackedByteArray = code
+            .dark
+            .iter()
+            .map(|&dark| if dark { 0 } else { 255 })
+            .collect();
+        vdict! {
+            "size" => i64::try_from(code.size).unwrap_or_default(),
+            "modules" => &modules,
+        }
+    }
     /// Starts networking only after the rider confirms the guided popup.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
@@ -2143,7 +2168,7 @@ impl OrqwaApp {
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_admit(&mut self, reply: GString) -> bool {
-        self.command(|app| app.group_admit(reply.to_string()))
+        self.command(|app| app.group_admit(&reply.to_string()))
     }
 
     /// Selects an optional course path and structured workout id from the local libraries.
@@ -2290,7 +2315,7 @@ impl OrqwaApp {
     fn group_voice_echo_prevention(&mut self, enabled: bool) -> bool {
         self.command(|app| app.group_voice_echo_prevention(enabled))
     }
-    /// Selects native devices, reconnecting active voice with the microphone muted.
+    /// Selects native devices, reconnecting active voice with the microphone as it was.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_voice_choose(&mut self, input: GString, output: GString) -> bool {
