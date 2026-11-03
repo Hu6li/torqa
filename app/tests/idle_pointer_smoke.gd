@@ -1,5 +1,5 @@
 extends SceneTree
-## Display checks for the idle mouse pointer in course views (#477, R200–R201).
+## Display checks for the idle mouse pointer in course views and dialogs (R200–R201, R205).
 ## Run: xvfb-run -a godot --path app --audio-driver Dummy -s res://tests/idle_pointer_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -79,12 +79,7 @@ func _idle_pointer() -> void:
 		_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "a click restores the pointer")
 	_check(clicked[0], "restoring the pointer does not consume the click")
 	await create_timer(3.2).timeout
-	var dialog: AcceptDialog = AcceptDialog.new()
-	main.add_child(dialog)
-	dialog.popup_centered(Vector2i(300, 200))
-	await _settle()
-	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "a dialog restores the pointer")
-	dialog.hide()
+	await _dialogs(main)
 	root.grab_focus()
 	await _settle()
 	root.mouse_entered.emit()
@@ -110,6 +105,42 @@ func _idle_pointer() -> void:
 	main.free()
 	root.mode = Window.MODE_WINDOWED
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "closing the view restores the pointer")
+
+
+## Embedded windows can keep the main window focused and receive all its mouse input.
+func _dialogs(main: Control) -> void:
+	var ride: RideScreen = main.get_node("RideScreen")
+	var dialog: AcceptDialog = ride._group_window
+	ride._bar.group_requested.emit()
+	await _settle()
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the group dialog restores the pointer")
+	root.focus_entered.emit()
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "an idle group dialog keeps the pointer")
+	var nested: AcceptDialog = AcceptDialog.new()
+	dialog.add_child(nested)
+	nested.popup_centered(Vector2i(300, 200))
+	await _settle()
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.relative = Vector2.ONE
+	nested.push_input(motion)
+	root.focus_entered.emit()
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "nested dialog input keeps it visible")
+	nested.free()
+	await create_timer(3.2).timeout
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "the parent dialog still needs a pointer")
+	dialog.hide()
+	await _settle()
+	var popup: PopupPanel = PopupPanel.new()
+	main.add_child(popup)
+	popup.popup(Rect2i(200, 200, 200, 100))
+	await _settle()
+	_check(popup.visible, "the popup remains open for the idle check")
+	await create_timer(3.2).timeout
+	_check(popup.visible, "the popup remains open beyond the idle delay")
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "popups also keep the pointer visible")
+	popup.free()
 
 
 ## The normal start/ride signals cover the views that must never hide the pointer (R201).

@@ -60,6 +60,9 @@ To run it alone, use `timeout 90 xvfb-run -a godot --path app --audio-driver Dum
 -s res://tests/idle_pointer_smoke.gd`. It checks the idle delay, movement and clicks over
 controls, windowed and full-screen hiding in 3D/video rides and workouts, keeping it visible
 in menus, plain workouts and the overlay, and restoring it for other windows (R200–R201).
+It also keeps the real in-ride group window, a nested dialog and a popup idle past the
+three-second delay while the main window retains focus, then checks that course idling
+resumes after the last window closes (R205).
 
 The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.md) for them and a
 gallery of every model); Blender runs in its own container on the host:

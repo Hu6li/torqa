@@ -407,6 +407,8 @@ Built in rideable steps:
 - [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a
   3D world or video; movement or a click restores it. Menus, plain workouts, summaries and
   the overlay keep it visible (R200–R201, #477)
+  - [x] Keep the pointer visible throughout every open dialog or popup, including nested
+    windows over the group ride; closing the last window starts a fresh idle delay (R205).
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter

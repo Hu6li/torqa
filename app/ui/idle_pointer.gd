@@ -1,6 +1,6 @@
 class_name IdlePointer
 extends Node
-## Keeps an idle pointer out of course views without capturing it (#477, R200–R201).
+## Keeps an idle pointer out of course views, visible in dialogs (#477, R200–R201, R205).
 
 const DELAY_SECONDS: float = 3.0
 
@@ -20,6 +20,7 @@ var enabled: bool = false:
 var _timer: Timer = Timer.new()
 var _inside: bool = false
 var _hidden: bool = false
+var _subwindows: Array[Window] = []
 
 
 func _ready() -> void:
@@ -33,7 +34,30 @@ func _ready() -> void:
 	window.mouse_exited.connect(_left)
 	window.focus_entered.connect(_restart)
 	window.focus_exited.connect(_suspend)
+	get_tree().node_added.connect(_watch_window)
+	for node: Node in get_tree().root.find_children("*", "Window", true, false):
+		_watch_window(node)
 	_restart()
+
+
+## Embedded dialogs can retain main-window focus and receive mouse input in its place.
+func _watch_window(node: Node) -> void:
+	if not node is Window or node == get_window():
+		return
+	var window: Window = node as Window
+	_subwindows.append(window)
+	window.visibility_changed.connect(_restart)
+	window.tree_exiting.connect(_forget_window.bind(window), CONNECT_ONE_SHOT)
+	_restart()
+
+
+func _forget_window(window: Window) -> void:
+	_subwindows.erase(window)
+	_restart()
+
+
+func _dialog_open() -> bool:
+	return _subwindows.any(func(window: Window) -> bool: return window.visible)
 
 
 func _input(event: InputEvent) -> void:
@@ -64,10 +88,11 @@ func _left() -> void:
 
 
 func _restart() -> void:
+	_timer.stop()
 	_show_pointer()
 	# Closing an embedded dialog can restore focus while its parent scene is leaving.
 	var window: Window = get_window()
-	if enabled and window != null and _inside and window.has_focus():
+	if enabled and window != null and _inside and window.has_focus() and not _dialog_open():
 		_timer.start()
 
 
@@ -83,6 +108,7 @@ func _hide_pointer() -> void:
 		or window == null
 		or not _inside
 		or not window.has_focus()
+		or _dialog_open()
 		or Input.get_mouse_button_mask() != 0
 	):
 		return
