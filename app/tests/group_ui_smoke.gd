@@ -17,6 +17,7 @@ func _run() -> void:
 	await _group_motion()
 	await _group_profile_difficulty()
 	await _microphone_permissions()
+	await _voice_failures()
 	await _ride_window_columns()
 	_ride_bar()
 	_offer_card()
@@ -24,6 +25,48 @@ func _run() -> void:
 	if not _failed:
 		print("GROUP UI SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## Voice uses the same error card and history as other application errors.
+func _voice_failures() -> void:
+	var main: Control = MAIN_SCENE.instantiate()
+	root.add_child(main)
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var ride: RideScreen = main.get_node("RideScreen")
+	var history: FailureDetails = main.get("_failures")
+	var voice: GroupVoiceControls = ride._group_controls._voice_controls
+	ride._group_window.popup_centered(Vector2i(980, 600))
+	await process_frame
+	var dialog: GroupVoiceDialog = voice._dialog
+	dialog.ask_join()
+	dialog._listen_with(false)
+	history.clear()
+	# No lobby is open: this is a real synchronous command failure through the native bridge.
+	dialog._confirm()
+	_check(dialog.visible, "a refused voice join keeps its dialog open for retry")
+	_check(history.visible, "a refused voice join uses the shared application error card")
+	_check(history._failures.size() == 1, "the failure is reported once to the shared history")
+	_check(
+		not str(history._failures[0].get("details", "")).is_empty(),
+		"the shared history retains the original technical cause"
+	)
+	dialog.hide()
+	ride._group_window.hide()
+	history._toggle.button_pressed = true
+	_check(history._panel.visible, "standard technical details explain the failed voice join")
+	history._dismiss.pressed.emit()
+	_check(not history.visible, "standard Dismiss clears the shared failure history")
+	var failure: Dictionary = {
+		"message": "Voice is unavailable. Check your audio devices and microphone permission.",
+		"details": "simulated output-device failure"
+	}
+	app.failure_reported.emit(failure)
+	_check(history.visible, "asynchronous voice failures use that same application error card")
+	_check(
+		history._failures.size() == 1, "a new failure appears after the earlier one was dismissed"
+	)
+	main.free()
+	await process_frame
 
 
 ## A fresh group ride must show the difficulty the engine takes from the active profile.

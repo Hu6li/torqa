@@ -409,6 +409,8 @@ Built in rideable steps:
 - [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a
   3D world or video; movement or a click restores it. Menus, plain workouts, summaries and
   the overlay keep it visible (R200–R201, #477)
+  - [x] Keep the pointer visible throughout every open dialog or popup, including nested
+    windows over the group ride; closing the last window starts a fresh idle delay (R205).
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter
@@ -999,6 +1001,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Voice is joined through a guided window asked every time: headphones or speakers, then a
   sound check with an optional open microphone; one voice button per rider, a red bin to
   remove, a microphone button in the ride's bar and voice volume in its settings (R194)
+  - [x] Joining releases any local audio check in the same activation, including while riding
+    alone; refusals keep the join window open and failures use the existing application
+    error card and Technical details history (R170, R194).
 - [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
   empty seat in the group list for each friend's reply with one-line reasons when it adds
   nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)

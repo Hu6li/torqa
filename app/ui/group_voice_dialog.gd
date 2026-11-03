@@ -31,6 +31,7 @@ var _device_key: String = ""
 var _status: Dictionary = {}
 ## The meter is started again once a speaker check or a device change has stopped it.
 var _resume_meter: bool = false
+var _joining_voice: bool = false
 
 
 func _ready() -> void:
@@ -251,19 +252,23 @@ func _on_action(action: StringName) -> void:
 
 
 func _confirm() -> void:
-	hide()
 	if not _joining:
+		hide()
 		return
 	var microphone: bool = _microphone_on.button_pressed
-	_meter(false)
-	_orqwa.group_voice(true, microphone, false, _volume.value / 100.0)
+	if _orqwa.group_voice(true, microphone, false, _volume.value / 100.0):
+		_joining_voice = true
+		hide()
+		_joining_voice = false
 
 
-## Closing the window stops whichever check runs (R178).
+## Cancelling stops the check; an accepted join releases it as part of voice startup (R178).
 func _on_visibility() -> void:
 	if not visible and _orqwa != null:
 		_resume_meter = false
-		_orqwa.group_microphone_test(false)
+		# The accepted join owns check cleanup; another stop could supersede that activation.
+		if not _joining_voice:
+			_orqwa.group_microphone_test(false)
 
 
 func _on_microphone(on: bool) -> void:

@@ -73,6 +73,130 @@ async fn wait(updates: &mut watch::Receiver<Snapshot>, predicate: impl Fn(&Snaps
 }
 
 #[tokio::test]
+async fn joining_voice_supersedes_an_audio_check_even_when_its_stop_command_is_stale() {
+    for kind in [TestKind::Microphone, TestKind::Speakers] {
+        for mic in [false, true] {
+            join_after_check(kind, mic, false).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn joining_voice_after_a_check_reports_device_failure_without_ending_the_group() {
+    for kind in [TestKind::Microphone, TestKind::Speakers] {
+        join_after_check(kind, false, true).await;
+    }
+}
+
+#[allow(clippy::too_many_lines)] // one lifecycle keeps check, consent, startup failure and cleanup assertions together
+async fn join_after_check(kind: TestKind, mic: bool, voice_fails: bool) {
+    let directory = std::env::temp_dir().join(format!(
+        "orqwa-join-after-check-{:x?}",
+        orqwa_net::code::RideId::generate().unwrap().0
+    ));
+    let live = Arc::new(AtomicUsize::new(0));
+    let capture = live.clone();
+    let opened = Arc::new(AtomicUsize::new(0));
+    let opening = opened.clone();
+    let mut options = ConnectOptions::default();
+    options.gather.policy.loopback = true;
+    options.gather.stun_servers.clear();
+    let controls = Arc::new(VoiceControls::default());
+    let (_choices, choices) = watch::channel(None);
+    let request = Request {
+        audio: AudioBackend {
+            factory: Some(Arc::new(move |_| {
+                assert_eq!(
+                    capture.load(Ordering::Acquire),
+                    0,
+                    "release test capture first"
+                );
+                if opening.fetch_add(1, Ordering::AcqRel) > 0 && voice_fails {
+                    return Err(VoiceDeviceError::new(
+                        "opening output",
+                        "selected device unavailable",
+                    ));
+                }
+                Ok(Box::new(Capture {
+                    live: capture.clone(),
+                    activation: None,
+                    opened: None,
+                    produced: 0,
+                    phase: 0.0,
+                    played: Arc::default(),
+                }))
+            })),
+        },
+        voice_controls: controls.clone(),
+        invite: None,
+        rider: Rider {
+            name: "Solo organizer".into(),
+            mass: Kilograms(83.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        },
+        options,
+        data: directory.join("data"),
+        temporary: directory.join("temporary"),
+        choices,
+    };
+    let (commands, receive) = mpsc::channel(8);
+    let (send, mut updates) = watch::channel(Snapshot::default());
+    let (_local, local) = watch::channel(None);
+    let task = tokio::spawn(run(request, receive, send, local));
+    wait(&mut updates, |s| s.phase == Phase::Waiting).await;
+    commands
+        .send(Command::AudioTest(0, Some(kind)))
+        .await
+        .unwrap();
+    wait(&mut updates, |s| match kind {
+        TestKind::Microphone => s.microphone_test && s.microphone_level > 0.0,
+        TestKind::Speakers => s.speaker_test && opened.load(Ordering::Acquire) > 0,
+    })
+    .await;
+    // The UI stops the check then joins immediately, advancing the shared generation twice
+    // before the actor reads either command. Its stale stop must not swallow the join.
+    controls.generation.store(2, Ordering::Release);
+    controls.audio_test.store(0, Ordering::Release);
+    commands.send(Command::AudioTest(1, None)).await.unwrap();
+    commands
+        .send(Command::Voice(2, true, mic, false, 0.4))
+        .await
+        .unwrap();
+    wait(&mut updates, |s| s.voice || !s.error.is_empty()).await;
+    let status = updates.borrow().clone();
+    if voice_fails {
+        assert!(!status.voice && !status.voice_pending && !status.microphone);
+        assert_eq!(status.failure.unwrap().kind, crate::Kind::GroupVoice);
+        assert!(status.error.contains("selected device unavailable"));
+    } else {
+        assert!(status.voice, "voice startup failed: {}", status.error);
+        assert_eq!(
+            status.microphone, mic,
+            "preserve the explicit microphone choice"
+        );
+    }
+    assert!(
+        status.phase == Phase::Waiting,
+        "audio failure preserves the group"
+    );
+    assert!(!status.microphone_test && !status.speaker_test);
+    assert_eq!(status.roster.iter().flatten().count(), 1);
+    drop(commands);
+    task.await.unwrap();
+    // Dropping the owner signals the audio thread; its capture closes on that thread.
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while live.load(Ordering::Acquire) > 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("leaving releases capture within the cleanup deadline");
+    assert_eq!(live.load(Ordering::Acquire), 0, "leaving releases capture");
+    let _ = std::fs::remove_dir_all(directory);
+}
+
+#[tokio::test]
 async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_removed() {
     let directory = std::env::temp_dir().join(format!(
         "orqwa-peer-audio-{:x?}",

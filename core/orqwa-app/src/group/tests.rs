@@ -1240,6 +1240,52 @@ fn friends_see_what_the_organizer_chooses_until_it_is_shared() {
 }
 
 #[test]
+fn joining_voice_during_a_solo_group_ride_preserves_riding_and_the_microphone_choice() {
+    let directory = Directory::new();
+    let idle_directory = Directory::new();
+    let mut host = directory.app();
+    let mut idle = idle_directory.app();
+    host.connect_trainer(TrainerChoice::Fake(FakeRider {
+        power: Watts(180.0),
+        cadence: Rpm(85.0),
+        heart: None,
+    }))
+    .unwrap();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut idle, |h, _| {
+        h.group().phase == Phase::Waiting
+    });
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait(&mut host, &mut idle, |h, _| {
+        h.group().prepared && h.trainer_connected()
+    });
+    host.group_ready(true).unwrap();
+    wait(&mut host, &mut idle, |h, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait(&mut host, &mut idle, |h, _| h.ride_state().is_some());
+    let controls = host.group.as_ref().unwrap().voice_controls.clone();
+    controls.silent.store(true, Ordering::Release);
+    for mic in [false, true] {
+        // A requested local check must not prevent the public Join voice action either.
+        controls.audio_test.store(1, Ordering::Release);
+        host.group_voice(true, mic, false, 0.4).unwrap();
+        wait(&mut host, &mut idle, |h, _| {
+            h.group().voice && h.group().microphone == mic
+        });
+        assert_eq!(controls.audio_test.load(Ordering::Acquire), 0);
+        assert_eq!(host.group().error, "");
+        assert_eq!(host.group().roster.iter().flatten().count(), 1);
+        let before = host.ride_state().unwrap().elapsed;
+        host.update(Duration::from_secs(1));
+        assert!(host.ride_state().unwrap().elapsed > before);
+        host.group_voice(false, false, false, 0.4).unwrap();
+        wait(&mut host, &mut idle, |h, _| !h.group().voice);
+    }
+    host.group_leave();
+}
+
+#[test]
 fn voice_off_closes_the_transmission_gate_synchronously_without_opening_audio_devices() {
     let from = Directory::new();
     let to = Directory::new();

@@ -500,3 +500,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R204 | Refines R53 and R196 (2026-11-03): starting a group ride keeps the lobby's **course map, elevation profile and workout preview in the same positions and sizes throughout the countdown**, for the organizer and friends, with or without a shared workout. The organizer's activity choices and shared rules become disabled in place; the countdown replaces the readiness message without adding a row above the map. Window resizing still reflows the layout normally. |
+
+## Pointer visibility in dialogs
+
+| ID | Requirement |
+|---|---|
+| R205 | Refines R200–R201 (2026-11-03): opening any application **dialog or popup** immediately restores the pointer and keeps it visible for the entire time that any such window is open, including nested windows over an ongoing group ride. Embedded windows that leave the main window focused follow the same rule. Moving the pointer within a dialog never hides it. Closing the last dialog starts a fresh three-second idle delay when the course view is active. |

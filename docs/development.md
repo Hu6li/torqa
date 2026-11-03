@@ -75,6 +75,9 @@ To run it alone, use `timeout 90 xvfb-run -a godot --path app --audio-driver Dum
 -s res://tests/idle_pointer_smoke.gd`. It checks the idle delay, movement and clicks over
 controls, windowed and full-screen hiding in 3D/video rides and workouts, keeping it visible
 in menus, plain workouts and the overlay, and restoring it for other windows (R200–R201).
+It also keeps the real in-ride group window, a nested dialog and a popup idle past the
+configured delay while the main window retains focus, then checks that course idling
+resumes after the last window closes (R205).
 
 The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.md) for them and a
 gallery of every model); Blender runs in its own container on the host:
@@ -654,6 +657,15 @@ output-only backend that rejects any microphone/capture call, assert bounded gai
 cleanup, and exercise microphone→speaker→voice restoration through the app. On hardware,
 deny microphone permission and still test the selected speakers, change voice volume, stop
 early and close the dialog. Review both settings scroll positions at the minimum window size.
+
+The `joining_voice_` app regressions cover a solo group workout and joining directly from a
+microphone or speaker check, microphone on and off, with a stop command already superseded
+by the join. Simulated audio verifies that check capture is released before voice opens.
+The group UI smoke test checks refused joins remain open and synchronous/asynchronous failures
+reach the existing application error card, Technical details history and Dismiss controls.
+On hardware, repeat the checks during a solo group ride and with friends, press **Join voice**
+before the check finishes, and retry after selecting an unavailable device. Verify riding
+continues and failures use the same bottom-right card as other application errors.
 
 For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
 private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global
