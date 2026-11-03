@@ -183,6 +183,14 @@ async fn join_after_check(kind: TestKind, mic: bool, voice_fails: bool) {
     assert_eq!(status.roster.iter().flatten().count(), 1);
     drop(commands);
     task.await.unwrap();
+    // Dropping the owner signals the audio thread; its capture closes on that thread.
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while live.load(Ordering::Acquire) > 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("leaving releases capture within the cleanup deadline");
     assert_eq!(live.load(Ordering::Acquire), 0, "leaving releases capture");
     let _ = std::fs::remove_dir_all(directory);
 }
