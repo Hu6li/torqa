@@ -110,14 +110,17 @@ func _init() -> void:
 		["Drivetrain", _drivetrain],
 		["Chainring", _chainring],
 		["Cog", _cog],
-		["Age for calories", _calorie_age],
-		["Sex for calories", _calorie_sex],
-		["Without sensors", _calorie_effort],
+		["Age", _calorie_age],
+		["Sex", _calorie_sex],
+		["Calories", _calorie_effort],
 	]:
 		# i18n-end
 		var caption: Label = Label.new()
 		caption.text = row[0]
 		var field: Control = row[1]
+		if field in [_calorie_age, _calorie_sex, _calorie_effort]:
+			caption.tooltip_text = field.tooltip_text
+			caption.mouse_filter = Control.MOUSE_FILTER_PASS
 		# The fields grow with the dialog rather than staying fixed in the middle (R53).
 		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		add_child(caption)

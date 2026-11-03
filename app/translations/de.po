@@ -3085,8 +3085,8 @@ msgstr "macOS schränkt den Mikrofonzugriff ein. Prüfe die Datenschutzvorgaben 
 msgid "Run the downloaded ORQWA app to request microphone access on macOS."
 msgstr "Starte die heruntergeladene ORQWA-App, um unter macOS den Mikrofonzugriff anzufragen."
 
-msgid "Age for calories"
-msgstr "Alter für Kalorien"
+msgid "Age"
+msgstr "Alter"
 
 msgid "Calories"
 msgstr "Kalorien"
@@ -3142,8 +3142,5 @@ msgstr "Grobe Kalorienschätzung aus deiner angenommenen Belastung und deinem Ge
 msgid "Rough estimate without power or usable heart rate. Counts time even without pedalling."
 msgstr "Grobe Schätzung ohne Leistung oder nutzbare Herzfrequenz. Zählt die Zeit auch ohne Treten."
 
-msgid "Sex for calories"
-msgstr "Geschlecht für Kalorien"
-
-msgid "Without sensors"
-msgstr "Ohne Sensoren"
+msgid "Sex"
+msgstr "Geschlecht"

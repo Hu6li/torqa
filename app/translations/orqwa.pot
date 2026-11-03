@@ -320,7 +320,7 @@ msgid "Against the period before"
 msgstr ""
 
 #: app/ui/profile_form.gd
-msgid "Age for calories"
+msgid "Age"
 msgstr ""
 
 #: app/ui/video_align_dialog.gd
@@ -555,7 +555,7 @@ msgstr ""
 msgid "Cadence"
 msgstr ""
 
-#: core/orqwa-app/src/hud.rs
+#: app/ui/profile_form.gd core/orqwa-app/src/hud.rs
 msgid "Calories"
 msgstr ""
 
@@ -3056,7 +3056,7 @@ msgid "Settings"
 msgstr ""
 
 #: app/ui/profile_form.gd
-msgid "Sex for calories"
+msgid "Sex"
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -3833,10 +3833,6 @@ msgstr ""
 
 #: core/orqwa-domain/src/season.rs
 msgid "Winter"
-msgstr ""
-
-#: app/ui/profile_form.gd
-msgid "Without sensors"
 msgstr ""
 
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs
