@@ -639,9 +639,14 @@ func _group_activity() -> void:
 		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
 	)
 	_check(not voice._join.visible and voice._joined.visible, "in voice, its controls show")
+	_check(not voice._ask.visible, "how the rider listens was asked when joining")
+	voice.update_status({"voice": true, "output_name": "AirPods Pro", "ask_listening": true})
 	_check(
-		voice._headphones.button_pressed and not voice._speakers.button_pressed,
-		"headphones follow the session's echo prevention"
+		voice._ask.visible and voice._ask_title.text.contains("AirPods Pro"),
+		"voice moving to another output asks again, naming it (R194)"
+	)
+	voice.update_status(
+		{"voice": true, "microphone": false, "echo_prevention": false, "voice_volume": 0.4}
 	)
 	_check(
 		not voice._microphone.button_pressed and voice._microphone.text == tr("Microphone off"),
@@ -689,9 +694,10 @@ func _group_activity() -> void:
 	dialog.update_status({"microphone": true, "echo_prevention": true})
 	dialog.ask_devices()
 	_check(
-		dialog._check.visible and not dialog._back.visible,
-		"in voice, the devices open without asking again"
+		dialog._choice.visible and not dialog._check.visible,
+		"changing devices asks first how the rider listens"
 	)
+	dialog._listen_with(true)
 	_check(
 		dialog._microphone_on.button_pressed and dialog._inputs.visible,
 		"the window shows the microphone as it is"
@@ -776,6 +782,18 @@ func _ride_bar() -> void:
 	bar.group_requested.connect(func() -> void: asked.append(true))
 	group.pressed.emit()
 	_check(group.is_visible_in_tree() and asked == [true], "in a group, the bar opens it")
+	var listen: GroupListenCard = GroupListenCard.new()
+	root.add_child(listen)
+	var answers: Array[bool] = []
+	listen.answered.connect(func(speakers: bool) -> void: answers.append(speakers))
+	listen.ask("AirPods Pro")
+	_check(
+		listen.visible and listen._title.text.contains("AirPods Pro"),
+		"over the ride, the card names the new output"
+	)
+	(listen.get_child(0).get_child(2).get_child(0) as Button).pressed.emit()
+	_check(answers == [false] and not listen.visible, "headphones answer it and close it")
+	listen.free()
 	var microphone: Button = bar._microphone
 	_check(not microphone.is_visible_in_tree(), "no microphone button outside voice")
 	bar.show_microphone(true, false)

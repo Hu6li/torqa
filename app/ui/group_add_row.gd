@@ -44,26 +44,21 @@ func _ready() -> void:
 	add_child(below)
 
 
-## A badge like the riders' own, with a plus for the friend still to come.
+## A badge like the riders' own, with a person and a small plus for the friend still to come,
+## drawn like the Group Rides icon of the ride's controls.
 func _plus() -> PanelContainer:
 	var plus: PanelContainer = PanelContainer.new()
 	plus.custom_minimum_size = Vector2(36, 36)
 	plus.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var ring: StyleBoxFlat = StyleBoxFlat.new()
-	ring.bg_color = Color(UiTheme.ACCENT, 0.12)
-	ring.border_color = Color(UiTheme.ACCENT, 0.8)
-	ring.set_border_width_all(2)
+	ring.bg_color = Color(UiTheme.ACCENT, 0.14)
 	ring.set_corner_radius_all(18)
 	ring.anti_aliasing = true
 	plus.add_theme_stylebox_override("panel", ring)
-	var plus_sign: Label = Label.new()
-	plus_sign.text = "+"
-	plus_sign.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	plus_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	plus_sign.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	plus_sign.add_theme_font_size_override("font_size", 22)
-	plus_sign.add_theme_color_override("font_color", UiTheme.ACCENT)
-	plus.add_child(plus_sign)
+	var person: TextureRect = TextureRect.new()
+	person.texture = UiIcons.texture("person_add", 22, UiTheme.ACCENT)
+	person.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	plus.add_child(person)
 	return plus
 
 

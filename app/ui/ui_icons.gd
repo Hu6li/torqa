@@ -71,6 +71,12 @@ const PATHS: Dictionary[String, String] = {
 		+ '<rect x="4" y="14" width="6" height="6" rx="1"/>'
 		+ '<path d="M14 14h2v2M20 14v6h-6M17 17v3"/>'
 	),
+	# One rider of "group", with a small plus: a seat for a friend to come.
+	"person_add":
+	(
+		'<circle cx="9.5" cy="8" r="3.2"/><path d="M3.5 20c0-3.4 2.7-6 6-6 1.5 0 2.8.5 3.9 1.4"/>'
+		+ '<path d="M18.5 14.5v5.5M15.75 17.25h5.5"/>'
+	),
 	"group":
 	(
 		'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.4 2.7-6 6-6s6 2.6 6 6"/>'
