@@ -1,6 +1,6 @@
 class_name GroupCountdownLayout
 extends RefCounted
-## The shared countdown locks choices without moving the activity preview (R202).
+## The shared countdown locks choices without moving the activity preview (R204).
 
 
 static func check(tree: SceneTree, verify: Callable) -> void:

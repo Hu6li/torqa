@@ -384,9 +384,20 @@ async fn joining_with_the_microphone_on_sends_at_once_and_shows_its_level() {
     tokio::fs::remove_dir_all(directory).await.unwrap();
 }
 
-/// Audio whose output the system moves, as when headphones are plugged in.
+/// The system's default output, which it moves as when headphones are plugged in, and the
+/// device the rider chose, if any.
+struct Outputs {
+    default: String,
+    chosen: Option<String>,
+}
+
+/// Audio that names its own output, like the native backend: the device chosen when it opened,
+/// else the system's default as it moves. Voice closing for another device never learns that
+/// device's name, so the voice replacing it still tells it.
 struct Rerouted {
-    next: Arc<std::sync::Mutex<Option<String>>>,
+    outputs: Arc<std::sync::Mutex<Outputs>>,
+    chosen: Option<String>,
+    told: Option<String>,
 }
 impl VoiceAudio for Rerouted {
     fn microphone(&mut self, _activation: Option<u32>) -> Result<(), VoiceDeviceError> {
@@ -401,10 +412,18 @@ impl VoiceAudio for Rerouted {
         true
     }
     fn output_changed(&mut self) -> Option<String> {
-        self.next
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+        let name = self.chosen.clone().unwrap_or_else(|| {
+            self.outputs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .default
+                .clone()
+        });
+        if self.told.as_ref() == Some(&name) {
+            return None;
+        }
+        self.told = Some(name.clone());
+        Some(name)
     }
 }
 
@@ -414,8 +433,11 @@ async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learn
         "orqwa-rerouted-{:x?}",
         orqwa_net::code::RideId::generate().unwrap().0
     ));
-    let next = Arc::new(std::sync::Mutex::new(Some("Laptop speakers".to_owned())));
-    let output = next.clone();
+    let outputs = Arc::new(std::sync::Mutex::new(Outputs {
+        default: "Laptop speakers".to_owned(),
+        chosen: None,
+    }));
+    let shared = outputs.clone();
     let mut options = ConnectOptions::default();
     options.gather.policy.loopback = true;
     options.gather.stun_servers.clear();
@@ -423,8 +445,15 @@ async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learn
     let request = Request {
         audio: AudioBackend {
             factory: Some(Arc::new(move |_| {
+                let chosen = shared
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .chosen
+                    .clone();
                 Ok(Box::new(Rerouted {
-                    next: output.clone(),
+                    outputs: shared.clone(),
+                    chosen,
+                    told: None,
                 }))
             })),
         },
@@ -464,7 +493,7 @@ async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learn
     );
     // Headphones plugged in: the system's default output moves, and so does voice; the rider
     // is asked again how they listen (R194).
-    *next.lock().unwrap() = Some("AirPods Pro".to_owned());
+    outputs.lock().unwrap().default = "AirPods Pro".to_owned();
     wait(&mut updates, |status| {
         status.output_name == "AirPods Pro" && status.ask_listening
     })
@@ -472,6 +501,7 @@ async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learn
     commands.send(Command::EchoPrevention(false)).await.unwrap();
     wait(&mut updates, |status| !status.ask_listening).await;
     // Devices chosen right after being asked need no second question.
+    outputs.lock().unwrap().chosen = Some("Desk speakers".to_owned());
     commands
         .send(Command::ChooseDevices(
             0,
@@ -481,7 +511,6 @@ async fn friends_are_heard_on_the_output_the_system_moves_to_and_the_rider_learn
         ))
         .await
         .unwrap();
-    *next.lock().unwrap() = Some("Desk speakers".to_owned());
     wait(&mut updates, |status| {
         status.voice && status.output_name == "Desk speakers"
     })

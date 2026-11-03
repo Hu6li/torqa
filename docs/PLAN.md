@@ -438,6 +438,10 @@ Built in rideable steps:
     (`ReflowGrid`, a wrapping gallery toolbar, scrolling pages) and dialogs fit the window
   - [x] Dialog bounds persist through first-open layout, tab changes and application resizing;
     their titles and action buttons stay inside the application window (R199)
+  - [x] Every application subwindow inherits bounds automatically, including nested windows,
+    standard Godot popups and future dialogs; overflowing bodies scroll (R202, #485)
+  - [x] Shared sizing grows windows to fit their content first, including existing scrolling
+    bodies; scrolling is reserved for content that exceeds the available room (R203, #485)
   - [x] Pages that scroll keep their scroll bar's room: the gallery no longer reflows without
     end at some widths, which crashed the app when macOS zoomed its window
   - [x] The course's ride options and growing build log scroll within their panel, with Ride
@@ -1000,7 +1004,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   friends join without a question, and one home network warns nobody about reachability and
   lets anyone stand in as fallback organizer (R197)
 - [x] Countdown keeps the course map, elevation and workout preview in place for organizer
-  and friends; choices and shared rules lock without switching preview layouts (R202)
+  and friends; choices and shared rules lock without switching preview layouts (R204)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

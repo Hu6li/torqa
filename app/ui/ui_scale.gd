@@ -52,73 +52,19 @@ static func size_new(window: Window) -> void:
 		window.position = usable.position + (usable.size - size) / 2
 
 
-## Pops `dialog` up in the middle of the window, `wanted` large (interface units) where the
-## window has room, else as large as fits with its title bar; its content then scrolls.
+## Opens `dialog` centered at an initial `wanted` size (interface units). Content grows it
+## while the app has room; only content beyond those bounds needs scrolling.
 static func popup(dialog: Window, wanted: Vector2i) -> void:
-	var bounds: _DialogBounds = dialog.get_node_or_null("_OrqwaDialogBounds") as _DialogBounds
-	if bounds == null:
-		bounds = _DialogBounds.new(dialog)
-		bounds.name = "_OrqwaDialogBounds"
-		dialog.add_child(bounds, false, Node.INTERNAL_MODE_BACK)
+	var bounds: WindowBounds = WindowBounds.attach(dialog)
 	bounds.wanted = wanted
-	bounds.constrain()
+	bounds.resize_to_wanted()
 	dialog.popup(bounds.centered_rect())
 	# Text that wraps measured its height at the dialog's width before it opened, often far
 	# too narrow, and the dialog grew to that height; laid out at its own width, it fits again.
 	await dialog.get_tree().process_frame
 	if is_instance_valid(dialog) and dialog.visible:
-		bounds.constrain()
+		bounds.resize_to_wanted()
 		dialog.position = bounds.centered_rect().position
-
-
-## Content minima can grow during deferred layout, after popup() has returned. A maximum
-## remains in force through those passes; the guard follows its dialog's lifetime too.
-class _DialogBounds:
-	extends Node
-
-	var wanted: Vector2i
-	var _dialog: Window
-	var _minimum: Vector2i
-	var _viewport: Viewport
-
-	func _init(dialog: Window) -> void:
-		_dialog = dialog
-		_minimum = dialog.min_size
-
-	func _ready() -> void:
-		_viewport = _dialog.get_parent().get_viewport()
-		_viewport.size_changed.connect(_parent_resized)
-		_dialog.size_changed.connect(_keep_inside)
-
-	func constrain() -> void:
-		var room: Vector2i = Vector2i(_viewport.get_visible_rect().size)
-		var title: int = _dialog.get_theme_constant("title_height")
-		var fits: Vector2i = (room - Vector2i(2 * DIALOG_MARGIN, title + 2 * DIALOG_MARGIN)).max(
-			Vector2i.ONE
-		)
-		# Godot ignores a maximum smaller than an explicit minimum.
-		_dialog.min_size = _minimum.min(fits)
-		_dialog.max_size = fits
-		_dialog.size = wanted.min(fits)
-		_keep_inside()
-
-	func centered_rect() -> Rect2i:
-		var room: Vector2i = Vector2i(_viewport.get_visible_rect().size)
-		var title: int = _dialog.get_theme_constant("title_height")
-		return Rect2i((room - _dialog.size) / 2 + Vector2i(0, roundi(title / 2.0)), _dialog.size)
-
-	func _parent_resized() -> void:
-		if _dialog.visible:
-			constrain()
-
-	func _keep_inside() -> void:
-		if not _dialog.visible:
-			return
-		var room: Vector2i = Vector2i(_viewport.get_visible_rect().size)
-		var title: int = _dialog.get_theme_constant("title_height")
-		var lower: Vector2i = Vector2i(DIALOG_MARGIN, title + DIALOG_MARGIN)
-		var upper: Vector2i = (room - _dialog.size - Vector2i.ONE * DIALOG_MARGIN).max(lower)
-		_dialog.position = _dialog.position.clamp(lower, upper)
 
 
 ## The scale the system gives its own interface on `screen`.

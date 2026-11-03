@@ -138,7 +138,7 @@ func ask_create() -> void:
 	_update_choice()
 	var viewport: Vector2i = get_tree().root.size
 	_scroll.custom_minimum_size = Vector2i(mini(560, viewport.x - 72), mini(470, viewport.y - 160))
-	popup_centered()
+	UiScale.popup(self, Vector2i(680, 560))
 	_scroll.scroll_vertical = 0
 
 

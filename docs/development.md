@@ -65,6 +65,23 @@ The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.m
 gallery of every model); Blender runs in its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
 
+Application subwindows are bounded automatically by the `DialogWindows` autoload and
+`WindowBounds` (R202, #485). A new `Window` subclass needs no special base class or popup
+method: its size and position use the viewport that actually embeds it, including when opened
+inside another dialog. Windows grow to fit their body before falling back to scrolling (R203),
+including bodies already in a scroll container. Width settles before wrapped height is measured;
+spare width is tried when wrapped text would exceed the available height. The window supplies
+its own panel margins and fixed action-row size. Existing scrolling bodies
+are retained, and a larger app window restores room to show their content. Prefer responsive
+layouts and explicit scrolling bodies for their intended presentation;
+`UiScale.popup(window, preferred_size)` sets an initial size rather than a content limit.
+The automatic guard also covers direct `popup_centered()`,
+`popup()` and `show()` calls, later content changes and dragging/resizing.
+`godot --headless --path app -s res://tests/dialog_smoke.gd` reproduces the microphone-permission
+and solo fallback-organizer failures and checks the general rule on standard window classes in
+English/German at 1× and 2× scale. For display validation, run it with `xvfb-run`, the Dummy audio
+driver and `DIALOG_SCREENSHOT_DIR` set to an existing output directory.
+
 Worlds can be kept across updates (R101, [ADR 0025](adr/0025-kept-worlds.md)): a change that
 makes courses come out differently raises `orqwa_world::GENERATOR`, so their pages offer to
 regenerate them; one that kept worlds could no longer be read or drawn with raises
@@ -587,7 +604,7 @@ the merge with main; a release, built from its tag, names its commit alone.
 
 ### Group lobby layout
 
-`group_ui_smoke.gd` includes the countdown layout regression (R202). It checks the map,
+`group_ui_smoke.gd` includes the countdown layout regression (R204). It checks the map,
 elevation and workout preview bounds through the countdown for organizer and friend views,
 course-only, workout-only and combined activities, in English and German at 1600 × 900 and
 1024 × 640. Activity editing permission is separate from the organizer's preview layout:

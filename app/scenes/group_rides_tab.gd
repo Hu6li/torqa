@@ -240,7 +240,7 @@ func _build_dialogs() -> void:
 	_organizer_picker.title = tr("Choose a new organizer")
 	_organizer_choices.add_theme_constant_override("separation", 12)
 	_organizer_choices.custom_minimum_size.x = 380
-	_organizer_picker.add_child(_organizer_choices)
+	_organizer_picker.add_child(UiTheme.scrolling(_organizer_choices))
 	add_child(_organizer_picker)
 
 
@@ -299,7 +299,7 @@ func _choose_organizer(fallback: bool) -> void:
 				_organizer_picker.hide()
 		)
 		choice.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_organizer_picker.popup_centered()
+	UiScale.popup(_organizer_picker, Vector2i(520, 180 + 52 * _organizer_choices.get_child_count()))
 
 
 func _show_organizer() -> void:
