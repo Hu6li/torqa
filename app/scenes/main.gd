@@ -8,6 +8,7 @@ const ANDROID: StringName = &"OrqwaAndroid"
 
 ## Video courses are ridden along their video instead of the 3D world (R17).
 var _video: VideoView = VideoView.new()
+var _idle_pointer: IdlePointer = IdlePointer.new()
 var _overlay: OverlayWindow
 ## Over everything, the window opaque but the overlay's: other windows showed through the sky
 ## on Windows (#220, see opaque.gdshader).
@@ -33,6 +34,7 @@ func _ready() -> void:
 	print("ORQWA %s" % OrqwaCore.version() + ("" if build.is_empty() else " (%s)" % build))
 	UiScale.apply(get_window())
 	UiScale.size_new(get_window())
+	add_child(_idle_pointer)
 	theme = UiTheme.build()
 	_failures.standalone = true
 	add_child(_failures)
@@ -56,6 +58,10 @@ func _ready() -> void:
 	_quick_summary.bind(_orqwa)
 	_quick_summary.closed.connect(_back_home)
 	_quick_summary.details_requested.connect(_show_summary)
+	_ride.visibility_changed.connect(_sync_idle_pointer)
+	_world.visibility_changed.connect(_sync_idle_pointer)
+	_video.visibility_changed.connect(_sync_idle_pointer)
+	_quick_summary.visibility_changed.connect(_sync_idle_pointer)
 	move_child(_failures, get_child_count() - 1)
 	_start.ride_started.connect(_on_ride_started)
 	_overlay = OverlayWindow.new(get_window())
@@ -118,6 +124,17 @@ func _on_ride_started(options: Dictionary) -> void:
 		_set_overlay(true)
 
 
+func _sync_idle_pointer() -> void:
+	if not is_inside_tree():
+		return
+	_idle_pointer.enabled = (
+		_ride.visible
+		and not _ride.is_overlay()
+		and not _quick_summary.visible
+		and (_world.visible or _video.visible)
+	)
+
+
 ## Turns the window into the overlay (R55, R57) or back; the ride goes on either way.
 func _set_overlay(on: bool) -> void:
 	if Engine.has_singleton(ANDROID):
@@ -127,6 +144,7 @@ func _set_overlay(on: bool) -> void:
 		return
 	if on:
 		_ride.set_overlay(true)
+		_sync_idle_pointer()
 		_video.hide()
 		_opaque.hide()
 		# One frame for the overlay's content to take its size.
@@ -143,6 +161,7 @@ func _set_overlay(on: bool) -> void:
 		_ride.set_overlay(false)
 		_video.visible = _ride.visible and _orqwa.riding_along_video()
 		_opaque.show()
+		_sync_idle_pointer()
 
 
 ## On Android the overlay is picture-in-picture (ADR 0024): Android makes the window small and
@@ -152,6 +171,7 @@ func _set_picture_in_picture(on: bool) -> void:
 		return
 	_picture_in_picture = on
 	_ride.set_overlay(on)
+	_sync_idle_pointer()
 	# Only the HUD shows, so the world is not drawn behind it, as in the overlay window.
 	get_window().disable_3d = on
 	# Around the HUD, the window is the panels' colour: Godot's grey would frame them.

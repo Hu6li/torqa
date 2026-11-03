@@ -404,6 +404,9 @@ Built in rideable steps:
   icon and tooltip that follow the window when switched by the keyboard or settings too
 - [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
   full screen (R177, #439)
+- [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a
+  3D world or video; movement or a click restores it. Menus, plain workouts, summaries and
+  the overlay keep it visible (R200–R201, #477)
 - [x] The overlay's place is each rider's, graphics quality and full screen this computer's
   (R78, #257): kept next to the cache, out of the synced data folder, carried over once
 - [x] The devices are each rider's (R82): remembered devices, cadence source and shifter

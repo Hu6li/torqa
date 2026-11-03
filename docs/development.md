@@ -55,6 +55,12 @@ The headless display has no window mode. The display run checks entering and lea
 screen from the ride bar, synchronization with the keyboard, graphics setting and system
 window controls, and restoring full screen after the overlay (#376, R150).
 
+The idle-pointer smoke test also needs a display: `scripts/check.sh` runs it with Xvfb.
+To run it alone, use `timeout 90 xvfb-run -a godot --path app --audio-driver Dummy
+-s res://tests/idle_pointer_smoke.gd`. It checks the idle delay, movement and clicks over
+controls, windowed and full-screen hiding in 3D/video rides and workouts, keeping it visible
+in menus, plain workouts and the overlay, and restoring it for other windows (R200–R201).
+
 The 3D models are Blender scripts in `art/` (see [art/README.md](../art/README.md) for them and a
 gallery of every model); Blender runs in its own container on the host:
 `scripts/art.sh blender --background --factory-startup --python art/<group>/build.py`.
