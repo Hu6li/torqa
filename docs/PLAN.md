@@ -995,8 +995,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   sound check with an optional open microphone; one voice button per rider, a red bin to
   remove, a microphone button in the ride's bar and voice volume in its settings (R194)
   - [x] Joining releases any local audio check in the same activation, including while riding
-    alone; refusals keep the join window open and failures remain visible inside the voice
-    window or group panel with Technical details and Dismiss (R170, R194).
+    alone; refusals keep the join window open and failures use the existing application
+    error card and Technical details history (R170, R194).
 - [x] Codes are sent outside ORQWA in plain steps: the invitation with Copy and its QR code, a
   empty seat in the group list for each friend's reply with one-line reasons when it adds
   nobody, codes found inside pasted messages, and a joiner's countdown with **New reply** (R195)

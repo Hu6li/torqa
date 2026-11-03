@@ -10,8 +10,6 @@ extends AcceptDialog
 var allowed: Callable = func() -> bool: return true
 ## Explains a refused microphone; `GroupVoiceControls` keeps it current.
 var permission_hint: Label = Label.new()
-## Errors stay reachable while this window covers the main window's failure card.
-var failures: FailureDetails = FailureDetails.new()
 
 var _orqwa: OrqwaApp
 var _joining: bool = true
@@ -48,8 +46,6 @@ func _ready() -> void:
 	pages.custom_minimum_size.x = 600
 	pages.add_child(_choice)
 	pages.add_child(_check)
-	failures.standalone = true
-	pages.add_child(failures)
 	add_child(UiTheme.scrolling(pages))
 	_build_choice()
 	_build_check()

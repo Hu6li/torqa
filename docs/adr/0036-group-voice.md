@@ -451,6 +451,6 @@ after being asked; an output rerouted by CPAL marks the move without invalidatin
 The app's explicit join owns both audio-check cleanup and voice startup in one activation.
 A queued stop superseded by that activation cannot suppress joining. The actor cancels pending
 check startup and releases its capture/output before opening voice, preserving the microphone
-choice made in the join window. A refused command leaves that window open; ordinary classified
-failures also appear in the foreground voice window or group panel, retaining Technical details
-and Dismiss while the main window's failure history remains available.
+choice made in the join window. A refused command leaves that window open. Failures use the
+existing classified application error path and shared bottom-right error card, retaining its
+Technical details and Dismiss controls without a separate voice error presentation.

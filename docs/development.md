@@ -644,10 +644,10 @@ The `joining_voice_` app regressions cover a solo group workout and joining dire
 microphone or speaker check, microphone on and off, with a stop command already superseded
 by the join. Simulated audio verifies that check capture is released before voice opens.
 The group UI smoke test checks refused joins remain open and synchronous/asynchronous failures
-retain their explanation, Technical details and Dismiss inside the foreground window.
+reach the existing application error card, Technical details history and Dismiss controls.
 On hardware, repeat the checks during a solo group ride and with friends, press **Join voice**
 before the check finishes, and retry after selecting an unavailable device. Verify riding
-continues and failures remain reachable without closing the group window.
+continues and failures use the same bottom-right card as other application errors.
 
 For #456, `cargo test -p orqwa-voice device::linux_tests` runs real CPAL/ALSA selection against
 private null-PCM fixtures on Linux. Each child gets its own `ALSA_CONFIG_PATH`; no process-global

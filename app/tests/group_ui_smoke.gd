@@ -1,6 +1,8 @@
 extends SceneTree
 ## Group setup and activity preview behavior (R169).
 
+const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+
 var _failed: bool = false
 
 
@@ -24,45 +26,45 @@ func _run() -> void:
 	quit(1 if _failed else 0)
 
 
-## A foreground group window must not hide the only explanation of a failed voice action.
+## Voice uses the same error card and history as other application errors.
 func _voice_failures() -> void:
-	var app: OrqwaApp = OrqwaApp.new()
-	root.add_child(app)
-	var window: AcceptDialog = AcceptDialog.new()
-	root.add_child(window)
-	var voice: GroupVoiceControls = GroupVoiceControls.new()
-	voice.bind(app)
-	window.add_child(voice)
-	window.popup_centered(Vector2i(980, 600))
+	var main: Control = MAIN_SCENE.instantiate()
+	root.add_child(main)
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var ride: RideScreen = main.get_node("RideScreen")
+	var history: FailureDetails = main.get("_failures")
+	var voice: GroupVoiceControls = ride._group_controls._voice_controls
+	ride._group_window.popup_centered(Vector2i(980, 600))
 	await process_frame
 	var dialog: GroupVoiceDialog = voice._dialog
 	dialog.ask_join()
 	dialog._listen_with(false)
+	history.clear()
 	# No lobby is open: this is a real synchronous command failure through the native bridge.
 	dialog._confirm()
 	_check(dialog.visible, "a refused voice join keeps its dialog open for retry")
-	_check(dialog.failures.visible, "the join dialog explains the refusal in front of the group")
+	_check(history.visible, "a refused voice join uses the shared application error card")
+	_check(history._failures.size() == 1, "the failure is reported once to the shared history")
 	_check(
-		not str(dialog.failures._failures[0].get("details", "")).is_empty(),
-		"the foreground failure retains the original technical cause"
+		not str(history._failures[0].get("details", "")).is_empty(),
+		"the shared history retains the original technical cause"
 	)
-	dialog.failures._dismiss.pressed.emit()
-	_check(not dialog.failures.visible, "the rider can dismiss the foreground failure")
 	dialog.hide()
+	ride._group_window.hide()
+	history._toggle.button_pressed = true
+	_check(history._panel.visible, "standard technical details explain the failed voice join")
+	history._dismiss.pressed.emit()
+	_check(not history.visible, "standard Dismiss clears the shared failure history")
 	var failure: Dictionary = {
 		"message": "Voice is unavailable. Check your audio devices and microphone permission.",
 		"details": "simulated output-device failure"
 	}
 	app.failure_reported.emit(failure)
-	_check(voice._failures.visible, "an asynchronous failure is visible inside the group window")
-	voice._failures._toggle.button_pressed = true
-	_check(voice._failures._panel.visible, "technical details open inside the foreground window")
-	voice._failures.clear()
-	window.hide()
-	app.failure_reported.emit(failure)
-	_check(not voice._failures.visible, "a hidden group panel does not collect unrelated errors")
-	window.free()
-	app.free()
+	_check(history.visible, "asynchronous voice failures use that same application error card")
+	_check(
+		history._failures.size() == 1, "a new failure appears after the earlier one was dismissed"
+	)
+	main.free()
 	await process_frame
 
 
@@ -914,7 +916,7 @@ func _offer_card() -> void:
 ## Over the ride, the request shows when it comes and goes when the organizer withdraws it;
 ## the group's button shows only in a group (#431).
 func _organizer_offer() -> void:
-	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	await process_frame
 	var ride: RideScreen = main.get_node("RideScreen")
