@@ -30,6 +30,12 @@ friends.
   </tr>
   <tr>
     <td colspan="2" align="center">
+      <img src="docs/images/readme/group-ride.jpg" alt="A group ride with a friend in ORQWA's 3D world"><br>
+      <sub>A group ride with a friend</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
       <img src="docs/images/readme/video-course.jpg" alt="Riding a video course in ORQWA"><br>
       <sub>Along a real video, played at your speed</sub>
     </td>
