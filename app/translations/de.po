@@ -2740,9 +2740,6 @@ msgstr "Teilnehmen"
 msgid "Play test sound"
 msgstr "Testton abspielen"
 
-msgid "Microphone off"
-msgstr "Mikrofon aus"
-
 msgid "Mute all"
 msgstr "Alles stumm"
 
@@ -2766,9 +2763,6 @@ msgstr "%s aus der Gruppe entfernen"
 
 msgid "Friends' voices; 0 mutes them"
 msgstr "Stimmen deiner Freunde; 0 schaltet sie stumm"
-
-msgid "Microphone on"
-msgstr "Mikrofon an"
 
 msgid "Mute all sound"
 msgstr "Gesamten Ton stummschalten"
@@ -2862,7 +2856,6 @@ msgstr "Kein Signal"
 
 msgid "Save effort when riding behind friends."
 msgstr "Spare Kraft, wenn du hinter anderen fährst."
-
 
 msgid "Could not prepare the shared activity."
 msgstr "Die gemeinsame Aktivität konnte nicht vorbereitet werden."
