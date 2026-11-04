@@ -55,7 +55,7 @@ settings, then changes the profile to 75% with stale course controls at 25% and 
 group ride. Both starts must show the active profile's value (R14, R48).
 
 It also checks joining before and after a group starts with no local activity files (#508,
-R196, R214): the shared name remains visible during download and retry, then gives way to
+R196, R216): the shared name remains visible during download and retry, then gives way to
 the local course map and workout chart. English/German layout comparisons from 1024 × 640 to
 2560 × 1440 keep joiners' course images within the organizer's preview size and above the
 voice card's bottom. Group screenshot fixtures include these downloads and matching
