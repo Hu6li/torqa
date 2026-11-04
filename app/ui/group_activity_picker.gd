@@ -15,13 +15,17 @@ var _orqwa: OrqwaApp
 var _previews: BoxContainer = BoxContainer.new()
 var _course_preview: VBoxContainer = VBoxContainer.new()
 var _workout_preview: VBoxContainer = VBoxContainer.new()
+## Keeps a lone preview within the organizer's two-column footprint.
+var _preview_gap: Control = Control.new()
 var _course: OptionButton = OptionButton.new()
 var _workout: OptionButton = OptionButton.new()
 var _course_caption: Label
 var _workout_caption: Label
 var _course_name: Label = Label.new()
 var _workout_name: Label = Label.new()
+var _map_space: Control = Control.new()
 var _map: PathCard = PathCard.new()
+var _map_height_limit: float = INF
 var _elevation: ElevationProfile = ElevationProfile.new()
 var _figures: HFlowContainer = HFlowContainer.new()
 var _chart: WorkoutChart = WorkoutChart.new()
@@ -74,6 +78,8 @@ func _ready() -> void:
 		column.add_theme_constant_override("separation", 12)
 		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_previews.add_child(column)
+	_preview_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_previews.add_child(_preview_gap)
 	add_child(_previews)
 	_course_caption = UiTheme.caption(tr("Course"))
 	_course_preview.add_child(_course_caption)
@@ -82,9 +88,10 @@ func _ready() -> void:
 	_course.item_selected.connect(func(_index: int) -> void: _browse())
 	_course_preview.add_child(_course)
 	_course_preview.add_child(_shown_name(_course_name))
-	_map.custom_minimum_size.y = 170
-	_map.resized.connect(_fit_map)
-	_course_preview.add_child(_map)
+	_map_space.custom_minimum_size.y = 170
+	_map_space.resized.connect(_fit_map)
+	_map_space.add_child(_map)
+	_course_preview.add_child(_map_space)
 	_elevation.custom_minimum_size.y = 55
 	_course_preview.add_child(_elevation)
 	_figures.add_theme_constant_override("h_separation", 24)
@@ -118,6 +125,11 @@ func _ready() -> void:
 
 func _reflow() -> void:
 	_previews.vertical = size.x < 460
+	_preview_gap.visible = (
+		not _previews.vertical and _course_preview.visible and not _workout_preview.visible
+	)
+	if _preview_gap.visible:
+		_preview_gap.custom_minimum_size.x = _course_preview.get_combined_minimum_size().x
 
 
 ## A previewed course's or workout's name, where the organizer has their picker.
@@ -136,7 +148,15 @@ func _browse() -> void:
 
 
 func _fit_map() -> void:
-	_map.custom_minimum_size.y = _map.size.x * CourseCard.MAP_ASPECT
+	var height: float = minf(_map_space.size.x * CourseCard.MAP_ASPECT, _map_height_limit)
+	_map_space.custom_minimum_size.y = height
+	_map.size = Vector2(height / CourseCard.MAP_ASPECT, height)
+
+
+## Keeps the image above the adjacent voice card without changing the map's proportions.
+func fit_map_above(bottom: float) -> void:
+	_map_height_limit = maxf(0.0, bottom - _map_space.global_position.y)
+	_fit_map()
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -239,7 +259,10 @@ func _preview() -> void:
 	_course_caption.text = tr("Course preview") if previewing else tr("Course")
 	_workout_caption.text = tr("Workout preview") if previewing else tr("Workout")
 	# Friends see names, never the organizer's pickers (R196).
-	var chosen: bool = not _active_course.is_empty() or not _active_workout.is_empty()
+	# The shared name arrives before the joiner's local course/workout files (#508).
+	var chosen: bool = (
+		not _selection.is_empty() or not _active_course.is_empty() or not _active_workout.is_empty()
+	)
 	var waiting: bool = not _show_choices and not previewing and not chosen
 	_waiting.visible = waiting
 	_waiting_text.text = tr("%s is choosing the ride") % _organizer
@@ -263,6 +286,7 @@ func _preview() -> void:
 		_figures.remove_child(child)
 		child.queue_free()
 	_map.hide()
+	_map_space.hide()
 	_elevation.hide()
 	_figures.hide()
 	var entry: Dictionary = shown_course if previewing else _library_course()
@@ -277,6 +301,7 @@ func _preview() -> void:
 		_map.set_track(track)
 		_map.set_map(picture)
 		_map.show()
+		_map_space.show()
 		_elevation.set_profile(profile)
 		_elevation.visible = profile.size() >= 2
 		_figures.show()
@@ -322,6 +347,7 @@ func _preview() -> void:
 		if _apply.disabled and (not course().is_empty() or not workout().is_empty())
 		else tr("Share with the group")
 	)
+	_reflow()
 
 
 ## The library's entry for the chosen course, empty for none.

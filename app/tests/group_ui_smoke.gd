@@ -13,6 +13,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await _group_connections()
 	await _group_activity()
+	await GroupJoinActivityChecks.check(self, _check)
 	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
 	await GroupAssistanceChecks.check(self, _check)
@@ -424,7 +425,7 @@ func _group_activity() -> void:
 	_check(not picker._apply.disabled, "a preview is not shared until confirmed")
 	picker.show_selection(true, course, workout)
 	_check(picker._apply.disabled, "shared activity has an acknowledgement")
-	picker.set_organizer("Alex", "Ride")
+	picker.set_organizer("Alex", "")
 	picker.show_selection(false, course, workout)
 	_check(
 		(

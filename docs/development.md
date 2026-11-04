@@ -54,6 +54,13 @@ starts its first group ride without visiting a course page. It checks the ride o
 settings, then changes the profile to 75% with stale course controls at 25% and starts another
 group ride. Both starts must show the active profile's value (R14, R48).
 
+It also checks joining before and after a group starts with no local activity files (#508,
+R196, R214): the shared name remains visible during download and retry, then gives way to
+the local course map and workout chart. English/German layout comparisons from 1024 × 640 to
+2560 × 1440 keep joiners' course images within the organizer's preview size and above the
+voice card's bottom. Group screenshot fixtures include these downloads and matching
+organizer, course-only and course/workout views.
+
 For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
 deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
 stopping, then `cargo test -p orqwa-net` and `cargo test -p orqwa-app group::tests` for

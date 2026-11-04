@@ -554,3 +554,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R213 | Refines R124 (2026-11-04, #482): after a **power record notification**, suppress further notifications for the same record duration for **five minutes of recorded riding time**. Pauses do not consume the cooldown, which starts afresh for each ride; different record durations remain independent. Continue tracking higher power during the cooldown and include it in the final records, without queuing suppressed notifications. Once the cooldown expires, only a further improvement beyond every best reached so far can produce another notification when the effort tops out. |
+
+## Joiner activity previews
+
+| ID | Requirement |
+|---|---|
+| R214 | Refines R196 (2026-11-04, #508): a rider joining an already running group sees the **selected activity**, by its received name while the local files download, then its course map and workout chart as they become available. A shared activity never says the organizer is still choosing, including during download retry. A joiner's course image is **no larger than the organizer's preview**, including a course without a workout; in the side-by-side lobby it ends no lower than the bottom of the **Voice chat** card. Narrow layouts continue to stack normally. |

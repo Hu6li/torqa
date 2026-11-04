@@ -1033,6 +1033,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   lets anyone stand in as fallback organizer (R197)
 - [x] Countdown keeps the course map, elevation and workout preview in place for organizer
   and friends; choices and shared rules lock without switching preview layouts (R204)
+- [x] Joiners see the shared activity's name while its files arrive, including after the ride
+  starts; course-only images keep the organizer's preview size and stay above the voice
+  card's bottom (R196, R214, #508)
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops
