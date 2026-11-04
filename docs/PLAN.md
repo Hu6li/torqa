@@ -981,6 +981,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Continuous Keep together reference (R214): sample aging cannot abruptly shift the
   reference at a steady gap; two-rider delayed-update and split-pack regressions retain bounded
   sprint influence, stale fading and applied resistance limits
+- [x] Stable drafting and live assistance (R215): no abreast/overlap shelter, a smooth entry
+  ramp, shared-time live comparisons, prediction/freshness covering ordinary delivery and
+  filtered applied forces; ride traces cover jitter/loss without altering buffered playback
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,

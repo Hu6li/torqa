@@ -268,7 +268,7 @@ from live local motion and current validated peer motion, excluding its own acce
 Organizer identity is never an input. A rider moving at more than 0.5 m/s participates,
 including while coasting; stationary, paused and finished riders do not anchor the group.
 Disconnected/away memberships and reconnecting clients supply no peer reference. Arrival
-and source age retain the existing two-second cutoff; weight is one through 500 ms, then
+and source age retain the two-second cutoff; weight is one through 800 ms (R215), then
 falls linearly to zero at two seconds. Local motion has weight one.
 
 For distance and speed separately, find the centre `c` where
@@ -295,8 +295,9 @@ remain. The applied band changes by at most one gradient percentage point per se
 including after outlier, membership and authority changes. With no eligible peers it returns
 to zero within two seconds; a stale peer's target is already zero at its cutoff. Stopping
 pedaling, pausing, finishing, disabling Keep together or leaving clears the band immediately.
-Drafting retains its existing calculation and authority-transition blend. The band uses
-its own rate limit across authority changes rather than changing reference with the organizer.
+Drafting retains its authority-transition blend while a source supplies shelter. R215 below
+refines the drafting curve and filters applied effects. The band uses its own rate limit
+across authority changes rather than changing reference with the organizer.
 Feedback reads the final applied effect. Measurements, ERG targets and assisted-record
 eligibility retain the rules above. No wire-format or protocol-version change is needed.
 
@@ -306,6 +307,45 @@ Continuity regressions sweep sample age through 500 ms and the stale cutoff at s
 two-rider gaps/speeds, vary a four-rider split pack's weight and replay 5 Hz updates delayed
 by 400 ms while buffered playback retains an exact 75 m gap.
 Native trainer feel remains a manual acceptance check.
+
+### Live assistance timing and drafting — 2026-11-04 (R215)
+
+The 300 ms missing-data prediction was shared by buffered playback and live assistance.
+That is shorter than ordinary publication, host fan-out and receiver coalescing together.
+The live peer therefore stopped moving between healthy packets and jumped forward on the
+next one. Fading from 500 ms also treated ordinary delivery as a disappearing rider. A ride
+trace on the initial R214 implementation still varied applied support from 51% to 65% at
+a steady 75 m gap, and drafting from zero to 93% at a steady 3 m gap.
+
+Live prediction now covers the existing 800 ms delivery budget; older positions hold while
+their influence fades to zero at two seconds. The same budget supplies the freshness grace.
+The app calculates assistance before its next physics step, so it queries peers at the last
+published live local sample's time when that sample still matches local position/speed.
+Freshness uses the current clock independently, preventing an earlier query from reviving
+old data. New/jumped positions fall back until their new sample is published. The local
+accepted echo is still excluded. None of this changes buffered playback: its 800 ms delay,
+300 ms missing-data prediction, interpolation, source histories and shared gap displays stay
+as before.
+
+Drafting formerly reached maximum shelter at exactly zero gap and disappeared immediately
+when the peer moved infinitesimally behind. It now supplies no shelter through a 1 m forward
+clearance. From 1 to 3 m it uses `smoothstep((gap - 1) / 2)`; from 3 to 15 m it uses
+`((15 - gap) / 12)^2`. Both meet at full shelter, capped at 30% aerodynamic reduction; other
+gaps supply none. The strongest eligible peer wins, without stacking.
+
+The actual applied drag and nonzero band targets follow a first-order response with a 0.5 s
+time constant, using `1 - exp(-dt / 0.5)` independently of frame rate. Keep together also
+retains its one-percentage-point-per-second slew limit; a zero target follows that limit
+directly so loss fades fully within two seconds. Drafting clears immediately without an
+eligible source, including while abreast, behind, expired, or during handover. Local safety
+and disabled rules clear immediately. Feedback reads these same applied effects; this is
+not display-only smoothing. Telemetry, recording and ERG targets remain live and unmodified.
+
+Regressions include wire-rounded ride traces at steady 0, 3 and 75 m gaps through 5 Hz
+publication, 90–510 ms delivery jitter, reordered packets and isolated loss. They check zero
+abreast drafting, effective shelter/support and less than two percentage points of applied
+variation after settling. Slow-frame sample-time alignment and stale expiry are separate
+checks. Existing two-screen motion/overtake tests continue to protect playback.
 
 ### Android publication and diagnostics repair — 2026-10-29
 

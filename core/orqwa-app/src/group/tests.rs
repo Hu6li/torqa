@@ -915,7 +915,7 @@ fn assistance_feedback_reports_applied_effects_without_changing_measurements() {
     app.group.as_mut().unwrap().transition = None;
     app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
     snapshot.states[0].as_mut().unwrap().1 = now + Duration::from_millis(200);
-    app.update_group_motion_at(&snapshot, now + Duration::from_millis(1200));
+    app.update_group_motion_at(&snapshot, now + Duration::from_millis(2000));
     let fading = app.group_feedback();
     assert!(fading.drafting > 0.0 && fading.drafting < fresh.drafting);
     app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
@@ -970,6 +970,114 @@ fn assistance_transitions_keep_force_continuous_and_bounded() {
 }
 
 #[test]
+fn assistance_applied_to_the_ride_stays_steady_through_jitter_and_loss() {
+    for gap in [75.0, 0.0, 3.0] {
+        let (_directory, mut app, mut snapshot, start) = assistance_fixture();
+        for _ in 0..1000 {
+            app.ride
+                .as_mut()
+                .unwrap()
+                .ride
+                .tick(Duration::from_millis(100));
+        }
+        snapshot.states[0] = None;
+        snapshot.assistance.keep_together = gap > 15.0;
+        let mut packets = Vec::new();
+        let mut low = [f64::INFINITY; 2];
+        let mut high = [f64::NEG_INFINITY; 2];
+        for ms in (0_u64..=30_000).step_by(20) {
+            let elapsed = Duration::from_millis(ms);
+            if ms > 0 {
+                app.ride
+                    .as_mut()
+                    .unwrap()
+                    .ride
+                    .tick(Duration::from_millis(20));
+            }
+            let local = app.ride_state().unwrap();
+            let sequence = ms / 200;
+            if ms.is_multiple_of(200) && sequence % 9 != 3 {
+                let delay = [90, 330, 160, 510, 110][usize::try_from(sequence % 5).unwrap()];
+                let peer = orqwa_net::state::RiderId::new(0).unwrap();
+                let state = RiderState {
+                    at: elapsed,
+                    distance: Meters(local.distance.0 + gap),
+                    speed: local.speed,
+                    power: Watts(200.0),
+                    cadence: Rpm(85.0),
+                };
+                let bytes = state.datagram(peer).unwrap();
+                let state = RiderState::from_datagram(&bytes, peer, elapsed).unwrap();
+                packets.push((ms + delay, state));
+                packets.sort_by_key(|p| p.0);
+            }
+            while packets.first().is_some_and(|p| p.0 <= ms) {
+                let (arrival, state) = packets.remove(0);
+                snapshot.states[0] = Some((state, start + Duration::from_millis(arrival)));
+            }
+            app.update_group_motion_at(&snapshot, start + elapsed);
+            let feedback = app.group_feedback();
+            assert_eq!(local.telemetry.power, Some(Watts(200.0)));
+            if gap < 1.0 {
+                assert_eq!(feedback.drafting, 0.0, "abreast at {ms} ms");
+            }
+            if ms >= 20_000 {
+                for (id, value) in [feedback.drafting, feedback.together]
+                    .into_iter()
+                    .enumerate()
+                {
+                    low[id] = low[id].min(value);
+                    high[id] = high[id].max(value);
+                }
+            }
+        }
+        for id in 0..2 {
+            assert!(
+                high[id] - low[id] < 0.02,
+                "gap {gap}, effect {id}: applied effect fluctuates {low:?} .. {high:?}"
+            );
+        }
+        if gap > 15.0 {
+            assert!(
+                low[1] > 0.5,
+                "support remains effective at a steady 75 m gap"
+            );
+        } else if gap > 1.0 {
+            assert!(low[0] > 0.9, "drafting remains effective behind a rider");
+        }
+    }
+}
+
+#[test]
+fn assistance_compares_peers_at_the_live_locals_sample_time_before_the_next_physics_step() {
+    let (_directory, mut app, mut snapshot, start) = assistance_fixture();
+    let state = app.ride_state().unwrap();
+    let sample = RiderState {
+        at: Duration::from_secs(1),
+        distance: state.distance,
+        speed: state.speed,
+        power: Watts(200.0),
+        cadence: Rpm(85.0),
+    };
+    app.group
+        .as_mut()
+        .unwrap()
+        .states
+        .send_replace(Some(runtime::Local {
+            state: sample,
+            progress: None,
+        }));
+    snapshot.states[0] = Some((sample, start + Duration::from_secs(1)));
+    app.update_group_motion_at(&snapshot, start + Duration::from_millis(1800));
+    assert_eq!(
+        app.group_feedback(),
+        AssistanceFeedback::default(),
+        "a slow frame must not invent a gap ahead of the unadvanced local rider"
+    );
+    assert_eq!(app.ride_state().unwrap().distance, state.distance);
+}
+
+#[test]
 fn assistance_is_identical_for_organizers_friends_and_reassigned_slots() {
     for me in [0, 1, 7] {
         let (_directory, mut app, mut snapshot, now) = assistance_fixture();
@@ -989,8 +1097,8 @@ fn assistance_is_identical_for_organizers_friends_and_reassigned_slots() {
         assistance_step(&mut app, &mut snapshot, now, 1000);
         let support = app.group_feedback().together;
         assert!(
-            (support - 0.2).abs() < 1e-9,
-            "organizer receives the same support"
+            support > 0.0 && support <= 0.2,
+            "organizer receives smoothly applied support"
         );
         snapshot.organizer = u8::try_from(peer).unwrap();
         snapshot.epoch += 1;

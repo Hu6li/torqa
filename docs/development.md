@@ -674,6 +674,13 @@ roster removal/reentry, local pause/finish/leave, applied feedback and the one-p
 per-second resistance limit. A closed-loop physics regression compares three different-power
 riders against their unassisted motion. Session tests separately verify actual simulation
 commands, measured recording and unchanged ERG targets. See ADR 0037 for the reference formula.
+R215 adds zero/rounded-zero drafting, smooth close-overtake/range boundaries, separate live
+and presentation prediction bounds, and wire-rounded ride traces at 0, 3 and 75 m gaps with
+90–510 ms jitter, reordering and isolated packet loss. These traces check the actual applied
+effects after settling, not just the requested force. A slow-frame regression checks that
+assistance compares peers at the unadvanced local sample's time. Use normal 1× simulation
+for this acceptance: accelerated fake rides advance physics faster than the shared network
+clock and can show a separate motion-speed wobble even with both assistance rules disabled.
 For native trainer acceptance, alternate leading and following as organizer and friend,
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.

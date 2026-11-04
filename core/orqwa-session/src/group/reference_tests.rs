@@ -162,7 +162,7 @@ fn aging_one_rider_does_not_move_a_split_packs_reference_abruptly() {
     let local = rider(100.0, 10.0);
     let mut members = [local, rider(175.0, 10.0), rider(175.0, 10.0)];
     let fresh = band(&peers(&members), local);
-    members[2].age = Duration::from_millis(501);
+    members[2].age = DELAY + Duration::from_millis(1);
     for rotation in 0..MAX_RIDERS {
         let mut others = peers(&members);
         others.rotate_left(rotation);
