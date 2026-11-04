@@ -3635,10 +3635,6 @@ msgstr ""
 msgid "Use %d W"
 msgstr ""
 
-#: app/scenes/ride_settings_dialog.gd
-msgid "Use Group Rides for the shared workout. Your intensity stays personal."
-msgstr ""
-
 #: app/ui/graphics_settings.gd
 msgid "V-Sync"
 msgstr ""

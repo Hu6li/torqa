@@ -518,3 +518,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R207 | Extends R51 and R54 (2026-11-04, #483): each rider has **separate HUD layouts for rides and workouts**, editable under HUD in their profile settings. Rides without a workout use the ride layout; every workout, including constant power, heart-rate workouts, structured workouts and FTP tests, uses the workout layout, with or without a course. The same distinction applies to **group rides**, including shared workouts, and the overlay. In-session HUD settings show and immediately save only the layout in use. Existing riders start both layouts with their previous figures, and changing either preserves the other; both layouts stay with the rider across restarts and syncing. |
+
+## Group ride settings
+
+| ID | Requirement |
+|---|---|
+| R208 | Refines R48 and R167 (2026-11-04): during a group ride, **Ride settings** shows its tabs without the shared-workout helper text above them. Shared workout controls remain in **Group Rides**. |

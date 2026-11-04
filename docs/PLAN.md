@@ -972,6 +972,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
   personal intensity and local safety pause with current-step resume
+  - [x] Remove the shared-workout helper text above the ride settings tabs (R208).
 - [x] Planned host handover (R168): successor consent, pinned replacement links, authority
   epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
 - [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups
