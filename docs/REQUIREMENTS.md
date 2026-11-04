@@ -542,3 +542,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R211 | Refines R166 and R209 (2026-11-04, #504): **Keep together treats every rider equally**, including the organizer, around a shared reference from the group's current moving riders. Riders falling behind receive support and riders pulling away gentle braking; those close to the reference at its speed remain unaffected. A single sprint or stopped rider must not abruptly change everyone's assistance. Stopped, paused, finished and disconnected riders do not anchor the group; stale samples lose influence and cease contributing after two seconds. Moving riders may coast without leaving the reference. Reference calculation and transition limits are defined in ADR 0037. Local help still requires pedaling, clears immediately on pause/finish/leave, and stays within ±2 gradient percentage points; otherwise changes are limited to one percentage point per second and fade to zero within two seconds after losing all eligible peers. Indicators show the actual applied effects. Measured telemetry, ERG targets and assisted-ride record rules remain unchanged. |
+
+## Stable group ride window
+
+| ID | Requirement |
+|---|---|
+| R212 | Refines R53, R196 and R203 (2026-11-04): the in-ride **Group ride** window keeps its size and position while open and idle, including when connection warnings arrive, riders join, telemetry changes or voice controls update. Its content scrolls inside the opened frame rather than widening or growing the window. Resizing the application still keeps the decorated frame and action buttons inside the app, restoring the preferred size when room returns. Nested microphone and organizer dialogs retain content fitting. |

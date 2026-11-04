@@ -95,6 +95,15 @@ layouts and explicit scrolling bodies for their intended presentation;
 `UiScale.popup(window, preferred_size)` sets an initial size rather than a content limit.
 The automatic guard also covers direct `popup_centered()`,
 `popup()` and `show()` calls, later content changes and dragging/resizing.
+Live panels can set `WindowBounds.attach(window).fit_contents = false` to keep their opened
+size and scroll overflow instead. The in-ride group window uses this policy so delayed
+connection warnings, roster changes and voice updates cannot move or enlarge its frame
+(R212); application resizing still constrains and restores its preferred size. Nested
+microphone and organizer dialogs retain content fitting. The dialog smoke suite exercises
+the real group window at three app sizes, in English/German and at 1×/2× scale, checking
+stable geometry, reachable controls and application resizing.
+Review captures show the same delayed warning [before](images/group-dialog-size/before.jpg)
+and [after](images/group-dialog-size/after.jpg) the stable-size policy.
 `godot --headless --path app -s res://tests/dialog_smoke.gd` reproduces the microphone-permission
 and solo fallback-organizer failures and checks the general rule on standard window classes in
 English/German at 1× and 2× scale. For display validation, run it with `xvfb-run`, the Dummy audio

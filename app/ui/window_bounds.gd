@@ -5,6 +5,8 @@ extends Node
 
 ## Optional initial size, enlarged when the content fits in the available room.
 var wanted: Vector2i = Vector2i.ZERO
+## Live panels can retain their opened size and scroll changing content instead (R212).
+var fit_contents: bool = true
 var _window: Window
 var _viewport: Viewport
 var _minimum: Vector2i
@@ -60,7 +62,7 @@ func _process(_delta: float) -> void:
 		_layout_pending = false
 		return
 	var bodies: Array[Control] = _bodies()
-	if not _grow_to_contents(bodies):
+	if not fit_contents or not _grow_to_contents(bodies):
 		_scroll_overflow(bodies)
 
 
