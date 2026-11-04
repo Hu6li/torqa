@@ -147,7 +147,7 @@ impl CourseKey {
 pub struct Assistance {
     /// Aerodynamic shelter from nearby group riders.
     pub drafting: bool,
-    /// Elastic-band assistance around the current host while pedaling.
+    /// Elastic-band assistance around the moving group while pedaling.
     pub keep_together: bool,
 }
 impl Default for Assistance {

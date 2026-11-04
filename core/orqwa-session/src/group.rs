@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 /// The group limit, checked against the transport's limit by the app integration.
 pub const MAX_RIDERS: usize = 8;
-/// Stop showing or assisting from a rider after two seconds without a fresh sample.
+/// Stop using a rider's source state after two seconds without a fresh sample.
 pub const STALE: Duration = Duration::from_secs(2);
 /// Shared presentation delay, covering publication, host fan-out and receiver coalescing
 /// (three 200 ms periods), with 200 ms left for network jitter. Local avatars use it too.
@@ -154,7 +154,7 @@ impl Riders {
     }
 
     /// Predicts current positions for assistance against the live local simulation. The
-    /// presentation delay must never make a rider draft their own echo or lag the organizer.
+    /// presentation delay must never make a rider draft their own echo or lag the group.
     #[must_use]
     pub fn current(&self, now: Instant, elapsed: Duration) -> [Option<Rider>; MAX_RIDERS] {
         self.at(now, elapsed, elapsed)
@@ -211,21 +211,18 @@ fn interpolate(a: Sample, b: Sample, target: Duration) -> Sample {
     }
 }
 
-/// Computes independent shelter and an elastic band around the organizer. The organizer
-/// gets no band. Keep together acts only while the local rider pedals. Assistance fades
-/// after 500 ms without updates and is gone at the same two-second cutoff as the avatar.
+/// Computes shelter and a band around the moving group, including live local motion (R210).
+/// The caller excludes the local echo and rate-limits the applied band. Organizer identity
+/// has no role. Sources fade after 500 ms and stop contributing at two seconds.
 #[must_use]
 pub fn assistance(
     riders: &[Option<Rider>; MAX_RIDERS],
     distance: Meters,
     speed: MetersPerSecond,
     pedaling: bool,
-    organizer: Option<usize>,
     drafting: bool,
     keep_together: bool,
 ) -> GroupEffect {
-    let freshness =
-        |rider: &Rider| ((STALE.as_secs_f64() - rider.age.as_secs_f64()) / 1.5).clamp(0.0, 1.0);
     let mut shelter: f64 = 0.0;
     if drafting && pedaling {
         for rider in riders.iter().flatten() {
@@ -235,19 +232,84 @@ pub fn assistance(
             }
         }
     }
-    let band = organizer
-        .and_then(|id| riders.get(id))
-        .copied()
-        .flatten()
-        .filter(|_| keep_together && pedaling)
-        .map_or(0.0, |host| {
-            let gap = host.distance.0 - distance.0;
+    let band = if keep_together && pedaling {
+        reference(riders, distance, speed).map_or(0.0, |(center, pace, strength)| {
+            let gap = center.0 - distance.0;
             let outside = (gap.abs() - 5.0).max(0.0) * gap.signum();
-            GroupEffect::band(Meters(outside), MetersPerSecond(speed.0 - host.speed.0)).0
-                * freshness(&host)
-        });
+            GroupEffect::band(Meters(outside), MetersPerSecond(speed.0 - pace.0)).0 * strength
+        })
+    } else {
+        0.0
+    };
     GroupEffect::new(1.0 - shelter, GradePercent(band))
 }
+
+fn freshness(rider: &Rider) -> f64 {
+    ((STALE.as_secs_f64() - rider.age.as_secs_f64()) / 1.5).clamp(0.0, 1.0)
+}
+
+// Winsorizing before the weighted mean limits one sprint's influence without choosing a
+// leader. Keep both arrays fixed-size, independent of ride length and incoming traffic.
+fn reference(
+    riders: &[Option<Rider>; MAX_RIDERS],
+    distance: Meters,
+    speed: MetersPerSecond,
+) -> Option<(Meters, MetersPerSecond, f64)> {
+    const MOVING: f64 = 0.5;
+    let mut positions = [(0.0, 0.0); MAX_RIDERS + 1];
+    let mut speeds = positions;
+    let mut count = 0;
+    let mut strength: f64 = 0.0;
+    for rider in riders.iter().flatten().filter(|r| r.speed.0 > MOVING) {
+        let weight = freshness(rider);
+        if weight > 0.0 {
+            positions[count] = (rider.distance.0, weight);
+            speeds[count] = (rider.speed.0, weight);
+            count += 1;
+            strength = strength.max(weight);
+        }
+    }
+    if count == 0 {
+        return None;
+    }
+    if speed.0 > MOVING {
+        positions[count] = (distance.0, 1.0);
+        speeds[count] = (speed.0, 1.0);
+        count += 1;
+    }
+    Some((
+        Meters(robust_mean(&mut positions[..count], 25.0)),
+        MetersPerSecond(robust_mean(&mut speeds[..count], 1.0)),
+        strength,
+    ))
+}
+
+#[allow(clippy::float_cmp)] // An exact half-weight boundary averages its two adjacent values.
+fn robust_mean(values: &mut [(f64, f64)], limit: f64) -> f64 {
+    values.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    let total: f64 = values.iter().map(|&(_, weight)| weight).sum();
+    let mut weight = 0.0;
+    let mut median = values[values.len() - 1].0;
+    for (index, &(value, share)) in values.iter().enumerate() {
+        weight += share;
+        if weight >= total / 2.0 {
+            median = if weight == total / 2.0 && index + 1 < values.len() {
+                value.midpoint(values[index + 1].0)
+            } else {
+                value
+            };
+            break;
+        }
+    }
+    values
+        .iter()
+        .map(|&(value, weight)| value.clamp(median - limit, median + limit) * weight)
+        .sum::<f64>()
+        / total
+}
+
+#[cfg(test)]
+mod reference_tests;
 
 #[cfg(test)]
 mod tests {
@@ -441,40 +503,31 @@ mod tests {
         riders.observe(0, 1, sample(1, 60.0), at);
         riders.observe(2, 1, sample(1, 2.0), at);
         let view = riders.current(at, Duration::from_secs(1));
-        let effect = |pedaling, organizer, drafting, keep_together| {
+        let effect = |pedaling, drafting, keep_together| {
             assistance(
                 &view,
                 Meters(0.0),
                 MetersPerSecond(10.0),
                 pedaling,
-                organizer,
                 drafting,
                 keep_together,
             )
         };
-        let both = effect(true, Some(0), true, true);
+        let both = effect(true, true, true);
         assert!(both.drag_share() < 1.0 && both.grade_offset().0 < 0.0);
         assert_eq!(
-            effect(false, Some(0), true, true),
+            effect(false, true, true),
             GroupEffect::default(),
             "coasting supplies no assistance"
         );
-        assert_eq!(
-            effect(true, None, true, true).grade_offset(),
-            GradePercent(0.0)
-        );
-        assert_eq!(effect(true, Some(0), false, true).drag_share(), 1.0);
-        assert_eq!(
-            effect(true, Some(0), true, false).grade_offset(),
-            GradePercent(0.0)
-        );
+        assert_eq!(effect(true, false, true).drag_share(), 1.0);
+        assert_eq!(effect(true, true, false).grade_offset(), GradePercent(0.0));
         assert!(
             assistance(
                 &view,
                 Meters(120.0),
                 MetersPerSecond(10.0),
                 true,
-                Some(0),
                 true,
                 true
             )
@@ -486,7 +539,6 @@ mod tests {
             Meters(0.0),
             MetersPerSecond(10.0),
             true,
-            Some(0),
             true,
             true,
         );
@@ -495,15 +547,7 @@ mod tests {
             at + Duration::from_millis(1500),
             Duration::from_millis(2500),
         );
-        let fading = assistance(
-            &later,
-            Meters(0.0),
-            MetersPerSecond(10.0),
-            true,
-            Some(0),
-            true,
-            true,
-        );
+        let fading = assistance(&later, Meters(0.0), MetersPerSecond(10.0), true, true, true);
         assert!(fading.grade_offset().0 > both.grade_offset().0);
     }
 
@@ -526,7 +570,6 @@ mod tests {
                 Meters(0.0),
                 MetersPerSecond(10.0),
                 true,
-                None,
                 true,
                 false,
             )
