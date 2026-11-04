@@ -456,6 +456,12 @@ Import a GPX → generate the 3D world → ride it on the KICKR Core 2 in SIM mo
 |---|---|
 | R197 | Refines R174, R176, R187 and R192 (2026-11-03): only the organizer chooses where everyone rides, **Separate homes**, **Same home Wi-Fi** or **Some together, some elsewhere**, and whether to find internet addresses automatically, when creating the ride. The invitation carries that choice, and every rider follows it: friends joining are asked nothing, so **Join** connects at once, using the STUN servers named on their own computer while the lookup is on, and a new organizer after a handover or takeover keeps it for later friends. The joining page names it (**Alex chose Same home Wi-Fi**), so home-network access never comes silently; an invitation for separate homes holding a home-network address is refused. A ride on one home network shows no reachability warning, to the organizer or to a rider offered organizer duties, since nobody joins from another home, and any rider there may stand in as fallback organizer, whatever addresses their computer has besides, e.g. a provider's IPv6. In a ride with friends elsewhere, a rider reachable only on the home network is no longer asked to stand in. The CLI's invitations say **Some together, some elsewhere** with `--lan`, otherwise **Separate homes**. Protocol and invitation version 14 require matching builds and fresh codes. |
 
+## Joiner activity previews
+
+| ID | Requirement |
+|---|---|
+| R216 | Refines R196 (2026-11-04, #508): a rider joining an already running group sees the **selected activity**, by its received name while the local files download, then its course map and workout chart as they become available. A shared activity never says the organizer is still choosing, including during download retry. A joiner's course image is **no larger than the organizer's preview**, including a course without a workout; in the side-by-side lobby it ends no lower than the bottom of the **Voice chat** card. Narrow layouts continue to stack normally. |
+
 ## Test hardware available
 
 KICKR Core 2, Polar H9 heart-rate strap, Garmin Venu 3 (broadcasting heart rate), Favero

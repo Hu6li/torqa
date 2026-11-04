@@ -133,6 +133,8 @@ func _ready() -> void:
 	_build_workout_controls(right)
 	_build_dialogs()
 	resized.connect(_reflow)
+	_picker.resized.connect(_fit_activity_map.call_deferred)
+	_sidebar.resized.connect(_fit_activity_map.call_deferred)
 	visibility_changed.connect(refresh)
 	_reflow()
 	refresh()
@@ -582,6 +584,17 @@ func _show_status(status: Dictionary) -> void:
 		_show_roster(phase, host)
 	_show_voice_buttons()
 	_show_ready_pill()
+	_fit_activity_map.call_deferred()
+
+
+func _fit_activity_map() -> void:
+	if compact:
+		return
+	var bottom: float = INF
+	if not _body.vertical and not _status.get("host", false):
+		var voice_card: Control = _voice_controls.get_parent()
+		bottom = voice_card.get_global_rect().end.y
+	_picker.fit_map_above(bottom)
 
 
 ## Who organizes the ride: from the group once in it, else as the invitation named them.

@@ -72,6 +72,7 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	orqwa.group_leave()
 	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
+	await GroupJoinActivityScreenshots.capture(self, start, group, orqwa, out)
 	await _group_workout_screens(start, group, out)
 	await _group_handover_screens(start, group, out)
 	await _group_reach_screens(start, group, out)
