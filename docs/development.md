@@ -672,12 +672,22 @@ indicators from all three cameras in both languages using presentation fixtures.
 
 For group-based Keep together (R211, #504), `orqwa-session`'s `group::reference_tests` checks
 the shared reference, slot permutations, the two-rider midpoint, unaffected nearby riders,
-sprint outliers, moving coasting riders and fading/expired sources. The app's `assistance_`
+sprint outliers, moving coasting riders and fading/expired sources. R214 adds millisecond
+age sweeps through fading and expiry, a split-pack reference check and a 75 m two-rider
+replay with 5 Hz source updates delayed by 400 ms. The replay checks the requested effect
+between packets while buffered playback keeps the displayed gap steady. The app's `assistance_`
 tests exercise organizer/friend equality through an authority change, own-echo exclusion,
 roster removal/reentry, local pause/finish/leave, applied feedback and the one-percentage-point
 per-second resistance limit. A closed-loop physics regression compares three different-power
 riders against their unassisted motion. Session tests separately verify actual simulation
 commands, measured recording and unchanged ERG targets. See ADR 0037 for the reference formula.
+R215 adds zero/rounded-zero drafting, smooth close-overtake/range boundaries, separate live
+and presentation prediction bounds, and wire-rounded ride traces at 0, 3 and 75 m gaps with
+90–510 ms jitter, reordering and isolated packet loss. These traces check the actual applied
+effects after settling, not just the requested force. A slow-frame regression checks that
+assistance compares peers at the unadvanced local sample's time. Use normal 1× simulation
+for this acceptance: accelerated fake rides advance physics faster than the shared network
+clock and can show a separate motion-speed wobble even with both assistance rules disabled.
 For native trainer acceptance, alternate leading and following as organizer and friend,
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.

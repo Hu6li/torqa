@@ -77,7 +77,7 @@ impl Slot {
         self.samples[self.len - 1].expect("a motion history is never empty")
     }
 
-    fn sample(&self, target: Duration) -> Sample {
+    fn sample(&self, target: Duration, extrapolate: Duration) -> Sample {
         let mut previous = self.samples[0]
             .expect("a motion history is never empty")
             .sample;
@@ -87,7 +87,7 @@ impl Slot {
             }
             previous = next.sample;
         }
-        let ahead = target.saturating_sub(previous.elapsed).min(EXTRAPOLATE);
+        let ahead = target.saturating_sub(previous.elapsed).min(extrapolate);
         Sample {
             distance: Meters(previous.distance.0 + previous.speed.0 * ahead.as_secs_f64()),
             ..previous
@@ -150,17 +150,38 @@ impl Riders {
     /// on the shared clock. Packet arrival times affect freshness only, never motion speed.
     #[must_use]
     pub fn view(&self, now: Instant, elapsed: Duration) -> [Option<Rider>; MAX_RIDERS] {
-        self.at(now, elapsed, elapsed.saturating_sub(DELAY))
+        self.at(now, elapsed, elapsed.saturating_sub(DELAY), EXTRAPOLATE)
     }
 
     /// Predicts current positions for assistance against the live local simulation. The
     /// presentation delay must never make a rider draft their own echo or lag the group.
+    /// Prediction covers the normal 800 ms delivery budget, independently of playback's
+    /// shorter missing-data prediction. Older sources hold position while their effects fade.
     #[must_use]
     pub fn current(&self, now: Instant, elapsed: Duration) -> [Option<Rider>; MAX_RIDERS] {
-        self.at(now, elapsed, elapsed)
+        self.current_at(now, elapsed, elapsed)
     }
 
-    fn at(&self, now: Instant, elapsed: Duration, target: Duration) -> [Option<Rider>; MAX_RIDERS] {
+    /// Predicts peers at the live local sample's time. Freshness still uses the current
+    /// clock: a pre-physics frame must not compare an unadvanced local rider with future
+    /// peer motion, or make an old packet fresh by querying an earlier position.
+    #[must_use]
+    pub fn current_at(
+        &self,
+        now: Instant,
+        elapsed: Duration,
+        local_at: Duration,
+    ) -> [Option<Rider>; MAX_RIDERS] {
+        self.at(now, elapsed, local_at.min(elapsed), DELAY)
+    }
+
+    fn at(
+        &self,
+        now: Instant,
+        elapsed: Duration,
+        target: Duration,
+        extrapolate: Duration,
+    ) -> [Option<Rider>; MAX_RIDERS] {
         std::array::from_fn(|id| {
             let slot = self.slots[id].as_ref()?;
             let latest = slot.latest();
@@ -170,7 +191,7 @@ impl Riders {
             if age >= STALE {
                 return None;
             }
-            let sample = slot.sample(target);
+            let sample = slot.sample(target, extrapolate);
             Some(Rider {
                 generation: slot.generation,
                 distance: sample.distance,
@@ -212,8 +233,8 @@ fn interpolate(a: Sample, b: Sample, target: Duration) -> Sample {
 }
 
 /// Computes shelter and a band around the moving group, including live local motion (R211).
-/// The caller excludes the local echo and rate-limits the applied band. Organizer identity
-/// has no role. Sources fade after 500 ms and stop contributing at two seconds.
+/// The caller excludes the local echo and smooths the applied effects. Organizer identity
+/// has no role. Sources fade after the 800 ms delivery budget and expire at two seconds.
 #[must_use]
 pub fn assistance(
     riders: &[Option<Rider>; MAX_RIDERS],
@@ -227,9 +248,12 @@ pub fn assistance(
     if drafting && pedaling {
         for rider in riders.iter().flatten() {
             let gap = rider.distance.0 - distance.0;
-            if (0.0..15.0).contains(&gap) {
-                shelter = shelter.max(0.3 * (1.0 - gap / 15.0).powi(2) * freshness(rider));
-            }
+            // Overlapping/abreast riders provide no shelter. A short entry ramp prevents
+            // rounding and close overtakes from switching between zero and full drafting.
+            let entry = ((gap - 1.0) / 2.0).clamp(0.0, 1.0);
+            let tail = ((15.0 - gap) / 12.0).clamp(0.0, 1.0);
+            let strength = entry * entry * (3.0 - 2.0 * entry) * tail * tail;
+            shelter = shelter.max(0.3 * strength * freshness(rider));
         }
     }
     let band = if keep_together && pedaling {
@@ -245,11 +269,14 @@ pub fn assistance(
 }
 
 fn freshness(rider: &Rider) -> f64 {
-    ((STALE.as_secs_f64() - rider.age.as_secs_f64()) / 1.5).clamp(0.0, 1.0)
+    // Three 200 ms publication/fan-out/coalescing periods plus ordinary jitter are healthy
+    // delivery, not a disappearing rider. Playback already budgets the same 800 ms.
+    ((STALE.as_secs_f64() - rider.age.as_secs_f64()) / STALE.saturating_sub(DELAY).as_secs_f64())
+        .clamp(0.0, 1.0)
 }
 
-// Winsorizing before the weighted mean limits one sprint's influence without choosing a
-// leader. Keep both arrays fixed-size, independent of ride length and incoming traffic.
+// Bounded influence limits one sprint's pull without choosing a leader. Smooth influence
+// avoids a reference jump when the first peer starts to fade. Both arrays stay fixed-size.
 fn reference(
     riders: &[Option<Rider>; MAX_RIDERS],
     distance: Meters,
@@ -278,38 +305,45 @@ fn reference(
         count += 1;
     }
     Some((
-        Meters(robust_mean(&mut positions[..count], 25.0)),
-        MetersPerSecond(robust_mean(&mut speeds[..count], 1.0)),
+        Meters(robust_mean(&positions[..count], 12.5)),
+        MetersPerSecond(robust_mean(&speeds[..count], 0.5)),
         strength,
     ))
 }
 
-#[allow(clippy::float_cmp)] // An exact half-weight boundary averages its two adjacent values.
-fn robust_mean(values: &mut [(f64, f64)], limit: f64) -> f64 {
-    values.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-    let total: f64 = values.iter().map(|&(_, weight)| weight).sum();
-    let mut weight = 0.0;
-    let mut median = values[values.len() - 1].0;
-    for (index, &(value, share)) in values.iter().enumerate() {
-        weight += share;
-        if weight >= total / 2.0 {
-            median = if weight == total / 2.0 && index + 1 < values.len() {
-                value.midpoint(values[index + 1].0)
-            } else {
-                value
-            };
-            break;
+fn robust_mean(values: &[(f64, f64)], scale: f64) -> f64 {
+    let (mut low, mut high) = values.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(low, high), &(value, _)| (low.min(value), high.max(value)),
+    );
+    // Each rider's pull approaches its weight continuously, even at a distant sprint.
+    // The balance is strictly decreasing, so bisection has one root and bounded work.
+    for _ in 0..64 {
+        let center = low.midpoint(high);
+        let balance: f64 = values
+            .iter()
+            .map(|&(value, weight)| {
+                let offset = value - center;
+                weight * offset / offset.hypot(scale)
+            })
+            .sum();
+        if balance.abs() < 1e-12 {
+            return center;
+        }
+        if balance > 0.0 {
+            low = center;
+        } else {
+            high = center;
         }
     }
-    values
-        .iter()
-        .map(|&(value, weight)| value.clamp(median - limit, median + limit) * weight)
-        .sum::<f64>()
-        / total
+    low.midpoint(high)
 }
 
 #[cfg(test)]
 mod reference_tests;
+
+#[cfg(test)]
+mod drafting_tests;
 
 #[cfg(test)]
 mod tests {
@@ -555,7 +589,7 @@ mod tests {
     fn drafting_uses_only_the_strongest_shelter_and_never_brakes_or_stacks() {
         let source = Rider {
             generation: 1,
-            distance: Meters(1.0),
+            distance: Meters(3.0),
             speed: MetersPerSecond(10.0),
             power: Watts(200.0),
             cadence: Rpm(85.0),
@@ -575,6 +609,7 @@ mod tests {
             )
         };
         assert_eq!(effect(&single), effect(&many));
+        assert!(effect(&single).drag_share() < 1.0);
         assert!(effect(&many).drag_share() >= 0.7);
         let behind = [Some(Rider {
             distance: Meters(-1.0),

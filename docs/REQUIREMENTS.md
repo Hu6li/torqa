@@ -560,3 +560,15 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R213 | Refines R124 (2026-11-04, #482): after a **power record notification**, suppress further notifications for the same record duration for **five minutes of recorded riding time**. Pauses do not consume the cooldown, which starts afresh for each ride; different record durations remain independent. Continue tracking higher power during the cooldown and include it in the final records, without queuing suppressed notifications. Once the cooldown expires, only a further improvement beyond every best reached so far can produce another notification when the effort tops out. |
+
+## Continuous Keep together reference
+
+| ID | Requirement |
+|---|---|
+| R214 | Refines R211 (2026-11-04): at steady rider gaps and speeds, **Keep together's requested effect varies continuously as source samples age**, including when fading starts at 500 ms. A tiny freshness change must not abruptly move the group reference or switch support to braking. The reference retains a two-fresh-rider midpoint and bounded sprint influence; stale riders still fade and expire after two seconds. Existing applied transition limits, local safety cancellation, measured telemetry, ERG targets and assisted-record rules remain in force. |
+
+## Stable drafting and live assistance
+
+| ID | Requirement |
+|---|---|
+| R215 | Refines R166, R193, R209, R211 and R214 (2026-11-04): **Drafting supplies no shelter beside or overlapping another rider**, including a zero or rounded-zero gap. Shelter starts beyond a 1 m forward gap, rises smoothly to its 30% maximum at 3 m and tapers to zero at 15 m; only the strongest eligible source applies. Drafting and Keep together compare peer positions at the live local sample's time, with freshness measured on the current shared clock. Live prediction and the freshness grace cover the ordinary 800 ms delivery budget; fading then expires sources at two seconds, superseding R214's 500 ms grace detail. Applied effects filter packet corrections with a 0.5 s response; Keep together retains its one-percentage-point-per-second limit and reaches zero within two seconds without eligible peers. Drafting clears when no source remains ahead/in range. Pause, finish, coasting and disabled rules retain immediate local cancellation. Buffered rider playback, gap displays, telemetry, ERG targets and record eligibility retain their behavior. |

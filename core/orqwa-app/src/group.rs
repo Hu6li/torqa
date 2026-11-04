@@ -1316,12 +1316,21 @@ impl App {
                 && state.telemetry.power.is_some_and(|p| p.0 > 0.0)
                 && state.telemetry.cadence.is_none_or(|c| c.0 > 0.0);
             let rules = snapshot.assistance;
-            let mut current = group.peers.current(
-                now,
-                snapshot.start.map_or(std::time::Duration::ZERO, |start| {
-                    now.saturating_duration_since(start)
-                }),
-            );
+            let elapsed = snapshot.start.map_or(std::time::Duration::ZERO, |start| {
+                now.saturating_duration_since(start)
+            });
+            // Group updates precede physics. The last published live sample timestamps
+            // this local position; querying peers at wall-clock now would invent a lead.
+            // A jump or newly started ride falls back until its new state is published.
+            let local_at = group
+                .states
+                .borrow()
+                .as_ref()
+                .filter(|local| {
+                    local.state.distance == state.distance && local.state.speed == state.speed
+                })
+                .map_or(elapsed, |local| local.state.at);
+            let mut current = group.peers.current_at(now, elapsed, local_at);
             current[usize::from(snapshot.me)] = None;
             let effect = orqwa_session::group::assistance(
                 &current,
@@ -1332,17 +1341,22 @@ impl App {
                 rules.keep_together,
             );
             let effect = if pedaling {
-                let drag = group
+                let elapsed = now.saturating_duration_since(group.effect_at);
+                let target_drag = group
                     .transition
                     .map_or(effect.drag_share(), |(at, previous)| {
                         blend(previous, effect, now.saturating_duration_since(at)).drag_share()
                     });
+                let drag = if rules.drafting && effect.drag_share() < 1.0 {
+                    let previous = group.effect.drag_share();
+                    previous + (target_drag - previous) * follow(elapsed)
+                } else {
+                    // Never retain shelter from a rider now abreast, behind, departed or
+                    // expired, including during an organizer transition.
+                    1.0
+                };
                 let band = if rules.keep_together {
-                    smooth_band(
-                        group.effect.grade_offset(),
-                        effect.grade_offset(),
-                        now.saturating_duration_since(group.effect_at),
-                    )
+                    smooth_band(group.effect.grade_offset(), effect.grade_offset(), elapsed)
                 } else {
                     orqwa_domain::units::GradePercent(0.0)
                 };
@@ -1474,7 +1488,19 @@ fn smooth_band(
     // One gradient percentage point per second bounds resistance changes on ordinary
     // updates as well as roster changes; a missing reference fades fully within two seconds.
     let step = elapsed.as_secs_f64();
-    orqwa_domain::units::GradePercent(from.0 + (to.0 - from.0).clamp(-step, step))
+    let change = (to.0 - from.0)
+        * if to.0.abs() > 0.0 {
+            follow(elapsed)
+        } else {
+            1.0
+        };
+    orqwa_domain::units::GradePercent(from.0 + change.clamp(-step, step))
+}
+
+fn follow(elapsed: std::time::Duration) -> f64 {
+    // Filter packet-sized corrections in the actual applied force, independently of frame
+    // rate. Half a second settles ordinary jitter without delaying local safety cancellation.
+    -(-elapsed.as_secs_f64() / 0.5).exp_m1()
 }
 
 /// How much of preparing a course is done, 0–99, from its current step (#419): the steps
