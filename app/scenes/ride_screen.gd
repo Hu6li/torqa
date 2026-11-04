@@ -216,10 +216,7 @@ func _ready() -> void:
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
-	_assistance.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_assistance.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_assistance.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	add_child(_assistance)
+	($HudColumn as VBoxContainer).add_child(_assistance)
 	_build_group_window()
 	# Above the control bar, where it covers neither the HUD, the moments nor the map.
 	_offer.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -350,7 +347,7 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
-## Only the main 3D course view shows active assistance; screen space keeps it camera-independent.
+## Active assistance follows the metrics HUD in the main 3D course view (R209).
 func _show_assistance(state: Dictionary) -> void:
 	var show_effects: bool = (
 		visible
@@ -362,13 +359,17 @@ func _show_assistance(state: Dictionary) -> void:
 	)
 	var feedback: Dictionary = state.get("assistance", {}) if show_effects else {}
 	_assistance.show_feedback(feedback)
-	# Requests may occupy the same bottom-centre area; keep the indicators above them.
-	var bottom: float = OFFER_BOTTOM
+	# Narrow windows leave little room between the HUD and the requests over the ride.
+	var effects: Rect2 = _assistance.get_global_rect()
 	for card: Control in [_offer, _listen]:
-		if card.visible:
-			bottom += card.size.y + 12.0
-	_assistance.offset_top = -bottom - _assistance.size.y
-	_assistance.offset_bottom = -bottom
+		if not card.visible:
+			continue
+		var left: float = (size.x - card.size.x) * 0.5
+		var bounds: Rect2 = card.get_global_rect()
+		bounds.position.x = global_position.x + left
+		if _assistance.visible and bounds.intersects(effects):
+			left = effects.end.x - global_position.x + 12.0
+		card.position.x = minf(left, size.x - card.size.x - 24.0)
 
 
 ## Whether the screen shows as the overlay.

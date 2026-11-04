@@ -8,6 +8,8 @@ static func check(tree: SceneTree, verify: Callable) -> void:
 	var main: Control = scene.instantiate()
 	tree.root.add_child(main)
 	var ride: RideScreen = main.get_node("RideScreen")
+	var app: OrqwaApp = main.get_node("Orqwa")
+	ride._hud.show_layout(app.hud_layout(false))
 	ride.show()
 	ride.set_process(false)
 	var state: Dictionary = {
@@ -30,16 +32,31 @@ static func check(tree: SceneTree, verify: Callable) -> void:
 				)
 				var key: String = "Support" if strength > 0.0 else "Braking"
 				verify.call(
-					indicator._band_label.text == TranslationServer.translate(key),
+					indicator._band_label.text == TranslationServer.translate(key) + ":",
 					"label follows applied direction"
 				)
 				var bounds: Rect2 = indicator.get_global_rect()
 				verify.call(
-					ride.get_global_rect().encloses(bounds), "indicators fit the riding view"
+					(
+						is_equal_approx(
+							indicator._draft_bar.global_position.x,
+							indicator._band_bar.global_position.x
+						)
+						and indicator._draft.global_position.y < indicator._band.global_position.y
+					),
+					"active effects form label/bar columns in stacked rows"
 				)
 				verify.call(
-					is_equal_approx(bounds.get_center().x, ride.get_global_rect().get_center().x),
-					"combined effects remain centred"
+					ride.get_global_rect().encloses(bounds), "indicators fit the riding view"
+				)
+				var hud_bounds: Rect2 = (ride._hud.get_parent() as Control).get_global_rect()
+				verify.call(
+					(
+						is_equal_approx(bounds.position.x, hud_bounds.position.x)
+						and is_equal_approx(bounds.size.x, hud_bounds.size.x)
+						and bounds.position.y > hud_bounds.end.y
+					),
+					"assistance sits below the HUD with the same width"
 				)
 				verify.call(
 					not bounds.intersects(ride._bar.get_global_rect()),
@@ -50,15 +67,18 @@ static func check(tree: SceneTree, verify: Callable) -> void:
 					not bounds.intersects(side.get_global_rect()),
 					"indicators clear the map and group list"
 				)
+	ride._hud.show_layout(PackedStringArray(["power", "speed", "grade"]))
 	state["assistance"] = {"drafting": 0.6, "together": 0.0}
 	ride._show_assistance(state)
 	await tree.process_frame
 	await tree.process_frame
+	var hud: Rect2 = (ride._hud.get_parent() as Control).get_global_rect()
 	verify.call(
-		is_equal_approx(
-			indicator.get_global_rect().get_center().x, ride.get_global_rect().get_center().x
+		(
+			is_equal_approx(indicator.size.x, hud.size.x)
+			and indicator.get_global_rect().position.y > hud.end.y
 		),
-		"a single effect recentres after the other disappears"
+		"one active row follows the edited HUD and keeps its width"
 	)
 	verify.call(
 		indicator._draft.visible and not indicator._band.visible, "only drafting occupies space"
@@ -90,7 +110,9 @@ static func check(tree: SceneTree, verify: Callable) -> void:
 	ride._overlay_hud.hide()
 	ride._show_assistance(state)
 	verify.call(indicator.visible, "main view restores current active effects")
+	ride._hud.show_layout(app.hud_layout(false))
 	ride._offer.show_offer("Alex", "")
+	await tree.process_frame
 	await tree.process_frame
 	ride._show_assistance(state)
 	await tree.process_frame

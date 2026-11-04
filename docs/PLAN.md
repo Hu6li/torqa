@@ -968,8 +968,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] QR sharing using existing support: invitations and replies as plain-text QR codes (R195)
 - [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
   individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
-- [x] Active assistance indicators (R208, #425): Drafting and directional Support/Braking
-  bars in the main 3D course view, from the applied local effects, shown only while active
+- [x] Active assistance indicators (R208–R209, #425): Drafting and directional Support/Braking
+  bars in compact label/bar rows below the metrics HUD, matching its width, from the applied
+  local effects and shown only while active in the main 3D course view
 - [ ] Group-based Keep together (#504): replace the organizer reference with a shared group
   reference and treat organizer and friends equally; define stopped/stale-rider handling
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current

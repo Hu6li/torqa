@@ -524,3 +524,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R208 | Extends R166 (2026-11-04, #425): the main **3D course riding view** automatically shows active local assistance near the bottom centre, independent of camera choice: **Drafting** with a strength bar and **Support** or **Braking** with a centred directional strength bar. Both may appear together, without numbers; each disappears when inactive, leaving no empty panel. Strengths follow the actual effect applied by Rust, including stale-source fading and organizer-transition blending, normalized against the existing 30% maximum aerodynamic reduction and ±2 percentage-point Keep together limit. Relative speed may cause braking while still behind. Indicators clear ride controls and organizer/voice prompts and do not intercept input. They are absent from video rides, overlay mode and workouts without a course. This display changes no assistance physics, measured telemetry, ERG targets or record eligibility; group-based Keep together behavior independent of organizer status is a separate follow-up (#504). |
+
+## Compact assistance below the HUD
+
+| ID | Requirement |
+|---|---|
+| R209 | Refines R208's presentation (2026-11-04, #425): active assistance appears in **one compact panel directly below the main metrics HUD, matching its width**, replacing the bottom-centre placement. The panel uses two columns, with smaller labels on the left and aligned strength bars on the right: **Drafting:** and **Support:** or **Braking:**, one active effect per row. Inactive rows collapse and the whole panel disappears without active effects. Its position follows changes to the HUD's height and layout. R208's effect semantics and view exclusions still apply. |
