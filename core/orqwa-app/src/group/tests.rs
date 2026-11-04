@@ -1370,7 +1370,7 @@ fn host_and_joiner_learn_how_friends_could_reach_them_from_their_own_discovery()
 }
 
 fn sample_course() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.oqc")
 }
 
 /// The course a friend with the `library` laid out by `prepare` rides when they join after the
@@ -1422,7 +1422,7 @@ fn a_friend_rides_their_own_copy_of_the_course_under_any_name_without_downloadin
     // #435: the organizer sent the course beforehand; the friend imported it under their own
     // name, and it has found its countries and drawn its map picture since.
     let to = Directory::new();
-    let own = to.0.join("data/courses/Twann mit Freunden.tqc");
+    let own = to.0.join("data/courses/Twann mit Freunden.oqc");
     let ridden = course_on_joining(&to, |library| {
         std::fs::copy(sample_course(), &own).unwrap();
         let mut manifest = course::read_manifest(&own).unwrap();

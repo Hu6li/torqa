@@ -403,7 +403,7 @@ func _video_alignment() -> void:
 ## Course cards (R37, R39) from a course preview: figures one per row, no elevation strip.
 func _course_cards() -> void:
 	var course: Dictionary = {
-		"path": "/tmp/x.tqc",
+		"path": "/tmp/x.oqc",
 		"name": "Gurten",
 		"length_m": 2400.0,
 		"elevation_gain_m": 149.4,

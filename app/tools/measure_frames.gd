@@ -8,7 +8,7 @@ extends SceneTree
 ## scripts/perf/software.sh runs it in the dev container. On a Mac, scripts/perf/pack.sh makes it
 ## the main loop of a resource pack (release builds take no -s) and scripts/perf/mac.sh runs a
 ## copy of the app with that pack. Settings come from the environment:
-## COURSE   a course file (.tqc, built offline from its saved inputs) or a GPX route
+## COURSE   a course file (.oqc, built offline from its saved inputs) or a GPX route
 ## PLACES   distances along the route in metres, space-separated
 ## QUALITY  the graphics preset, `ultra` unless set
 ## CAMERA   0 chase (default), 1 first person, 2 drone
@@ -123,7 +123,7 @@ func _build(course: String) -> bool:
 	var failure: Array[String] = [""]
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
 	var began: int = Time.get_ticks_msec()
-	if course.ends_with(".tqc"):
+	if course.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
 			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
 			CONNECT_ONE_SHOT

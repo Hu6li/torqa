@@ -111,7 +111,7 @@ mod tests {
     fn shared_storage_without_hard_links_publishes_complete_files_atomically() {
         let dir = Directory::new();
         let from = dir.0.join("validated.part");
-        let to = dir.0.join("course.tqc");
+        let to = dir.0.join("course.oqc");
         std::fs::write(&from, b"verified course").unwrap();
         with_link(&from, &to, no_links).unwrap();
         assert_eq!(std::fs::read(&to).unwrap(), b"verified course");
@@ -129,7 +129,7 @@ mod tests {
     fn fallback_cannot_replace_a_racing_publisher_or_a_symlink() {
         let dir = Directory::new();
         let from = dir.0.join("validated.part");
-        let to = dir.0.join("course.tqc");
+        let to = dir.0.join("course.oqc");
         std::fs::write(&from, b"verified course").unwrap();
         let race = |_: &Path, target: &Path| {
             std::fs::write(target, b"already here").unwrap();

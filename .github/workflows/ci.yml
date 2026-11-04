@@ -379,23 +379,20 @@ jobs:
           $run = Start-Process msiexec -Wait -PassThru -ArgumentList '/x', "`"$msi`"", '/qn'
           if ($run.ExitCode) { throw "uninstall failed: $($run.ExitCode)" }
           if (Test-Path "$installed\ORQWA.exe") { throw "uninstall left ORQWA.exe" }
-      # A rider on Torqa 0.5.0 gets ORQWA as an upgrade of the same installation (ADR 0026): the
-      # installer keeps Torqa's UpgradeCode, so it replaces Torqa's folder and Start-menu entry.
-      - name: Check the upgrade from Torqa
+      # Keep the installer identity stable so an installed ORQWA upgrades in place.
+      - name: Check the upgrade from ORQWA 0.5.3
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v0.5.0 --repo "${{ github.repository }}" --pattern Torqa-windows-x86_64.msi --dir torqa
-          $old = "$PWD\torqa\Torqa-windows-x86_64.msi"
+          gh release download v0.5.3 --repo "${{ github.repository }}" --pattern ORQWA-0.5.3-windows-x86_64.msi --dir previous
+          $old = "$PWD\previous\ORQWA-0.5.3-windows-x86_64.msi"
           $msi = "$PWD\dist\ORQWA-windows-x86_64.msi"
           $menu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs"
           $run = Start-Process msiexec -Wait -PassThru -ArgumentList '/i', "`"$old`"", '/qn'
-          if ($run.ExitCode) { throw "Torqa install failed: $($run.ExitCode)" }
-          if (-not (Test-Path "$env:ProgramFiles\Torqa\Torqa.exe")) { throw "Torqa not installed" }
+          if ($run.ExitCode) { throw "Previous ORQWA install failed: $($run.ExitCode)" }
+          if (-not (Test-Path "$env:ProgramFiles\ORQWA\ORQWA.exe")) { throw "Previous ORQWA not installed" }
           $run = Start-Process msiexec -Wait -PassThru -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'upgrade.log'
           if ($run.ExitCode) { Get-Content upgrade.log -Tail 40; throw "upgrade failed: $($run.ExitCode)" }
-          if (Test-Path "$env:ProgramFiles\Torqa") { throw "the upgrade left Torqa's folder" }
-          if (Test-Path "$menu\Torqa.lnk") { throw "the upgrade left Torqa's Start-menu entry" }
           foreach ($path in "$env:ProgramFiles\ORQWA\ORQWA.exe", "$menu\ORQWA.lnk") {
             if (-not (Test-Path $path)) { throw "not installed by the upgrade: $path" }
           }

@@ -18,4 +18,4 @@ device driver has stopped
 no Bluetooth adapter found
 # Course settings info tooltips.
 ORQWA keeps each rendered world on this computer after it is built, so rides on that course start right away. A saved world uses about 10 MB per kilometre. If an update changes how the world looks, regenerate it from the course page.
-Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .tqc file. Share the file, and the other rider can use the detail offline without downloading the region.
+Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region.

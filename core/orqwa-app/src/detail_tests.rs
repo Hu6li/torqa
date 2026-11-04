@@ -131,7 +131,7 @@ fn a_course_prepared_with_a_regions_detail_carries_its_surfaces() {
     let mut app = App::new(dir.join("data"), cache.clone()).unwrap();
     let plain = prepare(&mut app, &gpx);
     let plain_route = route_points(&app);
-    let plain_course = dir.join("plain.tqc");
+    let plain_course = dir.join("plain.oqc");
     std::fs::rename(&plain, &plain_course).unwrap();
 
     install_bern(&cache, &street);

@@ -94,12 +94,9 @@ class GitHub:
             self.request("POST", "pulls", {**data, "head": SYNC_BRANCH, "base": "main"})
 
 
-# The wiki's home, and where it was before the repository moved and was renamed (a main from
-# before still names them; GitHub redirects).
+# Only the current wiki may receive a prepared revision.
 WIKI_REMOTES = (
     "https://github.com/ORQWA/ORQWA.wiki.git",
-    "https://github.com/Torqa-Indoor-Cycling/Torqa.wiki.git",
-    "https://github.com/bossm8/Torqa.wiki.git",
 )
 
 

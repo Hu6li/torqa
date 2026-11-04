@@ -373,8 +373,8 @@ func _kept_worlds(courses: CourseSettings, worlds: VBoxContainer) -> void:
 	_check(not _shows(worlds, "Total"), "no total of nothing")
 	var shared: PackedStringArray = PackedStringArray(["Lakeside", "Lakeside again"])
 	var listed: Array[Dictionary] = [
-		{"path": "/courses/lakeside.tqc", "names": shared, "size": 1288490189},
-		{"path": "/courses/hills.tqc", "names": PackedStringArray(["Hills"]), "size": 104857600},
+		{"path": "/courses/lakeside.oqc", "names": shared, "size": 1288490189},
+		{"path": "/courses/hills.oqc", "names": PackedStringArray(["Hills"]), "size": 104857600},
 	]
 	courses.call("_list", listed, 1288490189 + 104857600)
 	_check(not _shows(worlds, "None yet."), "two kept")
@@ -419,7 +419,7 @@ func _map_detail(orqwa: OrqwaApp, dialog: SettingsDialog) -> void:
 		"the tooltip starts with its purpose"
 	)
 	_check(
-		tooltip_copy.contains("save that map detail in its .tqc file"),
+		tooltip_copy.contains("save that map detail in its .oqc file"),
 		"opening adds detail to the file"
 	)
 	_check(

@@ -403,8 +403,7 @@ pub fn fit_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Orders `rides` newest first by when they started. Their file names cannot tell: Torqa
-/// named its rides `torqa-…`, which sorts after every `orqwa-…` ride ridden since (R102).
+/// Orders `rides` newest first by their recorded start, including imported file names (R139).
 pub fn newest_first(rides: &mut [(PathBuf, RideRecord)]) {
     rides.sort_by(|(a_fit, a), (b_fit, b)| b.start.cmp(&a.start).then_with(|| b_fit.cmp(a_fit)));
 }
@@ -645,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn rides_from_torqa_and_orqwa_come_newest_first() {
+    fn imported_and_recorded_rides_come_newest_first() {
         let ride = |name: &str, secs: u64| {
             let record = RideRecord {
                 start: UNIX_EPOCH + Duration::from_secs(secs),
@@ -653,10 +652,10 @@ mod tests {
             };
             (PathBuf::from(name), record)
         };
-        // 2026-10-19 and 2026-10-24, after the rename; 2026-10-12, before it.
+        // File-name order differs from the recorded start order.
         let mut rides = vec![
             ride("orqwa-20261019-071500.fit", 1_792_394_100),
-            ride("torqa-20261012-071500.fit", 1_791_789_300),
+            ride("zz-imported-20261012-071500.fit", 1_791_789_300),
             ride("orqwa-20261024-071500.fit", 1_792_826_100),
         ];
 
@@ -668,7 +667,7 @@ mod tests {
             [
                 "orqwa-20261024-071500.fit",
                 "orqwa-20261019-071500.fit",
-                "torqa-20261012-071500.fit",
+                "zz-imported-20261012-071500.fit",
             ]
         );
     }

@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The platform's per-user data directory for ORQWA (rides, routes, settings), with Torqa's
-/// moved there on the first start after the rename (R102). On Android the app's private one,
+/// The platform's per-user data directory for ORQWA (rides, routes, settings).
+/// On Android the app's private one,
 /// for when shared storage is missing ([`android_shared_data_dir`]).
 #[must_use]
 pub fn data_dir() -> PathBuf {
@@ -20,17 +20,16 @@ pub fn data_dir() -> PathBuf {
     } else {
         env("XDG_DATA_HOME").or_else(|| home.map(|h| h.join(".local/share")))
     };
-    let (name, before) = if cfg!(target_os = "macos") || cfg!(windows) {
-        ("ORQWA", "Torqa")
+    let name = if cfg!(target_os = "macos") || cfg!(windows) {
+        "ORQWA"
     } else {
-        ("orqwa", "torqa")
+        "orqwa"
     };
     let base = base.unwrap_or_else(std::env::temp_dir);
-    carry_over(&base.join(before), base.join(name))
+    base.join(name)
 }
 
-/// The platform's per-user cache directory for ORQWA, with Torqa's moved there on the first start
-/// after the rename (R102): it holds this computer's own settings and the kept worlds.
+/// The platform's per-user cache directory for ORQWA: this computer's settings and kept worlds.
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     if cfg!(target_os = "android") {
@@ -46,27 +45,7 @@ pub fn cache_dir() -> PathBuf {
         env("XDG_CACHE_HOME").or_else(|| home.map(|h| h.join(".cache")))
     };
     let base = base.unwrap_or_else(std::env::temp_dir);
-    carry_over(&base.join("torqa"), base.join("orqwa"))
-}
-
-/// The folder to use for what Torqa kept in `before` (R102, ADR 0026): `before` is moved to `new`
-/// when only it exists. A move that fails leaves it in use where it is, so a rider loses nothing.
-fn carry_over(before: &Path, new: PathBuf) -> PathBuf {
-    if new.exists() || !before.exists() {
-        return new;
-    }
-    match std::fs::rename(before, &new) {
-        Ok(()) => {
-            tracing::info!(from = %before.display(), to = %new.display(), "moved Torqa's folder");
-            new
-        }
-        // Another ORQWA started at the same time may have moved it first.
-        Err(_) if new.exists() => new,
-        Err(error) => {
-            tracing::warn!(%error, folder = %before.display(), "cannot move Torqa's folder; using it");
-            before.to_path_buf()
-        }
-    }
+    base.join("orqwa")
 }
 
 /// ORQWA's data and cache directories on Android (ADR 0024), from the app's cache directory that
@@ -88,7 +67,7 @@ pub fn android_shared_data_dir(shared: &Path) -> PathBuf {
 
 /// The data directory `ORQWA` in `shared`, with `private` moved into it when only `private`
 /// holds data. A sync app may have filled `ORQWA` first: then it wins, and `private` is left as
-/// it is, as Torqa's folder is when ORQWA's exists (R102).
+/// it is.
 fn into_shared(private: &Path, shared: &Path) -> PathBuf {
     let data = shared.join("ORQWA");
     // Beside the data, not in it: a computer syncing the data has no gallery to hide videos from.
@@ -202,7 +181,7 @@ mod tests {
         std::fs::create_dir_all(private.join("profiles/rider/rides")).unwrap();
         std::fs::create_dir_all(private.join("courses")).unwrap();
         std::fs::write(private.join("profiles/rider/rides/a.fit"), b"ride").unwrap();
-        std::fs::write(private.join("courses/Lake.tqc"), b"course").unwrap();
+        std::fs::write(private.join("courses/Lake.oqc"), b"course").unwrap();
         private
     }
 
@@ -220,7 +199,7 @@ mod tests {
             b"ride"
         );
         assert_eq!(
-            std::fs::read(data.join("courses/Lake.tqc")).unwrap(),
+            std::fs::read(data.join("courses/Lake.oqc")).unwrap(),
             b"course"
         );
         assert!(!private.exists(), "the data is moved, not left twice");
@@ -250,7 +229,7 @@ mod tests {
         let data = into_shared(&private, &shared);
 
         assert!(data.join("profiles/rider/rides/a.fit").exists());
-        assert!(data.join("courses/Lake.tqc").exists());
+        assert!(data.join("courses/Lake.oqc").exists());
         assert!(!data.join("half.fit").exists());
     }
 
@@ -289,56 +268,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    #[test]
-    fn torqas_folder_moves_to_orqwas_with_everything_in_it() {
-        let base = scratch("move");
-        std::fs::create_dir_all(base.join("Torqa/profiles/rider/rides")).unwrap();
-        std::fs::write(base.join("Torqa/profiles/rider/rides/a.fit"), b"ride").unwrap();
-
-        let folder = carry_over(&base.join("Torqa"), base.join("ORQWA"));
-
-        assert_eq!(folder, base.join("ORQWA"));
-        assert_eq!(
-            std::fs::read(folder.join("profiles/rider/rides/a.fit")).unwrap(),
-            b"ride"
-        );
-        assert!(!base.join("Torqa").exists());
-    }
-
-    #[test]
-    fn an_existing_orqwa_folder_wins_and_torqas_stays_untouched() {
-        let base = scratch("both");
-        std::fs::create_dir_all(base.join("Torqa")).unwrap();
-        std::fs::create_dir_all(base.join("ORQWA")).unwrap();
-
-        assert_eq!(
-            carry_over(&base.join("Torqa"), base.join("ORQWA")),
-            base.join("ORQWA")
-        );
-        assert!(base.join("Torqa").exists());
-    }
-
-    #[test]
-    fn a_new_rider_gets_orqwas_folder() {
-        let base = scratch("new");
-
-        assert_eq!(
-            carry_over(&base.join("Torqa"), base.join("ORQWA")),
-            base.join("ORQWA")
-        );
-        assert!(!base.join("ORQWA").exists());
-    }
-
-    #[test]
-    fn a_folder_that_cannot_move_stays_in_use() {
-        let base = scratch("stuck");
-        std::fs::create_dir_all(base.join("Torqa")).unwrap();
-
-        let new = base.join("missing-parent/ORQWA");
-        assert_eq!(carry_over(&base.join("Torqa"), new), base.join("Torqa"));
-        assert!(base.join("Torqa").exists());
     }
 
     #[test]

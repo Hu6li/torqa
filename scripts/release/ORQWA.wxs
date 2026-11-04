@@ -6,8 +6,7 @@
   uninstalling never touches rides, profiles or settings.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <!-- Never change the UpgradeCode: it is how a newer installer finds the version to replace,
-       Torqa's from before the rename too (ADR 0026). -->
+  <!-- Never change the UpgradeCode: it is how a newer installer finds the version to replace. -->
   <Package
     Name="ORQWA"
     Manufacturer="ORQWA"

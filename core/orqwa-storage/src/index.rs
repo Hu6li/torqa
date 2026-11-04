@@ -295,12 +295,12 @@ mod tests {
     }
 
     #[test]
-    fn rides_kept_from_torqa_stay_behind_newer_ones() {
+    fn imported_rides_stay_behind_newer_recordings() {
         let dir = temp_dir("renamed");
         let file = dir.join("cache").join(FILE);
-        let torqa = ride(
+        let imported = ride(
             &dir,
-            "torqa-20261012-071500",
+            "zz-imported-20261012-071500",
             &record("Gurten", 1_791_789_300),
         );
         let orqwa = ride(
@@ -315,7 +315,7 @@ mod tests {
         let indexed = index.records(&dir.join("rides"), counting(&reads)).unwrap();
 
         let fits: Vec<&PathBuf> = read.iter().map(|(fit, _)| fit).collect();
-        assert_eq!(fits, [&orqwa, &torqa]);
+        assert_eq!(fits, [&orqwa, &imported]);
         assert_eq!(indexed, read);
     }
 

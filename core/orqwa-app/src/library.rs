@@ -527,7 +527,7 @@ mod tests {
     fn course(name: &str, km: f64, gain_m: f64) -> LibraryCourse {
         LibraryCourse {
             entry: CourseEntry {
-                path: PathBuf::from(format!("/courses/{name}.tqc")),
+                path: PathBuf::from(format!("/courses/{name}.oqc")),
                 manifest: Manifest {
                     format: 1,
                     generator: "ORQWA test".to_owned(),

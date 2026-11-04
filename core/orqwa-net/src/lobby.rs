@@ -2518,7 +2518,7 @@ mod tests {
         ));
         std::fs::create_dir(&path).unwrap();
         // #435: an organizer after a handover rides the copy they renamed; so may a host.
-        let course = path.join("renamed.tqc");
+        let course = path.join("renamed.oqc");
         std::fs::write(&course, b"renamed course").unwrap();
         let workout = path.join("changed.oqw");
         std::fs::write(&workout, b"changed workout").unwrap();
@@ -2626,7 +2626,7 @@ mod tests {
         )
         .await;
         // A preview arrives beside a download of the shared course, which it leaves going.
-        let file = path.join("course.tqc");
+        let file = path.join("course.oqc");
         let bytes: Vec<u8> = (0..1024 * 1024_u32)
             .map(|n| u8::try_from(n % 251).unwrap())
             .collect();

@@ -660,7 +660,7 @@ mod tests {
         let from = Directory::new();
         let to = Directory::new();
         let bytes = vec![42; 256 * 1024];
-        let source_path = from.0.join("untrusted display name.tqc");
+        let source_path = from.0.join("untrusted display name.oqc");
         std::fs::write(&source_path, &bytes).unwrap();
         let mut source = Source::open(&source_path, ContentKind::Course)
             .await

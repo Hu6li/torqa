@@ -26,7 +26,7 @@ countdown clears every readiness acknowledgment. Membership generations prevent 
 rider's preparation from readying a replacement in the same roster slot. Countdown freezes
 the selection only when every admitted participant, including the host, is ready.
 
-Course transfers carry `.tqc` inputs, not built worlds or video. Structured workout transfer
+Course transfers carry `.oqc` inputs, not built worlds or video. Structured workout transfer
 uses a bounded binary wire representation preserving FTP shares and absolute watt targets,
 ramps, free steps, cadence and cues. It is independent of the rider's FTP; no watts-to-FTP
 conversion is performed. The `.oqw` basename identifies the normalized wire artifact; app
@@ -283,7 +283,7 @@ peer's weight. This prevents an isolated stale peer from retaining full assistan
 normalized weights. Stopped local riders may receive help when they resume pedaling, but
 supply no stationary anchor.
 
-This continuous calculation replaces the initial median-centred clamp (R213). At a 75 m
+This continuous calculation replaces the initial median-centred clamp (R214). At a 75 m
 two-rider gap, reducing one weight just below one switched that median from the midpoint to
 the local rider. The requested band jumped as source age crossed 500 ms, even without a new
 packet or movement. The applied rate limit softened each jump but left repeated fluctuations.
@@ -447,10 +447,10 @@ tests open voice on silent audio, so these restarts are tested without audio har
 
 ### Courses riders already have — 2026-11-01
 
-A joiner found an existing course only under its hash-derived name (#435). A `.tqc` sent
+A joiner found an existing course only under its hash-derived name (#435). A `.oqc` sent
 beforehand and imported under the rider's own name was downloaded again, and so was any copy
 the app had changed since: renaming, importing, a new map picture, countries or map detail
-rewrite the archive. Worse, a received `<hash>.tqc` changed since then made publication fail,
+rewrite the archive. Worse, a received `<hash>.oqc` changed since then made publication fail,
 so the rider could not prepare that course again.
 
 Each course selection now also carries a **course key**: SHA-256 of key material the storage
@@ -459,7 +459,7 @@ layer reads from the archive without unpacking it. The material is the manifest 
 the map picture (`map.png`, legacy `preview.png`) by path, stored CRC-32 and uncompressed
 size, sorted by path and length-prefixed. Renaming, importing under another name, a new
 picture or countries keep the key; other route, data or manifest changes, map detail among
-them, change it. Before downloading, a joiner keys every `.tqc` in its library, which costs a
+them, change it. Before downloading, a joiner keys every `.oqc` in its library, which costs a
 zip directory and manifest per course, so no index or cache is kept, and rides the first
 match without downloading. Courses open in shared mode in a group, so the match is not
 changed while riding.

@@ -49,3 +49,20 @@ the wording across the ride screen.
 - A future source of messages, such as a coach, reuses the card and the voice.
 - With the voice off, the climb toasts riders had before are gone too; the climb panel still
   shows the time and the best.
+
+## Amendment — 2026-11-04: power record cooldown (#482, R213)
+
+A flat or lower rolling power average ends a peak. Small increases after that can therefore
+produce repeated notifications for the same duration throughout one sustained effort.
+
+After emitting a power record, `PowerPeaks` suppresses that duration for five minutes of
+recorded riding time. Sample timestamps supply this clock, so pauses do not consume the
+cooldown and processing several samples in one frame gives the same result. Each duration
+has its own deadline, reset with the detector at the start of a ride.
+
+During the cooldown the detector continues raising that duration's best, without retaining
+a pending peak. Suppressed records are never queued for later: once the deadline passes,
+another notification needs a new improvement beyond the highest power reached so far,
+including the silent improvements. The recorded samples still supply the full power curve
+and final record badges. Detection stays in Rust, so cards, overlay lines and chimes all
+follow the same cooldown.

@@ -45,7 +45,7 @@ adb logcat -s ORQWA godot
 ## Release signing
 
 Tagged releases are signed in CI with the release key from the secrets `ANDROID_KEYSTORE` and
-`ANDROID_KEYSTORE_PASSWORD` (alias `torqa`). Android installs an update only over an APK with the
+`ANDROID_KEYSTORE_PASSWORD` (the signing alias is read from the keystore). Android installs an update only over an APK with the
 same key, so losing it would make every rider uninstall, and lose their rides, to update. Its
 owner keeps a copy and the password outside GitHub. Locally, `ORQWA_RELEASE_KEYSTORE` and
 `ORQWA_RELEASE_KEYSTORE_PASSWORD` sign the same way.

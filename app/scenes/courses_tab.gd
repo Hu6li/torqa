@@ -110,7 +110,7 @@ var _replace_dialog: ConfirmationDialog = ConfirmationDialog.new()
 ## The file waiting for its course name.
 var _pending: String = ""
 ## What the running import is: "" none, "gpx" a route or "video" a video course being
-## prepared, "tqc" a course file, "probe" a video being looked at.
+## prepared, "oqc" a course file, "probe" a video being looked at.
 var _importing: String = ""
 
 
@@ -274,7 +274,7 @@ func _init() -> void:
 		videos.append("*." + extension)
 	_file_dialog.filters = PackedStringArray(
 		[
-			"*.gpx, *.tqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
+			"*.gpx, *.oqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
 			"*.gpx ; " + tr("GPX routes"),
 			(
 				"%s ; %s"
@@ -283,7 +283,7 @@ func _init() -> void:
 					tr("Videos with GPS, route videos (Incyclist .xml, Tacx .rlv)")
 				]
 			),
-			"*.tqc ; " + tr("ORQWA courses"),
+			"*.oqc ; " + tr("ORQWA courses"),
 		]
 	)
 	_file_dialog.use_native_dialog = true
@@ -710,7 +710,7 @@ func _on_file_selected(picked: String) -> void:
 	var path: String = PickedFile.local_path(picked)
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()
-	if not extension in ["tqc", "gpx", "xml", "rlv"]:
+	if not extension in ["oqc", "gpx", "xml", "rlv"]:
 		# Set so that a video that cannot be read is reported like a failed import.
 		_importing = "probe"
 		var probe: Dictionary = _orqwa.video_probe(path)
@@ -753,8 +753,8 @@ func _import(replace: bool) -> void:
 	_orqwa.name_next_import(_name_edit.text.strip_edges(), replace)
 	var path: String = _pending
 	match path.get_extension().to_lower():
-		"tqc":
-			_importing = "tqc"
+		"oqc":
+			_importing = "oqc"
 			_orqwa.import_course(path)
 		"gpx":
 			_start_loading("gpx", path)
