@@ -1,16 +1,22 @@
 class_name ProfileDialog
 extends ConfirmationDialog
-## Rider settings: the profile (fields mirror `OrqwaApp.profile()`) and the rider's HUD layout
-## (R51). Saving is left to the caller.
+## Rider settings: the profile (fields mirror `OrqwaApp.profile()`) and the rider's ride and
+## workout HUD layouts (R51, R207). Saving is left to the caller.
 
-## The edited profile, shaped like `OrqwaApp.profile()`, and HUD layout; `id` is empty for a new
-## rider.
-signal profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedStringArray)
+## The edited profile, shaped like `OrqwaApp.profile()`, and both HUD layouts; `id` is empty
+## for a new rider.
+signal profile_confirmed(
+	id: String, profile: Dictionary, ride_hud: PackedStringArray, workout_hud: PackedStringArray
+)
 
 var _id: String = ""
 var _name_edit: LineEdit = LineEdit.new()
 var _form: ProfileForm = ProfileForm.new()
 var _hud: HudEditor = HudEditor.new()
+var _hud_page: VBoxContainer = VBoxContainer.new()
+var _hud_choice: OptionButton = OptionButton.new()
+var _hud_layouts: Array[PackedStringArray] = []
+var _hud_index: int = 0
 var _badge_slot: HBoxContainer = HBoxContainer.new()
 var _zones: ZonesEditor = ZonesEditor.new()
 ## The units the HUD editor shows its figures in, to follow a change of them.
@@ -47,16 +53,25 @@ func _ready() -> void:
 	var zones_page: ScrollContainer = UiTheme.scrolling(_zones)
 	zones_page.name = tr("Zones")
 	tabs.add_child(zones_page)
-	_hud.name = tr("HUD")
-	tabs.add_child(_hud)
+	_hud_page.name = tr("HUD")
+	_hud_choice.add_item(tr("Ride HUD"))
+	_hud_choice.add_item(tr("Workout HUD"))
+	_hud_choice.item_selected.connect(_on_hud_selected)
+	_hud_page.add_child(_hud_choice)
+	_hud_page.add_child(_hud)
+	tabs.add_child(_hud_page)
 	add_child(tabs)
 	_form.changed.connect(_on_form_changed)
 	confirmed.connect(_on_confirmed)
 
 
-## Opens the dialog for `profile` (shaped like `OrqwaApp.profile()`) with its `hud_layout`, or
+## Opens the dialog for `profile` (shaped like `OrqwaApp.profile()`) with both HUD layouts, or
 ## for a new rider if `profile` has no id.
-func edit(profile: Dictionary, hud_layout: PackedStringArray) -> void:
+func edit(
+	profile: Dictionary,
+	ride_hud: PackedStringArray,
+	workout_hud: PackedStringArray = PackedStringArray()
+) -> void:
 	_id = profile.get("id", "")
 	_name_edit.text = profile.get("name", "")
 	_show_initial(_name_edit.text)
@@ -67,7 +82,12 @@ func edit(profile: Dictionary, hud_layout: PackedStringArray) -> void:
 	)
 	_zones.edit(power_zones, heart_zones, _form.ftp(), _form.max_heart_rate())
 	_imperial = _form.imperial()
-	_hud.edit(hud_layout, _imperial)
+	_hud_layouts = [ride_hud.duplicate(), workout_hud.duplicate()]
+	if workout_hud.is_empty():
+		_hud_layouts[1] = ride_hud.duplicate()
+	_hud_index = 0
+	_hud_choice.select(0)
+	_hud.edit(ride_hud, _imperial)
 	title = tr("New rider") if _id.is_empty() else tr("Rider settings")
 	UiScale.popup(self, Vector2i(960, 780))
 	_name_edit.grab_focus()
@@ -87,7 +107,14 @@ func _on_confirmed() -> void:
 	profile["name"] = profile_name if not profile_name.is_empty() else tr("Rider")
 	profile["power_zones_pct"] = _zones.power_pct()
 	profile["heart_rate_zones_pct"] = _zones.heart_pct()
-	profile_confirmed.emit(_id, profile, _hud.layout())
+	_hud_layouts[_hud_index] = _hud.layout()
+	profile_confirmed.emit(_id, profile, _hud_layouts[0], _hud_layouts[1])
+
+
+func _on_hud_selected(index: int) -> void:
+	_hud_layouts[_hud_index] = _hud.layout()
+	_hud_index = index
+	_hud.edit(_hud_layouts[index], _imperial)
 
 
 func _show_initial(rider_name: String) -> void:

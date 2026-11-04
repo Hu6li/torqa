@@ -3482,16 +3482,16 @@ impl App {
         orqwa_session::ftp_estimate::estimate_ftp(&efforts)
     }
 
-    /// The active rider's HUD metrics, in order (R23); the first is shown large.
+    /// The active rider's ride or workout HUD metrics (R207); the first is shown large.
     #[must_use]
-    pub fn hud_layout(&self) -> Vec<String> {
-        self.hud_layout_of(&self.profile.id)
+    pub fn hud_layout(&self, workout: bool) -> Vec<String> {
+        self.hud_layout_of(&self.profile.id, workout)
     }
 
     /// Any rider's HUD metrics, in order: the default layout for one who never chose any.
     #[must_use]
-    pub fn hud_layout_of(&self, id: &str) -> Vec<String> {
-        hud::sanitize(&profiles::load_hud(&self.data_dir, id).unwrap_or_default())
+    pub fn hud_layout_of(&self, id: &str, workout: bool) -> Vec<String> {
+        hud::sanitize(&profiles::load_hud(&self.data_dir, id, workout).unwrap_or_default())
     }
 
     /// Saves the active rider's HUD metrics; unknown or repeated ones are dropped. Returns the
@@ -3499,9 +3499,13 @@ impl App {
     ///
     /// # Errors
     /// [`AppError::Reported`] if it cannot be written.
-    pub fn set_hud_layout(&mut self, layout: &[String]) -> Result<Vec<String>, AppError> {
+    pub fn set_hud_layout(
+        &mut self,
+        layout: &[String],
+        workout: bool,
+    ) -> Result<Vec<String>, AppError> {
         let layout = hud::sanitize(layout);
-        profiles::save_hud(&self.data_dir, &self.profile.id, &layout)
+        profiles::save_hud(&self.data_dir, &self.profile.id, &layout, workout)
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveHud, e)))?;
         Ok(layout)
     }
@@ -6928,20 +6932,32 @@ mod tests {
     fn riders_keep_their_own_hud_layout() {
         let dir = temp_dir("hud");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
-        assert_eq!(app.hud_layout(), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout(false), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout(true), hud::DEFAULT_LAYOUT);
 
         let saved = app
-            .set_hud_layout(&["power_3s".to_owned(), "nonsense".to_owned()])
+            .set_hud_layout(&["power_3s".to_owned(), "nonsense".to_owned()], false)
             .unwrap();
 
         assert_eq!(saved, ["power_3s"]);
-        assert_eq!(app.hud_layout(), ["power_3s"]);
+        assert_eq!(app.hud_layout(false), ["power_3s"]);
+        assert_eq!(app.hud_layout(true), hud::DEFAULT_LAYOUT);
+        app.set_hud_layout(&["heart_rate".to_owned(), "heart_rate".to_owned()], true)
+            .unwrap();
+        assert_eq!(app.hud_layout(true), ["heart_rate"]);
+        assert_eq!(app.hud_layout(false), ["power_3s"]);
         let first = app.profile().id.clone();
         let second = app.save_profile(None, Profile::default()).unwrap();
-        assert_eq!(app.hud_layout(), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout(false), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout(true), hud::DEFAULT_LAYOUT);
         // The Profile tab shows every rider's layout, not only the active one's.
-        assert_eq!(app.hud_layout_of(&first), ["power_3s"]);
-        assert_eq!(app.hud_layout_of(&second), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout_of(&first, false), ["power_3s"]);
+        assert_eq!(app.hud_layout_of(&first, true), ["heart_rate"]);
+        assert_eq!(app.hud_layout_of(&second, false), hud::DEFAULT_LAYOUT);
+        assert_eq!(app.hud_layout_of(&second, true), hud::DEFAULT_LAYOUT);
+        let restarted = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        assert_eq!(restarted.hud_layout_of(&first, false), ["power_3s"]);
+        assert_eq!(restarted.hud_layout_of(&first, true), ["heart_rate"]);
     }
 
     #[test]

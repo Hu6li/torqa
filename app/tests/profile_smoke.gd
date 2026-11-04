@@ -30,7 +30,12 @@ func _rider_drivetrain() -> void:
 	root.add_child(dialog)
 	var confirmed: Array[Dictionary] = []
 	dialog.profile_confirmed.connect(
-		func(_id: String, profile: Dictionary, _hud: PackedStringArray) -> void:
+		func(
+			_id: String,
+			profile: Dictionary,
+			_ride_hud: PackedStringArray,
+			_workout_hud: PackedStringArray
+		) -> void:
 			confirmed.append(profile)
 	)
 	dialog.edit(

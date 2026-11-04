@@ -204,6 +204,9 @@ Built in rideable steps:
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)
 - [x] HUD layout per rider in the profile settings: drag and drop from the widget list
   directly into the HUD preview and within it (R51, R54)
+- [x] Separate ride and workout HUD layouts per rider (R207, #483), selected automatically
+  for solo and group sessions, with or without a course, and in the overlay; existing
+  layouts start both uses and edits preserve the other layout
 - [x] A bar in the zone's colour beside each power and heart-rate figure under the large one,
   by the zone of the figure's own value: 3 s, 10 s, average and normalized power by theirs
   (R179, R182, #432); a large heart rate has its % of the maximum and zone underneath, coloured

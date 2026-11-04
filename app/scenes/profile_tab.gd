@@ -272,9 +272,13 @@ func _setting_rows(rider: Dictionary) -> Array[Array]:
 	var single_cog: bool = rider.get("drivetrain", "single_cog") == "single_cog"
 	var id: String = rider.get("id", "")
 	var hud: PackedStringArray = (
-		_orqwa.hud_layout_of(id) if _orqwa != null else OrqwaApp.hud_default_layout()
+		_orqwa.hud_layout_of(id, false) if _orqwa != null else OrqwaApp.hud_default_layout()
 	)
 	var custom_hud: bool = hud != OrqwaApp.hud_default_layout()
+	var workout_hud: PackedStringArray = (
+		_orqwa.hud_layout_of(id, true) if _orqwa != null else OrqwaApp.hud_default_layout()
+	)
+	var custom_workout_hud: bool = workout_hud != OrqwaApp.hud_default_layout()
 	var difficulty: float = rider.get("default_difficulty_pct", 50.0)
 	var rides_per_week: int = rider.get("rides_per_week", 0)
 	# i18n-begin
@@ -305,7 +309,8 @@ func _setting_rows(rider: Dictionary) -> Array[Array]:
 		rows.append(["Chainring", "%d T" % chainring])
 		rows.append(["Cog", "%d T" % cog])
 	# i18n-begin
-	rows.append(["HUD", "Custom" if custom_hud else "Default"])
+	rows.append(["Ride HUD", "Custom" if custom_hud else "Default"])
+	rows.append(["Workout HUD", "Custom" if custom_workout_hud else "Default"])
 	# i18n-end
 	rows.append(["Trainer difficulty", "%d %%" % roundi(difficulty)])
 	if rides_per_week > 0:
@@ -419,7 +424,7 @@ func _edit(id: String) -> void:
 		_orqwa.select_profile(id)
 		refresh()
 		profile_changed.emit()
-	_dialog.edit(_orqwa.profile(), _orqwa.hud_layout())
+	_dialog.edit(_orqwa.profile(), _orqwa.hud_layout(false), _orqwa.hud_layout(true))
 
 
 func _ask_delete(id: String, rider_name: String) -> void:
@@ -438,9 +443,12 @@ func _delete() -> void:
 		profile_changed.emit()
 
 
-func _on_profile_confirmed(id: String, profile: Dictionary, hud_layout: PackedStringArray) -> void:
+func _on_profile_confirmed(
+	id: String, profile: Dictionary, ride_hud: PackedStringArray, workout_hud: PackedStringArray
+) -> void:
 	# Saving makes the rider active, so the layout goes to the right rider.
 	if not _orqwa.save_profile(id, profile).is_empty():
-		_orqwa.set_hud_layout(hud_layout)
+		_orqwa.set_hud_layout(ride_hud, false)
+		_orqwa.set_hud_layout(workout_hud, true)
 	refresh()
 	profile_changed.emit()

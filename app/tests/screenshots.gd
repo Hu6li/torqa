@@ -324,12 +324,19 @@ func _initialize() -> void:
 		_calories_only.call_deferred()
 	elif OS.get_environment("SCREENSHOT_VAM_ONLY") == "1":
 		_vam_only.call_deferred()
+	elif OS.get_environment("SCREENSHOT_HUD_LAYOUTS_ONLY") == "1":
+		_hud_layouts_only.call_deferred()
 	else:
 		_run.call_deferred()
 
 
 func _calories_only() -> void:
 	await CalorieScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
+
+
+func _hud_layouts_only() -> void:
+	await HudLayoutScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
 	quit(0)
 
 
@@ -347,7 +354,7 @@ func _vam_only() -> void:
 			dialog.edit(profile, layout)
 			var editor: HudEditor = dialog.get("_hud")
 			var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
-			tabs.current_tab = editor.get_index()
+			tabs.current_tab = editor.get_parent().get_index()
 			await create_timer(0.4).timeout
 			var name: String = "hud-" + locale + ("-imperial" if imperial else "")
 			root.get_texture().get_image().save_png(
@@ -425,7 +432,7 @@ func _run() -> void:
 	root.get_texture().get_image().save_png(out_dir.path_join("loading.png"))
 	# The rider settings with the HUD editor.
 	var dialog: ProfileDialog = start.find_children("*", "ProfileDialog", true, false)[0]
-	dialog.edit(orqwa.profile(), orqwa.hud_layout())
+	dialog.edit(orqwa.profile(), orqwa.hud_layout(false), orqwa.hud_layout(true))
 	var dialog_tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
 	dialog_tabs.current_tab = 1
 	await create_timer(0.5).timeout
@@ -456,7 +463,7 @@ func _run() -> void:
 	# A custom HUD, e.g. SCREENSHOT_HUD=power_3s,speed,normalized_power,upcoming_grade
 	var hud: String = OS.get_environment("SCREENSHOT_HUD")
 	if not hud.is_empty():
-		orqwa.set_hud_layout(PackedStringArray(hud.split(",")))
+		orqwa.set_hud_layout(PackedStringArray(hud.split(",")), false)
 	# A graphics preset, e.g. SCREENSHOT_QUALITY=ultra (R43).
 	var quality: String = OS.get_environment("SCREENSHOT_QUALITY")
 	if not quality.is_empty():
@@ -528,7 +535,7 @@ func _run() -> void:
 	for child: Node in ride_screen.get_children():
 		if child is RideSettingsDialog:
 			var settings_dialog: RideSettingsDialog = child
-			settings_dialog.edit(start.ride_options(), orqwa.hud_layout(), false)
+			settings_dialog.edit(start.ride_options(), orqwa.hud_layout(false), false)
 			await create_timer(0.5).timeout
 			root.get_texture().get_image().save_png(out_dir.path_join("ride-settings.png"))
 			print("saved ride settings")
@@ -536,7 +543,7 @@ func _run() -> void:
 				settings_dialog.find_children("*", "TabContainer", true, false)[0]
 			)
 			var hud_editor: Node = settings_dialog.find_children("*", "HudEditor", true, false)[0]
-			tabs.current_tab = hud_editor.get_index()
+			tabs.current_tab = hud_editor.get_parent().get_index()
 			await process_frame
 			# Hover a figure over the HUD's grid, so the drop indicator shows.
 			var preview: HudPanel = settings_dialog.find_children("*", "HudPanel", true, false)[0]

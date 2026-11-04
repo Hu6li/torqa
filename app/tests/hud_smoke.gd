@@ -3,6 +3,8 @@ extends SceneTree
 ## figure, the zone bars beside the figures and the minimap.
 ## Run: godot --headless --path app -s res://tests/hud_smoke.gd
 
+const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
+
 var _failed: bool = false
 
 
@@ -16,6 +18,8 @@ func _run() -> void:
 	_zone_bars()
 	_calories()
 	_vam()
+	_rider_layouts()
+	await _session_layouts()
 	await _rider_hud_scrolling()
 	await _minimap()
 	if not _failed:
@@ -231,17 +235,102 @@ func _available_chips(editor: HudEditor) -> Array[Node]:
 	return editor.get_child(1).get_child(1).get_child(0).get_children()
 
 
+## Switching layouts keeps both drafts, and Save returns both for the same rider (R207).
+func _rider_layouts() -> void:
+	var dialog: ProfileDialog = ProfileDialog.new()
+	root.add_child(dialog)
+	var saved: Array[PackedStringArray] = []
+	dialog.profile_confirmed.connect(
+		func(
+			_id: String, _profile: Dictionary, ride: PackedStringArray, workout: PackedStringArray
+		) -> void:
+			saved.assign([ride, workout])
+	)
+	dialog.edit({}, PackedStringArray(["speed"]), PackedStringArray(["power"]))
+	dialog._hud.place("distance", 1)
+	dialog._hud_choice.select(1)
+	dialog._hud_choice.item_selected.emit(1)
+	_expect(dialog._hud.layout(), ["power"], "workout draft is independent")
+	dialog._hud.place("cadence", 1)
+	dialog._hud_choice.select(0)
+	dialog._hud_choice.item_selected.emit(0)
+	_expect(dialog._hud.layout(), ["speed", "distance"], "ride draft survives switching")
+	dialog.confirmed.emit()
+	_expect(saved[0], ["speed", "distance"], "Save includes ride HUD")
+	_expect(saved[1], ["power", "cadence"], "Save includes workout HUD")
+	dialog.hide()
+	dialog.edit({}, PackedStringArray(["elapsed"]), PackedStringArray(["heart_rate"]))
+	dialog._hud_choice.item_selected.emit(1)
+	_expect(dialog._hud.layout(), ["heart_rate"], "reopening replaces both drafts")
+	dialog.free()
+
+
+## Solo sessions and both group-start paths select, edit and overlay the appropriate HUD.
+func _session_layouts() -> void:
+	var main: Control = MAIN_SCENE.instantiate()
+	root.add_child(main)
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var ride: RideScreen = main.get_node("RideScreen")
+	var previous: String = app.profile()["id"]
+	var rider: String = app.save_profile("", {"name": "Separate HUD check"})
+	app.set_hud_layout(PackedStringArray(["speed", "distance"]), false)
+	app.set_hud_layout(PackedStringArray(["power", "cadence"]), true)
+	var panel: HudPanel = ride.get("_hud")
+	for options: Dictionary in [
+		{},
+		{"workout": {"kind": "power", "power_w": 200.0}},
+		{"workout": {"kind": "zone", "zone": 2}, "on_course": true},
+		{"workout": {"kind": "ftp_test"}},
+		{"workout": {"kind": "plan", "id": "builtin:sweet-spot-3x10"}},
+	]:
+		ride.begin(options)
+		var workout: bool = options.has("workout")
+		_expect(panel._layout, Array(app.hud_layout(workout)), "solo session HUD")
+	# Exercise the real group signal, including the transition back from a shared workout.
+	for workout: bool in [false, true, false]:
+		app.group_started.emit(true, workout)
+		await process_frame
+		await process_frame
+		_expect(panel._layout, Array(app.hud_layout(workout)), "group course HUD")
+		await _edit_session_hud(ride, app, workout)
+	app.group_started.emit(false, true)
+	await process_frame
+	await process_frame
+	_expect(panel._layout, Array(app.hud_layout(true)), "group workout without a course")
+	await _edit_session_hud(ride, app, true)
+	app.select_profile(previous)
+	app.delete_profile(rider)
+	main.free()
+	await process_frame
+
+
+func _edit_session_hud(ride: RideScreen, app: OrqwaApp, workout: bool) -> void:
+	var other: PackedStringArray = app.hud_layout(not workout)
+	ride.call("_open_settings")
+	var dialog: RideSettingsDialog = ride.get("_settings_dialog")
+	_expect(dialog._hud.layout(), Array(app.hud_layout(workout)), "settings edit the active HUD")
+	dialog._hud.place("elapsed", 0)
+	_expect(app.hud_layout(workout), Array(dialog._hud.layout()), "edits are saved immediately")
+	_expect(app.hud_layout(not workout), Array(other), "edits leave the other HUD alone")
+	dialog.hide()
+	ride.set_overlay(true)
+	var overlay: OverlayHud = ride.get("_overlay_hud")
+	var panel: HudPanel = overlay.get("_hud")
+	_expect(panel._layout, Array(app.hud_layout(workout)), "overlay uses the active HUD")
+	ride.set_overlay(false)
+	await process_frame
+
+
 ## The rider's available figures scroll with the pointer over a figure or its + button.
 func _rider_hud_scrolling() -> void:
 	root.size = Vector2i(1024, 640)
-	var scene: PackedScene = load("res://scenes/main.tscn")
-	var main: Control = scene.instantiate()
+	var main: Control = MAIN_SCENE.instantiate()
 	root.add_child(main)
 	var dialog: ProfileDialog = main.find_children("*", "ProfileDialog", true, false)[0]
 	dialog.edit({"id": "r", "name": "Rider"}, PackedStringArray(["power"]))
 	var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
 	var editor: HudEditor = dialog.get("_hud")
-	tabs.current_tab = editor.get_index()
+	tabs.current_tab = editor.get_parent().get_index()
 	for frame: int in range(6):
 		await process_frame
 	var scroll: ScrollContainer = editor.get_child(1).get_child(1)
