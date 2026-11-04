@@ -971,8 +971,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Active assistance indicators (R208–R209, #425): Drafting and directional Support/Braking
   bars in compact label/bar rows below the metrics HUD, matching its width, from the applied
   local effects and shown only while active in the main 3D course view
-- [ ] Group-based Keep together (#504): replace the organizer reference with a shared group
-  reference and treat organizer and friends equally; define stopped/stale-rider handling
+- [x] Group-based Keep together (R210, #504): a robust shared reference treats organizer and
+  friends equally, excludes stopped riders, fades stale sources and limits resistance changes
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,

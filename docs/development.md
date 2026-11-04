@@ -654,6 +654,18 @@ or ERG targets. `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` also cap
 indicators from all three cameras in both languages using presentation fixtures. Review at
 `SCREENSHOT_SIZE=1024x640` too. Video rides intentionally have no indicators.
 
+For group-based Keep together (R210, #504), `orqwa-session`'s `group::reference_tests` checks
+the shared reference, slot permutations, the two-rider midpoint, unaffected nearby riders,
+sprint outliers, moving coasting riders and fading/expired sources. The app's `assistance_`
+tests exercise organizer/friend equality through an authority change, own-echo exclusion,
+roster removal/reentry, local pause/finish/leave, applied feedback and the one-percentage-point
+per-second resistance limit. A closed-loop physics regression compares three different-power
+riders against their unassisted motion. Session tests separately verify actual simulation
+commands, measured recording and unchanged ERG targets. See ADR 0037 for the reference formula.
+For native trainer acceptance, alternate leading and following as organizer and friend,
+sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
+near the group and immediate cancellation when paused. Native resistance feel remains manual.
+
 ### Riding audio
 
 For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.
