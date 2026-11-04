@@ -33,6 +33,8 @@ import preview  # noqa: E402  (needs the path above)
 PREVIEW = {"leaves": (0.25, 0.36, 0.12), "needles": (0.15, 0.25, 0.1), "frond": (0.3, 0.42, 0.14),
            "trunk": (0.3, 0.22, 0.16), "rock": (0.45, 0.44, 0.42)}
 
+CONIFER_TIP_DEPTH = 2.8
+
 
 class Mesh:
     """Faces with material names, built up piece by piece (z up, metres). Each face may carry
@@ -199,10 +201,20 @@ def conifer_reach(spec, z):
 
 
 def conifer_leader(mesh, spec):
-    """Needle planes sharing one upright shoot and a single tapered apex at every LOD."""
+    """A slender terminal shoot above sparse upper whorls, shared at every detail level."""
     height = spec["height"]
-    base = height - 2.6
-    width = conifer_reach(spec, base)
+    rng = random.Random(spec["seed"] + 101)
+    # Keep the tip's branching at every LOD: long steep cards turn it into a bare spike.
+    for level in range(5):
+        z = height - 2.5 + level * 0.5
+        for spoke in range(6):
+            heading = level * 0.9 + math.tau * spoke / 6 + rng.uniform(-0.2, 0.2)
+            out = (math.cos(heading), math.sin(heading), -rng.uniform(0.12, 0.25))
+            length = conifer_reach(spec, z) * rng.uniform(0.85, 1.1)
+            card(mesh, (0.0, 0.0, z), out, (0.0, 0.0, 1.0), length, length * 0.9,
+                 "needles", unit((math.cos(heading), math.sin(heading), 0.6)))
+    base = height - 0.85
+    width = conifer_reach(spec, base) * 0.32
     for k in range(3):
         heading = k * math.pi / 3
         across = (math.cos(heading) * width, math.sin(heading) * width)
@@ -223,7 +235,7 @@ def conifer(spec):
     trunk(mesh, height - 0.2, 0.28 * radius / 2.5, 0.015)
     z = crown_base
     whorl = 0
-    while z < height - 0.8:
+    while z < height - CONIFER_TIP_DEPTH:
         t = (z - crown_base) / (height - crown_base)
         reach = conifer_reach(spec, z)
         count = spec.get("sprays", 9)

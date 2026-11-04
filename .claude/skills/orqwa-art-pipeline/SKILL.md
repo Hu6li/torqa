@@ -172,9 +172,11 @@ volumes, ground origins and material names; retain fan palms' fans and banana le
 Godot's `TreeLodMesh` combines these with the unchanged close geometry. Changing rendering
 LODs needs no world regeneration. Keep their `.import` files and compare native GPU views
 and frame rates; disconnected leaf cards need authored simplification beyond automatic LOD.
-Conifers share `conifer_leader` between nearby and distant geometry: intersecting needle
-planes taper to one apex on the trunk axis. Keep that single leader from every viewing angle;
-separate splayed upright sprays create competing treetops.
+Conifers share `conifer_leader` between nearby and distant geometry: sparse upper whorls
+meet a short terminal shoot whose needle planes taper to one apex on the trunk axis.
+Retain that upper branching in LODs; long steep cards turn it into a spike. Keep the shoot
+slender: a large dense spray above sparse branches reads as a second crown. Separate
+splayed upright sprays create competing treetops.
 
 ## Woodland ferns
 

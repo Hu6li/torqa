@@ -24,7 +24,7 @@ def conifer(spec, far):
     layers, spokes = (6, 4) if far else (12, 6)
     for level in range(layers):
         t = level / (layers - 1)
-        z = base + (height - base - 0.8) * t
+        z = base + (height - base - trees.CONIFER_TIP_DEPTH) * t
         reach = trees.conifer_reach(spec, z)
         drop = min((height - base) / layers * 1.5, z - 0.1)
         for spoke in range(spokes):

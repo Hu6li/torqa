@@ -220,8 +220,9 @@ normals pointing out of the crown so it is lit as one soft volume. Trees are 300
 triangles, rocks 320–640, palms up to about 1,000; random shapes use fixed seeds, so rebuilds
 give the same files.
 
-The conifer crown envelope tapers into one leader, with the stem supporting the upper
-whorls. [Front, side, rear and elevated model renders](../docs/images/models/conifer-single-peak.jpg)
+The conifer crown envelope tapers through its upper whorls into a short, slender terminal
+shoot, lighter than the branches below it. The stem supports those upper whorls.
+[Front, side, rear and elevated model renders](../docs/images/models/conifer-single-peak.jpg)
 show both the tall and broad forms; the same leader is retained in their authored LODs.
 
 `fern` has spreading and upright crowns of arching fronds, each with paired, tapered

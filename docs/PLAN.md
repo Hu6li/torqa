@@ -512,8 +512,8 @@ physically based materials and light, restyled group by group.
 - [x] Authored tree LODs (R43, R108): retain nearby detail and forest population, simplify
   distant canopies and their shadows, with screen-size selection and bounded spatial batches;
   verify native FPS and Low's rendering cost without changing kept worlds.
-  - [x] Tall and broad conifers have one centered, tapered leader at every detail level,
-    with front, side, rear and elevated model renders for silhouette review.
+  - [x] Tall and broad conifers have one short, slender leader, blended into upper whorls at
+    every detail level, with front, side, rear and elevated model renders for silhouette review.
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
   - [x] Forest ground turns into a baked canopy of crowns with distance, nearer the fewer trees
     are drawn, out to the horizon; tracks and paths end at 1 km
