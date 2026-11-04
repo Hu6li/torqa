@@ -208,7 +208,8 @@ commands and validation. These are own-work archetypes, not replicas.
 ## Vegetation (`vegetation/`)
 
 `build.py` holds the catalogue and the kinds in one file: `conifer` (a spruce: a trunk under
-whorls of needle sprays drooping out, long at the bottom and short at the top, and a spire),
+whorls of needle sprays drooping out, long at the bottom and short at the top, and one
+centered, tapered leader shared by its nearby, medium and far forms),
 `broadleaf` (a trunk forking into limbs that reach into crowns of leaf clusters), `bush` (clumps
 of leaf clusters) and `rock` (asymmetric masses cut along seven weathered fracture planes,
 shaded smooth); for the subtropics (#136) `palm` (coconut palms with a curving trunk under
@@ -218,6 +219,10 @@ quads textured with a cluster of leaves or a spray of needles cut out by its alp
 normals pointing out of the crown so it is lit as one soft volume. Trees are 300–550
 triangles, rocks 320–640, palms up to about 1,000; random shapes use fixed seeds, so rebuilds
 give the same files.
+
+The conifer crown envelope tapers into one leader, with the stem supporting the upper
+whorls. [Front, side, rear and elevated model renders](../docs/images/models/conifer-single-peak.jpg)
+show both the tall and broad forms; the same leader is retained in their authored LODs.
 
 `fern` has spreading and upright crowns of arching fronds, each with paired, tapered
 leaflets and raised midribs. These are solid geometry seen from both sides, about
