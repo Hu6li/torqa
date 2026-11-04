@@ -244,6 +244,7 @@ func _group_dialogs(app: OrqwaApp, tag: String) -> void:
 	_inside(group._organizer_picker, tag + " nested after resize")
 	panel.free()
 	await process_frame
+	await GroupDialogLayout.check(self, app, _check, tag)
 
 
 func _voice(voice: GroupVoiceControls, tag: String) -> void:

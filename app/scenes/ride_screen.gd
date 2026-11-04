@@ -701,6 +701,8 @@ func _build_group_window() -> void:
 	)
 	_group_window.add_child(UiTheme.scrolling(_group_controls))
 	add_child(_group_window)
+	# Delayed connection warnings and live status must not move the window under the rider.
+	WindowBounds.attach(_group_window).fit_contents = false
 
 
 ## The group's button while in a group (#431), and a request to organize the ride (#424) until
