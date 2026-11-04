@@ -229,8 +229,8 @@ msgstr "Zu deinen Trainings hinzugefügt."
 msgid "ORQWA keeps each rendered world on this computer after it is built, so rides on that course start right away. A saved world uses about 10 MB per kilometre. If an update changes how the world looks, regenerate it from the course page."
 msgstr "ORQWA behält jede gerenderte Welt nach dem Erstellen auf diesem Computer, damit Fahrten auf dieser Route sofort starten. Eine gespeicherte Welt belegt etwa 10 MB pro Kilometer. Ändert ein Update das Aussehen, erstelle die Welt auf ihrer Routenseite neu."
 
-msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .tqc file. Share the file, and the other rider can use the detail offline without downloading the region."
-msgstr "Möchtest du detailreichere 3D-Welten? Lade die Regionen herunter, in denen du fährst, und öffne dann eine Route, um die Kartendetails in ihrer .tqc-Datei zu speichern. Teile die Datei, damit andere offline mit diesen Details fahren können, ohne die Region erneut herunterzuladen."
+msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
+msgstr "Möchtest du detailreichere 3D-Welten? Lade die Regionen herunter, in denen du fährst, und öffne dann eine Route, um die Kartendetails in ihrer .oqc-Datei zu speichern. Teile die Datei, damit andere offline mit diesen Details fahren können, ohne die Region erneut herunterzuladen."
 
 msgid "Against all time"
 msgstr "Vergleich mit allen bisherigen Aktivitäten"

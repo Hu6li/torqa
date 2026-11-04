@@ -23,7 +23,7 @@ core/                      Rust workspace (tokio + tracing)
                            workouts (ERG, heart-rate hold, structured), recording
   orqwa-workouts/          workout files (ZWO, ERG/MRC, FIT), built-in workouts, the library
   orqwa-video/             FFmpeg decoding, GoPro GPMF GPS, Incyclist and Tacx RLV (ADR 0010)
-  orqwa-storage/           FIT files, ride summaries, profiles and accounts, course files (.tqc)
+  orqwa-storage/           FIT files, ride summaries, profiles and accounts, course files (.oqc)
   orqwa-upload/            uploads to training platforms (intervals.icu, Strava) behind
                            ActivityUploader, the OAuth login in the browser
   orqwa-net/               (Phase 13) bounded group networking, invite codes, discovery,
@@ -78,13 +78,13 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
 - **Storage**: files are the source of truth ([ADR 0002](adr/0002-sync-safe-storage.md)):
   per rider `profiles/<rider>/profile.toml`, `hud.toml` and `rides/` (FIT + JSON summary, with
   what the analysis across rides keeps of each ride, [ADR 0014](adr/0014-ride-analysis-data.md));
-  `courses/*.tqc` shared by all riders. The SQLite index of ADR 0002 (`history.sqlite` in the
+  `courses/*.oqc` shared by all riders. The SQLite index of ADR 0002 (`history.sqlite` in the
   cache directory, R79) spares the history and the analysis reading every JSON summary; the
   files stay the truth and the index follows them. Config TOML, data JSON
   ([ADR 0004](adr/0004-config-formats.md)). See the rider guide to
   [syncing between devices](https://github.com/ORQWA/ORQWA/wiki/Syncing-between-devices),
   including direct Nextcloud folder sync; computer settings and caches stay local.
-- **Course files** (`.tqc`, [ADR 0007](adr/0007-course-files.md)): manifest, GPX, the
+- **Course files** (`.oqc`, [ADR 0007](adr/0007-course-files.md)): manifest, GPX, the
   terrain and map tiles used, any map detail used from Geofabrik regions and a picture of its
   map, so a shared or synced course is rebuilt offline anywhere without downloading the region
   again; video courses refer to their video instead of embedding it.
@@ -172,7 +172,8 @@ Built in rideable steps:
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
-- [x] `.tqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
+- [x] `.oqc` (ORQWA course, #501), with a removable startup migration of legacy library files
+- [x] `.oqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
   versions (ADR 0007 amendment)
 - [x] Course library in the data directory; list, import, save-as-course in the app
 - [x] An import can be cancelled from beside its loading bar, and a job that dies reports an
@@ -186,7 +187,7 @@ Built in rideable steps:
   offers to regenerate one an older generator built (R101, ADR 0025, #237)
 - [x] The settings' Courses tab lists each kept world with the room it takes and a bin to
   delete it alone; the course stays and its next ride builds the world again (R136, #355)
-- **Exit:** prepare a course online, ride it offline on another machine from the `.tqc` file ✅
+- **Exit:** prepare a course online, ride it offline on another machine from the `.oqc` file ✅
   (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
 ### Phase 4 — Rider & history
@@ -254,7 +255,7 @@ Built in rideable steps:
 ### Phase 5 — Video mode (R17, [ADR 0010](adr/0010-video-decoding.md))
 - [x] Video decoding in the core: frame for any moment, forward/backward/seek, scaled to 1080p
 - [x] GoPro GPMF GPS (`GPS5`, `GPS9`) with video times; GPX from the footage for the usual import
-- [x] Distance↔video-time sync; video courses (`.tqc` referencing the video)
+- [x] Distance↔video-time sync; video courses (`.oqc` referencing the video)
 - [x] Import Incyclist route videos (`.xml` + GPX + video, e.g. the free Van Gestel library)
 - [x] Video ride view: playback following the rider's speed, frame blending, HUD on top
 - [x] Videos without GPS added to a GPX course ("Add video…" in the course page's Edit course
@@ -358,12 +359,12 @@ Built in rideable steps:
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
 - [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
-  #192 on the course's own map, drawn when the course is prepared and kept in the `.tqc`; since
+  #192 on the course's own map, drawn when the course is prepared and kept in the `.oqc`; since
   #203 the land around the whole route, black and white, with the names of its towns
 - [x] The ride's minimap on the course's map of the land around the whole route, its tiles
-  kept in the `.tqc`, with the corridor in detail over it for the close view, on video
+  kept in the `.oqc`, with the corridor in detail over it for the close view, on video
   courses too; colored or dark as each rider chooses (R70, #236)
-- [ ] ~~Auto-rendered course screenshots at build time, cover selection, stored in the `.tqc`
+- [ ] ~~Auto-rendered course screenshots at build time, cover selection, stored in the `.oqc`
   (ADR 0007 format bump); frames from the video for video courses~~ — dropped 2026-10-15: the course's
   map (path card) is its picture
 - [x] Courses gallery (cards with stats and small map) and course detail page with ride options;
@@ -860,7 +861,7 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   and the FTP tests; an FTP estimated from the last 90 days' best efforts (Morton's
   three-parameter critical power, else 95 % of 20 min) offered, never applied
 - [x] Weeks named by their days, Monday to Sunday ("19–25 Oct"), on the weekly bars and the
-  progress chart (R140); the history newest first by start again, Torqa's rides included (R139)
+  progress chart (R140); the history newest first by start again, imported rides included (R139)
 - **Exit:** a season of real rides shows where the rider got stronger, and how fit and fresh
   they are, without leaving ORQWA
 
@@ -1039,11 +1040,11 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
 ### The name ORQWA (R102, [ADR 0026](adr/0026-the-name-orqwa.md))
-"Torqa" is taken by another registered app; the project becomes ORQWA (orca, torque and watt).
+The project is named ORQWA (orca, torque and watt).
 - [x] Code identifiers: crates `orqwa-*`, `OrqwaApp` and the extension `orqwa_gd`, `ORQWA_*`
   variables, the Android plugin, the dev image and volumes, the skills
-- [x] The app named ORQWA: the wordmark (`scripts/brand/wordmark.py`), Torqa's folders moved to
-  ORQWA's on the first start, installer, `org.orqwa.bike`, release files, docs, wiki and
+- [x] The app named ORQWA: the wordmark (`scripts/brand/wordmark.py`), data stored under
+  ORQWA's name, installer, `org.orqwa.bike`, release files, docs, wiki and
   screenshots
 - [x] Welcome and naming story on the wiki homepage, with the "orqward" joke, the supplied
   cycling-orca illustration, sidebar navigation and a link from the README
@@ -1051,7 +1052,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   woodland changes; a screenshot gallery linked from the README and wiki navigation
 - [x] Shorten the usage wiki around setup and rider tasks; remove scenery and implementation
   descriptions, keeping the naming story and screenshot gallery
-- [x] Drop the release asset `Torqa-windows-x86_64.msi` (`scripts/release/publish.sh`) after
+- [x] Drop the legacy-named release asset (`scripts/release/publish.sh`) after
   0.5.3 (R147)
 - [x] Release files named with their version (`ORQWA-0.5.2-windows-x86_64.msi`, #322); the
   updater takes the versioned installer first

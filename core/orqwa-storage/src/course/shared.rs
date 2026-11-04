@@ -178,7 +178,7 @@ mod tests {
     fn archive(entries: &[(&str, &[u8])]) -> std::path::PathBuf {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "orqwa-shared-course-{}-{}.tqc",
+            "orqwa-shared-course-{}-{}.oqc",
             std::process::id(),
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
@@ -212,8 +212,8 @@ mod tests {
             ("data/map/tile", b"tile"),
         ]);
         validate(&path).unwrap();
-        std::fs::rename(&path, directory.join("seed.tqc"))
-            .or_else(|_| std::fs::copy(&path, directory.join("seed.tqc")).map(|_| ()))
+        std::fs::rename(&path, directory.join("seed.oqc"))
+            .or_else(|_| std::fs::copy(&path, directory.join("seed.oqc")).map(|_| ()))
             .unwrap();
         let _ = std::fs::remove_file(path);
     }
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn the_bundled_course_passes_the_peer_import_boundary() {
         let path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.tqc");
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../orqwa-gd/courses/twann-chasseral.oqc");
         assert!(validate(&path).is_ok());
     }
 

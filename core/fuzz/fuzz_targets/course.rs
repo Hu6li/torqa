@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 fn path() -> &'static std::path::Path {
     static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
-        std::env::temp_dir().join(format!("orqwa-fuzz-course-{}.tqc", std::process::id()))
+        std::env::temp_dir().join(format!("orqwa-fuzz-course-{}.oqc", std::process::id()))
     })
 }
 

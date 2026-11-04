@@ -1,4 +1,4 @@
-# ADR 0007 — Course files (`.tqc`)
+# ADR 0007 — Course files (`.oqc`)
 
 - Status: accepted; amended 2026-10-03 (format 1 bundles inputs only, see below), 2026-10-15,
   2026-10-19 (a sample course), 2026-10-20 (worlds kept beside, ADR 0025), 2026-10-25 (map
@@ -14,7 +14,7 @@ offline (R32–R35).
 
 ## Decision
 
-A course is a **zip container** with the extension **`.tqc`**:
+A course is a **zip container** with the extension **`.oqc`**:
 
 ```
 manifest.json      format version, generator version, name, length, climbing, max grade,
@@ -32,7 +32,7 @@ preview.png        image for the course list
   generator version tells whether the stored world is current.
 - Files are written atomically and versioned; unknown newer format versions are rejected with a
   clear message rather than misread.
-- The **library** is the `courses/` folder of the data directory; any `.tqc` placed there is
+- The **library** is the `courses/` folder of the data directory; any `.oqc` placed there is
   listed. Import copies a file into it; export is a plain file copy.
 - **Video courses** use the same format with sync data and a reference (name, size, hash) to the
   video file next to the course, not the video itself. Preparing a course puts the course's own
@@ -137,5 +137,5 @@ manifest's optional `map_detail` names their extracts, and opening the course re
 those, so it comes out the same on any computer, with the region downloaded or not. Format 1
 stays: older ORQWA versions leave both unread. Opened in the library of a computer with a
 region's detail ready, a course takes it and its file is rewritten with it (R144, ADR 0033).
-Sharing or syncing that `.tqc` carries the map detail used; the receiving device needs neither
+Sharing or syncing that `.oqc` carries the map detail used; the receiving device needs neither
 the full Geofabrik download nor a separate copy of its extracted region cache.

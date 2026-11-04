@@ -60,7 +60,7 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   shops, junctions, river, old town, roundabout, bridges and the Oberalp reference route) into
   `screenshots/views/`. Render them before a visual change (`OUT_DIR=…/views-before`, pass it inside
   `sh -c '…'`) and after, and compare pairs; `VIEWS="village-chase lake-drone"` limits it.
-  For a prepared course, set `COURSE=core/orqwa-gd/courses/twann-chasseral.tqc` and
+  For a prepared course, set `COURSE=core/orqwa-gd/courses/twann-chasseral.oqc` and
   `SHOTS="shortcut:4200:2:0,180,-20"` (adjust the distance/camera as needed). This opens its saved
   inputs and builds offline, rather than preparing a GPX with fresh provider requests.
 

@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders ORQWA's standard views — fixed shots on the fixture routes — into $OUT_DIR/<view>.png,
 ## so every visual change can be compared before and after against the same pictures (ADR 0011).
 ## One run covers the views of route $ROUTE; scripts/render-views.sh runs all routes, and $VIEWS
-## (space-separated names) limits it to some. A $ROUTE ending in .gpx or .tqc is a file, shot
+## (space-separated names) limits it to some. A $ROUTE ending in .gpx or .oqc is a file, shot
 ## as $SHOTS says: space-separated name:distance:camera, optionally :right,up,back for a camera
 ## standing aside.
 
@@ -72,7 +72,7 @@ func _run() -> void:
 	var wanted: PackedStringArray = OS.get_environment("VIEWS").split(" ", false)
 	var specs: Dictionary[String, Array] = VIEWS.duplicate()
 	var gpx: String = ProjectSettings.globalize_path("res://../core/fixtures/%s.gpx" % route)
-	if route.ends_with(".gpx") or route.ends_with(".tqc"):
+	if route.ends_with(".gpx") or route.ends_with(".oqc"):
 		gpx = route
 		specs.clear()
 		for shot: String in OS.get_environment("SHOTS").split(" ", false):
@@ -100,7 +100,7 @@ func _run() -> void:
 	)
 	var failure: Array[String] = [""]
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
-	if route.ends_with(".tqc"):
+	if route.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
 			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
 			CONNECT_ONE_SHOT

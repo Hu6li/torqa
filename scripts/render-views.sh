@@ -4,7 +4,7 @@
 # Runs inside the dev container: scripts/dev.sh scripts/render-views.sh
 # VIEWS="village-chase lake-drone" renders only some; OUT_DIR changes the folder, QUALITY the
 # graphics preset (medium by default). GPX=<file> with SHOTS="name:distance:camera ..." renders
-# shots of any route instead (e.g. one from an issue); COURSE=<file.tqc> uses its saved inputs
+# shots of any route instead (e.g. one from an issue); COURSE=<file.oqc> uses its saved inputs
 # offline. Camera 0 chase, 1 first person, 2 drone,
 # with :right,up,back a camera standing aside (see app/tools/render_views.gd).
 set -eu

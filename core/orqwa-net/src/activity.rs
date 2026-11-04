@@ -19,7 +19,7 @@ const VERSION: u8 = 2;
 /// Whether content is a portable course archive or a normalized structured workout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContentKind {
-    /// A 3D `.tqc` course, including its inputs, without referenced video.
+    /// A 3D `.oqc` course, including its inputs, without referenced video.
     Course,
     /// A structured workout preserving FTP shares and absolute watt targets.
     Workout,
@@ -108,7 +108,7 @@ impl ContentId {
             let _ = write!(name, "{byte:02x}");
         }
         name.push_str(match self.kind {
-            ContentKind::Course => ".tqc",
+            ContentKind::Course => ".oqc",
             ContentKind::Workout => ".oqw",
             ContentKind::Preview => ".preview",
         });

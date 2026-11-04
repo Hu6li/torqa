@@ -439,7 +439,7 @@ mod tests {
         let hills = prepare_gpx(&mut app, gpx);
         app.rename_course(&hills, "Hills").unwrap();
         // The same course twice in the library has one world.
-        let again = lakeside.with_file_name("again.tqc");
+        let again = lakeside.with_file_name("again.oqc");
         std::fs::copy(&lakeside, &again).unwrap();
         app.rename_course(&again, "Lakeside again").unwrap();
         let keeper = app.keeper();

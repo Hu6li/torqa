@@ -3,7 +3,7 @@
 # the app in /tmp gets the measuring pack (scripts/perf/pack.sh) and an ad-hoc signature, and
 # runs with a throwaway HOME, so the rider's own profile, rides, settings and kept worlds stay as
 # they are; it does not look for updates either. Runs on the Mac itself, not in the container:
-#   COURSE=<file.tqc|route.gpx> PLACES="<m> ..." scripts/perf/mac.sh <pack> [label]
+#   COURSE=<file.oqc|route.gpx> PLACES="<m> ..." scripts/perf/mac.sh <pack> [label]
 # APP is the app to copy, /Applications/ORQWA.app unless set; its Rust extension is the one
 # measured, so for a Rust change use the macOS app CI built from the branch. QUALITY, CAMERA,
 # TAKE, FAR and MINIMAP are app/tools/measure_frames.gd's settings. frames.csv, a screenshot of

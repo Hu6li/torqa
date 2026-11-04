@@ -129,8 +129,8 @@ fn build_name(branch: &str, commit: &str) -> String {
 /// The course a new library starts with (R95), with its terrain and map so that it rides
 /// offline. Here rather than in the core, which the command-line tool shares: only the app
 /// ships it. See `courses/README.md`.
-const SAMPLE_COURSE: &[u8] = include_bytes!("../courses/twann-chasseral.tqc");
-const SAMPLE_COURSE_FILE: &str = "twann-chasseral.tqc";
+const SAMPLE_COURSE: &[u8] = include_bytes!("../courses/twann-chasseral.oqc");
+const SAMPLE_COURSE_FILE: &str = "twann-chasseral.oqc";
 
 /// What the running engine reports of its licence and of the components it is built from.
 fn engine_credits() -> orqwa_app::about::EngineCredits {

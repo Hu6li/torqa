@@ -124,7 +124,7 @@ comes out as before. To try it in the container, put a region's download at
 `orqwa-cli detail ~/.cache/orqwa/osm/geofabrik/<id>.osm.pbf ~/.cache/orqwa/osm/detail-v1 --region <id>`
 and write its record `~/.cache/orqwa/osm/geofabrik/<id>.json`
 (`{"id": "<id>", "name": "…", "extract": "<id>-<date the command printed>"}`); GPX routes
-prepared afterwards use it. With a region ready, `ORQWA_COURSE=<course.tqc> cargo test -p
+prepared afterwards use it. With a region ready, `ORQWA_COURSE=<course.oqc> cargo test -p
 orqwa-app -- --ignored --nocapture roundabouts_of_a_course` tells how far a course is ridden
 against the traffic round each ring the detail maps (R143).
 
@@ -500,7 +500,7 @@ recommendation and restored rendering settings; software FPS still says nothing 
 
 Frame rate needs a real GPU: software Vulkan in the container draws the same draw calls and
 primitives, but its timings say nothing about a GPU. `app/tools/measure_frames.gd` measures a
-course's world either way. It opens a course (a `.tqc`, built offline from its saved inputs, or
+course's world either way. It opens a course (a `.oqc`, built offline from its saved inputs, or
 a GPX route), waits for every chunk, pauses the rider at each distance in `PLACES` and samples
 the frames there: everything shown (`all`), then with one thing taken away at a time, as `TAKE`
 asks. Each sample appends a row to `frames.csv`: frame rate, median and 95th-percentile frame
@@ -527,7 +527,7 @@ built from the branch (the run's `ORQWA-macos-arm64.zip`).
 
 ```sh
 scripts/dev.sh scripts/perf/pack.sh               # screenshots/perf/measure.pck
-COURSE=core/orqwa-gd/courses/twann-chasseral.tqc PLACES="2750 9000" TAKE=kinds,effects \
+COURSE=core/orqwa-gd/courses/twann-chasseral.oqc PLACES="2750 9000" TAKE=kinds,effects \
     scripts/perf/mac.sh screenshots/perf/measure.pck branch
 ```
 
@@ -553,7 +553,7 @@ counts alone: what a change does to draw calls and primitives when no Mac is at 
 tool's settings inside `sh -c` so they reach the container:
 
 ```sh
-scripts/dev.sh sh -c 'COURSE=core/orqwa-gd/courses/twann-chasseral.tqc PLACES=2750 TAKE=distance scripts/perf/software.sh'
+scripts/dev.sh sh -c 'COURSE=core/orqwa-gd/courses/twann-chasseral.oqc PLACES=2750 TAKE=distance scripts/perf/software.sh'
 ```
 
 On Windows the portable Godot editor runs the tool directly with the extension cross-built
@@ -800,7 +800,7 @@ artifacts keep plain names. Only that job has
 `contents: write`, using the automatic `GITHUB_TOKEN`.
 
 The APK of a tag is signed with ORQWA's release key, from the repository secrets
-`ANDROID_KEYSTORE` (the keystore, base64) and `ANDROID_KEYSTORE_PASSWORD` (alias `torqa`); the
+`ANDROID_KEYSTORE` (the keystore, base64) and `ANDROID_KEYSTORE_PASSWORD` (the signing alias is read from the keystore); the
 build fails without them. Every Android update must carry the same key, so its owner keeps a
 copy outside GitHub. Other builds are signed with a debug key.
 

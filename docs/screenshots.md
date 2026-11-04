@@ -407,7 +407,7 @@ the shoulder at the road edge:
 
 ![Joined roads near Lamboing](images/roads/lamboing-shortcut-after.jpg)
 
-Reproduce with `COURSE=core/orqwa-gd/courses/twann-chasseral.tqc`
+Reproduce with `COURSE=core/orqwa-gd/courses/twann-chasseral.oqc`
 and `SHOTS="lamboing:4200:2:0,180,-20"` in `scripts/render-views.sh`. The course uses its
 saved inputs offline. Matching before/after review images are in `docs/images/roads/`.
 

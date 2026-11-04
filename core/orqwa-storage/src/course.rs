@@ -1,4 +1,4 @@
-//! Course files (`.tqc`, R32–R35, ADR 0007): one zip file holding a prepared course, so it can be
+//! Course files (`.oqc`, R32–R35, ADR 0007): one zip file holding a prepared course, so it can be
 //! kept, shared and ridden offline on any machine.
 //!
 //! Layout:
@@ -26,7 +26,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 pub mod shared;
 
 /// File extension of course files.
-pub const EXTENSION: &str = "tqc";
+pub const EXTENSION: &str = "oqc";
 /// The course file format written by this version; newer formats are rejected.
 pub const FORMAT_VERSION: u32 = 1;
 
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn a_course_learns_its_countries_later_and_keeps_their_names() {
         let dir = temp_dir("countries");
-        let course = dir.join("c.tqc");
+        let course = dir.join("c.oqc");
         write(&course, &manifest(), "<gpx>route</gpx>", &dir, &[]).unwrap();
         // Written before they were looked up: none, and not as an empty list.
         assert_eq!(read_manifest(&course).unwrap().countries, None);
@@ -631,7 +631,7 @@ mod tests {
         std::fs::create_dir_all(data.join("terrain")).unwrap();
         let tile = data.join("terrain/12_2134_1445.webp");
         std::fs::write(&tile, b"tile").unwrap();
-        let course = dir.join("lake.tqc");
+        let course = dir.join("lake.oqc");
         write(
             &course,
             &manifest(),
@@ -650,7 +650,7 @@ mod tests {
         set_preview(&course, b"PNG").unwrap();
         assert_eq!(fingerprint(&course).unwrap(), first);
         // Another file with the same inputs, prepared at another time.
-        let copy = dir.join("copy.tqc");
+        let copy = dir.join("copy.oqc");
         let mut later = manifest();
         later.created_unix_s += 3600;
         write(
@@ -676,7 +676,7 @@ mod tests {
         assert_ne!(fingerprint(&copy).unwrap(), first);
         write(&copy, &manifest(), "<gpx>other</gpx>", &data, &[]).unwrap();
         assert_ne!(fingerprint(&copy).unwrap(), first);
-        assert!(fingerprint(&dir.join("missing.tqc")).is_err());
+        assert!(fingerprint(&dir.join("missing.oqc")).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -688,13 +688,13 @@ mod tests {
         let tile = data.join("terrain/12_2134_1445.webp");
         std::fs::write(&tile, b"tile").unwrap();
         let tiles = std::slice::from_ref(&tile);
-        let shared = dir.join("shared.tqc");
+        let shared = dir.join("shared.oqc");
         write(&shared, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
         let key = key_material(&shared).unwrap();
 
         // #435: the friend imported it under their own name, it found its countries and got
         // a new map picture; its bytes differ, but it is the course the host shares.
-        let own = dir.join("own.tqc");
+        let own = dir.join("own.oqc");
         std::fs::copy(&shared, &own).unwrap();
         let mut renamed = manifest();
         renamed.name = "Bielersee".to_owned();
@@ -711,7 +711,7 @@ mod tests {
         assert_eq!(key_material(&own).unwrap(), key);
 
         // Other terrain, another track or map detail make another course.
-        let other = dir.join("other.tqc");
+        let other = dir.join("other.oqc");
         std::fs::write(&tile, b"newer tile").unwrap();
         write(&other, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
         assert_ne!(key_material(&other).unwrap(), key);
@@ -724,14 +724,14 @@ mod tests {
         assert_ne!(key_material(&other).unwrap(), key);
         write(&other, &manifest(), "<gpx>route</gpx>", &data, tiles).unwrap();
         assert_eq!(key_material(&other).unwrap(), key);
-        assert!(key_material(&dir.join("missing.tqc")).is_err());
+        assert!(key_material(&dir.join("missing.oqc")).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn a_course_keeps_its_map_picture() {
         let dir = temp_dir("preview");
-        let path = dir.join("lake.tqc");
+        let path = dir.join("lake.oqc");
         write(&path, &manifest(), "<gpx/>", &dir, &[]).unwrap();
         assert_eq!(preview(&path), None);
 
@@ -750,7 +750,7 @@ mod tests {
     fn a_corridor_picture_shows_until_the_course_gets_a_map_of_its_land() {
         // #203: courses prepared before kept a picture of the route's corridor only.
         let dir = temp_dir("corridor-preview");
-        let path = dir.join("lake.tqc");
+        let path = dir.join("lake.oqc");
         write(&path, &manifest(), "<gpx/>", &dir, &[]).unwrap();
         assert!(preview_outdated(&path));
         rewrite(
@@ -782,7 +782,7 @@ mod tests {
         let tile = cache.join("terrain/t.webp");
         std::fs::create_dir_all(tile.parent().unwrap()).unwrap();
         std::fs::write(&tile, b"tile").unwrap();
-        let course = dir.join("c.tqc");
+        let course = dir.join("c.oqc");
         write(
             &course,
             &manifest(),
@@ -816,7 +816,7 @@ mod tests {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(file, content).unwrap();
         }
-        let course = dir.join("lake-biel.tqc");
+        let course = dir.join("lake-biel.oqc");
 
         write(
             &course,
@@ -840,7 +840,7 @@ mod tests {
             std::fs::read(other.join("osm/v2/14/8531/5770.pbf")).unwrap(),
             b"map"
         );
-        assert!(!dir.join("lake-biel.tqc.part").exists());
+        assert!(!dir.join("lake-biel.oqc.part").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -859,12 +859,12 @@ mod tests {
             located: true,
         };
 
-        assert_eq!(reference.locate(&dir.join("ride.tqc")), Some(video.clone()));
+        assert_eq!(reference.locate(&dir.join("ride.oqc")), Some(video.clone()));
         let other_size = VideoReference {
             size: 11,
             ..reference
         };
-        assert_eq!(other_size.locate(&dir.join("ride.tqc")), None);
+        assert_eq!(other_size.locate(&dir.join("ride.oqc")), None);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -878,7 +878,7 @@ mod tests {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(file, content).unwrap();
         }
-        let course = dir.join("course.tqc");
+        let course = dir.join("course.oqc");
         write(&course, &manifest(), "<gpx/>", &dir, &[tile.clone(), old]).unwrap();
         let before = fingerprint(&course).unwrap();
         let updated = Manifest {
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn rejects_courses_from_a_newer_orqwa() {
         let dir = temp_dir("newer");
-        let course = dir.join("future.tqc");
+        let course = dir.join("future.oqc");
         let future = Manifest {
             format: FORMAT_VERSION + 1,
             ..manifest()
@@ -929,7 +929,7 @@ mod tests {
     #[test]
     fn never_extracts_outside_the_data_root() {
         let dir = temp_dir("unsafe");
-        let course = dir.join("evil.tqc");
+        let course = dir.join("evil.oqc");
         let mut zip = ZipWriter::new(File::create(&course).unwrap());
         let options = SimpleFileOptions::default();
         zip.start_file(MANIFEST, options).unwrap();
@@ -953,7 +953,7 @@ mod tests {
         std::fs::write(&stray, b"x").unwrap();
 
         let error = write(
-            &dir.join("c.tqc"),
+            &dir.join("c.oqc"),
             &manifest(),
             "",
             &dir.join("cache"),
@@ -962,7 +962,7 @@ mod tests {
         .unwrap_err();
 
         assert!(matches!(error, CourseError::OutsideRoot(..)));
-        assert!(!dir.join("c.tqc").exists());
+        assert!(!dir.join("c.oqc").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -973,7 +973,7 @@ mod tests {
         std::fs::write(&video, b"frames").unwrap();
         let library = dir.join("courses");
         std::fs::create_dir_all(&library).unwrap();
-        let course = library.join("ride.tqc");
+        let course = library.join("ride.oqc");
 
         let kept = keep_video(&video, &course, 6).unwrap();
 

@@ -12,7 +12,7 @@ const KEEP_INFO_TOOLTIP: String = (
 )
 const DETAIL_INFO_TOOLTIP: String = (
 	"Want more detailed 3D worlds? Download the regions you ride in, then "
-	+ "open a course to save that map detail in its .tqc file. Share the file, "
+	+ "open a course to save that map detail in its .oqc file. Share the file, "
 	+ "and the other rider can use the detail offline without downloading the region."
 )
 

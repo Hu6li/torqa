@@ -9,6 +9,7 @@ pub mod failure;
 pub mod graphics;
 pub mod group;
 use failure::{Failure, Kind};
+mod course_migration;
 mod detail;
 #[cfg(test)]
 mod detail_tests;
@@ -805,6 +806,7 @@ impl App {
     /// # Errors
     /// [`AppError::Runtime`] if the async runtime cannot start.
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Result<Self, AppError> {
+        course_migration::run(&data_dir.join("courses"));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -1986,7 +1988,7 @@ impl App {
             "xml" => read()
                 .and_then(|xml| orqwa_video::incyclist::parse(&xml).ok())
                 .map(|route| route.title),
-            "tqc" => course::read_manifest(path).ok().map(|m| m.name),
+            "oqc" => course::read_manifest(path).ok().map(|m| m.name),
             "rlv" => video::tacx_course_name(path),
             _ => None,
         };
@@ -5722,7 +5724,7 @@ mod tests {
         let Some(AppEvent::CourseAdded(file)) = events.last() else {
             unreachable!()
         };
-        assert_eq!(*file, dir.join("a/data/courses/test-loop.tqc"));
+        assert_eq!(*file, dir.join("a/data/courses/test-loop.oqc"));
         let listed = prepared.courses();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].manifest.name, "Test loop");
@@ -5832,7 +5834,7 @@ mod tests {
             countries: None,
             map_detail: Vec::new(),
         };
-        let path = dir.join("sample.tqc");
+        let path = dir.join("sample.oqc");
         course::write(&path, &manifest, "<gpx/>", dir, &[]).unwrap();
         std::fs::read(path).unwrap()
     }
@@ -5843,19 +5845,19 @@ mod tests {
         let sample = sample_course(&dir);
         // A first start cut short while writing the library.
         std::fs::create_dir_all(dir.join("data/courses.part")).unwrap();
-        std::fs::write(dir.join("data/courses.part/sample-climb.tqc"), b"half").unwrap();
+        std::fs::write(dir.join("data/courses.part/sample-climb.oqc"), b"half").unwrap();
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
 
-        assert!(app.add_sample_course("sample-climb.tqc", &sample).unwrap());
+        assert!(app.add_sample_course("sample-climb.oqc", &sample).unwrap());
         let courses = app.courses();
         assert_eq!(courses.len(), 1);
         assert_eq!(courses[0].manifest.name, "Sample climb");
         assert!(!dir.join("data/courses.part").exists());
 
-        assert!(!app.add_sample_course("sample-climb.tqc", &sample).unwrap());
+        assert!(!app.add_sample_course("sample-climb.oqc", &sample).unwrap());
         assert_eq!(app.courses().len(), 1);
         app.delete_course(&courses[0].path).unwrap();
-        assert!(!app.add_sample_course("sample-climb.tqc", &sample).unwrap());
+        assert!(!app.add_sample_course("sample-climb.oqc", &sample).unwrap());
         assert_eq!(app.courses().len(), 0, "the deleted sample came back");
     }
 
@@ -5866,7 +5868,7 @@ mod tests {
         let app = App::new(dir.join("data"), dir.join("cache")).unwrap();
 
         assert!(
-            !app.add_sample_course("sample-climb.tqc", &sample_course(&dir))
+            !app.add_sample_course("sample-climb.oqc", &sample_course(&dir))
                 .unwrap()
         );
         assert_eq!(app.courses().len(), 0);
@@ -6160,11 +6162,11 @@ mod tests {
         let aside = dir.join("aside");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::create_dir_all(&aside).unwrap();
-        std::fs::copy(file, shared.join("gurten.tqc")).unwrap();
+        std::fs::copy(file, shared.join("gurten.oqc")).unwrap();
         std::fs::rename(&video, aside.join("Gurten.mov")).unwrap();
         std::fs::remove_file(file.parent().unwrap().join("Gurten.mov")).unwrap();
         let mut other = App::new(dir.join("b/data"), dir.join("b/cache")).unwrap();
-        other.open_course(shared.join("gurten.tqc"));
+        other.open_course(shared.join("gurten.oqc"));
         let events = run_until(&mut other, |e| matches!(e, AppEvent::Error(_)));
         assert!(
             matches!(events.last(), Some(AppEvent::Error(m)) if m.contains("Gurten.mov")),
@@ -6172,7 +6174,7 @@ mod tests {
         );
 
         std::fs::rename(aside.join("Gurten.mov"), shared.join("Gurten.mov")).unwrap();
-        other.open_course(shared.join("gurten.tqc"));
+        other.open_course(shared.join("gurten.oqc"));
         run_until(&mut other, |e| matches!(e, AppEvent::RouteLoaded(_)));
         assert_eq!(other.video().unwrap().video, shared.join("Gurten.mov"));
         // Opened, not prepared: nothing is added to that machine's library.
@@ -6202,7 +6204,7 @@ mod tests {
         assert_eq!(later.video().map(|v| v.video.clone()), Some(kept.clone()));
 
         // The copy goes with the course, once no course rides along it any more.
-        let twin = file.with_file_name("twin.tqc");
+        let twin = file.with_file_name("twin.oqc");
         std::fs::copy(file, &twin).unwrap();
         later.delete_course(file).unwrap();
         assert!(kept.is_file(), "deleted under another course");
@@ -6755,19 +6757,19 @@ mod tests {
     #[test]
     fn saving_a_course_twice_keeps_both() {
         let library = temp_dir("unique");
-        std::fs::write(library.join("lake-biel.tqc"), b"").unwrap();
+        std::fs::write(library.join("lake-biel.oqc"), b"").unwrap();
 
         assert_eq!(
             unique_course_path(&library, "Lake Biel"),
-            library.join("lake-biel-2.tqc")
+            library.join("lake-biel-2.oqc")
         );
         assert_eq!(
             unique_course_path(&library, "Gurten / Bern!"),
-            library.join("gurten-bern.tqc")
+            library.join("gurten-bern.oqc")
         );
         assert_eq!(
             unique_course_path(&library, "??"),
-            library.join("course.tqc")
+            library.join("course.oqc")
         );
     }
 

@@ -106,7 +106,7 @@ fresh `HOME`, which the scripts now turn off. Software rendering in the dev cont
 same draw-call and primitive counts but no usable timings.
 
 ```sh
-COURSE=zurich.tqc PLACES="2510 2903 34743 20000" TAKE=kinds,effects,interface,distance \
+COURSE=zurich.oqc PLACES="2510 2903 34743 20000" TAKE=kinds,effects,interface,distance \
     scripts/perf/mac.sh screenshots/perf/measure.pck after
 ```
 

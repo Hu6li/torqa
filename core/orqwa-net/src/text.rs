@@ -142,7 +142,7 @@ mod tests {
             "orqwa:AA+Z",
             "orqwa:AA/Z",
             "orqwa:AA==",
-            "torqa:AA",
+            "other:AA",
             "orqwa:AB",
             "orqwa:é",
         ] {
