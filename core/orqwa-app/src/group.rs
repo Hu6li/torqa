@@ -63,7 +63,7 @@ pub struct GroupView {
     pub riders: Vec<GroupRider>,
 }
 
-/// Strength of the assistance applied to local motion, independent of organizer status (R208).
+/// Strength of the assistance applied to local motion, independent of organizer status (R209).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AssistanceFeedback {
     /// Aerodynamic shelter from zero to one, where one is the existing 30% drag reduction.
@@ -736,7 +736,7 @@ impl App {
         self.group_view().riders
     }
 
-    /// Reports the applied effect, including stale-source fading and authority blending (R208).
+    /// Reports the applied effect, including stale-source fading and authority blending (R209).
     /// Positive keep-together strength means support, even when the organizer changes.
     #[must_use]
     pub fn group_feedback(&self) -> AssistanceFeedback {

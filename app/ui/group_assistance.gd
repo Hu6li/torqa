@@ -1,6 +1,6 @@
 class_name GroupAssistance
 extends PanelContainer
-## Compact label/bar rows for applied assistance (R208). Rust supplies normalized strengths.
+## Compact label/bar rows for applied assistance (R209). Rust supplies normalized strengths.
 
 var _drafting: float = 0.0
 var _together: float = 0.0

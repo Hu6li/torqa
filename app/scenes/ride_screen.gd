@@ -347,7 +347,7 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
-## Active assistance follows the metrics HUD in the main 3D course view (R209).
+## Active assistance follows the metrics HUD in the main 3D course view (R210).
 func _show_assistance(state: Dictionary) -> void:
 	var show_effects: bool = (
 		visible

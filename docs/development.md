@@ -644,7 +644,7 @@ course-only, workout-only and combined activities, in English and German at 1600
 countdown disables the existing choices and rules, and replaces the readiness line. Review
 the [ready and countdown screenshots](screenshots.md#courses-setup-and-analysis) together.
 
-The same smoke suite checks the compact label/bar assistance rows (R208–R209) in English/German at both
+The same smoke suite checks the compact label/bar assistance rows (R209–R210) in English/German at both
 window sizes: simultaneous drafting and Support/Braking, inactive effects, pause, finish,
 course-free workouts, overlay exclusion, matching the metrics HUD's width below it and clearance
 around controls and organizer offers.
@@ -654,7 +654,7 @@ or ERG targets. `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` also cap
 indicators from all three cameras in both languages using presentation fixtures. Review at
 `SCREENSHOT_SIZE=1024x640` too. Video rides intentionally have no indicators.
 
-For group-based Keep together (R210, #504), `orqwa-session`'s `group::reference_tests` checks
+For group-based Keep together (R211, #504), `orqwa-session`'s `group::reference_tests` checks
 the shared reference, slot permutations, the two-rider midpoint, unaffected nearby riders,
 sprint outliers, moving coasting riders and fading/expired sources. The app's `assistance_`
 tests exercise organizer/friend equality through an authority change, own-echo exclusion,

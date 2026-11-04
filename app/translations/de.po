@@ -2906,9 +2906,6 @@ msgstr "Training für alle fortsetzen"
 msgid "Workout paused"
 msgstr "Training pausiert"
 
-msgid "Use Group Rides for the shared workout. Your intensity stays personal."
-msgstr "Das gemeinsame Training wird unter Gruppenfahrten gesteuert. Deine Intensität bleibt individuell."
-
 msgid "Group workout complete"
 msgstr "Gruppentraining abgeschlossen"
 

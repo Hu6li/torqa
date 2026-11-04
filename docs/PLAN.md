@@ -968,15 +968,16 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] QR sharing using existing support: invitations and replies as plain-text QR codes (R195)
 - [x] Drafting and Keep together (R166): independent shared toggles, both on by default,
   individually calculated assistance, simulation/ERG behavior and assisted-record eligibility
-- [x] Active assistance indicators (R208–R209, #425): Drafting and directional Support/Braking
+- [x] Active assistance indicators (R209–R210, #425): Drafting and directional Support/Braking
   bars in compact label/bar rows below the metrics HUD, matching its width, from the applied
   local effects and shown only while active in the main 3D course view
-- [x] Group-based Keep together (R210, #504): a robust shared reference treats organizer and
+- [x] Group-based Keep together (R211, #504): a robust shared reference treats organizer and
   friends equally, excludes stopped riders, fades stale sources and limits resistance changes
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
   personal intensity and local safety pause with current-step resume
+  - [x] Remove the shared-workout helper text above the ride settings tabs (R208).
 - [x] Planned host handover (R168): successor consent, pinned replacement links, authority
   epochs, bounded rollback, smooth assistance reference transition and independent riding on loss
 - [x] Guided connection popup (R174): explain separate homes, shared Wi-Fi and mixed groups

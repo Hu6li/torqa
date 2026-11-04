@@ -261,7 +261,7 @@ session tests cover simulation/ERG behavior, and saved FIT tests cover recording
 Seven-rider review images use presentation fixtures, separately from transport tests. Native
 trainer feel, audio permissions, cross-home connectivity and GPU frame rate remain manual.
 
-### Group-based Keep together — 2026-11-04 (#504, R210)
+### Group-based Keep together — 2026-11-04 (#504, R211)
 
 This supersedes the organizer-based reference above. Every client computes a reference
 from live local motion and current validated peer motion, excluding its own accepted echo.

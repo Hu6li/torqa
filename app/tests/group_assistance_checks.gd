@@ -1,6 +1,6 @@
 class_name GroupAssistanceChecks
 extends RefCounted
-## Assistance must report its direction independently and disappear from excluded views (R208).
+## Assistance must report its direction independently and disappear from excluded views (R209).
 
 
 static func check(tree: SceneTree, verify: Callable) -> void:

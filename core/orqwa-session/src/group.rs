@@ -211,7 +211,7 @@ fn interpolate(a: Sample, b: Sample, target: Duration) -> Sample {
     }
 }
 
-/// Computes shelter and a band around the moving group, including live local motion (R210).
+/// Computes shelter and a band around the moving group, including live local motion (R211).
 /// The caller excludes the local echo and rate-limits the applied band. Organizer identity
 /// has no role. Sources fade after 500 ms and stop contributing at two seconds.
 #[must_use]
