@@ -15,6 +15,7 @@ func _run() -> void:
 	await _group_activity()
 	await GroupCountdownLayout.check(self, _check)
 	await _group_motion()
+	await GroupAssistanceChecks.check(self, _check)
 	await _group_profile_difficulty()
 	await _microphone_permissions()
 	await _voice_failures()

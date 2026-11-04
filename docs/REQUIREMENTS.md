@@ -518,3 +518,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R207 | Extends R51 and R54 (2026-11-04, #483): each rider has **separate HUD layouts for rides and workouts**, editable under HUD in their profile settings. Rides without a workout use the ride layout; every workout, including constant power, heart-rate workouts, structured workouts and FTP tests, uses the workout layout, with or without a course. The same distinction applies to **group rides**, including shared workouts, and the overlay. In-session HUD settings show and immediately save only the layout in use. Existing riders start both layouts with their previous figures, and changing either preserves the other; both layouts stay with the rider across restarts and syncing. |
+
+## Active group assistance
+
+| ID | Requirement |
+|---|---|
+| R208 | Extends R166 (2026-11-04, #425): the main **3D course riding view** automatically shows active local assistance near the bottom centre, independent of camera choice: **Drafting** with a strength bar and **Support** or **Braking** with a centred directional strength bar. Both may appear together, without numbers; each disappears when inactive, leaving no empty panel. Strengths follow the actual effect applied by Rust, including stale-source fading and organizer-transition blending, normalized against the existing 30% maximum aerodynamic reduction and ±2 percentage-point Keep together limit. Relative speed may cause braking while still behind. Indicators clear ride controls and organizer/voice prompts and do not intercept input. They are absent from video rides, overlay mode and workouts without a course. This display changes no assistance physics, measured telemetry, ERG targets or record eligibility; group-based Keep together behavior independent of organizer status is a separate follow-up (#504). |

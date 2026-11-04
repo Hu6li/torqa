@@ -559,6 +559,10 @@ msgstr ""
 msgid "Bloom"
 msgstr ""
 
+#: app/ui/group_assistance.gd
+msgid "Braking"
+msgstr ""
+
 #: app/scenes/course_detail.gd app/scenes/workouts_tab.gd core/orqwa-app/src/import.rs
 msgid "Building 3D world"
 msgstr ""
@@ -1251,7 +1255,7 @@ msgstr ""
 msgid "Downloading · %d %%"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_assistance.gd
 msgid "Drafting"
 msgstr ""
 
@@ -3253,6 +3257,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Sun"
+msgstr ""
+
+#: app/ui/group_assistance.gd
+msgid "Support"
 msgstr ""
 
 #: app/ui/video_align_dialog.gd

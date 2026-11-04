@@ -815,6 +815,126 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one fixture follows applied support, braking, fading and local stop states
+fn assistance_feedback_reports_applied_effects_without_changing_measurements() {
+    let directory = Directory::new();
+    let mut app = directory.app();
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.group_open(None, options()).unwrap();
+    app.group.as_mut().unwrap().task.abort();
+    let config = app.ride_config(orqwa_domain::units::Percent(100.0), DescentMode::Coast);
+    app.begin(
+        crate::Ride::workout(Workout::ConstantPower(Watts(200.0)), config),
+        None,
+        crate::RouteRecords::default(),
+        None,
+        (None, None),
+    );
+    app.ride
+        .as_mut()
+        .unwrap()
+        .ride
+        .on_telemetry(&orqwa_domain::telemetry::Telemetry {
+            power: Some(Watts(200.0)),
+            cadence: Some(Rpm(85.0)),
+            ..Default::default()
+        });
+    let before = app.ride_state().unwrap();
+    let now = Instant::now();
+    let mut snapshot = Snapshot {
+        phase: Phase::Riding,
+        me: 1,
+        organizer: 0,
+        ..Snapshot::default()
+    };
+    snapshot.roster[0] = Some(Rider {
+        name: "Organizer".into(),
+        mass: Kilograms(83.0),
+        weight: Kilograms(75.0),
+        avatar: Avatar::Female,
+    });
+    snapshot.generations[0] = 1;
+    snapshot.states[0] = Some((
+        RiderState {
+            at: Duration::ZERO,
+            distance: Meters(10.0),
+            speed: MetersPerSecond(0.0),
+            power: Watts(200.0),
+            cadence: Rpm(85.0),
+        },
+        now,
+    ));
+    app.update_group_motion(&snapshot);
+    let feedback = app.group_feedback();
+    assert!(feedback.drafting > 0.0 && feedback.drafting < 1.0);
+    assert!(feedback.together > 0.0 && feedback.together < 1.0);
+    assert_eq!(
+        app.ride_state().unwrap().telemetry.power,
+        before.telemetry.power
+    );
+    assert_eq!(
+        app.ride_state().unwrap().telemetry.cadence,
+        before.telemetry.cadence
+    );
+    // Relative speed may brake a rider who is still behind; never infer direction from gap.
+    app.ride.as_mut().unwrap().ride.tick(Duration::from_secs(2));
+    app.update_group_motion(&snapshot);
+    assert!(app.group_feedback().together < 0.0);
+    assert!(app.group_feedback().drafting > 0.0);
+    let fresh = app.group_feedback();
+    let effect = app.group.as_ref().unwrap().effect;
+    assert!((app.group_feedback().together + effect.grade_offset().0 / 2.0).abs() < 1e-9);
+    app.group.as_mut().unwrap().transition = Some((Instant::now(), effect));
+    app.update_group_motion(&snapshot);
+    let blended = app.group.as_ref().unwrap().effect;
+    assert!((app.group_feedback().drafting - (1.0 - blended.drag_share()) / 0.3).abs() < 1e-9);
+    app.group.as_mut().unwrap().transition = None;
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    snapshot.states[0].as_mut().unwrap().1 = now.checked_sub(Duration::from_secs(1)).unwrap();
+    app.update_group_motion(&snapshot);
+    let fading = app.group_feedback();
+    assert!(fading.drafting > 0.0 && fading.drafting < fresh.drafting);
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    snapshot.states[0].as_mut().unwrap().1 = now.checked_sub(Duration::from_secs(3)).unwrap();
+    app.update_group_motion(&snapshot);
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    snapshot.states[0].as_mut().unwrap().1 = Instant::now();
+    app.update_group_motion(&snapshot);
+    assert!(app.group_feedback().drafting > 0.0);
+    snapshot.assistance = Assistance {
+        drafting: false,
+        keep_together: false,
+    };
+    app.update_group_motion(&snapshot);
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    snapshot.assistance = Assistance::default();
+    app.update_group_motion(&snapshot);
+    app.ride.as_mut().unwrap().paused = true;
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.ride.as_mut().unwrap().paused = false;
+    app.ride.as_mut().unwrap().finished = true;
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.ride.as_mut().unwrap().finished = false;
+    app.ride
+        .as_mut()
+        .unwrap()
+        .ride
+        .on_telemetry(&orqwa_domain::telemetry::Telemetry {
+            power: Some(Watts(0.0)),
+            ..Default::default()
+        });
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    assert_eq!(before.telemetry.power, Some(Watts(200.0)));
+    assert_eq!(
+        app.ride_state().unwrap().workout.unwrap().target_power,
+        Some(Watts(200.0))
+    );
+    app.group_leave();
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+}
+
+#[test]
 fn assistance_transitions_keep_force_continuous_and_bounded() {
     use orqwa_domain::units::GradePercent;
     use orqwa_physics::GroupEffect;

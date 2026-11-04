@@ -87,6 +87,8 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-riders-chase.png"))
 	root.get_texture().get_image().save_jpg(out.path_join("group-riders-chase.jpg"), 0.82)
 	print("saved group-riders-chase")
+	await _assistance(main, out)
+	world.set_camera(0)
 	# The request to organize the ride, over the ride (#424).
 	var roster: Array = [{"name": "Alex", "organizer": true}, {"name": "Sam", "me": true}]
 	ride._show_group({"phase": "riding", "roster": roster, "handover_offer": true})
@@ -193,3 +195,27 @@ static func _chunks_ready(world: RideWorld) -> bool:
 	var next: int = world.get("_next_chunk")
 	var count: int = world.get("_chunk_count")
 	return next >= count
+
+
+static func _assistance(main: Control, out: String) -> void:
+	var tree: SceneTree = main.get_tree()
+	var app: OrqwaApp = main.get_node("Orqwa")
+	var ride: RideScreen = main.get_node("RideScreen")
+	var world: RideWorld = main.get_node("World")
+	# Presentation fixtures, as for the surrounding group avatars; Rust tests the applied effects.
+	var state: Dictionary = app.ride_state().duplicate(true)
+	state["paused"] = false
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		for camera: int in range(3):
+			world.set_camera(camera)
+			var strength: float = [0.65, -0.45, 0.0][camera]
+			state["assistance"] = {"drafting": 0.6, "together": strength}
+			ride._show_assistance(state)
+			for frame: int in range(15):
+				await tree.process_frame
+			var name: String = "group-assistance-%s-%d" % [locale, camera]
+			tree.root.get_texture().get_image().save_jpg(out.path_join(name + ".jpg"), 0.82)
+			print("saved " + name)
+	TranslationServer.set_locale("en")
+	ride._show_assistance({})

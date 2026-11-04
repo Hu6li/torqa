@@ -3157,3 +3157,9 @@ msgstr "Grobe Schätzung ohne Leistung oder nutzbare Herzfrequenz. Zählt die Ze
 
 msgid "Sex"
 msgstr "Geschlecht"
+
+msgid "Support"
+msgstr "Unterstützung"
+
+msgid "Braking"
+msgstr "Bremswirkung"

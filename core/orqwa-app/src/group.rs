@@ -63,6 +63,15 @@ pub struct GroupView {
     pub riders: Vec<GroupRider>,
 }
 
+/// Strength of the assistance applied to local motion, independent of organizer status (R208).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AssistanceFeedback {
+    /// Aerodynamic shelter from zero to one, where one is the existing 30% drag reduction.
+    pub drafting: f64,
+    /// Keep-together strength from minus one (maximum braking) to one (maximum support).
+    pub together: f64,
+}
+
 /// What the organizer is choosing, as friends see it before it is shared (#418).
 pub struct Previewed {
     /// Identifies this preview: another one means the organizer chose something else.
@@ -723,6 +732,27 @@ impl App {
     #[must_use]
     pub fn group_riders(&self) -> Vec<GroupRider> {
         self.group_view().riders
+    }
+
+    /// Reports the applied effect, including stale-source fading and authority blending (R208).
+    /// Positive keep-together strength means support, even when the organizer changes.
+    #[must_use]
+    pub fn group_feedback(&self) -> AssistanceFeedback {
+        let (Some(group), Some(active)) = (&self.group, &self.ride) else {
+            return AssistanceFeedback::default();
+        };
+        let telemetry = active.ride.state().telemetry;
+        if active.paused
+            || active.finished
+            || !telemetry.power.is_some_and(|power| power.0 > 0.0)
+            || telemetry.cadence.is_some_and(|cadence| cadence.0 <= 0.0)
+        {
+            return AssistanceFeedback::default();
+        }
+        AssistanceFeedback {
+            drafting: ((1.0 - group.effect.drag_share()) / 0.3).clamp(0.0, 1.0),
+            together: (-group.effect.grade_offset().0 / 2.0).clamp(-1.0, 1.0),
+        }
     }
 
     /// Samples local and remote presentation together. Trainer control, recording and HUD
