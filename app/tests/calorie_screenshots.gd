@@ -17,14 +17,15 @@ static func capture(main: Control, out: String) -> void:
 	var layout: PackedStringArray = PackedStringArray(
 		["power", "calories", "work", "heart_rate", "elapsed"]
 	)
-	app.set_hud_layout(layout)
+	app.set_hud_layout(layout, false)
+	app.set_hud_layout(layout, true)
 	for locale: String in ["en", "de"]:
 		Input.warp_mouse(Vector2(10, 10))
 		TranslationServer.set_locale(locale)
 		dialog.edit(app.profile(), layout)
 		var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
 		var hud: HudEditor = dialog.get("_hud")
-		tabs.current_tab = hud.get_index()
+		tabs.current_tab = hud.get_parent().get_index()
 		await tree.create_timer(0.4).timeout
 		_save(main, out, "hud-" + locale)
 		await _full_hud(main, hud, out, locale)

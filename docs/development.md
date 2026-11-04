@@ -392,6 +392,14 @@ adapter adds no controls or layout changes.
 
 ## Refreshing screenshots
 
+For separate HUD layouts (R207, #483), `SCREENSHOT_HUD_LAYOUTS_ONLY=1 scripts/screenshots.sh`
+captures both choices in the profile editor in English/German, the unfolded rider card and
+the in-session HUD editor without preparing a course. Use an isolated `XDG_DATA_HOME` and
+`SCREENSHOT_DIR` as below. `hud_smoke.gd` checks independent drafts, automatic selection for
+solo sessions and group starts with or without shared workouts, immediate saves that
+preserve the other layout, and the overlay. Storage tests cover old shared layouts and
+both possible first edits; app tests cover sanitization, rider isolation and restart.
+
 For VAM (R206, #498), `SCREENSHOT_VAM_ONLY=1 scripts/screenshots.sh` captures the HUD editor
 in English/German with metric and imperial ascent rates, without preparing a course.
 The Rust HUD tests cover total positive ascent over recorded riding time, including flat

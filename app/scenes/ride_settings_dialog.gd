@@ -18,6 +18,8 @@ var _tabs: TabContainer = TabContainer.new()
 var _workout: WorkoutOptions = WorkoutOptions.new()
 var _options: RideOptions = RideOptions.new()
 var _hud: HudEditor = HudEditor.new()
+var _hud_page: VBoxContainer = VBoxContainer.new()
+var _hud_context: Label = Label.new()
 var _profile: RideProfile = RideProfile.new()
 var _devices: RideDevices = RideDevices.new()
 var _orqwa: OrqwaApp
@@ -36,8 +38,10 @@ func _ready() -> void:
 	_tabs.add_child(_workout)
 	_options.name = tr("Ride", "ride_tab")
 	_tabs.add_child(_options)
-	_hud.name = tr("HUD")
-	_tabs.add_child(_hud)
+	_hud_page.name = tr("HUD")
+	_hud_page.add_child(_hud_context)
+	_hud_page.add_child(_hud)
+	_tabs.add_child(_hud_page)
 	var profile_page: ScrollContainer = UiTheme.scrolling(_profile)
 	profile_page.name = tr("Profile")
 	_tabs.add_child(profile_page)
@@ -118,7 +122,7 @@ func edit(
 	_tabs.set_tab_hidden(_options.get_index(), not workout.is_empty() and not on_course)
 	_tabs.current_tab = 0 if not workout.is_empty() else _options.get_index()
 	if shared:
-		_tabs.current_tab = _options.get_index() if on_course else _hud.get_index()
+		_tabs.current_tab = _options.get_index() if on_course else _hud_page.get_index()
 	if not workout.is_empty():
 		_workout.set_workout(workout)
 	_options.set_options(options)
@@ -128,6 +132,7 @@ func edit(
 	var voice: bool = group.get("voice", false)
 	_options.show_voice(voice, gain * 100.0)
 	_imperial = imperial
+	_hud_context.text = tr("Ride HUD") if workout.is_empty() else tr("Workout HUD")
 	_hud.edit(layout, imperial)
 	if _orqwa != null:
 		_profile.edit(_orqwa.profile())

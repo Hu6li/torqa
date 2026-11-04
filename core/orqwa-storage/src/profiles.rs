@@ -685,23 +685,44 @@ pub fn new_id(data_dir: &Path, name: &str) -> String {
 #[serde(default)]
 struct HudFile {
     metrics: Vec<String>,
+    workout_metrics: Option<Vec<String>>,
 }
 
-/// The rider's chosen HUD metrics, in order, if the rider chose any.
+/// The rider's chosen ride or workout HUD metrics (R207), in order, if chosen.
+/// Legacy layouts start both uses with the same figures.
 #[must_use]
-pub fn load_hud(data_dir: &Path, id: &str) -> Option<Vec<String>> {
+pub fn load_hud(data_dir: &Path, id: &str, workout: bool) -> Option<Vec<String>> {
     let text = std::fs::read_to_string(profile_dir(data_dir, id).join(HUD_FILE)).ok()?;
-    Some(toml::from_str::<HudFile>(&text).ok()?.metrics)
+    let file = toml::from_str::<HudFile>(&text).ok()?;
+    Some(if workout {
+        file.workout_metrics.unwrap_or(file.metrics)
+    } else {
+        file.metrics
+    })
 }
 
-/// Saves the rider's HUD metrics.
+/// Saves one of the rider's HUD layouts, preserving the other (R207).
 ///
 /// # Errors
 /// On file system errors.
-pub fn save_hud(data_dir: &Path, id: &str, metrics: &[String]) -> Result<(), ProfileError> {
-    let file = HudFile {
-        metrics: metrics.to_vec(),
-    };
+pub fn save_hud(
+    data_dir: &Path,
+    id: &str,
+    metrics: &[String],
+    workout: bool,
+) -> Result<(), ProfileError> {
+    let mut file = std::fs::read_to_string(profile_dir(data_dir, id).join(HUD_FILE))
+        .ok()
+        .and_then(|text| toml::from_str::<HudFile>(&text).ok())
+        .unwrap_or_default();
+    // Freeze the old shared layout before either use is edited for the first time.
+    file.workout_metrics
+        .get_or_insert_with(|| file.metrics.clone());
+    if workout {
+        file.workout_metrics = Some(metrics.to_vec());
+    } else {
+        file.metrics = metrics.to_vec();
+    }
     write_atomically(
         &profile_dir(data_dir, id).join(HUD_FILE),
         &toml::to_string_pretty(&file)?,
@@ -1537,7 +1558,7 @@ mod tests {
     fn deleting_a_rider_removes_their_rides_and_nobody_else() {
         let data = temp_dir("delete");
         save(&data, "anna", &Profile::default()).unwrap();
-        save_hud(&data, "anna", &["speed".to_owned()]).unwrap();
+        save_hud(&data, "anna", &["speed".to_owned()], false).unwrap();
         std::fs::create_dir_all(rides_dir(&data, "anna")).unwrap();
         std::fs::write(rides_dir(&data, "anna").join("ride.fit"), b"fit").unwrap();
         save(&data, "zoe", &Profile::default()).unwrap();
@@ -1571,16 +1592,50 @@ mod tests {
     #[test]
     fn hud_layouts_are_per_rider() {
         let data = temp_dir("hud");
-        assert_eq!(load_hud(&data, "anna"), None);
+        assert_eq!(load_hud(&data, "anna", false), None);
 
-        save_hud(&data, "anna", &["power_3s".to_owned(), "speed".to_owned()]).unwrap();
+        save_hud(
+            &data,
+            "anna",
+            &["power_3s".to_owned(), "speed".to_owned()],
+            false,
+        )
+        .unwrap();
+        save_hud(&data, "anna", &["heart_rate".to_owned()], true).unwrap();
 
         assert_eq!(
-            load_hud(&data, "anna"),
+            load_hud(&data, "anna", false),
             Some(vec!["power_3s".to_owned(), "speed".to_owned()])
         );
-        assert_eq!(load_hud(&data, "zoe"), None);
+        assert_eq!(
+            load_hud(&data, "anna", true),
+            Some(vec!["heart_rate".to_owned()])
+        );
+        assert_eq!(load_hud(&data, "zoe", false), None);
+        assert_eq!(load_hud(&data, "zoe", true), None);
         std::fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn legacy_hud_starts_both_uses_and_first_edit_preserves_the_other() {
+        for workout in [false, true] {
+            let data = temp_dir(if workout {
+                "legacy-workout-hud"
+            } else {
+                "legacy-ride-hud"
+            });
+            let path = profile_dir(&data, "anna").join(HUD_FILE);
+            write_atomically(&path, "metrics = [\"speed\", \"power_3s\"]\n").unwrap();
+            let legacy = vec!["speed".to_owned(), "power_3s".to_owned()];
+            assert_eq!(load_hud(&data, "anna", false), Some(legacy.clone()));
+            assert_eq!(load_hud(&data, "anna", true), Some(legacy.clone()));
+
+            let changed = vec!["heart_rate".to_owned()];
+            save_hud(&data, "anna", &changed, workout).unwrap();
+            assert_eq!(load_hud(&data, "anna", workout), Some(changed));
+            assert_eq!(load_hud(&data, "anna", !workout), Some(legacy));
+            std::fs::remove_dir_all(data).unwrap();
+        }
     }
 
     #[test]

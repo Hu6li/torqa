@@ -512,3 +512,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R206 | Extends R23, R24 and R51 (2026-11-04, #498): riders may choose **VAM** (average ascent speed) in their saved HUD layout before or during a ride, including the overlay. It shows total positive elevation gain divided by recorded riding time so far, in **m/h** or **ft/h** according to the rider's units, rounded to a whole number. Flat and descending riding time count; descents do not subtract ascent and pauses do not count. Before recorded riding time, or without a course, show `--`; a flat course shows zero once riding time is recorded. The editor and tooltip explain the averaging period. Calculation stays in Rust and presentation converts units; existing layouts are preserved. |
+
+## Separate ride and workout HUDs
+
+| ID | Requirement |
+|---|---|
+| R207 | Extends R51 and R54 (2026-11-04, #483): each rider has **separate HUD layouts for rides and workouts**, editable under HUD in their profile settings. Rides without a workout use the ride layout; every workout, including constant power, heart-rate workouts, structured workouts and FTP tests, uses the workout layout, with or without a course. The same distinction applies to **group rides**, including shared workouts, and the overlay. In-session HUD settings show and immediately save only the layout in use. Existing riders start both layouts with their previous figures, and changing either preserves the other; both layouts stay with the rider across restarts and syncing. |

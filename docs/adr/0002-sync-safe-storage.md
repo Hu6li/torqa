@@ -75,3 +75,11 @@ fallback when the identifier changed, finds it there.
 `profiles::carry_over` gives the shared values once to every rider without a `devices.toml`
 (the D-Fly channels from before #139 as button assignments), then removes them from
 `settings.toml`. That file now keeps the active rider, the ride bar and the Courses view.
+
+## Amendment 2026-11-04: separate ride and workout HUDs (#483, R207)
+
+`profiles/<id>/hud.toml` retains `metrics` for the ride HUD and adds `workout_metrics` for
+the workout HUD. A file without the new field supplies its existing figures to both uses.
+The first save snapshots those figures into the workout field before changing either layout,
+so editing the ride HUD cannot silently change a workout HUD that has never been edited.
+Both layouts are written together atomically and follow the rider through file syncing.

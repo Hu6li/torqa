@@ -3350,12 +3350,12 @@ impl OrqwaApp {
         i64::try_from(orqwa_app::hud::MAX_METRICS).unwrap_or(i64::MAX)
     }
 
-    /// The active rider's HUD metric ids, in order; the first is shown large.
+    /// The active rider's ride or workout HUD metric ids, in order (R207).
     #[func]
-    fn hud_layout(&self) -> PackedStringArray {
+    fn hud_layout(&self, workout: bool) -> PackedStringArray {
         self.app
             .as_ref()
-            .map(App::hud_layout)
+            .map(|app| app.hud_layout(workout))
             .unwrap_or_default()
             .iter()
             .map(|id| GString::from(id.as_str()))
@@ -3365,10 +3365,10 @@ impl OrqwaApp {
     /// A rider's HUD metric ids, in order, whether they are the active rider or not.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn hud_layout_of(&self, id: GString) -> PackedStringArray {
+    fn hud_layout_of(&self, id: GString, workout: bool) -> PackedStringArray {
         self.app
             .as_ref()
-            .map(|app| app.hud_layout_of(&id.to_string()))
+            .map(|app| app.hud_layout_of(&id.to_string(), workout))
             .unwrap_or_default()
             .iter()
             .map(|id| GString::from(id.as_str()))
@@ -3378,12 +3378,12 @@ impl OrqwaApp {
     /// Saves the active rider's HUD metrics and returns them as saved (unknown ids dropped).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn set_hud_layout(&mut self, layout: PackedStringArray) -> PackedStringArray {
+    fn set_hud_layout(&mut self, layout: PackedStringArray, workout: bool) -> PackedStringArray {
         let ids: Vec<String> = layout.as_slice().iter().map(ToString::to_string).collect();
         let Some(app) = self.app.as_mut() else {
             return PackedStringArray::new();
         };
-        match app.set_hud_layout(&ids) {
+        match app.set_hud_layout(&ids, workout) {
             Ok(saved) => saved.iter().map(|id| GString::from(id.as_str())).collect(),
             Err(error) => {
                 self.report_failure(&Failure::from(error));

@@ -1679,7 +1679,7 @@ msgstr ""
 msgid "HC"
 msgstr ""
 
-#: app/scenes/profile_dialog.gd app/scenes/profile_tab.gd app/scenes/ride_settings_dialog.gd
+#: app/scenes/profile_dialog.gd app/scenes/ride_settings_dialog.gd
 msgid "HUD"
 msgstr ""
 
@@ -2823,6 +2823,10 @@ msgstr ""
 msgid "Retry download"
 msgstr ""
 
+#: app/scenes/profile_dialog.gd app/scenes/profile_tab.gd app/scenes/ride_settings_dialog.gd
+msgid "Ride HUD"
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "Ride as this rider"
 msgstr ""
@@ -3849,6 +3853,10 @@ msgstr ""
 
 #: app/scenes/ride_settings_dialog.gd app/scenes/workouts_tab.gd app/ui/group_activity_picker.gd app/ui/workout_editor.gd app/ui/workout_options.gd
 msgid "Workout"
+msgstr ""
+
+#: app/scenes/profile_dialog.gd app/scenes/profile_tab.gd app/scenes/ride_settings_dialog.gd
+msgid "Workout HUD"
 msgstr ""
 
 #: app/ui/workout_editor.gd

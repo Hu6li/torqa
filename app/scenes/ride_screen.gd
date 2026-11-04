@@ -160,7 +160,7 @@ func begin(options: Dictionary) -> void:
 	var profile: Dictionary = _orqwa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
-	_hud.show_layout(_orqwa.hud_layout())
+	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if not _orqwa.trainer_connected():
 		_show_toast(tr("Waiting for the trainer…"))
 	# Workouts are not sped up: a simulated heart beats in real time.
@@ -353,7 +353,7 @@ func set_overlay(on: bool) -> void:
 		return
 	if on:
 		_moment_card.clear()
-		_overlay_hud.begin(_orqwa.hud_layout(), _imperial, _workout)
+		_overlay_hud.begin(_orqwa.hud_layout(not _workout.is_empty()), _imperial, _workout)
 		_hidden_by_overlay.clear()
 		for child: Node in get_children():
 			var control: Control = child as Control
@@ -395,7 +395,7 @@ func _show_gear(gear: Variant) -> void:
 func _open_settings() -> void:
 	_options["camera"] = _world.camera()
 	var world: bool = not _orqwa.riding_along_video()
-	_settings_dialog.edit(_options, _orqwa.hud_layout(), _imperial, world)
+	_settings_dialog.edit(_options, _orqwa.hud_layout(not _workout.is_empty()), _imperial, world)
 
 
 ## Applies changed ride options at once: camera, conditions and sound in the world, difficulty
@@ -460,7 +460,7 @@ func _workout_elapsed(state: Dictionary) -> float:
 
 
 func _on_hud_changed(layout: PackedStringArray) -> void:
-	var saved: PackedStringArray = _orqwa.set_hud_layout(layout)
+	var saved: PackedStringArray = _orqwa.set_hud_layout(layout, not _workout.is_empty())
 	if not saved.is_empty():
 		_hud.show_layout(saved)
 
@@ -477,7 +477,7 @@ func _on_profile_changed(profile: Dictionary) -> void:
 	ProfileTab.apply_language(language)
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
-	_hud.show_layout(_orqwa.hud_layout())
+	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if profile.get("map_style") != before.get("map_style"):
 		_minimap.set_map(_orqwa.minimap_mesh())
 	var max_heart_rate: float = profile.get("max_heart_rate_bpm", 185.0)
