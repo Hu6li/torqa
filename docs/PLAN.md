@@ -349,6 +349,8 @@ Built in rideable steps:
     per rider (Casual, Plain, Off) in the profile, the lines in `MomentLines`
   - [x] Power peaks against the rider's best 5 s, 1, 5, 20 and 60 min, from their history at
     the start, each told once the effort tops out
+  - [x] Five-minute cooldown per power record duration, in recorded riding time; improvements
+    are tracked silently during the cooldown, with no delayed notifications (R213, #482)
   - [x] One line on both summaries, worked out from the history (`App::recap`): the first
     ride on the course, else the rides this week against the rider's optional plan (profile:
     rides planned per week); figures and records stay with their own rows. A hard workout step

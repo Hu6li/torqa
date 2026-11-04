@@ -18,6 +18,9 @@ const MIN_MILESTONE_ROUTE: Meters = Meters(2_000.0);
 /// A "so far" milestone this close to halfway or the last kilometre would only repeat it.
 const MILESTONE_GAP: Meters = Meters(1_000.0);
 
+/// Repeated power records of the same duration stay quiet this long in riding time (R213).
+const POWER_PEAK_COOLDOWN: Duration = Duration::from_mins(5);
+
 /// A workout step counts as held from this long…
 const STEP_MIN: Duration = Duration::from_mins(1);
 /// …at this share of FTP or above: recoveries and warm-ups need no praise…
@@ -170,14 +173,17 @@ impl Milestones {
 
 /// Finds the rider's power records while they ride them: once an average over one of the
 /// [`RECORD_DURATIONS`] beats the best before, it is told when the effort tops out, so a long
-/// sprint is one moment rather than one a second.
+/// sprint is one moment rather than one a second. Further records of the same duration stay
+/// quiet for five minutes of recorded riding time (R213).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PowerPeaks {
-    /// Per duration: the best before this ride, raised by each record told; none for a rider
-    /// without records, whose every effort would be one.
+    /// Per duration: the best before this ride, raised by each record, including silent
+    /// improvements during the cooldown; none for a rider without earlier records.
     bests: [Option<Watts>; RECORD_DURATIONS.len()],
     /// Per duration: the record being ridden, the highest average so far.
     rising: [Option<Watts>; RECORD_DURATIONS.len()],
+    /// Per duration: the next allowed notification, on the recorded riding clock.
+    notify_after: [Duration; RECORD_DURATIONS.len()],
     /// `sums[i]`: the power of the first `i` samples added up.
     sums: Vec<f64>,
 }
@@ -187,6 +193,7 @@ impl PowerPeaks {
         Self {
             bests,
             rising: [None; RECORD_DURATIONS.len()],
+            notify_after: [Duration::ZERO; RECORD_DURATIONS.len()],
             sums: vec![0.0],
         }
     }
@@ -199,12 +206,12 @@ impl PowerPeaks {
             let sum = self.sums.last().copied().unwrap_or_default();
             // Like the power curve, a second without power counts as none.
             self.sums.push(sum + sample.power.map_or(0.0, |p| p.0));
-            told.extend(self.look());
+            told.extend(self.look(sample.elapsed));
         }
         told
     }
 
-    fn look(&mut self) -> Vec<Moment> {
+    fn look(&mut self, elapsed: Duration) -> Vec<Moment> {
         let seconds = self.sums.len() - 1;
         let mut told = Vec::new();
         for (i, duration) in RECORD_DURATIONS.into_iter().enumerate() {
@@ -219,11 +226,17 @@ impl PowerPeaks {
             let Some(best) = self.bests[i] else {
                 continue;
             };
+            if elapsed < self.notify_after[i] {
+                // Keep silent improvements as the bar to beat, without a pending notification.
+                self.bests[i] = Some(Watts(best.0.max(average.0)));
+                continue;
+            }
             let bar = self.rising[i].map_or(best.0, |rising| rising.0);
             if average.0 > bar {
                 self.rising[i] = Some(average);
             } else if let Some(peak) = self.rising[i].take() {
                 self.bests[i] = Some(peak);
+                self.notify_after[i] = elapsed + POWER_PEAK_COOLDOWN;
                 told.push(Moment::PowerPeak {
                     duration,
                     power: peak,
@@ -572,12 +585,12 @@ mod tests {
     }
 
     #[test]
-    fn only_an_effort_beyond_the_last_record_is_told_again() {
+    fn only_an_effort_beyond_the_last_record_is_told_again_after_cooldown() {
         let mut peaks = PowerPeaks::new(bests(Some(400.0)));
         let mut powers = vec![200.0; 10];
         for sprint in [450.0, 430.0, 500.0] {
             powers.extend([sprint; 6]);
-            powers.extend([200.0; 20]);
+            powers.extend([200.0; 300]);
         }
 
         let told = peaks.follow(&samples(&powers));
@@ -587,6 +600,125 @@ mod tests {
             power: Watts(w),
         };
         assert_eq!(told, vec![five_s(450.0), five_s(500.0)]);
+    }
+
+    fn power_peak(seconds: u64, power: f64) -> Moment {
+        Moment::PowerPeak {
+            duration: Duration::from_secs(seconds),
+            power: Watts(power),
+        }
+    }
+
+    #[test]
+    fn improving_one_minute_power_is_quiet_for_five_minutes() {
+        let mut records = bests(Some(2_000.0));
+        records[1] = Some(Watts(300.0));
+        let mut powers = vec![200.0; 60];
+        for power in [320.0, 321.0, 322.0, 323.0, 324.0] {
+            powers.extend([power; 61]);
+        }
+        powers.extend([200.0; 300]);
+        let ride = samples(&powers);
+
+        // The same notifications whether frames deliver one second or a batch of samples.
+        for batch in [1, 7, ride.len()] {
+            let mut peaks = PowerPeaks::new(records);
+            let mut told = Vec::new();
+            for end in (batch..ride.len()).step_by(batch) {
+                told.extend(peaks.follow(&ride[..end]));
+            }
+            told.extend(peaks.follow(&ride));
+            assert_eq!(told, [power_peak(60, 320.0)]);
+
+            let mut later = powers.clone();
+            later.extend([323.0; 61]);
+            later.extend([200.0; 60]);
+            later.extend([325.0; 61]);
+            assert_eq!(
+                peaks.follow(&samples(&later)),
+                [power_peak(60, 325.0)],
+                "after the cooldown only an improvement beyond the silent 324 W counts"
+            );
+        }
+
+        assert_eq!(
+            orqwa_session::analysis::analyse(&ride)
+                .power_curve
+                .at(Duration::from_mins(1)),
+            Some(Watts(324.0)),
+            "the final analysis includes improvements whose notifications were suppressed"
+        );
+    }
+
+    #[test]
+    fn a_new_power_peak_is_eligible_at_exactly_five_minutes() {
+        for gap in [299, 300] {
+            let mut peaks = PowerPeaks::new(bests(Some(400.0)));
+            let mut powers = vec![450.0; 6];
+            // The new average first exceeds 450 W exactly `gap` seconds after notification.
+            powers.resize(gap + 1, 200.0);
+            powers.extend([500.0; 6]);
+            let mut expected = vec![power_peak(5, 450.0)];
+            if gap == 300 {
+                expected.push(power_peak(5, 500.0));
+            }
+
+            assert_eq!(peaks.follow(&samples(&powers)), expected, "gap: {gap} s");
+        }
+    }
+
+    #[test]
+    fn suppressed_improvements_do_not_restart_the_cooldown() {
+        let mut peaks = PowerPeaks::new(bests(Some(400.0)));
+        let mut powers = vec![450.0; 6];
+        powers.resize(100, 200.0);
+        powers.extend([500.0; 6]);
+        powers.resize(301, 200.0);
+        powers.extend([550.0; 6]);
+
+        assert_eq!(
+            peaks.follow(&samples(&powers)),
+            [power_peak(5, 450.0), power_peak(5, 550.0)]
+        );
+    }
+
+    #[test]
+    fn a_peak_reached_during_cooldown_is_not_delayed_until_it_expires() {
+        let mut peaks = PowerPeaks::new(bests(Some(400.0)));
+        let mut powers = vec![450.0; 6];
+        powers.resize(295, 200.0);
+        powers.extend([500.0; 10]);
+        powers.extend([200.0; 10]);
+
+        assert_eq!(peaks.follow(&samples(&powers)), [power_peak(5, 450.0)]);
+    }
+
+    #[test]
+    fn power_record_durations_have_independent_cooldowns() {
+        let mut records = bests(Some(400.0));
+        records[1] = Some(Watts(300.0));
+        let mut peaks = PowerPeaks::new(records);
+        let mut powers = vec![200.0; 60];
+        powers.extend([450.0; 61]);
+
+        assert_eq!(
+            peaks.follow(&samples(&powers)),
+            [power_peak(5, 450.0), power_peak(60, 450.0)]
+        );
+    }
+
+    #[test]
+    fn polling_without_recorded_riding_time_does_not_expire_the_cooldown() {
+        let mut peaks = PowerPeaks::new(bests(Some(400.0)));
+        let mut powers = vec![450.0; 6];
+        let paused = samples(&powers);
+        assert_eq!(peaks.follow(&paused), [power_peak(5, 450.0)]);
+
+        for _ in 0..600 {
+            assert_eq!(peaks.follow(&paused), []);
+        }
+        powers.extend([500.0; 6]);
+        assert_eq!(peaks.follow(&samples(&powers)), []);
     }
 
     #[test]

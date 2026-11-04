@@ -548,3 +548,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R212 | Refines R53, R196 and R203 (2026-11-04): the in-ride **Group ride** window keeps its size and position while open and idle, including when connection warnings arrive, riders join, telemetry changes or voice controls update. Its content scrolls inside the opened frame rather than widening or growing the window. Resizing the application still keeps the decorated frame and action buttons inside the app, restoring the preferred size when room returns. Nested microphone and organizer dialogs retain content fitting. |
+
+## Power record notification cooldown
+
+| ID | Requirement |
+|---|---|
+| R213 | Refines R124 (2026-11-04, #482): after a **power record notification**, suppress further notifications for the same record duration for **five minutes of recorded riding time**. Pauses do not consume the cooldown, which starts afresh for each ride; different record durations remain independent. Continue tracking higher power during the cooldown and include it in the final records, without queuing suppressed notifications. Once the cooldown expires, only a further improvement beyond every best reached so far can produce another notification when the effort tops out. |
