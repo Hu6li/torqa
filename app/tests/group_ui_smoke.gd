@@ -852,7 +852,6 @@ func _group_motion() -> void:
 		first.generation == "1" and panel.visible, "fresh membership appears on the road and HUD"
 	)
 	_check(panel._labels[1].text == "12 m ahead", "relative gap uses metric distance")
-	# Others see the rider as they chose to look (#423) and their effort (#422).
 	_check(first._avatar.rider == "male", "the rider's own avatar")
 	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
 	var speaker: TextureRect = panel._speaking[1]
@@ -863,7 +862,7 @@ func _group_motion() -> void:
 		panel._speaking[1] == speaker and speaker.modulate.a == 1.0,
 		"a speaker beside the name of a rider heard speaking"
 	)
-	_check("252 W · 3.4 W/kg" in first._name.text, "and under it on the road")
+	_check(first._name.text == "Alex <rider>", "only the literal rider name appears on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)
 	_check(panel._labels[1].text == "39 ft behind", "gap follows direction and rider units")
@@ -881,6 +880,7 @@ func _group_motion() -> void:
 	)
 	avatars.free()
 	panel.free()
+	await GroupRiderLabelChecks.check(self, _check, peer)
 
 
 ## The group ride opens from the ride's control bar (#431), and only while in a group.

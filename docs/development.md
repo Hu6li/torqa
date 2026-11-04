@@ -692,6 +692,19 @@ For native trainer acceptance, alternate leading and following as organizer and 
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.
 
+### Group rider nameplates
+
+`group_rider_label_checks.gd`, run by `group_ui_smoke.gd`, checks R217 using the actual glyph
+mesh projected through different cameras: 2–55 m, 55°/90° fields of view and 1600 × 900 /
+1024 × 640 viewports. It also checks long names, overlap priority, fading and off-screen removal.
+The labels keep their 3D depth test, so scenery still hides them.
+
+Capture the standard group views and the close-up/overview nameplate fixtures with
+`scripts/dev.sh sh -c 'SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh'`.
+Add `SCREENSHOT_RIDER_LABELS_ONLY=1` for just the nameplates, and `SCREENSHOT_SIZE=1024x640`
+for the smaller window. Compare the [nameplate screenshots](screenshots.md#group-rider-names):
+names should keep the same size, occupy one line and leave power/W/kg in the riders panel.
+
 ### Riding audio
 
 For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.

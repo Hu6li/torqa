@@ -572,3 +572,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R215 | Refines R166, R193, R209, R211 and R214 (2026-11-04): **Drafting supplies no shelter beside or overlapping another rider**, including a zero or rounded-zero gap. Shelter starts beyond a 1 m forward gap, rises smoothly to its 30% maximum at 3 m and tapers to zero at 15 m; only the strongest eligible source applies. Drafting and Keep together compare peer positions at the live local sample's time, with freshness measured on the current shared clock. Live prediction and the freshness grace cover the ordinary 800 ms delivery budget; fading then expires sources at two seconds, superseding R214's 500 ms grace detail. Applied effects filter packet corrections with a 0.5 s response; Keep together retains its one-percentage-point-per-second limit and reaches zero within two seconds without eligible peers. Drafting clears when no source remains ahead/in range. Pause, finish, coasting and disabled rules retain immediate local cancellation. Buffered rider playback, gap displays, telemetry, ERG targets and record eligibility retain their behavior. |
+
+## Group rider nameplates
+
+| ID | Requirement |
+|---|---|
+| R217 | Refines R53, R94 and R164 (2026-11-04): road avatars show **only the rider's name**, with effort and status in the existing riders panel. Names remain sharp at a steady interface text size as riders approach or recede, across camera fields of view and window sizes. Long names are ellipsized to a bounded width; nearer names take priority when labels overlap. Names fade out at their distance limit and do not appear behind the camera or along screen edges for off-screen riders. Scenery still occludes them. |

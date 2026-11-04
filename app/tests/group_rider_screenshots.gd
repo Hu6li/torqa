@@ -69,6 +69,8 @@ static func capture(main: Control, out: String) -> void:
 		if child is GroupRidersWorld:
 			riders = child as GroupRidersWorld
 			riders.set_process(false)
+	# Poses are frozen, but name visibility must still follow each review camera.
+	RenderingServer.frame_pre_draw.connect(riders._place_names)
 	ride._process(1.0 / 60.0)
 	ride.set_process(false)
 	ride._toast.hide()
@@ -87,6 +89,10 @@ static func capture(main: Control, out: String) -> void:
 	root.get_texture().get_image().save_png(out.path_join("group-riders-chase.png"))
 	root.get_texture().get_image().save_jpg(out.path_join("group-riders-chase.jpg"), 0.82)
 	print("saved group-riders-chase")
+	if OS.get_environment("SCREENSHOT_RIDER_LABELS_ONLY") == "1":
+		await _capture_names(app, world, ride, riders, peers, out)
+		RenderingServer.frame_pre_draw.disconnect(riders._place_names)
+		return
 	await _assistance(main, out)
 	world.set_camera(0)
 	# The request to organize the ride, over the ride (#424).
@@ -158,6 +164,7 @@ static func capture(main: Control, out: String) -> void:
 		root.get_texture().get_image().save_png(out.path_join("group-riders-bottom.png"))
 		root.get_texture().get_image().save_jpg(out.path_join("group-riders-bottom.jpg"), 0.82)
 		print("saved group-riders-bottom")
+	await _capture_names(app, world, ride, riders, peers, out)
 	ride.hide()
 	world.set_camera(2)
 	for frame: int in range(15):
@@ -189,6 +196,7 @@ static func capture(main: Control, out: String) -> void:
 	await tree.process_frame
 	root.get_texture().get_image().save_png(out.path_join("group-assisted-summary.png"))
 	print("saved group-assisted-summary")
+	RenderingServer.frame_pre_draw.disconnect(riders._place_names)
 
 
 static func _chunks_ready(world: RideWorld) -> bool:
@@ -219,3 +227,40 @@ static func _assistance(main: Control, out: String) -> void:
 			print("saved " + name)
 	TranslationServer.set_locale("en")
 	ride._show_assistance({})
+
+
+static func _capture_names(
+	app: OrqwaApp,
+	world: RideWorld,
+	ride: RideScreen,
+	riders: GroupRidersWorld,
+	peers: Array[Dictionary],
+	out: String
+) -> void:
+	var tree: SceneTree = world.get_tree()
+	var root: Window = tree.root
+	var close_peers: Array[Dictionary] = peers.duplicate(true)
+	app.jump_to_distance(702.5)
+	var close_pose: Dictionary = app.ride_state()
+	for key: String in ["rider_x", "rider_y", "elevation_m", "heading", "grade"]:
+		close_peers[0][key] = close_pose[key]
+	close_peers[0]["name"] = "Alexandra van der Very Long Rider Name"
+	close_peers[0]["gap_m"] = 2.5
+	ride._group_riders.show_riders(close_peers, false)
+	app.jump_to_distance(700.0)
+	world.set_camera(1)
+	for frame: int in range(15):
+		await tree.process_frame
+		riders.show_riders(close_peers, 0.0)
+	root.get_texture().get_image().save_png(out.path_join("group-rider-names-close.png"))
+	root.get_texture().get_image().save_jpg(out.path_join("group-rider-names-close.jpg"), 0.82)
+	print("saved group-rider-names-close")
+	world.set_camera(2)
+	for frame: int in range(15):
+		await tree.process_frame
+		riders.show_riders(close_peers, 0.0)
+	root.get_texture().get_image().save_png(out.path_join("group-rider-names-drone.png"))
+	root.get_texture().get_image().save_jpg(out.path_join("group-rider-names-drone.jpg"), 0.82)
+	print("saved group-rider-names-drone")
+	ride._group_riders.show_riders(peers, false)
+	riders.show_riders(peers, 0.0)

@@ -19,6 +19,17 @@ Video footage: “Le petit Menglonnais” by [Fred Van Gestel](https://cycling.v
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). That screenshot has the
 same licence; the footage is used only in documentation.
 
+## Group rider names
+
+Road labels show names only at a steady interface size (R217). Long names shorten with an
+ellipsis, and overlapping labels favor the nearer rider. Power and W/kg stay in the group panel.
+
+| Close rider and long name | Group from above |
+|---|---|
+| ![Nameplate close to the first-person camera](images/groups/rider-names-close.jpg) | ![Compact group nameplates from the drone](images/groups/rider-names-drone.jpg) |
+
+![Nameplates in the minimum window size](images/groups/rider-names-small.jpg)
+
 ## Courses, setup and analysis
 
 ![Group ride activity previews and invitations](images/groups/lobby-en.png)

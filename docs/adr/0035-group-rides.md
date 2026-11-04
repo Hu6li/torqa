@@ -255,11 +255,25 @@ the app never builds with nightly. Its lock follows the main one, and cargo-deny
 Riders saw each other's names and gaps but not their effort, and every friend rode as the
 default avatar (#422, #423). A roster entry now carries, beside the name and the rider-plus-bike
 mass, the rider's **own weight** and **avatar**. Others show each rider's power and power per
-kilogram beside their name in the riders panel and under it on the road, and draw them as they
-chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
+kilogram beside their name in the riders panel (road labels became name-only in R217), and
+draw them as they chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
 unknown avatar is a protocol error. The rider-plus-bike mass already revealed about as much as
 the weight, so sharing it with the group adds little; heart rate stays private as before.
 Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
+
+### Road nameplates — 2026-11-04
+
+World-sized text grew into a pixelated two-line block as riders approached. R217 keeps only
+the name above the avatar; power, W/kg and status remain in the riders panel. Label3D retains
+scenery depth testing, but its fixed-size billboard is calibrated to 16 interface units from
+the viewport and camera projection. A larger glyph atlas is sampled down for crisp text.
+Names are capped at 160 interface units with an ellipsis, overlapping farther labels are
+suppressed, and names fade over the last 15 m of their existing 80 m range. No networking,
+physics or stored-world format changes are needed.
+
+The visual review considered [Zwift's nameplate clutter reports](https://forums.zwift.com/t/rider-names-in-center-of-screen/624451)
+and [ROUVY's separate controls for labels and power indicators](https://support.rouvy.com/hc/en-us/articles/34303641851921-Customize-Your-Riding-Screen).
+The chosen treatment keeps identities near riders and detailed telemetry in the panel.
 
 ### Preparation progress — 2026-11-01
 

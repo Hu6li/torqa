@@ -42,3 +42,21 @@ func show_riders(peers: Array, delta: float) -> void:
 			remove_child(avatar)
 			avatar.queue_free()
 			_avatars.erase(id)
+	_place_names()
+
+
+func _place_names() -> void:
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	var ordered: Array[GroupRiderAvatar] = []
+	ordered.assign(_avatars.values())
+	if camera != null:
+		ordered.sort_custom(
+			func(a: GroupRiderAvatar, b: GroupRiderAvatar) -> bool:
+				return (
+					a.global_position.distance_squared_to(camera.global_position)
+					< b.global_position.distance_squared_to(camera.global_position)
+				)
+		)
+	var occupied: Array[Rect2] = []
+	for avatar: GroupRiderAvatar in ordered:
+		avatar.place_name(camera, occupied)
