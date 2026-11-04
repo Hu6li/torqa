@@ -4616,10 +4616,18 @@ mod tests {
 
     /// A flat 400 m route with elevations, so no terrain download is needed.
     pub(crate) fn write_route(dir: &std::path::Path) -> PathBuf {
+        write_graded_route(dir, 0.0)
+    }
+
+    fn write_graded_route(dir: &std::path::Path, grade_percent: f64) -> PathBuf {
         let mut xml = String::from("<gpx><trk><name>Test loop</name><trkseg>");
         for i in 0..=40 {
             let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
-            let _ = write!(xml, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
+            let elevation = 500.0 + f64::from(i) * 10.0 * grade_percent / 100.0;
+            let _ = write!(
+                xml,
+                r#"<trkpt lat="{lat}" lon="7"><ele>{elevation}</ele></trkpt>"#
+            );
         }
         xml.push_str("</trkseg></trk></gpx>");
         let path = dir.join("route.gpx");
@@ -4845,7 +4853,7 @@ mod tests {
     fn a_paused_ride_waits_and_goes_on_where_it_was() {
         let dir = temp_dir("pause");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
-        app.load_route(write_route(&dir), true);
+        app.load_route(write_graded_route(&dir, 5.0), true);
         run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(250.0),
@@ -4866,6 +4874,8 @@ mod tests {
         // Let the fake trainer report and record a full second with measured power.
         let before = ride(&mut app, 120);
         let calories_before = app.hud_calories();
+        let vam_before = app.hud_values().into_iter().find(|&(id, _)| id == "vam");
+        assert!(vam_before.unwrap().1.unwrap() > 0.0);
         assert!(calories_before.energy.unwrap().0 > 0.0);
         assert!(before.distance.0 > 1.0, "{before:?}");
         assert!(app.ambient_sound_active());
@@ -4879,6 +4889,11 @@ mod tests {
         let paused = ride(&mut app, 30);
         assert_eq!(paused.distance, before.distance);
         assert_eq!(paused.elapsed, before.elapsed);
+        assert_eq!(
+            app.hud_values().into_iter().find(|&(id, _)| id == "vam"),
+            vam_before,
+            "VAM excludes paused time"
+        );
         assert_eq!(
             app.hud_calories(),
             calories_before,

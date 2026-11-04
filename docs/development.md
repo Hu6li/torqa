@@ -392,6 +392,13 @@ adapter adds no controls or layout changes.
 
 ## Refreshing screenshots
 
+For VAM (R206, #498), `SCREENSHOT_VAM_ONLY=1 scripts/screenshots.sh` captures the HUD editor
+in English/German with metric and imperial ascent rates, without preparing a course.
+The Rust HUD tests cover total positive ascent over recorded riding time, including flat
+and descending sections; the pause integration test checks that the value stays fixed while
+paused. The HUD smoke suite checks selection, unavailable/zero values and m/h-to-ft/h
+conversion through the shared overlay panel.
+
 Tree rendering uses the original close models plus authored medium/far forms from
 `art/vegetation/lods.py`; rebuild those in the art container after a tree shape change.
 They preserve placement and stored worlds. Compare the same native GPU, camera and pixel

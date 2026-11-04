@@ -209,12 +209,14 @@ func _unit(metric: Dictionary) -> String:
 			return "mi" if imperial else "km"
 		"elevation":
 			return "ft" if imperial else "m"
+		"ascent_rate":
+			return "ft/h" if imperial else "m/h"
 		"grade":
 			return "%"
 	return metric["unit"]
 
 
-## A metric's value (km/h, km, m or s, as `ride_state()["metrics"]` has them) as display text.
+## A metric's value (km/h, km, m, m/h or s from `ride_state()["metrics"]`) as display text.
 func _format(metric: Dictionary, value: Variant) -> String:
 	if value == null:
 		return "--"
@@ -224,7 +226,7 @@ func _format(metric: Dictionary, value: Variant) -> String:
 		"speed", "distance":
 			if imperial:
 				number /= KM_PER_MILE
-		"elevation":
+		"elevation", "ascent_rate":
 			if imperial:
 				number /= METERS_PER_FOOT
 		"duration":

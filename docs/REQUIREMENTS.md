@@ -506,3 +506,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R205 | Refines R200–R201 (2026-11-03): opening any application **dialog or popup** immediately restores the pointer and keeps it visible for the entire time that any such window is open, including nested windows over an ongoing group ride. Embedded windows that leave the main window focused follow the same rule. Moving the pointer within a dialog never hides it. Closing the last dialog starts a fresh three-second idle delay when the course view is active. |
+
+## VAM in the HUD
+
+| ID | Requirement |
+|---|---|
+| R206 | Extends R23, R24 and R51 (2026-11-04, #498): riders may choose **VAM** (average ascent speed) in their saved HUD layout before or during a ride, including the overlay. It shows total positive elevation gain divided by recorded riding time so far, in **m/h** or **ft/h** according to the rider's units, rounded to a whole number. Flat and descending riding time count; descents do not subtract ascent and pauses do not count. Before recorded riding time, or without a course, show `--`; a flat course shows zero once riding time is recorded. The editor and tooltip explain the averaging period. Calculation stays in Rust and presentation converts units; existing layouts are preserved. |

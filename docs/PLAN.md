@@ -197,6 +197,8 @@ Built in rideable steps:
     after startup, independently of unopened or previously visited course options (R14, R48).
 - [x] Customizable HUD (R23); an ascent-to-go figure (#174); power in % of FTP and heart
   rate in % of the maximum; % of FTP also under a large power figure, beside W/kg and zone
+- [x] Optional VAM figure (R206, #498): climbing per recorded riding hour over the ride so
+  far, excluding pauses, in m/h or ft/h; available in the HUD editor and overlay
 - [x] Estimated time to the finish (R66, #231): on the course page at 75 % of FTP, as a
   time-to-go figure on the HUD from the rider's average power so far
 - [x] Simulation with the fake trainer: speed-up, jumps on map/profile, free camera (#53)

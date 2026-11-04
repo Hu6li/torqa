@@ -322,12 +322,39 @@ func _initialize() -> void:
 	_create_main()
 	if OS.get_environment("SCREENSHOT_CALORIES_ONLY") == "1":
 		_calories_only.call_deferred()
+	elif OS.get_environment("SCREENSHOT_VAM_ONLY") == "1":
+		_vam_only.call_deferred()
 	else:
 		_run.call_deferred()
 
 
 func _calories_only() -> void:
 	await CalorieScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
+
+
+func _vam_only() -> void:
+	var app: OrqwaApp = _main.get_node("Orqwa")
+	var dialog: ProfileDialog = _main.find_children("*", "ProfileDialog", true, false)[0]
+	var layout: PackedStringArray = PackedStringArray(
+		["vam", "elevation_gain", "elapsed", "grade", "power"]
+	)
+	for locale: String in ["en", "de"]:
+		for imperial: bool in [false, true]:
+			TranslationServer.set_locale(locale)
+			var profile: Dictionary = app.profile()
+			profile["units"] = "imperial" if imperial else "metric"
+			dialog.edit(profile, layout)
+			var editor: HudEditor = dialog.get("_hud")
+			var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+			tabs.current_tab = editor.get_index()
+			await create_timer(0.4).timeout
+			var name: String = "hud-" + locale + ("-imperial" if imperial else "")
+			root.get_texture().get_image().save_png(
+				OS.get_environment("SCREENSHOT_DIR").path_join(name + ".png")
+			)
+			print("saved VAM ", name)
+			dialog.hide()
 	quit(0)
 
 
