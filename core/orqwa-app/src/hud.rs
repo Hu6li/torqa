@@ -19,6 +19,8 @@ pub enum MetricKind {
     Distance,
     /// Metres (feet in imperial).
     Elevation,
+    /// Metres climbed per hour (feet per hour in imperial).
+    AscentRate,
     /// Seconds, shown as a clock time.
     Duration,
     /// A gradient in percent, shown with its sign.
@@ -191,6 +193,9 @@ pub const METRICS: &[Metric] = &[
         MetricKind::Elevation,
         356.0,
     ),
+    metric("vam", "VAM", "", 0, MetricKind::AscentRate, 720.0).described(
+        "Average ascent speed over the ride so far: total climbing divided by riding time, excluding pauses. Unavailable without a course or recorded riding time."
+    ),
     metric("grade", "Grade", "", 1, MetricKind::Grade, 4.2),
     metric(
         "upcoming_grade",
@@ -245,7 +250,7 @@ pub fn sanitize(layout: &[String]) -> Vec<String> {
     }
 }
 
-/// Live value of every metric, in metric display units (km/h, km, m, s); `None` where unknown,
+/// Live value of every metric, in metric display units (km/h, km, m, m/h, s); `None` where unknown,
 /// e.g. heart rate without a strap, or the road without a route. `summary` summarises the
 /// samples so far, `time_to_go` is the estimated time to the finish (R66), and `calories` the
 /// estimated metabolic energy (#475), distinct from mechanical work.
@@ -301,6 +306,10 @@ pub fn values(
                 "elevation" => state.position.map(|p| p.elevation.0),
                 "elevation_gain" => route.map(|_| summary.elevation_gain.0),
                 "ascent_remaining" => route.map(|r| r.ascent_ahead(state.distance).0),
+                "vam" => route.and_then(|_| {
+                    let seconds = summary.elapsed.as_secs_f64();
+                    (seconds > 0.0).then(|| summary.elevation_gain.0 / seconds * 3600.0)
+                }),
                 "grade" => state.position.map(|p| p.grade.0),
                 "upcoming_grade" => upcoming,
                 "intensity" => summary.intensity_factor,
@@ -414,6 +423,68 @@ mod tests {
         }
         let default: Vec<String> = DEFAULT_LAYOUT.iter().map(|&s| s.to_owned()).collect();
         assert_eq!(sanitize(&default), default);
+    }
+
+    #[tokio::test]
+    async fn vam_uses_positive_climbing_over_all_recorded_riding_time() {
+        use orqwa_domain::recording::Location;
+        use orqwa_domain::units::GradePercent;
+
+        let route = Route::from_gpx(
+            r#"<gpx><trk><trkseg>
+            <trkpt lat="46.0" lon="7.0"><ele>500</ele></trkpt>
+            <trkpt lat="46.01" lon="7.0"><ele>550</ele></trkpt>
+            </trkseg></trk></gpx>"#,
+            None,
+        )
+        .await
+        .unwrap();
+        let profile = Profile::default();
+        let state = riding(200.0, 140.0);
+        let mut samples = Vec::new();
+        for (seconds, elevation, expected) in [
+            (0, 100.0, None),
+            (1800, 700.0, Some(1200.0)),
+            (2700, 400.0, Some(800.0)),
+            (3600, 400.0, Some(600.0)),
+            (4500, 700.0, Some(720.0)),
+        ] {
+            samples.push(Sample {
+                elapsed: Duration::from_secs(seconds),
+                location: Some(Location {
+                    lat: 46.0,
+                    lon: 7.0,
+                    elevation: Meters(elevation),
+                    grade: GradePercent(0.0),
+                }),
+                ..power_samples(&[200.0])[0]
+            });
+            let summary = orqwa_session::analysis::summarize(&samples, profile.ftp);
+            let vam = |route| {
+                values(&state, &samples, &summary, route, &profile, None, None)
+                    .into_iter()
+                    .find(|&(id, _)| id == "vam")
+                    .unwrap()
+                    .1
+            };
+            assert_eq!(vam(Some(&route)), expected, "at {seconds} seconds");
+            assert_eq!(vam(None), None, "no course, no ascent speed");
+        }
+        let summary = RideSummary {
+            elapsed: Duration::from_secs(600),
+            ..RideSummary::default()
+        };
+        assert!(
+            values(&state, &[], &summary, Some(&route), &profile, None, None)
+                .contains(&("vam", Some(0.0))),
+            "a flat course has zero VAM after recording starts"
+        );
+        let layout = ["vam".to_owned(), "elevation_gain".to_owned()];
+        assert_eq!(
+            sanitize(&layout),
+            layout,
+            "VAM survives saved layout cleanup"
+        );
     }
 
     #[test]

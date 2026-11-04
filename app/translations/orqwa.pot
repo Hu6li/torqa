@@ -487,6 +487,10 @@ msgstr ""
 msgid "Available — drag in to add, drop here to remove"
 msgstr ""
 
+#: core/orqwa-app/src/hud.rs
+msgid "Average ascent speed over the ride so far: total climbing divided by riding time, excluding pauses. Unavailable without a course or recorded riding time."
+msgstr ""
+
 #: app/scenes/history_screen.gd app/scenes/ride_summary_dialog.gd
 msgid "Avg cadence"
 msgstr ""
@@ -3633,6 +3637,10 @@ msgstr ""
 
 #: app/ui/graphics_settings.gd
 msgid "V-Sync"
+msgstr ""
+
+#: core/orqwa-app/src/hud.rs
+msgid "VAM"
 msgstr ""
 
 #: app/ui/ui_theme.gd

@@ -15,6 +15,7 @@ func _run() -> void:
 	_power_detail()
 	_zone_bars()
 	_calories()
+	_vam()
 	await _rider_hud_scrolling()
 	await _minimap()
 	if not _failed:
@@ -179,6 +180,51 @@ func _zone_bar(hud: HudPanel, id: String) -> Color:
 	var cell: Control = cells[id]
 	var color: Color = cell.get("_zone")
 	return color
+
+
+## VAM is selectable and formats its elevation rate in full view and the overlay (R206).
+func _vam() -> void:
+	var editor: HudEditor = HudEditor.new()
+	root.add_child(editor)
+	editor.edit(PackedStringArray(["power"]), false)
+	editor.place("vam", 0)
+	_expect(editor.layout(), ["vam", "power"], "VAM can be the large figure")
+	editor.free()
+	for imperial: bool in [false, true]:
+		var overlay: OverlayHud = OverlayHud.new()
+		root.add_child(overlay)
+		overlay.begin(PackedStringArray(["vam", "elevation_gain"]), imperial, {})
+		var hud: HudPanel = overlay.get("_hud")
+		var metric: Dictionary = hud.catalogue["vam"]
+		_check(str(metric["caption"]) == "VAM", "VAM caption from core")
+		_check(str(hud.call("_unit", metric)) == ("ft/h" if imperial else "m/h"), "VAM units")
+		for value: Variant in [null, 0.0, 1200.0]:
+			(
+				overlay
+				. show_state(
+					{
+						"metrics": {"vam": value},
+						"metric_zones": {},
+						"watts_per_kg": null,
+						"power_zone": null,
+						"heart_rate": null,
+						"workout": null,
+					}
+				)
+			)
+			var figures: Dictionary = hud.get("_values")
+			var figure: Label = figures["vam"]
+			var expected: String = "--" if value == null else "0"
+			if value == 1200.0:
+				expected = "3937" if imperial else "1200"
+			_check(figure.text == expected, "VAM preserves unavailable and converts ascent rate")
+			var tiles: Dictionary = hud.get("_tiles")
+			var tile: Control = tiles["vam"]
+			_check(
+				tile.tooltip_text == TranslationServer.translate(str(metric["description"])),
+				"VAM explains averaging"
+			)
+		overlay.free()
 
 
 func _available_chips(editor: HudEditor) -> Array[Node]:

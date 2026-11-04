@@ -3294,8 +3294,9 @@ impl OrqwaApp {
 
     /// Every metric the HUD can show: `[{id, caption, description, unit, decimals, kind, sample, zones,
     /// sample_zone}]`, with `kind` one of `number`, `speed`, `distance`, `elevation`,
-    /// `duration`, `grade`, `zone`. Values come in `ride_state()["metrics"]` in km/h, km, m and
-    /// s, and their zones (#432) in `ride_state()["metric_zones"]`: `zones` names the scale,
+    /// `ascent_rate`, `duration`, `grade`, `zone`. Values come in `ride_state()["metrics"]` in
+    /// km/h, km, m, m/h and s, and their zones (#432) in `ride_state()["metric_zones"]`:
+    /// `zones` names the scale,
     /// `power`, `heart_rate` or empty, and `sample_zone` is the sample's, or `null`.
     #[func]
     fn hud_metrics() -> VarArray {
@@ -3307,6 +3308,7 @@ impl OrqwaApp {
                 MetricKind::Speed => "speed",
                 MetricKind::Distance => "distance",
                 MetricKind::Elevation => "elevation",
+                MetricKind::AscentRate => "ascent_rate",
                 MetricKind::Duration => "duration",
                 MetricKind::Grade => "grade",
                 MetricKind::Zone => "zone",

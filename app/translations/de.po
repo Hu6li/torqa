@@ -4,6 +4,12 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: de\n"
 
+msgid "VAM"
+msgstr "VAM"
+
+msgid "Average ascent speed over the ride so far: total climbing divided by riding time, excluding pauses. Unavailable without a course or recorded riding time."
+msgstr "Durchschnittliche Steiggeschwindigkeit der bisherigen Fahrt: gesamte Höhenmeter geteilt durch die Fahrzeit ohne Pausen. Ohne Strecke oder aufgezeichnete Fahrzeit nicht verfügbar."
+
 msgid "Benchmark graphics"
 msgstr "Grafik testen"
 
