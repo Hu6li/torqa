@@ -814,6 +814,148 @@ fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority(
     assert!(peer.ride_state().is_some());
 }
 
+fn assistance_fixture() -> (Directory, App, Snapshot, Instant) {
+    let directory = Directory::new();
+    let mut app = directory.app();
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.group_open(None, options()).unwrap();
+    app.group.as_mut().unwrap().task.abort();
+    let config = app.ride_config(orqwa_domain::units::Percent(100.0), DescentMode::Coast);
+    app.begin(
+        crate::Ride::workout(Workout::ConstantPower(Watts(200.0)), config),
+        None,
+        crate::RouteRecords::default(),
+        None,
+        (None, None),
+    );
+    app.ride
+        .as_mut()
+        .unwrap()
+        .ride
+        .on_telemetry(&orqwa_domain::telemetry::Telemetry {
+            power: Some(Watts(200.0)),
+            cadence: Some(Rpm(85.0)),
+            ..Default::default()
+        });
+    for _ in 0..20 {
+        app.ride
+            .as_mut()
+            .unwrap()
+            .ride
+            .tick(Duration::from_millis(100));
+    }
+    let state = app.ride_state().unwrap();
+    let now = Instant::now();
+    let mut snapshot = Snapshot {
+        phase: Phase::Riding,
+        me: 1,
+        organizer: 0,
+        start: Some(now),
+        ..Snapshot::default()
+    };
+    snapshot.roster[0] = Some(Rider {
+        name: "Organizer".into(),
+        mass: Kilograms(83.0),
+        weight: Kilograms(75.0),
+        avatar: Avatar::Female,
+    });
+    snapshot.generations[0] = 1;
+    snapshot.states[0] = Some((
+        RiderState {
+            at: Duration::ZERO,
+            distance: Meters(state.distance.0 + 30.0),
+            speed: state.speed,
+            power: Watts(200.0),
+            cadence: Rpm(85.0),
+        },
+        now,
+    ));
+    app.group.as_mut().unwrap().effect_at = now;
+    (directory, app, snapshot, now)
+}
+
+fn assistance_step(app: &mut App, snapshot: &mut Snapshot, start: Instant, ms: u64) {
+    let elapsed = Duration::from_millis(ms);
+    for (state, at) in snapshot.states.iter_mut().flatten() {
+        state.at = elapsed;
+        *at = start + elapsed;
+    }
+    app.update_group_motion_at(snapshot, start + elapsed);
+}
+
+#[test]
+fn assistance_feedback_reports_applied_effects_without_changing_measurements() {
+    let (_directory, mut app, mut snapshot, now) = assistance_fixture();
+    let before = app.ride_state().unwrap();
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(before.distance.0 + 12.0);
+    assistance_step(&mut app, &mut snapshot, now, 100);
+    let feedback = app.group_feedback();
+    assert!(feedback.drafting > 0.0 && feedback.drafting < 1.0);
+    assert!(feedback.together > 0.0 && feedback.together < 1.0);
+    assert_eq!(
+        app.ride_state().unwrap().telemetry.power,
+        before.telemetry.power
+    );
+    assert_eq!(
+        app.ride_state().unwrap().telemetry.cadence,
+        before.telemetry.cadence
+    );
+    // Relative speed may brake a rider who is still behind; never infer direction from gap.
+    snapshot.states[0].as_mut().unwrap().0.speed = MetersPerSecond(0.6);
+    assistance_step(&mut app, &mut snapshot, now, 1100);
+    assert!(app.group_feedback().together < 0.0);
+    assert!(app.group_feedback().drafting > 0.0);
+    let fresh = app.group_feedback();
+    let effect = app.group.as_ref().unwrap().effect;
+    assert!((app.group_feedback().together + effect.grade_offset().0 / 2.0).abs() < 1e-9);
+    app.group.as_mut().unwrap().transition = Some((now + Duration::from_millis(1100), effect));
+    assistance_step(&mut app, &mut snapshot, now, 1200);
+    let blended = app.group.as_ref().unwrap().effect;
+    assert!((app.group_feedback().drafting - (1.0 - blended.drag_share()) / 0.3).abs() < 1e-9);
+    app.group.as_mut().unwrap().transition = None;
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    snapshot.states[0].as_mut().unwrap().1 = now + Duration::from_millis(200);
+    app.update_group_motion_at(&snapshot, now + Duration::from_millis(1200));
+    let fading = app.group_feedback();
+    assert!(fading.drafting > 0.0 && fading.drafting < fresh.drafting);
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    app.update_group_motion_at(&snapshot, now + Duration::from_millis(4200));
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.group.as_mut().unwrap().peers = orqwa_session::group::Riders::default();
+    assistance_step(&mut app, &mut snapshot, now, 4300);
+    assert!(app.group_feedback().drafting > 0.0);
+    snapshot.assistance = Assistance {
+        drafting: false,
+        keep_together: false,
+    };
+    assistance_step(&mut app, &mut snapshot, now, 4400);
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    snapshot.assistance = Assistance::default();
+    assistance_step(&mut app, &mut snapshot, now, 4500);
+    app.ride.as_mut().unwrap().paused = true;
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.ride.as_mut().unwrap().paused = false;
+    app.ride.as_mut().unwrap().finished = true;
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    app.ride.as_mut().unwrap().finished = false;
+    app.ride
+        .as_mut()
+        .unwrap()
+        .ride
+        .on_telemetry(&orqwa_domain::telemetry::Telemetry {
+            power: Some(Watts(0.0)),
+            ..Default::default()
+        });
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    assert_eq!(before.telemetry.power, Some(Watts(200.0)));
+    assert_eq!(
+        app.ride_state().unwrap().workout.unwrap().target_power,
+        Some(Watts(200.0))
+    );
+    app.group_leave();
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+}
+
 #[test]
 fn assistance_transitions_keep_force_continuous_and_bounded() {
     use orqwa_domain::units::GradePercent;
@@ -825,6 +967,157 @@ fn assistance_transitions_keep_force_continuous_and_bounded() {
     assert!((middle.drag_share() - 0.85).abs() < 1e-9);
     assert!(middle.grade_offset().0.abs() < 1e-9);
     assert_eq!(blend(old, new, Duration::from_secs(2)), new);
+}
+
+#[test]
+fn assistance_is_identical_for_organizers_friends_and_reassigned_slots() {
+    for me in [0, 1, 7] {
+        let (_directory, mut app, mut snapshot, now) = assistance_fixture();
+        let peer = (usize::from(me) + 1) % MAX_RIDERS;
+        let member = snapshot.roster[0].take();
+        let state = snapshot.states[0].take();
+        snapshot.roster[peer] = member.clone();
+        snapshot.states[peer] = state;
+        snapshot.generations[peer] = 1;
+        snapshot.me = me;
+        snapshot.roster[usize::from(me)] = member;
+        snapshot.generations[usize::from(me)] = 1;
+        let mut echo = state.unwrap();
+        echo.0.distance = Meters(100_000.0);
+        snapshot.states[usize::from(me)] = Some(echo);
+        snapshot.organizer = me;
+        assistance_step(&mut app, &mut snapshot, now, 1000);
+        let support = app.group_feedback().together;
+        assert!(
+            (support - 0.2).abs() < 1e-9,
+            "organizer receives the same support"
+        );
+        snapshot.organizer = u8::try_from(peer).unwrap();
+        snapshot.epoch += 1;
+        assistance_step(&mut app, &mut snapshot, now, 1000);
+        assert!((app.group_feedback().together - support).abs() < 1e-9);
+        // The peer is now behind: the organizer must also receive braking.
+        snapshot.organizer = me;
+        snapshot.states[peer].as_mut().unwrap().0.distance = Meters(0.0);
+        snapshot.states[peer].as_mut().unwrap().0.speed = MetersPerSecond(0.6);
+        assistance_step(&mut app, &mut snapshot, now, 4000);
+        assert!(app.group_feedback().together < 0.0);
+    }
+}
+
+#[test]
+fn assistance_roster_changes_fade_but_local_stop_and_leave_clear_immediately() {
+    let (_directory, mut app, mut snapshot, now) = assistance_fixture();
+    assistance_step(&mut app, &mut snapshot, now, 1000);
+    let before = app.group.as_ref().unwrap().effect.grade_offset().0;
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(100_000.0);
+    snapshot.states[0].as_mut().unwrap().0.speed = MetersPerSecond(150.0);
+    assistance_step(&mut app, &mut snapshot, now, 1100);
+    let sprint = app.group.as_ref().unwrap().effect.grade_offset().0;
+    assert!((sprint - before).abs() <= 0.100_000_001);
+    snapshot.away[0] = true;
+    assistance_step(&mut app, &mut snapshot, now, 1200);
+    let missing = app.group.as_ref().unwrap().effect.grade_offset().0;
+    assert!(missing < 0.0 && missing > sprint);
+    assistance_step(&mut app, &mut snapshot, now, 3200);
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+    snapshot.away[0] = false;
+    snapshot.generations[0] += 1;
+    assistance_step(&mut app, &mut snapshot, now, 3300);
+    assert!((app.group_feedback().together - 0.05).abs() < 1e-9);
+    for ms in [3400, 3600] {
+        app.ride.as_mut().unwrap().paused = true;
+        assistance_step(&mut app, &mut snapshot, now, ms);
+        assert_eq!(
+            app.group.as_ref().unwrap().effect,
+            orqwa_physics::GroupEffect::default()
+        );
+        app.ride.as_mut().unwrap().paused = false;
+        assistance_step(&mut app, &mut snapshot, now, ms + 100);
+        assert!((app.group_feedback().together - 0.05).abs() < 1e-9);
+    }
+    app.ride.as_mut().unwrap().finished = true;
+    assistance_step(&mut app, &mut snapshot, now, 3800);
+    assert_eq!(
+        app.group.as_ref().unwrap().effect,
+        orqwa_physics::GroupEffect::default()
+    );
+    app.ride.as_mut().unwrap().finished = false;
+    assistance_step(&mut app, &mut snapshot, now, 3900);
+    app.group_leave();
+    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+}
+
+#[test]
+fn assistance_brings_different_power_riders_into_a_pack() {
+    use orqwa_domain::units::GradePercent;
+    use orqwa_physics::{Motion, RiderSetup};
+    let dt = Duration::from_millis(100);
+    let powers = [Watts(180.0), Watts(220.0), Watts(260.0)];
+    let mut motion = [Motion::moving_at(MetersPerSecond(10.0)); 3];
+    let mut solo = motion;
+    let mut positions = [100.0, 160.0, 220.0];
+    let mut solo_positions = positions;
+    let mut applied = [GradePercent(0.0); 3];
+    for _ in 0..3000 {
+        let peers: [Option<orqwa_session::group::Rider>; MAX_RIDERS] = std::array::from_fn(|id| {
+            positions
+                .get(id)
+                .map(|&distance| orqwa_session::group::Rider {
+                    generation: 1,
+                    distance: Meters(distance),
+                    speed: motion[id].speed(),
+                    power: powers[id],
+                    cadence: Rpm(85.0),
+                    age: Duration::ZERO,
+                })
+        });
+        for id in 0..3 {
+            let mut others = peers;
+            others[id] = None;
+            let target = orqwa_session::group::assistance(
+                &others,
+                Meters(positions[id]),
+                motion[id].speed(),
+                true,
+                false,
+                true,
+            );
+            let previous = applied[id];
+            applied[id] = smooth_band(previous, target.grade_offset(), dt);
+            assert!((applied[id].0 - previous.0).abs() <= 0.100_000_001);
+            positions[id] += motion[id]
+                .step(
+                    &RiderSetup::default(),
+                    powers[id],
+                    applied[id],
+                    MetersPerSecond(0.0),
+                    dt,
+                )
+                .0;
+            solo_positions[id] += solo[id]
+                .step(
+                    &RiderSetup::default(),
+                    powers[id],
+                    GradePercent(0.0),
+                    MetersPerSecond(0.0),
+                    dt,
+                )
+                .0;
+        }
+    }
+    let spread = |p: [f64; 3]| {
+        p.into_iter().fold(f64::NEG_INFINITY, f64::max)
+            - p.into_iter().fold(f64::INFINITY, f64::min)
+    };
+    assert!(
+        spread(positions) < 60.0,
+        "different abilities stay together: {positions:?}"
+    );
+    assert!(
+        spread(solo_positions) > 100.0,
+        "the same riders separate without assistance"
+    );
 }
 
 #[test]

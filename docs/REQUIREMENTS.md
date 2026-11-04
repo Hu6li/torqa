@@ -524,3 +524,21 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R208 | Refines R48 and R167 (2026-11-04): during a group ride, **Ride settings** shows its tabs without the shared-workout helper text above them. Shared workout controls remain in **Group Rides**. |
+
+## Active group assistance
+
+| ID | Requirement |
+|---|---|
+| R209 | Extends R166 (2026-11-04, #425): the main **3D course riding view** automatically shows active local assistance near the bottom centre, independent of camera choice: **Drafting** with a strength bar and **Support** or **Braking** with a centred directional strength bar. Both may appear together, without numbers; each disappears when inactive, leaving no empty panel. Strengths follow the actual effect applied by Rust, including stale-source fading and organizer-transition blending, normalized against the existing 30% maximum aerodynamic reduction and ±2 percentage-point Keep together limit. Relative speed may cause braking while still behind. Indicators clear ride controls and organizer/voice prompts and do not intercept input. They are absent from video rides, overlay mode and workouts without a course. This display changes no assistance physics, measured telemetry, ERG targets or record eligibility; group-based Keep together behavior independent of organizer status is a separate follow-up (#504). |
+
+## Compact assistance below the HUD
+
+| ID | Requirement |
+|---|---|
+| R210 | Refines R209's presentation (2026-11-04, #425): active assistance appears in **one compact panel directly below the main metrics HUD, matching its width**, replacing the bottom-centre placement. The panel uses two columns, with smaller labels on the left and aligned strength bars on the right: **Drafting:** and **Support:** or **Braking:**, one active effect per row. Inactive rows collapse and the whole panel disappears without active effects. Its position follows changes to the HUD's height and layout. R209's effect semantics and view exclusions still apply. |
+
+## Keep together around the group
+
+| ID | Requirement |
+|---|---|
+| R211 | Refines R166 and R209 (2026-11-04, #504): **Keep together treats every rider equally**, including the organizer, around a shared reference from the group's current moving riders. Riders falling behind receive support and riders pulling away gentle braking; those close to the reference at its speed remain unaffected. A single sprint or stopped rider must not abruptly change everyone's assistance. Stopped, paused, finished and disconnected riders do not anchor the group; stale samples lose influence and cease contributing after two seconds. Moving riders may coast without leaving the reference. Reference calculation and transition limits are defined in ADR 0037. Local help still requires pedaling, clears immediately on pause/finish/leave, and stays within ±2 gradient percentage points; otherwise changes are limited to one percentage point per second and fade to zero within two seconds after losing all eligible peers. Indicators show the actual applied effects. Measured telemetry, ERG targets and assisted-ride record rules remain unchanged. |

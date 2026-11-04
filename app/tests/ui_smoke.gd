@@ -857,14 +857,14 @@ func _overlay() -> void:
 	var ride: RideScreen = main.get_node("RideScreen")
 	ride.begin({"workout": {"kind": "zone", "zone": 3}, "on_course": false})
 	ride.show()
-	var metrics: Control = main.get_node("RideScreen/MetricsPanel")
+	var metrics: Control = main.get_node("RideScreen/HudColumn/MetricsPanel")
 	var window: Window = root
 	var scale_before: Vector2i = window.content_scale_size
 
 	ride.overlay_requested.emit(true)
 	for i: int in range(3):
 		await process_frame
-	_check(ride.is_overlay() and not metrics.visible, "only the overlay shows")
+	_check(ride.is_overlay() and not metrics.is_visible_in_tree(), "only the overlay shows")
 	# Headless, the window has no flags of its own: they are checked on a real display.
 	var flags: bool = window.borderless and window.always_on_top and window.transparent
 	_check(
@@ -893,7 +893,7 @@ func _overlay() -> void:
 
 	_press(KEY_O)
 	await process_frame
-	_check(not ride.is_overlay() and metrics.visible, "O brings the whole screen back")
+	_check(not ride.is_overlay() and metrics.is_visible_in_tree(), "O brings the whole screen back")
 	_check(
 		not window.borderless and not window.always_on_top and not window.disable_3d,
 		"the window as it was"

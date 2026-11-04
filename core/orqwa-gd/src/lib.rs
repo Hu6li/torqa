@@ -3189,7 +3189,8 @@ impl OrqwaApp {
     /// `rider_x`/`rider_y` place the avatar in the local traffic lane; `x`/`y` stay on the
     /// route centre line for the map. The ghost has both pairs too. `position_m` is the
     /// presented route distance: in a group it follows the same buffered clock as peers,
-    /// while `distance_m`, HUD measurements and recording remain live.
+    /// while `distance_m`, HUD measurements and recording remain live. `assistance` contains
+    /// normalized applied `drafting` (0..1) and `together` (-1 braking..1 support) strengths.
     #[func]
     fn ride_state(&self) -> VarDictionary {
         let Some(app) = self.app.as_ref() else {
@@ -3205,11 +3206,13 @@ impl OrqwaApp {
             |value: Option<u8>| value.map_or_else(Variant::nil, |z| i64::from(z).to_variant());
         let values = app.hud_values();
         let group_view = app.group_view();
+        let feedback = app.group_feedback();
         let distance = group_view.distance.unwrap_or(state.distance);
         let mut dict = vdict! {
             "elapsed_s" => state.elapsed.as_secs_f64(),
             "paused" => app.is_paused(),
             "peers" => &group::riders(app, &group_view),
+            "assistance" => &vdict! {"drafting" => feedback.drafting, "together" => feedback.together},
             "distance_m" => state.distance.0,
             "position_m" => distance.0,
             "speed_kmh" => state.speed.as_kilometers_per_hour(),

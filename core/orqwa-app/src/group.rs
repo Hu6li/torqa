@@ -63,6 +63,15 @@ pub struct GroupView {
     pub riders: Vec<GroupRider>,
 }
 
+/// Strength of the assistance applied to local motion, independent of organizer status (R209).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AssistanceFeedback {
+    /// Aerodynamic shelter from zero to one, where one is the existing 30% drag reduction.
+    pub drafting: f64,
+    /// Keep-together strength from minus one (maximum braking) to one (maximum support).
+    pub together: f64,
+}
+
 /// What the organizer is choosing, as friends see it before it is shared (#418).
 pub struct Previewed {
     /// Identifies this preview: another one means the organizer chose something else.
@@ -490,6 +499,7 @@ pub(crate) struct Running {
     reported_failure: u64,
     authority: u64,
     effect: orqwa_physics::GroupEffect,
+    effect_at: Instant,
     transition: Option<(Instant, orqwa_physics::GroupEffect)>,
 }
 #[derive(Default)]
@@ -602,6 +612,7 @@ impl App {
             reported_failure: 0,
             authority: 1,
             effect: orqwa_physics::GroupEffect::default(),
+            effect_at: Instant::now(),
             transition: None,
         });
         Ok(())
@@ -723,6 +734,27 @@ impl App {
     #[must_use]
     pub fn group_riders(&self) -> Vec<GroupRider> {
         self.group_view().riders
+    }
+
+    /// Reports the applied effect, including stale-source fading and authority blending (R209).
+    /// Positive keep-together strength means support, even when the organizer changes.
+    #[must_use]
+    pub fn group_feedback(&self) -> AssistanceFeedback {
+        let (Some(group), Some(active)) = (&self.group, &self.ride) else {
+            return AssistanceFeedback::default();
+        };
+        let telemetry = active.ride.state().telemetry;
+        if active.paused
+            || active.finished
+            || !telemetry.power.is_some_and(|power| power.0 > 0.0)
+            || telemetry.cadence.is_some_and(|cadence| cadence.0 <= 0.0)
+        {
+            return AssistanceFeedback::default();
+        }
+        AssistanceFeedback {
+            drafting: ((1.0 - group.effect.drag_share()) / 0.3).clamp(0.0, 1.0),
+            together: (-group.effect.grade_offset().0 / 2.0).clamp(-1.0, 1.0),
+        }
     }
 
     /// Samples local and remote presentation together. Trainer control, recording and HUD
@@ -1243,12 +1275,16 @@ impl App {
     }
 
     fn update_group_motion(&mut self, snapshot: &Snapshot) {
+        self.update_group_motion_at(snapshot, Instant::now());
+    }
+
+    fn update_group_motion_at(&mut self, snapshot: &Snapshot, now: Instant) {
         let Some(group) = &mut self.group else {
             return;
         };
         if group.authority != snapshot.epoch {
             group.authority = snapshot.epoch;
-            group.transition = Some((Instant::now(), group.effect));
+            group.transition = Some((now, group.effect));
             group.peers = orqwa_session::group::Riders::default();
         }
         for id in 0..MAX_RIDERS {
@@ -1280,7 +1316,6 @@ impl App {
                 && state.telemetry.power.is_some_and(|p| p.0 > 0.0)
                 && state.telemetry.cadence.is_none_or(|c| c.0 > 0.0);
             let rules = snapshot.assistance;
-            let now = Instant::now();
             let mut current = group.peers.current(
                 now,
                 snapshot.start.map_or(std::time::Duration::ZERO, |start| {
@@ -1293,26 +1328,37 @@ impl App {
                 state.distance,
                 state.speed,
                 pedaling,
-                (snapshot.me != snapshot.organizer).then_some(usize::from(snapshot.organizer)),
                 rules.drafting,
                 rules.keep_together,
             );
             let effect = if pedaling {
-                group.transition.map_or(effect, |(at, previous)| {
-                    blend(previous, effect, at.elapsed())
-                })
+                let drag = group
+                    .transition
+                    .map_or(effect.drag_share(), |(at, previous)| {
+                        blend(previous, effect, now.saturating_duration_since(at)).drag_share()
+                    });
+                let band = if rules.keep_together {
+                    smooth_band(
+                        group.effect.grade_offset(),
+                        effect.grade_offset(),
+                        now.saturating_duration_since(group.effect_at),
+                    )
+                } else {
+                    orqwa_domain::units::GradePercent(0.0)
+                };
+                orqwa_physics::GroupEffect::new(drag, band)
             } else {
                 orqwa_physics::GroupEffect::default()
             };
-            if group
-                .transition
-                .is_some_and(|(at, _)| at.elapsed() >= std::time::Duration::from_secs(2))
-            {
+            if group.transition.is_some_and(|(at, _)| {
+                now.saturating_duration_since(at) >= std::time::Duration::from_secs(2)
+            }) {
                 group.transition = None;
             }
             group.effect = effect;
             active.ride.set_group_effect(effect);
         }
+        group.effect_at = now;
     }
     pub(crate) fn publish_group_state(&self) {
         if let Some(g) = &self.group
@@ -1418,6 +1464,17 @@ fn blend(
             from.grade_offset().0 + (to.grade_offset().0 - from.grade_offset().0) * weight,
         ),
     )
+}
+
+fn smooth_band(
+    from: orqwa_domain::units::GradePercent,
+    to: orqwa_domain::units::GradePercent,
+    elapsed: std::time::Duration,
+) -> orqwa_domain::units::GradePercent {
+    // One gradient percentage point per second bounds resistance changes on ordinary
+    // updates as well as roster changes; a missing reference fades fully within two seconds.
+    let step = elapsed.as_secs_f64();
+    orqwa_domain::units::GradePercent(from.0 + (to.0 - from.0).clamp(-step, step))
 }
 
 /// How much of preparing a course is done, 0–99, from its current step (#419): the steps

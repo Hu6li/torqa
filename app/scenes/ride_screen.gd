@@ -55,6 +55,7 @@ var _ghost_panel: PanelContainer = PanelContainer.new()
 var _ghost_name: Label = UiTheme.caption("")
 var _ghost_gap: Label = UiTheme.value(20)
 var _group_riders: GroupRidersPanel = GroupRidersPanel.new()
+var _assistance: GroupAssistance = GroupAssistance.new()
 var _finished: bool = false
 var _saved: bool = false
 var _toast_left: float = 0.0
@@ -127,6 +128,7 @@ func begin(options: Dictionary) -> void:
 	_saved = false
 	_gear = 0
 	_moment_card.clear()
+	_assistance.show_feedback({})
 	_bar.show_settings(true)
 	_bar.show_back(false)
 	_bar.show_pause(true)
@@ -214,6 +216,7 @@ func _ready() -> void:
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
+	($HudColumn as VBoxContainer).add_child(_assistance)
 	_build_group_window()
 	# Above the control bar, where it covers neither the HUD, the moments nor the map.
 	_offer.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -297,9 +300,11 @@ func _process(delta: float) -> void:
 		if _toast_left <= 0.0:
 			_toast.hide()
 	if not visible or _finished:
+		_assistance.hide()
 		return
 	_watch_frame_time(delta)
 	var state: Dictionary = _orqwa.ride_state()
+	_show_assistance(state)
 	if state.is_empty():
 		return
 	var peers: Array = state.get("peers", [])
@@ -342,6 +347,31 @@ func _process(delta: float) -> void:
 	_profile.set_rider_distance(distance_m)
 
 
+## Active assistance follows the metrics HUD in the main 3D course view (R210).
+func _show_assistance(state: Dictionary) -> void:
+	var show_effects: bool = (
+		visible
+		and not _finished
+		and not is_overlay()
+		and not state.get("paused", false)
+		and state.has("x")
+		and not _orqwa.riding_along_video()
+	)
+	var feedback: Dictionary = state.get("assistance", {}) if show_effects else {}
+	_assistance.show_feedback(feedback)
+	# Narrow windows leave little room between the HUD and the requests over the ride.
+	var effects: Rect2 = _assistance.get_global_rect()
+	for card: Control in [_offer, _listen]:
+		if not card.visible:
+			continue
+		var left: float = (size.x - card.size.x) * 0.5
+		var bounds: Rect2 = card.get_global_rect()
+		bounds.position.x = global_position.x + left
+		if _assistance.visible and bounds.intersects(effects):
+			left = effects.end.x - global_position.x + 12.0
+		card.position.x = minf(left, size.x - card.size.x - 24.0)
+
+
 ## Whether the screen shows as the overlay.
 func is_overlay() -> bool:
 	return _overlay_hud.visible
@@ -368,6 +398,7 @@ func set_overlay(on: bool) -> void:
 			if control != _toast or _toast_left > 0.0:
 				control.show()
 		_hidden_by_overlay.clear()
+	_show_assistance(_orqwa.ride_state())
 
 
 ## The size the overlay's content needs, in interface units.
@@ -878,6 +909,7 @@ func _on_ride_finished() -> void:
 
 func _finish_ride() -> void:
 	_finished = true
+	_assistance.show_feedback({})
 	_moment_card.clear()
 	_settings_dialog.hide()
 	_bar.show_pause(false)
@@ -891,6 +923,7 @@ func _finish_ride() -> void:
 
 func _on_ride_saved(path: String) -> void:
 	_finished = true
+	_assistance.show_feedback({})
 	_bar.show_pause(false)
 	_saved = true
 	_bar.show_settings(false)

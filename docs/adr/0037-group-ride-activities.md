@@ -261,6 +261,39 @@ session tests cover simulation/ERG behavior, and saved FIT tests cover recording
 Seven-rider review images use presentation fixtures, separately from transport tests. Native
 trainer feel, audio permissions, cross-home connectivity and GPU frame rate remain manual.
 
+### Group-based Keep together — 2026-11-04 (#504, R211)
+
+This supersedes the organizer-based reference above. Every client computes a reference
+from live local motion and current validated peer motion, excluding its own accepted echo.
+Organizer identity is never an input. A rider moving at more than 0.5 m/s participates,
+including while coasting; stationary, paused and finished riders do not anchor the group.
+Disconnected/away memberships and reconnecting clients supply no peer reference. Arrival
+and source age retain the existing two-second cutoff; weight is one through 500 ms, then
+falls linearly to zero at two seconds. Local motion has weight one.
+
+Take the freshness-weighted median distance and speed (average the two boundary values
+when the cumulative weight is exactly half). Before the freshness-weighted mean, clamp each
+distance to within 25 m of the distance median and each speed to within 1 m/s of the speed
+median. Thus a single sprint cannot drag a larger pack's reference arbitrarily far; two fresh
+moving riders share their midpoint. At least one eligible peer is required. Multiply the
+resulting band by the freshest eligible peer's weight. This prevents an isolated stale peer
+from retaining full assistance through normalized weights. Stopped local riders may receive
+help when they resume pedaling, but supply no stationary anchor.
+
+The existing 5 m position dead zone, relative-speed damping and ±2 percentage-point limit
+remain. The applied band changes by at most one gradient percentage point per second,
+including after outlier, membership and authority changes. With no eligible peers it returns
+to zero within two seconds; a stale peer's target is already zero at its cutoff. Stopping
+pedaling, pausing, finishing, disabling Keep together or leaving clears the band immediately.
+Drafting retains its existing calculation and authority-transition blend. The band uses
+its own rate limit across authority changes rather than changing reference with the organizer.
+Feedback reads the final applied effect. Measurements, ERG targets and assisted-record
+eligibility retain the rules above. No wire-format or protocol-version change is needed.
+
+Tests cover role/slot permutations, a two-rider midpoint, an unaffected pack centre,
+bounded sprint influence, stopped/coasting/stale riders, transitions and closed-loop motion.
+Native trainer feel remains a manual acceptance check.
+
 ### Android publication and diagnostics repair — 2026-10-29
 
 Android's shared-storage filesystem rejects hard links even in the app-owned media folder.
