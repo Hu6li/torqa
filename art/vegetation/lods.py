@@ -19,13 +19,13 @@ def conifer(spec, far):
     mesh = trees.Mesh()
     rng = random.Random(spec["seed"])
     height, base, radius = spec["height"], spec["crown_base"], spec["radius"]
-    trees.trunk(mesh, height * 0.78, 0.28 * radius / 2.5, 0.06,
+    trees.trunk(mesh, height - 0.2, 0.28 * radius / 2.5, 0.015,
                 sides=4 if far else 6, segments=2 if far else 3)
     layers, spokes = (6, 4) if far else (12, 6)
     for level in range(layers):
         t = level / (layers - 1)
-        z = base + (height - base - 0.8) * t
-        reach = radius * (1 - t) ** 0.85 + 0.35
+        z = base + (height - base - trees.CONIFER_TIP_DEPTH) * t
+        reach = trees.conifer_reach(spec, z)
         drop = min((height - base) / layers * 1.5, z - 0.1)
         for spoke in range(spokes):
             heading = level * 0.9 + 2 * math.pi * spoke / spokes + rng.uniform(-0.2, 0.2)
@@ -35,12 +35,7 @@ def conifer(spec, far):
             trees.card(mesh, (0, 0, z), (math.cos(heading) * reach, math.sin(heading) * reach, -drop),
                        (0, 0, 1), math.hypot(reach, drop),
                        reach * (1.7 if far else 1.25), "needles", normal)
-    for spoke in range(3):
-        heading = spoke * 2 * math.pi / 3
-        trees.card(mesh, (0, 0, height - 2.6),
-                   (math.cos(heading) * 0.15, math.sin(heading) * 0.15, 1),
-                   (math.cos(heading + 1.57), math.sin(heading + 1.57), 0),
-                   2.6, 1.2, "needles", (0, 0, 1))
+    trees.conifer_leader(mesh, spec)
     return mesh
 
 

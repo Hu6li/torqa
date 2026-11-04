@@ -33,6 +33,8 @@ import preview  # noqa: E402  (needs the path above)
 PREVIEW = {"leaves": (0.25, 0.36, 0.12), "needles": (0.15, 0.25, 0.1), "frond": (0.3, 0.42, 0.14),
            "trunk": (0.3, 0.22, 0.16), "rock": (0.45, 0.44, 0.42)}
 
+CONIFER_TIP_DEPTH = 2.8
+
 
 class Mesh:
     """Faces with material names, built up piece by piece (z up, metres). Each face may carry
@@ -192,19 +194,50 @@ def card(mesh, base, out, up, length, width, material, normal):
               normals=[normal] * 4)
 
 
+def conifer_reach(spec, z):
+    """Crown envelope narrowing continuously to the leader, without a broad shelf at its tip."""
+    remaining = (spec["height"] - z) / (spec["height"] - spec["crown_base"])
+    return spec["radius"] * remaining ** 0.85 + 0.35 * min((spec["height"] - z) / 2.6, 1.0)
+
+
+def conifer_leader(mesh, spec):
+    """A slender terminal shoot above sparse upper whorls, shared at every detail level."""
+    height = spec["height"]
+    rng = random.Random(spec["seed"] + 101)
+    # Keep the tip's branching at every LOD: long steep cards turn it into a bare spike.
+    for level in range(5):
+        z = height - 2.5 + level * 0.5
+        for spoke in range(6):
+            heading = level * 0.9 + math.tau * spoke / 6 + rng.uniform(-0.2, 0.2)
+            out = (math.cos(heading), math.sin(heading), -rng.uniform(0.12, 0.25))
+            length = conifer_reach(spec, z) * rng.uniform(0.85, 1.1)
+            card(mesh, (0.0, 0.0, z), out, (0.0, 0.0, 1.0), length, length * 0.9,
+                 "needles", unit((math.cos(heading), math.sin(heading), 0.6)))
+    base = height - 0.85
+    width = conifer_reach(spec, base) * 0.32
+    for k in range(3):
+        heading = k * math.pi / 3
+        across = (math.cos(heading) * width, math.sin(heading) * width)
+        # Splayed rectangular sprays make competing tops; all planes end on the trunk axis.
+        mesh.face([(-across[0], -across[1], base), (across[0], across[1], base),
+                   (0.0, 0.0, height)], "needles",
+                  uvs=[(0.0, 1.0), (1.0, 1.0), (0.5, 0.0)],
+                  normals=[(0.0, 0.0, 1.0)] * 3)
+
+
 def conifer(spec):
     """A spruce: a straight trunk to near the top, whorls of needle sprays reaching out and
-    drooping, long at the bottom and short at the top, and a spire of upright sprays."""
+    drooping, long at the bottom and short at the top, beneath one upright leader."""
     mesh = Mesh()
     rng = random.Random(spec["seed"])
     height, crown_base, radius = spec["height"], spec["crown_base"], spec["radius"]
-    # The trunk ends inside the spire, where the sprays hide it.
-    trunk(mesh, height * 0.78, 0.28 * radius / 2.5, 0.06)
+    # The stem supports the upper whorls and ends inside the leader's needles.
+    trunk(mesh, height - 0.2, 0.28 * radius / 2.5, 0.015)
     z = crown_base
     whorl = 0
-    while z < height - 0.8:
+    while z < height - CONIFER_TIP_DEPTH:
         t = (z - crown_base) / (height - crown_base)
-        reach = radius * (1.0 - t) ** 0.85 + 0.35
+        reach = conifer_reach(spec, z)
         count = spec.get("sprays", 9)
         turn = whorl * 0.9
         for k in range(count):
@@ -217,11 +250,7 @@ def conifer(spec):
                  normal)
         z += rng.uniform(0.45, 0.65) * (1.0 - 0.3 * t)
         whorl += 1
-    for k in range(3):
-        heading = k * 2 * math.pi / 3
-        card(mesh, (0.0, 0.0, height - 2.6), (math.cos(heading) * 0.15, math.sin(heading) * 0.15, 1.0),
-             (math.cos(heading + 1.57), math.sin(heading + 1.57), 0.0), 2.6, 1.2, "needles",
-             (0.0, 0.0, 1.0))
+    conifer_leader(mesh, spec)
     return mesh, height
 
 
