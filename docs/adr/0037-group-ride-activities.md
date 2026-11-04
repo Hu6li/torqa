@@ -271,14 +271,24 @@ Disconnected/away memberships and reconnecting clients supply no peer reference.
 and source age retain the existing two-second cutoff; weight is one through 500 ms, then
 falls linearly to zero at two seconds. Local motion has weight one.
 
-Take the freshness-weighted median distance and speed (average the two boundary values
-when the cumulative weight is exactly half). Before the freshness-weighted mean, clamp each
-distance to within 25 m of the distance median and each speed to within 1 m/s of the speed
-median. Thus a single sprint cannot drag a larger pack's reference arbitrarily far; two fresh
-moving riders share their midpoint. At least one eligible peer is required. Multiply the
-resulting band by the freshest eligible peer's weight. This prevents an isolated stale peer
-from retaining full assistance through normalized weights. Stopped local riders may receive
-help when they resume pedaling, but supply no stationary anchor.
+For distance and speed separately, find the centre `c` where
+`sum(w * (x - c) / hypot(x - c, s)) = 0`, using scales `s` of 12.5 m and 0.5 m/s.
+Each rider's influence is bounded by its freshness weight and varies continuously with
+position, speed and weight. Two fresh moving riders share their midpoint. A distant sprinter
+cannot pull two fresh coincident riders' reference more than `s / sqrt(3)` away from them,
+retaining the existing modest outlier-assistance bound. The strictly decreasing balance has
+one root between the minimum and maximum values; at most 64 bisections bound per-frame work.
+At least one eligible peer is required. Multiply the resulting band by the freshest eligible
+peer's weight. This prevents an isolated stale peer from retaining full assistance through
+normalized weights. Stopped local riders may receive help when they resume pedaling, but
+supply no stationary anchor.
+
+This continuous calculation replaces the initial median-centred clamp (R213). At a 75 m
+two-rider gap, reducing one weight just below one switched that median from the midpoint to
+the local rider. The requested band jumped as source age crossed 500 ms, even without a new
+packet or movement. The applied rate limit softened each jump but left repeated fluctuations.
+The replacement preserves the equal-weight midpoint without that weight-boundary jump and
+keeps stale/outlier influence bounded.
 
 The existing 5 m position dead zone, relative-speed damping and ±2 percentage-point limit
 remain. The applied band changes by at most one gradient percentage point per second,
@@ -292,6 +302,9 @@ eligibility retain the rules above. No wire-format or protocol-version change is
 
 Tests cover role/slot permutations, a two-rider midpoint, an unaffected pack centre,
 bounded sprint influence, stopped/coasting/stale riders, transitions and closed-loop motion.
+Continuity regressions sweep sample age through 500 ms and the stale cutoff at steady
+two-rider gaps/speeds, vary a four-rider split pack's weight and replay 5 Hz updates delayed
+by 400 ms while buffered playback retains an exact 75 m gap.
 Native trainer feel remains a manual acceptance check.
 
 ### Android publication and diagnostics repair — 2026-10-29

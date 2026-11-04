@@ -54,8 +54,8 @@ fn one_sprint_has_bounded_influence_and_the_local_sprinter_is_treated_equally() 
     for sprint in [rider(200.0, 20.0), rider(1_000_000.0, 150.0)] {
         let others = peers(&[group[1], sprint]);
         let (center, pace, _) = reference(&others, group[0].distance, group[0].speed).unwrap();
-        assert!((center.0 - (100.0 + 25.0 / 3.0)).abs() < 1e-9);
-        assert!((pace.0 - (10.0 + 1.0 / 3.0)).abs() < 1e-9);
+        assert!((100.0..100.0 + 25.0 / 3.0).contains(&center.0));
+        assert!((10.0..10.0 + 1.0 / 3.0).contains(&pace.0));
         assert!(band(&others, group[0]).abs() < 0.6);
         let (own_center, own_pace, _) =
             reference(&peers(&group), sprint.distance, sprint.speed).unwrap();
@@ -133,5 +133,82 @@ fn relative_speed_can_brake_while_behind_and_nearby_equal_speed_riders_are_unaff
     assert!(band(&peers(&[peer]), rider(100.0, 14.0)) > 0.0);
     for gap in [-8.0, 0.0, 8.0] {
         assert_eq!(band(&peers(&[peer]), rider(110.0 + gap, 10.0)), 0.0);
+    }
+}
+
+#[test]
+fn aging_a_peer_does_not_abruptly_change_support_or_braking_at_a_steady_gap() {
+    for gap in [-100.0, -75.0, -50.0, 50.0, 75.0, 100.0] {
+        for local_speed in [9.0, 10.0, 11.0] {
+            let local = rider(200.0, local_speed);
+            let mut peer = rider(200.0 + gap, 10.0);
+            let mut previous = band(&peers(&[peer]), local);
+            for ms in 1..=2000 {
+                peer.age = Duration::from_millis(ms);
+                let current = band(&peers(&[peer]), local);
+                assert!(
+                    (current - previous).abs() < 0.02,
+                    "steady gap {gap}, speed {local_speed}, age {ms} ms: {previous} -> {current}"
+                );
+                previous = current;
+            }
+            assert_eq!(previous, 0.0, "assistance still expires at two seconds");
+        }
+    }
+}
+
+#[test]
+fn aging_one_rider_does_not_move_a_split_packs_reference_abruptly() {
+    let local = rider(100.0, 10.0);
+    let mut members = [local, rider(175.0, 10.0), rider(175.0, 10.0)];
+    let fresh = band(&peers(&members), local);
+    members[2].age = Duration::from_millis(501);
+    for rotation in 0..MAX_RIDERS {
+        let mut others = peers(&members);
+        others.rotate_left(rotation);
+        assert!((band(&others, local) - fresh).abs() < 0.01);
+    }
+}
+
+#[test]
+fn delayed_updates_keep_support_continuous_while_the_displayed_gap_is_steady() {
+    let start = Instant::now();
+    let mut motion = Riders::default();
+    let mut previous: Option<(u64, f64)> = None;
+    for ms in (400_u64..=4000).step_by(10) {
+        let elapsed = Duration::from_millis(ms);
+        let now = start + elapsed;
+        if ms.is_multiple_of(200) {
+            let source = elapsed.checked_sub(Duration::from_millis(400)).unwrap();
+            for (id, gap) in [(0, 0.0), (1, 75.0)] {
+                assert!(motion.observe(
+                    id,
+                    1,
+                    Sample {
+                        elapsed: source,
+                        distance: Meters(10.0 * source.as_secs_f64() + gap),
+                        speed: MetersPerSecond(10.0),
+                        power: Watts(200.0),
+                        cadence: Rpm(85.0),
+                    },
+                    now
+                ));
+            }
+        }
+        let view = motion.view(now, elapsed);
+        assert!((view[1].unwrap().distance.0 - view[0].unwrap().distance.0 - 75.0).abs() < 1e-9);
+        let mut current = motion.current(now, elapsed);
+        current[0] = None;
+        let support = band(&current, rider(10.0 * elapsed.as_secs_f64(), 10.0));
+        assert!(support < 0.0, "equal-speed trailing rider receives support");
+        if let Some((previous_ms, last)) = previous
+            && ms % 200 != 0
+        {
+            assert!(
+                (support - last).abs() < 0.1,
+                "no new packet between {previous_ms} and {ms} ms: {last} -> {support}"
+            );
+        }
+        previous = Some((ms, support));
     }
 }

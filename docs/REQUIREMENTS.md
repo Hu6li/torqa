@@ -548,3 +548,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R212 | Refines R53, R196 and R203 (2026-11-04): the in-ride **Group ride** window keeps its size and position while open and idle, including when connection warnings arrive, riders join, telemetry changes or voice controls update. Its content scrolls inside the opened frame rather than widening or growing the window. Resizing the application still keeps the decorated frame and action buttons inside the app, restoring the preferred size when room returns. Nested microphone and organizer dialogs retain content fitting. |
+
+## Continuous Keep together reference
+
+| ID | Requirement |
+|---|---|
+| R213 | Refines R211 (2026-11-04): at steady rider gaps and speeds, **Keep together's requested effect varies continuously as source samples age**, including when fading starts at 500 ms. A tiny freshness change must not abruptly move the group reference or switch support to braking. The reference retains a two-fresh-rider midpoint and bounded sprint influence; stale riders still fade and expire after two seconds. Existing applied transition limits, local safety cancellation, measured telemetry, ERG targets and assisted-record rules remain in force. |

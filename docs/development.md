@@ -665,7 +665,10 @@ indicators from all three cameras in both languages using presentation fixtures.
 
 For group-based Keep together (R211, #504), `orqwa-session`'s `group::reference_tests` checks
 the shared reference, slot permutations, the two-rider midpoint, unaffected nearby riders,
-sprint outliers, moving coasting riders and fading/expired sources. The app's `assistance_`
+sprint outliers, moving coasting riders and fading/expired sources. R213 adds millisecond
+age sweeps through fading and expiry, a split-pack reference check and a 75 m two-rider
+replay with 5 Hz source updates delayed by 400 ms. The replay checks the requested effect
+between packets while buffered playback keeps the displayed gap steady. The app's `assistance_`
 tests exercise organizer/friend equality through an authority change, own-echo exclusion,
 roster removal/reentry, local pause/finish/leave, applied feedback and the one-percentage-point
 per-second resistance limit. A closed-loop physics regression compares three different-power

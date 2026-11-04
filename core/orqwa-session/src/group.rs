@@ -248,8 +248,8 @@ fn freshness(rider: &Rider) -> f64 {
     ((STALE.as_secs_f64() - rider.age.as_secs_f64()) / 1.5).clamp(0.0, 1.0)
 }
 
-// Winsorizing before the weighted mean limits one sprint's influence without choosing a
-// leader. Keep both arrays fixed-size, independent of ride length and incoming traffic.
+// Bounded influence limits one sprint's pull without choosing a leader. Smooth influence
+// avoids a reference jump when the first peer starts to fade. Both arrays stay fixed-size.
 fn reference(
     riders: &[Option<Rider>; MAX_RIDERS],
     distance: Meters,
@@ -278,34 +278,38 @@ fn reference(
         count += 1;
     }
     Some((
-        Meters(robust_mean(&mut positions[..count], 25.0)),
-        MetersPerSecond(robust_mean(&mut speeds[..count], 1.0)),
+        Meters(robust_mean(&positions[..count], 12.5)),
+        MetersPerSecond(robust_mean(&speeds[..count], 0.5)),
         strength,
     ))
 }
 
-#[allow(clippy::float_cmp)] // An exact half-weight boundary averages its two adjacent values.
-fn robust_mean(values: &mut [(f64, f64)], limit: f64) -> f64 {
-    values.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-    let total: f64 = values.iter().map(|&(_, weight)| weight).sum();
-    let mut weight = 0.0;
-    let mut median = values[values.len() - 1].0;
-    for (index, &(value, share)) in values.iter().enumerate() {
-        weight += share;
-        if weight >= total / 2.0 {
-            median = if weight == total / 2.0 && index + 1 < values.len() {
-                value.midpoint(values[index + 1].0)
-            } else {
-                value
-            };
-            break;
+fn robust_mean(values: &[(f64, f64)], scale: f64) -> f64 {
+    let (mut low, mut high) = values.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(low, high), &(value, _)| (low.min(value), high.max(value)),
+    );
+    // Each rider's pull approaches its weight continuously, even at a distant sprint.
+    // The balance is strictly decreasing, so bisection has one root and bounded work.
+    for _ in 0..64 {
+        let center = low.midpoint(high);
+        let balance: f64 = values
+            .iter()
+            .map(|&(value, weight)| {
+                let offset = value - center;
+                weight * offset / offset.hypot(scale)
+            })
+            .sum();
+        if balance.abs() < 1e-12 {
+            return center;
+        }
+        if balance > 0.0 {
+            low = center;
+        } else {
+            high = center;
         }
     }
-    values
-        .iter()
-        .map(|&(value, weight)| value.clamp(median - limit, median + limit) * weight)
-        .sum::<f64>()
-        / total
+    low.midpoint(high)
 }
 
 #[cfg(test)]
