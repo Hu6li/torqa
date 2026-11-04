@@ -293,7 +293,7 @@ mod tests {
         });
         for invalid in [
             empty,
-            with(|c| c.name = "C:\\courses\\secret.tqc\n".into()),
+            with(|c| c.name = "C:\\courses\\secret.oqc\n".into()),
             with(|c| c.length = Meters(f64::NAN)),
             with(|c| c.climbing = Meters(-1.0)),
             with(|c| c.steepest = f64::INFINITY),

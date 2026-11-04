@@ -3776,7 +3776,7 @@ msgid "Wake the devices first."
 msgstr ""
 
 #: app/translations/extra-msgids.txt
-msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .tqc file. Share the file, and the other rider can use the detail offline without downloading the region."
+msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
 msgstr ""
 
 #: app/ui/workout_panel.gd

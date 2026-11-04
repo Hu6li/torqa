@@ -143,7 +143,7 @@ charge: OpenStreetMap data, © OpenStreetMap contributors (ODbL 1.0). The road s
 roundabouts ORQWA keeps of them, and carries in course files, are shared under the same
 licence. The test download `core/orqwa-osm/tests/data/bern.osm.pbf` is made by its tests.
 
-The sample course ORQWA ships (`core/orqwa-gd/courses/twann-chasseral.tqc`, R95) holds such
+The sample course ORQWA ships (`core/orqwa-gd/courses/twann-chasseral.oqc`, R95) holds such
 data: map tiles © OpenFreeMap © OpenMapTiles, data © OpenStreetMap contributors (ODbL 1.0), and
 terrain by Mapterhorn (CC BY 4.0) and AWS Terrain Tiles.
 

@@ -107,7 +107,7 @@ if args[1] == "view":
             self.assertEqual((self.root / "dist" / name).read_bytes(), b"archive")
 
     def test_no_download_goes_up_without_its_version(self):
-        # Plain and Torqa names were dropped after 0.5.3 (ADR 0023, R147).
+        # Plain and legacy names were dropped after 0.5.3 (ADR 0023, R147).
         self.assertEqual(self.publish().returncode, 0)
         for upload in self.calls()[2][3:-1]:
             self.assertIn("-0.1.0-", upload)

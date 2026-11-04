@@ -72,11 +72,19 @@ rm -f "$apk"
 # With the release key (CI, for tagged releases: ADR 0024), the APK riders install. Without it the
 # debug key, as Android Studio keeps one per developer: in the Gradle volume, not the image, so a
 # rebuilt image still signs alike and an update installs over the APK already on a device.
-# The release key keeps the alias it was made with, before the rename from Torqa.
 if [ -n "${ORQWA_RELEASE_KEYSTORE:-}" ]; then
     : "${ORQWA_RELEASE_KEYSTORE_PASSWORD:?Set it with ORQWA_RELEASE_KEYSTORE}"
+    # Discover the existing signing identity without tying builds to a historical alias.
+    release_alias="$(keytool -J-Duser.language=en -J-Duser.country=US -list -v \
+        -keystore "$ORQWA_RELEASE_KEYSTORE" -storepass:env ORQWA_RELEASE_KEYSTORE_PASSWORD |
+        awk '/^Alias name: / { alias = substr($0, 13) }
+             /^Entry type: PrivateKeyEntry/ { print alias; count++ }
+             END { if (count != 1) exit 1 }')" || {
+        echo 'The release keystore must contain exactly one signing key.' >&2
+        exit 1
+    }
     GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$ORQWA_RELEASE_KEYSTORE" \
-        GODOT_ANDROID_KEYSTORE_RELEASE_USER=torqa \
+        GODOT_ANDROID_KEYSTORE_RELEASE_USER="$release_alias" \
         GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$ORQWA_RELEASE_KEYSTORE_PASSWORD" \
         godot --headless --path "$stage/app" --export-release "Android" "$apk"
 else

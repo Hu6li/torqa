@@ -6,9 +6,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-# The repository's home first, then the names it had before: GitHub redirects links to them
-# and older wiki revisions carry them, so they pass; new links use the home.
-OWNERS = ("ORQWA/ORQWA", "Torqa-Indoor-Cycling/Torqa", "bossm8/Torqa")
+OWNERS = ("ORQWA/ORQWA",)
 WIKI_URLS = tuple(f"https://github.com/{owner}/wiki" for owner in OWNERS)
 REPO_URLS = tuple(f"https://github.com/{owner}/blob/main/" for owner in OWNERS)
 RAW_URLS = tuple(f"https://raw.githubusercontent.com/{owner}/main/" for owner in OWNERS)

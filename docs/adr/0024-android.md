@@ -141,7 +141,7 @@ volume: a key made with each image would refuse every update after a rebuild.
 
 ## Amendment 2026-10-20: phase D
 
-- **Release signing.** A tagged release's APK is signed with ORQWA's release key (alias `torqa`),
+- **Release signing.** A tagged release's APK is signed with ORQWA's release key (the signing alias is read from the keystore),
   kept in the repository secrets `ANDROID_KEYSTORE` and `ANDROID_KEYSTORE_PASSWORD` and written to
   the runner only for that step. Every other build, in CI or locally, is signed with a debug key:
   switching between the two needs an uninstall, and so would a lost release key for every rider.
@@ -200,7 +200,7 @@ syncs with a Nextcloud server instead.
   `ORQWA.moving` beside it, renamed to `ORQWA` and only then removed: `ORQWA` never holds half the
   data, and a move cut short is made again from the start. One that fails, for want of room
   for a second copy, leaves the private folder in use. An `ORQWA` a sync app filled before the
-  first start wins, and the private folder is left as it is, like Torqa's (R102).
+  first start wins, and the private folder is left as it is.
 - **The gallery.** Shared storage is scanned for media, so course videos would show among the
   rider's photos. A `.nomedia` beside `ORQWA`, not in it, keeps them out without syncing an
   Android file to the computers.

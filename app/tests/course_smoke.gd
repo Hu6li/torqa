@@ -152,7 +152,7 @@ func _edit_dialog() -> void:
 ## A card names the countries its course passes (#230): codes, their names on hover.
 func _card_countries() -> void:
 	var course: Dictionary = {
-		"path": "/tmp/x.tqc",
+		"path": "/tmp/x.oqc",
 		"name": "Dreiländer",
 		"length_m": 54000.0,
 		"elevation_gain_m": 420.0,
@@ -204,7 +204,7 @@ func _course_loading() -> void:
 	log.step("Building 3D world", "chunks", 40, 40)
 	log.finish()
 	var lost: Dictionary = {
-		"path": OS.get_user_data_dir().path_join("no-such-course.tqc"),
+		"path": OS.get_user_data_dir().path_join("no-such-course.oqc"),
 		"name": "Lost",
 		"length_m": 2400.0,
 		"elevation_gain_m": 149.4,

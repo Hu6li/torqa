@@ -59,7 +59,7 @@ func _run() -> void:
 	_check(_orqwa.save_course(), "course saving started")
 	var added: Array = await _wait_for(_orqwa.course_added)
 	var course_path: String = added[0]
-	_check(course_path.ends_with(".tqc"), "course saved: %s" % course_path)
+	_check(course_path.ends_with(".oqc"), "course saved: %s" % course_path)
 	var listed: bool = false
 	for course: Dictionary in _orqwa.courses():
 		var path: String = course["path"]
