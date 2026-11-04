@@ -26,7 +26,6 @@ var _orqwa: OrqwaApp
 ## The units the HUD editor shows its figures in, to follow the rider's.
 var _imperial: bool = false
 var _confirm_abort: ConfirmationDialog = ConfirmationDialog.new()
-var _shared_workout: Label = Label.new()
 
 
 func _ready() -> void:
@@ -47,16 +46,7 @@ func _ready() -> void:
 	_tabs.add_child(profile_page)
 	_devices.name = tr("Devices")
 	_tabs.add_child(_devices)
-	var content: VBoxContainer = VBoxContainer.new()
-	_shared_workout.text = tr(
-		"Use Group Rides for the shared workout. Your intensity stays personal."
-	)
-	_shared_workout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_shared_workout.hide()
-	content.add_child(_shared_workout)
-	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(_tabs)
-	add_child(content)
+	add_child(_tabs)
 	_translate_ride_tab()
 	_workout.changed.connect(_on_workout_changed)
 	_options.changed.connect(func() -> void: options_changed.emit(_options.options()))
@@ -117,7 +107,6 @@ func edit(
 	var workout: Dictionary = options.get("workout", {})
 	var on_course: bool = options.get("on_course", false)
 	var shared: bool = _orqwa != null and _orqwa.group_status().get("workout_shared", false)
-	_shared_workout.visible = shared
 	_tabs.set_tab_hidden(_workout.get_index(), workout.is_empty() or shared)
 	_tabs.set_tab_hidden(_options.get_index(), not workout.is_empty() and not on_course)
 	_tabs.current_tab = 0 if not workout.is_empty() else _options.get_index()
