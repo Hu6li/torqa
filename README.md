@@ -38,7 +38,7 @@ on your smart trainer, through a 3D world or along the video, alone or with frie
     </td>
     <td width="50%" align="center">
       <a href="docs/images/readme/overlay.jpg"><img src="docs/images/readme/overlay.jpg" alt="ORQWA's ride figures in a compact overlay window" width="250"></a><br>
-      <sub>Your ride figures over another window on macOS</sub>
+      <sub>Your ride figures over another window</sub>
     </td>
   </tr>
 </table>
@@ -72,7 +72,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 - **[Ride history](https://github.com/ORQWA/ORQWA/wiki/Ride-history):** Review your rides and
   records, and [upload activities to Strava or intervals.icu](https://github.com/ORQWA/ORQWA/wiki/Uploading-rides).
 - **[Overlay](https://github.com/ORQWA/ORQWA/wiki/Overlay):** See your ride figures over
-  other apps on macOS and Android.
+  other windows on macOS, Windows and Linux (X11), or in picture-in-picture on Android.
 - **[Offline riding](https://github.com/ORQWA/ORQWA/wiki/Getting-started#when-orqwa-needs-the-internet):**
   Ride prepared courses without an internet connection.
 
