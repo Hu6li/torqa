@@ -578,3 +578,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R217 | Refines R53, R94 and R164 (2026-11-04): road avatars show **only the rider's name**, with effort and status in the existing riders panel. Names remain sharp at a steady interface text size as riders approach or recede, across camera fields of view and window sizes. Long names are ellipsized to a bounded width; nearer names take priority when labels overlap. Names fade out at their distance limit and do not appear behind the camera or along screen edges for off-screen riders. Scenery still occludes them. |
+
+## Rider nameplate styling
+
+| ID | Requirement |
+|---|---|
+| R218 | Refines R217 (2026-11-05): rider names use **compact UI nameplates** matching ORQWA's interface: rounded charcoal panels, semibold white text, a subtle rider-colour edge and a soft shadow. They show the name alone, without flags or status readouts. A steady screen-space gap keeps the badge close above the animated helmet when riding seated or standing; approaching riders do not push the name far above their head. Text size, padding and panel dimensions stay consistent across distance, field of view, window size and display scaling. The existing width limit, nearest-first overlap priority, fading and scenery occlusion remain. |

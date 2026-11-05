@@ -694,16 +694,22 @@ near the group and immediate cancellation when paused. Native resistance feel re
 
 ### Group rider nameplates
 
-`group_rider_label_checks.gd`, run by `group_ui_smoke.gd`, checks R217 using the actual glyph
-mesh projected through different cameras: 2–55 m, 55°/90° fields of view and 1600 × 900 /
-1024 × 640 viewports. It also checks long names, overlap priority, fading and off-screen removal.
-The labels keep their 3D depth test, so scenery still hides them.
+`group_rider_label_checks.gd`, run by `group_ui_smoke.gd`, checks R217–R218 using native UI
+bounds above projected helmets: 2–55 m, 55°/90° fields of view and 1600 × 900 /
+1024 × 640 viewports. It also checks long names, overlap priority, fading, off-screen removal,
+fixed helmet clearance while seated or standing. `nameplate_render_smoke.gd`
+uses software Vulkan to check that text stays white under AgX/FXAA, scenery hides and reveals
+cards, and 4× MSAA, render resolution scaling, display scaling and window resizing retain
+correct occlusion. Detaching the camera effect must retain a valid mask for existing badges.
+It runs with the full and affected-change checks. The native UI badges use an eight-pixel
+GPU visibility mask so their text bypasses world post-processing while scenery still hides them.
 
 Capture the standard group views and the close-up/overview nameplate fixtures with
 `scripts/dev.sh sh -c 'SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh'`.
 Add `SCREENSHOT_RIDER_LABELS_ONLY=1` for just the nameplates, and `SCREENSHOT_SIZE=1024x640`
 for the smaller window. Compare the [nameplate screenshots](screenshots.md#group-rider-names):
-names should keep the same size, occupy one line and leave power/W/kg in the riders panel.
+badges should keep the same size and stay close above the helmet, with semibold white names,
+rounded charcoal panels and a small rider-colour edge. Power/W/kg remain in the riders panel.
 
 ### Riding audio
 

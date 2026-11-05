@@ -264,16 +264,28 @@ Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds a
 ### Road nameplates — 2026-11-04
 
 World-sized text grew into a pixelated two-line block as riders approached. R217 keeps only
-the name above the avatar; power, W/kg and status remain in the riders panel. Label3D retains
-scenery depth testing, but its fixed-size billboard is calibrated to 16 interface units from
-the viewport and camera projection. A larger glyph atlas is sampled down for crisp text.
-Names are capped at 160 interface units with an ellipsis, overlapping farther labels are
-suppressed, and names fade over the last 15 m of their existing 80 m range. No networking,
-physics or stored-world format changes are needed.
+the name above the avatar; power, W/kg and status remain in the riders panel. R218 replaces
+the initial outlined text with a compact UI badge: the shared charcoal panel, rounded corners,
+semibold white 15-unit text, a thin rider-colour edge and a soft shadow. No flags or icons.
+
+`GroupRiderNameplate` draws real `PanelContainer`/`Label` controls in the native UI layer,
+so the world's tone mapping, fog, antialiasing and resolution scaling cannot dull or blur
+the text. Native interface scaling supplies the same display-size behavior as the HUD.
+A shared compositor samples the scene depth at each badge's centre into an eight-pixel
+visibility texture. The UI shader hides occluded badges, without rendering the world again
+or reading depth back to the CPU. An initial hidden texture avoids unbound GPU resources;
+the mask owns its GPU allocation until the last canvas material releases it, including after
+camera detachment.
+The helmet's rest height is measured from each rider model and follows the animated head
+bone, including standing. Projecting an eight-unit gap above it keeps the badge close.
+
+Names are capped at 160 interface units with an ellipsis, overlapping farther badges are
+suppressed, and names fade over the last 15 m of their existing 80 m range.
 
 The visual review considered [Zwift's nameplate clutter reports](https://forums.zwift.com/t/rider-names-in-center-of-screen/624451)
 and [ROUVY's separate controls for labels and power indicators](https://support.rouvy.com/hc/en-us/articles/34303641851921-Customize-Your-Riding-Screen).
-The chosen treatment keeps identities near riders and detailed telemetry in the panel.
+The supplied nameplate reference informed R218's dark card and clear white text, adapted to
+ORQWA's existing panel styling without a flag.
 
 ### Preparation progress — 2026-11-01
 

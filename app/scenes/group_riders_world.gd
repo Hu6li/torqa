@@ -3,6 +3,9 @@ extends Node3D
 ## Owns current group avatars independently of course meshes and the local riding camera.
 
 var _avatars: Dictionary[int, GroupRiderAvatar] = {}
+var _visibility: GroupNameplateVisibility
+var _visibility_camera: Camera3D
+var _previous_compositor: Compositor
 @onready var _world: Node3D = get_parent() as Node3D
 
 
@@ -58,5 +61,43 @@ func _place_names() -> void:
 				)
 		)
 	var occupied: Array[Rect2] = []
-	for avatar: GroupRiderAvatar in ordered:
-		avatar.place_name(camera, occupied)
+	if camera != null and not ordered.is_empty():
+		_attach_visibility(camera)
+	var texture: Texture2D = _visibility.visibility_texture() if _visibility != null else null
+	var samples: PackedFloat32Array = PackedFloat32Array()
+	samples.resize(GroupNameplateVisibility.SLOTS * 4)
+	for index: int in range(mini(ordered.size(), GroupNameplateVisibility.SLOTS)):
+		var point: Vector4 = ordered[index].place_name(camera, occupied, texture, index)
+		for component: int in range(4):
+			samples[index * 4 + component] = point[component]
+	if _visibility != null:
+		_visibility.enabled = not ordered.is_empty()
+		_visibility.update_samples(samples)
+
+
+func _attach_visibility(camera: Camera3D) -> void:
+	if _visibility_camera == camera or RenderingServer.get_rendering_device() == null:
+		return
+	_detach_visibility()
+	_visibility_camera = camera
+	_previous_compositor = camera.compositor
+	var compositor: Compositor = Compositor.new()
+	var effects: Array[CompositorEffect] = []
+	if _previous_compositor != null:
+		effects.assign(_previous_compositor.compositor_effects)
+	_visibility = GroupNameplateVisibility.new()
+	effects.append(_visibility)
+	compositor.compositor_effects = effects
+	camera.compositor = compositor
+
+
+func _exit_tree() -> void:
+	_detach_visibility()
+
+
+func _detach_visibility() -> void:
+	if is_instance_valid(_visibility_camera):
+		_visibility_camera.compositor = _previous_compositor
+	_visibility = null
+	_visibility_camera = null
+	_previous_compositor = null

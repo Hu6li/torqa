@@ -73,6 +73,7 @@ var _bones: Dictionary[String, int] = {}
 ## Where each bone starts at rest, in the avatar's space.
 var _rest: Dictionary[String, Vector3] = {}
 var _to_skeleton: Transform3D
+var _head_top_offset: Vector3
 ## Where the hands rest on the hoods.
 var _hands: Vector3
 ## How far the body may turn up standing with both legs reaching all round the stroke.
@@ -135,6 +136,7 @@ func _build() -> void:
 	_to_skeleton = _skeleton_transform().affine_inverse()
 	for bone: String in [
 		"pelvis",
+		"head",
 		"thigh.L",
 		"shin.L",
 		"foot.L",
@@ -152,6 +154,16 @@ func _build() -> void:
 		_rest[bone] = (
 			(_to_skeleton.affine_inverse() * _skeleton.get_bone_global_rest(_bones[bone])).origin
 		)
+	# Calibrate against each model's helmet, then follow its animated head while standing.
+	var body_mesh: MeshInstance3D = _body[0] as MeshInstance3D
+	var bounds: AABB = body_mesh.get_aabb()
+	var top: float = -INF
+	for corner: int in range(8):
+		top = maxf(top, to_local(body_mesh.to_global(bounds.get_endpoint(corner))).y)
+	var head: Transform3D = (
+		_to_skeleton.affine_inverse() * _skeleton.get_bone_global_rest(_bones["head"])
+	)
+	_head_top_offset = head.affine_inverse() * Vector3(head.origin.x, top, head.origin.z)
 	_stand_tilt = _standing_reach()
 	show_rider(_shown)
 	animate(0.0, 0.0, 0.0)
@@ -160,6 +172,12 @@ func _build() -> void:
 ## The crank angle (radians; 0 with the right crank forward), for `RiderMotion`'s rock.
 func crank_angle() -> float:
 	return _crank_angle
+
+
+## The helmet's top in avatar space, following the animated head for nearby nameplates.
+func head_top() -> Vector3:
+	var head: Transform3D = _skeleton.get_bone_global_pose(_bones["head"])
+	return (_to_skeleton.affine_inverse() * head) * _head_top_offset
 
 
 ## Advances the animation: cadence in rpm, speed in km/h; `motion` sets sway, standing and the

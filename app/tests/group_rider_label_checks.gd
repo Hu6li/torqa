@@ -1,6 +1,6 @@
 class_name GroupRiderLabelChecks
 extends RefCounted
-## Camera-space nameplate behavior (R217), independent of course preparation and networking.
+## Camera-space nameplate behavior (R217–R218), independent of course preparation and networking.
 
 
 static func check(tree: SceneTree, verify: Callable, sample: Dictionary) -> void:
@@ -22,9 +22,14 @@ static func check(tree: SceneTree, verify: Callable, sample: Dictionary) -> void
 	riders.show_riders([peer], 0.0)
 	await tree.process_frame
 	var avatar: GroupRiderAvatar = riders.get_child(0)
+	camera.position.y = avatar._avatar.head_top().y
+	riders.show_riders([peer], 0.0)
+	await tree.process_frame
 	verify.call(avatar._name.visible, "a nearby name is visible")
-	var original: Vector2 = _projected_size(avatar._name, camera)
-	verify.call(original.y > 10.0 and original.y < 24.0, "a name is ordinary interface text")
+	var original: Vector2 = avatar._name.get_global_rect().size
+	verify.call(
+		original.y >= 24.0 and original.y < 36.0, "a nameplate is a compact interface badge"
+	)
 	for size: Vector2i in [Vector2i(1600, 900), Vector2i(1024, 640)]:
 		viewport.size = size
 		for fov: float in [55.0, 90.0]:
@@ -33,16 +38,20 @@ static func check(tree: SceneTree, verify: Callable, sample: Dictionary) -> void
 				peer["rider_y"] = distance
 				riders.show_riders([peer], 0.0)
 				await tree.process_frame
-				var projected: Vector2 = _projected_size(avatar._name, camera)
+				var projected: Vector2 = avatar._name.get_global_rect().size
 				verify.call(
 					projected.distance_to(original) < 0.5,
 					"name size stays steady at %s m, FOV %s, %s" % [distance, fov, size]
+				)
+				verify.call(
+					absf(_helmet_gap(avatar, camera) - GroupRiderAvatar.NAME_GAP) < 0.5,
+					"the badge stays close above the helmet at %s m" % distance
 				)
 	peer["name"] = "Alexandra van der Very Long Rider Name"
 	riders.show_riders([peer], 0.0)
 	await tree.process_frame
 	verify.call(avatar._name.text.ends_with("…"), "long names use an ellipsis")
-	verify.call(_projected_size(avatar._name, camera).x < 170.0, "long names stay compact")
+	verify.call(avatar._name.size.x < 185.0, "long names stay compact")
 	peer["name"] = "Alex"
 	peer["rider_y"] = 5.0
 	var farther: Dictionary = peer.duplicate(true)
@@ -78,22 +87,25 @@ static func check(tree: SceneTree, verify: Callable, sample: Dictionary) -> void
 	peer["rider_x"] = 0.0
 	riders.show_riders([peer], 0.0)
 	verify.call(avatar._name.visible, "a name returns when its rider is back in view")
+	var seated: Vector3 = avatar._avatar.head_top()
+	var standing: RiderMotion = RiderMotion.new()
+	standing.standing = 1.0
+	avatar._avatar.animate(0.0, 80.0, 20.0, standing)
+	riders._place_names()
+	verify.call(
+		avatar._avatar.head_top().y > seated.y, "the name anchor follows the standing rider"
+	)
+	verify.call(
+		absf(_helmet_gap(avatar, camera) - GroupRiderAvatar.NAME_GAP) < 0.5,
+		"standing retains the same screen-space helmet clearance"
+	)
+
 	viewport.free()
 	await tree.process_frame
 
 
-## Project the actual glyph mesh, including the fixed-size billboard's depth scaling.
-static func _projected_size(label: Label3D, camera: Camera3D) -> Vector2:
-	var mesh: TriangleMesh = label.generate_triangle_mesh()
-	var low: Vector2 = Vector2(INF, INF)
-	var high: Vector2 = Vector2(-INF, -INF)
-	var anchor: Vector3 = label.global_position
-	var depth: float = -(camera.global_transform.affine_inverse() * anchor).z
-	for vertex: Vector3 in mesh.get_faces():
-		var offset: Vector3 = camera.global_basis * vertex
-		var point: Vector2 = camera.unproject_position(
-			anchor + offset * (depth if label.fixed_size else 1.0)
-		)
-		low = low.min(point)
-		high = high.max(point)
-	return high - low
+static func _helmet_gap(avatar: GroupRiderAvatar, camera: Camera3D) -> float:
+	var helmet: Vector2 = camera.unproject_position(
+		avatar._avatar.to_global(avatar._avatar.head_top())
+	)
+	return helmet.y - avatar._name.get_global_rect().end.y

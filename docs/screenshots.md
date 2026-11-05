@@ -21,8 +21,9 @@ same licence; the footage is used only in documentation.
 
 ## Group rider names
 
-Road labels show names only at a steady interface size (R217). Long names shorten with an
-ellipsis, and overlapping labels favor the nearer rider. Power and W/kg stay in the group panel.
+Compact charcoal nameplates match the HUD's panel styling, with semibold white names and a
+small rider-colour edge (R217–R218). Their size and gap above the helmet stay steady as riders
+approach. Long names shorten with an ellipsis; overlapping badges favor the nearer rider.
 
 | Close rider and long name | Group from above |
 |---|---|
