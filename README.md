@@ -20,7 +20,7 @@
 ORQWA is a free, open-source indoor cycling app. Import a GPX route or a ride video and ride it
 on your smart trainer, through a 3D world or along the video, alone or with friends.
 
-<table>
+<table align="center">
   <tr>
     <td width="50%" align="center">
       <a href="docs/images/ride-lake.jpg"><img src="docs/images/ride-lake.jpg" alt="Riding along the Bielersee in ORQWA's 3D world" width="400"></a><br>
