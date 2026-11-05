@@ -609,10 +609,14 @@ Tagged builds of the app and CLI are available on the
 [Releases page](https://github.com/ORQWA/ORQWA/releases), without signing in.
 Between releases, download artifacts from the
 [CI runs on main](https://github.com/ORQWA/ORQWA/actions/workflows/ci.yml?query=branch%3Amain)
-while signed in to GitHub. Both use the same archives:
+while signed in to GitHub. Release filenames include the version; development artifacts omit it.
+Android development builds and releases use different signatures: switching requires
+uninstalling, which deletes app data. Export rides before switching.
+
+The artifacts contain these archives:
 
 The `macos` CI job builds `ORQWA-macos-arm64.zip` and `orqwa-cli-macos-arm64.tar.gz`. To test
-real trainers on macOS, use the CLI built by CI: see the [command-line guide](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool).
+real trainers on macOS, use the CLI built by CI: see the [command-line guide](command-line-tool.md).
 
 Windows builds come from the `windows` CI job: `ORQWA-windows-x86_64.zip` (`ORQWA.exe` with
 `orqwa_gd.dll` beside it; keep both in one folder), the installer `ORQWA-windows-x86_64.msi`
@@ -890,6 +894,11 @@ documentation and the PR.
 Keep the welcome and naming story on Home, and visual examples in the screenshot gallery.
 Lead guides with the steps a rider needs; explain settings and limitations only as needed
 to make a choice or solve a problem.
+
+Write for riders without technical experience: short steps, the exact control labels and
+practical troubleshooting. Keep the sidebar to the main rider tasks and link related guides
+from those pages. Put command-line reference, development-build instructions, implementation
+explanations and design rationale in this repository, not in the usage wiki.
 
 Rider guides live in the [GitHub wiki](https://github.com/ORQWA/ORQWA/wiki), checked out as
 the `wiki/` submodule ([ADR 0015](adr/0015-usage-wiki.md)). Clone with

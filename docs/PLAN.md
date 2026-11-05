@@ -1068,6 +1068,8 @@ The project is named ORQWA (orca, torque and watt).
   woodland changes; a screenshot gallery linked from the README and wiki navigation
 - [x] Shorten the usage wiki around setup and rider tasks; remove scenery and implementation
   descriptions, keeping the naming story and screenshot gallery
+- [x] Plain-language usage guides with a nine-link sidebar; connection checks follow the main
+  group-ride steps, and command-line and development-build guidance live in the repository
 - [x] Drop the legacy-named release asset (`scripts/release/publish.sh`) after
   0.5.3 (R147)
 - [x] Release files named with their version (`ORQWA-0.5.2-windows-x86_64.msi`, #322); the
