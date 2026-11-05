@@ -932,6 +932,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   current-selection content serving into the bounded lobby actors and update CLI callers
 - [x] Session/app integration: interpolated remote riders beside ghosts, map/profile markers
   and gaps; remote telemetry never substitutes for local measurements or supplies trainer commands
+- [x] Compact UI nameplates (R217–R219): rounded charcoal badges, semibold white names, a
+  rider-colour edge and a tiny downward pointer, steady size and helmet clearance, bounded width,
+  overlap suppression and fading
 - [x] Smooth and consistent group positions (R193): host-accepted local echoes and remote
   samples share one buffered playback clock, bounded source-time histories and monotone
   interpolation; road/map/profile/gaps agree while measurements, recording and assistance stay live

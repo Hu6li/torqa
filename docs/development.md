@@ -692,6 +692,27 @@ For native trainer acceptance, alternate leading and following as organizer and 
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.
 
+### Group rider nameplates
+
+`group_rider_label_checks.gd`, run by `group_ui_smoke.gd`, checks R217–R218 using native UI
+bounds above projected helmets: 2–55 m, 55°/90° fields of view and 1600 × 900 /
+1024 × 640 viewports. It also checks long names, overlap priority, fading, off-screen removal,
+fixed helmet clearance while seated or standing. `nameplate_render_smoke.gd`
+uses software Vulkan to check that text stays white under AgX/FXAA, scenery hides and reveals
+cards, and 4× MSAA, render resolution scaling, display scaling and window resizing retain
+correct occlusion. Detaching the camera effect must retain a valid mask for existing badges.
+It runs with the full and affected-change checks. The native UI badges use an eight-pixel
+GPU visibility mask so their text bypasses world post-processing while scenery still hides them.
+
+Capture the standard group views and the close-up/overview nameplate fixtures with
+`scripts/dev.sh sh -c 'SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh'`.
+Add `SCREENSHOT_RIDER_LABELS_ONLY=1` for just the nameplates, and `SCREENSHOT_SIZE=1024x640`
+for the smaller window. Compare the [nameplate screenshots](screenshots.md#group-rider-names):
+badges should keep the same size and stay close above the helmet, with semibold white names,
+rounded charcoal panels, a small rider-colour edge and a tiny downward pointer. The panel sits
+16 interface units above the helmet; its 4-unit pointer leaves 12 units clear beneath the tip.
+Power/W/kg remain in the riders panel.
+
 ### Riding audio
 
 For group voice (#413, #428, #441), run the `orqwa-voice` conversation tests in the container.

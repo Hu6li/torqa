@@ -212,6 +212,16 @@ if echo "$surface_output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
     exit 1
 fi
 
+# UI text must bypass world post-processing while its scenery visibility remains correct.
+nameplate_output="$(timeout 90 xvfb-run -a godot --path "$root/app" --rendering-driver vulkan \
+    --audio-driver Dummy --resolution 800x450 -s res://tests/nameplate_render_smoke.gd 2>&1)" \
+    || { echo "$nameplate_output"; exit 1; }
+echo "$nameplate_output" | grep "NAMEPLATE RENDER SMOKE TEST PASSED"
+if echo "$nameplate_output" | grep -q "SCRIPT ERROR\|SHADER ERROR\|^ERROR:"; then
+    echo "$nameplate_output" >&2
+    exit 1
+fi
+
 # Mouse visibility is a display feature too: the headless backend has no mouse mode.
 pointer_output="$(timeout 90 xvfb-run -a godot --path "$root/app" --audio-driver Dummy \
     -s res://tests/idle_pointer_smoke.gd 2>&1)" \

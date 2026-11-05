@@ -255,11 +255,39 @@ the app never builds with nightly. Its lock follows the main one, and cargo-deny
 Riders saw each other's names and gaps but not their effort, and every friend rode as the
 default avatar (#422, #423). A roster entry now carries, beside the name and the rider-plus-bike
 mass, the rider's **own weight** and **avatar**. Others show each rider's power and power per
-kilogram beside their name in the riders panel and under it on the road, and draw them as they
-chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
+kilogram beside their name in the riders panel (road labels became name-only in R217), and
+draw them as they chose to look. The weight is validated like the mass, from 20 kg up to that mass, and an
 unknown avatar is a protocol error. The rider-plus-bike mass already revealed about as much as
 the weight, so sharing it with the group adds little; heart rate stays private as before.
 Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds and fresh codes.
+
+### Road nameplates — 2026-11-04
+
+World-sized text grew into a pixelated two-line block as riders approached. R217 keeps only
+the name above the avatar; power, W/kg and status remain in the riders panel. R218 replaces
+the initial outlined text with a compact UI badge: the shared charcoal panel, rounded corners,
+semibold white 15-unit text, a thin rider-colour edge and a soft shadow. No flags or status icons.
+
+`GroupRiderNameplate` draws real `PanelContainer`/`Label` controls in the native UI layer,
+so the world's tone mapping, fog, antialiasing and resolution scaling cannot dull or blur
+the text. Native interface scaling supplies the same display-size behavior as the HUD.
+A shared compositor samples the scene depth at each badge's centre into an eight-pixel
+visibility texture. The UI shader hides occluded badges, without rendering the world again
+or reading depth back to the CPU. An initial hidden texture avoids unbound GPU resources;
+the mask owns its GPU allocation until the last canvas material releases it, including after
+camera detachment.
+The helmet's rest height is measured from each rider model and follows the animated head
+bone, including standing. R219 raises the panel to a 16-unit gap and adds a centred 8 × 4-unit
+downward triangle in the same charcoal. The pointer shares the panel's visibility material;
+its bounds count towards screen-edge and overlap checks.
+
+Names are capped at 160 interface units with an ellipsis, overlapping farther badges are
+suppressed, and names fade over the last 15 m of their existing 80 m range.
+
+The visual review considered [Zwift's nameplate clutter reports](https://forums.zwift.com/t/rider-names-in-center-of-screen/624451)
+and [ROUVY's separate controls for labels and power indicators](https://support.rouvy.com/hc/en-us/articles/34303641851921-Customize-Your-Riding-Screen).
+The supplied nameplate reference informed R218's dark card and clear white text, adapted to
+ORQWA's existing panel styling without a flag.
 
 ### Preparation progress — 2026-11-01
 

@@ -572,3 +572,16 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R215 | Refines R166, R193, R209, R211 and R214 (2026-11-04): **Drafting supplies no shelter beside or overlapping another rider**, including a zero or rounded-zero gap. Shelter starts beyond a 1 m forward gap, rises smoothly to its 30% maximum at 3 m and tapers to zero at 15 m; only the strongest eligible source applies. Drafting and Keep together compare peer positions at the live local sample's time, with freshness measured on the current shared clock. Live prediction and the freshness grace cover the ordinary 800 ms delivery budget; fading then expires sources at two seconds, superseding R214's 500 ms grace detail. Applied effects filter packet corrections with a 0.5 s response; Keep together retains its one-percentage-point-per-second limit and reaches zero within two seconds without eligible peers. Drafting clears when no source remains ahead/in range. Pause, finish, coasting and disabled rules retain immediate local cancellation. Buffered rider playback, gap displays, telemetry, ERG targets and record eligibility retain their behavior. |
+
+## Group rider nameplates
+
+| ID | Requirement |
+|---|---|
+| R217 | Refines R53, R94 and R164 (2026-11-04): road avatars show **only the rider's name**, with effort and status in the existing riders panel. Names remain sharp at a steady interface text size as riders approach or recede, across camera fields of view and window sizes. Long names are ellipsized to a bounded width; nearer names take priority when labels overlap. Names fade out at their distance limit and do not appear behind the camera or along screen edges for off-screen riders. Scenery still occludes them. |
+
+## Rider nameplate styling
+
+| ID | Requirement |
+|---|---|
+| R218 | Refines R217 (2026-11-05): rider names use **compact UI nameplates** matching ORQWA's interface: rounded charcoal panels, semibold white text, a subtle rider-colour edge and a soft shadow. They show the name alone, without flags or status readouts. A steady screen-space gap keeps the badge close above the animated helmet when riding seated or standing; approaching riders do not push the name far above their head. Text size, padding and panel dimensions stay consistent across distance, field of view, window size and display scaling. The existing width limit, nearest-first overlap priority, fading and scenery occlusion remain. |
+| R219 | Refines R218 (2026-11-05): nameplates sit **slightly farther above the helmet**, with a very small, centred downward triangle pointing towards the rider. The pointer matches the charcoal panel and shares its scaling, fading and scenery occlusion. Screen-edge and overlap handling include the pointer. |
