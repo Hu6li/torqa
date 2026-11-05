@@ -266,7 +266,7 @@ Protocol/invitation version 8 and ALPN `orqwa-group/8` require matching builds a
 World-sized text grew into a pixelated two-line block as riders approached. R217 keeps only
 the name above the avatar; power, W/kg and status remain in the riders panel. R218 replaces
 the initial outlined text with a compact UI badge: the shared charcoal panel, rounded corners,
-semibold white 15-unit text, a thin rider-colour edge and a soft shadow. No flags or icons.
+semibold white 15-unit text, a thin rider-colour edge and a soft shadow. No flags or status icons.
 
 `GroupRiderNameplate` draws real `PanelContainer`/`Label` controls in the native UI layer,
 so the world's tone mapping, fog, antialiasing and resolution scaling cannot dull or blur
@@ -277,7 +277,9 @@ or reading depth back to the CPU. An initial hidden texture avoids unbound GPU r
 the mask owns its GPU allocation until the last canvas material releases it, including after
 camera detachment.
 The helmet's rest height is measured from each rider model and follows the animated head
-bone, including standing. Projecting an eight-unit gap above it keeps the badge close.
+bone, including standing. R219 raises the panel to a 16-unit gap and adds a centred 8 × 4-unit
+downward triangle in the same charcoal. The pointer shares the panel's visibility material;
+its bounds count towards screen-edge and overlap checks.
 
 Names are capped at 160 interface units with an ellipsis, overlapping farther badges are
 suppressed, and names fade over the last 15 m of their existing 80 m range.

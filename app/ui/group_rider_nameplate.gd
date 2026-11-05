@@ -4,6 +4,7 @@ extends PanelContainer
 
 const FONT_SIZE: int = 15
 const TEXT_WIDTH: float = 160.0
+const POINTER_SIZE: Vector2 = Vector2(8.0, 4.0)
 const OCCLUSION: Shader = preload("res://shaders/nameplate_occlusion.gdshader")
 
 static var _theme: Theme
@@ -15,6 +16,7 @@ var text: String:
 var _accent: Color
 var _source_name: String = ""
 var _label: Label = Label.new()
+var _pointer: Polygon2D = Polygon2D.new()
 var _font: FontVariation = FontVariation.new()
 var _occlusion: ShaderMaterial = ShaderMaterial.new()
 var _visibility_texture: Texture2D
@@ -40,6 +42,12 @@ func _ready() -> void:
 	style.shadow_size = 3
 	style.shadow_offset = Vector2(0, 1)
 	add_theme_stylebox_override("panel", style)
+	_pointer.color = style.bg_color
+	_pointer.antialiased = true
+	_pointer.use_parent_material = true
+	add_child(_pointer)
+	resized.connect(_place_pointer)
+	_place_pointer()
 	_font.base_font = ThemeDB.fallback_font
 	_font.variation_embolden = 0.65
 	_label.add_theme_font_override("font", _font)
@@ -50,6 +58,17 @@ func _ready() -> void:
 	_label.use_parent_material = true
 	add_child(_label)
 	_occlusion.shader = OCCLUSION
+
+
+func _place_pointer() -> void:
+	var base: Vector2 = Vector2(size.x * 0.5, size.y)
+	_pointer.polygon = PackedVector2Array(
+		[
+			base + Vector2(-POINTER_SIZE.x * 0.5, 0.0),
+			base + Vector2(POINTER_SIZE.x * 0.5, 0.0),
+			base + Vector2(0.0, POINTER_SIZE.y),
+		]
+	)
 
 
 func show_name(full_name: String) -> void:

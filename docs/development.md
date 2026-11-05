@@ -709,7 +709,9 @@ Capture the standard group views and the close-up/overview nameplate fixtures wi
 Add `SCREENSHOT_RIDER_LABELS_ONLY=1` for just the nameplates, and `SCREENSHOT_SIZE=1024x640`
 for the smaller window. Compare the [nameplate screenshots](screenshots.md#group-rider-names):
 badges should keep the same size and stay close above the helmet, with semibold white names,
-rounded charcoal panels and a small rider-colour edge. Power/W/kg remain in the riders panel.
+rounded charcoal panels, a small rider-colour edge and a tiny downward pointer. The panel sits
+16 interface units above the helmet; its 4-unit pointer leaves 12 units clear beneath the tip.
+Power/W/kg remain in the riders panel.
 
 ### Riding audio
 

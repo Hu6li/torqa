@@ -22,8 +22,9 @@ same licence; the footage is used only in documentation.
 ## Group rider names
 
 Compact charcoal nameplates match the HUD's panel styling, with semibold white names and a
-small rider-colour edge (R217–R218). Their size and gap above the helmet stay steady as riders
-approach. Long names shorten with an ellipsis; overlapping badges favor the nearer rider.
+small rider-colour edge and downward pointer (R217–R219). Their size and gap above the helmet
+stay steady as riders approach. Long names shorten with an ellipsis; overlapping badges favor
+the nearer rider.
 
 | Close rider and long name | Group from above |
 |---|---|

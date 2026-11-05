@@ -2,8 +2,8 @@ class_name GroupRiderAvatar
 extends Node3D
 ## A named group rider as they chose to look; poses and telemetry come from the Rust core.
 
-## Interface units between the helmet and its nameplate, independent of distance (R218).
-const NAME_GAP: float = 8.0
+## Interface units between the helmet and its nameplate, independent of distance (R219).
+const NAME_GAP: float = 16.0
 const NAME_RANGE: float = 80.0
 
 var generation: String = ""
@@ -68,7 +68,8 @@ func place_name(
 		return Vector4.ZERO
 	var size: Vector2 = _name.get_combined_minimum_size()
 	var center: Vector2 = camera.unproject_position(anchor) - Vector2(0.0, NAME_GAP + size.y * 0.5)
-	var rect: Rect2 = Rect2(center - size * 0.5, size).grow(3.0)
+	var bounds: Vector2 = size + Vector2(0.0, GroupRiderNameplate.POINTER_SIZE.y)
+	var rect: Rect2 = Rect2(center - size * 0.5, bounds).grow(3.0)
 	if not Rect2(Vector2.ZERO, viewport_size).encloses(rect):
 		return Vector4.ZERO
 	for other: Rect2 in occupied:
