@@ -843,7 +843,9 @@ physically based materials and light, restyled group by group.
   an overlay (R57); recorded as a ride
 - [ ] ~~Overlay over full-screen apps on macOS~~ — dropped (R57): it would need native window
   code and a new dependency; the overlay stays on top of normal windows
-- [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)
+- [x] Windows and Linux (X11) use the same desktop overlay as macOS; on Wayland, staying on
+  top depends on the compositor
+- [ ] Native acceptance of the overlay on Windows and Linux
 - **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
   Zone 3 on the KICKR and the session lands in the history as a FIT
 
