@@ -215,6 +215,8 @@ var _orqwa: OrqwaApp
 var _benchmark: OrqwaGraphicsBenchmark
 var _chunk_count: int = 0
 var _next_chunk: int = 0
+## Invalidates a preparation waiting on chunks that a new course or setting replaced.
+var _chunk_revision: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
 var _sky: ShaderMaterial = ShaderMaterial.new()
 var _cloud_offset: Vector2 = Vector2.ZERO
@@ -422,7 +424,7 @@ func apply_quality(name: String, options: Dictionary = {}) -> void:
 	TerrainMaterial.set_tree_density(_terrain_material, tree_density)
 	# A course may already be uploaded when settings change before the next ride.
 	if previous_density != _quality["tree_density"] or previous_cell != _quality["tree_cell"]:
-		_restart_chunks()
+		WorldPreparation.restart(self)
 	var fps_limit: String = options.get("fps_limit", "auto")
 	Engine.max_fps = 60
 	if fps_limit != "auto":
@@ -479,6 +481,11 @@ func _apply_options_over_preset(options: Dictionary) -> void:
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
 func apply_options(options: Dictionary) -> void:
 	_seasons.apply_options(self, _orqwa, _terrain_material, options)
+
+
+## Includes background ground simplification, which must finish before a ride or benchmark.
+func uploads_complete() -> bool:
+	return _next_chunk >= _chunk_count and not _ground_lods.pending()
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.
@@ -592,7 +599,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
 	_apply_rider()
-	_restart_chunks()
+	WorldPreparation.restart(self)
 	_chunk_count = _orqwa.world_chunk_count()
 	_road.mesh = WorldMeshes.from_arrays(_orqwa.road_mesh())
 	_road.material_override = _road_material
@@ -609,13 +616,6 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_railways.material_override = _rail_material
 	_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
 	_structures.material_override = _structure_material
-
-
-func _restart_chunks() -> void:
-	for chunk: Node in _terrain.get_children():
-		_terrain.remove_child(chunk)
-		chunk.queue_free()
-	_next_chunk = 0
 
 
 func _build_some_chunks() -> void:

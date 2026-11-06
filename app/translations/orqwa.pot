@@ -2687,6 +2687,10 @@ msgstr ""
 msgid "Preparing %s…"
 msgstr ""
 
+#: app/scenes/course_detail.gd app/scenes/workouts_tab.gd
+msgid "Preparing the 3D scene"
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Press"
 msgstr ""

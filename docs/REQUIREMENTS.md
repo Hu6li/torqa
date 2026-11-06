@@ -585,3 +585,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R218 | Refines R217 (2026-11-05): rider names use **compact UI nameplates** matching ORQWA's interface: rounded charcoal panels, semibold white text, a subtle rider-colour edge and a soft shadow. They show the name alone, without flags or status readouts. A steady screen-space gap keeps the badge close above the animated helmet when riding seated or standing; approaching riders do not push the name far above their head. Text size, padding and panel dimensions stay consistent across distance, field of view, window size and display scaling. The existing width limit, nearest-first overlap priority, fading and scenery occlusion remain. |
 | R219 | Refines R218 (2026-11-05): nameplates sit **slightly farther above the helmet**, with a very small, centred downward triangle pointing towards the rider. The pointer matches the charcoal panel and shares its scaling, fading and scenery occlusion. Screen-edge and overlap handling include the pointer. |
+
+## Fully prepared course starts
+
+| ID | Requirement |
+|---|---|
+| R220 | Refines R40 and R101 (2026-11-06): after pressing **Ride** on a 3D course, or starting a workout on a course, the loading page stays visible with progress until the complete course scene is prepared, including terrain, scenery and background ground meshes with the chosen season and graphics settings. Only then does the ride start and its clock and recording begin. Opening a course page alone does not build its world. Returning to the gallery or opening another course abandons the pending start. Video rides and workouts without a course do not wait for a 3D scene. |

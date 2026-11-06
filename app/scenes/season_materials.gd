@@ -25,7 +25,7 @@ func apply_options(
 	WinterSnowbanks.apply(world, orqwa, season == "Winter")
 	AutumnForest.apply(world, orqwa, season == "Autumn")
 	if previous != season:
-		world.call("_restart_chunks")
+		WorldPreparation.restart(world)
 	world.set_camera(camera)
 
 

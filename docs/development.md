@@ -440,6 +440,15 @@ scripts/dev.sh sh -c 'OUT_DIR=$PWD/screenshots/refresh/models GALLERY=$PWD/scree
 scripts/dev.sh sh -c 'OUT_DIR=$PWD/screenshots/refresh/riders GALLERY=$PWD/screenshots/refresh/gallery scripts/render-riders.sh'
 ```
 
+Course rides and workouts on a course wait for `WorldPreparation.prepare` after world generation
+(R220). The course/workout loading page stays visible while every scene chunk and the
+background ground LODs are prepared. Season and graphics are applied before that wait, so
+starting the ride does not restart terrain uploads. Kept worlds skip generation, but still
+need this presentation step. Returning to the gallery or opening another course invalidates
+the pending start.
+`course_loading_smoke.gd` checks the first start, a repeated start, seasonal and graphics
+changes, cancellation and workouts without advancing a ride during preparation.
+
 The software-rendering runners select FXAA instead of MSAA and disable glow, which otherwise
 produces bright halos under lavapipe. They wait for route preparation and streamed chunks;
 the route views pause the rider at fixed positions. The graphics settings in the app are
