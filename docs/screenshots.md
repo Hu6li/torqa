@@ -37,9 +37,9 @@ the nearer rider.
 Solo 3D and video courses can be continued across days. These captures use the implemented
 controls with an illustrative saved position (R220, #497).
 
-| Saved course position | Save point over the paused ride |
+| Saved course position | Continue another day? |
 |---|---|
-| ![Continue ride, From start and Reset progress](images/continuation/course-detail-en.png) | ![Opt-in question before leaving the course](images/continuation/save-point-en.jpg) |
+| ![Saved position on the map and elevation profile](images/continuation/course-detail-en.png) | ![Blue Yes and red No before leaving the course](images/continuation/save-point-en.jpg) |
 
 | Compact course page in German | Compact save question in German |
 |---|---|

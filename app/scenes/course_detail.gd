@@ -540,6 +540,7 @@ func _show_continuation_point(point: Dictionary) -> void:
 	_set_continuation_disabled(_building or _regenerating)
 	if point.is_empty():
 		_profile.set_rider_distance(0.0)
+		_path_card.set_marker({})
 		return
 	var distance: float = point["distance_m"]
 	var remaining: float = point["remaining_m"]
@@ -553,6 +554,7 @@ func _show_continuation_point(point: Dictionary) -> void:
 	)
 	_progress_bar.value = distance / length
 	_profile.set_rider_distance(distance)
+	_path_card.set_marker(_orqwa.course_position(distance))
 
 
 func _set_continuation_disabled(disabled: bool) -> void:

@@ -46,8 +46,11 @@ static func capture(main: Control, out: String) -> void:
 	if filters_only:
 		return
 	app.set_graphics_quality("low")
-	if not app.build_world():
-		await app.world_ready
+	# A short offline course keeps repeated dialog reviews quick.
+	app.load_route(
+		ProjectSettings.globalize_path("res://../core/fixtures/london-cycleway.gpx"), true
+	)
+	await app.world_ready
 	var world: RideWorld = main.get_node("World")
 	while true:
 		var next: int = world.get("_next_chunk")

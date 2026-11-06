@@ -37,6 +37,10 @@ absolute course position from distance ridden since local entry.
 The gallery's In progress filter (R221) uses the same active-rider point lookup as its badge.
 It combines with existing filters in Rust; toggling or clearing it changes only the query.
 
+The course map's saved-position overlay (R222) projects the exact route position in Rust.
+Presentation fits it to the prepared map frame, including letterboxing, or to the same route
+transform used by a card without a map. Markers are not baked into shared course pictures.
+
 Continuation points sync with rider data and survive renaming or moving course files.
 Prepared geometry changes can require starting over. There is no service, dependency,
 course-format or world-format change. Each activity remains a separate FIT/history entry.

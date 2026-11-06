@@ -859,6 +859,10 @@ msgstr ""
 msgid "Constant power %d W"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Continue another day?"
+msgstr ""
+
 #: app/scenes/course_detail.gd
 msgid "Continue ride"
 msgstr ""
@@ -2255,6 +2259,10 @@ msgstr ""
 msgid "Next: free ride for %s"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "No"
+msgstr ""
+
 #: core/orqwa-gd/src/lib.rs
 msgid "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
 msgstr ""
@@ -2369,10 +2377,6 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Not found: %s. Wake the devices, then scan again."
-msgstr ""
-
-#: app/ui/continuation_dialog.gd
-msgid "Not now"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd app/ui/course_settings.gd
@@ -2807,10 +2811,6 @@ msgstr ""
 msgid "Regions"
 msgstr ""
 
-#: app/ui/continuation_dialog.gd
-msgid "Remember where you stopped?"
-msgstr ""
-
 #: app/scenes/remote_dialog.gd core/orqwa-remote/src/lib.rs
 msgid "Remote"
 msgstr ""
@@ -3027,16 +3027,8 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: app/ui/continuation_dialog.gd
-msgid "Save a point to ride the rest another day. Each ride is a separate activity."
-msgstr ""
-
 #: app/scenes/group_rides_tab.gd
 msgid "Save effort when riding behind friends."
-msgstr ""
-
-#: app/ui/continuation_dialog.gd
-msgid "Save point"
 msgstr ""
 
 #: app/scenes/history_screen.gd
@@ -3955,8 +3947,16 @@ msgstr ""
 msgid "Y (right pod)"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Yes"
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "You"
+msgstr ""
+
+#: app/ui/continuation_dialog.gd
+msgid "You haven't finished this course. Would you like to save your place?"
 msgstr ""
 
 #: app/ui/moment_lines.gd

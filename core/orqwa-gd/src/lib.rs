@@ -1772,13 +1772,7 @@ impl OrqwaApp {
                 .to_variant(),
             );
         }
-        let frame = map.frame;
-        // Drawing precision.
-        #[allow(clippy::cast_possible_truncation)]
-        let frame = Rect2::new(
-            Vector2::new(frame.west as f32, frame.south as f32),
-            Vector2::new(frame.width() as f32, frame.height() as f32),
-        );
+        let frame = map_frame_rect(map.frame);
         let size = Vector2i::new(
             i32::try_from(PICTURE[0]).unwrap_or(i32::MAX),
             i32::try_from(PICTURE[1]).unwrap_or(i32::MAX),
@@ -3833,6 +3827,32 @@ impl OrqwaApp {
     fn track(&self, max_points: i64) -> PackedVector2Array {
         self.points(max_points, view::track)
     }
+
+    /// A loaded course position for its map marker: `{position, frame}` in metres east/north
+    /// of the start. The frame is empty without map data. Empty for an invalid distance.
+    #[func]
+    #[allow(clippy::cast_possible_truncation)] // drawing precision
+    fn course_position(&self, distance_m: f64) -> VarDictionary {
+        let Some(app) = &self.app else {
+            return VarDictionary::new();
+        };
+        let Some(route) = app.route().filter(|route| {
+            distance_m.is_finite() && (0.0..=route.length().0).contains(&distance_m)
+        }) else {
+            return VarDictionary::new();
+        };
+        let at = route.position(Meters(distance_m));
+        let (x, y) = LocalProjection::for_route(route).project(at.lat, at.lon);
+        let frame = app
+            .loaded_course()
+            .and_then(|path| app.course_map(path))
+            .map(|map| map_frame_rect(map.frame))
+            .unwrap_or_default();
+        vdict! {
+            "position" => Vector2::new(x as f32, y as f32),
+            "frame" => frame,
+        }
+    }
 }
 
 impl OrqwaApp {
@@ -4410,6 +4430,14 @@ fn country_name_or_godots(code: &str) -> String {
     } else {
         name.to_string()
     }
+}
+
+#[allow(clippy::cast_possible_truncation)] // drawing precision
+fn map_frame_rect(frame: orqwa_world::course_map::Frame) -> Rect2 {
+    Rect2::new(
+        Vector2::new(frame.west as f32, frame.south as f32),
+        Vector2::new(frame.width() as f32, frame.height() as f32),
+    )
 }
 
 /// A course for the front end, as `OrqwaApp.courses()` lists it, its countries named in

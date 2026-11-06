@@ -7,28 +7,27 @@ var _not_now: Button = Button.new()
 
 
 func _init() -> void:
-	title = tr("Remember where you stopped?")
+	title = tr("Continue another day?")
 	# Standard dialog actions are sized by Godot itself; this row keeps related choices equal.
 	get_ok_button().hide()
 	get_cancel_button().hide()
 	var body: VBoxContainer = VBoxContainer.new()
 	body.add_theme_constant_override("separation", 24)
 	var explanation: Label = Label.new()
-	explanation.text = tr(
-		"Save a point to ride the rest another day. Each ride is a separate activity."
-	)
+	explanation.text = tr("You haven't finished this course. Would you like to save your place?")
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	explanation.custom_minimum_size.x = 420.0
 	body.add_child(explanation)
 	var actions: HBoxContainer = HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 12)
-	_not_now.text = tr("Not now")
-	_save_point.text = tr("Save point")
+	_not_now.text = tr("No")
+	_save_point.text = tr("Yes")
 	for button: Button in [_not_now, _save_point]:
 		button.custom_minimum_size.y = 48.0
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_child(button)
 	_save_point.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	UiTheme.danger_button(_not_now)
 	_not_now.pressed.connect(
 		func() -> void:
 			hide()

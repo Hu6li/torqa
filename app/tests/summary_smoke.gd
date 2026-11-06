@@ -186,6 +186,23 @@ func _continuation(
 	await process_frame
 	var question: ContinuationDialog = ride.get("_continuation_dialog")
 	_check(question.visible and ride.visible, "continuation question opens over the course")
+	_check(
+		(
+			question.title == "Continue another day?"
+			and question._save_point.text == "Yes"
+			and question._not_now.text == "No"
+		),
+		"the question uses plain language with Yes and No"
+	)
+	var yes_style: StyleBoxFlat = question._save_point.get_theme_stylebox("normal")
+	var no_style: StyleBoxFlat = question._not_now.get_theme_stylebox("normal")
+	_check(
+		(
+			Color(yes_style.bg_color, 1.0).is_equal_approx(UiTheme.ACCENT)
+			and Color(no_style.bg_color, 1.0).is_equal_approx(UiTheme.DANGER)
+		),
+		"Yes is blue and No is red"
+	)
 	_check(not start.visible and not summary.visible, "question comes before summary and home")
 	_check(orqwa.is_paused(), "question pauses the ride")
 	var stopped: float = orqwa.ride_state()["position_m"]
@@ -201,10 +218,10 @@ func _continuation(
 	)
 	question._save_point.pressed.emit()
 	await process_frame
-	_check(summary.visible and not question.visible, "Save point proceeds to the summary")
+	_check(summary.visible and not question.visible, "Yes proceeds to the summary")
 	var first: String = summary.get("_path")
 	var point: Dictionary = orqwa.continuation_point()
-	_check(not point.is_empty(), "Save point persists continuation")
+	_check(not point.is_empty(), "Yes saves your place")
 	var progressing: Dictionary = orqwa.course_library({"in_progress": true})
 	var groups: Array = progressing["groups"]
 	_check(groups.size() == 1, "In progress returns the course with a saved point")
@@ -237,6 +254,11 @@ func _continuation(
 		var profile: ElevationProfile = page.get("_profile")
 		var marker: float = profile.get("_rider_distance")
 		_check(is_equal_approx(marker, stopped), "profile marks saved point")
+		var map: PathCard = page.get("_path_card")
+		var saved_position: Dictionary = map.get("_marker")
+		var expected: Dictionary = orqwa.course_position(stopped)
+		_check(saved_position == expected, "map and profile mark the same saved course position")
+		_check(map._marker_screen_position().is_finite(), "the saved map marker is visible")
 	TranslationServer.set_locale("en")
 	_check(orqwa.continue_ride(50.0, false, {"kind": "none"}), "Continue ride starts")
 	var state: Dictionary = orqwa.ride_state()
@@ -259,12 +281,15 @@ func _continuation(
 	await process_frame
 	_check(
 		summary.visible and orqwa.continuation_point() == point,
-		"Enter on Not now preserves the old point"
+		"Enter on No preserves the old point"
 	)
 	var second: String = summary.get("_path")
 	summary.confirmed.emit()
 	page.call("_on_reset_progress")
 	_check(orqwa.continuation_point().is_empty(), "Reset progress clears the point")
+	var map: PathCard = page.get("_path_card")
+	var cleared_marker: Dictionary = map.get("_marker")
+	_check(cleared_marker.is_empty(), "Reset progress clears the map marker")
 	progressing = orqwa.course_library({"in_progress": true})
 	groups = progressing["groups"]
 	_check(groups.is_empty(), "reset removes the course from the In progress filter")

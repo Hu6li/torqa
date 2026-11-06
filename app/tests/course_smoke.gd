@@ -17,6 +17,7 @@ func _run() -> void:
 	_edit_dialog()
 	_estimates()
 	_card_countries()
+	_saved_map_position()
 	await _course_loading()
 	await _preparation_log()
 	await _course_gallery()
@@ -511,6 +512,38 @@ func _card_widths() -> void:
 		absf(route.size.y - route.size.x * CourseCard.MAP_ASPECT) <= 1.0 and route.size.x > 500.0,
 		"the route grows with the card: %s" % route.size
 	)
+	card.free()
+
+
+func _saved_map_position() -> void:
+	var card: PathCard = PathCard.new()
+	root.add_child(card)
+	card.size = Vector2(400, 400)
+	card.set_track(PackedVector2Array([Vector2(-100, -50), Vector2(100, 50)]))
+	var image: Image = Image.create_empty(8, 4, false, Image.FORMAT_RGBA8)
+	image.fill(Color.SEA_GREEN)
+	card.set_map(image.save_png_to_buffer())
+	card.set_marker({"position": Vector2(-50, 25), "frame": Rect2(-100, -50, 200, 100)})
+	_check(
+		card._marker_screen_position().is_equal_approx(Vector2(100, 150)),
+		"saved map position follows the frame, north up, with vertical letterboxing"
+	)
+	card.size = Vector2(800, 200)
+	_check(
+		card._marker_screen_position().is_equal_approx(Vector2(300, 50)),
+		"map marker follows resizing and horizontal letterboxing"
+	)
+	card.set_map(PackedByteArray())
+	card.set_marker({"position": Vector2.ZERO})
+	_check(
+		card._marker_screen_position().is_equal_approx(Vector2(400, 100)),
+		"without a picture the marker uses the route's own fit"
+	)
+	card.set_marker({})
+	_check(not card._marker_screen_position().is_finite(), "reset hides the map marker")
+	card.set_marker({"position": Vector2.ZERO})
+	card.set_track(PackedVector2Array([Vector2.ZERO, Vector2.ONE]))
+	_check(not card._marker_screen_position().is_finite(), "another course clears the old marker")
 	card.free()
 
 

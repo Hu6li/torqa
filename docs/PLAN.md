@@ -380,6 +380,8 @@ Built in rideable steps:
     prepared-route validation, aligned ghosts/video and unchanged speed-record eligibility
   - [x] In progress gallery filter (R221): active rider's continuation points, combined with
     search and existing filters, removable active chip and Clear filters
+  - [x] Plain-language continuation question with blue Yes/red No, a matching saved-position
+    marker on the course map, and concise guidance within Courses (R222)
 - [x] The gallery searched by name, sorted (name, length, climbing, estimated time, date added,
   last ridden), filtered by chips (type, terrain, length bands) and grouped (R67, #230); each
   card with the rider's estimated time from the profile its file keeps
