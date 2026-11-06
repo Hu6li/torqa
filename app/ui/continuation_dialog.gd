@@ -28,6 +28,7 @@ func _init() -> void:
 		actions.add_child(button)
 	_save_point.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	UiTheme.danger_button(_not_now)
+	_not_now.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	_not_now.pressed.connect(
 		func() -> void:
 			hide()
