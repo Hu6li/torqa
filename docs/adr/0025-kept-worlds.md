@@ -276,3 +276,13 @@ It still sets no cap. A world is found by its course's fingerprint, so a course 
 twice shows its one world once, under both names, and deleting it deletes it for both. The
 course stays; its next ride builds and keeps the world again, so deleting one asks nothing. A
 world deleted while it is still being written is kept all the same once written.
+
+## Amendment — 2026-11-06: scene uploads start around the rider
+
+After the generated or kept world is available, R224 prepares the scene's visible starting
+surroundings first. A spatial upload plan includes chunk edges and a movement/visibility
+margin; distant chunks and optional ground LODs continue in the background once riding starts.
+Upload priorities follow the rider, with a frame budget that yields after the current chunk.
+The generated/stored world is unchanged, so neither `GENERATOR` nor `FORMAT` changes.
+This shortens the scene preparation wait introduced by R223. It does not stream world
+generation itself: structure foundations and protection still depend on completed terrain.

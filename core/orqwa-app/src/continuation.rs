@@ -70,6 +70,18 @@ impl App {
         Some(point)
     }
 
+    /// Where to prepare the scene before a solo start or continuation (R224), without
+    /// starting the activity or its recording. Includes the rider's traffic-lane offset.
+    #[must_use]
+    pub fn ride_start_position(&self, continuing: bool) -> Option<(f64, f64)> {
+        let distance = if continuing {
+            Meters(self.continuation_point()?.distance_m)
+        } else {
+            Meters(0.0)
+        };
+        self.rider_position(distance, false)
+    }
+
     /// Removes the active rider's point on the loaded course, leaving all activities intact.
     ///
     /// # Errors
@@ -284,6 +296,27 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("expected saved activity: {events:?}"))
+    }
+
+    #[test]
+    fn scene_preparation_uses_the_actual_start_or_saved_position_without_starting_a_ride() {
+        let mut app = setup("continuation-scene-start");
+        let beginning = app.ride_start_position(false).unwrap();
+        assert!(app.ride_start_position(true).is_none());
+        let route = app.route.as_ref().unwrap();
+        let point = Point {
+            revision: revision(route),
+            distance_m: route.length().0 * 0.75,
+            length_m: route.length().0,
+        };
+        continuation::save(&app.data_dir, &app.profile.id, &route.key(), Some(&point)).unwrap();
+        let target = app.ride_start_position(true).unwrap();
+        assert!((target.0 - beginning.0).hypot(target.1 - beginning.1) > 100.0);
+        assert!(app.ride.is_none());
+        start(&mut app, true);
+        let distance = app.ride.as_ref().unwrap().ride.state().distance;
+        assert_eq!(Some(target), app.rider_position(distance, false));
+        app.shutdown();
     }
 
     #[test]

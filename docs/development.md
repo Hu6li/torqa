@@ -455,6 +455,26 @@ scripts/dev.sh sh -c 'OUT_DIR=$PWD/screenshots/refresh/models GALLERY=$PWD/scree
 scripts/dev.sh sh -c 'OUT_DIR=$PWD/screenshots/refresh/riders GALLERY=$PWD/screenshots/refresh/gallery scripts/render-riders.sh'
 ```
 
+Course rides and workouts on a course wait for `WorldPreparation.prepare` after world generation
+(R223–R224). Rust's `chunk_plan` orders uploads by horizontal distance from the rider,
+including chunks touching the visible area. `WorldStreaming` prepares the starting surroundings
+up to the preset's terrain range plus a 1 km movement/fade/camera margin; the loading page's
+progress covers that area. Riding then starts while farther chunks upload in the background.
+For Continue ride, Rust supplies the validated saved position before the ride starts.
+The upload loop yields after its current chunk once it uses 4 ms while riding, and reorders
+remaining chunks whenever the rider moves 240 m. Full-resolution ground draws while optional
+ground LODs finish, so these do not delay the start. Benchmarks still wait for all chunks
+and LODs through `uploads_complete`; capture tools retain their full-course chunk wait.
+
+Season and graphics are applied before preparing the surroundings, so starting the ride does
+not restart terrain uploads. Kept worlds skip generation, but still need scene uploads.
+Returning to the gallery or opening another course invalidates the pending start.
+The underlying world generation remains one job: structures and protection depend on the
+completed terrain. `course_loading_smoke.gd` checks a first start before distant chunks finish,
+background loading during a real fake-trainer ride, repeat starts, season/graphics changes,
+cancellation and workouts. Rust tests check spatial ordering, chunk-edge coverage and moving
+the priority point without changing the generated world.
+
 The software-rendering runners select FXAA instead of MSAA and disable glow, which otherwise
 produces bright halos under lavapipe. They wait for route preparation and streamed chunks;
 the route views pause the rider at fixed positions. The graphics settings in the app are

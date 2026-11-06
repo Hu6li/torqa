@@ -3542,6 +3542,33 @@ impl OrqwaApp {
             .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
     }
 
+    /// The rider's start (east/north metres), including a validated continuation point.
+    #[func]
+    fn world_start_position(&self, continuing: bool) -> Vector2 {
+        self.app
+            .as_ref()
+            .and_then(|app| app.ride_start_position(continuing))
+            .map_or(Vector2::ZERO, |(east, north)| vector2(east, north))
+    }
+
+    /// Spatial upload order around a rider (east/north metres), with the visible-area prefix.
+    #[func]
+    fn world_chunk_plan(&self, east: f64, north: f64, radius: f64) -> VarDictionary {
+        let Some(world) = self.app.as_ref().and_then(App::world) else {
+            return VarDictionary::new();
+        };
+        let plan = orqwa_world::chunk_plan(world, Meters(east), Meters(north), Meters(radius));
+        let indices: PackedInt32Array = plan
+            .indices
+            .into_iter()
+            .filter_map(|index| i32::try_from(index).ok())
+            .collect();
+        vdict! {
+            "indices" => &indices,
+            "nearby" => i64::try_from(plan.nearby).unwrap_or(i64::MAX),
+        }
+    }
+
     /// Disposable, spatially bounded snow banks outside the retained ridden road.
     #[func]
     fn winter_snowbanks(&self) -> VarArray {

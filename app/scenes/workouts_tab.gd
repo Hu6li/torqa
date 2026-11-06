@@ -9,7 +9,7 @@ extends HBoxContainer
 ## Start was pressed for `workout` (`WorkoutOptions.workout()` with its `name`), on the course
 ## at `course_path` or on its own if empty.
 signal start_requested(workout: Dictionary, course_path: String)
-## The course asked for with `prepare()` is ready: the workout can start.
+## The course data asked for with `prepare()` is ready; its scene must be prepared next.
 signal ready_to_start
 
 ## The workout's side of the page takes this many times the start panel's share of its width.
@@ -35,6 +35,7 @@ var _status: Label = Label.new()
 ## Waiting for the chosen course's route, or for its world.
 var _loading_route: bool = false
 var _building: bool = false
+var _preparing_scene: bool = false
 ## Today's workouts from the platform holding the rider's plan (R81): a row per workout with
 ## a button that chooses it; shown only with such an account connected.
 var _planned_panel: PanelContainer = PanelContainer.new()
@@ -118,6 +119,34 @@ func prepare() -> void:
 ## Shows why the workout cannot start (e.g. no trainer); empty clears it.
 func show_status(message: String) -> void:
 	_status.text = message
+
+
+## A course workout waits for the visible world as well as its generated data (R220).
+func show_scene_progress(done: int, total: int) -> void:
+	_preparing_scene = true
+	_start_button.disabled = true
+	_loading_bar.value = float(done) / float(maxi(total, 1))
+	_loading_bar.show()
+	_status.text = tr("Preparing the 3D scene") + " …"
+	_log.step("Preparing the 3D scene", "chunks", done, total)
+
+
+## The scene is ready, or its pending start was abandoned.
+func finish_preparation() -> void:
+	_preparing_scene = false
+	_loading_bar.hide()
+	if _log.visible:
+		_log.finish()
+	_status.text = ""
+	_start_button.disabled = false
+
+
+## Opening another course must release this workout's loading controls as well.
+func cancel_preparation() -> void:
+	if _loading_route or _building or _preparing_scene:
+		_loading_route = false
+		_building = false
+		finish_preparation()
 
 
 func _init() -> void:
@@ -357,7 +386,7 @@ func _import(picked: String) -> void:
 
 ## The log of an earlier course's world is not this course's; one being built stays.
 func _on_where_selected(_index: int) -> void:
-	if not _loading_route and not _building:
+	if not _loading_route and not _building and not _preparing_scene:
 		_log.clear()
 
 
@@ -400,17 +429,14 @@ func _on_world_ready(_info: Dictionary) -> void:
 
 func _done() -> void:
 	_building = false
-	_loading_bar.hide()
-	_log.finish()
-	_status.text = ""
-	_start_button.disabled = false
 	ready_to_start.emit()
 
 
 func _on_failed(message: String) -> void:
-	if _loading_route or _building:
+	if _loading_route or _building or _preparing_scene:
 		_loading_route = false
 		_building = false
+		_preparing_scene = false
 		_loading_bar.hide()
 		_start_button.disabled = false
 		_status.text = message

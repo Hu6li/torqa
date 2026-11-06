@@ -18,11 +18,6 @@ func show_benchmark(benchmark: OrqwaGraphicsBenchmark) -> void:
 	benchmark_camera(0.0)
 
 
-## Wait for uploads and background mesh simplification before timing rendered frames.
-func uploads_complete() -> bool:
-	return _next_chunk >= _chunk_count and not _ground_lods.pending()
-
-
 ## The same slow pan across village, water and woods for every measured preset.
 func benchmark_camera(seconds: float) -> void:
 	_camera.position = Vector3(1.2, 2.5, 7.0)

@@ -16,6 +16,9 @@ msgstr "VAM"
 msgid "Average ascent speed over the ride so far: total climbing divided by riding time, excluding pauses. Unavailable without a course or recorded riding time."
 msgstr "Durchschnittliche Steiggeschwindigkeit der bisherigen Fahrt: gesamte Höhenmeter geteilt durch die Fahrzeit ohne Pausen. Ohne Strecke oder aufgezeichnete Fahrzeit nicht verfügbar."
 
+msgid "Preparing the 3D scene"
+msgstr "3D-Szene wird vorbereitet"
+
 msgid "Benchmark graphics"
 msgstr "Grafik testen"
 

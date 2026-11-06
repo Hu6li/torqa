@@ -9,7 +9,7 @@ extends HBoxContainer
 signal back_requested
 ## Ride was pressed with `options` (`RideOptions.options()`) against `ghost` (`GhostPicker`).
 signal ride_requested(options: Dictionary, ghost: Dictionary)
-## The world asked for with `build()` is ready: the ride can start.
+## The world data asked for with `build()` is ready; scene preparation follows before riding.
 signal ready_to_ride
 ## The course was renamed, deleted or given a new map picture: the gallery is out of date.
 signal course_changed
@@ -26,6 +26,7 @@ var _path: String = ""
 ## Waiting for this course's route, or for its world after Ride.
 var _loading_route: bool = false
 var _building: bool = false
+var _preparing_scene: bool = false
 ## Building the world again in place of one kept from an older ORQWA (R101), not to ride yet.
 var _regenerating: bool = false
 var _regenerate: Button = Button.new()
@@ -77,6 +78,7 @@ func open(course: Dictionary) -> void:
 	_course = course
 	_path = course["path"]
 	_building = false
+	_preparing_scene = false
 	_regenerating = false
 	_regenerate.hide()
 	_title.text = course["name"]
@@ -122,14 +124,45 @@ func ride_options() -> Dictionary:
 	return _options.options()
 
 
-## Builds the course's 3D world for riding; `ready_to_ride` follows, at once if it is built.
+## Builds the course's world data; `ready_to_ride` requests the final scene preparation.
 func build() -> void:
 	_orqwa.ride_along_video(_along_video)
-	if _along_video or _orqwa.build_world():
+	if _along_video:
 		ready_to_ride.emit()
 		return
 	_building = true
 	_show_building()
+	if _orqwa.build_world():
+		_on_world_ready({})
+
+
+## World data is built; keep the loading page until its scene has also been prepared (R223).
+func show_scene_progress(done: int, total: int) -> void:
+	_preparing_scene = true
+	_ride_button.disabled = true
+	_set_continuation_disabled(true)
+	_loading_bar.value = float(done) / float(maxi(total, 1))
+	_loading_bar.show()
+	_status.text = tr("Preparing the 3D scene") + " …"
+	_log.step("Preparing the 3D scene", "chunks", done, total)
+
+
+## The scene is ready, or its pending start was abandoned.
+func finish_preparation() -> void:
+	_preparing_scene = false
+	_loading_bar.hide()
+	if _log.visible:
+		_log.finish()
+	_status.text = ""
+	_ride_button.disabled = _loading_route or _regenerating
+	_set_continuation_disabled(_ride_button.disabled)
+
+
+## Back to the gallery must not enter a ride when preparation finishes later.
+func cancel_preparation() -> void:
+	if _building or _preparing_scene:
+		_building = false
+		finish_preparation()
 
 
 ## Builds the world kept from an older ORQWA again with this one (R101); the rider rides after.
@@ -427,13 +460,10 @@ func _on_world_ready(_info: Dictionary) -> void:
 	var riding: bool = _building
 	_building = false
 	_regenerating = false
-	_loading_bar.hide()
-	_log.finish()
-	_status.text = ""
-	_ride_button.disabled = false
-	_set_continuation_disabled(false)
 	if riding:
 		ready_to_ride.emit()
+	else:
+		finish_preparation()
 
 
 ## A course without a map of its whole land, from before #203, gets one from the map loaded
@@ -451,9 +481,10 @@ func _keep_preview() -> void:
 
 
 func _on_failed(message: String) -> void:
-	if visible and (_loading_route or _building or _regenerating):
+	if visible and (_loading_route or _building or _regenerating or _preparing_scene):
 		_loading_route = false
 		_building = false
+		_preparing_scene = false
 		_regenerating = false
 		_spinner.hide()
 		_loading_bar.hide()
@@ -537,7 +568,7 @@ func _show_continuation() -> void:
 func _show_continuation_point(point: Dictionary) -> void:
 	_continuation.visible = not point.is_empty()
 	_ride_button.visible = point.is_empty()
-	_set_continuation_disabled(_building or _regenerating)
+	_set_continuation_disabled(_building or _regenerating or _preparing_scene)
 	if point.is_empty():
 		_profile.set_rider_distance(0.0)
 		_path_card.set_marker({})
