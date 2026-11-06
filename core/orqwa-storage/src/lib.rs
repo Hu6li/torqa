@@ -4,6 +4,7 @@
 
 pub mod accounts;
 pub mod computer;
+pub mod continuation;
 pub mod course;
 pub mod index;
 pub mod profiles;

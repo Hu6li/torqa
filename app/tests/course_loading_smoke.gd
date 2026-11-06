@@ -1,5 +1,5 @@
 extends SceneTree
-## R220/R221: prepare the visible start area, then ride while distant chunks stream in.
+## R223/R224: prepare the visible start area, then ride while distant chunks stream in.
 
 var _failed: bool = false
 var _main: Control
@@ -26,6 +26,7 @@ func _run() -> void:
 	_orqwa.set_graphics_quality("low")
 	_check(_orqwa.connect_fake_trainer(250.0, 85.0), "fake trainer connected")
 	var course: Dictionary = await _make_course()
+	_unstarted_focus()
 	# Reopen from the file so the first-start check cannot reuse the fixture's generated data.
 	var path: String = course["path"]
 	_orqwa.open_course(path)
@@ -37,6 +38,7 @@ func _run() -> void:
 	_detail.call("_ride", false)
 	await _wait_until(func() -> bool: return _detail._preparing_scene, "first scene preparation")
 	await _still_loading("first start")
+	_check(_detail._continue_button.disabled, "continuation actions also wait for the scene")
 	_detail.call("_ride", false)
 	_check(_starts == 0, "a duplicate request cannot skip preparation")
 	_world.set_process(true)
@@ -62,6 +64,19 @@ func _run() -> void:
 	if not _failed:
 		print("COURSE LOADING SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+func _unstarted_focus() -> void:
+	_world.set_process(false)
+	WorldPreparation.restart(_world)
+	var focus: Vector2 = Vector2(0.0, 9000.0)
+	_world._streaming.prioritize(_world, focus)
+	_world._build_some_chunks()
+	var first: Node3D = _world.get_node("Terrain").get_child(0) as Node3D
+	var centre: Vector2 = Vector2(first.position.x, -first.position.z)
+	_check(centre.distance_to(focus) < 1000.0, "the requested entry point is loaded before a ride")
+	_check(_orqwa.ride_state().is_empty(), "entry-point preparation does not start the ride clock")
+	_world.set_process(true)
 
 
 func _moving_priority() -> void:

@@ -1,6 +1,6 @@
 class_name WorldStreaming
 extends RefCounted
-## Upload the rider's visible surroundings first, then the remaining scene (R221).
+## Upload the rider's visible surroundings first, then the remaining scene (R224).
 
 ## Covers visibility fading, camera offset and movement between priority updates.
 const LOOK_AHEAD: float = 1000.0
@@ -62,9 +62,11 @@ func upload_some(world: RideWorld) -> void:
 		return
 	if world._benchmark == null:
 		var state: Dictionary = world._orqwa.ride_state()
-		var east: float = state.get("rider_x", 0.0)
-		var north: float = state.get("rider_y", 0.0)
-		var focus: Vector2 = Vector2(east, north)
+		var focus: Vector2 = _focus if _focus.is_finite() else Vector2.ZERO
+		if state.has("rider_x"):
+			var east: float = state["rider_x"]
+			var north: float = state["rider_y"]
+			focus = Vector2(east, north)
 		var radius: float = RideWorld.VISIBILITY_RANGE * world._distance + LOOK_AHEAD
 		if _focus.distance_to(focus) >= REORDER_DISTANCE or radius != _radius:
 			prioritize(world, focus)

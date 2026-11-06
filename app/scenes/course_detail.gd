@@ -38,6 +38,13 @@ var _records: Label = Label.new()
 var _options: RideOptions = RideOptions.new()
 var _ghost: GhostPicker = GhostPicker.new()
 var _ride_button: Button = Button.new()
+var _continuation: VBoxContainer = VBoxContainer.new()
+var _progress_label: Label = Label.new()
+var _progress_bar: ProgressBar = ProgressBar.new()
+var _continue_button: Button = Button.new()
+var _from_start: Button = Button.new()
+var _reset_progress: Button = Button.new()
+var _continuing: bool = false
 var _loading_bar: ProgressBar = ProgressBar.new()
 var _log: PreparationLog = PreparationLog.new()
 var _status: Label = Label.new()
@@ -89,6 +96,8 @@ func open(course: Dictionary) -> void:
 	var difficulty: float = rider.get("default_difficulty_pct", 50.0)
 	_options.set_difficulty(difficulty)
 	_loading_bar.hide()
+	_continuation.hide()
+	_ride_button.show()
 	_log.clear()
 	_ride_button.disabled = true
 	_loading_route = true
@@ -127,10 +136,11 @@ func build() -> void:
 		_on_world_ready({})
 
 
-## World data is built; keep the loading page until its scene has also been prepared (R220).
+## World data is built; keep the loading page until its scene has also been prepared (R223).
 func show_scene_progress(done: int, total: int) -> void:
 	_preparing_scene = true
 	_ride_button.disabled = true
+	_set_continuation_disabled(true)
 	_loading_bar.value = float(done) / float(maxi(total, 1))
 	_loading_bar.show()
 	_status.text = tr("Preparing the 3D scene") + " …"
@@ -145,6 +155,7 @@ func finish_preparation() -> void:
 		_log.finish()
 	_status.text = ""
 	_ride_button.disabled = _loading_route or _regenerating
+	_set_continuation_disabled(_ride_button.disabled)
 
 
 ## Back to the gallery must not enter a ride when preparation finishes later.
@@ -165,6 +176,7 @@ func _regenerate_world() -> void:
 
 func _show_building() -> void:
 	_ride_button.disabled = true
+	_set_continuation_disabled(true)
 	_loading_bar.value = 0.0
 	_loading_bar.show()
 	_log.start()
@@ -274,6 +286,36 @@ func _init() -> void:
 	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel_content.add_child(right_scroll)
 	panel_content.add_child(_ride_button)
+	_continuation.add_theme_constant_override("separation", 12)
+	_progress_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_continuation.add_child(_progress_label)
+	_progress_bar.max_value = 1.0
+	_progress_bar.show_percentage = false
+	_progress_bar.custom_minimum_size.y = 4.0
+	_continuation.add_child(_progress_bar)
+	var actions: HBoxContainer = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	_continue_button.text = tr("Continue ride")
+	_from_start.text = tr("From start")
+	_reset_progress.text = tr("Reset progress")
+	_continue_button.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	UiTheme.danger_button(_reset_progress)
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size.y = 48.0
+		actions.add_child(button)
+	# Uniform minimum widths keep translated labels from changing the relative button sizes.
+	var action_width: float = 0.0
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		action_width = maxf(action_width, button.get_combined_minimum_size().x)
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		button.custom_minimum_size.x = action_width
+	_continue_button.pressed.connect(func() -> void: _choose_ride(true))
+	_from_start.pressed.connect(func() -> void: _choose_ride(false))
+	_reset_progress.pressed.connect(_on_reset_progress)
+	_continuation.add_child(actions)
+	_continuation.hide()
+	panel_content.add_child(_continuation)
 	panel.add_child(panel_content)
 	add_child(panel)
 
@@ -353,6 +395,16 @@ func _delete() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_instance_valid(_ride_button):
 		_ride_button.text = tr("Ride", "ride_action")
+		_size_continuation_actions.call_deferred()
+
+
+func _size_continuation_actions() -> void:
+	var width: float = 0.0
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		button.custom_minimum_size.x = 0.0
+		width = maxf(width, button.get_minimum_size().x)
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		button.custom_minimum_size.x = width
 
 
 func _on_route_loaded(_route: Dictionary) -> void:
@@ -374,6 +426,7 @@ func _show_route() -> void:
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
 	_profile.set_profile(_orqwa.elevation_profile(600))
+	_show_continuation()
 	var lines: PackedStringArray = PackedStringArray()
 	if climbs.get("route_best_s") != null:
 		var best: float = climbs["route_best_s"]
@@ -480,6 +533,11 @@ func _show_option_groups() -> void:
 
 
 func _on_ride_pressed() -> void:
+	_choose_ride(false)
+
+
+func _choose_ride(continuing: bool) -> void:
+	_continuing = continuing
 	var video: Dictionary = _orqwa.video()
 	if video.is_empty():
 		_ride(false)
@@ -497,7 +555,48 @@ func _on_view_action(action: StringName) -> void:
 
 func _ride(along_video: bool) -> void:
 	_along_video = along_video
-	ride_requested.emit(_options.options(), _ghost.choice())
+	var options: Dictionary = _options.options()
+	options["continue_course"] = _continuing
+	ride_requested.emit(options, _ghost.choice())
+
+
+func _show_continuation() -> void:
+	var point: Dictionary = _orqwa.continuation_point()
+	_show_continuation_point(point)
+
+
+func _show_continuation_point(point: Dictionary) -> void:
+	_continuation.visible = not point.is_empty()
+	_ride_button.visible = point.is_empty()
+	_set_continuation_disabled(_building or _regenerating or _preparing_scene)
+	if point.is_empty():
+		_profile.set_rider_distance(0.0)
+		_path_card.set_marker({})
+		return
+	var distance: float = point["distance_m"]
+	var remaining: float = point["remaining_m"]
+	var length: float = point["length_m"]
+	var imperial: bool = _orqwa.profile().get("units", "metric") == "imperial"
+	var divisor: float = 1609.344 if imperial else 1000.0
+	var unit: String = "mi" if imperial else "km"
+	_progress_label.text = (
+		tr("Saved at %s · %s remaining")
+		% ["%.1f %s" % [distance / divisor, unit], "%.1f %s" % [remaining / divisor, unit]]
+	)
+	_progress_bar.value = distance / length
+	_profile.set_rider_distance(distance)
+	_path_card.set_marker(_orqwa.course_position(distance))
+
+
+func _set_continuation_disabled(disabled: bool) -> void:
+	for button: Button in [_continue_button, _from_start, _reset_progress]:
+		button.disabled = disabled
+
+
+func _on_reset_progress() -> void:
+	if _orqwa.reset_continuation():
+		_show_continuation()
+		course_changed.emit()
 
 
 func _add_video(video: String, marks: PackedVector2Array) -> void:

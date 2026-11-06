@@ -41,6 +41,7 @@ const CHART_MIN_S: float = 600.0
 var _orqwa: OrqwaApp
 var _world: RideWorld
 var _settings_dialog: RideSettingsDialog = RideSettingsDialog.new()
+var _continuation_dialog: ContinuationDialog = ContinuationDialog.new()
 ## The pause opened the ride settings: going on closes them again.
 var _settings_for_pause: bool = false
 ## The ride options in effect (`RideOptions.options()`).
@@ -203,6 +204,9 @@ func _ready() -> void:
 	_settings_dialog.profile_changed.connect(_on_profile_changed)
 	_settings_dialog.finish_requested.connect(_on_finish_requested)
 	_settings_dialog.abort_requested.connect(_on_abort_requested)
+	_continuation_dialog.confirmed.connect(func() -> void: _finish_ride(true))
+	_continuation_dialog.canceled.connect(_finish_ride)
+	add_child(_continuation_dialog)
 	# The controls in one bar at the bottom left (#189); the keys work with it folded too.
 	_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
 	_bar.grow_horizontal = Control.GROW_DIRECTION_END
@@ -526,6 +530,14 @@ func _on_profile_changed(profile: Dictionary) -> void:
 
 
 func _on_finish_requested() -> void:
+	if _finished or _continuation_dialog.visible:
+		return
+	if _orqwa.can_save_continuation():
+		overlay_requested.emit(false)
+		_settings_dialog.hide()
+		_orqwa.set_paused(true)
+		UiScale.popup(_continuation_dialog, Vector2i(600, 150))
+		return
 	_finish_ride()
 
 
@@ -856,6 +868,8 @@ func _cycle_camera() -> void:
 
 ## Pauses the ride, or goes on with it: the clock, the road and the trainer wait (P).
 func _toggle_pause() -> void:
+	if _continuation_dialog.visible:
+		return
 	if _finished:
 		return
 	_show_paused(_orqwa.set_paused(not _orqwa.is_paused()))
@@ -909,14 +923,18 @@ func _on_ride_finished() -> void:
 	_finish_ride()
 
 
-func _finish_ride() -> void:
+func _finish_ride(remember: bool = false) -> void:
 	_finished = true
 	_assistance.show_feedback({})
 	_moment_card.clear()
 	_settings_dialog.hide()
 	_bar.show_pause(false)
 	_bar.show_settings(false)
-	_orqwa.finish_ride()
+	_continuation_dialog.hide()
+	if remember:
+		_orqwa.finish_ride_remembering()
+	else:
+		_orqwa.finish_ride()
 	if not _saved:
 		# Nothing to save (e.g. the trainer never connected): offer the way back.
 		_show_toast(tr("Nothing recorded."))

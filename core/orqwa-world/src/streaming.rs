@@ -1,4 +1,4 @@
-//! Spatial upload order for a complete generated or kept world (R221).
+//! Spatial upload order for a complete generated or kept world (R224).
 
 use orqwa_domain::units::Meters;
 

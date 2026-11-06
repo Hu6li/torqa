@@ -54,6 +54,21 @@ starts its first group ride without visiting a course page. It checks the ride o
 settings, then changes the profile to 75% with stale course controls at 25% and starts another
 group ride. Both starts must show the active profile's value (R14, R48).
 
+Course continuation (R220, #497) is covered by `cargo test -p orqwa-app continuation` and
+`cargo test -p orqwa-storage continuation`, including restart persistence, rider isolation,
+explicit consent, discard/reset, fresh FIT samples and video frame seeking. The summary
+smoke suite checks that Finish & save asks over the paused course before opening its summary,
+then checks Continue ride, From start, Reset progress and matching translated action sizes.
+`SCREENSHOT_CONTINUATION_ONLY=1 scripts/screenshots.sh` captures the implemented controls
+with illustrative progress in English/German; repeat with `SCREENSHOT_SIZE=1024x640` for
+compact layouts. The save question is captured over the bundled course's 3D ride.
+`SCREENSHOT_CONTINUATION_FILTER_ONLY=1` captures just the gallery and its progress filter
+without building a world. Course-library tests cover combined progress filtering; the course
+and summary smoke suites cover chip removal, Clear filters, saved points and reset (R221).
+Map-marker checks cover north-up placement, both forms of letterboxing, resizing and clearing
+on reset or course changes. The summary suite checks the blue Yes/red No question and that
+the map and elevation profile use the same saved course position (R222).
+
 It also checks joining before and after a group starts with no local activity files (#508,
 R196, R216): the shared name remains visible during download and retry, then gives way to
 the local course map and workout chart. English/German layout comparisons from 1024 × 640 to
@@ -441,10 +456,11 @@ scripts/dev.sh sh -c 'OUT_DIR=$PWD/screenshots/refresh/riders GALLERY=$PWD/scree
 ```
 
 Course rides and workouts on a course wait for `WorldPreparation.prepare` after world generation
-(R220–R221). Rust's `chunk_plan` orders uploads by horizontal distance from the rider,
+(R223–R224). Rust's `chunk_plan` orders uploads by horizontal distance from the rider,
 including chunks touching the visible area. `WorldStreaming` prepares the starting surroundings
 up to the preset's terrain range plus a 1 km movement/fade/camera margin; the loading page's
 progress covers that area. Riding then starts while farther chunks upload in the background.
+For Continue ride, Rust supplies the validated saved position before the ride starts.
 The upload loop yields after its current chunk once it uses 4 ms while riding, and reorders
 remaining chunks whenever the rider moves 240 m. Full-resolution ground draws while optional
 ground LODs finish, so these do not delay the start. Benchmarks still wait for all chunks
@@ -628,10 +644,14 @@ Tagged builds of the app and CLI are available on the
 [Releases page](https://github.com/ORQWA/ORQWA/releases), without signing in.
 Between releases, download artifacts from the
 [CI runs on main](https://github.com/ORQWA/ORQWA/actions/workflows/ci.yml?query=branch%3Amain)
-while signed in to GitHub. Both use the same archives:
+while signed in to GitHub. Release filenames include the version; development artifacts omit it.
+Android development builds and releases use different signatures: switching requires
+uninstalling, which deletes app data. Export rides before switching.
+
+The artifacts contain these archives:
 
 The `macos` CI job builds `ORQWA-macos-arm64.zip` and `orqwa-cli-macos-arm64.tar.gz`. To test
-real trainers on macOS, use the CLI built by CI: see the [command-line guide](https://github.com/ORQWA/ORQWA/wiki/Command-line-tool).
+real trainers on macOS, use the CLI built by CI: see the [command-line guide](command-line-tool.md).
 
 Windows builds come from the `windows` CI job: `ORQWA-windows-x86_64.zip` (`ORQWA.exe` with
 `orqwa_gd.dll` beside it; keep both in one folder), the installer `ORQWA-windows-x86_64.msi`
@@ -909,6 +929,11 @@ documentation and the PR.
 Keep the welcome and naming story on Home, and visual examples in the screenshot gallery.
 Lead guides with the steps a rider needs; explain settings and limitations only as needed
 to make a choice or solve a problem.
+
+Write for riders without technical experience: short steps, the exact control labels and
+practical troubleshooting. Keep the sidebar to the main rider tasks and link related guides
+from those pages. Put command-line reference, development-build instructions, implementation
+explanations and design rationale in this repository, not in the usage wiki.
 
 Rider guides live in the [GitHub wiki](https://github.com/ORQWA/ORQWA/wiki), checked out as
 the `wiki/` submodule ([ADR 0015](adr/0015-usage-wiki.md)). Clone with

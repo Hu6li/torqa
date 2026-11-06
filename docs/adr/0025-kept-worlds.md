@@ -279,10 +279,10 @@ world deleted while it is still being written is kept all the same once written.
 
 ## Amendment — 2026-11-06: scene uploads start around the rider
 
-After the generated or kept world is available, R221 prepares the scene's visible starting
+After the generated or kept world is available, R224 prepares the scene's visible starting
 surroundings first. A spatial upload plan includes chunk edges and a movement/visibility
 margin; distant chunks and optional ground LODs continue in the background once riding starts.
 Upload priorities follow the rider, with a frame budget that yields after the current chunk.
 The generated/stored world is unchanged, so neither `GENERATOR` nor `FORMAT` changes.
-This shortens the scene preparation wait introduced by R220. It does not stream world
+This shortens the scene preparation wait introduced by R223. It does not stream world
 generation itself: structure foundations and protection still depend on completed terrain.

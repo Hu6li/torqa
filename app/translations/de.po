@@ -3163,3 +3163,36 @@ msgstr "Unterstützung"
 
 msgid "Braking"
 msgstr "Bremswirkung"
+
+msgid "Continue ride"
+msgstr "Weiterfahren"
+
+msgid "From start"
+msgstr "Von Anfang an"
+
+msgid "Reset progress"
+msgstr "Fortschritt löschen"
+
+msgid "Saved at %s · %s remaining"
+msgstr "Gespeichert bei %s · noch %s"
+
+msgid "In progress"
+msgstr "Angefangen"
+
+msgid "Could not save the course continuation point."
+msgstr "Die Position zum Weiterfahren konnte nicht gespeichert werden."
+
+msgid "No continuation point is available. Open the course again."
+msgstr "Keine Position zum Weiterfahren verfügbar. Öffne die Strecke erneut."
+
+msgid "Continue another day?"
+msgstr "An einem anderen Tag weiterfahren?"
+
+msgid "You haven't finished this course. Would you like to save your place?"
+msgstr "Du hast diese Route noch nicht beendet. Möchtest du dir deine Position merken?"
+
+msgid "Yes"
+msgstr "Ja"
+
+msgid "No"
+msgstr "Nein"
