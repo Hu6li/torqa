@@ -44,7 +44,7 @@ func _init() -> void:
 	about_to_popup.connect(
 		func() -> void:
 			_equal_width()
-			_not_now.grab_focus.call_deferred()
+			_save_point.grab_focus.call_deferred()
 	)
 
 
