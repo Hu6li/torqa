@@ -34,6 +34,19 @@ the nearer rider.
 
 ## Courses, setup and analysis
 
+Solo 3D and video courses can be continued across days. These captures use the implemented
+controls with an illustrative saved position (R220, #497).
+
+| Saved course position | Save point over the paused ride |
+|---|---|
+| ![Continue ride, From start and Reset progress](images/continuation/course-detail-en.png) | ![Opt-in question before leaving the course](images/continuation/save-point-en.jpg) |
+
+| Compact course page in German | Compact save question in German |
+|---|---|
+| ![Equal-sized translated course actions](images/continuation/course-detail-compact-de.png) | ![Equal-sized translated question actions](images/continuation/save-point-compact-de.jpg) |
+
+![Small In progress badge on the course map](images/continuation/courses-en.png)
+
 ![Group ride activity previews and invitations](images/groups/lobby-en.png)
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)

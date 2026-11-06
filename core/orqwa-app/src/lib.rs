@@ -9,6 +9,7 @@ pub mod failure;
 pub mod graphics;
 pub mod group;
 use failure::{Failure, Kind};
+mod continuation;
 mod course_migration;
 mod detail;
 #[cfg(test)]
@@ -606,6 +607,8 @@ struct ActiveRide {
     simulated: bool,
     /// Group assistance was enabled; speed records are excluded while power metrics remain real.
     assisted: bool,
+    /// Continuation never changes a group's entry or a workout's timing.
+    solo_course: bool,
 }
 
 impl ActiveRide {
@@ -796,6 +799,7 @@ pub struct App {
     /// The rides' metadata read once and kept (R79); `None` if the cache cannot hold it, when
     /// the history reads every ride's file as before.
     index: Mutex<Option<HistoryIndex>>,
+    continuation_undo: Mutex<Option<continuation::Undo>>,
 }
 
 impl App {
@@ -888,6 +892,7 @@ impl App {
             computer,
             world_generator: orqwa_world::GENERATOR,
             index: Mutex::new(index),
+            continuation_undo: Mutex::new(None),
         })
     }
 
@@ -3062,6 +3067,14 @@ impl App {
         ghost: Option<Ghost>,
         (player, sound): (Option<video::VideoPlayer>, Option<video::SoundPlayer>),
     ) {
+        *self
+            .continuation_undo
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
+        let solo_course = self.group.is_none()
+            && self.course.is_some()
+            && ride.route().is_some()
+            && ride.state().workout.is_none();
         let milestones =
             moments::Milestones::new(ride.route().map(Route::length), self.profile.profile.units);
         let peaks = moments::PowerPeaks::new(analysis::record_powers(
@@ -3108,6 +3121,7 @@ impl App {
             paused: false,
             simulated: false,
             assisted: false,
+            solo_course,
         });
     }
 
@@ -3173,6 +3187,12 @@ impl App {
 
     /// Ends the ride and saves it; reports [`AppEvent::RideSaved`] on the next update.
     pub fn finish_ride(&mut self) -> Vec<AppEvent> {
+        self.finish_ride_remembering(false)
+    }
+
+    /// Saves the activity and, only when explicitly requested, its unfinished course point.
+    /// Saving a genuine solo course finish clears the point. Errors are returned as events.
+    pub fn finish_ride_remembering(&mut self, remember: bool) -> Vec<AppEvent> {
         let Some(active) = self.ride.take() else {
             return Vec::new();
         };
@@ -3251,10 +3271,17 @@ impl App {
                 warn!(%error, "cannot save ride metadata");
             }
         }
-        vec![match saved {
+        let progress = if saved.is_ok() {
+            self.save_ride_continuation(&active, &path, remember)
+        } else {
+            Ok(())
+        };
+        let mut events = vec![match saved {
             Ok(()) => AppEvent::RideSaved(path),
             Err(message) => AppEvent::Error(message),
-        }]
+        }];
+        events.extend(progress.err().map(AppEvent::Error));
+        events
     }
 
     /// The active rider's rides with their metadata, newest first: from the history index
@@ -3704,6 +3731,7 @@ impl App {
             AppError::Reported(Failure::new(Kind::DeleteFile, e).arg(fit.display()))
         })?;
         let _ = std::fs::remove_file(rides::metadata_path(fit));
+        self.restore_discarded_continuation(fit)?;
         Ok(())
     }
 

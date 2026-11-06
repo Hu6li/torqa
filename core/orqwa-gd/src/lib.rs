@@ -871,7 +871,14 @@ impl OrqwaApp {
         let locale = locale();
         let mut array = VarArray::new();
         for course in self.app.as_ref().map(App::courses).unwrap_or_default() {
-            array.push(&course_dict(&course, &locale).to_variant());
+            let mut dict = course_dict(&course, &locale);
+            dict.set(
+                "in_progress",
+                self.app
+                    .as_ref()
+                    .is_some_and(|app| app.course_continuation(&course).is_some()),
+            );
+            array.push(&dict.to_variant());
         }
         array
     }
@@ -938,6 +945,12 @@ impl OrqwaApp {
             let mut courses = VarArray::new();
             for course in &group.courses {
                 let mut dict = course_dict(&course.entry, &query.locale);
+                dict.set(
+                    "in_progress",
+                    self.app
+                        .as_ref()
+                        .is_some_and(|app| app.course_continuation(&course.entry).is_some()),
+                );
                 let estimated = course
                     .estimated
                     .map_or_else(Variant::nil, |t| t.as_secs_f64().to_variant());
@@ -2548,6 +2561,28 @@ impl OrqwaApp {
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn start_ride(&mut self, difficulty: f64, flat_descents: bool, ghost: VarDictionary) -> bool {
+        self.start_course_ride(difficulty, flat_descents, &ghost, false)
+    }
+
+    /// Continues the loaded course with today's metrics starting at zero, including video.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot dictionaries arrive by value
+    fn continue_ride(
+        &mut self,
+        difficulty: f64,
+        flat_descents: bool,
+        ghost: VarDictionary,
+    ) -> bool {
+        self.start_course_ride(difficulty, flat_descents, &ghost, true)
+    }
+
+    fn start_course_ride(
+        &mut self,
+        difficulty: f64,
+        flat_descents: bool,
+        ghost: &VarDictionary,
+        continuing: bool,
+    ) -> bool {
         let descent = if flat_descents {
             DescentMode::Flat
         } else {
@@ -2577,7 +2612,13 @@ impl OrqwaApp {
             )),
             _ => GhostChoice::None,
         };
-        self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
+        self.command(|app| {
+            if continuing {
+                app.continue_ride(Percent(difficulty), descent, &choice)
+            } else {
+                app.start_ride(Percent(difficulty), descent, &choice)
+            }
+        })
     }
 
     /// Starts a workout (R56, R21) as the active rider: `{kind, power_w, zone, bpm, min_w,
@@ -3169,6 +3210,55 @@ impl OrqwaApp {
         for event in app.finish_ride() {
             self.emit(event);
         }
+    }
+
+    /// Whether an unfinished solo course can offer an opt-in continuation point.
+    #[func]
+    fn can_save_continuation(&self) -> bool {
+        self.app.as_ref().is_some_and(App::can_save_continuation)
+    }
+
+    /// Accepts this activity's progress; later history deletion cannot restore old progress.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot strings arrive by value
+    fn accept_continuation(&self, path: GString) {
+        if let Some(app) = &self.app {
+            app.accept_continuation(Path::new(&path.to_string()));
+        }
+    }
+
+    /// Ends and saves the current activity, remembering its course point by explicit choice.
+    #[func]
+    fn finish_ride_remembering(&mut self) {
+        let Some(app) = self.app.as_mut() else {
+            return;
+        };
+        for event in app.finish_ride_remembering(true) {
+            self.emit(event);
+        }
+    }
+
+    /// The loaded course's valid continuation: distance, remaining distance and length in metres.
+    #[func]
+    fn continuation_point(&self) -> VarDictionary {
+        let Some(point) = self.app.as_ref().and_then(App::continuation_point) else {
+            return VarDictionary::new();
+        };
+        vdict! {
+            "distance_m" => point.distance_m,
+            "remaining_m" => point.length_m - point.distance_m,
+            "length_m" => point.length_m,
+        }
+    }
+
+    /// Resets only the current rider's continuation point; activities remain intact.
+    #[func]
+    fn reset_continuation(&mut self) -> bool {
+        let saved = self.command(|app| app.reset_continuation());
+        if saved {
+            self.signals().courses_changed().emit();
+        }
+        saved
     }
 
     /// The ride state: `{elapsed_s, distance_m, speed_kmh, power, cadence, heart_rate,

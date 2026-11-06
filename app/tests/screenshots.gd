@@ -327,12 +327,20 @@ func _initialize() -> void:
 		_vam_only.call_deferred()
 	elif OS.get_environment("SCREENSHOT_HUD_LAYOUTS_ONLY") == "1":
 		_hud_layouts_only.call_deferred()
+	elif OS.get_environment("SCREENSHOT_CONTINUATION_ONLY") == "1":
+		_continuation_only.call_deferred()
 	else:
 		_run.call_deferred()
 
 
 func _calories_only() -> void:
 	await CalorieScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
+
+
+func _continuation_only() -> void:
+	_software_render(_main.get_node("World") as RideWorld)
+	await ContinuationScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
 	quit(0)
 
 

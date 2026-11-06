@@ -54,6 +54,15 @@ starts its first group ride without visiting a course page. It checks the ride o
 settings, then changes the profile to 75% with stale course controls at 25% and starts another
 group ride. Both starts must show the active profile's value (R14, R48).
 
+Course continuation (R220, #497) is covered by `cargo test -p orqwa-app continuation` and
+`cargo test -p orqwa-storage continuation`, including restart persistence, rider isolation,
+explicit consent, discard/reset, fresh FIT samples and video frame seeking. The summary
+smoke suite checks that Finish & save asks over the paused course before opening its summary,
+then checks Continue ride, From start, Reset progress and matching translated action sizes.
+`SCREENSHOT_CONTINUATION_ONLY=1 scripts/screenshots.sh` captures the implemented controls
+with illustrative progress in English/German; repeat with `SCREENSHOT_SIZE=1024x640` for
+compact layouts. The save question is captured over the bundled course's 3D ride.
+
 It also checks joining before and after a group starts with no local activity files (#508,
 R196, R216): the shared name remains visible during download and retry, then gives way to
 the local course map and workout chart. English/German layout comparisons from 1024 × 640 to

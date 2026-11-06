@@ -59,6 +59,8 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
   and ride through scenery based on real terrain and OpenStreetMap.
 - **[Video rides](https://github.com/ORQWA/ORQWA/wiki/Video-courses):** Ride along with a video
   that plays at your speed.
+- **[Continue another day](https://github.com/ORQWA/ORQWA/wiki/Courses#continue-another-day):**
+  Save your place in a solo 3D or video course and continue with a fresh activity next time.
 - **[Group rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides):** Ride in a group of up to
   eight people, with voice chat.
 - **[Workouts](https://github.com/ORQWA/ORQWA/wiki/Workouts):** Import or create workouts,

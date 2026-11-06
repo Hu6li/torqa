@@ -370,6 +370,11 @@ Built in rideable steps:
   (ADR 0007 format bump); frames from the video for video courses~~ — dropped 2026-10-15: the course's
   map (path card) is its picture
 - [x] Courses gallery (cards with stats and small map) and course detail page with ride options;
+  - [x] Opt-in solo continuation in 3D and video courses (R220, #497,
+    [ADR 0039](adr/0039-course-continuation.md)): ask over the paused
+    course at Finish & save, map-thumbnail status pill, saved position and equal-sized
+    Continue ride / From start / Reset progress actions; separate daily FIT activities,
+    prepared-route validation, aligned ghosts/video and unchanged speed-record eligibility
   courses renamed (the pencil's Edit course dialog, with their video) and deleted (the bin)
   there, 3D world built only when riding; the cards share the window's full width, their maps
   growing with them

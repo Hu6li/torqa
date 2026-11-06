@@ -859,6 +859,10 @@ msgstr ""
 msgid "Constant power %d W"
 msgstr ""
 
+#: app/scenes/course_detail.gd
+msgid "Continue ride"
+msgstr ""
+
 #: app/ui/group_code_row.gd
 msgid "Copied"
 msgstr ""
@@ -997,6 +1001,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not save the account connection."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Could not save the course continuation point."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -1599,6 +1607,10 @@ msgstr ""
 msgid "Friends' voices; 0 mutes them"
 msgstr ""
 
+#: app/scenes/course_detail.gd
+msgid "From start"
+msgstr ""
+
 #: app/ui/graphics_settings.gd app/ui/ride_bar.gd
 msgid "Full screen (F11)"
 msgstr ""
@@ -1825,6 +1837,10 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "In between, the video follows your distance evenly."
+msgstr ""
+
+#: app/ui/course_card.gd
+msgid "In progress"
 msgstr ""
 
 #: app/ui/update_dialog.gd
@@ -2243,6 +2259,10 @@ msgstr ""
 msgid "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "No continuation point is available. Open the course again."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
 msgid "No country"
 msgstr ""
@@ -2349,6 +2369,10 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Not found: %s. Wake the devices, then scan again."
+msgstr ""
+
+#: app/ui/continuation_dialog.gd
+msgid "Not now"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd app/ui/course_settings.gd
@@ -2783,6 +2807,10 @@ msgstr ""
 msgid "Regions"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Remember where you stopped?"
+msgstr ""
+
 #: app/scenes/remote_dialog.gd core/orqwa-remote/src/lib.rs
 msgid "Remote"
 msgstr ""
@@ -2813,6 +2841,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "Replace"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Reset progress"
 msgstr ""
 
 #: app/scenes/overlay_hud.gd app/scenes/remote_dialog.gd app/ui/ride_bar.gd
@@ -2995,12 +3027,24 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Save a point to ride the rest another day. Each ride is a separate activity."
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "Save effort when riding behind friends."
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Save point"
+msgstr ""
+
 #: app/scenes/history_screen.gd
 msgid "Saved as %s"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Saved at %s · %s remaining"
 msgstr ""
 
 #: app/scenes/workouts_tab.gd
