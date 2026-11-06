@@ -15,7 +15,8 @@ absolute course position from distance ridden since local entry.
   `profiles/<id>/continuations/<route-key>.json`, using atomic replacement. Shared course
   files and kept worlds remain unchanged. The point includes its distance, course length
   and a deterministic fingerprint of the prepared route's coordinates, elevation and
-  distance samples. Revalidate on opening/continuing; changed geometry invalidates it.
+  distance samples, quantized to centimetres to tolerate platform rounding. Revalidate on
+  opening/continuing; changed geometry invalidates it.
 - Ask over the paused course when Finish & save is pressed. Only explicit consent changes
   an unfinished point, after the FIT save succeeds. Saving a genuine solo finish clears
   it. Discarding that activity from its quick summary restores the prior point, unless a

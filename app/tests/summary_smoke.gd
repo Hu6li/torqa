@@ -199,7 +199,7 @@ func _continuation(
 			% [question._save_point.size, question._not_now.size]
 		)
 	)
-	question.confirmed.emit()
+	question._save_point.pressed.emit()
 	await process_frame
 	_check(summary.visible and not question.visible, "Save point proceeds to the summary")
 	var first: String = summary.get("_path")
@@ -245,9 +245,17 @@ func _continuation(
 	await create_timer(1.3).timeout
 	ride.call("_on_finish_requested")
 	await process_frame
-	question.canceled.emit()
+	question._not_now.grab_focus()
+	for pressed: bool in [true, false]:
+		var key: InputEventKey = InputEventKey.new()
+		key.keycode = KEY_ENTER
+		key.pressed = pressed
+		question.push_input(key)
 	await process_frame
-	_check(summary.visible and orqwa.continuation_point() == point, "closing preserves old point")
+	_check(
+		summary.visible and orqwa.continuation_point() == point,
+		"Enter on Not now preserves the old point"
+	)
 	var second: String = summary.get("_path")
 	summary.confirmed.emit()
 	page.call("_on_reset_progress")

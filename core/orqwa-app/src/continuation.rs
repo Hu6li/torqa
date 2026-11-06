@@ -21,11 +21,16 @@ pub(super) struct Undo {
 }
 
 fn revision(route: &Route) -> String {
-    // Stable across runs and computers; unlike Route::key this includes prepared geometry.
+    // Centimetre precision ignores platform rounding, while detecting prepared-route changes.
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for point in route.points() {
-        for value in [point.lat, point.lon, point.elevation.0, point.distance.0] {
-            for byte in value.to_bits().to_le_bytes() {
+        for (value, scale) in [
+            (point.lat, 1e7),
+            (point.lon, 1e7),
+            (point.elevation.0, 100.0),
+            (point.distance.0, 100.0),
+        ] {
+            for byte in (value * scale).round().to_le_bytes() {
                 hash ^= u64::from(byte);
                 hash = hash.wrapping_mul(0x0100_0000_01b3);
             }
@@ -476,10 +481,24 @@ mod tests {
         app.rename_course(&path, "New course name").unwrap();
         assert!(app.continuation_point().is_some());
         let route_key = app.route().unwrap().key();
-        let xml = std::fs::read_to_string(write_route(&app.cache_dir))
-            .unwrap()
-            .replace("<ele>500</ele>", "<ele>501</ele>");
-        let changed = app.runtime.block_on(Route::from_gpx(&xml, None)).unwrap();
+        let xml = std::fs::read_to_string(write_route(&app.cache_dir)).unwrap();
+        let rounded = xml.replace("<ele>500</ele>", "<ele>500.001</ele>");
+        app.route = Some(
+            app.runtime
+                .block_on(Route::from_gpx(&rounded, None))
+                .unwrap(),
+        );
+        assert!(
+            app.continuation_point().is_some(),
+            "sub-centimetre rounding preserves the point"
+        );
+        let changed = app
+            .runtime
+            .block_on(Route::from_gpx(
+                &xml.replace("<ele>500</ele>", "<ele>501</ele>"),
+                None,
+            ))
+            .unwrap();
         assert_eq!(changed.key(), route_key);
         app.route = Some(changed);
         assert!(app.continuation_point().is_none());
