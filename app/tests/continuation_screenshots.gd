@@ -5,6 +5,7 @@ extends RefCounted
 
 static func capture(main: Control, out: String) -> void:
 	var tree: SceneTree = main.get_tree()
+	var filters_only: bool = OS.get_environment("SCREENSHOT_CONTINUATION_FILTER_ONLY") == "1"
 	var app: OrqwaApp = main.get_node("Orqwa")
 	var start: StartPage = main.get_node("StartPage")
 	var course: Dictionary = app.courses()[0]
@@ -29,11 +30,21 @@ static func capture(main: Control, out: String) -> void:
 		courses.call("_add_group", {"group": "", "label": "", "courses": [course]})
 		await tree.create_timer(0.4).timeout
 		_save(main, out, "courses-" + locale)
+		var filters: Button = courses.get("_filters")
+		var filter_panel: PopupPanel = courses.get("_filter_panel")
+		filters.pressed.emit()
+		await tree.create_timer(0.3).timeout
+		_save(main, out, "courses-filters-" + locale)
+		filter_panel.hide()
+		if filters_only:
+			continue
 		start._open_course(course)
 		page.call("_show_continuation_point", point)
 		await tree.create_timer(0.4).timeout
 		_save(main, out, "course-detail-" + locale)
 	TranslationServer.set_locale("en")
+	if filters_only:
+		return
 	app.set_graphics_quality("low")
 	if not app.build_world():
 		await app.world_ready

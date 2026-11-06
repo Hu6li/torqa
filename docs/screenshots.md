@@ -47,6 +47,12 @@ controls with an illustrative saved position (R220, #497).
 
 ![Small In progress badge on the course map](images/continuation/courses-en.png)
 
+Use **Filters → Progress → In progress** to find the active rider's saved courses.
+
+| In progress filter | German at 1024 × 640 |
+|---|---|
+| ![Progress beside the existing course filters](images/app/courses-filters.png) | ![Compact progress filter](images/continuation/courses-filters-compact-de.png) |
+
 ![Group ride activity previews and invitations](images/groups/lobby-en.png)
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)

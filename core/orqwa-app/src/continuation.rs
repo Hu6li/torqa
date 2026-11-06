@@ -465,6 +465,11 @@ mod tests {
         advance(&mut app, 10);
         saved(&app.finish_ride_remembering(true));
         let original = app.profile.id.clone();
+        let query = crate::library::CourseQuery {
+            in_progress: true,
+            ..crate::library::CourseQuery::default()
+        };
+        assert_eq!(app.course_library(&query).groups[0].courses.len(), 1);
         let other = app
             .save_profile(
                 None,
@@ -476,7 +481,9 @@ mod tests {
             .unwrap();
         app.select_profile(&other).unwrap();
         assert!(app.continuation_point().is_none());
+        assert_eq!(app.course_library(&query).groups, []);
         app.select_profile(&original).unwrap();
+        assert_eq!(app.course_library(&query).groups[0].courses.len(), 1);
         let path = app.course.clone().unwrap();
         app.rename_course(&path, "New course name").unwrap();
         assert!(app.continuation_point().is_some());
@@ -502,6 +509,7 @@ mod tests {
         assert_eq!(changed.key(), route_key);
         app.route = Some(changed);
         assert!(app.continuation_point().is_none());
+        assert_eq!(app.course_library(&query).groups, []);
         assert!(
             app.continue_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
                 .is_err()

@@ -62,6 +62,9 @@ then checks Continue ride, From start, Reset progress and matching translated ac
 `SCREENSHOT_CONTINUATION_ONLY=1 scripts/screenshots.sh` captures the implemented controls
 with illustrative progress in English/German; repeat with `SCREENSHOT_SIZE=1024x640` for
 compact layouts. The save question is captured over the bundled course's 3D ride.
+`SCREENSHOT_CONTINUATION_FILTER_ONLY=1` captures just the gallery and its progress filter
+without building a world. Course-library tests cover combined progress filtering; the course
+and summary smoke suites cover chip removal, Clear filters, saved points and reset (R221).
 
 It also checks joining before and after a group starts with no local activity files (#508,
 R196, R216): the shared name remains visible during download and retry, then gives way to

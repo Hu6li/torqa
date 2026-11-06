@@ -327,7 +327,10 @@ func _initialize() -> void:
 		_vam_only.call_deferred()
 	elif OS.get_environment("SCREENSHOT_HUD_LAYOUTS_ONLY") == "1":
 		_hud_layouts_only.call_deferred()
-	elif OS.get_environment("SCREENSHOT_CONTINUATION_ONLY") == "1":
+	elif (
+		OS.get_environment("SCREENSHOT_CONTINUATION_ONLY") == "1"
+		or OS.get_environment("SCREENSHOT_CONTINUATION_FILTER_ONLY") == "1"
+	):
 		_continuation_only.call_deferred()
 	else:
 		_run.call_deferred()

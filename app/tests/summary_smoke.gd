@@ -205,6 +205,11 @@ func _continuation(
 	var first: String = summary.get("_path")
 	var point: Dictionary = orqwa.continuation_point()
 	_check(not point.is_empty(), "Save point persists continuation")
+	var progressing: Dictionary = orqwa.course_library({"in_progress": true})
+	var groups: Array = progressing["groups"]
+	_check(groups.size() == 1, "In progress returns the course with a saved point")
+	var filtered_courses: Array = groups[0]["courses"] if not groups.is_empty() else []
+	_check(filtered_courses.size() == 1, "In progress excludes courses without saved points")
 	summary.confirmed.emit()
 	var course: Dictionary = {}
 	for entry: Dictionary in orqwa.courses():
@@ -260,6 +265,9 @@ func _continuation(
 	summary.confirmed.emit()
 	page.call("_on_reset_progress")
 	_check(orqwa.continuation_point().is_empty(), "Reset progress clears the point")
+	progressing = orqwa.course_library({"in_progress": true})
+	groups = progressing["groups"]
+	_check(groups.is_empty(), "reset removes the course from the In progress filter")
 	_check(
 		FileAccess.file_exists(first) and FileAccess.file_exists(second), "reset keeps activities"
 	)

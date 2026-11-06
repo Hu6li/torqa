@@ -1831,10 +1831,12 @@ impl App {
                     .route_key
                     .as_ref()
                     .and_then(|key| ridden.get(key).copied());
+                let in_progress = self.course_continuation(&entry).is_some();
                 library::LibraryCourse {
                     entry,
                     estimated,
                     last_ridden,
+                    in_progress,
                 }
             })
             .collect();

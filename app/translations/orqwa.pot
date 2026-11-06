@@ -1839,7 +1839,7 @@ msgstr ""
 msgid "In between, the video follows your distance evenly."
 msgstr ""
 
-#: app/ui/course_card.gd
+#: app/scenes/courses_tab.gd app/ui/course_card.gd
 msgid "In progress"
 msgstr ""
 
@@ -2719,7 +2719,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd
+#: app/scenes/analysis_tab.gd app/scenes/courses_tab.gd
 msgid "Progress"
 msgstr ""
 

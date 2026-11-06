@@ -358,6 +358,18 @@ func _course_gallery() -> void:
 	_check(none.is_empty(), "the listed chip turns its filter off: %s" % none)
 	_check(not _chip(tab, "Hilly").button_pressed, "and the panel's chip")
 	_check(_chips(active).is_empty() and not active.visible, "nothing listed while nothing is on")
+	_chip(tab, "In progress").button_pressed = true
+	var in_progress: bool = tab.query()["in_progress"]
+	_check(in_progress and tab.filtered(), "In progress is an active query filter")
+	listed = _chips(active)
+	_check(listed.size() == 1 and listed[0].text == "In progress", "progress filter chip is listed")
+	listed[0].button_pressed = false
+	in_progress = tab.query()["in_progress"]
+	_check(
+		not in_progress and not _chip(tab, "In progress").button_pressed,
+		"removing progress chip clears it"
+	)
+	_as_if_courses(tab)
 
 	# However many countries the library spans, the gallery stays where it is and the panel
 	# holds them all. Measured once the gallery has moved up into the emptied list's place.
@@ -408,14 +420,21 @@ func _course_gallery() -> void:
 	_check(remembered_sort == "added", "the order is remembered: %s" % remembered)
 	search.text = "gurten"
 	search.text_changed.emit("gurten")
+	_chip(tab, "In progress").button_pressed = true
 	_check(tab.filtered(), "a search filters")
 	tab.clear_filters()
 	var cleared: Dictionary = tab.query()
 	var cleared_terrains: PackedStringArray = cleared["terrains"]
 	var cleared_search: String = cleared["search"]
 	var cleared_sort: String = cleared["sort"]
+	var cleared_progress: bool = cleared["in_progress"]
 	_check(
-		cleared_search.is_empty() and cleared_terrains.is_empty() and cleared_sort == "added",
+		(
+			cleared_search.is_empty()
+			and cleared_terrains.is_empty()
+			and not cleared_progress
+			and cleared_sort == "added"
+		),
 		"filters cleared, the order kept: %s" % cleared
 	)
 	_check(not _chip(tab, "Hilly").button_pressed, "the chip is off again")

@@ -7,6 +7,7 @@
 # SCREENSHOT_VAM_ONLY=1 captures VAM in the HUD editor in English/German and both units.
 # SCREENSHOT_HUD_LAYOUTS_ONLY=1 captures separate ride/workout HUD controls in English/German.
 # SCREENSHOT_CONTINUATION_ONLY=1 captures continuation controls in English/German.
+# SCREENSHOT_CONTINUATION_FILTER_ONLY=1 captures the progress filter without building a world.
 # SCREENSHOT_RIDE_OPTIONS_ONLY=1 stops after course detail and the ride's settings.
 set -eu
 
@@ -23,6 +24,7 @@ if [ "${SCREENSHOT_ERRORS_ONLY:-}" != 1 ] && [ "${SCREENSHOT_SETTINGS_ONLY:-}" !
     && [ "${SCREENSHOT_VAM_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_HUD_LAYOUTS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_CONTINUATION_ONLY:-}" != 1 ] \
+    && [ "${SCREENSHOT_CONTINUATION_FILTER_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_SUMMARY_ONLY:-}" != 1 ]; then
     cargo run -q --manifest-path "$root/core/Cargo.toml" -p orqwa-cli -- sample-rides --weeks 16
 fi

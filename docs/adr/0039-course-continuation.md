@@ -34,6 +34,9 @@ absolute course position from distance ridden since local entry.
 
 ## Consequences
 
+The gallery's In progress filter (R221) uses the same active-rider point lookup as its badge.
+It combines with existing filters in Rust; toggling or clearing it changes only the query.
+
 Continuation points sync with rider data and survive renaming or moving course files.
 Prepared geometry changes can require starting over. There is no service, dependency,
 course-format or world-format change. Each activity remains a separate FIT/history entry.

@@ -884,9 +884,11 @@ impl OrqwaApp {
     }
 
     /// The library as the Courses tab shows it (R67), for `query` `{search, sort, descending,
-    /// group, kinds, terrains, lengths, countries}`: the names of `course_library_choices()`,
-    /// the chips as `PackedStringArray`s (empty for all), countries by code or `none` for
-    /// those not known. Returns `{total, groups: [{group, label, courses}], countries}`: how
+    /// group, kinds, terrains, lengths, countries, in_progress}`: the names of
+    /// `course_library_choices()`, the chips as `PackedStringArray`s (empty for all), countries
+    /// by code or `none` for those not known. `in_progress` is an optional boolean, false by
+    /// default, limiting results to the active rider's saved points. Returns
+    /// `{total, groups: [{group, label, courses}], countries}`: how
     /// many courses the library holds; the groups shown, `group` the name of their kind,
     /// terrain or length band, or a country's code or `none` (empty when not grouped) and
     /// `label` a country's name; and the countries the library's courses pass as `[{code,
@@ -933,6 +935,10 @@ impl OrqwaApp {
                 .filter_map(|n| library::LengthBand::from_name(n))
                 .collect(),
             countries: chips("countries"),
+            in_progress: query
+                .get("in_progress")
+                .and_then(|value| value.try_to::<bool>().ok())
+                .unwrap_or(false),
             locale: locale(),
         };
         let gallery = self
@@ -945,12 +951,7 @@ impl OrqwaApp {
             let mut courses = VarArray::new();
             for course in &group.courses {
                 let mut dict = course_dict(&course.entry, &query.locale);
-                dict.set(
-                    "in_progress",
-                    self.app
-                        .as_ref()
-                        .is_some_and(|app| app.course_continuation(&course.entry).is_some()),
-                );
+                dict.set("in_progress", course.in_progress);
                 let estimated = course
                     .estimated
                     .map_or_else(Variant::nil, |t| t.as_secs_f64().to_variant());
