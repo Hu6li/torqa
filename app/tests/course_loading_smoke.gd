@@ -1,5 +1,5 @@
 extends SceneTree
-## R220: no ride, clock or recording before the complete course scene is prepared.
+## R220/R221: prepare the visible start area, then ride while distant chunks stream in.
 
 var _failed: bool = false
 var _main: Control
@@ -41,6 +41,13 @@ func _run() -> void:
 	_check(_starts == 0, "a duplicate request cannot skip preparation")
 	_world.set_process(true)
 	await _wait_until(func() -> bool: return _starts == 1, "first ride starts")
+	var uploaded: int = _world._next_chunk
+	_check(uploaded < _world._chunk_count, "riding starts before distant chunks are uploaded")
+	print("Ride started with %d / %d chunks uploaded" % [uploaded, _world._chunk_count])
+	await _moving_priority()
+	await _wait_until(_world.uploads_complete, "distant chunks finish while riding")
+	var elapsed: float = _orqwa.ride_state().get("elapsed_s", 0.0)
+	_check(elapsed > 0.0, "the ride clock runs while distant chunks load")
 	_back_home()
 
 	# Already uploaded scenes need no second preparation pass.
@@ -55,6 +62,26 @@ func _run() -> void:
 	if not _failed:
 		print("COURSE LOADING SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+func _moving_priority() -> void:
+	_world.set_process(false)
+	var before: int = _world._next_chunk
+	_check(_orqwa.jump_to_distance(9000.0), "move the fake rider to a distant part of the course")
+	var state: Dictionary = _orqwa.ride_state()
+	var east: float = state["rider_x"]
+	var north: float = state["rider_y"]
+	_world.set_process(true)
+	await _wait_until(
+		func() -> bool: return _world._next_chunk > before, "uploads follow the rider"
+	)
+	var next: Node3D = _world.get_node("Terrain").get_child(before) as Node3D
+	var centre: Vector2 = Vector2(next.position.x, -next.position.z)
+	_check(
+		centre.distance_to(Vector2(east, north)) < 1000.0,
+		"the next uploaded chunk is near the new position, rather than continuing the old queue"
+	)
+	_check(_orqwa.jump_to_distance(0.0), "return to the prepared starting area")
 
 
 func _changed_options() -> void:
@@ -120,18 +147,18 @@ func _still_loading(what: String) -> void:
 	_check(_start.visible and not _world.visible, what + ": the loading page stays visible")
 	_check(_orqwa.ride_state().is_empty(), what + ": the ride clock has not started")
 	_check(_orqwa.history().size() == history_size, what + ": no recorded ride")
-	_check(not _world.uploads_complete(), what + ": the scene is still incomplete")
+	_check(not _world._streaming.nearby_ready(), what + ": visible surroundings are incomplete")
 
 
 func _on_started(options: Dictionary) -> void:
 	_starts += 1
 	if options.has("workout") and not options.get("on_course", false):
 		return
-	_check(_world.uploads_complete(), "the first visible ride frame has every scene mesh")
+	_check(_world._streaming.nearby_ready(), "the first ride frame has its visible surroundings")
 	var terrain: Node3D = _world.get_node("Terrain")
 	_check(
-		terrain.get_child_count() == _orqwa.world_chunk_count(),
-		"the complete course terrain is present when riding starts"
+		terrain.get_child_count() == _world._next_chunk,
+		"every completed chunk is present when riding starts"
 	)
 
 
@@ -146,7 +173,7 @@ func _make_course() -> Dictionary:
 	file.store_string(
 		(
 			'<gpx><trk><name>Scene readiness</name><trkseg><trkpt lat="46" lon="7">'
-			+ '<ele>500</ele></trkpt><trkpt lat="46.009" lon="7"><ele>520</ele></trkpt>'
+			+ '<ele>500</ele></trkpt><trkpt lat="46.108" lon="7"><ele>520</ele></trkpt>'
 			+ "</trkseg></trk></gpx>"
 		)
 	)

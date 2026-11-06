@@ -591,3 +591,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R220 | Refines R40 and R101 (2026-11-06): after pressing **Ride** on a 3D course, or starting a workout on a course, the loading page stays visible with progress until the complete course scene is prepared, including terrain, scenery and background ground meshes with the chosen season and graphics settings. Only then does the ride start and its clock and recording begin. Opening a course page alone does not build its world. Returning to the gallery or opening another course abandons the pending start. Video rides and workouts without a course do not wait for a 3D scene. |
+
+## Prepare the rider's surroundings first
+
+| ID | Requirement |
+|---|---|
+| R221 | Refines R220 (2026-11-06), superseding its wait for the entire course scene and background ground meshes: after **Ride** or a course workout's **Start**, prepare the terrain and scenery around the rider's start first. Begin riding once the visible surroundings, including a movement and visibility margin for the selected graphics, are present. Upload farther chunks in the background with bounded work per frame and update their priority as the rider moves. Optional ground LODs do not hold up the start while full-resolution ground is available. Keep the existing generation/loading progress, cancellation, season and graphics behavior; course world data generation still finishes before scene uploads. |

@@ -187,9 +187,9 @@ Built in rideable steps:
   offers to regenerate one an older generator built (R101, ADR 0025, #237)
 - [x] The settings' Courses tab lists each kept world with the room it takes and a bin to
   delete it alone; the course stays and its next ride builds the world again (R136, #355)
-- [x] After Ride or a course workout's Start, keep the loading page and progress until all
-  scene chunks and background ground meshes are prepared with the selected season and
-  graphics; start the ride clock and recording afterward (R220)
+- [x] After Ride or a course workout's Start, prepare the visible surroundings at the rider's
+  start with the selected season and graphics before riding; upload farther chunks in the
+  background with bounded frame work, reprioritizing as the rider moves (R220–R221)
 - **Exit:** prepare a course online, ride it offline on another machine from the `.oqc` file ✅
   (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 

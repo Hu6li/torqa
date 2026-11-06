@@ -10,6 +10,7 @@ static func prepare(
 	world.apply_quality(orqwa.graphics_quality(), orqwa.graphics_options())
 	world.apply_options(options)
 	world.reset_view()
+	world._streaming.prioritize(world, Vector2.ZERO)
 	var revision: int = world._chunk_revision
 	var course: String = orqwa.loaded_course()
 	var quality: String = orqwa.graphics_quality()
@@ -28,8 +29,10 @@ static func prepare(
 			graphics = orqwa.graphics_options()
 			world.apply_quality(quality, graphics)
 			revision = world._chunk_revision
-		progress.call(world._next_chunk, world._chunk_count)
-		if world.uploads_complete():
+			world._streaming.prioritize(world, Vector2.ZERO)
+		var nearby: Vector2i = world._streaming.nearby_progress()
+		progress.call(nearby.x, nearby.y)
+		if world._streaming.nearby_ready():
 			return true
 		await world.get_tree().process_frame
 	return false
@@ -38,6 +41,7 @@ static func prepare(
 ## Invalidates waiters before replacing the scene's terrain chunks.
 static func restart(world: RideWorld) -> void:
 	world._chunk_revision += 1
+	world._streaming.reset()
 	for chunk: Node in world._terrain.get_children():
 		world._terrain.remove_child(chunk)
 		chunk.queue_free()
