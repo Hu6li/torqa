@@ -33,6 +33,23 @@ func _init(course: Dictionary, imperial: bool) -> void:
 	var track: PackedVector2Array = course.get("track", PackedVector2Array())
 	_path_card.set_track(track)
 	rows.add_child(_path_card)
+	if course.get("in_progress", false):
+		var margin: MarginContainer = MarginContainer.new()
+		margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for side: String in ["left", "top", "right", "bottom"]:
+			margin.add_theme_constant_override("margin_" + side, 10)
+		var badge: PanelContainer = PanelContainer.new()
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		badge.add_theme_stylebox_override("panel", UiTheme.chip(true))
+		var label: Label = Label.new()
+		label.text = tr("In progress")
+		label.add_theme_font_size_override("font_size", 12)
+		badge.add_child(label)
+		margin.add_child(badge)
+		_path_card.add_child(margin)
 	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_title.text = course["name"]
 	_title.add_theme_font_size_override("font_size", 18)

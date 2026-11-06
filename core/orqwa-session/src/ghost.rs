@@ -135,6 +135,24 @@ impl Ghost {
         })
     }
 
+    /// Starts this race where the rider continues a course, retaining absolute positions.
+    /// Returns false where this ghost has no remaining trace.
+    pub fn enter_course(&mut self, distance: Meters) -> bool {
+        let Some(time) = self.time_at(distance) else {
+            return false;
+        };
+        let time = time.as_secs_f64();
+        if self.trace.last().is_none_or(|&(end, _)| end <= distance.0) {
+            return false;
+        }
+        self.trace.retain(|&(d, _)| d > distance.0);
+        for (_, t) in &mut self.trace {
+            *t -= time;
+        }
+        self.trace.insert(0, (distance.0, 0.0));
+        true
+    }
+
     /// Where the ghost is after `elapsed`; at its last point once it has finished.
     #[must_use]
     pub fn distance_at(&self, elapsed: Duration) -> Meters {

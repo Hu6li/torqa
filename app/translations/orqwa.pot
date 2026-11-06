@@ -859,6 +859,14 @@ msgstr ""
 msgid "Constant power %d W"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Continue another day?"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Continue ride"
+msgstr ""
+
 #: app/ui/group_code_row.gd
 msgid "Copied"
 msgstr ""
@@ -997,6 +1005,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not save the account connection."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Could not save the course continuation point."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -1599,6 +1611,10 @@ msgstr ""
 msgid "Friends' voices; 0 mutes them"
 msgstr ""
 
+#: app/scenes/course_detail.gd
+msgid "From start"
+msgstr ""
+
 #: app/ui/graphics_settings.gd app/ui/ride_bar.gd
 msgid "Full screen (F11)"
 msgstr ""
@@ -1825,6 +1841,10 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "In between, the video follows your distance evenly."
+msgstr ""
+
+#: app/scenes/courses_tab.gd app/ui/course_card.gd
+msgid "In progress"
 msgstr ""
 
 #: app/ui/update_dialog.gd
@@ -2239,8 +2259,16 @@ msgstr ""
 msgid "Next: free ride for %s"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "No"
+msgstr ""
+
 #: core/orqwa-gd/src/lib.rs
 msgid "No calorie estimate. Connect power, or add your age and sex for heart rate, or choose an assumed effort in Rider settings."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "No continuation point is available. Open the course again."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -2695,7 +2723,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: app/scenes/analysis_tab.gd
+#: app/scenes/analysis_tab.gd app/scenes/courses_tab.gd
 msgid "Progress"
 msgstr ""
 
@@ -2813,6 +2841,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "Replace"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Reset progress"
 msgstr ""
 
 #: app/scenes/overlay_hud.gd app/scenes/remote_dialog.gd app/ui/ride_bar.gd
@@ -3001,6 +3033,10 @@ msgstr ""
 
 #: app/scenes/history_screen.gd
 msgid "Saved as %s"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Saved at %s · %s remaining"
 msgstr ""
 
 #: app/scenes/workouts_tab.gd
@@ -3911,8 +3947,16 @@ msgstr ""
 msgid "Y (right pod)"
 msgstr ""
 
+#: app/ui/continuation_dialog.gd
+msgid "Yes"
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "You"
+msgstr ""
+
+#: app/ui/continuation_dialog.gd
+msgid "You haven't finished this course. Would you like to save your place?"
 msgstr ""
 
 #: app/ui/moment_lines.gd

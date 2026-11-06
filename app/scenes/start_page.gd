@@ -252,7 +252,12 @@ func _start_ride() -> void:
 	_pending_ride = []
 	var difficulty: float = options["difficulty"]
 	var flat_descents: bool = options["flat_descents"]
-	if _orqwa.start_ride(difficulty, flat_descents, ghost):
+	var started: bool = (
+		_orqwa.continue_ride(difficulty, flat_descents, ghost)
+		if options.get("continue_course", false)
+		else _orqwa.start_ride(difficulty, flat_descents, ghost)
+	)
+	if started:
 		ride_started.emit(options)
 
 

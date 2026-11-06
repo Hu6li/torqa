@@ -151,11 +151,158 @@ func _run() -> void:
 	ride.call("_on_abort_requested")
 	await process_frame
 	_check(start.visible and not summary.visible, "aborted rides show no summary")
+	await _continuation(main, orqwa, start, ride, summary, path)
 	DirAccess.remove_absolute(path)
 	main.free()
 	if not _failed:
 		print("SUMMARY SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+func _continuation(
+	main: Control,
+	orqwa: OrqwaApp,
+	start: StartPage,
+	ride: RideScreen,
+	summary: RideSummaryDialog,
+	path: String
+) -> void:
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(
+		(
+			'<gpx><trk><name>Continue test</name><trkseg><trkpt lat="46" lon="7">'
+			+ '<ele>500</ele></trkpt><trkpt lat="46.004" lon="7"><ele>500</ele></trkpt>'
+			+ "</trkseg></trk></gpx>"
+		)
+	)
+	file.close()
+	orqwa.load_route(path, true)
+	await orqwa.course_added
+	orqwa.reset_continuation()
+	_check(orqwa.start_ride(50.0, false, {"kind": "none"}), "unfinished course starts")
+	start.ride_started.emit(start.ride_options())
+	await create_timer(1.3).timeout
+	ride.call("_on_finish_requested")
+	await process_frame
+	var question: ContinuationDialog = ride.get("_continuation_dialog")
+	_check(question.visible and ride.visible, "continuation question opens over the course")
+	_check(
+		(
+			question.title == "Continue another day?"
+			and question._save_point.text == "Yes"
+			and question._not_now.text == "No"
+		),
+		"the question uses plain language with Yes and No"
+	)
+	var yes_style: StyleBoxFlat = question._save_point.get_theme_stylebox("normal")
+	var no_style: StyleBoxFlat = question._not_now.get_theme_stylebox("normal")
+	_check(
+		(
+			Color(yes_style.bg_color, 1.0).is_equal_approx(UiTheme.ACCENT)
+			and Color(no_style.bg_color, 1.0).is_equal_approx(UiTheme.DANGER)
+		),
+		"Yes is blue and No is red"
+	)
+	_check(not start.visible and not summary.visible, "question comes before summary and home")
+	_check(orqwa.is_paused(), "question pauses the ride")
+	var stopped: float = orqwa.ride_state()["position_m"]
+	await create_timer(0.2).timeout
+	var still_stopped: float = orqwa.ride_state()["position_m"]
+	_check(is_equal_approx(still_stopped, stopped), "position stays still")
+	_check(
+		question._save_point.size.is_equal_approx(question._not_now.size),
+		(
+			"question actions have equal dimensions: %s / %s"
+			% [question._save_point.size, question._not_now.size]
+		)
+	)
+	question._save_point.pressed.emit()
+	await process_frame
+	_check(summary.visible and not question.visible, "Yes proceeds to the summary")
+	var first: String = summary.get("_path")
+	var point: Dictionary = orqwa.continuation_point()
+	_check(not point.is_empty(), "Yes saves your place")
+	var progressing: Dictionary = orqwa.course_library({"in_progress": true})
+	var groups: Array = progressing["groups"]
+	_check(groups.size() == 1, "In progress returns the course with a saved point")
+	var filtered_courses: Array = groups[0]["courses"] if not groups.is_empty() else []
+	_check(filtered_courses.size() == 1, "In progress excludes courses without saved points")
+	summary.confirmed.emit()
+	var course: Dictionary = {}
+	for entry: Dictionary in orqwa.courses():
+		if entry["path"] == orqwa.loaded_course():
+			course = entry
+	var in_progress: bool = course.get("in_progress", false)
+	_check(in_progress, "gallery marks the course in progress")
+	start.call("_open_course", course)
+	var page: CourseDetail = start.get("_detail")
+	for locale: String in ["en", "de"]:
+		TranslationServer.set_locale(locale)
+		page.refresh_records()
+		await process_frame
+		await process_frame
+		var primary: Button = page.get("_continue_button")
+		var from_start: Button = page.get("_from_start")
+		var reset: Button = page.get("_reset_progress")
+		_check(
+			(
+				primary.size.is_equal_approx(from_start.size)
+				and primary.size.is_equal_approx(reset.size)
+			),
+			"equal continuation actions in " + locale
+		)
+		var profile: ElevationProfile = page.get("_profile")
+		var marker: float = profile.get("_rider_distance")
+		_check(is_equal_approx(marker, stopped), "profile marks saved point")
+		var map: PathCard = page.get("_path_card")
+		var saved_position: Dictionary = map.get("_marker")
+		var expected: Dictionary = orqwa.course_position(stopped)
+		_check(saved_position == expected, "map and profile mark the same saved course position")
+		_check(map._marker_screen_position().is_finite(), "the saved map marker is visible")
+	TranslationServer.set_locale("en")
+	_check(orqwa.continue_ride(50.0, false, {"kind": "none"}), "Continue ride starts")
+	var state: Dictionary = orqwa.ride_state()
+	var position: float = state["position_m"]
+	var metrics: Dictionary = state["metrics"]
+	var distance: float = metrics["distance"]
+	var elapsed: float = state["elapsed_s"]
+	_check(is_equal_approx(position, stopped), "continued course starts at saved point")
+	_check(distance == 0.0 and elapsed == 0.0, "today starts from zero")
+	start.ride_started.emit(start.ride_options())
+	await create_timer(1.3).timeout
+	ride.call("_on_finish_requested")
+	await process_frame
+	question._not_now.grab_focus()
+	for pressed: bool in [true, false]:
+		var key: InputEventKey = InputEventKey.new()
+		key.keycode = KEY_ENTER
+		key.pressed = pressed
+		question.push_input(key)
+	await process_frame
+	_check(
+		summary.visible and orqwa.continuation_point() == point,
+		"Enter on No preserves the old point"
+	)
+	var second: String = summary.get("_path")
+	summary.confirmed.emit()
+	page.call("_on_reset_progress")
+	_check(orqwa.continuation_point().is_empty(), "Reset progress clears the point")
+	var map: PathCard = page.get("_path_card")
+	var cleared_marker: Dictionary = map.get("_marker")
+	_check(cleared_marker.is_empty(), "Reset progress clears the map marker")
+	progressing = orqwa.course_library({"in_progress": true})
+	groups = progressing["groups"]
+	_check(groups.is_empty(), "reset removes the course from the In progress filter")
+	_check(
+		FileAccess.file_exists(first) and FileAccess.file_exists(second), "reset keeps activities"
+	)
+	_check(orqwa.start_ride(50.0, false, {"kind": "none"}), "From start starts")
+	var start_position: float = orqwa.ride_state()["position_m"]
+	_check(start_position == 0.0, "From start starts at the beginning")
+	orqwa.abort_ride()
+	orqwa.delete_ride(first)
+	orqwa.delete_ride(second)
+	main.call("_back_home")
 
 
 func _check(condition: bool, what: String) -> void:

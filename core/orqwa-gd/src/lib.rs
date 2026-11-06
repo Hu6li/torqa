@@ -871,15 +871,24 @@ impl OrqwaApp {
         let locale = locale();
         let mut array = VarArray::new();
         for course in self.app.as_ref().map(App::courses).unwrap_or_default() {
-            array.push(&course_dict(&course, &locale).to_variant());
+            let mut dict = course_dict(&course, &locale);
+            dict.set(
+                "in_progress",
+                self.app
+                    .as_ref()
+                    .is_some_and(|app| app.course_continuation(&course).is_some()),
+            );
+            array.push(&dict.to_variant());
         }
         array
     }
 
     /// The library as the Courses tab shows it (R67), for `query` `{search, sort, descending,
-    /// group, kinds, terrains, lengths, countries}`: the names of `course_library_choices()`,
-    /// the chips as `PackedStringArray`s (empty for all), countries by code or `none` for
-    /// those not known. Returns `{total, groups: [{group, label, courses}], countries}`: how
+    /// group, kinds, terrains, lengths, countries, in_progress}`: the names of
+    /// `course_library_choices()`, the chips as `PackedStringArray`s (empty for all), countries
+    /// by code or `none` for those not known. `in_progress` is an optional boolean, false by
+    /// default, limiting results to the active rider's saved points. Returns
+    /// `{total, groups: [{group, label, courses}], countries}`: how
     /// many courses the library holds; the groups shown, `group` the name of their kind,
     /// terrain or length band, or a country's code or `none` (empty when not grouped) and
     /// `label` a country's name; and the countries the library's courses pass as `[{code,
@@ -926,6 +935,10 @@ impl OrqwaApp {
                 .filter_map(|n| library::LengthBand::from_name(n))
                 .collect(),
             countries: chips("countries"),
+            in_progress: query
+                .get("in_progress")
+                .and_then(|value| value.try_to::<bool>().ok())
+                .unwrap_or(false),
             locale: locale(),
         };
         let gallery = self
@@ -938,6 +951,7 @@ impl OrqwaApp {
             let mut courses = VarArray::new();
             for course in &group.courses {
                 let mut dict = course_dict(&course.entry, &query.locale);
+                dict.set("in_progress", course.in_progress);
                 let estimated = course
                     .estimated
                     .map_or_else(Variant::nil, |t| t.as_secs_f64().to_variant());
@@ -1758,13 +1772,7 @@ impl OrqwaApp {
                 .to_variant(),
             );
         }
-        let frame = map.frame;
-        // Drawing precision.
-        #[allow(clippy::cast_possible_truncation)]
-        let frame = Rect2::new(
-            Vector2::new(frame.west as f32, frame.south as f32),
-            Vector2::new(frame.width() as f32, frame.height() as f32),
-        );
+        let frame = map_frame_rect(map.frame);
         let size = Vector2i::new(
             i32::try_from(PICTURE[0]).unwrap_or(i32::MAX),
             i32::try_from(PICTURE[1]).unwrap_or(i32::MAX),
@@ -2548,6 +2556,28 @@ impl OrqwaApp {
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn start_ride(&mut self, difficulty: f64, flat_descents: bool, ghost: VarDictionary) -> bool {
+        self.start_course_ride(difficulty, flat_descents, &ghost, false)
+    }
+
+    /// Continues the loaded course with today's metrics starting at zero, including video.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot dictionaries arrive by value
+    fn continue_ride(
+        &mut self,
+        difficulty: f64,
+        flat_descents: bool,
+        ghost: VarDictionary,
+    ) -> bool {
+        self.start_course_ride(difficulty, flat_descents, &ghost, true)
+    }
+
+    fn start_course_ride(
+        &mut self,
+        difficulty: f64,
+        flat_descents: bool,
+        ghost: &VarDictionary,
+        continuing: bool,
+    ) -> bool {
         let descent = if flat_descents {
             DescentMode::Flat
         } else {
@@ -2577,7 +2607,13 @@ impl OrqwaApp {
             )),
             _ => GhostChoice::None,
         };
-        self.command(|app| app.start_ride(Percent(difficulty), descent, &choice))
+        self.command(|app| {
+            if continuing {
+                app.continue_ride(Percent(difficulty), descent, &choice)
+            } else {
+                app.start_ride(Percent(difficulty), descent, &choice)
+            }
+        })
     }
 
     /// Starts a workout (R56, R21) as the active rider: `{kind, power_w, zone, bpm, min_w,
@@ -3171,6 +3207,55 @@ impl OrqwaApp {
         }
     }
 
+    /// Whether an unfinished solo course can offer an opt-in continuation point.
+    #[func]
+    fn can_save_continuation(&self) -> bool {
+        self.app.as_ref().is_some_and(App::can_save_continuation)
+    }
+
+    /// Accepts this activity's progress; later history deletion cannot restore old progress.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // Godot strings arrive by value
+    fn accept_continuation(&self, path: GString) {
+        if let Some(app) = &self.app {
+            app.accept_continuation(Path::new(&path.to_string()));
+        }
+    }
+
+    /// Ends and saves the current activity, remembering its course point by explicit choice.
+    #[func]
+    fn finish_ride_remembering(&mut self) {
+        let Some(app) = self.app.as_mut() else {
+            return;
+        };
+        for event in app.finish_ride_remembering(true) {
+            self.emit(event);
+        }
+    }
+
+    /// The loaded course's valid continuation: distance, remaining distance and length in metres.
+    #[func]
+    fn continuation_point(&self) -> VarDictionary {
+        let Some(point) = self.app.as_ref().and_then(App::continuation_point) else {
+            return VarDictionary::new();
+        };
+        vdict! {
+            "distance_m" => point.distance_m,
+            "remaining_m" => point.length_m - point.distance_m,
+            "length_m" => point.length_m,
+        }
+    }
+
+    /// Resets only the current rider's continuation point; activities remain intact.
+    #[func]
+    fn reset_continuation(&mut self) -> bool {
+        let saved = self.command(|app| app.reset_continuation());
+        if saved {
+            self.signals().courses_changed().emit();
+        }
+        saved
+    }
+
     /// The ride state: `{elapsed_s, distance_m, speed_kmh, power, cadence, heart_rate,
     /// watts_per_kg, power_zone, heart_rate_zone, metrics, metric_zones, workout}`, and on a
     /// route also
@@ -3741,6 +3826,32 @@ impl OrqwaApp {
     #[func]
     fn track(&self, max_points: i64) -> PackedVector2Array {
         self.points(max_points, view::track)
+    }
+
+    /// A loaded course position for its map marker: `{position, frame}` in metres east/north
+    /// of the start. The frame is empty without map data. Empty for an invalid distance.
+    #[func]
+    #[allow(clippy::cast_possible_truncation)] // drawing precision
+    fn course_position(&self, distance_m: f64) -> VarDictionary {
+        let Some(app) = &self.app else {
+            return VarDictionary::new();
+        };
+        let Some(route) = app.route().filter(|route| {
+            distance_m.is_finite() && (0.0..=route.length().0).contains(&distance_m)
+        }) else {
+            return VarDictionary::new();
+        };
+        let at = route.position(Meters(distance_m));
+        let (x, y) = LocalProjection::for_route(route).project(at.lat, at.lon);
+        let frame = app
+            .loaded_course()
+            .and_then(|path| app.course_map(path))
+            .map(|map| map_frame_rect(map.frame))
+            .unwrap_or_default();
+        vdict! {
+            "position" => Vector2::new(x as f32, y as f32),
+            "frame" => frame,
+        }
     }
 }
 
@@ -4319,6 +4430,14 @@ fn country_name_or_godots(code: &str) -> String {
     } else {
         name.to_string()
     }
+}
+
+#[allow(clippy::cast_possible_truncation)] // drawing precision
+fn map_frame_rect(frame: orqwa_world::course_map::Frame) -> Rect2 {
+    Rect2::new(
+        Vector2::new(frame.west as f32, frame.south as f32),
+        Vector2::new(frame.width() as f32, frame.height() as f32),
+    )
 }
 
 /// A course for the front end, as `OrqwaApp.courses()` lists it, its countries named in

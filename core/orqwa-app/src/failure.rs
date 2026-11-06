@@ -4,6 +4,10 @@ use std::fmt;
 /// Stable classification of a failure, independent of its technical cause.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
+    /// Could not save the course continuation point.
+    SaveContinuation,
+    /// No continuation point is available. Open the course again.
+    NoContinuation,
     /// Could not complete the group ride action.
     GroupRide,
     /// Could not prepare the shared activity.
@@ -161,6 +165,8 @@ impl Kind {
     pub fn message(self) -> &'static str {
         // i18n-begin
         match self {
+            Self::SaveContinuation => "Could not save the course continuation point.",
+            Self::NoContinuation => "No continuation point is available. Open the course again.",
             Self::GroupRide => "Could not complete the group ride action.",
             Self::GroupActivity => "Could not prepare the shared activity.",
             Self::GroupVoice => {

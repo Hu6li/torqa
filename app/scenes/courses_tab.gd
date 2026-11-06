@@ -83,6 +83,7 @@ var _chosen: Dictionary[String, PackedStringArray] = {
 	"terrains": PackedStringArray(),
 	"lengths": PackedStringArray(),
 	"countries": PackedStringArray(),
+	"progress": PackedStringArray(),
 }
 ## The countries the library's courses pass (#230), as the last gallery listed them:
 ## `[{code, name}]`, `none` for courses whose countries are not known.
@@ -182,6 +183,7 @@ func query() -> Dictionary:
 		"terrains": _chosen["terrains"],
 		"lengths": _chosen["lengths"],
 		"countries": _chosen["countries"],
+		"in_progress": not _chosen["progress"].is_empty(),
 	}
 
 
@@ -477,8 +479,8 @@ func _build_menus() -> void:
 		_group.set_item_metadata(_group.item_count - 1, group_name)
 
 
-## A row of chips for each kind: type, terrain, length and country. Country chips show once the
-## library spans more than one country.
+## A row of chips for each kind: progress, type, terrain, length and country. Country chips
+## show once the library spans more than one country.
 func _build_chips() -> void:
 	for child: Node in _chips.get_children():
 		_chips.remove_child(child)
@@ -498,6 +500,7 @@ func _build_chips() -> void:
 	# A band or country the rider chose stays chosen only if it is still there.
 	_chosen["lengths"] = _kept(_chosen["lengths"], lengths)
 	_chosen["countries"] = _kept(_chosen["countries"], countries)
+	_add_chips(tr("Progress"), "progress", PackedStringArray(["in_progress"]))
 	_add_chips(tr("Type"), "kinds", kinds)
 	_add_chips(tr("Terrain"), "terrains", terrains)
 	_add_chips(tr("Length"), "lengths", lengths)
@@ -538,10 +541,12 @@ func _add_chips(caption: String, kind: String, names: PackedStringArray) -> void
 
 
 ## The label of chip or group `choice` of `kind` (`kinds`, `terrains`, `lengths` or
-## `countries`), untranslated where it is a word: the button or label translates itself.
+## `countries`, or `progress`), untranslated where it is a word: the control translates itself.
 func _choice_label(kind: String, choice: String) -> String:
 	var label: String = choice
 	match kind:
+		"progress":
+			label = tr("In progress")
 		"kinds":
 			label = KIND_LABELS.get(choice, choice)
 		"terrains":
