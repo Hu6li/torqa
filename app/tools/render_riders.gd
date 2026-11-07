@@ -6,8 +6,8 @@ extends SceneTree
 ## world's (ADR 0020).
 
 ## Name, camera position and target (rider's local axes: −z forward), crank angle in degrees,
-## whether the rider leans into a bend (40 km/h, 40 m radius, to the right) and whether they
-## stand on the pedals (the bike rocked under them as at 60 rpm).
+## whether the rider leans into a bend (40 km/h, 40 m radius, to the right) and how far they
+## stand on the pedals (0–1; the bike rocked under them as at 60 rpm).
 ## Helmet views use head-relative offsets and orthographic projection for silhouette review.
 ## Views prefixed with bike- hide the body; VIEWS selects space-separated view names.
 const VIEWS: Array = [
@@ -20,8 +20,12 @@ const VIEWS: Array = [
 	["helmet-side", Vector3(0.6, 0.0, 0.0), Vector3.ZERO, 0.0],
 	["helmet-rear", Vector3(0.0, 0.0, 0.6), Vector3.ZERO, 0.0],
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
-	["standing", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0, false, true],
-	["standing-chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 70.0, false, true],
+	["standing", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0, false, 1.0],
+	["standing-down", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 90.0, false, 1.0],
+	["standing-back", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 180.0, false, 1.0],
+	["standing-up", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 270.0, false, 1.0],
+	["standing-rise", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0, false, 0.5],
+	["standing-chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 70.0, false, 1.0],
 	["bike-side", Vector3(2.25, 0.9, 0.0), Vector3(0.0, 0.56, 0.0), 0.0],
 	["bike-drive", Vector3(1.05, 0.65, 0.95), Vector3(0.0, 0.35, 0.2), 110.0],
 	["bike-front", Vector3(-1.6, 1.25, -1.8), Vector3(0.0, 0.55, -0.1), 0.0],
@@ -60,11 +64,10 @@ func _run() -> void:
 			var eye: Vector3 = view[1]
 			var target: Vector3 = view[2]
 			var crank: float = view[3]
-			var standing: bool = view.size() > 5 and view[5]
+			var standing: float = view[5] if view.size() > 5 else 0.0
 			var motion: RiderMotion = RiderMotion.new()
-			if standing:
-				motion.standing = 1.0
-				motion.rock = RiderMotion.ROCK_STANDING * sin(deg_to_rad(crank))
+			motion.standing = standing
+			motion.rock = RiderMotion.ROCK_STANDING * sin(deg_to_rad(crank)) * standing
 			# At 60 rpm the cranks turn a full turn per second: on to the wanted angle in one step.
 			avatar.animate(fposmod(deg_to_rad(crank) - turned, TAU) / TAU, 60.0, 0.0, motion)
 			turned = deg_to_rad(crank)

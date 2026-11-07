@@ -4,6 +4,7 @@
 # GALLERY=docs/images/models also writes the small JPEGs of the gallery in art/README.md.
 # VIEWS="bike-side bike-drive bike-front bike-cockpit" selects bike-only close-ups.
 # bike-clearance and bike-saddle focus on tyre/frame clearance and saddle proportions.
+# standing, standing-down/back/up show crank quarters; standing-rise is the halfway transition.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

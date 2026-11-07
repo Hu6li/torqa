@@ -88,6 +88,11 @@ Rider renders include head-relative, orthographic `helmet-side` and `helmet-rear
 at the fit dial at the back, with exhausts either side of the spine above a solid lower band.
 A chase view alone cannot establish that rear layout.
 
+Standing review uses `standing`, `standing-down`, `standing-back` and `standing-up` at
+quarter-turn crank positions, `standing-rise` halfway out of the saddle, and `standing-chase`.
+Review both fits: the hips must clear the saddle, hands hold the hoods and feet stay on the
+pedals through the stroke and transition.
+
 ## A view of a place on a route
 
 Copy a template from `templates/` into `app/tests/` (they are scratch scripts: **never commit

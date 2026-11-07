@@ -439,6 +439,13 @@ and saddle proportions. The small/medium frames have approximately 975/979 mm wh
 See the [bike review](../docs/bike-appearance.md) for matched
 before/after images and validation.
 
+Standing is posed at runtime: hips move 18 cm ahead of the seated fit and rise within leg
+reach, with the torso pitched 8° lower about the hips. The arms bend to the fixed hoods.
+Hip lift is solved over the complete crank cycle, then trimmed near the bottom of each
+stroke for a small bob. Toe-down increases by 7°; body counter-roll and the existing motion
+springs keep the transition smooth. The standing gallery includes all four quarter-turn
+crank positions, a halfway transition and the chase view.
+
 ## The remote's clip (`remote/`)
 
 Not a model: `keep_awake.py` renders the silent clip the phone remote's page plays, unseen, to
@@ -562,6 +569,10 @@ and route screenshots check their cost and coverage in context.
 | side | ![female side](../docs/images/models/riders/female-side.jpg) | ![male side](../docs/images/models/riders/male-side.jpg) |
 | side-down | ![female side-down](../docs/images/models/riders/female-side-down.jpg) | ![male side-down](../docs/images/models/riders/male-side-down.jpg) |
 | standing | ![female standing](../docs/images/models/riders/female-standing.jpg) | ![male standing](../docs/images/models/riders/male-standing.jpg) |
+| standing-down | ![female standing downstroke](../docs/images/models/riders/female-standing-down.jpg) | ![male standing downstroke](../docs/images/models/riders/male-standing-down.jpg) |
+| standing-back | ![female standing backstroke](../docs/images/models/riders/female-standing-back.jpg) | ![male standing backstroke](../docs/images/models/riders/male-standing-back.jpg) |
+| standing-up | ![female standing upstroke](../docs/images/models/riders/female-standing-up.jpg) | ![male standing upstroke](../docs/images/models/riders/male-standing-up.jpg) |
+| standing-rise | ![female halfway out of saddle](../docs/images/models/riders/female-standing-rise.jpg) | ![male halfway out of saddle](../docs/images/models/riders/male-standing-rise.jpg) |
 | standing-chase | ![female standing-chase](../docs/images/models/riders/female-standing-chase.jpg) | ![male standing-chase](../docs/images/models/riders/male-standing-chase.jpg) |
 | front | ![female front](../docs/images/models/riders/female-front.jpg) | ![male front](../docs/images/models/riders/male-front.jpg) |
 | chase | ![female chase](../docs/images/models/riders/female-chase.jpg) | ![male chase](../docs/images/models/riders/male-chase.jpg) |

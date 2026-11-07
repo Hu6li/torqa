@@ -16,8 +16,8 @@ Two layers, kept apart (CLAUDE.md: logic in Rust, Godot presents):
   feeds back. `app/scenes/rider_motion.gd` (`RiderMotion`) turns grade, the bend's lean,
   effort (W/kg) and cadence into the bike's pitch, lean and rock and the rider's standing and
   sway; `app/scenes/rider_avatar.gd` (`RiderAvatar`) poses the model: cranks, wheels, the upper
-  body about the seat and the hands (the skeleton's pelvis bone), the leg and arm bones by
-  two-bone IK (the hands stay on the hoods, the fingers' grip with them);
+  body about the hips and counter-rolling about the hands (the skeleton's pelvis bone),
+  the leg and arm bones by two-bone IK (the hands stay on the hoods, the fingers' grip with them);
   `RideWorld._follow_ride` steps
   both every frame. The fit (hips, hands, bottom bracket, legs) comes from `art/riders`
   through `riders.json`.
@@ -37,8 +37,12 @@ drives a helicopter; the workflow and the lessons carry over.
 - **The legs must reach.** Any pose that moves the hips is limited so both legs reach their
   pedals all round the stroke (`_standing_reach`, the per-frame bisection in `animate`);
   `rider_smoke.gd` checks it. A leg stretched off its pedal is the first thing people see.
-- **Hands on the hoods.** The hands are pinned there by arm IK; the upper body turns about
-  them and moves forward a little standing (`STAND_FORWARD`), the arms bending to follow.
+- **Hands on the hoods.** Arm IK pins the grips while the hips move forward and rise and the
+  torso pitches about the hips. Counter-roll pivots about the hands, the arms bending to follow.
+- **Standing must clear the saddle.** `STAND_FORWARD` moves the hips 18 cm forward, and
+  `STAND_TILT` pitches the torso 8° lower independently of the reach-limited hip rise.
+  `_standing_reach` solves a lift in metres, capped at `STAND_RISE` (5.5 cm); per-frame
+  bisection trims lift without collapsing that forward shift or torso change.
 - Presentation constants are documented with their real-world meaning (degrees, cm, W/kg).
 
 ## Workflow
@@ -67,5 +71,10 @@ drives a helicopter; the workflow and the lessons carry over.
   stroke. Precompute the reach over the whole stroke and stand a little beyond it
   (`STAND_BOB`): the legs then trim only near the bottom, a bob of ~2 cm.
 - Halving a tilt until the legs reach makes it jump between steps; bisect instead.
+- The reference-sized frames left the old standing pose only 10 cm forward and 2–4 cm
+  higher, still close to the saddle. Keep torso pitch and forward shift independent of the
+  leg-limited lift. Moderate extra toe-down (7°) raises the ankle; excessive toe-down (23°)
+  can lower it again and remove standing reach. Review all four crank quarters and a halfway
+  transition for both fits, with the fixed hand targets and the rocking bike.
 - First-order smoothing (lerp) of pitch and lean starts abruptly; a second-order spring
   starts and ends softly.

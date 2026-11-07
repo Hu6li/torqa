@@ -1,4 +1,4 @@
-# Road bike appearance (R227–R230)
+# Road bike appearance and rider fit (R227–R231)
 
 Both rider sizes use coherent road-frame dimensions before the rider is posed. The saddle
 height follows the rider's legs; the torso and arms are fitted to the frame's fixed hoods.
@@ -68,6 +68,41 @@ The bundled Twann–Chasseral course at 4,200 m, built from its saved inputs:
 
 ![Bike from beside the road](images/bike/route-side.jpg)
 
+## Standing posture
+
+The standing pose moves the hips 18 cm forward of the seated fit, leaving the saddle behind
+the rider. Torso pitch changes by 8° about the hips, independently of hip lift; arm IK bends
+the elbows to retain the hood grips. Previously, a single turn about the hands supplied the
+lift and torso change, so leg reach constrained both and left the rider close to the saddle.
+
+Hip rise is solved over the complete crank cycle with a 5.5 cm ceiling. The per-frame reach
+limit trims a small bob near the bottom of the stroke, preserving the forward shift and
+torso angle. An extra 7° toe-down replaces the previous 23°: excessive foot rotation lowered
+the ankle again, reducing available lift. Counter-roll still balances the rocking bike;
+the existing standing spring, effort thresholds and hysteresis drive the transition.
+
+| Previous standing pose | Revised standing pose |
+|---|---|
+| ![Female previous standing](images/bike/female-standing-before.jpg) | ![Female revised standing](images/bike/female-standing-after.jpg) |
+| ![Male previous standing](images/bike/male-standing-before.jpg) | ![Male revised standing](images/bike/male-standing-after.jpg) |
+| ![Female previous chase view](images/bike/female-standing-chase-before.jpg) | ![Female revised chase view](images/bike/female-standing-chase-after.jpg) |
+| ![Male previous chase view](images/bike/male-standing-chase-before.jpg) | ![Male revised chase view](images/bike/male-standing-chase-after.jpg) |
+
+Pose measurements at 5° crank intervals, including bike rock, give these hip movements
+relative to seated. The arm and leg columns are the smallest remaining reach across both
+limbs over the cycle; hood grips stay fixed to numerical precision.
+
+| Rider | Forward | Hip rise | Body bob | Leg reach remaining | Arm reach remaining |
+|---|---:|---:|---:|---:|---:|
+| Female | 180 mm | 32–46 mm | 14 mm | 2.0 mm | 119 mm |
+| Male | 180 mm | 41–55 mm | 14 mm | 2.0 mm | 117 mm |
+
+The affected gallery images are refreshed and reviewed for both riders: four quarter-turn
+crank positions, a halfway transition and the chase view. Matching seated views retain their
+previous appearance. A course chase capture near 10 km on Twann–Chasseral's 8.5% climb, with
+the fake trainer at 700 W and 60 rpm, also reaches full standing through `RiderMotion`.
+These are visual reviews and joint measurements; no tests were run locally for this revision.
+
 ## Asset and rendering contract
 
 - `art/riders/build.py` remains the source, with both generated GLBs committed. Only painted
@@ -95,6 +130,7 @@ scripts/art.sh blender --background --factory-startup --python art/riders/build.
 scripts/dev.sh sh -c 'GALLERY=docs/images/models scripts/render-riders.sh'
 scripts/dev.sh sh -c 'VIEWS="bike-side bike-drive bike-front bike-cockpit" scripts/render-riders.sh'
 scripts/dev.sh sh -c 'VIEWS="bike-clearance bike-saddle" scripts/render-riders.sh'
+scripts/dev.sh sh -c 'VIEWS="standing standing-down standing-back standing-up standing-rise standing-chase" GALLERY=docs/images/models scripts/render-riders.sh'
 scripts/dev.sh sh -c 'COURSE=core/orqwa-gd/courses/twann-chasseral.oqc SHOTS="bike-chase:4200:0 bike-first-person:4200:1 bike-road-side:4200:0:3,1.2,1" scripts/render-views.sh'
 scripts/dev.sh scripts/check.sh
 make wiki-check

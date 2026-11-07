@@ -24,16 +24,17 @@ const ANKLE_SWING: float = 0.14
 ## The upper body sways a little with each pedal stroke, about the hips (radians, 1.2°), when no
 ## `RiderMotion` says how much.
 const SWAY: float = 0.021
-## Standing up, the upper body turns about the hands on the hoods (radians, at most) and moves
-## forward over the cranks (metres; the arms bend, the hands stay on the hoods), as far as the legs
-## reach the pedals all round the stroke, and a little further: near the bottom of each stroke
-## the leg then holds the body back, and it bobs, as a standing rider's does.
-const STAND_TILT: float = 0.22
-const STAND_FORWARD: float = 0.1
-const STAND_BOB: float = 1.15
-## Standing, the toes point further down (radians, 23°): the ankle rises over the pedal and the
-## legs reach a higher hip.
-const STAND_TOES: float = 0.4
+## Standing, the hips move 18 cm forward, clear of the saddle, and rise by at most 5.5 cm.
+## Torso pitch is independent of that reach-limited rise: 8° lower about the hips, with the
+## arms bending back to the fixed hoods. A little extra rise lets the legs trim a small bob
+## near the bottom of each stroke instead of following the full pedal height.
+const STAND_TILT: float = 0.14
+const STAND_FORWARD: float = 0.18
+const STAND_RISE: float = 0.055
+const STAND_BOB: float = 1.2
+## Standing, the toes point 7° further down: a moderate ankle pitch raises the heel without
+## rolling the foot so far that the ankle drops back towards the pedal.
+const STAND_TOES: float = 0.12
 ## How much of the bike's rock the rider's body holds against, staying upright over it.
 const COUNTER_ROCK: float = 0.6
 ## Coasting, the cranks come level this quickly (1/s).
@@ -78,8 +79,8 @@ var _to_skeleton: Transform3D
 var _head_top_offset: Vector3
 ## Where the hands rest on the hoods.
 var _hands: Vector3
-## How far the body may turn up standing with both legs reaching all round the stroke.
-var _stand_tilt: float = 0.0
+## Hip rise in metres with both legs reaching all round the standing stroke.
+var _stand_lift: float = 0.0
 ## The legs' joints as last animated, for checks: [hip, knee, ankle] per side.
 var _joints: Array = []
 var _pedals: Array[Node3D] = []
@@ -166,7 +167,7 @@ func _build() -> void:
 		_to_skeleton.affine_inverse() * _skeleton.get_bone_global_rest(_bones["head"])
 	)
 	_head_top_offset = head.affine_inverse() * Vector3(head.origin.x, top, head.origin.z)
-	_stand_tilt = _standing_reach()
+	_stand_lift = _standing_reach()
 	show_rider(_shown)
 	animate(0.0, 0.0, 0.0)
 
@@ -218,11 +219,11 @@ func animate(
 		ankles.append(pedal + foot * _ankle_over_pedal)
 	# Standing only as high as both legs still reach their pedals, found by bisection: the body
 	# rises and sinks a little with each stroke, as a standing rider's does.
-	var tilt: float = minf(STAND_TILT, _stand_tilt * STAND_BOB) * standing
-	var body: Transform3D = _body_transform(sway_size, tilt, rock, standing)
+	var lift: float = minf(STAND_RISE, _stand_lift * STAND_BOB) * standing
+	var body: Transform3D = _body_transform(sway_size, lift, rock, standing)
 	if not _legs_reach(body, ankles):
 		var low: float = 0.0
-		var high: float = tilt
+		var high: float = lift
 		for _halving: int in range(8):
 			var middle: float = (low + high) / 2.0
 			if _legs_reach(_body_transform(sway_size, middle, rock, standing), ankles):
@@ -302,26 +303,28 @@ func _aim_bone(name: String, start: Vector3, end: Vector3) -> void:
 	_skeleton.set_bone_global_pose(bone, _to_skeleton * posed)
 
 
-## The upper body's place on the bike: swaying `sway` about the seat with the stroke, turned up
-## by `tilt` about the hands and moved forward by `standing` of `STAND_FORWARD`, and rolled
-## against the bike's `rock` about the hands. The arms then reach back to the hoods.
-func _body_transform(sway: float, tilt: float, rock: float, standing: float) -> Transform3D:
+## Move the hips clear of the saddle and pitch the torso about them, independently of the
+## leg-limited `lift`. Counter-roll about the hoods; arm IK keeps the hands fixed there.
+func _body_transform(sway: float, lift: float, rock: float, standing: float) -> Transform3D:
 	var seat: Vector3 = (_hips[0] + _hips[1]) / 2.0
-	var swaying: Basis = Basis(Vector3.FORWARD, sway * sin(_crank_angle))
-	var about_seat: Transform3D = Transform3D(swaying, seat - swaying * seat)
-	var turn: Basis = Basis(Vector3.FORWARD, -rock * COUNTER_ROCK) * Basis(Vector3.RIGHT, -tilt)
-	var about_hands: Transform3D = Transform3D(turn, _hands - turn * _hands)
-	var forward: Transform3D = Transform3D(
-		Basis.IDENTITY, Vector3.FORWARD * STAND_FORWARD * standing
+	var pitch: Basis = (
+		Basis(Vector3.FORWARD, sway * sin(_crank_angle))
+		* Basis(Vector3.RIGHT, -STAND_TILT * standing)
 	)
-	return forward * about_hands * about_seat
+	var about_seat: Transform3D = Transform3D(pitch, seat - pitch * seat)
+	var turn: Basis = Basis(Vector3.FORWARD, -rock * COUNTER_ROCK)
+	var about_hands: Transform3D = Transform3D(turn, _hands - turn * _hands)
+	var over_cranks: Transform3D = Transform3D(
+		Basis.IDENTITY, Vector3(0.0, lift, -STAND_FORWARD * standing)
+	)
+	return about_hands * over_cranks * about_seat
 
 
-## The largest tilt (up to `STAND_TILT`) at which, standing, both legs reach their pedals all
-## round the stroke: found by bisection, every 10° of the crank.
+## The largest hip rise (up to `STAND_RISE`) at which both legs reach their pedals all round
+## the standing stroke: found by bisection, every 10° of the crank.
 func _standing_reach() -> float:
 	var low: float = 0.0
-	var high: float = STAND_TILT
+	var high: float = STAND_RISE
 	for _halving: int in range(10):
 		var middle: float = (low + high) / 2.0
 		var reaches: bool = true
