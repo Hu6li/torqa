@@ -817,6 +817,8 @@ physically based materials and light, restyled group by group.
   - [x] Riders and bikes: detailed road bikes and cycling kit; realistic bodies (Human Base
     Meshes) skinned to a skeleton, posed on the bike in Blender, the app turning the leg bones
     to the pedals
+    - [x] Female hairstyle (R89): fitted hairline above the ears and at the nape, a smooth
+      gathered ponytail with broad tresses, tapered ends and subdued specular shading
   - [x] Road-racing helmets (R225–R226): white, unbranded shells following the Z1 KinetiCore
     reference, carved from a distance field: ribs meeting at the fit dial, a central ring and
     spine, long side channels, recessed braces, rear exhausts and dark foam inside rounded
