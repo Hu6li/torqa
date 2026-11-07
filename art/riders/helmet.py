@@ -19,7 +19,7 @@ from mathutils import Vector
 # The shell stands this far off the scalp (pressing the hair under it flat).
 GAP = 0.007
 # Shell thickness over the side, brow, back and crown.
-THICKNESS = {"side": 0.019, "front": 0.03, "back": 0.036, "top": 0.023}
+THICKNESS = {"side": 0.019, "front": 0.03, "back": 0.031, "top": 0.023}
 # Solid bands above the rim, which the vents end at: the brow, the sides and the back.
 BANDS = {"front": 0.016, "side": 0.026, "back": 0.042}
 # Rounding of the rim and of the vents' outer edges.
@@ -33,7 +33,7 @@ TRIANGLES = 7000
 # Squareness of the shell's sections (2 is an ellipsoid).
 SQUARENESS = 2.3
 FRONT_SQUARENESS = 2.0
-BACK_SQUARENESS = 2.7
+BACK_SQUARENESS = 2.4
 # The long axis the vents are laid out round: from a point behind the shell, high at the
 # back (height above the eyes and distance behind), to one below the brow in front. Like the
 # Z1's, the ribs then meet at the fit dial and fan out over the brow.
