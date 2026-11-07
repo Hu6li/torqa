@@ -224,22 +224,24 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   faces near each limb) and choose materials by position; decimating after dressing makes
   the edges ragged. Unlinked appended objects have no computed world matrix: read `location`.
 - Fit to a real rider on the hoods (a race photo, 1.76 m): sit bones 9 cm below the hip joints
-  (the standing body's lowest point between the hips is the inner thighs, far lower), hoods
-  8 cm below the saddle and 0.57 m ahead of the bottom bracket, the back bending mostly at the
-  pelvis. Solve the arm's reach to the wrist, not the hood. Check side views against a photo.
+  (the standing body's lowest point between the hips is the inner thighs, far lower), the back
+  bending mostly at the pelvis. Choose road-frame dimensions first (`bike_fit.py`, published
+  Aethos 49/54 proportions); pose the torso and arms to its fixed hoods. Solve the arm's reach
+  to the wrist. Check the whole silhouette against a bike photo, seated and standing.
 - The bike's shaped parts are `Faces.sweep` sections along `path` curves; chainrings and
   rotors are rings (`annulus`) — solid discs read as pale plates.
 - Painted tube intersections are welded at 3 mm, smoothed and reduced to 1,800 triangles
   before joining the untouched hardware. Keep the frame's holes and fork clearance open.
   `sidewall`, `carbon`, `alloy` and `bottle` are styled by `RiderAvatar` from the `bike`
   palette; painted composite gets clear coat, only bare/anodized metal gets metallic shading.
-  A complete bike is about 16k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
+  A complete bike is about 18k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
   in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
-- Keep the fork crown at its axle-to-crown height. On a low bar fit, raise the head tube to
-  its minimum length and descend to the bars with the stem; clamping the head tube's length
-  downwards puts the female bike's crown and down tube into the tyre. `bike-clearance` and
-  `bike-saddle` are dedicated review views. Both saddles have 21 cm shells and matching rails.
+- Keep stack, reach, head-tube length, fork offset and stem dimensions together. A round
+  headset, modest rising stem, compact drop bar and upright shifter horns must read as one
+  plausible steering assembly. Join the fork after welding the frame to retain its lower
+  bearing joint. `bike-clearance` and `bike-saddle` are dedicated review views. Both saddles
+  have 21 cm shells and matching rails; regenerate fit metadata when contact points change.
 - The road-racing helmet (R225–R226, `art/riders/helmet.py`) is a signed distance field: a
   squarish ovoid fitted round the scalp, vents drawn as polygons on a chart round a long axis
   tilted from the fit dial down to below the brow (the rear exhausts on a plane behind the

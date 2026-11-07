@@ -9,8 +9,8 @@ Each rider starts from a realistic body of Blender Studio's CC0 Human Base Meshe
 own joints, scaled to the body, and the body skinned to it. Hair, a helmet and sunglasses are
 fitted to the head's shape (and a ponytail for the female rider). The rider is seated as a bike
 fitter would: the hips where the legs reach the pedals almost straight, the back bent forward
-until the hands reach the hoods, the feet on the pedals; the bike is built around those contact
-points, so each rider gets their own. The riding pose becomes the skeleton's rest; the body is
+until the hands reach the fixed hoods of a reference-sized road frame, the feet on the pedals.
+Each rider has their own frame size. The riding pose becomes the skeleton's rest; the body is
 thinned for the app, the kit cut into it along planes across the limbs (shorts, jersey with
 sleeves, socks, white shoes), shoes closed over the toes, bare hands gripping the hoods.
 
@@ -43,6 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import helmet  # noqa: E402  (needs the path above)
+import bike_fit  # noqa: E402
 
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
@@ -58,19 +59,6 @@ PEDAL_OFFSET = 0.12
 # The pedal's top above its axle, and the cleat and sole under the shoe.
 PEDAL_TOP = 0.008
 CLEAT = 0.01
-SEAT_ANGLE = math.radians(74.0)
-HEAD_ANGLE = math.radians(72.5)
-FORK_RAKE = 0.045
-# Axle to crown, along the steering axis.
-FORK_LENGTH = 0.37
-STEM = 0.1
-HOODS_HALF_WIDTH = 0.2
-# Saddle top to hoods top, as on a road bike set up for riding fast.
-DROP_TO_HOODS = 0.08
-# The hoods at least this far ahead of the bottom bracket for a rider of the reference
-# skeleton's height (1.762 m), scaled to each rider: a road bike's reach and stem; it also
-# keeps the front wheel clear of the feet.
-HOODS_AHEAD = 0.57
 # Bike fit: the knee's bend with the pedal at the bottom, and the foot's pitch there (toes
 # down; app/scenes/rider_avatar.gd turns the feet so, ANKLE_PITCH and ANKLE_SWING).
 KNEE_AT_BOTTOM = math.radians(30.0)
@@ -603,10 +591,10 @@ def wheel(name, hub, cassette=False):
                                    centre * math.sin((a0 + a1) / 2)))
             kind = "sidewall" if j in (1, 2, 5, 6) else "tyre"
             faces.add([at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)], kind, inside)
-    # A deep carbon rim (about 55 mm), widest a little below the tyre and rounding in to the
+    # A 35 mm carbon rim, widest a little below the tyre and rounding in to the
     # spoke bed, as aero rims are.
-    profile = [(WHEEL_RADIUS - 0.024, 0.0125), (WHEEL_RADIUS - 0.04, 0.0145),
-               (WHEEL_RADIUS - 0.062, 0.0125), (WHEEL_RADIUS - 0.076, 0.0075)]
+    profile = [(WHEEL_RADIUS - 0.024, 0.0125), (WHEEL_RADIUS - 0.035, 0.0145),
+               (WHEEL_RADIUS - 0.05, 0.0125), (WHEEL_RADIUS - 0.059, 0.0075)]
     inner = profile[-1][0]
     for k in range(segments):
         a0, a1 = 2 * math.pi * k / segments, 2 * math.pi * (k + 1) / segments
@@ -732,8 +720,8 @@ def bottle_and_cage(faces, bottom, top):
         faces.sweep(rail, [(0.006, 0.008)] * len(rail), "carbon", sides=6)
 
 
-def finished_frame(faces):
-    """Blend painted tube junctions as a moulded frame; keep small hardware out of the remesh.
+def finished_frame(faces, fork):
+    """Blend frame tube junctions; keep the fork and hardware out of the remesh.
 
     A bounded decimation keeps the welded surface near the original tube budget.
     """
@@ -758,44 +746,31 @@ def finished_frame(faces):
     bpy.ops.object.modifier_apply(modifier=simplify.name)
     smooth(frame.data)
     detail = hardware.to_object("hardware", Vector())
+    fork_object = fork.to_object("fork", Vector())
     detail.select_set(True)
+    fork_object.select_set(True)
     bpy.ops.object.join()
     frame.data.set_sharp_from_angle(angle=math.radians(65))
     return frame
 
 
-def bike(saddle, hoods):
-    """Frame, wheels, crankset and pedals around the rider's contact points: the saddle's top
-    middle and the hoods (both in the y–z plane). Returns the objects and the hubs."""
-    seat_axis = Vector((0.0, -math.cos(SEAT_ANGLE), math.sin(SEAT_ANGLE)))
-    steer = Vector((0.0, math.cos(HEAD_ANGLE), -math.sin(HEAD_ANGLE)))  # down the steerer
+def bike(saddle, fit):
+    """A complete reference-sized road bike; the rider fits its contact points."""
+    seat_axis, steer = fit["seat_axis"], fit["steer"]
+    head_top, head_bottom = fit["head_top"], fit["head_bottom"]
+    stem_rear, bar, hoods = fit["stem_rear"], fit["bar"], fit["hoods"]
+    half_width = fit["half_width"]
     frame = Faces()
-
-    # The bar tops stay level under the fitted hoods, independently of the stem's slope.
+    fork = Faces()
     hood_y = hoods.y + HOOD_AHEAD_OF_PALM
-    # A road bar's reach: its tops' line to the hood's horn about 12.5 cm.
-    bar = Vector((0.0, hood_y - 0.06, hoods.z - 0.03))
-    steerer_top = bar + Vector((0.0, -STEM, 0.0))
-    head_top = steerer_top + steer * 0.03
-    crown_z = WHEEL_RADIUS + FORK_LENGTH * math.sin(HEAD_ANGLE)
-    # A low handlebar fit must drop the stem, not shorten the fork into the tyre.
-    minimum_top = crown_z + 0.08 * math.sin(HEAD_ANGLE)
-    head_top -= steer * max((minimum_top - head_top.z) / math.sin(HEAD_ANGLE), 0.0)
-    steerer_top = head_top - steer * 0.03
-    head_length = (head_top.z - crown_z) / math.sin(HEAD_ANGLE)
-    head_bottom = head_top + steer * head_length
-    # The steering axis meets hub height; the hub sits the rake ahead of it.
-    to_hub = (head_bottom.z - WHEEL_RADIUS) / math.sin(HEAD_ANGLE)
-    front_hub = head_bottom + steer * to_hub + Vector((0.0, FORK_RAKE / math.sin(HEAD_ANGLE), 0.0))
-    front_hub.z = WHEEL_RADIUS
+    front_hub = fit["front_hub"]
     rear_hub = Vector((0.0, -math.sqrt(CHAINSTAY ** 2 - (WHEEL_RADIUS - BOTTOM_BRACKET.z) ** 2),
                        WHEEL_RADIUS))
 
     side = Vector((1.0, 0.0, 0.0))
     # A compact race frame: the top tube slopes down to the seat tube, which ends well below
     # the saddle; the seat stays drop to meet it lower still.
-    cluster_z = min(head_top.z - 0.07, saddle.z - 0.2)
-    cluster = BOTTOM_BRACKET + seat_axis * ((cluster_z - BOTTOM_BRACKET.z) / seat_axis.z)
+    cluster = fit["cluster"]
     stays_top = cluster - seat_axis * 0.07
     # The seat post carries on the seat tube's line up to the saddle's clamp.
     post_top = BOTTOM_BRACKET + seat_axis * ((saddle.z - 0.055 - BOTTOM_BRACKET.z) / seat_axis.z)
@@ -804,8 +779,8 @@ def bike(saddle, hoods):
         return [start + (end - start) * k / (count - 1) for k in range(count)]
 
     # Head tube: tall and deep, flaring at the bottom into the crown.
-    frame.sweep(line(head_top - steer * 0.012, head_bottom + steer * 0.01),
-                taper(5, (0.038, 0.052), (0.046, 0.062)), "frame", power=2.4)
+    frame.sweep(line(head_top, head_bottom - steer * 0.005),
+                taper(5, (0.038, 0.045), (0.044, 0.052)), "frame", sides=12, power=2.2)
     # Down tube: the biggest tube, flattened where it meets the bottom bracket.
     frame.sweep(line(BOTTOM_BRACKET + Vector((0, 0.015, 0.01)), head_bottom - steer * 0.03, 6),
                 [(0.062, 0.048), (0.056, 0.054), (0.05, 0.056), (0.048, 0.056), (0.046, 0.054),
@@ -835,51 +810,68 @@ def bike(saddle, hoods):
         frame.sweep(stay, taper(len(stay), (0.018, 0.024), (0.012, 0.014)), "frame",
                     sides=8, power=2.4)
         # Fork blades: from the crown down the steering axis, curving forward to the hub.
-        crown = head_bottom + steer * 0.015 + out * 0.032
+        crown = head_bottom + steer * 0.018 + out * 0.035
         tip = front_hub + out * 0.056
         blade = path([crown, middle(crown, tip) + out * 0.006 + Vector((0.0, 0.006, 0.0)),
                       tip], 3)
-        frame.sweep(blade, taper(len(blade), (0.03, 0.05), (0.016, 0.022)), "frame",
-                    sides=8, power=2.4)
-    # The fork crown, across the bottom of the head tube.
-    frame.sweep(line(head_bottom + steer * 0.015 - side * 0.04,
-                     head_bottom + steer * 0.015 + side * 0.04, 3),
-                [(0.05, 0.065)] * 3, "frame", lateral=(0.0, 0.0, 1.0), power=2.6)
+        fork.sweep(blade, taper(len(blade), (0.025, 0.042), (0.013, 0.02)), "frame",
+                   sides=12, power=2.2)
+    # A separate arched fork crown leaves the lower headset joint visible.
+    crown = path([head_bottom + steer * 0.018 - side * 0.035,
+                  head_bottom + steer * 0.008 - side * 0.018,
+                  head_bottom + steer * 0.006,
+                  head_bottom + steer * 0.008 + side * 0.018,
+                  head_bottom + steer * 0.018 + side * 0.035], 3)
+    fork.sweep(crown, [(0.022, 0.045)] * len(crown), "frame", sides=12,
+               lateral=(0.0, 0.0, 1.0), power=2.2)
+    frame.tube(head_bottom - steer * 0.001, head_bottom + steer * 0.004,
+               0.024, "carbon", sides=16)
     # An aero seat post, black, rising out of the seat tube to the saddle's clamp.
     frame.sweep(line(cluster, post_top, 4), [(0.026, 0.042)] * 4, "carbon", sides=8, power=2.4)
 
-    # The stem meets the fitted bar height; the smaller frame needs a descending stem.
-    frame.sweep(line(head_top - steer * 0.012, steerer_top - steer * 0.012, 3),
-                [(0.036, 0.046)] * 3, "carbon", sides=8, power=2.4)
-    frame.sweep(line(steerer_top - Vector((0.0, 0.012, 0.0)), bar),
-                taper(5, (0.036, 0.04), (0.032, 0.03)), "carbon", sides=8, power=2.4)
+    # A round headset and a modest rising stem, with separate steerer and bar clamps.
+    frame.tube(head_top, stem_rear + steer * 0.016, 0.019, "carbon", sides=16)
+    frame.tube(stem_rear - steer * 0.017, stem_rear + steer * 0.017,
+               0.019, "carbon", sides=16)
+    frame.tube(stem_rear - steer * 0.019, stem_rear - steer * 0.017,
+               0.0175, "alloy", sides=16)
+    frame.tube(stem_rear - steer * 0.020, stem_rear - steer * 0.019,
+               0.0025, "metal", sides=6)
+    frame.sweep(line(stem_rear, bar, 5),
+                [(0.034, 0.032), (0.032, 0.03), (0.029, 0.028), (0.03, 0.03), (0.034, 0.033)],
+                "carbon", sides=12, power=2.2)
+    frame.tube(bar - side * 0.022, bar + side * 0.022, 0.018, "carbon", sides=16)
+    for x in (-0.013, 0.013):
+        for z in (-0.01, 0.01):
+            bolt = bar + Vector((x, 0.017, z))
+            frame.tube(bolt, bolt + Vector((0.0, 0.002, 0.0)), 0.002, "metal", sides=6)
     for sign in (-1.0, 1.0):
-        corner = Vector((sign * HOODS_HALF_WIDTH, hood_y - 0.012, bar.z))
+        corner = bar + Vector((sign * half_width, 0.035, 0.0))
         tops = path([bar, bar + Vector((sign * 0.06, 0.0, 0.0)),
-                     bar + Vector((sign * (HOODS_HALF_WIDTH - 0.04), 0.008, 0.0)),
-                     corner + Vector((-sign * 0.006, -0.02, 0.0)), corner], 3)
-        frame.sweep(tops, taper(len(tops), (0.014, 0.05), (0.024, 0.026)), "carbon", sides=8,
-                    lateral=(0.0, 0.0, 1.0), power=2.6)
+                     bar + Vector((sign * (half_width - 0.04), 0.005, 0.0)),
+                     corner + Vector((-sign * 0.006, -0.015, 0.0)), corner], 3)
+        frame.sweep(tops, taper(len(tops), (0.0318, 0.0318), (0.024, 0.028)), "carbon",
+                    sides=12, lateral=(0.0, 0.0, 1.0), power=2.2)
         drop = path([corner + Vector((0.0, -0.01, 0.0)), corner,
-                     corner + Vector((0.0, 0.04, -0.035)), corner + Vector((0.0, 0.045, -0.09)),
-                     corner + Vector((0.0, 0.01, -0.128)), corner + Vector((0.0, -0.04, -0.13)),
-                     corner + Vector((0.0, -0.085, -0.124))], 3)
-        frame.sweep(drop, [(0.024, 0.024)] * len(drop), "bar", sides=8)
+                     corner + Vector((0.0, 0.03, -0.03)), corner + Vector((0.0, 0.04, -0.075)),
+                     corner + Vector((0.0, 0.005, -0.115)),
+                     corner + Vector((0.0, -0.07, -0.125))], 4)
+        frame.sweep(drop, [(0.024, 0.024)] * len(drop), "bar", sides=12)
         # The brake hood the hand rests on: a rounded body rising to a horn at its front;
         # the lever blade curving down in front of the drop.
-        hood = Vector((sign * HOODS_HALF_WIDTH, hood_y, hoods.z))
-        body = path([hood + Vector((0, -0.04, -0.03)), hood + Vector((0, -0.012, -0.02)),
-                     hood + Vector((0, 0.025, -0.019)), hood + Vector((0, 0.05, -0.012)),
-                     hood + Vector((0, 0.064, 0.003))], 3)
-        frame.sweep(body, [(0.024, 0.026), (0.026, 0.034), (0.03, 0.04), (0.031, 0.04),
-                           (0.03, 0.04), (0.03, 0.04), (0.03, 0.039), (0.029, 0.037),
-                           (0.028, 0.034), (0.026, 0.03), (0.022, 0.024), (0.018, 0.018),
-                           (0.014, 0.012)], "bar", sides=8, power=2.2)
+        hood = Vector((sign * half_width, hood_y, hoods.z))
+        body = path([hood + Vector((0, -0.045, -0.022)), hood + Vector((0, -0.012, -0.012)),
+                     hood + Vector((0, 0.023, -0.012)), hood + Vector((0, 0.048, 0.004)),
+                     hood + Vector((0, 0.06, 0.026))], 3)
+        frame.sweep(body, [(0.024, 0.026), (0.026, 0.032), (0.029, 0.034), (0.03, 0.034),
+                           (0.03, 0.034), (0.03, 0.033), (0.03, 0.032), (0.029, 0.031),
+                           (0.028, 0.029), (0.026, 0.027), (0.023, 0.023), (0.02, 0.018),
+                           (0.018, 0.014)], "bar", sides=12, power=2.2)
         # The lever blade comes out of the hood's front, under the horn.
-        lever = path([hood + Vector((0, 0.05, -0.012)), hood + Vector((0, 0.062, -0.045)),
+        lever = path([hood + Vector((0, 0.05, 0.0)), hood + Vector((0, 0.065, -0.04)),
                       hood + Vector((0, 0.063, -0.08)), hood + Vector((0, 0.054, -0.11))], 3)
-        frame.sweep(lever, taper(len(lever), (0.012, 0.022), (0.009, 0.014)), "bar",
-                    sides=8, power=2.4)
+        frame.sweep(lever, taper(len(lever), (0.009, 0.018), (0.007, 0.012)), "alloy",
+                    sides=12, power=2.2)
         # Bar plugs and a lever pivot separate the rubber grips from the hardware.
         plug = drop[-1]
         frame.tube(plug, plug + Vector((0.0, -0.004, 0.0)), 0.011, "alloy", sides=8)
@@ -954,7 +946,7 @@ def bike(saddle, hoods):
                                                         (0.04, 0.03), (-0.04, 0.03))], "rim")
         pedal.tube(axle - Vector((sign * 0.05, 0, 0)), axle, 0.005, "metal", sides=6)
         pedals.append(pedal.to_object(name, axle))
-    objects = [finished_frame(frame), wheel("wheel_rear", rear_hub, cassette=True),
+    objects = [finished_frame(frame, fork), wheel("wheel_rear", rear_hub, cassette=True),
                wheel("wheel_front", front_hub), crankset.to_object("crankset", bb), *pedals]
     return objects, rear_hub, front_hub
 
@@ -1019,8 +1011,7 @@ REALISTIC_NECK = math.radians(45.0)
 REALISTIC_HEAD = math.radians(20.0)
 # Riders' heights; None keeps the body's own (1.639 m for her).
 RIDER_HEIGHT = {"female": None, "male": 1.76}
-# The back's angle above horizontal: upright enough to look relaxed at most, flat enough to
-# reach hoods far enough ahead at least.
+# Bounds for fitting the torso to the fixed hoods; most bend is at the pelvis.
 REALISTIC_TORSO = (math.radians(50.0), math.radians(24.0))
 
 
@@ -1570,6 +1561,8 @@ def material_slot(obj, name):
 
 def build(sex):
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    fit = bike_fit.layout(sex, BOTTOM_BRACKET, WHEEL_RADIUS)
+    hoods = fit["hoods"]
     body, joints, scale = load_realistic(sex)
     centre_leg_joints(body, joints)
     centre_hand_joints(body, joints)
@@ -1585,7 +1578,7 @@ def build(sex):
                                PEDAL_TOP + CLEAT + joints["foot_center.R"].z - ball.z))
     ankle = (BOTTOM_BRACKET + Vector((0.0, 0.0, -CRANK))
              + Matrix.Rotation(FOOT_AT_BOTTOM, 3, "X") @ ankle_over_pedal)
-    seat_axis = Vector((0.0, -math.cos(SEAT_ANGLE), math.sin(SEAT_ANGLE)))
+    seat_axis = fit["seat_axis"]
     offset = BOTTOM_BRACKET - ankle
     leg = math.sqrt(thigh ** 2 + shin ** 2 + 2.0 * thigh * shin * math.cos(KNEE_AT_BOTTOM))
     along = -seat_axis.dot(offset) + math.sqrt(
@@ -1611,29 +1604,23 @@ def build(sex):
     def shoulders():
         return (rig.pose.bones["upper_arm.L"].head + rig.pose.bones["upper_arm.R"].head) / 2
 
-    # Bend the back until the hands reach hoods far enough ahead, as `lean` does.
+    # Fit the rider to the bike, so arm reach cannot collapse the wheelbase or cockpit.
     step = math.radians(1.0)
     while True:
         torso = shoulders() - centre
         angle = math.atan2(torso.z, torso.y)
         shoulder = rig.pose.bones["upper_arm.R"].head
-        hoods_z = saddle_top - DROP_TO_HOODS
-        across = HOODS_HALF_WIDTH - abs(shoulder.x)
-        # The arm reaches the wrist, which sits behind and above the hood.
-        wrist_z = hoods_z + WRIST_ON_HOOD.z
-        reach = (arm * REALISTIC_REACH) ** 2 - (shoulder.z - wrist_z) ** 2 - across ** 2
-        hoods = (Vector((0.0, shoulder.y + math.sqrt(reach) - WRIST_ON_HOOD.y, hoods_z))
-                 if reach > 0 else None)
-        ready = hoods is not None and hoods.y >= HOODS_AHEAD * scale
-        if (angle <= REALISTIC_TORSO[0] and ready) or angle <= REALISTIC_TORSO[1]:
+        wrist = hoods + Vector((fit["half_width"], 0.0, 0.0)) + WRIST_ON_HOOD
+        ready = (wrist - shoulder).length <= arm * REALISTIC_REACH
+        if angle <= REALISTIC_TORSO[0] and ready:
             break
+        if angle <= REALISTIC_TORSO[1]:
+            raise RuntimeError(f"{sex}: the rider cannot reach the road frame's hoods")
         # About the hip joints, which stay where the fit put them.
         # Mostly the pelvis tipping forward, for a straight back rather than a hunched one.
         turn_bone(rig, "pelvis", -0.6 * step, about=centre)
         turn_bone(rig, "spine", -0.25 * step)
         turn_bone(rig, "chest", -0.15 * step)
-    if hoods is None:
-        raise RuntimeError("the arms cannot reach the hoods")
     # The neck reaches forward and up out of the bent back; the head comes up over it, nearly
     # upright, so the rider looks up the road rather than at the front wheel.
     for name, from_vertical in (("neck", REALISTIC_NECK), ("head", REALISTIC_HEAD)):
@@ -1675,7 +1662,7 @@ def build(sex):
     for side, sign in (("L", -1.0), ("R", 1.0)):
         # Place the hand, see where its knuckles landed, and move the wrist by the difference,
         # so the knuckles are just behind the horn and the palm rests on the hood.
-        hood = Vector((sign * HOODS_HALF_WIDTH, hoods.y, hoods.z))
+        hood = Vector((sign * fit["half_width"], hoods.y, hoods.z))
         wrist = hood + WRIST_ON_HOOD
         place_arm(side, sign, wrist)
         wrist += (hood + KNUCKLES_ON_HOOD) - knuckles(side)
@@ -1700,7 +1687,7 @@ def build(sex):
     finish_rest_pose(body, rig)
 
     saddle = Vector((0.0, centre.y - 0.02, saddle_top))
-    bike_objects, rear_hub, front_hub = bike(saddle, hoods)
+    bike_objects, rear_hub, front_hub = bike(saddle, fit)
     shift = Vector((0.0, -(rear_hub.y + front_hub.y) / 2.0, 0.0))
     for obj in list(bpy.context.scene.objects):
         if obj.parent is None:

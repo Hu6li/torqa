@@ -1,8 +1,9 @@
-# Road bike appearance (R227–R228)
+# Road bike appearance (R227–R229)
 
-Both rider sizes use the same scripted modern road-bike construction, fitted to their
-existing saddle, pedal and hand positions. The frame's painted tubes are welded and rounded
-before export, removing the exposed intersections of the earlier separate tubes.
+Both rider sizes use coherent road-frame dimensions before the rider is posed. The saddle
+height follows the rider's legs; the torso and arms are fitted to the frame's fixed hoods.
+Painted frame tubes are welded and rounded before export, and the fork is joined afterward
+so its crown and lower headset remain separate parts of the steering assembly.
 
 Paint uses a non-metallic clear coat, carbon rims/cockpit/seat post use satin reflection,
 tyre tread and casing remain rough, and steel and anodized hardware use metallic reflection.
@@ -12,10 +13,27 @@ plates, an open derailleur cage and a shaped bottle in its cage. Both saddles ha
 21 cm shells, shortened from 26 cm, and matching shorter rails. No third-party asset or
 texture is added.
 
-The fork crown keeps its axle-to-crown height independently of handlebar fit. On the female
-bike, the head tube rises to its minimum 80 mm length and the stem descends to the existing
-bar position. This clears the tyre from the crown and down tube while preserving the wheel
-hubs, rider contact points and animation fit.
+## Frame proportions
+
+`art/riders/bike_fit.py` uses the published
+[Aethos 49/54 geometry](https://www.specialized.com/us/en/s-works-aethos-sram-red-etap-axs/p/216931)
+as a dimensional reference for the unbranded small/medium frames. Each has a round headset,
+a 6° rising stem, compact drops and upright shifter horns. Fork offset is perpendicular to
+the steering axis. The frame's dimensions determine clearance and contact points together.
+
+| Dimension | Small (female) | Medium (male) |
+|---|---:|---:|
+| Stack | 514 mm | 544 mm |
+| Reach | 375 mm | 384 mm |
+| Head tube | 109 mm | 137 mm |
+| Stem | 80 mm | 100 mm |
+| Bar width | 380 mm | 420 mm |
+| Built wheelbase | 975 mm | 979 mm |
+
+The bar has a 75 mm reach and 125 mm drop. The tyres remain 28 mm, on lighter 35 mm carbon
+rims. These proportions replace the cramped cockpit and its steep descending stem. The
+frame, hands, hips and hubs are exported with a consistent fit manifest; animation node and
+bone names are retained. Reference photographs are not bundled.
 
 ## Matched visual review
 
@@ -51,16 +69,17 @@ The bundled Twann–Chasseral course at 4,200 m, built from its saved inputs:
 ## Asset and rendering contract
 
 - `art/riders/build.py` remains the source, with both generated GLBs committed. Only painted
-  frame faces enter the 3 mm voxel weld and smoothing; their surface is reduced to 1,800
-  triangles before rejoining the hardware. Small moving parts retain their original origins.
-- The six bike nodes, skeleton, fit manifest and animation interface stay stable. The chain
+  main-frame faces enter the 3 mm voxel weld and smoothing; their surface is reduced to 1,800
+  triangles before rejoining the fork and hardware.
+- The six bike nodes, skeleton and fit-manifest fields stay stable. The updated hips, hoods,
+  hubs and rest pose are rebuilt together. The chain
   stays in the frame mesh; it adds no animated link nodes. Course generation and stored-world
   formats are unchanged.
 - `RiderAvatar` styles the new `sidewall`, `carbon`, `alloy` and `bottle` materials from the
   `bike` palette alongside the existing material names. A frame still receives its rider or
   group accent; ghost transparency and body hiding use the existing presentation path.
-- The complete bike is about 16k triangles, compared with about 9.8k previously. The whole
-  rider and bike grows by about 12%. In the fixed side view, visible draw calls rise from 19
+- The complete bike is 18,036 triangles, compared with about 9.8k previously. The whole
+  rider and bike grows by about 16%. In the fixed side view, visible draw calls rise from 19
   to 24 for the bike alone and from 29 to 34 with a rider. These are software Vulkan counts,
   not native GPU frame-rate measurements. The 60 fps Medium target on a base M1 still needs
   measurement on that hardware.
@@ -95,10 +114,9 @@ standing motion, hand placement, coasting and first-person body hiding.
   GDScript lint/format, and all Godot smoke/render checks, including rider animation.
 - `make wiki-check` passed.
 
-## Review after rebase and fit corrections
+## Review of reference-sized frames
 
-Both models and all 34 gallery views were rebuilt from the merged scripts and visually
-reviewed, retaining main's current helmet geometry. Wheel-clearance and saddle close-ups
-accompany the seated and standing views. The three saved-course views were refreshed and
-reviewed too. The fit manifest remains unchanged from main. Automated tests were not rerun
-for these revisions.
+Both models and their fit metadata are rebuilt around the reference frames, retaining the
+current helmet geometry. All 34 gallery views and the three saved-course views are refreshed
+and visually reviewed, including the cockpit, frame clearance, saddles, seated reach and
+standing poses. Automated tests were not rerun for these revisions.
