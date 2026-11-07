@@ -821,12 +821,13 @@ physically based materials and light, restyled group by group.
     reference, carved from a distance field: ribs meeting at the fit dial, a central ring and
     spine, long side channels, recessed braces, rear exhausts and dark foam inside rounded
     vents; side/rear helmet close-ups.
-  - [x] More realistic bikes (R227–R229): blended frame junctions, lacquered paint, satin carbon,
+  - [x] More realistic bikes (R227–R230): blended frame junctions, lacquered paint, satin carbon,
     metallic hardware, distinct tyre casings, crossed spokes, valves, vented rotors, open
     cassette sprockets, a continuous chain and a bottle in its cage; both fitted bikes and
     their gallery rebuilt, with bike-only review views ([review](bike-appearance.md)); the
     frames use published road-bike proportions, round headsets, rising stems, compact drops
-    and 21 cm saddles; riders are posed to the fixed hoods and fit metadata is rebuilt
+    and 21 cm saddles with a 20 mm forward rail adjustment; riders are refitted to the pedals
+    and fixed hoods, and fit metadata is rebuilt
   - [x] Rider and bike motion (R91, `RiderMotion`): pitch and lean as damped springs, standing
     on the pedals on steep climbs and in sprints with the bike rocking under the rider, sway
     with effort, cranks level when coasting

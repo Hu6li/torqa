@@ -19,6 +19,9 @@ SIZES = {
                  stem=0.10, bar_width=0.42),
 }
 
+# Move the saddle on its rails; fit the rider from the same forward-shifted hip line.
+SADDLE_FORWARD = 0.02
+
 
 def layout(sex, bottom_bracket, wheel_radius):
     """The frame, steering axis and cockpit in Blender's metre coordinates."""
@@ -41,6 +44,7 @@ def layout(sex, bottom_bracket, wheel_radius):
     bar = stem_rear + Vector((0.0, size["stem"] * math.cos(stem_pitch),
                              size["stem"] * math.sin(stem_pitch)))
     return dict(seat_axis=seat_axis, steer=steer, head_top=head_top, head_bottom=head_bottom,
+                seat_origin=bottom_bracket + Vector((0.0, SADDLE_FORWARD, 0.0)),
                 front_hub=front_hub, stem_rear=stem_rear, bar=bar,
                 hoods=bar + Vector((0.0, 0.11, 0.025)), half_width=size["bar_width"] / 2,
                 cluster=bottom_bracket + seat_axis * size["seat_tube"])

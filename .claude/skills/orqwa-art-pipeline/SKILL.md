@@ -228,6 +228,8 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   bending mostly at the pelvis. Choose road-frame dimensions first (`bike_fit.py`, published
   Aethos 49/54 proportions); pose the torso and arms to its fixed hoods. Solve the arm's reach
   to the wrist. Check the whole silhouette against a bike photo, seated and standing.
+  Saddle rail adjustments move the hip-fit line too; solve height for the same knee extension
+  before refitting the arms. `bike_fit.SADDLE_FORWARD` is the shared 20 mm forward adjustment.
 - The bike's shaped parts are `Faces.sweep` sections along `path` curves; chainrings and
   rotors are rings (`annulus`) — solid discs read as pale plates.
 - Painted tube intersections are welded at 3 mm, smoothed and reduced to 1,800 triangles

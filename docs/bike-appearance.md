@@ -1,7 +1,9 @@
-# Road bike appearance (R227–R229)
+# Road bike appearance (R227–R230)
 
 Both rider sizes use coherent road-frame dimensions before the rider is posed. The saddle
 height follows the rider's legs; the torso and arms are fitted to the frame's fixed hoods.
+Both saddles have a 20 mm forward rail adjustment. The hip-fit line moves with them, and
+height is solved again for the same knee extension before fitting the torso and arms.
 Painted frame tubes are welded and rounded before export, and the fork is joined afterward
 so its crown and lower headset remain separate parts of the steering assembly.
 

@@ -1570,8 +1570,8 @@ def build(sex):
     thigh = (joints["leg_patella.R"] - joints["leg_femur.R"]).length
     shin = (joints["foot_talus.R"] - joints["leg_patella.R"]).length
     ball = joints["foot_center.R"] - joints["foot_talus.R"]
-    # The hips on the seat tube's line, the knee bending `KNEE_AT_BOTTOM` with the pedal at
-    # the bottom and the ball of the foot on it.
+    # The hips follow the saddle's rail adjustment, with the same knee bend at the bottom.
+    # Solve the height again so moving the saddle cannot shorten the leg's pedal reach.
     # The sole stands on the pedal with a cleat under it: the ball of the foot's joint is its
     # own height above the sole (the standing body's ground) over the pedal's top.
     ankle_over_pedal = Vector((0.0, -ball.y,
@@ -1579,12 +1579,13 @@ def build(sex):
     ankle = (BOTTOM_BRACKET + Vector((0.0, 0.0, -CRANK))
              + Matrix.Rotation(FOOT_AT_BOTTOM, 3, "X") @ ankle_over_pedal)
     seat_axis = fit["seat_axis"]
-    offset = BOTTOM_BRACKET - ankle
+    seat_origin = fit["seat_origin"]
+    offset = seat_origin - ankle
     leg = math.sqrt(thigh ** 2 + shin ** 2 + 2.0 * thigh * shin * math.cos(KNEE_AT_BOTTOM))
     along = -seat_axis.dot(offset) + math.sqrt(
         seat_axis.dot(offset) ** 2 - offset.length_squared + leg * leg)
     hips_middle = (joints["leg_femur.L"] + joints["leg_femur.R"]) / 2
-    move_by = BOTTOM_BRACKET + seat_axis * along - hips_middle
+    move_by = seat_origin + seat_axis * along - hips_middle
     body.data.transform(Matrix.Translation(move_by))
     for name in joints:
         joints[name] = joints[name] + move_by
