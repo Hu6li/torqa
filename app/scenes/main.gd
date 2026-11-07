@@ -51,7 +51,7 @@ func _ready() -> void:
 	move_child(_video, _world.get_index() + 1)
 	_world.bind(_orqwa)
 	_world.apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
-	_start.bind(_orqwa)
+	_start.bind(_orqwa, _world)
 	_ride.bind(_orqwa, _world)
 	_summary.bind(_orqwa)
 	add_child(_quick_summary)

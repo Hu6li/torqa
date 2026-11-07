@@ -187,6 +187,9 @@ Built in rideable steps:
   offers to regenerate one an older generator built (R101, ADR 0025, #237)
 - [x] The settings' Courses tab lists each kept world with the room it takes and a bin to
   delete it alone; the course stays and its next ride builds the world again (R136, #355)
+- [x] After Ride or a course workout's Start, prepare the visible surroundings at the rider's
+  start with the selected season and graphics before riding; upload farther chunks in the
+  background with bounded frame work, reprioritizing as the rider moves (R223–R224)
 - **Exit:** prepare a course online, ride it offline on another machine from the `.oqc` file ✅
   (2026-10-03, Lake Biel 7 km: 6.2 MB, opened offline with an empty cache)
 
@@ -373,6 +376,15 @@ Built in rideable steps:
   courses renamed (the pencil's Edit course dialog, with their video) and deleted (the bin)
   there, 3D world built only when riding; the cards share the window's full width, their maps
   growing with them
+  - [x] Opt-in solo continuation in 3D and video courses (R220, #497,
+    [ADR 0039](adr/0039-course-continuation.md)): ask over the paused
+    course at Finish & save, map-thumbnail status pill, saved position and equal-sized
+    Continue ride / From start / Reset progress actions; separate daily FIT activities,
+    prepared-route validation, aligned ghosts/video and unchanged speed-record eligibility
+  - [x] In progress gallery filter (R221): active rider's continuation points, combined with
+    search and existing filters, removable active chip and Clear filters
+  - [x] Plain-language continuation question with blue Yes/red No, a matching saved-position
+    marker on the course map, and concise guidance within Courses (R222)
 - [x] The gallery searched by name, sorted (name, length, climbing, estimated time, date added,
   last ridden), filtered by chips (type, terrain, length bands) and grouped (R67, #230); each
   card with the rider's estimated time from the profile its file keeps
@@ -799,10 +811,13 @@ physically based materials and light, restyled group by group.
     valley sides and road embankments, level cross-sections and beds shaped to the same
     datum, wider transitions on tall banks and rock on exposed channel sides; generator 8
     offers regeneration for older kept worlds.
+  - [x] Submerged lakebeds around mapped stream lines (R118): interior water uses the lake's
+    shore distance, preserving the bed below the surface across stream index cells and
+    terrain chunks. Generator 40 offers regeneration of older kept worlds.
   - [x] Riders and bikes: detailed road bikes and cycling kit; realistic bodies (Human Base
     Meshes) skinned to a skeleton, posed on the bike in Blender, the app turning the leg bones
     to the pedals
-  - [x] Road-racing helmets (R220): fitted shells with longitudinal ribs, eighteen open
+  - [x] Road-racing helmets (R225): fitted shells with longitudinal ribs, eighteen open
     vents, dark foam walls, structural bridges and compact rear overhangs on both riders.
   - [x] Rider and bike motion (R91, `RiderMotion`): pitch and lean as damped springs, standing
     on the pedals on steep climbs and in sprints with the bike rocking under the rider, sway
@@ -845,7 +860,9 @@ physically based materials and light, restyled group by group.
   an overlay (R57); recorded as a ride
 - [ ] ~~Overlay over full-screen apps on macOS~~ — dropped (R57): it would need native window
   code and a new dependency; the overlay stays on top of normal windows
-- [ ] Overlay on Windows and Linux (X11; Wayland where the compositor supports it)
+- [x] Windows and Linux (X11) use the same desktop overlay as macOS; on Wayland, staying on
+  top depends on the compositor
+- [ ] Native acceptance of the overlay on Windows and Linux
 - **Exit:** stream a video in a (non-full-screen) window on the Mac while the overlay HUD holds
   Zone 3 on the KICKR and the session lands in the history as a FIT
 
@@ -1068,6 +1085,8 @@ The project is named ORQWA (orca, torque and watt).
   woodland changes; a screenshot gallery linked from the README and wiki navigation
 - [x] Shorten the usage wiki around setup and rider tasks; remove scenery and implementation
   descriptions, keeping the naming story and screenshot gallery
+- [x] Plain-language usage guides with a nine-link sidebar; connection checks follow the main
+  group-ride steps, and command-line and development-build guidance live in the repository
 - [x] Drop the legacy-named release asset (`scripts/release/publish.sh`) after
   0.5.3 (R147)
 - [x] Release files named with their version (`ORQWA-0.5.2-windows-x86_64.msi`, #322); the

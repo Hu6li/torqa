@@ -140,6 +140,7 @@ func _on_action(action: StringName) -> void:
 		_confirm_discard.popup_centered()
 	elif action == &"details":
 		_rename()
+		_orqwa.accept_continuation(_path)
 		hide()
 		details_requested.emit(_path)
 
@@ -157,6 +158,7 @@ func _discard() -> void:
 
 
 func _close() -> void:
+	_orqwa.accept_continuation(_path)
 	hide()
 	closed.emit()
 

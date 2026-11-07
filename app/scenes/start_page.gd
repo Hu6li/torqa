@@ -16,6 +16,8 @@ const WORDMARK_DESCENT: float = 21.0 / 141.0
 const WORDMARK_CAP_MIDDLE: float = 50.0 / 141.0
 
 var _orqwa: OrqwaApp
+var _world: RideWorld
+var _preparation_revision: int = 0
 var _tabs: TabContainer = TabContainer.new()
 ## The tabs' captions, in the header beside the logo so the two share one row.
 var _tab_bar: TabBar = TabBar.new()
@@ -41,8 +43,9 @@ var _pending_workout: Dictionary = {}
 var _workout_on_course: bool = false
 
 
-func bind(orqwa: OrqwaApp) -> void:
+func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa = orqwa
+	_world = world
 	_courses.bind(orqwa)
 	_detail.bind(orqwa)
 	_workouts.bind(orqwa)
@@ -52,6 +55,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_devices.bind(orqwa)
 	_group.bind(orqwa)
 	_orqwa.group_started.connect(_group_started, CONNECT_DEFERRED)
+	_orqwa.failed.connect(func(_message: String) -> void: _cancel_preparation())
 	_settings.bind(orqwa)
 
 
@@ -170,6 +174,7 @@ func _open_course(course: Dictionary) -> void:
 	if _group_active():
 		_tabs.current_tab = Tab.GROUP_RIDES
 		return
+	_cancel_preparation()
 	_courses.hide()
 	_detail.show()
 	_detail.open(course)
@@ -185,6 +190,7 @@ func go_back() -> bool:
 
 
 func _show_gallery() -> void:
+	_cancel_preparation()
 	_detail.hide()
 	_courses.show()
 
@@ -204,6 +210,8 @@ func _on_tab_changed(tab: int) -> void:
 
 ## Riding needs a trainer: without one, the Devices tab says what to do (R41).
 func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
+	if not _pending_ride.is_empty() or not _pending_workout.is_empty():
+		return
 	if _group_active():
 		_tabs.current_tab = Tab.GROUP_RIDES
 		return
@@ -217,6 +225,8 @@ func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
 
 
 func _on_workout_requested(workout: Dictionary, course_path: String) -> void:
+	if not _pending_ride.is_empty() or not _pending_workout.is_empty():
+		return
 	if _group_active():
 		_tabs.current_tab = Tab.GROUP_RIDES
 		return
@@ -233,9 +243,25 @@ func _start_workout() -> void:
 	if _pending_workout.is_empty():
 		return
 	var workout: Dictionary = _pending_workout
-	_pending_workout = {}
+	var revision: int = _preparation_revision
 	# On a course, its world looks as last chosen on the course page.
 	var options: Dictionary = _detail.ride_options()
+	if _workout_on_course:
+		var prepared: bool = await WorldPreparation.prepare(
+			_world,
+			_orqwa,
+			options,
+			_workouts.show_scene_progress,
+			func() -> bool: return revision == _preparation_revision
+		)
+		if revision != _preparation_revision:
+			return
+		if not prepared:
+			_workouts.finish_preparation()
+			_cancel_preparation()
+			return
+	_pending_workout = {}
+	_workouts.finish_preparation()
 	var flat_descents: bool = options["flat_descents"]
 	if _orqwa.start_workout(workout, _workout_on_course, flat_descents):
 		options["workout"] = workout
@@ -249,11 +275,39 @@ func _start_ride() -> void:
 		return
 	var options: Dictionary = _pending_ride[0]
 	var ghost: Dictionary = _pending_ride[1]
+	var revision: int = _preparation_revision
+	if not _orqwa.riding_along_video():
+		var prepared: bool = await WorldPreparation.prepare(
+			_world,
+			_orqwa,
+			options,
+			_detail.show_scene_progress,
+			func() -> bool: return revision == _preparation_revision
+		)
+		if revision != _preparation_revision:
+			return
+		_detail.finish_preparation()
+		if not prepared:
+			_cancel_preparation()
+			return
 	_pending_ride = []
 	var difficulty: float = options["difficulty"]
 	var flat_descents: bool = options["flat_descents"]
-	if _orqwa.start_ride(difficulty, flat_descents, ghost):
+	var started: bool = (
+		_orqwa.continue_ride(difficulty, flat_descents, ghost)
+		if options.get("continue_course", false)
+		else _orqwa.start_ride(difficulty, flat_descents, ghost)
+	)
+	if started:
 		ride_started.emit(options)
+
+
+func _cancel_preparation() -> void:
+	_preparation_revision += 1
+	_detail.cancel_preparation()
+	_workouts.cancel_preparation()
+	_pending_ride = []
+	_pending_workout = {}
 
 
 func _group_active() -> bool:

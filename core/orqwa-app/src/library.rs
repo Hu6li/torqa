@@ -1,5 +1,5 @@
 //! The course library as the Courses tab shows it (R67): searched by name, filtered by type,
-//! terrain and length, sorted and grouped.
+//! terrain, length and saved progress, sorted and grouped.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -227,6 +227,8 @@ pub struct CourseQuery {
     /// The countries shown, by code, [`NO_COUNTRY`] for courses whose countries are not
     /// known; a course passing any of them is shown.
     pub countries: Vec<String>,
+    /// Show only courses with a continuation point belonging to the active rider.
+    pub in_progress: bool,
     /// The language to name countries in, e.g. `de` or `de_CH`; their names are searched
     /// and sorted in it.
     pub locale: String,
@@ -242,6 +244,8 @@ pub struct LibraryCourse {
     pub estimated: Option<Duration>,
     /// When the rider last started a ride on it; `None` if never.
     pub last_ridden: Option<SystemTime>,
+    /// Whether the active rider has a continuation point for this course.
+    pub in_progress: bool,
 }
 
 impl LibraryCourse {
@@ -361,6 +365,7 @@ pub fn gallery(courses: Vec<LibraryCourse>, query: &CourseQuery, units: UnitSyst
     let mut groups: BTreeMap<Group, Vec<LibraryCourse>> = BTreeMap::new();
     for course in courses {
         let shown = found(&course, &search, &query.locale)
+            && (!query.in_progress || course.in_progress)
             && allows(&query.kinds, &course.kind())
             && allows(&query.terrains, &course.terrain())
             && allows(&query.lengths, &course.length_band(units))
@@ -547,6 +552,7 @@ mod tests {
             },
             estimated: None,
             last_ridden: None,
+            in_progress: false,
         }
     }
 
@@ -709,6 +715,56 @@ mod tests {
 
         assert_eq!(names(&found), [["Gurten loop"]]);
         assert_eq!(found.total, 4, "the library still holds all four");
+    }
+
+    #[test]
+    fn in_progress_requires_a_saved_point_and_combines_with_other_filters() {
+        let courses = || {
+            let mut world = passing(course("Jura world", 30.0, 400.0), Some(vec![switzerland()]));
+            world.in_progress = true;
+            let mut film = video(passing(
+                course("Jura video", 30.0, 400.0),
+                Some(vec![switzerland()]),
+            ));
+            film.in_progress = true;
+            vec![
+                world,
+                film,
+                ridden(course("Jura finished", 30.0, 400.0), Some(1)),
+            ]
+        };
+        let progress = CourseQuery {
+            in_progress: true,
+            ..CourseQuery::default()
+        };
+        let found = gallery(courses(), &progress, UnitSystem::Metric);
+        assert_eq!(found.total, 3);
+        assert_eq!(names(&found), [["Jura video", "Jura world"]]);
+        let combined = CourseQuery {
+            search: "jura".into(),
+            kinds: vec![CourseKind::Video],
+            terrains: vec![Terrain::Hilly],
+            lengths: vec![LengthBand::Medium],
+            countries: vec!["CH".into()],
+            ..progress
+        };
+        assert_eq!(
+            names(&gallery(courses(), &combined, UnitSystem::Metric)),
+            [["Jura video"]]
+        );
+        let no_match = CourseQuery {
+            search: "missing".into(),
+            ..combined
+        };
+        assert_eq!(gallery(courses(), &no_match, UnitSystem::Metric).groups, []);
+        assert_eq!(
+            names(&gallery(
+                courses(),
+                &CourseQuery::default(),
+                UnitSystem::Metric
+            )),
+            [["Jura finished", "Jura video", "Jura world"]]
+        );
     }
 
     #[test]

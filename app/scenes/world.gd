@@ -215,6 +215,9 @@ var _orqwa: OrqwaApp
 var _benchmark: OrqwaGraphicsBenchmark
 var _chunk_count: int = 0
 var _next_chunk: int = 0
+var _streaming: WorldStreaming = WorldStreaming.new()
+## Invalidates a preparation waiting on chunks that a new course or setting replaced.
+var _chunk_revision: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
 var _sky: ShaderMaterial = ShaderMaterial.new()
 var _cloud_offset: Vector2 = Vector2.ZERO
@@ -422,7 +425,7 @@ func apply_quality(name: String, options: Dictionary = {}) -> void:
 	TerrainMaterial.set_tree_density(_terrain_material, tree_density)
 	# A course may already be uploaded when settings change before the next ride.
 	if previous_density != _quality["tree_density"] or previous_cell != _quality["tree_cell"]:
-		_restart_chunks()
+		WorldPreparation.restart(self)
 	var fps_limit: String = options.get("fps_limit", "auto")
 	Engine.max_fps = 60
 	if fps_limit != "auto":
@@ -479,6 +482,11 @@ func _apply_options_over_preset(options: Dictionary) -> void:
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
 func apply_options(options: Dictionary) -> void:
 	_seasons.apply_options(self, _orqwa, _terrain_material, options)
+
+
+## Full upload completion for benchmarks and captures, including background ground LODs.
+func uploads_complete() -> bool:
+	return _next_chunk >= _chunk_count and not _ground_lods.pending()
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.
@@ -592,7 +600,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
 	_apply_rider()
-	_restart_chunks()
+	WorldPreparation.restart(self)
 	_chunk_count = _orqwa.world_chunk_count()
 	_road.mesh = WorldMeshes.from_arrays(_orqwa.road_mesh())
 	_road.material_override = _road_material
@@ -611,87 +619,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_structures.material_override = _structure_material
 
 
-func _restart_chunks() -> void:
-	for chunk: Node in _terrain.get_children():
-		_terrain.remove_child(chunk)
-		chunk.queue_free()
-	_next_chunk = 0
-
-
 func _build_some_chunks() -> void:
-	var built: int = 0
-	while _next_chunk < _chunk_count and built < CHUNKS_PER_FRAME:
-		var density: float = _quality["tree_density"]
-		var chunk: Dictionary = (
-			_benchmark.chunk(density)
-			if _benchmark != null
-			else _orqwa.world_chunk_for_season(_next_chunk, density, _seasons.season)
-		)
-		# Another course was opened meanwhile: its world replaces this one when ready.
-		if chunk.is_empty():
-			_chunk_count = 0
-			return
-		var center: Vector3 = chunk["center"]
-		var node: Node3D = Node3D.new()
-		node.position = center
-		_terrain.add_child(node)
-		var terrain_arrays: Dictionary = chunk["terrain"]
-		var building_arrays: Dictionary = chunk["buildings"]
-		var ground: MeshInstance3D = _mesh_instance(terrain_arrays, _terrain_material)
-		_ground_lods.make(ground, terrain_arrays)
-		ground.visibility_range_end = VISIBILITY_RANGE * _distance
-		node.add_child(ground)
-		for surface: Array in [
-			["streets", _street_material], ["tracks", _track_material], ["water", _water_material]
-		]:
-			var arrays: Dictionary = chunk.get(surface[0], {})
-			var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
-			if not vertices.is_empty():
-				var material: ShaderMaterial = surface[1]
-				var way: MeshInstance3D = _mesh_instance(arrays, material)
-				way.visibility_range_end = VISIBILITY_RANGE * _distance
-				if material == _track_material:
-					way.visibility_range_end = TRACK_RANGE
-					way.set_meta("fixed_range", true)
-				node.add_child(way)
-		UrbanSurfaces.add_to(node, chunk, SIDEWALK_RANGE)
-		var buildings: MeshInstance3D = _mesh_instance(building_arrays, _building_material)
-		buildings.visibility_range_end = DETAIL_RANGE * _distance
-		node.add_child(buildings)
-		var modelled: Array = chunk.get("modelled", [])
-		for cell: Dictionary in modelled:
-			_add_modelled(node, cell)
-		var plants: Dictionary = chunk.get("plants", {})
-		var tree_range: float = _quality["tree_range"]
-		var tree_cell: float = _quality["tree_cell"]
-		for model: String in plants:
-			var buffer: PackedFloat32Array = plants[model]
-			VegetationModels.add_to(
-				node, model, buffer, tree_range, SMALL_PLANT_RANGE * _distance, tree_cell
-			)
-		var props: Dictionary = chunk.get("props", {})
-		for model: String in props:
-			var buffer: PackedFloat32Array = props[model]
-			node.add_child(_props(model, buffer))
-		var wires: Dictionary = chunk.get("wires", {})
-		var wire_vertices: PackedVector3Array = wires.get("vertices", PackedVector3Array())
-		if not wire_vertices.is_empty():
-			var wire_mesh: MeshInstance3D = _mesh_instance(wires, PropModels.wire_material())
-			wire_mesh.visibility_range_end = DETAIL_RANGE * _distance
-			node.add_child(wire_mesh)
-		var labels: Array = chunk.get("labels", [])
-		for entry: Dictionary in labels:
-			var text: Label3D = PropModels.label(entry)
-			text.visibility_range_end = SMALL_PLANT_RANGE * _distance
-			node.add_child(text)
-		var grass_range: float = _quality["grass_range"]
-		if grass_range > 0.0:
-			for kind: String in ["grass", "flowers"]:
-				var tufts: PackedFloat32Array = chunk.get(kind, PackedFloat32Array())
-				if not tufts.is_empty():
-					node.add_child(_plants(tufts, kind == "flowers", grass_range))
-		_next_chunk += 1
-		built += 1
+	_streaming.upload_some(self)
 
 
 ## Buildings drawn as Blender-made models up close and as shells beyond `model_range`, the two

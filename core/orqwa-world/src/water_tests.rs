@@ -244,6 +244,49 @@ async fn lake_remains_level_when_terrain_rises_across_it() {
 }
 
 #[tokio::test]
+async fn lake_bed_stays_submerged_around_streams_far_from_the_shore() {
+    let route = route_north(&[]).await;
+    let map = MapData {
+        areas: vec![Area {
+            cover: LandCover::Water,
+            outer: vec![rectangle(600.0, 500.0, 400.0, 400.0)],
+            inner: vec![],
+        }],
+        waterways: vec![Waterway {
+            width: 12.0,
+            line: vec![at(250.0, 250.0), at(950.0, 750.0)],
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut FlatLake, &map, &mut |_, _| {}).await;
+    // Follow both sides of the diagonal stream, including terrain chunk and index-cell joins.
+    for x in [400.0, 479.5, 480.5, 600.0, 800.0, 959.5, 960.5] {
+        let center = 250.0 + (x - 250.0) * 500.0 / 700.0;
+        for offset in [-65.0, -45.0, -25.0, -10.0, 0.0, 10.0, 25.0, 45.0, 65.0] {
+            let north = center + offset;
+            let water = height_on(&world, |c| &c.water, x, -north).expect("lake water");
+            let bed = ground_at(&world, x, -north).expect("lake bed");
+            assert!(
+                bed < water - 0.05,
+                "exposed lakebed beside the stream at {x}, {north}: bed {bed}, water {water}"
+            );
+        }
+    }
+}
+
+struct FlatLake;
+
+impl ElevationModel for FlatLake {
+    fn elevation(
+        &mut self,
+        _lat: f64,
+        _lon: f64,
+    ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+        std::future::ready(Ok(500.0))
+    }
+}
+
+#[tokio::test]
 async fn water_passes_below_a_ground_crossing_cut_into_the_dem() {
     struct HighDem;
     impl ElevationModel for HighDem {

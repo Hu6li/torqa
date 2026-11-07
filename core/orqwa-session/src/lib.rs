@@ -392,6 +392,21 @@ impl Ride {
         }
     }
 
+    /// Starts a fresh solo activity at an interior course position (R220).
+    /// No skipped distance, samples, elapsed time or initial speed are recorded.
+    /// Returns false without a route, with a workout, outside the route or after entry/ticking.
+    pub fn enter_course(&mut self, distance: Meters) -> bool {
+        if self.workout.is_some()
+            || !self
+                .route
+                .as_ref()
+                .is_some_and(|route| distance.0 > 0.0 && distance.0 < route.length().0)
+        {
+            return false;
+        }
+        self.enter_group(distance, None)
+    }
+
     /// Enters an already running ride before the first local tick. No samples, personal time,
     /// telemetry or speed are invented. Course position and recorded distance remain separate.
     /// Returns false for repeated entry, invalid coordinates or a mismatched workout.

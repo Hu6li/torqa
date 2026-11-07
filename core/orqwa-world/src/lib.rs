@@ -31,6 +31,7 @@ mod route_distances;
 mod seasonal_snow;
 mod snow_ground;
 pub mod stored;
+mod streaming;
 mod streets;
 mod structures;
 mod urban;
@@ -58,13 +59,14 @@ use road::RoadIndex;
 pub use route_distances::{DENSE_FOREST, DISTANCE_STEP, RouteDistances, route_distances};
 pub use seasonal_snow::{Snowbank, road_snow_exposure, snow_depth, snowbanks};
 pub use snow_ground::{SnowGroundMask, snow_ground_mask};
+pub use streaming::{ChunkPlan, chunk_plan};
 pub use vegetation::Trees;
 
 /// What worlds look like. Raise it whenever a change makes the same course come out
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 39;
+pub const GENERATOR: u32 = 40;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
