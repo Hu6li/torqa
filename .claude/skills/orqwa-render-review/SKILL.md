@@ -75,6 +75,9 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   `screenshots/models/<group>/`, the clouds together; `GROUPS="vegetation clouds"` or
   `MODELS="house_gable_2_m chalet_2_m"` limits it (pass them inside `sh -c '…'` so they reach
   the container). `scripts/render-riders.sh` does the same for the riders.
+  Its `VIEWS="bike-side bike-drive bike-front bike-cockpit"` selection hides the body for
+  close bike review, under the riding view's atmospheric sky and AgX tone mapping. Each view
+  reports visible draw calls and primitives; these software counts do not establish native FPS.
 - With `GALLERY=docs/images/models`, both also write the small JPEGs of the gallery in
   `art/README.md`; refresh it whenever a model changes.
 

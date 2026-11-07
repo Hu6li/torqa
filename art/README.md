@@ -405,17 +405,32 @@ Exports are deterministic. `PREVIEW=<dir>` also renders Cycles previews of the r
 | `jersey`, `sleeve`, `shorts`, `socks`, `shoes` | the kit |
 | `helmet`, `vents`, `glasses` | helmet and its vent slots, sunglasses |
 | `frame` | the frame and fork |
-| `tyre`, `rim`, `metal`, `saddle`, `bar` | the bike's other parts |
+| `tyre`, `sidewall` | rubber tread and the darker brown casing |
+| `rim`, `carbon` | satin composite rims, cockpit, seat post and bottle cage |
+| `metal`, `alloy` | bright steel drivetrain/rotors and dark anodized hardware |
+| `saddle`, `bar`, `bottle` | saddle cover, rubber grips and the bidon |
 
 Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` there too) and
-`bike` for the bike's other parts. The bike is a modern race bike: a compact frame of shaped,
+`bike` for the bike's other parts. The frame has a non-metallic clear coat; only `metal` and
+`alloy` use metallic reflection. Rubber stays rough and composite parts have a satin finish.
+The bike is a modern race bike: a compact frame of shaped,
 squared-off tubes (a deep down tube, tall head tube, aero seat tube, dropped seat stays), a
 straight tapered fork, a black aero seat post on the seat tube's line and a one-piece bar and
-stem, the stem straight and the flat tops level, round drops, rounded brake hoods and lever blades; a sculpted saddle on rails; 55 mm carbon
-rims with 24 black spokes and disc rotors; an 11-speed cassette, dark toothed chainrings on a
-spider, tapered cranks, a rear derailleur and the chain. A rider about 41,000–43,000 triangles, a
-bike about 9,800.
+stem, the stem straight and the flat tops level, round drops, rounded brake hoods and lever
+blades with pivots and end plugs; a sculpted saddle on rails; a shaped bottle in an open cage;
+55 mm carbon rims with 24 thinner, crossed spokes, valve stems and vented disc rotors;
+an open-centred 11-speed cassette, dark toothed chainrings on a spider, tapered cranks, a rear
+derailleur and a continuous chain with spaced side plates. Painted tube intersections are
+voxel-welded at 3 mm, rounded and reduced to 1,800 triangles before joining the hardware.
+A rider has about 41,000–43,000 triangles, a bike 16,028 (previously about 9,800); the whole
+avatar grows by about 12%, with the same six bike objects and no per-link animation.
+Fit metadata and node names stay stable, and kept worlds need no regeneration.
 Both riders, from every side, are in the [gallery](#riders).
+
+The rider renderer uses the app's atmospheric sky, AgX tone mapping and midday light energy.
+For bike-only close-ups, run `VIEWS="bike-side bike-drive bike-front bike-cockpit"` with
+`scripts/render-riders.sh`. See the [bike review](../docs/bike-appearance.md) for matched
+before/after images and validation.
 
 ## The remote's clip (`remote/`)
 
@@ -548,3 +563,7 @@ and route screenshots check their cost and coverage in context.
 | helmet side | ![female helmet side](../docs/images/models/riders/female-helmet-side.jpg) | ![male helmet side](../docs/images/models/riders/male-helmet-side.jpg) |
 | helmet rear | ![female helmet rear](../docs/images/models/riders/female-helmet-rear.jpg) | ![male helmet rear](../docs/images/models/riders/male-helmet-rear.jpg) |
 | lean | ![female lean](../docs/images/models/riders/female-lean.jpg) | ![male lean](../docs/images/models/riders/male-lean.jpg) |
+| bike side | ![female bike side](../docs/images/models/riders/female-bike-side.jpg) | ![male bike side](../docs/images/models/riders/male-bike-side.jpg) |
+| drivetrain | ![female drivetrain](../docs/images/models/riders/female-bike-drive.jpg) | ![male drivetrain](../docs/images/models/riders/male-bike-drive.jpg) |
+| bike front | ![female bike front](../docs/images/models/riders/female-bike-front.jpg) | ![male bike front](../docs/images/models/riders/male-bike-front.jpg) |
+| cockpit | ![female cockpit](../docs/images/models/riders/female-bike-cockpit.jpg) | ![male cockpit](../docs/images/models/riders/male-bike-cockpit.jpg) |

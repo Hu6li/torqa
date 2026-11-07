@@ -12,7 +12,9 @@ const DIRECTORY: String = "res://assets/models/riders/"
 ## The riders to choose from (the profile's `avatar`).
 const RIDERS: PackedStringArray = ["female", "male"]
 ## Materials coloured from the palette's `bike` section; the others from the rider's own.
-const BIKE_PARTS: PackedStringArray = ["tyre", "rim", "metal", "saddle", "bar"]
+const BIKE_PARTS: PackedStringArray = [
+	"tyre", "sidewall", "rim", "carbon", "alloy", "metal", "saddle", "bar", "bottle"
+]
 ## Materials that take the accent colour, where one is set.
 const ACCENTED: PackedStringArray = ["jersey", "helmet", "frame"]
 ## The feet point down a little, most at the back of the stroke (ankling): mean and swing, in
@@ -402,6 +404,20 @@ func _material(kind: String) -> StandardMaterial3D:
 		else:
 			material.albedo_color = Palette.color("rider_" + rider + "." + kind)
 		material.roughness = 0.45 if kind in ["rim", "metal", "frame", "helmet"] else 0.85
+		match kind:
+			"frame":
+				# Painted composite reflects through a clear lacquer, without a metal base.
+				material.roughness = 0.28
+				material.clearcoat_enabled = true
+				material.clearcoat = 0.7
+				material.clearcoat_roughness = 0.18
+			"rim", "carbon":
+				material.roughness = 0.38
+			"metal", "alloy":
+				material.metallic = 1.0
+				material.roughness = 0.3 if kind == "metal" else 0.4
+			"bottle":
+				material.roughness = 0.5
 		_materials[key] = material
 	return _materials[key]
 

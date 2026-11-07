@@ -9,6 +9,7 @@ extends SceneTree
 ## whether the rider leans into a bend (40 km/h, 40 m radius, to the right) and whether they
 ## stand on the pedals (the bike rocked under them as at 60 rpm).
 ## Helmet views use head-relative offsets and orthographic projection for silhouette review.
+## Views prefixed with bike- hide the body; VIEWS selects space-separated view names.
 const VIEWS: Array = [
 	["side", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0],
 	["side-down", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 90.0],
@@ -21,6 +22,10 @@ const VIEWS: Array = [
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
 	["standing", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0, false, true],
 	["standing-chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 70.0, false, true],
+	["bike-side", Vector3(2.25, 0.9, 0.0), Vector3(0.0, 0.56, 0.0), 0.0],
+	["bike-drive", Vector3(1.05, 0.65, 0.95), Vector3(0.0, 0.35, 0.2), 110.0],
+	["bike-front", Vector3(-1.6, 1.25, -1.8), Vector3(0.0, 0.55, -0.1), 0.0],
+	["bike-cockpit", Vector3(0.15, 1.42, 0.05), Vector3(0.0, 0.7, -0.6), 0.0],
 ]
 const GALLERY_SIZE: Vector2i = Vector2i(640, 360)
 
@@ -46,6 +51,10 @@ func _run() -> void:
 		var turned: float = 0.0
 		for view: Array in VIEWS:
 			var view_name: String = view[0]
+			var selected: PackedStringArray = OS.get_environment("VIEWS").split(" ", false)
+			if not selected.is_empty() and not selected.has(view_name):
+				continue
+			avatar.show_rider(not view_name.begins_with("bike-"))
 			var eye: Vector3 = view[1]
 			var target: Vector3 = view[2]
 			var crank: float = view[3]
@@ -81,6 +90,23 @@ func _run() -> void:
 				await process_frame
 			var image: Image = root.get_texture().get_image()
 			image.save_png(out.path_join(rider + "-" + view_name + ".png"))
+			print(
+				(
+					"rendered %s-%s: %d draw calls, %d primitives"
+					% [
+						rider,
+						view_name,
+						root.get_render_info(
+							Viewport.RENDER_INFO_TYPE_VISIBLE,
+							Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME
+						),
+						root.get_render_info(
+							Viewport.RENDER_INFO_TYPE_VISIBLE,
+							Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME
+						),
+					]
+				)
+			)
 			if not gallery.is_empty():
 				image.resize(GALLERY_SIZE.x, GALLERY_SIZE.y, Image.INTERPOLATE_LANCZOS)
 				image.save_jpg(gallery.path_join(rider + "-" + view_name + ".jpg"), 0.8)
@@ -92,19 +118,21 @@ func _run() -> void:
 func _stage() -> void:
 	var environment: Environment = Environment.new()
 	var sky: Sky = Sky.new()
-	var sky_material: ProceduralSkyMaterial = ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Palette.color("sky.top")
-	sky_material.sky_horizon_color = Palette.color("sky.horizon")
-	sky_material.ground_horizon_color = Palette.color("sky.horizon")
-	sky_material.ground_bottom_color = Palette.color("ground.meadow")
+	var sky_material: ShaderMaterial = ShaderMaterial.new()
+	sky_material.shader = preload("res://shaders/sky.gdshader")
+	sky_material.set_shader_parameter("ground_color", Palette.color("plants.grass_base"))
+	sky_material.set_shader_parameter("cloud_color", Palette.color("sky.cloud"))
+	sky_material.set_shader_parameter("cloud_shade_color", Palette.color("sky.cloud_shade"))
+	sky_material.set_shader_parameter("cloud_cover", 0.3)
 	sky.sky_material = sky_material
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
-	# As in the world (world.tscn, RideWorld.TIMES): linear tone mapping, a warm sky light.
+	# Match the riding view's atmosphere and filmic response, so paint is judged in its light.
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.ambient_light_color = Palette.color("light.ambient")
-	environment.ambient_light_sky_contribution = 0.55
-	environment.ambient_light_energy = 0.55
+	environment.ambient_light_sky_contribution = 0.9
+	environment.ambient_light_energy = RideWorld.TIMES["Midday"]["ambient"]
 	environment.ssao_enabled = true
 	var world: WorldEnvironment = WorldEnvironment.new()
 	world.environment = environment
@@ -114,7 +142,7 @@ func _stage() -> void:
 	sun.rotation_degrees = Vector3(-42.0, 35.0, 0.0)
 	sun.shadow_enabled = true
 	sun.light_color = Palette.color("light.sun")
-	sun.light_energy = 0.8
+	sun.light_energy = RideWorld.TIMES["Midday"]["energy"]
 	sun.directional_shadow_max_distance = 20.0
 	root.add_child(sun)
 
@@ -127,6 +155,7 @@ func _stage() -> void:
 	plane.material = road
 	ground.mesh = plane
 	root.add_child(ground)
+	root.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 
 	_camera.fov = 40.0
 	root.add_child(_camera)

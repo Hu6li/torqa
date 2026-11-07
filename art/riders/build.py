@@ -91,6 +91,8 @@ PREVIEW = {
     "vents": (0.29, 0.18, 0.27),
     "frame": (0.89, 0.44, 0.37), "tyre": (0.29, 0.18, 0.27), "rim": (0.95, 0.92, 0.85),
     "metal": (0.56, 0.58, 0.61), "saddle": (0.38, 0.26, 0.4), "bar": (0.38, 0.26, 0.4),
+    "sidewall": (0.39, 0.34, 0.29), "carbon": (0.08, 0.09, 0.1),
+    "alloy": (0.12, 0.13, 0.15), "bottle": (0.8, 0.81, 0.78),
     "socks": (0.92, 0.92, 0.9),
 }
 
@@ -526,7 +528,8 @@ def disc(faces, hub, radius, x, thickness, material_name, count=32, teeth=0.0):
                 [hub + p + Vector((x + thickness / 2, 0, 0)) for p in outline], material_name)
 
 
-def annulus(faces, hub, outer, inner, x, thickness, material_name, count=32, teeth=0.0):
+def annulus(faces, hub, outer, inner, x, thickness, material_name, count=32, teeth=0.0,
+            slots=False):
     """A flat ring round the wheel's axis (chainring, brake rotor), with `teeth` deep teeth on
     every other corner of its outside where set."""
     def at(radius, k, side):
@@ -534,6 +537,8 @@ def annulus(faces, hub, outer, inner, x, thickness, material_name, count=32, tee
         return hub + Vector((x + side * thickness / 2, radius * math.cos(a), radius * math.sin(a)))
 
     for k in range(count):
+        if slots and k % 4 == 2:
+            continue
         j = (k + 1) % count
         r0 = outer - (teeth if k % 2 else 0.0)
         r1 = outer - (teeth if j % 2 else 0.0)
@@ -546,6 +551,12 @@ def annulus(faces, hub, outer, inner, x, thickness, material_name, count=32, tee
                   material_name, inside)
         faces.add([at(inner, k, -1.0), at(inner, j, -1.0), at(inner, j, 1.0), at(inner, k, 1.0)],
                   material_name, inside)
+        if slots:
+            for n, r in ((k, r0), (j, r1)):
+                if n % 4 != (3 if n == k else 2):
+                    continue
+                faces.add([at(inner, n, -1.0), at(r, n, -1.0), at(r, n, 1.0),
+                           at(inner, n, 1.0)], material_name, inside)
 
 
 def path(points, steps=4):
@@ -571,11 +582,11 @@ def taper(count, start, end):
 
 
 def wheel(name, hub, cassette=False):
-    """A wheel in the y–z plane: a round tyre on a deep-section rim, flanged hub, 20 spokes, a
+    """A wheel in the y–z plane: a round tyre on a deep-section rim, flanged hub, 24 spokes, a
     disc rotor on the left and, at the back, the cassette on the right — all turning with it."""
     faces = Faces()
-    segments = 48
-    # The tyre: a tube of 12 sides bent round the wheel, so it is round and shades smooth.
+    segments = 64
+    # Separate casing and tread preserve the tyre's rounded silhouette in oblique views.
     tube_radius = 0.014
     centre = WHEEL_RADIUS - tube_radius
     sides = 8
@@ -590,7 +601,8 @@ def wheel(name, hub, cassette=False):
 
             inside = hub + Vector((0.0, centre * math.cos((a0 + a1) / 2),
                                    centre * math.sin((a0 + a1) / 2)))
-            faces.add([at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)], "tyre", inside)
+            kind = "sidewall" if j in (1, 2, 5, 6) else "tyre"
+            faces.add([at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)], kind, inside)
     # A deep carbon rim (about 55 mm), widest a little below the tyre and rounding in to the
     # spoke bed, as aero rims are.
     profile = [(WHEEL_RADIUS - 0.024, 0.0125), (WHEEL_RADIUS - 0.04, 0.0145),
@@ -613,36 +625,143 @@ def wheel(name, hub, cassette=False):
         w = profile[0][1]
         faces.add([rim(profile[0][0], a0, -w), rim(profile[0][0], a1, -w),
                    rim(profile[0][0], a1, w), rim(profile[0][0], a0, w)], "rim", inside)
-    # 24 black spokes from the hub's flanges, laced to alternate sides.
+    # Two-cross lacing: neighbouring spokes on each flange lead and trail the hub.
     for k in range(24):
         angle = 2 * math.pi * k / 24
         flange = 0.025 if k % 2 else -0.025
-        start = hub + Vector((flange, 0.025 * math.cos(angle), 0.025 * math.sin(angle)))
+        lacing = angle + (1 if (k // 2) % 2 else -1) * math.pi / 3
+        start = hub + Vector((flange, 0.025 * math.cos(lacing), 0.025 * math.sin(lacing)))
         end = hub + Vector((0.0, inner * math.cos(angle), inner * math.sin(angle)))
-        faces.tube(start, end, 0.0016, "bar", sides=4, caps=False)
+        faces.tube(start, end, 0.001, "alloy", sides=4, caps=False)
     faces.sweep([hub - Vector((0.05, 0, 0)), hub - Vector((0.025, 0, 0)),
                  hub + Vector((0.025, 0, 0)), hub + Vector((0.05, 0, 0))],
-                [(0.024, 0.024), (0.034, 0.034), (0.034, 0.034), (0.024, 0.024)], "bar",
+                [(0.024, 0.024), (0.034, 0.034), (0.034, 0.034), (0.024, 0.024)], "alloy",
                 sides=8, lateral=(0.0, 0.0, 1.0))
+    for x in (-0.026, 0.026):
+        annulus(faces, hub, 0.027, 0.012, x, 0.003, "alloy", count=16)
+    # Valve stems sit inside the spoke bed, so they turn with the wheel.
+    valve = Vector((0.0, math.cos(0.4), math.sin(0.4)))
+    faces.tube(hub + valve * (inner - 0.026), hub + valve * inner, 0.0025, "metal", sides=6)
     # The brake rotor: a ring on a five-armed carrier, on the left.
-    annulus(faces, hub, 0.08, 0.062, -0.042, 0.002, "metal", count=24)
+    annulus(faces, hub, 0.08, 0.075, -0.042, 0.0018, "metal", count=48)
+    annulus(faces, hub, 0.075, 0.063, -0.042, 0.0018, "metal", count=48, slots=True)
     for k in range(5):
         a = 2 * math.pi * k / 5
         faces.tube(hub + Vector((-0.042, 0.0, 0.0)),
                    hub + Vector((-0.042, 0.064 * math.cos(a), 0.064 * math.sin(a))), 0.004,
-                   "bar", sides=4)
+                   "alloy", sides=4)
     if cassette:
         for k in range(11):
-            disc(faces, hub, 0.058 - k * 0.0032, 0.03 + k * 0.0038, 0.0018, "metal",
-                 count=24, teeth=0.003)
-    return faces.to_object(name, hub)
+            radius = 0.058 - k * 0.0032
+            annulus(faces, hub, radius, max(0.012, radius - 0.012), 0.03 + k * 0.0038,
+                    0.0018, "metal", count=24, teeth=0.003)
+    obj = faces.to_object(name, hub)
+    # The tyre's eight-sided section is rubber, with no hard crease between its facets.
+    obj.data.set_sharp_from_angle(angle=math.radians(65))
+    return obj
 
 
-def saddle_outline(back, nose, z):
-    """The saddle's outline at height `z`: wide at the back, narrow at the nose."""
-    shape = [(-0.07, 0.0), (0.07, 0.0), (0.06, 0.06), (0.025, 0.17), (0.02, 0.26),
-             (-0.02, 0.26), (-0.025, 0.17), (-0.06, 0.06)]
-    return [Vector((x, back + y / 0.26 * (nose - back), z)) for x, y in shape]
+def chain(faces, sprockets, x):
+    """A closed chain on external tangents, with separate side plates at bicycle-chain pitch.
+
+    Keeping its path in the frame mesh avoids adding animated objects for individual links.
+    """
+    sprockets = [(Vector((0.0, centre.y, centre.z)), radius) for centre, radius in sprockets]
+    normals = []
+    for i, (centre, radius) in enumerate(sprockets):
+        next_centre, next_radius = sprockets[(i + 1) % len(sprockets)]
+        span = next_centre - centre
+        along = span.normalized()
+        out = Vector((0.0, along.z, -along.y))
+        difference = (radius - next_radius) / span.length
+        normals.append(along * difference + out * math.sqrt(1.0 - difference ** 2))
+    points = []
+    for i, (centre, radius) in enumerate(sprockets):
+        incoming, outgoing = normals[i - 1], normals[i]
+        angle = math.atan2(incoming.z, incoming.y)
+        arc = (math.atan2(outgoing.z, outgoing.y) - angle) % (2 * math.pi)
+        steps = max(2, math.ceil(arc * radius / 0.006))
+        for k in range(steps + 1):
+            a = angle + arc * k / steps
+            points.append(Vector((x, centre.y + radius * math.cos(a),
+                                  centre.z + radius * math.sin(a))))
+    points.append(points[0])
+    # A narrow roller belt keeps the route continuous; spaced plates catch the light.
+    faces.sweep(points, [(0.004, 0.002)] * len(points), "alloy", sides=4, caps=False)
+    lengths = [(b - a).length for a, b in zip(points, points[1:])]
+    total = sum(lengths)
+    links = round(total / 0.0127)
+    segment = 0
+    walked = 0.0
+    for k in range(links):
+        distance = total * k / links
+        while segment < len(lengths) - 1 and walked + lengths[segment] < distance:
+            walked += lengths[segment]
+            segment += 1
+        along = (points[segment + 1] - points[segment]).normalized()
+        centre = points[segment] + along * (distance - walked)
+        deep = along.cross(Vector((1.0, 0.0, 0.0))) * 0.002
+        for side in (-1.0, 1.0):
+            middle_plate = centre + Vector((side * 0.0025, 0.0, 0.0))
+            outline = [middle_plate + along * a + deep * b
+                       for a, b in ((-0.0048, -1), (0.0048, -1), (0.0048, 1), (-0.0048, 1))]
+            faces.add(outline, "metal", centre)
+
+
+def bottle_and_cage(faces, bottom, top):
+    """A shaped bidon on the down tube, with an open cage attached at two bosses."""
+    axis = (top - bottom).normalized()
+    inward = Vector((0.0, -axis.z, axis.y))
+    base = bottom + (top - bottom) * 0.18 + inward * 0.062
+    heights = [0.0, 0.008, 0.105, 0.118, 0.133, 0.146, 0.16, 0.174]
+    widths = [0.058, 0.069, 0.069, 0.062, 0.062, 0.068, 0.055, 0.042]
+    faces.sweep([base + axis * h for h in heights], [(w, w) for w in widths],
+                "bottle", sides=16)
+    faces.sweep([base + axis * h for h in (0.174, 0.18, 0.185)],
+                [(0.044, 0.044), (0.044, 0.044), (0.037, 0.037)], "bar", sides=12)
+    faces.tube(base + axis * 0.185, base + axis * 0.198, 0.009, "bar", sides=8)
+    for h in (0.025, 0.089):
+        faces.tube(base + axis * h - inward * 0.035,
+                   base + axis * h - inward * 0.062, 0.005, "alloy", sides=6)
+    for sign in (-1.0, 1.0):
+        rail = path([base - inward * 0.034 + Vector((sign * 0.013, 0, 0)),
+                     base + inward * 0.023 + Vector((sign * 0.028, 0, 0)),
+                     base + axis * 0.045 + inward * 0.028 + Vector((sign * 0.027, 0, 0)),
+                     base + axis * 0.102 + Vector((sign * 0.037, 0, 0)),
+                     base + axis * 0.12 - inward * 0.031 + Vector((sign * 0.017, 0, 0))], 2)
+        faces.sweep(rail, [(0.006, 0.008)] * len(rail), "carbon", sides=6)
+
+
+def finished_frame(faces):
+    """Blend painted tube junctions as a moulded frame; keep small hardware out of the remesh.
+
+    A bounded decimation keeps the welded surface near the original tube budget.
+    """
+    painted, hardware = Faces(), Faces()
+    for points, name in faces.faces:
+        (painted if name == "frame" else hardware).add(points, name)
+    frame = painted.to_object("frame", Vector())
+    bpy.ops.object.select_all(action="DESELECT")
+    frame.select_set(True)
+    bpy.context.view_layer.objects.active = frame
+    weld = frame.modifiers.new("Moulded junctions", "REMESH")
+    weld.mode = "VOXEL"
+    weld.voxel_size = 0.003
+    weld.use_smooth_shade = True
+    bpy.ops.object.modifier_apply(modifier=weld.name)
+    rounding = frame.modifiers.new("Round junctions", "SMOOTH")
+    rounding.factor = 0.6
+    rounding.iterations = 4
+    bpy.ops.object.modifier_apply(modifier=rounding.name)
+    simplify = frame.modifiers.new("Frame budget", "DECIMATE")
+    simplify.ratio = min(1.0, 1800 / triangles([frame]))
+    bpy.ops.object.modifier_apply(modifier=simplify.name)
+    smooth(frame.data)
+    detail = hardware.to_object("hardware", Vector())
+    detail.select_set(True)
+    bpy.ops.object.join()
+    frame.data.set_sharp_from_angle(angle=math.radians(65))
+    return frame
 
 
 def bike(saddle, hoods):
@@ -694,6 +813,7 @@ def bike(saddle, hoods):
     # Seat tube: deep, aero, from the shell to just above the top tube.
     frame.sweep(line(BOTTOM_BRACKET, cluster + seat_axis * 0.025),
                 taper(5, (0.046, 0.05), (0.032, 0.046)), "frame", power=2.4)
+    bottle_and_cage(frame, BOTTOM_BRACKET, head_bottom)
     # The bottom bracket shell.
     frame.sweep(line(BOTTOM_BRACKET - side * 0.043, BOTTOM_BRACKET + side * 0.043, 3),
                 [(0.05, 0.05)] * 3, "frame", lateral=(0.0, 0.0, 1.0))
@@ -723,20 +843,20 @@ def bike(saddle, hoods):
                      head_bottom + steer * 0.015 + side * 0.04, 3),
                 [(0.05, 0.065)] * 3, "frame", lateral=(0.0, 0.0, 1.0), power=2.6)
     # An aero seat post, black, rising out of the seat tube to the saddle's clamp.
-    frame.sweep(line(cluster, post_top, 4), [(0.026, 0.042)] * 4, "bar", sides=8, power=2.4)
+    frame.sweep(line(cluster, post_top, 4), [(0.026, 0.042)] * 4, "carbon", sides=8, power=2.4)
 
     # A one-piece bar and stem, black: the stem out of the head tube, flat aero tops sweeping
     # forward to the hoods, then round drops curving forward, down and back.
     frame.sweep(line(head_top - steer * 0.012, steerer_top - steer * 0.012, 3),
-                [(0.036, 0.046)] * 3, "bar", sides=8, power=2.4)
+                [(0.036, 0.046)] * 3, "carbon", sides=8, power=2.4)
     frame.sweep(line(steerer_top - Vector((0.0, 0.012, 0.0)), bar),
-                taper(5, (0.036, 0.04), (0.032, 0.03)), "bar", sides=8, power=2.4)
+                taper(5, (0.036, 0.04), (0.032, 0.03)), "carbon", sides=8, power=2.4)
     for sign in (-1.0, 1.0):
         corner = Vector((sign * HOODS_HALF_WIDTH, hood_y - 0.012, bar.z))
         tops = path([bar, bar + Vector((sign * 0.06, 0.0, 0.0)),
                      bar + Vector((sign * (HOODS_HALF_WIDTH - 0.04), 0.008, 0.0)),
                      corner + Vector((-sign * 0.006, -0.02, 0.0)), corner], 3)
-        frame.sweep(tops, taper(len(tops), (0.014, 0.05), (0.024, 0.026)), "bar", sides=8,
+        frame.sweep(tops, taper(len(tops), (0.014, 0.05), (0.024, 0.026)), "carbon", sides=8,
                     lateral=(0.0, 0.0, 1.0), power=2.6)
         drop = path([corner + Vector((0.0, -0.01, 0.0)), corner,
                      corner + Vector((0.0, 0.04, -0.035)), corner + Vector((0.0, 0.045, -0.09)),
@@ -758,6 +878,11 @@ def bike(saddle, hoods):
                       hood + Vector((0, 0.063, -0.08)), hood + Vector((0, 0.054, -0.11))], 3)
         frame.sweep(lever, taper(len(lever), (0.012, 0.022), (0.009, 0.014)), "bar",
                     sides=8, power=2.4)
+        # Bar plugs and a lever pivot separate the rubber grips from the hardware.
+        plug = drop[-1]
+        frame.tube(plug, plug + Vector((0.0, -0.004, 0.0)), 0.011, "alloy", sides=8)
+        pivot = hood + Vector((0, 0.048, -0.021))
+        frame.tube(pivot - side * 0.017, pivot + side * 0.017, 0.003, "metal", sides=6)
 
     # The saddle: a sculpted shell, wide at the back and kicked up there, slim at the nose.
     back = saddle.y - 0.11
@@ -777,40 +902,43 @@ def bike(saddle, hoods):
     frame.box(front_hub + Vector((-0.045, -0.04, 0.05)), (0.022, 0.05, 0.032), "bar")
     frame.box(rear_hub + Vector((-0.045, 0.03, 0.05)), (0.022, 0.05, 0.032), "bar")
     # The rear derailleur under the right dropout, its cage with two pulleys.
-    mech = rear_hub + Vector((0.065, 0.0, -0.035))
-    frame.box(mech, (0.02, 0.045, 0.04), "bar")
-    upper_pulley = rear_hub + Vector((0.06, 0.0, -0.065))
-    lower_pulley = rear_hub + Vector((0.06, 0.02, -0.12))
-    frame.box(middle(upper_pulley, lower_pulley) + Vector((0.008, 0, 0)), (0.006, 0.035, 0.08),
-              "bar")
-    disc(frame, upper_pulley - Vector((0.06, 0, 0)), 0.016, 0.06, 0.006, "metal", count=12)
-    disc(frame, lower_pulley - Vector((0.06, 0, 0)), 0.016, 0.06, 0.006, "metal", count=12)
-    # The chain: over the big ring and the cassette, back under through the pulleys.
-    ring_x = 0.048
-    frame.tube(BOTTOM_BRACKET + Vector((ring_x, 0.0, 0.106)),
-               rear_hub + Vector((ring_x, 0.0, 0.052)), 0.004, "metal", sides=4)
-    frame.tube(rear_hub + Vector((ring_x, -0.05, 0.0)), upper_pulley + Vector((-0.012, -0.012, 0)),
-               0.004, "metal", sides=4)
-    frame.tube(lower_pulley + Vector((-0.012, 0.012, -0.012)),
-               BOTTOM_BRACKET + Vector((ring_x, 0.0, -0.106)), 0.004, "metal", sides=4)
+    upper_pulley = rear_hub + Vector((0.048, 0.0, -0.065))
+    lower_pulley = rear_hub + Vector((0.048, 0.02, -0.12))
+    mech = path([rear_hub + Vector((0.065, 0.0, -0.012)),
+                 rear_hub + Vector((0.07, -0.01, -0.035)),
+                 upper_pulley + Vector((0.012, 0.0, 0.0))], 2)
+    frame.sweep(mech, taper(len(mech), (0.024, 0.03), (0.018, 0.022)), "alloy", sides=8)
+    # Open cage plates keep the two jockey wheels legible instead of hiding them in a block.
+    for x in (-0.006, 0.006):
+        cage = path([upper_pulley + Vector((x, -0.018, 0)),
+                     lower_pulley + Vector((x, -0.018, 0)),
+                     lower_pulley + Vector((x, 0, -0.018)),
+                     lower_pulley + Vector((x, 0.018, 0)),
+                     upper_pulley + Vector((x, 0.018, 0))], 2)
+        frame.sweep(cage, [(0.003, 0.006)] * len(cage), "alloy", sides=4)
+    disc(frame, upper_pulley - Vector((0.048, 0, 0)), 0.016, 0.048, 0.006, "alloy", count=12)
+    disc(frame, lower_pulley - Vector((0.048, 0, 0)), 0.016, 0.048, 0.006, "alloy", count=12)
+    # Pulley centres share the chainline with the selected middle cassette sprocket.
+    chain(frame, [(BOTTOM_BRACKET, 0.106), (rear_hub, 0.045),
+                  (upper_pulley, 0.016), (lower_pulley, 0.016)], 0.048)
 
     crankset = Faces()
     bb = BOTTOM_BRACKET
     # Two toothed chainrings (50 and 34), dark, on a four-armed spider.
-    annulus(crankset, bb, 0.106, 0.088, 0.048, 0.004, "rim", count=56, teeth=0.005)
-    annulus(crankset, bb, 0.072, 0.058, 0.041, 0.004, "rim", count=40, teeth=0.005)
+    annulus(crankset, bb, 0.106, 0.088, 0.048, 0.004, "alloy", count=56, teeth=0.005)
+    annulus(crankset, bb, 0.072, 0.058, 0.041, 0.004, "alloy", count=40, teeth=0.005)
     for k in range(4):
         a = math.pi / 4 + k * math.pi / 2
         crankset.sweep([bb + Vector((0.046, 0.0, 0.0)),
                         bb + Vector((0.046, 0.09 * math.cos(a), 0.09 * math.sin(a)))],
-                       [(0.006, 0.02), (0.006, 0.012)], "rim", sides=8, power=2.4)
+                       [(0.006, 0.02), (0.006, 0.012)], "alloy", sides=8, power=2.4)
     crankset.tube(bb + Vector((-0.07, 0, 0)), bb + Vector((0.07, 0, 0)), 0.012, "metal")
     for sign in (-1.0, 1.0):
         # The right crank forward, the left one back: the app turns them from there. Each arm
         # tapers from the spindle to the pedal.
         root = bb + Vector((sign * 0.06, 0, 0))
         end = bb + Vector((sign * (PEDAL_OFFSET - 0.04), sign * CRANK, 0.0))
-        crankset.sweep(line(root, end, 4), taper(4, (0.016, 0.034), (0.012, 0.022)), "rim",
+        crankset.sweep(line(root, end, 4), taper(4, (0.016, 0.034), (0.012, 0.022)), "alloy",
                        sides=10, power=2.6, lateral=(0.0, 0.0, 1.0))
     pedals = []
     for name, sign in (("pedal_l", -1.0), ("pedal_r", 1.0)):
@@ -824,7 +952,7 @@ def bike(saddle, hoods):
                                                         (0.04, 0.03), (-0.04, 0.03))], "rim")
         pedal.tube(axle - Vector((sign * 0.05, 0, 0)), axle, 0.005, "metal", sides=6)
         pedals.append(pedal.to_object(name, axle))
-    objects = [frame.to_object("frame", Vector()), wheel("wheel_rear", rear_hub, cassette=True),
+    objects = [finished_frame(frame), wheel("wheel_rear", rear_hub, cassette=True),
                wheel("wheel_front", front_hub), crankset.to_object("crankset", bb), *pedals]
     return objects, rear_hub, front_hub
 

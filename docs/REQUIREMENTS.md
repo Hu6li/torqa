@@ -612,3 +612,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R225 | Refines R46 and R89 (2026-11-07): both riders wear realistic **road-racing bicycle helmets**, fitted to their heads, with longitudinal shell ribs, open recessed vents, dark foam interiors and chin straps. Use the Lazer Z1 KinetiCore as a shape reference, with a rounded rear rather than a pointed tail; keep the shell white and unbranded. The ventilation and shell thickness read from front, side and chase views, seated and standing. |
 | R226 | Refines R225 (2026-11-07): the helmet follows the Z1 KinetiCore's **vent layout** in front, side, top and rear views: ribs meeting at the fit dial at the back, a central spine inside a ring of vents, long side channels down to a low vent at the temple, recessed braces, exhausts either side of the spine and solid bands above the rim. Vent edges are rounded; the shell stays white and unbranded. Dedicated side and rear helmet close-ups show it. |
+
+## Road bike appearance
+
+| ID | Requirement |
+|---|---|
+| R227 | Refines R46 and R89 (2026-11-07): both fitted road bikes have smooth, joined frame silhouettes and physically distinct painted composite, satin carbon, rubber and metal surfaces. Wheels, brakes, drivetrain and cockpit retain plausible construction in close views, including crossed spokes, valve stems, vented rotors, cassette openings, a continuous chain and a bottle mounted in a cage. Seated/standing pedaling, rider contact points, group accent colours, ghosts and first-person bike visibility remain compatible. |

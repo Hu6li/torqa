@@ -229,6 +229,12 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   pelvis. Solve the arm's reach to the wrist, not the hood. Check side views against a photo.
 - The bike's shaped parts are `Faces.sweep` sections along `path` curves; chainrings and
   rotors are rings (`annulus`) — solid discs read as pale plates.
+- Painted tube intersections are welded at 3 mm, smoothed and reduced to 1,800 triangles
+  before joining the untouched hardware. Keep the frame's holes and fork clearance open.
+  `sidewall`, `carbon`, `alloy` and `bottle` are styled by `RiderAvatar` from the `bike`
+  palette; painted composite gets clear coat, only bare/anodized metal gets metallic shading.
+  A complete bike is about 16k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
+  in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
 - The road-racing helmet (R225–R226, `art/riders/helmet.py`) is a signed distance field: a
   squarish ovoid fitted round the scalp, vents drawn as polygons on a chart round a long axis
