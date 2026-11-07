@@ -40,6 +40,10 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+import helmet  # noqa: E402  (needs the path above)
+
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
 EYES = ("eye",)
@@ -277,9 +281,6 @@ GLASSES_WRAP = 3.0
 # eyes' height: at the back, at the sides).
 HAIR = {"female": {"thickness": 0.014, "back": -0.085, "sides": -0.035},
         "male": {"thickness": 0.006, "back": -0.05, "sides": -0.005}}
-# The helmet sits this far off the scalp (pressing the hair under it flat) and is this thick.
-HELMET_GAP = 0.007
-HELMET_SHELL = 0.022
 
 
 def scalp(head, keep, rim=None):
@@ -362,152 +363,6 @@ def tube_along(gear, spine, radii, material_name, sides=10):
     gear.add(rings[-1], material_name, spine[-2])
 
 
-def road_helmet(gear, skull, head_tree, eyes, centre_x):
-    """A fitted road-racing shell with longitudinal ribs and open, bevelled air channels.
-
-    The unbranded white shell follows the Lazer Z1 KinetiCore's broad rear, raised ribs
-    and recessed cross braces. Meridians keep the air channels running front to back.
-    """
-    ys = [p.y for p in skull]
-    cy = (max(ys) + min(ys)) / 2.0
-    cz = eyes + 0.035
-    across = max(abs(p.x - centre_x) for p in skull) + HELMET_GAP
-    front = max(ys) - cy + HELMET_GAP
-    back = cy - min(ys) + HELMET_GAP
-    up = max(p.z for p in skull) - cz + HELMET_GAP
-    centre = Vector((centre_x, cy, cz))
-
-    def direction(alpha, beta):
-        reach = front if beta > 0 else back
-        # Retain width at the rear instead of converging the ribs into a pointed tail.
-        taper = 0.65 if beta < 0 else 0.82
-        width = math.sqrt(1.0 - taper * math.sin(beta) ** 2)
-        return Vector((across * width * math.sin(alpha),
-                       reach * math.sin(beta), up * math.cos(beta) * math.cos(alpha)))
-
-    def head_distance(alpha, beta):
-        towards = direction(alpha, beta).normalized()
-        hit = head_tree.ray_cast(centre + towards * 0.4, -towards)[0]
-        if hit is not None:
-            return (hit - centre).length
-        return direction(alpha, beta).length - HELMET_GAP
-
-    def at(alpha, beta, radius, extra):
-        point = centre + direction(alpha, beta).normalized() * (radius + extra)
-        along = math.sin(beta)
-        point.z += 0.012 * along - 0.012 * along ** 2
-        return point
-
-    # Seven channels, each interrupted by two recessed braces. Their tapered ends are
-    # authored in the grid, avoiding boolean seams and keeping exports deterministic.
-    channels = [(-a, width) for a, width in ((1.22, 0.18), (0.82, 0.24), (0.38, 0.25))]
-    channels += [(0.0, 0.14)]
-    channels += [(a, width) for a, width in ((0.38, 0.25), (0.82, 0.24), (1.22, 0.18))]
-    openings = ((-1.43, -0.40), (-0.27, 0.38), (0.51, 1.40))
-    boundaries = [-math.pi / 2, math.pi / 2]
-    for alpha, width in channels:
-        boundaries.extend((alpha - width / 2, alpha + width / 2))
-    boundaries.sort()
-    alphas = []
-    slot_columns = set()
-    for left, right in zip(boundaries, boundaries[1:]):
-        slot = any(abs((left + right) / 2 - a) < w / 2 for a, w in channels)
-        steps = 4 if slot else max(2, math.ceil((right - left) / 0.10))
-        if slot:
-            slot_columns.update(range(len(alphas), len(alphas) + steps))
-        alphas.extend(left + (right - left) * k / steps for k in range(steps))
-    alphas.append(boundaries[-1])
-    betas = [-math.pi / 2, math.pi / 2]
-    for start, end in openings:
-        betas.extend((start, start + 0.07, end - 0.07, end))
-    breaks = sorted(betas)
-    betas = []
-    for start, end in zip(breaks, breaks[1:]):
-        steps = max(1, math.ceil((end - start) / 0.11))
-        betas.extend(start + (end - start) * k / steps for k in range(steps))
-    betas.append(breaks[-1])
-
-    def tapered(alpha, beta):
-        for start, end in openings:
-            if start <= beta <= end:
-                taper = min(1.0, 0.75 + 0.25 * min(beta - start, end - beta) / 0.07)
-                for axis, width in channels:
-                    if abs(alpha - axis) <= width / 2 + 1e-6:
-                        return axis + (alpha - axis) * taper
-        return alpha
-
-    angles = [[(tapered(alpha, beta), beta) for beta in betas] for alpha in alphas]
-    columns, rows = len(alphas), len(betas)
-    radii = [[head_distance(a, b) + HELMET_GAP for a, b in row] for row in angles]
-    # Bridge the hollows at the temples and soften the skull's irregularities.
-    for _ in range(4):
-        radii = [[(2.0 * radii[j][k] + radii[max(j - 1, 0)][k]
-                   + radii[min(j + 1, columns - 1)][k]
-                   + radii[j][max(k - 1, 0)] + radii[j][min(k + 1, rows - 1)]) / 6.0
-                  for k in range(rows)] for j in range(columns)]
-    inner = [[at(a, b, radii[j][k], 0.0) for k, (a, b) in enumerate(row)]
-             for j, row in enumerate(angles)]
-    outer = [[at(a, b, radii[j][k], HELMET_SHELL) for k, (a, b) in enumerate(row)]
-             for j, row in enumerate(angles)]
-
-    def solid(j, k):
-        if not (0 <= j < columns - 1 and 0 <= k < rows - 1):
-            return False
-        beta = (betas[k] + betas[k + 1]) / 2
-        return j not in slot_columns or not any(start < beta < end for start, end in openings)
-
-    # The braces dip below the rails, joining them without a raised transverse band.
-    # Keeping their boundary vertices shared preserves a closed shell at every junction.
-    for j, row in enumerate(angles):
-        for k, (_, beta) in enumerate(row):
-            if any(a[1] <= beta <= b[0] for a, b in zip(openings, openings[1:])):
-                for axis, width in channels:
-                    # The untapered boundary stays on the rib; only the brace's interior
-                    # dips. Lowering a tapered vent corner would notch the main rail.
-                    across_slot = abs(alphas[j] - axis) / (width / 2)
-                    if across_slot < 1.0:
-                        height = 0.65 + 0.35 * math.sin(math.pi / 2 * across_slot) ** 2
-                        outer[j][k] = inner[j][k].lerp(outer[j][k], height)
-
-    def lip(j, k):
-        point = outer[j][k].lerp(inner[j][k], 0.12)
-        alpha, beta = angles[j][k]
-        for axis, width in channels:
-            for start, end in openings:
-                if abs(alpha - axis) <= width / 2 + 1e-6 and start <= beta <= end:
-                    # Taper the opening inwards below its edge. Shared lip vertices keep
-                    # the bevel closed where a channel's end turns into its side wall.
-                    toward = at(axis, (start + end) / 2, radii[j][k], HELMET_SHELL) - point
-                    normal = (outer[j][k] - inner[j][k]).normalized()
-                    toward -= normal * toward.dot(normal)
-                    return point + toward.normalized() * 0.0015
-        return point
-
-    for j in range(columns - 1):
-        for k in range(rows - 1):
-            if not solid(j, k):
-                continue
-            corners = ((j, k), (j + 1, k), (j + 1, k + 1), (j, k + 1))
-            outside = [outer[a][b] for a, b in corners]
-            inside = [inner[a][b] for a, b in corners]
-            gear.add(outside, "helmet", centre)
-            middle_point = sum(inside, Vector()) / 4
-            gear.add(inside, "vents", centre + (middle_point - centre) * 3)
-            neighbours = ((j, k - 1), (j + 1, k), (j, k + 1), (j - 1, k))
-            for edge, neighbour in enumerate(neighbours):
-                if solid(*neighbour):
-                    continue
-                next_edge = (edge + 1) % 4
-                a, b = outside[edge], outside[next_edge]
-                c, d = inside[edge], inside[next_edge]
-                wall_inside = (sum(outside, Vector()) + sum(inside, Vector())) / 8
-                # A coloured rolled lip catches the light above the dark EPS vent walls.
-                lip_a = lip(*corners[edge])
-                lip_b = lip(*corners[next_edge])
-                gear.add([a, b, lip_b, lip_a], "helmet", wall_inside)
-                gear.add([lip_a, lip_b, d, c], "vents", wall_inside)
-
-
 def headgear(parts, sex):
     """Hair, helmet and sunglasses on the upright head facing +y, fitted to its shape and
     parented to it."""
@@ -531,25 +386,23 @@ def headgear(parts, sex):
         return eyes + hair["sides"] + (hair["back"] - hair["sides"]) * back
 
     def helmet_rim(point):
-        # Above the brow in front, above the ears at the sides, lower at the back.
-        # As `road_helmet` cuts its rim.
-        return eyes + 0.02 + 0.02 * ahead(point) + 0.015 * (1.0 - ahead(point) ** 2)
+        return eyes + helmet.rim_height(ahead(point))
 
     def hair_thickness(point):
         # Full where it shows below the helmet, flat under it.
-        return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else HELMET_GAP * 0.5
+        return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else helmet.GAP * 0.5
 
     gear = Faces()
     shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
           0.0, hair_thickness, "hair")
 
     before = len(gear.faces)
-    road_helmet(gear, parts["skull"], parts["skull_tree"], eyes, centre.x)
-    # The fitted shell also provides strap anchors around the open channels.
-    helmet = [points for points, _ in gear.faces[before:]]
-    corners = [p for face in helmet for p in face]
+    helmet.road_helmet(gear, parts["skull"], eyes, centre, half_y)
+    # The fitted shell also provides the strap anchors, just above its rim.
+    worn = [points for points, _ in gear.faces[before:]]
+    corners = [p for face in worn for p in face]
     polygons, start = [], 0
-    for face in helmet:
+    for face in worn:
         polygons.append(list(range(start, start + len(face))))
         start += len(face)
     top = BVHTree.FromPolygons(corners, polygons)
@@ -631,8 +484,9 @@ def headgear(parts, sex):
         joint = Vector((ear.x - out * 0.008, ear.y + 0.02, ear.z - 0.04))
         jaw = Vector((ear.x - out * 0.02, ear.y + 0.04, ear.z - 0.075))
         for ahead_of_ear in (0.03, -0.025):
-            hit = top.ray_cast(Vector((ear.x + out * 0.3, ear.y + ahead_of_ear, eyes + 0.03)),
-                               Vector((-out, 0, 0)))[0]
+            anchor = Vector((ear.x + out * 0.3, ear.y + ahead_of_ear, 0.0))
+            anchor.z = helmet_rim(anchor) + 0.006
+            hit = top.ray_cast(anchor, Vector((-out, 0, 0)))[0]
             if hit is not None:
                 strap([hit - Vector((0, 0, 0.004)), joint])
         strap([joint, jaw, under_chin])

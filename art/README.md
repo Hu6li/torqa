@@ -359,10 +359,14 @@ scripts/dev.sh scripts/render-riders.sh   # side, front, chase and face views in
   copy, handed on by nearest surface). He is scaled to 1.76 m; she keeps the body's 1.64 m.
 - **Head:** fitted to the head's own shape. Hair is a shell over the scalp (to the nape and
   over the ears for her, short for him). The road-racing helmet is fitted round the whole
-  skull, with a broad rounded rear and a brow just above the sunglasses. Its white, unbranded
-  shell follows the [Lazer Z1 KinetiCore reference](https://lazersport.com/products/z1-kineticore):
-  seven longitudinal air channels, open vents, raised ribs and recessed cross braces.
-  Shell lips sit above dark foam walls; the lower rim clears the ears and carries the chin straps.
+  skull, its brow just above the sunglasses. Its white, unbranded shell follows the
+  [Lazer Z1 KinetiCore reference and 360° view](https://lazersport.us/products/z1kineticore):
+  ribs that meet at the fit dial at the back, a spine inside a ring of vents, long side
+  channels down to a low vent at the temple, recessed cross braces, exhausts beside the spine
+  and solid bands above the rim. `riders/helmet.py` carves it from a signed distance field, so
+  the vent edges come out rounded, meshes it with Blender's own OpenVDB and thins it to about
+  9,500 triangles; a couple of millimetres into each vent the white skin gives way to dark
+  foam. The lower rim clears the ears and carries the chin straps.
   Sunglasses are two lenses on a shield wrapped round the face in front of the eyes
   (found from the nose's tip), a bridge and arms back to the ears; she has a ponytail with
   a hair tie. The headgear moves with the head bone. The reference photos are not bundled;
@@ -409,7 +413,7 @@ squared-off tubes (a deep down tube, tall head tube, aero seat tube, dropped sea
 straight tapered fork, a black aero seat post on the seat tube's line and a one-piece bar and
 stem, the stem straight and the flat tops level, round drops, rounded brake hoods and lever blades; a sculpted saddle on rails; 55 mm carbon
 rims with 24 black spokes and disc rotors; an 11-speed cassette, dark toothed chainrings on a
-spider, tapered cranks, a rear derailleur and the chain. A rider about 39,000–41,000 triangles, a
+spider, tapered cranks, a rear derailleur and the chain. A rider about 41,000–43,000 triangles, a
 bike about 9,800.
 Both riders, from every side, are in the [gallery](#riders).
 
@@ -541,4 +545,6 @@ and route screenshots check their cost and coverage in context.
 | chase | ![female chase](../docs/images/models/riders/female-chase.jpg) | ![male chase](../docs/images/models/riders/male-chase.jpg) |
 | face | ![female face](../docs/images/models/riders/female-face.jpg) | ![male face](../docs/images/models/riders/male-face.jpg) |
 | head | ![female head](../docs/images/models/riders/female-head.jpg) | ![male head](../docs/images/models/riders/male-head.jpg) |
+| helmet side | ![female helmet side](../docs/images/models/riders/female-helmet-side.jpg) | ![male helmet side](../docs/images/models/riders/male-helmet-side.jpg) |
+| helmet rear | ![female helmet rear](../docs/images/models/riders/female-helmet-rear.jpg) | ![male helmet rear](../docs/images/models/riders/male-helmet-rear.jpg) |
 | lean | ![female lean](../docs/images/models/riders/female-lean.jpg) | ![male lean](../docs/images/models/riders/male-lean.jpg) |

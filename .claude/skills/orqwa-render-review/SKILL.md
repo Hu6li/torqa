@@ -78,6 +78,11 @@ finer terrain belongs only beside close ridden carriageways and under walls.
 - With `GALLERY=docs/images/models`, both also write the small JPEGs of the gallery in
   `art/README.md`; refresh it whenever a model changes.
 
+Rider renders include head-relative, orthographic `helmet-side` and `helmet-rear` close-ups
+(R226). Compare these with the Z1 KinetiCore views linked in `art/README.md`: the ribs meet
+at the fit dial at the back, with exhausts either side of the spine above a solid lower band.
+A chase view alone cannot establish that rear layout.
+
 ## A view of a place on a route
 
 Copy a template from `templates/` into `app/tests/` (they are scratch scripts: **never commit

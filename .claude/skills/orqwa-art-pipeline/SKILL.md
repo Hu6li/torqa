@@ -230,13 +230,19 @@ refresh their model gallery and a woodland close-up after shape or placement cha
 - The bike's shaped parts are `Faces.sweep` sections along `path` curves; chainrings and
   rotors are rings (`annulus`) — solid discs read as pale plates.
 - Male and female riders share node and material names; each has their own bike, sized to them.
-- Road-racing helmets (R225) use longitudinal meridians with open channels, shell lips and
-  dark `vents` walls/interiors, rather than overlaid strips. Keep the shared `helmet` and
-  `vents` material names, head-bone attachment and fitted strap anchors. Review front, side,
-  head and seated/standing chase views on both riders after export and body decimation.
-  Follow the Z1 KinetiCore product images linked in `art/README.md`: broad rounded rear,
-  raised longitudinal ribs and recessed braces. Keep the white shell unbranded; never draw
-  the rear ribs into a pointed tail.
+- The road-racing helmet (R225–R226, `art/riders/helmet.py`) is a signed distance field: a
+  squarish ovoid fitted round the scalp, vents drawn as polygons on a chart round a long axis
+  tilted from the fit dial down to below the brow (the rear exhausts on a plane behind the
+  head), smooth booleans for rounded edges and recessed braces. Blender's bundled OpenVDB
+  meshes it, a symmetric Decimate thins it, and the triangles are split along the skin
+  contour into `helmet` and `vents`. Vertices and faces are put in a canonical order after
+  meshing and thinning, so exports stay byte-identical. OpenVDB winds faces outwards; Cycles
+  shades inverted faces without complaint, Godot culls them, so judge in Godot views. Keep the
+  material names, head-bone attachment and strap anchors (`helmet.rim_height`). Compare
+  front, side, top and rear with the Z1 product images linked in `art/README.md` (a scratch
+  Cycles render of the helmet alone from the same angles iterates in a minute), then the
+  `helmet-side`, `helmet-rear`, face and chase views on both riders. Keep it white and
+  unbranded.
 
 ## Not a model: the remote's clip
 
