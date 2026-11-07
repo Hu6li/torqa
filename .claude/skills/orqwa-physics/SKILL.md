@@ -39,10 +39,13 @@ drives a helicopter; the workflow and the lessons carry over.
   `rider_smoke.gd` checks it. A leg stretched off its pedal is the first thing people see.
 - **Hands on the hoods.** Arm IK pins the grips while the hips move forward and rise and the
   torso pitches about the hips. Counter-roll pivots about the hands, the arms bending to follow.
-- **Standing must clear the saddle.** `STAND_FORWARD` moves the hips 18 cm forward, and
-  `STAND_TILT` pitches the torso 8° lower independently of the reach-limited hip rise.
+- **Standing must clear the saddle.** `STAND_FORWARD` moves the hips 12 cm forward, and
+  `STAND_UPRIGHT` pitches the torso 2° more upright independently of the reach-limited hip rise.
   `_standing_reach` solves a lift in metres, capped at `STAND_RISE` (5.5 cm); per-frame
   bisection trims lift without collapsing that forward shift or torso change.
+- **Upright poses still need arm reach.** Raising the torso or moving the hips back increases
+  shoulder-to-hood distance. Review both arms throughout the rocking cycle and transition,
+  retaining elbow bend rather than stretching the forearms to fixed grips.
 - Presentation constants are documented with their real-world meaning (degrees, cm, W/kg).
 
 ## Workflow

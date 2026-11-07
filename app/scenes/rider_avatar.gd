@@ -24,12 +24,12 @@ const ANKLE_SWING: float = 0.14
 ## The upper body sways a little with each pedal stroke, about the hips (radians, 1.2°), when no
 ## `RiderMotion` says how much.
 const SWAY: float = 0.021
-## Standing, the hips move 18 cm forward, clear of the saddle, and rise by at most 5.5 cm.
-## Torso pitch is independent of that reach-limited rise: 8° lower about the hips, with the
-## arms bending back to the fixed hoods. A little extra rise lets the legs trim a small bob
+## Standing, the hips move 12 cm forward, clear of the saddle, and rise by at most 5.5 cm.
+## Torso pitch is independent of that reach-limited rise: 2° more upright about the hips,
+## with the arms reaching the fixed hoods. A little extra rise lets the legs trim a small bob
 ## near the bottom of each stroke instead of following the full pedal height.
-const STAND_TILT: float = 0.14
-const STAND_FORWARD: float = 0.18
+const STAND_UPRIGHT: float = 0.04
+const STAND_FORWARD: float = 0.12
 const STAND_RISE: float = 0.055
 const STAND_BOB: float = 1.2
 ## Standing, the toes point 7° further down: a moderate ankle pitch raises the heel without
@@ -309,7 +309,7 @@ func _body_transform(sway: float, lift: float, rock: float, standing: float) -> 
 	var seat: Vector3 = (_hips[0] + _hips[1]) / 2.0
 	var pitch: Basis = (
 		Basis(Vector3.FORWARD, sway * sin(_crank_angle))
-		* Basis(Vector3.RIGHT, -STAND_TILT * standing)
+		* Basis(Vector3.RIGHT, STAND_UPRIGHT * standing)
 	)
 	var about_seat: Transform3D = Transform3D(pitch, seat - pitch * seat)
 	var turn: Basis = Basis(Vector3.FORWARD, -rock * COUNTER_ROCK)

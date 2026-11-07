@@ -828,11 +828,11 @@ physically based materials and light, restyled group by group.
     frames use published road-bike proportions, round headsets, rising stems, compact drops
     and 21 cm saddles with a 20 mm forward rail adjustment; riders are refitted to the pedals
     and fixed hoods, and fit metadata is rebuilt
-  - [x] Rider and bike motion (R91, R231, `RiderMotion`): pitch and lean as damped springs, standing
+  - [x] Rider and bike motion (R91, R231–R232, `RiderMotion`): pitch and lean as damped springs, standing
     on the pedals on steep climbs and in sprints with the bike rocking under the rider, sway
-    with effort, cranks level when coasting; standing moves the hips 18 cm forward clear of
-    the saddle, independently pitches the torso and limits hip rise to leg reach, with fixed
-    hand grips and a small bob ([review](bike-appearance.md#standing-posture))
+    with effort, cranks level when coasting; standing moves the hips 12 cm forward clear of
+    the saddle, pitches the torso 2° more upright than seated and limits hip rise to leg reach,
+    with fixed hand grips and a small bob ([review](bike-appearance.md#standing-posture))
   - [x] Local traffic lanes (R120): rider and ghosts keep right or follow left-hand traffic
     at the route's location. Placement follows the drawn carriageway width, including narrow
     paths and kept worlds; country-border tiles are bundled for offline riding. Recording,

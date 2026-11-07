@@ -1,4 +1,4 @@
-# Road bike appearance and rider fit (R227–R231)
+# Road bike appearance and rider fit (R227–R232)
 
 Both rider sizes use coherent road-frame dimensions before the rider is posed. The saddle
 height follows the rider's legs; the torso and arms are fitted to the frame's fixed hoods.
@@ -70,10 +70,11 @@ The bundled Twann–Chasseral course at 4,200 m, built from its saved inputs:
 
 ## Standing posture
 
-The standing pose moves the hips 18 cm forward of the seated fit, leaving the saddle behind
-the rider. Torso pitch changes by 8° about the hips, independently of hip lift; arm IK bends
-the elbows to retain the hood grips. Previously, a single turn about the hands supplied the
-lift and torso change, so leg reach constrained both and left the rider close to the saddle.
+The standing pose moves the hips 12 cm forward of the seated fit, leaving the saddle behind
+the rider. This puts the hips 6 cm farther back than the previous standing pose. Torso pitch
+is now 2° more upright than seated, about 10° more upright than the previous standing pose.
+Pitch remains independent of hip lift, with arm IK keeping the hood grips and a bend at
+the elbows. Both arm and leg reach constrain how far back and upright the rider can stand.
 
 Hip rise is solved over the complete crank cycle with a 5.5 cm ceiling. The per-frame reach
 limit trims a small bob near the bottom of the stroke, preserving the forward shift and
@@ -94,14 +95,16 @@ limbs over the cycle; hood grips stay fixed to numerical precision.
 
 | Rider | Forward | Hip rise | Body bob | Leg reach remaining | Arm reach remaining |
 |---|---:|---:|---:|---:|---:|
-| Female | 180 mm | 32–46 mm | 14 mm | 2.0 mm | 119 mm |
-| Male | 180 mm | 41–55 mm | 14 mm | 2.0 mm | 117 mm |
+| Female | 120 mm | 31–45 mm | 14 mm | 2.0 mm | 23 mm |
+| Male | 120 mm | 37–53 mm | 16 mm | 2.0 mm | 15 mm |
 
 The affected gallery images are refreshed and reviewed for both riders: four quarter-turn
 crank positions, a halfway transition and the chase view. Matching seated views retain their
-previous appearance. A course chase capture near 10 km on Twann–Chasseral's 8.5% climb, with
-the fake trainer at 700 W and 60 rpm, also reaches full standing through `RiderMotion`.
+previous appearance. A course chase capture near 10 km on Twann–Chasseral's 9% climb, with
+the fake trainer at 350 W and 60 rpm, also reaches full standing through `RiderMotion`.
 These are visual reviews and joint measurements; no tests were run locally for this revision.
+
+![Upright standing posture in the course chase camera](images/bike/standing-route-chase.jpg)
 
 ## Asset and rendering contract
 

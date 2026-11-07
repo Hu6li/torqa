@@ -439,8 +439,10 @@ and saddle proportions. The small/medium frames have approximately 975/979 mm wh
 See the [bike review](../docs/bike-appearance.md) for matched
 before/after images and validation.
 
-Standing is posed at runtime: hips move 18 cm ahead of the seated fit and rise within leg
-reach, with the torso pitched 8° lower about the hips. The arms bend to the fixed hoods.
+Standing is posed at runtime: hips move 12 cm ahead of the seated fit and rise within leg
+reach, with the torso pitched 2° more upright about the hips. Compared with the previous
+standing pose, the hips sit 6 cm farther back and the torso is about 10° more upright.
+The arms retain a bend while reaching the fixed hoods.
 Hip lift is solved over the complete crank cycle, then trimmed near the bottom of each
 stroke for a small bob. Toe-down increases by 7°; body counter-roll and the existing motion
 springs keep the transition smooth. The standing gallery includes all four quarter-turn
