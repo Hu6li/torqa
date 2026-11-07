@@ -771,15 +771,18 @@ def bike(saddle, hoods):
     steer = Vector((0.0, math.cos(HEAD_ANGLE), -math.sin(HEAD_ANGLE)))  # down the steerer
     frame = Faces()
 
-    # The hands hold the hoods' horns, the bodies reaching back under the palms;
-    # the bar's tops run level from a straight, level stem out to them.
+    # The bar tops stay level under the fitted hoods, independently of the stem's slope.
     hood_y = hoods.y + HOOD_AHEAD_OF_PALM
     # A road bar's reach: its tops' line to the hood's horn about 12.5 cm.
     bar = Vector((0.0, hood_y - 0.06, hoods.z - 0.03))
     steerer_top = bar + Vector((0.0, -STEM, 0.0))
     head_top = steerer_top + steer * 0.03
     crown_z = WHEEL_RADIUS + FORK_LENGTH * math.sin(HEAD_ANGLE)
-    head_length = max((head_top.z - crown_z) / math.sin(HEAD_ANGLE), 0.08)
+    # A low handlebar fit must drop the stem, not shorten the fork into the tyre.
+    minimum_top = crown_z + 0.08 * math.sin(HEAD_ANGLE)
+    head_top -= steer * max((minimum_top - head_top.z) / math.sin(HEAD_ANGLE), 0.0)
+    steerer_top = head_top - steer * 0.03
+    head_length = (head_top.z - crown_z) / math.sin(HEAD_ANGLE)
     head_bottom = head_top + steer * head_length
     # The steering axis meets hub height; the hub sits the rake ahead of it.
     to_hub = (head_bottom.z - WHEEL_RADIUS) / math.sin(HEAD_ANGLE)
@@ -845,8 +848,7 @@ def bike(saddle, hoods):
     # An aero seat post, black, rising out of the seat tube to the saddle's clamp.
     frame.sweep(line(cluster, post_top, 4), [(0.026, 0.042)] * 4, "carbon", sides=8, power=2.4)
 
-    # A one-piece bar and stem, black: the stem out of the head tube, flat aero tops sweeping
-    # forward to the hoods, then round drops curving forward, down and back.
+    # The stem meets the fitted bar height; the smaller frame needs a descending stem.
     frame.sweep(line(head_top - steer * 0.012, steerer_top - steer * 0.012, 3),
                 [(0.036, 0.046)] * 3, "carbon", sides=8, power=2.4)
     frame.sweep(line(steerer_top - Vector((0.0, 0.012, 0.0)), bar),
@@ -884,17 +886,17 @@ def bike(saddle, hoods):
         pivot = hood + Vector((0, 0.048, -0.021))
         frame.tube(pivot - side * 0.017, pivot + side * 0.017, 0.003, "metal", sides=6)
 
-    # The saddle: a sculpted shell, wide at the back and kicked up there, slim at the nose.
-    back = saddle.y - 0.11
-    shape = [(0.0, 0.118, 0.02, 0.008), (0.02, 0.14, 0.03, 0.005), (0.07, 0.132, 0.034, 0.0),
-             (0.13, 0.075, 0.032, 0.0), (0.2, 0.042, 0.028, 0.0), (0.26, 0.03, 0.02, 0.002)]
+    # A compact 21 cm shell keeps the broad support under the pelvis and shortens the nose.
+    back = saddle.y - 0.09
+    shape = [(0.0, 0.118, 0.02, 0.008), (0.018, 0.14, 0.03, 0.005), (0.055, 0.132, 0.034, 0.0),
+             (0.105, 0.075, 0.032, 0.0), (0.16, 0.042, 0.028, 0.0), (0.21, 0.03, 0.02, 0.002)]
     centres = [Vector((0.0, back + y, saddle.z - thick / 2 + kick)) for y, _, thick, kick in shape]
     frame.sweep(centres, [(width, thick) for _, width, thick, _ in shape], "saddle",
                 sides=16, power=2.6)
     # Its rails, clamped by the seat post's head.
     for sign in (-1.0, 1.0):
         frame.tube(Vector((sign * 0.03, back + 0.03, saddle.z - 0.03)),
-                   Vector((sign * 0.02, back + 0.2, saddle.z - 0.03)), 0.0035, "metal", sides=6)
+                   Vector((sign * 0.02, back + 0.16, saddle.z - 0.03)), 0.0035, "metal", sides=6)
     frame.sweep(line(post_top + Vector((0, 0, -0.01)), post_top + Vector((0, 0, 0.026)), 3),
                 [(0.03, 0.05)] * 3, "bar", sides=8, power=2.6)
 

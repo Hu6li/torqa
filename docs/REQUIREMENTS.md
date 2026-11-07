@@ -618,3 +618,4 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R227 | Refines R46 and R89 (2026-11-07): both fitted road bikes have smooth, joined frame silhouettes and physically distinct painted composite, satin carbon, rubber and metal surfaces. Wheels, brakes, drivetrain and cockpit retain plausible construction in close views, including crossed spokes, valve stems, vented rotors, cassette openings, a continuous chain and a bottle mounted in a cage. Seated/standing pedaling, rider contact points, group accent colours, ghosts and first-person bike visibility remain compatible. |
+| R228 | Refines R227 (2026-11-07): the female bike's front tyre clears the fork crown and down tube, including its smaller frame and low handlebar fit. Both bikes use compact 21 cm saddles with shortened support rails. Preserve the rider's existing contact points, hubs and animation fit; show wheel clearance and saddle proportions in dedicated review views. |

@@ -26,6 +26,8 @@ const VIEWS: Array = [
 	["bike-drive", Vector3(1.05, 0.65, 0.95), Vector3(0.0, 0.35, 0.2), 110.0],
 	["bike-front", Vector3(-1.6, 1.25, -1.8), Vector3(0.0, 0.55, -0.1), 0.0],
 	["bike-cockpit", Vector3(0.15, 1.42, 0.05), Vector3(0.0, 0.7, -0.6), 0.0],
+	["bike-clearance", Vector3(1.05, 0.72, -0.4), Vector3(0.0, 0.63, -0.4), 0.0],
+	["bike-saddle", Vector3(0.85, 1.15, 0.75), Vector3(0.0, 0.88, 0.25), 0.0],
 ]
 const GALLERY_SIZE: Vector2i = Vector2i(640, 360)
 

@@ -78,6 +78,8 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   Its `VIEWS="bike-side bike-drive bike-front bike-cockpit"` selection hides the body for
   close bike review, under the riding view's atmospheric sky and AgX tone mapping. Each view
   reports visible draw calls and primitives; these software counts do not establish native FPS.
+  `bike-clearance` isolates the fork/down-tube gap, and `bike-saddle` shows the short shell
+  and support rails from above and behind.
 - With `GALLERY=docs/images/models`, both also write the small JPEGs of the gallery in
   `art/README.md`; refresh it whenever a model changes.
 

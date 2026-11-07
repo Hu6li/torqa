@@ -3,6 +3,7 @@
 # (ADR 0009). Runs inside the dev container: scripts/dev.sh scripts/render-riders.sh
 # GALLERY=docs/images/models also writes the small JPEGs of the gallery in art/README.md.
 # VIEWS="bike-side bike-drive bike-front bike-cockpit" selects bike-only close-ups.
+# bike-clearance and bike-saddle focus on tyre/frame clearance and saddle proportions.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

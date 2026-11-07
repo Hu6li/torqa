@@ -416,8 +416,9 @@ Colours: the rider's own palette section (`rider_female`, `rider_male`; `frame` 
 The bike is a modern race bike: a compact frame of shaped,
 squared-off tubes (a deep down tube, tall head tube, aero seat tube, dropped seat stays), a
 straight tapered fork, a black aero seat post on the seat tube's line and a one-piece bar and
-stem, the stem straight and the flat tops level, round drops, rounded brake hoods and lever
-blades with pivots and end plugs; a sculpted saddle on rails; a shaped bottle in an open cage;
+stem, the stem descending to the fitted bar height on the smaller frame, flat tops and round
+drops, rounded brake hoods and lever blades with pivots and end plugs; a compact 21 cm saddle
+on shortened rails; a shaped bottle in an open cage;
 55 mm carbon rims with 24 thinner, crossed spokes, valve stems and vented disc rotors;
 an open-centred 11-speed cassette, dark toothed chainrings on a spider, tapered cranks, a rear
 derailleur and a continuous chain with spaced side plates. Painted tube intersections are
@@ -429,7 +430,10 @@ Both riders, from every side, are in the [gallery](#riders).
 
 The rider renderer uses the app's atmospheric sky, AgX tone mapping and midday light energy.
 For bike-only close-ups, run `VIEWS="bike-side bike-drive bike-front bike-cockpit"` with
-`scripts/render-riders.sh`. See the [bike review](../docs/bike-appearance.md) for matched
+`scripts/render-riders.sh`; `bike-clearance` and `bike-saddle` focus on tyre/frame separation
+and saddle proportions. The fork crown keeps its axle-to-crown height even with a low bar
+fit: the head tube rises to its minimum length and the stem reaches down to the bar instead.
+See the [bike review](../docs/bike-appearance.md) for matched
 before/after images and validation.
 
 ## The remote's clip (`remote/`)
@@ -567,3 +571,5 @@ and route screenshots check their cost and coverage in context.
 | drivetrain | ![female drivetrain](../docs/images/models/riders/female-bike-drive.jpg) | ![male drivetrain](../docs/images/models/riders/male-bike-drive.jpg) |
 | bike front | ![female bike front](../docs/images/models/riders/female-bike-front.jpg) | ![male bike front](../docs/images/models/riders/male-bike-front.jpg) |
 | cockpit | ![female cockpit](../docs/images/models/riders/female-bike-cockpit.jpg) | ![male cockpit](../docs/images/models/riders/male-bike-cockpit.jpg) |
+| wheel clearance | ![female wheel clearance](../docs/images/models/riders/female-bike-clearance.jpg) | ![male wheel clearance](../docs/images/models/riders/male-bike-clearance.jpg) |
+| saddle | ![female saddle](../docs/images/models/riders/female-bike-saddle.jpg) | ![male saddle](../docs/images/models/riders/male-bike-saddle.jpg) |

@@ -236,6 +236,10 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   A complete bike is about 16k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
   in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
+- Keep the fork crown at its axle-to-crown height. On a low bar fit, raise the head tube to
+  its minimum length and descend to the bars with the stem; clamping the head tube's length
+  downwards puts the female bike's crown and down tube into the tyre. `bike-clearance` and
+  `bike-saddle` are dedicated review views. Both saddles have 21 cm shells and matching rails.
 - The road-racing helmet (R225–R226, `art/riders/helmet.py`) is a signed distance field: a
   squarish ovoid fitted round the scalp, vents drawn as polygons on a chart round a long axis
   tilted from the fit dial down to below the brow (the rear exhausts on a plane behind the
