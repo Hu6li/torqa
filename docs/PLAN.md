@@ -821,9 +821,18 @@ physically based materials and light, restyled group by group.
     reference, carved from a distance field: ribs meeting at the fit dial, a central ring and
     spine, long side channels, recessed braces, rear exhausts and dark foam inside rounded
     vents; side/rear helmet close-ups.
-  - [x] Rider and bike motion (R91, `RiderMotion`): pitch and lean as damped springs, standing
+  - [x] More realistic bikes (R227–R230): blended frame junctions, lacquered paint, satin carbon,
+    metallic hardware, distinct tyre casings, crossed spokes, valves, vented rotors, open
+    cassette sprockets, a continuous chain and a bottle in its cage; both fitted bikes and
+    their gallery rebuilt, with bike-only review views ([review](bike-appearance.md)); the
+    frames use published road-bike proportions, round headsets, rising stems, compact drops
+    and 21 cm saddles with a 20 mm forward rail adjustment; riders are refitted to the pedals
+    and fixed hoods, and fit metadata is rebuilt
+  - [x] Rider and bike motion (R91, R231–R232, `RiderMotion`): pitch and lean as damped springs, standing
     on the pedals on steep climbs and in sprints with the bike rocking under the rider, sway
-    with effort, cranks level when coasting
+    with effort, cranks level when coasting; standing moves the hips 12 cm forward clear of
+    the saddle, pitches the torso 2° more upright than seated and limits hip rise to leg reach,
+    with fixed hand grips and a small bob ([review](bike-appearance.md#standing-posture))
   - [x] Local traffic lanes (R120): rider and ghosts keep right or follow left-hand traffic
     at the route's location. Placement follows the drawn carriageway width, including narrow
     paths and kept worlds; country-border tiles are bundled for offline riding. Recording,

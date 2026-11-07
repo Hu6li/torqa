@@ -168,7 +168,11 @@
   },
   "bike": {
     "tyre": "#1b1b1c",
+    "sidewall": "#63564a",
     "rim": "#232426",
+    "carbon": "#202226",
+    "alloy": "#30333a",
+    "bottle": "#d4d6cf",
     "metal": "#a6aaae",
     "saddle": "#18191b",
     "bar": "#18191b"

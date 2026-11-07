@@ -83,6 +83,10 @@ The group countdown locks choices while keeping the course preview in place.
 
 ## Cities and woodland
 
+The [bike appearance review](bike-appearance.md) compares the original and revised bikes in
+matched light. The [rider gallery](../art/README.md#riders) includes both fitted bikes and
+close-up views of their drivetrain and cockpit.
+
 The same woodland view on Low and Ultra graphics.
 Change quality in [Settings](https://github.com/ORQWA/ORQWA/wiki/Settings#graphics-and-full-screen).
 

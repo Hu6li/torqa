@@ -2,6 +2,9 @@
 # Renders the riders on their bikes as the world draws them into screenshots/riders/ for review
 # (ADR 0009). Runs inside the dev container: scripts/dev.sh scripts/render-riders.sh
 # GALLERY=docs/images/models also writes the small JPEGs of the gallery in art/README.md.
+# VIEWS="bike-side bike-drive bike-front bike-cockpit" selects bike-only close-ups.
+# bike-clearance and bike-saddle focus on tyre/frame clearance and saddle proportions.
+# standing, standing-down/back/up show crank quarters; standing-rise is the halfway transition.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,5 +23,5 @@ if [ -n "$errors" ]; then
     exit 1
 fi
 OUT_DIR="${OUT_DIR:-$root/screenshots/riders}" timeout 900 xvfb-run -a -s "-screen 0 1600x900x24" \
-    godot --path "$root/app" --rendering-driver vulkan --resolution 1280x720 \
+    godot --path "$root/app" --rendering-driver vulkan --audio-driver Dummy --resolution 1280x720 \
     -s res://tools/render_riders.gd

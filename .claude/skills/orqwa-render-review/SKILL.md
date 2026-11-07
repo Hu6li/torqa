@@ -75,6 +75,11 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   `screenshots/models/<group>/`, the clouds together; `GROUPS="vegetation clouds"` or
   `MODELS="house_gable_2_m chalet_2_m"` limits it (pass them inside `sh -c '…'` so they reach
   the container). `scripts/render-riders.sh` does the same for the riders.
+  Its `VIEWS="bike-side bike-drive bike-front bike-cockpit"` selection hides the body for
+  close bike review, under the riding view's atmospheric sky and AgX tone mapping. Each view
+  reports visible draw calls and primitives; these software counts do not establish native FPS.
+  `bike-clearance` isolates the fork/down-tube gap, and `bike-saddle` shows the short shell
+  and support rails from above and behind.
 - With `GALLERY=docs/images/models`, both also write the small JPEGs of the gallery in
   `art/README.md`; refresh it whenever a model changes.
 
@@ -82,6 +87,11 @@ Rider renders include head-relative, orthographic `helmet-side` and `helmet-rear
 (R226). Compare these with the Z1 KinetiCore views linked in `art/README.md`: the ribs meet
 at the fit dial at the back, with exhausts either side of the spine above a solid lower band.
 A chase view alone cannot establish that rear layout.
+
+Standing review uses `standing`, `standing-down`, `standing-back` and `standing-up` at
+quarter-turn crank positions, `standing-rise` halfway out of the saddle, and `standing-chase`.
+Review both fits: the hips must clear the saddle, hands hold the hoods and feet stay on the
+pedals through the stroke and transition.
 
 ## A view of a place on a route
 
