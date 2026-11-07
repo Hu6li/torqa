@@ -29,7 +29,7 @@ does the same.
 |---|---|
 | All checks (fmt, clippy, tests, cargo-deny, licence notices, translations, gdlint, gdformat, Godot smoke tests), as CI runs them | `scripts/check.sh` |
 | Only the checks the branch's changes since main can affect (committed or not), for quick turns while working; the full run before a PR | `scripts/check.sh --quick` |
-| Build the GDExtension into `app/bin/` | `scripts/build-gdext.sh [debug\|release]` |
+| Build the GDExtension into `app/bin/` (`test` shares the Rust tests' optimized dependencies) | `scripts/build-gdext.sh [debug\|test\|release]` |
 | Render screenshots of the start page, a ride, the summary and the analysis (software Vulkan, with 16 weeks of made-up rides) into `screenshots/` | `scripts/screenshots.sh` |
 | Render only the English/German error-details views, without preparing a route | `SCREENSHOT_ERRORS_ONLY=1 scripts/screenshots.sh` |
 | Render only Graphics settings, without preparing a route or kept world | `SCREENSHOT_GRAPHICS_ONLY=1 scripts/screenshots.sh` |
@@ -48,6 +48,16 @@ does the same.
 | Refresh the app's About notices and the CLI's packaged dependency/Opus licence file, after changing dependencies ([ADR 0018](adr/0018-about-and-notices.md)) | `scripts/notices.sh` |
 | Make the map detail of an OpenStreetMap region download and measure it ([ADR 0033](adr/0033-map-detail.md)) | `cargo run --release --manifest-path core/Cargo.toml -p orqwa-cli -- detail <region>-latest.osm.pbf <out>` |
 | Run the CLI with the fake trainer | `cargo run --manifest-path core/Cargo.toml -p orqwa-cli -- ride --fake` |
+
+`scripts/check.sh` keeps every check in one container run. Godot smoke checks use the optimized
+Rust test profile, including debug assertions and overflow checks, so their GDExtension reuses
+the dependencies built by `cargo test`. `scripts/checks/godot.py` imports the current project,
+then runs the main scene and every headless/display suite sequentially. Each check prints its
+name and elapsed time; nonzero exits, engine/script/shader errors and missing completion
+markers fail with the original output. Imports and headless checks have a 180-second limit;
+the display checks retain their 90/120-second limits. A timeout stops the whole process group,
+including Godot and Xvfb, instead of waiting for the 45-minute CI job limit. CI caches Cargo's
+registry and build directory; Godot imports start fresh from the checked-out assets.
 
 The group UI smoke suite reopens the app with a saved 100% trainer-difficulty profile and
 starts its first group ride without visiting a course page. It checks the ride options and

@@ -2,7 +2,7 @@
 # Builds the Rust GDExtension and copies it to where app/orqwa.gdextension expects it.
 # `windows` cross-builds the Windows one in the dev container instead, for the portable Godot
 # editor on a Windows PC to render on its GPU (ADR 0021); releases still come from CI.
-# Usage: scripts/build-gdext.sh [debug|release] [windows]
+# Usage: scripts/build-gdext.sh [debug|test|release] [windows]
 set -eu
 
 profile="${1:-debug}"
@@ -11,9 +11,13 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 
 case "$profile" in
     debug) cargo_flags="" ;;
+    # Smoke tests share cargo test's optimized dependencies and retain debug assertions.
+    test) cargo_flags="--profile test" ;;
     release) cargo_flags="--release" ;;
-    *) echo "usage: $0 [debug|release] [windows]" >&2; exit 1 ;;
+    *) echo "usage: $0 [debug|test|release] [windows]" >&2; exit 1 ;;
 esac
+artifact_profile="$profile"
+if [ "$profile" = test ]; then artifact_profile=debug; fi
 
 if [ "$target" = windows ]; then
     triple=x86_64-pc-windows-gnu
@@ -33,7 +37,7 @@ if [ "$target" = windows ]; then
     mkdir -p "$root/app/bin"
     # Without its debug information: hundreds of megabytes the editor does not need.
     x86_64-w64-mingw32-strip -o "$root/app/bin/orqwa_gd.dll" \
-        "$root/core/target/$triple/$profile/orqwa_gd.dll"
+        "$root/core/target/$triple/$artifact_profile/orqwa_gd.dll"
     echo "Copied orqwa_gd.dll ($profile, Windows) to app/bin/"
     exit 0
 fi
@@ -49,5 +53,5 @@ esac
 cargo build --manifest-path "$root/core/Cargo.toml" -p orqwa-gd --locked $cargo_flags
 
 mkdir -p "$root/app/bin"
-cp "$root/core/target/$profile/$lib" "$root/app/bin/$lib"
+cp "$root/core/target/$artifact_profile/$lib" "$root/app/bin/$lib"
 echo "Copied $lib ($profile) to app/bin/"

@@ -73,21 +73,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      # The build directory, the crate registry and Godot's imports carry over between runs, as
+      # The build directory and the crate registry carry over between runs, as
       # the devcontainer's volumes do for a developer: a cold build of the whole workspace takes
       # over ten minutes, a warm one seconds. The key is what decides the build: the toolchain
       # and FFmpeg (the image's inputs) and the dependencies (the lock file and the profiles);
       # not the runner's own Rust, which rust-cache would mix in and which varies between
       # runner images. Only a changed key saves: the dependencies are what is worth keeping.
+      # Import Godot from the current checkout instead of restoring its previous project state.
       - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
             core/target
-            app/.godot
-          key: checks-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-${{ hashFiles('core/Cargo.lock', 'core/Cargo.toml') }}
+          key: checks-v2-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-${{ hashFiles('core/Cargo.lock', 'core/Cargo.toml') }}
           restore-keys: |
-            checks-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-
+            checks-v2-${{ hashFiles('.devcontainer/Dockerfile', 'scripts/build-ffmpeg.sh') }}-
       - name: Pull the dev image, or build it for a fork PR with a changed Dockerfile
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
