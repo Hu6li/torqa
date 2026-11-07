@@ -154,6 +154,10 @@ impl Channels {
         let mut best: Option<f64> = None;
         for &index in indices {
             let edge = &self.edges[index];
+            // A stream's positive distance must not turn the surrounding lake into dry bank.
+            if inside == Some(true) && edge.pool.is_none() {
+                continue;
+            }
             let off = segment_distance((east, north), edge.a, edge.b) - edge.half;
             let signed = match (edge.pool, inside) {
                 (Some(_), Some(true)) => -off,
