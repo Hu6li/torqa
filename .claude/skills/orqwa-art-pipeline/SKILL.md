@@ -239,6 +239,10 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   A complete bike is about 18k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
   in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
+- Female hair lives in `art/riders/hair.py`: a fitted scalp cap and curved ponytail volumes,
+  with a continuous lateral frame and broad tress relief. Preserve the `hair_shape` vertex
+  group through body thinning; check the ends clear the shoulders seated and standing.
+  Keep the existing `hair` material name and head-bone attachment.
 - Keep stack, reach, head-tube length, fork offset and stem dimensions together. A round
   headset, modest rising stem, compact drop bar and upright shifter horns must read as one
   plausible steering assembly. Join the fork after welding the frame to retain its lower

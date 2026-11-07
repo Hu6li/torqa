@@ -408,6 +408,10 @@ func _material(kind: String) -> StandardMaterial3D:
 			material.albedo_color = Palette.color("rider_" + rider + "." + kind)
 		material.roughness = 0.45 if kind in ["rim", "metal", "frame", "helmet"] else 0.85
 		match kind:
+			"hair":
+				if rider == "female":
+					material.roughness = 0.6
+					material.metallic_specular = 0.35
 			"frame":
 				# Painted composite reflects through a clear lacquer, without a metal base.
 				material.roughness = 0.28

@@ -44,6 +44,7 @@ sys.path.insert(0, HERE)
 
 import helmet  # noqa: E402  (needs the path above)
 import bike_fit  # noqa: E402
+import hair as female_hair  # noqa: E402
 
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
@@ -267,10 +268,8 @@ def smooth(mesh):
 
 # How sharply the sunglasses' shield wraps back round the face (metres per metre squared).
 GLASSES_WRAP = 3.0
-# Hair and helmet: how far they stand off the scalp, and where the hair ends (metres from the
-# eyes' height: at the back, at the sides).
-HAIR = {"female": {"thickness": 0.014, "back": -0.085, "sides": -0.035},
-        "male": {"thickness": 0.006, "back": -0.05, "sides": -0.005}}
+# The male rider's short hair: thickness and hairline heights relative to the eyes.
+SHORT_HAIR = {"thickness": 0.006, "back": -0.05, "sides": -0.005}
 
 
 def scalp(head, keep, rim=None):
@@ -330,29 +329,6 @@ def shell(gear, patch, inner, outer, material_name, shape=None):
                 gear.add([low[a], low[b], high[b], high[a]], material_name, middle_point)
 
 
-def tube_along(gear, spine, radii, material_name, sides=10):
-    """A faceted tube along a spine of points with a radius at each, closed at both ends (a
-    radius of 0 ends in a point)."""
-    rings = []
-    for k, (point, radius) in enumerate(zip(spine, radii)):
-        ahead = spine[min(k + 1, len(spine) - 1)] - spine[max(k - 1, 0)]
-        axis = ahead.normalized()
-        side = axis.cross(Vector((0, 0, 1))).normalized() if abs(axis.z) < 0.95 else Vector((1, 0, 0))
-        across = axis.cross(side)
-        # Every other ring turned half a step: facets, not stripes.
-        turn = math.pi / sides * (k % 2)
-        rings.append([point + radius * (math.cos(2 * math.pi * j / sides + turn) * side
-                                        + math.sin(2 * math.pi * j / sides + turn) * across)
-                      for j in range(sides)])
-    for k, (a, b) in enumerate(zip(rings, rings[1:])):
-        inside = middle(spine[k], spine[k + 1])
-        for j in range(sides):
-            n = (j + 1) % sides
-            gear.add([a[j], a[n], b[n], b[j]], material_name, inside)
-    gear.add(rings[0], material_name, spine[1])
-    gear.add(rings[-1], material_name, spine[-2])
-
-
 def headgear(parts, sex):
     """Hair, helmet and sunglasses on the upright head facing +y, fitted to its shape and
     parented to it."""
@@ -362,7 +338,7 @@ def headgear(parts, sex):
     half_y = (high.y - low.y) / 2.0
     eyes_l, eyes_r = origin(parts["eye.L"]), origin(parts["eye.R"])
     eyes = middle(eyes_l, eyes_r).z
-    hair = HAIR[sex]
+    hair = SHORT_HAIR
 
     def ahead(point):
         """Front (+1) to back (−1) of the head."""
@@ -383,8 +359,11 @@ def headgear(parts, sex):
         return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else helmet.GAP * 0.5
 
     gear = Faces()
-    shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
-          0.0, hair_thickness, "hair")
+    if sex == "female":
+        female_hair.scalp(gear, parts["skull"], parts["skull_tree"], eyes, centre.x)
+    else:
+        shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
+              0.0, hair_thickness, "hair")
 
     before = len(gear.faces)
     helmet.road_helmet(gear, parts["skull"], eyes, centre, half_y)
@@ -482,18 +461,17 @@ def headgear(parts, sex):
         strap([joint, jaw, under_chin])
 
     if sex == "female":
-        # A ponytail from under the back of the helmet, with a hair tie in the kit's colour.
         nape = tree.ray_cast(Vector((centre.x, centre.y - 0.5, eyes - 0.005)),
                              Vector((0, 1, 0)))[0]
-        spine = [nape + Vector(offset) for offset in (
-            (0, 0.01, 0), (0, -0.03, -0.012), (0, -0.065, -0.05), (0, -0.085, -0.105),
-            (0, -0.088, -0.16), (0, -0.08, -0.21), (0, -0.07, -0.25))]
-        tube_along(gear, spine, (0.022, 0.026, 0.03, 0.028, 0.022, 0.014, 0.0), "hair")
-        tie = spine[0] + (spine[1] - spine[0]) * 0.55
-        gear.tube(tie - (spine[1] - spine[0]).normalized() * 0.007,
-                  tie + (spine[1] - spine[0]).normalized() * 0.007, 0.027, "sleeve")
+        female_hair.ponytail(gear, nape)
 
     obj = gear.to_object("headgear", origin(head))
+    if sex == "female":
+        # Keep the authored curves when thinning the body; coarse hair turns back into spikes.
+        hair_slot = obj.data.materials.find("hair")
+        vertices = sorted({v for p in obj.data.polygons if p.material_index == hair_slot
+                           for v in p.vertices})
+        obj.vertex_groups.new(name="hair_shape").add(vertices, 1.0, "REPLACE")
     obj.parent = head
     obj.matrix_parent_inverse = head.matrix_world.inverted()
     for part in [p for p in parts if p.startswith(EYES)]:
@@ -1335,12 +1313,15 @@ def bake_rest_pose(body, gear, rig):
 
 def thin_body(body):
     """Thins the posed body for the app; collapsing edges keeps the weights. The hands are
-    spared so fingers stay round, as are the helmet's ribs and vent lips."""
+    spared so fingers stay round, as are the helmet's ribs, vent lips and female hair."""
     bpy.context.view_layer.objects.active = body
-    hands = [g.index for g in body.vertex_groups if g.name.startswith(HAND_GROUPS)]
+    details = [g.index for g in body.vertex_groups if g.name.startswith(HAND_GROUPS)]
+    hair_shape = body.vertex_groups.get("hair_shape")
+    if hair_shape is not None:
+        details.append(hair_shape.index)
     spared = body.vertex_groups.new(name="spared")
     for vertex in body.data.vertices:
-        weight = sum(g.weight for g in vertex.groups if g.group in hands)
+        weight = sum(g.weight for g in vertex.groups if g.group in details)
         if weight > 0.0:
             spared.add([vertex.index], min(weight * 2.0, 1.0), "REPLACE")
     helmet_materials = {index for index, slot in enumerate(body.material_slots)
