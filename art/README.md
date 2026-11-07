@@ -358,10 +358,12 @@ scripts/dev.sh scripts/render-riders.sh   # side, front, chase and face views in
   those joints, scaled to each body, and the body skinned to it (heat weights on a thinned
   copy, handed on by nearest surface). He is scaled to 1.76 m; she keeps the body's 1.64 m.
 - **Head:** fitted to the head's own shape. Hair is a shell over the scalp (to the nape and
-  over the ears for her, short for him). The helmet is a smooth shell fitted round the whole
-  skull, its rim just above the sunglasses, over the ears' tops and low over the back of the
-  head, drawn out to a short tail, with vent slots on top and chin straps; sunglasses are two
-  lenses on a shield wrapped round the face in front of the eyes (found from the nose's tip),
+  over the ears for her, short for him). The road-racing helmet is fitted round the whole
+  skull, with a compact rear overhang and a brow just above the sunglasses. Six longitudinal
+  air channels have eighteen open vents separated by structural bridges, coloured shell
+  lips and dark foam walls; the lower rim clears the ears and carries the chin straps.
+  Sunglasses are two lenses on a shield wrapped round the face in front of the eyes
+  (found from the nose's tip),
   a bridge and arms back to the ears; she has a ponytail with a hair tie. The headgear moves with the head bone.
 - **Seat:** the hips go on the seat tube's line where the knee bends 30° with the pedal at the
   bottom (a usual bike fit), the sit bones on the saddle 9 cm below the hip joints; the hoods
@@ -372,8 +374,8 @@ scripts/dev.sh scripts/render-riders.sh   # side, front, chase and face views in
   hoods, knuckles over the horns, each finger curled joint by joint round the horn's front and
   the thumb forward along the hood's inner side; feet on the pedals with the knees forward,
   the soles on them. The riding pose becomes the skeleton's rest.
-- **Kit:** after thinning the posed body to about 35,000 triangles (the hands spared, so the
-  fingers stay round), the kit's edges are cut into
+- **Kit:** after thinning the posed body (the hands and helmet spared, so fingers stay round
+  and vent edges stay smooth), the kit's edges are cut into
   it as planes across the limbs and the neck, so they run straight: shorts to above the knee,
   a jersey with a collar and sleeves to half way down the upper arm, socks and white shoes;
   the hands are bare, their fingers curled round the hoods. Each face takes the region of the
@@ -405,7 +407,7 @@ squared-off tubes (a deep down tube, tall head tube, aero seat tube, dropped sea
 straight tapered fork, a black aero seat post on the seat tube's line and a one-piece bar and
 stem, the stem straight and the flat tops level, round drops, rounded brake hoods and lever blades; a sculpted saddle on rails; 55 mm carbon
 rims with 24 black spokes and disc rotors; an 11-speed cassette, dark toothed chainrings on a
-spider, tapered cranks, a rear derailleur and the chain. A rider about 37,000–39,000 triangles, a
+spider, tapered cranks, a rear derailleur and the chain. A rider about 39,000–41,000 triangles, a
 bike about 9,800.
 Both riders, from every side, are in the [gallery](#riders).
 

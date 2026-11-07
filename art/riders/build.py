@@ -365,84 +365,139 @@ def tube_along(gear, spine, radii, material_name, sides=10):
 
 
 def road_helmet(gear, skull, head_tree, eyes, centre_x):
-    """A road helmet round the skull: a smooth shell standing a constant gap off the head
-    (`head_tree` finds its surface), its rim just above the brow, over the ears' tops and low
-    over the back of the head, drawn out to a short tail at the back."""
+    """A fitted road-racing shell with longitudinal ribs and open, bevelled air channels.
+
+    Meridians run from the brow to the rear so the vents follow the airflow instead of
+    looking like stripes painted onto a dome. Bridges leave the ribs joined at the crown.
+    """
     ys = [p.y for p in skull]
     cy = (max(ys) + min(ys)) / 2.0
-    cz = eyes + 0.01
+    cz = eyes + 0.035
     across = max(abs(p.x - centre_x) for p in skull) + HELMET_GAP
     front = max(ys) - cy + HELMET_GAP
     back = cy - min(ys) + HELMET_GAP
     up = max(p.z for p in skull) - cz + HELMET_GAP
     centre = Vector((centre_x, cy, cz))
 
-    def direction(theta, phi):
-        reach = front if math.cos(theta) > 0 else back
-        return Vector((across * math.cos(phi) * math.sin(theta),
-                       reach * math.cos(phi) * math.cos(theta), up * math.sin(phi))).normalized()
+    def direction(alpha, beta):
+        reach = front if beta > 0 else back
+        return Vector((across * math.cos(beta) * math.sin(alpha),
+                       reach * math.sin(beta), up * math.cos(beta) * math.cos(alpha)))
 
-    def head_distance(theta, phi):
-        """How far the head's surface is from the middle in this direction (an ellipsoid
-        round the skull where nothing is hit)."""
-        towards = direction(theta, phi)
+    def head_distance(alpha, beta):
+        towards = direction(alpha, beta).normalized()
         hit = head_tree.ray_cast(centre + towards * 0.4, -towards)[0]
         if hit is not None:
             return (hit - centre).length
-        reach = front if math.cos(theta) > 0 else back
-        return Vector((across * math.cos(phi) * math.sin(theta),
-                       reach * math.cos(phi) * math.cos(theta),
-                       up * math.sin(phi))).length - HELMET_GAP
+        return direction(alpha, beta).length - HELMET_GAP
 
-    def at(theta, phi, radius, extra):
-        point = centre + direction(theta, phi) * (radius + extra)
-        if extra > 0.0:
-            behind = max(-math.cos(theta), 0.0)
-            point.y -= HELMET_TAIL * behind ** 2 * max(math.cos(phi), 0.0) ** 0.5
+    def at(alpha, beta, radius, extra):
+        point = centre + direction(alpha, beta).normalized() * (radius + extra)
+        along = math.sin(beta)
+        point.z += 0.012 * along - 0.012 * along ** 2
+        # A compact rear overhang and a blunt brow, rather than a pointed time-trial tail.
+        point.y -= HELMET_TAIL * max(-along, 0.0) ** 3 * extra / HELMET_SHELL
         return point
 
-    def rim(theta):
-        z = eyes + 0.02 + 0.02 * math.cos(theta) + 0.015 * math.sin(theta) ** 2
-        return math.asin(max(-0.9, min(0.9, (z - cz) / up)))
+    # Six channels, each interrupted by two structural bridges. Their tapered ends are
+    # authored in the grid, avoiding boolean seams and keeping exports deterministic.
+    channels = [(-a, width) for a, width in ((1.10, 0.17), (0.67, 0.19), (0.26, 0.17))]
+    channels += [(a, width) for a, width in ((0.26, 0.17), (0.67, 0.19), (1.10, 0.17))]
+    openings = ((-1.23, -0.40), (-0.25, 0.34), (0.49, 1.24))
+    boundaries = [-math.pi / 2, math.pi / 2, 0.0]
+    for alpha, width in channels:
+        boundaries.extend((alpha - width / 2, alpha + width / 2))
+    boundaries.sort()
+    alphas = []
+    slot_columns = set()
+    for left, right in zip(boundaries, boundaries[1:]):
+        slot = any(abs((left + right) / 2 - a) < w / 2 for a, w in channels)
+        steps = 1 if slot else max(2, math.ceil((right - left) / 0.10))
+        if slot:
+            slot_columns.add(len(alphas))
+        alphas.extend(left + (right - left) * k / steps for k in range(steps))
+    alphas.append(boundaries[-1])
+    betas = [-math.pi / 2, math.pi / 2]
+    for start, end in openings:
+        betas.extend((start, start + 0.07, end - 0.07, end))
+    breaks = sorted(betas)
+    betas = []
+    for start, end in zip(breaks, breaks[1:]):
+        steps = max(1, math.ceil((end - start) / 0.11))
+        betas.extend(start + (end - start) * k / steps for k in range(steps))
+    betas.append(breaks[-1])
 
-    around, rows = 40, 9
-    angles = []
-    for j in range(around):
-        theta = 2 * math.pi * j / around
-        start = rim(theta)
-        angles.append([(theta, start + (math.pi / 2 - start) * k / rows) for k in range(rows)])
-    # The head's distance in each direction, smoothed: a helmet is smoother than a head, and
-    # it bridges the ears and the hollows at the temples.
-    radii = [[head_distance(theta, phi) + HELMET_GAP for theta, phi in row] for row in angles]
+    def tapered(alpha, beta):
+        for start, end in openings:
+            if start <= beta <= end:
+                taper = min(1.0, 0.35 + 0.65 * min(beta - start, end - beta) / 0.07)
+                for axis, width in channels:
+                    if abs(abs(alpha - axis) - width / 2) < 1e-6:
+                        return axis + (alpha - axis) * taper
+        return alpha
+
+    angles = [[(tapered(alpha, beta), beta) for beta in betas] for alpha in alphas]
+    columns, rows = len(alphas), len(betas)
+    radii = [[head_distance(a, b) + HELMET_GAP for a, b in row] for row in angles]
+    # Bridge the hollows at the temples and soften the skull's irregularities.
     for _ in range(4):
-        radii = [[(2.0 * radii[j][k] + radii[j - 1][k] + radii[(j + 1) % around][k]
+        radii = [[(2.0 * radii[j][k] + radii[max(j - 1, 0)][k]
+                   + radii[min(j + 1, columns - 1)][k]
                    + radii[j][max(k - 1, 0)] + radii[j][min(k + 1, rows - 1)]) / 6.0
-                  for k in range(rows)] for j in range(around)]
-    inner = [[at(theta, phi, radii[j][k], 0.0) for k, (theta, phi) in enumerate(row)]
+                  for k in range(rows)] for j in range(columns)]
+    # Every meridian meets at the same brow/rear pole, including after smoothing.
+    for k in (0, rows - 1):
+        radius = sum(row[k] for row in radii) / columns
+        for row in radii:
+            row[k] = radius
+    inner = [[at(a, b, radii[j][k], 0.0) for k, (a, b) in enumerate(row)]
              for j, row in enumerate(angles)]
-    outer = [[at(theta, phi, radii[j][k], HELMET_SHELL) for k, (theta, phi) in enumerate(row)]
+    outer = [[at(a, b, radii[j][k], HELMET_SHELL) for k, (a, b) in enumerate(row)]
              for j, row in enumerate(angles)]
-    crown = sum(radii[j][-1] for j in range(around)) / around
-    top_inner = centre + direction(0.0, math.pi / 2) * crown
-    top_outer = centre + direction(0.0, math.pi / 2) * (crown + HELMET_SHELL)
-    for j in range(around):
-        i = (j + 1) % around
+
+    def solid(j, k):
+        if not (0 <= j < columns - 1 and 0 <= k < rows - 1):
+            return False
+        beta = (betas[k] + betas[k + 1]) / 2
+        return j not in slot_columns or not any(start < beta < end for start, end in openings)
+
+    def lip(j, k):
+        point = outer[j][k].lerp(inner[j][k], 0.12)
+        alpha, beta = angles[j][k]
+        for axis, width in channels:
+            for start, end in openings:
+                if abs(alpha - axis) <= width / 2 + 1e-6 and start <= beta <= end:
+                    # Taper the opening inwards below its edge. Shared lip vertices keep
+                    # the bevel closed where a channel's end turns into its side wall.
+                    toward = at(axis, (start + end) / 2, radii[j][k], HELMET_SHELL) - point
+                    normal = (outer[j][k] - inner[j][k]).normalized()
+                    toward -= normal * toward.dot(normal)
+                    return point + toward.normalized() * 0.0015
+        return point
+
+    for j in range(columns - 1):
         for k in range(rows - 1):
-            quad = [outer[j][k], outer[i][k], outer[i][k + 1], outer[j][k + 1]]
-            gear.add(quad, "helmet", centre)
-        gear.add([outer[j][-1], outer[i][-1], top_outer], "helmet", centre)
-    # The inside, facing the head, and the rim between inside and out.
-    for j in range(around):
-        i = (j + 1) % around
-        for k in range(rows - 1):
-            quad = [inner[j][k], inner[i][k], inner[i][k + 1], inner[j][k + 1]]
-            middle_point = sum(quad, Vector()) / 4
-            gear.add(quad, "helmet", centre + (middle_point - centre) * 3.0)
-        middle_point = (inner[j][-1] + top_inner) / 2
-        gear.add([inner[j][-1], inner[i][-1], top_inner], "helmet",
-                 centre + (middle_point - centre) * 3.0)
-        gear.add([inner[j][0], inner[i][0], outer[i][0], outer[j][0]], "helmet",
-                 (inner[j][1] + outer[j][1]) / 2)
+            if not solid(j, k):
+                continue
+            corners = ((j, k), (j + 1, k), (j + 1, k + 1), (j, k + 1))
+            outside = [outer[a][b] for a, b in corners]
+            inside = [inner[a][b] for a, b in corners]
+            gear.add(outside, "helmet", centre)
+            middle_point = sum(inside, Vector()) / 4
+            gear.add(inside, "vents", centre + (middle_point - centre) * 3)
+            neighbours = ((j, k - 1), (j + 1, k), (j, k + 1), (j - 1, k))
+            for edge, neighbour in enumerate(neighbours):
+                if solid(*neighbour):
+                    continue
+                next_edge = (edge + 1) % 4
+                a, b = outside[edge], outside[next_edge]
+                c, d = inside[edge], inside[next_edge]
+                # A coloured rolled lip catches the light above the dark EPS vent walls.
+                lip_a = lip(*corners[edge])
+                lip_b = lip(*corners[next_edge])
+                wall_inside = (sum(outside, Vector()) + sum(inside, Vector())) / 8
+                gear.add([a, b, lip_b, lip_a], "helmet", wall_inside)
+                gear.add([lip_a, lip_b, d, c], "vents", wall_inside)
 
 
 def headgear(parts, sex):
@@ -482,7 +537,7 @@ def headgear(parts, sex):
 
     before = len(gear.faces)
     road_helmet(gear, parts["skull"], parts["skull_tree"], eyes, centre.x)
-    # Vents: long slots from front to back, laid on the helmet's top.
+    # The fitted shell also provides strap anchors around the open channels.
     helmet = [points for points, _ in gear.faces[before:]]
     corners = [p for face in helmet for p in face]
     polygons, start = [], 0
@@ -490,23 +545,6 @@ def headgear(parts, sex):
         polygons.append(list(range(start, start + len(face))))
         start += len(face)
     top = BVHTree.FromPolygons(corners, polygons)
-    half_x = (high.x - low.x) / 2.0
-    for across in (-0.52, -0.18, 0.18, 0.52):
-        length = 0.85 - abs(across) * 0.5
-        rows = []
-        for k in range(7):
-            along = 0.55 - (0.55 + length) * k / 6
-            edge = []
-            for side in (-0.1, 0.1):
-                x = centre.x + (across + side) * half_x
-                y = centre.y + along * half_y
-                hit = top.ray_cast(Vector((x, y, high.z + 0.5)), Vector((0, 0, -1)))[0]
-                edge.append(hit + Vector((0, 0, 0.0015)) if hit is not None else None)
-            rows.append(edge)
-        for (a, b), (c, d) in zip(rows, rows[1:]):
-            if None not in (a, b, c, d):
-                gear.add([a, b, d, c], "vents", middle(a, d) - Vector((0, 0, 0.02)))
-
     # Sunglasses: two lenses on a smooth shield wrapped round the face in front of the eyes, a
     # bridge over the nose and arms back over the ears.
     surface = [head] + [parts[p] for p in ("nose", "nose_bridge")]
@@ -1314,7 +1352,7 @@ def bake_rest_pose(body, gear, rig):
 
 def thin_body(body):
     """Thins the posed body for the app; collapsing edges keeps the weights. The hands are
-    spared: thinned, the fingers collapse into flat strips."""
+    spared so fingers stay round, as are the helmet's ribs and vent lips."""
     bpy.context.view_layer.objects.active = body
     hands = [g.index for g in body.vertex_groups if g.name.startswith(HAND_GROUPS)]
     spared = body.vertex_groups.new(name="spared")
@@ -1322,6 +1360,11 @@ def thin_body(body):
         weight = sum(g.weight for g in vertex.groups if g.group in hands)
         if weight > 0.0:
             spared.add([vertex.index], min(weight * 2.0, 1.0), "REPLACE")
+    helmet_materials = {index for index, slot in enumerate(body.material_slots)
+                        if slot.material and slot.material.name in ("helmet", "vents")}
+    helmet_vertices = {v for face in body.data.polygons if face.material_index in helmet_materials
+                       for v in face.vertices}
+    spared.add(sorted(helmet_vertices), 1.0, "REPLACE")
     lighter = body.modifiers.new("lighter", "DECIMATE")
     lighter.ratio = REALISTIC_DETAIL
     lighter.vertex_group = "spared"

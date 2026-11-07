@@ -230,6 +230,10 @@ refresh their model gallery and a woodland close-up after shape or placement cha
 - The bike's shaped parts are `Faces.sweep` sections along `path` curves; chainrings and
   rotors are rings (`annulus`) — solid discs read as pale plates.
 - Male and female riders share node and material names; each has their own bike, sized to them.
+- Road-racing helmets (R220) use longitudinal meridians with open channels, shell lips and
+  dark `vents` walls/interiors, rather than overlaid strips. Keep the shared `helmet` and
+  `vents` material names, head-bone attachment and fitted strap anchors. Review front, side,
+  head and seated/standing chase views on both riders after export and body decimation.
 
 ## Not a model: the remote's clip
 
