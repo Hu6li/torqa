@@ -116,6 +116,9 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
 - [x] Rust workspace skeleton + lint config (clippy pedantic, missing_docs, cargo-deny)
 - [x] Godot project + gdext hello-world
 - [x] GitHub Actions: container job (fmt, clippy, test, deny) + macOS runner job (GDExtension + app export)
+- [x] Keep all CI checks while sharing optimized test dependencies with the smoke-test
+  GDExtension; one bounded Godot runner reports each suite's duration and failure output,
+  with fresh project imports instead of cached Godot state
 - [x] Tagged releases (#273): after checks and all native builds, publish the app/CLI
   archives for macOS arm64, Windows x86_64 and Linux x86_64/arm64 on GitHub Releases;
   preserve ZIP uploads as archives when downloading them for publication
