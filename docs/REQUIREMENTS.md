@@ -605,3 +605,10 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R224 | Refines R223 (2026-11-06), superseding its wait for the entire course scene and background ground meshes: after **Ride** or a course workout's **Start**, prepare the terrain and scenery around the rider's start first. Begin riding once the visible surroundings, including a movement and visibility margin for the selected graphics, are present. Upload farther chunks in the background with bounded work per frame and update their priority as the rider moves. Optional ground LODs do not hold up the start while full-resolution ground is available. Keep the existing generation/loading progress, cancellation, season and graphics behavior; course world data generation still finishes before scene uploads. |
+
+## Road-racing helmets
+
+| ID | Requirement |
+|---|---|
+| R225 | Refines R46 and R89 (2026-11-07): both riders wear realistic **road-racing bicycle helmets**, fitted to their heads, with longitudinal shell ribs, open recessed vents, dark foam interiors and chin straps. Use the Lazer Z1 KinetiCore as a shape reference, with a rounded rear rather than a pointed tail; keep the shell white and unbranded. The ventilation and shell thickness read from front, side and chase views, seated and standing. |
+| R226 | Refines R225 (2026-11-07): the helmet follows the Z1 KinetiCore's **vent layout** in front, side, top and rear views: ribs meeting at the fit dial at the back, a central spine inside a ring of vents, long side channels down to a low vent at the temple, recessed braces, exhausts either side of the spine and solid bands above the rim. Vent edges are rounded; the shell stays white and unbranded. Dedicated side and rear helmet close-ups show it. |

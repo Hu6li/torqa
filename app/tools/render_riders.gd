@@ -8,6 +8,7 @@ extends SceneTree
 ## Name, camera position and target (rider's local axes: −z forward), crank angle in degrees,
 ## whether the rider leans into a bend (40 km/h, 40 m radius, to the right) and whether they
 ## stand on the pedals (the bike rocked under them as at 60 rpm).
+## Helmet views use head-relative offsets and orthographic projection for silhouette review.
 const VIEWS: Array = [
 	["side", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0],
 	["side-down", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 90.0],
@@ -15,6 +16,8 @@ const VIEWS: Array = [
 	["chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 200.0],
 	["face", Vector3(0.7, 1.4, -1.6), Vector3(0.0, 1.25, -0.35), 120.0],
 	["head", Vector3(-0.75, 1.55, 0.45), Vector3(0.0, 1.3, -0.4), 160.0],
+	["helmet-side", Vector3(0.6, 0.0, 0.0), Vector3.ZERO, 0.0],
+	["helmet-rear", Vector3(0.0, 0.0, 0.6), Vector3.ZERO, 0.0],
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
 	["standing", Vector3(3.2, 1.0, 0.0), Vector3(0.0, 0.85, 0.0), 0.0, false, true],
 	["standing-chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 70.0, false, true],
@@ -57,7 +60,23 @@ func _run() -> void:
 			var leaning: bool = view.size() > 4 and view[4]
 			var lean: float = OrqwaApp.lean_angle(40.0, 1.0 / 40.0) if leaning else 0.0
 			avatar.transform = Transform3D(Basis(Vector3.FORWARD, lean + motion.rock), Vector3.ZERO)
-			_camera.look_at_from_position(eye, target, Vector3.UP)
+			var camera_up: Vector3 = Vector3.UP
+			if view_name.begins_with("helmet-"):
+				var skeletons: Array[Node] = avatar.find_children("*", "Skeleton3D", true, false)
+				var skeleton: Skeleton3D = skeletons[0] as Skeleton3D
+				var head_pose: Transform3D = (
+					skeleton.global_transform
+					* skeleton.get_bone_global_pose(skeleton.find_bone("head"))
+				)
+				var head_basis: Basis = head_pose.basis.orthonormalized()
+				target = avatar.head_top() + head_basis * Vector3(0.0, -0.065, -0.035)
+				eye = target + head_basis * eye
+				camera_up = head_basis.y
+				_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+				_camera.size = 0.30
+			else:
+				_camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+			_camera.look_at_from_position(eye, target, camera_up)
 			for frame: int in range(12):
 				await process_frame
 			var image: Image = root.get_texture().get_image()

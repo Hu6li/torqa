@@ -40,6 +40,10 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+import helmet  # noqa: E402  (needs the path above)
+
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
 EYES = ("eye",)
@@ -277,11 +281,6 @@ GLASSES_WRAP = 3.0
 # eyes' height: at the back, at the sides).
 HAIR = {"female": {"thickness": 0.014, "back": -0.085, "sides": -0.035},
         "male": {"thickness": 0.006, "back": -0.05, "sides": -0.005}}
-# The helmet sits this far off the scalp (pressing the hair under it flat) and is this thick.
-HELMET_GAP = 0.007
-HELMET_SHELL = 0.022
-# How far the helmet's outside is drawn out behind the head.
-HELMET_TAIL = 0.03
 
 
 def scalp(head, keep, rim=None):
@@ -364,87 +363,6 @@ def tube_along(gear, spine, radii, material_name, sides=10):
     gear.add(rings[-1], material_name, spine[-2])
 
 
-def road_helmet(gear, skull, head_tree, eyes, centre_x):
-    """A road helmet round the skull: a smooth shell standing a constant gap off the head
-    (`head_tree` finds its surface), its rim just above the brow, over the ears' tops and low
-    over the back of the head, drawn out to a short tail at the back."""
-    ys = [p.y for p in skull]
-    cy = (max(ys) + min(ys)) / 2.0
-    cz = eyes + 0.01
-    across = max(abs(p.x - centre_x) for p in skull) + HELMET_GAP
-    front = max(ys) - cy + HELMET_GAP
-    back = cy - min(ys) + HELMET_GAP
-    up = max(p.z for p in skull) - cz + HELMET_GAP
-    centre = Vector((centre_x, cy, cz))
-
-    def direction(theta, phi):
-        reach = front if math.cos(theta) > 0 else back
-        return Vector((across * math.cos(phi) * math.sin(theta),
-                       reach * math.cos(phi) * math.cos(theta), up * math.sin(phi))).normalized()
-
-    def head_distance(theta, phi):
-        """How far the head's surface is from the middle in this direction (an ellipsoid
-        round the skull where nothing is hit)."""
-        towards = direction(theta, phi)
-        hit = head_tree.ray_cast(centre + towards * 0.4, -towards)[0]
-        if hit is not None:
-            return (hit - centre).length
-        reach = front if math.cos(theta) > 0 else back
-        return Vector((across * math.cos(phi) * math.sin(theta),
-                       reach * math.cos(phi) * math.cos(theta),
-                       up * math.sin(phi))).length - HELMET_GAP
-
-    def at(theta, phi, radius, extra):
-        point = centre + direction(theta, phi) * (radius + extra)
-        if extra > 0.0:
-            behind = max(-math.cos(theta), 0.0)
-            point.y -= HELMET_TAIL * behind ** 2 * max(math.cos(phi), 0.0) ** 0.5
-        return point
-
-    def rim(theta):
-        z = eyes + 0.02 + 0.02 * math.cos(theta) + 0.015 * math.sin(theta) ** 2
-        return math.asin(max(-0.9, min(0.9, (z - cz) / up)))
-
-    around, rows = 40, 9
-    angles = []
-    for j in range(around):
-        theta = 2 * math.pi * j / around
-        start = rim(theta)
-        angles.append([(theta, start + (math.pi / 2 - start) * k / rows) for k in range(rows)])
-    # The head's distance in each direction, smoothed: a helmet is smoother than a head, and
-    # it bridges the ears and the hollows at the temples.
-    radii = [[head_distance(theta, phi) + HELMET_GAP for theta, phi in row] for row in angles]
-    for _ in range(4):
-        radii = [[(2.0 * radii[j][k] + radii[j - 1][k] + radii[(j + 1) % around][k]
-                   + radii[j][max(k - 1, 0)] + radii[j][min(k + 1, rows - 1)]) / 6.0
-                  for k in range(rows)] for j in range(around)]
-    inner = [[at(theta, phi, radii[j][k], 0.0) for k, (theta, phi) in enumerate(row)]
-             for j, row in enumerate(angles)]
-    outer = [[at(theta, phi, radii[j][k], HELMET_SHELL) for k, (theta, phi) in enumerate(row)]
-             for j, row in enumerate(angles)]
-    crown = sum(radii[j][-1] for j in range(around)) / around
-    top_inner = centre + direction(0.0, math.pi / 2) * crown
-    top_outer = centre + direction(0.0, math.pi / 2) * (crown + HELMET_SHELL)
-    for j in range(around):
-        i = (j + 1) % around
-        for k in range(rows - 1):
-            quad = [outer[j][k], outer[i][k], outer[i][k + 1], outer[j][k + 1]]
-            gear.add(quad, "helmet", centre)
-        gear.add([outer[j][-1], outer[i][-1], top_outer], "helmet", centre)
-    # The inside, facing the head, and the rim between inside and out.
-    for j in range(around):
-        i = (j + 1) % around
-        for k in range(rows - 1):
-            quad = [inner[j][k], inner[i][k], inner[i][k + 1], inner[j][k + 1]]
-            middle_point = sum(quad, Vector()) / 4
-            gear.add(quad, "helmet", centre + (middle_point - centre) * 3.0)
-        middle_point = (inner[j][-1] + top_inner) / 2
-        gear.add([inner[j][-1], inner[i][-1], top_inner], "helmet",
-                 centre + (middle_point - centre) * 3.0)
-        gear.add([inner[j][0], inner[i][0], outer[i][0], outer[j][0]], "helmet",
-                 (inner[j][1] + outer[j][1]) / 2)
-
-
 def headgear(parts, sex):
     """Hair, helmet and sunglasses on the upright head facing +y, fitted to its shape and
     parented to it."""
@@ -468,45 +386,26 @@ def headgear(parts, sex):
         return eyes + hair["sides"] + (hair["back"] - hair["sides"]) * back
 
     def helmet_rim(point):
-        # Above the brow in front, above the ears at the sides, lower at the back.
-        # As `road_helmet` cuts its rim.
-        return eyes + 0.02 + 0.02 * ahead(point) + 0.015 * (1.0 - ahead(point) ** 2)
+        return eyes + helmet.rim_height(ahead(point))
 
     def hair_thickness(point):
         # Full where it shows below the helmet, flat under it.
-        return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else HELMET_GAP * 0.5
+        return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else helmet.GAP * 0.5
 
     gear = Faces()
     shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
           0.0, hair_thickness, "hair")
 
     before = len(gear.faces)
-    road_helmet(gear, parts["skull"], parts["skull_tree"], eyes, centre.x)
-    # Vents: long slots from front to back, laid on the helmet's top.
-    helmet = [points for points, _ in gear.faces[before:]]
-    corners = [p for face in helmet for p in face]
+    helmet.road_helmet(gear, parts["skull"], eyes, centre, half_y)
+    # The fitted shell also provides the strap anchors, just above its rim.
+    worn = [points for points, _ in gear.faces[before:]]
+    corners = [p for face in worn for p in face]
     polygons, start = [], 0
-    for face in helmet:
+    for face in worn:
         polygons.append(list(range(start, start + len(face))))
         start += len(face)
     top = BVHTree.FromPolygons(corners, polygons)
-    half_x = (high.x - low.x) / 2.0
-    for across in (-0.52, -0.18, 0.18, 0.52):
-        length = 0.85 - abs(across) * 0.5
-        rows = []
-        for k in range(7):
-            along = 0.55 - (0.55 + length) * k / 6
-            edge = []
-            for side in (-0.1, 0.1):
-                x = centre.x + (across + side) * half_x
-                y = centre.y + along * half_y
-                hit = top.ray_cast(Vector((x, y, high.z + 0.5)), Vector((0, 0, -1)))[0]
-                edge.append(hit + Vector((0, 0, 0.0015)) if hit is not None else None)
-            rows.append(edge)
-        for (a, b), (c, d) in zip(rows, rows[1:]):
-            if None not in (a, b, c, d):
-                gear.add([a, b, d, c], "vents", middle(a, d) - Vector((0, 0, 0.02)))
-
     # Sunglasses: two lenses on a smooth shield wrapped round the face in front of the eyes, a
     # bridge over the nose and arms back over the ears.
     surface = [head] + [parts[p] for p in ("nose", "nose_bridge")]
@@ -585,8 +484,9 @@ def headgear(parts, sex):
         joint = Vector((ear.x - out * 0.008, ear.y + 0.02, ear.z - 0.04))
         jaw = Vector((ear.x - out * 0.02, ear.y + 0.04, ear.z - 0.075))
         for ahead_of_ear in (0.03, -0.025):
-            hit = top.ray_cast(Vector((ear.x + out * 0.3, ear.y + ahead_of_ear, eyes + 0.03)),
-                               Vector((-out, 0, 0)))[0]
+            anchor = Vector((ear.x + out * 0.3, ear.y + ahead_of_ear, 0.0))
+            anchor.z = helmet_rim(anchor) + 0.006
+            hit = top.ray_cast(anchor, Vector((-out, 0, 0)))[0]
             if hit is not None:
                 strap([hit - Vector((0, 0, 0.004)), joint])
         strap([joint, jaw, under_chin])
@@ -1314,7 +1214,7 @@ def bake_rest_pose(body, gear, rig):
 
 def thin_body(body):
     """Thins the posed body for the app; collapsing edges keeps the weights. The hands are
-    spared: thinned, the fingers collapse into flat strips."""
+    spared so fingers stay round, as are the helmet's ribs and vent lips."""
     bpy.context.view_layer.objects.active = body
     hands = [g.index for g in body.vertex_groups if g.name.startswith(HAND_GROUPS)]
     spared = body.vertex_groups.new(name="spared")
@@ -1322,6 +1222,11 @@ def thin_body(body):
         weight = sum(g.weight for g in vertex.groups if g.group in hands)
         if weight > 0.0:
             spared.add([vertex.index], min(weight * 2.0, 1.0), "REPLACE")
+    helmet_materials = {index for index, slot in enumerate(body.material_slots)
+                        if slot.material and slot.material.name in ("helmet", "vents")}
+    helmet_vertices = {v for face in body.data.polygons if face.material_index in helmet_materials
+                       for v in face.vertices}
+    spared.add(sorted(helmet_vertices), 1.0, "REPLACE")
     lighter = body.modifiers.new("lighter", "DECIMATE")
     lighter.ratio = REALISTIC_DETAIL
     lighter.vertex_group = "spared"

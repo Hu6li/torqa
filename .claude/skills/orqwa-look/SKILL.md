@@ -61,7 +61,7 @@ Blender Python; its header shows how to run it).
 ## Budgets
 
 - **Triangles:** tree 1–4k with LODs (leaf cards for crowns), bush 300–1.5k, rock 200–1k,
-  house 1.5–5k, church 4–10k, rider about 37–39k, bike about 10k, props up to about 300 (a rail span 90). Godot generates LODs on
+  house 1.5–5k, church 4–10k, rider about 41–43k, bike about 10k, props up to about 300 (a rail span 90). Godot generates LODs on
   import; towns place thousands of buildings and forests thousands of trees, so measure.
 - **Textures:** 1024 px per tileable material, 2048 for the road and the ground near it (lower
   on Low); colour and roughness as lossy WebP (quality 90), normal maps lossless WebP, about
