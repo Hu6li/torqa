@@ -234,6 +234,9 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   dark `vents` walls/interiors, rather than overlaid strips. Keep the shared `helmet` and
   `vents` material names, head-bone attachment and fitted strap anchors. Review front, side,
   head and seated/standing chase views on both riders after export and body decimation.
+  Follow the Z1 KinetiCore product images linked in `art/README.md`: broad rounded rear,
+  raised longitudinal ribs and recessed braces. Keep the white shell unbranded; never draw
+  the rear ribs into a pointed tail.
 
 ## Not a model: the remote's clip
 

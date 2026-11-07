@@ -280,8 +280,6 @@ HAIR = {"female": {"thickness": 0.014, "back": -0.085, "sides": -0.035},
 # The helmet sits this far off the scalp (pressing the hair under it flat) and is this thick.
 HELMET_GAP = 0.007
 HELMET_SHELL = 0.022
-# How far the helmet's outside is drawn out behind the head.
-HELMET_TAIL = 0.03
 
 
 def scalp(head, keep, rim=None):
@@ -367,8 +365,8 @@ def tube_along(gear, spine, radii, material_name, sides=10):
 def road_helmet(gear, skull, head_tree, eyes, centre_x):
     """A fitted road-racing shell with longitudinal ribs and open, bevelled air channels.
 
-    Meridians run from the brow to the rear so the vents follow the airflow instead of
-    looking like stripes painted onto a dome. Bridges leave the ribs joined at the crown.
+    The unbranded white shell follows the Lazer Z1 KinetiCore's broad rear, raised ribs
+    and recessed cross braces. Meridians keep the air channels running front to back.
     """
     ys = [p.y for p in skull]
     cy = (max(ys) + min(ys)) / 2.0
@@ -381,7 +379,10 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
 
     def direction(alpha, beta):
         reach = front if beta > 0 else back
-        return Vector((across * math.cos(beta) * math.sin(alpha),
+        # Retain width at the rear instead of converging the ribs into a pointed tail.
+        taper = 0.65 if beta < 0 else 0.82
+        width = math.sqrt(1.0 - taper * math.sin(beta) ** 2)
+        return Vector((across * width * math.sin(alpha),
                        reach * math.sin(beta), up * math.cos(beta) * math.cos(alpha)))
 
     def head_distance(alpha, beta):
@@ -395,16 +396,15 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
         point = centre + direction(alpha, beta).normalized() * (radius + extra)
         along = math.sin(beta)
         point.z += 0.012 * along - 0.012 * along ** 2
-        # A compact rear overhang and a blunt brow, rather than a pointed time-trial tail.
-        point.y -= HELMET_TAIL * max(-along, 0.0) ** 3 * extra / HELMET_SHELL
         return point
 
-    # Six channels, each interrupted by two structural bridges. Their tapered ends are
+    # Seven channels, each interrupted by two recessed braces. Their tapered ends are
     # authored in the grid, avoiding boolean seams and keeping exports deterministic.
-    channels = [(-a, width) for a, width in ((1.10, 0.17), (0.67, 0.19), (0.26, 0.17))]
-    channels += [(a, width) for a, width in ((0.26, 0.17), (0.67, 0.19), (1.10, 0.17))]
-    openings = ((-1.23, -0.40), (-0.25, 0.34), (0.49, 1.24))
-    boundaries = [-math.pi / 2, math.pi / 2, 0.0]
+    channels = [(-a, width) for a, width in ((1.22, 0.18), (0.82, 0.24), (0.38, 0.25))]
+    channels += [(0.0, 0.14)]
+    channels += [(a, width) for a, width in ((0.38, 0.25), (0.82, 0.24), (1.22, 0.18))]
+    openings = ((-1.43, -0.40), (-0.27, 0.38), (0.51, 1.40))
+    boundaries = [-math.pi / 2, math.pi / 2]
     for alpha, width in channels:
         boundaries.extend((alpha - width / 2, alpha + width / 2))
     boundaries.sort()
@@ -412,9 +412,9 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
     slot_columns = set()
     for left, right in zip(boundaries, boundaries[1:]):
         slot = any(abs((left + right) / 2 - a) < w / 2 for a, w in channels)
-        steps = 1 if slot else max(2, math.ceil((right - left) / 0.10))
+        steps = 4 if slot else max(2, math.ceil((right - left) / 0.10))
         if slot:
-            slot_columns.add(len(alphas))
+            slot_columns.update(range(len(alphas), len(alphas) + steps))
         alphas.extend(left + (right - left) * k / steps for k in range(steps))
     alphas.append(boundaries[-1])
     betas = [-math.pi / 2, math.pi / 2]
@@ -430,9 +430,9 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
     def tapered(alpha, beta):
         for start, end in openings:
             if start <= beta <= end:
-                taper = min(1.0, 0.35 + 0.65 * min(beta - start, end - beta) / 0.07)
+                taper = min(1.0, 0.75 + 0.25 * min(beta - start, end - beta) / 0.07)
                 for axis, width in channels:
-                    if abs(abs(alpha - axis) - width / 2) < 1e-6:
+                    if abs(alpha - axis) <= width / 2 + 1e-6:
                         return axis + (alpha - axis) * taper
         return alpha
 
@@ -445,11 +445,6 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
                    + radii[min(j + 1, columns - 1)][k]
                    + radii[j][max(k - 1, 0)] + radii[j][min(k + 1, rows - 1)]) / 6.0
                   for k in range(rows)] for j in range(columns)]
-    # Every meridian meets at the same brow/rear pole, including after smoothing.
-    for k in (0, rows - 1):
-        radius = sum(row[k] for row in radii) / columns
-        for row in radii:
-            row[k] = radius
     inner = [[at(a, b, radii[j][k], 0.0) for k, (a, b) in enumerate(row)]
              for j, row in enumerate(angles)]
     outer = [[at(a, b, radii[j][k], HELMET_SHELL) for k, (a, b) in enumerate(row)]
@@ -460,6 +455,19 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
             return False
         beta = (betas[k] + betas[k + 1]) / 2
         return j not in slot_columns or not any(start < beta < end for start, end in openings)
+
+    # The braces dip below the rails, joining them without a raised transverse band.
+    # Keeping their boundary vertices shared preserves a closed shell at every junction.
+    for j, row in enumerate(angles):
+        for k, (_, beta) in enumerate(row):
+            if any(a[1] <= beta <= b[0] for a, b in zip(openings, openings[1:])):
+                for axis, width in channels:
+                    # The untapered boundary stays on the rib; only the brace's interior
+                    # dips. Lowering a tapered vent corner would notch the main rail.
+                    across_slot = abs(alphas[j] - axis) / (width / 2)
+                    if across_slot < 1.0:
+                        height = 0.65 + 0.35 * math.sin(math.pi / 2 * across_slot) ** 2
+                        outer[j][k] = inner[j][k].lerp(outer[j][k], height)
 
     def lip(j, k):
         point = outer[j][k].lerp(inner[j][k], 0.12)
@@ -492,10 +500,10 @@ def road_helmet(gear, skull, head_tree, eyes, centre_x):
                 next_edge = (edge + 1) % 4
                 a, b = outside[edge], outside[next_edge]
                 c, d = inside[edge], inside[next_edge]
+                wall_inside = (sum(outside, Vector()) + sum(inside, Vector())) / 8
                 # A coloured rolled lip catches the light above the dark EPS vent walls.
                 lip_a = lip(*corners[edge])
                 lip_b = lip(*corners[next_edge])
-                wall_inside = (sum(outside, Vector()) + sum(inside, Vector())) / 8
                 gear.add([a, b, lip_b, lip_a], "helmet", wall_inside)
                 gear.add([lip_a, lip_b, d, c], "vents", wall_inside)
 

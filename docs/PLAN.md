@@ -817,8 +817,8 @@ physically based materials and light, restyled group by group.
   - [x] Riders and bikes: detailed road bikes and cycling kit; realistic bodies (Human Base
     Meshes) skinned to a skeleton, posed on the bike in Blender, the app turning the leg bones
     to the pedals
-  - [x] Road-racing helmets (R225): fitted shells with longitudinal ribs, eighteen open
-    vents, dark foam walls, structural bridges and compact rear overhangs on both riders.
+  - [x] Road-racing helmets (R225): white, unbranded shells following the Z1 KinetiCore
+    reference, with broad rounded rears, open longitudinal vents, dark foam walls and recessed braces.
   - [x] Rider and bike motion (R91, `RiderMotion`): pitch and lean as damped springs, standing
     on the pedals on steep climbs and in sprints with the bike rocking under the rider, sway
     with effort, cranks level when coasting
