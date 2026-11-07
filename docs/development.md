@@ -226,6 +226,12 @@ both water meshes and channel beds use those shared elevations. Keep these profi
 independent of road shaping. Review a steep valley from the road and above, plus a lake,
 after changing them. Older kept worlds offer **Regenerate world** for the corrected rivers.
 
+Generator 40 keeps lakebeds submerged around stream lines passing through their interiors.
+Inside mapped water areas, a nearby stream cannot replace the distance to the lake's shore.
+Stored format remains 3. Run `cargo test -p orqwa-world tests::water` for diagonal stream
+lines, spatial-index and terrain-chunk joins, rivers and ground crossings. Review the centre
+of Moorgarte's lake at 81.17 km from above as well as its real shoreline.
+
 Bridge geometry (R121–R122) uses generator 12 / stored format 3. `drape::deck` adds a
 downward-facing underside at the same depth as the side walls, including at chunk joins;
 the ridden road and railway decks are built separately in `structures.rs`. Older kept

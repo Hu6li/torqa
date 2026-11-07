@@ -811,6 +811,9 @@ physically based materials and light, restyled group by group.
     valley sides and road embankments, level cross-sections and beds shaped to the same
     datum, wider transitions on tall banks and rock on exposed channel sides; generator 8
     offers regeneration for older kept worlds.
+  - [x] Submerged lakebeds around mapped stream lines (R118): interior water uses the lake's
+    shore distance, preserving the bed below the surface across stream index cells and
+    terrain chunks. Generator 40 offers regeneration of older kept worlds.
   - [x] Riders and bikes: detailed road bikes and cycling kit; realistic bodies (Human Base
     Meshes) skinned to a skeleton, posed on the bike in Blender, the app turning the leg bones
     to the pedals

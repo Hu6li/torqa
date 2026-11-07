@@ -38,3 +38,19 @@ source is needed. This is visual reconstruction, not a hydraulic simulation.
 
 Generator 8 offers regeneration for older kept worlds (R101, ADR 0025). The stored layout
 stays at format 2; existing course files remain usable offline.
+
+## Lakebeds around stream lines (2026-11-06)
+
+A mapped stream passing through a lake could override the lake's interior channel distance.
+Far from a shore, the nearby stream's positive distance suppressed bed carving beside its
+narrow channel. This exposed broad strips of lakebed above the water, with stepped edges
+following the stream index cells.
+
+Inside mapped water areas, channel distance now uses only area shores. Without a nearby
+shore, the existing deep-water bed applies even when a stream line is indexed nearby.
+Standalone streams, water elevations, gravel shores and ground-crossing clearance keep
+their existing rules. Generator 40 offers regeneration; stored format remains 3.
+
+The lake meshes from Moorgarte's saved inputs at 81.17 km show the exposed strips
+[before](../images/lake-bed/moorgarte-before.jpg) and the submerged bed
+[after](../images/lake-bed/moorgarte-after.jpg), with the same camera and materials.
