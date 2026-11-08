@@ -70,6 +70,8 @@ var _roster_key: String = ""
 var _voice_buttons: Dictionary[int, Button] = {}
 ## This rider's own readiness pill before the start (R196), null while there is none.
 var _ready_pill: Button
+var _own_row: HBoxContainer
+var _own_state: Label
 var _activity_key: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
@@ -641,6 +643,8 @@ func _show_roster(phase: String, host: bool) -> void:
 		child.queue_free()
 	_voice_buttons.clear()
 	_ready_pill = null
+	_own_row = null
+	_own_state = null
 	var before: bool = phase not in ["countdown", "riding", "ended"]
 	var removable: bool = host and before
 	# Readiness as a pill on every row, this rider's their button (R196); friends joining
@@ -656,6 +660,12 @@ func _show_roster(phase: String, host: bool) -> void:
 		var label: Label = _label(text, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		var state: Label = _label(text, _rider_state(rider, phase, pills), 13)
+		# Progress and the readiness prompt share one line, even in a narrow German lobby.
+		for line: Label in [label, state]:
+			line.autowrap_mode = TextServer.AUTOWRAP_OFF
+			line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			line.tooltip_text = line.text
+		state.custom_minimum_size.y = state.get_theme_font("font").get_height(13)
 		var live: bool = (
 			not pills
 			and not rider.get("away", false)
@@ -663,7 +673,7 @@ func _show_roster(phase: String, host: bool) -> void:
 			and (phase != "riding" or rider["me"] or rider.get("present", false))
 		)
 		state.add_theme_color_override("font_color", UiTheme.SUCCESS if live else UiTheme.MUTED)
-		state.visible = not state.text.is_empty()
+		state.visible = before or phase == "countdown" or not state.text.is_empty()
 		row.add_child(text)
 		var id: int = rider["id"]
 		var me: bool = rider["me"]
@@ -675,10 +685,15 @@ func _show_roster(phase: String, host: bool) -> void:
 			row.add_child(voice)
 			_voice_buttons[id] = voice
 		if pills and me:
+			_own_row = row
+			_own_state = state
+			row.draw.connect(_draw_ready_row)
+			row.resized.connect(row.queue_redraw)
 			_ready_pill = _button(row, "", func() -> void: _orqwa.group_ready(not _is_ready()))
 			_ready_pill.focus_mode = Control.FOCUS_NONE
 			_ready_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			_ready_pill.custom_minimum_size.x = PILL_WIDTH
+			_ready_pill.custom_minimum_size = Vector2(PILL_WIDTH, 34)
+			_ready_pill.clip_text = true
 			_ready_pill.add_theme_font_size_override("font_size", 14)
 		elif pills:
 			var ready: bool = rider["ready"]
@@ -704,7 +719,9 @@ func _show_roster(phase: String, host: bool) -> void:
 ## their seat held while they reconnect (#434); and who they are to the group.
 func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 	var parts: PackedStringArray = []
-	var ready: bool = rider["ready"]
+	var me: bool = rider["me"]
+	var ready: bool = _is_ready() if me else rider["ready"]
+	var actionable: bool = pills and me and _can_mark_ready()
 	var stage: String = rider.get("stage", "")
 	var percent: int = rider.get("percent", 0)
 	if phase == "riding" and rider.get("present", false):
@@ -722,6 +739,8 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 		parts.append(tr("No signal") if ready else tr("Getting ready"))
 		if rider["me"]:
 			parts[0] = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
+	elif pills and me and (ready or actionable):
+		parts.append(tr("You're ready") if ready else tr("Please mark ready"))
 	elif not ready and stage == "downloading":
 		parts.append(tr("Downloading · %d %%") % percent)
 	elif not ready and stage == "preparing" and percent < 100:
@@ -730,7 +749,11 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 		parts.append(tr("Ready") if ready else tr("Getting ready"))
 	if rider.get("away", false):
 		parts = PackedStringArray([tr("Reconnecting…", "group_rider")])
-	if rider["me"] and not (phase == "riding" and rider.get("present", false)):
+	if (
+		me
+		and not (pills and (ready or actionable))
+		and not (phase == "riding" and rider.get("present", false))
+	):
 		parts.append(tr("You"))
 	if rider.get("organizer", false):
 		parts.append(tr("Organizer"))
@@ -775,6 +798,23 @@ func _is_ready() -> bool:
 	return ready
 
 
+func _can_mark_ready() -> bool:
+	return not _is_ready() and _status.get("prepared", false) and _orqwa.trainer_connected()
+
+
+## Draw outside the row's content so highlighting never changes its margins or size.
+func _draw_ready_row() -> void:
+	if _own_row == null or not _can_mark_ready():
+		return
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = Color(UiTheme.ACCENT, 0.08)
+	box.border_color = Color(UiTheme.ACCENT, 0.3)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(10)
+	box.anti_aliasing = true
+	_own_row.draw_style_box(box, Rect2(Vector2(-6, -4), _own_row.size + Vector2(12, 8)))
+
+
 ## This rider's pill, their way to say they are ready: inviting while they can, green once
 ## they are (pressing it again takes it back), and saying why it waits while their ride is
 ## prepared or their trainer is missing.
@@ -785,7 +825,18 @@ func _show_ready_pill() -> void:
 	var prepared: bool = _status.get("prepared", false)
 	var trainer: bool = _orqwa.trainer_connected()
 	_ready_pill.disabled = not ready and (not prepared or not trainer)
-	_ready_pill.text = tr("Ready") if ready else tr("I'm ready")
+	_ready_pill.text = tr("Ready") if ready else tr("Mark ready")
+	# Trainer/preparation changes do not necessarily rebuild the roster.
+	var phase: String = _status.get("phase", "")
+	for rider: Dictionary in _status.get("roster", []):
+		if rider["me"]:
+			_own_state.text = _rider_state(rider, phase, true)
+			_own_state.tooltip_text = _own_state.text
+	var color: Color = UiTheme.SUCCESS if ready else UiTheme.MUTED
+	if _can_mark_ready():
+		color = UiTheme.ACCENT
+	_own_state.add_theme_color_override("font_color", color)
+	_own_row.queue_redraw()
 	var box: StyleBoxFlat = _pill_box(UiTheme.SUCCESS, true)
 	var font: Color = UiTheme.SUCCESS
 	if not ready:

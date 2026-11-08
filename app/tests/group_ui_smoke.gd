@@ -1,6 +1,5 @@
 extends SceneTree
 ## Group setup and activity preview behavior (R169).
-
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 
 var _failed: bool = false
@@ -15,6 +14,7 @@ func _run() -> void:
 	await _group_activity()
 	await GroupJoinActivityChecks.check(self, _check)
 	await GroupCountdownLayout.check(self, _check)
+	await GroupReadinessLayout.check(self, _check)
 	await _group_motion()
 	await GroupAssistanceChecks.check(self, _check)
 	await _group_profile_difficulty()
@@ -524,7 +524,7 @@ func _group_activity() -> void:
 	)
 	_check(
 		(
-			own.text == "I'm ready"
+			own.text == "Mark ready"
 			and own.disabled
 			and own.tooltip_text == "Connect your trainer first"
 		),

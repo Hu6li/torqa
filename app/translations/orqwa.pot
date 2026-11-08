@@ -1815,10 +1815,6 @@ msgstr ""
 msgid "How to check"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
-msgid "I'm ready"
-msgstr ""
-
 #: app/ui/update_dialog.gd
 msgid "If Advanced Protection is on, turn it off in Android's settings."
 msgstr ""
@@ -2077,6 +2073,10 @@ msgstr ""
 
 #: app/ui/ui_theme.gd
 msgid "Mar"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Mark ready"
 msgstr ""
 
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd
@@ -2641,6 +2641,10 @@ msgstr ""
 
 #: app/ui/ride_options.gd
 msgid "Play the video's sound"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Please mark ready"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3973,6 +3977,10 @@ msgstr ""
 
 #: app/ui/moment_lines.gd
 msgid "You're over the top of climb {n}, which averaged {grade}. Get your breath back!"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "You're ready"
 msgstr ""
 
 #: app/ui/group_next_step.gd

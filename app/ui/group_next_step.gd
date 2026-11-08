@@ -17,6 +17,10 @@ var _bytes: Label = Label.new()
 var _main: Button = Button.new()
 var _retry: Button = Button.new()
 var _reconnect: Button = Button.new()
+var _layout: Control = Control.new()
+var _line_slot: HBoxContainer = HBoxContainer.new()
+var _progress_slot: Control = Control.new()
+var _action_slot: Control = Control.new()
 ## What the main button does now: `devices`, `start` or `enter`.
 var _action: String = ""
 
@@ -26,21 +30,39 @@ func bind(orqwa: OrqwaApp) -> void:
 
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 10)
-	var line_row: HBoxContainer = HBoxContainer.new()
-	line_row.add_theme_constant_override("separation", 10)
+	add_child(_layout)
+	_layout.add_child(_progress_slot)
+	_progress_slot.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_progress_slot.offset_bottom = 48
+	_progress_slot.add_child(_line_slot)
+	_line_slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_line_slot.offset_bottom = -8
+	_line_slot.add_theme_constant_override("separation", 10)
+	var spinner_slot: CenterContainer = CenterContainer.new()
+	spinner_slot.custom_minimum_size = _working.custom_minimum_size
 	_working.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	line_row.add_child(_working)
+	spinner_slot.add_child(_working)
+	_line_slot.add_child(spinner_slot)
 	_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_line.max_lines_visible = 2
 	_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_line.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	line_row.add_child(_line)
-	add_child(line_row)
+	_line_slot.add_child(_line)
 	_progress.show_percentage = false
-	_progress.custom_minimum_size.y = 6
-	add_child(_progress)
+	_progress_slot.add_child(_progress)
+	_progress.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_progress.offset_top = -6
 	_bytes.add_theme_color_override("font_color", UiTheme.MUTED)
-	add_child(_bytes)
+	_bytes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bytes.max_lines_visible = 2
+	_bytes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bytes.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_bytes.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_line_slot.add_child(_bytes)
+	_layout.add_child(_action_slot)
+	_action_slot.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_action_slot.offset_bottom = 48
 	_main.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_main.pressed.connect(_act)
 	_retry.text = tr("Retry download")
@@ -51,7 +73,8 @@ func _ready() -> void:
 	for button: Button in [_main, _retry, _reconnect]:
 		button.custom_minimum_size.y = 48
 		button.add_theme_font_size_override("font_size", 17)
-		add_child(button)
+		_action_slot.add_child(button)
+		button.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
 func _act() -> void:
@@ -75,6 +98,7 @@ func show_status(
 	var late: bool = status.get("late", false)
 	var underway: bool = phase in ["countdown", "riding", "ended"]
 	var can_retry: bool = status.get("can_retry", false)
+	var reconnect: float = status.get("reconnect_s", 0.0)
 	_show_progress(status, percent)
 	_action = ""
 	if late and not underway:
@@ -90,7 +114,7 @@ func show_status(
 		"start": tr("Start group ride"),
 		"enter": tr("Join ride now"),
 	}
-	_main.visible = not _action.is_empty()
+	_main.visible = not _action.is_empty() and not can_retry and reconnect <= 0.0
 	_main.text = labels.get(_action, "")
 	var entering: bool = status.get("entering", false)
 	_main.disabled = (
@@ -98,16 +122,32 @@ func show_status(
 		or (_action == "start" and not status.get("can_start", false))
 		or (_action == "enter" and not status.get("can_enter", false))
 	)
-	_retry.visible = can_retry
-	var reconnect: float = status.get("reconnect_s", 0.0)
+	_retry.visible = can_retry and reconnect <= 0.0
 	_reconnect.visible = reconnect > 0.0
 	_working.visible = (
 		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
 	)
 	_show_line(status, organizer, reconnect)
+	# Friends use one fixed area for connecting or progress; the organizer keeps Start below.
+	var lobby: bool = phase not in ["riding", "ended"]
+	var separate_action: bool = host or late or not lobby
+	_layout.custom_minimum_size.y = 106 if separate_action else 48
+	_action_slot.offset_top = 58 if separate_action else 0
+	_action_slot.offset_bottom = _action_slot.offset_top + 48
+	_action_slot.visible = _main.visible or _retry.visible or _reconnect.visible
+	_progress_slot.visible = separate_action or not _action_slot.visible
+	_line.visible = _line.visible and not _progress.visible
+	_line_slot.visible = _line.visible or _bytes.visible or _working.visible
+	_retry.tooltip_text = _line.text
+	_reconnect.tooltip_text = _line.text
 	# Nothing to do and nothing to wait for, e.g. while riding: the block makes no room.
 	visible = (
-		_main.visible or _line.visible or _progress.visible or _retry.visible or _reconnect.visible
+		lobby
+		or _main.visible
+		or _line.visible
+		or _progress.visible
+		or _retry.visible
+		or _reconnect.visible
 	)
 
 
@@ -170,5 +210,6 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 		text = tr("Starting in %s seconds…") % ceili(countdown)
 		good = false
 	_line.text = text
+	_line.tooltip_text = text
 	_line.visible = not text.is_empty()
 	_line.add_theme_color_override("font_color", UiTheme.SUCCESS if good else UiTheme.MUTED)
