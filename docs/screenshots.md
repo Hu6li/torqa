@@ -57,6 +57,12 @@ Use **Filters → Progress → In progress** to find the active rider's saved co
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)
 
+The readiness action stays beside the rider's name, with a prompt in the existing subtitle.
+
+| English | German |
+|---|---|
+| ![Mark ready beside your name](images/groups/readiness-en.png) | ![Bereit melden in the minimum window size](images/groups/readiness-de-small.png) |
+
 The group countdown locks choices while keeping the course preview in place.
 
 | Ready to start | Counting down |

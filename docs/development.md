@@ -86,6 +86,11 @@ the local course map and workout chart. English/German layout comparisons from 1
 voice card's bottom. Group screenshot fixtures include these downloads and matching
 organizer, course-only and course/workout views.
 
+Readiness layout checks (R234) compare the roster, action area, map, elevation profile and
+voice card through download, preparation, the readiness prompt, confirmation and countdown.
+They cover organizer and joiner views at 1600 × 900 and 1024 × 640 in English and German.
+The group screenshot run also captures preparation, the prompt and confirmation in both languages.
+
 For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
 deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
 stopping, then `cargo test -p orqwa-net` and `cargo test -p orqwa-app group::tests` for
