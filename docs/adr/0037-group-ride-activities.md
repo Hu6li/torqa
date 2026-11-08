@@ -347,6 +347,33 @@ abreast drafting, effective shelter/support and less than two percentage points 
 variation after settling. Slow-frame sample-time alignment and stale expiry are separate
 checks. Existing two-screen motion/overtake tests continue to protect playback.
 
+### Position-constrained assistance and real-time motion — 2026-11-08 (R233)
+
+The original critically damped band could reverse its position effect: a fast rider still
+behind the middle received braking, and the rider ahead support. R209 documented that
+behavior and a regression explicitly expected it. R233 supersedes it: the group middle
+determines the allowed direction, while relative speed may only reduce the restoring force
+to zero. The robust reference, freshness weights, five-metre middle dead zone and ±2
+gradient-percentage-point bound remain. The organizer has no special role.
+
+Each request retains the reference's position constraint. Before filtering, cancel any old
+band that now points away from the middle, including when a corrected position crosses it.
+New effects still ramp under the existing response and slew limit. With no eligible peer,
+retain the existing bounded fade. Direction cancellation is an explicit exception to the
+ordinary slew limit; retaining wrong-direction assistance to meet that limit is forbidden.
+The session invalidates its cached trainer command when a band clears or reverses, or
+drafting clears, so its one-second throttle and 0.1-point gradient threshold cannot leave
+an obsolete effect on the trainer. ERG targets remain unchanged.
+
+Investigation also reproduced sustained front support and back braking while the back lost
+ground with a slow-rendering client. Godot 4.7.2 caps process delta during slow frames, but
+group state is timestamped with real monotonic elapsed time. Advancing physics with the
+capped delta made reported virtual speed exceed actual progress per real second. The
+extension now supplies real monotonic frame duration to the Rust app, matching the group
+clock; explicit accelerated simulation remains separate. A five-fps Godot regression checks
+that riding time follows real elapsed time, alongside the direction and command regressions.
+No wire-format change is needed, and buffered presentation remains unchanged.
+
 ### Android publication and diagnostics repair — 2026-10-29
 
 Android's shared-storage filesystem rejects hard links even in the app-owned media folder.

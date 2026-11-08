@@ -1332,7 +1332,7 @@ impl App {
                 .map_or(elapsed, |local| local.state.at);
             let mut current = group.peers.current_at(now, elapsed, local_at);
             current[usize::from(snapshot.me)] = None;
-            let effect = orqwa_session::group::assistance(
+            let request = orqwa_session::group::assistance_request(
                 &current,
                 state.distance,
                 state.speed,
@@ -1340,6 +1340,7 @@ impl App {
                 rules.drafting,
                 rules.keep_together,
             );
+            let effect = request.effect();
             let effect = if pedaling {
                 let elapsed = now.saturating_duration_since(group.effect_at);
                 let target_drag = group
@@ -1356,7 +1357,11 @@ impl App {
                     1.0
                 };
                 let band = if rules.keep_together {
-                    smooth_band(group.effect.grade_offset(), effect.grade_offset(), elapsed)
+                    smooth_band(
+                        request.constrain_band(group.effect.grade_offset()),
+                        effect.grade_offset(),
+                        elapsed,
+                    )
                 } else {
                     orqwa_domain::units::GradePercent(0.0)
                 };

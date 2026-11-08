@@ -720,7 +720,7 @@ window sizes: simultaneous drafting and Support/Braking, inactive effects, pause
 course-free workouts, overlay exclusion, matching the metrics HUD's width below it and clearance
 around controls and organizer offers.
 The app's `assistance_feedback_` Rust regression checks that feedback follows applied effects,
-including braking while catching up and authority blending, without replacing measured power
+including cancellation during a fast catch-up and authority blending, without replacing measured power
 or ERG targets. `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` also captures the
 indicators from all three cameras in both languages using presentation fixtures. Review at
 `SCREENSHOT_SIZE=1024x640` too. Video rides intentionally have no indicators.
@@ -746,6 +746,15 @@ clock and can show a separate motion-speed wobble even with both assistance rule
 For native trainer acceptance, alternate leading and following as organizer and friend,
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.
+
+R233 constrains the direction on both sides of filtering: a rider behind the group middle
+receives support or zero, and a rider ahead braking or zero, regardless of relative speed.
+Regressions include 20–500 m catch-ups, position corrections across the middle, its dead zone
+and prompt trainer updates when clearing or reversing offsets smaller than 0.1 percentage point.
+`ride_clock_smoke.gd` runs a workout at five frames per second and compares riding time against
+the monotonic clock, exercising Godot's capped process delta through the real GDExtension.
+The extension supplies real elapsed time to the Rust engine; accelerated fake rides still use
+their explicit simulation multiplier. The group tooltip names the group rather than its organizer.
 
 ### Group rider nameplates
 

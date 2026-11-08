@@ -900,10 +900,10 @@ fn assistance_feedback_reports_applied_effects_without_changing_measurements() {
         app.ride_state().unwrap().telemetry.cadence,
         before.telemetry.cadence
     );
-    // Relative speed may brake a rider who is still behind; never infer direction from gap.
+    // A fast catch-up can cancel support, but must never brake the rider still behind.
     snapshot.states[0].as_mut().unwrap().0.speed = MetersPerSecond(0.6);
     assistance_step(&mut app, &mut snapshot, now, 1100);
-    assert!(app.group_feedback().together < 0.0);
+    assert_eq!(app.group_feedback().together, 0.0);
     assert!(app.group_feedback().drafting > 0.0);
     let fresh = app.group_feedback();
     let effect = app.group.as_ref().unwrap().effect;
@@ -967,6 +967,139 @@ fn assistance_transitions_keep_force_continuous_and_bounded() {
     assert!((middle.drag_share() - 0.85).abs() < 1e-9);
     assert!(middle.grade_offset().0.abs() < 1e-9);
     assert_eq!(blend(old, new, Duration::from_secs(2)), new);
+}
+
+#[test]
+fn assistance_cancels_filtered_forces_on_crossing_the_group_middle() {
+    let (_directory, mut app, mut snapshot, now) = assistance_fixture();
+    app.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
+    let local = app.ride_state().unwrap();
+    let peer = &mut snapshot.states[0].as_mut().unwrap().0;
+    peer.distance = Meters(local.distance.0 + 100.0);
+    peer.speed = local.speed;
+    assistance_step(&mut app, &mut snapshot, now, 1000);
+    assert!(app.group_feedback().together > 0.0);
+
+    // A fresh position correction puts the local rider ahead. Old support must not survive
+    // the filter for another frame, even though the new braking still ramps in gently.
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(0.0);
+    assistance_step(&mut app, &mut snapshot, now, 1100);
+    assert!(app.group_feedback().together < 0.0);
+
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(local.distance.0 + 100.0);
+    assistance_step(&mut app, &mut snapshot, now, 1200);
+    assert!(app.group_feedback().together > 0.0);
+
+    snapshot.states[0].as_mut().unwrap().0.distance = local.distance;
+    assistance_step(&mut app, &mut snapshot, now, 1300);
+    assert_eq!(
+        app.group_feedback().together,
+        0.0,
+        "the middle has no retained band"
+    );
+}
+
+#[test]
+fn a_new_unassisted_group_ride_does_not_inherit_the_previous_rides_effects() {
+    let (from, to) = (Directory::new(), Directory::new());
+    let (mut host, mut peer) = (from.app(), to.app());
+    for (app, power) in [(&mut host, 300.0), (&mut peer, 120.0)] {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(power),
+            cadence: Rpm(85.0),
+            heart: None,
+        }))
+        .unwrap();
+    }
+    let workout = host
+        .save_workout(
+            &orqwa_domain::workout::Plan {
+                name: "Unassisted group regression".into(),
+                steps: vec![orqwa_domain::workout::Step {
+                    duration: Duration::from_secs(600),
+                    target: orqwa_domain::workout::Target::Free,
+                    cadence: None,
+                }],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    for enabled in [true, false] {
+        host.group_open(None, options()).unwrap();
+        wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+        peer.group_open(Some(host.group().invite), options())
+            .unwrap();
+        wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+        host.group_admit(&peer.group().reply).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+        });
+        host.group_select(None, Some(&workout)).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().prepared
+                && p.group().prepared
+                && h.trainer_connected()
+                && p.trainer_connected()
+        });
+        host.group_assistance(enabled, enabled).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            [h, p].iter().all(|a| {
+                a.group().assistance
+                    == Assistance {
+                        drafting: enabled,
+                        keep_together: enabled,
+                    }
+            })
+        });
+        host.group_ready(true).unwrap();
+        peer.group_ready(true).unwrap();
+        wait(&mut host, &mut peer, |h, _| h.group().can_start());
+        host.group_start().unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.ride_state().is_some() && p.ride_state().is_some()
+        });
+        if enabled {
+            // Establish material assistance before ending the first ride.
+            host.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
+            wait(&mut host, &mut peer, |h, p| {
+                h.group_feedback().together < -0.1 && p.group_feedback().together > 0.1
+            });
+        } else {
+            wait(&mut host, &mut peer, |h, p| {
+                h.ride_state().unwrap().telemetry.power == Some(Watts(300.0))
+                    && p.ride_state().unwrap().telemetry.power == Some(Watts(120.0))
+            });
+            let mut solo = [&host, &peer]
+                .map(|a| orqwa_physics::Motion::moving_at(a.ride_state().unwrap().speed));
+            let mut distances = [&host, &peer].map(|a| a.ride_state().unwrap().distance.0);
+            let step = Duration::from_millis(100);
+            for _ in 0..20 {
+                host.update(step);
+                peer.update(step);
+                for (id, app) in [&host, &peer].into_iter().enumerate() {
+                    let state = app.ride_state().unwrap();
+                    distances[id] += solo[id]
+                        .step(
+                            &app.rider_setup(),
+                            state.telemetry.power.unwrap(),
+                            orqwa_domain::units::GradePercent(0.0),
+                            MetersPerSecond(0.0),
+                            step,
+                        )
+                        .0;
+                    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+                    assert!((state.distance.0 - distances[id]).abs() < 1e-9);
+                    assert!((state.speed.0 - solo[id].speed().0).abs() < 1e-9);
+                    assert!(!app.ride.as_ref().unwrap().assisted);
+                }
+            }
+        }
+        host.group_leave();
+        peer.group_leave();
+        host.abort_ride();
+        peer.abort_ride();
+    }
 }
 
 #[test]
@@ -1105,6 +1238,7 @@ fn assistance_is_identical_for_organizers_friends_and_reassigned_slots() {
         assistance_step(&mut app, &mut snapshot, now, 1000);
         assert!((app.group_feedback().together - support).abs() < 1e-9);
         // The peer is now behind: the organizer must also receive braking.
+        app.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
         snapshot.organizer = me;
         snapshot.states[peer].as_mut().unwrap().0.distance = Meters(0.0);
         snapshot.states[peer].as_mut().unwrap().0.speed = MetersPerSecond(0.6);

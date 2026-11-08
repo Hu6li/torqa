@@ -1022,6 +1022,10 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Stable drafting and live assistance (R215): no abreast/overlap shelter, a smooth entry
   ramp, shared-time live comparisons, prediction/freshness covering ordinary delivery and
   filtered applied forces; ride traces cover jitter/loss without altering buffered playback
+- [x] Keep together direction and real-time motion (R233): the group middle determines the
+  allowed force direction before and after filtering; speed can only reduce its magnitude.
+  Real-time frame updates prevent slow-rendering drift, and trainer cancellation sends neutral
+  parameters without retaining sub-threshold assistance.
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
