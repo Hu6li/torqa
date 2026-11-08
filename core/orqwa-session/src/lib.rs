@@ -307,8 +307,17 @@ impl Ride {
     }
 
     /// Updates bounded local group assistance. Telemetry, samples and ERG targets retain the
-    /// rider's real power; normal trainer control throttling also applies to these changes.
+    /// rider's real power. Cancellation and direction changes bypass trainer throttling so
+    /// the last assisted command cannot outlive the applied effect.
     pub fn set_group_effect(&mut self, effect: GroupEffect) {
+        let previous = self.group_effect.grade_offset().0;
+        let next = effect.grade_offset().0;
+        if (previous < 0.0 && next >= 0.0)
+            || (previous > 0.0 && next <= 0.0)
+            || (self.group_effect.drag_share() < 1.0 && effect.drag_share() >= 1.0)
+        {
+            self.last_control = None;
+        }
         self.group_effect = effect;
     }
 
@@ -782,6 +791,46 @@ mod tests {
         group.set_group_effect(GroupEffect::default());
         let controls = pedal(&mut group, 200.0, 2);
         assert!(controls.iter().any(|c| matches!(c, TrainerControl::Simulation(p) if p.grade==GradePercent(0.0) && (p.cw.0-normal.cw.0).abs()<1e-9)));
+    }
+
+    #[test]
+    fn clearing_or_reversing_assistance_sends_the_trainer_update_without_threshold_or_delay() {
+        let config = RideConfig {
+            difficulty: Percent(100.0),
+            ..RideConfig::default()
+        };
+        for offset in [-0.099, -0.05, 0.05, 0.099] {
+            let mut ride = Ride::workout(Workout::ConstantPower(Watts(200.0)), config);
+            // A free step uses the same simulation path as a course, without an ERG target.
+            ride.change_workout(Workout::Structured {
+                plan: std::sync::Arc::new(orqwa_domain::workout::Plan {
+                    steps: vec![orqwa_domain::workout::Step {
+                        duration: Duration::from_secs(60),
+                        target: orqwa_domain::workout::Target::Free,
+                        cadence: None,
+                    }],
+                    ..Default::default()
+                }),
+                ftp: Watts(200.0),
+            });
+            ride.set_group_effect(GroupEffect::new(1.0, GradePercent(offset)));
+            let initial = ride.tick(Duration::from_millis(10)).unwrap();
+            assert!((grade_of(&initial) - offset).abs() < 1e-12);
+            ride.set_group_effect(GroupEffect::default());
+            let neutral = ride
+                .tick(Duration::from_millis(10))
+                .expect("cancellation sends immediately");
+            assert_eq!(grade_of(&neutral), 0.0);
+
+            ride.set_group_effect(GroupEffect::new(1.0, GradePercent(-offset)));
+            ride.resend_control();
+            ride.tick(Duration::from_millis(10)).unwrap();
+            ride.set_group_effect(GroupEffect::new(1.0, GradePercent(offset)));
+            let reversed = ride
+                .tick(Duration::from_millis(10))
+                .expect("direction changes send immediately");
+            assert!((grade_of(&reversed) - offset).abs() < 1e-12);
+        }
     }
 
     fn grade_of(control: &TrainerControl) -> f64 {

@@ -7,7 +7,7 @@
 #![allow(unsafe_code)]
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use godot::classes::image::Format as ImageFormat;
 use godot::classes::{Engine, INode, Image, Node, TranslationServer};
@@ -180,6 +180,7 @@ pub struct OrqwaApp {
     app: Option<App>,
     last_failure: VarDictionary,
     startup_failure: Option<Failure>,
+    updated_at: Instant,
 }
 
 #[godot_api]
@@ -209,6 +210,7 @@ impl INode for OrqwaApp {
             app,
             last_failure: VarDictionary::new(),
             startup_failure,
+            updated_at: Instant::now(),
         }
     }
 
@@ -225,7 +227,12 @@ impl INode for OrqwaApp {
         }
     }
 
-    fn process(&mut self, delta: f64) {
+    fn process(&mut self, _delta: f64) {
+        // Godot caps frame delta during slow rendering; the ride and network sample clock
+        // must both advance in real time, including while a rider's window stutters.
+        let now = Instant::now();
+        let elapsed = now.saturating_duration_since(self.updated_at);
+        self.updated_at = now;
         if let Some(failure) = self.startup_failure.take() {
             self.report_failure(&failure);
         }
@@ -233,7 +240,7 @@ impl INode for OrqwaApp {
             return;
         };
         app.set_calendar_year(current_calendar_year());
-        let events = app.update(Duration::from_secs_f64(delta.max(0.0)));
+        let events = app.update(elapsed);
         // A course imported from a file, or prepared offline, may not know its countries yet.
         if events.iter().any(|e| matches!(e, AppEvent::CourseAdded(_))) {
             app.fill_in_countries(false);

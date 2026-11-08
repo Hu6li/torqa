@@ -148,7 +148,7 @@ func _build_rules() -> void:
 	_drafting.tooltip_text = tr("Save effort when riding behind friends.") + "\n" + assisted
 	_together.text = tr("Keep together")
 	_together.tooltip_text = (
-		tr("Help everyone stay with the organizer while pedaling.") + "\n" + assisted
+		tr("Help everyone stay with the group while pedaling.") + "\n" + assisted
 	)
 	for option: CheckBox in [_drafting, _together]:
 		option.button_pressed = true

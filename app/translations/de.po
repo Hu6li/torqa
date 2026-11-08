@@ -2846,8 +2846,8 @@ msgstr "Windschatten aus"
 msgid "Drafting on"
 msgstr "Windschatten an"
 
-msgid "Help everyone stay with the organizer while pedaling."
-msgstr "Hilft allen beim Treten, bei der organisierenden Person zu bleiben."
+msgid "Help everyone stay with the group while pedaling."
+msgstr "Hilft allen beim Treten, bei der Gruppe zu bleiben."
 
 msgid "Keep together"
 msgstr "Gruppe zusammenhalten"

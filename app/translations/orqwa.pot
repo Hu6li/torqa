@@ -1760,7 +1760,7 @@ msgid "Heart-rate zones, the top of each as a share of the maximum heart rate"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
-msgid "Help everyone stay with the organizer while pedaling."
+msgid "Help everyone stay with the group while pedaling."
 msgstr ""
 
 #: app/ui/group_connection_dialog.gd

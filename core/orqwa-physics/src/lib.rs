@@ -36,9 +36,9 @@ impl Default for GroupEffect {
 }
 
 impl GroupEffect {
-    /// Critically damped keep-together spring: 2 gradient percentage points at a 50 m gap,
-    /// with relative-speed damping derived from gravity and that stiffness. The caller
-    /// removes its position dead zone and fades stale sources; this bounds the force.
+    /// Keep-together spring: 2 gradient percentage points at a 50 m gap. Relative speed
+    /// can reduce the restoring force to zero, never reverse it or increase its magnitude.
+    /// The caller removes its position dead zone and fades stale sources.
     #[must_use]
     pub fn band(gap: Meters, relative_speed: MetersPerSecond) -> GradePercent {
         const STIFFNESS: f64 = 2.0 / 50.0;
@@ -47,7 +47,10 @@ impl GroupEffect {
         }
         let frequency = (GRAVITY * STIFFNESS / 100.0).sqrt();
         let damping = 2.0 * frequency * 100.0 / GRAVITY;
-        GradePercent((-STIFFNESS * gap.0 + damping * relative_speed.0).clamp(-2.0, 2.0))
+        let restoring = -STIFFNESS * gap.0;
+        let offset =
+            (restoring + damping * relative_speed.0).clamp(restoring.min(0.0), restoring.max(0.0));
+        GradePercent(offset.clamp(-2.0, 2.0))
     }
 
     /// Limits aerodynamic shelter to 30% and the keep-together gradient to ±2 percentage points.
@@ -330,9 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn group_band_settles_without_overshooting_and_brakes_a_fast_catch_up() {
-        // At equal power and mass on flat ground the band should close a gap gently,
-        // rather than repeatedly shooting the rider past the organizer.
+    fn group_band_settles_toward_the_reference_without_reversing_the_restoring_force() {
         let setup = RiderSetup::default();
         let speed = 10.0;
         let power = Watts(
@@ -351,19 +352,37 @@ mod tests {
             while seconds < 300.0 {
                 let grade =
                     GroupEffect::band(Meters(gap), MetersPerSecond(motion.speed().0 - speed));
+                assert!(
+                    grade.0 * gap <= 0.0,
+                    "the band only pulls toward the reference"
+                );
                 let covered = motion.step(&setup, power, grade, MetersPerSecond(0.0), step);
                 let next = gap + speed * step.as_secs_f64() - covered.0;
-                assert!(next >= -0.01 && next <= gap + 0.001, "gap: {gap} -> {next}");
                 gap = next;
                 seconds += step.as_secs_f64();
             }
-            assert!(gap < 0.1, "band should settle: {gap}");
+            assert!(gap.abs() < 0.1, "band should settle: {gap}");
         }
-        assert!(GroupEffect::band(Meters(10.0), MetersPerSecond(2.0)).0 > 0.0);
+        assert_eq!(GroupEffect::band(Meters(10.0), MetersPerSecond(2.0)).0, 0.0);
         assert_eq!(
             GroupEffect::band(Meters(f64::NAN), MetersPerSecond(0.0)),
             GradePercent(0.0)
         );
+    }
+
+    #[test]
+    fn relative_speed_can_only_reduce_the_position_effect_to_zero() {
+        for gap in [-1000.0, -100.0, -10.0, 0.0, 10.0, 100.0, 1000.0] {
+            let stationary = GroupEffect::band(Meters(gap), MetersPerSecond(0.0)).0;
+            for relative_speed in [-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0] {
+                let effect = GroupEffect::band(Meters(gap), MetersPerSecond(relative_speed)).0;
+                assert!(
+                    effect * gap <= 0.0,
+                    "gap {gap}, relative speed {relative_speed}"
+                );
+                assert!(effect.abs() <= stationary.abs());
+            }
+        }
     }
 
     #[test]
