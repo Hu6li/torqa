@@ -19,7 +19,8 @@ climb below the visible part of the right column. Reaching it requires scrolling
 - Shorten the map and elevation profile, and reduce the gaps between panels.
 - Place the active climb immediately after the full-tour elevation profile.
 - Keep the climb title, followed by one body line in a uniform text size:
-  **112m and 1.4km to go at 7.1% average.** No arrow, emoji or separate timing line.
+  **Remaining: 112m ascent · 1.4km · 7.1% average**. No arrow, emoji or separate
+  timing line.
 - Rename the in-ride group panel to **Riders**, without a rider count, column
   headings or legend. Align names, watts, W/kg and gaps in columns, separated only
   by space: `Alex  265W  3.7 W/kg  5m ahead`. Keep **ahead** or **behind** on every
@@ -45,13 +46,14 @@ fixture as the starting point. The container uses an isolated application data
 directory and the ORQWA 0.6.1 GDExtension built during repository verification;
 the application source and assets are from revision `cb8e1f4a`.
 
-The final proposal's right column is 332 px wide, with 8 px between panels. Its
+The final proposal's right column is 350 px wide, with 8 px between panels. Its
 map, profile, climb and Riders panels are respectively 148, 110, 58 and 236 px
-tall; the last panel ends at y = 600 px. The render fixture asserts that each
-visible panel stays within the ride area; both saved images are 1280 × 720.
+tall; the last panel ends at y = 600 px. Both saved images are 1280 × 720.
 
-Validation passed: the full `scripts/check.sh` suite, wiki validation, the scratch
-fixture's GDScript lint/parse checks and the final render's panel bounds assertions.
+Before the final wording selection, validation passed: the full `scripts/check.sh`
+suite, wiki validation, the scratch fixture's GDScript lint/parse checks and render
+panel bounds assertions. The selected wording was rendered afterward; no further
+tests were run, as requested.
 
 The scratch fixture and render logs are retained in the task worktree's ignored
 `screenshots/ride-layout/` directory. The fixture can be copied back to
