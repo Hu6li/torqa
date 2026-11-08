@@ -724,6 +724,7 @@ impl Coordinator {
         }
         snapshot.reply.clear();
         snapshot.states.fill(None);
+        snapshot.latencies.fill(None);
         if self.standby {
             // Riding on after losing the organizer: the new one's clock arrives next.
             snapshot.workout_clock = None;

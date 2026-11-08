@@ -32,6 +32,15 @@ the nearer rider.
 
 ![Nameplates in the minimum window size](images/groups/rider-names-small.jpg)
 
+## Group connection ping
+
+Friends' ping appears beside their names in the roster. During a ride, it stays inside the
+Group Rides dialog (R235).
+
+| Normal window | Minimum window |
+|---|---|
+| ![Friends' ping in the group dialog](images/groups/window.jpg) | ![Ping at 1024 × 640](images/groups/ping-small.jpg) |
+
 ## Courses, setup and analysis
 
 Solo 3D and video courses can be continued across days. These captures use the implemented

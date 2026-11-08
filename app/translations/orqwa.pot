@@ -2615,6 +2615,14 @@ msgstr ""
 msgid "Phones and tablets with the old address can no longer control the ride"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Ping %d ms"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Ping —"
+msgstr ""
+
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd
 msgid "Plain facts"
 msgstr ""
@@ -2969,6 +2977,14 @@ msgstr ""
 
 #: app/ui/profile_form.gd
 msgid "Rough estimate without power or usable heart rate. Counts time even without pedalling."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Round-trip time from this friend to the organizer. Lower is better."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Round-trip time from you to the organizer. Lower is better."
 msgstr ""
 
 #: app/scenes/minimap.gd

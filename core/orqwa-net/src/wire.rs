@@ -43,6 +43,8 @@ pub(crate) enum Message {
     Rejoined(bool),
     /// What the organizer is choosing, for riders to fetch; none once put away (#418).
     Preview(Option<crate::activity::ContentId>),
+    /// Organizer-measured RTT per rider, in milliseconds; no peer addresses.
+    Latencies([Option<Duration>; MAX_RIDERS]),
 }
 
 pub(crate) async fn write(send: &mut SendStream, message: &Message) -> Result<(), LobbyError> {
@@ -139,6 +141,19 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
             rider(&mut bytes, who)?;
         }
         Message::Left(id) => bytes.extend_from_slice(&[4, id.value()]),
+        Message::Latencies(values) => {
+            bytes.push(22);
+            for value in values {
+                let millis = match value {
+                    None => u32::MAX,
+                    Some(value) if *value <= Duration::from_secs(60) => {
+                        u32::try_from(value.as_millis()).map_err(|_| LobbyError::Protocol)?
+                    }
+                    Some(_) => return Err(LobbyError::Protocol),
+                };
+                bytes.extend_from_slice(&millis.to_be_bytes());
+            }
+        }
         Message::Away(id) => bytes.extend_from_slice(&[18, id.value()]),
         Message::Back(id) => bytes.extend_from_slice(&[19, id.value()]),
         Message::Rejoined(entered) => bytes.extend_from_slice(&[20, u8::from(*entered)]),
@@ -360,6 +375,17 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
         }
         3 => Message::Joined(reader.id()?, reader.rider()?),
         4 => Message::Left(reader.id()?),
+        22 => {
+            let mut values = [None; MAX_RIDERS];
+            for value in &mut values {
+                let millis = u32::from_be_bytes(reader.take()?);
+                if millis > 60_000 && millis != u32::MAX {
+                    return Err(LobbyError::Protocol);
+                }
+                *value = (millis != u32::MAX).then(|| Duration::from_millis(u64::from(millis)));
+            }
+            Message::Latencies(values)
+        }
         18 => Message::Away(reader.id()?),
         19 => Message::Back(reader.id()?),
         20 => Message::Rejoined(match reader.byte()? {
@@ -448,6 +474,29 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
 mod tests {
     use super::*;
     use orqwa_domain::units::Kilograms;
+
+    #[test]
+    fn latency_controls_keep_slots_and_missing_values_and_refuse_bad_frames() {
+        let mut values = [None; MAX_RIDERS];
+        values[1] = Some(Duration::ZERO);
+        values[4] = Some(Duration::from_millis(245));
+        let bytes = encode(&Message::Latencies(values)).unwrap();
+        let Message::Latencies(decoded) = decode(&bytes).unwrap() else {
+            panic!("latencies");
+        };
+        assert_eq!(decoded, values);
+        for len in 0..bytes.len() {
+            assert!(decode(&bytes[..len]).is_err());
+        }
+        let mut extra = bytes;
+        extra.push(0);
+        assert!(decode(&extra).is_err());
+        let mut invalid = encode(&Message::Latencies(values)).unwrap();
+        invalid[2..6].copy_from_slice(&60_001_u32.to_be_bytes());
+        assert!(decode(&invalid).is_err());
+        values[1] = Some(Duration::from_secs(61));
+        assert!(encode(&Message::Latencies(values)).is_err());
+    }
 
     #[test]
     fn preparation_reports_carry_their_stage_and_a_percentage_up_to_100() {

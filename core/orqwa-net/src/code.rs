@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Older codes are incompatible with the current security contract.
-pub const VERSION: u8 = 14;
+pub const VERSION: u8 = 15;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;

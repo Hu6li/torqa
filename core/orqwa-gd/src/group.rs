@@ -72,6 +72,7 @@ pub(super) fn status(app: &App) -> VarDictionary {
             "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent)),
             // Their connection was lost and their seat is held while they reconnect (#434).
             "away"=>status.away[id],
+            "ping_ms"=>status.ping(id).map_or(-1,|rtt|i64::try_from(rtt.as_millis()).unwrap_or(i64::MAX).max(1)),
             // Heard speaking now; this rider too, while their microphone sends speech.
             "speaking"=>status.speaking[id],
             // Standing by to take over if the organizer is lost (#426).

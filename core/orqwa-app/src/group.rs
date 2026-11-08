@@ -15,7 +15,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 pub mod connection;
 mod handover;
@@ -255,6 +255,9 @@ pub struct Snapshot {
     pub workout_clock: Option<WorkoutClock>,
     /// Latest host-accepted samples, including our own echo, and local arrival times.
     pub states: [Option<(RiderState, Instant)>; MAX_RIDERS],
+    /// Recent round-trip times for each rider's connection to the organizer (R235).
+    /// The organizer's own slot is empty; a joiner's own slot measures their organizer link.
+    pub latencies: [Option<Duration>; MAX_RIDERS],
     /// Diagnostic details under a translated error caption.
     pub error: String,
     /// Latest classified failure, emitted once through the application's normal failure events.
@@ -357,6 +360,7 @@ impl Default for Snapshot {
             entry: None,
             workout_clock: None,
             states: [None; MAX_RIDERS],
+            latencies: [None; MAX_RIDERS],
             error: String::new(),
             failure: None,
             failure_revision: 0,
@@ -391,6 +395,27 @@ impl Default for Snapshot {
     }
 }
 impl Snapshot {
+    /// A friend's current connection RTT for the roster (R235), never this rider's own row.
+    /// The organizer's row uses our organizer link; other rows use that friend's link.
+    #[must_use]
+    pub fn ping(&self, id: usize) -> Option<Duration> {
+        if id >= MAX_RIDERS
+            || id == usize::from(self.me)
+            || self.reconnecting.is_some()
+            || self.roster[id].is_none()
+            || self.away[id]
+            || matches!(self.phase, Phase::Idle | Phase::Ended | Phase::Failed)
+        {
+            return None;
+        }
+        let link = if id == usize::from(self.organizer) {
+            usize::from(self.me)
+        } else {
+            id
+        };
+        self.latencies[link]
+    }
+
     /// Tells the organizer why their pasted reply added nobody (R195).
     pub(crate) fn refuse(&mut self, refusal: Refusal) {
         self.refusal = refusal;

@@ -22,11 +22,13 @@ use crate::wire::{self, Message};
 
 mod activity;
 pub(crate) mod entry;
+mod latency;
 mod replacement;
 pub(crate) mod timing;
 use activity::Activities;
 pub use activity::SharedActivity;
 pub use entry::RideProgress;
+use latency::Latency;
 use replacement::Prepared;
 pub use replacement::Replacement;
 use timing::Timeline;
@@ -338,6 +340,7 @@ enum Command {
 
 /// The host's lobby owner. Dropping it aborts its actor, peer tasks and transport listeners.
 pub struct HostLobby {
+    latency: Latency,
     organizer: RiderId,
     root: RideId,
     epoch: u64,
@@ -402,6 +405,7 @@ impl HostLobby {
             owner.0.suspend();
         }
         let mut tasks = JoinSet::new();
+        let latency = Latency::new();
         tasks.spawn(host_actor(
             host,
             me,
@@ -417,9 +421,11 @@ impl HostLobby {
             organizer,
             prepared,
             (root, epoch),
+            latency.clone(),
         ));
         let include_local = invite.route == RouteHash::LOBBY;
         Ok(Self {
+            latency,
             organizer,
             root,
             epoch,
@@ -437,6 +443,13 @@ impl HostLobby {
     #[must_use]
     pub const fn organizer(&self) -> RiderId {
         self.organizer
+    }
+
+    /// Recent round-trip times between connected riders and the organizer (R235).
+    /// The organizer's own slot and links without a fresh reading are `None`.
+    #[must_use]
+    pub fn latencies(&self) -> [Option<Duration>; MAX_RIDERS] {
+        self.latency.values()
     }
 
     /// Logical ride identity, retained through planned handover.
@@ -655,6 +668,7 @@ impl HostLobby {
 
 /// The joiner's lobby owner. Losing it closes its connection and owned endpoint.
 pub struct JoinerLobby {
+    latency: Latency,
     me: RiderId,
     organizer: RiderId,
     root: RideId,
@@ -793,7 +807,9 @@ impl JoinerLobby {
         let (readiness, ready) = mpsc::channel(8);
         let current = Arc::new(Mutex::new(connection.clone()));
         let retry = Arc::new(Notify::new());
+        let latency = Latency::new();
         let link = Link {
+            latency: latency.clone(),
             controls: control,
             states,
             local,
@@ -820,6 +836,7 @@ impl JoinerLobby {
         };
         tasks.spawn(supervise(link, connection, send, recv, rejoin));
         Ok(Self {
+            latency,
             me,
             organizer,
             root,
@@ -844,6 +861,16 @@ impl JoinerLobby {
     #[must_use]
     pub const fn me(&self) -> RiderId {
         self.me
+    }
+    /// Recent organizer-measured round-trip times for the group's connected riders (R235).
+    /// The organizer's slot is `None`; this rider's slot measures their link to the organizer.
+    #[must_use]
+    pub fn latencies(&self) -> [Option<Duration>; MAX_RIDERS] {
+        if current(&self.connection).is_closed() {
+            [None; MAX_RIDERS]
+        } else {
+            self.latency.values()
+        }
     }
     /// The current organizer, authenticated by this connection's certificate pin.
     #[must_use]
@@ -989,6 +1016,7 @@ fn lost(connection: &Connection, stalled: bool) -> bool {
 /// What the joiner's actor keeps across reconnections: its channels to the lobby owner and
 /// what the owner was last told about the group.
 struct Link {
+    latency: Latency,
     controls: mpsc::Sender<LobbyEvent>,
     states: watch::Sender<States>,
     local: watch::Receiver<Option<RiderState>>,
@@ -1119,6 +1147,7 @@ async fn supervise(
         let until = Instant::now() + RECONNECT_WINDOW;
         link.voice.0.interrupt();
         link.states.send_replace([None; MAX_RIDERS]);
+        link.latency.update([None; MAX_RIDERS]);
         if event(&link.controls, LobbyEvent::Reconnecting { until }).is_err() {
             return;
         }
@@ -1391,6 +1420,7 @@ async fn host_actor(
     organizer: RiderId,
     prepared: Option<Prepared>,
     authority: (RideId, u64),
+    latency: Latency,
 ) {
     let result = host_loop(
         &mut host,
@@ -1407,6 +1437,7 @@ async fn host_actor(
         organizer,
         prepared,
         authority,
+        &latency,
     )
     .await;
     if let Err(error) = result {
@@ -1493,6 +1524,7 @@ async fn host_loop(
     organizer: RiderId,
     mut prepared: Option<Prepared>,
     authority: (RideId, u64),
+    latency: &Latency,
 ) -> Result<(), LobbyError> {
     let shared = Arc::new(Mutex::new(Mailbox {
         inbox: StateInbox::new(Instant::now().into_std()),
@@ -1527,6 +1559,8 @@ async fn host_loop(
     let mut committed: Option<crate::handover::Message> = None;
     let mut ticker = interval(STATE_EVERY);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut ping_tick = interval(latency::EVERY);
+    ping_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             command = commands.recv() => match command {
@@ -1709,6 +1743,7 @@ async fn host_loop(
                     };
                     let slot = usize::from(id.value());
                     activities.joined(id)?;
+                    latency.clear(id);
                     let member = lock(&shared).inbox.join(id, Instant::now().into_std())?;
                     voice.join(member,Some(connection.clone()));
                     broadcast(&peers, &Message::Joined(id, rider.clone()));
@@ -1730,6 +1765,7 @@ async fn host_loop(
                     let slot = usize::from(member.rider().value());
                     if let Some(peer) = peers[slot].take_if(|p| p.member == member) {
                         let id = member.rider();
+                        latency.clear(id);
                         voice.leave(member);
                         lock(&shared).inbox.remove(member);
                         let entered = std::mem::take(&mut lock(&shared).entered[slot]);
@@ -1751,6 +1787,13 @@ async fn host_loop(
                     }
                 }
                 _ => {}
+            },
+            _ = ping_tick.tick(), if activities.enabled && prepared.as_ref().is_none_or(|prepared| prepared.active) => {
+                let values = std::array::from_fn(|slot| peers[slot].as_ref()
+                    .filter(|peer| !peer.connection.is_closed())
+                    .map(|peer| peer.connection.rtt().min(latency::MAX)));
+                latency.update(values);
+                broadcast(&peers, &Message::Latencies(values));
             },
             _ = ticker.tick() => {
                 if previews.has_changed().unwrap_or(false) {activities.show(previews.borrow_and_update().clone());}
@@ -1928,6 +1971,7 @@ async fn client_actor(
     let (me, organizer, app_lobby, standby) =
         (link.me, link.organizer, link.app_lobby, link.standby);
     let Link {
+        latency,
         controls,
         states,
         local,
@@ -2015,12 +2059,15 @@ async fn client_actor(
                             event(controls,LobbyEvent::Preparation {id,revision,stage,percent})?;
                         }
                         Message::VoiceRoster(epochs) => voice.0.install_epochs(epochs)?,
+                        Message::Latencies(values) if app_lobby && prepared.is_none() => latency.update(values),
                         Message::Joined(id, rider) if (app_lobby || start.is_none()) && roster[usize::from(id.value())].is_none() && id != me => {
+                            latency.clear(id);
                             let index = usize::from(id.value()); members[index] = Some(inbox.join(id, Instant::now().into_std())?);
                             voice.0.join(members[index].ok_or(LobbyError::Protocol)?,None);
                             roster[index] = Some(rider.clone()); event(controls, LobbyEvent::Joined { id, rider })?;
                         }
                         Message::Left(id) if id != organizer && id != me => {
+                            latency.clear(id);
                             // A held seat has no member left to remove when it is given up.
                             let index = usize::from(id.value());
                             match members[index].take() {
@@ -2031,12 +2078,14 @@ async fn client_actor(
                             away[index] = false; roster[index] = None; event(controls, LobbyEvent::Left { id })?;
                         }
                         Message::Away(id) if app_lobby && id != organizer && id != me && !away[usize::from(id.value())] => {
+                            latency.clear(id);
                             let index = usize::from(id.value());
                             let member = members[index].take().ok_or(LobbyError::Protocol)?;
                             voice.0.leave(member); inbox.remove(member);
                             away[index] = true; event(controls, LobbyEvent::Away { id })?;
                         }
                         Message::Back(id) if app_lobby && id != me && away[usize::from(id.value())] => {
+                            latency.clear(id);
                             let index = usize::from(id.value()); members[index] = Some(inbox.join(id, Instant::now().into_std())?);
                             voice.0.join(members[index].ok_or(LobbyError::Protocol)?,None);
                             away[index] = false; event(controls, LobbyEvent::Back { id })?;
@@ -2138,6 +2187,82 @@ async fn client_actor(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn all_riders_see_organizer_measured_pings_without_ride_state() {
+        let organizer = RiderId::new(2).unwrap();
+        let host = Host::open("Host", "Choose together", RouteHash::LOBBY, &options())
+            .await
+            .unwrap();
+        let mut host = HostLobby::open_as(host, rider("Host"), organizer).unwrap();
+        let mut anna = join(&host, "Anna").await;
+        let ben = join(&host, "Ben").await;
+        let a = usize::from(anna.me().value());
+        let b = usize::from(ben.me().value());
+        timeout(Duration::from_secs(3), async {
+            while anna.latencies()[a].is_none()
+                || anna.latencies()[b].is_none()
+                || ben.latencies()[a].is_none()
+                || ben.latencies()[b].is_none()
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        for values in [host.latencies(), anna.latencies(), ben.latencies()] {
+            assert!(values[a].is_some());
+            assert!(values[b].is_some());
+            assert_eq!(values[2], None);
+            assert_eq!(values.iter().flatten().count(), 2);
+        }
+        let gone = ben.me();
+        ben.close().await;
+        host_event(
+            &mut host,
+            |event| matches!(event, LobbyEvent::Left {id} if *id == gone),
+        )
+        .await;
+        client_event(
+            &mut anna,
+            |event| matches!(event, LobbyEvent::Left {id} if *id == gone),
+        )
+        .await;
+        assert_eq!(host.latencies()[b], None);
+        assert_eq!(anna.latencies()[b], None);
+        lose(&anna);
+        assert_eq!(anna.latencies(), [None; MAX_RIDERS]);
+        host_event(
+            &mut host,
+            |event| matches!(event, LobbyEvent::Away {id} if usize::from(id.value()) == a),
+        )
+        .await;
+        assert_eq!(host.latencies()[a], None);
+        drop(anna);
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn peers_cannot_supply_latency_tables() {
+        let path = directory("forged-pings");
+        let (mut host, _) = workout_lobby(&path).await;
+        let (connection, mut send, _recv, id) = raw_join(&host).await;
+        wire::write(
+            &mut send,
+            &Message::Latencies([Some(Duration::from_millis(1)); MAX_RIDERS]),
+        )
+        .await
+        .unwrap();
+        host_event(&mut host, |event| matches!(event, LobbyEvent::Failed {peer: Some(peer), error, ..} if *peer == id && matches!(error.as_ref(), LobbyError::Protocol))).await;
+        host_event(
+            &mut host,
+            |event| matches!(event, LobbyEvent::Left {id: peer} if *peer == id),
+        )
+        .await;
+        assert_eq!(host.latencies()[usize::from(id.value())], None);
+        drop(connection);
+        host.close().await;
+        std::fs::remove_dir_all(path).unwrap();
+    }
     use super::*;
     use crate::discovery::GatherOptions;
     use crate::link::ConnectOptions;

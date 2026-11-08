@@ -129,6 +129,7 @@ pub fn stun(data: &[u8]) {
 
 /// Valid inputs for each property, as starting points for the fuzzer: `(target, bytes)`.
 #[must_use]
+#[allow(clippy::too_many_lines)] // one seed catalogue covers every bounded control and fuzz target
 pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
     let invite = invite();
     let reply = Reply {
@@ -169,6 +170,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Rejoined(true),
         Message::Preview(Some(preview_id())),
         Message::Preview(None),
+        Message::Latencies(latency_seed()),
     ];
     let handover = [
         crate::handover::Message::Offer {
@@ -256,6 +258,13 @@ fn invite() -> Invite {
         nat: NatObservation::SameMapping,
         setup: Setup::new(ConnectionMode::Mixed, true),
     }
+}
+
+fn latency_seed() -> [Option<Duration>; crate::state::MAX_RIDERS] {
+    let mut values = [None; crate::state::MAX_RIDERS];
+    values[1] = Some(Duration::from_millis(45));
+    values[2] = Some(Duration::ZERO);
+    values
 }
 
 fn selection_seed() -> Selection {

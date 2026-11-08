@@ -385,6 +385,21 @@ bounded by the existing policy, port and count limits, and it comes from the pri
 the invitation is already trusted through. The CLI maps `--lan` to the mixed choice, so the
 app can still join its invitations.
 
+### Connection latency in the roster — 2026-11-08
+
+R235 uses QUIC's smoothed round-trip estimate on each admitted organizer link. Once per
+second the active app lobby shares a fixed eight-slot table over its existing authenticated
+control streams; riders cannot submit tables. Entries are bounded integer milliseconds
+(0–60,000), with a distinct unavailable sentinel, and contain no addresses. Receivers retain
+only the latest table outside the application event queue and expire it after three seconds.
+Disconnects, membership reuse and replacement authorities clear old readings. Prepared
+fallback links do not publish readings until active. No additional endpoint or probe is added.
+
+The app's roster maps each friend to their own organizer link; the organizer row uses the
+viewer's link to them. Self rows have no reading. The roster is shared by the lobby and the
+in-ride Group Rides dialog; the map panel, HUD and nameplates receive no ping field.
+Protocol/invitation version 15 and ALPN `orqwa-group/15` require matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

@@ -692,22 +692,23 @@ async fn run_inner(
                     let index=usize::from(id.value());
                     snapshot.admitting = snapshot.admitting.saturating_sub(1);
                     snapshot.generations[index]=snapshot.generations[index].checked_add(1).ok_or("Rider membership exhausted.")?;
-                    snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None;
+                    snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None; snapshot.latencies[index]=None;
                     handover.membership(&session,snapshot);
                 }
                 Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
-                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.away[index] = false;
+                    let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.latencies[index] = None; snapshot.away[index] = false;
                     handover.membership(&session,snapshot);}
                 // A rider whose connection was lost keeps their seat while reconnecting (#434).
-                Some(LobbyEvent::Away {id}) => {let index = usize::from(id.value()); snapshot.away[index] = true; snapshot.states[index] = None;}
-                Some(LobbyEvent::Back {id}) => snapshot.away[usize::from(id.value())] = false,
+                Some(LobbyEvent::Away {id}) => {let index = usize::from(id.value()); snapshot.away[index] = true; snapshot.states[index] = None; snapshot.latencies[index] = None;}
+                Some(LobbyEvent::Back {id}) => {let index = usize::from(id.value()); snapshot.away[index] = false; snapshot.latencies[index] = None;},
                 Some(LobbyEvent::Reconnecting {until}) => {
                     if handover.reconnecting(&session,snapshot) {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}
                     if !handover.old_lost {
                         // Others' positions and the group's workout clock come back with the
                         // connection; the microphone stays as it was.
                         snapshot.reconnecting = Some(until.into_std());
+                        snapshot.latencies.fill(None);
                         snapshot.states.fill(None); snapshot.workout_clock = None;
                     }
                 }
@@ -843,6 +844,14 @@ async fn run_inner(
                 _=>{},
             },
             _ = ticker.tick() => {
+                snapshot.latencies = if snapshot.reconnecting.is_some() || handover.old_lost {
+                    [None; orqwa_net::state::MAX_RIDERS]
+                } else {
+                    match &session { Session::Host(lobby) => lobby.latencies(), Session::Join(lobby) => lobby.latencies() }
+                };
+                for (id, value) in snapshot.latencies.iter_mut().enumerate() {
+                    if snapshot.roster[id].is_none() || snapshot.away[id] { *value = None; }
+                }
                 // A standby is background work: when it fails, it is prepared again later.
                 if let Err(error) = handover.tick(&session,snapshot) {
                     tracing::debug!(%error, "fallback organizer standby failed");
@@ -922,6 +931,7 @@ fn end(snapshot: &mut Snapshot) {
     snapshot.start = None;
     snapshot.phase = Phase::Ended;
     snapshot.states.fill(None);
+    snapshot.latencies.fill(None);
     for (index, rider) in snapshot.roster.iter_mut().enumerate() {
         if index != usize::from(snapshot.me) {
             *rider = None;

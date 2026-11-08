@@ -7,6 +7,46 @@ use orqwa_net::code::{ConnectionMode, Setup};
 use std::path::Path;
 use std::time::Duration;
 
+#[test]
+fn roster_ping_uses_each_friends_organizer_link_and_hides_unavailable_readings() {
+    let mut snapshot = Snapshot {
+        phase: Phase::Riding,
+        me: 1,
+        organizer: 2,
+        ..Snapshot::default()
+    };
+    for id in 0..3 {
+        snapshot.roster[id] = Some(Rider {
+            name: format!("Rider {id}"),
+            mass: Kilograms(83.0),
+            weight: Kilograms(75.0),
+            avatar: Avatar::Female,
+        });
+    }
+    snapshot.latencies[0] = Some(Duration::from_millis(250));
+    snapshot.latencies[1] = Some(Duration::from_millis(70));
+    assert_eq!(snapshot.ping(0), Some(Duration::from_millis(250)));
+    assert_eq!(snapshot.ping(1), None, "no self ping");
+    assert_eq!(
+        snapshot.ping(2),
+        Some(Duration::from_millis(70)),
+        "our link to the organizer"
+    );
+    assert_eq!(snapshot.ping(3), None);
+    assert_eq!(snapshot.ping(MAX_RIDERS), None);
+    snapshot.away[0] = true;
+    assert_eq!(snapshot.ping(0), None);
+    snapshot.reconnecting = Some(Instant::now());
+    assert_eq!(snapshot.ping(2), None);
+    snapshot.reconnecting = None;
+    snapshot.me = 2;
+    snapshot.host = true;
+    assert_eq!(snapshot.ping(2), None);
+    assert_eq!(snapshot.ping(1), Some(Duration::from_millis(70)));
+    snapshot.phase = Phase::Ended;
+    assert_eq!(snapshot.ping(1), None);
+}
+
 struct Directory(PathBuf);
 impl Directory {
     fn new() -> Self {
