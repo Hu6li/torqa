@@ -963,6 +963,16 @@ func _on_ride_finished() -> void:
 	_finish_ride()
 
 
+## Close ride windows when the core has saved this activity and returned the group.
+func return_to_lobby() -> void:
+	_finished = true
+	_settings_dialog.hide()
+	_continuation_dialog.hide()
+	_group_window.hide()
+	_assistance.show_feedback({})
+	_moment_card.clear()
+
+
 func _finish_ride(remember: bool = false) -> void:
 	_finished = true
 	_assistance.show_feedback({})

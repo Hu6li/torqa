@@ -71,6 +71,12 @@ func refresh() -> void:
 		_analysis.refresh()
 
 
+## Open the connected group again after an activity ends.
+func show_group_lobby() -> void:
+	_tabs.current_tab = Tab.GROUP_RIDES
+	_group.refresh()
+
+
 ## The ride options of the course being ridden, e.g. to show them in the ride.
 func ride_options() -> Dictionary:
 	return _detail.ride_options()

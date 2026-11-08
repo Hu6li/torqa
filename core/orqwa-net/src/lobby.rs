@@ -88,6 +88,11 @@ pub enum Stage {
 pub enum LobbyEvent {
     /// The host selected new content; previous local preparation is obsolete.
     Selection(crate::activity::Selection),
+    /// The organizer ended this revision; memberships and voice remain connected.
+    Lobby {
+        /// Last ended selection; later activities must use a greater revision.
+        revision: u64,
+    },
     /// What the organizer is choosing, to fetch with [`crate::content::fetch_preview`]
     /// (#418); none once it is shared or put away, and none after the countdown.
     Preview(Option<crate::activity::ContentId>),
@@ -253,7 +258,9 @@ impl Events {
                 self.active[usize::from(id.value())] = false;
                 self.pending[usize::from(id.value())] = None;
             }
-            LobbyEvent::Reconnecting { .. } => self.pending = [None; MAX_RIDERS],
+            LobbyEvent::Reconnecting { .. } | LobbyEvent::Lobby { .. } => {
+                self.pending = [None; MAX_RIDERS];
+            }
             _ => {}
         }
         event
@@ -323,6 +330,7 @@ fn events(
 enum Command {
     Admit(Reply, oneshot::Sender<Result<(), LobbyError>>),
     Start(Duration, oneshot::Sender<Result<Instant, LobbyError>>),
+    End(u64, oneshot::Sender<Result<(), LobbyError>>),
     Select(SharedActivity, oneshot::Sender<Result<(), LobbyError>>),
     Ready(u64, bool, oneshot::Sender<Result<(), LobbyError>>),
     PeerReady(Membership, u64, bool),
@@ -612,6 +620,18 @@ impl HostLobby {
             .map_err(|_| LobbyError::Lost)?;
         receive.await.map_err(|_| LobbyError::Lost)?
     }
+    /// Ends the current activity for everyone, preserving connections and voice.
+    ///
+    /// # Errors
+    /// Returns [`LobbyError`] for an obsolete revision, inactive activity or unavailable queue.
+    pub async fn end_activity(&self, revision: u64) -> Result<(), LobbyError> {
+        let (send, receive) = oneshot::channel();
+        self.commands
+            .try_send(Command::End(revision, send))
+            .map_err(|_| LobbyError::Lost)?;
+        receive.await.map_err(|_| LobbyError::Lost)?
+    }
+
     /// Pauses or resumes the shared workout clock while personal safety pauses stay local.
     ///
     /// # Errors
@@ -1164,6 +1184,7 @@ async fn supervise(
 
 struct Mailbox {
     inbox: StateInbox,
+    revision: u64,
     start: Option<Instant>,
     entered: [bool; MAX_RIDERS],
     active: bool,
@@ -1190,6 +1211,24 @@ fn peer_elapsed(start: Option<Instant>) -> Option<Duration> {
         Some(ahead) if ahead <= crate::state::MAX_FUTURE => Some(Duration::ZERO),
         Some(_) => None,
     }
+}
+
+// App connections outlive their activities. Bind disposable motion to its selection so
+// packets still in flight cannot move a rider on the next course. CLI rides use revision 0.
+fn state_datagram(state: RiderState, id: RiderId, revision: u64) -> Result<Vec<u8>, LobbyError> {
+    let mut bytes = state.datagram(id)?.to_vec();
+    if revision > 0 {
+        bytes.extend(revision.to_be_bytes());
+    }
+    Ok(bytes)
+}
+
+fn activity_state(bytes: &[u8], revision: u64) -> Option<&[u8]> {
+    if revision == 0 {
+        return Some(bytes);
+    }
+    let boundary = bytes.len().checked_sub(8)?;
+    (bytes[boundary..] == revision.to_be_bytes()).then_some(&bytes[..boundary])
 }
 
 fn running(at: Instant) -> Result<Message, LobbyError> {
@@ -1528,6 +1567,9 @@ async fn host_loop(
 ) -> Result<(), LobbyError> {
     let shared = Arc::new(Mutex::new(Mailbox {
         inbox: StateInbox::new(Instant::now().into_std()),
+        revision: prepared
+            .as_ref()
+            .map_or(0, |p| p.replacement.activity.selection.revision),
         start: prepared
             .as_ref()
             .map(|prepared| Instant::from_std(prepared.replacement.start)),
@@ -1574,6 +1616,7 @@ async fn host_loop(
                     if away.iter().any(Option::is_some) { let _ = result.send(Err(crate::activity::ActivityError::NotReady.into())); continue; }
                     if let Err(error) = activities.start() { let _ = result.send(Err(error)); continue; }
                     let at = Instant::now() + countdown;
+                    drop(local.borrow_and_update());
                     lock(&shared).start = Some(at);
                     if let Some(selected) = activities.selected.borrow().as_ref().filter(|selected| selected.selection.workout.is_some()) {
                         timeline = Some(Timeline::new(selected.selection.revision, at.into_std()));
@@ -1589,8 +1632,28 @@ async fn host_loop(
                 Some(Command::Select(selected,result)) => {
                     let answer = activities.select(selected.clone());
                     if answer.is_ok() {
+                        lock(&shared).revision = selected.selection.revision;
                         broadcast(&peers,&Message::Selection(selected.selection.clone()));
                         event(controls,LobbyEvent::Selection(selected.selection))?;
+                    }
+                    let _ = result.send(answer);
+                }
+                Some(Command::End(revision, result)) => {
+                    let answer = activities.end(revision);
+                    if answer.is_ok() {
+                        {
+                            let mut mailbox = lock(&shared);
+                            mailbox.start = None;
+                            mailbox.entered.fill(false);
+                            mailbox.inbox.clear_states();
+                            states.send_replace([None; MAX_RIDERS]);
+                        }
+                        for held in away.iter_mut().flatten() {held.entered = false;}
+                        timeline = None;
+                        clock.send_replace(None);
+                        drop(local.borrow_and_update());
+                        broadcast(&peers, &Message::Lobby(revision));
+                        event(controls, LobbyEvent::Lobby {revision})?;
                     }
                     let _ = result.send(answer);
                 }
@@ -1928,9 +1991,13 @@ async fn serve_peer(
             },
             changed = states.changed() => {
                 changed.map_err(|_| LobbyError::Lost)?;
+                let mailbox = lock(&shared);
                 let snapshot = *states.borrow_and_update();
                 for (id, state) in snapshot.iter().enumerate().filter_map(|(id,state)| state.map(|state| (rider_id(id), state))) {
-                    if id != member.rider() || app_lobby { connection.send_datagram(&state.datagram(id)?)?; }
+                    if id != member.rider() || app_lobby {
+                        let revision = if app_lobby {mailbox.revision} else {0};
+                        connection.send_datagram(&state_datagram(state,id,revision)?)?;
+                    }
                 }
             },
             bytes = connection.read_datagram() => {
@@ -1942,9 +2009,10 @@ async fn serve_peer(
                     continue;
                 }
                 let mut mailbox = lock(&shared);
-                let elapsed = peer_elapsed(mailbox.start).ok_or(LobbyError::Protocol)?;
+                let Some(bytes) = activity_state(&bytes, if app_lobby {mailbox.revision} else {0}) else {continue;};
+                let Some(elapsed) = peer_elapsed(mailbox.start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
                 if !mailbox.entered[usize::from(member.rider().value())] { return Err(LobbyError::Protocol); }
-                mailbox.inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?;
+                mailbox.inbox.ingest(member, bytes, elapsed, Instant::now().into_std())?;
             },
             result = readers.join_next() => return Err(reader_result(result)),
             stream = connection.accept_bi() => {
@@ -2047,6 +2115,13 @@ async fn client_actor(
                     count = count.checked_add(1).filter(|n| *n <= 64).ok_or(LobbyError::Protocol)?;
                     match message.ok_or(LobbyError::Lost)? {
                         Message::Rejoined(was_entered) if !rejoined => {rejoined = true; entered = was_entered;}
+                        Message::Lobby(revision) if app_lobby && revision > 0 && revision >= selection_revision => {
+                            start = None; selection_revision = revision; workout_sequence = 0;
+                            late = false; entered = false; requested = None;
+                            inbox.clear_states(); states.send_replace([None; MAX_RIDERS]);
+                            clock.send_replace(None); drop(local.borrow_and_update());
+                            event(controls,LobbyEvent::Lobby {revision})?;
+                        }
                         Message::Selection(selection) if app_lobby && start.is_none() && selection.revision>selection_revision => {
                             selection_revision = selection.revision; event(controls,LobbyEvent::Selection(selection))?;
                         }
@@ -2091,6 +2166,7 @@ async fn client_actor(
                             away[index] = false; event(controls, LobbyEvent::Back { id })?;
                         }
                         Message::Start(millis) if start.is_none() => {
+                            drop(local.borrow_and_update());
                             let at = Instant::now() + Duration::from_millis(u64::from(millis)).saturating_sub(connection.rtt()/2);
                             entered = true; start = Some(at); event(controls, LobbyEvent::Start { at })?;
                         }
@@ -2149,18 +2225,19 @@ async fn client_actor(
                     }
                     if packets == 0 { continue; } packets -= 1;
                     if prepared.is_some() {continue;}
+                    let Some(bytes) = activity_state(&bytes, if app_lobby {selection_revision} else {0}) else {continue;};
                     let id = RiderId::new(*bytes.get(1).ok_or(LobbyError::Protocol)?)?;
                     let Some(elapsed) = peer_elapsed(start) else {if app_lobby {continue;} return Err(LobbyError::Protocol);};
                     if id == me && !app_lobby { return Err(LobbyError::Protocol); }
                     // A datagram sent before a reliable departure may arrive after it.
-                    if let Some(member) = members[usize::from(id.value())] { inbox.ingest(member, &bytes, elapsed, Instant::now().into_std())?; }
+                    if let Some(member) = members[usize::from(id.value())] { inbox.ingest(member, bytes, elapsed, Instant::now().into_std())?; }
                 },
                 _ = ticker.tick() => if let Some(elapsed) = elapsed(start) {
                     if entered && local.has_changed().unwrap_or(false)
                         && let Some(state) = *local.borrow_and_update() {
                             let bytes = state.datagram(me)?;
                             RiderState::from_datagram(&bytes, me, elapsed)?;
-                            connection.send_datagram(&bytes)?;
+                            connection.send_datagram(&state_datagram(state,me,if app_lobby {selection_revision} else {0})?)?;
                     }
                     states.send_replace(inbox.drain(Instant::now().into_std()));
                 },
@@ -2861,6 +2938,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn successive_activities_keep_connections_and_reject_previous_activity_motion() {
+        let path = directory("reuse-lobby");
+        let (mut host, mut selection) = workout_lobby(&path).await;
+        let mut peer = join(&host, "Anna").await;
+        let connection = current(&peer.connection).clone();
+        for revision in 1..=2 {
+            selection.revision = revision;
+            host.select(SharedActivity {
+                selection: selection.clone(),
+                course: None,
+                workout: Some(path.join("source.oqw")),
+            })
+            .await
+            .unwrap();
+            client_event(
+                &mut peer,
+                |e| matches!(e, LobbyEvent::Selection(s) if s.revision == revision),
+            )
+            .await;
+            assert!(
+                host.start(Duration::from_secs(1)).await.is_err(),
+                "fresh readiness is required"
+            );
+            host.ready(revision, true).await.unwrap();
+            peer.ready(revision, true).unwrap();
+            host_event(
+                &mut host,
+                |e| matches!(e, LobbyEvent::Readiness {id,ready:true,..} if *id == peer.me()),
+            )
+            .await;
+            let at = host.start(Duration::from_secs(1)).await.unwrap();
+            client_event(&mut peer, |e| matches!(e, LobbyEvent::Start { .. })).await;
+            tokio::time::sleep_until(at + Duration::from_millis(350)).await;
+            if revision == 2 {
+                assert!(
+                    host.end_activity(1).await.is_err(),
+                    "a delayed end cannot stop the next ride"
+                );
+                connection
+                    .send_datagram(
+                        &state_datagram(
+                            RiderState {
+                                at: Duration::from_millis(200),
+                                ..RiderState::default()
+                            },
+                            peer.me(),
+                            1,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            let fresh = RiderState {
+                at: Duration::from_millis(100),
+                ..RiderState::default()
+            };
+            peer.send_state(fresh).unwrap();
+            host_event(&mut host, |e| matches!(e, LobbyEvent::State {id,state} if *id == peer.me() && state.at == fresh.at)).await;
+            connection
+                .send_datagram(&state_datagram(fresh, peer.me(), revision).unwrap())
+                .unwrap();
+            host.end_activity(revision).await.unwrap();
+            client_event(
+                &mut peer,
+                |e| matches!(e, LobbyEvent::Lobby {revision:r} if *r == revision),
+            )
+            .await;
+        }
+        // Rejoining learns the end even if there is no next selection yet.
+        lose(&peer);
+        client_event(&mut peer, |e| matches!(e, LobbyEvent::Reconnected)).await;
+        client_event(&mut peer, |e| {
+            matches!(e, LobbyEvent::Lobby { revision: 2 })
+        })
+        .await;
+        peer.close().await;
+        host.close().await;
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
     async fn a_lost_rider_keeps_the_start_waiting_until_back_or_removed_but_a_goodbye_frees_the_seat()
      {
         let path = directory("held-seat");
@@ -3471,37 +3629,37 @@ mod tests {
 
     #[tokio::test]
     async fn a_joiner_cannot_send_organizer_workout_time_or_stop_the_lobby() {
-        let mut host = HostLobby::open(
-            Host::lobby("Host", &options()).await.unwrap(),
-            rider("Host"),
-        )
-        .unwrap();
-        let (_connection, mut send, _recv, id) = raw_join(&host).await;
-        wire::write(
-            &mut send,
-            &Message::Workout(timing::WorkoutSample {
+        for message in [
+            Message::Lobby(1),
+            Message::Workout(timing::WorkoutSample {
                 revision: 1,
                 sequence: 1,
                 group: Duration::ZERO,
                 elapsed: Duration::from_mins(15),
                 paused: true,
             }),
-        )
-        .await
-        .unwrap();
-        host_event(
-            &mut host,
-            |event| matches!(event, LobbyEvent::Left {id: gone} if *gone == id),
-        )
-        .await;
-        let mut other = join(&host, "Other").await;
-        client_event(
-            &mut other,
-            |event| matches!(event, LobbyEvent::Joined {id, ..} if *id == RiderId::HOST),
-        )
-        .await;
-        other.close().await;
-        host.close().await;
+        ] {
+            let mut host = HostLobby::open(
+                Host::lobby("Host", &options()).await.unwrap(),
+                rider("Host"),
+            )
+            .unwrap();
+            let (_connection, mut send, _recv, id) = raw_join(&host).await;
+            wire::write(&mut send, &message).await.unwrap();
+            host_event(
+                &mut host,
+                |event| matches!(event, LobbyEvent::Left {id: gone} if *gone == id),
+            )
+            .await;
+            let mut other = join(&host, "Other").await;
+            client_event(
+                &mut other,
+                |event| matches!(event, LobbyEvent::Joined {id, ..} if *id == RiderId::HOST),
+            )
+            .await;
+            other.close().await;
+            host.close().await;
+        }
     }
 
     #[tokio::test]

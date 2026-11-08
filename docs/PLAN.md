@@ -1094,6 +1094,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Joiners see the shared activity's name while its files arrive, including after the ride
   starts; course-only images keep the organizer's preview size and stay above the voice
   card's bottom (R196, R216, #508)
+- [x] Reuse the connected lobby after the organizer ends a course for everyone or finishes
+  a ride/workout (R236): save local recordings, retain voice and membership, clear activity
+  clocks and readiness, and select/start again without new codes
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

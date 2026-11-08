@@ -462,6 +462,96 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
 }
 
 #[test]
+fn ending_and_completing_activities_reuses_the_group_and_keeps_voice_and_recordings() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    speak(&mut host, &mut peer, true);
+    speak(&mut peer, &mut host, true);
+    let invite = host.group().invite;
+    let root = peer.group().root;
+    let memberships = peer.group().generations;
+    assert!(
+        peer.group_end_activity().is_err(),
+        "only the organizer ends everyone's ride"
+    );
+    for round in 0..2 {
+        wait(&mut host, &mut peer, |h, p| {
+            h.ride_samples().len() >= 2 && p.ride_samples().len() >= 2
+        });
+        if round == 0 {
+            host.group_end_activity().unwrap();
+        } else {
+            // A completed workout uses the same lifecycle without a UI finishing it.
+            let duration = host.group().plan.unwrap().duration();
+            host.group_command(Command::WorkoutSkip(duration)).unwrap();
+        }
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().phase == Phase::Waiting
+                && p.group().phase == Phase::Waiting
+                && h.ride_state().is_none()
+                && p.ride_state().is_none()
+        });
+        for app in [&host, &peer] {
+            let status = app.group();
+            assert!(status.selection.is_none() && status.start.is_none());
+            assert!(!status.ready.contains(&true));
+            assert!(status.states.iter().all(Option::is_none));
+            assert!(
+                status.voice && status.microphone,
+                "voice keeps the rider's gates"
+            );
+            assert_eq!(status.roster.iter().flatten().count(), 2);
+            assert_eq!(
+                app.history().len(),
+                round + 1,
+                "each local recording is saved once"
+            );
+        }
+        assert_eq!(host.group().invite, invite);
+        assert_eq!(peer.group().root, root);
+        assert_eq!(peer.group().generations, memberships);
+        host.group_select(None, Some("builtin:recovery-30"))
+            .unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().prepared && p.group().prepared
+        });
+        assert!(!host.group().can_start());
+        host.group_ready(true).unwrap();
+        peer.group_ready(true).unwrap();
+        wait(&mut host, &mut peer, |h, _| h.group().can_start());
+        host.group_start().unwrap();
+        if round == 0 {
+            wait(&mut host, &mut peer, |h, p| {
+                h.ride_state().is_some() && p.ride_state().is_some()
+            });
+            assert!(host.ride_state().unwrap().elapsed < Duration::from_secs(1));
+            assert!(peer.ride_state().unwrap().elapsed < Duration::from_secs(1));
+        }
+    }
+    // Cancel the third countdown, then wait beyond it: nobody launches a phantom ride.
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Countdown && p.group().phase == Phase::Countdown
+    });
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Waiting && p.group().phase == Phase::Waiting
+    });
+    let until = Instant::now() + Duration::from_secs(6);
+    while Instant::now() < until {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+        assert!(host.ride_state().is_none() && peer.ride_state().is_none());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(host.history().len(), 2);
+    assert_eq!(peer.history().len(), 2);
+    assert!(host.group().voice && peer.group().voice);
+}
+
+#[test]
 fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_groups_workout_step() {
     let from = Directory::new();
     let to = Directory::new();

@@ -222,6 +222,8 @@ pub struct Snapshot {
     pub successor: Option<u8>,
     /// Current content identities and rules.
     pub selection: Option<Selection>,
+    /// Last activity returned to the lobby, retained across coalesced selection updates.
+    pub ended_revision: u64,
     /// Fixed membership table without peer addresses or heart rate.
     pub roster: [Option<Rider>; MAX_RIDERS],
     /// Local membership epochs, advanced on each joined assignment before exposing state.
@@ -344,6 +346,7 @@ impl Default for Snapshot {
             handover: Handover::Idle,
             successor: None,
             selection: None,
+            ended_revision: 0,
             roster: std::array::from_fn(|_| None),
             generations: [0; MAX_RIDERS],
             assistance: Assistance::default(),
@@ -416,6 +419,15 @@ impl Snapshot {
         self.latencies[link]
     }
 
+    /// The organizer may end an activity during countdown or riding, outside a handover.
+    #[must_use]
+    pub fn can_end_activity(&self) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && matches!(self.phase, Phase::Countdown | Phase::Riding)
+            && self.start.is_some()
+            && self.selection.is_some()
+    }
     /// Tells the organizer why their pasted reply added nobody (R195).
     pub(crate) fn refuse(&mut self, refusal: Refusal) {
         self.refusal = refusal;
@@ -515,6 +527,8 @@ pub(crate) struct Running {
     /// The world-building percentage last passed to the runtime, which tells the group (#419).
     built: u8,
     prepared: u64,
+    returned_revision: u64,
+    end_requested: Option<u64>,
     launched: bool,
     launching: bool,
     trainer_connected: bool,
@@ -628,6 +642,8 @@ impl App {
             preparing: None,
             built: 0,
             prepared: 0,
+            returned_revision: 0,
+            end_requested: None,
             launched: false,
             launching: false,
             trainer_connected: self.trainer_connected(),
@@ -657,6 +673,40 @@ impl App {
                     error("The group connection has ended. Leave the group to keep riding alone.")
                 }
             })
+    }
+    /// Ends the shared activity for everyone and keeps this lobby for the next selection.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] unless organizing an active activity with an available queue.
+    pub fn group_end_activity(&mut self) -> Result<(), AppError> {
+        let status = self.group();
+        if !status.can_end_activity() {
+            return Err(error(
+                "Only the organizer can end the current group activity.",
+            ));
+        }
+        let revision = status.selection.as_ref().map_or(0, |s| s.revision);
+        if self
+            .group
+            .as_ref()
+            .is_some_and(|g| g.end_requested == Some(revision))
+        {
+            return Ok(());
+        }
+        self.group_command(Command::End(revision))?;
+        if let Some(group) = &mut self.group {
+            group.end_requested = Some(revision);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn end_finished_group(&mut self, events: &mut Vec<AppEvent>) {
+        if self.ride.as_ref().is_some_and(|ride| ride.finished)
+            && self.group().can_end_activity()
+            && let Err(error) = self.group_end_activity()
+        {
+            events.push(AppEvent::Error(Failure::from(error)));
+        }
     }
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {
@@ -1139,6 +1189,32 @@ impl App {
             return;
         };
         let snapshot = group.snapshot.borrow().clone();
+        if snapshot.ended_revision > group.returned_revision {
+            // Saving and trainer release happen locally; remote controls supply no samples.
+            crate::release_trainer(self.trainer.as_ref());
+            events.extend(self.save_ride(false));
+            self.cancel_loading();
+            if let Some(group) = &mut self.group {
+                group.returned_revision = snapshot.ended_revision;
+                group.end_requested = None;
+                group.launched = false;
+                group.launching = false;
+                group.preparing = None;
+                group.prepared = 0;
+                group.built = 0;
+                if snapshot.selection.is_none() {
+                    group.workout_id.clear();
+                }
+                group.peers = orqwa_session::group::Riders::default();
+                group.effect = orqwa_physics::GroupEffect::default();
+                group.transition = None;
+                group.states.send_replace(None);
+            }
+            events.push(AppEvent::GroupReturnedToLobby);
+        }
+        let Some(group) = &self.group else {
+            return;
+        };
         let connected = self.trainer_connected();
         if group.trainer_connected
             && !connected

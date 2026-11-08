@@ -1026,7 +1026,7 @@ impl Coordinator {
         Ok(())
     }
 
-    fn reset(&mut self, snapshot: &mut Snapshot) {
+    pub(super) fn reset(&mut self, snapshot: &mut Snapshot) {
         if self
             .context
             .as_ref()

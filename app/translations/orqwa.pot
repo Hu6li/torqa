@@ -1355,6 +1355,10 @@ msgstr ""
 msgid "End"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "End course for everyone"
+msgstr ""
+
 #: app/ui/ui_theme.gd
 msgid "Endurance"
 msgstr ""

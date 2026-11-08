@@ -230,6 +230,14 @@ impl StateInbox {
         }
     }
 
+    /// Clears activity motion while preserving memberships and ingress budgets.
+    pub(crate) fn clear_states(&mut self) {
+        for slot in &mut self.slots {
+            slot.latest = None;
+            slot.pending = None;
+        }
+    }
+
     /// Charges ingress before parsing, then keeps only a newer, validated state from the
     /// current connection. `Ok(false)` discards a reordered or duplicate sample.
     ///

@@ -33,6 +33,7 @@ pub(super) enum Command {
     Preparing(u8),
     Ready(bool),
     Start,
+    End(u64),
     Enter,
     WorkoutPause(bool),
     WorkoutSkip(Duration),
@@ -551,6 +552,13 @@ async fn run_inner(
                         session.ready(snapshot.selection.as_ref().ok_or("Select an activity first.")?.revision,ready).await
                     }
                     Command::Start => start(&session,snapshot).await,
+                    Command::End(revision) => async {
+                        if snapshot.host && snapshot.start.is_some() && snapshot.selection.as_ref().is_some_and(|s| s.revision == revision) {
+                            handover.cancel(&session,snapshot)?;
+                            if let Session::Host(lobby) = &session {lobby.end_activity(revision).await.map_err(|error|error.to_string())?;}
+                        }
+                        Ok(())
+                    }.await,
                     Command::WorkoutPause(paused) => match &session {Session::Host(lobby) => lobby.workout_pause(paused).await.map_err(|error| error.to_string()), Session::Join(_) => Err("Only the organizer can control the shared workout.".into())},
                     Command::WorkoutSkip(next) => match &session {Session::Host(lobby) => lobby.workout_skip(next).await.map_err(|error| error.to_string()), Session::Join(_) => Err("Only the organizer can control the shared workout.".into())},
                     Command::Enter => {
@@ -680,6 +688,28 @@ async fn run_inner(
                 if let Err(error) = result {snapshot.report(Kind::GroupRide,error);}
             },
             event = session.next(), if !handover.old_lost => match event {
+                Some(LobbyEvent::Lobby {revision}) => {
+                    if revision <= snapshot.ended_revision {continue;}
+                    handover.reset(snapshot);
+                    jobs.abort_all(); while jobs.join_next().await.is_some() {}
+                    building.abort_all(); while building.join_next().await.is_some() {}
+                    drop(choices.borrow_and_update()); shared_choice = None;
+                    previews.named(snapshot, None);
+                    next_revision = next_revision.max(revision);
+                    snapshot.ended_revision = revision;
+                    snapshot.phase = Phase::Waiting; snapshot.start = None;
+                    snapshot.selection = None; snapshot.prepared = false;
+                    snapshot.ready.fill(false); snapshot.preparation.fill(None);
+                    snapshot.states.fill(None); snapshot.workout_clock = None;
+                    snapshot.course = None; snapshot.workout = None; snapshot.plan = None;
+                    snapshot.workout_id.clear(); snapshot.late = false;
+                    snapshot.entering = false; snapshot.entry = None;
+                    snapshot.received = 0; snapshot.total = 0; snapshot.activity_failed = false;
+                    progress.send_replace(content::Progress {received:0,total:0}); drop(latest_progress.borrow_and_update());
+                    drop(local.borrow_and_update()); session.state(None);
+                    snapshot.refusal = Refusal::None; snapshot.error.clear();
+                    snapshot.fallback = None; snapshot.standby_offer = false;
+                }
                 Some(LobbyEvent::Handover {sender,message}) => {
                     if let Err(error) = handover.message(&session,snapshot,sender,message).await {
                         snapshot.report(Kind::GroupRide,error);

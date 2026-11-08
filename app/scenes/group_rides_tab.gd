@@ -20,6 +20,7 @@ var _sidebar: VBoxContainer = VBoxContainer.new()
 ## The second column of the ride's window: voice and the shared workout.
 var _side_right: VBoxContainer = VBoxContainer.new()
 var _leave: Button
+var _end_activity: Button
 var _activity_panel: PanelContainer = PanelContainer.new()
 var _picker: GroupActivityPicker = GroupActivityPicker.new()
 var _stage: Label = Label.new()
@@ -129,11 +130,16 @@ func _ready() -> void:
 	var right: VBoxContainer = _side_right if compact else _sidebar
 	_build_invitation()
 	_build_roster()
-	_build_organizer()
+	if compact:
+		_build_organizer()
 	var audio: VBoxContainer = _card(right)
 	_label(audio, tr("Voice chat"), 20)
 	audio.add_child(_voice_controls)
+	# Readiness and organizer controls can move this card without resizing the sidebar.
+	(audio.get_parent() as Control).item_rect_changed.connect(_fit_activity_map.call_deferred)
 	_build_workout_controls(right)
+	if not compact:
+		_build_organizer()
 	_build_dialogs()
 	resized.connect(_reflow)
 	_picker.resized.connect(_fit_activity_map.call_deferred)
@@ -260,6 +266,10 @@ func _build_organizer() -> void:
 	card.add_child(_organizer_reach)
 	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer.bind(false))
 	_fallback_change = _button(card, tr("Choose fallback organizer…"), _choose_organizer.bind(true))
+	_end_activity = _button(
+		card, tr("End course for everyone"), func() -> void: _orqwa.group_end_activity()
+	)
+	UiTheme.danger_button(_end_activity)
 	_organizer_accept = _button(
 		card, tr("Accept organizer duties"), func() -> void: _orqwa.group_handover_answer(true)
 	)
@@ -313,7 +323,9 @@ func _show_organizer() -> void:
 	var host: bool = _status.get("host", false)
 	var standby: bool = _status.get("standby_offer", false)
 	var offer: bool = _status.get("handover_offer", false) or standby
-	_organizer_panel.visible = phase == "riding" and (host or handover != "idle" or standby)
+	_organizer_panel.visible = (
+		phase in ["countdown", "riding"] and (host or handover != "idle" or standby)
+	)
 	_organizer_change.visible = host and handover == "idle"
 	_organizer_change.disabled = not _status.get("can_handover", false)
 	_fallback_change.visible = host and handover == "idle"
@@ -528,6 +540,8 @@ func _show_status(status: Dictionary) -> void:
 	var reach: String = _status.get("reachability", "")
 	var invite: String = _status.get("invite", "")
 	var handing_over: bool = _status.get("handover", "idle") != "idle"
+	_end_activity.visible = host and phase in ["countdown", "riding"]
+	_end_activity.disabled = handing_over
 	_invite.show_invite("" if handing_over else invite, reach_warning(reach, true))
 	_show_admissions(inviting and not handing_over)
 	# What the organizer is choosing, for friends to talk over before it is shared (#418).

@@ -625,3 +625,28 @@ self echoes; app tests check presentation/recording isolation and own-echo assis
 exclusion. No service, endpoint, dependency or rider control changes. The shared start still
 uses the existing half-RTT estimate; arbitrary network outages cannot provide exact current
 positions. Cross-home and native trainer acceptance remain manual.
+
+### Reusable lobby — 2026-11-08
+
+R236 separates ending an activity from closing group networking. The authenticated organizer
+can end the selected revision during countdown or riding; the app does the same when its
+local ride finishes. Each app releases its trainer, saves its own samples and returns to
+Group Rides. A participant finishing locally does not end the shared activity. Structured
+workouts on courses retain their existing continuation to the course finish.
+
+Protocol/invitation version 16 and ALPN `orqwa-group/16` add a reliable organizer-only
+`Lobby(ended_revision)` control. The activity actor retains its revision high-water mark
+and membership generations while clearing selection, readiness, selected-content serving,
+entry permissions, start/workout clocks and motion. The app cancels preparation and fallback
+standby work, clears launch state and retains the original lobby and voice owners, consent,
+microphone gates, local mutes and assistance choices. Reusing content still requires a new
+selection revision and fresh readiness. Initial admission/reconnection controls include the
+last ended revision before any current selection/running state, so missing an end during a
+dropout cannot leave a rider locked into the previous course.
+
+App state datagrams append the selection revision to the existing fixed state encoding.
+Previous-revision packets are discarded under the existing bounded ingress budgets, including
+across successive rides with new elapsed clocks. Motion histories clear without renewing
+connection ingress allowances or voice generations. Revision-bound end requests cannot stop
+a later activity. CLI single-course lobbies keep their existing state encoding and lifecycle.
+No endpoint, service or dependency changes.

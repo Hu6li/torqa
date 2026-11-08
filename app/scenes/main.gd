@@ -78,6 +78,7 @@ func _ready() -> void:
 	_opaque.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_opaque)
 	_ride.closed.connect(_back_home)
+	_orqwa.group_returned.connect(_return_to_group, CONNECT_DEFERRED)
 	# Saving emits from the core: read its history only after that call has returned.
 	_ride.summary_requested.connect(_show_quick_summary, CONNECT_DEFERRED)
 	_ride.overlay_requested.connect(_set_overlay)
@@ -291,6 +292,13 @@ func _back_home() -> void:
 	if not _pending_update.is_empty():
 		_offer_update.callv(_pending_update)
 		_pending_update = []
+
+
+func _return_to_group() -> void:
+	_set_overlay(false)
+	_ride.return_to_lobby()
+	_back_home()
+	_start.show_group_lobby()
 
 
 ## A newer ORQWA: offered on the start page, or after the ride (R99).

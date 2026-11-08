@@ -2062,6 +2062,10 @@ impl OrqwaApp {
     #[signal]
     fn group_started(on_course: bool, workout: bool);
 
+    /// The shared activity ended; show the connected lobby again.
+    #[signal]
+    fn group_returned();
+
     /// Current group phase, private codes, selected content, readiness and peer gaps.
     #[func]
     fn group_status(&self) -> VarDictionary {
@@ -2246,6 +2250,12 @@ impl OrqwaApp {
     fn group_ready(&mut self, ready: bool) -> bool {
         self.command(|app| app.group_ready(ready))
     }
+    /// Ends the activity for everyone while preserving this lobby and its voice session.
+    #[func]
+    fn group_end_activity(&mut self) -> bool {
+        self.command(App::group_end_activity)
+    }
+
     /// Sets the organizer's independent group assistance choices before the countdown.
     #[func]
     fn group_assistance(&mut self, drafting: bool, keep_together: bool) -> bool {
@@ -4098,6 +4108,7 @@ impl OrqwaApp {
             AppEvent::GroupRideStarted { on_course, workout } => {
                 self.signals().group_started().emit(on_course, workout);
             }
+            AppEvent::GroupReturnedToLobby => self.signals().group_returned().emit(),
             AppEvent::DevicesFound(devices) => {
                 self.signals().devices_found().emit(&device_array(devices));
             }

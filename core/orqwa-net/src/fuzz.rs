@@ -157,6 +157,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Joined(anna, rider),
         Message::Left(anna),
         Message::Start(5000),
+        Message::Lobby(1),
         Message::VoiceEnabled(true),
         Message::VoiceRoster([1, 2, 0, 0, 0, 0, 0, 0]),
         Message::Selection(selection.clone()),

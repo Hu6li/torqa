@@ -2930,6 +2930,10 @@ msgid "Change organizer…"
 msgstr "Organisation übergeben…"
 
 #: app/scenes/group_rides_tab.gd
+msgid "End course for everyone"
+msgstr "Kurs für alle beenden"
+
+#: app/scenes/group_rides_tab.gd
 msgid "%s asks you to organize the ride"
 msgstr "%s bittet dich, die Fahrt zu organisieren"
 
