@@ -19,10 +19,12 @@ climb below the visible part of the right column. Reaching it requires scrolling
 - Shorten the map and elevation profile, and reduce the gaps between panels.
 - Place the active climb immediately after the full-tour elevation profile.
 - Keep the climb title, followed by one body line in a uniform text size:
-  **112m and 1.4km to go at 7.1% avg.** No arrow, emoji or separate timing line.
+  **112m and 1.4km to go at 7.1% average.** No arrow, emoji or separate timing line.
 - Rename the in-ride group panel to **Riders**, without a rider count, column
-  headings or legend. Each row reads like **Alex · 265W / 3.7 W/kg, 5m ahead**,
-  keeping **ahead** or **behind** on every gap, identity colors and speaking icons.
+  headings or legend. Align names, watts, W/kg and gaps in columns, separated only
+  by space: `Alex  265W  3.7 W/kg  5m ahead`. Keep **ahead** or **behind** on every
+  gap, identity colors and speaking icons. There are no comma or slash separators;
+  the unit **W/kg** retains its standard spelling.
 - Show all seven other riders and the climb together without scrolling.
 
 The new **112m** ascent value is illustrative presentation data. The

@@ -369,8 +369,8 @@ Built in rideable steps:
   ([review images](ride-layout-review.md)); retain the existing theme and controls.
 - [ ] Review the [1280 × 720 ride layout prototype](ride-layout-review.md), then implement
   the compact map/profile, climb before Riders, remaining climb ascent and simple rider
-  rows with effort and ahead/behind gaps, without scrolling; validate solo/group, workout
-  and translated layouts.
+  rows with aligned effort and ahead/behind gaps, without scrolling; validate solo/group,
+  workout and translated layouts.
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
 - [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
   #192 on the course's own map, drawn when the course is prepared and kept in the `.oqc`; since
