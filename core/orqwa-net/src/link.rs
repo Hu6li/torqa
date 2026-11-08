@@ -320,6 +320,10 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
+    pub(crate) fn is_closed(&self) -> bool {
+        self.0.quic.close_reason().is_some()
+    }
+
     pub(crate) fn ended_normally(&self) -> bool {
         matches!(self.0.quic.close_reason(), Some(quinn::ConnectionError::ApplicationClosed(close)) if close.error_code == VarInt::from_u32(0))
     }

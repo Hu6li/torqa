@@ -23,6 +23,7 @@ func _run() -> void:
 			await _automatic_windows(locale + "-" + str(int(scale)))
 			await _group_dialogs(app, locale + "-" + str(int(scale)))
 	TranslationServer.set_locale("en")
+	await GroupPingChecks.check(self, _check)
 	app.group_leave()
 	app.free()
 	if not _failed:

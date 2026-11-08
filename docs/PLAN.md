@@ -976,6 +976,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Group Rides tab, third after Workouts, and in-ride panel: private-code admission, activity selection,
   automatic retained downloads, byte progress/retry, local preparation, trainer readiness,
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
+- [x] Friends' ping in the roster (R235): organizer-measured connection RTT, automatic refresh,
+  unavailable/stale/reconnecting states, and in-ride visibility confined to the Group Rides dialog
 - [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
   previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
   - [x] Retired voice workers cannot revoke a replacement's consent or microphone on delayed

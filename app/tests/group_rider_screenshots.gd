@@ -128,9 +128,11 @@ static func capture(main: Control, out: String) -> void:
 	var alex: Dictionary = friend.duplicate()
 	alex.merge({"id": 1, "name": "Alex", "speaking": true, "gap_m": 14.0})
 	alex.merge({"power_w": 230.0, "watts_per_kg": 3.2})
+	alex["ping_ms"] = 45
 	var mia: Dictionary = friend.duplicate()
 	mia.merge({"id": 2, "name": "Mia", "muted": true, "fallback": true, "gap_m": -31.0})
 	mia.merge({"power_w": 210.0, "watts_per_kg": 3.0})
+	mia["ping_ms"] = 180
 	var window: Dictionary = {
 		"phase": "riding",
 		"host": true,

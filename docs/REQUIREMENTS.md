@@ -635,3 +635,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R234 | Refines R53, R196 and R204 (2026-11-08): the rider marks themselves ready using **Mark ready** (**Bereit melden** in German), in the existing button beside their name. Once their ride is prepared and their trainer connected, the existing subtitle says **Please mark ready** (**Bitte bereit melden**) and their row has a subtle blue highlight. Pressing the button changes the subtitle to **You're ready** (**Du bist bereit**) and the button to green **Ready**; pressing it again takes readiness back. Preparing, marking ready and the countdown keep rider rows, readiness buttons, the next-action area and activity previews in place: names and subtitles use fixed single lines, and loading messages, spinner, progress and action controls have reserved space. English and German layouts work at the supported small and normal window sizes. |
+
+## Group connection latency
+
+| ID | Requirement |
+|---|---|
+| R235 | Extends R169 (2026-11-08): **friends' ping in milliseconds** appears in the group roster before a ride and, during a ride, only in the **Group Rides** dialog. Each friend's figure measures their connection's round trip to the organizer; the organizer's row measures this rider's connection to them. The local rider has no self ping. Readings refresh automatically, explain that lower is better, and show an unavailable value before measurement, during reconnection and after stale measurements expire. Membership reuse and organizer changes discard old readings. Ping does not appear in the ride HUD, beside the map or on rider nameplates. |

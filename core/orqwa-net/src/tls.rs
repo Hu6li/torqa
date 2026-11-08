@@ -19,7 +19,7 @@ use crate::limits::MAX_CONNECTIONS;
 use crate::link::LinkError;
 
 pub(crate) const SERVER_NAME: &str = "orqwa";
-pub(crate) const ALPN: &[u8] = b"orqwa-group/14";
+pub(crate) const ALPN: &[u8] = b"orqwa-group/15";
 
 fn transport() -> Arc<TransportConfig> {
     let mut config = TransportConfig::default();

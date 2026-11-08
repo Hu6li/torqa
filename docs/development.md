@@ -761,6 +761,14 @@ the monotonic clock, exercising Godot's capped process delta through the real GD
 The extension supplies real elapsed time to the Rust engine; accelerated fake rides still use
 their explicit simulation multiplier. The group tooltip names the group rather than its organizer.
 
+For R235, loopback networking tests verify organizer-measured ping tables, nonzero organizer
+slots and removal/reconnection cleanup; deterministic tests cover expiry and unavailable
+readings. The dialog smoke suite checks live ping updates preserve voice buttons, and the
+countdown/layout regressions exercise 45–60,000 ms in English and German. On two native
+computers, compare friends' organizer-link readings, interrupt and reconnect a link, then
+change organizer. Check readings return, no self ping appears, and the ride shows ping only
+inside the Group Rides dialog. Cross-home latency acceptance remains manual.
+
 ### Group rider nameplates
 
 `group_rider_label_checks.gd`, run by `group_ui_smoke.gd`, checks R217–R218 using native UI

@@ -60,8 +60,22 @@ static func capture(tree: SceneTree, start: StartPage, group: GroupRidesTab, out
 				"roster":
 				[
 					{"id": 0, "name": "Rider", "ready": true, "me": true, "organizer": true},
-					{"id": 1, "name": "Alex", "ready": true, "me": false, "speaking": true},
-					{"id": 2, "name": "Mia", "ready": false, "me": false, "muted": true}
+					{
+						"id": 1,
+						"name": "Alex",
+						"ready": true,
+						"me": false,
+						"speaking": true,
+						"ping_ms": 45
+					},
+					{
+						"id": 2,
+						"name": "Mia",
+						"ready": false,
+						"me": false,
+						"muted": true,
+						"ping_ms": 180
+					}
 				]
 			}
 		)

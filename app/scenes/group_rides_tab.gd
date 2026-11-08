@@ -68,6 +68,7 @@ var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
 ## friend's speaker on theirs, lit while they are heard speaking (R190, R194).
 var _voice_buttons: Dictionary[int, Button] = {}
+var _pings: Dictionary[int, Label] = {}
 ## This rider's own readiness pill before the start (R196), null while there is none.
 var _ready_pill: Button
 var _own_row: HBoxContainer
@@ -572,6 +573,7 @@ func _show_status(status: Dictionary) -> void:
 		# rebuilding the rows, and their buttons, under the rider's pointer.
 		listed.erase("speaking")
 		listed.erase("muted")
+		listed.erase("ping_ms")
 		riders.append(listed)
 	var key: String = (
 		str(riders)
@@ -585,6 +587,7 @@ func _show_status(status: Dictionary) -> void:
 		_roster_key = key
 		_show_roster(phase, host)
 	_show_voice_buttons()
+	_show_pings()
 	_show_ready_pill()
 	_fit_activity_map.call_deferred()
 
@@ -642,6 +645,7 @@ func _show_roster(phase: String, host: bool) -> void:
 		_roster.remove_child(child)
 		child.queue_free()
 	_voice_buttons.clear()
+	_pings.clear()
 	_ready_pill = null
 	_own_row = null
 	_own_state = null
@@ -657,7 +661,9 @@ func _show_roster(phase: String, host: bool) -> void:
 		row.add_child(UiTheme.initial(rider_name, 36))
 		var text: VBoxContainer = VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var label: Label = _label(text, rider_name, 17)
+		var heading: HBoxContainer = HBoxContainer.new()
+		text.add_child(heading)
+		var label: Label = _label(heading, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		var state: Label = _label(text, _rider_state(rider, phase, pills), 13)
 		# Progress and the readiness prompt share one line, even in a narrow German lobby.
@@ -677,6 +683,15 @@ func _show_roster(phase: String, host: bool) -> void:
 		row.add_child(text)
 		var id: int = rider["id"]
 		var me: bool = rider["me"]
+		if not me:
+			var ping: Label = _label(heading, "", 13)
+			ping.custom_minimum_size.x = 95
+			ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+			ping.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			ping.autowrap_mode = TextServer.AUTOWRAP_OFF
+			ping.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			ping.add_theme_color_override("font_color", UiTheme.MUTED)
+			_pings[id] = ping
 		if _status.get("voice", false):
 			var voice: Button = Button.new()
 			voice.focus_mode = Control.FOCUS_NONE
@@ -712,6 +727,27 @@ func _show_roster(phase: String, host: bool) -> void:
 				remove.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_roster.add_child(row)
 	_show_ready_pill()
+	_show_pings()
+
+
+func _show_pings() -> void:
+	for rider: Dictionary in _status.get("roster", []):
+		var id: int = rider["id"]
+		if not _pings.has(id):
+			continue
+		var millis: int = rider.get("ping_ms", -1)
+		var available: bool = (
+			millis >= 0
+			and not rider.get("away", false)
+			and _status.get("reconnect_s", 0.0) <= 0.0
+			and _status.get("phase", "idle") not in ["idle", "ended", "failed"]
+		)
+		_pings[id].text = tr("Ping %d ms") % maxi(1, millis) if available else tr("Ping —")
+		_pings[id].tooltip_text = (
+			tr("Round-trip time from you to the organizer. Lower is better.")
+			if rider.get("organizer", false)
+			else tr("Round-trip time from this friend to the organizer. Lower is better.")
+		)
 
 
 ## The line below a rider's name: before the start how far they have got (#419), unless the

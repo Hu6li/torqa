@@ -3202,3 +3202,15 @@ msgstr "Ja"
 
 msgid "No"
 msgstr "Nein"
+
+msgid "Ping %d ms"
+msgstr "Ping %d ms"
+
+msgid "Ping —"
+msgstr "Ping —"
+
+msgid "Round-trip time from you to the organizer. Lower is better."
+msgstr "Zeit für Hin- und Rückweg zwischen dir und dem Organisator. Niedriger ist besser."
+
+msgid "Round-trip time from this friend to the organizer. Lower is better."
+msgstr "Zeit für Hin- und Rückweg zwischen diesem Freund und dem Organisator. Niedriger ist besser."
