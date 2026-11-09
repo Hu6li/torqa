@@ -17,7 +17,7 @@ use orqwa_world::{MeshData, TerrainChunk, World};
 fn main() {
     let course = std::env::args()
         .nth(1)
-        .expect("usage: world_memory <course.oqc>");
+        .expect("usage: world_memory <course.oqc | route.gpx> [cache]");
     let dir = std::env::temp_dir().join(format!("orqwa-world-memory-{}", std::process::id()));
     // A GPX route's map and terrain are downloaded once into this cache when it is given.
     let cache = std::env::args()

@@ -62,6 +62,7 @@ position differ in normal or texture coordinate.
 | Meshes' unused room | 1,377 MB | 0 MB |
 | After the chunks | 4.83 GB | 4.49 GB |
 | **Peak** | **6.31 GB** | **5.18 GB** |
+| Generating (three runs) | 95–100 s | 94–95 s |
 | World checksum | `a6a04ff670d2c2de` | `a6a04ff670d2c2de` |
 
 - Meshes are built by pushing, so their arrays held two fifths more than they used; each chunk

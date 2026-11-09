@@ -80,17 +80,13 @@ impl Pavement {
     /// Actual carriageway footprint in east/north, without the conservative terrain envelope.
     pub(crate) fn contains(&self, east: f64, north: f64) -> bool {
         let p = [east, 0.0, -north];
-        self.cells
-            .get(&(cell(east), cell(-north)))
-            .into_iter()
-            .flatten()
-            .any(|&i| {
-                let [a, b, c] = self.triangles[i];
-                let area = cross(a, b, c);
-                [cross(a, b, p), cross(b, c, p), cross(c, a, p)]
-                    .into_iter()
-                    .all(|side| side / area >= -1e-8)
-            })
+        self.in_cell((cell(east), cell(-north))).iter().any(|&i| {
+            let [a, b, c] = self.triangles[i];
+            let area = cross(a, b, c);
+            [cross(a, b, p), cross(b, c, p), cross(c, a, p)]
+                .into_iter()
+                .all(|side| side / area >= -1e-8)
+        })
     }
 
     pub(crate) fn new(world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
@@ -210,10 +206,8 @@ impl Pavement {
         let high = [a[0].max(b[0]) + margin, a[2].max(b[2]) + margin];
         (cell(low[0])..=cell(high[0])).any(|x| {
             (cell(low[1])..=cell(high[1])).any(|z| {
-                self.cells
-                    .get(&(x, z))
-                    .into_iter()
-                    .flatten()
+                self.in_cell((x, z))
+                    .iter()
                     .any(|&i| overlap(self.triangles[i], a, b, margin))
             })
         })
@@ -271,9 +265,19 @@ impl Pavement {
         *mesh = output;
     }
 
+    /// The triangles touching cell `key`. A pavement gathered for known checks
+    /// ([`Pavement::near`]) holds nothing outside the cells asked for, so a check reaching
+    /// beyond them would quietly find no pavement there: debug builds, and so the tests, stop.
+    fn in_cell(&self, key: (i64, i64)) -> &[usize] {
+        debug_assert!(
+            self.only.as_ref().is_none_or(|only| only.contains(&key)),
+            "pavement checked in cell {key:?}, which no barrier asked for"
+        );
+        self.cells.get(&key).map_or(&[], Vec::as_slice)
+    }
+
     fn recess(&self, point: [f64; 3]) -> Option<f64> {
-        self.cells
-            .get(&(cell(point[0]), cell(point[2])))?
+        self.in_cell((cell(point[0]), cell(point[2])))
             .iter()
             .filter_map(|&i| {
                 let triangle = self.triangles[i];
@@ -475,6 +479,20 @@ mod tests {
             by_near, by_whole,
             "the slab edge recedes as against the whole pavement"
         );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "no barrier asked for")]
+    fn a_check_beyond_the_cells_asked_for_stops_debug_builds() {
+        let mut asked = Asked::default();
+        asked.span([-3.0, 0.0, 0.0], [3.0, 0.0, 0.0], SPAN_HALF_WIDTH);
+        let mut near = Pavement {
+            only: Some(asked.0),
+            ..Pavement::default()
+        };
+        spread(&mut near);
+        near.contains(2_000.0, 0.0);
     }
 
     #[test]
