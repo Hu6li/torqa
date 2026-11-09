@@ -371,13 +371,35 @@ impl Route {
     /// points from there to the end, the first one from the height at `distance`.
     #[must_use]
     pub fn ascent_ahead(&self, distance: Meters) -> Meters {
-        let here = self.position(distance).elevation.0;
+        self.ascent_between(distance, self.length())
+    }
+
+    /// Positive elevation gain between two route distances, including partial segments.
+    /// Both ends are clamped to the route; an empty or reversed interval has no ascent.
+    #[must_use]
+    pub fn ascent_between(&self, from: Meters, to: Meters) -> Meters {
+        let from = from.0.clamp(0.0, self.length().0);
+        let to = to.0.clamp(0.0, self.length().0);
+        if to <= from {
+            return Meters(0.0);
+        }
+        let elevation_at = |distance| {
+            let (index, fraction) = self.segment_at(distance);
+            let start = self.points[index].elevation.0;
+            start + (self.points[index + 1].elevation.0 - start) * fraction
+        };
+        let (index, _) = self.segment_at(from);
+        let here = elevation_at(from);
         let mut ahead = 0.0;
         let mut last = here;
-        for point in self.points.iter().filter(|p| p.distance.0 > distance.0) {
+        for point in self.points[index + 1..]
+            .iter()
+            .take_while(|p| p.distance.0 < to)
+        {
             ahead += (point.elevation.0 - last).max(0.0);
             last = point.elevation.0;
         }
+        ahead += (elevation_at(to) - last).max(0.0);
         Meters(ahead)
     }
 
@@ -957,6 +979,32 @@ mod tests {
         );
         let along: Vec<f64> = (0..=20).map(|k| ahead(f64::from(k) * 50.0)).collect();
         assert!(along.windows(2).all(|w| w[1] <= w[0] + 1e-9), "{along:?}");
+    }
+
+    #[tokio::test]
+    async fn ascent_between_counts_rises_and_partial_segments_only_inside_the_interval() {
+        let mut route = import(&gpx_north(&[Some(500.0); 5], 10.0)).await;
+        let template = route.points[0];
+        route.points = [
+            (0.0, 500.0),
+            (10.0, 520.0),
+            (20.0, 510.0),
+            (30.0, 540.0),
+            (40.0, 530.0),
+        ]
+        .map(|(distance, elevation)| RoutePoint {
+            distance: Meters(distance),
+            elevation: Meters(elevation),
+            ..template
+        })
+        .to_vec();
+        let gain = |from, to| route.ascent_between(Meters(from), Meters(to)).0;
+        assert!((gain(5.0, 25.0) - 25.0).abs() < 1e-9);
+        assert!((gain(0.0, 10.0) - 20.0).abs() < 1e-9);
+        assert!(gain(10.0, 20.0).abs() < 1e-9);
+        assert!((gain(-10.0, 100.0) - 50.0).abs() < 1e-9);
+        assert!(gain(25.0, 5.0).abs() < 1e-9);
+        assert!(gain(40.0, 40.0).abs() < 1e-9);
     }
 
     #[tokio::test]

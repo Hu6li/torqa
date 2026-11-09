@@ -291,6 +291,8 @@ pub struct ClimbProgress {
     pub climb: Climb,
     /// Distance ridden on it so far.
     pub ridden: Meters,
+    /// Positive elevation gain still ahead before this climb ends.
+    pub remaining_ascent: Meters,
     /// Time on it so far.
     pub elapsed: Duration,
     /// The rider's best time on it.
@@ -3670,9 +3672,8 @@ impl App {
     pub fn current_climb(&self) -> Option<ClimbProgress> {
         let active = self.ride.as_ref()?;
         let state = active.ride.state();
-        let (index, climb) = active
-            .ride
-            .route()?
+        let route = active.ride.route()?;
+        let (index, climb) = route
             .climbs()
             .iter()
             .enumerate()
@@ -3689,6 +3690,7 @@ impl App {
             index,
             climb: *climb,
             ridden: Meters(state.distance.0 - climb.start.0),
+            remaining_ascent: route.ascent_between(state.distance, climb.end),
             elapsed: state.elapsed.saturating_sub(started),
             best: active.records.climbs.get(index).copied().flatten(),
         })

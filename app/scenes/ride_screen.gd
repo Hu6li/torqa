@@ -50,8 +50,7 @@ var _sound: RideSound = RideSound.new()
 var _imperial: bool = false
 var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
-var _climb_left: Label = UiTheme.value(20)
-var _climb_time: Label = Label.new()
+var _climb_left: Label = UiTheme.value(14)
 var _ghost_panel: PanelContainer = PanelContainer.new()
 var _ghost_name: Label = UiTheme.caption("")
 var _ghost_gap: Label = UiTheme.value(20)
@@ -95,6 +94,7 @@ var _gear: int = 0
 var _frame_time: float = 0.0
 var _slow_for: float = 0.0
 var _budget_noted: bool = false
+var _layout_pending: bool = false
 
 @onready var _hud: HudPanel = %Metrics
 @onready var _minimap: Minimap = %Minimap
@@ -160,6 +160,7 @@ func begin(options: Dictionary) -> void:
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
 	_climb_panel.hide()
+	_ghost_panel.hide()
 	var profile: Dictionary = _orqwa.profile()
 	_imperial = profile.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
@@ -188,9 +189,13 @@ func _ready() -> void:
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_backdrop()
 	_build_workout_panel()
-	(%RightColumn as VBoxContainer).add_child(_group_riders)
 	_build_climb_panel()
+	(%RightColumn as VBoxContainer).add_child(_group_riders)
 	_build_ghost_panel()
+	resized.connect(_request_navigation_layout)
+	(%RightColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
+	($HudColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
+	_request_navigation_layout()
 	_minimap.jump_requested.connect(
 		func(position_m: Vector2) -> void: _orqwa.jump_near(position_m.x, position_m.y)
 	)
@@ -559,7 +564,7 @@ func _build_backdrop() -> void:
 	_chart_panel.anchor_right = 1.0
 	_chart_panel.anchor_bottom = 1.0
 	_chart_panel.offset_left = 308.0
-	_chart_panel.offset_right = -348.0
+	_chart_panel.offset_right = -398.0
 	_chart_panel.offset_top = 24.0
 	_chart_panel.offset_bottom = -92.0
 	_chart.min_duration = CHART_MIN_S
@@ -593,9 +598,8 @@ func _build_backdrop() -> void:
 
 func _build_workout_panel() -> void:
 	_workout_panel.hide()
-	var column: VBoxContainer = %RightColumn
+	var column: VBoxContainer = $HudColumn
 	column.add_child(_workout_panel)
-	column.move_child(_workout_panel, 0)
 
 
 func _build_ghost_panel() -> void:
@@ -644,9 +648,10 @@ func _build_climb_panel() -> void:
 	rows.add_theme_constant_override("separation", 2)
 	rows.add_child(_climb_title)
 	rows.add_child(_climb_left)
-	_climb_time.add_theme_font_size_override("font_size", 14)
-	_climb_time.add_theme_color_override("font_color", UiTheme.MUTED)
-	rows.add_child(_climb_time)
+	var style: StyleBoxFlat = UiTheme.panel()
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	_climb_panel.add_theme_stylebox_override("panel", style)
 	_climb_panel.add_child(rows)
 	_climb_panel.hide()
 	(%RightColumn as VBoxContainer).add_child(_climb_panel)
@@ -663,22 +668,57 @@ func _show_climb(climb: Variant) -> void:
 	var category: String = info["category"]
 	var left_m: float = info["length_m"] - info["ridden_m"]
 	var grade: float = info["grade"]
-	var elapsed: float = info["elapsed_s"]
+	var ascent_m: float = info["remaining_ascent_m"]
 	_climb_title.text = (tr("%s  ·  climb %d of %d") % [tr(category).to_upper(), index + 1, count])
 	var color: Color = UiTheme.CLIMB_COLORS.get(category, UiTheme.MUTED)
 	_climb_title.add_theme_color_override("font_color", color)
 	var left: String = (
-		"%.2f mi" % (left_m / 1000.0 / KM_PER_MILE)
+		"%.2fmi" % (left_m / 1000.0 / KM_PER_MILE)
 		if _imperial
-		else ("%.1f km" % (left_m / 1000.0) if left_m >= 1000.0 else "%d m" % roundi(left_m))
+		else ("%.1fkm" % (left_m / 1000.0) if left_m >= 1000.0 else "%dm" % roundi(left_m))
 	)
-	_climb_left.text = tr("%s to go  ·  %.1f %%") % [left, grade]
-	var time: String = UiTheme.duration(elapsed)
-	if info["best_s"] != null:
-		var best: float = info["best_s"]
-		time += "  ·  " + tr("best %s") % UiTheme.duration(best)
-	_climb_time.text = time
+	var ascent: String = (
+		tr("%sft ascent") % roundi(ascent_m / METERS_PER_FOOT)
+		if _imperial
+		else tr("%sm ascent") % roundi(ascent_m)
+	)
+	_climb_left.text = tr("%s · %s · %.1f%% to go") % [ascent, left, grade]
 	_climb_panel.show()
+
+
+func _request_navigation_layout() -> void:
+	if _layout_pending:
+		return
+	_layout_pending = true
+	_fit_navigation.call_deferred()
+
+
+func _fit_navigation() -> void:
+	_layout_pending = false
+	var hud_column: VBoxContainer = $HudColumn
+	var hud_reserved: float = (
+		hud_column.get_combined_minimum_size().y - _hud.get_combined_minimum_size().y
+	)
+	_hud.fit_height(maxf(size.y - 110.0 - hud_reserved, 160.0))
+	hud_column.size.x = maxf(260.0, hud_column.get_combined_minimum_size().x)
+	_chart_panel.offset_left = hud_column.position.x + hud_column.size.x + 24.0
+	_chart_panel.offset_right = -($RightColumnScroll as Control).size.x - 48.0
+	var column: VBoxContainer = %RightColumn
+	var map: Control = _minimap.get_parent()
+	var profile_height: float = 58.0 if size.y >= 720.0 else 36.0
+	_profile.custom_minimum_size.y = profile_height
+	var reserved: float = 0.0
+	var count: int = 0
+	for panel: Control in column.get_children():
+		if not panel.visible:
+			continue
+		count += 1
+		if panel != map:
+			reserved += panel.get_combined_minimum_size().y
+	reserved += maxf(count - 1, 0) * 8.0
+	var available: float = size.y - 72.0 - reserved
+	var preferred: float = clampf(size.y - 572.0, 80.0, 300.0)
+	map.custom_minimum_size.y = maxf(64.0, minf(preferred, available))
 
 
 ## Tells of a moment of the ride (R124) in the rider's voice: on a card, or in the overlay's

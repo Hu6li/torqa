@@ -851,9 +851,10 @@ func _group_motion() -> void:
 	_check(
 		first.generation == "1" and panel.visible, "fresh membership appears on the road and HUD"
 	)
-	_check(panel._labels[1].text == "12 m ahead", "relative gap uses metric distance")
+	_check(panel._labels[1].text == "12m ahead", "relative gap uses metric distance")
 	_check(first._avatar.rider == "male", "the rider's own avatar")
-	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
+	_check(panel._efforts[1].text == "252W", "power beside the name")
+	_check(panel._per_kg[1].text == "3.4 W/kg", "W/kg has its own aligned column")
 	var speaker: TextureRect = panel._speaking[1]
 	_check(speaker.modulate.a == 0.0, "no speaker beside a quiet rider")
 	peer["speaking"] = true
@@ -865,7 +866,7 @@ func _group_motion() -> void:
 	_check(first._name.text == "Alex <rider>", "only the literal rider name appears on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)
-	_check(panel._labels[1].text == "39 ft behind", "gap follows direction and rider units")
+	_check(panel._labels[1].text == "39ft behind", "gap follows direction and rider units")
 	peer["generation"] = "2"
 	avatars.show_riders([peer], 1.0 / 60.0)
 	var replacement: GroupRiderAvatar = avatars.get_child(0)
