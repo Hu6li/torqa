@@ -3,7 +3,7 @@ resolver = "3"
 members = ["orqwa-domain", "orqwa-terrain", "orqwa-video", "orqwa-osm", "orqwa-routes", "orqwa-physics", "orqwa-devices", "orqwa-storage", "orqwa-workouts", "orqwa-session", "orqwa-world", "orqwa-upload", "orqwa-remote", "orqwa-update", "orqwa-app", "orqwa-gd", "orqwa-cli", "orqwa-net", "orqwa-voice"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 rust-version = "1.99"
 license = "GPL-3.0-only"
