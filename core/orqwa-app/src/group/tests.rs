@@ -716,6 +716,11 @@ fn lobby_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
 /// The organizer and two friends prepared and ready, before any countdown.
 fn ready_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     lobby_in_three(host, anna, ben);
+    prepare_in_three(host, anna, ben);
+}
+
+/// Selects a shared workout and readies an already connected group.
+fn prepare_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     host.group_select(None, Some("builtin:recovery-30"))
         .unwrap();
     wait3([host, anna, ben], |h, a, b| {
@@ -745,6 +750,16 @@ fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
     let directories = [Directory::new(), Directory::new(), Directory::new()];
     let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
     lobby_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
+            && !b.group().standby_offer
+    });
+    assert!(
+        host.group().selection.is_none(),
+        "automatic consent needs no selected activity"
+    );
     let selected = ben.group().me;
     assert!(host.group().can_choose_fallback());
     assert!(host.group_fallback(host.group().me).is_err());
@@ -769,19 +784,7 @@ fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
         h.group().preferred_fallback_accepted && !b.group().standby_offer
     });
     assert!(host.group().fallback.is_none());
-    host.group_select(None, Some("builtin:recovery-30"))
-        .unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
-        [h, a, b]
-            .iter()
-            .all(|app| app.group().prepared && app.trainer_connected())
-    });
-    host.group_ready(true).unwrap();
-    anna.group_ready(true).unwrap();
-    ben.group_ready(true).unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
-        h.group().can_start()
-    });
+    prepare_in_three(&mut host, &mut anna, &mut ben);
     host.group_start().unwrap();
     wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
         [h, a, b]
@@ -802,17 +805,7 @@ fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
     assert!(host.group().preferred_fallback_accepted);
     assert!(host.group().can_choose_fallback());
     host.group_fallback(selected).unwrap();
-    host.group_select(None, Some("builtin:recovery-30"))
-        .unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
-        [h, a, b].iter().all(|app| app.group().prepared)
-    });
-    ben.group_ready(true).unwrap();
-    host.group_ready(true).unwrap();
-    anna.group_ready(true).unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
-        h.group().can_start()
-    });
+    prepare_in_three(&mut host, &mut anna, &mut ben);
     host.group_start().unwrap();
     wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
         [h, a, b]
@@ -829,9 +822,9 @@ fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
     });
     ben.group_leave();
     wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
-        h.group().roster[usize::from(selected)].is_none()
+        h.group().roster[usize::from(selected)].is_none() && h.group().preferred_fallback.is_some()
     });
-    assert_eq!(host.group().preferred_fallback, None);
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
     assert!(!host.group().preferred_fallback_accepted);
 }
 
@@ -846,16 +839,17 @@ fn a_declined_lobby_fallback_is_not_asked_again_when_the_ride_starts() {
         b.group().standby_offer
     });
     ben.group_handover_answer(false).unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |h, _, b| {
-        h.group().preferred_fallback == Some(selected)
-            && h.group().fallback_consent.is_none()
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
             && !b.group().standby_offer
     });
     assert!(!host.group().preferred_fallback_accepted);
-    host.group_start().unwrap();
-    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
-        a.group().standby_offer && b.ride.is_some()
-    });
+    assert!(
+        anna.ride.is_none(),
+        "the alternative is asked before starting too"
+    );
     assert!(
         !ben.group().standby_offer,
         "a previous decline is respected"
@@ -863,8 +857,13 @@ fn a_declined_lobby_fallback_is_not_asked_again_when_the_ride_starts() {
     anna.group_handover_answer(true).unwrap();
     let alternative = anna.group().me;
     wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
         h.group().fallback == Some(alternative)
     });
+    assert!(!anna.group().standby_offer && !ben.group().standby_offer);
 }
 
 #[test]
@@ -922,10 +921,10 @@ fn a_departed_fallback_choice_cannot_select_a_replacement_in_the_same_slot() {
         h.group().preferred_fallback == Some(selected)
     });
     ben.group_leave();
-    wait(&mut host, &mut anna, |h, _| {
+    wait(&mut host, &mut anna, |h, a| {
         h.group().roster[usize::from(selected)].is_none()
+            && h.group().preferred_fallback == Some(a.group().me)
     });
-    assert!(host.group().preferred_fallback.is_none());
     replacement
         .group_open(Some(host.group().invite), options())
         .unwrap();
@@ -945,7 +944,7 @@ fn a_departed_fallback_choice_cannot_select_a_replacement_in_the_same_slot() {
     wait(&mut host, &mut replacement, |h, _| {
         h.group().error.contains("has left the group")
     });
-    assert!(host.group().preferred_fallback.is_none());
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
     assert!(!replacement.group().standby_offer);
 }
 
@@ -953,19 +952,32 @@ fn a_departed_fallback_choice_cannot_select_a_replacement_in_the_same_slot() {
 fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at_once() {
     let directories = [Directory::new(), Directory::new(), Directory::new()];
     let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
-    ride_in_three(&mut host, &mut anna, &mut ben);
-    // #426: the organizer asks the first friend who joined to stand in, and only her.
-    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
-        a.group().standby_offer
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, _| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().standby_offer
+            && a.group().fallback_consent.is_some()
     });
+    assert!(
+        anna.ride.is_none(),
+        "the first friend is asked automatically in the lobby"
+    );
     assert!(!ben.group().standby_offer);
     anna.group_handover_answer(true).unwrap();
     let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
     wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
         [h, a, b]
             .iter()
             .all(|app| app.group().fallback == Some(fallback))
     });
+    assert!(
+        !anna.group().standby_offer,
+        "no new prompt interrupts the first ride"
+    );
     for friend in [&mut anna, &mut ben] {
         speak(friend, &mut host, true);
     }
@@ -994,6 +1006,14 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
     // The new organizer keeps a fallback too, asking the next rider at once.
     wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
         b.group().standby_offer
+    });
+    assert!(
+        ben.group().fallback_consent.is_none(),
+        "a takeover still uses the in-ride request"
+    );
+    ben.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().fallback == Some(b.group().me) && b.group().fallback == Some(b.group().me)
     });
     anna.group_leave();
     ben.group_leave();

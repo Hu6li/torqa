@@ -86,10 +86,15 @@ workout completion and another selection/start, then cancel a countdown and veri
 launch later. The group UI smoke test checks returning to the Group Rides tab, closing ride
 windows and opening a fresh ride. Native trainers and two-home acceptance remain manual.
 
-Lobby organizer tests (R238) choose the second of two friends before readiness and verify
-immediate consent without preparing standby links before start. They check retaining consent
-across activities without another prompt, respecting a decline, withdrawing an obsolete request,
-clearing a departed member and rejecting a queued choice for a reused slot. UI checks cover the
+Lobby organizer tests (R238–R239) verify automatic selection and consent before activity
+selection or readiness, and overriding that choice with the second friend. No standby links
+are prepared before start. They check consent across activities without another prompt,
+automatic alternatives after a decline or timeout, rejecting late answers, withdrawing an
+obsolete request, clearing departed members and rejecting queued choices for reused slots.
+An organizer-loss test checks consenting in the lobby, taking over while riding and asking
+and preparing the next fallback during the ride. A deterministic teardown regression keeps
+the authoritative roster when old standby links close before activity cancellation arrives.
+UI checks cover the
 early consent dialog, the disabled solo fallback choice, unready friends in its picker, and
 Cancel replacing Start at the same position and size, with no separate lobby end action.
 

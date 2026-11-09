@@ -669,3 +669,22 @@ The countdown's Cancel action occupies the reserved Start slot. The separate End
 everyone action appears only in the in-ride group panel. Both use the existing revision-bound
 activity end. Protocol/invitation version 17 and ALPN `orqwa-group/17` distinguish the two new
 consent controls from older clients. No endpoint, service or dependency changes.
+
+### Automatic fallback in the lobby — 2026-11-09
+
+R239 moves the coordinator's initial automatic candidate selection into the lobby. The first
+eligible connected friend is asked using the existing consent-only controls, independent of
+activity selection and readiness. A manual choice takes precedence. Pending requests and
+accepted members are left alone; declined or timed-out members are skipped until explicitly
+chosen again or replaced by a new membership. Departure permits the next eligible candidate.
+No standby links are prepared until the shared ride has started and everyone is ready.
+
+Once the original organizer is lost and the fallback becomes organizer during a ride, the
+existing in-ride automatic selection and consent still arrange a replacement fallback. The
+initial lobby decision and consent remain valid across subsequent activities. No protocol,
+endpoint, service or dependency changes.
+
+Cancelling a standby discards departures observed only on its disposable links. They become
+group departures only when a takeover commits; the original authority's roster remains valid
+while it stays connected. This keeps old standby teardown from removing the organizer before
+the next activity's fallback can be prepared.

@@ -1100,6 +1100,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Organizer setup in the lobby (R238): show the fallback choice before Start, remember a
   connected friend's consent immediately, retain it across rides, explain the solo case, and replace Start
   with Cancel in the same action slot during countdown
+- [x] Automatically choose and ask a fallback in the lobby (R239), try another after a decline,
+  timeout or departure, retain manual override and consent across rides, and still replace the
+  fallback during a ride after the original organizer is lost
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

@@ -178,9 +178,13 @@ static func capture(
 		var chosen: Dictionary = GroupReadinessLayout.status(app, true, "ready")
 		chosen["can_choose_fallback"] = true
 		chosen["preferred_fallback"] = "Mia"
-		chosen["preferred_fallback_accepted"] = true
+		chosen["fallback_consent"] = "42"
 		for rider: Dictionary in chosen["roster"]:
 			rider["fallback_eligible"] = not rider["me"]
+		group._show_status(chosen)
+		await _capture(tree, scroll, out, "group-fallback-auto-lobby-" + locale)
+		chosen["fallback_consent"] = ""
+		chosen["preferred_fallback_accepted"] = true
 		group._show_status(chosen)
 		await _capture(tree, scroll, out, "group-fallback-lobby-" + locale)
 		group._choose_organizer(true)

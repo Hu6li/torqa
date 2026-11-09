@@ -79,11 +79,12 @@ Cancel action occupies the Start button's place and returns the connected group 
 |---|---|
 | ![Group ready to start](images/groups/countdown-ready-en.png) | ![Course preview during countdown](images/groups/countdown-en.png) |
 
-Fallback organizers can be chosen before starting; the friend is asked immediately in the lobby.
+Fallback organizers are chosen automatically before starting; the friend is asked immediately
+in the lobby. The organizer can choose someone else.
 
 | Organizer's choice | Friend's consent |
 |---|---|
-| ![Fallback chosen in the lobby](images/groups/fallback-lobby-en.png) | ![Consent before starting](images/groups/fallback-consent-en.png) |
+| ![Automatic fallback awaiting consent](images/groups/fallback-auto-lobby-en.png) | ![Consent before starting](images/groups/fallback-consent-en.png) |
 | ![Solo lobby explanation in German](images/groups/fallback-alone-de-small.png) | ![Consent in a small German window](images/groups/fallback-consent-de-small.png) |
 
 During a ride, the organizer can end the course for everyone from Group Rides.
