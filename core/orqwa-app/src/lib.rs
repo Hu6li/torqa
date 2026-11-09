@@ -317,6 +317,8 @@ pub const READING_AGE: Duration = Duration::from_secs(5);
 /// Something that happened since the last [`App::update`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppEvent {
+    /// A shared activity ended and the still-connected group may choose another one.
+    GroupReturnedToLobby,
     /// A prepared group ride reached its common start target.
     GroupRideStarted {
         /// The activity has a course.
@@ -3197,6 +3199,18 @@ impl App {
     /// Saves the activity and, only when explicitly requested, its unfinished course point.
     /// Saving a genuine solo course finish clears the point. Errors are returned as events.
     pub fn finish_ride_remembering(&mut self, remember: bool) -> Vec<AppEvent> {
+        let mut events = Vec::new();
+        if self.ride.is_some() && self.group().can_end_activity() {
+            // An organizer finishing locally also unlocks the shared lobby.
+            if let Err(error) = self.group_end_activity() {
+                events.push(AppEvent::Error(Failure::from(error)));
+            }
+        }
+        events.extend(self.save_ride(remember));
+        events
+    }
+
+    fn save_ride(&mut self, remember: bool) -> Vec<AppEvent> {
         let Some(active) = self.ride.take() else {
             return Vec::new();
         };
@@ -3908,6 +3922,7 @@ impl App {
                 );
             }
         }
+        self.end_finished_group(&mut events);
         if let (Some(active), Some(video)) = (&self.ride, &self.video) {
             let time = video.time_at(active.ride.state().distance);
             if let Some(player) = &active.player {

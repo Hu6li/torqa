@@ -20,6 +20,7 @@ var _sidebar: VBoxContainer = VBoxContainer.new()
 ## The second column of the ride's window: voice and the shared workout.
 var _side_right: VBoxContainer = VBoxContainer.new()
 var _leave: Button
+var _end_activity: Button
 var _activity_panel: PanelContainer = PanelContainer.new()
 var _picker: GroupActivityPicker = GroupActivityPicker.new()
 var _stage: Label = Label.new()
@@ -51,13 +52,10 @@ var _organizer_status: Label = Label.new()
 var _organizer_reach: Label = Label.new()
 var _organizer_change: Button
 var _fallback_change: Button
-## Whether the organizer picker chooses a fallback rather than the next organizer (#426).
-var _picking_fallback: bool = false
 var _organizer_accept: Button
 var _organizer_decline: Button
 var _organizer_cancel: Button
-var _organizer_picker: AcceptDialog = AcceptDialog.new()
-var _organizer_choices: VBoxContainer = VBoxContainer.new()
+var _organizer_picker: GroupOrganizerPicker = GroupOrganizerPicker.new()
 var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
 ## The invitation last joined, for a new reply when the organizer did not add the rider in
 ## time (R195), and its offline preview: the organizer and where everyone rides (R197).
@@ -129,11 +127,16 @@ func _ready() -> void:
 	var right: VBoxContainer = _side_right if compact else _sidebar
 	_build_invitation()
 	_build_roster()
-	_build_organizer()
+	if compact:
+		_build_organizer()
 	var audio: VBoxContainer = _card(right)
 	_label(audio, tr("Voice chat"), 20)
 	audio.add_child(_voice_controls)
+	# Readiness and organizer controls can move this card without resizing the sidebar.
+	(audio.get_parent() as Control).item_rect_changed.connect(_fit_activity_map.call_deferred)
 	_build_workout_controls(right)
+	if not compact:
+		_build_organizer()
 	_build_dialogs()
 	resized.connect(_reflow)
 	_picker.resized.connect(_fit_activity_map.call_deferred)
@@ -241,11 +244,13 @@ func _build_roster() -> void:
 func _build_dialogs() -> void:
 	add_child(_connection)
 	_connection.started.connect(_join.clear)
-	_organizer_picker.theme = UiTheme.build()
-	_organizer_picker.title = tr("Choose a new organizer")
-	_organizer_choices.add_theme_constant_override("separation", 12)
-	_organizer_choices.custom_minimum_size.x = 380
-	_organizer_picker.add_child(UiTheme.scrolling(_organizer_choices))
+	_organizer_picker.chosen.connect(
+		func(id: int, fallback: bool) -> void:
+			if fallback:
+				_orqwa.group_fallback(id)
+			else:
+				_orqwa.group_handover(id)
+	)
 	add_child(_organizer_picker)
 
 
@@ -260,6 +265,10 @@ func _build_organizer() -> void:
 	card.add_child(_organizer_reach)
 	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer.bind(false))
 	_fallback_change = _button(card, tr("Choose fallback organizer…"), _choose_organizer.bind(true))
+	_end_activity = _button(
+		card, tr("End course for everyone"), func() -> void: _orqwa.group_end_activity()
+	)
+	UiTheme.danger_button(_end_activity)
 	_organizer_accept = _button(
 		card, tr("Accept organizer duties"), func() -> void: _orqwa.group_handover_answer(true)
 	)
@@ -273,48 +282,21 @@ func _build_organizer() -> void:
 
 
 func _choose_organizer(fallback: bool) -> void:
-	_picking_fallback = fallback
-	_organizer_picker.title = (
-		tr("Choose a fallback organizer") if fallback else tr("Choose a new organizer")
-	)
-	for child: Node in _organizer_choices.get_children():
-		_organizer_choices.remove_child(child)
-		child.queue_free()
-	_muted(
-		_organizer_choices,
-		(
-			tr("Choose a friend who takes over if your connection is lost. They must accept.")
-			if fallback
-			else tr("Choose a friend who is ready. They must accept before anything changes.")
-		)
-	)
-	for rider: Dictionary in _status.get("roster", []):
-		if rider["me"] or not rider["ready"]:
-			continue
-		var id: int = rider["id"]
-		var rider_name: String = rider["name"]
-		var choice: Button = _button(
-			_organizer_choices,
-			rider_name,
-			func() -> void:
-				if _picking_fallback:
-					_orqwa.group_fallback(id)
-				else:
-					_orqwa.group_handover(id)
-				_organizer_picker.hide()
-		)
-		choice.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	UiScale.popup(_organizer_picker, Vector2i(520, 180 + 52 * _organizer_choices.get_child_count()))
+	_organizer_picker.choose(_status, fallback)
 
 
 func _show_organizer() -> void:
 	var phase: String = _status.get("phase", "idle")
 	var handover: String = _status.get("handover", "idle")
 	var host: bool = _status.get("host", false)
-	var standby: bool = _status.get("standby_offer", false)
+	var consent: String = _status.get("fallback_consent", "")
+	var standby: bool = _status.get("standby_offer", false) and consent.is_empty()
 	var offer: bool = _status.get("handover_offer", false) or standby
-	_organizer_panel.visible = phase == "riding" and (host or handover != "idle" or standby)
-	_organizer_change.visible = host and handover == "idle"
+	var lobby: bool = phase in ["waiting", "downloading", "preparing", "ready", "countdown"]
+	_organizer_panel.visible = (
+		(host and lobby) or (phase == "riding" and (host or handover != "idle" or standby))
+	)
+	_organizer_change.visible = host and phase == "riding" and handover == "idle"
 	_organizer_change.disabled = not _status.get("can_handover", false)
 	_fallback_change.visible = host and handover == "idle"
 	_fallback_change.disabled = not _status.get("can_choose_fallback", false)
@@ -325,6 +307,23 @@ func _show_organizer() -> void:
 	_organizer_decline.visible = offer
 	_organizer_cancel.visible = _status.get("can_cancel_handover", false) and not offer
 	_organizer_status.text = ""
+	if host and lobby:
+		var preferred: String = _status.get("preferred_fallback", "")
+		if not preferred.is_empty():
+			if _status.get("preferred_fallback_accepted", false):
+				_organizer_status.text = (
+					tr("%s agreed to stand in as fallback organizer.") % preferred
+				)
+			elif not consent.is_empty():
+				_organizer_status.text = tr("Waiting for %s to agree to stand in.") % preferred
+			else:
+				_organizer_status.text = tr("%s has not agreed to stand in.") % preferred
+		elif _status.get("can_choose_fallback", false):
+			_organizer_status.text = tr("Choose a fallback now to ask for their consent.")
+		else:
+			_organizer_status.text = tr(
+				"A friend must join before you can choose a fallback organizer."
+			)
 	if handover == "offered":
 		_organizer_status.text = (
 			tr("Waiting for %s to accept organizer duties.") % _status.get("successor_name", "")
@@ -528,6 +527,8 @@ func _show_status(status: Dictionary) -> void:
 	var reach: String = _status.get("reachability", "")
 	var invite: String = _status.get("invite", "")
 	var handing_over: bool = _status.get("handover", "idle") != "idle"
+	_end_activity.visible = compact and host and phase == "riding"
+	_end_activity.disabled = handing_over
 	_invite.show_invite("" if handing_over else invite, reach_warning(reach, true))
 	_show_admissions(inviting and not handing_over)
 	# What the organizer is choosing, for friends to talk over before it is shared (#418).

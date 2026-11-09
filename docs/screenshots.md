@@ -72,11 +72,26 @@ The readiness action stays beside the rider's name, with a prompt in the existin
 |---|---|
 | ![Mark ready beside your name](images/groups/readiness-en.png) | ![Bereit melden in the minimum window size](images/groups/readiness-de-small.png) |
 
-The group countdown locks choices while keeping the course preview in place.
+The group countdown locks choices while keeping the course preview in place. The organizer's
+Cancel action occupies the Start button's place and returns the connected group to the lobby.
 
 | Ready to start | Counting down |
 |---|---|
 | ![Group ready to start](images/groups/countdown-ready-en.png) | ![Course preview during countdown](images/groups/countdown-en.png) |
+
+Fallback organizers are chosen automatically before starting; the friend is asked immediately
+in the lobby. The organizer can choose someone else.
+
+| Organizer's choice | Friend's consent |
+|---|---|
+| ![Automatic fallback awaiting consent](images/groups/fallback-auto-lobby-en.png) | ![Consent before starting](images/groups/fallback-consent-en.png) |
+| ![Solo lobby explanation in German](images/groups/fallback-alone-de-small.png) | ![Consent in a small German window](images/groups/fallback-consent-de-small.png) |
+
+During a ride, the organizer can end the course for everyone from Group Rides.
+
+| English | German |
+|---|---|
+| ![In-ride organizer controls](images/groups/organizer-window-en.png) | ![In-ride organizer controls in a small window](images/groups/organizer-window-de-small.png) |
 
 | Before riding | After riding |
 |---|---|

@@ -23,6 +23,7 @@ pub(crate) enum Message {
     Joined(RiderId, Rider),
     Left(RiderId),
     Start(u32),
+    Lobby(u64),
     VoiceEnabled(bool),
     VoiceRoster([u64; MAX_RIDERS]),
     Selection(crate::activity::Selection),
@@ -165,6 +166,10 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
                 }
                 id.write(&mut bytes);
             }
+        }
+        Message::Lobby(revision) => {
+            bytes.push(23);
+            bytes.extend(revision.to_be_bytes());
         }
         Message::Start(millis) => {
             bytes.push(5);
@@ -398,6 +403,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
             1 => Some(reader.preview()?),
             _ => return Err(LobbyError::Protocol),
         }),
+        23 => Message::Lobby(u64::from_be_bytes(reader.take()?)),
         5 => {
             let millis = u32::from_be_bytes(reader.take()?);
             if millis > 60_000 {
@@ -502,6 +508,7 @@ mod tests {
     fn preparation_reports_carry_their_stage_and_a_percentage_up_to_100() {
         let anna = RiderId::new(1).unwrap();
         for message in [
+            Message::Lobby(3),
             Message::Preparation(3, Stage::Downloading, 0),
             Message::Preparations(anna, 3, Stage::Preparing, 100),
         ] {

@@ -15,6 +15,7 @@ var _overlay: OverlayWindow
 var _opaque: ColorRect = ColorRect.new()
 var _failures: FailureDetails = FailureDetails.new()
 var _update: UpdateDialog = UpdateDialog.new()
+var _fallback_consent: GroupFallbackConsentDialog = GroupFallbackConsentDialog.new()
 var _quick_summary: RideSummaryDialog = RideSummaryDialog.new()
 ## A newer ORQWA found during a ride, offered once back on the start page (R99).
 var _pending_update: Array = []
@@ -78,6 +79,7 @@ func _ready() -> void:
 	_opaque.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_opaque)
 	_ride.closed.connect(_back_home)
+	_orqwa.group_returned.connect(_return_to_group, CONNECT_DEFERRED)
 	# Saving emits from the core: read its history only after that call has returned.
 	_ride.summary_requested.connect(_show_quick_summary, CONNECT_DEFERRED)
 	_ride.overlay_requested.connect(_set_overlay)
@@ -94,6 +96,8 @@ func _ready() -> void:
 		get_window().mode = Window.MODE_FULLSCREEN
 	add_child(_update)
 	_update.bind(_orqwa)
+	add_child(_fallback_consent)
+	_fallback_consent.bind(_orqwa)
 	_orqwa.update_available.connect(_on_update_available)
 	# Released builds look for a newer one unless this computer turned it off (R99); builds
 	# from the editor and the checks never contact GitHub on their own.
@@ -291,6 +295,13 @@ func _back_home() -> void:
 	if not _pending_update.is_empty():
 		_offer_update.callv(_pending_update)
 		_pending_update = []
+
+
+func _return_to_group() -> void:
+	_set_overlay(false)
+	_ride.stop_presentation()
+	_back_home()
+	_start.show_group_lobby()
 
 
 ## A newer ORQWA: offered on the start page, or after the ride (R99).

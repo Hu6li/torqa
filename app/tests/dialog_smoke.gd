@@ -216,7 +216,15 @@ func _group_dialogs(app: OrqwaApp, tag: String) -> void:
 	for count: int in [1, 8]:
 		var roster: Array[Dictionary] = []
 		for id: int in range(count):
-			roster.append({"id": id, "name": "Rider %d" % id, "me": id == 0, "ready": true})
+			roster.append(
+				{
+					"id": id,
+					"name": "Rider %d" % id,
+					"me": id == 0,
+					"ready": true,
+					"fallback_eligible": id != 0
+				}
+			)
 		group._status = {"host": true, "phase": "riding", "roster": roster}
 		for fallback: bool in [true, false]:
 			group._choose_organizer(fallback)

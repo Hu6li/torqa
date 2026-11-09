@@ -462,6 +462,96 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
 }
 
 #[test]
+fn ending_and_completing_activities_reuses_the_group_and_keeps_voice_and_recordings() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    speak(&mut host, &mut peer, true);
+    speak(&mut peer, &mut host, true);
+    let invite = host.group().invite;
+    let root = peer.group().root;
+    let memberships = peer.group().generations;
+    assert!(
+        peer.group_end_activity().is_err(),
+        "only the organizer ends everyone's ride"
+    );
+    for round in 0..2 {
+        wait(&mut host, &mut peer, |h, p| {
+            h.ride_samples().len() >= 2 && p.ride_samples().len() >= 2
+        });
+        if round == 0 {
+            host.group_end_activity().unwrap();
+        } else {
+            // A completed workout uses the same lifecycle without a UI finishing it.
+            let duration = host.group().plan.unwrap().duration();
+            host.group_command(Command::WorkoutSkip(duration)).unwrap();
+        }
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().phase == Phase::Waiting
+                && p.group().phase == Phase::Waiting
+                && h.ride_state().is_none()
+                && p.ride_state().is_none()
+        });
+        for app in [&host, &peer] {
+            let status = app.group();
+            assert!(status.selection.is_none() && status.start.is_none());
+            assert!(!status.ready.contains(&true));
+            assert!(status.states.iter().all(Option::is_none));
+            assert!(
+                status.voice && status.microphone,
+                "voice keeps the rider's gates"
+            );
+            assert_eq!(status.roster.iter().flatten().count(), 2);
+            assert_eq!(
+                app.history().len(),
+                round + 1,
+                "each local recording is saved once"
+            );
+        }
+        assert_eq!(host.group().invite, invite);
+        assert_eq!(peer.group().root, root);
+        assert_eq!(peer.group().generations, memberships);
+        host.group_select(None, Some("builtin:recovery-30"))
+            .unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().prepared && p.group().prepared
+        });
+        assert!(!host.group().can_start());
+        host.group_ready(true).unwrap();
+        peer.group_ready(true).unwrap();
+        wait(&mut host, &mut peer, |h, _| h.group().can_start());
+        host.group_start().unwrap();
+        if round == 0 {
+            wait(&mut host, &mut peer, |h, p| {
+                h.ride_state().is_some() && p.ride_state().is_some()
+            });
+            assert!(host.ride_state().unwrap().elapsed < Duration::from_secs(1));
+            assert!(peer.ride_state().unwrap().elapsed < Duration::from_secs(1));
+        }
+    }
+    // Cancel the third countdown, then wait beyond it: nobody launches a phantom ride.
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Countdown && p.group().phase == Phase::Countdown
+    });
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Waiting && p.group().phase == Phase::Waiting
+    });
+    let until = Instant::now() + Duration::from_secs(6);
+    while Instant::now() < until {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+        assert!(host.ride_state().is_none() && peer.ride_state().is_none());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(host.history().len(), 2);
+    assert_eq!(peer.history().len(), 2);
+    assert!(host.group().voice && peer.group().voice);
+}
+
+#[test]
 fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_groups_workout_step() {
     let from = Directory::new();
     let to = Directory::new();
@@ -599,8 +689,8 @@ fn wait3(apps: [&mut App; 3], condition: impl Fn(&App, &App, &App) -> bool) {
     );
 }
 
-/// The organizer and two friends riding a shared workout together.
-fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+/// The organizer and two friends connected, without a selected activity.
+fn lobby_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     for app in [&mut *host, &mut *anna, &mut *ben] {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(180.0),
@@ -621,6 +711,16 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
             h.group().roster.iter().flatten().count() == count && f.group().phase == Phase::Waiting
         });
     }
+}
+
+/// The organizer and two friends prepared and ready, before any countdown.
+fn ready_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+    lobby_in_three(host, anna, ben);
+    prepare_in_three(host, anna, ben);
+}
+
+/// Selects a shared workout and readies an already connected group.
+fn prepare_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     host.group_select(None, Some("builtin:recovery-30"))
         .unwrap();
     wait3([host, anna, ben], |h, a, b| {
@@ -632,6 +732,11 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
         app.group_ready(true).unwrap();
     }
     wait3([host, anna, ben], |h, _, _| h.group().can_start());
+}
+
+/// The organizer and two friends riding a shared workout together.
+fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+    ready_in_three(host, anna, ben);
     host.group_start().unwrap();
     wait3([host, anna, ben], |h, a, b| {
         [h, a, b]
@@ -641,22 +746,238 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
 }
 
 #[test]
+fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    lobby_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
+            && !b.group().standby_offer
+    });
+    assert!(
+        host.group().selection.is_none(),
+        "automatic consent needs no selected activity"
+    );
+    let selected = ben.group().me;
+    assert!(host.group().can_choose_fallback());
+    assert!(host.group_fallback(host.group().me).is_err());
+    assert!(anna.group_fallback(selected).is_err());
+    host.group_fallback(selected).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(selected)
+            && b.group().standby_offer
+            && b.group().fallback_consent.is_some()
+            && !a.group().standby_offer
+    });
+    for app in [&host, &anna, &ben] {
+        assert!(app.group().start.is_none());
+        assert!(
+            app.group().fallback.is_none(),
+            "lobby consent prepares no fallback links"
+        );
+    }
+    assert!(ben.ride.is_none());
+    ben.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, b| {
+        h.group().preferred_fallback_accepted && !b.group().standby_offer
+    });
+    assert!(host.group().fallback.is_none());
+    prepare_in_three(&mut host, &mut anna, &mut ben);
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(selected))
+    });
+    assert!(
+        !ben.group().standby_offer,
+        "accepted lobby consent needs no second answer"
+    );
+    host.group_end_activity().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().phase == Phase::Waiting)
+    });
+    assert_eq!(host.group().preferred_fallback, Some(selected));
+    assert!(host.group().preferred_fallback_accepted);
+    assert!(host.group().can_choose_fallback());
+    host.group_fallback(selected).unwrap();
+    prepare_in_three(&mut host, &mut anna, &mut ben);
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(selected))
+    });
+    assert!(
+        !ben.group().standby_offer,
+        "the next ride retains the group's consent"
+    );
+    host.group_end_activity().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().phase == Phase::Waiting
+    });
+    ben.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().roster[usize::from(selected)].is_none() && h.group().preferred_fallback.is_some()
+    });
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
+    assert!(!host.group().preferred_fallback_accepted);
+}
+
+#[test]
+fn a_declined_lobby_fallback_is_not_asked_again_when_the_ride_starts() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    let selected = ben.group().me;
+    host.group_fallback(selected).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().standby_offer
+    });
+    ben.group_handover_answer(false).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
+            && !b.group().standby_offer
+    });
+    assert!(!host.group().preferred_fallback_accepted);
+    assert!(
+        anna.ride.is_none(),
+        "the alternative is asked before starting too"
+    );
+    assert!(
+        !ben.group().standby_offer,
+        "a previous decline is respected"
+    );
+    anna.group_handover_answer(true).unwrap();
+    let alternative = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().fallback == Some(alternative)
+    });
+    assert!(!anna.group().standby_offer && !ben.group().standby_offer);
+}
+
+#[test]
+fn changing_the_lobby_fallback_withdraws_the_previous_friends_request() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    host.group_fallback(ben.group().me).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().standby_offer
+    });
+    host.group_fallback(anna.group().me).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().standby_offer && !b.group().standby_offer && b.group().fallback_consent.is_none()
+    });
+    assert!(
+        ben.group_handover_answer(true).is_err(),
+        "withdrawn lobby offers cannot be accepted"
+    );
+    anna.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, _| {
+        h.group().preferred_fallback == Some(a.group().me) && h.group().preferred_fallback_accepted
+    });
+}
+
+#[test]
+fn a_lobby_without_a_friend_has_no_fallback_candidate() {
+    let directory = Directory::new();
+    let other = Directory::new();
+    let mut host = directory.app();
+    let mut peer = other.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| {
+        h.group().phase == Phase::Waiting
+    });
+    assert!(!host.group().can_choose_fallback());
+    assert!(host.group_fallback(host.group().me).is_err());
+    assert!(host.group_fallback(7).is_err());
+}
+
+#[test]
+fn a_departed_fallback_choice_cannot_select_a_replacement_in_the_same_slot() {
+    let directories = [
+        Directory::new(),
+        Directory::new(),
+        Directory::new(),
+        Directory::new(),
+    ];
+    let [mut host, mut anna, mut ben, mut replacement] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    let selected = ben.group().me;
+    let generation = host.group().generations[usize::from(selected)];
+    host.group_fallback(selected).unwrap();
+    wait(&mut host, &mut ben, |h, _| {
+        h.group().preferred_fallback == Some(selected)
+    });
+    ben.group_leave();
+    wait(&mut host, &mut anna, |h, a| {
+        h.group().roster[usize::from(selected)].is_none()
+            && h.group().preferred_fallback == Some(a.group().me)
+    });
+    replacement
+        .group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut replacement, |_, r| {
+        !r.group().reply.is_empty()
+    });
+    host.group_admit(&replacement.group().reply).unwrap();
+    wait(&mut host, &mut replacement, |h, r| {
+        r.group().phase == Phase::Ready && h.group().roster.iter().flatten().count() == 3
+    });
+    assert_eq!(replacement.group().me, selected);
+    host.group_command(Command::Fallback(
+        RiderId::new(selected).unwrap(),
+        generation,
+    ))
+    .unwrap();
+    wait(&mut host, &mut replacement, |h, _| {
+        h.group().error.contains("has left the group")
+    });
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
+    assert!(!replacement.group().standby_offer);
+}
+
+#[test]
 fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at_once() {
     let directories = [Directory::new(), Directory::new(), Directory::new()];
     let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
-    ride_in_three(&mut host, &mut anna, &mut ben);
-    // #426: the organizer asks the first friend who joined to stand in, and only her.
-    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
-        a.group().standby_offer
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, _| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().standby_offer
+            && a.group().fallback_consent.is_some()
     });
+    assert!(
+        anna.ride.is_none(),
+        "the first friend is asked automatically in the lobby"
+    );
     assert!(!ben.group().standby_offer);
     anna.group_handover_answer(true).unwrap();
     let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
     wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
         [h, a, b]
             .iter()
             .all(|app| app.group().fallback == Some(fallback))
     });
+    assert!(
+        !anna.group().standby_offer,
+        "no new prompt interrupts the first ride"
+    );
     for friend in [&mut anna, &mut ben] {
         speak(friend, &mut host, true);
     }
@@ -685,6 +1006,14 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
     // The new organizer keeps a fallback too, asking the next rider at once.
     wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
         b.group().standby_offer
+    });
+    assert!(
+        ben.group().fallback_consent.is_none(),
+        "a takeover still uses the in-ride request"
+    );
+    ben.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().fallback == Some(b.group().me) && b.group().fallback == Some(b.group().me)
     });
     anna.group_leave();
     ben.group_leave();

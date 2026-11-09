@@ -259,6 +259,18 @@ impl Plan {
 /// are sent privately to the successor, never broadcast to other riders.
 #[derive(Clone)]
 pub enum Message {
+    /// Ask this authenticated member for group-wide fallback consent before preparing links.
+    FallbackConsent {
+        /// Fresh request epoch, consumed even if cancelled or declined.
+        epoch: u64,
+    },
+    /// The requested member's fallback decision; it authorizes no authority change itself.
+    FallbackDecision {
+        /// Exact request being answered.
+        epoch: u64,
+        /// Whether the member agreed to stand in for this group.
+        accepted: bool,
+    },
     /// Ask a connected prepared rider to take the role.
     Offer {
         /// Proposed next authority epoch.
@@ -361,6 +373,8 @@ impl Message {
     pub const fn epoch(&self) -> u64 {
         match self {
             Self::Offer { epoch, .. }
+            | Self::FallbackConsent { epoch }
+            | Self::FallbackDecision { epoch, .. }
             | Self::Decision { epoch, .. }
             | Self::Invite { epoch, .. }
             | Self::Reply { epoch, .. }
@@ -392,6 +406,8 @@ impl Message {
             Self::Standby { .. } => 12,
             Self::Lost { .. } => 13,
             Self::Found { .. } => 14,
+            Self::FallbackConsent { .. } => 15,
+            Self::FallbackDecision { .. } => 16,
         };
         if self.epoch() < 2 {
             return Err(LobbyError::Protocol);
@@ -402,7 +418,9 @@ impl Message {
             Self::Offer {
                 successor, standby, ..
             } => bytes.extend_from_slice(&[successor.value(), u8::from(*standby)]),
-            Self::Decision { accepted, .. } => bytes.push(u8::from(*accepted)),
+            Self::Decision { accepted, .. } | Self::FallbackDecision { accepted, .. } => {
+                bytes.push(u8::from(*accepted));
+            }
             Self::Invite { invite, .. } => blob(
                 &mut bytes,
                 &invite
@@ -429,6 +447,7 @@ impl Message {
             }
             Self::Preparing { group_at, .. } => duration(&mut bytes, *group_at)?,
             Self::Cancel { .. }
+            | Self::FallbackConsent { .. }
             | Self::Failed { .. }
             | Self::Standby { .. }
             | Self::Lost { .. }
@@ -492,6 +511,11 @@ impl Message {
             12 => Self::Standby { epoch },
             13 => Self::Lost { epoch },
             14 => Self::Found { epoch },
+            15 => Self::FallbackConsent { epoch },
+            16 => Self::FallbackDecision {
+                epoch,
+                accepted: reader.boolean()?,
+            },
             _ => return Err(LobbyError::Protocol),
         };
         if !reader.0.is_empty() {
@@ -750,6 +774,15 @@ mod tests {
             nat: NatObservation::None,
         };
         for message in [
+            Message::FallbackConsent { epoch: 2 },
+            Message::FallbackDecision {
+                epoch: 2,
+                accepted: true,
+            },
+            Message::FallbackDecision {
+                epoch: 2,
+                accepted: false,
+            },
             Message::Offer {
                 epoch: 2,
                 successor: RiderId::new(3).unwrap(),
@@ -823,6 +856,11 @@ mod tests {
         .unwrap();
         decision[9] = 2;
         assert!(Message::decode(&decision).is_err());
+        decision[0] = 16;
+        assert!(
+            Message::decode(&decision).is_err(),
+            "fallback consent is a boolean"
+        );
         decision[1..9].copy_from_slice(&1_u64.to_be_bytes());
         assert!(Message::decode(&decision).is_err());
         assert!(Message::decode(&vec![0; 1001]).is_err());

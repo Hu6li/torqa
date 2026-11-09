@@ -33,12 +33,13 @@ pub(super) enum Command {
     Preparing(u8),
     Ready(bool),
     Start,
+    End(u64),
     Enter,
     WorkoutPause(bool),
     WorkoutSkip(Duration),
     Handover(RiderId),
-    /// Ask this rider to stand in as fallback organizer (#426).
-    Fallback(RiderId),
+    /// Selects this membership as fallback, with an offer only after the shared start.
+    Fallback(RiderId, u64),
     HandoverAnswer(bool),
     HandoverCancel,
     Remove(RiderId),
@@ -512,7 +513,11 @@ async fn run_inner(
                 }
                 let result = match command {
                     Command::Handover(id) => handover.propose(&session,snapshot,id),
-                    Command::Fallback(id) => handover.choose_fallback(&session,snapshot,id),
+                    Command::Fallback(id,generation) => {
+                        if snapshot.generations[usize::from(id.value())] == generation {
+                            handover.choose_fallback(&session,snapshot,id)
+                        } else {Err("The selected friend has left the group.".into())}
+                    },
                     Command::HandoverAnswer(accepted) => handover.answer(&session,snapshot,accepted),
                     Command::HandoverCancel => {
                         if snapshot.host || snapshot.successor == Some(snapshot.me) {handover.cancel(&session,snapshot)}
@@ -551,6 +556,13 @@ async fn run_inner(
                         session.ready(snapshot.selection.as_ref().ok_or("Select an activity first.")?.revision,ready).await
                     }
                     Command::Start => start(&session,snapshot).await,
+                    Command::End(revision) => async {
+                        if snapshot.host && snapshot.start.is_some() && snapshot.selection.as_ref().is_some_and(|s| s.revision == revision) {
+                            handover.cancel(&session,snapshot)?;
+                            if let Session::Host(lobby) = &session {lobby.end_activity(revision).await.map_err(|error|error.to_string())?;}
+                        }
+                        Ok(())
+                    }.await,
                     Command::WorkoutPause(paused) => match &session {Session::Host(lobby) => lobby.workout_pause(paused).await.map_err(|error| error.to_string()), Session::Join(_) => Err("Only the organizer can control the shared workout.".into())},
                     Command::WorkoutSkip(next) => match &session {Session::Host(lobby) => lobby.workout_skip(next).await.map_err(|error| error.to_string()), Session::Join(_) => Err("Only the organizer can control the shared workout.".into())},
                     Command::Enter => {
@@ -680,6 +692,28 @@ async fn run_inner(
                 if let Err(error) = result {snapshot.report(Kind::GroupRide,error);}
             },
             event = session.next(), if !handover.old_lost => match event {
+                Some(LobbyEvent::Lobby {revision}) => {
+                    if revision <= snapshot.ended_revision {continue;}
+                    handover.reset(snapshot);
+                    jobs.abort_all(); while jobs.join_next().await.is_some() {}
+                    building.abort_all(); while building.join_next().await.is_some() {}
+                    drop(choices.borrow_and_update()); shared_choice = None;
+                    previews.named(snapshot, None);
+                    next_revision = next_revision.max(revision);
+                    snapshot.ended_revision = revision;
+                    snapshot.phase = Phase::Waiting; snapshot.start = None;
+                    snapshot.selection = None; snapshot.prepared = false;
+                    snapshot.ready.fill(false); snapshot.preparation.fill(None);
+                    snapshot.states.fill(None); snapshot.workout_clock = None;
+                    snapshot.course = None; snapshot.workout = None; snapshot.plan = None;
+                    snapshot.workout_id.clear(); snapshot.late = false;
+                    snapshot.entering = false; snapshot.entry = None;
+                    snapshot.received = 0; snapshot.total = 0; snapshot.activity_failed = false;
+                    progress.send_replace(content::Progress {received:0,total:0}); drop(latest_progress.borrow_and_update());
+                    drop(local.borrow_and_update()); session.state(None);
+                    snapshot.refusal = Refusal::None; snapshot.error.clear();
+                    snapshot.fallback = None; snapshot.standby_offer = !snapshot.host && snapshot.fallback_consent.is_some();
+                }
                 Some(LobbyEvent::Handover {sender,message}) => {
                     if let Err(error) = handover.message(&session,snapshot,sender,message).await {
                         snapshot.report(Kind::GroupRide,error);
@@ -687,6 +721,7 @@ async fn run_inner(
                     }
                 }
                 Some(LobbyEvent::Joined {id,rider}) => {
+                    handover.forget_member(snapshot,id);
                     if snapshot.handover==super::Handover::Committing {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
                     let index=usize::from(id.value());
@@ -695,7 +730,7 @@ async fn run_inner(
                     snapshot.roster[index] = Some(rider); snapshot.ready[index] = false;snapshot.states[index]=None; snapshot.latencies[index]=None;
                     handover.membership(&session,snapshot);
                 }
-                Some(LobbyEvent::Left {id}) => {if handover.departure(snapshot,id) {continue;}
+                Some(LobbyEvent::Left {id}) => {handover.forget_member(snapshot,id); if handover.departure(snapshot,id) {continue;}
                     if handover.busy() && handover.fail(&session,snapshot) {end(snapshot);return Ok(());}
                     let index = usize::from(id.value()); snapshot.roster[index] = None; snapshot.ready[index] = false; snapshot.states[index] = None; snapshot.latencies[index] = None; snapshot.away[index] = false;
                     handover.membership(&session,snapshot);}
@@ -917,6 +952,8 @@ async fn download_again(
 }
 
 fn end(snapshot: &mut Snapshot) {
+    snapshot.fallback_consent = None;
+    snapshot.standby_offer = false;
     snapshot.preview = None;
     snapshot.microphone_test = false;
     snapshot.microphone_level = 0.0;

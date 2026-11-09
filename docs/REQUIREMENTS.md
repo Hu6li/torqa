@@ -647,3 +647,21 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R236 | Refines R23, R53, R164 and R190 (2026-11-09): at **1280 × 720**, the ride's map, full-course elevation profile, active climb and all seven other **Riders** fit together without scrolling, in that order. The map and profile adapt to the available height. Workout targets follow the metrics on the left, whose selected figures can use extra columns without changing their saved order. The climb keeps its category/title and one uniformly sized line for positive ascent still to climb before its end, remaining distance and average gradient, ending in **to go**, or **verbleibend** in German, without a prefix, arrows, an average suffix or separate timing line. Rust calculates the remaining ascent, including intermediate dips and partial segments; Godot converts units for display. The **Riders** panel has aligned name, watts, W/kg and distance-gap columns, with identity colors and speaking indicators, explicit ahead/behind words and no column headers, rider count, legend, comma or slash separators. |
+
+## Reusable group lobby
+
+| ID | Requirement |
+|---|---|
+| R237 | Refines R164–R168 and R196 (2026-11-08): the organizer can **End course for everyone** during countdown or riding. Ending deliberately, completing the organizer's course or workout-only ride, or the organizer using **Finish & save** saves each rider's own recording and returns everyone to the **Group Rides** lobby without closing their connections or voice. Countdown cancellation saves no empty recording. Memberships, invitation, assistance choices and personal voice gates remain; selection, preparation, readiness, entry, motion and workout/start clocks reset. The organizer can select the same or a different activity, everyone readies again and a fresh countdown starts a new recording. Participants cannot end the group's activity; their own finish affects only themselves. Delayed previous-activity controls, readiness and motion cannot end, ready or move riders in the next activity. Reconnecting riders learn the current lobby/activity state. Connection loss and leaving continue local riding as before. |
+
+## Organizer controls before starting
+
+| ID | Requirement |
+|---|---|
+| R238 | Refines R187, R196 and R237 (2026-11-09): the organizer sees **Choose fallback organizer…** in the lobby before pressing Start. With nobody else present it remains visible and disabled, with an explanation. Choosing a connected friend immediately asks for their consent, even before readiness or selecting an activity. The lobby shows whether they agreed or the reply is pending. Consent opens no standby connections before riding, lasts while the friend remains in the group and is not requested again at ride start or in later activities. A decline is respected; without a previous decision, the existing in-ride consent and automatic alternative selection still apply. Reachability checks remain. Leaving, replacing the choice, timeout or slot reuse dismisses obsolete requests; queued choices cannot select a replacement membership. During countdown, **Cancel** occupies the same action slot as **Start group ride**. The lobby has no separate End course for everyone control; that wording remains in the in-ride group panel. Cancellation retains the connected group and saves no empty recording. |
+
+## Automatic fallback consent in the lobby
+
+| ID | Requirement |
+|---|---|
+| R239 | Refines R187 and R238 (2026-11-09): ORQWA automatically chooses the first eligible connected friend and requests fallback consent in the lobby, before selecting an activity or marking ready. The organizer can override the choice. A decline, timeout or departure moves to another eligible friend without repeatedly asking someone who declined or timed out; obsolete replies cannot approve a later request. Acceptance and the selected membership persist across activities, with no new prompt at ride start. Standby connections are prepared only while riding. If the original organizer unexpectedly leaves and the fallback takes over during a ride, the new organizer still automatically chooses and asks a replacement fallback during that ride. |

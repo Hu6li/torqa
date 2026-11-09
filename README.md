@@ -62,7 +62,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 - **[Continue another day](https://github.com/ORQWA/ORQWA/wiki/Courses#continue-another-day):**
   Save your place in a solo 3D or video course and continue with a fresh activity next time.
 - **[Group rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides):** Ride in a group of up to
-  eight people, with voice chat.
+  eight people, with voice chat, and choose the next ride together in the same lobby.
 - **[Workouts](https://github.com/ORQWA/ORQWA/wiki/Workouts):** Import or create workouts,
   train to power or heart-rate targets, and take FTP tests.
 - **[Trainers and sensors](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#devices):**

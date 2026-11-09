@@ -71,6 +71,10 @@ msgstr ""
 msgid "%s adds you"
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "%s agreed to stand in as fallback organizer."
+msgstr ""
+
 #: app/scenes/ride_screen.gd app/ui/group_riders_panel.gd
 msgid "%s ahead"
 msgstr ""
@@ -79,7 +83,7 @@ msgstr ""
 msgid "%s asks you to organize the ride"
 msgstr ""
 
-#: app/ui/group_offer_card.gd
+#: app/ui/group_fallback_consent_dialog.gd app/ui/group_offer_card.gd
 msgid "%s asks you to stand in as organizer"
 msgstr ""
 
@@ -133,6 +137,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "%s has no timestamps for a ghost rider."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "%s has not agreed to stand in."
 msgstr ""
 
 #: app/ui/group_activity_picker.gd
@@ -245,6 +253,10 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "A course named “%s” exists already. Replace it, or keep both?"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "A friend must join before you can choose a fallback organizer."
 msgstr ""
 
 #: app/ui/ghost_picker.gd
@@ -607,7 +619,7 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_joining_card.gd app/ui/group_voice_dialog.gd app/ui/workout_editor.gd
+#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_joining_card.gd app/ui/group_next_step.gd app/ui/group_voice_dialog.gd app/ui/workout_editor.gd
 msgid "Cancel"
 msgstr ""
 
@@ -680,18 +692,22 @@ msgid "Choose a country, or a part of a large one: it downloads faster."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Choose a fallback now to ask for their consent."
+msgstr ""
+
+#: app/ui/group_organizer_picker.gd
 msgid "Choose a fallback organizer"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_organizer_picker.gd
 msgid "Choose a friend who is ready. They must accept before anything changes."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_organizer_picker.gd
 msgid "Choose a friend who takes over if your connection is lost. They must accept."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_organizer_picker.gd
 msgid "Choose a new organizer"
 msgstr ""
 
@@ -1135,7 +1151,7 @@ msgstr ""
 msgid "Dec"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_fallback_consent_dialog.gd app/ui/group_offer_card.gd
 msgid "Decline"
 msgstr ""
 
@@ -1353,6 +1369,10 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "End"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "End course for everyone"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -3255,8 +3275,12 @@ msgstr ""
 msgid "Spring"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_fallback_consent_dialog.gd app/ui/group_offer_card.gd
 msgid "Stand in as organizer"
+msgstr ""
+
+#: app/ui/group_fallback_consent_dialog.gd
+msgid "Stand in as organizer if the organizer's connection is lost during a ride? Your agreement lasts while you stay in this group. Accepting allows ORQWA to share connection addresses with everyone in this group when preparing the fallback, using your connection settings."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd
@@ -3833,6 +3857,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Waiting for %s to accept organizer duties."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Waiting for %s to agree to stand in."
 msgstr ""
 
 #: app/ui/group_joining_card.gd

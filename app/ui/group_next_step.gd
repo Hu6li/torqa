@@ -15,6 +15,7 @@ var _working: Spinner = Spinner.new(18.0)
 var _progress: ProgressBar = ProgressBar.new()
 var _bytes: Label = Label.new()
 var _main: Button = Button.new()
+var _cancel: Button = Button.new()
 var _retry: Button = Button.new()
 var _reconnect: Button = Button.new()
 var _layout: Control = Control.new()
@@ -65,12 +66,15 @@ func _ready() -> void:
 	_action_slot.offset_bottom = 48
 	_main.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_main.pressed.connect(_act)
+	_cancel.text = tr("Cancel")
+	UiTheme.danger_button(_cancel)
+	_cancel.pressed.connect(func() -> void: _orqwa.group_end_activity())
 	_retry.text = tr("Retry download")
 	_retry.pressed.connect(func() -> void: _orqwa.group_retry())
 	_reconnect.text = tr("Reconnect now")
 	_reconnect.pressed.connect(func() -> void: _orqwa.group_reconnect())
 	# Every step's button the same size, whichever is next.
-	for button: Button in [_main, _retry, _reconnect]:
+	for button: Button in [_main, _cancel, _retry, _reconnect]:
 		button.custom_minimum_size.y = 48
 		button.add_theme_font_size_override("font_size", 17)
 		_action_slot.add_child(button)
@@ -116,6 +120,7 @@ func show_status(
 	}
 	_main.visible = not _action.is_empty() and not can_retry and reconnect <= 0.0
 	_main.text = labels.get(_action, "")
+	_cancel.visible = host and phase == "countdown" and reconnect <= 0.0
 	var entering: bool = status.get("entering", false)
 	_main.disabled = (
 		entering
@@ -134,7 +139,7 @@ func show_status(
 	_layout.custom_minimum_size.y = 106 if separate_action else 48
 	_action_slot.offset_top = 58 if separate_action else 0
 	_action_slot.offset_bottom = _action_slot.offset_top + 48
-	_action_slot.visible = _main.visible or _retry.visible or _reconnect.visible
+	_action_slot.visible = _main.visible or _cancel.visible or _retry.visible or _reconnect.visible
 	_progress_slot.visible = separate_action or not _action_slot.visible
 	_line.visible = _line.visible and not _progress.visible
 	_line_slot.visible = _line.visible or _bytes.visible or _working.visible

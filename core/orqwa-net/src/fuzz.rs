@@ -157,6 +157,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Joined(anna, rider),
         Message::Left(anna),
         Message::Start(5000),
+        Message::Lobby(1),
         Message::VoiceEnabled(true),
         Message::VoiceRoster([1, 2, 0, 0, 0, 0, 0, 0]),
         Message::Selection(selection.clone()),
@@ -173,6 +174,11 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Latencies(latency_seed()),
     ];
     let handover = [
+        crate::handover::Message::FallbackConsent { epoch: 2 },
+        crate::handover::Message::FallbackDecision {
+            epoch: 2,
+            accepted: true,
+        },
         crate::handover::Message::Offer {
             epoch: 2,
             successor: anna,

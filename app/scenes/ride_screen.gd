@@ -766,7 +766,8 @@ func _show_group(status: Dictionary) -> void:
 	var microphone: bool = status.get("microphone", false)
 	_bar.show_microphone(voice, microphone)
 	_show_listen(status)
-	var standby: bool = status.get("standby_offer", false)
+	var consent: String = status.get("fallback_consent", "")
+	var standby: bool = status.get("standby_offer", false) and consent.is_empty()
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
 		_offered = offered
@@ -963,14 +964,20 @@ func _on_ride_finished() -> void:
 	_finish_ride()
 
 
-func _finish_ride(remember: bool = false) -> void:
+## Close activity controls when finishing or returning the saved group to its lobby.
+func stop_presentation() -> void:
 	_finished = true
+	_settings_dialog.hide()
+	_continuation_dialog.hide()
+	_group_window.hide()
 	_assistance.show_feedback({})
 	_moment_card.clear()
-	_settings_dialog.hide()
 	_bar.show_pause(false)
 	_bar.show_settings(false)
-	_continuation_dialog.hide()
+
+
+func _finish_ride(remember: bool = false) -> void:
+	stop_presentation()
 	if remember:
 		_orqwa.finish_ride_remembering()
 	else:
@@ -982,11 +989,8 @@ func _finish_ride(remember: bool = false) -> void:
 
 
 func _on_ride_saved(path: String) -> void:
-	_finished = true
-	_assistance.show_feedback({})
-	_bar.show_pause(false)
+	stop_presentation()
 	_saved = true
-	_bar.show_settings(false)
 	summary_requested.emit(path)
 
 

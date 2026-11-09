@@ -222,6 +222,8 @@ pub struct Snapshot {
     pub successor: Option<u8>,
     /// Current content identities and rules.
     pub selection: Option<Selection>,
+    /// Last activity returned to the lobby, retained across coalesced selection updates.
+    pub ended_revision: u64,
     /// Fixed membership table without peer addresses or heart rate.
     pub roster: [Option<Rider>; MAX_RIDERS],
     /// Local membership epochs, advanced on each joined assignment before exposing state.
@@ -319,6 +321,12 @@ pub struct Snapshot {
     pub away: [bool; MAX_RIDERS],
     /// The rider standing by to take over if the organizer is lost (#426).
     pub fallback: Option<u8>,
+    /// Organizer's preferred fallback, retained between activities until that member leaves.
+    pub preferred_fallback: Option<u8>,
+    /// The selected friend agreed to stand in, including consent obtained in the lobby.
+    pub preferred_fallback_accepted: bool,
+    /// Current early consent request, separate from activity-bound standby preparation.
+    pub fallback_consent: Option<u64>,
     /// This rider is asked to stand in as organizer if the organizer is lost.
     pub standby_offer: bool,
     /// What the organizer is choosing before sharing it, for a friend to see (#418).
@@ -344,6 +352,7 @@ impl Default for Snapshot {
             handover: Handover::Idle,
             successor: None,
             selection: None,
+            ended_revision: 0,
             roster: std::array::from_fn(|_| None),
             generations: [0; MAX_RIDERS],
             assistance: Assistance::default(),
@@ -389,12 +398,39 @@ impl Default for Snapshot {
             reconnecting: None,
             away: [false; MAX_RIDERS],
             fallback: None,
+            preferred_fallback: None,
+            preferred_fallback_accepted: false,
+            fallback_consent: None,
             standby_offer: false,
             preview: None,
         }
     }
 }
 impl Snapshot {
+    /// Whether this connected friend can be chosen now, including before activity readiness.
+    #[must_use]
+    pub fn fallback_eligible(&self, id: usize) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && id < MAX_RIDERS
+            && id != usize::from(self.me)
+            && self.roster[id].is_some()
+            && !self.away[id]
+            && (matches!(
+                self.phase,
+                Phase::Waiting
+                    | Phase::Downloading
+                    | Phase::Preparing
+                    | Phase::Ready
+                    | Phase::Countdown
+            ) || (self.phase == Phase::Riding && self.prepared && self.ready[id]))
+    }
+
+    /// An organizer can choose a fallback once another connected member has joined.
+    #[must_use]
+    pub fn can_choose_fallback(&self) -> bool {
+        (0..MAX_RIDERS).any(|id| self.fallback_eligible(id))
+    }
     /// A friend's current connection RTT for the roster (R235), never this rider's own row.
     /// The organizer's row uses our organizer link; other rows use that friend's link.
     #[must_use]
@@ -416,6 +452,15 @@ impl Snapshot {
         self.latencies[link]
     }
 
+    /// The organizer may end an activity during countdown or riding, outside a handover.
+    #[must_use]
+    pub fn can_end_activity(&self) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && matches!(self.phase, Phase::Countdown | Phase::Riding)
+            && self.start.is_some()
+            && self.selection.is_some()
+    }
     /// Tells the organizer why their pasted reply added nobody (R195).
     pub(crate) fn refuse(&mut self, refusal: Refusal) {
         self.refusal = refusal;
@@ -515,6 +560,8 @@ pub(crate) struct Running {
     /// The world-building percentage last passed to the runtime, which tells the group (#419).
     built: u8,
     prepared: u64,
+    returned_revision: u64,
+    end_requested: Option<u64>,
     launched: bool,
     launching: bool,
     trainer_connected: bool,
@@ -628,6 +675,8 @@ impl App {
             preparing: None,
             built: 0,
             prepared: 0,
+            returned_revision: 0,
+            end_requested: None,
             launched: false,
             launching: false,
             trainer_connected: self.trainer_connected(),
@@ -657,6 +706,40 @@ impl App {
                     error("The group connection has ended. Leave the group to keep riding alone.")
                 }
             })
+    }
+    /// Ends the shared activity for everyone and keeps this lobby for the next selection.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] unless organizing an active activity with an available queue.
+    pub fn group_end_activity(&mut self) -> Result<(), AppError> {
+        let status = self.group();
+        if !status.can_end_activity() {
+            return Err(error(
+                "Only the organizer can end the current group activity.",
+            ));
+        }
+        let revision = status.selection.as_ref().map_or(0, |s| s.revision);
+        if self
+            .group
+            .as_ref()
+            .is_some_and(|g| g.end_requested == Some(revision))
+        {
+            return Ok(());
+        }
+        self.group_command(Command::End(revision))?;
+        if let Some(group) = &mut self.group {
+            group.end_requested = Some(revision);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn end_finished_group(&mut self, events: &mut Vec<AppEvent>) {
+        if self.ride.as_ref().is_some_and(|ride| ride.finished)
+            && self.group().can_end_activity()
+            && let Err(error) = self.group_end_activity()
+        {
+            events.push(AppEvent::Error(Failure::from(error)));
+        }
     }
     /// Leaves networking/audio while preserving any local ride.
     pub fn group_leave(&mut self) {
@@ -903,13 +986,20 @@ impl App {
         )
     }
 
-    /// Asks rider `id` to stand in as fallback organizer instead of the automatic choice
-    /// (#426); they must accept before anything changes.
+    /// Chooses rider `id` instead of the automatic fallback and asks for consent immediately.
+    /// Standby links are prepared only while riding; consent lasts for this group membership.
     ///
     /// # Errors
-    /// Returns [`AppError`] for invalid slots or an unavailable queue.
+    /// Returns [`AppError`] for an ineligible member, invalid slot or unavailable queue.
     pub fn group_fallback(&self, id: u8) -> Result<(), AppError> {
-        self.group_command(Command::Fallback(RiderId::new(id).map_err(error)?))
+        let status = self.group();
+        if !status.fallback_eligible(usize::from(id)) {
+            return Err(error("Choose a connected friend as fallback organizer."));
+        }
+        self.group_command(Command::Fallback(
+            RiderId::new(id).map_err(error)?,
+            status.generations[usize::from(id)],
+        ))
     }
     /// Tries to reconnect to the organizer now rather than after the pause between attempts
     /// (#434); the connection keeps trying by itself until the seat is given up.
@@ -950,9 +1040,10 @@ impl App {
     /// Accepts or declines the current offer; accepting permits pinned peer connections.
     ///
     /// # Errors
-    /// Returns [`AppError`] without an active local ride or command queue.
+    /// Returns [`AppError`] without a lobby consent request or active local ride, or without
+    /// a command queue.
     pub fn group_handover_answer(&self, accepted: bool) -> Result<(), AppError> {
-        if self.ride.is_none() {
+        if self.ride.is_none() && self.group().fallback_consent.is_none() {
             return Err(error(
                 "Join the ride before answering the organizer request.",
             ));
@@ -1139,6 +1230,32 @@ impl App {
             return;
         };
         let snapshot = group.snapshot.borrow().clone();
+        if snapshot.ended_revision > group.returned_revision {
+            // Saving and trainer release happen locally; remote controls supply no samples.
+            crate::release_trainer(self.trainer.as_ref());
+            events.extend(self.save_ride(false));
+            self.cancel_loading();
+            if let Some(group) = &mut self.group {
+                group.returned_revision = snapshot.ended_revision;
+                group.end_requested = None;
+                group.launched = false;
+                group.launching = false;
+                group.preparing = None;
+                group.prepared = 0;
+                group.built = 0;
+                if snapshot.selection.is_none() {
+                    group.workout_id.clear();
+                }
+                group.peers = orqwa_session::group::Riders::default();
+                group.effect = orqwa_physics::GroupEffect::default();
+                group.transition = None;
+                group.states.send_replace(None);
+            }
+            events.push(AppEvent::GroupReturnedToLobby);
+        }
+        let Some(group) = &self.group else {
+            return;
+        };
         let connected = self.trainer_connected();
         if group.trainer_connected
             && !connected

@@ -625,3 +625,66 @@ self echoes; app tests check presentation/recording isolation and own-echo assis
 exclusion. No service, endpoint, dependency or rider control changes. The shared start still
 uses the existing half-RTT estimate; arbitrary network outages cannot provide exact current
 positions. Cross-home and native trainer acceptance remain manual.
+
+### Reusable lobby — 2026-11-08
+
+R237 separates ending an activity from closing group networking. The authenticated organizer
+can end the selected revision during countdown or riding; the app does the same when its
+local ride finishes. Each app releases its trainer, saves its own samples and returns to
+Group Rides. A participant finishing locally does not end the shared activity. Structured
+workouts on courses retain their existing continuation to the course finish.
+
+Protocol/invitation version 16 and ALPN `orqwa-group/16` add a reliable organizer-only
+`Lobby(ended_revision)` control. The activity actor retains its revision high-water mark
+and membership generations while clearing selection, readiness, selected-content serving,
+entry permissions, start/workout clocks and motion. The app cancels preparation and fallback
+standby work, clears launch state and retains the original lobby and voice owners, consent,
+microphone gates, local mutes and assistance choices. Reusing content still requires a new
+selection revision and fresh readiness. Initial admission/reconnection controls include the
+last ended revision before any current selection/running state, so missing an end during a
+dropout cannot leave a rider locked into the previous course.
+
+App state datagrams append the selection revision to the existing fixed state encoding.
+Previous-revision packets are discarded under the existing bounded ingress budgets, including
+across successive rides with new elapsed clocks. Motion histories clear without renewing
+connection ingress allowances or voice generations. Revision-bound end requests cannot stop
+a later activity. CLI single-course lobbies keep their existing state encoding and lifecycle.
+No endpoint, service or dependency changes.
+
+### Organizer setup before starting — 2026-11-08
+
+R238 keeps one organizer-local preferred fallback while the group is in the lobby. Choosing
+it immediately sends a private consent-only request over the authenticated group connection,
+independent of activity selection and readiness. The bounded request has its own epoch and
+deadline; only its authenticated selected member can answer it. Replacing the choice, departure
+and timeout withdraw it. Consent and preference persist across activities for that membership.
+After the shared start, the existing coordinator prefers that member when every rider is ready,
+then uses the unchanged reachability, activity/epoch binding and standby preparation. No standby
+links open before riding. An accepted request answers subsequent standby offers automatically;
+a decline permits the normal automatic alternative without asking that member again.
+Leaving or replacing a membership clears its preference; queued choices bind its generation.
+Activity changes and returning to the lobby retain a preference for a member still present.
+
+The countdown's Cancel action occupies the reserved Start slot. The separate End course for
+everyone action appears only in the in-ride group panel. Both use the existing revision-bound
+activity end. Protocol/invitation version 17 and ALPN `orqwa-group/17` distinguish the two new
+consent controls from older clients. No endpoint, service or dependency changes.
+
+### Automatic fallback in the lobby — 2026-11-09
+
+R239 moves the coordinator's initial automatic candidate selection into the lobby. The first
+eligible connected friend is asked using the existing consent-only controls, independent of
+activity selection and readiness. A manual choice takes precedence. Pending requests and
+accepted members are left alone; declined or timed-out members are skipped until explicitly
+chosen again or replaced by a new membership. Departure permits the next eligible candidate.
+No standby links are prepared until the shared ride has started and everyone is ready.
+
+Once the original organizer is lost and the fallback becomes organizer during a ride, the
+existing in-ride automatic selection and consent still arrange a replacement fallback. The
+initial lobby decision and consent remain valid across subsequent activities. No protocol,
+endpoint, service or dependency changes.
+
+Cancelling a standby discards departures observed only on its disposable links. They become
+group departures only when a takeover commits; the original authority's roster remains valid
+while it stays connected. This keeps old standby teardown from removing the organizer before
+the next activity's fallback can be prepared.

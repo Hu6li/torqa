@@ -53,6 +53,7 @@ pub(super) struct Activities {
     /// The preview riders last heard of, and when.
     announced: (Option<ContentId>, Option<Instant>),
     started: bool,
+    ended_revision: u64,
 }
 impl Activities {
     pub(super) fn new(enabled: bool, organizer: RiderId) -> Result<Self, LobbyError> {
@@ -70,6 +71,7 @@ impl Activities {
             shown,
             announced: (None, None),
             started: false,
+            ended_revision: 0,
         })
     }
     pub(super) fn joined(&mut self, id: RiderId) -> Result<(), LobbyError> {
@@ -123,6 +125,25 @@ impl Activities {
         self.announced = (None, None);
         Ok(())
     }
+    pub(super) fn end(&mut self, revision: u64) -> Result<(), LobbyError> {
+        if !self.enabled
+            || !self.started
+            || self
+                .lobby
+                .selection()
+                .is_none_or(|s| s.revision != revision)
+        {
+            return Err(LobbyError::Protocol);
+        }
+        self.lobby.end();
+        self.started = false;
+        self.ended_revision = revision;
+        self.ready.fill(false);
+        self.selected.send_replace(None);
+        self.shown.send_replace(None);
+        self.announced = (None, None);
+        Ok(())
+    }
     /// Takes the organizer's latest preview, until the countdown.
     pub(super) fn show(&mut self, shown: Option<Shown>) {
         if self.enabled && !self.started {
@@ -162,6 +183,9 @@ impl Activities {
     }
     pub(super) fn initial(&self) -> Vec<Message> {
         let mut messages = Vec::new();
+        if self.ended_revision > 0 {
+            messages.push(Message::Lobby(self.ended_revision));
+        }
         if let Some(shown) = self.shown.borrow().as_ref() {
             messages.push(Message::Preview(Some(shown.id)));
         }

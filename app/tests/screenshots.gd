@@ -70,6 +70,7 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	await GroupVoiceScreenshots.capture(self, start, group, out)
 	await GroupCodeScreenshots.capture(self, group, str(orqwa.group_status()["invite"]), out)
 	await GroupReadinessLayout.capture(self, start, group, orqwa, out)
+	await GroupLifecycleChecks.capture(self, start, group, orqwa, out)
 	orqwa.group_leave()
 	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
