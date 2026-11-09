@@ -419,7 +419,7 @@ impl Message {
                 successor, standby, ..
             } => bytes.extend_from_slice(&[successor.value(), u8::from(*standby)]),
             Self::Decision { accepted, .. } | Self::FallbackDecision { accepted, .. } => {
-                bytes.push(u8::from(*accepted))
+                bytes.push(u8::from(*accepted));
             }
             Self::Invite { invite, .. } => blob(
                 &mut bytes,

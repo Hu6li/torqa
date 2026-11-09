@@ -289,9 +289,8 @@ func _show_organizer() -> void:
 	var phase: String = _status.get("phase", "idle")
 	var handover: String = _status.get("handover", "idle")
 	var host: bool = _status.get("host", false)
-	var standby: bool = (
-		_status.get("standby_offer", false) and _status.get("fallback_consent", "").is_empty()
-	)
+	var consent: String = _status.get("fallback_consent", "")
+	var standby: bool = _status.get("standby_offer", false) and consent.is_empty()
 	var offer: bool = _status.get("handover_offer", false) or standby
 	var lobby: bool = phase in ["waiting", "downloading", "preparing", "ready", "countdown"]
 	_organizer_panel.visible = (
@@ -315,7 +314,7 @@ func _show_organizer() -> void:
 				_organizer_status.text = (
 					tr("%s agreed to stand in as fallback organizer.") % preferred
 				)
-			elif not _status.get("fallback_consent", "").is_empty():
+			elif not consent.is_empty():
 				_organizer_status.text = tr("Waiting for %s to agree to stand in.") % preferred
 			else:
 				_organizer_status.text = tr("%s has not agreed to stand in.") % preferred

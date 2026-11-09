@@ -299,7 +299,7 @@ func _back_home() -> void:
 
 func _return_to_group() -> void:
 	_set_overlay(false)
-	_ride.return_to_lobby()
+	_ride.stop_presentation()
 	_back_home()
 	_start.show_group_lobby()
 

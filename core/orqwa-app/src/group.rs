@@ -986,8 +986,8 @@ impl App {
         )
     }
 
-    /// Chooses rider `id` instead of the automatic fallback. Before starting, remembers the
-    /// choice; once riding, asks for their existing consent before preparing standby links.
+    /// Chooses rider `id` instead of the automatic fallback and asks for consent immediately.
+    /// Standby links are prepared only while riding; consent lasts for this group membership.
     ///
     /// # Errors
     /// Returns [`AppError`] for an ineligible member, invalid slot or unavailable queue.

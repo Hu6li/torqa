@@ -188,16 +188,11 @@ static func capture(
 		group._organizer_picker.hide()
 		var consent: GroupFallbackConsentDialog = GroupFallbackConsentDialog.new()
 		tree.root.add_child(consent)
-		consent.show_status(
-			{
-				"phase": "waiting",
-				"host": false,
-				"fallback_consent": "42",
-				"standby_offer": true,
-				"roster": [{"name": "Mia", "organizer": true}]
-			}
-		)
-		await _capture(tree, scroll, out, "group-fallback-consent-" + locale)
+		var friend: Dictionary = GroupReadinessLayout.status(app, false, "ready")
+		friend.merge({"fallback_consent": "42", "standby_offer": true})
+		group._show_status(friend)
+		consent.show_status(friend)
+		await _capture(tree, scroll, out, "group-fallback-consent-" + locale, false)
 		consent.free()
 		chosen["phase"] = "countdown"
 		group._show_status(chosen)
@@ -224,6 +219,9 @@ static func _capture_ride_window(
 	ride._group_controls.set_process(false)
 	UiScale.popup(ride._group_window, Vector2i(980, 600))
 	ride._group_controls._show_status(status)
+	await _settle(tree)
+	var scroll: ScrollContainer = ride._group_controls.get_parent()
+	scroll.scroll_vertical = 100000
 	await _settle(tree)
 	await tree.create_timer(0.15).timeout
 	tree.root.get_texture().get_image().save_png(

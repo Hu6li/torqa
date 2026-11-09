@@ -1,5 +1,6 @@
 class_name GroupFallbackConsentDialog
 extends ConfirmationDialog
+# gdlint: disable=max-line-length
 ## A group consent request is visible in the lobby and survives the transition into a ride.
 
 var _orqwa: OrqwaApp
