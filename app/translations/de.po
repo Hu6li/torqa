@@ -2933,6 +2933,24 @@ msgstr "Organisation übergeben…"
 msgid "End course for everyone"
 msgstr "Kurs für alle beenden"
 
+msgid "%s agreed to stand in as fallback organizer."
+msgstr "%s hat zugesagt, als Organisator einzuspringen."
+
+msgid "Waiting for %s to agree to stand in."
+msgstr "Warte auf die Zusage von %s als Vertretung."
+
+msgid "%s has not agreed to stand in."
+msgstr "%s hat noch nicht zugesagt, als Vertretung einzuspringen."
+
+msgid "Choose a fallback now to ask for their consent."
+msgstr "Wähle jetzt eine Vertretung, um sie um ihre Zustimmung zu bitten."
+
+msgid "Stand in as organizer if the organizer's connection is lost during a ride? Your agreement lasts while you stay in this group. Accepting allows ORQWA to share connection addresses with everyone in this group when preparing the fallback, using your connection settings."
+msgstr "Möchtest du als Organisator einspringen, falls während einer Fahrt die Verbindung des Organisators abbricht? Deine Zusage gilt, solange du in dieser Gruppe bleibst. Mit deiner Zustimmung darf ORQWA beim Vorbereiten der Vertretung Verbindungsadressen mit allen in dieser Gruppe teilen. Dabei gelten deine Verbindungseinstellungen."
+
+msgid "A friend must join before you can choose a fallback organizer."
+msgstr "Ein Freund muss der Gruppe beitreten, bevor du eine Vertretung wählen kannst."
+
 #: app/scenes/group_rides_tab.gd
 msgid "%s asks you to organize the ride"
 msgstr "%s bittet dich, die Fahrt zu organisieren"

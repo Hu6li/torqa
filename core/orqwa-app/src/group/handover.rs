@@ -42,6 +42,12 @@ pub(super) enum Event {
     Link(Option<LobbyEvent>),
 }
 
+struct ConsentRequest {
+    epoch: u64,
+    rider: RiderId,
+    until: Instant,
+}
+
 #[allow(clippy::struct_excessive_bools)] // independent deadline, proof, connection and announcement gates
 pub(super) struct Coordinator {
     options: ConnectOptions,
@@ -71,6 +77,8 @@ pub(super) struct Coordinator {
     declined: u8,
     /// This rider agreed to stand in during this group, so a renewed standby asks no more.
     consented: bool,
+    approved: u8,
+    consent_request: Option<ConsentRequest>,
     /// Since when this rider has lost its organizer: its link reconnecting (#434), or, at the
     /// organizer, every rider away.
     lost_since: Option<Instant>,
@@ -113,6 +121,8 @@ impl Coordinator {
             standing: false,
             declined: 0,
             consented: false,
+            approved: 0,
+            consent_request: None,
             lost_since: None,
             reported: false,
             lost: 0,
@@ -149,6 +159,7 @@ impl Coordinator {
         {
             return Err("Choose a connected rider who has prepared the ride.".into());
         }
+        self.cancel_consent(session, snapshot)?;
         // A planned change replaces the standby; the new organizer chooses a fresh one.
         if self.standby {
             self.cancel(session, snapshot)?;
@@ -192,8 +203,7 @@ impl Coordinator {
         self.deadline = Some(Instant::now() + CONSENT);
     }
 
-    /// The organizer asks `successor` to stand in as fallback in place of the current one,
-    /// also a rider who declined before (#426).
+    /// Asks for group consent immediately; fallback links are prepared only while riding.
     pub(super) fn choose_fallback(
         &mut self,
         session: &Session,
@@ -201,28 +211,28 @@ impl Coordinator {
         successor: RiderId,
     ) -> Result<(), String> {
         let id = usize::from(successor.value());
-        if !snapshot.host
-            || !started(snapshot)
-            || snapshot.handover != Handover::Idle
-            || successor.value() == snapshot.me
-            || snapshot.roster[id].is_none()
-            || !snapshot.ready[id]
-            || snapshot.away[id]
-        {
+        if !snapshot.fallback_eligible(id) {
             return Err("Choose a connected rider who has prepared the ride.".into());
         }
+        if !started(snapshot) {
+            return self.request_consent(session, snapshot, successor);
+        }
+        self.cancel_consent(session, snapshot)?;
         if self.context.is_some() {
             self.cancel(session, snapshot)?;
         }
+        snapshot.preferred_fallback = Some(successor.value());
+        snapshot.preferred_fallback_accepted = self.approved & (1 << id) != 0;
         self.declined &= !(1 << id);
         self.offer(session, snapshot, successor, true)
     }
 
-    /// Keeps a fallback on standby while riding (#426): the organizer offers it to the first
-    /// prepared, connected rider in joining order who has not declined. Each rider's own app
+    /// Keeps a fallback on standby while riding (#426): prefer the organizer's choice, then
+    /// the first prepared, connected rider in joining order who has not declined. Each rider's app
     /// declines at once when its discovery suggests friends could not reach it.
     fn stand_by(&mut self, session: &Session, snapshot: &mut Snapshot) -> Result<(), String> {
         if !snapshot.host
+            || self.consent_request.is_some()
             || self.context.is_some()
             || !started(snapshot)
             || snapshot.handover != Handover::Idle
@@ -238,12 +248,17 @@ impl Coordinator {
         {
             return Ok(());
         }
-        let candidate = (0..orqwa_net::state::MAX_RIDERS).find(|&id| {
+        let eligible = |id: usize| {
             id != usize::from(snapshot.me)
                 && snapshot.roster[id].is_some()
                 && snapshot.ready[id]
                 && self.declined & (1 << id) == 0
-        });
+        };
+        let candidate = snapshot
+            .preferred_fallback
+            .map(usize::from)
+            .filter(|id| eligible(*id))
+            .or_else(|| (0..orqwa_net::state::MAX_RIDERS).find(|id| eligible(*id)));
         match candidate {
             Some(id) => self.offer(
                 session,
@@ -252,6 +267,103 @@ impl Coordinator {
                 true,
             ),
             None => Ok(()),
+        }
+    }
+
+    fn request_consent(
+        &mut self,
+        session: &Session,
+        snapshot: &mut Snapshot,
+        rider: RiderId,
+    ) -> Result<(), String> {
+        if self
+            .consent_request
+            .as_ref()
+            .is_some_and(|request| request.rider == rider)
+        {
+            return Ok(());
+        }
+        self.cancel_consent(session, snapshot)?;
+        snapshot.preferred_fallback = Some(rider.value());
+        self.declined &= !(1 << rider.value());
+        snapshot.preferred_fallback_accepted = self.approved & (1 << rider.value()) != 0;
+        if snapshot.preferred_fallback_accepted {
+            return Ok(());
+        }
+        let epoch = self
+            .last_epoch
+            .max(snapshot.epoch)
+            .checked_add(1)
+            .ok_or("Authority epoch exhausted.")?;
+        session.handover(Some(rider), Message::FallbackConsent { epoch })?;
+        self.last_epoch = epoch;
+        self.consent_request = Some(ConsentRequest {
+            epoch,
+            rider,
+            until: Instant::now() + CONSENT,
+        });
+        snapshot.fallback_consent = Some(epoch);
+        Ok(())
+    }
+
+    fn cancel_consent(&mut self, session: &Session, snapshot: &mut Snapshot) -> Result<(), String> {
+        if let Some(request) = self.consent_request.take()
+            && snapshot.host
+        {
+            session.handover(
+                Some(request.rider),
+                Message::Cancel {
+                    epoch: request.epoch,
+                },
+            )?;
+        }
+        snapshot.fallback_consent = None;
+        snapshot.standby_offer = false;
+        Ok(())
+    }
+
+    fn consent_decision(
+        &mut self,
+        session: &Session,
+        snapshot: &mut Snapshot,
+        accepted: bool,
+    ) -> Result<(), String> {
+        let request = self
+            .consent_request
+            .as_ref()
+            .ok_or("There is no fallback consent request.")?;
+        if snapshot.host || request.rider.value() != snapshot.me || !snapshot.standby_offer {
+            return Err("This fallback request belongs to another rider.".into());
+        }
+        session.handover(
+            None,
+            Message::FallbackDecision {
+                epoch: request.epoch,
+                accepted,
+            },
+        )?;
+        self.consented |= accepted;
+        self.consent_request = None;
+        snapshot.fallback_consent = None;
+        snapshot.standby_offer = false;
+        Ok(())
+    }
+
+    pub(super) fn forget_member(&mut self, snapshot: &mut Snapshot, rider: RiderId) {
+        self.approved &= !(1 << rider.value());
+        self.declined &= !(1 << rider.value());
+        if self
+            .consent_request
+            .as_ref()
+            .is_some_and(|request| request.rider == rider)
+        {
+            self.consent_request = None;
+            snapshot.fallback_consent = None;
+            snapshot.standby_offer = false;
+        }
+        if snapshot.preferred_fallback == Some(rider.value()) {
+            snapshot.preferred_fallback = None;
+            snapshot.preferred_fallback_accepted = false;
         }
     }
 
@@ -270,6 +382,9 @@ impl Coordinator {
         snapshot: &mut Snapshot,
         accepted: bool,
     ) -> Result<(), String> {
+        if self.consent_request.is_some() {
+            return self.consent_decision(session, snapshot, accepted);
+        }
         let context = self
             .context
             .as_ref()
@@ -338,6 +453,63 @@ impl Coordinator {
         sender: RiderId,
         message: Message,
     ) -> Result<(), String> {
+        match &message {
+            Message::FallbackConsent { epoch } => {
+                if snapshot.host
+                    || sender.value() != snapshot.organizer
+                    || self.context.is_some()
+                    || *epoch <= self.last_epoch.max(snapshot.epoch)
+                {
+                    return Err("Unexpected fallback consent request.".into());
+                }
+                self.last_epoch = *epoch;
+                self.consent_request = Some(ConsentRequest {
+                    epoch: *epoch,
+                    rider: RiderId::new(snapshot.me).map_err(text)?,
+                    until: Instant::now() + CONSENT,
+                });
+                snapshot.fallback_consent = Some(*epoch);
+                snapshot.standby_offer = true;
+                if !Self::reachable(snapshot) {
+                    self.consent_decision(session, snapshot, false)?;
+                } else if self.consented {
+                    self.consent_decision(session, snapshot, true)?;
+                }
+                return Ok(());
+            }
+            Message::FallbackDecision { epoch, accepted } => {
+                if snapshot.host
+                    && self
+                        .consent_request
+                        .as_ref()
+                        .is_some_and(|request| request.epoch == *epoch && request.rider == sender)
+                {
+                    self.consent_request = None;
+                    snapshot.fallback_consent = None;
+                    snapshot.preferred_fallback_accepted = *accepted;
+                    if *accepted {
+                        self.approved |= 1 << sender.value();
+                    } else {
+                        self.declined |= 1 << sender.value();
+                    }
+                }
+                return Ok(());
+            }
+            Message::Cancel { epoch }
+                if !snapshot.host
+                    && sender.value() == snapshot.organizer
+                    && self
+                        .consent_request
+                        .as_ref()
+                        .is_some_and(|request| request.epoch == *epoch) =>
+            {
+                self.consent_request = None;
+                snapshot.fallback_consent = None;
+                snapshot.standby_offer = false;
+                return Ok(());
+            }
+            _ => {}
+        }
         if let Message::Offer {
             epoch,
             successor,
@@ -378,6 +550,12 @@ impl Coordinator {
         }
         match message {
             Message::Decision { accepted, .. } if snapshot.host && sender == context.successor => {
+                if self.standby && accepted {
+                    self.approved |= 1 << sender.value();
+                    if snapshot.preferred_fallback == Some(sender.value()) {
+                        snapshot.preferred_fallback_accepted = true;
+                    }
+                }
                 if !self.standby && snapshot.handover != Handover::Offered {
                     return Ok(());
                 }
@@ -957,6 +1135,16 @@ impl Coordinator {
         session: &Session,
         snapshot: &mut Snapshot,
     ) -> Result<(), String> {
+        if let Some(request) = self
+            .consent_request
+            .as_ref()
+            .filter(|request| request.until <= Instant::now())
+        {
+            if snapshot.host {
+                self.declined |= 1 << request.rider.value();
+            }
+            self.cancel_consent(session, snapshot)?;
+        }
         if let Some(clock) = snapshot.workout_clock {
             self.clock = Some(clock);
         }
@@ -1064,7 +1252,14 @@ impl Coordinator {
         snapshot.handover = Handover::Idle;
         snapshot.successor = None;
         snapshot.fallback = None;
-        snapshot.standby_offer = false;
+        snapshot.standby_offer = !snapshot.host && snapshot.fallback_consent.is_some();
+        if snapshot
+            .preferred_fallback
+            .is_some_and(|id| snapshot.roster[usize::from(id)].is_none())
+        {
+            snapshot.preferred_fallback = None;
+            snapshot.preferred_fallback_accepted = false;
+        }
     }
 }
 

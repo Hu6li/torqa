@@ -79,12 +79,19 @@ Map-marker checks cover north-up placement, both forms of letterboxing, resizing
 on reset or course changes. The summary suite checks the blue Yes/red No question and that
 the map and elevation profile use the same saved course position (R222).
 
-Reusable-lobby regressions (R236) run two real loopback activities on the same connections,
+Reusable-lobby regressions (R237) run two real loopback activities on the same connections,
 reject previous-revision motion/end requests, and reconnect to the empty lobby. The app
 tests preserve live voice/microphone gates and saved recordings across organizer cancellation,
 workout completion and another selection/start, then cancel a countdown and verify it cannot
 launch later. The group UI smoke test checks returning to the Group Rides tab, closing ride
 windows and opening a fresh ride. Native trainers and two-home acceptance remain manual.
+
+Lobby organizer tests (R238) choose the second of two friends before readiness and verify
+immediate consent without preparing standby links before start. They check retaining consent
+across activities without another prompt, respecting a decline, withdrawing an obsolete request,
+clearing a departed member and rejecting a queued choice for a reused slot. UI checks cover the
+early consent dialog, the disabled solo fallback choice, unready friends in its picker, and
+Cancel replacing Start at the same position and size, with no separate lobby end action.
 
 It also checks joining before and after a group starts with no local activity files (#508,
 R196, R216): the shared name remains visible during download and retry, then gives way to

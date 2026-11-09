@@ -628,7 +628,7 @@ positions. Cross-home and native trainer acceptance remain manual.
 
 ### Reusable lobby — 2026-11-08
 
-R236 separates ending an activity from closing group networking. The authenticated organizer
+R237 separates ending an activity from closing group networking. The authenticated organizer
 can end the selected revision during countdown or riding; the app does the same when its
 local ride finishes. Each app releases its trainer, saves its own samples and returns to
 Group Rides. A participant finishing locally does not end the shared activity. Structured
@@ -650,3 +650,22 @@ across successive rides with new elapsed clocks. Motion histories clear without 
 connection ingress allowances or voice generations. Revision-bound end requests cannot stop
 a later activity. CLI single-course lobbies keep their existing state encoding and lifecycle.
 No endpoint, service or dependency changes.
+
+### Organizer setup before starting — 2026-11-08
+
+R238 keeps one organizer-local preferred fallback while the group is in the lobby. Choosing
+it immediately sends a private consent-only request over the authenticated group connection,
+independent of activity selection and readiness. The bounded request has its own epoch and
+deadline; only its authenticated selected member can answer it. Replacing the choice, departure
+and timeout withdraw it. Consent and preference persist across activities for that membership.
+After the shared start, the existing coordinator prefers that member when every rider is ready,
+then uses the unchanged reachability, activity/epoch binding and standby preparation. No standby
+links open before riding. An accepted request answers subsequent standby offers automatically;
+a decline permits the normal automatic alternative without asking that member again.
+Leaving or replacing a membership clears its preference; queued choices bind its generation.
+Activity changes and returning to the lobby retain a preference for a member still present.
+
+The countdown's Cancel action occupies the reserved Start slot. The separate End course for
+everyone action appears only in the in-ride group panel. Both use the existing revision-bound
+activity end. Protocol/invitation version 17 and ALPN `orqwa-group/17` distinguish the two new
+consent controls from older clients. No endpoint, service or dependency changes.

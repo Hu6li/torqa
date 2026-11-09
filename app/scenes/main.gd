@@ -15,6 +15,7 @@ var _overlay: OverlayWindow
 var _opaque: ColorRect = ColorRect.new()
 var _failures: FailureDetails = FailureDetails.new()
 var _update: UpdateDialog = UpdateDialog.new()
+var _fallback_consent: GroupFallbackConsentDialog = GroupFallbackConsentDialog.new()
 var _quick_summary: RideSummaryDialog = RideSummaryDialog.new()
 ## A newer ORQWA found during a ride, offered once back on the start page (R99).
 var _pending_update: Array = []
@@ -95,6 +96,8 @@ func _ready() -> void:
 		get_window().mode = Window.MODE_FULLSCREEN
 	add_child(_update)
 	_update.bind(_orqwa)
+	add_child(_fallback_consent)
+	_fallback_consent.bind(_orqwa)
 	_orqwa.update_available.connect(_on_update_available)
 	# Released builds look for a newer one unless this computer turned it off (R99); builds
 	# from the editor and the checks never contact GitHub on their own.

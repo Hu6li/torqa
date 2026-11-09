@@ -953,6 +953,10 @@ func _organizer_offer() -> void:
 		card.visible and card._accept.text == "Stand in as organizer",
 		"a request to stand in comes over the ride too"
 	)
+	ride._show_group(
+		{"phase": "riding", "roster": roster, "standby_offer": true, "fallback_consent": "42"}
+	)
+	_check(not card.visible, "an unanswered lobby dialog has no duplicate ride request")
 	main.free()
 
 

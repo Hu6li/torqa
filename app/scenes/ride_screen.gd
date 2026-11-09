@@ -766,7 +766,9 @@ func _show_group(status: Dictionary) -> void:
 	var microphone: bool = status.get("microphone", false)
 	_bar.show_microphone(voice, microphone)
 	_show_listen(status)
-	var standby: bool = status.get("standby_offer", false)
+	var standby: bool = (
+		status.get("standby_offer", false) and status.get("fallback_consent", "").is_empty()
+	)
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
 		_offered = offered

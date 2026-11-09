@@ -321,6 +321,12 @@ pub struct Snapshot {
     pub away: [bool; MAX_RIDERS],
     /// The rider standing by to take over if the organizer is lost (#426).
     pub fallback: Option<u8>,
+    /// Organizer's preferred fallback, retained between activities until that member leaves.
+    pub preferred_fallback: Option<u8>,
+    /// The selected friend agreed to stand in, including consent obtained in the lobby.
+    pub preferred_fallback_accepted: bool,
+    /// Current early consent request, separate from activity-bound standby preparation.
+    pub fallback_consent: Option<u64>,
     /// This rider is asked to stand in as organizer if the organizer is lost.
     pub standby_offer: bool,
     /// What the organizer is choosing before sharing it, for a friend to see (#418).
@@ -392,12 +398,39 @@ impl Default for Snapshot {
             reconnecting: None,
             away: [false; MAX_RIDERS],
             fallback: None,
+            preferred_fallback: None,
+            preferred_fallback_accepted: false,
+            fallback_consent: None,
             standby_offer: false,
             preview: None,
         }
     }
 }
 impl Snapshot {
+    /// Whether this connected friend can be chosen now, including before activity readiness.
+    #[must_use]
+    pub fn fallback_eligible(&self, id: usize) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && id < MAX_RIDERS
+            && id != usize::from(self.me)
+            && self.roster[id].is_some()
+            && !self.away[id]
+            && (matches!(
+                self.phase,
+                Phase::Waiting
+                    | Phase::Downloading
+                    | Phase::Preparing
+                    | Phase::Ready
+                    | Phase::Countdown
+            ) || (self.phase == Phase::Riding && self.prepared && self.ready[id]))
+    }
+
+    /// An organizer can choose a fallback once another connected member has joined.
+    #[must_use]
+    pub fn can_choose_fallback(&self) -> bool {
+        (0..MAX_RIDERS).any(|id| self.fallback_eligible(id))
+    }
     /// A friend's current connection RTT for the roster (R235), never this rider's own row.
     /// The organizer's row uses our organizer link; other rows use that friend's link.
     #[must_use]
@@ -953,13 +986,20 @@ impl App {
         )
     }
 
-    /// Asks rider `id` to stand in as fallback organizer instead of the automatic choice
-    /// (#426); they must accept before anything changes.
+    /// Chooses rider `id` instead of the automatic fallback. Before starting, remembers the
+    /// choice; once riding, asks for their existing consent before preparing standby links.
     ///
     /// # Errors
-    /// Returns [`AppError`] for invalid slots or an unavailable queue.
+    /// Returns [`AppError`] for an ineligible member, invalid slot or unavailable queue.
     pub fn group_fallback(&self, id: u8) -> Result<(), AppError> {
-        self.group_command(Command::Fallback(RiderId::new(id).map_err(error)?))
+        let status = self.group();
+        if !status.fallback_eligible(usize::from(id)) {
+            return Err(error("Choose a connected friend as fallback organizer."));
+        }
+        self.group_command(Command::Fallback(
+            RiderId::new(id).map_err(error)?,
+            status.generations[usize::from(id)],
+        ))
     }
     /// Tries to reconnect to the organizer now rather than after the pause between attempts
     /// (#434); the connection keeps trying by itself until the seat is given up.
@@ -1000,9 +1040,10 @@ impl App {
     /// Accepts or declines the current offer; accepting permits pinned peer connections.
     ///
     /// # Errors
-    /// Returns [`AppError`] without an active local ride or command queue.
+    /// Returns [`AppError`] without a lobby consent request or active local ride, or without
+    /// a command queue.
     pub fn group_handover_answer(&self, accepted: bool) -> Result<(), AppError> {
-        if self.ride.is_none() {
+        if self.ride.is_none() && self.group().fallback_consent.is_none() {
             return Err(error(
                 "Join the ride before answering the organizer request.",
             ));
