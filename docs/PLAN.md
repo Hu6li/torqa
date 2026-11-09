@@ -367,10 +367,9 @@ Built in rideable steps:
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
 - [x] Render the current and proposed ride UI at 1280 × 720 in Godot with seven peers
   ([review images](ride-layout-review.md)); retain the existing theme and controls.
-- [ ] Review the [1280 × 720 ride layout prototype](ride-layout-review.md), then implement
-  the compact map/profile, climb before Riders, remaining climb ascent and simple rider
-  rows with aligned effort and ahead/behind gaps, without scrolling; validate solo/group,
-  workout and translated layouts.
+- [x] Implement the [ride layout](ride-layout-review.md) (R236): compact map/profile,
+  climb before Riders, Rust-calculated remaining climb ascent and aligned effort/gap
+  columns without scrolling; adaptive HUD columns and workout targets on the left.
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
 - [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
   #192 on the course's own map, drawn when the course is prepared and kept in the `.oqc`; since

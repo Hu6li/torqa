@@ -3375,6 +3375,7 @@ impl OrqwaApp {
                         "category" => c.climb.category.label(),
                         "length_m" => c.climb.length().0,
                         "ridden_m" => c.ridden.0,
+                        "remaining_ascent_m" => c.remaining_ascent.0,
                         "grade" => c.climb.average_grade.0,
                         "elapsed_s" => c.elapsed.as_secs_f64(),
                         "best_s" => &optional(c.best.map(|b| b.as_secs_f64())),

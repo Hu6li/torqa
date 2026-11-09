@@ -641,3 +641,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R235 | Extends R169 (2026-11-08): **friends' ping in milliseconds** appears in the group roster before a ride and, during a ride, only in the **Group Rides** dialog. Each friend's figure measures their connection's round trip to the organizer; the organizer's row measures this rider's connection to them. The local rider has no self ping. Readings refresh automatically, explain that lower is better, and show an unavailable value before measurement, during reconnection and after stale measurements expire. Membership reuse and organizer changes discard old readings. Ping does not appear in the ride HUD, beside the map or on rider nameplates. |
+
+## Ride screen without scrolling
+
+| ID | Requirement |
+|---|---|
+| R236 | Refines R23, R53, R164 and R190 (2026-11-09): at **1280 × 720**, the ride's map, full-course elevation profile, active climb and all seven other **Riders** fit together without scrolling, in that order. The map and profile adapt to the available height. Workout targets follow the metrics on the left, whose selected figures can use extra columns without changing their saved order. The climb keeps its category/title and one uniformly sized line for positive ascent still to climb before its end, remaining distance and average gradient, ending in **to go**, or **verbleibend** in German, without a prefix, arrows, an average suffix or separate timing line. Rust calculates the remaining ascent, including intermediate dips and partial segments; Godot converts units for display. The **Riders** panel has aligned name, watts, W/kg and distance-gap columns, with identity colors and speaking indicators, explicit ahead/behind words and no column headers, rider count, legend, comma or slash separators. |

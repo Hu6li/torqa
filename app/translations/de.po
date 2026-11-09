@@ -139,8 +139,6 @@ msgstr "Nicht gefunden: %s. Wecke die Geräte auf und suche erneut."
 msgid "%s not found — wake it, then reconnect again."
 msgstr "%s nicht gefunden — aktiviere das Gerät und verbinde es erneut."
 
-msgid "%s to go  ·  %.1f %%"
-msgstr "noch %s  ·  %.1f %%"
 
 msgid "%s was not found. It holds the course's slopes: put it next to the RLV file."
 msgstr "%s nicht gefunden. Sie enthält die Steigungen der Route: Lege sie neben die RLV-Datei."
@@ -1921,8 +1919,6 @@ msgstr "Batterie %d %%"
 msgid "battery %s"
 msgstr "Batterie %s"
 
-msgid "best %s"
-msgstr "Bestzeit %s"
 
 msgid "chunks"
 msgstr "Abschnitte"
@@ -3214,3 +3210,22 @@ msgstr "Zeit für Hin- und Rückweg zwischen dir und dem Organisator. Niedriger 
 
 msgid "Round-trip time from this friend to the organizer. Lower is better."
 msgstr "Zeit für Hin- und Rückweg zwischen diesem Freund und dem Organisator. Niedriger ist besser."
+
+msgid "%s · %s · %.1f%% to go"
+msgstr "%s · %s · %.1f%% verbleibend"
+
+msgid "%sft"
+msgstr "%sft"
+
+msgid "%sft ascent"
+msgstr "%sft Anstieg"
+
+msgid "%sm"
+msgstr "%sm"
+
+msgid "%sm ascent"
+msgstr "%sm Anstieg"
+
+msgctxt "In-ride group panel"
+msgid "Riders"
+msgstr "Fahrer"
