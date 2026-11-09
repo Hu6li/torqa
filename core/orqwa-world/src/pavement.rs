@@ -1,7 +1,7 @@
 //! Barrier clearance against the pavement actually drawn, including junction fans and
 //! overlapping curves. Metadata is used only while generating; kept-world layout is unchanged.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::{MeshData, World};
@@ -10,11 +10,49 @@ const CELL: f64 = 16.0;
 /// Include the thickness of parapets, blades and posts around their placement line.
 const MARGIN: f64 = 0.01;
 const BARRIER_HEIGHT: f64 = 1.2;
+/// How far beside its line a fence or barrier span must stay off pavement, unless it says.
+pub(crate) const SPAN_HALF_WIDTH: f64 = 0.15;
 
 #[derive(Default)]
 pub(crate) struct Pavement {
     triangles: Vec<[[f64; 3]; 3]>,
     cells: HashMap<(i64, i64), Vec<usize>>,
+    /// The only cells kept, when the pavement is made for known questions (`Pavement::near`).
+    only: Option<HashSet<(i64, i64)>>,
+}
+
+/// The cells barriers will be checked in. A pavement keeping only those answers every check as
+/// the whole one would, without a copy of every street of the world: on a long course in a
+/// densely mapped country that copy alone took more memory than a tablet has to spare.
+#[derive(Default)]
+pub(crate) struct Asked(HashSet<(i64, i64)>);
+
+impl Asked {
+    /// A span from `a` to `b` checked `half_width` either side (`Pavement::crosses_width`).
+    pub(crate) fn span(&mut self, a: [f64; 3], b: [f64; 3], half_width: f64) {
+        let margin = half_width + MARGIN;
+        for x in cell(a[0].min(b[0]) - margin)..=cell(a[0].max(b[0]) + margin) {
+            for z in cell(a[2].min(b[2]) - margin)..=cell(a[2].max(b[2]) + margin) {
+                self.0.insert((x, z));
+            }
+        }
+    }
+
+    /// The checks `Pavement::clear` makes for `barriers` in `mesh`, centred at `origin`.
+    pub(crate) fn barriers(&mut self, mesh: &MeshData, barriers: &[Barrier], origin: [f32; 3]) {
+        for barrier in barriers {
+            if barrier.slab {
+                for &i in &mesh.indices[barrier.indices.clone()] {
+                    let v = mesh.vertices[i as usize];
+                    let x = f64::from(v[0]) + f64::from(origin[0]);
+                    let z = f64::from(v[2]) + f64::from(origin[2]);
+                    self.0.insert((cell(x), cell(z)));
+                }
+            } else {
+                self.span(barrier.a, barrier.b, barrier.half_width);
+            }
+        }
+    }
 }
 
 /// A generated barrier's triangles and its base line, in absolute Godot coordinates.
@@ -56,7 +94,25 @@ impl Pavement {
     }
 
     pub(crate) fn new(world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
-        let mut pavement = Self::default();
+        Self::default().with(world, track_lengths)
+    }
+
+    /// The pavement of `world` in the cells `asked` only: it answers those checks as
+    /// [`Pavement::new`] would.
+    pub(crate) fn near(
+        world: &World,
+        track_lengths: impl IntoIterator<Item = usize>,
+        asked: Asked,
+    ) -> Self {
+        Self {
+            only: Some(asked.0),
+            ..Self::default()
+        }
+        .with(world, track_lengths)
+    }
+
+    fn with(mut self, world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
+        let pavement = &mut self;
         pavement.add(&world.road, [0.0; 3], true, world.road.indices.len());
         for (chunk, track_length) in world.chunks.iter().zip(track_lengths) {
             pavement.add(
@@ -68,7 +124,7 @@ impl Pavement {
             // Shore gravel shares this GPU material but is not a road.
             pavement.add(&chunk.tracks, chunk.center, false, track_length);
         }
-        pavement
+        self
     }
 
     fn add(&mut self, mesh: &MeshData, origin: [f32; 3], ridden: bool, indices: usize) {
@@ -127,18 +183,25 @@ impl Pavement {
         let low = [a[0].min(b[0]).min(c[0]), a[2].min(b[2]).min(c[2])];
         let high = [a[0].max(b[0]).max(c[0]), a[2].max(b[2]).max(c[2])];
         let index = self.triangles.len();
-        self.triangles.push(triangle);
+        let mut kept = false;
         for x in cell(low[0])..=cell(high[0]) {
             for z in cell(low[1])..=cell(high[1]) {
-                self.cells.entry((x, z)).or_default().push(index);
+                if self.only.as_ref().is_none_or(|only| only.contains(&(x, z))) {
+                    self.cells.entry((x, z)).or_default().push(index);
+                    kept = true;
+                }
             }
+        }
+        if kept {
+            self.triangles.push(triangle);
         }
     }
 
     /// The whole barrier span is checked, even when both ends lie outside a narrow road.
     /// Pavement at a different level does not remove overpass protection.
+    #[cfg(test)]
     pub(crate) fn crosses(&self, a: [f64; 3], b: [f64; 3]) -> bool {
-        self.crosses_width(a, b, 0.15)
+        self.crosses_width(a, b, SPAN_HALF_WIDTH)
     }
 
     pub(crate) fn crosses_width(&self, a: [f64; 3], b: [f64; 3], half_width: f64) -> bool {
@@ -204,6 +267,7 @@ impl Pavement {
                 output.indices.push(remap[old]);
             }
         }
+        output.shrink_to_fit();
         *mesh = output;
     }
 
@@ -344,6 +408,73 @@ mod tests {
         road.insert([[0.0, 0.0, 0.0], [100.0, 0.0, 0.001], [100.0, 0.0, 0.0]]);
         assert!(!road.crosses([40.0, 0.0, -0.6], [44.0, 0.0, -0.6]));
         assert!(road.crosses([40.0, 0.0, -0.6], [44.0, 0.0, 0.6]));
+    }
+
+    /// Pieces of road 2 km apart, each as in [`road`].
+    fn spread(pavement: &mut Pavement) {
+        for x in [0.0, 2_000.0] {
+            pavement.insert([
+                [x - 1.0, 0.0, -2.0],
+                [x - 1.0, 0.0, 2.0],
+                [x + 1.0, 0.0, 0.0],
+            ]);
+        }
+    }
+
+    fn slab(x: f32) -> MeshData {
+        MeshData {
+            vertices: vec![
+                [x - 0.25, -0.7, -0.2],
+                [x - 0.25, 0.1, -0.2],
+                [x + 0.25, 0.1, 0.2],
+                [x + 0.25, -0.7, 0.2],
+            ],
+            normals: vec![[1.0, 0.0, 0.0]; 4],
+            uvs: vec![[0.0; 2]; 4],
+            colors: vec![],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }
+    }
+
+    #[test]
+    fn pavement_gathered_for_known_checks_answers_them_as_the_whole_and_keeps_only_their_cells() {
+        let mut whole = Pavement::default();
+        spread(&mut whole);
+        let fence = ([-3.0, 0.0, 0.0], [3.0, 0.0, 0.0]);
+        let clear_fence = ([-3.0, 0.0, 4.0], [3.0, 0.0, 4.0]);
+        let flared = ([-3.0, 0.0, 2.3], [3.0, 0.0, 2.3]);
+        let mut asked = Asked::default();
+        asked.span(fence.0, fence.1, SPAN_HALF_WIDTH);
+        asked.span(clear_fence.0, clear_fence.1, SPAN_HALF_WIDTH);
+        asked.span(flared.0, flared.1, 0.5);
+        let barrier = Barrier::slab(0..6);
+        asked.barriers(&slab(0.0), std::slice::from_ref(&barrier), [0.0; 3]);
+        let mut near = Pavement {
+            only: Some(asked.0),
+            ..Pavement::default()
+        };
+        spread(&mut near);
+
+        assert_eq!(near.triangles.len(), 1, "the far piece is not kept");
+        for (a, b, width) in [
+            (fence.0, fence.1, SPAN_HALF_WIDTH),
+            (clear_fence.0, clear_fence.1, SPAN_HALF_WIDTH),
+            (flared.0, flared.1, 0.5),
+        ] {
+            assert_eq!(
+                near.crosses_width(a, b, width),
+                whole.crosses_width(a, b, width)
+            );
+        }
+        assert!(near.crosses(fence.0, fence.1));
+        assert!(near.crosses_width(flared.0, flared.1, 0.5));
+        let (mut by_whole, mut by_near) = (slab(0.0), slab(0.0));
+        whole.clear(&mut by_whole, vec![Barrier::slab(0..6)], [0.0; 3]);
+        near.clear(&mut by_near, vec![barrier], [0.0; 3]);
+        assert_eq!(
+            by_near, by_whole,
+            "the slab edge recedes as against the whole pavement"
+        );
     }
 
     #[test]

@@ -150,6 +150,16 @@ pub struct MeshData {
 }
 
 impl MeshData {
+    /// Gives back the room the arrays grew into while the mesh was built. Built by pushing, a
+    /// chunk's meshes held about two fifths more than they used: over 1 GB on a long course.
+    pub(crate) fn shrink_to_fit(&mut self) {
+        self.vertices.shrink_to_fit();
+        self.normals.shrink_to_fit();
+        self.uvs.shrink_to_fit();
+        self.colors.shrink_to_fit();
+        self.indices.shrink_to_fit();
+    }
+
     /// Adds another mesh's triangles. Missing colours default to white when either mesh
     /// carries colours, keeping the optional vertex array complete.
     ///
@@ -249,6 +259,37 @@ pub struct TerrainChunk {
     pub trees: Trees,
     /// Guard rails, posts and poles by the road ridden (R89).
     pub props: Props,
+}
+
+impl TerrainChunk {
+    /// Gives back the room every mesh and buffer of the chunk grew into while built.
+    fn shrink_to_fit(&mut self) {
+        for mesh in [
+            &mut self.mesh,
+            &mut self.buildings,
+            &mut self.streets,
+            &mut self.tracks,
+            &mut self.urban,
+            &mut self.water,
+            &mut self.props.wires,
+        ] {
+            mesh.shrink_to_fit();
+        }
+        for cell in &mut self.modelled {
+            cell.shells.shrink_to_fit();
+            cell.models.values_mut().for_each(Vec::shrink_to_fit);
+        }
+        let plants = &mut self.trees;
+        for buffer in plants
+            .models
+            .values_mut()
+            .chain(self.props.models.values_mut())
+            .chain([&mut plants.grass, &mut plants.flowers])
+        {
+            buffer.shrink_to_fit();
+        }
+        self.modelled.shrink_to_fit();
+    }
 }
 
 /// Buildings drawn as Blender-made models (`app/assets/models/buildings`) up close, in one cell
@@ -398,12 +439,8 @@ pub async fn generate<M: ElevationModel>(
         progress(world.chunks.len(), total);
     }
     props::ground_protection(&mut world.chunks);
-    let pavement = pavement::Pavement::new(&world, chunk_barriers.iter().map(|(_, n)| *n));
-    for (chunk, ([paved, unpaved], _)) in world.chunks.iter_mut().zip(chunk_barriers) {
-        pavement.clear(&mut chunk.streets, paved, chunk.center);
-        pavement.clear(&mut chunk.tracks, unpaved, chunk.center);
-    }
-    props::clear_fences(&mut world.chunks, &pavement);
+    // Structures stand on the ground alone, which clearing barriers leaves as it is: built
+    // first, every barrier is known before the pavement they are checked against is gathered.
     let mut barriers = Vec::new();
     world.structures = structures::build_all(
         (&road, &ways.network.index),
@@ -415,6 +452,21 @@ pub async fn generate<M: ElevationModel>(
         &mut barriers,
     )
     .await;
+    let mut asked = pavement::Asked::default();
+    for (chunk, ([paved, unpaved], _)) in world.chunks.iter().zip(&chunk_barriers) {
+        asked.barriers(&chunk.streets, paved, chunk.center);
+        asked.barriers(&chunk.tracks, unpaved, chunk.center);
+    }
+    for ([a, b], half_width) in props::fence_spans(&world.chunks) {
+        asked.span(a, b, half_width);
+    }
+    asked.barriers(&world.structures, &barriers, [0.0; 3]);
+    let pavement = pavement::Pavement::near(&world, chunk_barriers.iter().map(|(_, n)| *n), asked);
+    for (chunk, ([paved, unpaved], _)) in world.chunks.iter_mut().zip(chunk_barriers) {
+        pavement.clear(&mut chunk.streets, paved, chunk.center);
+        pavement.clear(&mut chunk.tracks, unpaved, chunk.center);
+    }
+    props::clear_fences(&mut world.chunks, &pavement);
     pavement.clear(&mut world.structures, barriers, [0.0; 3]);
     if world.fallback_samples > 0 {
         warn!(
@@ -632,7 +684,7 @@ impl Corridor<'_> {
             &heights,
         ));
         self.urban.paint(&mut mesh, origin, self.land, &heights);
-        let chunk = TerrainChunk {
+        let mut chunk = TerrainChunk {
             center,
             mesh,
             buildings: chunk_buildings.shells,
@@ -644,6 +696,7 @@ impl Corridor<'_> {
             trees,
             props,
         };
+        chunk.shrink_to_fit();
         (chunk, fallbacks, (barriers, track_length))
     }
 }

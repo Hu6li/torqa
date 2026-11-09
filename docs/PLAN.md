@@ -941,6 +941,15 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   - [x] the folder, the move and the wiki
   - [ ] tried on the Tab S7: the move, and rides and courses synced both ways with a computer
   - [x] synced course videos on Android 16: **Allow videos** asks for Photos and videos (R149)
+- [ ] G — long, densely mapped courses within a tablet's memory: on the Tab S7 Android ended
+  ORQWA for low memory at 2.5 GB while building a 57 km course in Japan, whose whole world is
+  kept in memory, in the core and again in Godot
+  ([measurements](benchmarks/world-memory.md))
+  - [x] the same world for less: room meshes grew into while built given back, and the pavement
+    barriers are checked against gathered only where they stand; peak 6.3 → 5.2 GB, the world
+    unchanged
+  - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
+  - [ ] far streets and their ground in coarser pieces (a generator change, with review renders)
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
 
 ### Phase 13 — Group rides (R159–R169, [ADR 0035](adr/0035-group-rides.md))
