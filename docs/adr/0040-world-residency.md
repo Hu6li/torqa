@@ -70,7 +70,9 @@ Every world is built into a store in the cache directory, never the data directo
 - While the world is being built, each finished chunk is written to
   `<cache>/worlds/<fingerprint>.building/chunks/<n>`. Each file is a zip with one entry,
   already named `chunks/<n>`, deflated at level 1 as kept worlds are. Each chunk can be read as
-  soon as it is written, while others are still being built.
+  soon as it is written, while others are still being built. A chunk is written under a
+  temporary name and renamed when complete, as `KeptWorlds::write` does, so a chunk file
+  that exists is whole, also after a build was stopped or killed.
 - When building completes and the rider keeps worlds, the chunks are packed into the kept
   `<fingerprint>.world` with the `zip` crate's `ZipWriter::raw_copy_file`, in index order, so
   the kept file doesn't depend on build order. Nothing is inflated or deflated again, and no
@@ -210,12 +212,18 @@ uploads").
     changes.
 - **Leaving early.** A ride left before its world is complete:
   - With **Keep courses ready to ride** on, building goes on in the background, throttled,
-    while ORQWA stays open, also after the course is closed. It pauses while any ride runs,
-    so the preparation and two rings of an unfinished world never share memory with another
-    course's ride, and R240's figures, measured one course at a time, still hold. It stops for
-    another world to be built. The world is kept once complete, as R101 promises for a course first ridden.
-    If ORQWA closes first, the partial store is deleted, and the next ride builds the world
-    again.
+    while ORQWA stays open, also after the course is closed. The world is kept once complete,
+    as R101 promises for a course first ridden.
+  - When a ride of another course starts, or another world is to be built, the build is
+    **stopped, not paused**. Its preparation and two rings are dropped from memory, so they
+    never share memory with another ride, and R240's one-course figures still hold. The
+    chunks already written stay in the building directory.
+  - Afterwards, the build prepares the route again and continues with the chunks not yet
+    written. A written chunk whose neighbours aren't finished is built again in memory for
+    its ground and as-built pavement, but not written again. Building is deterministic, so
+    the result is byte-identical; the cost is preparing twice.
+  - If ORQWA closes first, the partial store is deleted at the next start, and the next ride
+    builds the world again.
   - Otherwise, the building directory is deleted with the course.
 
 ### Steps and measuring
