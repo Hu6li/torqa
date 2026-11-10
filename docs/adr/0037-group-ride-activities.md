@@ -566,8 +566,10 @@ optional workout in the shared encoding without its cues, 1 MiB in all. It is ne
 disk, published or ridden, and carries no route, map data or path. A course with a larger
 picture is previewed without it. The organizer's app builds it on a blocking worker from the
 course's manifest and map picture, halving pictures wider than 640 pixels with a box filter
-through the workspace's existing `png` crate: the link's flow-control windows make every
-kilobyte take time, and half the size arrives about three times sooner.
+through the workspace's existing `png` crate: the link's flow-control windows then made every
+kilobyte take time, and half the size arrived about three times sooner. Since #535 widened
+those windows (ADR 0035, Transfer windows) the halving mainly keeps previews small on slow
+uplinks.
 
 The organizer's lobby holds the latest preview in memory and names it in a `Preview` control
 of its content identity, a new `ContentKind::Preview`, at most every 500 ms however fast the

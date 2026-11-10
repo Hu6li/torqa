@@ -400,6 +400,16 @@ viewer's link to them. Self rows have no reading. The roster is shared by the lo
 in-ride Group Rides dialog; the map panel, HUD and nameplates receive no ping field.
 Protocol/invitation version 15 and ALPN `orqwa-group/15` require matching builds and fresh codes.
 
+### Transfer windows — 2026-11-10
+
+A reliable stream carries at most one flow-control window per round trip. The original 4 KiB
+stream and 8 KiB connection windows limited a shared course to roughly 80 KiB/s at a 50 ms
+round trip, so a 40 MB course took minutes and could outlast the 15-minute transfer budget
+(#535). Streams now get 1 MiB, connections and the send buffer 2 MiB: about 10 MiB/s at
+100 ms. Memory stays bounded: a host with all 16 connections buffers at most 32 MiB from
+peers that stop reading. A loopback test through a 50 ms delay relay requires 8 MiB to arrive
+within ten seconds. Window sizes are QUIC transport parameters, so the ALPN is unchanged.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

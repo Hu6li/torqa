@@ -26,9 +26,12 @@ fn transport() -> Arc<TransportConfig> {
     // Controls, a download of the selected activity and one of the preview (#418).
     config.max_concurrent_bidi_streams(VarInt::from_u32(3));
     config.max_concurrent_uni_streams(VarInt::from_u32(0));
-    config.stream_receive_window(VarInt::from_u32(4096));
-    config.receive_window(VarInt::from_u32(8192));
-    config.send_window(8192);
+    // Throughput is at most one window per round trip: 4 KiB made a 40 MB course take many
+    // minutes between homes (#535). 1 MiB carries about 10 MiB/s at 100 ms, while a full
+    // host still buffers at most 16 connections × 2 MiB from peers that stop reading.
+    config.stream_receive_window(VarInt::from_u32(1024 * 1024));
+    config.receive_window(VarInt::from_u32(2 * 1024 * 1024));
+    config.send_window(2 * 1024 * 1024);
     config.crypto_buffer_size(16 * 1024);
     config.datagram_receive_buffer_size(Some(4096));
     config.datagram_send_buffer_size(4096);
@@ -242,5 +245,101 @@ impl ClientCertVerifier for Joiners {
     }
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         self.0.signature_verification_algorithms.supported_schemes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::Mutex;
+
+    use quinn::Endpoint;
+    use tokio::net::UdpSocket;
+    use tokio::time::{Instant, sleep};
+
+    use super::*;
+
+    // One-way delay of a typical connection between two homes.
+    const DELAY: Duration = Duration::from_millis(25);
+
+    // Forwards UDP both ways between one client and `server`, each packet `DELAY` late.
+    async fn delayed(server: SocketAddr) -> SocketAddr {
+        let loopback = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        let front = Arc::new(UdpSocket::bind(loopback).await.unwrap());
+        let back = Arc::new(UdpSocket::bind(loopback).await.unwrap());
+        let address = front.local_addr().unwrap();
+        let client = Arc::new(Mutex::new(None::<SocketAddr>));
+        let (from, to, seen) = (front.clone(), back.clone(), client.clone());
+        tokio::spawn(async move {
+            let mut bytes = vec![0; 65_536];
+            loop {
+                let (count, sender) = from.recv_from(&mut bytes).await.unwrap();
+                *seen.lock().unwrap() = Some(sender);
+                let (packet, to) = (bytes[..count].to_vec(), to.clone());
+                tokio::spawn(async move {
+                    sleep(DELAY).await;
+                    let _ = to.send_to(&packet, server).await;
+                });
+            }
+        });
+        tokio::spawn(async move {
+            let mut bytes = vec![0; 65_536];
+            loop {
+                let (count, _) = back.recv_from(&mut bytes).await.unwrap();
+                let Some(client) = *client.lock().unwrap() else {
+                    continue;
+                };
+                let (packet, front) = (bytes[..count].to_vec(), front.clone());
+                tokio::spawn(async move {
+                    sleep(DELAY).await;
+                    let _ = front.send_to(&packet, client).await;
+                });
+            }
+        });
+        address
+    }
+
+    #[tokio::test]
+    async fn a_shared_course_downloads_in_seconds_between_homes() {
+        // #535: throughput is at most the flow-control window per round trip. 8 MiB over a
+        // 50 ms round trip must take seconds, not the ~100 s that 4 KiB windows allow.
+        const BYTES: usize = 8 * 1024 * 1024;
+        let loopback = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        let (config, pin) = server().unwrap();
+        let host = Endpoint::server(config, loopback).unwrap();
+        let relay = delayed(host.local_addr().unwrap()).await;
+        let (config, _) = client(pin, &Identity::generate().unwrap()).unwrap();
+        let mut joiner = Endpoint::client(loopback).unwrap();
+        joiner.set_default_client_config(config);
+
+        let serve = async {
+            let connection = host.accept().await.unwrap().await.unwrap();
+            let (mut send, _) = connection.accept_bi().await.unwrap();
+            let chunk = vec![7; 16 * 1024];
+            for _ in 0..BYTES / chunk.len() {
+                send.write_all(&chunk).await.unwrap();
+            }
+            send.finish().unwrap();
+            send.stopped().await.ok();
+        };
+        let download = async {
+            let connection = joiner.connect(relay, SERVER_NAME).unwrap().await.unwrap();
+            let (mut send, mut recv) = connection.open_bi().await.unwrap();
+            // A stream reaches the peer only once it carries data.
+            send.write_all(&[1]).await.unwrap();
+            let started = Instant::now();
+            let mut received = 0;
+            let mut chunk = vec![0; 64 * 1024];
+            while let Some(count) = recv.read(&mut chunk).await.unwrap() {
+                received += count;
+            }
+            (received, started.elapsed())
+        };
+        let ((), (received, elapsed)) = tokio::join!(serve, download);
+        assert_eq!(received, BYTES);
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "8 MiB took {elapsed:?} at a 50 ms round trip"
+        );
     }
 }
