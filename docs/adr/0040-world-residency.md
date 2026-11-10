@@ -95,8 +95,11 @@ the core reads chunks from the store, every world is.
   kept worlds but not the stores of this ORQWA's builds.
 - A store left by an ORQWA that stopped (a crash, a low-memory kill) is deleted by the next
   tidy of the kept worlds once it hasn't grown for 10 minutes, as a half-written kept world
-  is. Age is only needed for other processes' stores: from 2b, ORQWA knows its own live
-  builds and never tidies them, however long their preparation takes.
+  is. From 2b a store is ridden from for hours after its last chunk, so age alone no longer
+  tells whether it is in use: its build holds a `lock` file in it locked as long as the
+  store lives, which the operating system releases when the process ends. A tidy, also the
+  one that turns keeping off, leaves a store whose lock another ORQWA running holds, and this
+  ORQWA's own stores, however old.
 - **Size.** A store is the world deflated: ADR 0025 measured 10 MB per kilometre on Swiss
   courses. A densely mapped course is about twice that: Wada's store is 1,149 MB, 20.1 MB per
   kilometre (measured in 2a), and packing it into the kept world takes about 2 s. So every
@@ -173,11 +176,15 @@ chunks is needed; from 2c, a chunk uploaded again is read from disk again.
   kept world.
 - `App::world()` no longer hands out all the chunks.
 - The winter ground mask takes its bounds from the chunk index: a chunk's ground is its
-  square. It is made the first time it is asked for, by reading every chunk once on all
-  cores, as it keeps each chunk's ways clear.
+  square. It is made in the background the first time it is asked for, by reading every
+  chunk once on all cores, as it keeps each chunk's ways clear; Godot applies it once ready,
+  so the main thread never waits for it. A chunk that can't be read is undrawn and left out.
 - The render tools and the benchmark read the chunks one by one, through the same call.
 - A kept world deleted while it is ridden (keeping turned off, or the rider deletes it) is
-  read on through the file still open. Keeping it again copies its chunks from that file.
+  read on through the file still open. Keeping it again copies its chunks from that file;
+  chunks wait for that copy, Godot's main thread included, for seconds. It happens only when
+  keeping is turned back on during the ride that turned it off, so it is accepted. A world
+  in which a chunk was found damaged is never kept from.
 
 ### Godot frees far chunks (2c)
 
