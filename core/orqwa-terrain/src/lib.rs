@@ -54,6 +54,9 @@ pub struct Terrain {
     clock: u64,
     /// Tiles that could not be loaded; not retried, so a missing tile costs one attempt.
     unavailable: HashSet<(usize, TileId)>,
+    /// Tiles decoded before, so one that fails when read again after eviction is told apart
+    /// from a tile that was never there: the next source would fill it with coarser heights.
+    decoded: HashSet<(usize, TileId)>,
     used: UsedFiles,
 }
 
@@ -83,6 +86,7 @@ impl Terrain {
             budget: TILE_BUDGET,
             clock: 0,
             unavailable: HashSet::new(),
+            decoded: HashSet::new(),
             used: UsedFiles::default(),
         }
     }
@@ -173,8 +177,17 @@ impl Terrain {
             });
         }
         let result = self.load_tile(source, id).await;
-        if result.is_err() {
-            self.unavailable.insert((source, id));
+        match &result {
+            Ok(_) => {
+                self.decoded.insert((source, id));
+            }
+            Err(error) => {
+                if self.decoded.contains(&(source, id)) {
+                    warn!(source = self.sources[source].name, tile = %id, %error,
+                        "a terrain tile read before is gone; the next source fills in");
+                }
+                self.unavailable.insert((source, id));
+            }
         }
         result
     }
@@ -212,7 +225,9 @@ impl Terrain {
     }
 
     /// Keeps `tile`, first letting go of the least recently used ones it would not fit beside.
+    /// A tile larger than the whole budget is still kept, alone.
     fn keep(&mut self, key: (usize, TileId), tile: &Arc<HeightTile>) {
+        debug_assert!(!self.tiles.contains_key(&key), "kept only after a miss");
         while self.held + tile.bytes() > self.budget {
             let Some(oldest) = self
                 .tiles
@@ -313,14 +328,14 @@ mod tests {
         std::fs::remove_dir_all(cache).unwrap();
     }
 
-    /// A long route crosses more tiles than fit in the budget; those let go of are read
-    /// again and give the same heights.
-    #[tokio::test]
-    async fn tiles_beyond_the_budget_are_let_go_and_read_again() {
+    /// Two places far apart, (latitude, longitude) and the height there.
+    type Places = [((f64, f64), f64); 2];
+
+    /// Caches flat tiles around two places far apart, each lookup needing only its own tile.
+    fn two_places(name: &str) -> (std::path::PathBuf, TileSource, Places) {
         let cache =
-            std::env::temp_dir().join(format!("orqwa-terrain-budget-{}", std::process::id()));
+            std::env::temp_dir().join(format!("orqwa-terrain-{name}-{}", std::process::id()));
         let source = TileSource::aws_terrain_tiles();
-        // Two places far apart, so each lookup needs its own tiles.
         let places = [((46.95, 7.45), 540.5), ((46.0, 8.95), 271.25)];
         for ((lat, lon), height) in places {
             let (px, py) = tile::global_pixel(lat, lon, source.zoom, source.tile_size);
@@ -336,9 +351,17 @@ mod tests {
                 }
             }
         }
+        (cache, source, places)
+    }
+
+    /// A long route crosses more tiles than fit in the budget; those let go of are read
+    /// again and give the same heights.
+    #[tokio::test]
+    async fn tiles_beyond_the_budget_are_let_go_and_read_again() {
+        let (cache, source, places) = two_places("budget");
         let one_tile = (source.tile_size * source.tile_size) as usize * 4;
         let mut terrain = Terrain::new(vec![source], cache.clone()).offline();
-        terrain.budget = 2 * one_tile;
+        terrain.budget = one_tile;
 
         for _ in 0..2 {
             for ((lat, lon), height) in places {
@@ -347,12 +370,31 @@ mod tests {
                     (found - height).abs() < 0.01,
                     "height {found}, not {height}"
                 );
+                assert_eq!(terrain.tiles.len(), 1, "the other place's tile is let go");
                 assert!(
                     terrain.held <= terrain.budget,
                     "{} bytes held",
                     terrain.held
                 );
             }
+        }
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    /// A tile larger than the whole budget is still read and gives its heights.
+    #[tokio::test]
+    async fn a_tile_larger_than_the_budget_still_gives_heights() {
+        let (cache, source, places) = two_places("no-budget");
+        let mut terrain = Terrain::new(vec![source], cache.clone()).offline();
+        terrain.budget = 0;
+
+        for ((lat, lon), height) in places {
+            let found = terrain.elevation(lat, lon).await.unwrap();
+            assert!(
+                (found - height).abs() < 0.01,
+                "height {found}, not {height}"
+            );
+            assert_eq!(terrain.tiles.len(), 1, "only the tile in use is kept");
         }
         std::fs::remove_dir_all(cache).unwrap();
     }
