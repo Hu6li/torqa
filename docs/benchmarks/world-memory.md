@@ -73,6 +73,33 @@ position differ in normal or texture coordinate.
   the pavement in the cells their checks reach is gathered: the same answers, from a small
   fraction of the triangles.
 
+## Built chunk by chunk
+
+2026-11-10, same container (8 cores, so 32 chunks a batch), release build. Each chunk is now
+finished once its neighbours are built and handed on (`orqwa_world::generate_into`, ADR 0040's
+step 2a); `generate` collects them into the same world. `world_memory <route.gpx> <cache>
+--stream` builds a GPX route that way without the app and keeps only each chunk's hash. Wada's
+route is the course's `route.gpx`, read offline from the cache the course was unpacked into.
+
+| | Whole world | Streamed |
+|---|---:|---:|
+| Kirchenfeldbrücke, peak | 1.69 GB | 1.34 GB |
+| Bielersee, peak | 1.42 GB | 1.00 GB |
+| Oberalp, peak | 1.40 GB | 0.73 GB |
+| **Wada, peak** | **4.85 GB** | **2.29 GB** |
+| Wada, generating | 97 s | 98 s |
+
+Streamed and whole builds give the same chunk checksums, and the worlds' checksums are those
+before the change on all four courses (Wada as a course: `a6a04ff670d2c2de`), in a debug build
+too, where a chunk or bridge reaching for ground or pavement it doesn't hold stops the build.
+
+Streaming Wada, memory no longer follows the route: 1.81 GB after the first 32 chunks, then
+between 2.15 and 2.29 GB to the end. Of that, **1.16 GB is the whole-route preparation**
+(streets, the urban network, buildings and the rest of what every chunk is built from), held
+before the first chunk. The chunks around the build front take about 1.1 GB more. ADR 0040
+counted the preparation among the small parts; on Wada it alone is above R240's 1 GB for the
+core while building, so it needs measuring by part, and shrinking, before that figure holds.
+
 ## Still to do
 
 Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,

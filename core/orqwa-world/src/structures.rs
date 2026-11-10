@@ -692,6 +692,7 @@ async fn ground<M: ElevationModel>(
 
 /// Geometry of the bridges and tunnels of the road ridden and the railways, in route
 /// coordinates, with rings round the tunnels' openings at their `portals`.
+#[cfg(test)]
 pub(crate) async fn build_all<M: ElevationModel>(
     (road, railways): (&RoadIndex, &RoadIndex),
     below: &Below<'_>,
@@ -702,6 +703,46 @@ pub(crate) async fn build_all<M: ElevationModel>(
     barriers: &mut Vec<crate::pavement::Barrier>,
 ) -> MeshData {
     let mut mesh = MeshData::default();
+    for piece in pieces(road, railways) {
+        let (part, part_barriers) = if piece.is_bridge() {
+            piece.bridge(below, ground)
+        } else {
+            (
+                piece.tunnel(road, shapers, projection, model).await,
+                Vec::new(),
+            )
+        };
+        append(&mut mesh, barriers, part, part_barriers);
+    }
+    mesh
+}
+
+/// Adds a piece's mesh to `mesh` and its barriers, renumbered, to `barriers`.
+#[cfg(test)]
+fn append(
+    mesh: &mut MeshData,
+    barriers: &mut Vec<crate::pavement::Barrier>,
+    part: MeshData,
+    part_barriers: Vec<crate::pavement::Barrier>,
+) {
+    let offset = mesh.indices.len();
+    barriers.extend(part_barriers.into_iter().map(|mut barrier| {
+        barrier.indices = barrier.indices.start + offset..barrier.indices.end + offset;
+        barrier
+    }));
+    mesh.append(part);
+}
+
+/// One bridge or tunnel: of the road ridden, or a bundle of railways.
+pub(crate) struct Piece {
+    surface: Surface,
+    sections: Vec<Section>,
+    railway: bool,
+}
+
+/// The structures to build, in the order their meshes are joined: the road ridden's, then the
+/// railways' bundles, longest first. Stretches on the ground are left out.
+pub(crate) fn pieces(road: &RoadIndex, railways: &RoadIndex) -> Vec<Piece> {
     let own = road.structure_runs().into_iter().map(|(surface, run)| {
         let mut sections = sections(&run, surface, false);
         if surface == Surface::Bridge {
@@ -712,34 +753,83 @@ pub(crate) async fn build_all<M: ElevationModel>(
                 section.right = half;
             }
         }
-        (surface, sections, None)
+        (surface, sections, false)
     });
     let rails = bundles(&railways.structure_runs())
         .into_iter()
-        .map(|(surface, run)| (surface, run, Some(road)));
-    for (surface, run, over) in own.chain(rails) {
-        match surface {
-            Surface::Bridge => bridge(&mut mesh, &run, below, ground, barriers),
-            Surface::Tunnel => {
-                let over = over.map(|road| (road, projection, &mut *model));
-                tunnel(&mut mesh, &run, over).await;
-                for (end, outward) in [(run.first(), -1.0), (run.last(), 1.0)] {
-                    let Some(&end) = end else {
-                        continue;
-                    };
-                    let at_portal = shapers
-                        .portals
-                        .iter()
-                        .any(|p| distance(p.plane.0, end.centre.position) < 1.0);
-                    if at_portal {
-                        collar(&mut mesh, end, outward);
-                    }
-                }
-            }
-            Surface::Ground => {}
-        }
+        .map(|(surface, run)| (surface, run, true));
+    own.chain(rails)
+        .filter(|(surface, ..)| *surface != Surface::Ground)
+        .map(|(surface, sections, railway)| Piece {
+            surface,
+            sections,
+            railway,
+        })
+        .collect()
+}
+
+impl Piece {
+    /// Whether this is a bridge, which stands on the ground drawn; a tunnel doesn't.
+    pub(crate) fn is_bridge(&self) -> bool {
+        self.surface == Surface::Bridge
     }
-    mesh
+
+    /// South-west and north-east corners (east, north) of the piece's line, widened by how far
+    /// it reaches either side of it.
+    pub(crate) fn bounds(&self) -> ((f64, f64), (f64, f64)) {
+        self.sections.iter().fold(
+            (
+                (f64::INFINITY, f64::INFINITY),
+                (f64::NEG_INFINITY, f64::NEG_INFINITY),
+            ),
+            |(low, high), section| {
+                let (e, n) = section.centre.position;
+                let reach = section.left.max(section.right);
+                (
+                    ((e - reach).min(low.0), (n - reach).min(low.1)),
+                    ((e + reach).max(high.0), (n + reach).max(high.1)),
+                )
+            },
+        )
+    }
+
+    /// A bridge on `ground`, and the barriers along it that pavement may remove.
+    pub(crate) fn bridge(
+        &self,
+        below: &Below<'_>,
+        ground: &Ground<'_>,
+    ) -> (MeshData, Vec<crate::pavement::Barrier>) {
+        let (mut mesh, mut barriers) = (MeshData::default(), Vec::new());
+        bridge(&mut mesh, &self.sections, below, ground, &mut barriers);
+        (mesh, barriers)
+    }
+
+    /// A tunnel, with rings round its openings at the `portals` of `shapers`. A railway's
+    /// tunnel leaves the ground over it where it passes under the road ridden.
+    pub(crate) async fn tunnel<M: ElevationModel>(
+        &self,
+        road: &RoadIndex,
+        shapers: &Shapers<'_>,
+        projection: &LocalProjection,
+        model: &mut M,
+    ) -> MeshData {
+        let (mut mesh, run) = (MeshData::default(), &self.sections);
+        let over = self.railway.then_some((road, projection, model));
+        tunnel(&mut mesh, run, over).await;
+        for (end, outward) in [(run.first(), -1.0), (run.last(), 1.0)] {
+            let Some(&end) = end else {
+                continue;
+            };
+            let at_portal = shapers
+                .portals
+                .iter()
+                .any(|p| distance(p.plane.0, end.centre.position) < 1.0);
+            if at_portal {
+                collar(&mut mesh, end, outward);
+            }
+        }
+        mesh
+    }
 }
 
 /// How far a structure reaches either side of a single line, of the road ridden or a railway.

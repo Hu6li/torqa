@@ -962,6 +962,12 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
     barriers are checked against gathered only where they stand; peak 6.3 → 5.2 GB, the world
     unchanged
   - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
+    - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
+      those around the ones being built held; the world unchanged
+    - [ ] every world built into a store in the cache, packed into the kept world by raw copy
+    - [ ] the core reads chunks from the store while riding
+    - [ ] Godot frees far chunks
+    - [ ] generated ahead of the rider (#237)
   - [ ] far streets and their ground in coarser pieces (a generator change, with review renders)
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
 

@@ -5,6 +5,11 @@
 //! `cargo run --release -p orqwa-app --example world_memory -- <course.oqc | route.gpx> [cache]`
 //! in the dev container (memory is read from Linux's `/proc/self/status`). A course is read
 //! offline from its own data; a GPX route downloads its map and terrain into `cache`.
+//!
+//! With `--stream` after them, a GPX route is built without the app, offline from `cache`, and
+//! each chunk is hashed and dropped as soon as it is finished (`orqwa_world::generate_into`):
+//! the peak is then the building's alone. Both ways print a `chunk checksum` from each chunk's
+//! hash, which a streamed build and a whole one share.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -17,12 +22,16 @@ use orqwa_world::{MeshData, TerrainChunk, World};
 fn main() {
     let course = std::env::args()
         .nth(1)
-        .expect("usage: world_memory <course.oqc | route.gpx> [cache]");
+        .expect("usage: world_memory <course.oqc | route.gpx> [cache] [--stream]");
     let dir = std::env::temp_dir().join(format!("orqwa-world-memory-{}", std::process::id()));
     // A GPX route's map and terrain are downloaded once into this cache when it is given.
-    let cache = std::env::args()
+    let cache: std::path::PathBuf = std::env::args()
         .nth(2)
         .map_or_else(|| dir.join("cache"), Into::into);
+    if std::env::args().nth(3).as_deref() == Some("--stream") {
+        stream(course.as_ref(), &cache);
+        return;
+    }
     let mut app = App::new(dir.join("data"), cache).expect("app");
     let began = Instant::now();
     let gpx = std::path::Path::new(&course)
@@ -45,11 +54,57 @@ fn main() {
     );
     let world = app.world().expect("world");
     println!("checksum {:016x}", checksum(world));
+    let hashes: Vec<u64> = world.chunks.iter().map(chunk_hash).collect();
+    println!("chunk checksum {:016x}", chunk_checksum(&hashes, world));
     let spare: usize = world.chunks.iter().flat_map(meshes).map(spare).sum();
     println!("unused mesh capacity {:.0} MB", mb(spare));
     by_part(world);
     by_distance(world);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Builds the world of the GPX route at `path` offline from `cache`, keeping only each chunk's
+/// hash.
+fn stream(path: &std::path::Path, cache: &std::path::Path) {
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+    let began = Instant::now();
+    let used = orqwa_domain::files::UsedFiles::default();
+    let imported = runtime
+        .block_on(orqwa_app::import_route(
+            path,
+            cache,
+            true,
+            &used,
+            &mut |_, _, _| {},
+        ))
+        .expect("route");
+    let mut terrain =
+        orqwa_terrain::Terrain::new(orqwa_terrain::TileSource::defaults(), cache.join("terrain"))
+            .offline();
+    let mut hashes = Vec::new();
+    let world = runtime.block_on(orqwa_world::generate_into(
+        &imported.route,
+        &mut terrain,
+        &imported.map,
+        // Chunks are built in batches, a few dozen per report.
+        &mut |done, total| println!("World {done}/{total}: {}", memory()),
+        &mut |index, chunk| {
+            if hashes.len() <= index {
+                hashes.resize(index + 1, None);
+            }
+            hashes[index] = Some(chunk_hash(&chunk));
+        },
+    ));
+    println!(
+        "generated in {:.0} s; {}",
+        began.elapsed().as_secs_f64(),
+        memory()
+    );
+    let hashes: Vec<u64> = hashes
+        .into_iter()
+        .map(|hash| hash.expect("every chunk"))
+        .collect();
+    println!("chunk checksum {:016x}", chunk_checksum(&hashes, &world));
 }
 
 /// Runs the app until `done`, printing memory at every tenth of each loading step.
@@ -122,51 +177,66 @@ fn spare(m: &MeshData) -> usize {
         + (m.indices.capacity() - m.indices.len()) * size_of::<u32>()
 }
 
-fn checksum(world: &World) -> u64 {
-    fn mesh(h: &mut impl Hasher, m: &MeshData) {
-        for v in m.vertices.iter().chain(&m.normals) {
-            v.map(f32::to_bits).hash(h);
-        }
-        for v in &m.uvs {
-            v.map(f32::to_bits).hash(h);
-        }
-        for v in &m.colors {
-            v.map(f32::to_bits).hash(h);
-        }
-        m.indices.hash(h);
+fn mesh_hash(h: &mut impl Hasher, m: &MeshData) {
+    for v in m.vertices.iter().chain(&m.normals) {
+        v.map(f32::to_bits).hash(h);
     }
+    for v in &m.uvs {
+        v.map(f32::to_bits).hash(h);
+    }
+    for v in &m.colors {
+        v.map(f32::to_bits).hash(h);
+    }
+    m.indices.hash(h);
+}
+
+fn chunk_hash(c: &TerrainChunk) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    hash_chunk(&mut h, c);
+    h.finish()
+}
+
+/// A checksum of the world from its chunks' hashes, in index order, and its other meshes.
+fn chunk_checksum(chunks: &[u64], world: &World) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    chunks.hash(&mut h);
+    for m in [&world.road, &world.structures, &world.railways] {
+        mesh_hash(&mut h, m);
+    }
+    h.finish()
+}
+
+fn hash_chunk(h: &mut impl Hasher, c: &TerrainChunk) {
+    c.center.map(f32::to_bits).hash(h);
+    for m in meshes(c) {
+        mesh_hash(h, m);
+    }
+    let buffers = c
+        .trees
+        .models
+        .iter()
+        .chain(&c.props.models)
+        .chain(c.modelled.iter().flat_map(|cell| &cell.models));
+    for (name, buffer) in buffers {
+        name.hash(h);
+        buffer.iter().map(|f| f.to_bits()).for_each(|b| b.hash(h));
+    }
+    for buffer in [&c.trees.grass, &c.trees.flowers] {
+        buffer.iter().map(|f| f.to_bits()).for_each(|b| b.hash(h));
+    }
+    for label in &c.props.labels {
+        label.text.hash(h);
+        label.transform.map(f32::to_bits).hash(h);
+    }
+}
+
+fn checksum(world: &World) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for c in &world.chunks {
-        c.center.map(f32::to_bits).hash(&mut h);
-        for m in meshes(c) {
-            mesh(&mut h, m);
-        }
-        let buffers = c
-            .trees
-            .models
-            .iter()
-            .chain(&c.props.models)
-            .chain(c.modelled.iter().flat_map(|cell| &cell.models));
-        for (name, buffer) in buffers {
-            name.hash(&mut h);
-            buffer
-                .iter()
-                .map(|f| f.to_bits())
-                .for_each(|b| b.hash(&mut h));
-        }
-        for buffer in [&c.trees.grass, &c.trees.flowers] {
-            buffer
-                .iter()
-                .map(|f| f.to_bits())
-                .for_each(|b| b.hash(&mut h));
-        }
-        for label in &c.props.labels {
-            label.text.hash(&mut h);
-            label.transform.map(f32::to_bits).hash(&mut h);
-        }
+        hash_chunk(&mut h, c);
     }
     for m in [&world.road, &world.structures, &world.railways] {
-        mesh(&mut h, m);
+        mesh_hash(&mut h, m);
     }
     h.finish()
 }

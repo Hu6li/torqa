@@ -17,7 +17,8 @@ pub(crate) const SPAN_HALF_WIDTH: f64 = 0.15;
 pub(crate) struct Pavement {
     triangles: Vec<[[f64; 3]; 3]>,
     cells: HashMap<(i64, i64), Vec<usize>>,
-    /// The only cells kept, when the pavement is made for known questions (`Pavement::near`).
+    /// The only cells kept, when the pavement is made for known questions
+    /// ([`Pavement::near_parts`]).
     only: Option<HashSet<(i64, i64)>>,
 }
 
@@ -36,6 +37,15 @@ impl Asked {
                 self.0.insert((x, z));
             }
         }
+    }
+
+    /// Whether every cell asked for lies wholly where `inside` holds (at Godot `x`, `z`).
+    pub(crate) fn all(&self, inside: impl Fn(f64, f64) -> bool) -> bool {
+        self.0.iter().all(|&(x, z)| {
+            #[allow(clippy::cast_precision_loss)] // cell numbers of a local world
+            let (x, z) = (x as f64 * CELL, z as f64 * CELL);
+            inside(x, z) && inside(x + CELL, z + CELL)
+        })
     }
 
     /// The checks `Pavement::clear` makes for `barriers` in `mesh`, centred at `origin`.
@@ -93,18 +103,50 @@ impl Pavement {
         Self::default().with(world, track_lengths)
     }
 
-    /// The pavement of `world` in the cells `asked` only: it answers those checks as
-    /// [`Pavement::new`] would.
-    pub(crate) fn near(
-        world: &World,
-        track_lengths: impl IntoIterator<Item = usize>,
+    /// The pavement in the cells `asked` only, from the road ridden's `road` and `parts` of
+    /// other pavement (from [`Pavement::as_built`]): it answers those checks as a pavement of
+    /// the road and all those parts would.
+    pub(crate) fn near_parts<'a>(
+        road: &Pavement,
+        parts: impl IntoIterator<Item = &'a [[[f64; 3]; 3]]>,
         asked: Asked,
     ) -> Self {
-        Self {
+        let mut near = Self {
             only: Some(asked.0),
             ..Self::default()
+        };
+        // Answers don't depend on the triangles' order: a check asks whether any crosses, or
+        // how deep the lowest lies.
+        let mut taken = HashSet::new();
+        let cells: Vec<_> = near.only.iter().flatten().copied().collect();
+        for key in cells {
+            for &i in road.cells.get(&key).map_or(&[][..], Vec::as_slice) {
+                if taken.insert(i) {
+                    near.insert(road.triangles[i]);
+                }
+            }
         }
-        .with(world, track_lengths)
+        for part in parts {
+            for &triangle in part {
+                near.insert(triangle);
+            }
+        }
+        near
+    }
+
+    /// The pavement of a chunk's streets and of its tracks' first `track_length` indices
+    /// (before shore gravel), as built: before barriers are cleared from those meshes.
+    pub(crate) fn as_built(chunk: &crate::TerrainChunk, track_length: usize) -> Vec<[[f64; 3]; 3]> {
+        let mut pavement = Self::default();
+        pavement.add(
+            &chunk.streets,
+            chunk.center,
+            false,
+            chunk.streets.indices.len(),
+        );
+        pavement.add(&chunk.tracks, chunk.center, false, track_length);
+        pavement.triangles.shrink_to_fit();
+        pavement.triangles
     }
 
     fn with(mut self, world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
@@ -215,13 +257,25 @@ impl Pavement {
 
     /// Remove complete offending barrier pieces, keeping slab sides and undersides closed.
     pub(crate) fn clear(&self, mesh: &mut MeshData, barriers: Vec<Barrier>, origin: [f32; 3]) {
+        let blocked = self.recess(mesh, barriers, origin);
+        remove(mesh, &blocked);
+    }
+
+    /// Recesses slab edges below pavement joining them, and gives the index ranges of the
+    /// barrier pieces pavement crosses, for [`remove`].
+    pub(crate) fn recess(
+        &self,
+        mesh: &mut MeshData,
+        barriers: Vec<Barrier>,
+        origin: [f32; 3],
+    ) -> Vec<Range<usize>> {
         // A deck's exposed edge must also stay below a same-level junction's pavement.
         // Recess its top instead of deleting the slab wall and reopening its underside.
         for edge in barriers.iter().filter(|b| b.slab) {
             for &i in &mesh.indices[edge.indices.clone()] {
                 let vertex = &mut mesh.vertices[i as usize];
                 let point = [0, 1, 2].map(|k| f64::from(vertex[k]) + f64::from(origin[k]));
-                if let Some(height) = self.recess(point) {
+                if let Some(height) = self.recess_at(point) {
                     #[allow(clippy::cast_possible_truncation)] // f32 GPU vertices
                     {
                         vertex[1] = (height - f64::from(origin[1])) as f32;
@@ -229,44 +283,15 @@ impl Pavement {
                 }
             }
         }
-        let blocked: Vec<_> = barriers
+        barriers
             .into_iter()
             .filter(|b| !b.slab && self.crosses_width(b.a, b.b, b.half_width))
             .map(|b| b.indices)
-            .collect();
-        if blocked.is_empty() {
-            return;
-        }
-        let mut blocked = blocked.iter().peekable();
-        let mut output = MeshData::default();
-        let mut remap = vec![u32::MAX; mesh.vertices.len()];
-        for (i, face) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
-            while blocked.peek().is_some_and(|range| range.end <= i * 3) {
-                blocked.next();
-            }
-            if blocked.peek().is_some_and(|range| range.contains(&(i * 3))) {
-                continue;
-            }
-            for &old in face {
-                let old = old as usize;
-                if remap[old] == u32::MAX {
-                    remap[old] = u32::try_from(output.vertices.len()).expect("mesh fits u32");
-                    output.vertices.push(mesh.vertices[old]);
-                    output.normals.push(mesh.normals[old]);
-                    output.uvs.push(mesh.uvs[old]);
-                    if !mesh.colors.is_empty() {
-                        output.colors.push(mesh.colors[old]);
-                    }
-                }
-                output.indices.push(remap[old]);
-            }
-        }
-        output.shrink_to_fit();
-        *mesh = output;
+            .collect()
     }
 
     /// The triangles touching cell `key`. A pavement gathered for known checks
-    /// ([`Pavement::near`]) holds nothing outside the cells asked for, so a check reaching
+    /// ([`Pavement::near_parts`]) holds nothing outside the cells asked for, so a check reaching
     /// beyond them would quietly find no pavement there: debug builds, and so the tests, stop.
     fn in_cell(&self, key: (i64, i64)) -> &[usize] {
         debug_assert!(
@@ -276,7 +301,7 @@ impl Pavement {
         self.cells.get(&key).map_or(&[], Vec::as_slice)
     }
 
-    fn recess(&self, point: [f64; 3]) -> Option<f64> {
+    fn recess_at(&self, point: [f64; 3]) -> Option<f64> {
         self.in_cell((cell(point[0]), cell(point[2])))
             .iter()
             .filter_map(|&i| {
@@ -295,6 +320,40 @@ impl Pavement {
             })
             .reduce(f64::min)
     }
+}
+
+/// Removes the triangles in the `blocked` index ranges (ascending) from `mesh`, keeping the
+/// vertices still used in the order first used. Nothing blocked leaves the mesh as it is.
+pub(crate) fn remove(mesh: &mut MeshData, blocked: &[Range<usize>]) {
+    if blocked.is_empty() {
+        return;
+    }
+    let mut blocked = blocked.iter().peekable();
+    let mut output = MeshData::default();
+    let mut remap = vec![u32::MAX; mesh.vertices.len()];
+    for (i, face) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
+        while blocked.peek().is_some_and(|range| range.end <= i * 3) {
+            blocked.next();
+        }
+        if blocked.peek().is_some_and(|range| range.contains(&(i * 3))) {
+            continue;
+        }
+        for &old in face {
+            let old = old as usize;
+            if remap[old] == u32::MAX {
+                remap[old] = u32::try_from(output.vertices.len()).expect("mesh fits u32");
+                output.vertices.push(mesh.vertices[old]);
+                output.normals.push(mesh.normals[old]);
+                output.uvs.push(mesh.uvs[old]);
+                if !mesh.colors.is_empty() {
+                    output.colors.push(mesh.colors[old]);
+                }
+            }
+            output.indices.push(remap[old]);
+        }
+    }
+    output.shrink_to_fit();
+    *mesh = output;
 }
 
 #[allow(clippy::many_single_char_names)] // vertices and interpolation in polygon clipping

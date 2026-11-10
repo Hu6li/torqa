@@ -30,6 +30,7 @@ mod roundabouts;
 mod route_distances;
 mod seasonal_snow;
 mod snow_ground;
+mod stages;
 pub mod stored;
 mod streaming;
 mod streets;
@@ -336,19 +337,43 @@ fn whole(shapers: &Shapers<'_>, ways: &Ways) -> World {
 
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
-/// `progress` is called with (chunks done, chunks total).
-#[allow(clippy::too_many_lines)] // one pass over the chunks, each step of it named in order
+/// `progress` is called with (chunks built, chunks total).
 pub async fn generate<M: ElevationModel>(
     route: &Route,
     model: &mut M,
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
+    let mut chunks = Vec::new();
+    let mut world = generate_into(route, model, map, progress, &mut |index, chunk| {
+        if chunks.len() <= index {
+            chunks.resize_with(index + 1, || None);
+        }
+        chunks[index] = Some(chunk);
+    })
+    .await;
+    // `generate_into` finishes every chunk once.
+    world.chunks = chunks.into_iter().flatten().collect();
+    world
+}
+
+/// Builds the world as [`generate`] does, but gives each chunk to `sink` as soon as it is
+/// finished, with its index in [`World::chunks`], instead of keeping it: only the chunks
+/// around those being built are held (ADR 0040). Chunks are finished in no set order, each
+/// once. The world returned has every part but its chunks.
+#[allow(clippy::too_many_lines)] // the preparation, then one pass over the chunks
+pub async fn generate_into<M: ElevationModel>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+    sink: &mut (dyn FnMut(usize, TerrainChunk) + Send),
+) -> World {
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
     road.set_appearances(&appearance::Index::new(map, &projection));
-    let cells = chunks_near_route(&road);
-    let total = cells.len();
+    let reached = cells_near_route(&road);
+    let total = reached.len();
     // Announce the step before the slower preparation below.
     progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
@@ -384,7 +409,7 @@ pub async fn generate<M: ElevationModel>(
         &ways.clearance,
         &road,
         &land,
-        ridden_pavement,
+        pavement::Pavement::new(&world, []),
     );
     // Walking joins need one datum even when their profile anchors lie in another chunk.
     let mut grades = Vec::new();
@@ -394,7 +419,6 @@ pub async fn generate<M: ElevationModel>(
         }
     }
     urban.pin_grades(grades);
-    let mut chunk_barriers = Vec::new();
     let mouths = streets::mouths(&ways.streets, &road);
     let places: Vec<(String, (f64, f64))> = map
         .places
@@ -417,68 +441,70 @@ pub async fn generate<M: ElevationModel>(
         mouths: &mouths,
         places: &places,
     };
+    let pieces = structures::pieces(&road, &ways.network.index);
+    let mut stages =
+        stages::Stages::new(reached.keys().copied().collect(), &ridden_pavement, &pieces);
+    // Along the route, so neighbours are built close together and few wait for theirs.
+    let mut order: Vec<((i32, i32), usize)> = reached.into_iter().collect();
+    order.sort_by_key(|&(cell, reach)| (reach, cell));
+    let (mut chunks, mut trees) = (0, 0);
+    let mut counted = |index, chunk: TerrainChunk| {
+        chunks += 1;
+        trees += chunk.trees.len();
+        sink(index, chunk);
+    };
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
     // then the chunks themselves on all cores, where nearly all the time goes.
     let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-    let cells: Vec<(i32, i32)> = cells.into_iter().collect();
-    for batch in cells.chunks(threads * 4) {
+    let mut built = 0;
+    for batch in order.chunks(threads * 4) {
         let mut jobs = Vec::with_capacity(batch.len());
-        for &(cx, cn) in batch {
+        for &((cx, cn), _) in batch {
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
             jobs.push((cx, cn, elevations));
         }
-        let chunks = in_parallel(&jobs, threads, |(cx, cn, elevations)| {
+        let results = in_parallel(&jobs, threads, |(cx, cn, elevations)| {
             corridor.chunk(*cx, *cn, elevations)
         });
-        for (chunk, fallbacks, barriers) in chunks {
-            world.chunks.push(chunk);
-            chunk_barriers.push(barriers);
+        for (&(cell, _), (chunk, fallbacks, barriers)) in batch.iter().zip(results) {
+            stages.built(stages.index(cell), chunk, barriers);
             world.fallback_samples += fallbacks;
         }
-        progress(world.chunks.len(), total);
+        built += batch.len();
+        progress(built, total);
+        stages.finish(threads, &mut counted);
+        stages.build_bridges(&pieces, &below);
+        stages.drop_unneeded();
     }
-    props::ground_protection(&mut world.chunks);
-    // Structures stand on the ground alone, which clearing barriers leaves as it is: built
-    // first, every barrier is known before the pavement they are checked against is gathered.
-    let mut barriers = Vec::new();
-    world.structures = structures::build_all(
-        (&road, &ways.network.index),
-        &below,
-        &shapers,
-        &foundations::Ground(&world.chunks),
-        &projection,
-        model,
-        &mut barriers,
-    )
-    .await;
-    let mut asked = pavement::Asked::default();
-    for (chunk, ([paved, unpaved], _)) in world.chunks.iter().zip(&chunk_barriers) {
-        asked.barriers(&chunk.streets, paved, chunk.center);
-        asked.barriers(&chunk.tracks, unpaved, chunk.center);
+    debug_assert!(stages.done(), "a chunk or bridge was left waiting");
+    // Tunnels stand on nothing drawn. All are joined in the pieces' order, then the barriers
+    // pavement crosses are taken out of the whole.
+    let mut blocked = Vec::new();
+    for (piece, bridge) in pieces.iter().zip(stages.take_bridges()) {
+        let (mesh, crossed) = match bridge {
+            Some(bridge) => bridge,
+            None => (
+                piece.tunnel(&road, &shapers, &projection, model).await,
+                Vec::new(),
+            ),
+        };
+        let offset = world.structures.indices.len();
+        blocked.extend(
+            crossed
+                .into_iter()
+                .map(|range| range.start + offset..range.end + offset),
+        );
+        world.structures.append(mesh);
     }
-    for ([a, b], half_width) in props::fence_spans(&world.chunks) {
-        asked.span(a, b, half_width);
-    }
-    asked.barriers(&world.structures, &barriers, [0.0; 3]);
-    let pavement = pavement::Pavement::near(&world, chunk_barriers.iter().map(|(_, n)| *n), asked);
-    for (chunk, ([paved, unpaved], _)) in world.chunks.iter_mut().zip(chunk_barriers) {
-        pavement.clear(&mut chunk.streets, paved, chunk.center);
-        pavement.clear(&mut chunk.tracks, unpaved, chunk.center);
-    }
-    props::clear_fences(&mut world.chunks, &pavement);
-    pavement.clear(&mut world.structures, barriers, [0.0; 3]);
+    pavement::remove(&mut world.structures, &blocked);
     if world.fallback_samples > 0 {
         warn!(
             samples = world.fallback_samples,
             "terrain data missing in places; terrain follows the road there"
         );
     }
-    info!(
-        chunks = world.chunks.len(),
-        trees = world.chunks.iter().map(|c| c.trees.len()).sum::<usize>(),
-        "world generated"
-    );
+    info!(chunks, trees, "world generated");
     world
 }
 
@@ -749,10 +775,16 @@ fn chunk_of(east: f64, north: f64) -> (i32, i32) {
 
 /// Chunk grid cells (east, north) within the corridor of any part of the route.
 pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
-    let mut cells = BTreeSet::new();
+    cells_near_route(road).into_keys().collect()
+}
+
+/// Chunk grid cells (east, north) within the corridor of any part of the route, each with
+/// how far along the route it is first reached (in road samples).
+fn cells_near_route(road: &RoadIndex) -> BTreeMap<(i32, i32), usize> {
+    let mut cells = BTreeMap::new();
     let reach = CORRIDOR + CHUNK_SIZE / 2.0 * std::f64::consts::SQRT_2;
     // Sampling the road every half chunk is enough to touch every chunk in reach.
-    for (east, north) in road.samples(CHUNK_SIZE / 2.0) {
+    for (sample, (east, north)) in road.samples(CHUNK_SIZE / 2.0).into_iter().enumerate() {
         let (low, high) = (
             chunk_of(east - reach, north - reach),
             chunk_of(east + reach, north + reach),
@@ -762,7 +794,7 @@ pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
                 let center_e = (f64::from(cx) + 0.5) * CHUNK_SIZE;
                 let center_n = (f64::from(cn) + 0.5) * CHUNK_SIZE;
                 if (center_e - east).hypot(center_n - north) <= reach {
-                    cells.insert((cx, cn));
+                    cells.entry((cx, cn)).or_insert(sample);
                 }
             }
         }

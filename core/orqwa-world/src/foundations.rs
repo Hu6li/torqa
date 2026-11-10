@@ -1,10 +1,37 @@
 //! Foundations meet the final terrain triangles, after shaping and channel carving. Raw DEM
 //! samples and interpolated helper heights can stand well above the ground actually drawn.
 
-use crate::{CHUNK_SIZE, TerrainChunk};
+use crate::{CHUNK_SIZE, MeshData};
 
 /// Terrain already built for the course. No second terrain model or mesh copy is needed.
-pub(crate) struct Ground<'a>(pub(crate) &'a [TerrainChunk]);
+pub(crate) struct Ground<'a> {
+    /// Chunks' centres and ground meshes, in the order of `World::chunks`: where two meet,
+    /// the first one holding a point answers for it.
+    chunks: Vec<([f32; 3], &'a MeshData)>,
+    /// Centres of the course's chunks not at hand. Asking for ground they hold would quietly
+    /// find less than the whole world: debug builds, and so the tests, stop.
+    absent: Vec<[f32; 3]>,
+}
+
+impl<'a> Ground<'a> {
+    /// The ground of the whole world.
+    #[cfg(test)]
+    pub(crate) fn of(chunks: &'a [crate::TerrainChunk]) -> Self {
+        Self::near(chunks.iter().map(|c| (c.center, &c.mesh)), Vec::new())
+    }
+
+    /// The ground of some chunks (centre and ground mesh, in the world's order), the course's
+    /// other chunks centred at `absent`.
+    pub(crate) fn near(
+        chunks: impl IntoIterator<Item = ([f32; 3], &'a MeshData)>,
+        absent: Vec<[f32; 3]>,
+    ) -> Self {
+        Self {
+            chunks: chunks.into_iter().collect(),
+            absent,
+        }
+    }
+}
 
 impl Ground<'_> {
     /// Height of the drawn triangle under a point, including channel beds.
@@ -43,26 +70,29 @@ impl Ground<'_> {
         (east, north): (f64, f64),
         reach: f64,
     ) -> impl Iterator<Item = [[f64; 3]; 3]> + '_ {
-        self.0
+        let reaches = move |center: &[f32; 3]| {
+            (f64::from(center[0]) - east).abs() <= CHUNK_SIZE / 2.0 + reach
+                && (-f64::from(center[2]) - north).abs() <= CHUNK_SIZE / 2.0 + reach
+        };
+        debug_assert!(
+            !self.absent.iter().any(reaches),
+            "ground asked for at ({east:.0}, {north:.0}), in a chunk not at hand"
+        );
+        self.chunks
             .iter()
-            .filter(move |chunk| {
-                (f64::from(chunk.center[0]) - east).abs() <= CHUNK_SIZE / 2.0 + reach
-                    && (-f64::from(chunk.center[2]) - north).abs() <= CHUNK_SIZE / 2.0 + reach
-            })
-            .flat_map(move |chunk| {
-                chunk
-                    .mesh
-                    .indices
+            .filter(move |(center, _)| reaches(center))
+            .flat_map(move |&(center, mesh)| {
+                mesh.indices
                     .as_chunks::<3>()
                     .0
                     .iter()
                     .filter_map(move |face| {
                         let triangle = [face[0], face[1], face[2]].map(|i| {
-                            let v = chunk.mesh.vertices[i as usize];
+                            let v = mesh.vertices[i as usize];
                             [
-                                f64::from(v[0]) + f64::from(chunk.center[0]),
-                                -f64::from(v[2]) - f64::from(chunk.center[2]),
-                                f64::from(v[1]) + f64::from(chunk.center[1]),
+                                f64::from(v[0]) + f64::from(center[0]),
+                                -f64::from(v[2]) - f64::from(center[2]),
+                                f64::from(v[1]) + f64::from(center[1]),
                             ]
                         });
                         let outside = (0..2).any(|axis| {

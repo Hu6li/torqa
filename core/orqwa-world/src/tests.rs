@@ -5562,7 +5562,7 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
         &ridden,
         &rails,
     );
-    let ground = foundations::Ground(&world.chunks);
+    let ground = foundations::Ground::of(&world.chunks);
     let mut line: Vec<_> = (0..=40)
         .map(|i| (0.0, 400.0 + f64::from(i) * 2.0))
         .collect();
@@ -5852,7 +5852,9 @@ async fn roadside_fence_models_cannot_span_the_carriageway() {
     for name in ["guard_rail", "fence"] {
         chunk.props.models.insert(name.into(), buffer.clone());
     }
-    props::clear_fences(&mut world.chunks, &pavement);
+    for chunk in &mut world.chunks {
+        props::clear_fences(chunk, &pavement);
+    }
     let chunk = world.chunks.iter().find(|c| c.center == center).unwrap();
     for name in ["guard_rail", "fence"] {
         let remaining = &chunk.props.models[name];
