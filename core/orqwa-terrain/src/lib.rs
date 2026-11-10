@@ -184,7 +184,7 @@ impl Terrain {
             Err(error) => {
                 if self.decoded.contains(&(source, id)) {
                     warn!(source = self.sources[source].name, tile = %id, %error,
-                        "a terrain tile read before is gone; the next source fills in");
+                        "a terrain tile read before is gone; falling back to the next source, if any");
                 }
                 self.unavailable.insert((source, id));
             }
@@ -378,6 +378,35 @@ mod tests {
                 );
             }
         }
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    /// A tile let go of whose file is gone by the time it is needed again is not filled in from
+    /// nowhere: with no other source, its heights are unavailable.
+    #[tokio::test]
+    async fn a_tile_gone_when_read_again_is_unavailable() {
+        let (cache, source, places) = two_places("gone");
+        let one_tile = (source.tile_size * source.tile_size) as usize * 4;
+        let path = {
+            let ((lat, lon), _) = places[0];
+            let (px, py) = tile::global_pixel(lat, lon, source.zoom, source.tile_size);
+            let (id, ..) = tile::locate_pixel(px, py, source.zoom, source.tile_size);
+            cache.join(source.cache_path(id))
+        };
+        let mut terrain = Terrain::new(vec![source], cache.clone()).offline();
+        terrain.budget = one_tile;
+        let ((first_lat, first_lon), _) = places[0];
+        let ((second_lat, second_lon), _) = places[1];
+
+        terrain.elevation(first_lat, first_lon).await.unwrap();
+        terrain.elevation(second_lat, second_lon).await.unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let result = terrain.elevation(first_lat, first_lon).await;
+        assert!(
+            matches!(result, Err(TerrainError::Unavailable { .. })),
+            "{result:?}"
+        );
         std::fs::remove_dir_all(cache).unwrap();
     }
 
