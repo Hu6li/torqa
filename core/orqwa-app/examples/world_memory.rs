@@ -6,10 +6,11 @@
 //! in the dev container (memory is read from Linux's `/proc/self/status`). A course is read
 //! offline from its own data; a GPX route downloads its map and terrain into `cache`.
 //!
-//! With `--stream` after them, a GPX route is built without the app, offline from `cache`, and
+//! With `--stream`, a GPX route is built without the app, offline from `cache`, and
 //! each chunk is hashed and dropped as soon as it is finished (`orqwa_world::generate_into`):
 //! the peak is then the building's alone. Both ways print a `chunk checksum` from each chunk's
-//! hash, which a streamed build and a whole one share.
+//! hash, which a streamed build and a whole one share. Streamed, the world's first two reports
+//! (0 chunks) come before and after the whole-route preparation.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -28,7 +29,14 @@ fn main() {
     let cache: std::path::PathBuf = std::env::args()
         .nth(2)
         .map_or_else(|| dir.join("cache"), Into::into);
-    if std::env::args().nth(3).as_deref() == Some("--stream") {
+    if std::env::args().any(|arg| arg == "--stream") {
+        let gpx = std::path::Path::new(&course)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("gpx"));
+        assert!(
+            gpx,
+            "--stream builds a GPX route: give the course's route.gpx"
+        );
         stream(course.as_ref(), &cache);
         return;
     }
@@ -78,6 +86,9 @@ fn stream(path: &std::path::Path, cache: &std::path::Path) {
             &mut |_, _, _| {},
         ))
         .expect("route");
+    // The map and route alone; the world's first report follows, the second comes once its
+    // whole-route preparation is done.
+    println!("imported: {}", memory());
     let mut terrain =
         orqwa_terrain::Terrain::new(orqwa_terrain::TileSource::defaults(), cache.join("terrain"))
             .offline();

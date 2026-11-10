@@ -8,6 +8,7 @@
 //! tunnel, as wide as they need (#99).
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::LazyLock;
 
 use orqwa_routes::{ElevationModel, LocalProjection, Surface};
@@ -691,7 +692,8 @@ async fn ground<M: ElevationModel>(
 }
 
 /// Geometry of the bridges and tunnels of the road ridden and the railways, in route
-/// coordinates, with rings round the tunnels' openings at their `portals`.
+/// coordinates, with rings round the tunnels' openings at their `portals`; bridges stand on
+/// `ground`, their barriers kept.
 #[cfg(test)]
 pub(crate) async fn build_all<M: ElevationModel>(
     (road, railways): (&RoadIndex, &RoadIndex),
@@ -700,37 +702,36 @@ pub(crate) async fn build_all<M: ElevationModel>(
     ground: &Ground<'_>,
     projection: &LocalProjection,
     model: &mut M,
-    barriers: &mut Vec<crate::pavement::Barrier>,
 ) -> MeshData {
-    let mut mesh = MeshData::default();
+    let mut parts = Vec::new();
     for piece in pieces(road, railways) {
-        let (part, part_barriers) = if piece.is_bridge() {
-            piece.bridge(below, ground)
+        parts.push(if piece.is_bridge() {
+            (piece.bridge(below, ground).0, Vec::new())
         } else {
             (
                 piece.tunnel(road, shapers, projection, model).await,
                 Vec::new(),
             )
-        };
-        append(&mut mesh, barriers, part, part_barriers);
+        });
     }
-    mesh
+    join(parts)
 }
 
-/// Adds a piece's mesh to `mesh` and its barriers, renumbered, to `barriers`.
-#[cfg(test)]
-fn append(
-    mesh: &mut MeshData,
-    barriers: &mut Vec<crate::pavement::Barrier>,
-    part: MeshData,
-    part_barriers: Vec<crate::pavement::Barrier>,
-) {
-    let offset = mesh.indices.len();
-    barriers.extend(part_barriers.into_iter().map(|mut barrier| {
-        barrier.indices = barrier.indices.start + offset..barrier.indices.end + offset;
-        barrier
-    }));
-    mesh.append(part);
+/// The structures' pieces joined into one mesh in their order, each with the index ranges
+/// (within the piece, ascending) of the barriers pavement crosses, which are taken out.
+pub(crate) fn join(parts: impl IntoIterator<Item = (MeshData, Vec<Range<usize>>)>) -> MeshData {
+    let (mut mesh, mut blocked) = (MeshData::default(), Vec::new());
+    for (part, crossed) in parts {
+        let offset = mesh.indices.len();
+        blocked.extend(
+            crossed
+                .into_iter()
+                .map(|range| range.start + offset..range.end + offset),
+        );
+        mesh.append(part);
+    }
+    crate::pavement::remove(&mut mesh, &blocked);
+    mesh
 }
 
 /// One bridge or tunnel: of the road ridden, or a bundle of railways.
@@ -769,6 +770,29 @@ pub(crate) fn pieces(road: &RoadIndex, railways: &RoadIndex) -> Vec<Piece> {
 }
 
 impl Piece {
+    /// A road bridge along `line` (east, north) at `elevation`, `half` wide either side.
+    #[cfg(test)]
+    pub(crate) fn test_bridge(line: &[(f64, f64)], elevation: f64, half: f64) -> Self {
+        let sections = line
+            .iter()
+            .map(|&position| Section {
+                centre: CentrePoint {
+                    position,
+                    elevation,
+                    direction: (1.0, 0.0),
+                },
+                left: half,
+                right: half,
+                crown: 0.0,
+            })
+            .collect();
+        Self {
+            surface: Surface::Bridge,
+            sections,
+            railway: false,
+        }
+    }
+
     /// Whether this is a bridge, which stands on the ground drawn; a tunnel doesn't.
     pub(crate) fn is_bridge(&self) -> bool {
         self.surface == Surface::Bridge

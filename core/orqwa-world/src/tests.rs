@@ -5606,7 +5606,6 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
             &ground,
             &projection,
             &mut Level(500.0),
-            &mut Vec::new(),
         )
         .await;
         let mut inside = 0;

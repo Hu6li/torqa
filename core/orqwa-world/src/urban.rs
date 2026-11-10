@@ -206,6 +206,11 @@ impl Urban {
         }
     }
 
+    /// The road ridden's pavement, which the urban network keeps clear of.
+    pub(crate) fn pavement(&self) -> &crate::pavement::Pavement {
+        &self.pavement
+    }
+
     pub(crate) fn build<'a>(
         plots: impl Iterator<Item = &'a Plot<'a>>,
         streets: &[Street],

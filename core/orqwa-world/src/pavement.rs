@@ -111,6 +111,12 @@ impl Pavement {
         parts: impl IntoIterator<Item = &'a [[[f64; 3]; 3]]>,
         asked: Asked,
     ) -> Self {
+        if asked.0.is_empty() {
+            return Self {
+                only: Some(asked.0),
+                ..Self::default()
+            };
+        }
         let mut near = Self {
             only: Some(asked.0),
             ..Self::default()

@@ -401,7 +401,6 @@ pub async fn generate_into<M: ElevationModel>(
     };
     let below = structures::Below::new(&road, &ways.network.index, &ways.streets, &ways.islands);
     let mut world = whole(&shapers, &ways);
-    let ridden_pavement = pavement::Pavement::new(&world, []);
     let mut urban = urban::Urban::build(
         buildings.values().flatten(),
         &ways.streets,
@@ -443,7 +442,10 @@ pub async fn generate_into<M: ElevationModel>(
     };
     let pieces = structures::pieces(&road, &ways.network.index);
     let mut stages =
-        stages::Stages::new(reached.keys().copied().collect(), &ridden_pavement, &pieces);
+        stages::Stages::new(reached.keys().copied().collect(), urban.pavement(), &pieces);
+    // Again once the whole-route preparation is done, so its memory can be told from the
+    // chunks'.
+    progress(0, total);
     // Along the route, so neighbours are built close together and few wait for theirs.
     let mut order: Vec<((i32, i32), usize)> = reached.into_iter().collect();
     order.sort_by_key(|&(cell, reach)| (reach, cell));
@@ -478,26 +480,18 @@ pub async fn generate_into<M: ElevationModel>(
         stages.drop_unneeded();
     }
     debug_assert!(stages.done(), "a chunk or bridge was left waiting");
-    // Tunnels stand on nothing drawn. All are joined in the pieces' order, then the barriers
-    // pavement crosses are taken out of the whole.
-    let mut blocked = Vec::new();
+    // Tunnels stand on nothing drawn; all are joined in the pieces' order.
+    let mut parts = Vec::with_capacity(pieces.len());
     for (piece, bridge) in pieces.iter().zip(stages.take_bridges()) {
-        let (mesh, crossed) = match bridge {
+        parts.push(match bridge {
             Some(bridge) => bridge,
             None => (
                 piece.tunnel(&road, &shapers, &projection, model).await,
                 Vec::new(),
             ),
-        };
-        let offset = world.structures.indices.len();
-        blocked.extend(
-            crossed
-                .into_iter()
-                .map(|range| range.start + offset..range.end + offset),
-        );
-        world.structures.append(mesh);
+        });
     }
-    pavement::remove(&mut world.structures, &blocked);
+    world.structures = structures::join(parts);
     if world.fallback_samples > 0 {
         warn!(
             samples = world.fallback_samples,

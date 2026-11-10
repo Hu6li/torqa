@@ -22,6 +22,7 @@ use crate::{CHUNK_SIZE, MeshData, TerrainChunk, chunk_of, in_parallel, props};
 /// shores reach over. Neighbours then hold all the pavement a check can meet, as long as both
 /// reaches together stay below a chunk's width.
 const SPILL: f64 = 200.0;
+const _: () = assert!(2.0 * SPILL < CHUNK_SIZE);
 
 /// A built chunk waiting for its neighbours.
 struct Waiting {
@@ -29,7 +30,8 @@ struct Waiting {
     barriers: [Vec<Barrier>; 2],
 }
 
-/// What neighbours need of a built chunk until it is dropped.
+/// What neighbours need of a built chunk until it is dropped. The ground is the chunk's own,
+/// taken out of it while it waits and copied back when it is finished.
 struct AsBuilt {
     center: [f32; 3],
     ground: MeshData,
@@ -41,7 +43,7 @@ struct Bridge {
     piece: usize,
     /// The chunks its ground and pavement are read from, in index order.
     needs: Vec<usize>,
-    /// The course's chunks around them, which it must not reach.
+    /// The course's chunks in a ring around them, which it must not reach.
     beyond: Vec<usize>,
 }
 
@@ -127,7 +129,7 @@ impl<'a> Stages<'a> {
     pub(crate) fn built(
         &mut self,
         index: usize,
-        chunk: TerrainChunk,
+        mut chunk: TerrainChunk,
         (barriers, track_length): ([Vec<Barrier>; 2], usize),
     ) {
         let pavement = Pavement::as_built(&chunk, track_length);
@@ -143,7 +145,7 @@ impl<'a> Stages<'a> {
             index,
             AsBuilt {
                 center: chunk.center,
-                ground: chunk.mesh.clone(),
+                ground: std::mem::take(&mut chunk.mesh),
                 pavement,
             },
         );
@@ -207,6 +209,7 @@ impl<'a> Stages<'a> {
             mut chunk,
             barriers: [paved, unpaved],
         } = waiting;
+        chunk.mesh = self.built[&index].ground.clone();
         let near = self.neighbours(index, 1);
         props::ground_protection(
             &mut chunk,
@@ -241,10 +244,22 @@ impl<'a> Stages<'a> {
             .partition(|bridge| bridge.needs.iter().all(|&i| self.is_built[i]));
         self.bridges = waiting;
         for bridge in ready {
+            let piece = &pieces[bridge.piece];
             let ground = self.ground(&bridge.needs, bridge.beyond.iter().copied());
-            let (mut mesh, barriers) = pieces[bridge.piece].bridge(below, &ground);
+            let (mut mesh, barriers) = piece.bridge(below, &ground);
             let mut asked = Asked::default();
             asked.barriers(&mesh, &barriers, [0.0; 3]);
+            // Pavement of chunks beyond `needs` lies further than `CHUNK_SIZE - SPILL` from the
+            // bridge's line.
+            let ((west, south), (east, north)) = piece.bounds();
+            let reach = CHUNK_SIZE - SPILL;
+            debug_assert!(
+                asked.all(|x, z| {
+                    (west - reach..=east + reach).contains(&x)
+                        && (south - reach..=north + reach).contains(&-z)
+                }),
+                "a bridge checks pavement beyond the chunks it holds"
+            );
             let pavement = Pavement::near_parts(
                 self.road,
                 bridge
@@ -362,6 +377,73 @@ mod tests {
         assert!(stages.done(), "nothing is left held");
         assert!(finished.iter().all(|&n| n == 1), "each chunk finished once");
         held
+    }
+
+    #[test]
+    fn a_bridge_holds_the_ground_under_it_until_it_is_built_then_lets_it_go() {
+        // A corridor three chunks wide, and a bridge 4.8 km long over its middle.
+        let cells: Vec<(i32, i32)> = (0..40)
+            .flat_map(|cx| (-1..=1).map(move |cn| (cx, cn)))
+            .collect();
+        let line: Vec<(f64, f64)> = (0..=48)
+            .map(|i| (2_400.0 + f64::from(i) * 100.0, 240.0))
+            .collect();
+        let pieces = [Piece::test_bridge(&line, 520.0, 4.0)];
+        let elsewhere = crate::road::RoadIndex::from_lines(&[vec![
+            crate::road::Centre {
+                position: (0.0, -10_000.0),
+                elevation: 500.0,
+                distance: 0.0,
+                surface: orqwa_routes::Surface::Ground,
+                mapped: true,
+            },
+            crate::road::Centre {
+                position: (100.0, -10_000.0),
+                elevation: 500.0,
+                distance: 100.0,
+                surface: orqwa_routes::Surface::Ground,
+                mapped: true,
+            },
+        ]]);
+        let below = Below::new(&elsewhere, &elsewhere, &[], &[]);
+        let road = Pavement::default();
+        let mut stages = Stages::new(cells.clone(), &road, &pieces);
+        let first_under = stages.index((5, 0));
+        let mut held_finished = false;
+        for batch in cells.chunks(8) {
+            for &cell in batch {
+                stages.built(
+                    stages.index(cell),
+                    chunk(cell),
+                    ([Vec::new(), Vec::new()], 0),
+                );
+            }
+            stages.finish(2, &mut |_, _| {});
+            let bridge_built = stages.structures[0].is_some();
+            stages.build_bridges(&pieces, &below);
+            stages.drop_unneeded();
+            let neighbours_finished = stages
+                .neighbours(first_under, 1)
+                .iter()
+                .all(|&n| stages.finished[n]);
+            if neighbours_finished && !bridge_built && stages.structures[0].is_none() {
+                assert!(
+                    stages.built.contains_key(&first_under),
+                    "held for the bridge"
+                );
+                held_finished = true;
+            }
+        }
+        assert!(
+            held_finished,
+            "the chunk was finished long before the bridge"
+        );
+        assert!(
+            stages.structures[0]
+                .as_ref()
+                .is_some_and(|(mesh, _)| !mesh.indices.is_empty())
+        );
+        assert!(stages.done(), "let go once the bridge is built");
     }
 
     #[test]
