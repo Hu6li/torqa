@@ -650,6 +650,13 @@ fn a_rider_reconnecting_keeps_the_start_and_an_organizer_change_waiting() {
     let mut riding = Snapshot {
         phase: Phase::Riding,
         start: Some(Instant::now()),
+        workout_clock: Some(orqwa_net::lobby::WorkoutClock {
+            revision: 1,
+            sequence: 1,
+            elapsed: Duration::ZERO,
+            at: Instant::now(),
+            paused: false,
+        }),
         ..lobby.clone()
     };
     assert!(!riding.can_handover());

@@ -517,11 +517,23 @@ impl Snapshot {
             && self.handover == Handover::Idle
             // Everyone must take part in the change, so nobody may be reconnecting (#434).
             && !self.away.contains(&true)
+            && self.workout_clock_known()
             && self
                 .roster
                 .iter()
                 .enumerate()
                 .any(|(id, rider)| id != usize::from(self.me) && rider.is_some() && self.ready[id])
+    }
+
+    /// Whether a new organizer could carry on the shared workout: its position travels in the
+    /// handover plan, and the organizer's own clock arrives with the first state after the
+    /// start, which a fallback answering at once can beat.
+    fn workout_clock_known(&self) -> bool {
+        self.workout_clock.is_some()
+            || self
+                .selection
+                .as_ref()
+                .is_none_or(|selection| selection.workout.is_none())
     }
 
     /// The shared plan has run its last step; course riding can still continue.
