@@ -196,14 +196,16 @@ Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every ru
 
 ## Smaller batches
 
-2026-11-10, measured the same way, with a report of live heap after each batch of chunks. The
-preparation ends at 472 MB live, but the streamed peak comes a gigabyte later, while the
-chunks are built. Between batches about 400 MB more is held: ground meshes and pavement kept
-for the neighbours of about 80 built chunks (110–135 and 100–130 MB), some 40 chunks waiting
-for theirs, and the bridges built. The peak is the batch itself: its chunks are all built
-before any is finished, adding up to 520 MB (876 → 1,255 MB live after the second batch). The
-streets' 130 MB live after their lines, once a target, are the tile cache filling to its budget
-there (64 MB) and the streets themselves (31 MB).
+2026-11-10, measured the same way, with a report of live heap before, during and after each
+batch of chunks. The preparation ends at 472 MB live, but the streamed peak comes a gigabyte
+later, while the chunks are built. At four chunks per core (32 a batch), between batches up
+to 450 MB more is held: ground meshes and pavement kept for the neighbours of about 80 built
+chunks (110–135 and 100–130 MB), some 40 chunks waiting for theirs, and the bridges built. A
+batch's chunks are all built before any is finished, and add to that: 516 MB in the first
+batch (472 → 988 MB live) and 379 MB in the second (876 → 1,255 MB), the highest live heap
+of the build. The 130 MB held after the streets' lines are drawn, which the earlier report by
+part counted as one step, is the tile cache filling to its budget there (64 MB) and the
+streets themselves (31 MB).
 
 A batch is now two chunks per core instead of four (16 on the container's and the Tab S7's 8).
 The order chunks are built in, and so the world, stays the same; the cores are less evenly
@@ -211,11 +213,16 @@ busy towards each batch's end.
 
 | Container | Four per core | Two per core | One per core |
 |---|---:|---:|---:|
-| Streamed peak | 1.60–1.61 GB | 1.38–1.44 GB | 1.34–1.45 GB |
+| Live between batches, highest | 925 MB | 970 MB | 970 MB |
+| Live after a batch is built, highest | 1,255 MB | 1,086 MB | 1,035 MB |
+| Streamed peak (resident) | 1.60–1.61 GB | 1.38–1.44 GB | 1.34–1.45 GB |
 | Generating | 100 s | 112 s | 139 s |
 
-One per core is no lower than two beyond the runs' spread, and a quarter slower. The
-checksums are the same as above (the four courses whole, and the GPX routes streamed).
+From two per core on, the batch adds only about 100 MB: the floor is what is held between
+batches, the preparation and the chunks kept for their neighbours, with about 350 MB more
+that the allocator keeps from it. One per core is no lower than two beyond the runs' spread,
+and a quarter slower. The checksums are the same as above (the four courses whole, and the
+GPX routes streamed).
 
 | Tab S7 | Four per core | Two per core |
 |---|---:|---:|
