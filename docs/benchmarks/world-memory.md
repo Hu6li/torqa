@@ -122,8 +122,8 @@ allocator and a report after each step of the whole-route preparation. Before th
 the preparation held 1,073 MB of live heap: 305 MB of decoded terrain tiles, all kept (now at
 most 64 MB, `orqwa_terrain::TILE_BUDGET`), and a third in five indexes that each kept its own
 copy of the streets' centre lines (13,207 streets, 865,151 points, 31 MB), in lists per cell
-grown one item at a time. The streets are now held once (`streets::Shared`); the indexes keep a street's and a point's number, 8
-bytes, in one array sorted by cell (`cells::CellIndex`).
+grown one item at a time. The streets are now held once (`streets::Shared`); the indexes keep
+a street's and a point's number, 8 bytes, in one array sorted by cell (`cells::CellIndex`).
 
 | Live heap (MB) | Before | After |
 |---|---:|---:|
@@ -137,7 +137,7 @@ bytes, in one array sorted by cell (`cells::CellIndex`).
 | Generating | 98–110 s | 102 s |
 
 With the tile cache as well, the preparation holds 555 MB live (676 MB resident) and the
-streamed peak is 1.75 GB, in 102 s.
+streamed peak is 1.73–1.75 GB, in 99–102 s.
 
 The worlds are unchanged: the four courses' checksums are main's (Kirchenfeldbrücke
 `d809883d0cce28ce`, Bielersee `4c70f2da7b782cb9`, Oberalp `5d69f358523b43ef`, Wada as a course

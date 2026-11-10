@@ -1,6 +1,7 @@
 //! A spatial index held compactly: what lies in each square cell, all in one array sorted by
-//! cell. A list per cell grown one item at a time keeps up to half its room spare and a header
-//! for every cell, which over a long route's streets came to hundreds of megabytes (#542).
+//! cell. A list per cell grown one item at a time keeps up to half its room spare, which with
+//! the copies of the streets' points it held came to hundreds of megabytes over a long route's
+//! streets (#542).
 
 use std::collections::HashMap;
 
