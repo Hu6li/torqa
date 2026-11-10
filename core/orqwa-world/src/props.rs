@@ -203,6 +203,46 @@ pub(crate) fn ground_protection(chunks: &mut [crate::TerrainChunk]) {
     }
 }
 
+/// The ends (absolute Godot coordinates) of a fence or guard-rail model placed by `transform`
+/// in a chunk centred at `center`, and how far beside its line it must stay off pavement;
+/// `None` for other models.
+fn fence_span(name: &str, transform: &[f32], center: [f32; 3]) -> Option<([[f64; 3]; 2], f64)> {
+    let half = match name {
+        "guard_rail" | "guard_rail_start" | "guard_rail_end" => RAIL_SPAN / 2.0,
+        "fence" => FENCE_SPAN / 2.0,
+        _ => return None,
+    };
+    let ends = [-half, half].map(|z| {
+        [0, 1, 2].map(|k| {
+            f64::from(transform[k * 4 + 3])
+                + f64::from(center[k])
+                + f64::from(transform[k * 4 + 2]) * z
+        })
+    });
+    // Terminal blades flare 35 cm away from the road, beyond the post.
+    let width = if name.starts_with("guard_rail_") {
+        0.5
+    } else {
+        crate::pavement::SPAN_HALF_WIDTH
+    };
+    Some((ends, width))
+}
+
+/// Every fence and guard-rail span of `chunks`, as `clear_fences` checks them.
+pub(crate) fn fence_spans(
+    chunks: &[crate::TerrainChunk],
+) -> impl Iterator<Item = ([[f64; 3]; 2], f64)> + '_ {
+    chunks.iter().flat_map(|chunk| {
+        chunk.props.models.iter().flat_map(move |(name, buffer)| {
+            buffer
+                .as_chunks::<12>()
+                .0
+                .iter()
+                .filter_map(move |t| fence_span(name, t, chunk.center))
+        })
+    })
+}
+
 /// A fixed model cannot be clipped halfway through a blade or plank. Remove spans crossing
 /// actual pavement, including roads joining between their endpoints.
 pub(crate) fn clear_fences(
@@ -210,30 +250,18 @@ pub(crate) fn clear_fences(
     pavement: &crate::pavement::Pavement,
 ) {
     for chunk in chunks {
+        let center = chunk.center;
         for (name, buffer) in &mut chunk.props.models {
-            let half = match name.as_str() {
-                "guard_rail" | "guard_rail_start" | "guard_rail_end" => RAIL_SPAN / 2.0,
-                "fence" => FENCE_SPAN / 2.0,
-                _ => continue,
-            };
+            if fence_span(name, &[0.0; 12], center).is_none() {
+                continue;
+            }
             *buffer = buffer
                 .as_chunks::<12>()
                 .0
                 .iter()
                 .filter(|t| {
-                    let ends = [-half, half].map(|z| {
-                        [0, 1, 2].map(|k| {
-                            f64::from(t[k * 4 + 3])
-                                + f64::from(chunk.center[k])
-                                + f64::from(t[k * 4 + 2]) * z
-                        })
-                    });
-                    if name.starts_with("guard_rail_") {
-                        // Terminal blades flare 35 cm away from the road, beyond the post.
-                        !pavement.crosses_width(ends[0], ends[1], 0.5)
-                    } else {
-                        !pavement.crosses(ends[0], ends[1])
-                    }
+                    fence_span(name, t.as_slice(), center)
+                        .is_none_or(|([a, b], width)| !pavement.crosses_width(a, b, width))
                 })
                 .flatten()
                 .copied()
