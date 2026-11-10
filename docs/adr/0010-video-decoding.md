@@ -111,3 +111,24 @@ on that Mac, 60 refreshes a second, as refreshes where the picture jumped by ove
   frame after that moment, or while decoding lags behind, the newest one before it.
 - At 4× the view had no frame ahead at 4.5% of refreshes: there the pure Rust rav1d (no ARM
   assembly, see above) reaches its limit, which hardware decoding is still to lift.
+
+## Amendment (2026-10-29): Android/ARM decode is the limiter (#383)
+
+Android video playback is laggy (#383). Android is ARM, where rav1d runs **without its
+assembly** (the 1.1.0 package omits the ARM asm headers, see the 2026-10-04 amendment), so AV1
+is decoded by the pure Rust decoder — the limit the 2026-10-12 amendment already measured. For
+the 720p AV1 route videos that lag, decode is the bottleneck, not scaling or upload: those
+frames are already at or below any sensible display cap, so a lower `MAX_WIDTH` on mobile would
+not help.
+
+- **The measured fix is rav1d's ARM assembly**, as on x86_64 — gated on a rav1d build that ships
+  the ARM asm offset headers. Upstream `rav1d` has not released them yet (still 1.1.0); enabling
+  `asm` for `aarch64` becomes clean once it does. Tracked in #383.
+- **`rav1d-safe` (imazen) packages the ARM headers but is not usable here:** it is licensed
+  `AGPL-3.0-only OR LicenseRef-Imazen-Commercial`, incompatible with ORQWA's GPL-3.0 and
+  rejected by `core/deny.toml`. Not adopted, for the same reason `re_rav1d` was dropped above:
+  the dependency does not fit.
+- **Hardware decoding** (Android MediaCodec through the NDK) is the other fix and the proper
+  long-term one — the follow-up this ADR has carried since the start (PLAN Phase 5, VideoToolbox
+  on macOS, MediaCodec on Android). Until one of these lands, #383 stays open; the player's
+  decode-ahead (above) is what keeps ARM playback as smooth as it currently is.
