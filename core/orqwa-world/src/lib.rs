@@ -459,10 +459,12 @@ pub async fn generate_into<M: ElevationModel>(
     };
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
-    // then the chunks themselves on all cores, where nearly all the time goes.
+    // then the chunks themselves on all cores, where nearly all the time goes. A batch's chunks
+    // are all held before any is finished, so they set the peak: two per core keep the cores
+    // busy enough (Wada: 12 % slower than four, 0.2 GB less at the peak; one is no smaller).
     let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
     let mut built = 0;
-    for batch in order.chunks(threads * 4) {
+    for batch in order.chunks(threads * 2) {
         let mut jobs = Vec::with_capacity(batch.len());
         for &((cx, cn), _) in batch {
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;

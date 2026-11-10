@@ -109,7 +109,7 @@ core while building, so it needs measuring by part, and shrinking, before that f
 
 **What bounds the chunks held.** A chunk waits, whole, until all its neighbours are built, and
 its ground and pavement stay until they are finished. Along one leg of a route that is a few
-rows of chunks around the build front, and the batch adds `4 × cores` chunks (128 on 32 cores).
+rows of chunks around the build front, and the batch adds `2 × cores` chunks (64 on 32 cores).
 Where a later leg's corridor runs alongside an earlier one (out and back in a parallel valley,
 stacked switchbacks, laps a few kilometres apart), the earlier leg's chunks on that side wait
 for the later leg: chunks held then grow with the length of that seam. No build order avoids
@@ -191,6 +191,37 @@ The checksums are the same as above (the four courses whole, and the GPX routes 
 | Peak | 1.48–1.49 GB | 1.41–1.42 GB |
 | Lowest memory available to the tablet | 1.03–1.15 GB | 1.17–1.26 GB |
 | Generating | 336–343 s | 338–342 s |
+
+Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
+
+## Smaller batches
+
+2026-11-10, measured the same way, with a report of live heap after each batch of chunks. The
+preparation ends at 472 MB live, but the streamed peak comes a gigabyte later, while the
+chunks are built. Between batches about 400 MB more is held: ground meshes and pavement kept
+for the neighbours of about 80 built chunks (110–135 and 100–130 MB), some 40 chunks waiting
+for theirs, and the bridges built. The peak is the batch itself: its chunks are all built
+before any is finished, adding up to 520 MB (876 → 1,255 MB live after the second batch). The
+streets' 130 MB live after their lines, once a target, are the tile cache filling to its budget
+there (64 MB) and the streets themselves (31 MB).
+
+A batch is now two chunks per core instead of four (16 on the container's and the Tab S7's 8).
+The order chunks are built in, and so the world, stays the same; the cores are less evenly
+busy towards each batch's end.
+
+| Container | Four per core | Two per core | One per core |
+|---|---:|---:|---:|
+| Streamed peak | 1.60–1.61 GB | 1.38–1.44 GB | 1.34–1.45 GB |
+| Generating | 100 s | 112 s | 139 s |
+
+One per core is no lower than two beyond the runs' spread, and a quarter slower. The
+checksums are the same as above (the four courses whole, and the GPX routes streamed).
+
+| Tab S7 | Four per core | Two per core |
+|---|---:|---:|
+| Peak | 1.41–1.43 GB | 1.21 GB |
+| Lowest memory available to the tablet | 1.14–1.18 GB | 1.29–1.30 GB |
+| Generating | 333–341 s | 369–378 s |
 
 Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
 
