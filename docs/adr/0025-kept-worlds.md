@@ -286,3 +286,11 @@ Upload priorities follow the rider, with a frame budget that yields after the cu
 The generated/stored world is unchanged, so neither `GENERATOR` nor `FORMAT` changes.
 This shortens the scene preparation wait introduced by R223. It does not stream world
 generation itself: structure foundations and protection still depend on completed terrain.
+
+## Amendment — 2026-11-10: every world is built into a store
+
+[ADR 0040](0040-world-residency.md) builds every world into a store in the cache. Chunks are
+written to `<fingerprint>.building/` as they are finished, then packed into the kept `.world`
+by raw copy when the rider keeps worlds. Otherwise the store is deleted when the course is
+closed. The ride reads chunks from the store instead of holding them all in memory. The kept
+world's layout, `FORMAT` and `GENERATOR` are unchanged.

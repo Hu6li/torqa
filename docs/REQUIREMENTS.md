@@ -666,6 +666,12 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R239 | Refines R187 and R238 (2026-11-09): ORQWA automatically chooses the first eligible connected friend and requests fallback consent in the lobby, before selecting an activity or marking ready. The organizer can override the choice. A decline, timeout or departure moves to another eligible friend without repeatedly asking someone who declined or timed out; obsolete replies cannot approve a later request. Acceptance and the selected membership persist across activities, with no new prompt at ride start. Standby connections are prepared only while riding. If the original organizer unexpectedly leaves and the fallback takes over during a ride, the new organizer still automatically chooses and asks a replacement fallback during that ride. |
 
+## Course worlds within a tablet's memory
+
+| ID | Requirement |
+|---|---|
+| R240 | Refines R101, R223 and R224 (2026-11-10, #542): the memory ORQWA needs to build and ride a course's 3D world depends on the rider's surroundings and the chosen graphics, not on the course's length or how densely its land is mapped, so that long, densely mapped courses build and ride on tablets with about 6 GB of RAM. *Wada – Ōtarumi Pass* (57 km, Japan) is the measure on a Galaxy Tab S7, where ORQWA was ended for low memory while building it. While a course is open, its world is kept in the cache directory even when courses are not kept ready to ride (about 10 MB per kilometre), and deleted when the course is closed, unless it is kept. The first ride of a course starts once the surroundings of the rider's start are built; the rest is built while riding, without holding up the ride or its frame rate, and the loading page shows only when the rider reaches parts not yet built. Worlds come out exactly as before ([ADR 0040](adr/0040-world-residency.md)). |
+
 ## Gradient colours in the elevation profile
 
 | ID | Requirement |
