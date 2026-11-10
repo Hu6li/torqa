@@ -115,6 +115,48 @@ stacked switchbacks, laps a few kilometres apart), the earlier leg's chunks on t
 for the later leg: chunks held then grow with the length of that seam. No build order avoids
 it.
 
+## Streets held once
+
+2026-11-10, same container, release build, Wada built chunk by chunk as above, with a counting
+allocator and a report after each step of the whole-route preparation. Before the first chunk
+the preparation held 1,073 MB of live heap: 305 MB of decoded terrain tiles, all kept (now at
+most 64 MB, `orqwa_terrain::TILE_BUDGET`), and a third in five indexes that each kept its own
+copy of the streets' centre lines (13,207 streets, 865,151 points, 31 MB), in lists per cell
+grown one item at a time. The streets are now held once (`streets::Shared`); the indexes keep a street's and a point's number, 8
+bytes, in one array sorted by cell (`cells::CellIndex`).
+
+| Live heap (MB) | Before | After |
+|---|---:|---:|
+| Where plants keep off (`Clearance`) | 70 | 35 |
+| Where channels stop at streets (`Channels`) | 51 | 14 |
+| Formed street beds (`streets::Levels`) | 108 | 30 |
+| Streets under bridges (`Below`) | 79 | 21 |
+| Sidewalk ways, with the building sites | 99 | 35 |
+| **Preparation** | **1,073** | **792** |
+| Streamed peak | 2.25 GB | 2.01 GB |
+| Generating | 98–110 s | 102 s |
+
+With the tile cache as well, the preparation holds 555 MB live (676 MB resident) and the
+streamed peak is 1.75 GB, in 102 s.
+
+The worlds are unchanged: the four courses' checksums are main's (Kirchenfeldbrücke
+`d809883d0cce28ce`, Bielersee `4c70f2da7b782cb9`, Oberalp `5d69f358523b43ef`, Wada as a course
+`a6a04ff670d2c2de`), and on top of the tile cache the GPX routes' whole and streamed checksums
+are as before (Wada's chunk checksum `11713ce55c887625`).
+
+On the Tab S7, Wada streamed offline at the 64 MB tile budget, two runs each alternating with
+the same build without this change:
+
+| Tab S7 | Without | With |
+|---|---:|---:|
+| Resident after the preparation | 0.90–0.91 GB | 0.67 GB |
+| Peak | 1.71–1.73 GB | 1.48–1.49 GB |
+| Lowest memory available to the tablet | 0.90–1.00 GB | 1.23–1.31 GB |
+| Generating | 342–345 s | 341–350 s |
+
+The chunk checksum is `a0ca70babfcb9de9` in every run, with and without the change (the tablet's
+build has a checksum of its own, as before).
+
 ## Still to do
 
 Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,
