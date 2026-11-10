@@ -224,6 +224,10 @@ impl Coordinator {
         snapshot.preferred_fallback = Some(successor.value());
         snapshot.preferred_fallback_accepted = self.approved & (1 << id) != 0;
         self.declined &= !(1 << id);
+        // Asked once the workout's clock is known (`stand_by` offers the preferred rider).
+        if !snapshot.workout_clock_known() {
+            return Ok(());
+        }
         self.offer(session, snapshot, successor, true)
     }
 
@@ -241,6 +245,7 @@ impl Coordinator {
         if riding
             && (snapshot.away.contains(&true)
             || snapshot.selection.is_none()
+            || !snapshot.workout_clock_known()
             || self.retry_at.is_some_and(|at| at > Instant::now())
             // Everyone prepares a standby link, so a friend still joining the ride is waited for.
             || snapshot
@@ -1445,6 +1450,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_fallback_is_asked_to_stand_by_only_once_the_workout_clock_is_known() {
+        let mut options = ConnectOptions::default();
+        options.gather.policy.loopback = true;
+        options.gather.stun_servers.clear();
+        let rider = Rider {
+            name: "Rider".into(),
+            mass: Kilograms(80.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        };
+        let host = Host::lobby(&rider.name, &options).await.unwrap();
+        let session = Session::Host(HostLobby::open(host, rider.clone()).unwrap());
+        let mut snapshot = Snapshot {
+            host: true,
+            root: Some(orqwa_net::code::RideId([1; 16])),
+            phase: super::super::Phase::Riding,
+            prepared: true,
+            start: Instant::now().checked_sub(Duration::from_secs(1)),
+            selection: Some(Selection {
+                revision: 1,
+                name: "Workout".into(),
+                course: None,
+                course_key: None,
+                workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
+                assistance: Assistance::default(),
+            }),
+            ..Snapshot::default()
+        };
+        for slot in 0..3 {
+            snapshot.roster[slot] = Some(rider.clone());
+            snapshot.ready[slot] = true;
+        }
+        let mut source = Coordinator::new(options, rider);
+        source.tick(&session, &mut snapshot).unwrap();
+        assert!(
+            source.context.is_none() && !snapshot.can_handover(),
+            "a plan would carry no workout position yet, which every rider refuses"
+        );
+        source
+            .choose_fallback(&session, &mut snapshot, RiderId::new(2).unwrap())
+            .unwrap();
+        assert!(source.context.is_none());
+        snapshot.workout_clock = Some(orqwa_net::lobby::WorkoutClock {
+            revision: 1,
+            sequence: 1,
+            elapsed: Duration::from_secs(1),
+            at: Instant::now(),
+            paused: false,
+        });
+        assert!(snapshot.can_handover());
+        source.tick(&session, &mut snapshot).unwrap();
+        let context = source.context.as_ref().expect("the standby is asked now");
+        assert!(source.standby);
+        assert_eq!(
+            context.successor.value(),
+            2,
+            "the organizer's choice is kept while waiting"
+        );
+    }
+
+    #[tokio::test]
     async fn expiry_cancels_owned_preparation_without_restoring_stale_proposals() {
         let mut options = ConnectOptions::default();
         options.gather.policy.loopback = true;
@@ -1471,6 +1537,13 @@ mod tests {
                 course_key: None,
                 workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
                 assistance: Assistance::default(),
+            }),
+            workout_clock: Some(orqwa_net::lobby::WorkoutClock {
+                revision: 1,
+                sequence: 1,
+                elapsed: Duration::from_secs(1),
+                at: Instant::now(),
+                paused: false,
             }),
             ..Snapshot::default()
         };
