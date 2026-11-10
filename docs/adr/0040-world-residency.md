@@ -190,18 +190,21 @@ chunks is needed; from 2c, a chunk uploaded again is read from disk again.
 
 ### Godot frees far chunks (2c)
 
-- A chunk node, with its ground LODs, is freed once its centre is farther than the upload
-  radius plus 240 m (`orqwa_world::REPLAN_DISTANCE`, how far the rider moves before the upload
-  order is planned again) plus one chunk. The core's upload plan says which chunks are kept,
-  so a chunk at the edge isn't freed and uploaded again with every plan, and none the next
-  plan needs is freed. Chunks beyond that reach aren't uploaded at all.
-- It is uploaded again when it comes back within that reach, within the same per-frame budget
-  (R224).
+- Chunks are uploaded within the upload radius, as R224 has them. A chunk node, with its
+  ground LODs, is freed once its centre is farther than the upload radius plus 240 m
+  (`orqwa_world::REPLAN_DISTANCE`, how far the rider moves before the upload order is planned
+  again) plus one chunk. The core's upload plan says which chunks are kept. The band between
+  the two means a rider turning back on a hairpin doesn't free chunks and read them again, and
+  none the next plan needs is freed.
+- A freed chunk is uploaded again when it comes back within the radius, within the same
+  per-frame budget (R224).
 - The radius is measured from the free camera of simulated rides while it flies, so it keeps
   its surroundings too, and otherwise from the rider: the following camera stays within metres
   of the rider and lags a jump by a frame.
-- A jump in a simulated ride pauses, clock included, until the visible surroundings of the
-  place jumped to are uploaded, then goes on by itself (see **Jump** under 2d).
+- A jump in a simulated ride, or the camera's return to the rider from the free camera, pauses
+  the ride, clock included, until the rider's visible surroundings are uploaded, then it goes
+  on by itself (see **Jump** under 2d). Pause pressed meanwhile keeps the ride paused, as the
+  rider's own.
 
 ### Generate ahead of the rider (2d, #237)
 
