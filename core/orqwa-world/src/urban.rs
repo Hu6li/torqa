@@ -1695,10 +1695,29 @@ fn polygon_distance(polygon: &[Point], point: Point) -> f64 {
 }
 
 fn subtract_all(subjects: Vec<Vec<Point>>, mask: &[Point]) -> Vec<Vec<Point>> {
-    subjects
-        .into_iter()
-        .flat_map(|polygon| subtract(&polygon, mask))
-        .collect()
+    // Most masks near a patch miss it; keeping those polygons spares copying them.
+    let mut kept = Vec::with_capacity(subjects.len());
+    for polygon in subjects {
+        if apart(&polygon, mask) {
+            kept.push(polygon);
+        } else {
+            kept.extend(subtract(&polygon, mask));
+        }
+    }
+    kept
+}
+
+/// Whether two polygons' bounds do not overlap, so that neither can cut the other.
+fn apart(a: &[Point], b: &[Point]) -> bool {
+    let bounds = |points: &[Point]| {
+        points
+            .iter()
+            .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
+                (b.0.min(p.0), b.1.min(p.1), b.2.max(p.0), b.3.max(p.1))
+            })
+    };
+    let (a, b) = (bounds(a), bounds(b));
+    a.2 <= b.0 || b.2 <= a.0 || a.3 <= b.1 || b.3 <= a.1
 }
 
 /// Disjoint convex pieces outside a convex mask. Each cut keeps its outside
@@ -1708,15 +1727,7 @@ fn subtract(subject: &[Point], mask: &[Point]) -> Vec<Vec<Point>> {
 }
 
 fn split_by_mask(subject: &[Point], mask: &[Point]) -> (Vec<Vec<Point>>, Vec<Point>) {
-    let bounds = |points: &[Point]| {
-        points
-            .iter()
-            .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
-                (b.0.min(p.0), b.1.min(p.1), b.2.max(p.0), b.3.max(p.1))
-            })
-    };
-    let (a, b) = (bounds(subject), bounds(mask));
-    if a.2 <= b.0 || b.2 <= a.0 || a.3 <= b.1 || b.3 <= a.1 {
+    if apart(subject, mask) {
         return (vec![subject.to_vec()], Vec::new());
     }
     let mut mask = mask.to_vec();
