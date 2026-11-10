@@ -963,6 +963,8 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
     unchanged
   - [x] the whole-route preparation holds the streets once: its indexes keep their numbers, not
     copies of their centre lines; Wada's preparation 1.07 → 0.79 GB, the world unchanged
+  - [x] the sidewalks held compactly: patch corners inline, the cut polygons in one store;
+    Wada's preparation 555 → 472 MB live, the tablet's peak 1.48 → 1.42 GB, the world unchanged
   - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
     - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
       those around the ones being built held; the world unchanged

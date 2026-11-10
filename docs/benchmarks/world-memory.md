@@ -157,6 +157,43 @@ the same build without this change:
 The chunk checksum is `a0ca70babfcb9de9` in every run, with and without the change (the tablet's
 build has a checksum of its own, as before).
 
+## Sidewalks held compactly
+
+2026-11-10, measured the same way, on top of the streets held once and the tile cache. Of the
+555 MB the preparation then held, the urban surfaces' last step (cutting each sidewalk patch
+free of zones, carriageways, junction fans and buildings) added the most: 307,223 patches at
+102 MB (a third of it a list's spare room), the 361,033 polygons left after cutting at 59 MB
+(668,256 small lists, two thirds of their room spare), and the junction fans' 482,190
+triangles at 34 MB. The cutting also left its freed lists scattered through the heap, so the
+process stayed larger than what it held.
+
+Patches are quadrilaterals and junction fans triangles: each now holds its corners itself,
+rather than in a list of its own. The polygons left after cutting go into one store, points in
+one array (`urban::Shapes`), which the passes that follow (merging overlapping islands,
+dropping walks too short to keep) rebuild in turn rather than edit in place. A cut whose bounds
+miss a polygon keeps the polygon rather than copying it.
+
+| Container | Before | After |
+|---|---:|---:|
+| Sidewalk patches | 102 MB | 60 MB |
+| Polygons left after cutting | 59 MB | 28 MB |
+| Junction fans | 34 MB | 24 MB |
+| **Preparation**, live | **555 MB** | **472 MB** |
+| Preparation, resident | 666–676 MB | 536–554 MB |
+| Streamed peak | 1.74–1.75 GB | 1.60–1.63 GB |
+| Generating | 99–102 s | 98–101 s |
+
+The checksums are the same as above (the four courses whole, and the GPX routes streamed).
+
+| Tab S7 | Without | With |
+|---|---:|---:|
+| Resident after the preparation | 0.58 GB | 0.50 GB |
+| Peak | 1.48–1.49 GB | 1.41–1.42 GB |
+| Lowest memory available to the tablet | 1.03–1.15 GB | 1.17–1.26 GB |
+| Generating | 336–343 s | 338–342 s |
+
+Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
+
 ## Still to do
 
 Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,
