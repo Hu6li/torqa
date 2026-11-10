@@ -293,6 +293,39 @@ The winter ground's mask reads every chunk too, so it is made in the background,
 main thread. The checksums are unchanged for the three
 fixtures and Wada, also read back from the store and from the kept world.
 
+## Far chunks freed from the scene
+
+2026-11-10, container, Wada at **Low**, `app/tools/measure_frames.gd` under lavapipe (whose
+"GPU" memory is the process's own, as on a tablet), riding to 0, 20 and 40 km and back to 0,
+with Godot's own counts at each place (ADR 0040, step 2c):
+
+| Wada at Low | 0 km | 20 km | 40 km | back at 0 |
+|---|---:|---:|---:|---:|
+| Chunks in the scene, before → after | 683 → 118 | 683 → 202 | 683 → 179 | 683 → 118 |
+| Godot's video memory, before → after | 2,361 → 1,129 MB | 2,361 → 509 MB | 2,361 → 659 MB | 2,361 → 1,131 MB |
+| Nodes, before → after | 20,702 → 9,575 | 20,702 → 7,958 | 20,702 → 8,657 | 20,702 → 9,575 |
+
+Back where it started, the scene holds the same nodes and objects as before, with no orphans.
+Ridden seven times between 0 and 20 km, the process's resident memory stays at 4.14–4.19 GB
+after the first lap: freed chunks give their memory back.
+
+- **The GPU's memory stays at its peak.** Lavapipe holds 1.33 GB from the start onwards,
+  also at 20 km where the scene needs 509 MB: the Vulkan allocator keeps blocks that freed
+  meshes left partly empty. So the scene's GPU memory follows the densest surroundings ridden
+  so far, here Wada's start, no longer the whole course: 1.1–1.3 GB instead of 2.4 GB.
+- **Resident memory** peaks at 5.6 GB after against 7.9 GB before, with glibc's default
+  arenas. Of that, about 1.3 GB is freed memory glibc keeps for the build's and the ground
+  LODs' worker threads (4.35 GB with `MALLOC_ARENA_MAX=2`), which Android's allocator does not
+  keep the same way. The main heap still holds 1.2–1.3 GB left from building the world.
+- **Against R240's 1.5 GB on the tablet,** Wada's start alone needs 1.1 GB of meshes at Low,
+  before the core and Godot's own 0.3 GB. Freeing far chunks bounds the scene by the preset's
+  distance, but a densely mapped start still needs compact vertices (the first `FORMAT`
+  change) to fit.
+- Each place's surroundings are read and uploaded again, ground LODs included: about
+  2.5 minutes per place under software rendering, against 30 s when every chunk stays. How
+  much of a frame that costs on a GPU is the 2d PR's frame-time measurement.
+
 ## Still to do
 
-The whole world is built before the ride starts (2d).
+The whole world is built before the ride starts (2d). On the tablet, the app as a whole has not
+been measured riding since 2c: it needs a branch APK.
