@@ -21,9 +21,10 @@ how densely its corridor is mapped. The graphics preset makes no difference.
   other chunk, and never frees one. On a tablet, GPU memory is the same RAM.
 - **What a ride needs.** Only chunks within the drawn range: 4.5 km for ground and streets
   times the preset's distance (0.65 on Low), plus the 1 km upload margin. Once a chunk is
-  uploaded, the core reads it again only for a season change. Every other reader of all the
-  chunks needs much less: the winter ground mask needs only their bounds, and the render
-  tools and the benchmark can read the chunks one by one.
+  uploaded, the core reads it again only for a season change. The other readers of all the
+  chunks can read them one by one: the render tools, the benchmark, and the winter ground
+  mask, which keeps every chunk's streets, tracks and paving clear (only winter rides ask
+  for it).
 - **Neighbours only, after #541.** On `main`, every barrier is checked against an `f64` copy
   of every street and track triangle in the world. #541 builds structures before the pavement
   is gathered, so every barrier is known first. `pavement::Asked` then collects the 16 m cells
@@ -88,8 +89,10 @@ the core reads chunks from the store, every world is.
   deleted. The kept world's layout stays as ADR 0025 describes it.
 - A store belongs to the build that made it, and is deleted when that build lets go of it:
   once kept, when the build is stopped, or when a chunk fails to be written (the disk may be
-  full). When the rider doesn't keep worlds, the store is the ride's, deleted when the course
-  is closed or another course is opened.
+  full; from 2b, once the chunks written before are read back, as they are the only copy).
+  When the rider doesn't keep worlds, the store is the ride's, deleted when the course is
+  closed or another course is opened. Turning **Keep courses ready to ride** off deletes the
+  kept worlds but not the stores of this ORQWA's builds.
 - A store left by an ORQWA that stopped (a crash, a low-memory kill) is deleted by the next
   tidy of the kept worlds once it hasn't grown for 10 minutes, as a half-written kept world
   is. Age is only needed for other processes' stores: from 2b, ORQWA knows its own live
@@ -99,7 +102,8 @@ the core reads chunks from the store, every world is.
   kilometre (measured in 2a), and packing it into the kept world takes about 2 s. So every
   ride of a course that isn't kept writes that much to flash.
 - **When the store can't be written** (disk full, unwritable cache):
-  - On desktops, the chunks stay in memory as they do today, with a warning in the log.
+  - On desktops, the chunks are held in memory as before, with a warning in the log. Those
+    written before the store failed are read back from it, then the store is deleted.
   - On Android, that fallback is the low-memory kill again. So **Ride** stops before building
     and tells the rider how much free storage the course needs. The check allows 25 MB per
     kilometre, above the densest course measured.
@@ -162,12 +166,18 @@ Order rules, so the output stays byte-identical:
 ### Core residency (2b)
 
 While riding, the core holds the whole parts (road, structures, railways, horizon), the chunk
-index and a few recently read chunks.
+index and the chunk being read. Godot holds what it uploaded, so no cache of recently read
+chunks is needed; from 2c, a chunk uploaded again is read from disk again.
 
-- `world_chunk_for_season` inflates the chunk it is asked for from the store.
+- `world_chunk_for_season` inflates the chunk it is asked for from the store, or from the
+  kept world.
 - `App::world()` no longer hands out all the chunks.
-- The winter ground mask takes its bounds from the chunk index.
+- The winter ground mask takes its bounds from the chunk index: a chunk's ground is its
+  square. It is made the first time it is asked for, by reading every chunk once on all
+  cores, as it keeps each chunk's ways clear.
 - The render tools and the benchmark read the chunks one by one, through the same call.
+- A kept world deleted while it is ridden (keeping turned off, or the rider deletes it) is
+  read on through the file still open. Keeping it again copies its chunks from that file.
 
 ### Godot frees far chunks (2c)
 
