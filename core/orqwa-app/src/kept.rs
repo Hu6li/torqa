@@ -242,18 +242,30 @@ impl App {
     /// one kept (R101): the kept one is deleted, and the course opened anew and its world built
     /// and kept as for a ride, reported by [`AppEvent::WorldReady`](crate::AppEvent::WorldReady).
     /// False if no library course is loaded.
-    pub fn regenerate_world(&mut self) -> bool {
+    ///
+    /// # Errors
+    /// [`Kind::WorldStorage`] where free storage is checked and the new world has no room, also
+    /// counting what deleting the kept one gives back: the kept one then stays, to ride on.
+    pub fn regenerate_world(&mut self) -> Result<bool, AppError> {
         let Some(course) = self.course.clone() else {
-            return false;
+            return Ok(false);
         };
-        if let Ok(fingerprint) = course::fingerprint(&course)
-            && let Err(error) = self.keeper().kept.remove(&fingerprint)
+        let fingerprint = course::fingerprint(&course).ok();
+        if let Some(length) = self.route.as_ref().map(Route::length) {
+            let freed = fingerprint
+                .as_deref()
+                .and_then(|fingerprint| self.keeper().kept.size_of(fingerprint))
+                .unwrap_or(0);
+            self.room(length, freed).map_err(AppError::Reported)?;
+        }
+        if let Some(fingerprint) = &fingerprint
+            && let Err(error) = self.keeper().kept.remove(fingerprint)
         {
             warn!(%error, "cannot delete the kept world");
         }
         self.open_course(course);
         self.build_world();
-        true
+        Ok(true)
     }
 
     /// Drops, in the background, the kept worlds of courses gone from the library (also on
@@ -276,26 +288,54 @@ impl App {
     /// Whether the cache has room for the store of `route`'s world, about to be built: where
     /// free storage is checked, refused with how much it needs and how much is free. A world
     /// ridden from where it is kept needs none.
-    pub(crate) fn room_for_world(&self, route: &Route) -> Result<(), Failure> {
-        let Some(free) = &self.free_storage else {
+    pub(crate) fn room_for_world(&mut self, route: &Route) -> Result<(), Failure> {
+        if self.free_storage.is_none() {
+            return Ok(());
+        }
+        // One that can't be read is built again, so it takes room like any other.
+        let kept = self
+            .course
+            .as_deref()
+            .filter(|_| self.keeps_worlds())
+            .and_then(|course| course::fingerprint(course).ok())
+            .is_some_and(|fingerprint| self.keeper().kept.generator(&fingerprint).is_some());
+        if kept {
+            return Ok(());
+        }
+        self.room(route.length(), 0)
+    }
+
+    /// Whether the cache has room for the store of the world of a route `length` long, once
+    /// `freed` bytes are given back: refused with how much it needs and how much is free.
+    fn room(&mut self, length: Meters, freed: u64) -> Result<(), Failure> {
+        let Some(free) = self.free_storage.clone() else {
             return Ok(());
         };
-        let kept = || {
-            self.course
-                .as_deref()
-                .filter(|_| self.keeps_worlds())
-                .and_then(|course| course::fingerprint(course).ok())
-                .is_some_and(|fingerprint| self.keeper().kept.has(&fingerprint))
+        let needed = store_size(length);
+        let short = |left: Option<u64>| {
+            left.map(|left| left.saturating_add(freed))
+                .filter(|left| *left < needed)
         };
-        let needed = store_size(route.length());
-        match free(&self.cache_dir) {
-            Some(left) if left < needed && !kept() => Err(Failure::new(
+        let mut left = short(free(&self.cache_dir));
+        if left.is_some() && !self.letting_go.is_empty() {
+            // The world of a course closed just before may still be being deleted: its room is
+            // coming back, which the rider should not be told to make.
+            let letting_go = std::mem::take(&mut self.letting_go);
+            self.runtime.block_on(async {
+                for deleting in letting_go {
+                    let _ = deleting.await;
+                }
+            });
+            left = short(free(&self.cache_dir));
+        }
+        match left {
+            Some(left) => Err(Failure::new(
                 Kind::WorldStorage,
                 format!("{left} bytes free in the cache, the world's store needs {needed}"),
             )
             .arg(megabytes(needed.div_ceil(MEGABYTE)))
             .arg(megabytes(left / MEGABYTE))),
-            _ => Ok(()),
+            None => Ok(()),
         }
     }
 
@@ -521,7 +561,7 @@ mod tests {
         wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
         assert!(app.kept_world_outdated(&course));
 
-        assert!(app.regenerate_world());
+        assert!(app.regenerate_world().unwrap());
         let events = run_until(&mut app, |e| {
             matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
         });
@@ -854,6 +894,73 @@ mod tests {
         free_storage(&mut app, 0);
         ride(&mut app, &course);
         assert!(app.world().is_some(), "read where it is kept");
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_kept_world_without_room_to_build_it_again_stays_to_ride() {
+        let dir = temp_dir("kept-regenerate-room");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_keeps_worlds(true).unwrap();
+        let course = prepare(&mut app, &dir);
+        let keeper = app.keeper();
+        let fingerprint = course::fingerprint(&course).unwrap();
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+        ride(&mut app, &course);
+        free_storage(&mut app, 0);
+        match app.regenerate_world() {
+            Err(AppError::Reported(failure)) => assert_eq!(failure.kind, Kind::WorldStorage),
+            other => panic!("not refused for room: {other:?}"),
+        }
+        assert!(keeper.kept.has(&fingerprint), "the kept world stays");
+        ride(&mut app, &course);
+        // Deleting the kept world gives its room back.
+        let needed = store_size(app.route().expect("a route").length());
+        let kept = keeper.kept.size_of(&fingerprint).unwrap();
+        assert!(kept < needed);
+        let file = keeper.kept.file(&fingerprint);
+        app.check_free_storage(Arc::new(move |_| {
+            Some(if file.is_file() {
+                needed - kept
+            } else {
+                needed
+            })
+        }));
+        assert!(
+            app.regenerate_world()
+                .is_ok_and(|regenerating| regenerating)
+        );
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(
+            matches!(events.last(), Some(AppEvent::WorldReady { .. })),
+            "{events:?}"
+        );
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_kept_world_that_cannot_be_read_needs_room_like_any_other() {
+        let dir = temp_dir("kept-unreadable-room");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_keeps_worlds(true).unwrap();
+        let course = prepare(&mut app, &dir);
+        let keeper = app.keeper();
+        let fingerprint = course::fingerprint(&course).unwrap();
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+        // It would be built again, into a store.
+        std::fs::write(keeper.kept.file(&fingerprint), b"not a world").unwrap();
+        free_storage(&mut app, 0);
+        app.open_course(course);
+        app.build_world();
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(
+            matches!(events.last(), Some(AppEvent::Error(failure)) if failure.kind == Kind::WorldStorage),
+            "{events:?}"
+        );
         app.shutdown();
     }
 }

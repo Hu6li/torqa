@@ -816,6 +816,8 @@ pub struct App {
     cache_dir: PathBuf,
     /// Tells the free storage where a world's store is checked for room (Android, ADR 0040).
     free_storage: Option<kept::FreeStorage>,
+    /// Worlds being let go of in the background, whose stores are being deleted.
+    letting_go: Vec<tokio::task::JoinHandle<()>>,
     /// This computer's own settings (R78), next to the cache: never synced with the data.
     computer: PathBuf,
     /// The version of the generator that built the loaded world: an older one when it was
@@ -915,6 +917,7 @@ impl App {
             data_dir,
             cache_dir,
             free_storage: None,
+            letting_go: Vec::new(),
             computer,
             world_generator: orqwa_world::GENERATOR,
             index: Mutex::new(index),
@@ -2117,7 +2120,7 @@ impl App {
         self.world = None;
         if let Some(chunks) = self.chunks.take() {
             // Deleting the store it was ridden from takes a while.
-            self.runtime.spawn_blocking(move || drop(chunks));
+            self.drop_world(chunks);
         }
         self.road_widths = orqwa_world::RoadWidths::default();
         self.driving_left.clear();
@@ -2132,6 +2135,13 @@ impl App {
     }
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
+    /// Lets go of `world` in the background: deleting its store takes a while.
+    fn drop_world(&mut self, world: impl Send + 'static) {
+        self.letting_go.retain(|deleting| !deleting.is_finished());
+        let deleting = self.runtime.spawn_blocking(move || drop(world));
+        self.letting_go.push(deleting);
+    }
+
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
         if let Err(failure) = self.room_for_world(&route) {
             // Built on the next Ride, once the rider has made room.
@@ -4117,7 +4127,7 @@ impl App {
                 }
                 JobResult::World(load, loaded) if load != self.load => {
                     // Deleting its store takes a while.
-                    self.runtime.spawn_blocking(move || drop(loaded));
+                    self.drop_world(loaded);
                 }
                 JobResult::Route(load, _)
                 | JobResult::Video(load, _)

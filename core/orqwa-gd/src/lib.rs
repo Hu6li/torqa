@@ -792,7 +792,11 @@ impl OrqwaApp {
     /// loaded.
     #[func]
     fn regenerate_world(&mut self) -> bool {
-        self.app.as_mut().is_some_and(App::regenerate_world)
+        let mut regenerating = false;
+        self.command(|app| {
+            regenerating = app.regenerate_world()?;
+            Ok(())
+        }) && regenerating
     }
 
     /// Whether the course at `path` has a world kept that an older ORQWA built, which
@@ -5206,9 +5210,22 @@ mod android_storage {
     /// `File.getUsableSpace` tells it, Rust's standard library having no way to ask. Asked of
     /// the nearest directory there is: Java answers 0 for one that is missing.
     pub(super) fn free(dir: &Path) -> Option<u64> {
-        let dir = dir.ancestors().find(|dir| dir.is_dir())?.to_str()?;
+        // Unchecked, the world's store may not fit: the low-memory kill again.
+        let skipped = |why: &dyn std::fmt::Display| {
+            tracing::warn!(%why, "cannot tell the free storage; not checked");
+        };
+        let Some(dir) = dir.ancestors().find(|dir| dir.is_dir()) else {
+            skipped(&"no directory of the cache is there");
+            return None;
+        };
+        let Some(dir) = dir.to_str() else {
+            skipped(&"the cache path is not UTF-8");
+            return None;
+        };
         // Set when Android loaded the library (`JNI_OnLoad`).
-        let vm = JavaVM::singleton().ok()?;
+        let vm = JavaVM::singleton()
+            .inspect_err(|error| skipped(error))
+            .ok()?;
         let free = vm.attach_current_thread(|env| -> jni::errors::Result<i64> {
             let path = env.new_string(dir)?;
             let file = env.new_object(
@@ -5224,7 +5241,7 @@ mod android_storage {
             )?
             .j()
         });
-        free.inspect_err(|error| tracing::warn!(%error, "cannot tell the free storage"))
+        free.inspect_err(|error| skipped(error))
             .ok()
             .and_then(|free| u64::try_from(free).ok())
     }

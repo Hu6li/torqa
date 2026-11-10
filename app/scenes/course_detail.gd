@@ -175,9 +175,11 @@ func cancel_preparation() -> void:
 
 ## Builds the world kept from an older ORQWA again with this one (R101); the rider rides after.
 func _regenerate_world() -> void:
-	if not _orqwa.regenerate_world():
-		return
+	# Set first: a refusal is reported during the call, and shown like a failed build.
 	_regenerating = true
+	if not _orqwa.regenerate_world():
+		_regenerating = false
+		return
 	_regenerate.hide()
 	_show_building()
 
