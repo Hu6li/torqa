@@ -825,7 +825,8 @@ pub(crate) struct HeightGrid {
     heights: Vec<f64>,
     /// Natural heights of the grid's vertices, border included.
     natural: Vec<f64>,
-    /// Fine cells, normally `SUB` pieces a side and more finely split between close roads.
+    /// Fine cells, normally `SUB` pieces a side, `FAR_SUB` under far ways alone, and more
+    /// finely split between close roads.
     /// Their square lattice's heights run row by row from the south-west.
     fine: HashMap<(usize, usize), Vec<f64>>,
     /// Local downward correction beneath ground crossings (culverts), coarse and fine.
@@ -964,8 +965,15 @@ impl HeightGrid {
                 {
                     // Levelled across a street: split only where that changes the cell's
                     // ground, so cells on flat land stay plain. On the chunk's edge always, as
-                    // the neighbouring chunk's cell along it may be split.
-                    let floor = if edge { SUB } else { FAR_SUB };
+                    // the neighbouring chunk's cell along it may be split. A cell whose ground
+                    // any near way levels or banks keeps the usual pieces, also where none of
+                    // its carriageways touch it; only far ways' ground takes the coarser ones.
+                    let levelled = half_diagonal + streets::LEVEL_VERGE_M + streets::LEVEL_REACH_M;
+                    let near = shapers
+                        .streets
+                        .detail_near(east, north, levelled, false, FAR_SUB)
+                        > FAR_SUB;
+                    let floor = if edge || near { SUB } else { FAR_SUB };
                     Some(grid.detail(i, j, shapers, water, floor))
                         .filter(|(fine, _)| edge || grid.departs(i, j, fine))
                 } else {
@@ -1623,7 +1631,9 @@ impl Shapers<'_> {
     }
 
     /// Diagonal of the coarsest terrain piece that can lie at (`east`, `north`) in a split
-    /// cell: any cell holding the point is split at least this finely (`detail_count`).
+    /// cell near the ridden road or a railway: cells within `VERGE` of them, where the hard
+    /// verge needs it, are split for them (`needs_detail`, so with the `SUB` floor) at least
+    /// this finely. Cells under far ways alone may be coarser (`FAR_SUB`).
     fn piece_diagonal(&self, east: f64, north: f64) -> f64 {
         let count = self
             .streets

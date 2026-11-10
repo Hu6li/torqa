@@ -668,7 +668,8 @@ async fn streets_on_a_hillside_are_level_across_the_ground_shaped_around_them() 
     // #116: streets along the hillside, which rises 10 % eastwards. They lay tilted with the
     // slope, their uphill edge half a metre above their downhill one. One lies near the ride,
     // one far from it, where the ground under its shelf is split more coarsely (ADR 0031).
-    let (near, far) = (100.0_f32, 400.0_f32);
+    // Both lie off the 16 m grid, so pieces at their edges lean where the ground is coarser.
+    let (near, far) = (87.0_f32, 407.0_f32);
     let world = world(&MapData {
         roads: [near, far]
             .map(|street| Road {
@@ -685,12 +686,16 @@ async fn streets_on_a_hillside_are_level_across_the_ground_shaped_around_them() 
     for street in [near, far] {
         // The natural ground at the street's centre line.
         let level = 500.0 + 0.1 * street;
+        // Far off, the 5.3 m pieces under its edges reach past its levelled verge onto the
+        // bank and lean the street by a few centimetres across (#116's was half a metre):
+        // a 1 % cross slope, which nobody sees from 120 m.
+        let tilt = if street == far { 0.05 } else { 0.02 };
         for north in (200..=800).step_by(50) {
             let z = -(north as f32);
             let edge = |x: f32| street_at(&world, x, z).expect("the street");
             let (west, east) = (edge(street - 2.5), edge(street + 2.5));
             assert!(
-                (west - east).abs() < 0.02,
+                (west - east).abs() < tilt,
                 "a tilted street at {street}, {north}: {west} west, {east} east"
             );
             assert!((west - level).abs() < 0.15, "the street at {west}");
@@ -716,6 +721,36 @@ async fn streets_on_a_hillside_are_level_across_the_ground_shaped_around_them() 
                 );
             }
         }
+    }
+    // The cell 10–24 m west of either street holds none of its carriageway but is still split
+    // for its bank: in the usual pieces near the ride, in the coarser ones only far from it.
+    // (Its rows away from the chunk's edge at 480 m, whose cells keep the usual pieces.)
+    for (street, count) in [(near, crate::SUB), (far, crate::FAR_SUB)] {
+        #[allow(clippy::cast_precision_loss)] // a small count
+        let size = GRID as f32 / count as f32;
+        let legs: Vec<f32> = world
+            .chunks
+            .iter()
+            .flat_map(|c| triangles(&c.mesh).map(move |t| (t, c.center)))
+            .filter_map(|(t, centre)| {
+                let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
+                let (x, north) = (middle[0] + centre[0], -(middle[1] + centre[2]));
+                let inside = x < street - 10.0 && x > street - 24.0;
+                (inside && (500.0..560.0).contains(&north)).then(|| {
+                    (0..3)
+                        .map(|k| {
+                            let (a, b) = (t[k], t[(k + 1) % 3]);
+                            (a[0] - b[0]).hypot(a[2] - b[2])
+                        })
+                        .fold(f32::INFINITY, f32::min)
+                })
+            })
+            .collect();
+        assert!(!legs.is_empty(), "no ground beside the street at {street}");
+        assert!(
+            legs.iter().all(|&leg| (leg - size).abs() < 0.01),
+            "the bank beside the street at {street} in pieces of {legs:?}, not {size} m"
+        );
     }
 }
 
@@ -880,8 +915,9 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
 async fn roundabouts_get_a_raised_island_with_a_kerb() {
     use orqwa_osm::{Road, RoadClass};
 
-    // A roundabout of 20 m radius east of the route, near enough for the usual detail; a long thin loop, a road round a square
-    // block and a footpath round a pond (no roundabouts).
+    // A roundabout of 20 m radius east of the route, near enough for the usual detail; a
+    // long thin loop, a road round a square block and a footpath round a pond (no
+    // roundabouts).
     let ring: Vec<(f64, f64)> = (0..=24)
         .map(|k| {
             let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
