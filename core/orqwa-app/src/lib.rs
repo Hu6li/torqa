@@ -4057,6 +4057,10 @@ impl App {
                 JobResult::Scan(Ok((bluetooth, devices))) => {
                     self.scanned(bluetooth, devices, events);
                 }
+                JobResult::World(load, _, _, Some(to_keep)) if load != self.load => {
+                    // Deleting a store takes a while.
+                    self.runtime.spawn_blocking(move || drop(to_keep));
+                }
                 JobResult::Route(load, _)
                 | JobResult::Video(load, _)
                 | JobResult::World(load, ..)

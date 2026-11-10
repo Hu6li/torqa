@@ -973,6 +973,11 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
         is; Wada 20 MB per km, packed in 2 s, the world unchanged
       - [ ] every world, once the core reads chunks from the store
     - [ ] the core reads chunks from the store while riding
+      - [ ] on Android, **Ride** stops before building when free storage is short and says how
+        much the course needs (20 MB per km measured on Wada, 25 to be safe)
+      - [ ] a ride's store safe from tidying: turning keeping off clears all of `worlds/`, and
+        a store this ORQWA is building can look abandoned before its first chunk or after
+        its last (by age, which only other processes' stores need)
     - [ ] Godot frees far chunks
     - [ ] generated ahead of the rider (#237)
   - [ ] far streets and their ground in coarser pieces (a generator change, with review renders)

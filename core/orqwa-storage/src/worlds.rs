@@ -166,15 +166,26 @@ impl KeptWorlds {
     /// # Errors
     /// On I/O errors.
     pub fn building(&self, fingerprint: &str) -> io::Result<Building> {
-        let dir = self
-            .root
-            .join(format!("{fingerprint}.{}.{BUILDING}", write_name()));
-        std::fs::create_dir_all(dir.join(CHUNKS))?;
-        Ok(Building {
+        std::fs::create_dir_all(&self.root)?;
+        // Process ids repeat, after a crash and across sandboxes: a directory already there is
+        // another build's, live or left behind.
+        let dir = loop {
+            let dir = self
+                .root
+                .join(format!("{fingerprint}.{}.{BUILDING}", write_name()));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => break dir,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
+        };
+        let store = Building {
             dir,
             world: self.file(fingerprint),
             failed: AtomicBool::new(false),
-        })
+        };
+        std::fs::create_dir(store.dir.join(CHUNKS))?;
+        Ok(store)
     }
 
     /// Drops the kept world of the course with `fingerprint`, if there is one.
@@ -268,9 +279,9 @@ impl Building {
             stored::write_chunk(chunk, out)
         })
         .and_then(|()| std::fs::rename(&partial, &path));
-        if written.is_err() {
-            self.failed.store(true, Ordering::Relaxed);
-            let _ = std::fs::remove_file(&partial);
+        if written.is_err() && !self.failed.swap(true, Ordering::Relaxed) {
+            // Never kept now: its room is given back at once, as the disk may be full.
+            let _ = remove(&self.dir);
         }
         written
     }
@@ -365,7 +376,12 @@ fn write_entry(
     write(&mut out)?;
     out.flush()?;
     drop(out);
-    finish(zip)
+    // Not synced: a store never outlives its build, and the page cache outlives a process
+    // killed. Only the kept world it becomes is brought to the disk.
+    zip.finish()?
+        .into_inner()
+        .map_err(io::IntoInnerError::into_error)?
+        .flush()
 }
 
 fn write_to(path: &Path, world: &World, generator: u32) -> io::Result<()> {
@@ -572,15 +588,65 @@ mod tests {
         );
         assert_eq!(names(&kept.root), ["f.world"]);
 
-        // A store a chunk could not be written into is never kept.
+        // A store a chunk could not be written into is never kept, and gives its room back
+        // at once, as the disk may be full.
         let store = kept.building("f").unwrap();
-        std::fs::remove_dir_all(&store.dir).unwrap();
+        store.write(1, &built.chunks[1]).unwrap();
+        let chunks = store.dir.join(CHUNKS.trim_end_matches('/'));
+        std::fs::remove_dir_all(&chunks).unwrap();
+        std::fs::write(&chunks, b"not a directory").unwrap();
         assert!(store.write(0, &built.chunks[0]).is_err());
         assert!(!store.whole());
-        std::fs::create_dir_all(store.dir.join(CHUNKS)).unwrap();
+        assert!(!store.dir.exists(), "its room given back");
+        std::fs::create_dir_all(&chunks).unwrap();
         store.write(0, &built.chunks[0]).unwrap();
-        assert!(store.keep(&World::default(), 2, 1).is_err());
+        store.write(1, &built.chunks[1]).unwrap();
+        assert!(store.keep(&World::default(), 2, 2).is_err());
         assert_eq!(std::fs::read(kept.file("f")).unwrap(), before);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_build_never_takes_a_store_already_there() {
+        let cache = temp_dir("store-taken");
+        let kept = KeptWorlds::new(&cache);
+        // Left by an ORQWA that had this process's id, e.g. before a crash, or in another
+        // sandbox: the next names this process would take.
+        let next = WRITES.load(Ordering::Relaxed);
+        for write in next..next + 64 {
+            let taken = kept.root.join(format!(
+                "f.{}-{write}.{BUILDING}/{CHUNKS}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&taken).unwrap();
+            std::fs::write(taken.join("0"), b"theirs").unwrap();
+        }
+        let store = kept.building("f").unwrap();
+        assert!(
+            !store.chunk(0).exists(),
+            "its own store, not another's: {store:?}"
+        );
+        drop(store);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    /// A store left by an ORQWA that stopped, e.g. killed for memory, is deleted by the next
+    /// tidy, while a store still being built stays.
+    #[cfg(unix)] // directories' times are set through an open file
+    #[test]
+    fn a_store_left_long_ago_is_deleted() {
+        let cache = temp_dir("store-left");
+        let kept = KeptWorlds::new(&cache);
+        let (left, live) = (kept.building("f").unwrap(), kept.building("f").unwrap());
+        left.write(0, &world(1).chunks[0]).unwrap();
+        live.write(0, &world(1).chunks[0]).unwrap();
+        let long_ago = std::time::SystemTime::now() - 2 * ABANDONED;
+        for dir in [left.dir.clone(), left.dir.join(CHUNKS)] {
+            File::open(&dir).unwrap().set_modified(long_ago).unwrap();
+        }
+        kept.keep_only(&HashSet::from(["f".to_owned()])).unwrap();
+        assert!(!left.dir.exists(), "the store left is gone");
+        assert!(live.read(0).is_ok(), "the live one stays");
         std::fs::remove_dir_all(cache).unwrap();
     }
 
