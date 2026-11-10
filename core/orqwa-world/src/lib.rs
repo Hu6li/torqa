@@ -8,6 +8,7 @@
 mod appearance;
 mod benchmark;
 mod buildings;
+mod cells;
 mod chains;
 mod channels;
 mod climate;
@@ -183,7 +184,7 @@ impl MeshData {
 
 /// The ways and water of the map around the route, ready for the chunks.
 struct Ways {
-    streets: Vec<streets::Street>,
+    streets: streets::Shared,
     /// The railways, on their own lines (#85).
     network: railways::Network,
     streams: Vec<water::Stream>,
@@ -210,6 +211,7 @@ impl Ways {
     ) -> Self {
         let mut streets = streets::lines(map, projection, model).await;
         streets::connect(&mut streets, road);
+        let streets: streets::Shared = streets.into();
         let network = railways::network(map, projection, road, model).await;
         let streams = water::streams(&map.waterways, projection, road);
         let pools = water::pools(&map.areas, projection, road);

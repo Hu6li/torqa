@@ -7,15 +7,15 @@
 //! opening at the end of the cutting leading to it (#135). Parallel tracks share one bridge or
 //! tunnel, as wide as they need (#99).
 
-use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::LazyLock;
 
 use orqwa_routes::{ElevationModel, LocalProjection, Surface};
 
+use crate::cells::CellIndex;
 use crate::foundations::Ground;
 use crate::road::{CentrePoint, Plane, RoadIndex, TunnelRun};
-use crate::streets::{Levels, Street};
+use crate::streets::{At, Levels, Street};
 use crate::{LEVEL_REACH, MeshData, ROAD_SINK, Shapers, palette, railways, shape};
 
 static CONCRETE: LazyLock<[f32; 4]> = LazyLock::new(|| palette::srgb("structure.concrete", 0.0));
@@ -131,15 +131,14 @@ impl StreetSegment {
     }
 }
 
-type StreetPoints = HashMap<(i64, i64), Vec<StreetSegment>>;
-
 /// What runs on the ground under bridges — the road ridden, the railways and the other streets —
 /// for piers and walls to keep off it (#98).
 pub(crate) struct Below<'a> {
     road: &'a RoadIndex,
     railways: &'a RoadIndex,
-    /// Street segments, a few metres long.
-    streets: StreetPoints,
+    streets: &'a [Street],
+    /// The pieces of streets on the ground, a few metres long.
+    pieces: CellIndex<At>,
     roundabouts: &'a [crate::roundabouts::Island],
 }
 
@@ -147,29 +146,29 @@ impl<'a> Below<'a> {
     pub(crate) fn new(
         road: &'a RoadIndex,
         railways: &'a RoadIndex,
-        streets: &[Street],
+        streets: &'a [Street],
         roundabouts: &'a [crate::roundabouts::Island],
     ) -> Self {
-        let mut cells = StreetPoints::new();
-        for street in streets.iter().filter(|s| !s.on_bridge()) {
-            for pair in street.points().windows(2) {
-                let segment = StreetSegment {
-                    a: pair[0],
-                    b: pair[1],
-                    half: street.half_width(),
-                };
-                let a = below_cell(pair[0].0, pair[0].1);
-                let b = below_cell(pair[1].0, pair[1].1);
-                cells.entry(a).or_default().push(segment);
-                if b != a {
-                    cells.entry(b).or_default().push(segment);
+        let pieces = CellIndex::build(|push| {
+            for (s, street) in streets.iter().enumerate() {
+                if street.on_bridge() {
+                    continue;
+                }
+                for (i, pair) in street.points().windows(2).enumerate() {
+                    let a = below_cell(pair[0].0, pair[0].1);
+                    let b = below_cell(pair[1].0, pair[1].1);
+                    push(a, At::new(s, i));
+                    if b != a {
+                        push(b, At::new(s, i));
+                    }
                 }
             }
-        }
+        });
         Self {
             road,
             railways,
-            streets: cells,
+            streets,
+            pieces,
             roundabouts,
         }
     }
@@ -207,11 +206,18 @@ impl<'a> Below<'a> {
         })
     }
 
-    fn nearby_streets(&self, point: (f64, f64)) -> impl Iterator<Item = &StreetSegment> {
+    fn nearby_streets(&self, point: (f64, f64)) -> impl Iterator<Item = StreetSegment> {
         let (ce, cn) = below_cell(point.0, point.1);
-        (ce - 1..=ce + 1).flat_map(move |x| {
-            (cn - 1..=cn + 1).flat_map(move |y| self.streets.get(&(x, y)).into_iter().flatten())
-        })
+        (ce - 1..=ce + 1)
+            .flat_map(move |x| (cn - 1..=cn + 1).flat_map(move |y| self.pieces.get((x, y))))
+            .map(|&at| {
+                let (a, b) = at.piece(self.streets);
+                StreetSegment {
+                    a,
+                    b,
+                    half: at.street(self.streets).half_width(),
+                }
+            })
     }
 
     /// Whether a way passes at `position` (within `margin` of its edge) under a deck whose

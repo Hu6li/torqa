@@ -11,7 +11,7 @@ use crate::buildings::{self, Plot, Point, Setting};
 use crate::junctions::{Corner, FootwayCorner, FootwaySection};
 use crate::landcover::LandIndex;
 use crate::road::RoadIndex;
-use crate::streets::{Clearance, Street};
+use crate::streets::{At, Clearance, Shared};
 use crate::{CHUNK_SIZE, HeightGrid, MeshData, On, ROAD_SINK, drape, palette};
 
 const CELL: f64 = 50.0;
@@ -131,7 +131,10 @@ pub(crate) struct Urban {
     sites: Vec<Site>,
     site_cells: HashMap<(i64, i64), Vec<usize>>,
     building_cells: HashMap<(i64, i64), Vec<usize>>,
-    ways: Vec<Way>,
+    /// The ways along streets, by their pieces, before `road_ways`; see [`Urban::way`].
+    street_ways: Vec<At>,
+    road_ways: Vec<Way>,
+    streets: Shared,
     way_cells: HashMap<(i64, i64), Vec<usize>>,
     covered: HashMap<(i64, i64), Vec<(Point, Point)>>,
     patches: Vec<Patch>,
@@ -213,7 +216,7 @@ impl Urban {
 
     pub(crate) fn build<'a>(
         plots: impl Iterator<Item = &'a Plot<'a>>,
-        streets: &[Street],
+        streets: &Shared,
         corners: &[Corner],
         clearance: &Clearance,
         road: &RoadIndex,
@@ -224,6 +227,7 @@ impl Urban {
         plots.sort_by_key(|plot| plot.building.id);
         let mut urban = Self {
             pavement,
+            streets: std::sync::Arc::clone(streets),
             ..Self::default()
         };
         for plot in plots {
@@ -261,7 +265,7 @@ impl Urban {
                 town: matches!(plot.setting, Setting::Town),
             });
         }
-        urban.collect_ways(streets, road);
+        urban.collect_ways(road);
         urban.walks(land);
         urban.corner_walks(corners, land, road);
         urban.bend_walks(land);
@@ -281,12 +285,13 @@ impl Urban {
         urban
     }
 
-    fn collect_ways(&mut self, streets: &[Street], road: &RoadIndex) {
-        for street in streets
-            .iter()
-            .filter(|s| s.appearance.sidewalk && !s.on_bridge())
-        {
-            for pair in street.points().windows(2) {
+    fn collect_ways(&mut self, road: &RoadIndex) {
+        let streets = std::sync::Arc::clone(&self.streets);
+        for (s, street) in streets.iter().enumerate() {
+            if !street.appearance.sidewalk || street.on_bridge() {
+                continue;
+            }
+            for (i, pair) in street.points().windows(2).enumerate() {
                 let direction = direction(pair[0], pair[1]);
                 let middle = midpoint(pair[0], pair[1]);
                 if road.owns_mapped(middle, direction, street.sources()) {
@@ -298,14 +303,11 @@ impl Urban {
                     }
                     continue;
                 }
-                self.add_way(Way {
-                    a: pair[0],
-                    b: pair[1],
-                    half: street.half_width(),
-                    end_half: street.half_width(),
-                    lift: street.lift(),
-                    elevations: None,
-                });
+                if distance(pair[0], pair[1]) >= 0.01 {
+                    let index = self.street_ways.len();
+                    self.index_way(index, pair);
+                    self.street_ways.push(At::new(s, i));
+                }
             }
         }
         let stations = road.stations(3.0, (f64::MIN, f64::MIN), (f64::MAX, f64::MAX));
@@ -316,7 +318,7 @@ impl Urban {
             {
                 continue;
             }
-            self.add_way(Way {
+            self.add_road_way(Way {
                 a: pair[0].position,
                 b: pair[1].position,
                 half: pair[0].appearance.width / 2.0,
@@ -327,20 +329,45 @@ impl Urban {
         }
     }
 
-    fn add_way(&mut self, way: Way) {
+    fn add_road_way(&mut self, way: Way) {
         if distance(way.a, way.b) < 0.01 {
             return;
         }
-        let index = self.ways.len();
-        for key in cells(&[way.a, way.b], CELL, 0.0) {
+        let index = self.way_count();
+        self.index_way(index, &[way.a, way.b]);
+        self.road_ways.push(way);
+    }
+
+    fn index_way(&mut self, index: usize, ends: &[Point]) {
+        for key in cells(ends, CELL, 0.0) {
             self.way_cells.entry(key).or_default().push(index);
         }
-        self.ways.push(way);
+    }
+
+    fn way_count(&self) -> usize {
+        self.street_ways.len() + self.road_ways.len()
+    }
+
+    /// Way `index`: a piece of a street, looked up in the street, or of the road ridden.
+    fn way(&self, index: usize) -> Way {
+        let Some(&at) = self.street_ways.get(index) else {
+            return self.road_ways[index - self.street_ways.len()];
+        };
+        let street = at.street(&self.streets);
+        let (a, b) = at.piece(&self.streets);
+        Way {
+            a,
+            b,
+            half: street.half_width(),
+            end_half: street.half_width(),
+            lift: street.lift(),
+            elevations: None,
+        }
     }
 
     fn nearest_way(&self, point: Point) -> Option<(Point, Way)> {
         Self::near(&self.way_cells, point, ACCESS_REACH)
-            .map(|index| self.ways[index])
+            .map(|index| self.way(index))
             .map(|way| (project(point, way.a, way.b), way))
             .filter(|(p, _)| distance(point, *p) < ACCESS_REACH)
             .min_by(|a, b| distance(point, a.0).total_cmp(&distance(point, b.0)))
@@ -379,8 +406,8 @@ impl Urban {
     }
 
     fn walks(&mut self, land: &LandIndex) {
-        for index in 0..self.ways.len() {
-            let way = self.ways[index];
+        for index in 0..self.way_count() {
+            let way = self.way(index);
             if way.half < 2.5 || !self.urban_at(midpoint(way.a, way.b), land) {
                 continue;
             }
@@ -540,8 +567,8 @@ impl Urban {
     }
 
     fn bend_walks(&mut self, land: &LandIndex) {
-        for index in 0..self.ways.len() {
-            let way = self.ways[index];
+        for index in 0..self.way_count() {
+            let way = self.way(index);
             if way.half < 2.5 {
                 continue;
             }
@@ -553,7 +580,7 @@ impl Urban {
                 if *other < index || !self.urban_at(point, land) {
                     continue;
                 }
-                let other = self.ways[*other];
+                let other = self.way(*other);
                 let at_end = |way: Way| {
                     way.elevations
                         .map(|ends| ends[usize::from(distance(way.b, point) < 1e-6)])
@@ -653,7 +680,7 @@ impl Urban {
                 ways.sort_unstable();
                 ways.dedup();
                 for way in ways {
-                    let way = self.ways[way];
+                    let way = self.way(way);
                     // Cut only the part occupying another carriageway, rather than
                     // discarding the whole slab and exposing square, disconnected ends.
                     shapes = subtract_all(shapes, &way_ribbon(way, 0.04));
@@ -864,14 +891,14 @@ impl Urban {
     }
 
     fn walk_join(&self, index: usize, point: Point) -> Point {
-        let way = self.ways[index];
+        let way = self.way(index);
         let forward = direction(way.a, way.b);
         let right = (forward.1, -forward.0);
         let neighbours = self.walk_neighbours(index, point);
         let [other] = neighbours.as_slice() else {
             return right;
         };
-        let other = self.ways[*other];
+        let other = self.way(*other);
         let away = if distance(other.a, point) < 1e-6 {
             direction(other.a, other.b)
         } else {
@@ -891,10 +918,10 @@ impl Urban {
     }
 
     fn walk_neighbours(&self, index: usize, point: Point) -> Vec<usize> {
-        let way = self.ways[index];
+        let way = self.way(index);
         let mut neighbours: Vec<_> = Self::near(&self.way_cells, point, 0.001)
             .filter(|&other| {
-                let candidate = self.ways[other];
+                let candidate = self.way(other);
                 other != index
                     && (candidate.half_at(point) - way.half_at(point)).abs() < 1e-6
                     && (candidate.lift - way.lift).abs() < 1e-6
@@ -1262,7 +1289,7 @@ impl Urban {
             return true;
         }
         Self::near(&self.way_cells, point, 4.0).any(|index| {
-            let way = self.ways[index];
+            let way = self.way(index);
             let reach = if center_only {
                 0.001
             } else {

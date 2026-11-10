@@ -412,7 +412,7 @@ async fn ground_profiles_are_shared_at_tag_changes_and_branch_endpoints() {
     map.roads.extend([continuation, branch]);
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Bump).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Bump).await.into();
     let road = RoadIndex::new(&route, &projection);
     let levels = streets::Levels::new(
         &streets,
@@ -697,7 +697,9 @@ async fn the_ridden_roads_own_mapped_pieces_form_no_bed_where_tags_disagree() {
         ..MapData::default()
     };
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(1.1)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(1.1))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(
@@ -768,7 +770,9 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
     };
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(0.6)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(0.6))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(
@@ -781,7 +785,9 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
     // at the ridden road's own level where it joins, keeps the usual pieces.
     assert!(levels.detail_near(-8.0, 500.0, 0.0, true) > crate::SUB);
     assert_eq!(levels.detail_near(30.0, 500.0, 0.0, true), crate::SUB);
-    let flat = streets::lines(&map, &projection, &mut Hillside(0.0)).await;
+    let flat: streets::Shared = streets::lines(&map, &projection, &mut Hillside(0.0))
+        .await
+        .into();
     let flat = streets::Levels::new(
         &flat,
         &appearance::Index::new(&map, &projection),
@@ -888,7 +894,9 @@ async fn far_tracks_follow_the_land_and_paved_roads_keep_plain_shelves() {
     };
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(1.1)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(1.1))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(

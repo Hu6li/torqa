@@ -5554,7 +5554,9 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
     let islands = roundabouts::islands(&map, &projection);
     assert_eq!(islands.len(), 1);
     let rails = road::RoadIndex::from_lines(&[]);
-    let streets = streets::lines(&map, &projection, &mut Level(500.0)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Level(500.0))
+        .await
+        .into();
     let ridden = RoadIndex::new(&route, &projection);
     let levels = streets::Levels::new(
         &streets,

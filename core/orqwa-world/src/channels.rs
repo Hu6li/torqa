@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use orqwa_routes::Surface;
 
-use crate::streets::Street;
+use crate::cells::CellIndex;
+use crate::streets::{At, Shared};
 use crate::water::{Pool, Stream};
 use crate::{Shapers, VERGE};
 
@@ -36,8 +37,9 @@ const CELL: f64 = 50.0;
 pub(crate) struct Channels {
     edges: Vec<Edge>,
     cells: HashMap<(i64, i64), Vec<usize>>,
-    crossings: Vec<((f64, f64), f64)>,
-    crossing_cells: HashMap<(i64, i64), Vec<usize>>,
+    streets: Shared,
+    /// The points of streets on the ground.
+    crossings: CellIndex<At>,
 }
 
 /// A piece of a stream's centre line (`half` its half width) or of a shore (`half` 0, `pool`
@@ -50,7 +52,7 @@ struct Edge {
 }
 
 impl Channels {
-    pub(crate) fn new(streams: &[Stream], pools: &[Pool], streets: &[Street]) -> Self {
+    pub(crate) fn new(streams: &[Stream], pools: &[Pool], streets: &Shared) -> Self {
         let mut edges = Vec::new();
         for stream in streams {
             for pair in stream.points().windows(2) {
@@ -90,23 +92,21 @@ impl Channels {
                 }
             }
         }
-        // Streets on the ground, by their points and half widths.
-        let mut crossings = Vec::new();
-        for street in streets.iter().filter(|s| !s.on_bridge()) {
-            crossings.extend(street.points().iter().map(|&p| (p, street.half_width())));
-        }
-        let mut crossing_cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-        for (index, &((e, n), _)) in crossings.iter().enumerate() {
-            crossing_cells
-                .entry((cell(e), cell(n)))
-                .or_default()
-                .push(index);
-        }
+        let crossings = CellIndex::build(|push| {
+            for (s, street) in streets.iter().enumerate() {
+                if street.on_bridge() {
+                    continue;
+                }
+                for (i, &(e, n)) in street.points().iter().enumerate() {
+                    push((cell(e), cell(n)), At::new(s, i));
+                }
+            }
+        });
         Self {
             edges,
             cells,
+            streets: std::sync::Arc::clone(streets),
             crossings,
-            crossing_cells,
         }
     }
 
@@ -182,8 +182,9 @@ impl Channels {
         let (ce, cn) = (cell(east), cell(north));
         for x in ce - 1..=ce + 1 {
             for y in cn - 1..=cn + 1 {
-                for &index in self.crossing_cells.get(&(x, y)).into_iter().flatten() {
-                    let ((e, n), half) = self.crossings[index];
+                for &at in self.crossings.get((x, y)) {
+                    let (e, n) = at.point(&self.streets);
+                    let half = at.street(&self.streets).half_width();
                     // Points lie a few metres apart: allow half a step along.
                     gap = gap.min((e - east).hypot(n - north) - half - CROSSING_MARGIN - 1.5);
                 }
