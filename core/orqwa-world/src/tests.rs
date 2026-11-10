@@ -665,46 +665,56 @@ async fn streets_meeting_the_road_ridden_get_kerbs_at_its_edge() {
 async fn streets_on_a_hillside_are_level_across_the_ground_shaped_around_them() {
     use orqwa_osm::{Road, RoadClass};
 
-    // #116: a street along the hillside, which rises 10 % eastwards. It lay tilted with the
-    // slope, its uphill edge half a metre above its downhill one.
+    // #116: streets along the hillside, which rises 10 % eastwards. They lay tilted with the
+    // slope, their uphill edge half a metre above their downhill one. One lies near the ride,
+    // one far from it, where the ground under its shelf is split more coarsely (ADR 0031).
+    let (near, far) = (100.0_f32, 400.0_f32);
     let world = world(&MapData {
-        roads: vec![Road {
-            class: RoadClass::Street,
-            details: orqwa_osm::RoadDetails::default(),
-            line: vec![at(200.0, 100.0), at(200.0, 900.0)],
-            structure: None,
-        }],
+        roads: [near, far]
+            .map(|street| Road {
+                class: RoadClass::Street,
+                details: orqwa_osm::RoadDetails::default(),
+                line: vec![at(f64::from(street), 100.0), at(f64::from(street), 900.0)],
+                structure: None,
+            })
+            .to_vec(),
         ..MapData::default()
     })
     .await;
 
-    // The natural ground at the street's centre line.
-    let level = 500.0 + 0.1 * 200.0;
-    for north in (200..=800).step_by(50) {
-        let z = -(north as f32);
-        let edge = |x: f32| street_at(&world, x, z).expect("the street");
-        let (west, east) = (edge(200.0 - 2.5), edge(200.0 + 2.5));
-        assert!(
-            (west - east).abs() < 0.02,
-            "a tilted street at {north}: {west} west, {east} east"
-        );
-        assert!((west - level).abs() < 0.15, "the street at {west}");
-        // The ground beside it level with it, then back on the natural slope a little way out:
-        // cut into the hillside above, banked down below.
-        for x in [200.0 - 5.0, 200.0 + 5.0] {
-            let ground = ground_at(&world, x, z).expect("ground");
+    for street in [near, far] {
+        // The natural ground at the street's centre line.
+        let level = 500.0 + 0.1 * street;
+        for north in (200..=800).step_by(50) {
+            let z = -(north as f32);
+            let edge = |x: f32| street_at(&world, x, z).expect("the street");
+            let (west, east) = (edge(street - 2.5), edge(street + 2.5));
             assert!(
-                (ground - level).abs() < 0.05,
-                "the ground beside the street at {x}, {north}: {ground}"
+                (west - east).abs() < 0.02,
+                "a tilted street at {street}, {north}: {west} west, {east} east"
             );
-        }
-        for x in [200.0 - 25.0, 200.0 + 25.0] {
-            let ground = ground_at(&world, x, z).expect("ground");
-            let natural = 500.0 + 0.1 * x;
-            assert!(
-                (ground - natural).abs() < 0.05,
-                "the ground away from the street at {x}, {north}: {ground}, not {natural}"
-            );
+            assert!((west - level).abs() < 0.15, "the street at {west}");
+            // Near the ride, the ground beside it level with it, then back on the natural slope
+            // a little way out: cut into the hillside above, banked down below. Far off, the
+            // coarser pieces at the shelf's edge may lean.
+            if street == far {
+                continue;
+            }
+            for x in [street - 5.0, street + 5.0] {
+                let ground = ground_at(&world, x, z).expect("ground");
+                assert!(
+                    (ground - level).abs() < 0.05,
+                    "the ground beside the street at {x}, {north}: {ground}"
+                );
+            }
+            for x in [street - 25.0, street + 25.0] {
+                let ground = ground_at(&world, x, z).expect("ground");
+                let natural = 500.0 + 0.1 * x;
+                assert!(
+                    (ground - natural).abs() < 0.05,
+                    "the ground away from the street at {x}, {north}: {ground}, not {natural}"
+                );
+            }
         }
     }
 }
@@ -870,21 +880,21 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
 async fn roundabouts_get_a_raised_island_with_a_kerb() {
     use orqwa_osm::{Road, RoadClass};
 
-    // A roundabout of 20 m radius east of the route; a long thin loop, a road round a square
+    // A roundabout of 20 m radius east of the route, near enough for the usual detail; a long thin loop, a road round a square
     // block and a footpath round a pond (no roundabouts).
     let ring: Vec<(f64, f64)> = (0..=24)
         .map(|k| {
             let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
-            at(200.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
+            at(100.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
         })
         .collect();
     let loop_ = vec![
+        at(50.0, 800.0),
         at(150.0, 800.0),
-        at(250.0, 800.0),
-        at(250.0, 806.0),
-        at(200.0, 807.0),
         at(150.0, 806.0),
-        at(150.0, 800.0),
+        at(100.0, 807.0),
+        at(50.0, 806.0),
+        at(50.0, 800.0),
     ];
     // The block's road has a point every 10 m, as mapped roads do.
     let block: Vec<(f64, f64)> = (0..=20)
@@ -897,13 +907,13 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
                 3 => (-25.0, 25.0 - step),
                 _ => (-25.0, -25.0),
             };
-            at(200.0 + east, 300.0 + north)
+            at(100.0 + east, 300.0 + north)
         })
         .collect();
     let path: Vec<(f64, f64)> = (0..=24)
         .map(|k| {
             let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
-            at(200.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
+            at(100.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
         })
         .collect();
     let world = world(&MapData {
@@ -930,24 +940,24 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
     // Inside the ring, the island stands 20 cm up from the ground (which the ring levels
     // beside it, #116); on the ring and outside, the ground is as it was.
     for (x, z) in [
-        (200.0, -500.0),
-        (210.0, -505.0),
-        (190.0, -492.0),
-        (214.0, -500.0),
+        (100.0, -500.0),
+        (110.0, -505.0),
+        (90.0, -492.0),
+        (114.0, -500.0),
     ] {
         let top = top_of_ground(&world, x, z).expect("island");
         let up = top - ground_at(&world, x, z).expect("ground");
         assert!((up - 0.2).abs() < 0.02, "island at {up} m at {x}, {z}");
     }
-    assert!(lift(200.0, -500.0).is_some_and(|up| (up - 0.2).abs() < 0.02));
+    assert!(lift(100.0, -500.0).is_some_and(|up| (up - 0.2).abs() < 0.02));
     for (x, z) in [
-        (220.0, -500.0),
-        (230.0, -500.0),
-        (200.0, -525.0),
-        (200.0, -803.0),
-        (200.0, -300.0),
-        (210.0, -290.0),
-        (200.0, -650.0),
+        (120.0, -500.0),
+        (130.0, -500.0),
+        (100.0, -525.0),
+        (100.0, -803.0),
+        (100.0, -300.0),
+        (110.0, -290.0),
+        (100.0, -650.0),
     ] {
         let up = lift(x, z).expect("ground");
         assert!(up.abs() < 0.02, "ground raised by {up} m at {x}, {z}");
@@ -961,7 +971,7 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
             let normal = face_normal(*t);
             let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
             let (x, z) = (middle[0] + centre[0], middle[1] + centre[2]);
-            normal[1].abs() < 0.01 && ((x - 200.0).hypot(z + 500.0) - 16.6).abs() < 1.0
+            normal[1].abs() < 0.01 && ((x - 100.0).hypot(z + 500.0) - 16.6).abs() < 1.0
         })
         .count();
     assert!(kerb >= 40, "{kerb} kerb faces");

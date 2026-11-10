@@ -783,8 +783,11 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
     );
     // A bed 4.8 m below the ridden road and 3 m from it needs a finer bank; one far off, or
     // at the ridden road's own level where it joins, keeps the usual pieces.
-    assert!(levels.detail_near(-8.0, 500.0, 0.0, true) > crate::SUB);
-    assert_eq!(levels.detail_near(30.0, 500.0, 0.0, true), crate::SUB);
+    assert!(levels.detail_near(-8.0, 500.0, 0.0, true, crate::SUB) > crate::SUB);
+    assert_eq!(
+        levels.detail_near(30.0, 500.0, 0.0, true, crate::SUB),
+        crate::SUB
+    );
     let flat: streets::Shared = streets::lines(&map, &projection, &mut Hillside(0.0))
         .await
         .into();
@@ -794,7 +797,10 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
         &road,
         &RoadIndex::from_lines(&[]),
     );
-    assert_eq!(flat.detail_near(-8.0, 500.0, 0.0, true), crate::SUB);
+    assert_eq!(
+        flat.detail_near(-8.0, 500.0, 0.0, true, crate::SUB),
+        crate::SUB
+    );
 }
 
 #[tokio::test]
@@ -917,5 +923,13 @@ async fn far_tracks_follow_the_land_and_paved_roads_keep_plain_shelves() {
         .nearest(-400.0, 500.0, 0.0)
         .expect("a far paved road keeps a shelf");
     assert!(!far.facing, "no walls far from the ride");
-    assert_eq!(levels.detail_near(-400.0, 500.0, 0.0, false), crate::SUB);
+    assert_eq!(
+        levels.detail_near(-400.0, 500.0, 0.0, false, crate::SUB),
+        crate::SUB
+    );
+    assert_eq!(
+        levels.detail_near(-400.0, 500.0, 0.0, false, 1),
+        crate::FAR_SUB,
+        "its shelf takes coarser pieces"
+    );
 }

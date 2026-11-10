@@ -756,10 +756,12 @@ impl BedPiece {
         usize::from(self.subdivisions)
     }
 
-    /// The level ground beyond its edge that the terrain pieces under it need.
+    /// The level ground beyond its edge that the terrain pieces under it need. A far shelf's
+    /// coarser pieces keep the usual verge: their triangles at its edge may lean a little
+    /// across, which nobody sees from the ride, rather than widening the shelf.
     fn verge(self) -> f64 {
         #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
-        let piece = crate::GRID / self.subdivisions() as f64;
+        let piece = crate::GRID / self.subdivisions().max(crate::SUB) as f64;
         piece * std::f64::consts::SQRT_2 + 0.2
     }
 }
@@ -862,7 +864,7 @@ impl Levels {
                         .is_some_and(|c| c.iter().any(|&slope| slope >= threshold));
                 let level = bed.map(|[a, b]| f64::midpoint(a, b));
                 let (subdivisions, padding, close) =
-                    bed_detail((road, rails), (middle, half, level), steep);
+                    bed_detail((road, rails), (middle, half, level), (steep, near));
                 segments.push(BedPiece {
                     at: At::new(s, i),
                     subdivisions: u8::try_from(subdivisions).expect("a fixed subdivision count"),
@@ -887,13 +889,21 @@ impl Levels {
 
     /// Check every carriageway touching a cell, including ones hidden by a nearer ridden
     /// copy at its centre. Missing one leaves a coarse/fine seam through that side road.
-    pub(crate) fn detail_near(&self, east: f64, north: f64, reach: f64, close: bool) -> usize {
+    /// The pieces a side are at least `floor`, which is what a cell without any takes.
+    pub(crate) fn detail_near(
+        &self,
+        east: f64,
+        north: f64,
+        reach: f64,
+        close: bool,
+        floor: usize,
+    ) -> usize {
         let scan = reach + 5.25 + STEP_M;
         let (low, high) = (
             level_cell((east - scan, north - scan)),
             level_cell((east + scan, north + scan)),
         );
-        let mut count = crate::SUB;
+        let mut count = floor;
         for x in low.0..=high.0 {
             for y in low.1..=high.1 {
                 for &i in self.cells.get((x, y)) {
@@ -977,11 +987,12 @@ fn piece_cells(streets: &[Street], pieces: &[BedPiece]) -> CellIndex<u32> {
 /// and whether that serves a close carriageway: finer where its bed lies at another height
 /// than a ridden road or railway too close for the usual pieces to hold the bank between them,
 /// or for walls and narrow shelves on a steep hillside (`steep`). A joining road at the ridden
-/// road's level needs no bank, and no finer terrain.
+/// road's level needs no bank, and no finer terrain; a shelf far from the ride (not `near`)
+/// coarser terrain.
 fn bed_detail(
     (road, rails): (&RoadIndex, &RoadIndex),
     (middle, half, bed): ((f64, f64), f64, Option<f64>),
-    steep: bool,
+    (steep, near): (bool, bool),
 ) -> (usize, f64, bool) {
     let gap_to = |index: &RoadIndex, half_of: &dyn Fn(f64) -> f64| {
         index
@@ -1014,11 +1025,15 @@ fn bed_detail(
         crate::CLOSE_SUB
     } else if steep {
         crate::STEEP_SUB
-    } else {
+    } else if near {
         crate::SUB
+    } else {
+        crate::FAR_SUB
     };
+    // As the verge (`BedPiece::verge`), far shelves keep the usual margin.
     #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
-    let padding = (crate::GRID / subdivisions as f64 * std::f64::consts::SQRT_2 + 0.2)
+    let padding = (crate::GRID / subdivisions.max(crate::SUB) as f64 * std::f64::consts::SQRT_2
+        + 0.2)
         .min((gap / 3.0).max(0.1));
     (subdivisions, padding, close)
 }

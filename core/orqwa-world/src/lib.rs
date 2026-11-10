@@ -69,7 +69,7 @@ pub use vegetation::Trees;
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 40;
+pub const GENERATOR: u32 = 41;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -82,6 +82,11 @@ const ROAD_HALF_WIDTH: f64 = 3.0;
 /// Terrain cells near the road are split into this many pieces a side, so the ground can follow
 /// the road's verge, cuttings and embankments closely.
 const SUB: usize = 6;
+/// Far from the ride (`streets::FORMED_REACH_M`), the shelves of paved roads are split into
+/// these coarser pieces: nobody sees their cross-sections from there, and a town's streets far
+/// off would otherwise hold most of the world's vertices. A divisor of `SUB`, so the finer
+/// cells beside them close their edges on its vertices (`HeightGrid::close_edges`).
+const FAR_SUB: usize = 3;
 /// Walls and narrow shelves on steep hillsides need finer pieces than the usual ones...
 const STEEP_SUB: usize = 12;
 /// ...close, independently graded roads room for a bank between their carriageways.
@@ -945,10 +950,13 @@ impl HeightGrid {
         for j in 0..side - 1 {
             for i in 0..side - 1 {
                 let (east, north) = grid.position(i, j, 0.5, 0.5);
+                // On the chunk's edge cells keep the usual pieces at least: the neighbouring
+                // chunk's cell along it is predicted from the streets alone (`close_edges`).
+                let edge = i == 0 || j == 0 || i == side - 2 || j == side - 2;
                 let detail = if grid.needs_detail(i, j, shapers)
                     || water.0.near(east, north, half_diagonal)
                 {
-                    Some(grid.detail(i, j, shapers, water))
+                    Some(grid.detail(i, j, shapers, water, SUB))
                 } else if shapers
                     .streets
                     .nearest(east, north, half_diagonal)
@@ -957,8 +965,8 @@ impl HeightGrid {
                     // Levelled across a street: split only where that changes the cell's
                     // ground, so cells on flat land stay plain. On the chunk's edge always, as
                     // the neighbouring chunk's cell along it may be split.
-                    let edge = i == 0 || j == 0 || i == side - 2 || j == side - 2;
-                    Some(grid.detail(i, j, shapers, water))
+                    let floor = if edge { SUB } else { FAR_SUB };
+                    Some(grid.detail(i, j, shapers, water, floor))
                         .filter(|(fine, _)| edge || grid.departs(i, j, fine))
                 } else {
                     None
@@ -998,7 +1006,7 @@ impl HeightGrid {
                     self.origin.0 + (ni as f64 + 0.5) * GRID,
                     self.origin.1 + (nj as f64 + 0.5) * GRID,
                 );
-                shapers.detail_count(east, north)
+                shapers.detail_count(east, north, SUB)
             };
             let neighbours = [
                 neighbour(-1, 0),
@@ -1141,9 +1149,10 @@ impl HeightGrid {
             &LandIndex,
             &std::sync::Arc<water_levels::Levels>,
         ),
+        floor: usize,
     ) -> (Vec<f64>, Vec<f64>) {
         let (east, north) = self.position(i, j, 0.5, 0.5);
-        let count = shapers.detail_count(east, north);
+        let count = shapers.detail_count(east, north, floor);
         let mut fine = Vec::with_capacity((count + 1) * (count + 1));
         let mut drops = Vec::with_capacity((count + 1) * (count + 1));
         for b in 0..=count {
@@ -1601,20 +1610,24 @@ impl Shapers<'_> {
     /// Fine pieces a side in the cell centred at (`east`, `north`). Beds close beside the
     /// ridden road or a railway need room for the bank between them; every cell that may hold
     /// a narrowed hard verge (`Shapers::piece_diagonal`) shares that detail.
-    fn detail_count(&self, east: f64, north: f64) -> usize {
+    /// Cells split for the ridden road, water or a chunk's edge take the usual pieces at least
+    /// (`floor` `SUB`); those split for streets alone may take a far street's coarser ones.
+    fn detail_count(&self, east: f64, north: f64, floor: usize) -> usize {
         let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         self.streets
-            .detail_near(east, north, half_diagonal, false)
+            .detail_near(east, north, half_diagonal, false, floor)
             .max(
                 self.streets
-                    .detail_near(east, north, half_diagonal + CLOSE_REACH, true),
+                    .detail_near(east, north, half_diagonal + CLOSE_REACH, true, floor),
             )
     }
 
     /// Diagonal of the coarsest terrain piece that can lie at (`east`, `north`) in a split
     /// cell: any cell holding the point is split at least this finely (`detail_count`).
     fn piece_diagonal(&self, east: f64, north: f64) -> f64 {
-        let count = self.streets.detail_near(east, north, CLOSE_REACH, true);
+        let count = self
+            .streets
+            .detail_near(east, north, CLOSE_REACH, true, SUB);
         #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
         let size = GRID / count as f64;
         size * std::f64::consts::SQRT_2

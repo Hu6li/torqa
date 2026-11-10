@@ -109,10 +109,12 @@ banks and, on steep hillsides, a battered face. The proposals combine as follows
 - **Detail where seen.** Beds are formed within 120 m of the ridden road. Farther away tracks
   and cycleways follow the terrain as before: formed shelves there gained nothing riders see,
   and Godot's simplified distant ground swallowed their ribbons. Paved roads keep a plain
-  shelf without walls. Cells are split finer than the usual six pieces a side only beside a
-  close bed at another height than the ridden road or a railway (24, or 48 within 3 m; a
-  joining road at their level needs none) and under walls or narrow shelves on steep
-  hillsides (12). The saved Alpenbrevet Gold world has 17 % more ground triangles than before
+  shelf without walls, on three pieces a side rather than six (amended 2026-11-10, for the
+  memory of densely mapped courses: Wada's world 20 % smaller); cells split for the ridden
+  road, water or a chunk's edge keep six. Cells are split finer than the usual six pieces a
+  side only beside a close bed at another height than the ridden road or a railway (24, or 48
+  within 3 m; a joining road at their level needs none) and under walls or narrow shelves on
+  steep hillsides (12). The saved Alpenbrevet Gold world has 17 % more ground triangles than before
   R141 (streets 17 %, tracks 13 %) and takes about 30 % longer to build, against 79 % more
   ground triangles and about twice the time for refining every close or steep piece at 24.
 

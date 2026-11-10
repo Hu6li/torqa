@@ -326,6 +326,30 @@ give their memory back.
   2.5 minutes per place under software rendering, against 30 s when every chunk stays. How
   much of a frame that costs on a GPU is the 2d PR's frame-time measurement.
 
+## Far streets in coarser pieces
+
+2026-11-10, same container. Paved roads more than 120 m from the ridden road keep their level
+shelf, but the ground under it is split into three pieces a side (5.3 m) rather than six
+(2.7 m), and the street is cut along those (ADR 0031, `GENERATOR` 41). Cells split for the
+ridden road, water or a chunk's edge keep six; close and steep beds near the ride keep their
+finer pieces. Riders see no change near the road; far off, sidewalk paint and street verges
+follow the coarser triangles (review renders in `docs/images/far-streets/`).
+
+| Wada | Before | After |
+|---|---:|---:|
+| Whole world (683 chunks) | 3,246 MB | 2,593 MB |
+| Streets / ground / sidewalks | 1,069 / 920 / 627 MB | 786 / 680 / 501 MB |
+| Street / ground vertices | 20.1 M / 14.0 M | 14.7 M / 10.4 M |
+| Generating (two alternated runs) | 129–138 s | 118–128 s |
+| Whole-world build, peak | 1.48–1.54 GB | 1.24–1.27 GB |
+| **Godot at the start, Low (108 chunks): video memory** | **1,077 MB** | **848 MB** |
+| of which mesh buffers | 898 MB | 669 MB |
+| Street / ground / sidewalk vertices there | 9.8 M / 4.9 M / 4.3 M | 7.0 M / 3.2 M / 3.4 M |
+
+Split into two pieces (8 m), the world would shrink only to 2,431 MB. The chunks within
+250 m of the road change least (streets 248 → 219 MB): most of what remains at the start is
+detail near the ride, which stays.
+
 ## Still to do
 
 The whole world is built before the ride starts (2d). On the tablet, the app as a whole has not
