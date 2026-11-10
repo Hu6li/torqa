@@ -3663,12 +3663,20 @@ impl OrqwaApp {
             .collect()
     }
 
-    /// Conservative road/paving clearance for the raised winter ground blanket. The first call
-    /// for a world reads all its chunks: seconds for a long, densely mapped course.
+    /// Conservative road/paving clearance for the raised winter ground blanket:
+    /// `{image, origin, size}`, or `{pending: true}` while it is made in the background (the
+    /// first call for a world starts that, reading all its chunks); empty without a world.
     #[func]
     fn winter_ground_mask(&self) -> VarDictionary {
-        let Some(mask) = self.app.as_ref().and_then(App::snow_ground_mask) else {
+        let Some(app) = self.app.as_ref() else {
             return VarDictionary::new();
+        };
+        let Some(mask) = app.snow_ground_mask() else {
+            return if app.world_chunks().is_some() {
+                vdict! { "pending" => true }
+            } else {
+                VarDictionary::new()
+            };
         };
         let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
         else {

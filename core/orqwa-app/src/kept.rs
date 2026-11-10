@@ -709,12 +709,15 @@ mod tests {
         let course = prepare(&mut app, &dir);
         let whole = orqwa_world::snow_ground_mask(&loaded(&app));
         assert!(whole.pixels.contains(&0), "the road is kept clear");
+        // Made in the background, not on the caller's thread.
+        wait_for(&mut app, |app| app.snow_ground_mask().is_some());
         assert_eq!(app.snow_ground_mask(), Some(&whole), "from the store");
         app.set_keeps_worlds(true).unwrap();
         let keeper = app.keeper();
         let fingerprint = course::fingerprint(&course).unwrap();
         wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
         ride(&mut app, &course);
+        wait_for(&mut app, |app| app.snow_ground_mask().is_some());
         assert_eq!(app.snow_ground_mask(), Some(&whole), "from the kept world");
         app.shutdown();
     }

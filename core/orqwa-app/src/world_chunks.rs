@@ -14,8 +14,11 @@ use tracing::warn;
 #[derive(Debug)]
 pub struct WorldChunks {
     held: Held,
-    /// The winter ground's mask, made once it is first asked for: it needs every chunk.
+    /// The winter ground's mask, made in the background once it is first asked for: it needs
+    /// every chunk.
     snow: OnceLock<SnowGroundMask>,
+    /// Whether the mask was asked for.
+    asked: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -40,6 +43,7 @@ impl WorldChunks {
         Self {
             held,
             snow: OnceLock::new(),
+            asked: AtomicBool::new(false),
         }
     }
 
@@ -82,9 +86,21 @@ impl WorldChunks {
         }
     }
 
-    /// The mask that keeps the winter ground's snow off the ways of the world whose parts
-    /// built whole are `world`. Made the first time it is asked for, from every chunk.
-    pub(crate) fn snow_ground_mask(&self, world: &World) -> &SnowGroundMask {
+    /// The mask that keeps the winter ground's snow off the ways, once
+    /// [made](Self::make_snow_ground_mask).
+    pub(crate) fn snow_ground_mask(&self) -> Option<&SnowGroundMask> {
+        self.snow.get()
+    }
+
+    /// Whether the mask is to be made: true for the first who asks.
+    pub(crate) fn ask_snow_ground_mask(&self) -> bool {
+        !self.asked.swap(true, Ordering::Relaxed)
+    }
+
+    /// Makes the mask that keeps the winter ground's snow off the ways of the world whose
+    /// parts built whole are `world`, from every chunk: seconds for a long, densely mapped
+    /// course. A chunk that cannot be read is undrawn, so the mask leaves it out.
+    pub(crate) fn make_snow_ground_mask(&self, world: &World) {
         self.snow.get_or_init(|| {
             let mask = Mutex::new(SnowGroundMask::around(world, self.centres()));
             match &self.held {
@@ -93,7 +109,7 @@ impl WorldChunks {
                         lock(&mask).clear_chunk(&chunk);
                     });
                     if let Err(error) = cleared {
-                        warn!(%error, "cannot read the world for its winter ground");
+                        warn!(%error, "cannot read all of the world for its winter ground");
                     }
                 }
                 Held::Memory { chunks, .. } => {
@@ -103,7 +119,7 @@ impl WorldChunks {
                 }
             }
             mask.into_inner().unwrap_or_else(PoisonError::into_inner)
-        })
+        });
     }
 
     /// Keeps the world as the course with `fingerprint`'s among `kept`, its parts built whole

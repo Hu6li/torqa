@@ -252,6 +252,9 @@ store is 20 MB per kilometre, twice ADR 0025's Swiss courses and within ADR 0040
 the app seconds of deflating on one core after the ride began. The checksums are those of
 the runs above, for the three fixtures and Wada.
 
+On the Tab S7 (one run each, alternating): 377 and 384 s with the store, 365 and 381 s
+without; peak 1.17 GB both ways; packing 2.7–3.0 s; the same checksum.
+
 ## Ridden from the store
 
 2026-11-10, container, `world_memory <course.oqc> [cache] [--keep]`, the app as it rides. The
@@ -266,12 +269,28 @@ in the cache, and ridden from it or from its kept world, one chunk at a time.
 | Ridden from its kept world: ready in | – | 5 s |
 | Reading all 683 chunks back, one at a time | – | 5.5–12.7 s, 8–19 ms each |
 
+On the Tab S7, `world_memory wada.oqc <cache> --keep` through `adb`, one run each:
+
+| Wada on the Tab S7, the app | Built into a store and kept | Ridden from the kept world |
+|---|---:|---:|
+| Ready in | 374 s | 12 s |
+| Peak when ready | 1.18 GB | 108 MB |
+| Resident when ready | 116 MB | 92 MB |
+| Reading all 683 chunks back, one at a time | 14.5 s, 21 ms each | 14.5 s, 21 ms each |
+| Peak after reading them all | 1.18 GB | 136 MB |
+
+Both give the tablet's own checksums (`1af4d0bd8806698d`, chunk checksum `b5f02cf1272f2c19`),
+built and read back from the kept world; the kept world is 1.0 GB.
+
 The peak while building is now the streamed build's (above) plus the parts built whole. What
 stays resident after the build is mostly memory glibc keeps from building, not the world:
 ridden from its kept world, the core holds only the parts built whole and each chunk's centre,
 within R240's 500 MB for the core while riding.
-Reading a chunk back costs Godot's upload of it that much more time on the main thread; the
-2d PR measures the frame time while riding (R240). The checksums are unchanged for the three
+Reading a chunk back costs Godot's upload of it that much more time on the main thread: 21 ms
+on the tablet, more than a frame at 60 Hz, per chunk uploaded. The 2d PR measures the frame
+time while riding (R240) from there; reading ahead on a worker thread is the obvious remedy.
+The winter ground's mask reads every chunk too, so it is made in the background, never on the
+main thread. The checksums are unchanged for the three
 fixtures and Wada, also read back from the store and from the kept world.
 
 ## Still to do

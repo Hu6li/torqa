@@ -4036,12 +4036,18 @@ impl App {
     }
 
     /// The mask that keeps the winter ground's snow off the loaded world's road, streets,
-    /// tracks and paving. Made the first time it is asked for, from every chunk: seconds for a
-    /// long, densely mapped course.
+    /// tracks and paving; `None` until it is made. The first call starts making it in the
+    /// background, from every chunk: seconds for a long, densely mapped course, which Godot's
+    /// main thread must not wait for.
     #[must_use]
     pub fn snow_ground_mask(&self) -> Option<&orqwa_world::SnowGroundMask> {
         let (world, chunks) = (self.world.as_ref()?, self.chunks.as_ref()?);
-        Some(chunks.snow_ground_mask(world))
+        if chunks.ask_snow_ground_mask() {
+            let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+            self.runtime
+                .spawn_blocking(move || chunks.make_snow_ground_mask(&world));
+        }
+        chunks.snow_ground_mask()
     }
 
     /// Avatar position in metres east/north, on the local traffic side of the drawn road.

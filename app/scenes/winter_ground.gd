@@ -15,6 +15,17 @@ static func apply(world: RideWorld, orqwa: OrqwaApp, active: bool) -> void:
 		return
 	terrain.set_meta("winter_road_id", road.mesh.get_instance_id())
 	var mask: Dictionary = orqwa.winter_ground_mask()
+	var pending: bool = mask.get("pending", false)
+	if pending:
+		# Made in the background from every chunk: asked again until it is ready.
+		terrain.set_meta("winter_road_id", previous)
+		if not world.is_inside_tree():
+			return
+		var retry: Callable = func() -> void:
+			if is_instance_valid(world):
+				apply(world, orqwa, world._seasons.season == "Winter")
+		world.get_tree().create_timer(0.25).timeout.connect(retry)
+		return
 	if mask.is_empty():
 		terrain.set_shader_parameter("winter_ground_size", Vector2.ZERO)
 		return

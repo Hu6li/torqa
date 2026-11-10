@@ -39,6 +39,9 @@ const EXTENSION: &str = "world";
 const BUILDING: &str = "building";
 const WHOLE: &str = "whole";
 const CHUNKS: &str = "chunks/";
+/// The file in a store that its build holds locked as long as the store is in use, which tells
+/// any ORQWA running that it is (ADR 0040).
+const LOCK: &str = "lock";
 /// The quickest deflate: a third of the size, at a fraction of the time the next levels take.
 const LEVEL: i64 = 1;
 /// A half-written world, or a world being built that has not grown for this long, was left by
@@ -56,6 +59,28 @@ fn ours(path: &Path) -> bool {
         .unwrap_or_else(PoisonError::into_inner)
         .iter()
         .any(|dir| dir == path)
+}
+
+/// Whether the world being written or built at `path` is still in use: a store this or
+/// another ORQWA running holds, or a write or build that went on lately. A store is ridden
+/// from for hours after its last chunk was written, so its age alone tells nothing; its lock
+/// is taken just after it is made, so a young one counts too.
+fn in_use(path: &Path) -> bool {
+    let unfinished = path
+        .extension()
+        .is_some_and(|e| e == "part" || e == BUILDING);
+    let held = || match File::open(path.join(LOCK)) {
+        Ok(lock) => matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)),
+        Err(_) => false,
+    };
+    let recent = || {
+        [path.to_owned(), path.join(CHUNKS)].iter().any(|path| {
+            std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED))
+        })
+    };
+    unfinished && (ours(path) || held() || recent())
 }
 
 /// The worlds this computer keeps.
@@ -127,6 +152,7 @@ impl KeptWorlds {
         let chunks = Chunks {
             centres,
             source: Mutex::new(Source::Kept { file: path, zip }),
+            damaged: AtomicBool::new(false),
         };
         Ok(Some((world, generator, chunks)))
     }
@@ -183,10 +209,14 @@ impl KeptWorlds {
         LIVE.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(dir.clone());
-        let store = Building {
+        let mut store = Building {
             dir,
+            lock: None,
             failed: AtomicBool::new(false),
         };
+        let lock = File::create(store.dir.join(LOCK))?;
+        lock.lock()?;
+        store.lock = Some(lock);
         std::fs::create_dir(store.dir.join(CHUNKS))?;
         Ok(store)
     }
@@ -214,33 +244,21 @@ impl KeptWorlds {
                 .is_some_and(|fingerprint| {
                     fingerprints.contains(fingerprint) && self.generator(fingerprint).is_some()
                 });
-            // A world being written or built is left to its writer, unless that stopped long
-            // ago: a build's chunks go into its `chunks` directory, which changes with each.
-            // This ORQWA's own stores are ridden from, also once complete.
-            let writing = ours(&path)
-                || path
-                    .extension()
-                    .is_some_and(|e| e == "part" || e == BUILDING)
-                    && [path.clone(), path.join(CHUNKS)].iter().any(|path| {
-                        std::fs::metadata(path)
-                            .and_then(|m| m.modified())
-                            .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED))
-                    });
-            if !live && !writing {
+            if !live && !in_use(&path) {
                 remove(&path)?;
             }
         }
         Ok(())
     }
 
-    /// Drops every kept world. The stores of this ORQWA's builds stay: worlds are ridden from
-    /// them.
+    /// Drops every kept world. The stores in use stay, this ORQWA's and another's running:
+    /// worlds are ridden from them.
     ///
     /// # Errors
     /// On I/O errors.
     pub fn clear(&self) -> io::Result<()> {
         for entry in read_dir(&self.root)? {
-            if !ours(&entry.path()) {
+            if !in_use(&entry.path()) {
                 remove(&entry.path())?;
             }
         }
@@ -278,6 +296,8 @@ impl KeptWorlds {
 #[derive(Debug)]
 pub struct Building {
     dir: PathBuf,
+    /// Held locked while the store is in use.
+    lock: Option<File>,
     /// Whether a chunk could not be written, so the store cannot become the world.
     failed: AtomicBool,
 }
@@ -341,6 +361,7 @@ impl Building {
 
 impl Drop for Building {
     fn drop(&mut self) {
+        drop(self.lock.take());
         let _ = remove(&self.dir);
         LIVE.lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -354,6 +375,8 @@ impl Drop for Building {
 pub struct Chunks {
     centres: Vec<[f32; 3]>,
     source: Mutex<Source>,
+    /// Whether a chunk was found damaged, so these chunks are never kept.
+    damaged: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -372,6 +395,7 @@ impl Chunks {
         Self {
             centres,
             source: Mutex::new(Source::Building(Arc::new(store))),
+            damaged: AtomicBool::new(false),
         }
     }
 
@@ -393,33 +417,50 @@ impl Chunks {
         &self.centres
     }
 
-    /// Reads chunk `index`. A kept world a chunk cannot be read from is damaged: it is
-    /// deleted, so that the course's next ride builds it again.
+    /// Reads chunk `index`. A kept world a chunk of which is damaged is deleted, so that the
+    /// course's next ride builds it again.
     ///
     /// # Errors
-    /// On I/O errors, and if the chunk is missing or damaged, e.g. the system cleared the
-    /// cache.
+    /// On I/O errors, if `index` is past the last chunk, and if the chunk is missing or
+    /// damaged, e.g. the system cleared the cache.
     pub fn read(&self, index: usize) -> io::Result<TerrainChunk> {
+        if index >= self.len() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "no such chunk"));
+        }
         let mut source = self.source.lock().unwrap_or_else(PoisonError::into_inner);
-        match &mut *source {
-            Source::Building(store) => store.read(index),
-            Source::Kept { file, zip } => {
-                let read = read_kept(zip, index);
-                if read.is_err() {
-                    let _ = remove(file);
-                }
-                read
+        let (read, kept) = match &mut *source {
+            Source::Building(store) => (store.read(index), None),
+            Source::Kept { file, zip } => (read_kept(zip, index), Some(file.as_path())),
+        };
+        self.check(read, kept)
+    }
+
+    /// `read`, noting a chunk found damaged, and deleting the kept world `kept` it was read
+    /// from, if any.
+    fn check(
+        &self,
+        read: io::Result<TerrainChunk>,
+        kept: Option<&Path>,
+    ) -> io::Result<TerrainChunk> {
+        if let Err(error) = &read
+            && damage(error)
+        {
+            self.damaged.store(true, Ordering::Relaxed);
+            if let Some(file) = kept {
+                let _ = remove(file);
             }
         }
+        read
     }
 
     /// Reads every chunk on all cores and gives each to `each` with its index, in no set
-    /// order, holding no more than one per core.
+    /// order, holding no more than one per core. A chunk that cannot be read is passed over,
+    /// as by [`read`](Self::read), and the rest are still read.
     ///
     /// # Errors
-    /// As [`read`](Self::read), on the first chunk that cannot be read.
+    /// The first error a chunk could not be read for, once all others were read.
     pub fn read_each(&self, each: &(dyn Fn(usize, TerrainChunk) + Sync)) -> io::Result<()> {
-        // Each core reads through its own handle.
+        // Each core reads through its own handle, where the file is still there to open.
         let from = match &*self.source.lock().unwrap_or_else(PoisonError::into_inner) {
             Source::Building(store) => Reading::Store(Arc::clone(store)),
             Source::Kept { file, .. } => Reading::Kept(file.clone()),
@@ -434,30 +475,40 @@ impl Chunks {
                 .map(|first| {
                     let from = &from;
                     scope.spawn(move || -> io::Result<()> {
-                        let mut zip = match from {
-                            Reading::Kept(file) => {
-                                Some(ZipArchive::new(BufReader::new(File::open(file)?))?)
-                            }
+                        let mut own = match from {
+                            Reading::Kept(file) => File::open(file)
+                                .ok()
+                                .and_then(|file| ZipArchive::new(BufReader::new(file)).ok()),
                             Reading::Store(_) => None,
                         };
+                        let mut failed = Ok(());
                         for index in (first..count).step_by(threads) {
-                            let chunk = match (&mut zip, from) {
-                                (Some(zip), _) => read_kept(zip, index)?,
-                                (None, Reading::Store(store)) => store.read(index)?,
-                                (None, Reading::Kept(_)) => unreachable!("opened above"),
+                            let read = match (&mut own, from) {
+                                (Some(zip), Reading::Kept(file)) => {
+                                    self.check(read_kept(zip, index), Some(file))
+                                }
+                                (_, Reading::Store(store)) => self.check(store.read(index), None),
+                                // Deleted since it was opened: through the handle still open.
+                                (None, Reading::Kept(_)) => self.read(index),
                             };
-                            each(index, chunk);
+                            match read {
+                                Ok(chunk) => each(index, chunk),
+                                Err(error) => failed = failed.and(Err(error)),
+                            }
                         }
-                        Ok(())
+                        failed
                     })
                 })
                 .collect();
-            // The scope waits for the other workers too.
-            workers.into_iter().try_for_each(|worker| {
-                worker
-                    .join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-            })
+            let failed: Vec<_> = workers
+                .into_iter()
+                .map(|worker| {
+                    worker
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                })
+                .collect();
+            failed.into_iter().collect()
         })
     }
 
@@ -468,8 +519,8 @@ impl Chunks {
     /// world read from a kept one is kept already. Blocks for seconds.
     ///
     /// # Errors
-    /// On I/O errors, and if a chunk is missing or failed to be written; the chunks are then
-    /// still read from the store.
+    /// On I/O errors, if a chunk is missing or failed to be written, and if a chunk was found
+    /// damaged; the chunks are then still read from where they were.
     pub fn keep(
         &self,
         kept: &KeptWorlds,
@@ -477,6 +528,12 @@ impl Chunks {
         whole: &World,
         generator: u32,
     ) -> io::Result<()> {
+        if self.damaged.load(Ordering::Relaxed) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "a chunk of the world is damaged",
+            ));
+        }
         std::fs::create_dir_all(&kept.root)?;
         let file = kept.file(fingerprint);
         let mut source = self.source.lock().unwrap_or_else(PoisonError::into_inner);
@@ -485,7 +542,8 @@ impl Chunks {
             Source::Kept { file: read, .. } if *read == file && file.is_file() => return Ok(()),
             Source::Kept { zip, .. } => {
                 // Deleted since, e.g. keeping worlds was turned off and on again: copied from
-                // the file still open. Chunks wait meanwhile.
+                // the file still open. Chunks wait meanwhile, also on Godot's main thread; it
+                // takes seconds, and only when keeping is turned on again during a ride.
                 packed(&file, whole, generator, self.len(), |out, index| {
                     let name = format!("{CHUNKS}{index}");
                     let at = zip
@@ -517,6 +575,14 @@ impl Chunks {
 enum Reading {
     Store(Arc<Building>),
     Kept(PathBuf),
+}
+
+/// Whether `error` means a chunk is damaged or missing, not that it could not be read for now.
+fn damage(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::InvalidData | io::ErrorKind::UnexpectedEof | io::ErrorKind::NotFound
+    )
 }
 
 fn read_kept(zip: &mut ZipArchive<BufReader<File>>, index: usize) -> io::Result<TerrainChunk> {
@@ -765,6 +831,22 @@ mod tests {
         std::fs::remove_dir_all(cache).unwrap();
     }
 
+    /// Sets when directory `dir` last changed.
+    fn age(dir: &Path, at: std::time::SystemTime) {
+        #[cfg(unix)]
+        let handle = File::open(dir);
+        // A directory opens only for backup on Windows.
+        #[cfg(windows)]
+        let handle = {
+            use std::os::windows::fs::OpenOptionsExt;
+            File::options()
+                .write(true)
+                .custom_flags(0x0200_0000)
+                .open(dir)
+        };
+        handle.unwrap().set_modified(at).unwrap();
+    }
+
     /// The entries of `dir`, by name.
     fn names(dir: &Path) -> Vec<String> {
         let mut names: Vec<String> = read_dir(dir)
@@ -805,10 +887,22 @@ mod tests {
         let read: Vec<_> = read.into_inner().unwrap().into_iter().flatten().collect();
         assert_eq!(read, built.chunks);
         assert!(chunks.read(30).is_err());
+        assert!(kept.has("f"), "no chunk past the last is no damage");
         // Deleted while ridden, e.g. keeping worlds turned off: ridden on, and kept again
         // from the file still open once turned on.
         kept.clear().unwrap();
         assert_eq!(chunks.read(3).unwrap(), built.chunks[3]);
+        let count = AtomicU64::new(0);
+        chunks
+            .read_each(&|_, _| {
+                count.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+        assert_eq!(
+            count.into_inner(),
+            30,
+            "all read through the file still open"
+        );
         chunks.keep(&kept, "f", &parts, 3).unwrap();
         assert_eq!(kept.read("f").unwrap(), Some((built.clone(), 3)));
         assert_eq!(chunks.read(4).unwrap(), built.chunks[4]);
@@ -837,10 +931,19 @@ mod tests {
             zip.write_all(&bytes).unwrap();
         }
         finish(zip).unwrap();
-        let (_, _, chunks) = kept.open("f").unwrap().expect("kept");
+        let (whole, _, chunks) = kept.open("f").unwrap().expect("kept");
+        let read = Mutex::new(Vec::new());
+        let each = chunks.read_each(&|index, _| read.lock().unwrap().push(index));
+        assert!(each.is_err());
+        assert_eq!(*read.lock().unwrap(), [0], "the others are still read");
+        assert!(!kept.has("f"), "damaged, so the next ride builds it again");
         assert_eq!(chunks.read(0).unwrap(), built.chunks[0]);
         assert!(chunks.read(1).is_err());
-        assert!(!kept.has("f"), "damaged, so the next ride builds it again");
+        assert!(
+            chunks.keep(&kept, "f", &whole, 1).is_err(),
+            "never kept again as it is"
+        );
+        assert!(!kept.has("f"));
         drop(chunks);
         std::fs::remove_dir_all(cache).unwrap();
     }
@@ -949,7 +1052,6 @@ mod tests {
     /// A store left by an ORQWA that stopped, e.g. killed for memory, is deleted by the next
     /// tidy, while this ORQWA's own stay however long ago they were written: worlds are ridden
     /// from them.
-    #[cfg(unix)] // directories' times are set through an open file
     #[test]
     fn a_store_left_long_ago_is_deleted() {
         let cache = temp_dir("store-left");
@@ -962,13 +1064,14 @@ mod tests {
         let long_ago = std::time::SystemTime::now() - 2 * ABANDONED;
         for dir in [&left, &live.dir] {
             for dir in [dir.clone(), dir.join(CHUNKS)] {
-                File::open(&dir).unwrap().set_modified(long_ago).unwrap();
+                age(&dir, long_ago);
             }
         }
         kept.keep_only(&HashSet::from(["f".to_owned()])).unwrap();
         assert!(!left.exists(), "the store left is gone");
         assert!(live.read(0).is_ok(), "this ORQWA's own stays");
         std::fs::create_dir_all(&left).unwrap();
+        age(&left, long_ago);
         kept.clear().unwrap();
         assert!(!left.exists());
         assert!(
@@ -977,6 +1080,32 @@ mod tests {
         );
         assert_eq!(kept.size(), 0, "a world not kept is not counted as kept");
         drop(live);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    /// A store another ORQWA running rides from is never tidied, however long ago it was
+    /// written: its lock tells.
+    #[test]
+    fn a_store_another_orqwa_holds_stays() {
+        let cache = temp_dir("store-held");
+        let kept = KeptWorlds::new(&cache);
+        // Another process's store, which this one does not know.
+        let theirs = kept.root.join(format!("ride.1-0.{BUILDING}"));
+        std::fs::create_dir_all(theirs.join(CHUNKS)).unwrap();
+        std::fs::write(theirs.join(CHUNKS).join("0"), b"chunk").unwrap();
+        let lock = File::create(theirs.join(LOCK)).unwrap();
+        lock.lock().unwrap();
+        let long_ago = std::time::SystemTime::now() - 2 * ABANDONED;
+        for dir in [theirs.clone(), theirs.join(CHUNKS)] {
+            age(&dir, long_ago);
+        }
+        kept.keep_only(&HashSet::new()).unwrap();
+        kept.clear().unwrap();
+        assert!(theirs.exists(), "held, so in use");
+        // That ORQWA stopped: its lock went with it.
+        drop(lock);
+        kept.keep_only(&HashSet::new()).unwrap();
+        assert!(!theirs.exists(), "left long ago");
         std::fs::remove_dir_all(cache).unwrap();
     }
 
@@ -1027,7 +1156,12 @@ mod tests {
 
         kept.clear().unwrap();
         assert!(!kept.has("f1"));
-        assert_eq!(kept.size(), 0);
+        assert!(
+            writing.exists(),
+            "another ORQWA's write goes on, also when cleared"
+        );
+        assert_eq!(kept.size(), 4, "only that is left");
+        std::fs::remove_file(&writing).unwrap();
         // Clearing nothing is no error.
         kept.clear().unwrap();
         kept.keep_only(&HashSet::new()).unwrap();

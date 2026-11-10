@@ -84,7 +84,7 @@ func upload_some(world: RideWorld) -> void:
 		)
 		# The core drops old geometry as soon as another course is opened. A chunk it cannot
 		# read from disk stays undrawn (ADR 0040).
-		if chunk.is_empty() and world._orqwa.world_chunk_count() == 0:
+		if chunk.is_empty() and world._orqwa.world_chunk_count() != world._chunk_count:
 			world._chunk_count = 0
 			reset()
 			return
