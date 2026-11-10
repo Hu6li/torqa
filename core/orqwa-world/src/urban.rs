@@ -773,10 +773,10 @@ impl Urban {
             all.push(shapes.iter().map(Vec::as_slice));
         }
         self.ends = (0..self.patches.len()).map(|i| self.walk_ends(i)).collect();
-        self.merge_walks(&all);
+        self.merge_walks(all);
     }
 
-    fn merge_walks(&mut self, shapes: &Shapes) {
+    fn merge_walks(&mut self, shapes: Shapes) {
         let mut links: Vec<_> = (0..self.patches.len()).collect();
         let mut overlaps = Vec::new();
         let mut neighbours = Vec::with_capacity(self.patches.len());
@@ -834,16 +834,18 @@ impl Urban {
                 }
             }
         }
-        let mut merged = Shapes::like(shapes);
+        let mut merged = Shapes::like(&shapes);
         for (index, others) in neighbours.into_iter().enumerate() {
             let mut own: Vec<_> = shapes.of(index).map(<[Point]>::to_vec).collect();
             for other in others {
+                // `others` are earlier patches only (see above), so each is already merged.
                 for mask in merged.of(other) {
                     own = subtract_all(own, mask);
                 }
             }
             merged.push(own.iter().map(Vec::as_slice));
         }
+        drop(shapes);
         self.shapes = self.retain_walk_runs(&merged);
         let mut groups = HashMap::new();
         for (a, b) in overlaps {
@@ -2340,6 +2342,24 @@ mod tests {
             );
             assert_eq!(shapes.of(1).len(), 1, "independent long walk must remain");
         }
+    }
+
+    #[test]
+    fn shapes_give_back_each_patchs_polygons_in_order() {
+        let (a, b, c) = (
+            [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+            [(2.0, 0.0), (3.0, 0.0), (3.0, 1.0), (2.0, 1.0)],
+            [(5.0, 5.0), (6.0, 5.0), (6.0, 6.0)],
+        );
+        let mut shapes = Shapes::default();
+        shapes.push([a.as_slice(), b.as_slice()]);
+        shapes.push([]);
+        shapes.push([c.as_slice()]);
+        assert_eq!(shapes.len(), 3);
+        assert_eq!(shapes.of(0).collect::<Vec<_>>(), [&a[..], &b[..]]);
+        assert_eq!(shapes.of(1).len(), 0);
+        assert_eq!(shapes.range(2), 2..3);
+        assert_eq!(shapes.polygon(2), c);
     }
 
     #[test]
