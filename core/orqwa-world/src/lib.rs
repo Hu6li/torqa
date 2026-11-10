@@ -460,7 +460,7 @@ pub async fn generate_into<M: ElevationModel>(
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
     // then the chunks themselves on all cores, where nearly all the time goes. A batch's chunks
-    // are all held before any is finished, so they set the peak: two per core keep the cores
+    // are all held before any is finished, so they add to the peak: two per core keep the cores
     // busy enough (Wada: about a tenth slower than four, 0.2 GB less at the peak; one per core
     // peaks no lower, as the chunks kept for their neighbours set the floor then).
     let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);

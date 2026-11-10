@@ -218,7 +218,7 @@ busy towards each batch's end.
 | Streamed peak (resident) | 1.60–1.61 GB | 1.38–1.44 GB | 1.34–1.45 GB |
 | Generating | 100 s | 112 s | 139 s |
 
-From two per core on, the batch adds only about 100 MB: the floor is what is held between
+From two per core on, the batch adds about 100 MB or less: the floor is what is held between
 batches, the preparation and the chunks kept for their neighbours, with about 350 MB more
 that the allocator keeps from it. One per core is no lower than two beyond the runs' spread,
 and a quarter slower. The checksums are the same as above (the four courses whole, and the
