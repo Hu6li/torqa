@@ -44,6 +44,7 @@ mod water_levels;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
 use orqwa_osm::{LandCover, MapData, RoadClass};
 use orqwa_routes::{ElevationModel, LocalProjection, Route, Surface};
@@ -346,8 +347,23 @@ pub async fn generate<M: ElevationModel>(
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
-    let mut chunks = Vec::new();
-    let mut world = generate_into(route, model, map, progress, &mut |index, chunk| {
+    generate_storing(route, model, map, progress, &|_, _| {}).await
+}
+
+/// Builds the world as [`generate`] does, and also gives each chunk to `store` as soon as it
+/// is finished, with its index in [`World::chunks`], on the core that finished it: to write
+/// the world while it is built (ADR 0040).
+pub async fn generate_storing<M: ElevationModel>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+    store: &(dyn Fn(usize, &TerrainChunk) + Sync),
+) -> World {
+    let chunks = Mutex::new(Vec::new());
+    let mut world = generate_into(route, model, map, progress, &|index, chunk| {
+        store(index, &chunk);
+        let mut chunks = chunks.lock().unwrap_or_else(PoisonError::into_inner);
         if chunks.len() <= index {
             chunks.resize_with(index + 1, || None);
         }
@@ -355,21 +371,26 @@ pub async fn generate<M: ElevationModel>(
     })
     .await;
     // `generate_into` finishes every chunk once.
-    world.chunks = chunks.into_iter().flatten().collect();
+    world.chunks = chunks
+        .into_inner()
+        .unwrap_or_else(PoisonError::into_inner)
+        .into_iter()
+        .flatten()
+        .collect();
     world
 }
 
 /// Builds the world as [`generate`] does, but gives each chunk to `sink` as soon as it is
 /// finished, with its index in [`World::chunks`], instead of keeping it: only the chunks
 /// around those being built are held (ADR 0040). Chunks are finished in no set order, each
-/// once. The world returned has every part but its chunks.
+/// once, several at a time on all cores. The world returned has every part but its chunks.
 #[allow(clippy::too_many_lines)] // the preparation, then one pass over the chunks
 pub async fn generate_into<M: ElevationModel>(
     route: &Route,
     model: &mut M,
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
-    sink: &mut (dyn FnMut(usize, TerrainChunk) + Send),
+    sink: &(dyn Fn(usize, TerrainChunk) + Sync),
 ) -> World {
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
@@ -451,10 +472,10 @@ pub async fn generate_into<M: ElevationModel>(
     // Along the route, so neighbours are built close together and few wait for theirs.
     let mut order: Vec<((i32, i32), usize)> = reached.into_iter().collect();
     order.sort_by_key(|&(cell, reach)| (reach, cell));
-    let (mut chunks, mut trees) = (0, 0);
-    let mut counted = |index, chunk: TerrainChunk| {
-        chunks += 1;
-        trees += chunk.trees.len();
+    let (chunks, trees) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let counted = |index, chunk: TerrainChunk| {
+        chunks.fetch_add(1, Ordering::Relaxed);
+        trees.fetch_add(chunk.trees.len(), Ordering::Relaxed);
         sink(index, chunk);
     };
 
@@ -480,7 +501,7 @@ pub async fn generate_into<M: ElevationModel>(
         }
         built += batch.len();
         progress(built, total);
-        stages.finish(threads, &mut counted);
+        stages.finish(threads, &counted);
         stages.build_bridges(&pieces, &below);
         stages.drop_unneeded();
     }
@@ -503,6 +524,7 @@ pub async fn generate_into<M: ElevationModel>(
             "terrain data missing in places; terrain follows the road there"
         );
     }
+    let (chunks, trees) = (chunks.into_inner(), trees.into_inner());
     info!(chunks, trees, "world generated");
     world
 }

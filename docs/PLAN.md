@@ -969,6 +969,9 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
     - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
       those around the ones being built held; the world unchanged
     - [ ] every world built into a store in the cache, packed into the kept world by raw copy
+      - [x] worlds to keep: each chunk written as finished, copied into the kept world as it
+        is; Wada 20 MB per km, packed in 2 s, the world unchanged
+      - [ ] every world, once the core reads chunks from the store
     - [ ] the core reads chunks from the store while riding
     - [ ] Godot frees far chunks
     - [ ] generated ahead of the rider (#237)

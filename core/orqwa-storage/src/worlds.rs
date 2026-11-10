@@ -6,6 +6,10 @@
 //! ```text
 //! worlds/<fingerprint>.world   one zip per course: `whole`, the parts built whole, and
 //!                              `chunks/<n>` for each chunk, deflated
+//! worlds/<fingerprint>.<write>.building/chunks/<n>
+//!                              a world being built (ADR 0040): each chunk once finished, as a
+//!                              zip of its one entry `chunks/<n>`, copied into the `.world` as
+//!                              it is once the world is complete
 //! ```
 //!
 //! A course's world is found by the [fingerprint](crate::course::fingerprint) of what it is
@@ -18,7 +22,7 @@ use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use orqwa_world::{TerrainChunk, World, stored};
@@ -28,11 +32,13 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 /// The directory of kept worlds, in the cache directory.
 pub const DIR: &str = "worlds";
 const EXTENSION: &str = "world";
+const BUILDING: &str = "building";
 const WHOLE: &str = "whole";
 const CHUNKS: &str = "chunks/";
 /// The quickest deflate: a third of the size, at a fraction of the time the next levels take.
 const LEVEL: i64 = 1;
-/// A half-written world older than this was left by a write that never finished.
+/// A half-written world, or a world being built that has not grown for this long, was left by
+/// a write or a build that never finished.
 const ABANDONED: Duration = Duration::from_secs(600);
 /// Numbers the writes, so two of the same world at once do not write into one file.
 static WRITES: AtomicU64 = AtomicU64::new(0);
@@ -148,16 +154,27 @@ impl KeptWorlds {
     /// On I/O errors.
     pub fn write(&self, fingerprint: &str, world: &World, generator: u32) -> io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
-        let path = self.file(fingerprint);
-        let write = WRITES.fetch_add(1, Ordering::Relaxed);
-        let partial =
-            path.with_extension(format!("{EXTENSION}.{}-{write}.part", std::process::id()));
-        let written =
-            write_to(&partial, world, generator).and_then(|()| std::fs::rename(&partial, &path));
-        if written.is_err() {
-            let _ = std::fs::remove_file(&partial);
-        }
-        written
+        written_whole(&self.file(fingerprint), |partial| {
+            write_to(partial, world, generator)
+        })
+    }
+
+    /// A store to build the world of the course with `fingerprint` into, chunk by chunk, and
+    /// to [keep](Building::keep) it from once complete (ADR 0040). Each build has its own, so
+    /// one stopped never deletes another's chunks.
+    ///
+    /// # Errors
+    /// On I/O errors.
+    pub fn building(&self, fingerprint: &str) -> io::Result<Building> {
+        let dir = self
+            .root
+            .join(format!("{fingerprint}.{}.{BUILDING}", write_name()));
+        std::fs::create_dir_all(dir.join(CHUNKS))?;
+        Ok(Building {
+            dir,
+            world: self.file(fingerprint),
+            failed: AtomicBool::new(false),
+        })
     }
 
     /// Drops the kept world of the course with `fingerprint`, if there is one.
@@ -183,12 +200,16 @@ impl KeptWorlds {
                 .is_some_and(|fingerprint| {
                     fingerprints.contains(fingerprint) && self.generator(fingerprint).is_some()
                 });
-            // A world being written is left to its writer, unless that was long ago.
-            let writing = path.extension().is_some_and(|e| e == "part")
-                && entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED));
+            // A world being written or built is left to its writer, unless that stopped long
+            // ago: a build's chunks go into its `chunks` directory, which changes with each.
+            let writing = path
+                .extension()
+                .is_some_and(|e| e == "part" || e == BUILDING)
+                && [path.clone(), path.join(CHUNKS)].iter().any(|path| {
+                    std::fs::metadata(path)
+                        .and_then(|m| m.modified())
+                        .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED))
+                });
             if !live && !writing {
                 remove(&path)?;
             }
@@ -222,13 +243,135 @@ impl KeptWorlds {
     }
 }
 
+/// A world being built into the cache, chunk by chunk, so that its chunks need not all be held
+/// (ADR 0040). A chunk file in it is whole, also after a build was stopped: each is written
+/// aside and renamed. The store is deleted when dropped, also once kept.
+#[derive(Debug)]
+pub struct Building {
+    dir: PathBuf,
+    /// The kept world it becomes.
+    world: PathBuf,
+    /// Whether a chunk could not be written, so the store cannot become the world.
+    failed: AtomicBool,
+}
+
+impl Building {
+    /// Writes chunk `index` of the world, deflated as a kept world's chunks are. Chunks may be
+    /// written in any order, from several threads at once.
+    ///
+    /// # Errors
+    /// On I/O errors; the store then cannot be [kept](Building::keep).
+    pub fn write(&self, index: usize, chunk: &TerrainChunk) -> io::Result<()> {
+        let path = self.chunk(index);
+        let partial = path.with_extension("part");
+        let written = write_entry(&partial, &format!("{CHUNKS}{index}"), |out| {
+            stored::write_chunk(chunk, out)
+        })
+        .and_then(|()| std::fs::rename(&partial, &path));
+        if written.is_err() {
+            self.failed.store(true, Ordering::Relaxed);
+            let _ = std::fs::remove_file(&partial);
+        }
+        written
+    }
+
+    /// Reads chunk `index` back.
+    ///
+    /// # Errors
+    /// On I/O errors, if the chunk was not written, and if its file is damaged.
+    pub fn read(&self, index: usize) -> io::Result<TerrainChunk> {
+        let mut zip = ZipArchive::new(BufReader::new(File::open(self.chunk(index))?))?;
+        stored::read_chunk(&mut BufReader::new(zip.by_index(0)?))
+    }
+
+    /// Whether no chunk failed to be written so far.
+    #[must_use]
+    pub fn whole(&self) -> bool {
+        !self.failed.load(Ordering::Relaxed)
+    }
+
+    /// Keeps the world built, in place of one kept before: `world`'s parts built whole, by the
+    /// [generator](orqwa_world::GENERATOR) of version `generator`, and the first `chunks`
+    /// chunks written here. The chunks are copied as they are, in index order, neither inflated
+    /// nor deflated again. The file appears whole or not at all.
+    ///
+    /// # Errors
+    /// On I/O errors, and if a chunk is missing or failed to be written.
+    pub fn keep(self, world: &World, generator: u32, chunks: usize) -> io::Result<()> {
+        if !self.whole() {
+            return Err(io::Error::other("a chunk of the world was not written"));
+        }
+        written_whole(&self.world, |partial| {
+            let mut zip = ZipWriter::new(BufWriter::new(File::create(partial)?));
+            zip.start_file(WHOLE, options())?;
+            let mut out = BufWriter::new(&mut zip);
+            stored::write_whole(world, generator, &mut out)?;
+            out.flush()?;
+            drop(out);
+            for index in 0..chunks {
+                let mut chunk = ZipArchive::new(BufReader::new(File::open(self.chunk(index))?))?;
+                zip.raw_copy_file(chunk.by_index_raw(0)?)?;
+            }
+            finish(zip)
+        })
+    }
+
+    fn chunk(&self, index: usize) -> PathBuf {
+        self.dir.join(CHUNKS).join(index.to_string())
+    }
+}
+
+impl Drop for Building {
+    fn drop(&mut self) {
+        let _ = remove(&self.dir);
+    }
+}
+
+/// A name no other write of this ORQWA, or of another running, uses.
+fn write_name() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        WRITES.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// Makes the file at `path` with `write`, which writes it to the path it is given, so that it
+/// appears whole or not at all.
+fn written_whole(path: &Path, write: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<()> {
+    let partial = path.with_extension(format!("{EXTENSION}.{}.part", write_name()));
+    let written = write(&partial).and_then(|()| std::fs::rename(&partial, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    written
+}
+
+fn options() -> SimpleFileOptions {
+    SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .compression_level(Some(LEVEL))
+}
+
+/// Writes a zip at `path` of one entry, `name`, which `write` writes.
+fn write_entry(
+    path: &Path,
+    name: &str,
+    write: impl FnOnce(&mut BufWriter<&mut ZipWriter<BufWriter<File>>>) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut zip = ZipWriter::new(BufWriter::new(File::create(path)?));
+    zip.start_file(name, options())?;
+    let mut out = BufWriter::new(&mut zip);
+    write(&mut out)?;
+    out.flush()?;
+    drop(out);
+    finish(zip)
+}
+
 fn write_to(path: &Path, world: &World, generator: u32) -> io::Result<()> {
     let mut zip = ZipWriter::new(BufWriter::new(File::create(path)?));
-    let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(LEVEL));
     let mut entry = |name: String, write: &dyn Fn(&mut dyn Write) -> io::Result<()>| {
-        zip.start_file(name, options)?;
+        zip.start_file(name, options())?;
         let mut out = BufWriter::new(&mut zip);
         write(&mut out)?;
         out.flush()
@@ -241,6 +384,11 @@ fn write_to(path: &Path, world: &World, generator: u32) -> io::Result<()> {
             stored::write_chunk(chunk, &mut out)
         })?;
     }
+    finish(zip)
+}
+
+/// Finishes `zip` and brings its file to the disk.
+fn finish(zip: ZipWriter<BufWriter<File>>) -> io::Result<()> {
     let mut file = zip
         .finish()?
         .into_inner()
@@ -363,6 +511,99 @@ mod tests {
         std::fs::remove_dir_all(cache).unwrap();
     }
 
+    /// The entries of `dir`, by name.
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = read_dir(dir)
+            .unwrap()
+            .iter()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_world_built_into_a_store_is_kept_as_one_written_whole() {
+        let cache = temp_dir("store");
+        let kept = KeptWorlds::new(&cache);
+        let built = world(40);
+        let store = kept.building("f").unwrap();
+        // Chunks are finished in no set order, several at once (ADR 0040).
+        std::thread::scope(|scope| {
+            for half in [0, 1] {
+                let (store, built) = (&store, &built);
+                scope.spawn(move || {
+                    for index in (0..40).rev().filter(|i| i % 2 == half) {
+                        store.write(index, &built.chunks[index]).unwrap();
+                    }
+                });
+            }
+        });
+        assert!(store.whole());
+        assert_eq!(store.read(7).unwrap(), built.chunks[7], "readable at once");
+        assert!(!kept.has("f"), "kept only once complete");
+        let whole_parts = World {
+            chunks: Vec::new(),
+            ..built.clone()
+        };
+        store.keep(&whole_parts, 3, 40).unwrap();
+        assert_eq!(kept.read("f").unwrap(), Some((built.clone(), 3)));
+        assert_eq!(kept.generator("f"), Some(3));
+        assert_eq!(names(&kept.root), ["f.world"], "the store is gone");
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_store_missing_a_chunk_keeps_nothing_and_leaves_nothing() {
+        let cache = temp_dir("store-missing");
+        let kept = KeptWorlds::new(&cache);
+        kept.write("f", &world(1), 1).unwrap();
+        let before = std::fs::read(kept.file("f")).unwrap();
+        let built = world(3);
+        let store = kept.building("f").unwrap();
+        for index in [0, 2] {
+            store.write(index, &built.chunks[index]).unwrap();
+        }
+        assert!(store.keep(&World::default(), 2, 3).is_err());
+        assert_eq!(
+            std::fs::read(kept.file("f")).unwrap(),
+            before,
+            "the world kept before stays"
+        );
+        assert_eq!(names(&kept.root), ["f.world"]);
+
+        // A store a chunk could not be written into is never kept.
+        let store = kept.building("f").unwrap();
+        std::fs::remove_dir_all(&store.dir).unwrap();
+        assert!(store.write(0, &built.chunks[0]).is_err());
+        assert!(!store.whole());
+        std::fs::create_dir_all(store.dir.join(CHUNKS)).unwrap();
+        store.write(0, &built.chunks[0]).unwrap();
+        assert!(store.keep(&World::default(), 2, 1).is_err());
+        assert_eq!(std::fs::read(kept.file("f")).unwrap(), before);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_store_dropped_before_its_world_is_complete_leaves_nothing() {
+        let cache = temp_dir("store-dropped");
+        let kept = KeptWorlds::new(&cache);
+        let built = world(2);
+        // Two builds of one world at once, e.g. one stopped while the next began.
+        let (first, second) = (kept.building("f").unwrap(), kept.building("f").unwrap());
+        first.write(0, &built.chunks[0]).unwrap();
+        second.write(0, &built.chunks[0]).unwrap();
+        drop(first);
+        assert_eq!(
+            second.read(0).unwrap(),
+            built.chunks[0],
+            "each build has its own"
+        );
+        drop(second);
+        assert_eq!(names(&kept.root), Vec::<String>::new());
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
     #[test]
     fn only_the_worlds_of_courses_still_there_are_kept() {
         let cache = temp_dir("sweep");
@@ -372,6 +613,9 @@ mod tests {
         }
         let writing = kept.file("f4").with_extension("world.part");
         std::fs::write(&writing, b"half").unwrap();
+        // A world being built, of a course that is not yet or no longer in the library.
+        let building = kept.building("f6").unwrap();
+        building.write(0, &world(1).chunks[0]).unwrap();
         // One this ORQWA cannot read, e.g. of another format: it would only be built again.
         std::fs::write(kept.file("f5"), b"unreadable").unwrap();
 
@@ -382,6 +626,8 @@ mod tests {
         assert!(!kept.has("f2"));
         assert!(!kept.has("f5"), "the unreadable one is gone");
         assert!(writing.exists(), "a world being written stays");
+        assert!(building.read(0).is_ok(), "a world being built stays");
+        drop(building);
 
         kept.clear().unwrap();
         assert!(!kept.has("f1"));

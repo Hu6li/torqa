@@ -11,6 +11,10 @@
 //! the peak is then the building's alone. Both ways print a `chunk checksum` from each chunk's
 //! hash, which a streamed build and a whole one share. Streamed, the world's first two reports
 //! (0 chunks) come before and after the whole-route preparation.
+//!
+//! With `--stream --store`, each chunk is also written to a world store as the app writes one
+//! it keeps (ADR 0040), in a temporary directory, which is then packed into a kept world: the
+//! store's size and how long packing takes are printed.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -23,7 +27,7 @@ use orqwa_world::{MeshData, TerrainChunk, World};
 fn main() {
     let course = std::env::args()
         .nth(1)
-        .expect("usage: world_memory <course.oqc | route.gpx> [cache] [--stream]");
+        .expect("usage: world_memory <course.oqc | route.gpx> [cache] [--stream [--store]]");
     let dir = std::env::temp_dir().join(format!("orqwa-world-memory-{}", std::process::id()));
     // A GPX route's map and terrain are downloaded once into this cache when it is given.
     let cache: std::path::PathBuf = std::env::args()
@@ -37,7 +41,11 @@ fn main() {
             gpx,
             "--stream builds a GPX route: give the course's route.gpx"
         );
-        stream(course.as_ref(), &cache);
+        let store = std::env::args()
+            .any(|arg| arg == "--store")
+            .then(|| orqwa_storage::worlds::KeptWorlds::new(&dir));
+        stream(course.as_ref(), &cache, store.as_ref());
+        let _ = std::fs::remove_dir_all(dir);
         return;
     }
     let mut app = App::new(dir.join("data"), cache).expect("app");
@@ -72,8 +80,12 @@ fn main() {
 }
 
 /// Builds the world of the GPX route at `path` offline from `cache`, keeping only each chunk's
-/// hash.
-fn stream(path: &std::path::Path, cache: &std::path::Path) {
+/// hash, and writing it into a store of `kept`'s if given.
+fn stream(
+    path: &std::path::Path,
+    cache: &std::path::Path,
+    kept: Option<&orqwa_storage::worlds::KeptWorlds>,
+) {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let began = Instant::now();
     let used = orqwa_domain::files::UsedFiles::default();
@@ -92,14 +104,19 @@ fn stream(path: &std::path::Path, cache: &std::path::Path) {
     let mut terrain =
         orqwa_terrain::Terrain::new(orqwa_terrain::TileSource::defaults(), cache.join("terrain"))
             .offline();
-    let mut hashes = Vec::new();
+    let store = kept.map(|kept| kept.building("course").expect("store"));
+    let hashes = std::sync::Mutex::new(Vec::new());
     let world = runtime.block_on(orqwa_world::generate_into(
         &imported.route,
         &mut terrain,
         &imported.map,
         // Chunks are built in batches, a few dozen per report.
         &mut |done, total| println!("World {done}/{total}: {}", memory()),
-        &mut |index, chunk| {
+        &|index, chunk| {
+            if let Some(store) = &store {
+                store.write(index, &chunk).expect("chunk stored");
+            }
+            let mut hashes = hashes.lock().expect("hashes");
             if hashes.len() <= index {
                 hashes.resize(index + 1, None);
             }
@@ -112,10 +129,24 @@ fn stream(path: &std::path::Path, cache: &std::path::Path) {
         memory()
     );
     let hashes: Vec<u64> = hashes
+        .into_inner()
+        .expect("hashes")
         .into_iter()
         .map(|hash| hash.expect("every chunk"))
         .collect();
     println!("chunk checksum {:016x}", chunk_checksum(&hashes, &world));
+    if let (Some(kept), Some(store)) = (kept, store) {
+        let packing = Instant::now();
+        store
+            .keep(&world, orqwa_world::GENERATOR, hashes.len())
+            .expect("kept");
+        println!(
+            "kept {:.0} MB ({:.1} MB per km) in {:.1} s",
+            kept.size() as f64 / 1e6,
+            kept.size() as f64 / 1e3 / imported.route.length().0,
+            packing.elapsed().as_secs_f64()
+        );
+    }
 }
 
 /// Runs the app until `done`, printing memory at every tenth of each loading step.

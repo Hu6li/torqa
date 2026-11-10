@@ -177,8 +177,9 @@ impl<'a> Stages<'a> {
     }
 
     /// Finishes every chunk whose neighbours are built, and gives them to `sink` with their
-    /// indices. Chunks go on all `threads`.
-    pub(crate) fn finish(&mut self, threads: usize, sink: &mut dyn FnMut(usize, TerrainChunk)) {
+    /// indices. Chunks go on all `threads`, and to `sink` from them, so that it can store them
+    /// on all cores too.
+    pub(crate) fn finish(&mut self, threads: usize, sink: &(dyn Fn(usize, TerrainChunk) + Sync)) {
         let ready: Vec<usize> = self
             .waiting
             .keys()
@@ -190,17 +191,16 @@ impl<'a> Stages<'a> {
             .map(|i| (*i, Mutex::new(self.waiting.remove(i))))
             .collect();
         let this = &*self;
-        let done = in_parallel(&jobs, threads, |(index, waiting)| {
+        in_parallel(&jobs, threads, |(index, waiting)| {
             let waiting = waiting
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take()
                 .expect("a chunk is finished once");
-            this.finish_one(*index, waiting)
+            sink(*index, this.finish_one(*index, waiting));
         });
-        for (index, chunk) in ready.into_iter().zip(done) {
+        for index in ready {
             self.finished[index] = true;
-            sink(index, chunk);
         }
     }
 
@@ -351,7 +351,7 @@ mod tests {
         let road = Pavement::default();
         let mut stages = Stages::new(cells.clone(), &road, &[]);
         let mut built = HashSet::new();
-        let mut finished = vec![0; cells.len()];
+        let finished = Mutex::new(vec![0; cells.len()]);
         let mut held = 0;
         for batch in cells.chunks(8) {
             for &cell in batch {
@@ -362,19 +362,20 @@ mod tests {
                 );
                 built.insert(cell);
             }
-            stages.finish(2, &mut |index, chunk| {
+            stages.finish(2, &|index, chunk| {
                 let (cx, cn) = cells[index];
                 assert_eq!(chunk.center, centre((cx, cn)));
                 let around = (cx - 1..=cx + 1).flat_map(|x| (cn - 1..=cn + 1).map(move |n| (x, n)));
                 for neighbour in around.filter(|cell| cells.contains(cell)) {
                     assert!(built.contains(&neighbour), "{neighbour:?} not built yet");
                 }
-                finished[index] += 1;
+                finished.lock().unwrap()[index] += 1;
             });
             held = held.max(stages.built.len());
             stages.drop_unneeded();
         }
         assert!(stages.done(), "nothing is left held");
+        let finished = finished.into_inner().unwrap();
         assert!(finished.iter().all(|&n| n == 1), "each chunk finished once");
         held
     }
@@ -418,7 +419,7 @@ mod tests {
                     ([Vec::new(), Vec::new()], 0),
                 );
             }
-            stages.finish(2, &mut |_, _| {});
+            stages.finish(2, &|_, _| {});
             let bridge_built = stages.structures[0].is_some();
             stages.build_bridges(&pieces, &below);
             stages.drop_unneeded();

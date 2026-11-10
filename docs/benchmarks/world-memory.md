@@ -232,6 +232,29 @@ GPX routes streamed).
 
 Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
 
+## Built into a store
+
+2026-11-10, container, `world_memory <route.gpx> <cache> --stream --store`. A world to keep is
+written to the cache while it is built (ADR 0040): each chunk once finished, deflated at
+level 1 on the core that finished it, then copied into the kept world as it is.
+
+| Wada, container | Streamed | Streamed into a store |
+|---|---:|---:|
+| Peak (resident) | 1.42–1.47 GB | 1.45–1.47 GB |
+| Generating | 131–187 s | 154–161 s |
+| Store, and so the kept world | – | 1,149 MB, 20.1 MB per km |
+| Packing it into the kept world | – | 2.0–2.4 s |
+
+Two runs each, alternating, on a busy host: the times spread more than the store costs. The
+peak is the same, as each chunk is written and let go on the core that finished it. Wada's
+store is 20 MB per kilometre, twice ADR 0025's Swiss courses and within ADR 0040's estimate
+(10 to 25). Packing copies the chunks without inflating them; writing the world whole took
+the app seconds of deflating on one core after the ride began. The checksums are those of
+the runs above, for the three fixtures and Wada.
+
+For now only worlds the rider keeps are built into a store: until the core reads chunks from
+it while riding, writing the others would only cost flash.
+
 ## Still to do
 
 Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,

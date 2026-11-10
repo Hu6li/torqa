@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use orqwa_storage::computer;
 use orqwa_storage::course;
-use orqwa_storage::worlds::KeptWorlds;
-use orqwa_world::{GENERATOR, World};
+use orqwa_storage::worlds::{Building, KeptWorlds};
+use orqwa_world::{GENERATOR, TerrainChunk, World};
 use tracing::{info, warn};
 
 use crate::failure::{Failure, Kind};
@@ -31,10 +31,30 @@ pub struct KeptWorld {
 pub(crate) enum Found {
     /// Its world, kept, and the version of the generator that built it.
     World(Box<World>, u32),
-    /// None to ride: one built is kept under this fingerprint.
-    Missing(String),
+    /// None to ride: one built is kept like this.
+    Missing(ToKeep),
     /// Nothing that can be told: the course file cannot be read.
     Unknown,
+}
+
+/// How a world being built is kept once complete.
+#[derive(Debug)]
+pub(crate) struct ToKeep {
+    fingerprint: String,
+    /// Where its chunks are written as they are finished, unless that cannot be made.
+    store: Option<Building>,
+}
+
+impl ToKeep {
+    /// Writes chunk `index` of the world being built into its store. Once one cannot be
+    /// written, the world is kept by writing it whole instead.
+    pub(crate) fn store(&self, index: usize, chunk: &TerrainChunk) {
+        if let Some(store) = self.store.as_ref().filter(|store| store.whole())
+            && let Err(error) = store.write(index, chunk)
+        {
+            warn!(%error, "cannot store the world being built; keeping it once built instead");
+        }
+    }
 }
 
 /// Where kept worlds are: the cache, the setting to check once one is written (it may have
@@ -64,40 +84,61 @@ impl Keeper {
                 );
                 Found::World(Box::new(world), generator)
             }
-            Ok(None) => Found::Missing(fingerprint),
+            Ok(None) => Found::Missing(self.to_keep(fingerprint)),
             Err(error) => {
                 warn!(%error, "the kept world cannot be read; building it again");
-                Found::Missing(fingerprint)
+                Found::Missing(self.to_keep(fingerprint))
             }
         }
     }
 
+    /// How the world of the course with `fingerprint` is kept once built: from the store it
+    /// is built into (ADR 0040).
+    fn to_keep(&self, fingerprint: String) -> ToKeep {
+        let store = self
+            .kept
+            .building(&fingerprint)
+            .inspect_err(|error| {
+                warn!(%error, "cannot store the world being built; keeping it once built instead");
+            })
+            .ok();
+        ToKeep { fingerprint, store }
+    }
+
     /// Keeps `world`, built by the generator of version `generator`, as that of the course at
-    /// `course`, found by `fingerprint` (that of a world just built) or else by the file, and
-    /// drops the worlds no course of the library has any more. Blocks for seconds: the world is
-    /// deflated.
-    pub(crate) fn keep(
-        &self,
-        course: &Path,
-        world: &World,
-        generator: u32,
-        fingerprint: Option<String>,
-    ) {
-        let fingerprint = match fingerprint {
-            Some(fingerprint) => fingerprint,
-            None => match course::fingerprint(course) {
-                // Turned on again while it is still kept: writing it again only costs time.
-                Ok(fingerprint) if self.kept.generator(&fingerprint) == Some(generator) => {
-                    return self.tidy();
+    /// `course`, and drops the worlds no course of the library has any more. Blocks for
+    /// seconds: the world is deflated.
+    pub(crate) fn keep(&self, course: &Path, world: &World, generator: u32) {
+        match course::fingerprint(course) {
+            // Turned on again while it is still kept: writing it again only costs time.
+            Ok(fingerprint) if self.kept.generator(&fingerprint) == Some(generator) => {}
+            Ok(fingerprint) => {
+                if let Err(error) = self.kept.write(&fingerprint, world, generator) {
+                    warn!(%error, "cannot keep the course's world");
                 }
-                Ok(fingerprint) => fingerprint,
-                Err(error) => {
-                    warn!(%error, course = %course.display(), "cannot keep the course's world");
-                    return;
-                }
-            },
+            }
+            Err(error) => {
+                warn!(%error, course = %course.display(), "cannot keep the course's world");
+            }
+        }
+        self.tidy();
+    }
+
+    /// Keeps `world`, just built by the generator of version `generator` as `to_keep` says,
+    /// and drops the worlds no course of the library has any more. Its chunks are copied from
+    /// its store as they are; without one, the world is deflated, which takes seconds.
+    pub(crate) fn keep_built(&self, to_keep: ToKeep, world: &World, generator: u32) {
+        let ToKeep { fingerprint, store } = to_keep;
+        let stored = store.map(|store| store.keep(world, generator, world.chunks.len()));
+        let kept = match stored {
+            Some(Ok(())) => Ok(()),
+            Some(Err(error)) => {
+                warn!(%error, "cannot keep the world from its store; writing it whole");
+                self.kept.write(&fingerprint, world, generator)
+            }
+            None => self.kept.write(&fingerprint, world, generator),
         };
-        if let Err(error) = self.kept.write(&fingerprint, world, generator) {
+        if let Err(error) = kept {
             warn!(%error, "cannot keep the course's world");
         }
         self.tidy();
@@ -146,7 +187,7 @@ impl App {
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))?;
         match (on, &self.world, &self.course) {
             (true, Some(world), Some(course)) => {
-                self.keep_world(course.clone(), Arc::clone(world), None);
+                self.keep_world(course.clone(), Arc::clone(world));
             }
             _ => self.tidy_kept_worlds(),
         }
@@ -248,16 +289,25 @@ impl App {
     }
 
     /// Keeps the loaded `world` as that of the library course at `course`, in the background.
-    pub(crate) fn keep_world(
-        &self,
-        course: PathBuf,
-        world: Arc<World>,
-        fingerprint: Option<String>,
-    ) {
+    pub(crate) fn keep_world(&self, course: PathBuf, world: Arc<World>) {
         let keeper = self.keeper();
         let generator = self.world_generator;
         self.runtime
-            .spawn_blocking(move || keeper.keep(&course, &world, generator, fingerprint));
+            .spawn_blocking(move || keeper.keep(&course, &world, generator));
+    }
+
+    /// Keeps the `world` just built as `to_keep` says, in the background, unless keeping
+    /// worlds was turned off or the course deleted meanwhile; then drops its store.
+    pub(crate) fn keep_built_world(&self, to_keep: ToKeep, world: Arc<World>) {
+        if self.keeps_worlds() && self.course.is_some() {
+            let keeper = self.keeper();
+            let generator = self.world_generator;
+            self.runtime
+                .spawn_blocking(move || keeper.keep_built(to_keep, &world, generator));
+        } else {
+            // Deleting a store takes a while.
+            self.runtime.spawn_blocking(move || drop(to_keep));
+        }
     }
 }
 
@@ -541,6 +591,34 @@ mod tests {
             chunks > 1,
             "the world's chunks, not a placeholder: {built:?}"
         );
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_world_built_for_a_ride_is_kept_as_ridden_and_its_store_goes() {
+        let dir = temp_dir("kept-store");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_keeps_worlds(true).unwrap();
+        let course = prepare(&mut app, &dir);
+        let keeper = app.keeper();
+        let fingerprint = course::fingerprint(&course).unwrap();
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+        keeper.kept.remove(&fingerprint).unwrap();
+
+        // Built into a store while it is built (ADR 0040), and kept from it.
+        ride(&mut app, &course);
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+        let ridden = app.world().expect("a world").clone();
+        assert!(ridden.chunks.len() > 1);
+        assert_eq!(
+            keeper.kept.read(&fingerprint).unwrap(),
+            Some((ridden, GENERATOR))
+        );
+        let left: Vec<_> = std::fs::read_dir(dir.join("cache/worlds"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, [format!("{fingerprint}.world")], "nothing else stays");
         app.shutdown();
     }
 

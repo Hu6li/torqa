@@ -489,9 +489,9 @@ enum JobResult {
     // Loading results carry the load they belong to; those of an abandoned load are dropped.
     Route(u64, Result<Box<Imported>, Failure>),
     Video(u64, Result<Box<(Imported, video::VideoSource)>, Failure>),
-    /// A world, the version of the generator that built it, and the fingerprint to keep it
-    /// under once built for a library course (R101).
-    World(u64, Arc<World>, u32, Option<String>),
+    /// A world, the version of the generator that built it, and how to keep it once built
+    /// for a library course (R101).
+    World(u64, Arc<World>, u32, Option<kept::ToKeep>),
     Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, Failure>),
     /// The loaded route was saved as this course.
@@ -1625,7 +1625,7 @@ impl App {
             let saved = result.as_ref().ok().cloned();
             let _ = tx.send(JobResult::CourseSaved(result));
             if let (Some(course), Some((world, generator, keeper))) = (saved, keep) {
-                keeper.keep(&course, &world, generator, None);
+                keeper.keep(&course, &world, generator);
             }
         });
         Ok(())
@@ -2136,7 +2136,7 @@ impl App {
                 load,
                 last: None,
             };
-            let mut keep_as = None;
+            let mut to_keep = None;
             if let Some((course, keeper)) = kept {
                 reporter.report(LoadStage::KeptWorld, 0, 1);
                 let found = tokio::task::spawn_blocking(move || keeper.find(&course)).await;
@@ -2146,18 +2146,28 @@ impl App {
                         let _ = tx.send(JobResult::World(load, Arc::from(world), generator, None));
                         return;
                     }
-                    Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
+                    Ok(kept::Found::Missing(keep)) => to_keep = Some(keep),
                     Ok(kept::Found::Unknown) | Err(_) => {}
                 }
             }
-            let mut world =
-                orqwa_world::generate(&route, &mut detailed, &map, &mut |done, total| {
-                    reporter.report(LoadStage::World, done, total);
-                })
-                .await;
+            // A world to keep is written as it is built (ADR 0040); a build stopped deletes
+            // what it wrote.
+            let store = to_keep.as_ref();
+            let mut world = orqwa_world::generate_storing(
+                &route,
+                &mut detailed,
+                &map,
+                &mut |done, total| reporter.report(LoadStage::World, done, total),
+                &|index, chunk| {
+                    if let Some(store) = store {
+                        store.store(index, chunk);
+                    }
+                },
+            )
+            .await;
             world.horizon = orqwa_world::horizon(&route, &mut distant).await;
             let generator = orqwa_world::GENERATOR;
-            let _ = tx.send(JobResult::World(load, Arc::new(world), generator, keep_as));
+            let _ = tx.send(JobResult::World(load, Arc::new(world), generator, to_keep));
         });
     }
 
@@ -4083,16 +4093,14 @@ impl App {
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
-                JobResult::World(_, world, generator, keep_as) => {
+                JobResult::World(_, world, generator, to_keep) => {
                     events.push(AppEvent::WorldReady {
                         chunks: world.chunks.len(),
                         fallback_samples: world.fallback_samples,
                     });
                     self.world_generator = generator;
-                    if let (Some(fingerprint), Some(course)) = (keep_as, &self.course)
-                        && self.keeps_worlds()
-                    {
-                        self.keep_world(course.clone(), Arc::clone(&world), Some(fingerprint));
+                    if let Some(to_keep) = to_keep {
+                        self.keep_built_world(to_keep, Arc::clone(&world));
                     }
                     self.road_widths = orqwa_world::RoadWidths::new(&world.road);
                     self.world = Some(world);
