@@ -35,13 +35,23 @@ pub enum TerrainError {
     Cache(#[from] std::io::Error),
 }
 
+/// Bytes of decoded tiles kept in memory. A long route's corridor crosses hundreds of tiles,
+/// but its world is built along the route, so only those around the build front are in use;
+/// an evicted tile is read again from the disk cache, and decodes to the same heights.
+const TILE_BUDGET: usize = 64 << 20;
+
 /// Elevation lookup backed by downloaded, disk-cached tiles.
 pub struct Terrain {
     sources: Vec<TileSource>,
     cache_dir: PathBuf,
     client: reqwest::Client,
     online: bool,
-    tiles: HashMap<(usize, TileId), Arc<HeightTile>>,
+    /// Decoded tiles, each with when it was last used; the least recently used go first once
+    /// they hold more than `budget` bytes.
+    tiles: HashMap<(usize, TileId), (Arc<HeightTile>, u64)>,
+    held: usize,
+    budget: usize,
+    clock: u64,
     /// Tiles that could not be loaded; not retried, so a missing tile costs one attempt.
     unavailable: HashSet<(usize, TileId)>,
     used: UsedFiles,
@@ -69,6 +79,9 @@ impl Terrain {
             client,
             online: true,
             tiles: HashMap::new(),
+            held: 0,
+            budget: TILE_BUDGET,
+            clock: 0,
             unavailable: HashSet::new(),
             used: UsedFiles::default(),
         }
@@ -149,7 +162,9 @@ impl Terrain {
     }
 
     async fn tile(&mut self, source: usize, id: TileId) -> Result<Arc<HeightTile>, TerrainError> {
-        if let Some(tile) = self.tiles.get(&(source, id)) {
+        self.clock += 1;
+        if let Some((tile, used)) = self.tiles.get_mut(&(source, id)) {
+            *used = self.clock;
             return Ok(Arc::clone(tile));
         }
         if self.unavailable.contains(&(source, id)) {
@@ -192,8 +207,27 @@ impl Terrain {
 
         let tile = Arc::new(HeightTile::decode(&bytes, src.format).map_err(TerrainError::Decode)?);
         self.used.record(&path);
-        self.tiles.insert((source, id), Arc::clone(&tile));
+        self.keep((source, id), &tile);
         Ok(tile)
+    }
+
+    /// Keeps `tile`, first letting go of the least recently used ones it would not fit beside.
+    fn keep(&mut self, key: (usize, TileId), tile: &Arc<HeightTile>) {
+        while self.held + tile.bytes() > self.budget {
+            let Some(oldest) = self
+                .tiles
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(&key, _)| key)
+            else {
+                break;
+            };
+            if let Some((evicted, _)) = self.tiles.remove(&oldest) {
+                self.held -= evicted.bytes();
+            }
+        }
+        self.held += tile.bytes();
+        self.tiles.insert(key, (Arc::clone(tile), self.clock));
     }
 
     async fn download(&self, source: usize, id: TileId) -> Result<Vec<u8>, TerrainError> {
@@ -276,6 +310,50 @@ mod tests {
         let height = terrain.elevation(lat, lon).await.unwrap();
 
         assert!((height - 540.5).abs() < 0.01, "height {height}");
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    /// A long route crosses more tiles than fit in the budget; those let go of are read
+    /// again and give the same heights.
+    #[tokio::test]
+    async fn tiles_beyond_the_budget_are_let_go_and_read_again() {
+        let cache =
+            std::env::temp_dir().join(format!("orqwa-terrain-budget-{}", std::process::id()));
+        let source = TileSource::aws_terrain_tiles();
+        // Two places far apart, so each lookup needs its own tiles.
+        let places = [((46.95, 7.45), 540.5), ((46.0, 8.95), 271.25)];
+        for ((lat, lon), height) in places {
+            let (px, py) = tile::global_pixel(lat, lon, source.zoom, source.tile_size);
+            let (center, ..) = tile::locate_pixel(px, py, source.zoom, source.tile_size);
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let id = TileId {
+                        z: center.z,
+                        x: center.x.wrapping_add_signed(dx),
+                        y: center.y.wrapping_add_signed(dy),
+                    };
+                    cache_flat_png_tile(&cache, &source, id, height);
+                }
+            }
+        }
+        let one_tile = (source.tile_size * source.tile_size) as usize * 4;
+        let mut terrain = Terrain::new(vec![source], cache.clone()).offline();
+        terrain.budget = 2 * one_tile;
+
+        for _ in 0..2 {
+            for ((lat, lon), height) in places {
+                let found = terrain.elevation(lat, lon).await.unwrap();
+                assert!(
+                    (found - height).abs() < 0.01,
+                    "height {found}, not {height}"
+                );
+                assert!(
+                    terrain.held <= terrain.budget,
+                    "{} bytes held",
+                    terrain.held
+                );
+            }
+        }
         std::fs::remove_dir_all(cache).unwrap();
     }
 

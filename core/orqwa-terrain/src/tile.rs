@@ -80,6 +80,11 @@ impl HeightTile {
         })
     }
 
+    /// Memory its heights take.
+    pub(crate) fn bytes(&self) -> usize {
+        self.heights.len() * std::mem::size_of::<f32>()
+    }
+
     pub(crate) fn height(&self, x: u32, y: u32) -> f64 {
         f64::from(self.heights[(y * self.size + x) as usize])
     }
