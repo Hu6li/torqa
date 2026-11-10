@@ -24,11 +24,17 @@ how densely its corridor is mapped. The graphics preset makes no difference.
   uploaded, the core reads it again only for a season change. Every other reader of all the
   chunks needs much less: the winter ground mask needs only their bounds, and the render
   tools and the benchmark can read the chunks one by one.
-- **Neighbours only.** The passes after the chunk loop read only near neighbours. Protection
-  heights look up the ground of the 3×3 chunks around them. A barrier is checked only against
-  pavement in the 16 m cells it reaches. A structure's foundations read the ground under its
-  footprint. The ground mesh is final when its chunk is built, and later passes change only
-  streets, tracks, structures and props.
+- **Neighbours only, after #541.** On `main`, every barrier is checked against an `f64` copy
+  of every street and track triangle in the world. #541 builds structures before the pavement
+  is gathered, so every barrier is known first. `pavement::Asked` then collects the 16 m cells
+  their checks reach, `Pavement::near` keeps only those, and a `debug_assert` stops any check
+  outside them. With that, the passes after the chunk loop read only near neighbours:
+  - protection heights look up the ground of the 3×3 chunks around them;
+  - a barrier or fence is checked only against pavement in the cells it reaches;
+  - a structure's foundations read the ground under its footprint.
+
+  The ground mesh is final when its chunk is built. Later passes change only streets,
+  tracks, structures and props.
 - **Kept worlds** (ADR 0025) already store a zip of `whole` and `chunks/<n>`, with each chunk's
   centre as its first field. Riders who don't keep worlds have no store.
 
@@ -73,7 +79,9 @@ byte-identical, so neither `GENERATOR` nor `stored::FORMAT` is raised for this.
   *finished* once its 3×3 neighbours are built and the structures over it stand. It is then
   handed to a sink and dropped from memory.
   - Protection heights, barriers against pavement and fences against pavement each run on the
-    finished chunk's neighbourhood instead of on the whole world.
+    finished chunk's neighbourhood instead of on the whole world. Each chunk asks for its
+    pavement cells as #541's `pavement::Asked` does for the whole world, so the
+    `debug_assert` keeps catching a check that reaches beyond them.
   - `foundations::Ground` looks up chunks by cell instead of scanning them all.
   - Structures are built once the chunks under them are built. Ownership questions (earlier
     traversals, mapped decks, crossings) need only the road and the map, so they are settled
@@ -82,9 +90,13 @@ byte-identical, so neither `GENERATOR` nor `stored::FORMAT` is raised for this.
     it. Neighbours are then built close together, and few built chunks wait in memory for
     theirs. Cell order would hold a whole column of the corridor.
   - `generate()` stays as a sink that collects the full `World`, so the tests, the CLI and the
-    checksums keep working on whole worlds. The gate for 2a is the same checksums as `main` on
-    the `kirchenfeldbruecke`, `bielersee` and `oberalp` fixtures and on Wada. A split that would
-    change the output is its own `GENERATOR` change, in its own PR.
+    checksums keep working on whole worlds. The gate for 2a is the same `world_memory`
+    checksums as before the change, on the `kirchenfeldbruecke`, `bielersee` and `oberalp`
+    fixtures and on Wada, in a debug build too, so the assertions run. The checksums are
+    compared on one platform: the same code gives Wada `a6a04ff670d2c2de` on x86-64 and
+    `1af4d0bd8806698d` on the tablet, because the maths libraries round differently. Kept
+    worlds stay on the computer that built them, so that difference doesn't matter. A split
+    that would change the output is its own `GENERATOR` change, in its own PR.
 - **Core residency (2b).** While riding, the core holds the whole parts (road, structures,
   railways, horizon), the chunk index and a few recently read chunks. `world_chunk_for_season`
   inflates the chunk it is asked for from the store. `App::world()` no longer hands out all the
@@ -107,16 +119,27 @@ byte-identical, so neither `GENERATOR` nor `stored::FORMAT` is raised for this.
   - While the ride runs, background building uses at most half the cores (at least one), at
     low priority, so drawing keeps its frame time and a tablet stays cool. It still keeps ahead
     of the rider. The tablet built Wada at about 1.9 chunks a second on all cores, about 9 km
-    of route a minute, while a rider at 60 km/h covers 1 km a minute.
+    of route a minute, while a rider at 60 km/h covers 1 km a minute. That run was thrashing
+    zram swap the whole time, so the rate is a lower bound.
   - If the rider reaches chunks that aren't finished, the loading page is shown until they
     are, as when a ride starts.
   - A ride left before its world is complete deletes the building directory. The next ride
     builds the world again.
 
-The steps land as separate PRs off `main`, in this order, each with `world_memory` numbers from
-the container and, where it changes the device's picture, from the tablet. Compact vertices
-(with the first `FORMAT` change) and coarser far streets (a `GENERATOR` change, with renders)
-stay separate, as #542 lists.
+The steps land as separate PRs off `main`, in this order, after #541. Each comes with
+`world_memory` numbers from the container and, where it changes the device's picture, from
+the tablet. Compact vertices (with the first `FORMAT` change) and coarser far streets (a
+`GENERATOR` change, with renders) stay separate, as #542 lists. How each PR measures:
+
+- **Compare peaks** (`VmHWM`), not resident memory after the build. glibc keeps much of what
+  is freed, so resident memory falls less than what is given back. Freed chunks are reused for
+  the next ones, so the peak is still bounded.
+- **On Android, count swap as well:** `VmSwap`, or `dumpsys meminfo`. On the tablet, #541's
+  build peaked at 2.8 GB resident but 4.4 GB counting zram, and the low-memory killer judges
+  the whole.
+- **Guard the tablet run.** A process started from `adb shell` can't be ended by the
+  low-memory killer, and `main`'s build took the whole tablet down. The test stops the build
+  when available memory falls below a threshold, or runs it under a memory limit.
 
 ## Consequences
 
