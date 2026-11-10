@@ -99,7 +99,9 @@ the core reads chunks from the store, every world is.
   tells whether it is in use: its build holds a `lock` file in it locked as long as the
   store lives, which the operating system releases when the process ends. A tidy, also the
   one that turns keeping off, leaves a store whose lock another ORQWA running holds, and this
-  ORQWA's own stores, however old.
+  ORQWA's own stores, however old. On a filesystem without file locks (some network shares)
+  the store is still used, unlocked, with a warning in the log: another ORQWA then leaves it
+  only while it is young.
 - **Size.** A store is the world deflated: ADR 0025 measured 10 MB per kilometre on Swiss
   courses. A densely mapped course is about twice that: Wada's store is 1,149 MB, 20.1 MB per
   kilometre (measured in 2a), and packing it into the kept world takes about 2 s. So every
