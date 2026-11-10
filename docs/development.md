@@ -514,9 +514,9 @@ so turning back on a hairpin doesn't read them again; on the way back they are r
 the store (ADR 0040). The distance is measured from the rider, or from the free camera while it
 flies. After a jump in a simulated ride, or when the camera comes back to the rider from the
 free camera, the ride pauses until the rider's surroundings are uploaded. Full-resolution
-ground draws while optional ground LODs finish, so these do not delay the start. Benchmarks wait for their chunk
-and LODs through `uploads_complete`; capture tools wait through `chunks_uploaded`, for the
-chunks within reach of where the rider is now.
+ground draws while optional ground LODs finish, so these do not delay the start. Benchmarks
+wait for their chunk and LODs through `uploads_complete`; capture tools wait through
+`chunks_uploaded`, for the chunks within reach of where the rider is now.
 
 Season and graphics are applied before preparing the surroundings, so starting the ride does
 not restart terrain uploads. Kept worlds skip generation, but still need scene uploads.
