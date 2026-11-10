@@ -330,10 +330,11 @@ give their memory back.
 
 2026-11-10, same container. Paved roads more than 120 m from the ridden road keep their level
 shelf, but the ground under it is split into three pieces a side (5.3 m) rather than six
-(2.7 m), and the street is cut along those (ADR 0031, `GENERATOR` 41). Cells whose ground a
-way near the ride levels or banks keep six, as do those split for the ridden road, water or a
-chunk's edge; close and steep beds near the ride keep their finer pieces. Riders see no change near the road; far off, sidewalk paint and street verges
-follow the coarser triangles (review renders in `docs/images/far-streets/`).
+(2.7 m), and the street is cut along those (ADR 0031, `GENERATOR` 41). Cells whose ground a way near
+the ride levels or banks keep six, as do those split for the ridden road, water or a chunk's
+edge; close and steep beds near the ride keep their finer pieces. Riders see no change near the
+road; far off, sidewalk paint and street verges follow the coarser triangles (review renders in
+`docs/images/far-streets/`).
 
 | Wada | Before | After |
 |---|---:|---:|
