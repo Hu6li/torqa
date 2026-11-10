@@ -913,8 +913,7 @@ func _toggle_pause() -> void:
 		return
 	if _finished:
 		return
-	_jumps.cancel()
-	_show_paused(_orqwa.set_paused(not _orqwa.is_paused()))
+	_show_paused(true if _jumps.take_pause() else _orqwa.set_paused(not _orqwa.is_paused()))
 
 
 ## Paused, the ride settings open, to change what the pause was for (R98); the overlay has no

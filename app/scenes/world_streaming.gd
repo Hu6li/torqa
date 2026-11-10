@@ -1,8 +1,9 @@
 class_name WorldStreaming
 extends RefCounted
-## Upload the rider's visible surroundings first, then the rest within reach, and let go of the
-## chunks left far behind (R224, ADR 0040): the scene's memory follows the drawn distance, not
-## the course's length.
+## Upload the rider's visible surroundings, nearest first, and let go of the chunks left far
+## behind (R224, ADR 0040): the scene's memory follows the drawn distance, not the course's
+## length. Chunks are freed only well beyond where they are uploaded, so turning back on a
+## hairpin doesn't read them again.
 
 ## Covers visibility fading, camera offset and movement between priority updates.
 const LOOK_AHEAD: float = 1000.0
@@ -40,12 +41,13 @@ func prioritize(world: RideWorld, focus: Vector2) -> void:
 	var nearby: int = plan["nearby"]
 	var kept: int = plan["kept"]
 	_required = indices.slice(0, nearby)
-	var reach: Dictionary[int, bool] = {}
 	_order.clear()
-	for index: int in indices.slice(0, kept):
-		reach[index] = true
+	for index: int in _required:
 		if not _uploaded.has(index):
 			_order.append(index)
+	var reach: Dictionary[int, bool] = {}
+	for index: int in indices.slice(0, kept):
+		reach[index] = true
 	for index: int in _uploaded.keys():
 		if not reach.has(index):
 			_let_go(world, index)
@@ -82,7 +84,7 @@ func uploaded() -> int:
 	return _uploaded.size()
 
 
-## Everything within reach of the last plan is in the scene.
+## The surroundings of the last plan are all in the scene.
 func complete(world: RideWorld) -> bool:
 	if world._benchmark != null:
 		return not _uploaded.is_empty()

@@ -132,11 +132,13 @@ func _moving_priority() -> void:
 	)
 	await _wait_until(_world.chunks_uploaded, "the new surroundings are uploaded")
 	# Let go beyond the upload radius, the distance moved before the next plan and a chunk.
+	# 480 m is the core's CHUNK_SIZE. The ride goes on while uploading, so the focus may have moved.
 	var reach: float = _world._streaming._radius + _world._streaming._replan + 480.0
+	var focus: Vector2 = _world._streaming._focus
 	var within: bool = true
 	var behind: bool = false
 	for chunk: Node in terrain.get_children():
-		within = within and _centre(chunk).distance_to(far) <= reach
+		within = within and _centre(chunk).distance_to(focus) <= reach
 		behind = behind or _centre(chunk).distance_to(start) < 1000.0
 	_check(within, "no chunk beyond reach of the rider stays in the scene")
 	_check(not behind, "the start's chunks, 9 km behind, left the scene")
@@ -144,8 +146,20 @@ func _moving_priority() -> void:
 	var ride_screen: RideScreen = _main.get_node("RideScreen")
 	ride_screen._profile.jump_requested.emit(0.0)
 	_check(_orqwa.is_paused(), "a jump into an unloaded place pauses the ride")
+	# Pause pressed while waiting keeps the ride paused, as the rider's own pause.
+	ride_screen._toggle_pause()
+	_check(_orqwa.is_paused(), "pause during the wait keeps the ride paused")
+	await _wait_until(_world.surroundings_ready, "the start's surroundings come back")
+	await process_frame
+	_check(_orqwa.is_paused(), "the rider's own pause outlasts the wait")
+	ride_screen._toggle_pause()
+	_check(not _orqwa.is_paused(), "the rider resumes")
+	# Without the rider's pause, the ride goes on by itself once the scene is there.
+	ride_screen._profile.jump_requested.emit(9000.0)
+	_check(_orqwa.is_paused(), "a jump back to the far place waits again")
 	await _wait_until(func() -> bool: return not _orqwa.is_paused(), "the ride goes on by itself")
-	_check(_world._streaming.nearby_ready(), "the start's surroundings came back first")
+	_check(_world._streaming.nearby_ready(), "the far place's surroundings came first")
+	_check(_orqwa.jump_to_distance(0.0), "return to the starting area")
 
 
 func _rider() -> Vector2:

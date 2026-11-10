@@ -6,10 +6,10 @@ use orqwa_domain::units::Meters;
 
 use crate::CHUNK_SIZE;
 
-/// How far the rider (or the free camera) moves before the plan is made again. Chunks are let go
-/// only beyond this and one chunk more than the upload radius, so a chunk at the edge isn't
-/// dropped and uploaded again with every new plan, and none a plan needs is ever dropped before
-/// the next.
+/// How far the rider (or the free camera) moves before the plan is made again. Chunks are
+/// uploaded within the requested area ([`ChunkPlan::nearby`]) but let go only beyond this and one
+/// chunk more than the upload radius ([`ChunkPlan::kept`]): a rider turning back on a hairpin
+/// doesn't free chunks and read them again, and none the next plan needs is ever let go.
 pub const REPLAN_DISTANCE: Meters = Meters(240.0);
 
 /// Chunks nearest a rider first, with every chunk touching the requested area in the prefix.
@@ -19,8 +19,8 @@ pub struct ChunkPlan {
     pub indices: Vec<usize>,
     /// Number of leading indices needed to cover the requested area.
     pub nearby: usize,
-    /// Number of leading indices the scene keeps: the rest is dropped from it until the rider
-    /// comes back within reach.
+    /// Number of leading indices the scene keeps once uploaded: the rest is dropped from it until
+    /// the rider comes back within the requested area.
     pub kept: usize,
 }
 

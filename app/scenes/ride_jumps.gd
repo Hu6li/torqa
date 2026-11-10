@@ -1,13 +1,15 @@
 class_name RideJumps
 extends RefCounted
 ## Jumps along a simulated ride, from the minimap or the elevation profile. The scene keeps only
-## the rider's surroundings (ADR 0040): after a jump, the clock and the road wait for those of
-## the new place, as a pause does, and go on by themselves.
+## the surroundings of the rider, or of the free camera while it flies (ADR 0040): after a jump,
+## or when the camera comes back to the rider from afar, the clock and the road wait for the
+## rider's surroundings, as a pause does, and go on by themselves.
 
 var _orqwa: OrqwaApp
 var _world: RideWorld
 var _say: Callable
 var _waiting: bool = false
+var _was_free: bool = false
 
 
 ## `say` shows a message for a few seconds.
@@ -26,8 +28,12 @@ func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_world = world
 
 
-## Goes on once the new place's surroundings are uploaded; until then, says why it waits.
+## Goes on once the rider's surroundings are uploaded; until then, says why it waits.
 func update() -> void:
+	var free: bool = _world.is_free_camera()
+	if _was_free and not free:
+		_wait()
+	_was_free = free
 	if not _waiting:
 		return
 	if _world.surroundings_ready():
@@ -37,13 +43,26 @@ func update() -> void:
 		_say.call(tr("Preparing the 3D scene"))
 
 
-## The rider paused or resumed, or a new ride began: no longer waiting.
+## A new ride began: no longer waiting.
 func cancel() -> void:
 	_waiting = false
 
 
+## The rider pressed pause while the ride waited: true when the wait becomes the rider's own
+## pause, which stays on, rather than resuming into a place not yet loaded.
+func take_pause() -> bool:
+	var waited: bool = _waiting
+	_waiting = false
+	return waited
+
+
 func _jumped(jumped: bool) -> void:
-	if not jumped or _orqwa.is_paused() or _world.surroundings_ready():
+	if jumped:
+		_wait()
+
+
+func _wait() -> void:
+	if _orqwa.is_paused() or _world.surroundings_ready():
 		return
 	_orqwa.set_paused(true)
 	_waiting = true

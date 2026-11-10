@@ -301,16 +301,17 @@ with Godot's own counts at each place (ADR 0040, step 2c):
 
 | Wada at Low | 0 km | 20 km | 40 km | back at 0 |
 |---|---:|---:|---:|---:|
-| Chunks in the scene, before → after | 683 → 118 | 683 → 202 | 683 → 179 | 683 → 118 |
-| Godot's video memory, before → after | 2,361 → 1,129 MB | 2,361 → 509 MB | 2,361 → 659 MB | 2,361 → 1,131 MB |
-| Nodes, before → after | 20,702 → 9,575 | 20,702 → 7,958 | 20,702 → 8,657 | 20,702 → 9,575 |
+| Chunks in the scene, before → after | 683 → 108 | 683 → 180 | 683 → 162 | 683 → 108 |
+| Godot's video memory, before → after | 2,361 → 1,077 MB | 2,361 → 455 MB | 2,361 → 624 MB | 2,361 → 1,079 MB |
+| Nodes, before → after | 20,702 → 9,234 | 20,702 → 7,514 | 20,702 → 8,262 | 20,702 → 9,234 |
 
 Back where it started, the scene holds the same nodes and objects as before, with no orphans.
-Ridden seven times between 0 and 20 km, the process's resident memory stays at 4.14–4.19 GB
-after the first lap: freed chunks give their memory back.
+Ridden seven times between 0 and 20 km (while chunks were still uploaded up to where they are
+freed), the process's resident memory stays at 4.14–4.19 GB after the first lap: freed chunks
+give their memory back.
 
 - **The GPU's memory stays at its peak.** Lavapipe holds 1.33 GB from the start onwards,
-  also at 20 km where the scene needs 509 MB: the Vulkan allocator keeps blocks that freed
+  also at 20 km where the scene needs 455 MB: the Vulkan allocator keeps blocks that freed
   meshes left partly empty. So the scene's GPU memory follows the densest surroundings ridden
   so far, here Wada's start, no longer the whole course: 1.1–1.3 GB instead of 2.4 GB.
 - **Resident memory** peaks at 5.6 GB after against 7.9 GB before, with glibc's default

@@ -509,11 +509,12 @@ progress covers that area. Riding then starts while farther chunks upload in the
 For Continue ride, Rust supplies the validated saved position before the ride starts.
 The upload loop yields after its current chunk once it uses 4 ms while riding, and plans again
 whenever the rider moves 240 m (`orqwa_world::REPLAN_DISTANCE`). Only chunks within the upload
-radius plus that distance and one chunk are uploaded; those the rider leaves farther behind are
-freed and read again from the store on the way back (ADR 0040). The distance is measured from
-the rider, or from the free camera while it flies. After a jump in a simulated ride, the ride
-pauses until the new place's surroundings are uploaded. Full-resolution ground draws while
-optional ground LODs finish, so these do not delay the start. Benchmarks wait for their chunk
+radius are uploaded, but they are freed only beyond that radius plus that distance and one chunk,
+so turning back on a hairpin doesn't read them again; on the way back they are read again from
+the store (ADR 0040). The distance is measured from the rider, or from the free camera while it
+flies. After a jump in a simulated ride, or when the camera comes back to the rider from the
+free camera, the ride pauses until the rider's surroundings are uploaded. Full-resolution
+ground draws while optional ground LODs finish, so these do not delay the start. Benchmarks wait for their chunk
 and LODs through `uploads_complete`; capture tools wait through `chunks_uploaded`, for the
 chunks within reach of where the rider is now.
 
