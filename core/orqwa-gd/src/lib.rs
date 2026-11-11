@@ -4734,7 +4734,7 @@ fn map_color(feature: MapFeature, style: MapStyle) -> Color {
 /// max_heart_rate_bpm, units, language, avatar, drivetrain, chainring, cog, power_zones_pct,
 /// heart_rate_zones_pct, default_difficulty_pct, map_style, voice, gradient_colours,
 /// rides_per_week}` with `map_style` either `"coloured"` or `"dark"`, `voice` (R124) `"casual"`,
-/// `"plain"` or `"off"`, `gradient_colours` (R241) whether the elevation profile is coloured by
+/// `"plain"` or `"off"`, `gradient_colours` (R242) whether the elevation profile is coloured by
 /// gradient and `rides_per_week` 0 for none.
 /// `calorie_age` is an optional adult age (0 unset), `calorie_sex` is `female`, `male` or empty,
 /// and `calorie_effort` is `easy`, `moderate`, `hard` or empty (no assumed effort).

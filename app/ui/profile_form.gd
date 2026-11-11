@@ -31,7 +31,7 @@ var _units: OptionButton = OptionButton.new()
 var _language: OptionButton = OptionButton.new()
 var _avatar: OptionButton = OptionButton.new()
 var _map_style: OptionButton = OptionButton.new()
-## Elevation profile coloured by gradient (R241), off unless chosen.
+## Elevation profile coloured by gradient (R242), off unless chosen.
 var _gradient_colours: CheckBox = CheckBox.new()
 var _voice: OptionButton = OptionButton.new()
 ## A cassette, or a single cog with virtual gears (R9): its chainring and cog then.

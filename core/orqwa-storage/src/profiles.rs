@@ -1523,7 +1523,7 @@ mod tests {
         assert_eq!(profile.rides_per_week, None);
         assert!(
             !profile.gradient_colours,
-            "elevation colours stay off until the rider opts in (R241)"
+            "elevation colours stay off until the rider opts in (R242)"
         );
         assert_eq!(
             profile.drivetrain,

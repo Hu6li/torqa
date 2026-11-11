@@ -144,7 +144,7 @@ pub struct Profile {
     pub map_style: MapStyle,
     /// How the app speaks of the ride's moments.
     pub voice: Voice,
-    /// Whether the elevation profile is coloured by gradient (R241); off unless the rider
+    /// Whether the elevation profile is coloured by gradient (R242); off unless the rider
     /// opts in.
     pub gradient_colours: bool,
     /// How many rides a week the rider plans, if they said (R124); nothing plans them.

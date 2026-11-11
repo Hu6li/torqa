@@ -249,7 +249,7 @@ func _run() -> void:
 	var guest: String = _orqwa.save_profile("", {"name": "Guest"})
 	var guest_drivetrain: String = _orqwa.profile()["drivetrain"]
 	_check(guest_drivetrain == "single_cog", "a new rider shifts virtual gears (R98)")
-	# Elevation colours are the rider's choice, off until they opt in (R241).
+	# Elevation colours are the rider's choice, off until they opt in (R242).
 	var plain: bool = _orqwa.profile()["gradient_colours"]
 	_check(not plain, "a new rider sees the plain profile")
 	var colourful: Dictionary = _orqwa.profile().duplicate()
@@ -449,7 +449,7 @@ func _write_route(path: String) -> void:
 
 
 ## The profile's area is yellow on the flat, green going down and red going up, darker the
-## steeper, and no darker beyond the steepest shade (R240).
+## steeper, and no darker beyond the steepest shade (R241).
 func _check_grade_colors() -> void:
 	var flat: Color = ElevationProfile.grade_color(0.0)
 	_check(flat.r > 0.9 and flat.g > 0.8 and flat.b < 0.4, "flat is yellow: %s" % flat)

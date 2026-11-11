@@ -2,7 +2,7 @@ class_name ElevationProfile
 extends Control
 ## The route's elevation profile as a clean area chart with a crisp outline and the rider's
 ## position: ridden part in the accent colour and the rest light, or, if the rider opts in
-## (R241), coloured by gradient (R240): green descents, yellow flats and red climbs, darker the
+## (R242), coloured by gradient (R241): green descents, yellow flats and red climbs, darker the
 ## steeper, with the ridden part solid and the rest translucent.
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
@@ -13,7 +13,7 @@ const PADDING: float = 2.0
 const MIN_RANGE_M: float = 40.0
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
 const AHEAD: Color = Color(1, 1, 1, 0.13)
-## The gradient, in percent either way, drawn in the darkest shade (R240).
+## The gradient, in percent either way, drawn in the darkest shade (R241).
 const STEEPEST_PERCENT: float = 10.0
 const STEEP_DESCENT: Color = Color(0.04, 0.38, 0.17)
 const DESCENT: Color = Color(0.35, 0.8, 0.4)
@@ -30,7 +30,7 @@ const AHEAD_ALPHA: float = 0.3
 		shows_progress = value
 		queue_redraw()
 
-## The rider's choice to colour the area by gradient (R241, the profile's `gradient_colours`).
+## The rider's choice to colour the area by gradient (R242, the profile's `gradient_colours`).
 var gradient_colours: bool = false:
 	set(value):
 		gradient_colours = value
@@ -144,7 +144,7 @@ func _draw() -> void:
 	draw_circle(rider, 3.0, UiTheme.ACCENT)
 
 
-## The area colour for a gradient in percent (R240): yellow on the flat, through green to dark
+## The area colour for a gradient in percent (R241): yellow on the flat, through green to dark
 ## green going down and through red to dark red going up, darkest from [constant STEEPEST_PERCENT].
 static func grade_color(grade_percent: float) -> Color:
 	var steepness: float = clampf(absf(grade_percent) / STEEPEST_PERCENT, 0.0, 1.0)
