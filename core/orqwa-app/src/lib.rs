@@ -16,6 +16,7 @@ mod detail_tests;
 pub mod hud;
 mod import;
 mod kept;
+mod leaving;
 pub mod library;
 pub mod media;
 pub mod moments;
@@ -830,6 +831,16 @@ pub struct App {
     /// Whether the next world built is for a ride continuing the course (R220), and how far
     /// around where the ride enters the scene draws: that much is built before it is ridden.
     world_ahead: (bool, Meters),
+    /// The load whose world job's results are the loaded course's: the current load's, or
+    /// that of a build taken over from the background (ADR 0040, 2d).
+    world_load: u64,
+    /// A kept course's world still being built after another course was opened.
+    background: Option<leaving::Background>,
+    /// Where the ride enters a world taken over from the background, until the chunks around
+    /// there are finished.
+    entering: Option<Meters>,
+    /// The world taken over, handed over already, while the ride waits for [`Self::entering`].
+    waiting_world: Option<Box<LoadedWorld>>,
     /// How far around the rider the scene draws in group rides, which build their world
     /// themselves: that much around the group's start is built before a rider is ready.
     group_radius: Meters,
@@ -982,6 +993,10 @@ impl App {
             keep_as: None,
             world_ahead: (false, WHOLE_WORLD),
             group_radius: WHOLE_WORLD,
+            world_load: 0,
+            background: None,
+            entering: None,
+            waiting_world: None,
             index: Mutex::new(index),
             continuation_undo: Mutex::new(None),
         })
@@ -1722,6 +1737,12 @@ impl App {
     /// [`WHOLE_WORLD`] waits for every chunk. True if the world is ready already.
     pub fn build_world(&mut self, continuing: bool, radius: Meters) -> bool {
         if self.world.is_some() {
+            // Still being built from where it was entered before: what is around where this
+            // ride enters comes next, while a rider who gets there first waits for it.
+            if continuing {
+                self.world_ahead.0 = true;
+                self.turn_build(self.entry_distance());
+            }
             return true;
         }
         self.world_ahead = (continuing, radius);
@@ -2172,10 +2193,16 @@ impl App {
 
     /// Forgets the current route, stops its job and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        self.leave_world();
         if let Some(job) = self.loading.take() {
             job.abort();
         }
         self.load += 1;
+        self.world_load = self.load;
+        self.entering = None;
+        if let Some(waiting) = self.waiting_world.take() {
+            self.drop_world(waiting);
+        }
         self.offline = offline;
         self.world_plan = WorldPlan::Now;
         self.course = None;
@@ -2339,9 +2366,17 @@ impl App {
     /// Whether the chunks the scene draws around `distance` along the route are finished,
     /// or no world is being built.
     pub(crate) fn finished_around(&self, distance: Meters) -> bool {
-        let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) else {
+        self.chunks
+            .as_ref()
+            .is_none_or(|chunks| self.finished_around_in(chunks, distance))
+    }
+
+    /// Whether the chunks the scene draws around `distance` along the route are finished
+    /// among `chunks`.
+    pub(crate) fn finished_around_in(&self, chunks: &WorldChunks, distance: Meters) -> bool {
+        if chunks.complete() {
             return true;
-        };
+        }
         let Some((east, north)) = self.rider_position(distance, false) else {
             return true;
         };
@@ -2379,6 +2414,9 @@ impl App {
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
+        if self.take_over_background() {
+            return;
+        }
         if let Err(failure) = self.room_for_world(&route) {
             // Built on the next Ride, once the rider has made room.
             self.world_plan = WorldPlan::OnRequest(Some(Box::new(map)));
@@ -2401,12 +2439,8 @@ impl App {
         let mut distant = terrain(TileSource::distant());
         // A library course's world may be kept, and is kept once built (R101).
         let kept = self.course.clone().filter(|_| self.keeps_worlds());
-        let (continuing, radius) = self.world_ahead;
-        let from = Meters(
-            self.continuation_point()
-                .filter(|_| continuing)
-                .map_or(0.0, |point| point.distance_m),
-        );
+        let radius = self.world_ahead.1;
+        let from = self.entry_distance();
         let at = self
             .rider_position(from, false)
             .map_or((Meters(0.0), Meters(0.0)), |(east, north)| {
@@ -3224,6 +3258,8 @@ impl App {
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
+        // Its preparation and chunks never share memory with another course's ride (R240).
+        self.stop_background_of_other_courses();
         let ghost = self.ghost_for(&route, descent, ghost)?;
         let along = self.video.as_ref().filter(|_| self.view == View::Video);
         let player = along
@@ -4195,6 +4231,7 @@ impl App {
     pub fn update(&mut self, dt: Duration) -> Vec<AppEvent> {
         let mut events = Vec::new();
         self.poll_events(&mut events);
+        self.check_entering(&mut events);
         self.report_growth(&mut events);
         self.pace_build();
 
@@ -4400,16 +4437,18 @@ impl App {
                 JobResult::Scan(Ok((bluetooth, devices))) => {
                     self.scanned(bluetooth, devices, events);
                 }
-                JobResult::World(load, loaded) if load != self.load => {
+                result if self.background_result(&result) => self.in_background(result),
+                JobResult::World(load, loaded) if load != self.world_load => {
                     // Deleting its store takes a while.
                     self.drop_world(loaded);
                 }
-                JobResult::Route(load, _)
-                | JobResult::Video(load, _)
-                | JobResult::Structures(load, _)
+                JobResult::Structures(load, _)
                 | JobResult::Built(load, _)
                 | JobResult::Progress(load, ..)
-                    if load != self.load => {}
+                    if load != self.world_load => {}
+                // A build taken over may still fail.
+                JobResult::Route(load, Err(_)) if load != self.load && load != self.world_load => {}
+                JobResult::Route(load, _) | JobResult::Video(load, _) if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
                     let map = imported.map.clone();
                     self.route_loaded(*imported, events);
@@ -4441,7 +4480,25 @@ impl App {
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
+                JobResult::World(_, loaded) if self.entering.is_some() => {
+                    self.enter_world(*loaded);
+                }
                 JobResult::World(_, loaded) => self.world_ready(*loaded, events),
+                JobResult::Structures(_, bridges) if self.waiting_world.is_some() => {
+                    if let Some(waiting) = &mut self.waiting_world {
+                        Arc::make_mut(&mut waiting.world)
+                            .structures
+                            .append(*bridges);
+                    }
+                }
+                JobResult::Built(_, rest) if self.waiting_world.is_some() => {
+                    // Complete, so finished around where the ride enters too.
+                    self.entering = None;
+                    if let Some(waiting) = self.waiting_world.take() {
+                        self.world_ready(*waiting, events);
+                    }
+                    self.world_built(*rest);
+                }
                 JobResult::Structures(_, bridges) => {
                     if let Some(world) = &mut self.world {
                         // Kept whole too, for a scene drawn again from the world.

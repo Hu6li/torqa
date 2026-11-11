@@ -1005,8 +1005,12 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] group rides: **Ready** once the group's start is built; a late joiner's entry
         point first: the build turns to the organizer on **Join ride now** and the rider
         enters once the chunks around the entry point are finished
-      - [ ] leaving a ride before its world is complete: kept worlds built on in the
-        background, others stopped and taken up again from their store
+      - [x] leaving a ride before its world is complete: a kept course's world built on in
+        the background and kept once complete; opening the course again (also from a group
+        lobby) takes the build over, turned to where the ride enters; continuing a course
+        turns its build to the continuation point
+      - [ ] builds stopped for another course keep their store, and the course's next build
+        takes them up from there
   - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
     on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
   - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes
