@@ -15,13 +15,24 @@ const OUTLINE: Color = Color(1, 1, 1, 0.75)
 const AHEAD: Color = Color(1, 1, 1, 0.13)
 ## The gradient, in percent either way, drawn in the darkest shade (R241).
 const STEEPEST_PERCENT: float = 10.0
-const STEEP_DESCENT: Color = Color(0.04, 0.38, 0.17)
-const DESCENT: Color = Color(0.35, 0.8, 0.4)
-const FLAT: Color = Color(0.98, 0.84, 0.27)
-const CLIMB: Color = Color(0.93, 0.3, 0.22)
-const STEEP_CLIMB: Color = Color(0.5, 0.06, 0.08)
-const RIDDEN_ALPHA: float = 0.85
+## Emerald, sunny yellow and rose read as green, yellow and red but sit better on the dark UI
+## than pure primaries.
+const STEEP_DESCENT: Color = Color("#065f46")
+const DESCENT: Color = Color("#10b981")
+const FLAT: Color = Color("#fde047")
+const CLIMB: Color = Color("#f43f5e")
+const STEEP_CLIMB: Color = Color("#9f1239")
+const RIDDEN_ALPHA: float = 0.9
 const AHEAD_ALPHA: float = 0.3
+## The area fades towards the bottom to this share of its opacity at the curve, so the colour
+## sits on the line and the chart stays light.
+const FILL_FADE: float = 0.12
+## The outline takes the gradient colour too, a little brighter, over a soft glow.
+const LINE_LIGHTEN: float = 0.25
+const LINE_WIDTH: float = 2.0
+const GLOW_WIDTH: float = 7.0
+const GLOW_ALPHA: float = 0.22
+const AHEAD_LINE_ALPHA: float = 0.5
 ## Gradients are averaged over this much road around each point, and over a 300th of a long
 ## course, so neighbouring points do not flicker between colours on a few metres of noise.
 const SMOOTHING_M: float = 50.0
@@ -131,15 +142,26 @@ func _draw() -> void:
 		var t: float = (clampf(ridden, from.x, to.x) - from.x) / maxf(to.x - from.x, 0.001)
 		var at: Vector2 = _to_screen(from.lerp(to, t))
 		var middle: Color = _colors[i].lerp(_colors[i + 1], t)
-		_fill(outline[i], at, bottom, Color(_colors[i], RIDDEN_ALPHA), Color(middle, RIDDEN_ALPHA))
+		_fill(
+			outline[i],
+			at,
+			bottom,
+			Color(_colors[i], RIDDEN_ALPHA),
+			Color(middle, RIDDEN_ALPHA),
+			FILL_FADE
+		)
 		_fill(
 			at,
 			outline[i + 1],
 			bottom,
 			Color(middle, AHEAD_ALPHA),
-			Color(_colors[i + 1], AHEAD_ALPHA)
+			Color(_colors[i + 1], AHEAD_ALPHA),
+			FILL_FADE
 		)
-	draw_polyline(outline, OUTLINE, 1.5, true)
+	if gradient_colours:
+		_draw_gradient_line(outline)
+	else:
+		draw_polyline(outline, OUTLINE, 1.5, true)
 	for climb: Array in _climbs:
 		var start_m: float = climb[0]
 		var end_m: float = climb[1]
@@ -199,16 +221,35 @@ static func _height(profile: PackedVector2Array, index: int, distance_m: float) 
 	return lerpf(a.y, b.y, clampf((distance_m - a.x) / maxf(b.x - a.x, 0.001), 0.0, 1.0))
 
 
-## Fills the area under `a`–`b`, blending from colour `left` to `right`.
-func _fill(a: Vector2, b: Vector2, bottom: float, left: Color, right: Color) -> void:
+## Fills the area under `a`–`b`, blending from colour `left` to `right` and fading to `fade` of
+## their opacity at the bottom.
+func _fill(
+	a: Vector2, b: Vector2, bottom: float, left: Color, right: Color, fade: float = 1.0
+) -> void:
 	if b.x - a.x < 0.01:
 		return
+	var left_bottom: Color = Color(left, left.a * fade)
+	var right_bottom: Color = Color(right, right.a * fade)
 	# Drawn as quads without triangulation, which fails on flat segments at the bottom.
 	draw_primitive(
 		PackedVector2Array([a, b, Vector2(b.x, bottom), Vector2(a.x, bottom)]),
-		PackedColorArray([left, right, right, left]),
+		PackedColorArray([left, right, right_bottom, left_bottom]),
 		PackedVector2Array()
 	)
+
+
+## The outline in each point's gradient colour, brighter, over a soft glow; dimmer ahead.
+func _draw_gradient_line(outline: PackedVector2Array) -> void:
+	var line: PackedColorArray = PackedColorArray()
+	var glow: PackedColorArray = PackedColorArray()
+	for i: int in range(_profile.size()):
+		var ahead: bool = shows_progress and _profile[i].x > _rider_distance
+		var color: Color = _colors[i].lightened(LINE_LIGHTEN)
+		var alpha: float = AHEAD_LINE_ALPHA if ahead else 1.0
+		line.append(Color(color, alpha))
+		glow.append(Color(color, GLOW_ALPHA * alpha))
+	draw_polyline_colors(outline, glow, GLOW_WIDTH, true)
+	draw_polyline_colors(outline, line, LINE_WIDTH, true)
 
 
 func _elevation_at(distance_m: float) -> float:
