@@ -287,7 +287,9 @@ uploads").
 2. The throttle, measured on the tablet while riding.
 3. Group rides: **Ready**, and a late joiner's entry point first. Also a rider joining a
    group while their own world of the course is still being built from another entry point:
-   the build turns to the group's.
+   the build turns to the group's. Until step 4, the lobby opens the group's course afresh,
+   which stops the rider's own build, as opening another course does, and builds from the
+   group's start; from step 4 on, that build is taken up and turned instead.
 4. Leaving early: kept worlds built on in the background, others stopped and taken up again
    from their store. Until then, opening another course stops the build, and its store is
    deleted, as before 2d. Also continuing a course (R220) whose world is still being built
