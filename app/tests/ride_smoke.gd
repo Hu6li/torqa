@@ -466,6 +466,17 @@ func _check_grade_colors() -> void:
 		ElevationProfile.grade_color(25.0) == ElevationProfile.grade_color(10.0),
 		"10% and steeper share the darkest red"
 	)
+	# Each point's colour comes from the road around it, so a steady climb is one colour and
+	# metres of elevation noise do not make the area flicker between colours.
+	var steady: PackedVector2Array = PackedVector2Array()
+	var noisy: PackedVector2Array = PackedVector2Array()
+	for i: int in range(251):
+		steady.append(Vector2(i * 4.0, i * 0.2))
+		noisy.append(Vector2(i * 4.0, 0.5 if i % 2 == 0 else -0.5))
+	for grade: float in ElevationProfile.point_grades(steady, 50.0):
+		_check(absf(grade - 5.0) < 0.01, "a steady 5%% climb stays 5%%: %.2f" % grade)
+	for grade: float in ElevationProfile.point_grades(noisy, 50.0):
+		_check(absf(grade) < 5.0, "noise of ±25%% between points is smoothed: %.2f" % grade)
 
 
 func _check(condition: bool, what: String) -> void:
