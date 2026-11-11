@@ -453,18 +453,18 @@ func _write_route(path: String) -> void:
 func _check_grade_colors() -> void:
 	var flat: Color = ElevationProfile.grade_color(0.0)
 	_check(flat.r > 0.9 and flat.g > 0.8 and flat.b < 0.4, "flat is yellow: %s" % flat)
-	for grade: float in [3.0, 6.0, 10.0]:
+	for grade: float in [3.0, 10.0, 25.0]:
 		var up: Color = ElevationProfile.grade_color(grade)
 		var down: Color = ElevationProfile.grade_color(-grade)
 		_check(up.r > up.g and up.r > up.b, "%.0f%% up is red: %s" % [grade, up])
 		_check(down.g > down.r and down.g > down.b, "%.0f%% down is green: %s" % [grade, down])
-	for pair: Vector2 in [Vector2(2, 5), Vector2(5, 9), Vector2(-2, -5), Vector2(-5, -9)]:
+	for pair: Vector2 in [Vector2(3, 10), Vector2(10, 20), Vector2(-3, -10), Vector2(-10, -20)]:
 		var gentle: Color = ElevationProfile.grade_color(pair.x)
 		var steep: Color = ElevationProfile.grade_color(pair.y)
 		_check(steep.get_luminance() < gentle.get_luminance(), "steeper is darker: %s" % pair)
 	_check(
-		ElevationProfile.grade_color(25.0) == ElevationProfile.grade_color(10.0),
-		"10% and steeper share the darkest red"
+		ElevationProfile.grade_color(40.0) == ElevationProfile.grade_color(25.0),
+		"25% and steeper share the darkest red"
 	)
 	# Each point's colour comes from the road around it, so a steady climb is one colour and
 	# metres of elevation noise do not make the area flicker between colours.

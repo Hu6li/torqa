@@ -13,8 +13,9 @@ const PADDING: float = 2.0
 const MIN_RANGE_M: float = 40.0
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
 const AHEAD: Color = Color(1, 1, 1, 0.13)
-## The gradient, in percent either way, drawn in the darkest shade (R241).
-const STEEPEST_PERCENT: float = 10.0
+## The gradient, in percent either way, drawn in the darkest shade (R241); everything in between
+## spreads over the scale, so 10% climbs already read clearly red and only walls go deep red.
+const STEEPEST_PERCENT: float = 25.0
 ## Emerald, sunny yellow and rose read as green, yellow and red but sit better on the dark UI
 ## than pure primaries.
 const STEEP_DESCENT: Color = Color("#065f46")
@@ -23,7 +24,9 @@ const FLAT: Color = Color("#fde047")
 const CLIMB: Color = Color("#f43f5e")
 const STEEP_CLIMB: Color = Color("#9f1239")
 const RIDDEN_ALPHA: float = 0.9
-const AHEAD_ALPHA: float = 0.3
+## During a ride the profile sits over the 3D world, so it stays see-through there.
+const OVERLAY_RIDDEN_ALPHA: float = 0.5
+const AHEAD_ALPHA: float = 0.16
 ## The area fades towards the bottom to this share of its opacity at the curve, so the colour
 ## sits on the line and the chart stays light.
 const FILL_FADE: float = 0.12
@@ -32,7 +35,8 @@ const LINE_LIGHTEN: float = 0.25
 const LINE_WIDTH: float = 2.0
 const GLOW_WIDTH: float = 7.0
 const GLOW_ALPHA: float = 0.22
-const AHEAD_LINE_ALPHA: float = 0.5
+const OVERLAY_LINE_ALPHA: float = 0.8
+const AHEAD_LINE_ALPHA: float = 0.4
 ## Gradients are averaged over this much road around each point, and over a 300th of a long
 ## course, so neighbouring points do not flicker between colours on a few metres of noise.
 const SMOOTHING_M: float = 50.0
@@ -130,6 +134,7 @@ func _draw() -> void:
 	for i: int in range(_profile.size()):
 		outline.append(_to_screen(_profile[i]))
 	var ridden_color: Color = Color(UiTheme.ACCENT, 0.55)
+	var solid: float = OVERLAY_RIDDEN_ALPHA if shows_progress else RIDDEN_ALPHA
 	for i: int in range(_profile.size() - 1):
 		var from: Vector2 = _profile[i]
 		var to: Vector2 = _profile[i + 1]
@@ -142,14 +147,7 @@ func _draw() -> void:
 		var t: float = (clampf(ridden, from.x, to.x) - from.x) / maxf(to.x - from.x, 0.001)
 		var at: Vector2 = _to_screen(from.lerp(to, t))
 		var middle: Color = _colors[i].lerp(_colors[i + 1], t)
-		_fill(
-			outline[i],
-			at,
-			bottom,
-			Color(_colors[i], RIDDEN_ALPHA),
-			Color(middle, RIDDEN_ALPHA),
-			FILL_FADE
-		)
+		_fill(outline[i], at, bottom, Color(_colors[i], solid), Color(middle, solid), FILL_FADE)
 		_fill(
 			at,
 			outline[i + 1],
@@ -242,10 +240,11 @@ func _fill(
 func _draw_gradient_line(outline: PackedVector2Array) -> void:
 	var line: PackedColorArray = PackedColorArray()
 	var glow: PackedColorArray = PackedColorArray()
+	var solid: float = OVERLAY_LINE_ALPHA if shows_progress else 1.0
 	for i: int in range(_profile.size()):
 		var ahead: bool = shows_progress and _profile[i].x > _rider_distance
 		var color: Color = _colors[i].lightened(LINE_LIGHTEN)
-		var alpha: float = AHEAD_LINE_ALPHA if ahead else 1.0
+		var alpha: float = AHEAD_LINE_ALPHA if ahead else solid
 		line.append(Color(color, alpha))
 		glow.append(Color(color, GLOW_ALPHA * alpha))
 	draw_polyline_colors(outline, glow, GLOW_WIDTH, true)
