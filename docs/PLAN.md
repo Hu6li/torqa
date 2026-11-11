@@ -740,6 +740,9 @@ physically based materials and light, restyled group by group.
     - [x] Parallel tracks under one bridge or in one tunnel (#99), at one height
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
+    - [x] Bends tighter than the road is wide (a planner's zigzag through a forecourt, as at
+      the start of Wada – Ōtarumi Pass) close their inside in a corner instead of folding over
+      into dark fans (`GENERATOR` 42)
     - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
       metres into a side road or past a junction and straight back rides on; longer turns back
       and turns at roundabouts stay; video courses keep their track
