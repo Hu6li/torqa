@@ -216,6 +216,7 @@ fn stream(
         },
         structures: &mut |_| {},
         pace: (ride.is_some() || turn.is_some()).then_some(&pace),
+        written: &[],
     };
     let mut log = PaceLog::default();
     let riding = std::sync::atomic::AtomicBool::new(true);

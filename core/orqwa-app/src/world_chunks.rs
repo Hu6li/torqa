@@ -60,17 +60,25 @@ impl WorldChunks {
     }
 
     /// The chunks of a world about to be built into `store`, or into memory without one.
-    pub(crate) fn building(store: Option<Building>) -> Self {
+    pub(crate) fn building(store: Option<Arc<Building>>) -> Self {
         Self {
             stored: OnceLock::new(),
             centres: OnceLock::new(),
-            store: Mutex::new(store.map(Arc::new)),
+            store: Mutex::new(store),
             failed: AtomicBool::new(false),
             memory: Mutex::new(Vec::new()),
             finished: Mutex::new(Vec::new()),
             complete: AtomicBool::new(false),
             snow: OnceLock::new(),
             asked: AtomicBool::new(false),
+        }
+    }
+
+    /// Notes the chunks a stopped build of the world wrote into the store, by index, as
+    /// finished: the build taking it up finishes only the others (ADR 0040, 2d step 4b).
+    pub(crate) fn taken_up(&self, written: &[bool]) {
+        for (index, _) in written.iter().enumerate().filter(|(_, written)| **written) {
+            set(&self.finished, index, true);
         }
     }
 

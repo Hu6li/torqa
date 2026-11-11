@@ -343,6 +343,26 @@ impl Building {
         stored::read_chunk(&mut BufReader::new(zip.by_index(0)?))
     }
 
+    /// Which chunks are written, by index, up to the last written: those a build stopped
+    /// before had finished, for the next build of the same world to take up (ADR 0040, 2d step
+    /// 4b). A chunk half-written when its build stopped is not.
+    ///
+    /// # Errors
+    /// On I/O errors.
+    pub fn written(&self) -> io::Result<Vec<bool>> {
+        let mut written = Vec::new();
+        for entry in read_dir(&self.dir.join(CHUNKS))? {
+            let name = entry.file_name();
+            if let Some(index) = name.to_str().and_then(|name| name.parse::<usize>().ok()) {
+                if written.len() <= index {
+                    written.resize(index + 1, false);
+                }
+                written[index] = true;
+            }
+        }
+        Ok(written)
+    }
+
     /// Whether no chunk failed to be written so far.
     #[must_use]
     pub fn whole(&self) -> bool {
@@ -1026,6 +1046,32 @@ mod tests {
             chunks.keep(&kept, "f", &whole, 1).is_err(),
             "never kept again as it is"
         );
+        drop(chunks);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_store_tells_which_chunks_a_stopped_build_finished_and_is_kept_once_the_rest_are() {
+        let cache = temp_dir("taken-up");
+        let kept = KeptWorlds::new(&cache);
+        let built = world(8);
+        let store = kept.building("f").unwrap();
+        for index in [0, 2, 5] {
+            store.write(index, &built.chunks[index]).unwrap();
+        }
+        // Stopped while writing chunk 3.
+        std::fs::write(store.chunk(3).with_extension("part"), b"half").unwrap();
+        let written = store.written().unwrap();
+        assert_eq!(written, [true, false, true, false, false, true]);
+
+        // The next build writes the rest into the same store.
+        for index in (0..8).filter(|&i| !written.get(i).is_some_and(|&w| w)) {
+            store.write(index, &built.chunks[index]).unwrap();
+        }
+        let (whole, centres) = parts(&built);
+        let chunks = Chunks::built(Arc::new(store), centres);
+        chunks.keep(&kept, "f", &whole, 3).unwrap();
+        assert_eq!(kept.read("f").unwrap(), Some((built, 3)));
         drop(chunks);
         std::fs::remove_dir_all(cache).unwrap();
     }

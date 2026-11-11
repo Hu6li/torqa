@@ -6381,6 +6381,7 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
             },
             structures: &mut |mesh| added.push(mesh),
             pace: None,
+            written: &[],
         },
     )
     .await;
@@ -6464,6 +6465,7 @@ async fn a_build_turned_to_a_late_entry_finishes_its_surroundings_first_and_come
             },
             structures: &mut |_| {},
             pace: Some(&pace),
+            written: &[],
         },
     )
     .await;
@@ -6544,6 +6546,7 @@ async fn a_world_built_while_its_pace_changes_comes_out_the_same() {
             ready: &mut |world, _| ready = Some(world),
             structures: &mut |_| {},
             pace: Some(&pace),
+            written: &[],
         },
     )
     .await;
@@ -6596,6 +6599,7 @@ async fn a_world_built_under_a_ride_gives_way_to_it_and_comes_out_the_same() {
             ready: &mut |world, _| ready = Some(world),
             structures: &mut |_| {},
             pace: Some(&pace),
+            written: &[],
         },
     )
     .await;
@@ -6650,9 +6654,100 @@ async fn a_bridge_over_the_start_is_there_when_the_ride_starts() {
             ready: &mut |world, _| told = Some(world.structures),
             structures: &mut |_| {},
             pace: None,
+            written: &[],
         },
     )
     .await;
 
     assert_eq!(told.expect("told"), whole.structures);
+}
+
+#[tokio::test]
+async fn a_build_taken_up_from_what_a_stopped_one_wrote_finishes_only_the_rest_the_same() {
+    /// [`EastwardSlope`], with no terrain data east of 300 m: chunks there count samples
+    /// without it, also those not built again.
+    struct EastHalf;
+    impl ElevationModel for EastHalf {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(if east > 300.0 {
+                Err("offline".to_owned())
+            } else {
+                Ok(500.0 + 0.1 * east)
+            })
+        }
+    }
+
+    // The railway bridge over the road of the first test.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (27.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastHalf, &map, &mut |_, _| {}).await;
+    assert!(whole.fallback_samples > 0);
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+    let count = whole.chunks.len();
+
+    // A build stopped after finishing some chunks, the first ones by index or all of them.
+    for done in [count / 2, count] {
+        let written: Vec<bool> = (0..count).map(|i| i < done).collect();
+        let sunk = Mutex::new(Vec::new());
+        let mut to_build = 0;
+        let mut parts = None;
+        let rest = generate_into(
+            &route,
+            &mut EastHalf,
+            &map,
+            &mut |_, total| to_build = total,
+            &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+            Ahead {
+                from: Meters(0.0),
+                at: (Meters(0.0), Meters(0.0)),
+                radius: Meters(100.0),
+                ready: &mut |world, _| parts = Some(world),
+                structures: &mut |_| {},
+                pace: None,
+                written: &written,
+            },
+        )
+        .await;
+
+        let mut sunk = sunk.into_inner().unwrap();
+        sunk.sort_by_key(|(index, _)| *index);
+        let indices: Vec<usize> = sunk.iter().map(|(index, _)| *index).collect();
+        assert_eq!(
+            indices,
+            (done..count).collect::<Vec<_>>(),
+            "only the chunks not written, each once"
+        );
+        for (index, chunk) in &sunk {
+            assert_eq!(chunk, &whole.chunks[*index], "chunk {index}");
+        }
+        assert!(to_build < count, "chunks written are not all built again");
+        assert_eq!(rest.structures, whole.structures);
+        assert_eq!(rest.fallback_samples, whole.fallback_samples);
+        assert_eq!(
+            World {
+                structures: rest.structures,
+                fallback_samples: rest.fallback_samples,
+                ..parts.expect("handed over")
+            },
+            World {
+                chunks: Vec::new(),
+                ..whole.clone()
+            },
+        );
+    }
 }

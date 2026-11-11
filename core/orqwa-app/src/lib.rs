@@ -22,6 +22,7 @@ pub mod media;
 pub mod moments;
 pub mod paths;
 pub mod remote;
+mod resuming;
 mod traffic;
 pub mod updates;
 pub mod uploads;
@@ -836,6 +837,9 @@ pub struct App {
     world_load: u64,
     /// A kept course's world still being built after another course was opened.
     background: Option<leaving::Background>,
+    /// The stores of world builds, held on to when a build is stopped for the course's next
+    /// build to take up (ADR 0040, 2d step 4b).
+    builds: resuming::Builds,
     /// Where the ride enters a world taken over from the background, until the chunks around
     /// there are finished.
     entering: Option<Meters>,
@@ -995,6 +999,7 @@ impl App {
             group_radius: WHOLE_WORLD,
             world_load: 0,
             background: None,
+            builds: resuming::Builds::default(),
             entering: None,
             waiting_world: None,
             index: Mutex::new(index),
@@ -1797,14 +1802,19 @@ impl App {
             .and_then(|manifest| manifest.video)
             .and_then(|reference| reference.locate(path))
             .filter(|video| video.parent() == path.parent());
+        let fingerprint = course::fingerprint(path).ok();
         std::fs::remove_file(path).map_err(|e| {
             AppError::Reported(Failure::new(Kind::DeleteFile, e).arg(path.display()))
         })?;
         if self.course.as_deref() == Some(path) {
             self.course = None;
         }
-        // Its kept world goes too (R101), and one still being built for it.
+        // Its kept world goes too (R101), one still being built for it, and what a build of it
+        // stopped wrote.
         self.stop_background_unless_kept();
+        if let Some(fingerprint) = fingerprint {
+            self.forget_stopped(&fingerprint);
+        }
         self.tidy_kept_worlds();
         if let Some(video) = video {
             let shared = self.courses().into_iter().any(|c| {
@@ -2195,8 +2205,9 @@ impl App {
     /// Forgets the current route, stops its job and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
         self.leave_world();
+        let building = self.builds.building.take();
         if let Some(job) = self.loading.take() {
-            job.abort();
+            self.stop_build(job, building);
         }
         self.load += 1;
         self.world_load = self.load;
@@ -2450,6 +2461,7 @@ impl App {
         let keeper = self.keeper();
         let pace = Arc::new(orqwa_world::Pace::new(radius, self.lower_priority));
         self.pace = Some(Arc::clone(&pace));
+        let start = self.start_build();
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
@@ -2478,11 +2490,11 @@ impl App {
                 }
             }
             // Every world is built into a store and ridden from it, so its chunks are never all
-            // held (ADR 0040); a build stopped deletes what it wrote. It is ridden once the
-            // rider's surroundings are finished, while the rest is built.
-            let chunks = Arc::new(WorldChunks::building(
-                keeper.store(keep_as.as_deref().unwrap_or("ride")),
-            ));
+            // held (ADR 0040). It is ridden once the rider's surroundings are finished, while
+            // the rest is built. A build of the course stopped before left one to take up.
+            let (chunks, written) = start
+                .chunks(&keeper, keep_as.as_deref().unwrap_or("ride"))
+                .await;
             let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
             // Its tiles are not needed again, so they are not held while the chunks are built.
             drop(distant);
@@ -2516,6 +2528,7 @@ impl App {
                         let _ = structures_tx.send(JobResult::Structures(load, Box::new(mesh)));
                     },
                     pace: Some(&pace),
+                    written: &written,
                 },
             )
             .await;

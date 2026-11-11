@@ -1,7 +1,8 @@
 //! A ride left before its world is complete (ADR 0040, 2d step 4): a kept course's world is
 //! built on in the background, also once another course is opened, and kept when complete
 //! (R101). Opening the course again takes that build over, turned to where the ride enters;
-//! building another world, starting a ride, or cancelling stops it.
+//! building another world, starting a ride, or cancelling stops it, and the course's next
+//! build takes up what it wrote (see [`crate::resuming`]).
 //!
 //! A build taken over keeps its pace's radius for the throttle; only where it turns to
 //! follows the scene's radius now.
@@ -21,6 +22,8 @@ pub(crate) struct Background {
     /// The course's fingerprint, which a course opened later shares if it is the same.
     fingerprint: String,
     job: tokio::task::AbortHandle,
+    /// Where its store lands, to hold on to if it is stopped.
+    slot: Option<crate::resuming::Slot>,
     pace: Arc<orqwa_world::Pace>,
     /// What was handed over when the world could first be ridden, once it was.
     pub(crate) loaded: Option<LoadedWorld>,
@@ -75,16 +78,18 @@ impl App {
             load: self.world_load,
             fingerprint,
             job,
+            slot: self.builds.building.take(),
             pace,
             loaded,
         });
     }
 
-    /// Stops the world built in the background; what it wrote goes with it.
+    /// Stops the world built in the background; what it wrote is held on to for the course's
+    /// next build.
     pub(crate) fn stop_background(&mut self) {
         if let Some(background) = self.background.take() {
             info!("stopping the world built in the background");
-            background.job.abort();
+            self.stop_build(background.job, background.slot);
             if let Some(loaded) = background.loaded {
                 self.drop_world(loaded);
             }
@@ -108,6 +113,7 @@ impl App {
     /// neither left to the background nor waited for; opening the course again builds afresh.
     pub(crate) fn world_build_failed(&mut self) {
         self.pace = None;
+        self.builds.building = None;
         self.entering = None;
         if let Some(waiting) = self.waiting_world.take() {
             self.drop_world(waiting);
@@ -135,12 +141,14 @@ impl App {
         let Background {
             load,
             job,
+            slot,
             pace,
             loaded,
             ..
         } = background;
         self.world_load = load;
         self.loading = Some(job);
+        self.builds.building = slot;
         self.pace = Some(pace);
         let entry = self.entry_distance();
         self.turn_build(entry);
@@ -277,7 +285,7 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::fmt::Write as _;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
@@ -288,7 +296,7 @@ mod tests {
 
     /// A straight route `points` × 10 m long, climbing `grade` per cent, prepared as a course
     /// of `app`'s library from a GPX file in its own directory under `dir`.
-    fn course(app: &mut App, dir: &Path, points: u32, grade: f64) -> PathBuf {
+    pub(crate) fn course(app: &mut App, dir: &Path, points: u32, grade: f64) -> PathBuf {
         let mut xml = String::from("<gpx><trk><name>Left early</name><trkseg>");
         for i in 0..=points {
             let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
@@ -312,13 +320,13 @@ mod tests {
     }
 
     /// Opens `course` and waits for its route.
-    fn open(app: &mut App, course: &Path) {
+    pub(crate) fn open(app: &mut App, course: &Path) {
         app.open_course(course.to_owned());
         run_until(app, |e| matches!(e, AppEvent::RouteLoaded(_)));
     }
 
     /// Updates `app` for a while, or until `done` holds.
-    fn wait_for(app: &mut App, mut done: impl FnMut(&App) -> bool) -> bool {
+    pub(crate) fn wait_for(app: &mut App, mut done: impl FnMut(&App) -> bool) -> bool {
         let deadline = Instant::now() + Duration::from_secs(120);
         while !done(app) {
             if Instant::now() > deadline {
@@ -330,7 +338,7 @@ mod tests {
         true
     }
 
-    fn kept(app: &App, course: &Path) -> bool {
+    pub(crate) fn kept(app: &App, course: &Path) -> bool {
         app.kept_worlds()
             .iter()
             .any(|world| world.courses.iter().any(|entry| entry.path == course))
@@ -428,7 +436,7 @@ mod tests {
 
     /// `app` with keeping on, riding a 5 km library course it leaves at once for a short one:
     /// the first course, the second, and `app` with the first's build in the background.
-    fn leaving(name: &str) -> (PathBuf, PathBuf, PathBuf, App) {
+    pub(crate) fn leaving(name: &str) -> (PathBuf, PathBuf, PathBuf, App) {
         let dir = temp_dir(name);
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
         let left = course(&mut app, &dir, 500, 0.0);

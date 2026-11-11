@@ -62,6 +62,8 @@ pub(crate) struct Stages<'a> {
     waiting: BTreeMap<usize, Waiting>,
     is_built: Vec<bool>,
     finished: Vec<bool>,
+    /// The chunks a build stopped before had finished: finished again without the sink.
+    written: Vec<bool>,
     /// How many bridges waiting still read each chunk.
     holds: Vec<usize>,
     bridges: Vec<Bridge>,
@@ -112,6 +114,7 @@ impl<'a> Stages<'a> {
         Self {
             is_built: vec![false; cells.len()],
             finished: vec![false; cells.len()],
+            written: vec![false; cells.len()],
             structures: pieces.iter().map(|_| None).collect(),
             cells,
             index,
@@ -121,6 +124,38 @@ impl<'a> Stages<'a> {
             holds,
             bridges,
         }
+    }
+
+    /// Takes up a build stopped before, whose finished chunks are `written` (by index): they
+    /// are not given to the sink again. Returns which chunks to build: those not written,
+    /// their neighbours, whose ground and pavement finishing them reads, and the chunks every
+    /// bridge stands on, as the bridges are built whole. The others are done already.
+    pub(crate) fn resume(&mut self, written: &[bool]) -> Vec<bool> {
+        let count = self.cells.len();
+        self.written = (0..count)
+            .map(|i| written.get(i).copied().unwrap_or(false))
+            .collect();
+        let mut build = vec![false; count];
+        for index in (0..count).filter(|&i| !self.written[i]) {
+            for neighbour in self.neighbours(index, 1) {
+                build[neighbour] = true;
+            }
+        }
+        for bridge in &self.bridges {
+            for &i in &bridge.needs {
+                build[i] = true;
+            }
+        }
+        for index in (0..count).filter(|&i| !build[i]) {
+            self.is_built[index] = true;
+            self.finished[index] = true;
+        }
+        build
+    }
+
+    /// The corridor's cells, in the order of `World::chunks`.
+    pub(crate) fn cells(&self) -> &[(i32, i32)] {
+        &self.cells
     }
 
     /// Index in `World::chunks` of the chunk at `cell`.
@@ -186,8 +221,8 @@ impl<'a> Stages<'a> {
     }
 
     /// Finishes every chunk whose neighbours are built, and gives them to `sink` with their
-    /// indices. Chunks go on the `workers`, and to `sink` from them, so that it can store them
-    /// on them too.
+    /// indices, but for those written before. Chunks go on the `workers`, and to `sink` from
+    /// them, so that it can store them on them too.
     pub(crate) fn finish(&mut self, workers: Workers, sink: &(dyn Fn(usize, TerrainChunk) + Sync)) {
         let ready: Vec<usize> = self
             .waiting
@@ -195,8 +230,12 @@ impl<'a> Stages<'a> {
             .copied()
             .filter(|&i| self.neighbours(i, 1).iter().all(|&n| self.is_built[n]))
             .collect();
+        for &index in ready.iter().filter(|&&i| self.written[i]) {
+            self.waiting.remove(&index);
+        }
         let jobs: Vec<(usize, Mutex<Option<Waiting>>)> = ready
             .iter()
+            .filter(|&&i| !self.written[i])
             .map(|i| (*i, Mutex::new(self.waiting.remove(i))))
             .collect();
         let this = &*self;
