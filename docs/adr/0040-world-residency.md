@@ -108,7 +108,8 @@ the core reads chunks from the store, every world is.
   ride of a course that isn't kept writes that much to flash.
 - **When the store can't be written** (disk full, unwritable cache):
   - On desktops, the chunks are held in memory as before, with a warning in the log. Those
-    written before the store failed are read back from it, then the store is deleted.
+    written before the store failed are read from it, as the world is ridden while it is
+    built (2d), and the store is deleted when the world is let go of.
   - On Android, that fallback is the low-memory kill again. So **Ride** stops before building
     and tells the rider how much free storage the course needs. The check allows 25 MB per
     kilometre, above the densest course measured.
@@ -215,6 +216,14 @@ uploads").
   ways, portals, the urban network and walking grades. Then come the chunks within the upload
   radius of the start, and the structures over them. The ride then starts. The rest is built in
   the background, ahead of the rider first, then behind.
+  - Tunnels stand on nothing drawn, so all of them are built with the preparation. Bridges
+    elsewhere are added to the structures as they are built, and Godot draws them again.
+    Once the world is complete, the structures are joined in `build_all`'s order as before.
+  - The progress bar counts the chunks needed before the ride starts: those within the
+    radius, their neighbours, and the chunks the bridges over them stand on.
+  - The chunks' centres are known from their cells before any is built, so the upload plan
+    covers the whole course from the start. Godot uploads only finished chunks, and plans
+    again when more are finished while some within reach are missing.
 - **Where the start is.** The start is where the rider enters the course, which may be partway
   along it, as when continuing a course (R220).
 - **Group rides:**
@@ -238,9 +247,10 @@ uploads").
     drawn, while the tablet was thrashing swap.
 - **When the rider catches up** with chunks that aren't finished:
   - **Solo:** the ride pauses itself exactly as the pause button does (`App::set_paused`).
-    Clock, recording and distance stop, and the trainer is released. The loading page shows.
-    When the chunks are ready, the ride resumes by itself, and the grade is sent to the
-    trainer again.
+    Clock, recording and distance stop, and the trainer is released. The ride view says the
+    3D world is being built, as it says the scene is being prepared after a jump (2c). When
+    the chunks are ready, the ride resumes by itself, and the grade is sent to the trainer
+    again.
   - **Group ride:** nothing pauses, because the others keep riding. The road, structures and
     horizon are whole parts, so they are always there. The rider rides on them while the
     missing chunks are built first, and the chunks appear as they arrive. Whether the horizon's
@@ -266,6 +276,19 @@ uploads").
   - If ORQWA closes first, the partial store is deleted by age, as above, and the next ride
     builds the world again.
   - Otherwise, the store is deleted with the course.
+
+### Steps of 2d
+
+2d lands in four PRs, each stacked on the one before:
+
+1. A course's ride starts once its surroundings are finished; the scene takes chunks and
+   bridges as they come; a solo rider who catches up waits; the world is kept once complete.
+   Group rides and GPX imports still build their whole world first.
+2. The throttle, measured on the tablet while riding.
+3. Group rides: **Ready**, and a late joiner's entry point first.
+4. Leaving early: kept worlds built on in the background, others stopped and taken up again
+   from their store. Until then, opening another course stops the build, and its store is
+   deleted, as before 2d.
 
 ### Steps and measuring
 
