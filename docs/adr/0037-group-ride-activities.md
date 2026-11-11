@@ -690,3 +690,15 @@ Cancelling a standby discards departures observed only on its disposable links. 
 group departures only when a takeover commits; the original authority's roster remains valid
 while it stays connected. This keeps old standby teardown from removing the organizer before
 the next activity's fallback can be prepared.
+
+### Assistance before a selection — 2026-11-11
+
+Riders learned the organizer's drafting and keep-together choices only from a selection, so
+until one was shared, or when the organizer changed them while it was being prepared, their
+lobby kept showing both as on (#557). A new organizer-only `Assistance` control carries the two
+choices whenever they change before the countdown; joiners apply it only before the start.
+Newcomers receive it with their initial controls unless the choices are the defaults, and every
+selection still repeats them. The organizer's change is acknowledged by its lobby actor rather
+than dropped on a full queue, as only the latest choice counts. Protocol/invitation version 18
+and ALPN `orqwa-group/18` keep older clients from silently missing it. No endpoint, service or
+dependency changes.

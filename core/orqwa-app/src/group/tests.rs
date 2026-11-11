@@ -1479,6 +1479,61 @@ fn a_new_unassisted_group_ride_does_not_inherit_the_previous_rides_effects() {
 }
 
 #[test]
+fn joiners_see_the_organizers_assistance_choices_whenever_they_are_made() {
+    // #557: a joiner's lobby showed "Drafting on · Keep together on" whatever the organizer chose.
+    let (from, to) = (Directory::new(), Directory::new());
+    let (mut host, mut peer) = (from.app(), to.app());
+    let workout = host
+        .save_workout(
+            &orqwa_domain::workout::Plan {
+                name: "Assistance choices".into(),
+                steps: vec![orqwa_domain::workout::Step {
+                    duration: Duration::from_secs(600),
+                    target: orqwa_domain::workout::Target::Free,
+                    cadence: None,
+                }],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    let off = Assistance {
+        drafting: false,
+        keep_together: false,
+    };
+    let only_drafting = Assistance {
+        drafting: true,
+        keep_together: false,
+    };
+    // Before anything is selected.
+    host.group_assistance(off.drafting, off.keep_together)
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().assistance == off && p.group().assistance == off
+    });
+    // Selecting keeps them, and so does a change while the selection is being prepared.
+    host.group_select(None, Some(&workout)).unwrap();
+    host.group_assistance(only_drafting.drafting, only_drafting.keep_together)
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().prepared
+            && p.group().prepared
+            && [h, p].iter().all(|a| a.group().assistance == only_drafting)
+    });
+    host.group_leave();
+    peer.group_leave();
+}
+
+#[test]
 fn assistance_applied_to_the_ride_stays_steady_through_jitter_and_loss() {
     for gap in [75.0, 0.0, 3.0] {
         let (_directory, mut app, mut snapshot, start) = assistance_fixture();

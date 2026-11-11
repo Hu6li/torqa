@@ -772,6 +772,7 @@ async fn run_inner(
                     }
                 }
                 Some(LobbyEvent::Preview(id)) => previews.named(snapshot, id),
+                Some(LobbyEvent::Assistance(rules)) => if snapshot.start.is_none() {snapshot.assistance = rules;},
                 Some(LobbyEvent::Start {at}) => {snapshot.start = Some(at.into_std()); snapshot.phase = Phase::Countdown; previews.named(snapshot, None);}
                 Some(LobbyEvent::Running {at}) => {snapshot.start = Some(at.into_std()); snapshot.late = true; previews.named(snapshot, None);}
                 Some(LobbyEvent::Entry {revision,progress}) => {
@@ -1031,6 +1032,11 @@ async fn change_rules(
         *revision = next;
         snapshot.selection = Some(selection);
         snapshot.ready.fill(false);
+    }
+    // Riders hear of the choices without a selection too, or while one is still being
+    // prepared, rather than keep seeing the defaults (#557).
+    if let Session::Host(lobby) = session {
+        lobby.assist(rules).await.map_err(|e| e.to_string())?;
     }
     snapshot.assistance = rules;
     Ok(())

@@ -306,6 +306,7 @@ impl Others {
             | LobbyEvent::Lobby { .. }
             // CLI rides choose their course before anyone joins: nothing to preview (#418).
             | LobbyEvent::Preview(_)
+            | LobbyEvent::Assistance(_)
             | LobbyEvent::Readiness { .. }
             | LobbyEvent::Preparation { .. }
             | LobbyEvent::Running { .. }

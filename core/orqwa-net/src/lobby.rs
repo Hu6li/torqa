@@ -96,6 +96,9 @@ pub enum LobbyEvent {
     /// What the organizer is choosing, to fetch with [`crate::content::fetch_preview`]
     /// (#418); none once it is shared or put away, and none after the countdown.
     Preview(Option<crate::activity::ContentId>),
+    /// The organizer's drafting and keep-together choices changed before the countdown,
+    /// also while nothing is selected (#557).
+    Assistance(crate::activity::Assistance),
     /// One current participant verified/prepared this revision, or withdrew readiness.
     Readiness {
         /// Authenticated roster slot, including the local rider.
@@ -332,6 +335,10 @@ enum Command {
     Start(Duration, oneshot::Sender<Result<Instant, LobbyError>>),
     End(u64, oneshot::Sender<Result<(), LobbyError>>),
     Select(SharedActivity, oneshot::Sender<Result<(), LobbyError>>),
+    Assist(
+        crate::activity::Assistance,
+        oneshot::Sender<Result<(), LobbyError>>,
+    ),
     Ready(u64, bool, oneshot::Sender<Result<(), LobbyError>>),
     PeerReady(Membership, u64, bool),
     Preparation(u64, Stage, u8),
@@ -499,6 +506,19 @@ impl HostLobby {
         let (send, receive) = oneshot::channel();
         self.commands
             .try_send(Command::Select(activity, send))
+            .map_err(|_| LobbyError::Lost)?;
+        receive.await.map_err(|_| LobbyError::Lost)?
+    }
+    /// Tells every rider the organizer's drafting and keep-together choices before the
+    /// countdown, whether or not an activity is selected (#557). Newcomers hear of them too.
+    ///
+    /// # Errors
+    /// Returns [`LobbyError`] outside an app lobby, from the countdown on or for a
+    /// disconnected actor.
+    pub async fn assist(&self, rules: crate::activity::Assistance) -> Result<(), LobbyError> {
+        let (send, receive) = oneshot::channel();
+        self.commands
+            .try_send(Command::Assist(rules, send))
             .map_err(|_| LobbyError::Lost)?;
         receive.await.map_err(|_| LobbyError::Lost)?
     }
@@ -1638,6 +1658,11 @@ async fn host_loop(
                     }
                     let _ = result.send(answer);
                 }
+                Some(Command::Assist(rules,result)) => {
+                    let answer = activities.assist(rules);
+                    if let Ok(Some(message)) = &answer {broadcast(&peers,message);}
+                    let _ = result.send(answer.map(|_| ()));
+                }
                 Some(Command::End(revision, result)) => {
                     let answer = activities.end(revision);
                     if answer.is_ok() {
@@ -2127,6 +2152,7 @@ async fn client_actor(
                         }
                         // Nothing is chosen any more once the countdown began (#418).
                         Message::Preview(id) if app_lobby => if start.is_none() {event(controls,LobbyEvent::Preview(id))?;},
+                        Message::Assistance(rules) if app_lobby => if start.is_none() {event(controls,LobbyEvent::Assistance(rules))?;},
                         Message::Readiness(id,revision,ready) if app_lobby && revision==selection_revision && roster[usize::from(id.value())].is_some() => {
                             event(controls,LobbyEvent::Readiness {id,revision,ready})?;
                         }
