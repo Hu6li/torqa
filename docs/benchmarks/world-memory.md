@@ -375,7 +375,35 @@ Both runs were made back to back with the same course and settings. The compress
 not traced. The streets (7.0 M) and sidewalks (3.4 M) would need their UVs made short, per
 piece, before they could follow.
 
+## Built while riding
+
+2026-11-11, same container (8 cores), Wada, Low (chunks within 3,925 m of the start first).
+The ride starts once the chunks around the start are finished (272 of 683), and the rest is
+built while riding (2d). While a ride runs the build gives way to it (`orqwa_world::Pace`):
+half the cores at low priority, all of them while its lead over the rider is below twice the
+upload radius, until the lead has doubled. `world_memory --stream --ride 1500 --ahead 3925`
+sets a simulated rider off at 1.5 km a minute, a fast descent, once the start is ready:
+
+| Wada, Low | Whole world first | Ridden once the start is built |
+|---|---:|---:|
+| Ride starts after | 105 s | 62–73 s |
+| Whole world built after | 105 s | 109–119 s |
+| Core peak, app (`VmHWM`) | 1.26 GB | 1.43–1.49 GB |
+| Core peak, streamed without the app | 1.19 GB | 1.38 GB |
+
+While the build gave way (4 threads) it built 7.6 chunks a second, about 0.6 km of route a
+second, against the rider's 0.025: the rider never came near. It hurried on all cores only
+right after the start, while the rider was still within twice the radius of the first chunks
+not yet built. The checksums are the same either way.
+
+The world's parts built whole are now handed to the app when the ride can start rather than
+copied, and the distant terrain tiles are let go of once the horizon is made, but neither
+moves the peak beyond run-to-run noise (about 50 MB). Building the start's surroundings first
+costs about 0.2 GB of peak; it is not the chunks waiting for their neighbours (at most 46,
+against 43 when built along the route). Still open.
+
 ## Still to do
 
-The whole world is built before the ride starts (2d). On the tablet, the app as a whole has not
-been measured riding since 2c: it needs a branch APK.
+On the tablet, neither the throttled build (`screenshots/mem/tablet-ride.sh`, `world_memory`
+cross-built) nor the app as a whole riding (frame time against a world already built, R240)
+has been measured; the latter needs a branch APK.

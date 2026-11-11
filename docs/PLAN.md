@@ -998,7 +998,10 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] a rider riding alone who catches up with the world being built waits, clock
         included, and goes on by itself
       - [x] a world is kept, and its winter ground's mask made, once complete
-      - [ ] background building throttled while riding, measured on the tablet
+      - [x] background building gives way to the ride: half the cores at low priority, all
+        of them while its lead over the rider is short; the world is handed over when the ride
+        can start, not copied
+      - [ ] the throttle measured on the tablet while riding (frame time, R240)
       - [ ] group rides: **Ready** once the group's start is built; a late joiner's entry
         point first
       - [ ] leaving a ride before its world is complete: kept worlds built on in the
