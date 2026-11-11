@@ -264,7 +264,8 @@ impl App {
                 .as_deref()
                 .and_then(|fingerprint| self.keeper().kept.size_of(fingerprint))
                 .unwrap_or(0);
-            self.room(length, freed).map_err(AppError::Reported)?;
+            self.room_giving_way(length, freed)
+                .map_err(AppError::Reported)?;
         }
         if let Some(fingerprint) = &fingerprint
             && let Err(error) = self.keeper().kept.remove(fingerprint)
@@ -312,11 +313,17 @@ impl App {
         if kept {
             return Ok(());
         }
-        let room = self.room(route.length(), 0);
-        // What a stopped build of another course left is not among the kept worlds the rider
-        // can delete: it gives way, and the check waits for it to be deleted.
-        if room.is_err() && self.forget_stopped_but(fingerprint.as_deref()) {
-            return self.room(route.length(), 0);
+        self.room_giving_way(route.length(), 0)
+    }
+
+    /// [`room`](Self::room), the store a stopped build left giving way if short: it is not
+    /// among the kept worlds the rider can delete, and the room it takes would otherwise refuse
+    /// a ride that had room before its build was stopped. The check waits for it to be deleted.
+    /// Left by the same course's build, the world is then built afresh.
+    fn room_giving_way(&mut self, length: Meters, freed: u64) -> Result<(), Failure> {
+        let room = self.room(length, freed);
+        if room.is_err() && self.forget_any_stopped() {
+            return self.room(length, freed);
         }
         room
     }

@@ -4,7 +4,8 @@
 //! comes out the same. The cost is preparing the route again.
 //!
 //! ORQWA holds on to one such store, the last stopped: another stopped replaces it, and it
-//! goes with its course, when another course's world needs its room, or when ORQWA closes.
+//! goes with its course, when a world to be built needs its room (the course's own then built
+//! afresh), or when ORQWA closes.
 //! Only builds made offline, from the course's own data, leave one: a build that downloads
 //! could find a tile the stopped one had to do without, and the two halves would not meet.
 
@@ -48,6 +49,8 @@ impl Start {
             Some((store, written)) => (Some(store), written),
             None => (keeper.store(name).map(Arc::new), Vec::new()),
         };
+        // A store that could not be taken up was noted in the slot already, so this build,
+        // stopped, leaves nothing: the next one starts afresh.
         if let (Some(slot), Some(store)) = (self.slot, &store) {
             slot.set(store);
         }
@@ -88,15 +91,21 @@ impl Stopped {
     /// The store, and which chunks are in it by index, once the stopped build has ended.
     /// `None` if they cannot be told.
     async fn take_up(self) -> Option<(Arc<Building>, Vec<bool>)> {
-        while !self.jobs.iter().all(tokio::task::AbortHandle::is_finished) {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        self.ended().await;
         let written = self.store.written().ok()?;
         info!(
             written = written.iter().filter(|&&w| w).count(),
             "taking up the world a stopped build left"
         );
         Some((self.store, written))
+    }
+
+    /// Once the builds that wrote into the store have ended: an aborted job lets go of it
+    /// only when it next waits.
+    async fn ended(&self) {
+        while !self.jobs.iter().all(tokio::task::AbortHandle::is_finished) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 }
 
@@ -140,14 +149,14 @@ impl App {
         job.abort();
         if let Some((fingerprint, store, mut jobs)) = store {
             info!("keeping what the stopped build wrote for the course's next build");
+            jobs.retain(|job| !job.is_finished());
             jobs.push(job);
             if let Some(before) = self.builds.stopped.replace(Stopped {
                 fingerprint,
                 store,
                 jobs,
             }) {
-                // Deleting a store takes a while.
-                self.drop_world(before.store);
+                self.drop_stopped(before);
             }
         }
     }
@@ -162,18 +171,11 @@ impl App {
         }
     }
 
-    /// Lets go of the store a stopped build of another course than the one with `fingerprint`
-    /// left, if one did, for the room it takes. True if it did.
-    pub(crate) fn forget_stopped_but(&mut self, fingerprint: Option<&str>) -> bool {
-        let other = self
-            .builds
-            .stopped
-            .as_ref()
-            .is_some_and(|stopped| Some(stopped.fingerprint.as_str()) != fingerprint);
-        if other && let Some(stopped) = self.builds.stopped.take() {
-            self.drop_world(stopped.store);
-        }
-        other
+    /// Lets go of the store a stopped build left, if one did, for the room it takes. True if
+    /// it did.
+    pub(crate) fn forget_any_stopped(&mut self) -> bool {
+        let held = self.builds.stopped.take();
+        held.map(|stopped| self.drop_stopped(stopped)).is_some()
     }
 
     /// Lets go of the store a stopped build of the course with `fingerprint` left: the course
@@ -186,8 +188,20 @@ impl App {
             .is_some_and(|stopped| stopped.fingerprint == fingerprint)
             && let Some(stopped) = self.builds.stopped.take()
         {
-            self.drop_world(stopped.store);
+            self.drop_stopped(stopped);
         }
+    }
+
+    /// Lets go of `stopped` in the background, once the builds that wrote into it have ended,
+    /// so that waiting for what is let go of waits for its store to be deleted.
+    fn drop_stopped(&mut self, stopped: Stopped) {
+        self.letting_go.retain(|deleting| !deleting.is_finished());
+        let deleting = self.runtime.spawn(async move {
+            stopped.ended().await;
+            // Deleting a store takes a while.
+            let _ = tokio::task::spawn_blocking(move || drop(stopped)).await;
+        });
+        self.letting_go.push(deleting);
     }
 }
 
@@ -360,6 +374,41 @@ mod tests {
             "{events:?}"
         );
         assert!(app.builds.stopped.is_none());
+        app.shutdown();
+    }
+
+    #[test]
+    fn what_a_stopped_build_left_gives_way_to_its_own_course_short_of_room() {
+        let dir = temp_dir("taken-up-room-same");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let left = course(&mut app, &dir, 1000, 0.0);
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        some_written(&mut app);
+        app.cancel_loading();
+        // Not held here: the store is deleted once nothing holds it.
+        let store = Arc::downgrade(&held(&app));
+        let worlds = dir.join("cache").join(orqwa_storage::worlds::DIR);
+        app.check_free_storage(Arc::new(move |_| {
+            let stores = std::fs::read_dir(&worlds)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(".building"));
+            Some(if stores { 0 } else { u64::MAX })
+        }));
+
+        // The ride had room before it was cancelled: it is built afresh, not refused.
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(
+            matches!(events.last(), Some(AppEvent::WorldReady { .. })),
+            "{events:?}"
+        );
+        assert!(store.upgrade().is_none(), "not taken up but let go of");
         app.shutdown();
     }
 
