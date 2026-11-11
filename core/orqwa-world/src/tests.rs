@@ -6410,15 +6410,16 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
 
 #[tokio::test]
 async fn a_bridge_over_the_start_is_there_when_the_ride_starts() {
-    // A railway bridge over the road 300 m along the route, where the rider enters it.
+    // A railway viaduct over the road 300 m along the route, where the rider enters it,
+    // running on 1.2 km east: it stands on chunks beyond those around the start.
     let map = MapData {
         railways: vec![
             railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
             railway(
-                &[(-13.0, 300.0), (27.0, 300.0)],
+                &[(-13.0, 300.0), (1200.0, 300.0)],
                 Some(StructureKind::Bridge),
             ),
-            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+            railway(&[(1200.0, 300.0), (1500.0, 300.0)], None),
         ],
         ..MapData::default()
     };
