@@ -296,6 +296,15 @@ uploads").
    deleted, as before 2d. Also continuing a course (R220) whose world is still being built
    from its start: the build turns to where the ride enters; until then the rider may wait
    there.
+   It lands in two PRs:
+   - 4a: a kept course's build goes on when another course is opened, and is kept once
+     complete. Opening a course with the same fingerprint takes it over, turned to where the
+     ride enters; the ride is ready once the chunks around there are finished. This also
+     covers the group lobby, whose course shares the fingerprint, and continuing a course,
+     whose build turns to the continuation point. Building another world, or starting a ride
+     of another course, stops it, and its store is deleted. With keeping off, opening
+     another course stops the build as before.
+   - 4b: a stopped build's store is kept, and the course's next build takes it up from there.
 
 ### Steps and measuring
 
