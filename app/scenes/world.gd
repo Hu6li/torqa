@@ -663,16 +663,19 @@ func _add_modelled(node: Node3D, cell: Dictionary) -> void:
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		node.add_child(instance)
 	var shell_arrays: Dictionary = cell["shells"]
-	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material)
+	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material, true)
 	shells.visibility_range_begin = model_range
 	shells.visibility_range_begin_margin = MODEL_FADE
 	shells.visibility_range_end = DETAIL_RANGE * _distance
 	node.add_child(shells)
 
 
-func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
+## `compressed` as in `WorldMeshes.from_arrays`.
+func _mesh_instance(
+	arrays: Dictionary, material: Material, compressed: bool = false
+) -> MeshInstance3D:
 	var instance: MeshInstance3D = MeshInstance3D.new()
-	instance.mesh = WorldMeshes.from_arrays(arrays)
+	instance.mesh = WorldMeshes.from_arrays(arrays, compressed)
 	instance.material_override = material
 	instance.visibility_range_end_margin = 300.0
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

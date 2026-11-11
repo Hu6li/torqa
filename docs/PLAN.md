@@ -990,6 +990,8 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
     - [ ] generated ahead of the rider (#237)
   - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
     on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
+  - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes
+    instead of 28); streets, tracks and sidewalks keep full precision for their UVs in metres
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
 
 ### Phase 13 — Group rides (R159–R169, [ADR 0035](adr/0035-group-rides.md))

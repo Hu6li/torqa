@@ -155,27 +155,33 @@ func _add_chunk(world: RideWorld, chunk: Dictionary) -> Node3D:
 	world._terrain.add_child(node)
 	var terrain_arrays: Dictionary = chunk["terrain"]
 	var building_arrays: Dictionary = chunk["buildings"]
-	var ground: MeshInstance3D = world._mesh_instance(terrain_arrays, world._terrain_material)
+	# Ground and water draw no UVs and buildings' stay below a few hundred metres (centimetre
+	# steps): their meshes are compressed. Streets', tracks' and sidewalks' run in metres along
+	# whole ways, kilometres long, and keep full precision.
+	var ground: MeshInstance3D = world._mesh_instance(terrain_arrays, world._terrain_material, true)
 	world._ground_lods.make(ground, terrain_arrays)
 	ground.visibility_range_end = RideWorld.VISIBILITY_RANGE * world._distance
 	node.add_child(ground)
 	for surface: Array in [
-		["streets", world._street_material],
-		["tracks", world._track_material],
-		["water", world._water_material]
+		["streets", world._street_material, false],
+		["tracks", world._track_material, false],
+		["water", world._water_material, true]
 	]:
 		var arrays: Dictionary = chunk.get(surface[0], {})
 		var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
 		if not vertices.is_empty():
 			var material: ShaderMaterial = surface[1]
-			var way: MeshInstance3D = world._mesh_instance(arrays, material)
+			var compressed: bool = surface[2]
+			var way: MeshInstance3D = world._mesh_instance(arrays, material, compressed)
 			way.visibility_range_end = RideWorld.VISIBILITY_RANGE * world._distance
 			if material == world._track_material:
 				way.visibility_range_end = RideWorld.TRACK_RANGE
 				way.set_meta("fixed_range", true)
 			node.add_child(way)
 	UrbanSurfaces.add_to(node, chunk, RideWorld.SIDEWALK_RANGE)
-	var buildings: MeshInstance3D = world._mesh_instance(building_arrays, world._building_material)
+	var buildings: MeshInstance3D = world._mesh_instance(
+		building_arrays, world._building_material, true
+	)
 	buildings.visibility_range_end = RideWorld.DETAIL_RANGE * world._distance
 	node.add_child(buildings)
 	var modelled: Array = chunk.get("modelled", [])

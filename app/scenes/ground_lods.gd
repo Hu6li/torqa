@@ -9,11 +9,12 @@ extends RefCounted
 var _tasks: Dictionary[int, Array] = {}
 
 
-## Starts making the coarser versions of `ground`, a mesh of `arrays`.
+## Starts making the coarser versions of `ground`, a compressed mesh of `arrays`
+## (`WorldMeshes.from_arrays`).
 func make(ground: MeshInstance3D, arrays: Dictionary) -> void:
 	var made: Array[ImporterMesh] = [null]
 	var task: int = WorkerThreadPool.add_task(
-		func() -> void: made[0] = WorldMeshes.simplified(arrays), false, "Ground LODs"
+		func() -> void: made[0] = WorldMeshes.simplified(arrays, true), false, "Ground LODs"
 	)
 	_tasks[task] = [ground, made]
 

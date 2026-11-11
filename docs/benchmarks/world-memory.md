@@ -351,6 +351,30 @@ Split into two pieces (8 m), the world would shrink only to about 2,430 MB. The 
 250 m of the road change least (streets 248 → 222 MB): most of what remains at the start is
 detail near the ride, which stays.
 
+## Compressed ground, water and buildings
+
+2026-11-11, same container and place. Godot keeps a world vertex in 28 bytes whatever the core
+sends: position 12, normal 4 (octahedral), UV 8, colour 4. With `ARRAY_FLAG_COMPRESS_ATTRIBUTES`
+it keeps 20: position and normal together in 12 (16 bits across the mesh's bounds), UV 4
+(16 bits across its largest value). Across a 480 m chunk positions step by 7 mm at most, so
+neighbouring chunks still meet. UVs step in proportion to their largest value: under a
+centimetre for buildings (up to 327 m along a wall), but 0.2–0.6 m for streets, tracks and
+sidewalks, whose UVs run in metres along whole ways. So only the chunks' ground (with its
+LODs), water and building shells are compressed; ground and water draw no UVs. Railways,
+structures and the horizon span the whole course in one mesh and stay as they are.
+
+| Wada at the start, Low (108 chunks) | Before | After |
+|---|---:|---:|
+| Godot's video memory | 853 MB | 793 MB |
+| of which mesh buffers | 674 MB | 614 MB |
+| Lavapipe's GPU memory (memfd) | 971 MB | 879 MB |
+| Uploading the 108 chunks | 2.65 s | 2.59 s |
+
+Both runs were made back to back with the same course and settings. The compressed kinds hold
+5.3 M of the start's 17.0 M vertices, 42 MB at 8 bytes each; Godot reports 60 MB less, the rest
+not traced. The streets (7.0 M) and sidewalks (3.4 M) would need their UVs made short, per
+piece, before they could follow.
+
 ## Still to do
 
 The whole world is built before the ride starts (2d). On the tablet, the app as a whole has not
