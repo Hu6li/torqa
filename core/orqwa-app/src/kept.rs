@@ -300,17 +300,25 @@ impl App {
         if self.free_storage.is_none() {
             return Ok(());
         }
-        // One that can't be read is built again, so it takes room like any other.
-        let kept = self
+        let fingerprint = self
             .course
             .as_deref()
+            .and_then(|course| course::fingerprint(course).ok());
+        // One that can't be read is built again, so it takes room like any other.
+        let kept = fingerprint
+            .as_deref()
             .filter(|_| self.keeps_worlds())
-            .and_then(|course| course::fingerprint(course).ok())
-            .is_some_and(|fingerprint| self.keeper().kept.generator(&fingerprint).is_some());
+            .is_some_and(|fingerprint| self.keeper().kept.generator(fingerprint).is_some());
         if kept {
             return Ok(());
         }
-        self.room(route.length(), 0)
+        let room = self.room(route.length(), 0);
+        // What a stopped build of another course left is not among the kept worlds the rider
+        // can delete: it gives way, and the check waits for it to be deleted.
+        if room.is_err() && self.forget_stopped_but(fingerprint.as_deref()) {
+            return self.room(route.length(), 0);
+        }
+        room
     }
 
     /// Whether the cache has room for the store of the world of a route `length` long, once

@@ -4,7 +4,9 @@
 //! comes out the same. The cost is preparing the route again.
 //!
 //! ORQWA holds on to one such store, the last stopped: another stopped replaces it, and it
-//! goes with its course, or when ORQWA closes.
+//! goes with its course, when another course's world needs its room, or when ORQWA closes.
+//! Only builds made offline, from the course's own data, leave one: a build that downloads
+//! could find a tile the stopped one had to do without, and the two halves would not meet.
 
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
@@ -62,6 +64,8 @@ pub(crate) struct Slot {
     /// The fingerprint of the course whose world is built.
     fingerprint: String,
     store: Arc<OnceLock<Weak<Building>>>,
+    /// The jobs of stopped builds that wrote into the store before, when it is taken up.
+    writers: Vec<tokio::task::AbortHandle>,
 }
 
 impl Slot {
@@ -75,15 +79,16 @@ impl Slot {
 pub(crate) struct Stopped {
     fingerprint: String,
     store: Arc<Building>,
-    /// The stopped build's job: until it has ended, it may still be writing a chunk.
-    job: tokio::task::AbortHandle,
+    /// The jobs of the builds that wrote into it: until they have ended, one may still be
+    /// writing a chunk.
+    jobs: Vec<tokio::task::AbortHandle>,
 }
 
 impl Stopped {
     /// The store, and which chunks are in it by index, once the stopped build has ended.
     /// `None` if they cannot be told.
     async fn take_up(self) -> Option<(Arc<Building>, Vec<bool>)> {
-        while !self.job.is_finished() {
+        while !self.jobs.iter().all(tokio::task::AbortHandle::is_finished) {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let written = self.store.written().ok()?;
@@ -96,19 +101,27 @@ impl Stopped {
 }
 
 impl App {
-    /// What the world about to be built for the loaded course starts from. Only a course's
-    /// store is held on to: a route not yet one has no later build to find it.
+    /// What the world about to be built for the loaded course starts from. Only an offline
+    /// build of a course has its store held on to: a route not yet a course has no later build
+    /// to find it.
     pub(crate) fn start_build(&mut self) -> Start {
-        let slot = self
+        let mut slot = self
             .course
             .as_deref()
+            .filter(|_| self.offline)
             .and_then(|course| course::fingerprint(course).ok())
             .map(|fingerprint| Slot {
                 fingerprint,
                 store: Arc::default(),
+                writers: Vec::new(),
             });
-        self.builds.building.clone_from(&slot);
         let stopped = self.take_stopped(slot.as_ref());
+        // Noted at once: stopped again before it gets going, it is held on to as it was.
+        if let (Some(slot), Some(stopped)) = (&mut slot, &stopped) {
+            slot.set(&stopped.store);
+            slot.writers.clone_from(&stopped.jobs);
+        }
+        self.builds.building.clone_from(&slot);
         Start { slot, stopped }
     }
 
@@ -119,15 +132,19 @@ impl App {
         // A job that has ended built its world whole, or failed.
         let store = slot
             .filter(|_| !job.is_finished())
-            .and_then(|slot| Some((slot.fingerprint, slot.store.get()?.upgrade()?)))
-            .filter(|(_, store)| store.whole());
+            .and_then(|slot| {
+                let store = slot.store.get()?.upgrade()?;
+                Some((slot.fingerprint, store, slot.writers))
+            })
+            .filter(|(_, store, _)| store.whole());
         job.abort();
-        if let Some((fingerprint, store)) = store {
+        if let Some((fingerprint, store, mut jobs)) = store {
             info!("keeping what the stopped build wrote for the course's next build");
+            jobs.push(job);
             if let Some(before) = self.builds.stopped.replace(Stopped {
                 fingerprint,
                 store,
-                job,
+                jobs,
             }) {
                 // Deleting a store takes a while.
                 self.drop_world(before.store);
@@ -143,6 +160,20 @@ impl App {
         } else {
             None
         }
+    }
+
+    /// Lets go of the store a stopped build of another course than the one with `fingerprint`
+    /// left, if one did, for the room it takes. True if it did.
+    pub(crate) fn forget_stopped_but(&mut self, fingerprint: Option<&str>) -> bool {
+        let other = self
+            .builds
+            .stopped
+            .as_ref()
+            .is_some_and(|stopped| Some(stopped.fingerprint.as_str()) != fingerprint);
+        if other && let Some(stopped) = self.builds.stopped.take() {
+            self.drop_world(stopped.store);
+        }
+        other
     }
 
     /// Lets go of the store a stopped build of the course with `fingerprint` left: the course
@@ -239,6 +270,52 @@ mod tests {
     }
 
     #[test]
+    fn a_build_taking_up_a_store_stopped_before_it_gets_going_still_leaves_it() {
+        let dir = temp_dir("taken-up-twice");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let left = course(&mut app, &dir, 1000, 0.0);
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        some_written(&mut app);
+        app.cancel_loading();
+        let store = held(&app);
+
+        // Ride, and Cancel at once, before the build has taken the store up.
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        app.cancel_loading();
+        assert!(
+            Arc::ptr_eq(&held(&app), &store),
+            "the same store, still held"
+        );
+        drop(store);
+
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        assert!(app.builds.stopped.is_none(), "taken up");
+        assert!(wait_for(&mut app, |app| app
+            .chunks
+            .as_ref()
+            .is_some_and(|chunks| chunks.complete())));
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_build_that_downloads_leaves_nothing_to_take_up() {
+        let dir = temp_dir("taken-up-online");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let left = course(&mut app, &dir, 1000, 0.0);
+        open(&mut app, &left);
+        // As a video course's world is built.
+        app.offline = false;
+        app.build_world(false, Meters(0.0));
+        some_written(&mut app);
+        app.cancel_loading();
+        assert!(app.builds.stopped.is_none());
+        app.shutdown();
+    }
+
+    #[test]
     fn cancelling_a_build_keeps_what_it_wrote_for_the_next_try() {
         let dir = temp_dir("taken-up-cancel");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
@@ -249,6 +326,40 @@ mod tests {
 
         app.cancel_loading();
         let _ = held(&app);
+        app.shutdown();
+    }
+
+    #[test]
+    fn what_a_stopped_build_left_gives_way_to_another_course_short_of_room() {
+        let dir = temp_dir("taken-up-room");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let left = course(&mut app, &dir, 1000, 0.0);
+        let other = course(&mut app, &dir, 40, 2.0);
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        some_written(&mut app);
+        open(&mut app, &other);
+        let _ = held(&app);
+        // Room only once no store is left in the cache, as on a full Android device.
+        let worlds = dir.join("cache").join(orqwa_storage::worlds::DIR);
+        app.check_free_storage(Arc::new(move |_| {
+            let stores = std::fs::read_dir(&worlds)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(".building"));
+            Some(if stores { 0 } else { u64::MAX })
+        }));
+
+        app.build_world(false, Meters(0.0));
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(
+            matches!(events.last(), Some(AppEvent::WorldReady { .. })),
+            "{events:?}"
+        );
+        assert!(app.builds.stopped.is_none());
         app.shutdown();
     }
 

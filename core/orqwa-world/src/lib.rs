@@ -575,7 +575,20 @@ pub async fn generate_into<M: ElevationModel>(
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, NonZeroUsize::get));
     let mut built = 0;
     let mut fallback_samples = 0;
-    while built < order.len() {
+    loop {
+        // Everything needed first is built once `first` chunks are: it comes first in order.
+        // A build taking up what a stopped one wrote may have none of it to build again.
+        if built >= first
+            && let Some(ready) = ready.take()
+        {
+            world.structures = structures::join(so_far(&tunnels, stages.bridges()));
+            world.fallback_samples = fallback_samples;
+            mark_handed(&mut handed, stages.bridges());
+            ready(std::mem::take(&mut world), &centres);
+        }
+        if built >= order.len() {
+            break;
+        }
         // A turn waits until the world is handed over: until then the chunks it needs first
         // come first.
         if ready.is_none()
@@ -616,15 +629,7 @@ pub async fn generate_into<M: ElevationModel>(
         stages.finish(workers, &counted);
         let bridges = stages.build_bridges(&pieces, &below);
         stages.drop_unneeded();
-        // Everything needed first is built once `first` chunks are: it comes first in order.
-        if built >= first
-            && let Some(ready) = ready.take()
-        {
-            world.structures = structures::join(so_far(&tunnels, stages.bridges()));
-            world.fallback_samples = fallback_samples;
-            mark_handed(&mut handed, stages.bridges());
-            ready(std::mem::take(&mut world), &centres);
-        } else if ready.is_none() && bridges > 0 {
+        if ready.is_none() && bridges > 0 {
             let new = stages
                 .bridges()
                 .iter()
@@ -652,11 +657,6 @@ pub async fn generate_into<M: ElevationModel>(
         ),
         fallback_samples,
     };
-    if let Some(ready) = ready {
-        // A world without chunks.
-        world.structures.clone_from(&rest.structures);
-        ready(world, &centres);
-    }
     if fallback_samples > 0 {
         warn!(
             samples = fallback_samples,
