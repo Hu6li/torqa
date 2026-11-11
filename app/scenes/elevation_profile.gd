@@ -1,7 +1,8 @@
 class_name ElevationProfile
 extends Control
-## The route's elevation profile as a clean area chart: ridden part in the accent colour, the
-## rest light, a crisp outline and the rider's position.
+## The route's elevation profile as a clean area chart coloured by gradient (R240): green
+## descents, yellow flats and red climbs, darker the steeper. The ridden part is solid, the
+## rest translucent, with a crisp outline and the rider's position.
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
 signal jump_requested(distance_m: float)
@@ -9,8 +10,22 @@ signal jump_requested(distance_m: float)
 const PADDING: float = 2.0
 ## The smallest elevation range drawn, so flat routes do not look mountainous.
 const MIN_RANGE_M: float = 40.0
-const AHEAD: Color = Color(1, 1, 1, 0.13)
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
+## The gradient, in percent either way, drawn in the darkest shade (R240).
+const STEEPEST_PERCENT: float = 10.0
+const STEEP_DESCENT: Color = Color(0.04, 0.38, 0.17)
+const DESCENT: Color = Color(0.35, 0.8, 0.4)
+const FLAT: Color = Color(0.98, 0.84, 0.27)
+const CLIMB: Color = Color(0.93, 0.3, 0.22)
+const STEEP_CLIMB: Color = Color(0.5, 0.06, 0.08)
+const RIDDEN_ALPHA: float = 0.85
+const AHEAD_ALPHA: float = 0.3
+
+## During a ride the part still ahead is translucent; a course view shows all of it solid.
+var shows_progress: bool = false:
+	set(value):
+		shows_progress = value
+		queue_redraw()
 
 ## Clicks jump the rider there (simulated rides).
 var jumpable: bool = false:
@@ -79,20 +94,19 @@ func _draw() -> void:
 	if _profile.size() < 2:
 		return
 	var bottom: float = size.y
-	var ridden: Color = Color(UiTheme.ACCENT, 0.55)
 	var outline: PackedVector2Array = PackedVector2Array()
 	for i: int in range(_profile.size()):
 		outline.append(_to_screen(_profile[i]))
-	for i: int in range(outline.size() - 1):
-		var a: Vector2 = outline[i]
-		var b: Vector2 = outline[i + 1]
-		var color: Color = ridden if _profile[i].x < _rider_distance else AHEAD
-		# Drawn as quads without triangulation, which fails on flat segments at the bottom.
-		draw_primitive(
-			PackedVector2Array([a, b, Vector2(b.x, bottom), Vector2(a.x, bottom)]),
-			PackedColorArray([color, color, color, color]),
-			PackedVector2Array()
-		)
+	for i: int in range(_profile.size() - 1):
+		var from: Vector2 = _profile[i]
+		var to: Vector2 = _profile[i + 1]
+		var color: Color = grade_color((to.y - from.y) / maxf(to.x - from.x, 0.001) * 100.0)
+		# A segment the rider is on splits there, so the ridden part ends exactly at the rider.
+		var ridden: float = _rider_distance if shows_progress else to.x
+		var split: float = clampf(ridden, from.x, to.x)
+		var at: Vector2 = from.lerp(to, (split - from.x) / maxf(to.x - from.x, 0.001))
+		_fill(outline[i], _to_screen(at), bottom, Color(color, RIDDEN_ALPHA))
+		_fill(_to_screen(at), outline[i + 1], bottom, Color(color, AHEAD_ALPHA))
 	draw_polyline(outline, OUTLINE, 1.5, true)
 	for climb: Array in _climbs:
 		var start_m: float = climb[0]
@@ -114,6 +128,28 @@ func _draw() -> void:
 	draw_line(Vector2(rider.x, 0), Vector2(rider.x, bottom), Color(UiTheme.ACCENT, 0.9), 1.5)
 	draw_circle(rider, 5.0, Color.WHITE)
 	draw_circle(rider, 3.0, UiTheme.ACCENT)
+
+
+## The area colour for a gradient in percent (R240): yellow on the flat, through green to dark
+## green going down and through red to dark red going up, darkest from [constant STEEPEST_PERCENT].
+static func grade_color(grade_percent: float) -> Color:
+	var steepness: float = clampf(absf(grade_percent) / STEEPEST_PERCENT, 0.0, 1.0)
+	var near: Color = CLIMB if grade_percent > 0.0 else DESCENT
+	var far: Color = STEEP_CLIMB if grade_percent > 0.0 else STEEP_DESCENT
+	if steepness < 0.5:
+		return FLAT.lerp(near, steepness * 2.0)
+	return near.lerp(far, (steepness - 0.5) * 2.0)
+
+
+func _fill(a: Vector2, b: Vector2, bottom: float, color: Color) -> void:
+	if b.x - a.x < 0.01:
+		return
+	# Drawn as quads without triangulation, which fails on flat segments at the bottom.
+	draw_primitive(
+		PackedVector2Array([a, b, Vector2(b.x, bottom), Vector2(a.x, bottom)]),
+		PackedColorArray([color, color, color, color]),
+		PackedVector2Array()
+	)
 
 
 func _elevation_at(distance_m: float) -> float:

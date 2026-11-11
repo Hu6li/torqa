@@ -155,6 +155,7 @@ func begin(options: Dictionary) -> void:
 	_show_plan(ftp)
 	_minimap.set_track(_orqwa.track(2000))
 	_minimap.set_map(_orqwa.minimap_mesh())
+	_profile.shows_progress = true
 	_profile.set_profile(_orqwa.elevation_profile(600))
 	var climb_info: Dictionary = _orqwa.climbs()
 	var climbs: Array = climb_info.get("climbs", [])

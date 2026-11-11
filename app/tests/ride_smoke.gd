@@ -27,6 +27,7 @@ func _run() -> void:
 	_check(not route.is_empty(), "route loaded")
 	var profile: PackedVector2Array = _orqwa.elevation_profile(100)
 	_check(profile.size() >= 2, "elevation profile available")
+	_check_grade_colors()
 	# How long the rider would take (R66): at a share of their FTP, no quicker with descents
 	# ridden flat.
 	var estimate: Dictionary = _orqwa.estimated_time(false)
@@ -437,6 +438,26 @@ func _write_route(path: String) -> void:
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(xml)
 	file.close()
+
+
+## The profile's area is yellow on the flat, green going down and red going up, darker the
+## steeper, and no darker beyond the steepest shade (R240).
+func _check_grade_colors() -> void:
+	var flat: Color = ElevationProfile.grade_color(0.0)
+	_check(flat.r > 0.9 and flat.g > 0.8 and flat.b < 0.4, "flat is yellow: %s" % flat)
+	for grade: float in [3.0, 6.0, 10.0]:
+		var up: Color = ElevationProfile.grade_color(grade)
+		var down: Color = ElevationProfile.grade_color(-grade)
+		_check(up.r > up.g and up.r > up.b, "%.0f%% up is red: %s" % [grade, up])
+		_check(down.g > down.r and down.g > down.b, "%.0f%% down is green: %s" % [grade, down])
+	for pair: Vector2 in [Vector2(2, 5), Vector2(5, 9), Vector2(-2, -5), Vector2(-5, -9)]:
+		var gentle: Color = ElevationProfile.grade_color(pair.x)
+		var steep: Color = ElevationProfile.grade_color(pair.y)
+		_check(steep.get_luminance() < gentle.get_luminance(), "steeper is darker: %s" % pair)
+	_check(
+		ElevationProfile.grade_color(25.0) == ElevationProfile.grade_color(10.0),
+		"10% and steeper share the darkest red"
+	)
 
 
 func _check(condition: bool, what: String) -> void:
