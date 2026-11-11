@@ -40,6 +40,7 @@ pub fn lower_this_thread() {
     }
     #[cfg(target_vendor = "apple")]
     {
+        // Utility also lowers the threads' disk priority; they write the chunks to the store.
         const QOS_CLASS_UTILITY: std::ffi::c_uint = 0x11;
         // SAFETY: scalars only; it changes the calling thread alone.
         let _ = unsafe { pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0) };
@@ -59,6 +60,10 @@ mod tests {
     #[test]
     fn a_lowered_thread_gives_way_and_the_others_keep_their_priority() {
         let before = nice();
+        if before >= 10 {
+            // Already as low as it lowers to, e.g. tests run under `nice`.
+            return;
+        }
         let lowered = std::thread::spawn(|| {
             super::lower_this_thread();
             nice()

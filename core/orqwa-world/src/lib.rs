@@ -400,7 +400,8 @@ pub struct Ahead<'a> {
     /// structures built so far but without the horizon or chunks, and every chunk's centre by
     /// index. The build keeps no copy of them.
     pub ready: &'a mut (dyn FnMut(World, &[[f32; 3]]) + Send),
-    /// Handed the structures again each time bridges built after that add to them.
+    /// Handed the bridges built since, joined, each time some are built after that: the
+    /// structures handed over with the world and these together are every structure.
     pub structures: &'a mut (dyn FnMut(MeshData) + Send),
     /// How much of the device the build may take meanwhile; `None`: all of it.
     pub pace: Option<&'a Pace>,
@@ -535,6 +536,9 @@ pub async fn generate_into<M: ElevationModel>(
         ..
     } = ahead;
     let mut ready = Some(ready);
+    // The bridges handed over so far, by piece: each is handed over once, so that the scene
+    // adds it rather than drawing every structure again.
+    let mut handed = vec![false; pieces.len()];
     let (chunks, trees) = (AtomicUsize::new(0), AtomicUsize::new(0));
     let counted = |index, chunk: TerrainChunk| {
         chunks.fetch_add(1, Ordering::Relaxed);
@@ -548,7 +552,9 @@ pub async fn generate_into<M: ElevationModel>(
     // core keep the cores busy enough (Wada: about a tenth slower than four, 0.2 GB less at the
     // peak; one per core peaks no lower, as the chunks kept for their neighbours set the floor
     // then).
-    let cores = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let cores = pace
+        .and_then(Pace::cores)
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, NonZeroUsize::get));
     let mut built = 0;
     let mut fallback_samples = 0;
     while built < order.len() {
@@ -583,9 +589,16 @@ pub async fn generate_into<M: ElevationModel>(
         {
             world.structures = structures::join(so_far(&tunnels, stages.bridges()));
             world.fallback_samples = fallback_samples;
+            mark_handed(&mut handed, stages.bridges());
             ready(std::mem::take(&mut world), &centres);
         } else if ready.is_none() && bridges > 0 {
-            grew(structures::join(so_far(&tunnels, stages.bridges())));
+            let new = stages
+                .bridges()
+                .iter()
+                .zip(&handed)
+                .filter_map(|(bridge, &handed)| bridge.clone().filter(|_| !handed));
+            grew(structures::join(new));
+            mark_handed(&mut handed, stages.bridges());
         }
     }
     debug_assert!(stages.done(), "a chunk or bridge was left waiting");
@@ -620,7 +633,9 @@ pub async fn generate_into<M: ElevationModel>(
 const SAMPLE_SPACING: f64 = CHUNK_SIZE / 2.0;
 
 /// How far along the route the nearest of the cells in `order` ahead of road sample `from`
-/// lies, in metres; `None` if none is ahead.
+/// lies, in metres; `None` if none is ahead. A cell counts from the first sample that comes
+/// near it, and samples drift from route metres, so the lead it gives errs short: the build
+/// hurries early rather than late.
 #[allow(clippy::cast_precision_loss)] // a sample's index
 fn front(order: &[((i32, i32), usize)], from: usize) -> Option<f64> {
     order
@@ -650,6 +665,13 @@ fn build_order(
         .into_iter()
         .map(|(_, cell, reach)| (cell, reach))
         .collect()
+}
+
+/// Notes each bridge in `bridges` (by piece) as handed over.
+fn mark_handed(handed: &mut [bool], bridges: &[Option<stages::StructureMesh>]) {
+    for (handed, bridge) in handed.iter_mut().zip(bridges) {
+        *handed |= bridge.is_some();
+    }
 }
 
 /// The structures built so far, by piece: every tunnel, and the bridges built.

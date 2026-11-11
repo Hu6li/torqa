@@ -3910,6 +3910,19 @@ impl OrqwaApp {
             .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.structures))
     }
 
+    /// The bridges built since last taken while the world being ridden is built, as mesh
+    /// arrays like `structures_mesh()`'s, to add to the scene on `world_grew`: drawing every
+    /// structure again would stall the frame.
+    #[func]
+    fn take_added_structures(&mut self) -> Array<VarDictionary> {
+        self.app.as_mut().map_or_else(Array::new, |app| {
+            app.take_added_structures()
+                .iter()
+                .map(mesh_arrays)
+                .collect()
+        })
+    }
+
     /// The minimap (R70) in the rider's map style: `{background, land, lines, corridor}`, all
     /// in metres east/north of the route start (as in `track()`). `land` is the map of the
     /// land around the whole route as coloured triangles `{vertices, colors}`, with its rivers

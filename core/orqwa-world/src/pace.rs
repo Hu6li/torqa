@@ -8,7 +8,13 @@ use orqwa_domain::units::Meters;
 /// meanwhile keeps its frame time and a tablet stays cool (ADR 0040, 2d). While a ride runs,
 /// the build takes half the cores at low priority; when its lead over the rider falls below
 /// twice the radius the scene uploads chunks within, it takes them all, until the lead has
-/// doubled. With no ride running, it takes every core at the usual priority.
+/// doubled. With no ride running, or the ride paused (also while a rider who caught up waits
+/// for it), it takes every core at the usual priority: nothing moves on screen that it would
+/// hold up.
+///
+/// The lowered threads are never reused at the usual priority: lowering can't be undone
+/// without privileges, so the build starts fresh threads for every batch rather than keeping
+/// a pool.
 ///
 /// Shared between the build and whoever knows where the rider is.
 #[derive(Debug)]
@@ -21,6 +27,9 @@ pub struct Pace {
     hurrying: AtomicBool,
     /// Lowers the calling thread's priority, where the platform's glue can.
     lower: Option<fn()>,
+    /// Cores to build on instead of the device's, and the threads given to each batch.
+    #[cfg(test)]
+    pub(crate) test: (Option<usize>, std::sync::Mutex<Vec<usize>>),
 }
 
 impl Pace {
@@ -33,10 +42,21 @@ impl Pace {
             radius: radius.0,
             hurrying: AtomicBool::new(false),
             lower,
+            #[cfg(test)]
+            test: (None, std::sync::Mutex::new(Vec::new())),
         }
     }
 
-    /// Where the rider is along the route, or `None` while no ride runs.
+    /// Cores to build on instead of the device's.
+    #[allow(clippy::unused_self)] // tests only
+    pub(crate) fn cores(&self) -> Option<usize> {
+        #[cfg(test)]
+        return self.test.0;
+        #[cfg(not(test))]
+        None
+    }
+
+    /// Where the rider is along the route, or `None` while no ride runs or it is paused.
     pub fn ride_at(&self, distance: Option<Meters>) {
         let distance = distance.map_or(f64::NAN, |distance| distance.0);
         self.rider.store(distance.to_bits(), Ordering::Relaxed);
@@ -51,6 +71,17 @@ impl Pace {
     /// The workers for the next chunks, of `cores`, when the nearest chunk ahead of the rider
     /// not yet built lies `front` metres along the route (`None`: none is left ahead).
     pub(crate) fn workers(&self, front: Option<f64>, cores: usize) -> Workers {
+        let workers = self.pick(front, cores);
+        #[cfg(test)]
+        self.test
+            .1
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(workers.threads);
+        workers
+    }
+
+    fn pick(&self, front: Option<f64>, cores: usize) -> Workers {
         let rider = f64::from_bits(self.rider.load(Ordering::Relaxed));
         if rider.is_nan() {
             self.hurrying.store(false, Ordering::Relaxed);

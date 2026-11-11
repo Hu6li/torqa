@@ -650,6 +650,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_horizon_water.material_override = _water_material
 	_railways.mesh = WorldMeshes.from_arrays(_orqwa.railways_mesh())
 	_railways.material_override = _rail_material
+	for added: Node in _structures.get_children():
+		added.queue_free()
 	_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
 	_structures.material_override = _structure_material
 
@@ -657,7 +659,12 @@ func _on_world_ready(_info: Dictionary) -> void:
 ## The world being ridden grew: the bridges built since, and the chunks the scene waits for.
 func _on_world_grew(info: Dictionary) -> void:
 	if info.get("structures", false):
-		_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
+		# Only the new bridges: drawing every structure again stalls the frame.
+		for arrays: Dictionary in _orqwa.take_added_structures():
+			var added: MeshInstance3D = MeshInstance3D.new()
+			added.mesh = WorldMeshes.from_arrays(arrays)
+			added.material_override = _structure_material
+			_structures.add_child(added)
 	if _chunk_count > 0:
 		_streaming.grew(self)
 

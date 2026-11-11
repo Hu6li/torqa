@@ -6360,7 +6360,7 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
     let radius = Meters(100.0);
     let sunk = Mutex::new(Vec::new());
     let mut told = None;
-    let mut structures = None;
+    let mut added = Vec::new();
     let rest = generate_into(
         &route,
         &mut EastwardSlope,
@@ -6375,7 +6375,7 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
                 let finished: Vec<usize> = sunk.lock().unwrap().iter().map(|(i, _)| *i).collect();
                 told = Some((world, centres.to_vec(), finished));
             },
-            structures: &mut |mesh| structures = Some(mesh),
+            structures: &mut |mesh| added.push(mesh),
             pace: None,
         },
     )
@@ -6393,9 +6393,13 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
     assert_eq!(ready.road, whole.road, "the road is whole from the start");
     assert_eq!(ready.railways, whole.railways);
     assert_eq!(ready.chunks.len(), 0, "handed over without chunks");
-    // The structures told are those built by then, and grow to the whole world's.
-    let last = structures.unwrap_or_else(|| ready.structures.clone());
-    assert_eq!(last, whole.structures);
+    // The structures told are those built by then; with the bridges added after, they are
+    // the whole world's, each once.
+    let mut all = ready.structures.clone();
+    for mesh in added {
+        all.append(mesh);
+    }
+    assert_eq!(sorted_triangles(&all), sorted_triangles(&whole.structures));
 
     // Every chunk, once, as the whole world has it, centred where told ahead.
     let mut sunk = sunk.into_inner().unwrap();
@@ -6416,6 +6420,69 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
             chunks: Vec::new(),
             ..whole
         },
+    );
+}
+
+/// A mesh's triangles by their corners' positions, in no set order.
+fn sorted_triangles(mesh: &MeshData) -> Vec<[[u32; 3]; 3]> {
+    let mut sorted: Vec<[[u32; 3]; 3]> = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|t| t.map(|i| mesh.vertices[i as usize].map(f32::to_bits)))
+        .collect();
+    sorted.sort_unstable();
+    sorted
+}
+
+#[tokio::test]
+async fn a_world_built_while_its_pace_changes_comes_out_the_same() {
+    let route = route_north(&[]).await;
+    let map = MapData::default();
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    // The rider waits at the start: the build hurries on both cores (batches of four) until
+    // it is 400 m ahead, then gives way on one (batches of two).
+    let mut pace = Pace::new(Meters(100.0), None);
+    pace.test.0 = Some(2);
+    pace.ride_at(Some(Meters(0.0)));
+    let sunk = Mutex::new(Vec::new());
+    let mut ready = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, _| ready = Some(world),
+            structures: &mut |_| {},
+            pace: Some(&pace),
+        },
+    )
+    .await;
+
+    let given = pace.test.1.into_inner().unwrap();
+    let switch = given.iter().position(|&threads| threads == 1);
+    assert!(
+        given.first() == Some(&2) && switch.is_some(),
+        "the pace never changed: {given:?}"
+    );
+    let mut sunk = sunk.into_inner().unwrap();
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(
+        World {
+            chunks,
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready.expect("handed over")
+        },
+        whole
     );
 }
 
