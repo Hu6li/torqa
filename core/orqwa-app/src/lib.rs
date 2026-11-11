@@ -2263,8 +2263,8 @@ impl App {
     }
 
     /// Reports once how the world being ridden grew since last reported: chunks finished,
-    /// every chunk built, or bridges built, those at most every [`BRIDGES_EVERY`] until the
-    /// world is complete.
+    /// every chunk built, or bridges built, those at most every [`BRIDGES_EVERY`] unless the
+    /// build hurries or the world is complete.
     fn report_growth(&mut self, events: &mut Vec<AppEvent>) {
         if let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) {
             let finished = chunks.finished_count();
@@ -2274,10 +2274,13 @@ impl App {
             }
         }
         // Bridges are built well ahead of the rider, so they can wait to come in together:
-        // each time adds a mesh to draw.
+        // each time adds a mesh to draw. Not while the build hurries: the rider is then close
+        // behind, and a bridge held back could appear in view.
         let complete = self.grown.is_some_and(|grown| grown.complete);
+        let hurrying = self.pace.as_ref().is_some_and(|pace| pace.hurrying());
         let bridges = !self.added_structures.is_empty()
             && (complete
+                || hurrying
                 || self
                     .bridges_reported
                     .is_none_or(|reported| reported.elapsed() >= BRIDGES_EVERY));
