@@ -1739,10 +1739,8 @@ impl App {
         if self.world.is_some() {
             // Still being built from where it was entered before: what is around where this
             // ride enters comes next, while a rider who gets there first waits for it.
-            if continuing {
-                self.world_ahead.0 = true;
-                self.turn_build(self.entry_distance());
-            }
+            self.world_ahead.0 = continuing;
+            self.turn_build(self.entry_distance());
             return true;
         }
         self.world_ahead = (continuing, radius);
@@ -1805,7 +1803,8 @@ impl App {
         if self.course.as_deref() == Some(path) {
             self.course = None;
         }
-        // Its kept world goes too (R101).
+        // Its kept world goes too (R101), and one still being built for it.
+        self.stop_background_unless_kept();
         self.tidy_kept_worlds();
         if let Some(video) = video {
             let shared = self.courses().into_iter().any(|c| {
@@ -2155,6 +2154,8 @@ impl App {
     /// and what it downloaded stays in the cache, so trying again is quick.
     pub fn cancel_loading(&mut self) {
         if self.loading.as_ref().is_some_and(|job| !job.is_finished()) {
+            // Stopped, not left to go on in the background.
+            self.pace = None;
             let _ = self.start_loading(self.offline);
         }
     }
@@ -3258,8 +3259,9 @@ impl App {
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
-        // Its preparation and chunks never share memory with another course's ride (R240).
-        self.stop_background_of_other_courses();
+        // Its preparation and chunks never share memory with a ride (R240); a 3D ride of the
+        // same course took it over already.
+        self.stop_background();
         let ghost = self.ghost_for(&route, descent, ghost)?;
         let along = self.video.as_ref().filter(|_| self.view == View::Video);
         let player = along
@@ -4448,7 +4450,7 @@ impl App {
                     if load != self.world_load => {}
                 // A build taken over may still fail.
                 JobResult::Route(load, Err(_)) if load != self.load && load != self.world_load => {}
-                JobResult::Route(load, _) | JobResult::Video(load, _) if load != self.load => {}
+                JobResult::Route(load, Ok(_)) | JobResult::Video(load, _) if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
                     let map = imported.map.clone();
                     self.route_loaded(*imported, events);
@@ -4484,20 +4486,10 @@ impl App {
                     self.enter_world(*loaded);
                 }
                 JobResult::World(_, loaded) => self.world_ready(*loaded, events),
-                JobResult::Structures(_, bridges) if self.waiting_world.is_some() => {
-                    if let Some(waiting) = &mut self.waiting_world {
-                        Arc::make_mut(&mut waiting.world)
-                            .structures
-                            .append(*bridges);
-                    }
-                }
-                JobResult::Built(_, rest) if self.waiting_world.is_some() => {
-                    // Complete, so finished around where the ride enters too.
-                    self.entering = None;
-                    if let Some(waiting) = self.waiting_world.take() {
-                        self.world_ready(*waiting, events);
-                    }
-                    self.world_built(*rest);
+                result @ (JobResult::Structures(..) | JobResult::Built(..))
+                    if self.waiting_world.is_some() =>
+                {
+                    self.while_entering(result, events);
                 }
                 JobResult::Structures(_, bridges) => {
                     if let Some(world) = &mut self.world {
@@ -4528,8 +4520,13 @@ impl App {
                 JobResult::Detail(serial, done) => events.extend(self.detail_done(serial, done)),
                 JobResult::Countries(found) => self.countries_found(found, events),
                 JobResult::Scan(Err(message)) => self.scan_failed(message, events),
-                JobResult::Route(_, Err(message))
-                | JobResult::Video(_, Err(message))
+                JobResult::Route(load, Err(message)) => {
+                    if load == self.world_load {
+                        self.world_build_failed();
+                    }
+                    events.push(AppEvent::Error(message));
+                }
+                JobResult::Video(_, Err(message))
                 | JobResult::CourseAdded(Err(message))
                 | JobResult::Failed(message) => {
                     events.push(AppEvent::Error(message));

@@ -1,7 +1,10 @@
 //! A ride left before its world is complete (ADR 0040, 2d step 4): a kept course's world is
 //! built on in the background, also once another course is opened, and kept when complete
 //! (R101). Opening the course again takes that build over, turned to where the ride enters;
-//! building another world, or riding another course, stops it.
+//! building another world, starting a ride, or cancelling stops it.
+//!
+//! A build taken over keeps its pace's radius for the throttle; only where it turns to
+//! follows the scene's radius now.
 
 use std::sync::Arc;
 
@@ -34,11 +37,15 @@ impl App {
         if self.chunks.as_ref().is_some_and(|chunks| chunks.complete()) {
             return;
         }
+        // Only a library course's world is kept: any other would be tidied away at once.
         let fingerprint = self
             .course
             .as_deref()
             .filter(|_| self.keeps_worlds())
-            .and_then(|course| course::fingerprint(course).ok());
+            .and_then(|course| course::fingerprint(course).ok())
+            .filter(|fingerprint| {
+                crate::kept::library_fingerprints(&self.courses_dir()).contains(fingerprint)
+            });
         // Otherwise the job is left for the caller to stop. A job just finished has sent its
         // complete world, which is kept from here too.
         let Some(fingerprint) = fingerprint else {
@@ -84,17 +91,26 @@ impl App {
         }
     }
 
-    /// Stops the world built in the background unless it is the loaded course's, as a ride
-    /// of another course starts.
-    pub(crate) fn stop_background_of_other_courses(&mut self) {
-        let same = self.background.as_ref().is_some_and(|background| {
-            self.course
-                .as_deref()
-                .and_then(|course| course::fingerprint(course).ok())
-                .is_some_and(|fingerprint| fingerprint == background.fingerprint)
+    /// Stops the world built in the background once nothing would keep it: keeping was
+    /// turned off, or its course left the library.
+    pub(crate) fn stop_background_unless_kept(&mut self) {
+        let kept = self.background.as_ref().is_some_and(|background| {
+            self.keeps_worlds()
+                && crate::kept::library_fingerprints(&self.courses_dir())
+                    .contains(&background.fingerprint)
         });
-        if !same {
+        if !kept {
             self.stop_background();
+        }
+    }
+
+    /// The world being built for the loaded course failed: nothing more comes of it, so it is
+    /// neither left to the background nor waited for; opening the course again builds afresh.
+    pub(crate) fn world_build_failed(&mut self) {
+        self.pace = None;
+        self.entering = None;
+        if let Some(waiting) = self.waiting_world.take() {
+            self.drop_world(waiting);
         }
     }
 
@@ -164,6 +180,28 @@ impl App {
         }
     }
 
+    /// Takes `result` of the world taken over while the ride waits to enter it.
+    pub(crate) fn while_entering(&mut self, result: JobResult, events: &mut Vec<crate::AppEvent>) {
+        match result {
+            JobResult::Structures(_, bridges) => {
+                if let Some(waiting) = &mut self.waiting_world {
+                    Arc::make_mut(&mut waiting.world)
+                        .structures
+                        .append(*bridges);
+                }
+            }
+            JobResult::Built(_, rest) => {
+                // Complete, so finished around where the ride enters too.
+                self.entering = None;
+                if let Some(waiting) = self.waiting_world.take() {
+                    self.world_ready(*waiting, events);
+                }
+                self.world_built(*rest);
+            }
+            _ => {}
+        }
+    }
+
     /// Whether `result` comes from the world built in the background.
     pub(crate) fn background_result(&self, result: &JobResult) -> bool {
         self.background.as_ref().is_some_and(|background| {
@@ -197,7 +235,9 @@ impl App {
             JobResult::Built(_, rest) => self.background_built(*rest),
             JobResult::Route(_, Err(failure)) => {
                 warn!(%failure, "the world built in the background failed");
-                self.background = None;
+                if let Some(loaded) = self.background.take().and_then(|b| b.loaded) {
+                    self.drop_world(loaded);
+                }
             }
             _ => {}
         }
@@ -383,6 +423,92 @@ mod tests {
         open(&mut app, &other);
         assert!(app.background.is_some());
         assert!(wait_for(&mut app, |app| kept(app, &left)));
+        app.shutdown();
+    }
+
+    /// `app` with keeping on, riding a 5 km library course it leaves at once for a short one:
+    /// the first course, the second, and `app` with the first's build in the background.
+    fn leaving(name: &str) -> (PathBuf, PathBuf, PathBuf, App) {
+        let dir = temp_dir(name);
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let left = course(&mut app, &dir, 500, 0.0);
+        let other = course(&mut app, &dir, 40, 2.0);
+        app.set_keeps_worlds(true).unwrap();
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        open(&mut app, &other);
+        assert!(app.background.is_some());
+        (dir, left, other, app)
+    }
+
+    #[test]
+    fn a_build_taken_over_that_fails_says_so_and_is_not_taken_over_again() {
+        let (_dir, left, other, mut app) = leaving("left-failed");
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        assert!(app.world_load < app.load);
+
+        // The build's job ends without a world, as one that panics does.
+        app.loading.as_ref().unwrap().abort();
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::Error(_)));
+        assert!(matches!(events.last(), Some(AppEvent::Error(_))));
+        open(&mut app, &other);
+        assert!(app.background.is_none(), "nothing is building it");
+        app.shutdown();
+    }
+
+    #[test]
+    fn cancelling_stops_the_build_rather_than_leaving_it() {
+        let (_dir, left, _, mut app) = leaving("left-cancel");
+        open(&mut app, &left);
+        app.build_world(false, Meters(0.0));
+        let build = app.loading.clone().unwrap();
+
+        app.cancel_loading();
+        assert!(app.background.is_none());
+        assert!(wait_for(&mut app, |_| build.is_finished()));
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_build_nothing_would_keep_is_stopped() {
+        // Its course deleted.
+        let (_dir, left, _, mut app) = leaving("left-deleted");
+        app.delete_course(&left).unwrap();
+        assert!(app.background.is_none());
+        app.shutdown();
+        // Keeping turned off.
+        let (_dir, _, _, mut app) = leaving("left-turned-off");
+        app.set_keeps_worlds(false).unwrap();
+        assert!(app.background.is_none());
+        app.shutdown();
+        // A course not in the library, such as a group's: its world would be tidied away.
+        let (dir, left, other, mut app) = leaving("left-shared");
+        let shared = dir.join("shared.oqc");
+        std::fs::copy(&left, &shared).unwrap();
+        app.delete_course(&left).unwrap();
+        app.open_shared_course(shared);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.build_world(false, Meters(0.0));
+        open(&mut app, &other);
+        assert!(app.background.is_none());
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_group_course_with_the_same_route_and_data_takes_the_build_over() {
+        let (dir, left, _, mut app) = leaving("left-group");
+        let shared = dir.join("shared.oqc");
+        std::fs::copy(&left, &shared).unwrap();
+
+        app.open_shared_course(shared);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.build_world(false, Meters(0.0));
+        assert!(app.world_load < app.load, "the rider's own build of it");
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(matches!(events.last(), Some(AppEvent::WorldReady { .. })));
         app.shutdown();
     }
 

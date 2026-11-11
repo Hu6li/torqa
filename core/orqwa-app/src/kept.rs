@@ -147,7 +147,7 @@ impl Keeper {
 }
 
 /// The fingerprints of the courses in `library`.
-fn library_fingerprints(library: &Path) -> HashSet<String> {
+pub(crate) fn library_fingerprints(library: &Path) -> HashSet<String> {
     std::fs::read_dir(library)
         .into_iter()
         .flatten()
@@ -182,6 +182,7 @@ impl App {
             }
             _ => self.tidy_kept_worlds(),
         }
+        self.stop_background_unless_kept();
         Ok(())
     }
 
