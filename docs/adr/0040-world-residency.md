@@ -239,8 +239,9 @@ uploads").
     than starting in an empty scene. Riders already in the ride can't be asked to wait.
 - **Throttle.** While a ride runs, background building starts at half the cores (at least
   one), at low priority, so drawing keeps its frame time and a tablet stays cool.
-  - Its share rises, up to all cores, when its lead over the rider (or the group's front
-    rider) falls below twice the upload radius. It falls back once the lead has doubled.
+  - Its share rises, up to all cores, when its lead over the rider falls below twice the
+    upload radius. It falls back once the lead has doubled. In a group ride, too, the lead is
+    this rider's: the scene draws the chunks around them, not around the riders ahead.
   - The 2d PR measures the throttled rate on the tablet **while riding**, in dense town chunks
     and on a fast descent (1.5 km a minute), not as a route average. The one figure so far,
     about 1.9 chunks a second (about 9 km of route a minute), came from all cores with nothing
