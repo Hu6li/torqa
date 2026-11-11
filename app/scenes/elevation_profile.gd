@@ -1,8 +1,9 @@
 class_name ElevationProfile
 extends Control
-## The route's elevation profile as a clean area chart coloured by gradient (R240): green
-## descents, yellow flats and red climbs, darker the steeper. The ridden part is solid, the
-## rest translucent, with a crisp outline and the rider's position.
+## The route's elevation profile as a clean area chart with a crisp outline and the rider's
+## position: ridden part in the accent colour and the rest light, or, if the rider opts in
+## (R241), coloured by gradient (R240): green descents, yellow flats and red climbs, darker the
+## steeper, with the ridden part solid and the rest translucent.
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
 signal jump_requested(distance_m: float)
@@ -11,6 +12,7 @@ const PADDING: float = 2.0
 ## The smallest elevation range drawn, so flat routes do not look mountainous.
 const MIN_RANGE_M: float = 40.0
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
+const AHEAD: Color = Color(1, 1, 1, 0.13)
 ## The gradient, in percent either way, drawn in the darkest shade (R240).
 const STEEPEST_PERCENT: float = 10.0
 const STEEP_DESCENT: Color = Color(0.04, 0.38, 0.17)
@@ -21,10 +23,17 @@ const STEEP_CLIMB: Color = Color(0.5, 0.06, 0.08)
 const RIDDEN_ALPHA: float = 0.85
 const AHEAD_ALPHA: float = 0.3
 
-## During a ride the part still ahead is translucent; a course view shows all of it solid.
-var shows_progress: bool = false:
+## With gradient colours, during a ride the part still ahead is translucent; a course view shows
+## all of it solid. The ride screen's scene turns it on.
+@export var shows_progress: bool = false:
 	set(value):
 		shows_progress = value
+		queue_redraw()
+
+## The rider's choice to colour the area by gradient (R241, the profile's `gradient_colours`).
+var gradient_colours: bool = false:
+	set(value):
+		gradient_colours = value
 		queue_redraw()
 
 ## Clicks jump the rider there (simulated rides).
@@ -97,9 +106,14 @@ func _draw() -> void:
 	var outline: PackedVector2Array = PackedVector2Array()
 	for i: int in range(_profile.size()):
 		outline.append(_to_screen(_profile[i]))
+	var ridden_color: Color = Color(UiTheme.ACCENT, 0.55)
 	for i: int in range(_profile.size() - 1):
 		var from: Vector2 = _profile[i]
 		var to: Vector2 = _profile[i + 1]
+		if not gradient_colours:
+			var plain: Color = ridden_color if from.x < _rider_distance else AHEAD
+			_fill(outline[i], outline[i + 1], bottom, plain)
+			continue
 		var color: Color = grade_color((to.y - from.y) / maxf(to.x - from.x, 0.001) * 100.0)
 		# A segment the rider is on splits there, so the ridden part ends exactly at the rider.
 		var ridden: float = _rider_distance if shows_progress else to.x

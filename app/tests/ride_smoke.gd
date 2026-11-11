@@ -249,6 +249,14 @@ func _run() -> void:
 	var guest: String = _orqwa.save_profile("", {"name": "Guest"})
 	var guest_drivetrain: String = _orqwa.profile()["drivetrain"]
 	_check(guest_drivetrain == "single_cog", "a new rider shifts virtual gears (R98)")
+	# Elevation colours are the rider's choice, off until they opt in (R241).
+	var plain: bool = _orqwa.profile()["gradient_colours"]
+	_check(not plain, "a new rider sees the plain profile")
+	var colourful: Dictionary = _orqwa.profile().duplicate()
+	colourful["gradient_colours"] = true
+	_orqwa.save_profile(guest, colourful)
+	var opted_in: bool = _orqwa.profile()["gradient_colours"]
+	_check(opted_in, "the rider opted in to gradient colours")
 	_check(_orqwa.delete_profile(guest), "a rider is deleted")
 	var active: String = _orqwa.profile()["id"]
 	var gone: bool = _orqwa.profiles().all(func(p: Dictionary) -> bool: return p["id"] != guest)
