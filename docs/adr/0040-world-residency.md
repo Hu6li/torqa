@@ -285,10 +285,14 @@ uploads").
    bridges as they come; a solo rider who catches up waits; the world is kept once complete.
    Group rides and GPX imports still build their whole world first.
 2. The throttle, measured on the tablet while riding.
-3. Group rides: **Ready**, and a late joiner's entry point first.
+3. Group rides: **Ready**, and a late joiner's entry point first. Also a rider joining a
+   group while their own world of the course is still being built from another entry point:
+   the build turns to the group's.
 4. Leaving early: kept worlds built on in the background, others stopped and taken up again
    from their store. Until then, opening another course stops the build, and its store is
-   deleted, as before 2d.
+   deleted, as before 2d. Also continuing a course (R220) whose world is still being built
+   from its start: the build turns to where the ride enters; until then the rider may wait
+   there.
 
 ### Steps and measuring
 
