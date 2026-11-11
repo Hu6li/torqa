@@ -189,7 +189,7 @@ fn stream(
     let centres = std::sync::Mutex::new(Vec::new());
     let ride = Ride::from_args();
     let pace = orqwa_world::Pace::new(pace_radius(ride), None);
-    let turn = turn_to(&imported.route);
+    let turn = turn_to(&imported.route, pace_radius(ride));
     if let Some(entry) = turn {
         pace.turn_to(entry);
     }
@@ -311,7 +311,10 @@ fn stream(
 }
 
 /// Where `--turn` turns the build to along `route`, the first route point at or past it.
-fn turn_to(route: &orqwa_routes::Route) -> Option<orqwa_world::Entry> {
+fn turn_to(
+    route: &orqwa_routes::Route,
+    radius: orqwa_domain::units::Meters,
+) -> Option<orqwa_world::Entry> {
     let distance: f64 = std::env::args()
         .skip_while(|arg| arg != "--turn")
         .nth(1)?
@@ -329,6 +332,7 @@ fn turn_to(route: &orqwa_routes::Route) -> Option<orqwa_world::Entry> {
             orqwa_domain::units::Meters(at.0),
             orqwa_domain::units::Meters(at.1),
         ),
+        radius,
     })
 }
 

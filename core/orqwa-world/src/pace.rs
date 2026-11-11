@@ -132,6 +132,9 @@ pub struct Entry {
     pub from: Meters,
     /// Where, in metres east/north of the route start.
     pub at: (Meters, Meters),
+    /// How far around it the scene uploads chunks: the build's own radius, or more if the
+    /// scene was set to draw farther after the build started.
+    pub radius: Meters,
 }
 
 /// The threads a step of the build runs on.

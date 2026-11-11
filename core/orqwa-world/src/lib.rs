@@ -538,7 +538,6 @@ pub async fn generate_into<M: ElevationModel>(
         ready,
         structures: grew,
         pace,
-        radius,
         ..
     } = ahead;
     let mut ready = Some(ready);
@@ -569,7 +568,7 @@ pub async fn generate_into<M: ElevationModel>(
         if ready.is_none()
             && let Some(entry) = pace.and_then(Pace::take_turn)
         {
-            let plan = chunk_plan(&centres, entry.at.0, entry.at.1, radius);
+            let plan = chunk_plan(&centres, entry.at.0, entry.at.1, entry.radius);
             let needed = stages.needed(&plan.indices[..plan.nearby]);
             from = sample(entry.from);
             let rest = order.split_off(built);

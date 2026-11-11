@@ -6443,6 +6443,8 @@ async fn a_build_turned_to_a_late_entry_finishes_its_surroundings_first_and_come
     let entry = Entry {
         from: Meters(2500.0),
         at: (Meters(0.0), Meters(2500.0)),
+        // Wider than the build's own: the scene was set to draw farther.
+        radius: Meters(300.0),
     };
     let sunk = Mutex::new(Vec::new());
     let mut ready = None;
@@ -6468,7 +6470,7 @@ async fn a_build_turned_to_a_late_entry_finishes_its_surroundings_first_and_come
 
     let (ready, centres, handed) = ready.expect("handed over");
     let sunk = sunk.into_inner().unwrap();
-    let plan = chunk_plan(&centres, entry.at.0, entry.at.1, Meters(0.0));
+    let plan = chunk_plan(&centres, entry.at.0, entry.at.1, entry.radius);
     let around = &plan.indices[..plan.nearby];
     assert!(plan.nearby > 0);
     let last_around = sunk

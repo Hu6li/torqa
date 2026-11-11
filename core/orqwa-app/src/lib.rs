@@ -2325,13 +2325,19 @@ impl App {
             pace.turn_to(orqwa_world::Entry {
                 from: distance,
                 at: (Meters(east), Meters(north)),
+                radius: self.drawn_radius(),
             });
         }
     }
 
+    /// How far around the rider the scene draws chunks of the world being built: the
+    /// build's radius, or the group's if it grew after the build started.
+    fn drawn_radius(&self) -> Meters {
+        Meters(self.world_ahead.1.0.max(self.group_radius.0))
+    }
+
     /// Whether the chunks the scene draws around `distance` along the route are finished,
-    /// or no world is being built. The group's radius counts if it grew after the build
-    /// started, as the scene draws that much.
+    /// or no world is being built.
     pub(crate) fn finished_around(&self, distance: Meters) -> bool {
         let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) else {
             return true;
@@ -2343,7 +2349,7 @@ impl App {
             chunks.centres(),
             Meters(east),
             Meters(north),
-            Meters(self.world_ahead.1.0.max(self.group_radius.0)),
+            self.drawn_radius(),
         );
         plan.indices[..plan.nearby]
             .iter()
