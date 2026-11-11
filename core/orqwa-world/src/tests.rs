@@ -6407,3 +6407,41 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
         rest
     );
 }
+
+#[tokio::test]
+async fn a_bridge_over_the_start_is_there_when_the_ride_starts() {
+    // A railway bridge over the road 300 m along the route, where the rider enters it.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (27.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+
+    let mut told = None;
+    generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|_, _| {},
+        Ahead {
+            from: Meters(300.0),
+            at: (Meters(0.0), Meters(300.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, _| told = Some(world.structures.clone()),
+            structures: &mut |_| {},
+        },
+    )
+    .await;
+
+    assert_eq!(told.expect("told"), whole.structures);
+}

@@ -502,6 +502,8 @@ pub async fn generate_into<M: ElevationModel>(
     // Again once the whole-route preparation is done, so its memory can be told from the
     // chunks'.
     progress(0, first);
+    // The route's distance only roughly matches the drawn road's samples `reached` counts;
+    // the drift changes only the order chunks are built in, never what is built.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
     let order = build_order(
         reached,

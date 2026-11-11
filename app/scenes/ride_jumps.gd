@@ -35,7 +35,7 @@ func update() -> void:
 	if _was_free and not free:
 		_wait()
 	_was_free = free
-	if not _waiting and _world.waiting_for_world() and _riding_alone():
+	if not _waiting and not free and _world.waiting_for_world() and _riding_alone():
 		_wait()
 	if not _waiting:
 		return

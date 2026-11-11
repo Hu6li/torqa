@@ -2204,6 +2204,8 @@ impl App {
             return;
         };
         let parts = Arc::make_mut(world);
+        // Drawn again only if bridges were built after the last ones reported.
+        let structures = parts.structures != rest.structures;
         parts.structures = rest.structures;
         parts.fallback_samples = rest.fallback_samples;
         if chunks.completed() {
@@ -2212,7 +2214,7 @@ impl App {
                 .spawn_blocking(move || chunks.make_snow_ground_mask(&world));
         }
         events.push(AppEvent::WorldGrew {
-            structures: true,
+            structures,
             complete: true,
         });
         let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
