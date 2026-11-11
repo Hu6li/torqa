@@ -277,8 +277,12 @@ uploads").
     without might arrive for the next, and the two halves would not meet. ORQWA holds one
     such store, the last stopped: disk is bounded by one course's world, and a store held for
     a course the rider left long ago is unlikely to be taken up. It isn't among the kept
-    worlds the rider can delete, so when another course's world lacks room for its store
-    (Android), the held store gives way first.
+    worlds the rider can delete, so when a world lacks room for its store (Android), the held
+    store gives way first, also to its own course, whose world is then built afresh rather
+    than refused a ride that had room before it was stopped. An offline build still reads
+    the shared terrain cache, so a tile it lacked could arrive in between through another
+    course's online build; that takes a course prepared without some of its terrain and a
+    video course over the same ground ridden between the two builds, and is accepted.
   - Afterwards, the build prepares the route again and continues with the chunks not yet
     written. A written chunk whose neighbours aren't finished, or that a bridge stands on
     (bridges are built whole, not stored), is built again in memory for its ground and
