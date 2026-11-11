@@ -301,9 +301,10 @@ uploads").
      complete. Opening a course with the same fingerprint takes it over, turned to where the
      ride enters; the ride is ready once the chunks around there are finished. This also
      covers the group lobby, whose course shares the fingerprint, and continuing a course,
-     whose build turns to the continuation point. Building another world, or starting a ride
-     of another course, stops it, and its store is deleted. With keeping off, opening
-     another course stops the build as before.
+     whose build turns to the continuation point. Only a library course's build goes on,
+     until its course is deleted or keeping is turned off. Building another world, starting a
+     ride, or **Cancel** stops it, and its store is deleted. With keeping off, opening another
+     course stops the build as before.
    - 4b: a stopped build's store is kept, and the course's next build takes it up from there.
 
 ### Steps and measuring
