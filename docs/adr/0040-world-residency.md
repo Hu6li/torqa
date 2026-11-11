@@ -88,10 +88,11 @@ the core reads chunks from the store, every world is.
   when the kept world is read, which ADR 0025 already handles. The building directory is then
   deleted. The kept world's layout stays as ADR 0025 describes it.
 - A store belongs to the build that made it, and is deleted when that build lets go of it:
-  once kept, when the build is stopped, or when a chunk fails to be written (the disk may be
-  full; from 2b, once the chunks written before are read back, as they are the only copy).
-  When the rider doesn't keep worlds, the store is the ride's, deleted when the course is
-  closed or another course is opened. Turning **Keep courses ready to ride** off deletes the
+  once kept, or when a chunk fails to be written (the disk may be full; from 2b, once the
+  chunks written before are read back, as they are the only copy). When the rider doesn't
+  keep worlds, the store is the ride's, deleted when the course is closed or another course
+  is opened once its world is complete. A build stopped before its world is complete hands its store on to the course's
+  next build (see **Leaving early**). Turning **Keep courses ready to ride** off deletes the
   kept worlds but not the stores of this ORQWA's builds.
 - A store left by an ORQWA that stopped (a crash, a low-memory kill) is deleted by the next
   tidy of the kept worlds once it hasn't grown for 10 minutes, as a half-written kept world
@@ -269,13 +270,21 @@ uploads").
     **stopped, not paused**. Its preparation and two rings are dropped from memory, so they
     never share memory with another ride, and R240's one-course figures still hold. Its
     store, with the chunks already written, stays: ORQWA holds on to it for the course's
-    next build.
+    next build. So does every build stopped before its world is complete: with keeping off
+    when another course is opened, and on **Cancel**, after which the rider likely tries
+    again. A store a chunk failed to be written to is deleted instead. ORQWA holds one such
+    store, the last stopped: disk is bounded by one course's world, and a store held for a
+    course the rider left long ago is unlikely to be taken up.
   - Afterwards, the build prepares the route again and continues with the chunks not yet
-    written. A written chunk whose neighbours aren't finished is built again in memory for
-    its ground and as-built pavement, but not written again. Building is deterministic, so
-    the result is byte-identical; the cost is preparing twice.
-  - If ORQWA closes first, the partial store is deleted by age, as above, and the next ride
-    builds the world again.
+    written. A written chunk whose neighbours aren't finished, or that a bridge stands on
+    (bridges are built whole, not stored), is built again in memory for its ground and
+    as-built pavement, but not written again; the others aren't built at all, only their
+    elevations are looked up to count the samples without terrain data. Building is
+    deterministic, so the result is byte-identical; the cost is preparing twice. The next
+    build waits for the stopped one's job to end first, so no chunk is written twice at
+    once.
+  - If ORQWA closes first, the partial store is deleted, on a clean close at once, after a
+    crash by age as above, and the next ride builds the world again.
   - Otherwise, the store is deleted with the course.
 
 ### Steps of 2d
@@ -305,7 +314,8 @@ uploads").
      until its course is deleted or keeping is turned off. Building another world, starting a
      ride, or **Cancel** stops it, and its store is deleted. With keeping off, opening another
      course stops the build as before.
-   - 4b: a stopped build's store is kept, and the course's next build takes it up from there.
+   - 4b: a stopped build's store is kept, and the course's next build takes it up from there,
+     also with keeping off and after **Cancel**.
 
 ### Steps and measuring
 
