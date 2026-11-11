@@ -21,6 +21,7 @@ mod horizon;
 mod junctions;
 mod landcover;
 mod minimap;
+mod pace;
 mod palette;
 mod pavement;
 mod props;
@@ -57,6 +58,8 @@ pub use forest_mask::{ForestMask, forest_mask};
 pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{FlatMap, MapFeature, minimap};
+pub use pace::Pace;
+use pace::Workers;
 pub use props::{Label, Props};
 pub use riding::RoadWidths;
 use road::RoadIndex;
@@ -361,14 +364,18 @@ pub async fn generate<M: ElevationModel>(
         }
         chunks[index] = Some(chunk);
     };
+    let mut world = World::default();
     let whole = Ahead {
         from: Meters(0.0),
         at: (Meters(0.0), Meters(0.0)),
         radius: Meters(f64::INFINITY),
-        ready: &mut |_, _| {},
+        ready: &mut |parts, _| world = parts,
         structures: &mut |_| {},
+        pace: None,
     };
-    let mut world = generate_into(route, model, map, progress, &sink, whole).await;
+    let rest = generate_into(route, model, map, progress, &sink, whole).await;
+    world.structures = rest.structures;
+    world.fallback_samples = rest.fallback_samples;
     // `generate_into` finishes every chunk once.
     world.chunks = chunks
         .into_inner()
@@ -389,18 +396,32 @@ pub struct Ahead<'a> {
     pub at: (Meters, Meters),
     /// How far around that the scene uploads chunks, as asked of [`chunk_plan`].
     pub radius: Meters,
-    /// Told once, when those chunks are finished: the parts built whole, with the structures
-    /// built so far but without the horizon, and every chunk's centre by index.
-    pub ready: &'a mut (dyn FnMut(&World, &[[f32; 3]]) + Send),
-    /// Told the structures again each time bridges built after that add to them.
-    pub structures: &'a mut (dyn FnMut(&MeshData) + Send),
+    /// Handed the world once those chunks are finished: the parts built whole, with the
+    /// structures built so far but without the horizon or chunks, and every chunk's centre by
+    /// index. The build keeps no copy of them.
+    pub ready: &'a mut (dyn FnMut(World, &[[f32; 3]]) + Send),
+    /// Handed the structures again each time bridges built after that add to them.
+    pub structures: &'a mut (dyn FnMut(MeshData) + Send),
+    /// How much of the device the build may take meanwhile; `None`: all of it.
+    pub pace: Option<&'a Pace>,
+}
+
+/// What the world handed over when its ride could begin lacks once every chunk is built.
+#[derive(Debug)]
+pub struct Rest {
+    /// Every structure: the tunnels and all bridges.
+    pub structures: MeshData,
+    /// Terrain samples without elevation data, in all chunks.
+    pub fallback_samples: usize,
 }
 
 /// Builds the world as [`generate`] does, but gives each chunk to `sink` as soon as it is
 /// finished, with its index in [`World::chunks`], instead of keeping it: only the chunks
 /// around those being built are held (ADR 0040). Chunks are finished in no set order, each
-/// once, several at a time on all cores: those `ahead` asks for first. The world returned has
-/// every part but its chunks and horizon, and is the same whatever `ahead` asks for.
+/// once, several at a time on the cores `ahead`'s pace leaves it: those `ahead` asks for
+/// first. The world is handed to `ahead` without its chunks and horizon, also when it asks for
+/// every chunk first, and what it lacks then is returned; both are the same whatever `ahead`
+/// asks for.
 /// `progress` counts the chunks built of those needed first until `ahead` is told it has
 /// them, then of all.
 #[allow(clippy::too_many_lines)] // the preparation, then one pass over the chunks
@@ -411,7 +432,7 @@ pub async fn generate_into<M: ElevationModel>(
     progress: &mut (dyn FnMut(usize, usize) + Send),
     sink: &(dyn Fn(usize, TerrainChunk) + Sync),
     ahead: Ahead<'_>,
-) -> World {
+) -> Rest {
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
     road.set_appearances(&appearance::Index::new(map, &projection));
@@ -505,14 +526,12 @@ pub async fn generate_into<M: ElevationModel>(
     // The route's distance only roughly matches the drawn road's samples `reached` counts;
     // the drift changes only the order chunks are built in, never what is built.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
-    let order = build_order(
-        reached,
-        &needed,
-        (ahead.from.0.max(0.0) / (CHUNK_SIZE / 2.0)) as usize,
-    );
+    let from = (ahead.from.0.max(0.0) / SAMPLE_SPACING) as usize;
+    let order = build_order(reached, &needed, from);
     let Ahead {
         ready,
         structures: grew,
+        pace,
         ..
     } = ahead;
     let mut ready = Some(ready);
@@ -524,24 +543,30 @@ pub async fn generate_into<M: ElevationModel>(
     };
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
-    // then the chunks themselves on all cores, where nearly all the time goes. A batch's chunks
-    // are all held before any is finished, so they add to the peak: two per core keep the cores
-    // busy enough (Wada: about a tenth slower than four, 0.2 GB less at the peak; one per core
-    // peaks no lower, as the chunks kept for their neighbours set the floor then).
-    let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    // then the chunks themselves on the cores the pace leaves, where nearly all the time goes.
+    // A batch's chunks are all held before any is finished, so they add to the peak: two per
+    // core keep the cores busy enough (Wada: about a tenth slower than four, 0.2 GB less at the
+    // peak; one per core peaks no lower, as the chunks kept for their neighbours set the floor
+    // then).
+    let cores = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
     let mut built = 0;
-    for batch in order.chunks(threads * 2) {
+    let mut fallback_samples = 0;
+    while built < order.len() {
+        let workers = pace.map_or(Workers::new(cores), |pace| {
+            pace.workers(front(&order[built..], from), cores)
+        });
+        let batch = &order[built..(built + workers.threads * 2).min(order.len())];
         let mut jobs = Vec::with_capacity(batch.len());
         for &((cx, cn), _) in batch {
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
             jobs.push((cx, cn, elevations));
         }
-        let results = in_parallel(&jobs, threads, |(cx, cn, elevations)| {
+        let results = in_parallel(&jobs, workers, |(cx, cn, elevations)| {
             corridor.chunk(*cx, *cn, elevations)
         });
         for (&(cell, _), (chunk, fallbacks, barriers)) in batch.iter().zip(results) {
             stages.built(stages.index(cell), chunk, barriers);
-            world.fallback_samples += fallbacks;
+            fallback_samples += fallbacks;
         }
         built += batch.len();
         if ready.is_some() {
@@ -549,7 +574,7 @@ pub async fn generate_into<M: ElevationModel>(
         } else {
             progress(built, total);
         }
-        stages.finish(threads, &counted);
+        stages.finish(workers, &counted);
         let bridges = stages.build_bridges(&pieces, &below);
         stages.drop_unneeded();
         // Everything needed first is built once `first` chunks are: it comes first in order.
@@ -557,32 +582,53 @@ pub async fn generate_into<M: ElevationModel>(
             && let Some(ready) = ready.take()
         {
             world.structures = structures::join(so_far(&tunnels, stages.bridges()));
-            ready(&world, &centres);
+            world.fallback_samples = fallback_samples;
+            ready(std::mem::take(&mut world), &centres);
         } else if ready.is_none() && bridges > 0 {
-            grew(&structures::join(so_far(&tunnels, stages.bridges())));
+            grew(structures::join(so_far(&tunnels, stages.bridges())));
         }
     }
     debug_assert!(stages.done(), "a chunk or bridge was left waiting");
     // All are joined in the pieces' order, however they were built.
-    world.structures = structures::join(
-        tunnels
-            .into_iter()
-            .zip(stages.take_bridges())
-            .filter_map(|(tunnel, bridge)| bridge.or(tunnel.map(|mesh| (mesh, Vec::new())))),
-    );
+    let rest = Rest {
+        structures: structures::join(
+            tunnels
+                .into_iter()
+                .zip(stages.take_bridges())
+                .filter_map(|(tunnel, bridge)| bridge.or(tunnel.map(|mesh| (mesh, Vec::new())))),
+        ),
+        fallback_samples,
+    };
     if let Some(ready) = ready {
         // A world without chunks.
-        ready(&world, &centres);
+        world.structures.clone_from(&rest.structures);
+        ready(world, &centres);
     }
-    if world.fallback_samples > 0 {
+    if fallback_samples > 0 {
         warn!(
-            samples = world.fallback_samples,
+            samples = fallback_samples,
             "terrain data missing in places; terrain follows the road there"
         );
     }
     let (chunks, trees) = (chunks.into_inner(), trees.into_inner());
     info!(chunks, trees, "world generated");
-    world
+    rest
+}
+
+/// How far apart the drawn road's samples that `cells_near_route` counts lie, roughly, in
+/// metres along the route.
+const SAMPLE_SPACING: f64 = CHUNK_SIZE / 2.0;
+
+/// How far along the route the nearest of the cells in `order` ahead of road sample `from`
+/// lies, in metres; `None` if none is ahead.
+#[allow(clippy::cast_precision_loss)] // a sample's index
+fn front(order: &[((i32, i32), usize)], from: usize) -> Option<f64> {
+    order
+        .iter()
+        .map(|&(_, reach)| reach)
+        .filter(|&reach| reach >= from)
+        .min()
+        .map(|reach| reach as f64 * SAMPLE_SPACING)
 }
 
 /// The order the corridor's cells, each with the road sample that first reaches it, are built
@@ -841,7 +887,7 @@ impl Corridor<'_> {
 /// `jobs`. A panic in `work` is passed on.
 fn in_parallel<J: Sync, R: Send>(
     jobs: &[J],
-    threads: usize,
+    workers: Workers,
     work: impl Fn(&J) -> R + Sync,
 ) -> Vec<R> {
     // Each thread takes the next job when done with one: chunks differ a lot in work (a town
@@ -849,9 +895,12 @@ fn in_parallel<J: Sync, R: Send>(
     let next = AtomicUsize::new(0);
     let mut results: Vec<Option<R>> = std::iter::repeat_with(|| None).take(jobs.len()).collect();
     std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..threads.clamp(1, jobs.len().max(1)))
+        let threads: Vec<_> = (0..workers.threads.clamp(1, jobs.len().max(1)))
             .map(|_| {
                 scope.spawn(|| {
+                    if let Some(lower) = workers.lower {
+                        lower();
+                    }
                     let mut done = Vec::new();
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
@@ -863,8 +912,8 @@ fn in_parallel<J: Sync, R: Send>(
                 })
             })
             .collect();
-        for worker in workers {
-            for (index, result) in worker
+        for thread in threads {
+            for (index, result) in thread
                 .join()
                 .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
             {

@@ -24,6 +24,12 @@
 //! With `--ahead <metres>`, a course's world can be ridden once the chunks within that radius
 //! of its start are finished (ADR 0040, 2d): when that was, and when the rest was built, are
 //! printed.
+//!
+//! With `--stream --ride <metres a minute> --ahead <metres>`, a rider sets off from the start
+//! at that speed once the chunks within that radius are finished, and the build gives way to
+//! the ride as it does in the app (`orqwa_world::Pace`, without lowering its threads' priority
+//! as nothing is drawn): how fast chunks were built while the build kept half the cores and
+//! while it hurried on all, and how far ahead of the rider it stayed, are printed.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -150,6 +156,7 @@ fn hasher() -> std::collections::hash_map::DefaultHasher {
 
 /// Builds the world of the GPX route at `path` offline from `cache`, keeping only each chunk's
 /// hash, and writing it into a store of `kept`'s if given.
+#[allow(clippy::too_many_lines)] // one measured build, from import to checksum
 fn stream(
     path: &std::path::Path,
     cache: &std::path::Path,
@@ -176,44 +183,103 @@ fn stream(
     let store = kept.map(|kept| kept.building("course").expect("store"));
     let hashes = std::sync::Mutex::new(Vec::new());
     let centres = std::sync::Mutex::new(Vec::new());
+    let ride = Ride::from_args();
+    let pace = orqwa_world::Pace::new(pace_radius(ride), None);
+    let set_off = std::sync::OnceLock::new();
+    let mut parts = None;
+    let start = imported.route.points()[0];
+    let at =
+        orqwa_routes::LocalProjection::for_route(&imported.route).project(start.lat, start.lon);
     let whole = orqwa_world::Ahead {
         from: orqwa_domain::units::Meters(0.0),
         at: (
-            orqwa_domain::units::Meters(0.0),
-            orqwa_domain::units::Meters(0.0),
+            orqwa_domain::units::Meters(at.0),
+            orqwa_domain::units::Meters(at.1),
         ),
-        radius: orqwa_app::WHOLE_WORLD,
-        ready: &mut |_, _| {},
-        structures: &mut |_| {},
-    };
-    let world = runtime.block_on(orqwa_world::generate_into(
-        &imported.route,
-        &mut terrain,
-        &imported.map,
-        // Chunks are built in batches, a few dozen per report.
-        &mut |done, total| println!("World {done}/{total}: {}", memory()),
-        &|index, chunk| {
-            if let Some(store) = &store {
-                store.write(index, &chunk).expect("chunk stored");
-            }
-            let mut hashes = hashes.lock().expect("hashes");
-            if hashes.len() <= index {
-                hashes.resize(index + 1, None);
-            }
-            hashes[index] = Some(chunk_hash(&chunk));
-            let mut centres = centres.lock().expect("centres");
-            if centres.len() <= index {
-                centres.resize(index + 1, [0.0; 3]);
-            }
-            centres[index] = chunk.center;
+        radius: pace_radius(ride),
+        ready: &mut |world, _| {
+            parts = Some(world);
+            let _ = set_off.set(Instant::now());
+            println!(
+                "ready to ride in {:.1} s; {}",
+                began.elapsed().as_secs_f64(),
+                memory()
+            );
         },
-        whole,
-    ));
+        structures: &mut |_| {},
+        pace: ride.is_some().then_some(&pace),
+    };
+    let mut log = PaceLog::default();
+    let riding = std::sync::atomic::AtomicBool::new(true);
+    let rest = std::thread::scope(|scope| {
+        if let Some(ride) = ride {
+            let (riding, pace, set_off) = (&riding, &pace, &set_off);
+            scope.spawn(move || {
+                while riding.load(std::sync::atomic::Ordering::Relaxed) {
+                    let at = set_off.get().map(|set_off| {
+                        orqwa_domain::units::Meters(
+                            ride.speed * set_off.elapsed().as_secs_f64() / 60.0,
+                        )
+                    });
+                    pace.ride_at(at);
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            });
+        }
+        let rest = runtime.block_on(orqwa_world::generate_into(
+            &imported.route,
+            &mut terrain,
+            &imported.map,
+            // Chunks are built in batches, a few dozen per report.
+            &mut |done, total| {
+                let rider = set_off
+                    .get()
+                    .zip(ride)
+                    .map(|(set_off, ride)| ride.speed * set_off.elapsed().as_secs_f64() / 60.0);
+                log.report(done, rider.is_some(), pace.hurrying());
+                match rider {
+                    Some(rider) => println!(
+                        "World {done}/{total}: rider at {:.1} km{}; {}",
+                        rider / 1e3,
+                        if pace.hurrying() { ", hurrying" } else { "" },
+                        memory()
+                    ),
+                    None => println!("World {done}/{total}: {}", memory()),
+                }
+            },
+            &|index, chunk| {
+                if let Some(store) = &store {
+                    store.write(index, &chunk).expect("chunk stored");
+                }
+                let mut hashes = hashes.lock().expect("hashes");
+                if hashes.len() <= index {
+                    hashes.resize(index + 1, None);
+                }
+                hashes[index] = Some(chunk_hash(&chunk));
+                let mut centres = centres.lock().expect("centres");
+                if centres.len() <= index {
+                    centres.resize(index + 1, [0.0; 3]);
+                }
+                centres[index] = chunk.center;
+            },
+            whole,
+        ));
+        riding.store(false, std::sync::atomic::Ordering::Relaxed);
+        rest
+    });
+    let world = World {
+        structures: rest.structures,
+        fallback_samples: rest.fallback_samples,
+        ..parts.expect("handed over")
+    };
     println!(
         "generated in {:.0} s; {}",
         began.elapsed().as_secs_f64(),
         memory()
     );
+    if ride.is_some() {
+        log.print();
+    }
     let hashes: Vec<u64> = hashes
         .into_inner()
         .expect("hashes")
@@ -233,6 +299,74 @@ fn stream(
             kept.size() as f64 / 1e3 / imported.route.length().0,
             packing.elapsed().as_secs_f64()
         );
+    }
+}
+
+/// A rider setting off once the world around the start is built, at a steady speed.
+#[derive(Clone, Copy)]
+struct Ride {
+    /// Metres a minute.
+    speed: f64,
+    /// How far around the rider the scene uploads chunks.
+    radius: orqwa_domain::units::Meters,
+}
+
+impl Ride {
+    fn from_args() -> Option<Self> {
+        let after = |flag: &str| {
+            std::env::args()
+                .skip_while(|arg| arg != flag)
+                .nth(1)
+                .map(|value| value.parse::<f64>().expect("a number"))
+        };
+        Some(Self {
+            speed: after("--ride")?,
+            radius: orqwa_domain::units::Meters(after("--ahead").expect("--ride needs --ahead")),
+        })
+    }
+}
+
+/// The radius built before a ride, `ride`'s or the whole world.
+fn pace_radius(ride: Option<Ride>) -> orqwa_domain::units::Meters {
+    ride.map_or(orqwa_app::WHOLE_WORLD, |ride| ride.radius)
+}
+
+/// How fast chunks were built while the build gave way to a ride and while it hurried.
+#[derive(Default)]
+struct PaceLog {
+    /// When the build last reported, and how many chunks it had built then.
+    last: Option<(Instant, usize)>,
+    /// Chunks built and seconds taken while giving way, and while hurrying.
+    giving_way: (usize, f64),
+    hurrying: (usize, f64),
+}
+
+impl PaceLog {
+    /// The build reported `done` chunks, the batch since built `hurrying` or not.
+    fn report(&mut self, done: usize, riding: bool, hurrying: bool) {
+        let now = Instant::now();
+        if riding && let Some((then, before)) = self.last {
+            let span = if hurrying {
+                &mut self.hurrying
+            } else {
+                &mut self.giving_way
+            };
+            span.0 += done.saturating_sub(before);
+            span.1 += now.duration_since(then).as_secs_f64();
+        }
+        self.last = Some((now, done));
+    }
+
+    fn print(&self) {
+        for (name, (chunks, seconds)) in [
+            ("giving way (half the cores)", self.giving_way),
+            ("hurrying (all cores)", self.hurrying),
+        ] {
+            println!(
+                "{name}: {chunks} chunks in {seconds:.0} s, {:.2} a second",
+                chunks as f64 / seconds.max(f64::EPSILON)
+            );
+        }
     }
 }
 

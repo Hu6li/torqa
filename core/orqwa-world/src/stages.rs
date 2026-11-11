@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::sync::Mutex;
 
 use crate::foundations::Ground;
+use crate::pace::Workers;
 use crate::pavement::{Asked, Barrier, Pavement};
 use crate::structures::{Below, Piece};
 use crate::{CHUNK_SIZE, MeshData, TerrainChunk, chunk_of, in_parallel, props};
@@ -185,9 +186,9 @@ impl<'a> Stages<'a> {
     }
 
     /// Finishes every chunk whose neighbours are built, and gives them to `sink` with their
-    /// indices. Chunks go on all `threads`, and to `sink` from them, so that it can store them
-    /// on all cores too.
-    pub(crate) fn finish(&mut self, threads: usize, sink: &(dyn Fn(usize, TerrainChunk) + Sync)) {
+    /// indices. Chunks go on the `workers`, and to `sink` from them, so that it can store them
+    /// on them too.
+    pub(crate) fn finish(&mut self, workers: Workers, sink: &(dyn Fn(usize, TerrainChunk) + Sync)) {
         let ready: Vec<usize> = self
             .waiting
             .keys()
@@ -199,7 +200,7 @@ impl<'a> Stages<'a> {
             .map(|i| (*i, Mutex::new(self.waiting.remove(i))))
             .collect();
         let this = &*self;
-        in_parallel(&jobs, threads, |(index, waiting)| {
+        in_parallel(&jobs, workers, |(index, waiting)| {
             let waiting = waiting
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -398,7 +399,7 @@ mod tests {
                 );
                 built.insert(cell);
             }
-            stages.finish(2, &|index, chunk| {
+            stages.finish(Workers::new(2), &|index, chunk| {
                 let (cx, cn) = cells[index];
                 assert_eq!(chunk.center, centre((cx, cn)));
                 let around = (cx - 1..=cx + 1).flat_map(|x| (cn - 1..=cn + 1).map(move |n| (x, n)));
@@ -455,7 +456,7 @@ mod tests {
                     ([Vec::new(), Vec::new()], 0),
                 );
             }
-            stages.finish(2, &|_, _| {});
+            stages.finish(Workers::new(2), &|_, _| {});
             let bridge_built = stages.structures[0].is_some();
             stages.build_bridges(&pieces, &below);
             stages.drop_unneeded();
