@@ -555,8 +555,11 @@ pub fn tile_path(cache_dir: &Path, zoom: u8, (x, y): (u32, u32)) -> PathBuf {
 /// Tiles (x, y at [`ZOOM`]) within `corridor` metres of the polyline.
 fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(u32, u32)> {
     const METERS_PER_DEGREE: f64 = 111_195.0;
+    // Samples no further apart than the corridor, so its boxes overlap along every segment:
+    // a long straight between two points crossed tiles that no vertex touched (#593).
+    let spacing = corridor.max(10.0);
     let mut tiles = BTreeSet::new();
-    for &(lat, lon) in points {
+    let mut cover = |lat: f64, lon: f64| {
         let d_lat = corridor / METERS_PER_DEGREE;
         let d_lon = corridor / (METERS_PER_DEGREE * lat.to_radians().cos().max(0.01));
         let (west, north) = tile_of(ZOOM, lat + d_lat, lon - d_lon);
@@ -565,6 +568,21 @@ fn tiles_near(points: &[LatLon], corridor: f64) -> BTreeSet<(u32, u32)> {
             for y in north..=south {
                 tiles.insert((x, y));
             }
+        }
+    };
+    if let Some(&(lat, lon)) = points.first() {
+        cover(lat, lon);
+    }
+    for pair in points.windows(2) {
+        let ((lat_a, lon_a), (lat_b, lon_b)) = (pair[0], pair[1]);
+        let north = (lat_b - lat_a) * METERS_PER_DEGREE;
+        let east = (lon_b - lon_a) * METERS_PER_DEGREE * lat_a.to_radians().cos();
+        let steps = (north.hypot(east) / spacing).ceil().clamp(1.0, 1e6);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped above
+        let count = steps as u32;
+        for step in 1..=count {
+            let t = f64::from(step) / steps;
+            cover(lat_a + (lat_b - lat_a) * t, lon_a + (lon_b - lon_a) * t);
         }
     }
     tiles
@@ -614,6 +632,19 @@ mod tests {
         // A 1.5 km corridor reaches into the neighbouring tiles.
         let wide = tiles_near(&[(46.9296, 7.4512)], 1500.0);
         assert!(wide.contains(&TEST_TILE) && wide.len() >= 4);
+    }
+
+    #[test]
+    fn covers_every_tile_a_long_straight_segment_crosses() {
+        // About 20 km due east, two points only: every tile the line passes holds part of it.
+        let (lat, west, east) = (46.9296, 7.30, 7.56);
+        let tiles = tiles_near(&[(lat, west), (lat, east)], 50.0);
+        let (first_x, y) = tile_of(ZOOM, lat, west);
+        let (last_x, _) = tile_of(ZOOM, lat, east);
+        assert!(last_x - first_x > 4, "the line spans several tiles");
+        for x in first_x..=last_x {
+            assert!(tiles.contains(&(x, y)), "tile {x} missing: {tiles:?}");
+        }
     }
 
     #[tokio::test]
