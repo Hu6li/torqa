@@ -586,6 +586,10 @@ fn resample(points: &[RawPoint]) -> Result<Vec<RawPoint>, RouteError> {
     {
         result.push(end);
     }
+    // A loop shorter than the spacing ends where it starts: one point is no route (#600).
+    if result.len() < 2 {
+        return Err(RouteError::TooShort);
+    }
     Ok(result)
 }
 
@@ -1162,6 +1166,19 @@ mod tests {
         ));
         assert!(matches!(
             Route::from_gpx(&gpx_north(&[Some(1.0)], 100.0), None).await,
+            Err(RouteError::TooShort)
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_tiny_loop_is_too_short_rather_than_one_point() {
+        let xml = r#"<gpx><trk><trkseg>
+            <trkpt lat="46.0" lon="7.0"><ele>500</ele></trkpt>
+            <trkpt lat="46.00004" lon="7.0"><ele>500</ele></trkpt>
+            <trkpt lat="46.0" lon="7.0"><ele>500</ele></trkpt>
+        </trkseg></trk></gpx>"#;
+        assert!(matches!(
+            Route::from_gpx(xml, None).await,
             Err(RouteError::TooShort)
         ));
     }
