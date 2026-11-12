@@ -592,12 +592,14 @@ fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_group
 
 /// Ends the peer's connection to the group mid-ride, as when its seat is given up after
 /// five minutes without a connection, and has the peer join again with a fresh reply.
-fn join_again(host: &mut App, peer: &mut App) {
+/// Returns the seat it had.
+fn join_again(host: &mut App, peer: &mut App) -> u8 {
     assert!(
         !peer.group_can_rejoin(),
         "a connected friend has nothing to join again"
     );
-    host.group_remove(peer.group().me).unwrap();
+    let seat = peer.group().me;
+    host.group_remove(seat).unwrap();
     wait(host, peer, |_, p| p.group().phase == Phase::Ended);
     assert!(peer.group_can_rejoin());
     assert!(
@@ -609,6 +611,7 @@ fn join_again(host: &mut App, peer: &mut App) {
     wait(host, peer, |_, p| !p.group().reply.is_empty());
     assert!(peer.group_rides_alone(), "{}", peer.group().phase.key());
     host.group_admit(&peer.group().reply).unwrap();
+    seat
 }
 
 #[test]
@@ -621,13 +624,14 @@ fn a_friend_whose_connection_ended_joins_again_and_rides_on_where_they_are() {
     wait(&mut host, &mut peer, |h, p| {
         p.group().phase == Phase::Riding && h.group_view().riders.len() == 1
     });
-    join_again(&mut host, &mut peer);
+    let seat = join_again(&mut host, &mut peer);
     let alone = peer.ride_state().unwrap();
     wait(&mut host, &mut peer, |h, p| {
         !p.group_rides_alone()
             && h.group_view().riders.len() == 1
             && p.group_view().riders.len() == 1
     });
+    assert_eq!(peer.group().me, seat, "the friend has their old seat back");
     let state = peer.ride_state().unwrap();
     assert!(
         state.elapsed > alone.elapsed && state.distance.0 >= alone.distance.0,

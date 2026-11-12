@@ -6,6 +6,7 @@ use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, ContentId, CourseKey, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
+use orqwa_net::link::Credential;
 /// What a rider preparing the activity is doing (#419).
 pub use orqwa_net::lobby::Stage;
 use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
@@ -601,9 +602,10 @@ pub(crate) struct Running {
     effect: orqwa_physics::GroupEffect,
     effect_at: Instant,
     transition: Option<(Instant, orqwa_physics::GroupEffect)>,
-    /// The invitation a friend joined with, to join again once the connection has ended
-    /// (#536); `None` for the organizer.
-    rejoin: Option<(String, ConnectOptions)>,
+    /// The invitation a friend joined with and the certificate they answered it with, to
+    /// join again in the same seat once the connection has ended (#536); `None` for the
+    /// organizer.
+    rejoin: Option<(String, ConnectOptions, Credential)>,
 }
 #[derive(Default)]
 struct VoiceControls {
@@ -669,15 +671,21 @@ impl App {
         if invite.as_ref().is_some_and(|s| s.len() > MAX_PASTE_BYTES) {
             return Err(error("The invitation is too large."));
         }
+        let invite = invite
+            .map(|code| Credential::generate().map(|credential| (code, credential)))
+            .transpose()
+            .map_err(error)?;
         self.open_group(invite, options)
     }
     // Also while a ride goes on, when joining the group again (#536).
     fn open_group(
         &mut self,
-        invite: Option<String>,
+        invite: Option<(String, Credential)>,
         options: ConnectOptions,
     ) -> Result<(), AppError> {
-        let rejoin = invite.clone().map(|code| (code, options.clone()));
+        let rejoin = invite
+            .clone()
+            .map(|(code, credential)| (code, options.clone(), credential));
         let (commands, receive) = mpsc::channel(8);
         let (send, snapshot) = watch::channel(Snapshot {
             phase: Phase::Connecting,
@@ -748,10 +756,11 @@ impl App {
         self.group
             .as_ref()
             .and_then(|group| group.rejoin.as_ref())
-            .map_or("", |(invite, _)| invite.as_str())
+            .map_or("", |(invite, _, _)| invite.as_str())
     }
     /// Joins the group again with the invitation this friend joined with, without leaving
-    /// first (#536): ORQWA makes a fresh reply for the organizer to add. A ride going on
+    /// first (#536): ORQWA makes a fresh reply for the organizer to add, with the same
+    /// certificate, so the organizer gives this rider their old seat back. A ride going on
     /// keeps its place and recording, and rides on with the group if the group still rides
     /// the same activity; otherwise the group waits until it ends.
     ///
@@ -763,11 +772,11 @@ impl App {
             .as_ref()
             .filter(|_| self.group_can_rejoin())
             .and_then(|group| group.rejoin.clone());
-        let Some((invite, options)) = rejoin else {
+        let Some((invite, options, credential)) = rejoin else {
             return Err(error("Leave the group and ask for a fresh invitation."));
         };
         self.group_leave();
-        self.open_group(Some(invite), options)
+        self.open_group(Some((invite, credential)), options)
     }
     /// Whether the group rides another activity than this rider's ride, which goes on
     /// alone: preparing the group's activity waits until the ride ends (#536).

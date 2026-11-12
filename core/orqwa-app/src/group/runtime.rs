@@ -7,7 +7,7 @@ use orqwa_domain::workout::Plan;
 use orqwa_net::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use orqwa_net::code::{Invite, Reply};
 use orqwa_net::content::{self, Source};
-use orqwa_net::link::{ConnectOptions, Host, Joiner};
+use orqwa_net::link::{ConnectOptions, Credential, Host, Joiner};
 use orqwa_net::lobby::{
     HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity, Stage,
 };
@@ -358,7 +358,9 @@ mod audio_tests;
 pub(super) struct Request {
     pub(super) audio: AudioBackend,
     pub(super) voice_controls: Arc<VoiceControls>,
-    pub(super) invite: Option<String>,
+    /// The invitation to answer, with the certificate to answer it with: kept to join the
+    /// same group again in the same seat (#536).
+    pub(super) invite: Option<(String, Credential)>,
     pub(super) rider: Rider,
     pub(super) options: ConnectOptions,
     pub(super) data: PathBuf,
@@ -410,12 +412,12 @@ async fn run_inner(
     tokio::fs::create_dir_all(&temp.0)
         .await
         .map_err(|e| e.to_string())?;
-    let mut session = if let Some(invite) = request.invite {
+    let mut session = if let Some((invite, credential)) = request.invite {
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
         let mode = invite.setup.mode();
         // Taken before the joiner starts its own, so never later than the reply's real end.
         let until = std::time::Instant::now() + request.options.window;
-        let joiner = Joiner::lobby(invite, &request.options)
+        let joiner = Joiner::lobby_as(invite, &request.options, &credential)
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;

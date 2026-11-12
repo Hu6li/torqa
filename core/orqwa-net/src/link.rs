@@ -1,6 +1,7 @@
 //! Pinned QUIC, one-use admission, finite probing and owner-controlled endpoint lifetimes.
 //! A host may hold an admitted rider's credential after a lost connection, so the same
-//! certificate reconnects without new codes (#434).
+//! certificate reconnects without new codes (#434), and lets it in again when the organizer
+//! adds a reply for it once more (#536).
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -478,6 +479,8 @@ struct Admission {
     stop: Arc<AtomicBool>,
     /// The reply's addresses, probed again while the credential is held.
     targets: Vec<SocketAddr>,
+    /// Whether the credential is held for a rider reconnecting rather than a fresh reply.
+    held: bool,
 }
 struct Shared {
     admissions: Mutex<HashMap<Fingerprint, Admission>>,
@@ -600,39 +603,64 @@ impl Host {
     }
 
     /// Explicitly admits one reply, validating its binding and policy before any probes.
-    /// Consumed and expired records remain bounded tombstones for this host lifetime.
+    /// Consumed and expired records remain bounded tombstones for this host lifetime. Adding
+    /// a reply again for a certificate whose seat was released lets that rider back in, and
+    /// one for a seat still held just lets the host probe its new addresses too (#536).
     ///
     /// # Errors
-    /// Returns [`LinkError`] for a wrong ride, forbidden destination, reused or excess reply.
+    /// Returns [`LinkError`] for a wrong ride, forbidden destination, a reply still pending
+    /// or connected, or an excess reply.
     pub fn admit(&mut self, reply: &Reply) -> Result<(), LinkError> {
         reply.matches(self.invite())?;
         reply.encode(self.options.gather.policy)?;
+        let targets: Vec<SocketAddr> = reply.candidates.iter().map(|c| c.addr()).collect();
         let expires = Instant::now() + self.options.window;
         let stop = Arc::new(AtomicBool::new(false));
         {
             let mut admissions = self.shared.admissions();
-            if admissions.contains_key(&reply.client) {
-                return Err(LinkError::Replay);
+            let full = admissions.len() >= MAX_ADMISSIONS;
+            match admissions.get_mut(&reply.client) {
+                Some(entry) if entry.state == AdmissionState::Pending && entry.held => {
+                    let (until, stop) = (entry.expires, entry.stop.clone());
+                    for target in &targets {
+                        if !entry.targets.contains(target) {
+                            entry.targets.push(*target);
+                        }
+                    }
+                    drop(admissions);
+                    self.tasks
+                        .spawn(probe(self.local.probers(), targets, until, stop));
+                    return Ok(());
+                }
+                // The organizer lets a rider whose seat was released back in, with the same
+                // certificate: only its private key can use it, as on the first admission.
+                Some(entry) if entry.state == AdmissionState::Expired => {
+                    *entry = Admission {
+                        expires,
+                        state: AdmissionState::Pending,
+                        stop: stop.clone(),
+                        targets: targets.clone(),
+                        held: false,
+                    };
+                }
+                Some(_) => return Err(LinkError::Replay),
+                None if full => return Err(LinkError::Full),
+                None => {
+                    admissions.insert(
+                        reply.client,
+                        Admission {
+                            expires,
+                            state: AdmissionState::Pending,
+                            stop: stop.clone(),
+                            targets: targets.clone(),
+                            held: false,
+                        },
+                    );
+                }
             }
-            if admissions.len() >= MAX_ADMISSIONS {
-                return Err(LinkError::Full);
-            }
-            admissions.insert(
-                reply.client,
-                Admission {
-                    expires,
-                    state: AdmissionState::Pending,
-                    stop: stop.clone(),
-                    targets: reply.candidates.iter().map(|c| c.addr()).collect(),
-                },
-            );
         }
-        self.tasks.spawn(probe(
-            self.local.probers(),
-            reply.candidates.iter().map(|c| c.addr()).collect(),
-            expires,
-            stop,
-        ));
+        self.tasks
+            .spawn(probe(self.local.probers(), targets, expires, stop));
         let shared = self.shared.clone();
         let client = reply.client;
         self.tasks.spawn(async move {
@@ -680,6 +708,7 @@ impl Host {
             entry.state = AdmissionState::Pending;
             entry.expires = until;
             entry.stop = stop.clone();
+            entry.held = true;
             entry.targets.clone()
         };
         if !targets.contains(&last) {
@@ -699,6 +728,7 @@ impl Host {
     pub(crate) fn release(&mut self, client: Fingerprint) {
         if let Some(entry) = self.shared.admissions().get_mut(&client) {
             entry.state = AdmissionState::Expired;
+            entry.held = false;
             entry.stop.store(true, Ordering::Relaxed);
         }
     }
@@ -805,6 +835,7 @@ fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, O
         return (ACK_EXPIRED, None);
     }
     entry.state = AdmissionState::Used;
+    entry.held = false;
     entry.stop.store(true, Ordering::Relaxed);
     // A held credential may last minutes; the lobby handshake still gets one connection window.
     (
@@ -869,6 +900,33 @@ pub struct Joiner {
     tasks: JoinSet<()>,
 }
 
+/// A joiner's certificate and private key, kept to answer the same group again: a reply
+/// with it lets the organizer give the rider their old seat back (#536). The key never
+/// leaves this computer; it is deliberately not printed.
+#[derive(Clone)]
+pub struct Credential(tls::Identity);
+
+impl Credential {
+    /// A fresh certificate, as each new group gets.
+    ///
+    /// # Errors
+    /// [`LinkError::Encryption`] if no certificate can be made.
+    pub fn generate() -> Result<Self, LinkError> {
+        tls::Identity::generate().map(Self)
+    }
+    /// The certificate's pin, as a reply carries it.
+    #[must_use]
+    pub const fn pin(&self) -> Fingerprint {
+        self.0.pin()
+    }
+}
+
+impl std::fmt::Debug for Credential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Credential").field(&self.0.pin()).finish()
+    }
+}
+
 impl Joiner {
     /// Answers an app-lobby invitation without requiring a preexisting local course.
     ///
@@ -876,6 +934,18 @@ impl Joiner {
     /// Returns [`LinkError`] for legacy course invites or transport setup failure.
     pub async fn lobby(invite: Invite, options: &ConnectOptions) -> Result<Self, LinkError> {
         Self::open(invite, RouteHash::LOBBY, options).await
+    }
+    /// Answers an app-lobby invitation like [`Joiner::lobby`], with a certificate kept from
+    /// an earlier answer to the same group (#536).
+    ///
+    /// # Errors
+    /// Returns [`LinkError`] for legacy course invites or transport setup failure.
+    pub async fn lobby_as(
+        invite: Invite,
+        options: &ConnectOptions,
+        credential: &Credential,
+    ) -> Result<Self, LinkError> {
+        Self::open_as(invite, RouteHash::LOBBY, options, credential.0.clone()).await
     }
     /// Validates the expected route and destination policy before discovery or probing.
     ///
@@ -886,12 +956,19 @@ impl Joiner {
         route: RouteHash,
         options: &ConnectOptions,
     ) -> Result<Self, LinkError> {
+        Self::open_as(invite, route, options, tls::Identity::generate()?).await
+    }
+    async fn open_as(
+        invite: Invite,
+        route: RouteHash,
+        options: &ConnectOptions,
+        identity: tls::Identity,
+    ) -> Result<Self, LinkError> {
         let end = deadline(options)?;
         if invite.route != route {
             return Err(CodeError::WrongRide.into());
         }
         invite.encode(options.gather.policy)?;
-        let identity = tls::Identity::generate()?;
         let (client, pinned) = tls::client(invite.fingerprint, &identity)?;
         let local = Local::open(&options.gather, end, None).await?;
         let reply = Reply {
@@ -1480,18 +1557,75 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expired_and_revoked_replies_remain_tombstones_and_the_table_is_bounded() {
+    async fn revoked_replies_remain_tombstones_until_added_again_and_the_table_is_bounded() {
         let mut host = host().await;
+        let mut kept = Vec::new();
         for _ in 0..MAX_ADMISSIONS {
             let joiner = joiner(&host).await;
             let reply = joiner.reply().clone();
             host.admit(&reply).unwrap();
             host.revoke(&reply);
-            assert!(matches!(host.admit(&reply), Err(LinkError::Replay)));
+            kept.push(joiner);
         }
         let extra = joiner(&host).await;
         assert!(matches!(host.admit(extra.reply()), Err(LinkError::Full)));
+        // A revoked reply admits nobody until the organizer adds it again, which takes no
+        // further room in the table (#536).
+        let revoked = kept.pop().unwrap();
+        let reply = revoked.reply().clone();
+        let other = kept.pop().unwrap();
+        host.admit(other.reply()).unwrap();
+        assert!(matches!(revoked.connect().await, Err(LinkError::Replay)));
+        host.admit(&reply).unwrap();
+        assert!(matches!(host.admit(&reply), Err(LinkError::Replay)));
         assert_eq!(host.shared.admissions().len(), MAX_ADMISSIONS);
+        drop((kept, other, extra));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_rider_released_and_added_again_gets_in_with_the_same_certificate() {
+        let mut host = host().await;
+        let credential = Credential::generate().unwrap();
+        let first = Joiner::open_as(
+            host.invite().clone(),
+            route(),
+            &options(),
+            credential.0.clone(),
+        )
+        .await
+        .unwrap();
+        let reply = first.reply().clone();
+        assert_eq!(reply.client, credential.pin());
+        host.admit(&reply).unwrap();
+        let (client, resume) = first.connect_resumable().await.unwrap();
+        let peer = joined(&mut host).await;
+        let mut others = Vec::new();
+        for _ in 1..MAX_ADMISSIONS {
+            let other = joiner(&host).await;
+            host.admit(other.reply()).unwrap();
+            others.push(other);
+        }
+        // While connected, the same reply admits no second connection.
+        assert!(matches!(host.admit(&reply), Err(LinkError::Replay)));
+        // While the seat is held, a reply for it is welcome even with the table full: the
+        // rider who gave up reconnecting a moment early comes back to it (#536).
+        host.hold(
+            credential.pin(),
+            Instant::now() + Duration::from_secs(10),
+            peer.peer_address(),
+        );
+        host.admit(&reply).unwrap();
+        drop((client, peer));
+        host.release(credential.pin());
+        assert!(matches!(resume.connect().await, Err(LinkError::Replay)));
+        // Released, the organizer adds the rider's reply again and only that key gets in.
+        host.admit(&reply).unwrap();
+        let again = resume.connect().await.unwrap();
+        let back = joined(&mut host).await;
+        assert_eq!(back.client(), Some(credential.pin()));
+        assert_eq!(host.shared.admissions().len(), MAX_ADMISSIONS);
+        drop((again, back, resume, others));
         host.close().await;
     }
 

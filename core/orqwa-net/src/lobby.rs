@@ -38,9 +38,12 @@ const CONTROL_CAPACITY: usize = 32;
 /// Simultaneous transfers to one rider: the selected activity and the organizer's preview.
 const MAX_TRANSFERS: usize = 2;
 const WRITE_WAIT: Duration = Duration::from_secs(2);
-/// How long the organizer holds the seat of a rider whose connection was lost, and how long
-/// that rider keeps trying to reconnect (#434).
+/// How long the organizer holds the seat of a rider whose connection was lost (#434).
 pub const RECONNECT_WINDOW: Duration = Duration::from_mins(5);
+/// How long that rider keeps trying to reconnect: longer by the time the organizer may take
+/// to notice the loss, so they give up only once the seat is released (#536).
+pub const RECONNECT_TRYING: Duration =
+    Duration::from_secs(RECONNECT_WINDOW.as_secs() + crate::tls::IDLE_TIMEOUT.as_secs());
 /// The pause between a joiner's attempts to reconnect.
 const RECONNECT_EVERY: Duration = Duration::from_secs(5);
 type States = [Option<RiderState>; MAX_RIDERS];
@@ -1157,7 +1160,7 @@ impl Rejoin {
 }
 
 /// Runs the joiner's actor on its connection and, in app lobbies, again on each reconnection
-/// within [`RECONNECT_WINDOW`] of losing it (#434). Returning ends the lobby for its owner.
+/// within [`RECONNECT_TRYING`] of losing it (#434). Returning ends the lobby for its owner.
 async fn supervise(
     mut link: Link,
     mut connection: Connection,
@@ -1184,7 +1187,7 @@ async fn supervise(
         if !lost(&connection, stalled) || !reconnects {
             return;
         }
-        let until = Instant::now() + RECONNECT_WINDOW;
+        let until = Instant::now() + RECONNECT_TRYING;
         link.voice.0.interrupt();
         link.states.send_replace([None; MAX_RIDERS]);
         link.latency.update([None; MAX_RIDERS]);
@@ -1617,6 +1620,8 @@ async fn host_loop(
     }
     let mut tasks = JoinSet::new();
     let mut away: [Option<Away>; MAX_RIDERS] = [None; MAX_RIDERS];
+    // The certificate that last had each seat: a rider added again takes theirs back (#536).
+    let mut seats: [Option<crate::code::Fingerprint>; MAX_RIDERS] = [None; MAX_RIDERS];
     // A standby's takeover, for riders who were away when it happened (#426).
     let mut committed: Option<crate::handover::Message> = None;
     let mut ticker = interval(STATE_EVERY);
@@ -1827,9 +1832,11 @@ async fn host_loop(
                     let id = if let Some(prepared) = prepared.as_mut().filter(|prepared| !prepared.active) {
                         if let Ok(id) = prepared.assign(&connection, &rider, &roster) {id} else {connection.close(); continue;}
                     } else {
-                        let Some(slot) = roster.iter().position(Option::is_none) else {connection.close(); continue;}; rider_id(slot)
+                        let old = connection.client().and_then(|client| seats.iter().position(|seat| *seat == Some(client))).filter(|slot| roster[*slot].is_none());
+                        let Some(slot) = old.or_else(|| roster.iter().position(Option::is_none)) else {connection.close(); continue;}; rider_id(slot)
                     };
                     let slot = usize::from(id.value());
+                    seats[slot] = connection.client();
                     activities.joined(id)?;
                     latency.clear(id);
                     let member = lock(&shared).inbox.join(id, Instant::now().into_std())?;
@@ -3145,7 +3152,8 @@ mod tests {
         else {
             unreachable!()
         };
-        assert!(until > Instant::now() + RECONNECT_WINDOW - Duration::from_secs(5));
+        // She keeps trying until the organizer has surely released her seat (#536).
+        assert!(until > Instant::now() + RECONNECT_WINDOW);
         host_event(
             &mut host,
             |e| matches!(e, LobbyEvent::Away {id} if *id == seat),
@@ -3192,6 +3200,37 @@ mod tests {
         drop((anna, ben));
         host.close().await;
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_removed_rider_added_again_gets_their_old_seat() {
+        let mut host = HostLobby::open(
+            Host::lobby("Host", &options()).await.unwrap(),
+            rider("Host"),
+        )
+        .unwrap();
+        let anna = join(&host, "Anna").await;
+        let credential = crate::link::Credential::generate().unwrap();
+        let ben = join_as(&host, "Ben", &credential).await;
+        let (first, seat) = (anna.me(), ben.me());
+        for gone in [first, seat] {
+            host.remove(gone).unwrap();
+            host_event(
+                &mut host,
+                |e| matches!(e, LobbyEvent::Left {id} if *id == gone),
+            )
+            .await;
+        }
+        anna.close().await;
+        ben.close().await;
+        // Anna's seat comes first, but the organizer adding Ben's certificate again gives
+        // him his own back (#536); a newcomer takes the free one.
+        let ben = join_as(&host, "Ben", &credential).await;
+        assert_eq!(ben.me(), seat);
+        let carl = join(&host, "Carl").await;
+        assert_eq!(carl.me(), first);
+        drop((ben, carl));
+        host.close().await;
     }
 
     #[tokio::test]
@@ -3249,6 +3288,19 @@ mod tests {
             rider("Host"),
         )
         .unwrap()
+    }
+    async fn join_as(
+        host: &HostLobby,
+        name: &str,
+        credential: &crate::link::Credential,
+    ) -> JoinerLobby {
+        let joiner = Joiner::lobby_as(host.invite().clone(), &options(), credential)
+            .await
+            .unwrap();
+        host.admit(joiner.reply()).await.unwrap();
+        JoinerLobby::join(joiner, rider(name))
+            .await
+            .unwrap_or_else(|error| panic!("join {name}: {error}"))
     }
     async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
         let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())

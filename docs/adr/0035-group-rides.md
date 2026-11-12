@@ -416,9 +416,26 @@ Reconnecting (above) ends when the five minutes pass, the organizer removes the 
 connection closes as a goodbye. The friend then only had **Leave group**, and the app refused
 to join while their ride went on, the follow-up left open above (#536). The app now keeps
 the invitation a friend joined with, and **Join again** opens a new joiner lobby with it and
-a fresh reply, also while a ride goes on; the organizer adds it as any reply. Nothing new
-goes over the network: the organizer admits a late friend as before, in a new slot, while a
-seat still held runs out or is removed.
+a fresh reply, also while a ride goes on; the organizer adds it as any reply.
+
+**The same seat.** The friend gets their old seat back, as reconnecting gives it. The app
+keeps the per-ride certificate it answered the invitation with, so the fresh reply names
+the same pin and the organizer recognizes the friend: the handshake still proves the
+private key, which never left the friend's computer. The host remembers which certificate
+last had each seat and gives a returning one its own while it is free, otherwise the first
+free one. This amends the trust rule above for this one case: a certificate whose seat was
+released (its five minutes passed, the organizer removed the rider, or a goodbye) admits a
+connection again once the organizer adds a reply for it again. Adding it is the organizer's
+consent, so a removed friend cannot come back on their own. A reply still pending or
+connected stays refused as a replay, and one added again takes no new place in the
+admission table, which holds 16 replies for the whole ride: before, each fresh certificate
+took one, and after 16 joins and rejoins nobody could come in at all. A reply for a seat
+still held only adds the friend's new addresses to the host's probes, even with the table
+full. The friend also keeps trying to reconnect half a minute longer than the host holds
+the seat, the connection's idle timeout, the longest the host may take to notice the loss,
+so **Join again** appears only once the seat is released. The certificate lives only in
+memory: after the app restarts, a friend gets a new seat. Nothing new goes over the
+network.
 
 The ride remembers which group activity it is: the course key and workout ID of its
 selection, so a renamed copy of the course counts too. Joined again during a ride, a selection

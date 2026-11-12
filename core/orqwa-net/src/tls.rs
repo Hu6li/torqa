@@ -20,6 +20,8 @@ use crate::link::LinkError;
 
 pub(crate) const SERVER_NAME: &str = "orqwa";
 pub(crate) const ALPN: &[u8] = b"orqwa-group/18";
+/// How long a silent connection lasts before either side counts it as lost.
+pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn transport() -> Arc<TransportConfig> {
     let mut config = TransportConfig::default();
@@ -36,11 +38,7 @@ fn transport() -> Arc<TransportConfig> {
     config.datagram_receive_buffer_size(Some(4096));
     config.datagram_send_buffer_size(4096);
     config.keep_alive_interval(Some(Duration::from_secs(10)));
-    config.max_idle_timeout(Some(
-        Duration::from_secs(30)
-            .try_into()
-            .expect("valid idle timeout"),
-    ));
+    config.max_idle_timeout(Some(IDLE_TIMEOUT.try_into().expect("valid idle timeout")));
     Arc::new(config)
 }
 
@@ -72,6 +70,16 @@ impl Identity {
     }
     fn key(&self) -> PrivateKeyDer<'static> {
         PrivateKeyDer::Pkcs8(self.key.clone_key())
+    }
+}
+
+impl Clone for Identity {
+    fn clone(&self) -> Self {
+        Self {
+            certificate: self.certificate.clone(),
+            key: self.key.clone_key(),
+            pin: self.pin,
+        }
     }
 }
 
