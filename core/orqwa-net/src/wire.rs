@@ -46,6 +46,8 @@ pub(crate) enum Message {
     Preview(Option<crate::activity::ContentId>),
     /// Organizer-measured RTT per rider, in milliseconds; no peer addresses.
     Latencies([Option<Duration>; MAX_RIDERS]),
+    /// The organizer's drafting and keep-together choices, also before a selection (#557).
+    Assistance(crate::activity::Assistance),
 }
 
 pub(crate) async fn write(send: &mut SendStream, message: &Message) -> Result<(), LobbyError> {
@@ -167,6 +169,10 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, LobbyError> {
                 id.write(&mut bytes);
             }
         }
+        Message::Assistance(rules) => bytes.extend_from_slice(&[
+            24,
+            u8::from(rules.drafting) | (u8::from(rules.keep_together) << 1),
+        ]),
         Message::Lobby(revision) => {
             bytes.push(23);
             bytes.extend(revision.to_be_bytes());
@@ -404,6 +410,13 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Message, LobbyError> {
             _ => return Err(LobbyError::Protocol),
         }),
         23 => Message::Lobby(u64::from_be_bytes(reader.take()?)),
+        24 => match reader.byte()? {
+            flags @ 0..=3 => Message::Assistance(crate::activity::Assistance {
+                drafting: flags & 1 != 0,
+                keep_together: flags & 2 != 0,
+            }),
+            _ => return Err(LobbyError::Protocol),
+        },
         5 => {
             let millis = u32::from_be_bytes(reader.take()?);
             if millis > 60_000 {
@@ -578,6 +591,34 @@ mod tests {
         // The version, the tag and the flag, then the kind.
         named[3] = 1;
         assert!(decode(&named).is_err());
+    }
+
+    #[test]
+    fn assistance_controls_carry_exactly_the_two_choices() {
+        use crate::activity::Assistance;
+        for (drafting, keep_together) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let rules = Assistance {
+                drafting,
+                keep_together,
+            };
+            let bytes = encode(&Message::Assistance(rules)).unwrap();
+            let Message::Assistance(decoded) = decode(&bytes).unwrap() else {
+                panic!("an assistance control decodes as one");
+            };
+            assert_eq!(decoded, rules);
+            for len in 0..bytes.len() {
+                assert!(decode(&bytes[..len]).is_err());
+            }
+            let mut extra = bytes;
+            extra.push(0);
+            assert!(decode(&extra).is_err());
+        }
+        // The version and the tag, then the flags: unknown choices are refused.
+        let mut unknown = encode(&Message::Assistance(Assistance::default())).unwrap();
+        unknown[2] = 4;
+        assert!(decode(&unknown).is_err());
     }
 
     #[test]

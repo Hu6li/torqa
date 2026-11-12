@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
-use crate::activity::{ActivityLobby, ContentId, ContentKind, Participant, Selection};
+use crate::activity::{ActivityLobby, Assistance, ContentId, ContentKind, Participant, Selection};
 use crate::content::{self, ContentError, Source};
 
 use super::{LobbyError, MAX_RIDERS, Message, RecvStream, RiderId, SendStream, rider_id, watch};
@@ -52,6 +52,8 @@ pub(super) struct Activities {
     pub(super) shown: watch::Sender<Option<Shown>>,
     /// The preview riders last heard of, and when.
     announced: (Option<ContentId>, Option<Instant>),
+    /// The organizer's latest drafting and keep-together choices (#557).
+    assistance: Assistance,
     started: bool,
     ended_revision: u64,
 }
@@ -70,6 +72,7 @@ impl Activities {
             selected,
             shown,
             announced: (None, None),
+            assistance: Assistance::default(),
             started: false,
             ended_revision: 0,
         })
@@ -94,8 +97,24 @@ impl Activities {
         activity.validate()?;
         self.lobby.select(activity.selection.clone())?;
         self.ready.fill(false);
+        self.assistance = activity.selection.assistance;
         self.selected.send_replace(Some(activity));
         Ok(())
+    }
+    /// Takes the organizer's choices before the countdown; the control to send riders if
+    /// they changed. A selection carries them too, so riders hear of them without one (#557).
+    ///
+    /// # Errors
+    /// Returns [`LobbyError::Protocol`] outside an app lobby or from the countdown on.
+    pub(super) fn assist(&mut self, rules: Assistance) -> Result<Option<Message>, LobbyError> {
+        if !self.enabled || self.started {
+            return Err(LobbyError::Protocol);
+        }
+        if rules == self.assistance {
+            return Ok(None);
+        }
+        self.assistance = rules;
+        Ok(Some(Message::Assistance(rules)))
     }
     pub(super) fn ready(
         &mut self,
@@ -189,6 +208,10 @@ impl Activities {
         if let Some(shown) = self.shown.borrow().as_ref() {
             messages.push(Message::Preview(Some(shown.id)));
         }
+        // A newcomer assumes the defaults; any selection below repeats the same choices.
+        if self.enabled && self.assistance != Assistance::default() {
+            messages.push(Message::Assistance(self.assistance));
+        }
         if let Some(selected) = self.lobby.selection() {
             messages.push(Message::Selection(selected.clone()));
             for (id, ready) in self.ready.iter().enumerate() {
@@ -250,4 +273,46 @@ async fn activity(
         return Err(ContentError::Mismatch);
     }
     content::send(&mut send, &mut source).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn told(messages: &[Message]) -> Option<Assistance> {
+        messages.iter().find_map(|message| match message {
+            Message::Assistance(rules) => Some(*rules),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn riders_and_newcomers_hear_the_organizers_assistance_before_anything_is_selected() {
+        let mut activities = Activities::new(true, RiderId::HOST).unwrap();
+        assert_eq!(
+            told(&activities.initial()),
+            None,
+            "the defaults need no control"
+        );
+        let off = Assistance {
+            drafting: false,
+            keep_together: false,
+        };
+        assert!(matches!(
+            activities.assist(off),
+            Ok(Some(Message::Assistance(rules))) if rules == off
+        ));
+        assert!(
+            matches!(activities.assist(off), Ok(None)),
+            "nothing changed"
+        );
+        assert_eq!(told(&activities.initial()), Some(off));
+        assert!(
+            Activities::new(false, RiderId::HOST)
+                .unwrap()
+                .assist(off)
+                .is_err(),
+            "course lobbies have no choices to share"
+        );
+    }
 }
