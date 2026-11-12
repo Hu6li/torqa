@@ -287,13 +287,16 @@ impl Motion {
             let drive = wheel_power / v.max(MIN_DRIVE_SPEED);
             let air_speed = v + wind.0;
             let drag = drag_factor * air_speed * air_speed.abs();
-            // Rolling resistance only opposes motion; it cannot push a stopped rider backwards.
-            let rolling = if v > 0.0 || drive > rolling + gravity {
+            let push = drive - gravity - drag;
+            // Rolling resistance opposes motion. At a standstill it holds the rider against any
+            // push up to its own size, also gravity on a descent gentler than it (#602), and
+            // never pushes them backwards; `max`/`min` cannot panic as `clamp` can.
+            let resistance = if v > 0.0 {
                 rolling
             } else {
-                0.0
+                push.max(-rolling).min(rolling)
             };
-            let acceleration = (drive - gravity - rolling - drag) / mass;
+            let acceleration = (push - resistance) / mass;
 
             let next = (v + acceleration * h).max(0.0);
             distance += f64::midpoint(v, next) * h;
@@ -497,6 +500,32 @@ mod tests {
 
         assert_eq!(distance, Meters(0.0));
         assert_eq!(motion.speed(), MetersPerSecond(0.0));
+    }
+
+    #[test]
+    fn stopped_rider_stays_put_on_a_descent_gentler_than_rolling_resistance() {
+        for grade in [-0.05, -0.2, -0.39] {
+            let mut motion = Motion::default();
+            let distance = motion.step(
+                &RiderSetup::default(),
+                Watts(0.0),
+                GradePercent(grade),
+                MetersPerSecond(0.0),
+                Duration::from_secs(5),
+            );
+            assert_eq!(distance, Meters(0.0), "{grade} %");
+            assert_eq!(motion.speed(), MetersPerSecond(0.0), "{grade} %");
+        }
+        // Steeper than rolling resistance, gravity rolls a stopped rider away as before.
+        let mut motion = Motion::default();
+        let distance = motion.step(
+            &RiderSetup::default(),
+            Watts(0.0),
+            GradePercent(-2.0),
+            MetersPerSecond(0.0),
+            Duration::from_secs(5),
+        );
+        assert!(distance.0 > 1.0, "{distance:?}");
     }
 
     #[test]
