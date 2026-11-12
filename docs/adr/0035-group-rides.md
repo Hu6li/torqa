@@ -410,6 +410,28 @@ round trip, so a 40 MB course took minutes and could outlast the 15-minute trans
 peers that stop reading. A loopback test through a 50 ms delay relay requires 8 MiB to arrive
 within ten seconds. Window sizes are QUIC transport parameters, so the ALPN is unchanged.
 
+### Joining again — 2026-11-12
+
+Reconnecting (above) ends when the five minutes pass, the organizer removes the rider, or the
+connection closes as a goodbye. The friend then only had **Leave group**, and the app refused
+to join while their ride went on, the follow-up left open above (#536). The app now keeps
+the invitation a friend joined with, and **Join again** opens a new joiner lobby with it and
+a fresh reply, also while a ride goes on; the organizer adds it as any reply. Nothing new
+goes over the network: the organizer admits a late friend as before, in a new slot, while a
+seat still held runs out or is removed.
+
+The ride remembers which group activity it is: the course key and workout ID of its
+selection, so a renamed copy of the course counts too. Joined again during a ride, a selection
+of the same activity in a group already riding counts as prepared at once: no course is
+opened and no world built, and its files are already kept, so nothing is downloaded. The app
+then asks for entry itself and, once the organizer's entry arrives, takes the ride up instead
+of starting one: the rider keeps their own place and recording, since the organizer's entry
+only names where the organizer is, and the group's workout clock and assistance apply again.
+Until then neither touches the ride. Any other selection, or one not yet started, waits:
+nothing is prepared while the ride goes on, an activity the group ends does not save it, and
+preparation starts as usual once the rider ends their ride. **New reply** after a reply ran
+out takes the same path. The protocol and invitation version are unchanged.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

@@ -1072,6 +1072,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   downloading it; organizers share their own copy, renamed or not (R185, #435)
 - [x] A rider whose connection is lost keeps their seat for five minutes and reconnects by
   themselves, without new codes (R186, #434)
+- [x] A friend whose connection has ended joins again with the same invitation and a fresh
+  reply, also mid-ride: the ride goes on and is taken up where it is when the group still
+  rides it (R243, #536)
 - [x] A fallback organizer stands by while riding and takes over if the organizer is lost; the
   next one is chosen at once, and the old organizer rejoins as a rider (R187, #426)
 - [x] Voice restarts (reconnect, takeover, handover, device change) keep the microphone as it

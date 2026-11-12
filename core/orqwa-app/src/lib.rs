@@ -613,6 +613,8 @@ struct ActiveRide {
     assisted: bool,
     /// Continuation never changes a group's entry or a workout's timing.
     solo_course: bool,
+    /// The group activity this ride is, so joining the group again rides on in it (#536).
+    group_activity: Option<group::Activity>,
 }
 
 impl ActiveRide {
@@ -3128,6 +3130,7 @@ impl App {
             simulated: false,
             assisted: false,
             solo_course,
+            group_activity: None,
         });
     }
 

@@ -672,3 +672,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 |---|---|
 | R241 | Refines R19 and R40 (2026-11-11): the area under the elevation profile is coloured by gradient, during a ride and wherever a course's profile is shown: **yellow on the flat, green going down and red going up, darker the steeper**, reaching the darkest green or red at 25% and beyond. During a ride the colours stay strong so they read at a glance in the small panel over the 3D world: the ridden part nearly solid and the part still ahead lighter but clearly coloured; the course view shows the whole profile solid. The outline, rider, friends, ghost and climb bands are unchanged. |
 | R242 | Refines R241 (2026-11-11): gradient colours are **opt-in**, per rider: **Elevation colors** in the rider's profile, a dropdown like **Ride map**: **Plain** (for new and existing riders) or **By gradient**. Plain, the profile looks as before, with the ridden part in the accent colour and the rest light. The choice applies to the ride, course detail and group activity previews, and to a ride in progress as soon as it is saved. |
+
+## Joining the group again
+
+| ID | Requirement |
+|---|---|
+| R243 | Extends R186 and R195 (2026-11-12, #536): when a friend's connection to the group **has ended**, because the five minutes of R186 passed, the organizer removed them or the connection closed otherwise, or connecting failed, their page offers **Join again** instead of only Leave group. ORQWA makes a **fresh reply from the same invitation** for the organizer to add as before, also **during a ride**, in the ride's window. The ride and its recording **go on meanwhile**. If the group still rides the same activity, the friend **rides on where they are**, nothing is downloaded or built again, and the group's workout step and assistance apply again. Otherwise their ride goes on alone, and the group's activity is prepared once they end it. **New reply**, after a reply ran out, works the same way. |

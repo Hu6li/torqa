@@ -2537,6 +2537,18 @@ msgstr "ORQWA versucht es noch %s lang. Dein Platz in der Gruppe bleibt reservie
 msgid "Reconnect now"
 msgstr "Jetzt erneut verbinden"
 
+msgid "Join again"
+msgstr "Erneut beitreten"
+
+msgid "Group connection ended. Your ride continues. Join again when you like."
+msgstr "Gruppenverbindung beendet. Deine Fahrt läuft weiter. Tritt wieder bei, wann du willst."
+
+msgid "Could not connect. Join again, or leave the group."
+msgstr "Verbindung fehlgeschlagen. Tritt erneut bei oder verlasse die Gruppe."
+
+msgid "Your friends ride something else now. Join them once your ride ends."
+msgstr "Deine Freunde fahren jetzt etwas anderes. Schliesse dich ihnen an, wenn deine Fahrt endet."
+
 msgctxt "group_rider"
 msgid "Reconnecting…"
 msgstr "Verbindet sich erneut…"

@@ -2288,6 +2288,12 @@ impl OrqwaApp {
     fn group_reconnect(&mut self) -> bool {
         self.command(|app| app.group_reconnect())
     }
+    /// Joins the group again with the same invitation once the connection has ended, with a
+    /// fresh reply for the organizer; a ride going on keeps going (#536).
+    #[func]
+    fn group_rejoin(&mut self) -> bool {
+        self.command(App::group_rejoin)
+    }
     /// Removes an unavailable participant on the host.
     #[func]
     fn group_remove(&mut self, id: i64) -> bool {

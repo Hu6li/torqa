@@ -932,6 +932,10 @@ msgid "Could not connect the account with %s: %s"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
+msgid "Could not connect. Join again, or leave the group."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
 msgid "Could not connect. Leave the group and ask for a fresh invitation."
 msgstr ""
 
@@ -1731,6 +1735,10 @@ msgstr ""
 msgid "Group connection ended. Your local ride continues."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "Group connection ended. Your ride continues. Join again when you like."
+msgstr ""
+
 #: app/scenes/ride_screen.gd
 msgid "Group ride"
 msgstr ""
@@ -1933,6 +1941,10 @@ msgstr ""
 
 #: app/ui/group_join_card.gd
 msgid "Join"
+msgstr ""
+
+#: app/ui/group_next_step.gd
+msgid "Join again"
 msgstr ""
 
 #: app/ui/group_join_card.gd
@@ -4117,6 +4129,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Your friends are already riding. Get ready and join when you like."
+msgstr ""
+
+#: app/ui/group_next_step.gd
+msgid "Your friends ride something else now. Join them once your ride ends."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
