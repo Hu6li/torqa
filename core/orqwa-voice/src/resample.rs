@@ -157,7 +157,9 @@ impl Kernel {
             self.base += whole as u64;
         }
         self.fraction -= whole;
-        sum
+        // The sinc's negative lobes overshoot clipped input; the encoder refuses a frame
+        // beyond full scale and the microphone switched itself off (#590).
+        sum.clamp(-1.0, 1.0)
     }
 }
 
@@ -194,6 +196,22 @@ mod tests {
         #[allow(clippy::cast_precision_loss)]
         let count = samples.len() as f64;
         (samples.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / count).sqrt()
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss)]
+    fn a_clipped_microphone_stays_within_what_the_encoder_accepts() {
+        for rate in [16_000_u32, 24_000, 32_000, 44_100, 96_000] {
+            let mut resampler = Resampler::new(rate, 48_000);
+            let mut worst = 0.0_f32;
+            for i in 0..rate / 5 {
+                // A 200 Hz tone at three times full scale, clipped as the callback clips it.
+                let x = (3.0 * (std::f32::consts::TAU * 200.0 * i as f32 / rate as f32).sin())
+                    .clamp(-1.0, 1.0);
+                resampler.push(x, |y| worst = worst.max(y.abs()));
+            }
+            assert!(worst <= 1.0, "{rate} Hz: worst {worst}");
+        }
     }
 
     #[test]
