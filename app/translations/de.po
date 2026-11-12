@@ -3260,3 +3260,6 @@ msgstr "Nach Steigung"
 
 msgid "By gradient: green down, yellow flat, red up"
 msgstr "Nach Steigung: grün bergab, gelb flach, rot bergauf"
+
+msgid "Plain"
+msgstr "Schlicht"

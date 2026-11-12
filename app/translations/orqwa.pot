@@ -2672,6 +2672,10 @@ msgid "Ping —"
 msgstr ""
 
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd
+msgid "Plain"
+msgstr ""
+
+#: app/scenes/profile_tab.gd app/ui/profile_form.gd
 msgid "Plain facts"
 msgstr ""
 
