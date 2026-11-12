@@ -203,12 +203,10 @@ func _join_ride(invitation: String) -> void:
 	_join.clear()
 
 
-## A new reply from the same invitation, the last one having run out (R195).
+## A new reply from the same invitation, the last one having run out (R195); during a ride
+## too, which goes on meanwhile (#536).
 func _renew_reply() -> void:
-	if _joined_invite.is_empty():
-		return
-	_orqwa.group_leave()
-	_orqwa.group_join(_joined_invite)
+	_orqwa.group_rejoin()
 
 
 func _build_connecting() -> void:
@@ -496,6 +494,13 @@ func _show_status(status: Dictionary) -> void:
 		"ended": tr("Group connection ended. Your local ride continues."),
 		"failed": tr("Could not connect. Leave the group and ask for a fresh invitation."),
 	}
+	# The friend may join again with the same invitation (#536).
+	var can_rejoin: bool = _status.get("can_rejoin", false)
+	if can_rejoin:
+		captions["ended"] = tr(
+			"Group connection ended. Your ride continues. Join again when you like."
+		)
+		captions["failed"] = tr("Could not connect. Join again, or leave the group.")
 	_stage.text = captions.get(phase, "")
 	if late and not underway:
 		_stage.text = tr("Your friends are already riding. Get ready and join when you like.")
@@ -509,11 +514,19 @@ func _show_status(status: Dictionary) -> void:
 	if _leave != null:
 		_leave.visible = phase != "idle"
 	_setup.visible = phase == "idle" and not compact
-	# Not added in time, the joiner makes a new reply on the same page (R195).
+	# Not added in time, the joiner makes a new reply on the same page (R195). Joining again
+	# during a ride shows the reply in the ride's window too (#536).
 	var expired: bool = _status.get("reply_expired", false)
+	var rides_alone: bool = _status.get("rides_alone", false)
 	_connecting.visible = (
-		not host and not compact and (phase == "connecting" or (phase == "failed" and expired))
+		not host
+		and (not compact or rides_alone)
+		and (phase == "connecting" or (phase == "failed" and expired))
 	)
+	var invitation: String = _status.get("invitation", "")
+	if not invitation.is_empty() and invitation != _joined_invite:
+		_joined_invite = invitation
+		_joined = _orqwa.group_invitation(invitation)
 	if expired:
 		_stage.text = ""
 	var reply: String = _status.get("reply", "")

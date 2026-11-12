@@ -692,3 +692,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R247 | Refines R19 and R236 (2026-11-15, #617): the ride map grows to its larger **300 px** height even on small screens whenever there is enough room below it, including solo rides. Its height follows the space needed by the visible elevation profile, active climb, riders and ghost panels, adapting when panels change or the window resizes while keeping the sidebar visible without scrolling. |
+
+## Joining the group again
+
+| ID | Requirement |
+|---|---|
+| R248 | Extends R186 and R195 (2026-11-12, #536): when a friend's connection to the group **has ended**, because the five minutes of R186 passed, the organizer removed them or the connection closed otherwise, or connecting failed, their page offers **Join again** instead of only Leave group. ORQWA makes a **fresh reply from the same invitation** for the organizer to add as before, also **during a ride**, in the ride's window. The ride and its recording **go on meanwhile**. If the group still rides the same activity, the friend **rides on where they are**, nothing is downloaded or built again, and the group's workout step and assistance apply again. Otherwise their ride goes on alone, and the group's activity is prepared once they end it. **New reply**, after a reply ran out, works the same way. |

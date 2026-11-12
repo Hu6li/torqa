@@ -92,6 +92,8 @@ pub(super) fn status(app: &App) -> VarDictionary {
     "standby_offer"=>status.standby_offer,"can_choose_fallback"=>status.can_choose_fallback(),"preferred_fallback"=>preferred_fallback,"preferred_fallback_accepted"=>status.preferred_fallback_accepted,"fallback_consent"=>status.fallback_consent.map_or(String::new(),|epoch|epoch.to_string()),
     // How long this rider keeps trying to reconnect, 0 while connected (#434).
     "reconnect_s"=>status.reconnecting.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),
+    // Joining again with the same invitation, while a ride may go on alone (#536).
+    "can_rejoin"=>app.group_can_rejoin(),"rides_alone"=>app.group_rides_alone(),"waits_for_ride"=>app.group_waits_for_ride(),"invitation"=>app.group_joined_with(),
     // Names the organizer's preview, "" without one (#418); `group_preview_data()` has it.
     "preview"=>status.preview.as_ref().map_or_else(String::new,|shown|shown.id.basename())}
 }
