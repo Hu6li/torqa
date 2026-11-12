@@ -132,7 +132,7 @@ impl Flat {
 
     fn to_xy(&self, lat: f64, lon: f64) -> (f64, f64) {
         (
-            (lon - self.lon0).to_radians() * self.cos_lat0 * EARTH_RADIUS_M,
+            crate::east_of(self.lon0, lon).to_radians() * self.cos_lat0 * EARTH_RADIUS_M,
             (lat - self.lat0).to_radians() * EARTH_RADIUS_M,
         )
     }
@@ -140,7 +140,7 @@ impl Flat {
     fn to_lat_lon(&self, (x, y): (f64, f64)) -> (f64, f64) {
         (
             self.lat0 + (y / EARTH_RADIUS_M).to_degrees(),
-            self.lon0 + (x / (EARTH_RADIUS_M * self.cos_lat0)).to_degrees(),
+            crate::wrapped(self.lon0 + (x / (EARTH_RADIUS_M * self.cos_lat0)).to_degrees()),
         )
     }
 }

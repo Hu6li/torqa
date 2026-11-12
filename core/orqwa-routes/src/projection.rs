@@ -29,7 +29,7 @@ impl LocalProjection {
     #[must_use]
     pub fn project(&self, lat: f64, lon: f64) -> (f64, f64) {
         (
-            (lon - self.origin_lon) * self.meters_per_degree_lon,
+            crate::east_of(self.origin_lon, lon) * self.meters_per_degree_lon,
             (lat - self.origin_lat) * EARTH_RADIUS.to_radians(),
         )
     }
@@ -39,7 +39,7 @@ impl LocalProjection {
     pub fn unproject(&self, east: f64, north: f64) -> (f64, f64) {
         (
             self.origin_lat + north / EARTH_RADIUS.to_radians(),
-            self.origin_lon + east / self.meters_per_degree_lon,
+            crate::wrapped(self.origin_lon + east / self.meters_per_degree_lon),
         )
     }
 }

@@ -140,7 +140,7 @@ fn metres(points: &[RoutePoint]) -> Vec<(f64, f64)> {
         .iter()
         .map(|p| {
             (
-                (p.lon - first.lon) * scale * first.lat.to_radians().cos(),
+                crate::east_of(first.lon, p.lon) * scale * first.lat.to_radians().cos(),
                 (p.lat - first.lat) * scale,
             )
         })

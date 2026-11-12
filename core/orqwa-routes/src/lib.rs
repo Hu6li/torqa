@@ -513,7 +513,7 @@ fn grade(a: &RoutePoint, b: &RoutePoint) -> GradePercent {
 /// Direction from `a` to `b` in radians, clockwise from north (flat-earth approximation,
 /// exact enough over a 10 m segment).
 fn heading(a: &RoutePoint, b: &RoutePoint) -> f64 {
-    let east = (b.lon - a.lon) * a.lat.to_radians().cos();
+    let east = east_of(a.lon, b.lon) * a.lat.to_radians().cos();
     let north = b.lat - a.lat;
     east.atan2(north)
 }
@@ -568,7 +568,7 @@ fn resample(points: &[RawPoint]) -> Result<Vec<RawPoint>, RouteError> {
             let t = (next - travelled) / length;
             result.push(RawPoint {
                 lat: a.lat + (b.lat - a.lat) * t,
-                lon: a.lon + (b.lon - a.lon) * t,
+                lon: wrapped(a.lon + east_of(a.lon, b.lon) * t),
                 elevation: a
                     .elevation
                     .zip(b.elevation)
@@ -776,10 +776,21 @@ fn moving_average(values: &[f64], window: f64) -> Vec<f64> {
 }
 
 /// Great-circle distance in metres.
+/// Degrees east from longitude `from` to `to` the short way, across the 180° meridian when
+/// that is shorter (#598): from 179.99° to -179.99° is 0.02°, not -359.98°.
+pub(crate) fn east_of(from: f64, to: f64) -> f64 {
+    (to - from + 180.0).rem_euclid(360.0) - 180.0
+}
+
+/// `lon` brought back into -180°..180° after stepping east or west of a point.
+pub(crate) fn wrapped(lon: f64) -> f64 {
+    (lon + 180.0).rem_euclid(360.0) - 180.0
+}
+
 fn haversine(a: &RawPoint, b: &RawPoint) -> f64 {
     let (lat1, lat2) = (a.lat.to_radians(), b.lat.to_radians());
     let dlat = lat2 - lat1;
-    let dlon = (b.lon - a.lon).to_radians();
+    let dlon = east_of(a.lon, b.lon).to_radians();
     let h = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
     2.0 * EARTH_RADIUS * h.sqrt().asin()
 }
@@ -1164,6 +1175,27 @@ mod tests {
             Route::from_gpx(&gpx_north(&[Some(1.0)], 100.0), None).await,
             Err(RouteError::TooShort)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_route_across_the_antimeridian_keeps_its_length() {
+        let xml = r#"<gpx><trk><trkseg>
+            <trkpt lat="-16.8" lon="179.99"><ele>10</ele></trkpt>
+            <trkpt lat="-16.8" lon="-179.99"><ele>10</ele></trkpt>
+        </trkseg></trk></gpx>"#;
+        let route = Route::from_gpx(xml, None).await.unwrap();
+        let length = route.length().0;
+        assert!((2_100.0..2_160.0).contains(&length), "length {length}");
+        assert!(
+            route.points().iter().all(|p| p.lon.abs() > 179.98),
+            "every point lies within 0.02° of the meridian"
+        );
+        // Flat coordinates run on across it, east of the start, and back again.
+        let projection = LocalProjection::for_route(&route);
+        let (east, _) = projection.project(-16.8, -179.99);
+        assert!((2_100.0..2_160.0).contains(&east), "east {east}");
+        let (_, lon) = projection.unproject(east, 0.0);
+        assert!((lon + 179.99).abs() < 1e-9, "lon {lon}");
     }
 
     /// Terrain with a 200 m ridge between latitudes 46.000 and 46.009, everywhere else 500 m.

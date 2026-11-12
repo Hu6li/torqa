@@ -32,7 +32,7 @@ pub(crate) fn join(points: &[RawPoint], surfaces: &[Surface], heights: &mut [f64
         .iter()
         .map(|p| {
             (
-                (p.lon - first.lon) * metres * first.lat.to_radians().cos(),
+                crate::east_of(first.lon, p.lon) * metres * first.lat.to_radians().cos(),
                 (p.lat - first.lat) * metres,
             )
         })

@@ -149,7 +149,7 @@ fn carries(structure: &Structure, point: &RawPoint, direction: (f64, f64)) -> bo
 /// Metres east/north of `origin` (flat approximation, fine over tens of metres).
 fn local(origin: &RawPoint, lat: f64, lon: f64) -> (f64, f64) {
     (
-        (lon - origin.lon) * METERS_PER_DEGREE * origin.lat.to_radians().cos(),
+        crate::east_of(origin.lon, lon) * METERS_PER_DEGREE * origin.lat.to_radians().cos(),
         (lat - origin.lat) * METERS_PER_DEGREE,
     )
 }
