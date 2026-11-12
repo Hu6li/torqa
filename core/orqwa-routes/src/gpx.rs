@@ -41,6 +41,9 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
     let mut in_waypoint = false;
     let mut capture = Capture::None;
     let mut text = String::new();
+    // Open elements: only the metadata's, a track's or a route's own name names the route,
+    // never, say, its author's (#592).
+    let mut open: Vec<String> = Vec::new();
 
     loop {
         let event = reader
@@ -48,6 +51,11 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
             .map_err(|e| RouteError::InvalidGpx(e.to_string()))?;
         match event {
             Event::Start(e) => {
+                let names_route = matches!(
+                    open.last().map(String::as_str),
+                    Some("metadata" | "trk" | "rte")
+                );
+                open.push(e.local_name().as_ref().to_owned());
                 match e.local_name().as_ref() {
                     "trkpt" | "rtept" => {
                         point = Some((read_point(&e)?, e.local_name().as_ref() == "trkpt"));
@@ -55,7 +63,9 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
                     "wpt" => in_waypoint = true,
                     "ele" if point.is_some() => capture = Capture::Elevation,
                     "time" if point.is_some() => capture = Capture::Time,
-                    "name" if point.is_none() && !in_waypoint && gpx.name.is_none() => {
+                    "name"
+                        if point.is_none() && !in_waypoint && gpx.name.is_none() && names_route =>
+                    {
                         capture = Capture::Name;
                     }
                     _ => {}
@@ -75,6 +85,7 @@ pub(crate) fn parse(xml: &str) -> Result<Gpx, RouteError> {
                 }
             }
             Event::End(e) => {
+                open.pop();
                 match (e.local_name().as_ref(), capture) {
                     ("ele", Capture::Elevation) => {
                         if let Some((p, _)) = point.as_mut() {
@@ -219,6 +230,19 @@ mod time_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_author_is_not_the_routes_name() {
+        let xml = r#"<gpx><metadata><author><name>Jane Doe</name></author></metadata>
+            <trk><name>Morning Ride</name><trkseg>
+            <trkpt lat="46.9" lon="7.4"/><trkpt lat="46.91" lon="7.4"/></trkseg></trk></gpx>"#;
+        assert_eq!(parse(xml).unwrap().name.as_deref(), Some("Morning Ride"));
+        // A route planner's file names its route instead.
+        let xml = r#"<gpx><metadata><author><name>Jane Doe</name></author></metadata>
+            <rte><name>Planned</name><rtept lat="46.9" lon="7.4"/><rtept lat="46.91" lon="7.4"/>
+            </rte></gpx>"#;
+        assert_eq!(parse(xml).unwrap().name.as_deref(), Some("Planned"));
+    }
 
     #[test]
     fn reads_track_points_with_elevation_and_name() {
