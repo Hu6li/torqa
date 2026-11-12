@@ -24,20 +24,20 @@ const FLAT: Color = Color("#fde047")
 const CLIMB: Color = Color("#f43f5e")
 const STEEP_CLIMB: Color = Color("#9f1239")
 const RIDDEN_ALPHA: float = 0.9
-## During a ride the profile sits over the 3D world, so it stays see-through there.
-const OVERLAY_RIDDEN_ALPHA: float = 0.35
-const AHEAD_ALPHA: float = 0.08
+## During a ride the profile is small and over the 3D world: the colours stay strong there so
+## they read at a glance, with the part still ahead lighter.
+const OVERLAY_RIDDEN_ALPHA: float = 0.85
+const AHEAD_ALPHA: float = 0.4
 ## The area fades towards the bottom to this share of its opacity at the curve, so the colour
-## sits on the line and the chart stays light.
+## sits on the line and the chart stays light; less so in the ride's small panel.
 const FILL_FADE: float = 0.12
-## The outline takes the gradient colour too, a little brighter, over a soft glow in the course
-## view.
+const OVERLAY_FILL_FADE: float = 0.35
+## The outline takes the gradient colour too, a little brighter, over a soft glow.
 const LINE_LIGHTEN: float = 0.25
 const LINE_WIDTH: float = 2.0
 const GLOW_WIDTH: float = 7.0
 const GLOW_ALPHA: float = 0.22
-const OVERLAY_LINE_ALPHA: float = 0.7
-const AHEAD_LINE_ALPHA: float = 0.3
+const AHEAD_LINE_ALPHA: float = 0.6
 ## Gradients are averaged over this much road around each point, and over a 300th of a long
 ## course, so neighbouring points do not flicker between colours on a few metres of noise.
 const SMOOTHING_M: float = 50.0
@@ -136,6 +136,7 @@ func _draw() -> void:
 		outline.append(_to_screen(_profile[i]))
 	var ridden_color: Color = Color(UiTheme.ACCENT, 0.55)
 	var solid: float = OVERLAY_RIDDEN_ALPHA if shows_progress else RIDDEN_ALPHA
+	var fade: float = OVERLAY_FILL_FADE if shows_progress else FILL_FADE
 	for i: int in range(_profile.size() - 1):
 		var from: Vector2 = _profile[i]
 		var to: Vector2 = _profile[i + 1]
@@ -148,14 +149,14 @@ func _draw() -> void:
 		var t: float = (clampf(ridden, from.x, to.x) - from.x) / maxf(to.x - from.x, 0.001)
 		var at: Vector2 = _to_screen(from.lerp(to, t))
 		var middle: Color = _colors[i].lerp(_colors[i + 1], t)
-		_fill(outline[i], at, bottom, Color(_colors[i], solid), Color(middle, solid), FILL_FADE)
+		_fill(outline[i], at, bottom, Color(_colors[i], solid), Color(middle, solid), fade)
 		_fill(
 			at,
 			outline[i + 1],
 			bottom,
 			Color(middle, AHEAD_ALPHA),
 			Color(_colors[i + 1], AHEAD_ALPHA),
-			FILL_FADE
+			fade
 		)
 	if gradient_colours:
 		_draw_gradient_line(outline)
@@ -237,20 +238,17 @@ func _fill(
 	)
 
 
-## The outline in each point's gradient colour, brighter; glowing in the course view, dimmer ahead.
+## The outline in each point's gradient colour, brighter, over a soft glow; dimmer ahead.
 func _draw_gradient_line(outline: PackedVector2Array) -> void:
 	var line: PackedColorArray = PackedColorArray()
 	var glow: PackedColorArray = PackedColorArray()
-	var solid: float = OVERLAY_LINE_ALPHA if shows_progress else 1.0
 	for i: int in range(_profile.size()):
 		var ahead: bool = shows_progress and _profile[i].x > _rider_distance
 		var color: Color = _colors[i].lightened(LINE_LIGHTEN)
-		var alpha: float = AHEAD_LINE_ALPHA if ahead else solid
+		var alpha: float = AHEAD_LINE_ALPHA if ahead else 1.0
 		line.append(Color(color, alpha))
 		glow.append(Color(color, GLOW_ALPHA * alpha))
-	# Over the 3D world the glow would only haze it.
-	if not shows_progress:
-		draw_polyline_colors(outline, glow, GLOW_WIDTH, true)
+	draw_polyline_colors(outline, glow, GLOW_WIDTH, true)
 	draw_polyline_colors(outline, line, LINE_WIDTH, true)
 
 
