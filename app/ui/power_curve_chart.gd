@@ -76,7 +76,7 @@ func add_efforts(efforts: Array, color: Color, per_kg: bool = false) -> void:
 		var value: float = effort["watts_per_kg"] if per_kg else effort["power"]
 		var start: int = effort["start_unix_s"]
 		points.append(Vector2(duration_s, value))
-		notes.append(UiTheme.date(start).get_slice(",", 0))
+		notes.append(UiTheme.date(start, effort.get("utc_offset_min")).get_slice(",", 0))
 	add_curve(points, color, notes)
 
 

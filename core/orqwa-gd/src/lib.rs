@@ -240,6 +240,9 @@ impl INode for OrqwaApp {
             return;
         };
         app.set_calendar_year(current_calendar_year());
+        if let Some(minutes) = current_utc_offset_minutes() {
+            app.set_utc_offset_minutes(minutes);
+        }
         let events = app.update(elapsed);
         // A course imported from a file, or prepared offline, may not know its countries yet.
         if events.iter().any(|e| matches!(e, AppEvent::CourseAdded(_))) {
@@ -1074,11 +1077,11 @@ impl OrqwaApp {
         self.command(|app| app.set_courses_view(view));
     }
 
-    /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
-    /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
-    /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
-    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs, power_curve,
-    /// power_records, uploads}]`; values the ride did not record are `null`, and
+    /// The active rider's rides, newest first: `[{path, route, name, start_unix_s,
+    /// utc_offset_min, elapsed_s, distance_m, elevation_gain_m, avg_speed_kmh, avg_power,
+    /// max_power, normalized_power, intensity_factor, training_stress, work_kj, avg_cadence,
+    /// avg_heart_rate, max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs,
+    /// power_curve, power_records, uploads}]`; values the ride did not record are `null`, and
     /// `ftp_estimate_w` for all but FTP tests (R22). `power_curve` holds `(duration s, W)`
     /// points of the ride's best power, `power_records` the durations in seconds over which it
     /// is the rider's best (R62). `uploads` has the page of the ride's activity by platform id
@@ -1097,6 +1100,7 @@ impl OrqwaApp {
                     "route" => entry.record.route.as_str(),
                     "name" => entry.record.name.as_deref().unwrap_or_default(),
                     "start_unix_s" => start,
+                    "utc_offset_min" => &offset_of(entry.record.utc_offset_minutes),
                     "elapsed_s" => s.elapsed.as_secs_f64(),
                     "distance_m" => s.distance.0,
                     "elevation_gain_m" => s.elevation_gain.0,
@@ -1154,7 +1158,8 @@ impl OrqwaApp {
     }
 
     /// The active rider's power curves (R62): `{period, compare}`, each the best efforts per
-    /// duration as `[{duration_s, power, watts_per_kg, start_unix_s, path}]`, shortest first.
+    /// duration as `[{duration_s, power, watts_per_kg, start_unix_s, utc_offset_min, path}]`,
+    /// shortest first; `utc_offset_min` is `null` for rides that did not keep it (#596).
     /// `period` holds those of the rides of the last `period_days` (all rides for 0), `compare`
     /// those of all rides or, with `previous`, of the period before. With `per_kg`, the best
     /// effort is the one with the most power per kilogram.
@@ -1180,6 +1185,7 @@ impl OrqwaApp {
                         "power" => effort.power.0,
                         "watts_per_kg" => effort.watts_per_kg,
                         "start_unix_s" => unix_seconds(effort.start),
+                        "utc_offset_min" => &offset_of(effort.utc_offset_minutes),
                         "path" => path.as_str(),
                     }
                     .to_variant(),
@@ -4839,6 +4845,20 @@ fn calorie_profile(data: &VarDictionary) -> CalorieProfile {
         .unwrap_or_else(current_calendar_year);
     profile.set_age(age, year);
     profile
+}
+
+/// Minutes the system's local time is ahead of UTC now, daylight saving included.
+fn current_utc_offset_minutes() -> Option<i32> {
+    godot::classes::Time::singleton()
+        .get_time_zone_from_system()
+        .get("bias")
+        .and_then(|value| value.try_to::<i64>().ok())
+        .and_then(|minutes| i32::try_from(minutes).ok())
+}
+
+/// A ride's UTC offset for the front end: `null` when the ride did not keep it.
+fn offset_of(minutes: Option<i32>) -> Variant {
+    minutes.map_or_else(Variant::nil, |m| i64::from(m).to_variant())
 }
 
 fn current_calendar_year() -> u16 {

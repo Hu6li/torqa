@@ -81,3 +81,15 @@ Options considered:
 - The fit is only taken if critical power lies between 50 and 600 W, `W′` between 3 and 40 kJ
   and critical power below the best 20 minutes; otherwise, or with fewer efforts, the estimate
   is 95 % of the best 20 minutes (the 20-minute test's rule). Without 20 minutes there is none.
+
+## Amendment — 2026-11-12: the local time of a ride (#596)
+
+- The summary keeps **`utc_offset_min`** beside the start: the minutes local time was ahead of
+  UTC when the ride was saved, daylight saving included. The front end shows the start with
+  it, so a ride from the other side of a daylight-saving change keeps the time of day and the
+  date it was ridden: in the history, the ride summary, the default ride name (also the upload
+  title and export file name) and the power curve's notes.
+- The front end supplies its system time zone's offset; the offset at saving is the one in
+  force on the ride, so the core needs no time-zone database for it.
+- Rides saved before ORQWA kept it, or rebuilt from their FIT file, have none and are shown
+  with today's offset, as before. Weekly and daily totals still count days by today's offset.

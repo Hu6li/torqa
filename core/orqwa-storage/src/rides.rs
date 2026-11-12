@@ -43,6 +43,10 @@ pub struct RideRecord {
     pub route: String,
     /// When the ride started.
     pub start: SystemTime,
+    /// Minutes the local time was ahead of UTC when the ride was saved, so it is shown at the
+    /// time of day it was ridden on either side of a daylight-saving change (#596); `None`
+    /// for rides saved before ORQWA kept it, or rebuilt from a FIT file.
+    pub utc_offset_minutes: Option<i32>,
     /// Key figures.
     pub summary: RideSummary,
     /// Fingerprint of the route, to compare rides on the same course; `None` if unknown (e.g.
@@ -117,6 +121,8 @@ struct RideFile {
     format: u32,
     route: String,
     start_unix_s: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    utc_offset_min: Option<i32>,
     elapsed_s: f64,
     distance_m: f64,
     elevation_gain_m: f64,
@@ -210,6 +216,7 @@ impl From<&RideRecord> for RideFile {
                 .start
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
+            utc_offset_min: r.utc_offset_minutes,
             elapsed_s: s.elapsed.as_secs_f64(),
             distance_m: s.distance.0,
             elevation_gain_m: s.elevation_gain.0,
@@ -253,6 +260,8 @@ impl From<RideFile> for RideRecord {
         Self {
             route: f.route,
             start: UNIX_EPOCH + Duration::from_secs(f.start_unix_s),
+            // A day either way is the most any place has ever been from UTC.
+            utc_offset_minutes: f.utc_offset_min.filter(|m| m.abs() <= 24 * 60),
             summary: RideSummary {
                 elapsed: Duration::from_secs_f64(f.elapsed_s.max(0.0)),
                 distance: Meters(f.distance_m),
@@ -420,6 +429,23 @@ mod tests {
     }
 
     #[test]
+    fn a_ride_keeps_the_utc_offset_it_was_ridden_at() {
+        let ride = record();
+        let encoded = serde_json::to_string(&RideFile::from(&ride)).unwrap();
+        assert!(encoded.contains(r#""utc_offset_min":120"#), "{encoded}");
+        let restored = RideRecord::from(serde_json::from_str::<RideFile>(&encoded).unwrap());
+        assert_eq!(restored.utc_offset_minutes, Some(120));
+        // Rides saved before ORQWA kept it, and nonsense, fall back to today's offset.
+        let mut file = serde_json::from_str::<serde_json::Value>(&encoded).unwrap();
+        file.as_object_mut().unwrap().remove("utc_offset_min");
+        let legacy = RideRecord::from(serde_json::from_value::<RideFile>(file.clone()).unwrap());
+        assert_eq!(legacy.utc_offset_minutes, None);
+        file["utc_offset_min"] = serde_json::json!(100_000);
+        let absurd = RideRecord::from(serde_json::from_value::<RideFile>(file).unwrap());
+        assert_eq!(absurd.utc_offset_minutes, None);
+    }
+
+    #[test]
     fn assisted_metadata_round_trips_without_excluding_measured_training_data() {
         let mut ride = record();
         ride.assisted = true;
@@ -438,6 +464,7 @@ mod tests {
         RideRecord {
             route: "Gurten".to_owned(),
             start: UNIX_EPOCH + Duration::from_secs(1_790_000_000),
+            utc_offset_minutes: Some(120),
             summary: RideSummary {
                 elapsed: Duration::from_mins(30),
                 distance: Meters(12_000.0),
@@ -648,6 +675,7 @@ mod tests {
         let ride = |name: &str, secs: u64| {
             let record = RideRecord {
                 start: UNIX_EPOCH + Duration::from_secs(secs),
+                utc_offset_minutes: None,
                 ..record()
             };
             (PathBuf::from(name), record)

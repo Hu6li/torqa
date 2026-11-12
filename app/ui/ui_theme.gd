@@ -405,9 +405,13 @@ static func bytes(size: int) -> String:
 
 
 ## Local date and time of a Unix timestamp, e.g. "Sat 3 Oct 2026, 07:15"; the date alone is
-## the part before the comma.
-static func date(unix_s: int) -> String:
+## the part before the comma. `utc_offset_min` is the offset a ride kept (#596): today's
+## offset is an hour off for rides from the other side of a daylight-saving change, so it is
+## used only when the ride did not keep one (`null`).
+static func date(unix_s: int, utc_offset_min: Variant = null) -> String:
 	var bias_minutes: int = Time.get_time_zone_from_system().get("bias", 0)
+	if utc_offset_min is int:
+		bias_minutes = utc_offset_min
 	var local: Dictionary = Time.get_datetime_dict_from_unix_time(unix_s + bias_minutes * 60)
 	# i18n-begin
 	var weekdays: Array[String] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]

@@ -89,6 +89,7 @@ pub fn write(args: &SampleRidesArgs) -> Result<()> {
             let record = RideRecord {
                 route: session.name.to_owned(),
                 start,
+                utc_offset_minutes: None,
                 summary: summarize(&samples, Watts(ftp.round())),
                 route_key: None,
                 route_time: None,

@@ -76,7 +76,16 @@ func _show_ride(ride: Dictionary) -> void:
 	_title.text = ride_name
 	var start: int = ride["start_unix_s"]
 	_title.placeholder_text = (
-		"%s · %s" % [ride["route"], UiTheme.date(start).get_slice(",", 0).rsplit(" ", true, 1)[0]]
+		"%s · %s"
+		% [
+			ride["route"],
+			(
+				UiTheme
+				. date(start, ride.get("utc_offset_min"))
+				. get_slice(",", 0)
+				. rsplit(" ", true, 1)[0]
+			)
+		]
 	)
 	_recap.show_ride(_orqwa, _path)
 	_fill_stats(ride)

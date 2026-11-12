@@ -842,6 +842,7 @@ mod tests {
         RideRecord {
             route: "Gurten".to_owned(),
             start: UNIX_EPOCH + Duration::from_secs(MONDAY) + DAY * days,
+            utc_offset_minutes: None,
             summary: orqwa_domain::recording::RideSummary::default(),
             route_key: Some("gurten".to_owned()),
             route_time: None,

@@ -788,6 +788,8 @@ pub struct App {
     profile: StoredProfile,
     /// Front ends supply their local calendar year; UTC is the fallback before binding.
     calendar_year: u16,
+    /// Minutes local time is ahead of UTC, from the front end; `None` before it says.
+    utc_offset_minutes: Option<i32>,
     /// The training platforms rides can be uploaded to and the uploads under way (R29).
     uploads: uploads::UploadState,
     updates: updates::UpdateState,
@@ -888,6 +890,7 @@ impl App {
             })),
             profile,
             calendar_year: orqwa_domain::calendar::utc_year(SystemTime::now()).unwrap_or(0),
+            utc_offset_minutes: None,
             uploads: uploads::UploadState::new(uploads::platforms()),
             updates: updates::UpdateState::default(),
             detail: detail::DetailState::default(),
@@ -916,6 +919,16 @@ impl App {
     #[must_use]
     pub fn profile(&self) -> &StoredProfile {
         &self.profile
+    }
+
+    /// Sets how many minutes local time is ahead of UTC now, kept with the rides saved from
+    /// now on so each is shown at the time of day it was ridden, also from the other side of
+    /// a daylight-saving change (#596). Front ends supply their system time zone; more than a
+    /// day either way is ignored.
+    pub fn set_utc_offset_minutes(&mut self, minutes: i32) {
+        if minutes.abs() <= 24 * 60 {
+            self.utc_offset_minutes = Some(minutes);
+        }
     }
 
     /// Updates the local calendar year, including an open or paused ride's calorie estimate.
@@ -3243,6 +3256,7 @@ impl App {
                     .or_else(|| self.loaded.as_ref().map(|(name, _)| name.clone()))
                     .unwrap_or_else(|| "Ride".to_owned()),
                 start,
+                utc_offset_minutes: self.utc_offset_minutes,
                 summary: summarize(samples, self.profile.profile.ftp),
                 route_key: route.filter(|_| real).map(Route::key),
                 route_time: route
@@ -3780,6 +3794,7 @@ impl App {
                 .file_stem()
                 .map_or_else(|| "Ride".to_owned(), |s| s.to_string_lossy().into_owned()),
             start,
+            utc_offset_minutes: None,
             summary: summarize(&samples, self.profile.profile.ftp),
             // The route is unknown, so this ride counts towards no records.
             route_key: None,
@@ -5079,6 +5094,9 @@ mod tests {
                 .and_then(|w| w.target_power),
             Some(Watts(240.0))
         );
+        // The offset in force when the ride is saved goes with it (#596); nonsense does not.
+        app.set_utc_offset_minutes(120);
+        app.set_utc_offset_minutes(100_000);
         let saved = app.finish_ride();
         assert!(
             matches!(saved.as_slice(), [AppEvent::RideSaved(_)]),
@@ -5086,6 +5104,7 @@ mod tests {
         );
         let history = app.history();
         assert_eq!(history[0].record.route, "Constant power 220 W");
+        assert_eq!(history[0].record.utc_offset_minutes, Some(120));
         assert_eq!(
             history[0].record.route_key, None,
             "no records without a course"
@@ -5716,6 +5735,7 @@ mod tests {
         let saved = RideRecord {
             route: "Gurten".to_owned(),
             start,
+            utc_offset_minutes: None,
             summary: summarize(&samples, Watts(250.0)),
             route_key: Some("0123456789abcdef".to_owned()),
             route_time: Some(Duration::from_mins(10)),

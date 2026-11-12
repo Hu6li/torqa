@@ -364,7 +364,7 @@ func _show_ride(index: int) -> void:
 	var ride_name: String = ride["name"]
 	_title.placeholder_text = _default_name(ride)
 	_title.text = ride_name
-	_subtitle.text = UiTheme.date(start)
+	_subtitle.text = UiTheme.date(start, ride.get("utc_offset_min"))
 	if ride.get("assisted", false):
 		_subtitle.text += " · " + tr("Assisted group ride")
 	_export_status.hide()
@@ -745,7 +745,18 @@ func _close() -> void:
 func _default_name(ride: Dictionary) -> String:
 	var route: String = ride["route"]
 	var start: int = ride["start_unix_s"]
-	return "%s · %s" % [route, UiTheme.date(start).get_slice(",", 0).rsplit(" ", true, 1)[0]]
+	return (
+		"%s · %s"
+		% [
+			route,
+			(
+				UiTheme
+				. date(start, ride.get("utc_offset_min"))
+				. get_slice(",", 0)
+				. rsplit(" ", true, 1)[0]
+			)
+		]
+	)
 
 
 func _list_text(ride: Dictionary) -> String:
@@ -757,7 +768,10 @@ func _list_text(ride: Dictionary) -> String:
 	)
 	var ride_name: String = ride["name"]
 	var title: String = ride_name if not ride_name.is_empty() else _default_name(ride)
-	return "%s\n%s  ·  %s  ·  %s" % [title, UiTheme.date(start), distance, _duration(elapsed_s)]
+	return (
+		"%s\n%s  ·  %s  ·  %s"
+		% [title, UiTheme.date(start, ride.get("utc_offset_min")), distance, _duration(elapsed_s)]
+	)
 
 
 static func _duration(seconds: float) -> String:

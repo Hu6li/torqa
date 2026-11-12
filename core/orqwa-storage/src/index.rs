@@ -229,6 +229,7 @@ mod tests {
         RideRecord {
             route: route.to_owned(),
             start: SystemTime::UNIX_EPOCH + Duration::from_secs(start),
+            utc_offset_minutes: None,
             summary: RideSummary::default(),
             route_key: None,
             route_time: None,

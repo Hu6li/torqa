@@ -925,6 +925,7 @@ mod tests {
         let record = RideRecord {
             route: "Gurten".to_owned(),
             start: UNIX_EPOCH,
+            utc_offset_minutes: None,
             summary: RideSummary::default(),
             route_key: None,
             route_time: None,

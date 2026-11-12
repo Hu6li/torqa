@@ -36,6 +36,8 @@ pub struct BestEffort {
     pub fit: PathBuf,
     /// When the ride started.
     pub start: SystemTime,
+    /// Minutes local time was ahead of UTC on the ride, if it was kept.
+    pub utc_offset_minutes: Option<i32>,
 }
 
 /// A period's power curve and the one it is compared with.
@@ -433,6 +435,7 @@ pub fn best_efforts<'a>(
                 watts_per_kg: if mass.0 > 0.0 { power.0 / mass.0 } else { 0.0 },
                 fit: entry.fit.clone(),
                 start: record.start,
+                utc_offset_minutes: record.utc_offset_minutes,
             };
             let value = |e: &BestEffort| if per_kg { e.watts_per_kg } else { e.power.0 };
             if slot
@@ -503,6 +506,7 @@ mod tests {
             record: RideRecord {
                 route: "Gurten".to_owned(),
                 start: now() - DAY * days_ago,
+                utc_offset_minutes: None,
                 summary: RideSummary::default(),
                 route_key: None,
                 route_time: None,
