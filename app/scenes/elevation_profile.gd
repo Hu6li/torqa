@@ -32,11 +32,12 @@ const AHEAD_ALPHA: float = 0.4
 ## sits on the line and the chart stays light; less so in the ride's small panel.
 const FILL_FADE: float = 0.12
 const OVERLAY_FILL_FADE: float = 0.35
-## The outline takes the gradient colour too, a little brighter, over a soft glow.
-const LINE_LIGHTEN: float = 0.25
-const LINE_WIDTH: float = 2.0
-const GLOW_WIDTH: float = 7.0
-const GLOW_ALPHA: float = 0.22
+## The outline takes the gradient colour too, barely brighter, over a faint glow: enough to
+## lift the line off the area without making the chart look shiny.
+const LINE_LIGHTEN: float = 0.08
+const LINE_WIDTH: float = 1.5
+const GLOW_WIDTH: float = 4.0
+const GLOW_ALPHA: float = 0.08
 const AHEAD_LINE_ALPHA: float = 0.6
 ## Gradients are averaged over this much road around each point, and over a 300th of a long
 ## course, so neighbouring points do not flicker between colours on a few metres of noise.
@@ -238,7 +239,7 @@ func _fill(
 	)
 
 
-## The outline in each point's gradient colour, brighter, over a soft glow; dimmer ahead.
+## The outline in each point's gradient colour over a faint glow; dimmer ahead.
 func _draw_gradient_line(outline: PackedVector2Array) -> void:
 	var line: PackedColorArray = PackedColorArray()
 	var glow: PackedColorArray = PackedColorArray()
