@@ -368,16 +368,20 @@ pub(crate) fn place(
     let mut trees = Trees::default();
     // Give mapped woods their own denser grid without filling meadows and gardens too.
     for (spacing, forest) in [(FOREST_SPACING, true), (NEAR_SPACING, false)] {
-        let mut north = origin.1;
-        while north < origin.1 + size {
-            let mut east = origin.0;
-            while east < origin.0 + size {
+        // One grid for the whole world: restarted at each chunk, a 7 m grid in 480 m chunks
+        // gave the cells either side of some borders one seed, so twin plants 4 m apart (#599).
+        let cells = |from: f64| cell_index(from, spacing)..cell_index(from + size, spacing);
+        for row in cells(origin.1) {
+            #[allow(clippy::cast_precision_loss)] // cell indices are small
+            let north = row as f64 * spacing;
+            for column in cells(origin.0) {
+                #[allow(clippy::cast_precision_loss)] // cell indices are small
+                let east = column as f64 * spacing;
                 let seed = cell_seed(east, north, spacing);
                 let (e, n) = (
                     east + (crate::hash(seed) - 0.5) * spacing,
                     north + (crate::hash(seed ^ 0x5bd1) - 0.5) * spacing,
                 );
-                east += spacing;
                 let cover = land.cover_at(e, n);
                 if ground.urban.paved_at((e, n), land) {
                     continue;
@@ -398,7 +402,6 @@ pub(crate) fn place(
                 }
                 trees.add(kind, [e, heights.at(e, n), n], seed, chunk_origin);
             }
-            north += spacing;
         }
     }
     trees
@@ -605,6 +608,15 @@ fn grass_seed(east: f64, north: f64) -> i64 {
     e.wrapping_mul(83_492_791) ^ n.wrapping_mul(2_654_435_761)
 }
 
+/// The first cell of a world-wide grid of `spacing` at or after `from`: each cell belongs
+/// to exactly one chunk.
+fn cell_index(from: f64, spacing: f64) -> i64 {
+    #[allow(clippy::cast_possible_truncation)] // cell indices are small
+    {
+        (from / spacing).ceil() as i64
+    }
+}
+
 /// A stable seed per grid cell.
 fn cell_seed(east: f64, north: f64, spacing: f64) -> i64 {
     #[allow(clippy::cast_possible_truncation)] // cell indices are small
@@ -650,6 +662,23 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+
+    #[test]
+    fn plant_cells_either_side_of_a_chunk_border_have_their_own_seeds() {
+        let size = crate::CHUNK_SIZE;
+        for spacing in [FOREST_SPACING, NEAR_SPACING] {
+            let cells = |from: f64| cell_index(from, spacing)..cell_index(from + size, spacing);
+            // Neighbouring chunks share the grid: no cell twice, none left out.
+            for origin in [-size, 0.0, size, 2.0 * size, 7.0 * size] {
+                assert_eq!(cells(origin).end, cells(origin + size).start, "{spacing} m");
+            }
+            #[allow(clippy::cast_precision_loss)] // cell indices are small
+            let seed = |cell: i64| cell_seed(cell as f64 * spacing, 0.0, spacing);
+            let west = cells(size).last().unwrap();
+            let east = cells(2.0 * size).next().unwrap();
+            assert_ne!(seed(west), seed(east), "{spacing} m");
+        }
+    }
 
     #[test]
     fn seasonal_flowers_become_grass_without_losing_or_moving_plants() {
