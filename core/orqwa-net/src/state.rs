@@ -285,10 +285,15 @@ impl StateInbox {
     /// times return an empty fixed-size array and leave pending states coalescing in place.
     #[must_use]
     pub fn drain(&mut self, now: Instant) -> [Option<RiderState>; MAX_RIDERS] {
-        if now < self.next_publish {
+        // Callers tick every `STATE_EVERY`, each tick a little late or less. Due exactly a
+        // period after the last call, a tick handled sooner than the last one published
+        // nothing: 200/400 ms apart (#591). The schedule keeps its own beat and a tick counts
+        // from half a period before it; a beat comes at least half a period after the call
+        // that met the last one, so it still publishes at most 5 Hz.
+        if now + STATE_EVERY / 2 <= self.next_publish {
             return [None; MAX_RIDERS];
         }
-        self.next_publish = now + STATE_EVERY;
+        self.next_publish = (self.next_publish + STATE_EVERY).max(now + STATE_EVERY / 2);
         std::array::from_fn(|i| self.slots[i].pending.take())
     }
 }
@@ -393,6 +398,34 @@ mod tests {
             Duration::from_millis(u64::from(STATE_BURST))
         );
         assert!(inbox.drain(now + STATE_EVERY).iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn a_tick_a_moment_sooner_than_the_last_late_one_still_publishes() {
+        let now = Instant::now();
+        let mut inbox = StateInbox::new(now);
+        let member = inbox.join(RiderId::HOST, now).unwrap();
+        let datagram = |ms| state(ms).datagram(RiderId::HOST).unwrap();
+        let late = now + STATE_EVERY + Duration::from_millis(1);
+        inbox
+            .ingest(member, &datagram(200), Duration::from_millis(200), late)
+            .unwrap();
+        assert!(inbox.drain(late)[0].is_some());
+        let on_time = now + 2 * STATE_EVERY;
+        inbox
+            .ingest(member, &datagram(400), Duration::from_millis(400), on_time)
+            .unwrap();
+        assert!(inbox.drain(on_time)[0].is_some());
+        // Ticks handled up to most of a period late, in any order, each publish once.
+        for (tick, late_ms) in [(3_u32, 150), (4, 0), (5, 199), (6, 20), (7, 180), (8, 1)] {
+            let at = now + tick * STATE_EVERY + Duration::from_millis(late_ms);
+            let ms = u64::from(tick) * 200;
+            inbox
+                .ingest(member, &datagram(ms), Duration::from_millis(ms), at)
+                .unwrap();
+            assert!(inbox.drain(at)[0].is_some(), "tick {tick}");
+            assert!(inbox.drain(at)[0].is_none(), "once per tick");
+        }
     }
 
     #[test]
