@@ -235,6 +235,10 @@ impl Strava {
                 .map_err(|e| cannot_reach(NAME, &e))?;
             upload = answered(answer).await?;
         }
+        // The last answer counts too: it may name the activity, or Strava's error (#594).
+        if let Some(uploaded) = self.processed(&upload)? {
+            return Ok(uploaded);
+        }
         Err(UploadError::Rejected(format!(
             "{NAME} is still processing the ride: upload it again in a minute to link it."
         )))
@@ -484,6 +488,39 @@ mod tests {
 
     fn text(request: &[u8]) -> String {
         String::from_utf8_lossy(request).into_owned()
+    }
+
+    #[tokio::test]
+    async fn the_last_poll_answer_counts() {
+        let processing = r#"{"id":5,"id_str":"5","error":null,"activity_id":null}"#.to_owned();
+        let answers = |last: &str| {
+            let mut answers = vec![("201 Created", processing.clone())];
+            answers.extend((1..POLLS).map(|_| ("200 OK", processing.clone())));
+            answers.push(("200 OK", last.to_owned()));
+            answers
+        };
+        let (site, _served) = serve(answers(
+            r#"{"id":5,"id_str":"5","error":null,"activity_id":777}"#,
+        ))
+        .await;
+        let uploaded = strava(&site)
+            .upload(&mut connected(3600), &activity())
+            .await;
+        assert_eq!(
+            uploaded.map(|u| u.id).map_err(|e| e.to_string()),
+            Ok("777".to_owned())
+        );
+        // Strava's error on the last answer is told, not "still processing".
+        let (site, _served) = serve(answers(
+            r#"{"id":5,"id_str":"5","error":"The file is empty.","activity_id":null}"#,
+        ))
+        .await;
+        let error = strava(&site)
+            .upload(&mut connected(3600), &activity())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("still processing"), "{error}");
     }
 
     #[tokio::test]
