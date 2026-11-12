@@ -256,9 +256,28 @@ fn new_file(dir: &Path, name: &str) -> PathBuf {
 /// The middle of a Coggan power zone (1–7) as a share of FTP, for files giving zones only.
 pub(crate) fn zone_share(zone: f64) -> f64 {
     const MIDDLES: [f64; 7] = [0.45, 0.65, 0.83, 0.98, 1.13, 1.35, 1.6];
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped to 1–7 first
-    let index = zone.round().clamp(1.0, 7.0) as usize - 1;
+    // A zone that is not a number is zone 1: clamped, it stayed NaN, cast to 0 and the
+    // index underflowed (#595).
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // limited to 1–7 first
+    let index = if zone.is_nan() {
+        0
+    } else {
+        zone.round().clamp(1.0, 7.0) as usize - 1
+    };
     MIDDLES[index]
+}
+
+/// No step, cue or point of a workout lies a day or more away.
+const LONGEST_S: f64 = 86_400.0;
+
+/// `value` seconds from a workout file, negative ones as zero. Infinite, not-a-number and
+/// absurdly large times make the file unreadable rather than panic (#595).
+pub(crate) fn seconds(value: f64) -> Result<std::time::Duration, WorkoutFileError> {
+    if value.is_finite() && value < LONGEST_S {
+        Ok(std::time::Duration::from_secs_f64(value.max(0.0)))
+    } else {
+        Err(WorkoutFileError(format!("unreasonable time: {value} s")))
+    }
 }
 
 #[cfg(test)]

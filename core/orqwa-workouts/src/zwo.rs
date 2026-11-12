@@ -129,12 +129,11 @@ fn add_cue(
     let offset = fields
         .get("timeoffset")
         .and_then(|v| v.trim().parse::<f64>().ok())
-        .unwrap_or(0.0)
-        .max(0.0);
+        .map_or(Ok(Duration::ZERO), crate::seconds)?;
     // "mssage" is in some of Zwift's own files.
     if let Some(message) = fields.get("message").or_else(|| fields.get("mssage")) {
         plan.cues.push(Cue {
-            at: element_start + Duration::from_secs_f64(offset),
+            at: element_start + offset,
             text: message.trim().to_owned(),
         });
     }
@@ -146,7 +145,12 @@ fn add_element(plan: &mut Plan, e: &BytesStart<'_>) -> Result<(), WorkoutFileErr
     let kind = lower(e);
     let fields = attributes(e)?;
     let number = |key: &str| fields.get(key).and_then(|v| v.trim().parse::<f64>().ok());
-    let seconds = |key: &str| number(key).map(|s| Duration::from_secs_f64(s.max(0.0)));
+    let seconds = |key: &str| {
+        number(key)
+            .map(crate::seconds)
+            .transpose()
+            .map(Option::unwrap_or_default)
+    };
     let cadence = |key: &str| number(key).filter(|&c| c > 0.0).map(Rpm);
     // A steady power: `Power`, the middle of `PowerLow`–`PowerHigh`, or a zone's middle.
     let steady = |single: &str, low: &str, high: &str| {
@@ -166,7 +170,7 @@ fn add_element(plan: &mut Plan, e: &BytesStart<'_>) -> Result<(), WorkoutFileErr
     };
     match kind.as_str() {
         "warmup" | "cooldown" | "ramp" => {
-            let duration = seconds("duration").unwrap_or_default();
+            let duration = seconds("duration")?;
             let (Some(low), Some(high)) = (number("powerlow"), number("powerhigh")) else {
                 // A ramp with a single power is a steady step.
                 let power = steady("power", "powerlow", "powerhigh")
@@ -194,7 +198,7 @@ fn add_element(plan: &mut Plan, e: &BytesStart<'_>) -> Result<(), WorkoutFileErr
             let power =
                 steady("power", "powerlow", "powerhigh").ok_or_else(|| missing(&kind, "power"))?;
             step(
-                seconds("duration").unwrap_or_default(),
+                seconds("duration")?,
                 Target::steady(power),
                 cadence("cadence"),
             );
@@ -208,23 +212,19 @@ fn add_element(plan: &mut Plan, e: &BytesStart<'_>) -> Result<(), WorkoutFileErr
             let repeat = number("repeat").map_or(1, |r| r.round().clamp(1.0, 1000.0) as u32);
             for _ in 0..repeat {
                 step(
-                    seconds("onduration").unwrap_or_default(),
+                    seconds("onduration")?,
                     Target::steady(on),
                     cadence("cadence"),
                 );
                 step(
-                    seconds("offduration").unwrap_or_default(),
+                    seconds("offduration")?,
                     Target::steady(off),
                     cadence("cadenceresting"),
                 );
             }
         }
         "freeride" | "maxeffort" => {
-            step(
-                seconds("duration").unwrap_or_default(),
-                Target::Free,
-                cadence("cadence"),
-            );
+            step(seconds("duration")?, Target::Free, cadence("cadence"));
         }
         // Text cues and anything newer Zwift may add take no time.
         _ => {}

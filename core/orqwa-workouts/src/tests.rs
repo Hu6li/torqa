@@ -272,6 +272,49 @@ fn the_built_in_workouts_are_all_there() {
 }
 
 #[test]
+fn absurd_zwo_times_are_an_error_not_a_panic() {
+    for element in [
+        r#"<SteadyState Duration="1e20" Power="0.5"/>"#,
+        r#"<SteadyState Duration="inf" Power="0.5"/>"#,
+        r#"<IntervalsT Repeat="2" OnDuration="NaN" OffDuration="60" OnPower="1" OffPower="0.5"/>"#,
+        r#"<SteadyState Duration="60" Power="0.5"><textevent timeoffset="inf" message="x"/></SteadyState>"#,
+    ] {
+        let zwo = format!("<workout_file><workout>{element}</workout></workout_file>");
+        assert!(ZwoParser.parse(zwo.as_bytes(), "x").is_err(), "{element}");
+    }
+}
+
+#[test]
+fn absurd_erg_minutes_are_an_error_not_a_panic() {
+    for data in [
+        "[COURSE DATA]\n0 100\ninf 100\n[END COURSE DATA]\n",
+        "[COURSE DATA]\n0 100\n10 100\n[END COURSE DATA]\n[COURSE TEXT]\ninf\tx\n[END COURSE TEXT]\n",
+    ] {
+        let erg = format!("[COURSE HEADER]\nMINUTES WATTS\n[END COURSE HEADER]\n{data}");
+        assert!(ErgParser.parse(erg.as_bytes(), "x").is_err(), "{data}");
+    }
+}
+
+#[test]
+fn a_zone_that_is_not_a_number_is_not_a_panic() {
+    let zwo = r#"<workout_file><workout><SteadyState Duration="60" Zone="nan"/></workout></workout_file>"#;
+    let _ = ZwoParser.parse(zwo.as_bytes(), "x");
+}
+
+#[test]
+fn one_bad_file_does_not_take_the_library_down() {
+    let dir = temp_dir("bad");
+    std::fs::write(
+        dir.join("bad.zwo"),
+        r#"<workout_file><workout><SteadyState Duration="1e20" Power="0.5"/></workout></workout_file>"#,
+    )
+    .unwrap();
+    let entries = library(&dir);
+    assert!(!entries.is_empty(), "the built-ins are still listed");
+    assert!(entries.iter().all(|entry| !entry.id.ends_with("bad.zwo")));
+}
+
+#[test]
 fn imported_workouts_join_the_library_after_the_built_ins() {
     let dir = temp_dir("library");
     let downloads = temp_dir("downloads");

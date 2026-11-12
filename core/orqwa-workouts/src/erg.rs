@@ -2,8 +2,6 @@
 //! by straight lines — in watts (`MINUTES WATTS`, `.erg`) or percent of FTP
 //! (`MINUTES PERCENT`, `.mrc`). Two points at the same minute are a step.
 
-use std::time::Duration;
-
 use orqwa_domain::units::Watts;
 use orqwa_domain::workout::{Cue, Intensity, Plan, Step, Target, WorkoutFileError, WorkoutParser};
 
@@ -88,7 +86,7 @@ fn parse(text: &str, fallback_name: &str) -> Result<Plan, WorkoutFileError> {
                         (parts.next().map(|s| s.trim().parse::<f64>()), parts.next())
                     {
                         plan.cues.push(Cue {
-                            at: Duration::from_secs_f64(seconds.max(0.0)),
+                            at: crate::seconds(seconds)?,
                             text: message.trim().to_owned(),
                         });
                     }
@@ -108,7 +106,7 @@ fn parse(text: &str, fallback_name: &str) -> Result<Plan, WorkoutFileError> {
         let ((start, from), (end, to)) = (pair[0], pair[1]);
         if end > start {
             plan.steps.push(Step {
-                duration: Duration::from_secs_f64((end - start) * 60.0),
+                duration: crate::seconds((end - start) * 60.0)?,
                 target: Target::Power {
                     from: intensity(from),
                     to: intensity(to),
