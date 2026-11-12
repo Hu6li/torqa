@@ -7,6 +7,13 @@
 
 use std::time::Duration;
 
+/// Frames per second no video exceeds.
+const MAX_FRAME_RATE: f64 = 1000.0;
+/// Metres per frame no camera covers: 100 m at 25 frames per second is 9,000 km/h.
+const MAX_PER_FRAME_M: f64 = 100.0;
+/// A course end no film reaches: half way round the earth.
+const MAX_END_M: f64 = 20_000_000.0;
+
 /// Reading an RLV or PGMF file failed.
 #[derive(Debug, thiserror::Error)]
 pub enum TacxError {
@@ -38,7 +45,8 @@ impl Rlv {
     #[must_use]
     pub fn sync_points(&self) -> Vec<(f64, Duration)> {
         let rate = self.frame_rate.max(1.0);
-        let time = |frame: f64| Duration::from_secs_f64((frame / rate).max(0.0));
+        // A moment no video reaches, infinite or not a number, ends the course there (#601).
+        let time = |frame: f64| Duration::try_from_secs_f64((frame / rate).max(0.0)).ok();
         let mut points = vec![(0.0, Duration::ZERO)];
         let (mut frame, mut distance) = (0_u32, 0.0);
         let mut per_frame = self.speeds.first().map_or(0.0, |s| s.1);
@@ -46,7 +54,9 @@ impl Rlv {
             if at > frame {
                 distance += per_frame * f64::from(at - frame);
                 frame = at;
-                points.push((distance, time(f64::from(frame))));
+                if let Some(at) = time(f64::from(frame)) {
+                    points.push((distance, at));
+                }
             }
             per_frame = speed;
         }
@@ -54,8 +64,9 @@ impl Rlv {
         if let Some(end) = self.end_m
             && end > distance
             && per_frame > 0.0
+            && let Some(at) = time(f64::from(frame) + (end - distance) / per_frame)
         {
-            points.push((end, time(f64::from(frame) + (end - distance) / per_frame)));
+            points.push((end, at));
         }
         points
     }
@@ -131,7 +142,18 @@ pub fn parse_rlv(bytes: &[u8]) -> Result<Rlv, TacxError> {
             }
         }
     }
-    if rlv.frame_rate <= 0.0 || rlv.speeds.is_empty() {
+    // A damaged file's numbers may be anything: infinite, not a number or absurd (#601).
+    let speeds_ok = rlv
+        .speeds
+        .iter()
+        .all(|&(_, per_frame)| (0.0..=MAX_PER_FRAME_M).contains(&per_frame));
+    if !(rlv.frame_rate > 0.0 && rlv.frame_rate <= MAX_FRAME_RATE)
+        || rlv.speeds.is_empty()
+        || !speeds_ok
+        || rlv
+            .end_m
+            .is_some_and(|end| !(0.0..=MAX_END_M).contains(&end))
+    {
         return Err(invalid());
     }
     Ok(rlv)
@@ -321,6 +343,32 @@ mod tests {
         assert_eq!(points[1].1, Duration::from_secs(2));
         assert!((points[2].0 - 30.0).abs() < 1e-6);
         assert_eq!(points[2].1, Duration::from_secs(4));
+    }
+
+    #[test]
+    fn an_infinite_or_absurd_course_end_is_a_damaged_file_not_a_panic() {
+        let rlv = Rlv {
+            video_file: String::new(),
+            frame_rate: 25.0,
+            speeds: vec![(0, 0.1)],
+            end_m: Some(f64::INFINITY),
+        };
+        assert_eq!(rlv.sync_points(), [(0.0, Duration::ZERO)]);
+        // The course end at 30 m, as the file gives it, made infinite or absurd.
+        let file = rlv_bytes("Stelvio.avi");
+        let end = 30.0_f32.to_le_bytes();
+        let at = file
+            .windows(4)
+            .position(|bytes| bytes == end)
+            .expect("the course end");
+        for damaged in [f32::INFINITY, f32::NAN, 3.0e38] {
+            let mut bytes = file.clone();
+            bytes[at..at + 4].copy_from_slice(&damaged.to_le_bytes());
+            assert!(
+                matches!(parse_rlv(&bytes), Err(TacxError::Invalid("RLV"))),
+                "{damaged}"
+            );
+        }
     }
 
     #[test]
