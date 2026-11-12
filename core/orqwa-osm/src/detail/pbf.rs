@@ -212,7 +212,11 @@ pub(crate) fn fold<T: Send>(
                 scope.spawn(|| {
                     let mut state = init();
                     // After a failure the rest is taken unread, so the reader is never stuck.
-                    while let Ok(blob) = rx.lock().unwrap_or_else(PoisonError::into_inner).recv() {
+                    loop {
+                        // The lock goes as soon as a block is taken; held in a `while let`
+                        // scrutinee, it lasted the whole fold and one core did all (#597).
+                        let blob = rx.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                        let Ok(blob) = blob else { break };
                         let failing = failed
                             .lock()
                             .unwrap_or_else(PoisonError::into_inner)
@@ -432,6 +436,34 @@ mod tests {
             required_features: vec!["OsmSchema-V0.6".to_owned(), "DenseNodes".to_owned()],
             osmosis_replication_timestamp: Some(1_793_000_000),
         }
+    }
+
+    #[test]
+    fn blocks_are_folded_on_more_than_one_thread_at_a_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        if thread::available_parallelism().map_or(1, NonZeroUsize::get) < 2 {
+            return;
+        }
+        let blocks: Vec<Vec<u8>> = (0..16).map(|b| nodes(&[b + 1], &[(1, 1)])).collect();
+        let path = temp_file("parallel", &write::file(&header(), &blocks));
+        let (busy, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        fold(
+            &path,
+            || (),
+            |(), _bytes| {
+                let now = busy.fetch_add(1, Ordering::SeqCst) + 1;
+                most.fetch_max(now, Ordering::SeqCst);
+                thread::sleep(std::time::Duration::from_millis(50));
+                busy.fetch_sub(1, Ordering::SeqCst);
+                Ok(())
+            },
+            &mut |_, _| {},
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let most = most.load(Ordering::SeqCst);
+        assert!(most >= 2, "most at once: {most}");
     }
 
     #[test]
