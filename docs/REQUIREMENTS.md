@@ -665,3 +665,10 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R239 | Refines R187 and R238 (2026-11-09): ORQWA automatically chooses the first eligible connected friend and requests fallback consent in the lobby, before selecting an activity or marking ready. The organizer can override the choice. A decline, timeout or departure moves to another eligible friend without repeatedly asking someone who declined or timed out; obsolete replies cannot approve a later request. Acceptance and the selected membership persist across activities, with no new prompt at ride start. Standby connections are prepared only while riding. If the original organizer unexpectedly leaves and the fallback takes over during a ride, the new organizer still automatically chooses and asks a replacement fallback during that ride. |
+
+## Gradient colours in the elevation profile
+
+| ID | Requirement |
+|---|---|
+| R241 | Refines R19 and R40 (2026-11-11): the area under the elevation profile is coloured by gradient, during a ride and wherever a course's profile is shown: **yellow on the flat, green going down and red going up, darker the steeper**, reaching the darkest green or red at 25% and beyond. During a ride the colours stay strong so they read at a glance in the small panel over the 3D world: the ridden part nearly solid and the part still ahead lighter but clearly coloured; the course view shows the whole profile solid. The outline, rider, friends, ghost and climb bands are unchanged. |
+| R242 | Refines R241 (2026-11-11): gradient colours are **opt-in**, per rider: **Elevation colors** in the rider's profile, a dropdown like **Ride map**: **Plain** (for new and existing riders) or **By gradient**. Plain, the profile looks as before, with the ridden part in the accent colour and the rest light. The choice applies to the ride, course detail and group activity previews, and to a ride in progress as soon as it is saved. |

@@ -31,6 +31,9 @@ var _units: OptionButton = OptionButton.new()
 var _language: OptionButton = OptionButton.new()
 var _avatar: OptionButton = OptionButton.new()
 var _map_style: OptionButton = OptionButton.new()
+## Elevation profile plain or coloured by gradient (R242), plain unless chosen; a dropdown like
+## the ride map's, so the rider settings stay alike.
+var _gradient_colours: OptionButton = OptionButton.new()
 var _voice: OptionButton = OptionButton.new()
 ## A cassette, or a single cog with virtual gears (R9): its chainring and cog then.
 var _drivetrain: OptionButton = OptionButton.new()
@@ -57,6 +60,9 @@ func _init() -> void:
 	# In the order of MAP_STYLES.
 	_map_style.add_item(tr("Colored"))
 	_map_style.add_item(tr("Dark, like the course cards"))
+	# Plain first: index 1 is the gradient colours.
+	_gradient_colours.add_item(tr("Plain"))
+	_gradient_colours.add_item(tr("By gradient: green down, yellow flat, red up"))
 	# In the order of VOICES.
 	_voice.add_item(tr("Casual and cheering"))
 	_voice.add_item(tr("Plain facts"))
@@ -107,6 +113,7 @@ func _init() -> void:
 		["Language", _language],
 		["Rider on the bike", _avatar],
 		["Ride map", _map_style],
+		["Elevation colors", _gradient_colours],
 		["Voice", _voice],
 		["Rides planned per week", _rides_per_week],
 		["Drivetrain", _drivetrain],
@@ -167,6 +174,8 @@ func edit(profile: Dictionary) -> void:
 	var avatar: String = profile.get("avatar", RiderAvatar.RIDERS[0])
 	_avatar.select(maxi(RiderAvatar.RIDERS.find(avatar), 0))
 	_map_style.select(maxi(MAP_STYLES.find(profile.get("map_style", "coloured")), 0))
+	var gradient: bool = profile.get("gradient_colours", false)
+	_gradient_colours.select(1 if gradient else 0)
 	_voice.select(maxi(VOICES.find(profile.get("voice", "casual")), 0))
 	_calorie_sex.select(maxi(CALORIE_SEXES.find(profile.get("calorie_sex", "")), 0))
 	_calorie_effort.select(maxi(CALORIE_EFFORTS.find(profile.get("calorie_effort", "")), 0))
@@ -187,6 +196,7 @@ func profile() -> Dictionary:
 		"language": LANGUAGES[_language.selected][0],
 		"avatar": RiderAvatar.RIDERS[_avatar.selected],
 		"map_style": MAP_STYLES[_map_style.selected],
+		"gradient_colours": _gradient_colours.selected == 1,
 		"voice": VOICES[_voice.selected],
 		"rides_per_week": roundi(_rides_per_week.value),
 		"drivetrain": DRIVETRAINS[_drivetrain.selected],

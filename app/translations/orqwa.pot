@@ -599,6 +599,14 @@ msgstr ""
 msgid "Building the world · %d %%"
 msgstr ""
 
+#: app/scenes/profile_tab.gd
+msgid "By gradient"
+msgstr ""
+
+#: app/ui/profile_form.gd
+msgid "By gradient: green down, yellow flat, red up"
+msgstr ""
+
 #: app/scenes/devices_tab.gd app/scenes/history_screen.gd app/ui/ride_devices.gd app/ui/workout_editor.gd core/orqwa-app/src/hud.rs
 msgid "Cadence"
 msgstr ""
@@ -1365,6 +1373,10 @@ msgstr ""
 
 #: app/scenes/course_detail.gd app/scenes/history_screen.gd core/orqwa-app/src/hud.rs app/scenes/ride_screen.tscn
 msgid "Elevation"
+msgstr ""
+
+#: app/scenes/profile_tab.gd app/ui/profile_form.gd
+msgid "Elevation colors"
 msgstr ""
 
 #: app/ui/video_align_dialog.gd
@@ -2657,6 +2669,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Ping —"
+msgstr ""
+
+#: app/scenes/profile_tab.gd app/ui/profile_form.gd
+msgid "Plain"
 msgstr ""
 
 #: app/scenes/profile_tab.gd app/ui/profile_form.gd

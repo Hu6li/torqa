@@ -3169,6 +3169,7 @@ impl OrqwaApp {
                 MapStyle::Coloured
             },
             voice: voice_of(&data),
+            gradient_colours: flag(&data, "gradient_colours", defaults.gradient_colours),
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped
             rides_per_week: Some(number("rides_per_week", 0.0).round().clamp(0.0, 14.0) as u8)
                 .filter(|n| *n > 0),
@@ -4731,9 +4732,10 @@ fn map_color(feature: MapFeature, style: MapStyle) -> Color {
 
 /// A rider as `profile()` describes them: `{id, name, rider_mass_kg, bike_mass_kg, ftp_w,
 /// max_heart_rate_bpm, units, language, avatar, drivetrain, chainring, cog, power_zones_pct,
-/// heart_rate_zones_pct, default_difficulty_pct, map_style, voice, rides_per_week}` with `map_style`
-/// either `"coloured"` or `"dark"`, `voice` (R124) `"casual"`, `"plain"` or `"off"` and
-/// `rides_per_week` 0 for none.
+/// heart_rate_zones_pct, default_difficulty_pct, map_style, voice, gradient_colours,
+/// rides_per_week}` with `map_style` either `"coloured"` or `"dark"`, `voice` (R124) `"casual"`,
+/// `"plain"` or `"off"`, `gradient_colours` (R242) whether the elevation profile is coloured by
+/// gradient and `rides_per_week` 0 for none.
 /// `calorie_age` is an optional adult age (0 unset), `calorie_sex` is `female`, `male` or empty,
 /// and `calorie_effort` is `easy`, `moderate`, `hard` or empty (no assumed effort).
 /// `calorie_age_year` dates the displayed age so an open form can preserve it across New Year.
@@ -4788,12 +4790,20 @@ fn profile_dict(id: &str, p: &Profile) -> VarDictionary {
             MapStyle::Dark => "dark",
         },
         "rides_per_week" => i64::from(p.rides_per_week.unwrap_or(0)),
+        "gradient_colours" => p.gradient_colours,
         "voice" => match p.voice {
             Voice::Casual => "casual",
             Voice::Plain => "plain",
             Voice::Off => "off",
         },
     }
+}
+
+/// A dictionary's boolean `key`, or `default` when it is missing or not a boolean.
+fn flag(data: &VarDictionary, key: &str, default: bool) -> bool {
+    data.get(key)
+        .and_then(|v| v.try_to::<bool>().ok())
+        .unwrap_or(default)
 }
 
 fn calorie_profile(data: &VarDictionary) -> CalorieProfile {

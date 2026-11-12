@@ -155,14 +155,14 @@ func begin(options: Dictionary) -> void:
 	_show_plan(ftp)
 	_minimap.set_track(_orqwa.track(2000))
 	_minimap.set_map(_orqwa.minimap_mesh())
+	_profile.gradient_colours = rider.get("gradient_colours", false)
 	_profile.set_profile(_orqwa.elevation_profile(600))
 	var climb_info: Dictionary = _orqwa.climbs()
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
 	_climb_panel.hide()
 	_ghost_panel.hide()
-	var profile: Dictionary = _orqwa.profile()
-	_imperial = profile.get("units", "metric") == "imperial"
+	_imperial = rider.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if not _orqwa.trainer_connected():
@@ -520,6 +520,7 @@ func _on_profile_changed(profile: Dictionary) -> void:
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if profile.get("map_style") != before.get("map_style"):
 		_minimap.set_map(_orqwa.minimap_mesh())
+	_profile.gradient_colours = profile.get("gradient_colours", false)
 	var max_heart_rate: float = profile.get("max_heart_rate_bpm", 185.0)
 	_chart.heart_rate_range = Vector2(max_heart_rate * 0.5, max_heart_rate)
 	var ftp: float = profile.get("ftp_w", 200.0)

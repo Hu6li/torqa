@@ -3251,3 +3251,15 @@ msgstr "%sm Anstieg"
 msgctxt "In-ride group panel"
 msgid "Riders"
 msgstr "Fahrer"
+
+msgid "Elevation colors"
+msgstr "Farben im Höhenprofil"
+
+msgid "By gradient"
+msgstr "Nach Steigung"
+
+msgid "By gradient: green down, yellow flat, red up"
+msgstr "Nach Steigung: grün bergab, gelb flach, rot bergauf"
+
+msgid "Plain"
+msgstr "Schlicht"

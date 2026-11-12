@@ -64,6 +64,8 @@ struct ProfileFile {
     avatar: AvatarFile,
     map_style: MapStyleFile,
     voice: VoiceFile,
+    /// Off for older files, so nobody sees the colours without choosing them.
+    gradient_colours: bool,
     /// 0 for none.
     rides_per_week: u8,
     drivetrain: DrivetrainFile,
@@ -202,6 +204,7 @@ impl From<&Profile> for ProfileFile {
                 Voice::Plain => VoiceFile::Plain,
                 Voice::Off => VoiceFile::Off,
             },
+            gradient_colours: p.gradient_colours,
             rides_per_week: p.rides_per_week.unwrap_or(0),
             drivetrain: match p.drivetrain {
                 Drivetrain::Cassette => DrivetrainFile::Cassette,
@@ -256,6 +259,7 @@ impl ProfileFile {
                 VoiceFile::Plain => Voice::Plain,
                 VoiceFile::Off => Voice::Off,
             },
+            gradient_colours: f.gradient_colours,
             rides_per_week: Some(f.rides_per_week).filter(|n| *n > 0),
             drivetrain: match f.drivetrain {
                 DrivetrainFile::Cassette => Drivetrain::Cassette,
@@ -1407,6 +1411,7 @@ mod tests {
             avatar: Avatar::Male,
             map_style: MapStyle::Dark,
             voice: Voice::Plain,
+            gradient_colours: true,
             rides_per_week: Some(4),
             drivetrain: Drivetrain::SingleCog {
                 chainring: 46,
@@ -1516,6 +1521,10 @@ mod tests {
             "riders hear the warm voice first (R124)"
         );
         assert_eq!(profile.rides_per_week, None);
+        assert!(
+            !profile.gradient_colours,
+            "elevation colours stay off until the rider opts in (R242)"
+        );
         assert_eq!(
             profile.drivetrain,
             Drivetrain::SingleCog {

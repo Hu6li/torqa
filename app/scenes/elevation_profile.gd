@@ -1,7 +1,9 @@
 class_name ElevationProfile
 extends Control
-## The route's elevation profile as a clean area chart: ridden part in the accent colour, the
-## rest light, a crisp outline and the rider's position.
+## The route's elevation profile as a clean area chart with a crisp outline and the rider's
+## position: ridden part in the accent colour and the rest light, or, if the rider opts in
+## (R242), coloured by gradient (R241): green descents, yellow flats and red climbs, darker the
+## steeper, with the ridden part solid and the rest translucent.
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
 signal jump_requested(distance_m: float)
@@ -9,8 +11,51 @@ signal jump_requested(distance_m: float)
 const PADDING: float = 2.0
 ## The smallest elevation range drawn, so flat routes do not look mountainous.
 const MIN_RANGE_M: float = 40.0
-const AHEAD: Color = Color(1, 1, 1, 0.13)
 const OUTLINE: Color = Color(1, 1, 1, 0.75)
+const AHEAD: Color = Color(1, 1, 1, 0.13)
+## The gradient, in percent either way, drawn in the darkest shade (R241); everything in between
+## spreads over the scale, so 10% climbs already read clearly red and only walls go deep red.
+const STEEPEST_PERCENT: float = 25.0
+## Emerald, sunny yellow and rose read as green, yellow and red but sit better on the dark UI
+## than pure primaries.
+const STEEP_DESCENT: Color = Color("#065f46")
+const DESCENT: Color = Color("#10b981")
+const FLAT: Color = Color("#fde047")
+const CLIMB: Color = Color("#f43f5e")
+const STEEP_CLIMB: Color = Color("#9f1239")
+const RIDDEN_ALPHA: float = 0.9
+## During a ride the profile is small and over the 3D world: the colours stay strong there so
+## they read at a glance, with the part still ahead lighter.
+const OVERLAY_RIDDEN_ALPHA: float = 0.85
+const AHEAD_ALPHA: float = 0.4
+## The area fades towards the bottom to this share of its opacity at the curve, so the colour
+## sits on the line and the chart stays light; less so in the ride's small panel.
+const FILL_FADE: float = 0.12
+const OVERLAY_FILL_FADE: float = 0.35
+## The outline takes the gradient colour too, barely brighter, over a faint glow: enough to
+## lift the line off the area without making the chart look shiny.
+const LINE_LIGHTEN: float = 0.08
+const LINE_WIDTH: float = 1.5
+const GLOW_WIDTH: float = 4.0
+const GLOW_ALPHA: float = 0.08
+const AHEAD_LINE_ALPHA: float = 0.6
+## Gradients are averaged over this much road around each point, and over a 300th of a long
+## course, so neighbouring points do not flicker between colours on a few metres of noise.
+const SMOOTHING_M: float = 50.0
+const SMOOTHING_SHARE: float = 1.0 / 300.0
+
+## With gradient colours, during a ride the part still ahead is translucent; a course view shows
+## all of it solid. The ride screen's scene turns it on.
+@export var shows_progress: bool = false:
+	set(value):
+		shows_progress = value
+		queue_redraw()
+
+## The rider's choice to colour the area by gradient (R242, the profile's `gradient_colours`).
+var gradient_colours: bool = false:
+	set(value):
+		gradient_colours = value
+		queue_redraw()
 
 ## Clicks jump the rider there (simulated rides).
 var jumpable: bool = false:
@@ -29,11 +74,19 @@ var _peers: Array[Dictionary] = []
 var _climbs: Array[Array] = []
 var _min_elevation: float = 0.0
 var _max_elevation: float = 0.0
+## The gradient colour at each profile point; the area blends between them.
+var _colors: PackedColorArray = PackedColorArray()
 
 
 func set_profile(profile: PackedVector2Array) -> void:
 	_profile = profile
 	_rider_distance = 0.0
+	_colors.clear()
+	if _profile.size() >= 2:
+		var length: float = _profile[_profile.size() - 1].x - _profile[0].x
+		var window: float = maxf(SMOOTHING_M, length * SMOOTHING_SHARE)
+		for grade: float in point_grades(_profile, window):
+			_colors.append(grade_color(grade))
 	if not _profile.is_empty():
 		_min_elevation = _profile[0].y
 		_max_elevation = _profile[0].y
@@ -79,21 +132,37 @@ func _draw() -> void:
 	if _profile.size() < 2:
 		return
 	var bottom: float = size.y
-	var ridden: Color = Color(UiTheme.ACCENT, 0.55)
 	var outline: PackedVector2Array = PackedVector2Array()
 	for i: int in range(_profile.size()):
 		outline.append(_to_screen(_profile[i]))
-	for i: int in range(outline.size() - 1):
-		var a: Vector2 = outline[i]
-		var b: Vector2 = outline[i + 1]
-		var color: Color = ridden if _profile[i].x < _rider_distance else AHEAD
-		# Drawn as quads without triangulation, which fails on flat segments at the bottom.
-		draw_primitive(
-			PackedVector2Array([a, b, Vector2(b.x, bottom), Vector2(a.x, bottom)]),
-			PackedColorArray([color, color, color, color]),
-			PackedVector2Array()
+	var ridden_color: Color = Color(UiTheme.ACCENT, 0.55)
+	var solid: float = OVERLAY_RIDDEN_ALPHA if shows_progress else RIDDEN_ALPHA
+	var fade: float = OVERLAY_FILL_FADE if shows_progress else FILL_FADE
+	for i: int in range(_profile.size() - 1):
+		var from: Vector2 = _profile[i]
+		var to: Vector2 = _profile[i + 1]
+		if not gradient_colours:
+			var plain: Color = ridden_color if from.x < _rider_distance else AHEAD
+			_fill(outline[i], outline[i + 1], bottom, plain, plain)
+			continue
+		# A segment the rider is on splits there, so the ridden part ends exactly at the rider.
+		var ridden: float = _rider_distance if shows_progress else to.x
+		var t: float = (clampf(ridden, from.x, to.x) - from.x) / maxf(to.x - from.x, 0.001)
+		var at: Vector2 = _to_screen(from.lerp(to, t))
+		var middle: Color = _colors[i].lerp(_colors[i + 1], t)
+		_fill(outline[i], at, bottom, Color(_colors[i], solid), Color(middle, solid), fade)
+		_fill(
+			at,
+			outline[i + 1],
+			bottom,
+			Color(middle, AHEAD_ALPHA),
+			Color(_colors[i + 1], AHEAD_ALPHA),
+			fade
 		)
-	draw_polyline(outline, OUTLINE, 1.5, true)
+	if gradient_colours:
+		_draw_gradient_line(outline)
+	else:
+		draw_polyline(outline, OUTLINE, 1.5, true)
 	for climb: Array in _climbs:
 		var start_m: float = climb[0]
 		var end_m: float = climb[1]
@@ -114,6 +183,74 @@ func _draw() -> void:
 	draw_line(Vector2(rider.x, 0), Vector2(rider.x, bottom), Color(UiTheme.ACCENT, 0.9), 1.5)
 	draw_circle(rider, 5.0, Color.WHITE)
 	draw_circle(rider, 3.0, UiTheme.ACCENT)
+
+
+## The area colour for a gradient in percent (R241): yellow on the flat, through green to dark
+## green going down and through red to dark red going up, darkest from [constant STEEPEST_PERCENT].
+static func grade_color(grade_percent: float) -> Color:
+	var steepness: float = clampf(absf(grade_percent) / STEEPEST_PERCENT, 0.0, 1.0)
+	var near: Color = CLIMB if grade_percent > 0.0 else DESCENT
+	var far: Color = STEEP_CLIMB if grade_percent > 0.0 else STEEP_DESCENT
+	if steepness < 0.5:
+		return FLAT.lerp(near, steepness * 2.0)
+	return near.lerp(far, (steepness - 0.5) * 2.0)
+
+
+## The gradient in percent at each of `profile`'s `(distance m, elevation m)` points, over
+## `window_m` of road centred on it (shortened at the ends).
+static func point_grades(profile: PackedVector2Array, window_m: float) -> PackedFloat32Array:
+	var grades: PackedFloat32Array = PackedFloat32Array()
+	var last: int = profile.size() - 1
+	var behind: int = 0
+	var ahead: int = 0
+	for point: Vector2 in profile:
+		var from: float = maxf(point.x - window_m / 2.0, profile[0].x)
+		var to: float = minf(point.x + window_m / 2.0, profile[last].x)
+		while behind < last - 1 and profile[behind + 1].x < from:
+			behind += 1
+		while ahead < last - 1 and profile[ahead + 1].x < to:
+			ahead += 1
+		var rise: float = _height(profile, ahead, to) - _height(profile, behind, from)
+		grades.append(rise / maxf(to - from, 0.001) * 100.0)
+	return grades
+
+
+## The elevation at `distance_m` on the segment from point `index` to the next.
+static func _height(profile: PackedVector2Array, index: int, distance_m: float) -> float:
+	var a: Vector2 = profile[index]
+	var b: Vector2 = profile[index + 1]
+	return lerpf(a.y, b.y, clampf((distance_m - a.x) / maxf(b.x - a.x, 0.001), 0.0, 1.0))
+
+
+## Fills the area under `a`–`b`, blending from colour `left` to `right` and fading to `fade` of
+## their opacity at the bottom.
+func _fill(
+	a: Vector2, b: Vector2, bottom: float, left: Color, right: Color, fade: float = 1.0
+) -> void:
+	if b.x - a.x < 0.01:
+		return
+	var left_bottom: Color = Color(left, left.a * fade)
+	var right_bottom: Color = Color(right, right.a * fade)
+	# Drawn as quads without triangulation, which fails on flat segments at the bottom.
+	draw_primitive(
+		PackedVector2Array([a, b, Vector2(b.x, bottom), Vector2(a.x, bottom)]),
+		PackedColorArray([left, right, right_bottom, left_bottom]),
+		PackedVector2Array()
+	)
+
+
+## The outline in each point's gradient colour over a faint glow; dimmer ahead.
+func _draw_gradient_line(outline: PackedVector2Array) -> void:
+	var line: PackedColorArray = PackedColorArray()
+	var glow: PackedColorArray = PackedColorArray()
+	for i: int in range(_profile.size()):
+		var ahead: bool = shows_progress and _profile[i].x > _rider_distance
+		var color: Color = _colors[i].lightened(LINE_LIGHTEN)
+		var alpha: float = AHEAD_LINE_ALPHA if ahead else 1.0
+		line.append(Color(color, alpha))
+		glow.append(Color(color, GLOW_ALPHA * alpha))
+	draw_polyline_colors(outline, glow, GLOW_WIDTH, true)
+	draw_polyline_colors(outline, line, LINE_WIDTH, true)
 
 
 func _elevation_at(distance_m: float) -> float:

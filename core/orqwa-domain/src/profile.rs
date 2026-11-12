@@ -144,6 +144,9 @@ pub struct Profile {
     pub map_style: MapStyle,
     /// How the app speaks of the ride's moments.
     pub voice: Voice,
+    /// Whether the elevation profile is coloured by gradient (R242); off unless the rider
+    /// opts in.
+    pub gradient_colours: bool,
     /// How many rides a week the rider plans, if they said (R124); nothing plans them.
     pub rides_per_week: Option<u8>,
     /// What the rider shifts with.
@@ -172,6 +175,7 @@ impl Default for Profile {
             avatar: Avatar::Female,
             map_style: MapStyle::Coloured,
             voice: Voice::Casual,
+            gradient_colours: false,
             rides_per_week: None,
             drivetrain: Drivetrain::default(),
             power_zones: POWER_ZONES,

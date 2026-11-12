@@ -27,6 +27,7 @@ func _run() -> void:
 	_check(not route.is_empty(), "route loaded")
 	var profile: PackedVector2Array = _orqwa.elevation_profile(100)
 	_check(profile.size() >= 2, "elevation profile available")
+	_check_grade_colors()
 	# How long the rider would take (R66): at a share of their FTP, no quicker with descents
 	# ridden flat.
 	var estimate: Dictionary = _orqwa.estimated_time(false)
@@ -248,6 +249,14 @@ func _run() -> void:
 	var guest: String = _orqwa.save_profile("", {"name": "Guest"})
 	var guest_drivetrain: String = _orqwa.profile()["drivetrain"]
 	_check(guest_drivetrain == "single_cog", "a new rider shifts virtual gears (R98)")
+	# Elevation colours are the rider's choice, off until they opt in (R242).
+	var plain: bool = _orqwa.profile()["gradient_colours"]
+	_check(not plain, "a new rider sees the plain profile")
+	var colourful: Dictionary = _orqwa.profile().duplicate()
+	colourful["gradient_colours"] = true
+	_orqwa.save_profile(guest, colourful)
+	var opted_in: bool = _orqwa.profile()["gradient_colours"]
+	_check(opted_in, "the rider opted in to gradient colours")
 	_check(_orqwa.delete_profile(guest), "a rider is deleted")
 	var active: String = _orqwa.profile()["id"]
 	var gone: bool = _orqwa.profiles().all(func(p: Dictionary) -> bool: return p["id"] != guest)
@@ -437,6 +446,37 @@ func _write_route(path: String) -> void:
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(xml)
 	file.close()
+
+
+## The profile's area is yellow on the flat, green going down and red going up, darker the
+## steeper, and no darker beyond the steepest shade (R241).
+func _check_grade_colors() -> void:
+	var flat: Color = ElevationProfile.grade_color(0.0)
+	_check(flat.r > 0.9 and flat.g > 0.8 and flat.b < 0.4, "flat is yellow: %s" % flat)
+	for grade: float in [3.0, 10.0, 25.0]:
+		var up: Color = ElevationProfile.grade_color(grade)
+		var down: Color = ElevationProfile.grade_color(-grade)
+		_check(up.r > up.g and up.r > up.b, "%.0f%% up is red: %s" % [grade, up])
+		_check(down.g > down.r and down.g > down.b, "%.0f%% down is green: %s" % [grade, down])
+	for pair: Vector2 in [Vector2(3, 10), Vector2(10, 20), Vector2(-3, -10), Vector2(-10, -20)]:
+		var gentle: Color = ElevationProfile.grade_color(pair.x)
+		var steep: Color = ElevationProfile.grade_color(pair.y)
+		_check(steep.get_luminance() < gentle.get_luminance(), "steeper is darker: %s" % pair)
+	_check(
+		ElevationProfile.grade_color(40.0) == ElevationProfile.grade_color(25.0),
+		"25% and steeper share the darkest red"
+	)
+	# Each point's colour comes from the road around it, so a steady climb is one colour and
+	# metres of elevation noise do not make the area flicker between colours.
+	var steady: PackedVector2Array = PackedVector2Array()
+	var noisy: PackedVector2Array = PackedVector2Array()
+	for i: int in range(251):
+		steady.append(Vector2(i * 4.0, i * 0.2))
+		noisy.append(Vector2(i * 4.0, 0.5 if i % 2 == 0 else -0.5))
+	for grade: float in ElevationProfile.point_grades(steady, 50.0):
+		_check(absf(grade - 5.0) < 0.01, "a steady 5%% climb stays 5%%: %.2f" % grade)
+	for grade: float in ElevationProfile.point_grades(noisy, 50.0):
+		_check(absf(grade) < 5.0, "noise of ±25%% between points is smoothed: %.2f" % grade)
 
 
 func _check(condition: bool, what: String) -> void:

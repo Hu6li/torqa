@@ -87,6 +87,7 @@ func open(course: Dictionary) -> void:
 	var profile: PackedVector2Array = course.get("profile", PackedVector2Array())
 	_path_card.set_track(track)
 	_path_card.set_map(_orqwa.course_preview(_path))
+	_profile.gradient_colours = _orqwa.profile().get("gradient_colours", false)
 	_profile.set_profile(profile)
 	_profile.set_climbs([])
 	_records.text = ""
@@ -425,6 +426,7 @@ func _show_route() -> void:
 	var climbs: Dictionary = _orqwa.climbs()
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
+	_profile.gradient_colours = _orqwa.profile().get("gradient_colours", false)
 	_profile.set_profile(_orqwa.elevation_profile(600))
 	_show_continuation()
 	var lines: PackedStringArray = PackedStringArray()
