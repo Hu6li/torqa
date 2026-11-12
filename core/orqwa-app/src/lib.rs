@@ -3802,12 +3802,18 @@ impl App {
     /// Feeds the ride the shifts asked for, passes on the other controls, and reports the
     /// shifter's connection and why it fails to connect (R80).
     fn poll_shift_inputs(&mut self, events: &mut Vec<AppEvent>) {
-        for (input, was_connected) in self
+        for (index, (input, was_connected)) in self
             .shift_inputs
             .iter_mut()
             .zip(&mut self.shift_inputs_connected)
+            .enumerate()
         {
             drive_shift_input(input.as_mut(), &mut self.ride, was_connected, events);
+            // The keyboard comes first and is always connected: were it to clear the controller's
+            // failure, a controller that keeps failing would be reported again on every update.
+            if index == 0 {
+                continue;
+            }
             if *was_connected {
                 self.failures.remove(&DeviceKind::Controller);
             } else if let Some(reason) = input.failure()
@@ -7300,6 +7306,34 @@ mod tests {
     }
 
     #[test]
+    fn a_shifter_that_keeps_failing_to_connect_is_told_of_once() {
+        let dir = temp_dir("shifter-failure-once");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        {
+            let _runtime = app.runtime.enter();
+            let buttons = Arc::clone(&app.buttons);
+            app.controller_id = Some("click".to_owned());
+            app.add_shift_input(Box::new(orqwa_devices::shift::Controller::new(
+                fake::spawn_failing("Zwift Click", "device not found", Duration::from_millis(5)),
+                ControllerModel::ZwiftClick,
+                buttons,
+            )));
+        }
+        // Many updates, over many failed attempts: the always-connected keyboard beside it must
+        // not make the shifter's reason new again each time.
+        let mut told = 0;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(10));
+            told += app
+                .update(Duration::from_millis(10))
+                .iter()
+                .filter(|e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Zwift Click"))
+                .count();
+        }
+        assert_eq!(told, 1);
+    }
+
+    #[test]
     fn a_failed_attempt_to_connect_says_why_beside_the_device_until_it_is_let_go() {
         let dir = temp_dir("device-failure");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
@@ -7323,14 +7357,16 @@ mod tests {
             name: name.to_owned(),
             reason: reason.to_owned(),
         };
-        let mut events = run_until(
-            &mut app,
-            |e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Polar H9"),
-        );
-        events.extend(run_until(
-            &mut app,
-            |e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Zwift Click"),
-        ));
+        // Waited for together: the shifter's reason is told only once, possibly in the same
+        // update as the sensor's.
+        let (mut sensor_told, mut shifter_told) = (false, false);
+        let events = run_until(&mut app, |e| {
+            if let AppEvent::ConnectionFailed { name, .. } = e {
+                sensor_told |= name == "Polar H9";
+                shifter_told |= name == "Zwift Click";
+            }
+            sensor_told && shifter_told
+        });
         assert!(events.contains(&failed("Polar H9", "connecting timed out")));
         assert!(events.contains(&failed("Zwift Click", "device not found")));
         // A link never made is not lost: the rider hears of the failure, not of a drop.
