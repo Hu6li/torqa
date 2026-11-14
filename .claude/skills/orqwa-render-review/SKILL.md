@@ -64,6 +64,12 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   `SHOTS="shortcut:4200:2:0,180,-20"` (adjust the distance/camera as needed). This opens its saved
   inputs and builds offline, rather than preparing a GPX with fresh provider requests.
 
+- `scripts/render-showcase.sh` (on the host, with the portable Godot editor and a release
+  extension in `app/bin/`) — website and gallery pictures of saved courses on a real GPU at
+  Ultra. `SHOTS` fields `time=`, `weather=`, `season=`, `rider=`, `group=`, `hud=0` and
+  `fov=` set each shot's conditions. Free cameras aside can land inside terrain: render a few framings and
+  look at every picture.
+
 - `scripts/dev.sh scripts/screenshots.sh` — the standard app screenshots (`app/tests/
   screenshots.gd`): start page tabs, course page, a ride in each camera, the settings, summary,
   history, analysis, workouts and the overlay. The rider gets 16 weeks of made-up rides first

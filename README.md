@@ -23,12 +23,12 @@ on your smart trainer, through a 3D world or along the video, alone or with frie
 <table align="center">
   <tr>
     <td width="50%" align="center">
-      <a href="docs/images/ride-lake.jpg"><img src="docs/images/ride-lake.jpg" alt="Riding along the Bielersee in ORQWA's 3D world" width="400"></a><br>
-      <sub>A GPX route along the Bielersee in 3D</sub>
+      <a href="docs/images/showcase/fuji-lakeside-evening.jpg"><img src="docs/images/showcase/fuji-lakeside-evening.jpg" alt="Riding along a lake below Mount Fuji at evening in ORQWA's 3D world" width="400"></a><br>
+      <sub>A GPX route below Mount Fuji in 3D</sub>
     </td>
     <td width="50%" align="center">
-      <a href="docs/images/readme/group-ride.jpg"><img src="docs/images/readme/group-ride.jpg" alt="A group ride with a friend in ORQWA's 3D world" width="400"></a><br>
-      <sub>A group ride with a friend</sub>
+      <a href="docs/images/showcase/alpenbrevet-furka-group-climb.jpg"><img src="docs/images/showcase/alpenbrevet-furka-group-climb.jpg" alt="Climbing the Furka with friends in ORQWA's 3D world" width="400"></a><br>
+      <sub>A group ride with friends</sub>
     </td>
   </tr>
   <tr>
