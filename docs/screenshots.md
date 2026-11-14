@@ -4,6 +4,65 @@ Current app screens and generated scenery, captured from the application with a 
 trainer and sample ride history. Open an image for its full size. The phone-remote browser
 screens remain in the [remote guide](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#remote).
 
+## Showcase
+
+Saved courses rendered on a GPU at the Ultra preset, in different seasons, weather and times of
+day, alone and in group rides (`scripts/render-showcase.sh`, see
+[Refreshing screenshots](development.md#refreshing-screenshots)). Map data © OpenStreetMap
+contributors (ODbL); terrain from Mapterhorn (CC BY 4.0) and AWS Terrain Tiles. Full-size
+pictures are rendered locally rather than kept in the repository.
+
+### Saimaa
+
+| | |
+|---|---|
+| ![A group on the Saimaa lake ridge at sunset](images/showcase/saimaa-ridge-group-evening.jpg) | ![Riding the Saimaa ridge in winter](images/showcase/saimaa-ridge-winter-group.jpg) |
+| ![The Saimaa ridge in the evening, with the HUD](images/showcase/saimaa-ridge-evening.jpg) | ![Rain on the Saimaa ridge in a group ride](images/showcase/saimaa-ridge-rain-group.jpg) |
+| ![The Saimaa ridge in winter from above](images/showcase/saimaa-ridge-winter.jpg) | ![The Saimaa ridge from the side](images/showcase/saimaa-ridge-side.jpg) |
+
+### Fuji
+
+| | |
+|---|---|
+| ![Cherry blossom along a lake below Mount Fuji](images/showcase/fuji-lake-spring-group.jpg) | ![Evening sun over the lake below Mount Fuji](images/showcase/fuji-lake-evening.jpg) |
+| ![Spring by the lake, with the HUD](images/showcase/fuji-lake-spring.jpg) | ![Friends riding the lake road in spring](images/showcase/fuji-lake-spring-riders.jpg) |
+| ![The lakeside path below Mount Fuji at evening, with the HUD](images/showcase/fuji-lakeside-evening.jpg) | |
+
+### Gorges de la Nesque
+
+| | |
+|---|---|
+| ![A group above the Nesque gorge in autumn evening light](images/showcase/nesque-gorge-autumn-group.jpg) | ![Above the Nesque gorge, with the HUD](images/showcase/nesque-gorge-autumn.jpg) |
+
+### Alpenbrevet
+
+| | |
+|---|---|
+| ![A group climbing the Furka in evening light](images/showcase/alpenbrevet-furka-group.jpg) | ![The Furka from above](images/showcase/alpenbrevet-furka-drone.jpg) |
+| ![Nufenen hairpins in winter](images/showcase/alpenbrevet-nufenen-winter.jpg) | ![Nufenen on a hazy morning, with the HUD](images/showcase/alpenbrevet-nufenen-morning.jpg) |
+| ![The Oberalpsee and its railway in the evening](images/showcase/alpenbrevet-oberalpsee-evening.jpg) |  |
+| ![Climbing the Furka with friends, with the HUD and riders list](images/showcase/alpenbrevet-furka-group-climb.jpg) | |
+
+### Wada Ōtarumi
+
+| | |
+|---|---|
+| ![A group in an autumn hairpin](images/showcase/wada-hairpin-autumn-group.jpg) | ![Autumn forest and a view at evening](images/showcase/wada-autumn-evening.jpg) |
+| ![Rain on an autumn mountain road](images/showcase/wada-autumn-rain.jpg) | ![An autumn evening climb, with the HUD](images/showcase/wada-autumn-chase.jpg) |
+
+### Grosse Scheidegg
+
+| | |
+|---|---|
+| ![A group on the alpine meadows at evening](images/showcase/grosse-scheidegg-group-evening.jpg) | ![Snowy forest below the Wetterhorn](images/showcase/grosse-scheidegg-winter.jpg) |
+| ![Meadow hairpins in the morning](images/showcase/grosse-scheidegg-meadow.jpg) |  |
+
+### Lago del Narèt
+
+| | |
+|---|---|
+| ![The reservoir and hairpins at evening](images/showcase/naret-lake-evening.jpg) | ![Along the reservoir in the morning, with the HUD](images/showcase/naret-lake-morning.jpg) |
+
 ## Riding and training
 
 | Riding | Training |
