@@ -484,7 +484,8 @@ They preserve placement and stored worlds. Compare the same native GPU, camera a
 dimensions before and after, with Low included; see the [tree LOD measurements](benchmarks/tree-lods.md).
 
 The current [screenshot gallery](screenshots.md) links the app screens and standard route
-views; [Art](../art/README.md#gallery) contains the model galleries. Run captures separately
+views; [Scenery reviews](scenery-reviews.md) keeps the before/after images of scenery fixes,
+and [Art](../art/README.md#gallery) contains the model galleries. Run captures separately
 from checks. For a documentation refresh, isolate the generated sample rides from your own
 profile by setting `XDG_DATA_HOME` inside the container:
 
