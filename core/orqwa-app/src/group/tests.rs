@@ -261,11 +261,12 @@ fn buffered_group_positions_never_replace_live_telemetry_recording_or_assistance
 }
 
 #[test]
-fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly() {
+fn pasted_replies_add_friends_or_say_why_not_and_an_unreached_friend_is_named() {
     let (one, two, three) = (Directory::new(), Directory::new(), Directory::new());
     let (mut host, mut peer, mut late) = (one.app(), two.app(), three.app());
     let mut quick = options();
     quick.window = Duration::from_secs(1);
+    quick.reply = Duration::from_secs(1);
     host.group_open(None, quick.clone()).unwrap();
     wait(&mut host, &mut peer, |host, _| {
         !host.group().invite.is_empty()
@@ -297,7 +298,8 @@ fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly()
     wait(&mut host, &mut peer, |host, _| {
         host.group().refusal == Refusal::Again
     });
-    // A friend whose computer never connects runs out after the reply's minute, here one second.
+    // A friend whose computer never connects once added is named, after the organizer's
+    // connection window, here one second (#574).
     late.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut late, |_, late| {
@@ -307,17 +309,22 @@ fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly()
     late.group_leave();
     host.group_admit(&gone).unwrap();
     wait(&mut host, &mut late, |host, _| {
-        host.group().refusal == Refusal::Late
+        host.group().refusal == Refusal::Unreached
     });
+    assert_eq!(host.group().refused, "Rider", "the reply names whom");
     assert_eq!(host.group().admitting, 0);
     assert_eq!(host.group().error, "");
-    // The joiner not added in time is told so, without a failure, and may make a new reply.
+    // The joiner not added in time is told why, without a failure, and may make a new reply.
     late.group_open(Some(host.group().invite), quick).unwrap();
     wait(&mut host, &mut late, |_, late| {
         late.group().phase == Phase::Failed
     });
     assert!(late.group().reply_expired);
-    assert!(late.group().error.is_empty(), "{}", late.group().error);
+    assert!(
+        !late.group().error.is_empty(),
+        "the reason is kept beside it"
+    );
+    assert!(late.group().failure.is_none(), "not raised as a failure");
 }
 
 #[test]

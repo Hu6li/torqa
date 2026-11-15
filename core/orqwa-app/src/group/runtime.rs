@@ -388,7 +388,9 @@ pub(super) async fn run(
     if let Err(error) = run_inner(request, &mut commands, &updates, &mut snapshot, &mut local).await
     {
         snapshot.phase = Phase::Failed;
-        if !snapshot.reply_expired {
+        if snapshot.reply_expired {
+            snapshot.error = error;
+        } else {
             snapshot.report(Kind::GroupRide, error);
         }
         snapshot.invite.clear();
@@ -414,8 +416,8 @@ async fn run_inner(
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
         let mode = invite.setup.mode();
         // Taken before the joiner starts its own, so never later than the reply's real end.
-        let until = std::time::Instant::now() + request.options.window;
-        let joiner = Joiner::lobby(invite, &request.options)
+        let until = std::time::Instant::now() + request.options.reply;
+        let joiner = Joiner::lobby(&request.rider.name, invite, &request.options)
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
@@ -425,8 +427,14 @@ async fn run_inner(
         let lobby = JoinerLobby::join(joiner, request.rider.clone())
             .await
             .map_err(|e| {
-                // Not added in time: the rider makes a new reply rather than read a failure.
-                snapshot.reply_expired = std::time::Instant::now() >= until;
+                // Not added in time, or blocked: the rider makes a new reply and reads why
+                // beside it rather than as a failure (#574). The organizer stops waiting for
+                // an added reply's connection after one window, so the reply ends there too.
+                snapshot.reply_expired = std::time::Instant::now() >= until
+                    || matches!(
+                        e,
+                        orqwa_net::lobby::LobbyError::Link(orqwa_net::link::LinkError::Replay)
+                    );
                 e.to_string()
             })?;
         snapshot.reply_until = None;
@@ -786,7 +794,7 @@ async fn run_inner(
                 }
                 Some(LobbyEvent::Workout(clock)) => {snapshot.workout_clock = Some(clock);}
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
-                Some(LobbyEvent::Expired) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Late);}
+                Some(LobbyEvent::Expired(name)) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Unreached); snapshot.refused = name;}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
                 Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },

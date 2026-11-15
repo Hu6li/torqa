@@ -1,14 +1,19 @@
 class_name GroupJoiningCard
 extends VBoxContainer
+# gdlint: disable=max-line-length
 ## Joining a friend's ride (R195), in two steps: send the reply to the organizer outside
-## ORQWA, then wait while the reply's minute runs out to be added. Not added in time, the
-## rider makes a new reply from the same invitation instead of asking for another. Below the
-## title, where everyone rides, as the organizer chose for the whole group (R197).
+## ORQWA, then wait while the reply's ten minutes run out to be added. Not added in time, or
+## blocked on the way, the rider reads why and makes a new reply from the same invitation
+## instead of asking for another (#574). Below the title, where everyone rides, as the
+## organizer chose for the whole group (R197).
 
 ## The rider gives up joining.
 signal cancelled
 ## The rider wants a new reply, the last one having run out.
 signal renewed
+
+const BUTTON_SIZE: Vector2 = Vector2(140, 40)
+const TROUBLESHOOTING: String = "https://github.com/ORQWA/ORQWA/wiki/Group-rides#connection-troubleshooting-and-privacy"
 
 var _title: Label = Label.new()
 var _where: Label = Label.new()
@@ -17,6 +22,9 @@ var _code: GroupCodeRow = GroupCodeRow.new()
 var _added: Label = Label.new()
 var _left: Label = Label.new()
 var _renew: Button = Button.new()
+var _why: VBoxContainer = VBoxContainer.new()
+var _why_row: MarginContainer
+var _reason: Label = Label.new()
 var _waiting: HBoxContainer = HBoxContainer.new()
 var _waiting_text: Label = Label.new()
 
@@ -38,10 +46,32 @@ func _ready() -> void:
 	_left.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	second.add_child(_left)
 	_renew.text = tr("New reply")
-	_renew.custom_minimum_size = Vector2(140, 40)
-	_renew.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	_renew.custom_minimum_size = BUTTON_SIZE
+	# The accent style pads more than the theme; with the theme's padding New reply stays the
+	# height of Copy, Show QR code and Cancel.
+	var accent: StyleBoxFlat = UiTheme.accent_button()
+	var plain: StyleBox = _renew.get_theme_stylebox("normal")
+	accent.content_margin_top = plain.content_margin_top
+	accent.content_margin_bottom = plain.content_margin_bottom
+	_renew.add_theme_stylebox_override("normal", accent)
 	_renew.pressed.connect(renewed.emit)
 	second.add_child(_renew)
+	_reason.add_theme_font_size_override("font_size", 13)
+	_reason.add_theme_color_override("font_color", UiTheme.DANGER)
+	_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_reason.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_why.add_child(_reason)
+	_why.add_theme_constant_override("separation", 6)
+	var guide: LinkButton = LinkButton.new()
+	guide.text = tr("Connection troubleshooting")
+	guide.uri = TROUBLESHOOTING
+	guide.underline = LinkButton.UNDERLINE_MODE_ON_HOVER
+	guide.add_theme_color_override("font_color", UiTheme.ACCENT)
+	guide.add_theme_font_size_override("font_size", 13)
+	guide.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_why.add_child(guide)
+	_why_row = _indented(_why)
+	add_child(_why_row)
 	_waiting.add_theme_constant_override("separation", 10)
 	var spinner: Spinner = Spinner.new(18.0)
 	spinner.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -52,7 +82,7 @@ func _ready() -> void:
 	add_child(_indented(_waiting))
 	var cancel: Button = Button.new()
 	cancel.text = tr("Cancel")
-	cancel.custom_minimum_size.x = 140
+	cancel.custom_minimum_size = BUTTON_SIZE
 	cancel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	cancel.pressed.connect(cancelled.emit)
 	add_child(cancel)
@@ -82,9 +112,9 @@ func _indented(control: Control) -> MarginContainer:
 
 ## Shows the ride of `organizer` being joined, where they said everyone rides (`mode`, as
 ## the connection choice's keys), the `reply` to send them, the `seconds` left for it, and
-## whether it ran out (`expired`) before they added the rider.
+## whether it ran out (`expired`) before they added the rider, with the connection's `reason`.
 func show_joining(
-	organizer: String, mode: String, reply: String, seconds: float, expired: bool
+	organizer: String, mode: String, reply: String, seconds: float, expired: bool, reason: String
 ) -> void:
 	_title.text = tr("Joining %s's ride") % organizer
 	var where: Dictionary[String, String] = {
@@ -98,8 +128,13 @@ func show_joining(
 	_code.qr_hint = tr("Scan with your phone, then send the text to %s.") % organizer
 	_code.show_code("" if expired else reply)
 	_added.text = (
-		tr("%s didn't add you in time") % organizer if expired else tr("%s adds you") % organizer
+		tr("%s didn't add you in time, or the connection was blocked") % organizer
+		if expired
+		else tr("%s adds you") % organizer
 	)
+	_reason.text = reason
+	_reason.visible = not reason.is_empty()
+	_why_row.visible = expired
 	_left.visible = not expired and seconds > 0.0
 	var left: int = ceili(seconds)
 	_left.text = "%d:%02d" % [floori(left / 60.0), left % 60]

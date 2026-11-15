@@ -22,6 +22,9 @@ use crate::tls::{self, Pinned};
 
 /// One absolute connection deadline, including discovery, TLS and admission.
 pub const PUNCH_WINDOW: Duration = Duration::from_secs(60);
+/// How long a joiner's reply waits to be added. Riders pass it on by chat, which takes longer
+/// than connecting; the host's connection deadline still starts only when it adds the reply.
+pub const REPLY_WINDOW: Duration = Duration::from_secs(600);
 /// All accepted reply records, including tombstones, are bounded for one host lifetime.
 pub const MAX_ADMISSIONS: usize = 16;
 const AUTH_WAIT: Duration = Duration::from_secs(3);
@@ -54,8 +57,11 @@ const LEFT: u8 = 2;
 pub struct ConnectOptions {
     /// Which interface, discovery services and address permissions may be used.
     pub gather: GatherOptions,
-    /// At most one minute, starting before discovery. Shorter windows are useful for tests.
+    /// At most one minute, starting before discovery; also how long an added reply's
+    /// connection may take. Shorter windows are useful for tests.
     pub window: Duration,
+    /// How long a joiner's reply stays valid, from at least `window` to [`REPLY_WINDOW`].
+    pub reply: Duration,
     /// The connection choice a host's invite tells its riders; [`Self::new`] gathers by it.
     pub setup: Setup,
 }
@@ -65,6 +71,7 @@ impl Default for ConnectOptions {
         Self {
             gather: GatherOptions::default(),
             window: PUNCH_WINDOW,
+            reply: REPLY_WINDOW,
             setup: Setup::default(),
         }
     }
@@ -106,8 +113,10 @@ pub enum LinkError {
         "No reachable addresses. Enable STUN, choose a public IPv6 interface, or explicitly use LAN/local-test mode."
     )]
     NoCandidates,
-    /// A zero or over-one-minute connection window.
-    #[error("The connection window must be greater than zero and at most one minute.")]
+    /// A zero or over-one-minute connection window, or a reply window outside its bounds.
+    #[error(
+        "The connection window must be greater than zero and at most one minute, and a reply may wait at most ten minutes."
+    )]
     Options,
     /// The complete connection/admission window elapsed.
     #[error(
@@ -462,8 +471,9 @@ impl Connection {
 pub enum HostEvent {
     /// A client proved an explicitly admitted, one-use credential.
     Joined(Connection),
-    /// A pending reply expired; a new reply is needed rather than extending its lifetime.
-    Expired,
+    /// A pending reply's connection never arrived, named by the reply: the paths between the
+    /// computers were probably blocked. A new reply is needed rather than extending its lifetime.
+    Expired(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -635,6 +645,7 @@ impl Host {
         ));
         let shared = self.shared.clone();
         let client = reply.client;
+        let name = reply.name.clone();
         self.tasks.spawn(async move {
             sleep_until(expires).await;
             let timed_out = {
@@ -652,7 +663,7 @@ impl Host {
                 }
             };
             if timed_out {
-                let _ = shared.events.try_send(HostEvent::Expired);
+                let _ = shared.events.try_send(HostEvent::Expired(name));
             }
         });
         Ok(())
@@ -863,6 +874,9 @@ pub struct Joiner {
     invite: Invite,
     reply: Reply,
     deadline: Instant,
+    /// Until then the joiner retries every `retry`, then every quarter `window` while it waits.
+    eager: Instant,
+    window: Duration,
     retry: Duration,
     client: quinn::ClientConfig,
     pinned: Arc<Pinned>,
@@ -874,31 +888,45 @@ impl Joiner {
     ///
     /// # Errors
     /// Returns [`LinkError`] for legacy course invites or transport setup failure.
-    pub async fn lobby(invite: Invite, options: &ConnectOptions) -> Result<Self, LinkError> {
-        Self::open(invite, RouteHash::LOBBY, options).await
+    pub async fn lobby(
+        name: &str,
+        invite: Invite,
+        options: &ConnectOptions,
+    ) -> Result<Self, LinkError> {
+        Self::open(name, invite, RouteHash::LOBBY, options).await
     }
     /// Validates the expected route and destination policy before discovery or probing.
     ///
     /// # Errors
-    /// Returns [`LinkError`] for a mismatched course, forbidden invite, timeout or setup error.
+    /// Returns [`LinkError`] for a mismatched course, forbidden invite or name, timeout or
+    /// setup error.
     pub async fn open(
+        name: &str,
         invite: Invite,
         route: RouteHash,
         options: &ConnectOptions,
     ) -> Result<Self, LinkError> {
-        let end = deadline(options)?;
+        let eager = deadline(options)?;
+        if options.reply < options.window || options.reply > REPLY_WINDOW {
+            return Err(LinkError::Options);
+        }
+        let end = Instant::now() + options.reply;
         if invite.route != route {
             return Err(CodeError::WrongRide.into());
+        }
+        if !valid_name(name) {
+            return Err(CodeError::Invalid.into());
         }
         invite.encode(options.gather.policy)?;
         let identity = tls::Identity::generate()?;
         let (client, pinned) = tls::client(invite.fingerprint, &identity)?;
-        let local = Local::open(&options.gather, end, None).await?;
+        let local = Local::open(&options.gather, eager, None).await?;
         let reply = Reply {
             ride: invite.ride,
             fingerprint: invite.fingerprint,
             route,
             client: identity.pin(),
+            name: name.to_owned(),
             candidates: local.candidates.clone(),
             nat: local.nat,
         };
@@ -915,6 +943,8 @@ impl Joiner {
             invite,
             reply,
             deadline: end,
+            eager,
+            window: options.window,
             retry: ATTEMPT.min(options.window / 4),
             client,
             pinned,
@@ -951,9 +981,19 @@ impl Joiner {
                 });
             }
             let local = self.local.as_ref().ok_or(LinkError::Lost)?;
+            // Waiting minutes to be added, a joiner's attempts would spend the host's handshake
+            // budget that admitted friends need. A quarter window still tries four times within
+            // the host's window for an added reply, and keeps this computer's NAT mapping open.
+            let every = if round < self.eager {
+                self.retry
+            } else {
+                (self.window / 4).max(self.retry)
+            };
             let end = (round + self.retry).min(self.deadline);
+            // Admitted, the rest has one connection window, however long the reply waited.
+            let bound = (round + self.window).min(self.deadline);
             if let Some(quic) = reach(local, &self.invite, &self.client, self.retry, end).await {
-                match authenticate(&quic, &self.invite, self.deadline).await {
+                match authenticate(&quic, &self.invite, bound).await {
                     Ok(ACK_OK) => {
                         self.tasks.abort_all();
                         let local = Arc::new(self.local.take().ok_or(LinkError::Lost)?);
@@ -963,7 +1003,7 @@ impl Joiner {
                             client: self.client.clone(),
                             retry: self.retry,
                         };
-                        return Ok((live(quic, self.deadline, local), resume));
+                        return Ok((live(quic, bound, local), resume));
                     }
                     Ok(ACK_WAIT) => {
                         quic.close(VarInt::from_u32(0), b"waiting for reply");
@@ -982,7 +1022,7 @@ impl Joiner {
                     }
                 }
             }
-            sleep_until((round + self.retry).min(self.deadline)).await;
+            sleep_until((round + every).min(self.deadline)).await;
         }
     }
 }
@@ -1115,6 +1155,7 @@ mod tests {
                 stun_servers: Vec::new(),
             },
             window: Duration::from_secs(1),
+            reply: Duration::from_secs(1),
             ..ConnectOptions::default()
         }
     }
@@ -1183,7 +1224,7 @@ mod tests {
             .unwrap()
     }
     async fn joiner(host: &Host) -> Joiner {
-        Joiner::open(host.invite().clone(), route(), &options())
+        Joiner::open("Rider", host.invite().clone(), route(), &options())
             .await
             .unwrap()
     }
@@ -1194,7 +1235,7 @@ mod tests {
             .unwrap()
         {
             HostEvent::Joined(connection) => connection,
-            HostEvent::Expired => panic!("reply expired"),
+            HostEvent::Expired(_) => panic!("reply expired"),
         }
     }
     fn ipv4(host: &Host) -> &Path {
@@ -1209,10 +1250,11 @@ mod tests {
     async fn an_admitted_host_connection_keeps_the_whole_admission_window_for_the_lobby() {
         let mut opts = options();
         opts.window = Duration::from_secs(10);
+        opts.reply = Duration::from_secs(10);
         let mut host = Host::open("Anna", "Galibier", route(), &opts)
             .await
             .unwrap();
-        let joiner = Joiner::open(host.invite().clone(), route(), &opts)
+        let joiner = Joiner::open("Rider", host.invite().clone(), route(), &opts)
             .await
             .unwrap();
         let admitted = Instant::now();
@@ -1221,6 +1263,76 @@ mod tests {
         let peer = joined(&mut host).await;
         assert!(peer.admission_deadline() >= admitted + opts.window);
         drop((client, peer));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_reply_added_after_the_connection_window_still_connects_within_its_own() {
+        // Riders pass replies on by chat, which takes longer than connecting (#574).
+        let mut opts = options();
+        opts.window = Duration::from_millis(400);
+        opts.reply = Duration::from_secs(4);
+        let mut host = Host::open("Anna", "Galibier", route(), &opts)
+            .await
+            .unwrap();
+        let joiner = Joiner::open("Rider", host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        let reply = joiner.reply().clone();
+        let (connected, ()) = tokio::join!(joiner.connect(), async {
+            sleep(Duration::from_secs(1)).await;
+            host.admit(&reply).unwrap();
+        });
+        let client = connected.unwrap();
+        let peer = joined(&mut host).await;
+        drop((client, peer));
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn a_reply_waits_at_least_one_connection_window_and_at_most_ten_minutes() {
+        let host = host().await;
+        for reply in [
+            Duration::from_millis(500),
+            REPLY_WINDOW + Duration::from_secs(1),
+        ] {
+            let mut opts = options();
+            opts.reply = reply;
+            assert!(matches!(
+                Joiner::open("Rider", host.invite().clone(), route(), &opts).await,
+                Err(LinkError::Options)
+            ));
+        }
+        for name in ["", " Rider", "Ri\u{7}der"] {
+            assert!(matches!(
+                Joiner::open(name, host.invite().clone(), route(), &options()).await,
+                Err(LinkError::Code(CodeError::Invalid))
+            ));
+        }
+        host.close().await;
+    }
+
+    #[tokio::test]
+    async fn an_added_reply_whose_connection_never_arrives_names_its_rider() {
+        let mut opts = options();
+        opts.window = Duration::from_millis(200);
+        opts.reply = Duration::from_millis(200);
+        let mut host = Host::open("Anna", "Galibier", route(), &opts)
+            .await
+            .unwrap();
+        let joiner = Joiner::open("Alex", host.invite().clone(), route(), &opts)
+            .await
+            .unwrap();
+        host.admit(joiner.reply()).unwrap();
+        drop(joiner);
+        match timeout(Duration::from_secs(2), host.next())
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            HostEvent::Expired(name) => assert_eq!(name, "Alex"),
+            HostEvent::Joined(_) => panic!("nobody connected"),
+        }
         host.close().await;
     }
 
@@ -1263,7 +1375,9 @@ mod tests {
         // Each path refreshes its own mapping, so connect through the refreshed one.
         let mut invite = host.invite().clone();
         invite.candidates.retain(|c| c.addr().is_ipv4());
-        let joiner = Joiner::open(invite, route(), &options()).await.unwrap();
+        let joiner = Joiner::open("Rider", invite, route(), &options())
+            .await
+            .unwrap();
         host.admit(joiner.reply()).unwrap();
         let client = joiner.connect().await.unwrap();
         let peer = joined(&mut host).await;
@@ -1346,7 +1460,13 @@ mod tests {
             Err(LinkError::Code(CodeError::WrongRide))
         ));
         assert!(matches!(
-            Joiner::open(first.invite().clone(), RouteHash([9; 32]), &options()).await,
+            Joiner::open(
+                "Rider",
+                first.invite().clone(),
+                RouteHash([9; 32]),
+                &options()
+            )
+            .await,
             Err(LinkError::Code(CodeError::WrongRide))
         ));
         first.close().await;
@@ -1362,7 +1482,8 @@ mod tests {
         invite.fingerprint.0[0] ^= 1;
         let mut opts = options();
         opts.window = Duration::from_millis(180);
-        let impostor = Joiner::open(invite, route(), &opts).await.unwrap();
+        opts.reply = Duration::from_millis(180);
+        let impostor = Joiner::open("Rider", invite, route(), &opts).await.unwrap();
         assert!(matches!(
             impostor.connect().await,
             Err(LinkError::WrongHost)
@@ -1411,7 +1532,8 @@ mod tests {
         // Someone who saw the reply in a chat reuses it from another computer.
         let mut opts = options();
         opts.window = Duration::from_millis(300);
-        let mut copier = Joiner::open(host.invite().clone(), route(), &opts)
+        opts.reply = Duration::from_millis(300);
+        let mut copier = Joiner::open("Rider", host.invite().clone(), route(), &opts)
             .await
             .unwrap();
         copier.reply = legitimate.reply().clone();
@@ -1562,8 +1684,9 @@ mod tests {
         });
         let mut opts = options();
         opts.window = Duration::from_millis(100);
+        opts.reply = Duration::from_millis(100);
         let start = Instant::now();
-        let joiner = Joiner::open(invite, route(), &opts).await.unwrap();
+        let joiner = Joiner::open("Rider", invite, route(), &opts).await.unwrap();
         assert!(matches!(joiner.connect().await, Err(LinkError::Timeout)));
         assert!(start.elapsed() < Duration::from_millis(500));
         host.close().await;

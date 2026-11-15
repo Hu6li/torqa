@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Older codes are incompatible with the current security contract.
-pub const VERSION: u8 = 18;
+pub const VERSION: u8 = 19;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;
@@ -352,6 +352,9 @@ pub struct Reply {
     /// SHA-256 of the joiner's per-ride client certificate. Admission requires TLS proof of
     /// its private key, which never leaves the joiner's computer; this value is not a secret.
     pub client: Fingerprint,
+    /// The joiner's display name, bounded like the host's, so the host can say whose
+    /// connection never arrived before the lobby handshake names them.
+    pub name: String,
     /// At most eight distinct permitted destinations.
     pub candidates: Vec<Candidate>,
     /// What STUN observed, if enabled.
@@ -460,6 +463,7 @@ impl Reply {
             return Err(CodeError::Invalid);
         }
         out.extend(self.client.0);
+        put_name(&mut out, &self.name)?;
         put_candidates(&mut out, &self.candidates, policy)?;
         out.push(self.nat.byte());
         Ok(out)
@@ -476,6 +480,7 @@ impl Reply {
         if client.0 == [0; 32] {
             return Err(CodeError::Invalid);
         }
+        let name = reader.name()?;
         let candidates = reader.candidates(policy)?;
         let nat = NatObservation::from_byte(reader.byte()?)?;
         reader.end()?;
@@ -484,6 +489,7 @@ impl Reply {
             fingerprint,
             route,
             client,
+            name,
             candidates,
             nat,
         })
@@ -673,6 +679,7 @@ mod tests {
             fingerprint: invite.fingerprint,
             route: invite.route,
             client: Fingerprint([4; 32]),
+            name: "Alex".into(),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };

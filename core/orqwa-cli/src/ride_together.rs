@@ -151,9 +151,9 @@ async fn with_devices(
             invite.route == hash,
             "Everyone must use exactly the same GPX file."
         );
-        let joiner = Joiner::open(invite, hash, &options).await?;
+        let joiner = Joiner::open(&args.name, invite, hash, &options).await?;
         println!("Reply: {}", joiner.reply().to_code(options.gather.policy)?);
-        println!("Send the reply privately to the host within one minute.");
+        println!("Send the reply privately to the host within ten minutes.");
         let lobby = tokio::select! {
             result = JoinerLobby::join(joiner, me) => result?,
             _ = tokio::signal::ctrl_c() => return Ok(()),
@@ -292,7 +292,9 @@ impl Others {
             LobbyEvent::State { id, state } => {
                 self.distances.insert(id, state.distance.0);
             }
-            LobbyEvent::Expired => println!("A reply expired; ask for a fresh reply."),
+            LobbyEvent::Expired(name) => {
+                println!("{name}'s connection never arrived; ask for a fresh reply.");
+            }
             LobbyEvent::Failed {
                 peer,
                 error,

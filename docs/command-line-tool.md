@@ -44,7 +44,7 @@ To test a connection with a friend, one of you runs:
 
 Send the printed invite privately to your friend, who runs `./orqwa-cli net-ping join 'orqwa:…'`
 with the whole invite in quotes and sends the printed reply back privately. Paste the reply
-into the host's terminal and press Enter. A reply works for one minute; after that, your friend
+into the host's terminal and press Enter. A reply works for ten minutes; after that, your friend
 runs the join again for a fresh one. A working connection prints ten ping times. Type `q` and
 Enter, or press Ctrl+C, to close it.
 
@@ -144,7 +144,7 @@ in quotes, then sends the printed reply privately back to the host:
 ./orqwa-cli ride-together --route shared.gpx --name Ben --join 'orqwa:…'
 ```
 
-The host pastes each reply and presses Enter. A reply works for one minute; after that, the
+The host pastes each reply and presses Enter. A reply works for ten minutes; after that, the
 rider runs the join command again for a fresh one. After sixteen replies, the host starts again
 and sends a fresh invite. Once every rider shows as **joined**, the host types `go` and Enter
 for a ten-second countdown (`--countdown 5` sets 1–60 seconds). Nobody can join after it starts.

@@ -134,8 +134,9 @@ pub enum Refusal {
     Full,
     /// The ride has started and takes nobody new.
     Started,
-    /// The friend's computer did not connect within the reply's minute.
-    Late,
+    /// The friend's computer never connected once their reply was added: a router or
+    /// firewall between the computers probably blocked it (#574). Named in `refused`.
+    Unreached,
 }
 impl Refusal {
     /// Stable presentation key for translated status text; empty for none.
@@ -148,7 +149,7 @@ impl Refusal {
             Self::Again => "again",
             Self::Full => "full",
             Self::Started => "started",
-            Self::Late => "late",
+            Self::Unreached => "unreached",
         }
     }
 }
@@ -196,8 +197,9 @@ pub struct Snapshot {
     pub reply: String,
     /// When the joiner's reply stops being accepted: it must be added before then.
     pub reply_until: Option<std::time::Instant>,
-    /// The organizer did not add this joiner before their reply ran out; a new reply from the
-    /// same invitation may still be made.
+    /// The organizer did not add this joiner before their reply ran out, or the connection
+    /// never arrived; a new reply from the same invitation may still be made. `error` says why
+    /// the connection failed, without a failure event.
     pub reply_expired: bool,
     /// Replies the organizer added whose riders are still connecting.
     pub admitting: u8,
@@ -205,6 +207,8 @@ pub struct Snapshot {
     pub refusal: Refusal,
     /// Counts refusals, so the same one twice is told twice.
     pub refusals: u32,
+    /// Whose reply the refusal is about, as the reply names them; empty when it names nobody.
+    pub refused: String,
     /// Whether friends at other homes can probably reach this rider as host: for the host from
     /// its invitation, for a joiner from its reply (offered organizer duties).
     pub reachability: Option<orqwa_net::code::Reachability>,
@@ -344,6 +348,7 @@ impl Default for Snapshot {
             admitting: 0,
             refusal: Refusal::None,
             refusals: 0,
+            refused: String::new(),
             reachability: None,
             me: 0,
             root: None,
@@ -463,6 +468,7 @@ impl Snapshot {
     }
     /// Tells the organizer why their pasted reply added nobody (R195).
     pub(crate) fn refuse(&mut self, refusal: Refusal) {
+        self.refused.clear();
         self.refusal = refusal;
         self.refusals = self.refusals.wrapping_add(1);
     }
