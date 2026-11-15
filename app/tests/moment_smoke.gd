@@ -143,19 +143,35 @@ func _card() -> void:
 
 ## Group connections take the card in red when one dropped and green when back (R249).
 func _group_notices() -> void:
-	var away: Array = GroupNotices.card({"kind": "away", "name": "Ben"})
+	var away: Array = GroupNotices.card({"kind": "away", "names": PackedStringArray(["Ben"])})
 	var figure: String = away[0]
 	var red: Color = away[2]
 	var bar: String = away[3]
 	_check(figure == "Ben" and red == UiTheme.DANGER, "a dropped friend in red: %s" % [away])
 	_check(bar.begins_with("Ben  ·  "), "the overlay names them: %s" % [away])
-	var back: Array = GroupNotices.card({"kind": "back", "name": "Ben", "away_s": 72.0})
+	var back: Array = GroupNotices.card(
+		{"kind": "back", "names": PackedStringArray(["Ben"]), "away_s": 72.0}
+	)
 	var green: Color = back[2]
 	var since: String = back[1]
 	_check(green == UiTheme.SUCCESS, "a friend back in green")
 	_check(since.contains("1:12"), "with how long they were away: %s" % since)
 	var removed: String = GroupNotices.card({"kind": "ended", "ending": "removed"})[1]
 	_check(removed.contains("removed"), "this rider reads why: %s" % removed)
+	# Friends who drop together come on one card, plural (R249).
+	var both: Array = GroupNotices.card(
+		{"kind": "away", "names": PackedStringArray(["Ben", "Carla"])}
+	)
+	var pair: String = both[0]
+	var places: String = both[1]
+	_check(pair == "Ben and Carla" and places.contains("places"), "together: %s" % [both])
+	var many: String = GroupNotices.together(PackedStringArray(["A", "B", "C", "D", "E"]))
+	_check(many == "A, B and 3 more", many)
+	var everyone: String = (
+		GroupNotices
+		. card({"kind": "away", "names": PackedStringArray(["Ben", "Carla"]), "everyone": true})[1]
+	)
+	_check(everyone.contains("own network"), "the organizer whom everyone dropped: %s" % everyone)
 	var unknown: String = GroupNotices.card({"kind": "joined"})[1]
 	_check(unknown.is_empty(), "nothing for an unknown notice")
 	var card: MomentCard = MomentCard.new()

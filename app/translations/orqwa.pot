@@ -79,6 +79,14 @@ msgstr ""
 msgid "%s ahead"
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "%s and %d more"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "%s and %s"
+msgstr ""
+
 #: app/ui/group_offer_card.gd
 msgid "%s asks you to organize the ride"
 msgstr ""
@@ -151,10 +159,6 @@ msgstr ""
 msgid "%s is up to date."
 msgstr ""
 
-#: app/ui/group_admissions.gd
-msgid "%s lost the connection %s ago."
-msgstr ""
-
 #: app/scenes/group_rides_tab.gd
 msgid "%s m"
 msgstr ""
@@ -181,6 +185,10 @@ msgstr ""
 
 #: app/ui/group_activity_picker.gd
 msgid "%s · power based on your FTP"
+msgstr ""
+
+#: app/ui/group_away_reply.gd
+msgid "%s's new reply"
 msgstr ""
 
 #: app/ui/region_picker.gd
@@ -319,7 +327,7 @@ msgstr ""
 msgid "Activity: %s"
 msgstr ""
 
-#: app/ui/group_add_row.gd app/ui/group_admissions.gd app/ui/workout_editor.gd
+#: app/ui/group_add_row.gd app/ui/group_away_reply.gd app/ui/workout_editor.gd
 msgid "Add"
 msgstr ""
 
@@ -355,8 +363,8 @@ msgstr ""
 msgid "Added to your workouts."
 msgstr ""
 
-#: app/ui/group_admissions.gd
-msgid "Added. Waiting for %s to reconnect…"
+#: app/ui/group_away_reply.gd
+msgid "Added. Waiting for %s…"
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -455,6 +463,10 @@ msgstr ""
 msgid "Apr"
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "Are back in the group."
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "As organizer, friends without IPv6 internet might not reach you."
 msgstr ""
@@ -541,6 +553,10 @@ msgstr ""
 
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs
 msgid "Avg speed"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "Away %s"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -1463,6 +1479,10 @@ msgstr ""
 msgid "Everyone is ready"
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "Everyone lost the connection"
+msgstr ""
+
 #: app/ui/group_connection_dialog.gd
 msgid "Everyone shares the same Wi-Fi or router. Allows connections on your home network, without an internet address lookup."
 msgstr ""
@@ -1811,6 +1831,10 @@ msgstr ""
 msgid "Has left the group."
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "Have left the group."
+msgstr ""
+
 #: app/scenes/world.gd
 msgid "Hazy"
 msgstr ""
@@ -1952,7 +1976,7 @@ msgid "Invite friends"
 msgstr ""
 
 #: app/ui/group_notices.gd
-msgid "Is back in the group after %s."
+msgid "Is back in the group after {away}."
 msgstr ""
 
 #: app/ui/update_dialog.gd
@@ -2144,7 +2168,11 @@ msgid "Looking up today's plan…"
 msgstr ""
 
 #: app/ui/group_notices.gd
-msgid "Lost the connection. ORQWA keeps their place for five minutes."
+msgid "Lost the connection. Their place is kept for five minutes."
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Lost the connection. Their places are kept for five minutes."
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -2479,7 +2507,7 @@ msgstr ""
 msgid "Not found: %s. Wake the devices, then scan again."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd app/ui/course_settings.gd
+#: app/ui/course_settings.gd app/ui/group_pill.gd
 msgid "Not ready"
 msgstr ""
 
@@ -2569,10 +2597,6 @@ msgstr ""
 
 #: app/translations/extra-msgids.txt
 msgid "ORQWA keeps each rendered world on this computer after it is built, so rides on that course start right away. A saved world uses about 10 MB per kilometre. If an update changes how the world looks, regenerate it from the course page."
-msgstr ""
-
-#: app/ui/group_admissions.gd
-msgid "ORQWA reconnects them by itself. If their network changed, paste the new reply %s sends you."
 msgstr ""
 
 #: app/scenes/remote_dialog.gd
@@ -2677,10 +2701,6 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "Pair moments of the video with places on the route."
-msgstr ""
-
-#: app/ui/group_admissions.gd
-msgid "Paste %s's new reply"
 msgstr ""
 
 #: app/ui/group_join_card.gd
@@ -2891,7 +2911,7 @@ msgstr ""
 msgid "Reading route"
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/scenes/group_rides_tab.gd app/ui/group_pill.gd
 msgid "Ready"
 msgstr ""
 
@@ -3639,6 +3659,10 @@ msgstr ""
 msgid "The video and the route do not match."
 msgstr ""
 
+#: app/ui/group_away_reply.gd
+msgid "They are reconnected automatically. If their network changed, paste the new reply %s sends you."
+msgstr ""
+
 #: app/scenes/remote_dialog.gd
 msgid "This address no longer works: scan the new code in ORQWA."
 msgstr ""
@@ -4227,6 +4251,10 @@ msgstr ""
 msgid "Your network changed. Press Join again and send the new reply to %s."
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "Your own network has probably dropped. Their places are kept for five minutes."
+msgstr ""
+
 #: app/ui/group_joining_card.gd
 msgid "Your reply"
 msgstr ""
@@ -4236,7 +4264,7 @@ msgid "Your ride continues alone. Join again in Group Rides."
 msgstr ""
 
 #: app/ui/group_notices.gd
-msgid "Your ride continues. ORQWA reconnects you for up to five minutes."
+msgid "Your ride continues. You are reconnected automatically for up to five minutes."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -4277,10 +4305,6 @@ msgstr ""
 
 #: app/ui/zones_editor.gd
 msgid "and above"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgid "away %s"
 msgstr ""
 
 #: app/scenes/devices_tab.gd
@@ -4386,11 +4410,6 @@ msgstr ""
 #: app/ui/group_riders_panel.gd
 msgctxt "In-ride group panel"
 msgid "Riders"
-msgstr ""
-
-#: app/scenes/group_rides_tab.gd
-msgctxt "group_rider"
-msgid "Reconnecting…"
 msgstr ""
 
 #: app/scenes/course_detail.gd

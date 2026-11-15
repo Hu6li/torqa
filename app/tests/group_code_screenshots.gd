@@ -47,6 +47,8 @@ static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: 
 	var away: Array[Dictionary] = [
 		{"id": 0, "name": "Rider", "ready": true, "me": true, "organizer": true},
 		{"id": 1, "name": "Ben", "ready": true, "me": false, "away": true, "away_s": 42.0},
+		{"id": 2, "name": "Carla", "ready": false, "me": false, "away": true, "away_s": 9.0},
+		{"id": 3, "name": "Dana", "ready": true, "me": false, "ping_ms": 28},
 	]
 	group._show_status({"phase": "waiting", "host": true, "invite": invite, "roster": away})
 	await tree.create_timer(0.4).timeout

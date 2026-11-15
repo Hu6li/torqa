@@ -528,9 +528,11 @@ func _run() -> void:
 	var moment_card: MomentCard = moment_screen.get("_moment_card")
 	moment_card.clear()
 	# A friend's group connection dropping and coming back, on the same card (R249).
-	for notice: Dictionary in [
-		{"kind": "away", "name": "Ben"}, {"kind": "back", "name": "Ben", "away_s": 72.0}
-	]:
+	var notices: Array[Dictionary] = [
+		{"kind": "away", "names": PackedStringArray(["Ben", "Carla"])},
+		{"kind": "back", "names": PackedStringArray(["Ben"]), "away_s": 72.0},
+	]
+	for notice: Dictionary in notices:
 		moment_screen.callv("_tell", GroupNotices.card(notice))
 		await create_timer(0.6).timeout
 		var shot: String = "ride-group-%s.png" % notice["kind"]

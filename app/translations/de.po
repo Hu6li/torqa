@@ -139,7 +139,6 @@ msgstr "Nicht gefunden: %s. Wecke die Geräte auf und suche erneut."
 msgid "%s not found — wake it, then reconnect again."
 msgstr "%s nicht gefunden — aktiviere das Gerät und verbinde es erneut."
 
-
 msgid "%s was not found. It holds the course's slopes: put it next to the RLV file."
 msgstr "%s nicht gefunden. Sie enthält die Steigungen der Route: Lege sie neben die RLV-Datei."
 
@@ -1919,7 +1918,6 @@ msgstr "Batterie %d %%"
 msgid "battery %s"
 msgstr "Batterie %s"
 
-
 msgid "chunks"
 msgstr "Abschnitte"
 
@@ -2563,10 +2561,6 @@ msgstr "Diese Einladung stammt aus einer neueren ORQWA-Version. Aktualisiere ORQ
 
 msgid "This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
 msgstr "Diese Einladung stammt aus einer älteren ORQWA-Version. Bitte den Organisator, ORQWA zu aktualisieren und eine neue Einladung zu senden."
-
-msgctxt "group_rider"
-msgid "Reconnecting…"
-msgstr "Verbindet sich erneut…"
 
 msgid "%s ft"
 msgstr "%s ft"
@@ -3294,11 +3288,8 @@ msgstr "Nach Steigung: grün bergab, gelb flach, rot bergauf"
 msgid "Plain"
 msgstr "Schlicht"
 
-msgid "Lost the connection. ORQWA keeps their place for five minutes."
-msgstr "Verbindung verloren. ORQWA hält den Platz fünf Minuten lang frei."
-
-msgid "Is back in the group after %s."
-msgstr "Ist nach %s wieder in der Gruppe."
+msgid "Lost the connection. Their place is kept for five minutes."
+msgstr "Verbindung verloren. Der Platz bleibt fünf Minuten lang frei."
 
 msgid "Has left the group."
 msgstr "Hat die Gruppe verlassen."
@@ -3306,8 +3297,8 @@ msgstr "Hat die Gruppe verlassen."
 msgid "Connection lost"
 msgstr "Verbindung verloren"
 
-msgid "Your ride continues. ORQWA reconnects you for up to five minutes."
-msgstr "Deine Fahrt läuft weiter. ORQWA versucht bis zu fünf Minuten lang, dich wieder zu verbinden."
+msgid "Your ride continues. You are reconnected automatically for up to five minutes."
+msgstr "Deine Fahrt läuft weiter. Die Verbindung wird bis zu fünf Minuten lang automatisch wiederhergestellt."
 
 msgid "Reconnected"
 msgstr "Wieder verbunden"
@@ -3327,20 +3318,41 @@ msgstr "Der Organisator hat dich entfernt. Deine Fahrt läuft allein weiter."
 msgid "The organizer ended the group. Your ride continues alone."
 msgstr "Der Organisator hat die Gruppe beendet. Deine Fahrt läuft allein weiter."
 
-msgid "%s lost the connection %s ago."
-msgstr "%s hat die Verbindung vor %s verloren."
+msgid "They are reconnected automatically. If their network changed, paste the new reply %s sends you."
+msgstr "Die Verbindung wird automatisch wiederhergestellt. Hat sich das Netzwerk geändert, füge die neue Antwort ein, die %s dir schickt."
 
-msgid "Added. Waiting for %s to reconnect…"
-msgstr "Hinzugefügt. Warte, bis %s wieder verbunden ist…"
-
-msgid "ORQWA reconnects them by itself. If their network changed, paste the new reply %s sends you."
-msgstr "ORQWA verbindet von selbst neu. Hat sich das Netzwerk geändert, füge die neue Antwort ein, die %s dir schickt."
-
-msgid "Paste %s's new reply"
-msgstr "Neue Antwort von %s einfügen"
+msgid "%s's new reply"
+msgstr "Neue Antwort von %s"
 
 msgid "Your network changed. Press Join again and send the new reply to %s."
 msgstr "Dein Netzwerk hat sich geändert. Klicke auf Erneut beitreten und schicke die neue Antwort an %s."
 
-msgid "away %s"
-msgstr "weg seit %s"
+msgid "Away %s"
+msgstr "Weg seit %s"
+
+msgid "%s and %d more"
+msgstr "%s und %d weitere"
+
+msgid "%s and %s"
+msgstr "%s und %s"
+
+msgid "Added. Waiting for %s…"
+msgstr "Hinzugefügt. Warte auf %s…"
+
+msgid "Are back in the group."
+msgstr "Sind wieder in der Gruppe."
+
+msgid "Everyone lost the connection"
+msgstr "Alle haben die Verbindung verloren"
+
+msgid "Have left the group."
+msgstr "Haben die Gruppe verlassen."
+
+msgid "Is back in the group after {away}."
+msgstr "Ist nach {away} wieder in der Gruppe."
+
+msgid "Lost the connection. Their places are kept for five minutes."
+msgstr "Verbindung verloren. Die Plätze bleiben fünf Minuten lang frei."
+
+msgid "Your own network has probably dropped. Their places are kept for five minutes."
+msgstr "Wahrscheinlich ist dein eigenes Netzwerk ausgefallen. Die Plätze bleiben fünf Minuten lang frei."

@@ -41,7 +41,7 @@ static func check(tree: SceneTree, verify: Callable) -> void:
 	verify.call(group._voice_buttons[2] == button, "ping updates preserve voice buttons")
 	roster[2]["away"] = true
 	group._show_status(status)
-	verify.call(group._pings[2].text == "Ping —", "reconnecting friends have no old reading")
+	verify.call(not group._pings.has(2), "a reconnecting friend shows no ping at all (R249)")
 	roster[2].erase("away")
 	roster[2].erase("ping_ms")
 	group._show_status(status)

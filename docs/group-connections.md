@@ -80,7 +80,10 @@ During a ride, the ride screen tells each of these on the moments' card with the
 (R249): a friend who dropped (*Lost the connection…*), who is back, or who left after
 dropping; this rider losing the group, reconnecting, or their group ending with why. What
 went wrong shows in red, who is back in green. The core compares successive group snapshots
-(`group::notices`), so each change is told once.
+(`group::notices`), so each change is told once; friends who drop, come back or leave within
+two seconds of each other share one card, and a shorter drop is not told. An away friend's row
+shows how long, in red, without readiness or ping; at the organizer it has a field for the
+friend's new reply.
 
 A fallback takes over when the organizer leaves or stays unreachable for about a minute
 (R187), and only if the friends it still reaches lost the organizer too: a fallback whose own

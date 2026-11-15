@@ -703,13 +703,10 @@ fn a_friend_whose_network_changed_joins_again_while_reconnecting_and_keeps_their
     );
     // #536: reconnecting from sockets whose network is gone cannot work; a new reply can.
     peer.group_command(Command::MoveNetwork).unwrap();
+    // Everyone sees how long the friend is away, from the update after the drop.
     wait(&mut host, &mut peer, |h, p| {
-        p.group().moved && p.group_can_rejoin() && h.group().away[usize::from(seat)]
+        p.group().moved && p.group_can_rejoin() && h.group_away_for(usize::from(seat)).is_some()
     });
-    assert!(
-        host.group_away_for(usize::from(seat)).is_some(),
-        "everyone sees how long the friend is away"
-    );
     peer.group_rejoin().unwrap();
     // Where the organizer's network lets the new address in, as here, the friend is back in
     // the held seat before the organizer adds anything; otherwise the reply gets them in.

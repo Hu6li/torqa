@@ -231,6 +231,20 @@ static func _capture_ride_window(
 	tree.root.get_texture().get_image().save_png(
 		out.path_join("group-organizer-window-" + locale + ".png")
 	)
+	# Friends away during the ride: the organizer pastes their new replies in their rows (R249).
+	var away: Dictionary = status.duplicate(true)
+	var roster: Array = away.get("roster", [])
+	for index: int in range(1, mini(3, roster.size())):
+		roster[index]["away"] = true
+		roster[index]["away_s"] = 12.0 + 30.0 * index
+	ride._group_controls._show_status(away)
+	await _settle(tree)
+	scroll.scroll_vertical = 0
+	await _settle(tree)
+	await tree.create_timer(0.15).timeout
+	tree.root.get_texture().get_image().save_png(
+		out.path_join("group-away-window-" + locale + ".png")
+	)
 	ride._group_window.hide()
 	ride.hide()
 	ride.set_process(true)

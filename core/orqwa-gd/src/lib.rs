@@ -299,9 +299,10 @@ impl OrqwaApp {
     fn moment(info: VarDictionary);
 
     /// Someone's connection to the group dropped, came back or ended (R249): `kind` ("away",
-    /// "back", "gone", "lost", "reconnected" or "ended"), the friend's `name`, "" for this
-    /// rider, for "back" how long they were away (`away_s`), and for "ended" the `ending`
-    /// ("lost", "removed" or "ended").
+    /// "back", "gone", "lost", "reconnected" or "ended"), the friends' `names` together, none
+    /// for this rider, whether `everyone` else dropped at the organizer, for "back" the
+    /// longest any was away (`away_s`), and for "ended" the `ending` ("lost", "removed" or
+    /// "ended").
     #[signal]
     fn group_connection(info: VarDictionary);
 
@@ -4147,20 +4148,26 @@ impl OrqwaApp {
             }
             AppEvent::GroupReturnedToLobby => self.signals().group_returned().emit(),
             AppEvent::GroupConnection(notice) => {
+                use orqwa_app::group::{ConnectionNotice, Ending};
                 let ending = match &notice {
-                    orqwa_app::group::ConnectionNotice::Ended(ending) => match ending {
-                        orqwa_app::group::Ending::Removed => "removed",
-                        orqwa_app::group::Ending::Ended => "ended",
-                        orqwa_app::group::Ending::Lost => "lost",
-                    },
+                    ConnectionNotice::Ended(Ending::Removed) => "removed",
+                    ConnectionNotice::Ended(Ending::Ended) => "ended",
+                    ConnectionNotice::Ended(Ending::Lost) => "lost",
                     _ => "",
                 };
                 let away = match &notice {
-                    orqwa_app::group::ConnectionNotice::Back(_, away) => away.as_secs_f64(),
+                    ConnectionNotice::Back(_, away) => away.as_secs_f64(),
                     _ => 0.0,
                 };
+                let everyone = matches!(notice, ConnectionNotice::Away { everyone: true, .. });
+                let names: PackedStringArray = notice
+                    .names()
+                    .iter()
+                    .map(|name| GString::from(name.as_str()))
+                    .collect();
                 self.signals().group_connection().emit(&vdict! {
-                    "kind"=>notice.key(),"name"=>notice.name(),"ending"=>ending,"away_s"=>away
+                    "kind"=>notice.key(),"names"=>&names,"everyone"=>everyone,"ending"=>ending,
+                    "away_s"=>away
                 });
             }
             AppEvent::DevicesFound(devices) => {
