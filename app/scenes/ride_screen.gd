@@ -529,6 +529,8 @@ func _on_profile_changed(profile: Dictionary) -> void:
 	_settings_dialog.configure_workout(_orqwa.heart_rate_zones(), ftp, plans)
 	if _workout.get("kind", "") == "zone":
 		_orqwa.change_workout(_workout)
+	elif _orqwa.group_status().get("workout_shared", false):
+		_workout["plan"] = _orqwa.group_workout()
 	elif _workout.get("kind", "") == "plan":
 		for plan: Dictionary in plans:
 			if plan["id"] == _workout.get("id", ""):
