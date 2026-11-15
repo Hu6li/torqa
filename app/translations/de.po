@@ -2552,6 +2552,18 @@ msgstr "Verbindung fehlgeschlagen. Tritt erneut bei oder verlasse die Gruppe."
 msgid "Your friends ride something else now. Join them once your ride ends."
 msgstr "Deine Freunde fahren jetzt etwas anderes. Schliesse dich ihnen an, wenn deine Fahrt endet."
 
+msgid "The organizer removed you from the group. Your local ride continues."
+msgstr "Der Organisator hat dich aus der Gruppe entfernt. Deine lokale Fahrt läuft weiter."
+
+msgid "The organizer ended the group. Your local ride continues."
+msgstr "Der Organisator hat die Gruppe beendet. Deine lokale Fahrt läuft weiter."
+
+msgid "This invitation is from a newer ORQWA version. Update ORQWA to join."
+msgstr "Diese Einladung stammt aus einer neueren ORQWA-Version. Aktualisiere ORQWA, um beizutreten."
+
+msgid "This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
+msgstr "Diese Einladung stammt aus einer älteren ORQWA-Version. Bitte den Organisator, ORQWA zu aktualisieren und eine neue Einladung zu senden."
+
 msgctxt "group_rider"
 msgid "Reconnecting…"
 msgstr "Verbindet sich erneut…"

@@ -370,9 +370,12 @@ pub enum CodeError {
     /// The format is malformed, truncated, padded, duplicated or semantically invalid.
     #[error("The group code is incomplete or invalid.")]
     Invalid,
-    /// The format version is unsupported.
-    #[error("The group code uses an unsupported format.")]
-    Version,
+    /// A newer ORQWA made the code: this one must update to use it.
+    #[error("The group code comes from a newer ORQWA version. Update ORQWA to use it.")]
+    Newer,
+    /// An older ORQWA made the code: whoever made it must update.
+    #[error("The group code comes from an older ORQWA version, which must be updated.")]
+    Older,
     /// An invite was supplied where a reply belongs, or vice versa.
     #[error("An invite and a reply were mixed up.")]
     WrongKind,
@@ -569,8 +572,10 @@ impl<'a> Reader<'a> {
             return Err(CodeError::TooLong);
         }
         let mut reader = Self(bytes);
-        if reader.byte()? != VERSION {
-            return Err(CodeError::Version);
+        match reader.byte()?.cmp(&VERSION) {
+            std::cmp::Ordering::Greater => return Err(CodeError::Newer),
+            std::cmp::Ordering::Less => return Err(CodeError::Older),
+            std::cmp::Ordering::Equal => {}
         }
         if reader.byte()? != kind {
             return Err(CodeError::WrongKind);
@@ -724,9 +729,13 @@ mod tests {
             Err(CodeError::TooLong)
         );
         assert_eq!(Reply::decode(&bytes, policy), Err(CodeError::WrongKind));
-        let mut newer = bytes;
+        // Riders read which side has to update (#536).
+        let mut newer = bytes.clone();
         newer[0] = VERSION + 1;
-        assert_eq!(Invite::decode(&newer, policy), Err(CodeError::Version));
+        assert_eq!(Invite::decode(&newer, policy), Err(CodeError::Newer));
+        let mut older = bytes;
+        older[0] = VERSION - 1;
+        assert_eq!(Invite::decode(&older, policy), Err(CodeError::Older));
     }
 
     #[test]

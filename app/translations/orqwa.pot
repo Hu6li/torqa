@@ -2499,7 +2499,7 @@ msgstr ""
 msgid "ORQWA could not create the ride. See Technical details for more information."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd
+#: app/ui/group_join_card.gd
 msgid "ORQWA could not join with this invitation. See Technical details for more information."
 msgstr ""
 
@@ -3531,6 +3531,14 @@ msgstr ""
 msgid "The organizer controls workout timing for everyone."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd
+msgid "The organizer ended the group. Your local ride continues."
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "The organizer removed you from the group. Your local ride continues."
+msgstr ""
+
 #: app/scenes/analysis_tab.gd
 msgid "The period before"
 msgstr ""
@@ -3609,6 +3617,14 @@ msgstr ""
 
 #: app/ui/update_dialog.gd
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
+msgstr ""
+
+#: app/ui/group_join_card.gd
+msgid "This invitation is from a newer ORQWA version. Update ORQWA to join."
+msgstr ""
+
+#: app/ui/group_join_card.gd
+msgid "This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

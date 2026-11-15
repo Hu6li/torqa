@@ -49,6 +49,9 @@ pub(super) enum Command {
     /// Lose the connection to the organizer as a failing network would.
     #[cfg(test)]
     LoseConnection,
+    /// End the connection to the organizer for good, neither removed nor the group ended.
+    #[cfg(test)]
+    EndConnection,
     Failure(String),
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
@@ -539,7 +542,8 @@ async fn run_inner(
                             snapshot.refusal = Refusal::None;
                             if let Ok(reply) = Reply::from_code(&text,policy) {
                                 match l.admit(&reply).await {
-                                    Ok(()) => {snapshot.admitting = snapshot.admitting.saturating_add(1); Ok(())}
+                                    // A friend whose seat is still held comes back by reconnecting, not as a newcomer (#536).
+                                    Ok(added) => {if added == orqwa_net::link::Added::Waiting {snapshot.admitting = snapshot.admitting.saturating_add(1);} Ok(())}
                                     Err(error) => refusal(&error).map_or_else(|| Err(error.to_string()), |refused| {snapshot.refuse(refused); Ok(())}),
                                 }
                             } else {snapshot.refuse(Refusal::Invalid); Ok(())}
@@ -589,6 +593,8 @@ async fn run_inner(
                     Command::Reconnect => {if let Session::Join(lobby) = &session {lobby.reconnect();} Ok(())}
                     #[cfg(test)]
                     Command::LoseConnection => {if let Session::Join(lobby) = &session {lobby.lose_connection();} Ok(())}
+                    #[cfg(test)]
+                    Command::EndConnection => {if let Session::Join(lobby) = &session {lobby.end_connection();} Ok(())}
                     Command::Failure(error) => {snapshot.activity_error(error); Ok(())}
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
@@ -798,7 +804,7 @@ async fn run_inner(
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
                 Some(LobbyEvent::Expired(name)) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Unreached); snapshot.refused = name;}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
-                Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
+                Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {if let Session::Join(l) = &session {snapshot.ending = l.ending();} end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },
             event = handover.next() => {
                 match handover.event(&session,snapshot,event) {

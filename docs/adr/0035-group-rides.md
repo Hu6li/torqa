@@ -454,9 +454,9 @@ the same pin and the organizer recognizes the friend: the handshake still proves
 private key, which never left the friend's computer. The host remembers which certificate
 last had each seat and gives a returning one its own while it is free, otherwise the first
 free one. This amends the trust rule above for this one case: a certificate whose seat was
-released (its five minutes passed, the organizer removed the rider, or a goodbye) admits a
-connection again once the organizer adds a reply for it again. Adding it is the organizer's
-consent, so a removed friend cannot come back on their own. A reply still pending or
+released (its five minutes passed, or a goodbye) admits a connection again once the
+organizer adds a reply for it again. Adding it is the organizer's consent, so nobody comes
+back on their own. A reply still pending or
 connected stays refused as a replay, and one added again takes no new place in the
 admission table, which holds 16 replies for the whole ride: before, each fresh certificate
 took one, and after 16 joins and rejoins nobody could come in at all. A reply for a seat
@@ -464,8 +464,27 @@ still held only adds the friend's new addresses to the host's probes, even with 
 full. The friend also keeps trying to reconnect half a minute longer than the host holds
 the seat, the connection's idle timeout, the longest the host may take to notice the loss,
 so **Join again** appears only once the seat is released. The certificate lives only in
-memory: after the app restarts, a friend gets a new seat. Nothing new goes over the
-network.
+memory: after the app restarts, a friend gets a new seat.
+
+**Removed, or the group ended.** A friend the organizer removed, or whose organizer ended the
+group, is not offered **Join again**: the page says which. Before, both looked like a lost
+connection, so the friend would send replies nobody meant to add. The organizer now closes a
+removed rider's connection with its own application close code, and ending the group closes
+the host's endpoints with another before the lobby's tasks stop, which would close each
+connection without a reason; the joiner lobby reports this as `Ending`. A rider removed
+while away has no connection to close, and a host waiting for nobody answers no handshake,
+so the host keeps answering that rider's attempts to reconnect for 15 seconds, more than two
+of them, with the released seat; one turned away before the host's hold could have run out
+reads as removed. A rider whose seat the host released after the five minutes still
+reads a lost connection and may join again. Riders who lose the connection to an organizer
+who quits without ending the group, or crashes, cannot tell either and are offered Join
+again, which their organizer cannot answer. Adding a reply for a seat still held is not
+counted as a friend connecting on the organizer's page: that friend comes back by
+reconnecting.
+
+**Other versions.** Everyone in a group needs the same ORQWA version, and the codes say which
+one made them. An invitation from a newer or older one now says which side must update,
+instead of only that ORQWA could not join with it.
 
 The ride remembers which group activity it is: the course key and workout ID of its
 selection, so a renamed copy of the course counts too. Joined again during a ride, a selection

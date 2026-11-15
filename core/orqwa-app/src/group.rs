@@ -7,6 +7,8 @@ use orqwa_net::activity::{Assistance, ContentId, CourseKey, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
 use orqwa_net::link::Credential;
+/// Why a friend's group ended: lost, or the organizer removed them or ended it (#536).
+pub use orqwa_net::link::Ending;
 /// What a rider preparing the activity is doing (#419).
 pub use orqwa_net::lobby::Stage;
 use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
@@ -220,6 +222,9 @@ pub struct Snapshot {
     pub reply_expired: bool,
     /// Replies the organizer added whose riders are still connecting.
     pub admitting: u8,
+    /// Once a friend's group has ended, whether the organizer removed them or ended the
+    /// group; then they cannot join again (#536).
+    pub ending: Ending,
     /// Why the organizer's last pasted reply added nobody.
     pub refusal: Refusal,
     /// Counts refusals, so the same one twice is told twice.
@@ -363,6 +368,7 @@ impl Default for Snapshot {
             reply_until: None,
             reply_expired: false,
             admitting: 0,
+            ending: Ending::Lost,
             refusal: Refusal::None,
             refusals: 0,
             refused: String::new(),
@@ -747,13 +753,16 @@ impl App {
         Ok(())
     }
     /// Whether this friend can join their group again with the invitation they joined with
-    /// (#536): the connection to it has ended, or the attempt to connect failed. A ride
+    /// (#536): the connection to it was lost, or the attempt to connect failed. Not once the
+    /// organizer removed them or ended the group. A ride
     /// going on meanwhile keeps going.
     #[must_use]
     pub fn group_can_rejoin(&self) -> bool {
         self.group.as_ref().is_some_and(|group| {
+            let snapshot = group.snapshot.borrow();
             group.rejoin.is_some()
-                && matches!(group.snapshot.borrow().phase, Phase::Ended | Phase::Failed)
+                && matches!(snapshot.phase, Phase::Ended | Phase::Failed)
+                && snapshot.ending == Ending::Lost
         })
     }
     /// The invitation this friend joined with, "" for the organizer or without a group.

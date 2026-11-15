@@ -606,7 +606,7 @@ fn join_again(host: &mut App, peer: &mut App) -> u8 {
         "a connected friend has nothing to join again"
     );
     let seat = peer.group().me;
-    host.group_remove(seat).unwrap();
+    peer.group_command(Command::EndConnection).unwrap();
     wait(host, peer, |_, p| p.group().phase == Phase::Ended);
     assert!(peer.group_can_rejoin());
     assert!(
@@ -655,6 +655,38 @@ fn a_friend_whose_connection_ended_joins_again_and_rides_on_where_they_are() {
 }
 
 #[test]
+fn a_removed_friend_or_one_whose_organizer_ended_the_group_cannot_join_again() {
+    for removed in [true, false] {
+        let from = Directory::new();
+        let to = Directory::new();
+        let mut host = from.app();
+        let mut peer = to.app();
+        start_shared_workout(&mut host, &mut peer);
+        wait(&mut host, &mut peer, |_, p| {
+            p.group().phase == Phase::Riding
+        });
+        if removed {
+            host.group_remove(peer.group().me).unwrap();
+        } else {
+            host.group_leave();
+        }
+        wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
+        // #536: the friend reads why, and only a lost connection offers Join again.
+        let ending = if removed {
+            Ending::Removed
+        } else {
+            Ending::Ended
+        };
+        assert_eq!(peer.group().ending, ending);
+        assert!(!peer.group_can_rejoin());
+        assert!(peer.group_rejoin().is_err());
+        assert!(peer.ride.is_some(), "the ride goes on alone");
+        peer.group_leave();
+        host.group_leave();
+    }
+}
+
+#[test]
 fn a_friend_joining_again_while_the_group_rides_something_else_rides_on_alone() {
     let from = Directory::new();
     let to = Directory::new();
@@ -664,7 +696,7 @@ fn a_friend_joining_again_while_the_group_rides_something_else_rides_on_alone() 
     wait(&mut host, &mut peer, |_, p| {
         p.group().phase == Phase::Riding
     });
-    host.group_remove(peer.group().me).unwrap();
+    peer.group_command(Command::EndConnection).unwrap();
     wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
     // Meanwhile the group ends its workout and chooses another one.
     host.group_end_activity().unwrap();

@@ -188,15 +188,8 @@ func _build_setup() -> void:
 ## Joins as the organizer chose, which the invitation says: nothing to ask (R197).
 func _join_ride(invitation: String) -> void:
 	var preview: Dictionary = _orqwa.group_invitation(invitation)
-	if preview.is_empty() or not _orqwa.group_join(invitation):
-		(
-			_join
-			. show_error(
-				tr(
-					"ORQWA could not join with this invitation. See Technical details for more information."
-				)
-			)
-		)
+	if not preview.has("organizer") or not _orqwa.group_join(invitation):
+		_join.show_refused(str(preview.get("version", "")))
 		return
 	_joined = preview
 	_joined_invite = invitation
@@ -494,13 +487,20 @@ func _show_status(status: Dictionary) -> void:
 		"ended": tr("Group connection ended. Your local ride continues."),
 		"failed": tr("Could not connect. Leave the group and ask for a fresh invitation."),
 	}
-	# The friend may join again with the same invitation (#536).
-	var can_rejoin: bool = _status.get("can_rejoin", false)
-	if can_rejoin:
+	# The friend may join again with the same invitation, unless the organizer removed them
+	# or ended the group (#536).
+	var ending: String = _status.get("ending", "")
+	if _status.get("can_rejoin", false):
 		captions["ended"] = tr(
 			"Group connection ended. Your ride continues. Join again when you like."
 		)
 		captions["failed"] = tr("Could not connect. Join again, or leave the group.")
+	elif ending == "removed":
+		captions["ended"] = tr(
+			"The organizer removed you from the group. Your local ride continues."
+		)
+	elif ending == "ended":
+		captions["ended"] = tr("The organizer ended the group. Your local ride continues.")
 	_stage.text = captions.get(phase, "")
 	if late and not underway:
 		_stage.text = tr("Your friends are already riding. Get ready and join when you like.")

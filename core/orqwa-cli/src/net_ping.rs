@@ -47,7 +47,7 @@ pub(crate) async fn run(args: NetPingArgs) -> Result<()> {
                         Some(Input::Line(line)) if line == "q" => break,
                         Some(Input::Line(line)) => match Reply::from_code(&line, options.gather.policy)
                             .map_err(anyhow::Error::from).and_then(|reply| host.admit(&reply).map_err(Into::into)) {
-                                Ok(()) => println!("Reply admitted for at most one minute."),
+                                Ok(_) => println!("Reply admitted for at most one minute."),
                                 Err(error) => eprintln!("Reply refused: {error}"),
                             },
                         Some(Input::Invalid) => eprintln!("Input refused: invalid text or more than 2048 bytes."),

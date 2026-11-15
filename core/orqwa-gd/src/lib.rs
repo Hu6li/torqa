@@ -2114,7 +2114,8 @@ impl OrqwaApp {
         let text = invite.to_string();
         self.command(|app| app.group_open((!text.is_empty()).then_some(text), options))
     }
-    /// Inspects a lobby invitation offline, before showing connection choices.
+    /// Inspects a lobby invitation offline, before showing connection choices. One it cannot
+    /// read from another ORQWA version gives only `version`, "newer" or "older" (#536).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_invitation(&mut self, invite: GString) -> VarDictionary {
@@ -2124,7 +2125,12 @@ impl OrqwaApp {
             }
             Err(error) => {
                 self.report_failure(&Failure::from(error));
-                VarDictionary::new()
+                // From another version, the rider reads which side must update (#536).
+                match orqwa_app::group::connection::invitation_version(&invite.to_string()) {
+                    Some(std::cmp::Ordering::Greater) => vdict! {"version"=>"newer"},
+                    Some(std::cmp::Ordering::Less) => vdict! {"version"=>"older"},
+                    _ => VarDictionary::new(),
+                }
             }
         }
     }

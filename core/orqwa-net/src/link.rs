@@ -45,13 +45,42 @@ const ACK_INVALID: u8 = 4;
 const ACK_EXPIRED: u8 = 5;
 /// Application close code asking the peer to reconnect: the connection failed, not the rider.
 const RECONNECT: VarInt = VarInt::from_u32(2);
+/// Application close code telling a rider the organizer removed them (#536).
+const REMOVED: VarInt = VarInt::from_u32(3);
+/// Application close code telling every rider the organizer ended the group (#536).
+const ENDED: VarInt = VarInt::from_u32(4);
 /// How often a host holding a credential probes the rider's last addresses, to keep its own
 /// NAT open for the reconnection; a few bytes each, bounded by the hold and a packet budget.
 const HOLD_PROBE_EVERY: Duration = Duration::from_secs(2);
 const HOLD_PROBE_LIMIT: usize = 1024;
+/// How long a host answers a rider it removed while they were away, longer than two of their
+/// attempts to reconnect, so they read they were removed rather than keep trying (#536).
+const TURN_AWAY: Duration = Duration::from_secs(15);
 const OPEN: u8 = 0;
 const LOST: u8 = 1;
 const LEFT: u8 = 2;
+
+/// Why a joiner's connection to the group ended, as far as the joiner can tell (#536).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Ending {
+    /// Lost, or closed without a reason: the rider may join again.
+    #[default]
+    Lost,
+    /// The organizer removed this rider.
+    Removed,
+    /// The organizer ended the group.
+    Ended,
+}
+
+/// What adding a reply did (#536).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Added {
+    /// A new admission: its rider connects within one connection window, or it expires.
+    Waiting,
+    /// The rider's seat is still held for them: they come back by reconnecting, and the
+    /// reply only adds addresses to probe.
+    Held,
+}
 
 /// Explicit network choices and the shared connection window.
 #[derive(Clone, Debug)]
@@ -427,6 +456,25 @@ impl Connection {
         self.end(LEFT);
         self.0.quic.close(VarInt::from_u32(0), b"closed");
     }
+    /// Closes a removed rider's connection, telling them they were removed (#536).
+    pub(crate) fn remove(&self) {
+        self.end(LEFT);
+        self.0.quic.close(REMOVED, b"removed");
+    }
+    /// Whether the organizer closed this connection to remove this rider or end the group.
+    pub(crate) fn ending(&self) -> Ending {
+        match self.0.quic.close_reason() {
+            Some(quinn::ConnectionError::ApplicationClosed(close))
+                if close.error_code == REMOVED =>
+            {
+                Ending::Removed
+            }
+            Some(quinn::ConnectionError::ApplicationClosed(close)) if close.error_code == ENDED => {
+                Ending::Ended
+            }
+            _ => Ending::Lost,
+        }
+    }
     /// Closes a connection that stalled, telling the peer to reconnect rather than leave.
     pub(crate) fn close_for_reconnect(&self) {
         self.end(LOST);
@@ -463,6 +511,17 @@ impl Connection {
         {
             Ok(_) => reason,
             Err(recorded) => recorded,
+        }
+    }
+}
+
+/// Closes a host's endpoints telling every rider the organizer ended the group (#536):
+/// before its connections close one by one as their tasks stop, without a reason.
+pub(crate) struct Ender(Vec<Endpoint>);
+impl Ender {
+    pub(crate) fn end(&self) {
+        for endpoint in &self.0 {
+            endpoint.close(ENDED, b"ended");
         }
     }
 }
@@ -506,11 +565,12 @@ impl Shared {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+    // Whether to answer handshakes at all: for replies to add, and riders to turn away (#536).
     fn pending(&self) -> bool {
         let now = Instant::now();
-        self.admissions()
-            .values()
-            .any(|a| a.state == AdmissionState::Pending && a.expires > now)
+        self.admissions().values().any(|a| {
+            matches!(a.state, AdmissionState::Pending | AdmissionState::Expired) && a.expires > now
+        })
     }
 }
 
@@ -620,7 +680,7 @@ impl Host {
     /// # Errors
     /// Returns [`LinkError`] for a wrong ride, forbidden destination, a reply still pending
     /// or connected, or an excess reply.
-    pub fn admit(&mut self, reply: &Reply) -> Result<(), LinkError> {
+    pub fn admit(&mut self, reply: &Reply) -> Result<Added, LinkError> {
         reply.matches(self.invite())?;
         reply.encode(self.options.gather.policy)?;
         let targets: Vec<SocketAddr> = reply.candidates.iter().map(|c| c.addr()).collect();
@@ -640,7 +700,7 @@ impl Host {
                     drop(admissions);
                     self.tasks
                         .spawn(probe(self.local.probers(), targets, until, stop));
-                    return Ok(());
+                    return Ok(Added::Held);
                 }
                 // The organizer lets a rider whose seat was released back in, with the same
                 // certificate: only its private key can use it, as on the first admission.
@@ -694,7 +754,18 @@ impl Host {
                 let _ = shared.events.try_send(HostEvent::Expired(name));
             }
         });
-        Ok(())
+        Ok(Added::Waiting)
+    }
+
+    /// What ends the group for every rider at once, kept by the lobby that owns this host.
+    pub(crate) fn ender(&self) -> Ender {
+        Ender(
+            self.local
+                .paths
+                .iter()
+                .map(|path| path.endpoint.clone())
+                .collect(),
+        )
     }
 
     /// Revokes a pending reply without removing its replay-prevention tombstone.
@@ -736,9 +807,34 @@ impl Host {
     }
 
     /// Ends a held or pending credential for good; the rider needs fresh codes to come back.
+    /// Releases the held seat of a rider the organizer removed, still answering their attempts
+    /// to reconnect for [`TURN_AWAY`] so they read that they were removed (#536).
+    pub(crate) fn turn_away(&mut self, client: Fingerprint) {
+        let until = Instant::now() + TURN_AWAY;
+        let stop = Arc::new(AtomicBool::new(false));
+        let targets = {
+            let mut admissions = self.shared.admissions();
+            let Some(entry) = admissions.get_mut(&client) else {
+                return;
+            };
+            entry.stop.store(true, Ordering::Relaxed);
+            *entry = Admission {
+                expires: until,
+                state: AdmissionState::Expired,
+                stop: stop.clone(),
+                targets: entry.targets.clone(),
+                held: false,
+            };
+            entry.targets.clone()
+        };
+        self.tasks
+            .spawn(probe(self.local.probers(), targets, until, stop));
+    }
     pub(crate) fn release(&mut self, client: Fingerprint) {
         if let Some(entry) = self.shared.admissions().get_mut(&client) {
             entry.state = AdmissionState::Expired;
+            // Only a rider turned away is still answered.
+            entry.expires = Instant::now();
             entry.held = false;
             entry.stop.store(true, Ordering::Relaxed);
         }
@@ -1741,18 +1837,19 @@ mod tests {
         // While connected, the same reply admits no second connection.
         assert!(matches!(host.admit(&reply), Err(LinkError::Replay)));
         // While the seat is held, a reply for it is welcome even with the table full: the
-        // rider who gave up reconnecting a moment early comes back to it (#536).
+        // rider who gave up reconnecting a moment early comes back to it, by reconnecting
+        // rather than as someone new to wait for (#536).
         host.hold(
             credential.pin(),
             Instant::now() + Duration::from_secs(10),
             peer.peer_address(),
         );
-        host.admit(&reply).unwrap();
+        assert_eq!(host.admit(&reply).unwrap(), Added::Held);
         drop((client, peer));
         host.release(credential.pin());
         assert!(matches!(resume.connect().await, Err(LinkError::Replay)));
         // Released, the organizer adds the rider's reply again and only that key gets in.
-        host.admit(&reply).unwrap();
+        assert_eq!(host.admit(&reply).unwrap(), Added::Waiting);
         let again = resume.connect().await.unwrap();
         let back = joined(&mut host).await;
         assert_eq!(back.client(), Some(credential.pin()));

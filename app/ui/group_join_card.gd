@@ -1,5 +1,6 @@
 class_name GroupJoinCard
 extends VBoxContainer
+# gdlint: disable=max-line-length
 ## Joining friends (R195): the invitation pasted straight in, maybe with the message it came
 ## in; pasting the reply or something else instead says so in one line.
 
@@ -63,6 +64,23 @@ func _submit() -> void:
 			)
 		_:
 			invitation_entered.emit(text)
+
+
+## Says why the invitation joined nobody: from another ORQWA `version`, "newer" or "older",
+## who must update, as everyone in a group needs the same version (#536).
+func show_refused(version: String) -> void:
+	var problems: Dictionary[String, String] = {
+		"newer": tr("This invitation is from a newer ORQWA version. Update ORQWA to join."),
+		"older":
+		tr(
+			"This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
+		),
+	}
+	var message: String = problems.get(
+		version,
+		tr("ORQWA could not join with this invitation. See Technical details for more information.")
+	)
+	show_error(message)
 
 
 ## Says in one line below the field why joining did not start; editing the field clears it.
