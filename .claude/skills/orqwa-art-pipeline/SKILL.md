@@ -245,6 +245,9 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   limits rebuilding (default: both). New fabric names map to existing kit palette entries
   in `RiderAvatar`; preserve accent colours on gilets. Render with `SEASON=Winter` and
   check the cap, wrists, knees, closed vest hems and all standing crank quarters on both fits.
+  Preserve the waist plane after conforming the shell, keep leg-bone influence out of the
+  winter torso above it and blend below the waist. Bound the zip to the front of the torso
+  as well as its facing normal; rear hem triangles can otherwise take its pale material.
 - Female hair lives in `art/riders/hair.py`: a fitted scalp cap and curved ponytail volumes,
   with a continuous lateral frame and broad tress relief. Preserve the `hair_shape` vertex
   group through body thinning; check the ends clear the shoulders seated and standing.

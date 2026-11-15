@@ -65,6 +65,11 @@ def dress(body, rig, regions, material_slot):
     """Long sleeves, full-finger gloves and tights, with a separate zipped gilet shell."""
     mesh = body.data
     names = [g.name for g in body.vertex_groups]
+    spine = rig.pose.bones["spine"]
+    waist = body.matrix_world.inverted() @ rig.matrix_world @ spine.head
+    waist_axis = (body.matrix_world.inverted().to_3x3() @ rig.matrix_world.to_3x3()
+                  @ (spine.tail - spine.head)).normalized()
+    torso_weights(body, waist, waist_axis, regions["trunk"])
 
     def weight(vertex, prefixes):
         return sum(g.weight for g in vertex.groups if names[g.group].startswith(prefixes))
@@ -107,17 +112,26 @@ def dress(body, rig, regions, material_slot):
     shape = bmesh.new()
     shape.from_mesh(vest.data)
     boundary = [v for v in shape.verts if v.is_boundary]
+    borders = boundary_components(boundary)
+    hem_vertices = set(min(borders, key=lambda vertices: sum(
+        (v.co - waist).dot(waist_axis) for v in vertices) / len(vertices)))
     for _step in range(8):
         bmesh.ops.smooth_vert(shape, verts=boundary, factor=0.5,
                               use_axis_x=True, use_axis_y=True, use_axis_z=True)
     skin = BVHTree.FromPolygons([v.co for v in mesh.vertices],
                                [list(p.vertices) for p in mesh.polygons])
     for vertex in shape.verts:
-        point, normal, _, _ = skin.find_nearest(vertex.co)
-        vertex.co = point + normal * 0.008
+        # Nearest-surface fitting alone undulates the authored waist and can fold a narrow
+        # triangle back onto itself. Fit the hem to both the body and its original plane.
+        for _step in range(12 if vertex in hem_vertices else 1):
+            point, normal, _, _ = skin.find_nearest(vertex.co)
+            vertex.co = point + normal * 0.008
+            if vertex in hem_vertices:
+                vertex.co -= waist_axis * (vertex.co - waist).dot(waist_axis)
     for x in (-0.0025, 0.0025):
         bmesh.ops.bisect_plane(shape, geom=list(shape.verts) + list(shape.edges) + list(shape.faces),
                               plane_co=Vector((x, 0, 0)), plane_no=Vector((1, 0, 0)))
+    shape.normal_update()
     shape.to_mesh(vest.data)
     shape.free()
     vest.data.update()
@@ -127,7 +141,8 @@ def dress(body, rig, regions, material_slot):
     axis = (chest.tail - chest.head).normalized()
     forward = (Vector((0, 1, 0)) - axis * axis.y).normalized()
     for polygon in vest.data.polygons:
-        front = polygon.normal.dot(forward) > 0.25
+        front = ((polygon.center - chest.head).dot(forward) > 0.0
+                 and polygon.normal.dot(forward) > 0.25)
         polygon.material_index = zipper if abs(polygon.center.x) < 0.0026 and front else gilet
     bpy.context.view_layer.objects.active = vest
     hem = vest.modifiers.new("closed hems", "SOLIDIFY")
@@ -140,3 +155,45 @@ def dress(body, rig, regions, material_slot):
     body.select_set(True)
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.join()
+
+
+def boundary_components(vertices):
+    """Separate the waist opening from the collar and armholes before refitting the shell."""
+    remaining = set(vertices)
+    components = []
+    while remaining:
+        pending = [min(remaining, key=lambda v: v.index)]
+        component = set()
+        while pending:
+            vertex = pending.pop()
+            if vertex in component:
+                continue
+            component.add(vertex)
+            pending.extend(edge.other_vert(vertex) for edge in vertex.link_edges
+                           if edge.is_boundary and edge.other_vert(vertex) not in component)
+        remaining.difference_update(component)
+        components.append(sorted(component, key=lambda v: v.index))
+    return components
+
+
+def torso_weights(body, waist, axis, trunk_names):
+    """Keep the winter torso on the pelvis/spine, blending thigh motion in below its hem."""
+    legs = {g.index for g in body.vertex_groups
+            if g.name.startswith(("thigh.", "shin.", "foot.", "toe."))}
+    trunk = {g.index for g in body.vertex_groups if g.name.startswith(trunk_names)}
+    for vertex in body.data.vertices:
+        along = (vertex.co - waist).dot(axis)
+        taper = max(0.0, min(1.0, (-along - 0.001) / 0.099))
+        leg_weight = sum(g.weight for g in vertex.groups if g.group in legs)
+        trunk_weight = sum(g.weight for g in vertex.groups if g.group in trunk)
+        # A raised knee can lie above the tilted waist plane too; only refit torso skin.
+        if taper == 1.0 or leg_weight == 0.0 or trunk_weight <= leg_weight:
+            continue
+        weights = [(g.group, g.weight * (taper if g.group in legs else 1.0))
+                   for g in vertex.groups]
+        total = sum(weight for _, weight in weights)
+        for group, weight in weights:
+            if weight == 0.0:
+                body.vertex_groups[group].remove([vertex.index])
+            else:
+                body.vertex_groups[group].add([vertex.index], weight / total, "REPLACE")

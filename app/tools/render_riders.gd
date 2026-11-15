@@ -17,6 +17,8 @@ const VIEWS: Array = [
 	["chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 200.0],
 	["face", Vector3(0.7, 1.4, -1.6), Vector3(0.0, 1.25, -0.35), 120.0],
 	["head", Vector3(-0.75, 1.55, 0.45), Vector3(0.0, 1.3, -0.4), 160.0],
+	["kit-back", Vector3(0.0, 1.32, 1.2), Vector3(0.0, 1.04, -0.08), 160.0],
+	["kit-back-standing", Vector3(0.0, 1.32, 1.2), Vector3(0.0, 1.04, -0.08), 90.0, false, 1.0],
 	["helmet-side", Vector3(0.6, 0.0, 0.0), Vector3.ZERO, 0.0],
 	["helmet-rear", Vector3(0.0, 0.0, 0.6), Vector3.ZERO, 0.0],
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],

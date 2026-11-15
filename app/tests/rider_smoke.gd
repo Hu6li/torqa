@@ -15,6 +15,8 @@ const BEND_AT_MOST: float = 125.0
 ## How far a joint may be from where the leg part before it ends, in metres.
 const JOINT_TOLERANCE: float = 0.005
 
+var _failed: bool = false
+
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -30,6 +32,8 @@ func _run() -> void:
 		avatar.rider = rider
 		avatar.winter_clothing = configuration[1]
 		root.add_child(avatar)
+		if avatar.winter_clothing:
+			_winter_torso(avatar)
 		var fit: Dictionary = fits.data[rider]
 		var thigh: float = fit["thigh"]
 		var shin: float = fit["shin"]
@@ -93,8 +97,40 @@ func _run() -> void:
 		)
 		avatar.free()
 	_motion()
-	print("RIDER SMOKE TEST PASSED")
-	quit(0)
+	if not _failed:
+		print("RIDER SMOKE TEST PASSED")
+	quit(1 if _failed else 0)
+
+
+## The gilet stays with the torso instead of being pulled by the legs at its lower edge.
+func _winter_torso(avatar: RiderAvatar) -> void:
+	var body: MeshInstance3D = _node(avatar, "body") as MeshInstance3D
+	var skeleton: Skeleton3D = avatar.find_children("*", "Skeleton3D", true, false)[0]
+	var bindings: PackedStringArray = []
+	for index: int in range(body.skin.get_bind_count()):
+		var bone: String = body.skin.get_bind_name(index)
+		if bone.is_empty():
+			bone = skeleton.get_bone_name(body.skin.get_bind_bone(index))
+		bindings.append(bone)
+	for surface: int in range(body.mesh.get_surface_count()):
+		var kind: String = body.mesh.surface_get_material(surface).resource_name
+		if kind not in ["gilet", "zip"]:
+			continue
+		var arrays: Array = body.mesh.surface_get_arrays(surface)
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+		var leg: String = ""
+		for index: int in range(weights.size()):
+			if weights[index] < 0.0001:
+				continue
+			var bone: String = bindings[bones[index]]
+			if bone.begins_with("thigh.") or bone.begins_with("shin."):
+				leg = bone
+				break
+		_check(
+			leg.is_empty(),
+			"%s: the %s follows the torso independently of legs (%s)" % [avatar.rider, kind, leg]
+		)
 
 
 ## Standing: hips higher and further forward than seated, the legs reaching all round the stroke.
@@ -169,5 +205,5 @@ static func _node(avatar: RiderAvatar, part: String) -> Node3D:
 
 func _check(condition: bool, what: String) -> void:
 	if not condition:
+		_failed = true
 		push_error("RIDER SMOKE TEST FAILED: " + what)
-		quit(1)
