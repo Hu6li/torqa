@@ -11,6 +11,8 @@ day, alone and in group rides (`scripts/render-showcase.sh`, see
 [Refreshing screenshots](development.md#refreshing-screenshots)). Map data © OpenStreetMap
 contributors (ODbL); terrain from Mapterhorn (CC BY 4.0) and AWS Terrain Tiles. Full-size
 pictures are rendered locally rather than kept in the repository.
+Riders wear winter kit in autumn and winter. Some shots show the dark ride map, with the elevation
+profile plain or coloured by gradient, as chosen in the rider's profile.
 
 ### Saimaa
 
@@ -41,7 +43,8 @@ pictures are rendered locally rather than kept in the repository.
 | ![A group climbing the Furka in evening light](images/showcase/alpenbrevet-furka-group.jpg) | ![The Furka from above](images/showcase/alpenbrevet-furka-drone.jpg) |
 | ![Nufenen hairpins in winter](images/showcase/alpenbrevet-nufenen-winter.jpg) | ![Nufenen on a hazy morning, with the HUD](images/showcase/alpenbrevet-nufenen-morning.jpg) |
 | ![The Oberalpsee and its railway in the evening](images/showcase/alpenbrevet-oberalpsee-evening.jpg) |  |
-| ![Climbing the Furka with friends, with the HUD and riders list](images/showcase/alpenbrevet-furka-group-climb.jpg) | |
+| ![Climbing the Furka with friends, with the HUD and riders list](images/showcase/alpenbrevet-furka-group-climb.jpg) | ![The same climb with gradient-coloured elevation and the dark map](images/showcase/alpenbrevet-furka-gradient.jpg) |
+| ![The same climb with the dark map](images/showcase/alpenbrevet-furka-dark.jpg) | |
 
 ### Wada Ōtarumi
 
@@ -49,19 +52,15 @@ pictures are rendered locally rather than kept in the repository.
 |---|---|
 | ![A group in an autumn hairpin](images/showcase/wada-hairpin-autumn-group.jpg) | ![Autumn forest and a view at evening](images/showcase/wada-autumn-evening.jpg) |
 | ![Rain on an autumn mountain road](images/showcase/wada-autumn-rain.jpg) | ![An autumn evening climb, with the HUD](images/showcase/wada-autumn-chase.jpg) |
+| ![Descending through autumn woods with friends and the dark map](images/showcase/wada-autumn-dark.jpg) | ![The same descent with gradient-coloured elevation](images/showcase/wada-autumn-gradient.jpg) |
 
 ### Grosse Scheidegg
 
 | | |
 |---|---|
 | ![A group on the alpine meadows at evening](images/showcase/grosse-scheidegg-group-evening.jpg) | ![Snowy forest below the Wetterhorn](images/showcase/grosse-scheidegg-winter.jpg) |
-| ![Meadow hairpins in the morning](images/showcase/grosse-scheidegg-meadow.jpg) |  |
-
-### Lago del Narèt
-
-| | |
-|---|---|
-| ![The reservoir and hairpins at evening](images/showcase/naret-lake-evening.jpg) | ![Along the reservoir in the morning, with the HUD](images/showcase/naret-lake-morning.jpg) |
+| ![Meadow hairpins in the morning](images/showcase/grosse-scheidegg-meadow.jpg) | |
+| ![A winter descent with the dark map](images/showcase/grosse-scheidegg-winter-dark.jpg) | ![The same descent with gradient-coloured elevation](images/showcase/grosse-scheidegg-winter-gradient.jpg) |
 
 ## Riding and training
 

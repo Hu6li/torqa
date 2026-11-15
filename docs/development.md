@@ -523,14 +523,19 @@ prepare. Rust tests check spatial ordering, chunk-edge coverage and moving the p
 without changing the generated world.
 
 For showcase pictures (the website, README and [gallery](screenshots.md#showcase)), render
-saved courses on a real GPU with the portable Godot editor and a release build's extension in
-`app/bin/`: `GODOT=… COURSE=… SHOTS=… scripts/render-showcase.sh` (macOS, or a Linux host).
+saved courses on a real GPU with the portable Godot editor and the extension of the
+checked-out commit in `app/bin/` (on macOS, from `main`'s CI artifact):
+`GODOT=… COURSE=… SHOTS=… scripts/render-showcase.sh` (macOS, or a Linux host).
 Besides `name:distance:camera[:right,up,back]`, each shot takes `time=`, `weather=`,
-`season=`, `rider=` (female or male), `group=` (friends riding along, up to seven), `hud=0`
-and `fov=` fields, e.g. `saimaa-ridge:220000:2:time=Evening:group=5:hud=0`. It renders at the Ultra preset in a
-3200×1800 window and rides the last 300 m before each shot, so the HUD shows riding figures.
+`season=`, `rider=` (female or male), `group=` (friends riding along, up to seven), `hud=0`,
+`fov=`, `elevation=gradient` (the profile coloured by gradient) and `map=dark` fields, e.g.
+`saimaa-ridge:220000:2:time=Evening:group=5:hud=0`. It renders at the Ultra preset in a
+3200×1800 window and rides the last 1.5 km before each shot, so the HUD shows riding figures.
 A separate `HOME` keeps your profile and settings out of it but reuses downloaded tiles and
-kept worlds. Saved courses' distances come from the start of the course.
+kept worlds. Saved courses' distances come from the start of the course. The published shots
+are listed in `.claude/skills/orqwa-showcase/shots.txt`, and
+`GODOT=… .claude/skills/orqwa-showcase/render.sh` re-renders them all (or `ONLY=` some) into
+`docs/images/showcase/`; see that skill.
 
 The software-rendering runners select FXAA instead of MSAA and disable glow, which otherwise
 produces bright halos under lavapipe. They wait for route preparation and streamed chunks;

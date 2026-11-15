@@ -6,7 +6,7 @@ extends SceneTree
 ## as $SHOTS says: space-separated name:distance:camera, optionally :right,up,back for a camera
 ## standing aside and key=value fields for showcase pictures: time= and weather= (as in VIEWS),
 ## season=, rider= (female or male), group= (friends riding along, up to 7), hud=0 (the 3D
-## world alone) and fov=.
+## world alone), fov=, elevation=gradient (the profile coloured by gradient) and map=dark.
 
 ## View name → [route, distance along it in metres, camera (`RideWorld.CameraMode`), time of
 ## day, weather], and optionally where a camera standing aside looks at the rider from (metres
@@ -175,6 +175,9 @@ func _run() -> void:
 		var camera: int = spec[2]
 		var time: String = spec[3]
 		var weather: String = spec[4]
+		# Before riding up: a changed profile lays the HUD out afresh, without figures.
+		var looks: Dictionary = shot_options.get(view, {})
+		_show_looks(orqwa, ride_screen, looks)
 		if showcase:
 			await _ride_up_to(orqwa, distance)
 		orqwa.jump_to_distance(distance)
@@ -223,6 +226,17 @@ func _run() -> void:
 		root.get_texture().get_image().save_png(out.path_join(view + ".png"))
 		print("saved %s" % view)
 	quit(0)
+
+
+## The rider's elevation colours and ride map for a shot (R242): elevation=gradient and
+## map=dark, else plain over the coloured map. Saved like a change in the ride's settings.
+func _show_looks(orqwa: OrqwaApp, ride_screen: Control, options: Dictionary) -> void:
+	var profile: Dictionary = orqwa.profile().duplicate()
+	var wanted: Dictionary = profile.duplicate()
+	wanted["gradient_colours"] = options.get("elevation", "plain") == "gradient"
+	wanted["map_style"] = "dark" if options.get("map", "coloured") == "dark" else "coloured"
+	if wanted != profile:
+		ride_screen.call("_on_profile_changed", wanted)
 
 
 ## Rides the last stretch before a showcase shot and holds the HUD there, so speed, power and
