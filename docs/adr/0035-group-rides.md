@@ -489,6 +489,9 @@ organizer gives them their seat back too. The organizer who took over is offered
 again. Why the old connection ended is recorded before a takeover is tried, so a takeover that
 fails after the organizer ended the group still offers none, and cleared once it succeeds.
 
+How connecting, reconnecting, joining again and every ending fit together, and the issues
+left, is summarized in [Group ride connections](../group-connections.md).
+
 **Other versions.** Everyone in a group needs the same ORQWA version, and the codes say which
 one made them. An invitation from a newer or older one now says which side must update,
 instead of only that ORQWA could not join with it.
