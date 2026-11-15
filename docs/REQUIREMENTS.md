@@ -686,3 +686,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R246 | Refines R39 and R40 (2026-11-15, #569): after selecting a course, switching to another start-page tab and returning to **Courses** shows that course again, including while its route or world is loading. Its ride options and preparation are preserved. **Back** on the course page, Escape or the remote's Back, or clicking **Courses** while that tab is already active explicitly returns to the gallery; subsequent tab switches keep the gallery until another course is selected. |
+
+## Adaptive ride map
+
+| ID | Requirement |
+|---|---|
+| R247 | Refines R19 and R236 (2026-11-15, #617): the ride map grows to its larger **300 px** height even on small screens whenever there is enough room below it, including solo rides. Its height follows the space needed by the visible elevation profile, active climb, riders and ghost panels, adapting when panels change or the window resizes while keeping the sidebar visible without scrolling. |

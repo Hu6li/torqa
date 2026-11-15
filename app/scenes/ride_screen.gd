@@ -718,8 +718,8 @@ func _fit_navigation() -> void:
 			reserved += panel.get_combined_minimum_size().y
 	reserved += maxf(count - 1, 0) * 8.0
 	var available: float = size.y - 72.0 - reserved
-	var preferred: float = clampf(size.y - 572.0, 80.0, 300.0)
-	map.custom_minimum_size.y = maxf(64.0, minf(preferred, available))
+	# Only visible panels need room below the map, so solo rides keep the larger view.
+	map.custom_minimum_size.y = clampf(available, 64.0, 300.0)
 
 
 ## Tells of a moment of the ride (R124) in the rider's voice: on a card, or in the overlay's
