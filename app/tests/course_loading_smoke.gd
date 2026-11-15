@@ -31,14 +31,18 @@ func _run() -> void:
 	# Reopen from the file so the first-start check cannot reuse the fixture's generated data.
 	var path: String = course["path"]
 	_orqwa.open_course(path)
-	await _wait_until(_orqwa.has_route, "fixture world released")
 	_start.call("_open_course", course)
+	_check(_detail._loading_route, "course selection starts loading its route")
+	await _switch_tabs("a loading course")
 	await _wait_until(func() -> bool: return not _detail._loading_route, "course opened")
+	await _switch_tabs("a loaded course")
 	_check(_orqwa.world_chunk_count() == 0, "opening the course does not build its world")
 	_world.set_process(false)
 	_detail.call("_ride", false)
 	await _wait_until(func() -> bool: return _detail._preparing_scene, "first scene preparation")
 	await _still_loading("first start")
+	await _switch_tabs("scene preparation")
+	_check(not _start._pending_ride.is_empty(), "switching tabs preserves the pending ride")
 	_check(_detail._continue_button.disabled, "continuation actions also wait for the scene")
 	_detail.call("_ride", false)
 	_check(_starts == 0, "a duplicate request cannot skip preparation")
@@ -66,6 +70,32 @@ func _run() -> void:
 	if not _failed:
 		print("COURSE LOADING SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+func _switch_tabs(what: String) -> void:
+	var path: String = _detail._path
+	var options: Dictionary = _detail.ride_options()
+	var revision: int = _start._preparation_revision
+	# Polling is paused so the loading case cannot finish before the clicks reach Courses.
+	_orqwa.set_process(false)
+	await process_frame
+	for tab: int in [StartPage.Tab.DEVICES, StartPage.Tab.COURSES]:
+		var press: InputEventMouseButton = InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.position = (
+			_start._tab_bar.get_global_transform() * _start._tab_bar.get_tab_rect(tab).get_center()
+		)
+		press.global_position = press.position
+		press.pressed = true
+		root.push_input(press, true)
+		var release: InputEventMouseButton = press.duplicate()
+		release.pressed = false
+		root.push_input(release, true)
+	_check(_detail.is_visible_in_tree(), what + ": returning shows the selected course")
+	_check(_detail._path == path, what + ": the selected course is unchanged")
+	_check(_detail.ride_options() == options, what + ": ride options are kept")
+	_check(_start._preparation_revision == revision, what + ": preparation is not cancelled")
+	_orqwa.set_process(true)
 
 
 func _unstarted_focus() -> void:

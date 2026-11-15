@@ -64,6 +64,11 @@ starts its first group ride without visiting a course page. It checks the ride o
 settings, then changes the profile to 75% with stale course controls at 25% and starts another
 group ride. Both starts must show the active profile's value (R14, R48).
 
+The course and course-loading smoke suites deliver mouse clicks to the start-page tabs (R246,
+#569). Returning to Courses retains the selected course while loading, after loading and
+during scene preparation, with its ride options and pending start. Back and a second click
+on the active Courses tab return to the gallery, which stays selected across later tab switches.
+
 Course continuation (R220, #497) is covered by `cargo test -p orqwa-app continuation` and
 `cargo test -p orqwa-storage continuation`, including restart persistence, rider isolation,
 explicit consent, discard/reset, fresh FIT samples and video frame seeking. The summary

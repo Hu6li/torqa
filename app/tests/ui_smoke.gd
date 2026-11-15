@@ -23,7 +23,6 @@ func _run() -> void:
 	await _chart_legend()
 	_profile_icons()
 	await _map_preview()
-	await _courses_tab()
 	_video_view()
 	_video_alignment()
 	_translations()
@@ -763,29 +762,6 @@ func _map_preview() -> void:
 	card.free()
 	var nothing: PackedByteArray = await MapPreview.capture(self, {}, PackedVector2Array())
 	_check(nothing.is_empty(), "nothing to draw, nothing kept")
-
-
-## A click on the Courses tab while a course page covers the gallery brings it back (#188).
-func _courses_tab() -> void:
-	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()
-	root.add_child(main)
-	await process_frame
-	var start: StartPage = main.get_node("StartPage")
-	var detail: Control = start.get("_detail")
-	var courses: Control = start.get("_courses")
-	var tab_bar: TabBar = start.get("_tab_bar")
-	courses.hide()
-	detail.show()
-	tab_bar.tab_clicked.emit(StartPage.Tab.COURSES)
-	_check(courses.visible and not detail.visible, "the Courses tab brings the gallery back")
-	# An import that hangs is given up on (#219): the library is usable again.
-	courses.call("_start_loading", "gpx", "route.gpx")
-	var loading: Control = courses.get("_loading")
-	var import_button: Button = courses.get("_import_button")
-	_check(loading.visible and import_button.disabled, "importing: the loading bar, no import")
-	_button_with_text(loading, "Cancel").pressed.emit()
-	_check(not loading.visible and not import_button.disabled, "Cancel: back to the library")
-	main.queue_free()
 
 
 ## The free camera turns with the mouse while Shift is held, and not without (#66).

@@ -172,7 +172,8 @@ func _align_brand() -> void:
 
 
 func _on_tab_clicked(tab: int) -> void:
-	if tab == Tab.COURSES and _detail.visible:
+	# tab_changed runs before tab_clicked, so current_tab already names the clicked tab.
+	if tab == Tab.COURSES and _tab_bar.get_previous_tab() == Tab.COURSES and _detail.visible:
 		_show_gallery()
 
 

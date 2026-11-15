@@ -680,3 +680,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R245 | In Autumn and Winter, both rider avatars wear a thermal cap beneath the helmet, full-finger gloves, full-length cycling tights and a long-sleeved top with a gilet. The selected local season dresses the rider, ghost and group riders, including friends joining later. Switching to Spring or Summer restores short kit during the ride, preserving rider colours, ghost transparency, first-person hiding and pedalling. Clothing follows the existing seated and standing animation and requires no course regeneration. |
+
+## Selected course across tabs
+
+| ID | Requirement |
+|---|---|
+| R246 | Refines R39 and R40 (2026-11-15, #569): after selecting a course, switching to another start-page tab and returning to **Courses** shows that course again, including while its route or world is loading. Its ride options and preparation are preserved. **Back** on the course page, Escape or the remote's Back, or clicking **Courses** while that tab is already active explicitly returns to the gallery; subsequent tab switches keep the gallery until another course is selected. |

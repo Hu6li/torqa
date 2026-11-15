@@ -374,6 +374,8 @@ Built in rideable steps:
   climb before Riders, Rust-calculated remaining climb ascent and aligned effort/gap
   columns without scrolling; adaptive HUD columns and workout targets on the left.
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
+- [x] Returning to Courses from another tab keeps the selected course, its options and loading
+  progress; Back or another click on the active Courses tab returns to the gallery (R246, #569)
 - [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
   #192 on the course's own map, drawn when the course is prepared and kept in the `.oqc`; since
   #203 the land around the whole route, black and white, with the names of its towns
