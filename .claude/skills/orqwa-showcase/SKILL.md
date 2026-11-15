@@ -33,7 +33,7 @@ This is the exception to "containers only": GPU renders run natively (CLAUDE.md,
    `app/bin/` is ignored by Git.
 3. **The saved courses** in `~/Library/Application Support/ORQWA/courses/` (`COURSES=` for
    another folder): Saimaa Cycling Tour, Fuji, Gorges de la Nesque, Alpenbrevet Gold, Wada
-   Ōtarumi Pass, Grosse Scheidegg, Lago del Narèt. Their map, terrain and kept worlds are
+   Ōtarumi Pass and Grosse Scheidegg. Their map, terrain and kept worlds are
    reused from `~/Library/Caches/ORQWA`; a course without a kept world is built first, which
    takes minutes.
 4. Import once after a checkout: `"$GODOT" --headless --path app --import`.
