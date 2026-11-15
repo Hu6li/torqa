@@ -140,13 +140,20 @@ func show_status(
 	# From a changed network only a new reply gets this rider back (#536).
 	_reconnect.visible = reconnect > 0.0 and not status.get("moved", false)
 	_rejoin.visible = rejoin
+	# Nothing is tried from a changed network: no spinner beside what to do instead (R250).
 	_working.visible = (
-		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
+		(phase in ["connecting", "downloading", "preparing"] and not can_retry)
+		or (reconnect > 0.0 and not status.get("moved", false))
 	)
+	# The red line about a changed network lines up with Join again below it.
+	var spinner_slot: Control = _working.get_parent()
+	spinner_slot.visible = not (reconnect > 0.0 and status.get("moved", false))
 	_show_line(status, organizer, reconnect)
 	# Friends use one fixed area for connecting or progress; the organizer keeps Start below.
 	var lobby: bool = phase not in ["riding", "ended"]
-	var separate_action: bool = host or late or not lobby
+	# A changed network says what to do above Join again, in red (R250).
+	var moved: bool = reconnect > 0.0 and status.get("moved", false)
+	var separate_action: bool = host or late or not lobby or moved
 	_layout.custom_minimum_size.y = 106 if separate_action else 48
 	_action_slot.offset_top = 58 if separate_action else 0
 	_action_slot.offset_bottom = _action_slot.offset_top + 48
@@ -229,7 +236,8 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
 		)
 	# Reconnecting cannot work from a changed network; a new reply keeps the place (#536).
-	if reconnect > 0.0 and status.get("moved", false):
+	var moved: bool = reconnect > 0.0 and status.get("moved", false)
+	if moved:
 		text = (
 			tr("Your network changed. Press Join again and send the new reply to %s.") % organizer
 		)
@@ -241,4 +249,5 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 	_line.text = text
 	_line.tooltip_text = text
 	_line.visible = not text.is_empty()
-	_line.add_theme_color_override("font_color", UiTheme.SUCCESS if good else UiTheme.MUTED)
+	var color: Color = UiTheme.SUCCESS if good else UiTheme.MUTED
+	_line.add_theme_color_override("font_color", UiTheme.DANGER if moved else color)

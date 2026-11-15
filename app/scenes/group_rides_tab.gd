@@ -510,10 +510,6 @@ func _show_status(status: Dictionary) -> void:
 	var reconnect: float = _status.get("reconnect_s", 0.0)
 	if reconnect > 0.0:
 		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
-	# From a changed network only a new reply gets this rider back (R250).
-	if reconnect > 0.0 and _status.get("moved", false):
-		_stage.text = tr("Your network changed. Press Join again and send the new reply to %s.")
-		_stage.text = _stage.text % _organizer_name()
 	_stage.visible = not _stage.text.is_empty()
 	if _leave != null:
 		_leave.visible = phase != "idle"

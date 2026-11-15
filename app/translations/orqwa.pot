@@ -4223,7 +4223,7 @@ msgstr ""
 msgid "Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W."
 msgstr ""
 
-#: app/scenes/group_rides_tab.gd app/ui/group_next_step.gd
+#: app/ui/group_next_step.gd
 msgid "Your network changed. Press Join again and send the new reply to %s."
 msgstr ""
 
