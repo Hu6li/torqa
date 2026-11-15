@@ -4,16 +4,22 @@ extends RefCounted
 
 
 ## Codes sent outside ORQWA (R195): a joiner's reply with the time left and after it ran out,
-## the organizer's invitation, a friend connecting, a wrong paste and the QR code.
+## the organizer's invitation, a friend connecting, one never reached (R243), a wrong paste and
+## the QR code.
 static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: String) -> void:
 	var root: Window = tree.root
 	group._joined = {"organizer": "Alex", "mode": "internet"}
 	for locale: String in ["en", "de"]:
 		TranslationServer.set_locale(locale)
-		group._show_status({"phase": "connecting", "reply": invite, "reply_s": 48.0})
+		group._show_status({"phase": "connecting", "reply": invite, "reply_s": 552.0})
 		await tree.create_timer(0.4).timeout
 		root.get_texture().get_image().save_png(out.path_join("group-joining-" + locale + ".png"))
-	group._show_status({"phase": "failed", "reply_expired": true})
+	TranslationServer.set_locale("en")
+	var blocked: String = (
+		"The direct UDP connection did not finish in time. Check the codes, UDP firewall, "
+		+ "IPv6 or LAN mode; some networks cannot connect without a relay."
+	)
+	group._show_status({"phase": "failed", "reply_expired": true, "error": blocked})
 	await tree.create_timer(0.3).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-joining-expired-en.png"))
 	group._joined = {}
@@ -30,7 +36,12 @@ static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: 
 	await tree.create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-invite-en.png"))
 	group._add._field.clear()
-	group._add._error.hide()
+	# An added friend whose connection never arrived is named, with the guide (#574).
+	group._add.show_refusal("", 0, "")
+	group._add.show_refusal("unreached", 1, "Ben")
+	await tree.create_timer(0.3).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-unreached-en.png"))
+	group._add._edited("")
 	group._invite._code._qr.pressed.emit()
 	await tree.create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-invite-qr-en.png"))

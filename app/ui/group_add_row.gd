@@ -1,13 +1,15 @@
 class_name GroupAddRow
 extends VBoxContainer
+# gdlint: disable=max-line-length
 ## The organizer's empty seat in the group list (R195): a plus badge and a field for the reply
 ## a friend sent back, with Add. What went wrong shows in one line below it, gone when the
-## organizer edits the field.
+## organizer edits the field; a connection that never arrived also links the usage guide.
 
 var _orqwa: OrqwaApp
 var _field: LineEdit = LineEdit.new()
 var _add: Button = Button.new()
 var _error: Label = Label.new()
+var _check: Button = Button.new()
 var _refusals: int = -1
 
 
@@ -40,7 +42,16 @@ func _ready() -> void:
 	_error.add_theme_font_size_override("font_size", 13)
 	_error.add_theme_color_override("font_color", UiTheme.DANGER)
 	_error.hide()
-	below.add_child(_error)
+	var lines: VBoxContainer = VBoxContainer.new()
+	lines.add_child(_error)
+	_check.text = tr("How to check")
+	_check.flat = true
+	_check.add_theme_color_override("font_color", UiTheme.ACCENT)
+	_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_check.pressed.connect(func() -> void: OS.shell_open(GroupInviteCard.HOSTING_GUIDE))
+	_check.hide()
+	lines.add_child(_check)
+	below.add_child(lines)
 	add_child(below)
 
 
@@ -65,6 +76,7 @@ func _plus() -> PanelContainer:
 func _edited(text: String) -> void:
 	_add.disabled = text.strip_edges().is_empty()
 	_error.hide()
+	_check.hide()
 
 
 func _submit() -> void:
@@ -87,8 +99,8 @@ func _submit() -> void:
 
 
 ## Shows why the organizer's last reply added nobody, from `OrqwaApp.group_status()`'s
-## `refusal`, once for each of its `refusals`.
-func show_refusal(refusal: String, refusals: int) -> void:
+## `refusal`, once for each of its `refusals`; `friend` is whom the reply names.
+func show_refusal(refusal: String, refusals: int, friend: String) -> void:
 	var known: bool = _refusals >= 0
 	if refusals == _refusals:
 		return
@@ -101,12 +113,20 @@ func show_refusal(refusal: String, refusals: int) -> void:
 		"again": tr("That reply was added already."),
 		"full": tr("No more friends can be added to this ride."),
 		"started": tr("The ride has started. No more friends can be added."),
-		"late": tr("Too late. Ask your friend for a new reply."),
+		"unreached":
+		(
+			tr(
+				"Couldn't reach %s's computer: their connection never arrived. A router or firewall probably blocked it."
+			)
+			% friend
+		),
 	}
 	if messages.has(refusal):
 		_show_error(messages[refusal])
+		_check.visible = refusal == "unreached"
 
 
 func _show_error(message: String) -> void:
 	_error.text = message
 	_error.show()
+	_check.hide()

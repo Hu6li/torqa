@@ -108,7 +108,7 @@ msgid "%s connected"
 msgstr ""
 
 #: app/ui/group_joining_card.gd
-msgid "%s didn't add you in time"
+msgid "%s didn't add you in time, or the connection was blocked"
 msgstr ""
 
 #: app/scenes/ride_screen.gd
@@ -887,6 +887,10 @@ msgstr ""
 msgid "Connection lost. Reconnecting… Your local ride continues."
 msgstr ""
 
+#: app/ui/group_joining_card.gd
+msgid "Connection troubleshooting"
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "Connect…"
 msgstr ""
@@ -1089,6 +1093,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not upload the activity to %s: %s"
+msgstr ""
+
+#: app/ui/group_add_row.gd
+msgid "Couldn't reach %s's computer: their connection never arrived. A router or firewall probably blocked it."
 msgstr ""
 
 #: app/ui/course_card.gd
@@ -1859,7 +1867,7 @@ msgstr ""
 msgid "How do you want to ride?"
 msgstr ""
 
-#: app/ui/group_invite_card.gd
+#: app/ui/group_add_row.gd app/ui/group_invite_card.gd
 msgid "How to check"
 msgstr ""
 
@@ -3633,10 +3641,6 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "To go"
-msgstr ""
-
-#: app/ui/group_add_row.gd
-msgid "Too late. Ask your friend for a new reply."
 msgstr ""
 
 #: app/ui/course_settings.gd

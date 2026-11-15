@@ -520,7 +520,8 @@ func _show_status(status: Dictionary) -> void:
 	var reply_s: float = _status.get("reply_s", 0.0)
 	var invited_by: String = _joined.get("organizer", "")
 	var mode: String = _joined.get("mode", "")
-	_joining.show_joining(invited_by, mode, reply, reply_s, expired)
+	var reason: String = _status.get("error", "") if expired else ""
+	_joining.show_joining(invited_by, mode, reply, reply_s, expired, reason)
 	_body.visible = phase != "idle" and not _connecting.visible
 	var inviting: bool = host and phase not in ["ended", "failed"]
 	_invitation_panel.visible = inviting
@@ -969,7 +970,8 @@ func _show_admissions(inviting: bool) -> void:
 	_add.visible = inviting and roster.size() + admitting < MAX_RIDERS
 	var refusal: String = _status.get("refusal", "")
 	var refusals: int = _status.get("refusals", 0)
-	_add.show_refusal(refusal, refusals)
+	var refused: String = _status.get("refused", "")
+	_add.show_refusal(refusal, refusals, refused)
 
 
 func _connecting_row() -> HBoxContainer:

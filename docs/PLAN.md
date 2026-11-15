@@ -239,6 +239,9 @@ Built in rideable steps:
   - [x] Rain sound (R153, #377): bundled CC0 rainfall in the Rain preset, fading with live
     weather changes and audible while stationary; controlled by Wind volume, with a
     weather-only listening preview and the existing playback boundaries.
+  - [x] Default volumes (R244, #619): **Settings → Sound** sets the wind and bicycle volumes
+    every course, workout and group ride starts with; a ride's own options change them for it
+    alone.
   - [x] Recorded gear changes (R116): one-shot on each accepted virtual shift through
     keyboard, BLE or remote, sharing bicycle volume; limit/no-change presses stay quiet,
     rapid shifts overlap with bounded voices and paused requests are never replayed.
@@ -1098,6 +1101,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] The organizer chooses where everyone rides for the whole group: the invitation carries it,
   friends join without a question, and one home network warns nobody about reachability and
   lets anyone stand in as fallback organizer (R197)
+- [x] Replies wait ten minutes to be added; the organizer names a friend whose connection never
+  arrived, and the joiner reads why theirs failed, with links to the usage guide (R243, #574)
 - [x] Countdown keeps the course map, elevation and workout preview in place for organizer
   and friends; choices and shared rules lock without switching preview layouts (R204)
 - [x] Joiners see the shared activity's name while its files arrive, including after the ride

@@ -137,6 +137,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         fingerprint: invite.fingerprint,
         route: invite.route,
         client: Fingerprint([4; 32]),
+        name: "Alex".into(),
         candidates: invite.candidates.clone(),
         nat: NatObservation::OneServer,
     };
