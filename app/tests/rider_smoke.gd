@@ -22,9 +22,13 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var fits: JSON = load(RiderAvatar.DIRECTORY + "riders.json")
-	for rider: String in RiderAvatar.RIDERS:
+	for configuration: Array in [
+		["female", false], ["male", false], ["female", true], ["male", true]
+	]:
+		var rider: String = configuration[0]
 		var avatar: RiderAvatar = RiderAvatar.new()
 		avatar.rider = rider
+		avatar.winter_clothing = configuration[1]
 		root.add_child(avatar)
 		var fit: Dictionary = fits.data[rider]
 		var thigh: float = fit["thigh"]

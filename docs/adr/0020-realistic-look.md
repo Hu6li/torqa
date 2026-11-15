@@ -271,3 +271,13 @@ maps, keeping clearings and water and excluding ridden tunnels. Pointed leaf sil
 edge-biased drifts, physical scale, rain response and subpixel filtering live in the road
 material. No texture download, stored data or generated geometry changes; season selection
 remains reversible and has no effect on resistance or grip.
+
+### Seasonal rider clothing (2026-11-15, R243)
+
+Autumn and Winter use alternate rider assets with fitted thermal caps, full-finger gloves,
+long tights, long sleeves and zipped gilets. The Blender build keeps the skeleton, bike and
+fit metadata identical to short kit and checks the metadata when generating winter assets.
+The gilet inherits the torso's skin weights and has closed hems; the cap fits under the
+existing helmet. Presentation swaps the local rider, ghost and group avatars with the local
+season, retaining their identifying colours and visibility. Neither world versions nor the
+group protocol changes. The existing Season control is sufficient.
