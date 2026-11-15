@@ -2327,6 +2327,60 @@ fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_c
 }
 
 #[test]
+fn the_organizer_withdraws_a_shared_course_while_friends_still_prepare_it() {
+    // #556: the organizer need not wait for everyone to be ready to change their mind.
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    assert!(
+        !host.group().can_cancel_activity(),
+        "nothing is shared to withdraw"
+    );
+    host.group_select(Some(sample_course()), None).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().can_cancel_activity()
+            && matches!(p.group().phase, Phase::Downloading | Phase::Preparing)
+    });
+    assert!(
+        peer.group_end_activity().is_err(),
+        "only the organizer withdraws the group's course"
+    );
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Waiting && p.group().phase == Phase::Waiting
+    });
+    for app in [&host, &peer] {
+        let status = app.group();
+        assert!(status.selection.is_none() && status.course.is_none());
+        assert!(!status.prepared && !status.ready.contains(&true));
+        assert!(app.group.as_ref().unwrap().preparing.is_none());
+        assert_eq!(status.roster.iter().flatten().count(), 2);
+    }
+    // What was withdrawn is not prepared afterwards, and something else can be shared.
+    for _ in 0..60 {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+        assert!(peer.group().selection.is_none() && peer.world.is_none());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().prepared && p.group().prepared && p.group().course.is_none()
+    });
+}
+
+#[test]
 fn a_friend_rides_their_own_copy_of_the_course_under_any_name_without_downloading_it() {
     use orqwa_storage::course;
     // #435: the organizer sent the course beforehand; the friend imported it under their own

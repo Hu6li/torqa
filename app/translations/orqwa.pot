@@ -4079,6 +4079,10 @@ msgstr ""
 msgid "Winter"
 msgstr ""
 
+#: app/ui/group_next_step.gd
+msgid "Withdraw the shared course or workout for everyone"
+msgstr ""
+
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs
 msgid "Work"
 msgstr ""

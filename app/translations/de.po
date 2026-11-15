@@ -3356,3 +3356,6 @@ msgstr "Verbindung verloren. Die Plätze bleiben fünf Minuten lang frei."
 
 msgid "Your own network has probably dropped. Their places are kept for five minutes."
 msgstr "Wahrscheinlich ist dein eigenes Netzwerk ausgefallen. Die Plätze bleiben fünf Minuten lang frei."
+
+msgid "Withdraw the shared course or workout for everyone"
+msgstr "Geteilte Strecke oder geteiltes Training für alle zurückziehen"

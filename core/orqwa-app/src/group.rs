@@ -499,6 +499,19 @@ impl Snapshot {
             && self.start.is_some()
             && self.selection.is_some()
     }
+    /// The organizer may withdraw a shared activity before the start, also while friends
+    /// still download or build it (#556).
+    #[must_use]
+    pub fn can_cancel_activity(&self) -> bool {
+        self.host
+            && self.handover == Handover::Idle
+            && matches!(
+                self.phase,
+                Phase::Waiting | Phase::Downloading | Phase::Preparing | Phase::Ready
+            )
+            && self.start.is_none()
+            && self.selection.is_some()
+    }
     /// Tells the organizer why their pasted reply added nobody (R195).
     pub(crate) fn refuse(&mut self, refusal: Refusal) {
         self.refused.clear();
@@ -864,13 +877,14 @@ impl App {
                 }
             })
     }
-    /// Ends the shared activity for everyone and keeps this lobby for the next selection.
+    /// Ends the shared activity for everyone, or withdraws it before the start, and keeps
+    /// this lobby for the next selection.
     ///
     /// # Errors
-    /// Returns [`AppError`] unless organizing an active activity with an available queue.
+    /// Returns [`AppError`] unless organizing a shared activity with an available queue.
     pub fn group_end_activity(&mut self) -> Result<(), AppError> {
         let status = self.group();
-        if !status.can_end_activity() {
+        if !status.can_end_activity() && !status.can_cancel_activity() {
             return Err(error(
                 "Only the organizer can end the current group activity.",
             ));

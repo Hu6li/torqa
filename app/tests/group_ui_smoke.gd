@@ -148,9 +148,20 @@ func _next_steps(step: GroupNextStep) -> void:
 	_check(
 		not step._main.disabled and step._line.text == "Everyone is ready", "then starts the ride"
 	)
+	_check(not step._cancel.visible, "nothing shared, nothing to withdraw")
+	waiting["can_cancel"] = true
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(
+		step._main.visible and step._cancel.visible,
+		"what is shared can be withdrawn beside Start (#556)"
+	)
+	var downloading: Dictionary = {"phase": "downloading", "host": true, "can_cancel": true}
+	step.show_status(downloading, true, "Me", 0, true)
+	_check(step._cancel.visible, "also while it is still being prepared")
 	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true}
 	step.show_status(friend, true, "Alex", 0, true)
 	_check(not step._main.visible, "a friend with a trainer has no main button")
+	_check(not step._cancel.visible, "and cannot withdraw what is shared")
 	friend["ready"] = true
 	step.show_status(friend, true, "Alex", 0, true)
 	_check(step._line.text == "You're ready. Alex starts the ride.", "and knows who starts it")
