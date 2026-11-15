@@ -10,7 +10,6 @@ pub mod graphics;
 pub mod group;
 use failure::{Failure, Kind};
 mod continuation;
-mod course_migration;
 mod detail;
 #[cfg(test)]
 mod detail_tests;
@@ -820,7 +819,6 @@ impl App {
     /// # Errors
     /// [`AppError::Runtime`] if the async runtime cannot start.
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Result<Self, AppError> {
-        course_migration::run(&data_dir.join("courses"));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()

@@ -31,8 +31,9 @@ The app is **ORQWA**, orca, torque and watt (R102):
 - **Windows.** The installer keeps its UpgradeCode across releases so updates replace the
   previous installation in place.
 - **Course files.** `.oqc` means ORQWA course (#501). The archive format stays unchanged.
-  A temporary module migrates existing library files at startup without overwriting current
-  courses; it and its startup call can be removed once riders have updated.
+  From v0.6.1 to v0.6.4 a temporary module renamed existing `.tqc` library files at startup
+  without overwriting current courses; it has been retired (#515). A `.tqc` file still left
+  in the library is no longer listed until it is renamed to `.oqc`.
 - **Android signing.** Read the existing key's alias from the release keystore, preserving
   its signing identity without a historical name in the build script.
 - **Docs.** The name changes in every doc, earlier ADRs and existing requirements included. It
