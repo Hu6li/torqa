@@ -482,6 +482,13 @@ again, which their organizer cannot answer. Adding a reply for a seat still held
 counted as a friend connecting on the organizer's page: that friend comes back by
 reconnecting.
 
+**After a takeover.** Once a fallback organizer took over, a friend joins the new organizer
+again, never the one who left: the commit gives every friend the new organizer's invitation,
+and their replacement links answer it with the certificate they joined with, so the new
+organizer gives them their seat back too. The organizer who took over is offered no Join
+again. Why the old connection ended is recorded before a takeover is tried, so a takeover that
+fails after the organizer ended the group still offers none, and cleared once it succeeds.
+
 **Other versions.** Everyone in a group needs the same ORQWA version, and the codes say which
 one made them. An invitation from a newer or older one now says which side must update,
 instead of only that ORQWA could not join with it.

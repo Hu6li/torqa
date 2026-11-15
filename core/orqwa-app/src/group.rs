@@ -225,6 +225,9 @@ pub struct Snapshot {
     /// Once a friend's group has ended, whether the organizer removed them or ended the
     /// group; then they cannot join again (#536).
     pub ending: Ending,
+    /// The new organizer's invitation once a fallback took over, for a friend to join again
+    /// with (#536); empty before or for the organizer.
+    pub joined_with: String,
     /// Why the organizer's last pasted reply added nobody.
     pub refusal: Refusal,
     /// Counts refusals, so the same one twice is told twice.
@@ -369,6 +372,7 @@ impl Default for Snapshot {
             reply_expired: false,
             admitting: 0,
             ending: Ending::Lost,
+            joined_with: String::new(),
             refusal: Refusal::None,
             refusals: 0,
             refused: String::new(),
@@ -619,6 +623,22 @@ pub(crate) struct Running {
     /// organizer.
     rejoin: Option<(String, ConnectOptions, Credential)>,
 }
+impl Running {
+    /// The invitation a friend joins again with: the new organizer's once a fallback took
+    /// over (#536), which the joiner hears of only then.
+    fn invitation(&self) -> Option<String> {
+        let (invite, _, _) = self.rejoin.as_ref()?;
+        let snapshot = self.snapshot.borrow();
+        if snapshot.host {
+            return None;
+        }
+        Some(if snapshot.joined_with.is_empty() {
+            invite.clone()
+        } else {
+            snapshot.joined_with.clone()
+        })
+    }
+}
 #[derive(Default)]
 struct VoiceControls {
     generation: AtomicU64,
@@ -752,26 +772,28 @@ impl App {
         });
         Ok(())
     }
-    /// Whether this friend can join their group again with the invitation they joined with
-    /// (#536): the connection to it was lost, or the attempt to connect failed. Not once the
-    /// organizer removed them or ended the group. A ride
-    /// going on meanwhile keeps going.
+    /// Whether this friend can join their group again (#536), with the invitation they joined
+    /// with or, after a fallback took over, the new organizer's: the connection to it was
+    /// lost, or the attempt to connect failed. Not once the organizer removed them or ended
+    /// the group, nor as the organizer who took over. A ride going on meanwhile keeps going.
     #[must_use]
     pub fn group_can_rejoin(&self) -> bool {
         self.group.as_ref().is_some_and(|group| {
             let snapshot = group.snapshot.borrow();
             group.rejoin.is_some()
+                && !snapshot.host
                 && matches!(snapshot.phase, Phase::Ended | Phase::Failed)
                 && snapshot.ending == Ending::Lost
         })
     }
-    /// The invitation this friend joined with, "" for the organizer or without a group.
+    /// The invitation this friend joins with, the new organizer's after a fallback took over;
+    /// "" for the organizer or without a group.
     #[must_use]
-    pub fn group_joined_with(&self) -> &str {
+    pub fn group_joined_with(&self) -> String {
         self.group
             .as_ref()
-            .and_then(|group| group.rejoin.as_ref())
-            .map_or("", |(invite, _, _)| invite.as_str())
+            .and_then(Running::invitation)
+            .unwrap_or_default()
     }
     /// Joins the group again with the invitation this friend joined with, without leaving
     /// first (#536): ORQWA makes a fresh reply for the organizer to add, with the same
@@ -786,7 +808,10 @@ impl App {
             .group
             .as_ref()
             .filter(|_| self.group_can_rejoin())
-            .and_then(|group| group.rejoin.clone());
+            .and_then(|group| {
+                let (_, options, credential) = group.rejoin.clone()?;
+                Some((group.invitation()?, options, credential))
+            });
         let Some((invite, options, credential)) = rejoin else {
             return Err(error("Leave the group and ask for a fresh invitation."));
         };

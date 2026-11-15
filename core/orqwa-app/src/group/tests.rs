@@ -1203,6 +1203,55 @@ fn when_the_organizer_leaves_the_fallback_takes_over_with_voice_as_it_was() {
 }
 
 #[test]
+fn after_a_takeover_a_friend_joins_the_new_organizer_again_in_their_seat() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ride_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
+        a.group().standby_offer
+    });
+    anna.group_handover_answer(true).unwrap();
+    let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(fallback))
+    });
+    let invitation = ben.group_joined_with();
+    host.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().host && b.group().organizer == fallback && b.group().phase == Phase::Riding
+    });
+    // #536: Ben would join the new organizer again, never the one who left.
+    assert_ne!(ben.group_joined_with(), invitation);
+    assert!(
+        anna.group_joined_with().is_empty(),
+        "the organizer joins nobody"
+    );
+    let seat = ben.group().me;
+    ben.group_command(Command::EndConnection).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().phase == Phase::Ended
+    });
+    assert!(
+        ben.group_can_rejoin(),
+        "the organizer left, but the group went on"
+    );
+    ben.group_rejoin().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        !b.group().reply.is_empty()
+    });
+    anna.group_admit(&ben.group().reply).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        !b.group_rides_alone() && a.group_view().riders.len() == 1
+    });
+    assert_eq!(ben.group().me, seat, "Ben has his seat back");
+    assert_eq!(anna.group().admitting, 0);
+    anna.group_leave();
+    ben.group_leave();
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // consent, rollback, two authority changes and late entry share one real group lifecycle
 fn planned_handover_requires_consent_and_preserves_riding_and_workout_authority() {
     let from = Directory::new();

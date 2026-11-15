@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use super::runtime::Session;
-use super::{Handover, Snapshot};
+use super::{Ending, Handover, Snapshot};
 
 const CONSENT: Duration = Duration::from_secs(30);
 const PREPARATION: Duration = Duration::from_secs(60);
@@ -69,6 +69,8 @@ pub(super) struct Coordinator {
     announced: bool,
     revealed: bool,
     pub(super) old_lost: bool,
+    /// The certificate this friend joined with, to answer a new organizer with too (#536).
+    pub(super) credential: Option<orqwa_net::link::Credential>,
     /// The current operation is a standby, kept for the ride rather than committed (#426).
     standby: bool,
     /// Every standby link is ready: the fallback stands by.
@@ -108,6 +110,7 @@ impl Coordinator {
             replacement: None,
             jobs: JoinSet::new(),
             notices,
+            credential: None,
             receive,
             deadline: None,
             preparing: false,
@@ -758,6 +761,7 @@ impl Coordinator {
             // that cannot connect gives the change up as soon as it did before (R243).
             options.reply = options.window;
             let rider = self.rider.clone();
+            let credential = self.credential.clone();
             let notices = self.notices.clone();
             let plan = plan.clone();
             let roster = snapshot.roster.clone();
@@ -765,9 +769,14 @@ impl Coordinator {
             let me = RiderId::new(snapshot.me).map_err(text)?;
             let standby = self.standby;
             self.jobs.spawn(async move {
-                let joiner = Joiner::lobby(&rider.name, plan.invite.clone(), &options)
-                    .await
-                    .map_err(text)?;
+                let joiner = match &credential {
+                    Some(credential) => {
+                        Joiner::lobby_as(&rider.name, plan.invite.clone(), &options, credential)
+                            .await
+                    }
+                    None => Joiner::lobby(&rider.name, plan.invite.clone(), &options).await,
+                }
+                .map_err(text)?;
                 notices
                     .send((plan.context.epoch, joiner.reply().clone()))
                     .await
@@ -918,6 +927,15 @@ impl Coordinator {
         if snapshot.host {
             snapshot.reachability = Some(plan.invite.reachability());
         }
+        // Friends join the new organizer again, if ever, with its invitation (#536).
+        snapshot.joined_with = if snapshot.host {
+            String::new()
+        } else {
+            plan.invite
+                .to_code(self.options.gather.policy)
+                .map_err(text)?
+        };
+        snapshot.ending = Ending::Lost;
         snapshot.reply.clear();
         snapshot.states.fill(None);
         snapshot.latencies.fill(None);

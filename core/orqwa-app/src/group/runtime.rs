@@ -417,6 +417,12 @@ async fn run_inner(
     tokio::fs::create_dir_all(&temp.0)
         .await
         .map_err(|e| e.to_string())?;
+    // A fallback's links answer the new organizer with the same certificate, so a friend
+    // joining it again later gets their seat back too (#536).
+    let credential = request
+        .invite
+        .as_ref()
+        .map(|(_, credential)| credential.clone());
     let mut session = if let Some((invite, credential)) = request.invite {
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
         let mode = invite.setup.mode();
@@ -456,6 +462,7 @@ async fn run_inner(
     };
     let mut handover =
         super::handover::Coordinator::new(request.options.clone(), request.rider.clone());
+    handover.credential = credential;
     let (root, epoch, organizer) = match &session {
         Session::Host(l) => (l.root(), l.epoch(), l.organizer()),
         Session::Join(l) => (l.root(), l.epoch(), l.organizer()),
@@ -804,7 +811,9 @@ async fn run_inner(
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
                 Some(LobbyEvent::Expired(name)) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Unreached); snapshot.refused = name;}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
-                Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {if let Session::Join(l) = &session {snapshot.ending = l.ending();} end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
+                // Recorded before a takeover is tried, which may fail and end the group too (#536).
+                Some(LobbyEvent::HostLeft)|None => {if let Session::Join(l) = &session {snapshot.ending = l.ending();}
+                    if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },
             event = handover.next() => {
                 match handover.event(&session,snapshot,event) {
