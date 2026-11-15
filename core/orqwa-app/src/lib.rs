@@ -61,7 +61,7 @@ pub use orqwa_storage::computer::{AUTO as GRAPHICS_AUTO, GRAPHICS_OPTIONS};
 use orqwa_storage::course::{self, CourseCountry, Manifest};
 use orqwa_storage::index::HistoryIndex;
 use orqwa_storage::profiles::{self, DeviceRole, StoredProfile};
-pub use orqwa_storage::profiles::{GraphicsQuality, OverlayWindow};
+pub use orqwa_storage::profiles::{GraphicsQuality, OverlayWindow, RideVolumes};
 use orqwa_storage::rides::{self, ClimbTime, RideRecord};
 use orqwa_terrain::{Terrain, TileSource};
 pub use orqwa_video::Frame;
@@ -2257,6 +2257,21 @@ impl App {
     /// [`AppError::Reported`] if it cannot be saved.
     pub fn set_sounds(&mut self, on: bool) -> Result<(), AppError> {
         profiles::set_sounds(&self.data_dir, on)
+            .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))
+    }
+
+    /// The wind and bicycle volumes every ride starts with (#619).
+    #[must_use]
+    pub fn ride_volumes(&self) -> profiles::RideVolumes {
+        profiles::ride_volumes(&self.data_dir)
+    }
+
+    /// Remembers the volumes every ride starts with.
+    ///
+    /// # Errors
+    /// [`AppError::Reported`] if they cannot be saved.
+    pub fn set_ride_volumes(&mut self, volumes: profiles::RideVolumes) -> Result<(), AppError> {
+        profiles::set_ride_volumes(&self.data_dir, volumes)
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))
     }
 

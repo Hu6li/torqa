@@ -304,6 +304,9 @@ struct Settings {
     ride_bar_folded: Option<bool>,
     /// Whether the app plays its own sounds, such as the chime of a ride's moments (R125).
     sounds: Option<bool>,
+    /// The wind and bicycle volumes every ride starts with (#619).
+    wind_volume_pct: Option<f64>,
+    bike_volume_pct: Option<f64>,
     /// Whether the app filled the screen, from before R78 made it the computer's; carried over
     /// once by [`carry_over`], then gone.
     fullscreen: Option<bool>,
@@ -984,6 +987,47 @@ pub fn set_sounds(data_dir: &Path, on: bool) -> Result<(), ProfileError> {
     save_settings(data_dir, &settings)
 }
 
+/// The wind and bicycle volumes a ride starts with (#619); a ride's own options change them
+/// for that ride only.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RideVolumes {
+    /// Wind, and rain in rainy weather; zero mutes it.
+    pub wind: Percent,
+    /// Chain, freewheel and gear shifts; zero mutes them.
+    pub bike: Percent,
+}
+
+impl Default for RideVolumes {
+    fn default() -> Self {
+        Self {
+            wind: Percent(50.0),
+            bike: Percent(50.0),
+        }
+    }
+}
+
+/// The volumes every ride starts with; half until the rider chooses others.
+#[must_use]
+pub fn ride_volumes(data_dir: &Path) -> RideVolumes {
+    let settings = settings(data_dir);
+    let default = RideVolumes::default();
+    RideVolumes {
+        wind: settings.wind_volume_pct.map_or(default.wind, Percent),
+        bike: settings.bike_volume_pct.map_or(default.bike, Percent),
+    }
+}
+
+/// Remembers the volumes every ride starts with, each kept within 0–100 %.
+///
+/// # Errors
+/// On file system errors.
+pub fn set_ride_volumes(data_dir: &Path, volumes: RideVolumes) -> Result<(), ProfileError> {
+    let mut settings = settings(data_dir);
+    settings.wind_volume_pct = Some(volumes.wind.0.clamp(0.0, 100.0));
+    settings.bike_volume_pct = Some(volumes.bike.0.clamp(0.0, 100.0));
+    save_settings(data_dir, &settings)
+}
+
 /// How the Courses tab was left (R67); the defaults until it is changed.
 #[must_use]
 pub fn courses_view(data_dir: &Path) -> CoursesView {
@@ -1210,6 +1254,44 @@ mod tests {
         assert!(ride_bar_folded(&dir), "the other settings stay");
         set_sounds(&dir, true).unwrap();
         assert!(sounds(&dir));
+    }
+
+    #[test]
+    fn rides_start_with_the_volumes_chosen_for_them() {
+        let dir = temp_dir("ride-volumes");
+        assert_eq!(
+            ride_volumes(&dir),
+            RideVolumes::default(),
+            "half until chosen"
+        );
+        set_sounds(&dir, false).unwrap();
+
+        set_ride_volumes(
+            &dir,
+            RideVolumes {
+                wind: Percent(0.0),
+                bike: Percent(0.0),
+            },
+        )
+        .unwrap();
+
+        let muted = ride_volumes(&dir);
+        assert_eq!(
+            (muted.wind, muted.bike),
+            (Percent(0.0), Percent(0.0)),
+            "#619"
+        );
+        assert!(!sounds(&dir), "the other settings stay");
+        set_ride_volumes(
+            &dir,
+            RideVolumes {
+                wind: Percent(150.0),
+                bike: Percent(-5.0),
+            },
+        )
+        .unwrap();
+        let kept = ride_volumes(&dir);
+        assert_eq!((kept.wind, kept.bike), (Percent(100.0), Percent(0.0)));
     }
 
     #[test]
