@@ -10,6 +10,8 @@ ORQWA's own:
   container, with quick Cycles previews. Its texture baker, previews and bpy pitfalls come from
   the author's earlier game project (choppa).
 - `orqwa-render-review` — rendering the world and models in the dev container for review.
+- `orqwa-showcase` — re-rendering the showcase pictures of saved courses on the Mac's GPU,
+  with the shot list in `shots.txt`.
 - `orqwa-physics` — the ride simulation and the rider and bike motion: where they live, the
   rules (springs, hysteresis, legs that reach), tick traces before tuning. Adapted from the
   author's earlier game project (choppa).

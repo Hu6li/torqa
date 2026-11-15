@@ -6,7 +6,7 @@
 # GODOT=/path/to/Godot COURSE=<file.oqc> SHOTS="name:distance:camera[:right,up,back][:key=value]…"
 # scripts/render-showcase.sh — keys: time=Morning|Midday|Evening, weather=Clear|Cloudy|Hazy|Rain,
 # season=Spring|Summer|Autumn|Winter, rider=female|male, group=<friends riding along, up to 7>,
-# hud=0, fov=<degrees> (see app/tools/render_views.gd). A separate HOME keeps the rider's profile and settings out of
+# hud=0, fov=<degrees>, elevation=gradient, map=dark (see app/tools/render_views.gd). A separate HOME keeps the rider's profile and settings out of
 # it while reusing their downloaded map, terrain and kept-world caches.
 set -eu
 

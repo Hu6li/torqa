@@ -66,9 +66,10 @@ finer terrain belongs only beside close ridden carriageways and under walls.
 
 - `scripts/render-showcase.sh` (on the host, with the portable Godot editor and a release
   extension in `app/bin/`) — website and gallery pictures of saved courses on a real GPU at
-  Ultra. `SHOTS` fields `time=`, `weather=`, `season=`, `rider=`, `group=`, `hud=0` and
-  `fov=` set each shot's conditions. Free cameras aside can land inside terrain: render a few framings and
-  look at every picture.
+  Ultra. `SHOTS` fields `time=`, `weather=`, `season=`, `rider=`, `group=`, `hud=0`,
+  `fov=`, `elevation=gradient` and `map=dark` set each shot's conditions. The published
+  shots and their runner are in the `orqwa-showcase` skill. Free cameras aside can land
+  inside terrain: render a few framings and look at every picture.
 
 - `scripts/dev.sh scripts/screenshots.sh` — the standard app screenshots (`app/tests/
   screenshots.gd`): start page tabs, course page, a ride in each camera, the settings, summary,
