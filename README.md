@@ -23,7 +23,7 @@ on your smart trainer, through a 3D world or along the video, alone or with frie
 <table align="center">
   <tr>
     <td width="50%" align="center">
-      <a href="docs/images/showcase/fuji-lakeside-evening.jpg"><img src="docs/images/showcase/fuji-lakeside-evening.jpg" alt="Riding along a lake below Mount Fuji at evening in ORQWA's 3D world" width="400"></a><br>
+      <a href="docs/images/showcase/fuji-lake-spring.jpg"><img src="docs/images/showcase/fuji-lake-spring.jpg" alt="Climbing a forest road among cherry blossoms below Mount Fuji in spring in ORQWA's 3D world" width="400"></a><br>
       <sub>A GPX route below Mount Fuji</sub>
     </td>
     <td width="50%" align="center">
