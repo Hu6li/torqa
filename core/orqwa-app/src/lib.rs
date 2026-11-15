@@ -319,6 +319,8 @@ pub const READING_AGE: Duration = Duration::from_secs(5);
 pub enum AppEvent {
     /// A shared activity ended and the still-connected group may choose another one.
     GroupReturnedToLobby,
+    /// Someone's connection to the group dropped, came back or ended (R249).
+    GroupConnection(group::ConnectionNotice),
     /// A prepared group ride reached its common start target.
     GroupRideStarted {
         /// The activity has a course.
@@ -613,6 +615,8 @@ struct ActiveRide {
     assisted: bool,
     /// Continuation never changes a group's entry or a workout's timing.
     solo_course: bool,
+    /// The group activity this ride is, so joining the group again rides on in it (#536).
+    group_activity: Option<group::Activity>,
 }
 
 impl ActiveRide {
@@ -3143,6 +3147,7 @@ impl App {
             simulated: false,
             assisted: false,
             solo_course,
+            group_activity: None,
         });
     }
 
@@ -3854,6 +3859,7 @@ impl App {
         self.poll_sensors(events);
         self.poll_shift_inputs(events);
         self.poll_phone_remote(events);
+        self.group_connections(events);
         self.poll_group(events);
     }
 

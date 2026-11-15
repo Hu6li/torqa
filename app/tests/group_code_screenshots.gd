@@ -4,7 +4,8 @@ extends RefCounted
 
 
 ## Codes sent outside ORQWA (R195): a joiner's reply with the time left and after it ran out,
-## the organizer's invitation, a friend connecting, one never reached (R243), a wrong paste and
+## the organizer's invitation, a friend connecting, one never reached (R243), one away with a
+## field for a new reply (R249) and a joiner whose network changed (R250), a wrong paste and
 ## the QR code.
 static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: String) -> void:
 	var root: Window = tree.root
@@ -42,6 +43,35 @@ static func capture(tree: SceneTree, group: GroupRidesTab, invite: String, out: 
 	await tree.create_timer(0.3).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-unreached-en.png"))
 	group._add._edited("")
+	# A friend away: everyone sees how long, the organizer can paste their new reply (R249).
+	var away: Array[Dictionary] = [
+		{"id": 0, "name": "Rider", "ready": true, "me": true, "organizer": true},
+		{"id": 1, "name": "Ben", "ready": true, "me": false, "away": true, "away_s": 42.0},
+		{"id": 2, "name": "Carla", "ready": false, "me": false, "away": true, "away_s": 9.0},
+		{"id": 3, "name": "Dana", "ready": true, "me": false, "ping_ms": 28},
+	]
+	group._show_status({"phase": "waiting", "host": true, "invite": invite, "roster": away})
+	await tree.create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-away-en.png"))
+	# The joiner whose network changed joins again rather than reconnecting (R250).
+	var moved: Array[Dictionary] = [
+		{"id": 0, "name": "Alex", "ready": true, "me": false, "organizer": true},
+		{"id": 1, "name": "Ben", "ready": true, "me": true},
+	]
+	(
+		group
+		. _show_status(
+			{
+				"phase": "waiting",
+				"reconnect_s": 318.0,
+				"moved": true,
+				"can_rejoin": true,
+				"roster": moved,
+			}
+		)
+	)
+	await tree.create_timer(0.4).timeout
+	root.get_texture().get_image().save_png(out.path_join("group-moved-en.png"))
 	group._invite._code._qr.pressed.emit()
 	await tree.create_timer(0.4).timeout
 	root.get_texture().get_image().save_png(out.path_join("group-invite-qr-en.png"))

@@ -7,7 +7,7 @@ use orqwa_domain::workout::Plan;
 use orqwa_net::activity::{Assistance, ContentId, ContentKind, CourseKey, Selection};
 use orqwa_net::code::{Invite, Reply};
 use orqwa_net::content::{self, Source};
-use orqwa_net::link::{ConnectOptions, Host, Joiner};
+use orqwa_net::link::{ConnectOptions, Credential, Host, Joiner};
 use orqwa_net::lobby::{
     HostLobby, JoinerLobby, LobbyEvent, RideProgress, Rider, SharedActivity, Stage,
 };
@@ -49,6 +49,12 @@ pub(super) enum Command {
     /// Lose the connection to the organizer as a failing network would.
     #[cfg(test)]
     LoseConnection,
+    /// End the connection to the organizer for good, neither removed nor the group ended.
+    #[cfg(test)]
+    EndConnection,
+    /// Change the network under this rider's sockets, as moving to another one would.
+    #[cfg(test)]
+    MoveNetwork,
     Failure(String),
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
@@ -358,7 +364,9 @@ mod audio_tests;
 pub(super) struct Request {
     pub(super) audio: AudioBackend,
     pub(super) voice_controls: Arc<VoiceControls>,
-    pub(super) invite: Option<String>,
+    /// The invitation to answer, with the certificate to answer it with: kept to join the
+    /// same group again in the same seat (#536).
+    pub(super) invite: Option<(String, Credential)>,
     pub(super) rider: Rider,
     pub(super) options: ConnectOptions,
     pub(super) data: PathBuf,
@@ -412,12 +420,18 @@ async fn run_inner(
     tokio::fs::create_dir_all(&temp.0)
         .await
         .map_err(|e| e.to_string())?;
-    let mut session = if let Some(invite) = request.invite {
+    // A fallback's links answer the new organizer with the same certificate, so a friend
+    // joining it again later gets their seat back too (#536).
+    let credential = request
+        .invite
+        .as_ref()
+        .map(|(_, credential)| credential.clone());
+    let mut session = if let Some((invite, credential)) = request.invite {
         let invite = Invite::from_code(&invite, policy).map_err(|e| e.to_string())?;
         let mode = invite.setup.mode();
         // Taken before the joiner starts its own, so never later than the reply's real end.
         let until = std::time::Instant::now() + request.options.reply;
-        let joiner = Joiner::lobby(&request.rider.name, invite, &request.options)
+        let joiner = Joiner::lobby_as(&request.rider.name, invite, &request.options, &credential)
             .await
             .map_err(|e| e.to_string())?;
         snapshot.reply = joiner.reply().to_code(policy).map_err(|e| e.to_string())?;
@@ -451,6 +465,7 @@ async fn run_inner(
     };
     let mut handover =
         super::handover::Coordinator::new(request.options.clone(), request.rider.clone());
+    handover.credential = credential;
     let (root, epoch, organizer) = match &session {
         Session::Host(l) => (l.root(), l.epoch(), l.organizer()),
         Session::Join(l) => (l.root(), l.epoch(), l.organizer()),
@@ -537,7 +552,8 @@ async fn run_inner(
                             snapshot.refusal = Refusal::None;
                             if let Ok(reply) = Reply::from_code(&text,policy) {
                                 match l.admit(&reply).await {
-                                    Ok(()) => {snapshot.admitting = snapshot.admitting.saturating_add(1); Ok(())}
+                                    // A friend whose seat is still held comes back by reconnecting, not as a newcomer (#536).
+                                    Ok(added) => {if added == orqwa_net::link::Added::Waiting {snapshot.admitting = snapshot.admitting.saturating_add(1);} Ok(())}
                                     Err(error) => refusal(&error).map_or_else(|| Err(error.to_string()), |refused| {snapshot.refuse(refused); Ok(())}),
                                 }
                             } else {snapshot.refuse(Refusal::Invalid); Ok(())}
@@ -587,6 +603,10 @@ async fn run_inner(
                     Command::Reconnect => {if let Session::Join(lobby) = &session {lobby.reconnect();} Ok(())}
                     #[cfg(test)]
                     Command::LoseConnection => {if let Session::Join(lobby) = &session {lobby.lose_connection();} Ok(())}
+                    #[cfg(test)]
+                    Command::EndConnection => {if let Session::Join(lobby) = &session {lobby.end_connection();} Ok(())}
+                    #[cfg(test)]
+                    Command::MoveNetwork => {if let Session::Join(lobby) = &session {lobby.move_network();} Ok(())}
                     Command::Failure(error) => {snapshot.activity_error(error); Ok(())}
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
@@ -755,8 +775,10 @@ async fn run_inner(
                         snapshot.states.fill(None); snapshot.workout_clock = None;
                     }
                 }
+                // Reconnecting cannot work until it is back; a new reply can (#536).
+                Some(LobbyEvent::Moved) => snapshot.moved = true,
                 Some(LobbyEvent::Reconnected) => {
-                    snapshot.reconnecting = None; handover.reconnected(); previews.failed = None;
+                    snapshot.reconnecting = None; snapshot.moved = false; handover.reconnected(); previews.failed = None;
                     // A download the lost connection cut off starts again on the new one.
                     if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
                 }
@@ -796,7 +818,9 @@ async fn run_inner(
                 Some(LobbyEvent::State {id,state}) => {snapshot.states[usize::from(id.value())] = Some((state,std::time::Instant::now()));}
                 Some(LobbyEvent::Expired(name)) => {snapshot.admitting = snapshot.admitting.saturating_sub(1); snapshot.refuse(Refusal::Unreached); snapshot.refused = name;}
                 Some(LobbyEvent::Failed {peer,error,operation}) => snapshot.report(Kind::GroupRide,format!("{operation} (rider {peer:?}): {error}")),
-                Some(LobbyEvent::HostLeft)|None => {if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
+                // Recorded before a takeover is tried, which may fail and end the group too (#536).
+                Some(LobbyEvent::HostLeft)|None => {if let Session::Join(l) = &session {snapshot.ending = l.ending();}
+                    if !handover.lost() {end(snapshot);updates.send_replace(snapshot.clone());return Ok(());}}
             },
             event = handover.next() => {
                 match handover.event(&session,snapshot,event) {
@@ -969,6 +993,7 @@ fn end(snapshot: &mut Snapshot) {
     snapshot.speaker_test = false;
     snapshot.microphone_voice_detected = false;
     snapshot.reconnecting = None;
+    snapshot.moved = false;
     snapshot.away = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.speaking = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.voice = false;

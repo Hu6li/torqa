@@ -612,7 +612,8 @@ func _group_activity() -> void:
 	var line: String = group._next_step._line.text
 	_check(line.contains("4:32"), "and says how long: %s" % line)
 	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
-	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
+	_check(sam.text == "Away 0:00", "a friend whose seat is held: %s" % sam.text)
+	GroupAwayChecks.check(group, away, _check)
 	group._show_status({"host": false, "phase": "riding", "roster": away})
 	_check(not group._next_step._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")

@@ -252,7 +252,7 @@ async fn ride_loop(
                     }
                     Some(Input::Line(line)) if !line.is_empty() && start.is_none() => if let Group::Host(lobby) = group {
                         match Reply::from_code(&line, args.network.options().policy) {
-                            Ok(reply) => match lobby.admit(&reply).await { Ok(()) => println!("Reply admitted; waiting for the rider to join."), Err(error) => eprintln!("Reply refused: {error}"), },
+                            Ok(reply) => match lobby.admit(&reply).await { Ok(_) => println!("Reply admitted; waiting for the rider to join."), Err(error) => eprintln!("Reply refused: {error}"), },
                             Err(error) => eprintln!("Reply refused: {error}"),
                         }
                     },
@@ -294,6 +294,9 @@ impl Others {
             }
             LobbyEvent::Expired(name) => {
                 println!("{name}'s connection never arrived; ask for a fresh reply.");
+            }
+            LobbyEvent::Moved => {
+                println!("This computer's network changed; join again with a fresh reply.");
             }
             LobbyEvent::Failed {
                 peer,

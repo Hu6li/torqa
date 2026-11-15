@@ -70,7 +70,7 @@ profile plain or coloured by gradient, as chosen in the rider's profile.
 | ![First-person camera](images/app/ride-first-person.jpg) | ![Structured workout](images/workouts/structured-ride.png) |
 | ![Overview camera](images/app/ride-overview.jpg) | ![Planned workouts](images/workouts/planned.png) |
 | ![Video course](images/readme/video-course.jpg) | ![Workout editor](images/workouts/editor.png) |
-| ![A moment of the ride: a climb record on its card](images/app/ride-moment.png) | |
+| ![A moment of the ride: a climb record on its card](images/app/ride-moment.png) | ![A friend's group connection dropped, on the same card in red](images/app/ride-group-away.png) |
 | ![Group riders, map markers and gaps](images/groups/riders.jpg) | ![Assisted group ride summary](images/groups/assisted-summary.png) |
 
 Video footage: “Le petit Menglonnais” by [Fred Van Gestel](https://cycling.vangestel.online/indoor/videos/france/le-petit-menglonnais/),

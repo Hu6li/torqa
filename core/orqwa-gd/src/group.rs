@@ -72,6 +72,8 @@ pub(super) fn status(app: &App) -> VarDictionary {
             "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent)),
             // Their connection was lost and their seat is held while they reconnect (#434).
             "away"=>status.away[id],
+            // How long they have been away, for everyone to see (R249).
+            "away_s"=>app.group_away_for(id).map_or(0.0,|away|away.as_secs_f64()),
             "fallback_eligible"=>status.fallback_eligible(id),
             "ping_ms"=>status.ping(id).map_or(-1,|rtt|i64::try_from(rtt.as_millis()).unwrap_or(i64::MAX).max(1)),
             // Heard speaking now; this rider too, while their microphone sends speech.
@@ -91,7 +93,11 @@ pub(super) fn status(app: &App) -> VarDictionary {
     // Asked to stand in as organizer if the organizer is lost; the organizer may pick another.
     "standby_offer"=>status.standby_offer,"can_choose_fallback"=>status.can_choose_fallback(),"preferred_fallback"=>preferred_fallback,"preferred_fallback_accepted"=>status.preferred_fallback_accepted,"fallback_consent"=>status.fallback_consent.map_or(String::new(),|epoch|epoch.to_string()),
     // How long this rider keeps trying to reconnect, 0 while connected (#434).
+    // The network under this rider changed: a new reply rather than reconnecting (#536).
+    "moved"=>status.moved,
     "reconnect_s"=>status.reconnecting.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),
+    // Joining again with the same invitation, while a ride may go on alone (#536).
+    "can_rejoin"=>app.group_can_rejoin(),"ending"=>match status.ending {orqwa_app::group::Ending::Removed=>"removed",orqwa_app::group::Ending::Ended=>"ended",orqwa_app::group::Ending::Lost=>""},"rides_alone"=>app.group_rides_alone(),"waits_for_ride"=>app.group_waits_for_ride(),"invitation"=>app.group_joined_with(),
     // Names the organizer's preview, "" without one (#418); `group_preview_data()` has it.
     "preview"=>status.preview.as_ref().map_or_else(String::new,|shown|shown.id.basename())}
 }

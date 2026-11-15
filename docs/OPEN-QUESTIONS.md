@@ -3,6 +3,24 @@
 Things to review or decide together. Newest first; remove entries once settled. Work that is
 decided but not done goes into a GitHub issue instead.
 
+## Group endings a friend cannot tell (2026-11-15)
+
+Friends read whether the organizer removed them or ended the group from QUIC close codes
+(R248, [Group ride connections](group-connections.md#how-a-connection-ends)). A close packet
+can be lost, and an organizer who crashes or loses the internet for good sends none: friends
+then try to reconnect for five and a half minutes and are offered a Join again nobody answers.
+To decide:
+
+- **Ending the group in the protocol:** the organizer tells everyone the group ends and waits
+  briefly for each to confirm before closing. Covers lost close packets, not crashes, and
+  needs a new protocol version.
+- **Asking before offering Join again:** the friend's ORQWA tries the organizer's invitation
+  once and offers Join again only if it answers. Covers crashes too, but costs a minute of
+  waiting and the organizer's computer only answers while a reply is pending.
+- **A relay** for networks that cannot connect directly at all. ADR 0035 has none, as it
+  needs a service someone runs (R2, R3): whether to offer one anyway, who runs it, and what
+  it may see.
+
 ## Battery levels are unchecked on the devices (R97, 2026-10-19)
 
 The Devices tab tells a battery level wherever a device has Bluetooth's Battery Service or,

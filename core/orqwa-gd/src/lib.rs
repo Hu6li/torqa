@@ -298,6 +298,14 @@ impl OrqwaApp {
     #[signal]
     fn moment(info: VarDictionary);
 
+    /// Someone's connection to the group dropped, came back or ended (R249): `kind` ("away",
+    /// "back", "gone", "lost", "reconnected" or "ended"), the friends' `names` together, none
+    /// for this rider, whether `everyone` else dropped at the organizer, for "back" the
+    /// longest any was away (`away_s`), and for "ended" the `ending` ("lost", "removed" or
+    /// "ended").
+    #[signal]
+    fn group_connection(info: VarDictionary);
+
     /// The ride was saved as a FIT file.
     #[signal]
     fn ride_saved(path: GString);
@@ -2114,7 +2122,8 @@ impl OrqwaApp {
         let text = invite.to_string();
         self.command(|app| app.group_open((!text.is_empty()).then_some(text), options))
     }
-    /// Inspects a lobby invitation offline, before showing connection choices.
+    /// Inspects a lobby invitation offline, before showing connection choices. One it cannot
+    /// read from another ORQWA version gives only `version`, "newer" or "older" (#536).
     #[func]
     #[allow(clippy::needless_pass_by_value)] // Godot binding parameters are passed by value
     fn group_invitation(&mut self, invite: GString) -> VarDictionary {
@@ -2124,7 +2133,12 @@ impl OrqwaApp {
             }
             Err(error) => {
                 self.report_failure(&Failure::from(error));
-                VarDictionary::new()
+                // From another version, the rider reads which side must update (#536).
+                match orqwa_app::group::connection::invitation_version(&invite.to_string()) {
+                    Some(std::cmp::Ordering::Greater) => vdict! {"version"=>"newer"},
+                    Some(std::cmp::Ordering::Less) => vdict! {"version"=>"older"},
+                    _ => VarDictionary::new(),
+                }
             }
         }
     }
@@ -2304,6 +2318,12 @@ impl OrqwaApp {
     #[func]
     fn group_reconnect(&mut self) -> bool {
         self.command(|app| app.group_reconnect())
+    }
+    /// Joins the group again with the same invitation once the connection has ended, with a
+    /// fresh reply for the organizer; a ride going on keeps going (#536).
+    #[func]
+    fn group_rejoin(&mut self) -> bool {
+        self.command(App::group_rejoin)
     }
     /// Removes an unavailable participant on the host.
     #[func]
@@ -4127,6 +4147,29 @@ impl OrqwaApp {
                 self.signals().group_started().emit(on_course, workout);
             }
             AppEvent::GroupReturnedToLobby => self.signals().group_returned().emit(),
+            AppEvent::GroupConnection(notice) => {
+                use orqwa_app::group::{ConnectionNotice, Ending};
+                let ending = match &notice {
+                    ConnectionNotice::Ended(Ending::Removed) => "removed",
+                    ConnectionNotice::Ended(Ending::Ended) => "ended",
+                    ConnectionNotice::Ended(Ending::Lost) => "lost",
+                    _ => "",
+                };
+                let away = match &notice {
+                    ConnectionNotice::Back(_, away) => away.as_secs_f64(),
+                    _ => 0.0,
+                };
+                let everyone = matches!(notice, ConnectionNotice::Away { everyone: true, .. });
+                let names: PackedStringArray = notice
+                    .names()
+                    .iter()
+                    .map(|name| GString::from(name.as_str()))
+                    .collect();
+                self.signals().group_connection().emit(&vdict! {
+                    "kind"=>notice.key(),"names"=>&names,"everyone"=>everyone,"ending"=>ending,
+                    "away_s"=>away
+                });
+            }
             AppEvent::DevicesFound(devices) => {
                 self.signals().devices_found().emit(&device_array(devices));
             }

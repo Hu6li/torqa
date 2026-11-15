@@ -3,7 +3,8 @@ extends PanelContainer
 ## A moment of the ride (R124) on a card at the top centre over the HUD: its figure large, its
 ## line below. It slides in with a short burst of particles in the brand blue and the zone
 ## colours, stays a few seconds and slides out; moments that come meanwhile wait their turn,
-## so two never cover each other.
+## so two never cover each other. Group connections (R249) come the same way, in red when one
+## dropped and green when it is back, with the burst in that colour.
 
 ## A card was shown with `text`, e.g. for the overlay to show it in its bar.
 signal shown(text: String)
@@ -16,28 +17,28 @@ const WIDTH: float = 460.0
 const SIDE: float = 24.0
 const PADDING: float = 16.0
 
-## What is still to show: `[figure, line]` pairs.
-var _queue: Array[PackedStringArray] = []
+## What is still to show: `[figure, line, accent]`.
+var _queue: Array[Array] = []
 var _figure: Label = UiTheme.value(36)
 var _line: Label = Label.new()
 var _tween: Tween
 var _burst: CPUParticles2D = CPUParticles2D.new()
+var _style: StyleBoxFlat = UiTheme.panel(0.88)
+## The burst's colours for the brand's accent: it and the zone colours.
+var _celebration: Gradient = Gradient.new()
 
 
 func _init() -> void:
 	hide()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style: StyleBoxFlat = UiTheme.panel(0.88)
-	style.border_color = Color(UiTheme.ACCENT, 0.7)
-	style.set_border_width_all(0)
-	style.border_width_bottom = 3
-	style.set_content_margin_all(PADDING)
-	add_theme_stylebox_override("panel", style)
+	_style.set_border_width_all(0)
+	_style.border_width_bottom = 3
+	_style.set_content_margin_all(PADDING)
+	add_theme_stylebox_override("panel", _style)
 	var box: VBoxContainer = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_figure.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_figure.add_theme_color_override("font_color", UiTheme.ACCENT)
 	box.add_child(_figure)
 	_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -49,11 +50,11 @@ func _init() -> void:
 	_build_burst()
 
 
-## Shows `line` under `figure` (none if empty), after the cards before it.
-func tell(figure: String, line: String) -> void:
+## Shows `line` under `figure` (none if empty), in `accent`, after the cards before it.
+func tell(figure: String, line: String, accent: Color = UiTheme.ACCENT) -> void:
 	if line.is_empty():
 		return
-	_queue.append(PackedStringArray([figure, line]))
+	_queue.append([figure, line, accent])
 	if not is_showing():
 		_next()
 
@@ -84,10 +85,20 @@ func _next() -> void:
 	if _queue.is_empty():
 		hide()
 		return
-	var card: PackedStringArray = _queue.pop_front()
-	_figure.text = card[0]
-	_figure.visible = not card[0].is_empty()
-	_line.text = card[1]
+	var card: Array = _queue.pop_front()
+	var figure: String = card[0]
+	var line: String = card[1]
+	var accent: Color = card[2]
+	_figure.text = figure
+	_figure.visible = not figure.is_empty()
+	_figure.add_theme_color_override("font_color", accent)
+	_style.border_color = Color(accent, 0.7)
+	if accent == UiTheme.ACCENT:
+		_burst.color_initial_ramp = _celebration
+	else:
+		_burst.color_initial_ramp = Gradient.new()
+		_ramp(_burst.color_initial_ramp, [accent, accent.lightened(0.3), accent.darkened(0.2)])
+	_line.text = line
 	# A wrapping label is measured at the width it has: before its first layout that is none,
 	# and a card measured then wraps every word and runs off the screen.
 	var width: float = minf(WIDTH, get_parent_area_size().x - 2.0 * SIDE)
@@ -98,7 +109,7 @@ func _next() -> void:
 	position = Vector2((get_parent_area_size().x - size.x) / 2.0, above)
 	modulate.a = 0.0
 	show()
-	shown.emit(card[1] if card[0].is_empty() else "%s  ·  %s" % [card[0], card[1]])
+	shown.emit(line if figure.is_empty() else "%s  ·  %s" % [figure, line])
 	_burst.position = Vector2(size.x / 2.0, size.y)
 	_burst.emission_rect_extents = Vector2(size.x / 2.0, 2.0)
 	_burst.restart()
@@ -129,20 +140,22 @@ func _build_burst() -> void:
 	_burst.gravity = Vector2(0.0, 160.0)
 	_burst.scale_amount_min = 4.0
 	_burst.scale_amount_max = 7.0
-	var colors: Gradient = Gradient.new()
-	colors.offsets = PackedFloat32Array()
-	colors.colors = PackedColorArray()
 	var palette: Array[Color] = [UiTheme.ACCENT]
 	for zone: Array in UiTheme.POWER_ZONES.slice(1):
 		var color: Color = zone[1]
 		palette.append(color)
-	for i: int in range(palette.size()):
-		colors.add_point(float(i) / (palette.size() - 1), palette[i])
-	# Each particle takes one colour at random along the ramp.
-	colors.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
-	_burst.color_initial_ramp = colors
+	_ramp(_celebration, palette)
 	var fade: Gradient = Gradient.new()
 	fade.set_color(0, Color.WHITE)
 	fade.set_color(1, Color(1, 1, 1, 0))
 	_burst.color_ramp = fade
 	add_child(_burst)
+
+
+# Each particle takes one colour at random along the ramp.
+func _ramp(colors: Gradient, palette: Array[Color]) -> void:
+	colors.offsets = PackedFloat32Array()
+	colors.colors = PackedColorArray()
+	for i: int in range(palette.size()):
+		colors.add_point(float(i) / (palette.size() - 1), palette[i])
+	colors.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT

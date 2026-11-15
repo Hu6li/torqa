@@ -1,11 +1,15 @@
 //! App group lobbies: owned background networking and local course preparation.
 
 use crate::{App, AppError, AppEvent, DescentMode, Failure, GhostChoice, Kind, Workout};
+pub use notices::ConnectionNotice;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
-use orqwa_net::activity::{Assistance, Selection};
+use orqwa_net::activity::{Assistance, ContentId, CourseKey, Selection};
 use orqwa_net::code::MAX_PASTE_BYTES;
 pub use orqwa_net::link::ConnectOptions;
+use orqwa_net::link::Credential;
+/// Why a friend's group ended: lost, or the organizer removed them or ended it (#536).
+pub use orqwa_net::link::Ending;
 /// What a rider preparing the activity is doing (#419).
 pub use orqwa_net::lobby::Stage;
 use orqwa_net::lobby::{RideProgress, Rider, WorkoutClock};
@@ -19,6 +23,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 pub mod connection;
 mod handover;
+mod notices;
 mod preview;
 mod runtime;
 #[cfg(test)]
@@ -52,6 +57,22 @@ pub struct GroupRider {
     pub cadence: Rpm,
     /// Heard speaking now, as their voice plays here.
     pub speaking: bool,
+}
+
+/// Which group activity a ride is: the same course, whatever its file is called, and the
+/// same workout. A rider joining the group again rides on in it rather than start over (#536).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Activity {
+    course: Option<CourseKey>,
+    workout: Option<ContentId>,
+}
+impl Activity {
+    fn of(selection: &Selection) -> Self {
+        Self {
+            course: selection.course_key,
+            workout: selection.workout,
+        }
+    }
 }
 
 /// One coherent presentation of local and remote course positions on the group clock.
@@ -203,6 +224,12 @@ pub struct Snapshot {
     pub reply_expired: bool,
     /// Replies the organizer added whose riders are still connecting.
     pub admitting: u8,
+    /// Once a friend's group has ended, whether the organizer removed them or ended the
+    /// group; then they cannot join again (#536).
+    pub ending: Ending,
+    /// The new organizer's invitation once a fallback took over, for a friend to join again
+    /// with (#536); empty before or for the organizer.
+    pub joined_with: String,
     /// Why the organizer's last pasted reply added nobody.
     pub refusal: Refusal,
     /// Counts refusals, so the same one twice is told twice.
@@ -321,6 +348,9 @@ pub struct Snapshot {
     /// This rider's connection to the organizer was lost: reconnecting by itself until then,
     /// when the organizer gives the seat up (#434).
     pub reconnecting: Option<Instant>,
+    /// While reconnecting, the network under this rider's sockets changed: reconnecting by
+    /// itself cannot work until it is back, but joining again with a new reply can (#536).
+    pub moved: bool,
     /// Riders whose connection was lost, with their seats held while they reconnect (#434).
     pub away: [bool; MAX_RIDERS],
     /// The rider standing by to take over if the organizer is lost (#426).
@@ -346,6 +376,8 @@ impl Default for Snapshot {
             reply_until: None,
             reply_expired: false,
             admitting: 0,
+            ending: Ending::Lost,
+            joined_with: String::new(),
             refusal: Refusal::None,
             refusals: 0,
             refused: String::new(),
@@ -401,6 +433,7 @@ impl Default for Snapshot {
             received: 0,
             total: 0,
             reconnecting: None,
+            moved: false,
             away: [false; MAX_RIDERS],
             fallback: None,
             preferred_fallback: None,
@@ -591,6 +624,28 @@ pub(crate) struct Running {
     effect: orqwa_physics::GroupEffect,
     effect_at: Instant,
     transition: Option<(Instant, orqwa_physics::GroupEffect)>,
+    /// Everyone's connection as last seen, to tell who dropped and came back (R249).
+    seen: notices::Seen,
+    /// The invitation a friend joined with and the certificate they answered it with, to
+    /// join again in the same seat once the connection has ended (#536); `None` for the
+    /// organizer.
+    rejoin: Option<(String, ConnectOptions, Credential)>,
+}
+impl Running {
+    /// The invitation a friend joins again with: the new organizer's once a fallback took
+    /// over (#536), which the joiner hears of only then.
+    fn invitation(&self) -> Option<String> {
+        let (invite, _, _) = self.rejoin.as_ref()?;
+        let snapshot = self.snapshot.borrow();
+        if snapshot.host {
+            return None;
+        }
+        Some(if snapshot.joined_with.is_empty() {
+            invite.clone()
+        } else {
+            snapshot.joined_with.clone()
+        })
+    }
 }
 #[derive(Default)]
 struct VoiceControls {
@@ -656,6 +711,21 @@ impl App {
         if invite.as_ref().is_some_and(|s| s.len() > MAX_PASTE_BYTES) {
             return Err(error("The invitation is too large."));
         }
+        let invite = invite
+            .map(|code| Credential::generate().map(|credential| (code, credential)))
+            .transpose()
+            .map_err(error)?;
+        self.open_group(invite, options)
+    }
+    // Also while a ride goes on, when joining the group again (#536).
+    fn open_group(
+        &mut self,
+        invite: Option<(String, Credential)>,
+        options: ConnectOptions,
+    ) -> Result<(), AppError> {
+        let rejoin = invite
+            .clone()
+            .map(|(code, credential)| (code, options.clone(), credential));
         let (commands, receive) = mpsc::channel(8);
         let (send, snapshot) = watch::channel(Snapshot {
             phase: Phase::Connecting,
@@ -706,8 +776,77 @@ impl App {
             effect: orqwa_physics::GroupEffect::default(),
             effect_at: Instant::now(),
             transition: None,
+            seen: notices::Seen::default(),
+            rejoin,
         });
         Ok(())
+    }
+    /// Whether this friend can join their group again (#536), with the invitation they joined
+    /// with or, after a fallback took over, the new organizer's: the connection to it was
+    /// lost, or the attempt to connect failed. Also while reconnecting, as from a changed
+    /// network only a new reply gets them back. Not once the organizer removed them or ended
+    /// the group, nor as the organizer who took over. A ride going on meanwhile keeps going.
+    #[must_use]
+    pub fn group_can_rejoin(&self) -> bool {
+        self.group.as_ref().is_some_and(|group| {
+            let snapshot = group.snapshot.borrow();
+            group.rejoin.is_some()
+                && !snapshot.host
+                && (snapshot.reconnecting.is_some()
+                    || matches!(snapshot.phase, Phase::Ended | Phase::Failed)
+                        && snapshot.ending == Ending::Lost)
+        })
+    }
+    /// The invitation this friend joins with, the new organizer's after a fallback took over;
+    /// "" for the organizer or without a group.
+    #[must_use]
+    pub fn group_joined_with(&self) -> String {
+        self.group
+            .as_ref()
+            .and_then(Running::invitation)
+            .unwrap_or_default()
+    }
+    /// Joins the group again with the invitation this friend joined with, without leaving
+    /// first (#536): ORQWA makes a fresh reply for the organizer to add, with the same
+    /// certificate, so the organizer gives this rider their old seat back. A ride going on
+    /// keeps its place and recording, and rides on with the group if the group still rides
+    /// the same activity; otherwise the group waits until it ends.
+    ///
+    /// # Errors
+    /// Returns [`AppError`] unless [`Self::group_can_rejoin`], or when the lobby cannot open.
+    pub fn group_rejoin(&mut self) -> Result<(), AppError> {
+        let rejoin = self
+            .group
+            .as_ref()
+            .filter(|_| self.group_can_rejoin())
+            .and_then(|group| {
+                let (_, options, credential) = group.rejoin.clone()?;
+                Some((group.invitation()?, options, credential))
+            });
+        let Some((invite, options, credential)) = rejoin else {
+            return Err(error("Leave the group and ask for a fresh invitation."));
+        };
+        self.group_leave();
+        self.open_group(Some((invite, credential)), options)
+    }
+    /// Whether the group rides another activity than this rider's ride, which goes on
+    /// alone: preparing the group's activity waits until the ride ends (#536).
+    #[must_use]
+    pub fn group_waits_for_ride(&self) -> bool {
+        let Some(group) = &self.group else {
+            return false;
+        };
+        let snapshot = group.snapshot.borrow();
+        !group.launched
+            && self.ride.is_some()
+            && snapshot.selection.is_some()
+            && !self.takes_up_ride(&snapshot)
+    }
+    /// Whether this rider's ride, still going, is the group's `selection`.
+    fn rides(&self, selection: &Selection) -> bool {
+        self.ride.as_ref().is_some_and(|active| {
+            !active.finished && active.group_activity == Some(Activity::of(selection))
+        })
     }
     fn group_command(&self, command: Command) -> Result<(), AppError> {
         self.group
@@ -1243,6 +1382,21 @@ impl App {
         }
         Ok(())
     }
+    /// How long the friend in seat `id` has been away from the group, `None` while connected
+    /// (R249).
+    #[must_use]
+    pub fn group_away_for(&self, id: usize) -> Option<Duration> {
+        self.group.as_ref()?.seen.away(id)
+    }
+    /// Who dropped out of the group and came back since the last update, told during a ride
+    /// like its moments (R249).
+    pub(crate) fn group_connections(&mut self, events: &mut Vec<AppEvent>) {
+        if let Some(group) = &mut self.group {
+            let snapshot = group.snapshot.borrow().clone();
+            let notices = group.seen.notices(&snapshot);
+            events.extend(notices.into_iter().map(AppEvent::GroupConnection));
+        }
+    }
     pub(crate) fn poll_group(&mut self, events: &mut Vec<AppEvent>) {
         let Some(group) = &self.group else {
             return;
@@ -1250,8 +1404,11 @@ impl App {
         let snapshot = group.snapshot.borrow().clone();
         if snapshot.ended_revision > group.returned_revision {
             // Saving and trainer release happen locally; remote controls supply no samples.
-            crate::release_trainer(self.trainer.as_ref());
-            events.extend(self.save_ride(false));
+            // A ride the group has not taken up again goes on alone (#536).
+            if group.launched {
+                crate::release_trainer(self.trainer.as_ref());
+                events.extend(self.save_ride(false));
+            }
             self.cancel_loading();
             if let Some(group) = &mut self.group {
                 group.returned_revision = snapshot.ended_revision;
@@ -1304,7 +1461,13 @@ impl App {
         let Some(group) = &self.group else {
             return;
         };
-        if snapshot.phase == Phase::Preparing && group.prepared != revision {
+        // Joined again while riding (#536): the ride is the group's activity, prepared
+        // already, or it goes on alone and the group's activity waits until it ends.
+        if snapshot.phase == Phase::Preparing && group.prepared != revision && self.ride.is_some() {
+            if self.takes_up_ride(&snapshot) {
+                self.group_prepared(revision);
+            }
+        } else if snapshot.phase == Phase::Preparing && group.prepared != revision {
             if let Some(course) = &snapshot.course {
                 if group.preparing.is_none_or(|(r, _)| r != revision) {
                     events.push(AppEvent::CoursesChanged);
@@ -1352,6 +1515,10 @@ impl App {
     }
 
     fn launch_group(&mut self, snapshot: &Snapshot, revision: u64, events: &mut Vec<AppEvent>) {
+        if self.ride.is_some() {
+            self.ride_on_with_group(snapshot, revision);
+            return;
+        }
         if (!snapshot.late || snapshot.entry.is_some())
             && self.trainer_connected()
             && snapshot.start.is_some_and(|at| Instant::now() >= at)
@@ -1388,6 +1555,7 @@ impl App {
             match result {
                 Ok(()) => {
                     if let Some(active) = &mut self.ride {
+                        active.group_activity = snapshot.selection.as_ref().map(Activity::of);
                         active.assisted =
                             snapshot.assistance.drafting || snapshot.assistance.keep_together;
                         if let Some(entry) = snapshot.entry {
@@ -1419,7 +1587,53 @@ impl App {
         }
     }
 
+    /// Takes the ride going on up in the group joined again (#536). Once the group's
+    /// activity, this ride's, counts as prepared, the rider enters like any friend joining
+    /// late, but keeps their own place on the course and their recording; the group's
+    /// workout step follows from its clock.
+    fn ride_on_with_group(&mut self, snapshot: &Snapshot, revision: u64) {
+        if !self
+            .group
+            .as_ref()
+            .is_some_and(|g| !g.launched && g.prepared == revision)
+            || !self.takes_up_ride(snapshot)
+        {
+            return;
+        }
+        if snapshot.can_enter() {
+            // Without a trainer this waits, as the rider's own entry would.
+            let _ = self.group_enter();
+            return;
+        }
+        if snapshot.entry.is_none() || snapshot.start.is_none_or(|at| Instant::now() < at) {
+            return;
+        }
+        let activity = snapshot.selection.as_ref().map(Activity::of);
+        if let Some(group) = &mut self.group {
+            group.launched = true;
+        }
+        if let Some(active) = &mut self.ride {
+            active.assisted |= snapshot.assistance.drafting || snapshot.assistance.keep_together;
+            active.group_activity = activity;
+        }
+    }
+    /// Whether the group joined again rides this rider's ride, which it can take up (#536):
+    /// friends joining a group that has not started yet start with it instead.
+    fn takes_up_ride(&self, snapshot: &Snapshot) -> bool {
+        snapshot.late && snapshot.selection.as_ref().is_some_and(|s| self.rides(s))
+    }
+    /// Whether this rider rides on alone in a group joined again, until it takes the ride up
+    /// (#536).
+    #[must_use]
+    pub fn group_rides_alone(&self) -> bool {
+        self.ride.is_some() && self.group.as_ref().is_some_and(|group| !group.launched)
+    }
+
     fn sync_group_workout(&mut self, snapshot: &Snapshot) {
+        // A ride going on alone keeps its own workout until the group takes it up (#536).
+        if self.group_rides_alone() {
+            return;
+        }
         if let Some(active) = &mut self.ride {
             // Reconnecting rides on alone; the group's next clock takes the workout back (#434).
             if matches!(snapshot.phase, Phase::Ended | Phase::Failed)
@@ -1469,7 +1683,8 @@ impl App {
                 );
             }
         }
-        if let Some(active) = &mut self.ride {
+        // A ride going on alone feels no group until the group takes it up (#536).
+        if let Some(active) = self.ride.as_mut().filter(|_| group.launched) {
             let state = active.ride.state();
             let pedaling = !active.paused
                 && !active.finished
