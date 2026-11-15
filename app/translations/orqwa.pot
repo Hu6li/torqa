@@ -2911,6 +2911,10 @@ msgstr ""
 msgid "Reading route"
 msgstr ""
 
+#: core/orqwa-app/src/import.rs
+msgid "Reading the saved world"
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd app/ui/group_pill.gd
 msgid "Ready"
 msgstr ""

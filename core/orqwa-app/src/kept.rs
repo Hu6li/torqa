@@ -267,6 +267,7 @@ mod tests {
 
     use super::*;
     use crate::AppEvent;
+    use crate::import::LoadStage;
     use crate::tests::{run_until, temp_dir, write_route};
 
     /// Updates `app` until `done` holds, as the kept worlds are written in the background.
@@ -490,6 +491,56 @@ mod tests {
         // Turned off, they are all being deleted.
         app.set_keeps_worlds(false).unwrap();
         assert_eq!(app.kept_worlds(), Vec::new());
+        app.shutdown();
+    }
+
+    /// The steps of making `course`'s world reported while it is opened, in order.
+    fn steps(app: &mut App, course: &Path) -> Vec<(LoadStage, usize, usize)> {
+        app.open_course(course.to_owned());
+        app.build_world();
+        run_until(app, |e| matches!(e, AppEvent::WorldReady { .. }))
+            .into_iter()
+            .filter_map(|e| match e {
+                AppEvent::LoadProgress { stage, done, total }
+                    if matches!(stage, LoadStage::KeptWorld | LoadStage::World) =>
+                {
+                    Some((stage, done, total))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reading_a_kept_world_and_building_a_deleted_one_show_as_such() {
+        let dir = temp_dir("kept-progress");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_keeps_worlds(true).unwrap();
+        let course = prepare(&mut app, &dir);
+        let keeper = app.keeper();
+        let fingerprint = course::fingerprint(&course).unwrap();
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+
+        let read = steps(&mut app, &course);
+        assert_eq!(read.first(), Some(&(LoadStage::KeptWorld, 0, 1)));
+        assert_eq!(read.last(), Some(&(LoadStage::KeptWorld, 1, 1)));
+        assert!(
+            read.iter()
+                .all(|(stage, ..)| *stage == LoadStage::KeptWorld)
+        );
+
+        // Deleted (#566): looked for, then built with its chunks counted from the start.
+        app.delete_kept_world(&course).unwrap();
+        let built = steps(&mut app, &course);
+        assert_eq!(built.first(), Some(&(LoadStage::KeptWorld, 0, 1)));
+        let building = built.iter().find(|(stage, ..)| *stage == LoadStage::World);
+        let Some(&(_, 0, chunks)) = building else {
+            panic!("no building from the start: {built:?}");
+        };
+        assert!(
+            chunks > 1,
+            "the world's chunks, not a placeholder: {built:?}"
+        );
         app.shutdown();
     }
 

@@ -25,6 +25,8 @@ pub enum LoadStage {
     CourseMap,
     /// Finding the countries the route passes (#230).
     Countries,
+    /// Reading the course's world kept from an earlier ride (R101).
+    KeptWorld,
     /// Building the 3D world.
     World,
 }
@@ -40,6 +42,7 @@ impl LoadStage {
             Self::Elevation => "Correcting elevations",
             Self::CourseMap => "Downloading the course map",
             Self::Countries => "Finding the countries",
+            Self::KeptWorld => "Reading the saved world",
             Self::World => "Building 3D world",
         }
         // i18n-end
@@ -49,7 +52,7 @@ impl LoadStage {
     #[must_use]
     pub fn unit(self) -> &'static str {
         match self {
-            Self::Route => "files",
+            Self::Route | Self::KeptWorld => "files",
             Self::Map | Self::CourseMap => "tiles",
             Self::Countries => "steps",
             Self::Elevation => "points",
