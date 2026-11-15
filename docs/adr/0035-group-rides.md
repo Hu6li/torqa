@@ -492,6 +492,32 @@ fails after the organizer ended the group still offers none, and cleared once it
 How connecting, reconnecting, joining again and every ending fit together, and the issues
 left, is summarized in [Group ride connections](../group-connections.md).
 
+**Changed networks.** A joiner's sockets are bound to the addresses it gathered, so when its
+network changes they send nothing that arrives, and reconnecting by itself cannot work, while
+the organizer notices only from the 30 s idle timeout. The joiner now checks every two seconds
+whether any of those addresses is still on the computer; once none is, it closes the link for
+a reconnection at once, stops sending reconnection attempts from the dead sockets, and tells
+the app (`LobbyEvent::Moved`), which offers Join again. Join again is offered while
+reconnecting anyway: a new reply, from fresh sockets, with the same certificate. The host
+accepts it also for a certificate it still counts as connected, when it brings new addresses:
+the lobby closes the stale connection for a reconnection, so the seat is held and the hold
+probes the new addresses (`Added::Held`). The host records where each connection comes from,
+so only a reply that shares no address with those is news; fresh sockets have fresh ports. The
+same reply again, or one from where the rider already connects, stays a replay. A held seat
+admits its certificate anyway, so where the organizer's network lets the new address in, the
+friend is back before the organizer adds the reply. A fresh joiner
+lobby taking a held seat back accepts the host's `Rejoined` and asks for entry again, which the
+host now answers for a seat that entered before; riders report their own positions, so that
+grants nothing new. The app takes the ride up where it is, as after any Join again.
+
+**A fallback that lost its own network.** A standby fallback took over once its link to the
+organizer had been lost for half a minute and every rider it still reached over standby links
+had reported losing the organizer too. Cut off itself, it reached nobody, so the condition held
+with no evidence at all, and in a group of two the organizer, who saw everyone else away,
+accepted the takeover once the fallback was back. A timed-out takeover now needs at least one
+rider who reaches the fallback and lost the organizer; only an organizer who left for good lets
+a fallback take over alone (R251).
+
 **Other versions.** Everyone in a group needs the same ORQWA version, and the codes say which
 one made them. An invitation from a newer or older one now says which side must update,
 instead of only that ORQWA could not join with it.

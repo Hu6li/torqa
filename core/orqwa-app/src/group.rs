@@ -1,6 +1,7 @@
 //! App group lobbies: owned background networking and local course preparation.
 
 use crate::{App, AppError, AppEvent, DescentMode, Failure, GhostChoice, Kind, Workout};
+pub use notices::ConnectionNotice;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use orqwa_net::activity::{Assistance, ContentId, CourseKey, Selection};
@@ -22,6 +23,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 pub mod connection;
 mod handover;
+mod notices;
 mod preview;
 mod runtime;
 #[cfg(test)]
@@ -346,6 +348,9 @@ pub struct Snapshot {
     /// This rider's connection to the organizer was lost: reconnecting by itself until then,
     /// when the organizer gives the seat up (#434).
     pub reconnecting: Option<Instant>,
+    /// While reconnecting, the network under this rider's sockets changed: reconnecting by
+    /// itself cannot work until it is back, but joining again with a new reply can (#536).
+    pub moved: bool,
     /// Riders whose connection was lost, with their seats held while they reconnect (#434).
     pub away: [bool; MAX_RIDERS],
     /// The rider standing by to take over if the organizer is lost (#426).
@@ -428,6 +433,7 @@ impl Default for Snapshot {
             received: 0,
             total: 0,
             reconnecting: None,
+            moved: false,
             away: [false; MAX_RIDERS],
             fallback: None,
             preferred_fallback: None,
@@ -618,6 +624,8 @@ pub(crate) struct Running {
     effect: orqwa_physics::GroupEffect,
     effect_at: Instant,
     transition: Option<(Instant, orqwa_physics::GroupEffect)>,
+    /// Everyone's connection as last seen, to tell who dropped and came back (R249).
+    seen: notices::Seen,
     /// The invitation a friend joined with and the certificate they answered it with, to
     /// join again in the same seat once the connection has ended (#536); `None` for the
     /// organizer.
@@ -768,13 +776,15 @@ impl App {
             effect: orqwa_physics::GroupEffect::default(),
             effect_at: Instant::now(),
             transition: None,
+            seen: notices::Seen::default(),
             rejoin,
         });
         Ok(())
     }
     /// Whether this friend can join their group again (#536), with the invitation they joined
     /// with or, after a fallback took over, the new organizer's: the connection to it was
-    /// lost, or the attempt to connect failed. Not once the organizer removed them or ended
+    /// lost, or the attempt to connect failed. Also while reconnecting, as from a changed
+    /// network only a new reply gets them back. Not once the organizer removed them or ended
     /// the group, nor as the organizer who took over. A ride going on meanwhile keeps going.
     #[must_use]
     pub fn group_can_rejoin(&self) -> bool {
@@ -782,8 +792,9 @@ impl App {
             let snapshot = group.snapshot.borrow();
             group.rejoin.is_some()
                 && !snapshot.host
-                && matches!(snapshot.phase, Phase::Ended | Phase::Failed)
-                && snapshot.ending == Ending::Lost
+                && (snapshot.reconnecting.is_some()
+                    || matches!(snapshot.phase, Phase::Ended | Phase::Failed)
+                        && snapshot.ending == Ending::Lost)
         })
     }
     /// The invitation this friend joins with, the new organizer's after a fallback took over;
@@ -1370,6 +1381,21 @@ impl App {
             return Err(error("Leave the group before starting a solo ride."));
         }
         Ok(())
+    }
+    /// How long the friend in seat `id` has been away from the group, `None` while connected
+    /// (R249).
+    #[must_use]
+    pub fn group_away_for(&self, id: usize) -> Option<Duration> {
+        self.group.as_ref()?.seen.away(id)
+    }
+    /// Who dropped out of the group and came back since the last update, told during a ride
+    /// like its moments (R249).
+    pub(crate) fn group_connections(&mut self, events: &mut Vec<AppEvent>) {
+        if let Some(group) = &mut self.group {
+            let snapshot = group.snapshot.borrow().clone();
+            let notices = group.seen.notices(&snapshot);
+            events.extend(notices.into_iter().map(AppEvent::GroupConnection));
+        }
     }
     pub(crate) fn poll_group(&mut self, events: &mut Vec<AppEvent>) {
         let Some(group) = &self.group else {

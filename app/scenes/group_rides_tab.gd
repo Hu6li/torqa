@@ -37,7 +37,7 @@ var _joining: GroupJoiningCard = GroupJoiningCard.new()
 var _invite: GroupInviteCard = GroupInviteCard.new()
 var _roster: VBoxContainer = VBoxContainer.new()
 ## Friends whose reply the organizer added and who are still connecting (R195).
-var _admitting: VBoxContainer = VBoxContainer.new()
+var _admitting: GroupAdmissions = GroupAdmissions.new()
 var _add: GroupAddRow = GroupAddRow.new()
 var _next_step: GroupNextStep = GroupNextStep.new()
 var _next_separator: HSeparator
@@ -83,6 +83,7 @@ func bind(orqwa: OrqwaApp) -> void:
 	_voice_controls.bind(orqwa)
 	_connection.bind(orqwa)
 	_add.bind(orqwa)
+	_admitting.bind(orqwa)
 	_next_step.bind(orqwa)
 	if is_node_ready():
 		refresh()
@@ -223,7 +224,6 @@ func _build_roster() -> void:
 	_label(card, tr("Your group"), 20)
 	_roster.add_theme_constant_override("separation", 12)
 	card.add_child(_roster)
-	_admitting.add_theme_constant_override("separation", 12)
 	card.add_child(_admitting)
 	card.add_child(_add)
 	_next_separator = HSeparator.new()
@@ -510,6 +510,10 @@ func _show_status(status: Dictionary) -> void:
 	var reconnect: float = _status.get("reconnect_s", 0.0)
 	if reconnect > 0.0:
 		_stage.text = tr("Connection lost. Reconnecting… Your local ride continues.")
+	# From a changed network only a new reply gets this rider back (R250).
+	if reconnect > 0.0 and _status.get("moved", false):
+		_stage.text = tr("Your network changed. Press Join again and send the new reply to %s.")
+		_stage.text = _stage.text % _organizer_name()
 	_stage.visible = not _stage.text.is_empty()
 	if _leave != null:
 		_leave.visible = phase != "idle"
@@ -589,6 +593,9 @@ func _show_status(status: Dictionary) -> void:
 		listed.erase("speaking")
 		listed.erase("muted")
 		listed.erase("ping_ms")
+		# How long a friend is away counts up; the rows follow it once a second (R249).
+		var away: float = rider.get("away_s", 0.0)
+		listed["away_s"] = floori(away)
 		riders.append(listed)
 	var key: String = (
 		str(riders)
@@ -799,7 +806,9 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 	elif not pills:
 		parts.append(tr("Ready") if ready else tr("Getting ready"))
 	if rider.get("away", false):
-		parts = PackedStringArray([tr("Reconnecting…", "group_rider")])
+		var seconds: float = rider.get("away_s", 0.0)
+		var away: String = GroupAdmissions.clock(seconds)
+		parts = PackedStringArray([tr("Reconnecting…", "group_rider"), tr("away %s") % away])
 	if (
 		me
 		and not (pills and (ready or actionable))
@@ -969,32 +978,14 @@ func _select_activity(course: String, workout: String) -> void:
 	_update()
 
 
-## Friends still connecting after the organizer added their reply, then the seat for the next
-## one while the ride has room (R195).
+## Friends still connecting after the organizer added their reply, and those away with a field
+## for a new reply (R249), then the seat for the next one while the ride has room (R195).
 func _show_admissions(inviting: bool) -> void:
 	var admitting: int = _status.get("admitting", 0) if inviting else 0
-	while _admitting.get_child_count() > admitting:
-		var row: Node = _admitting.get_child(_admitting.get_child_count() - 1)
-		_admitting.remove_child(row)
-		row.queue_free()
-	while _admitting.get_child_count() < admitting:
-		_admitting.add_child(_connecting_row())
 	var roster: Array = _status.get("roster", [])
+	_admitting.show_status(admitting, inviting, roster)
 	_add.visible = inviting and roster.size() + admitting < MAX_RIDERS
 	var refusal: String = _status.get("refusal", "")
 	var refusals: int = _status.get("refusals", 0)
 	var refused: String = _status.get("refused", "")
 	_add.show_refusal(refusal, refusals, refused)
-
-
-func _connecting_row() -> HBoxContainer:
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var slot: CenterContainer = CenterContainer.new()
-	slot.custom_minimum_size = Vector2(36, 36)
-	slot.add_child(Spinner.new(26.0))
-	row.add_child(slot)
-	var label: Label = _label(row, tr("Connecting…"), 17)
-	label.add_theme_color_override("font_color", UiTheme.MUTED)
-	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return row

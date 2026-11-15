@@ -151,6 +151,10 @@ msgstr ""
 msgid "%s is up to date."
 msgstr ""
 
+#: app/ui/group_admissions.gd
+msgid "%s lost the connection %s ago."
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "%s m"
 msgstr ""
@@ -315,7 +319,7 @@ msgstr ""
 msgid "Activity: %s"
 msgstr ""
 
-#: app/ui/group_add_row.gd app/ui/workout_editor.gd
+#: app/ui/group_add_row.gd app/ui/group_admissions.gd app/ui/workout_editor.gd
 msgid "Add"
 msgstr ""
 
@@ -349,6 +353,10 @@ msgstr ""
 
 #: app/scenes/workouts_tab.gd
 msgid "Added to your workouts."
+msgstr ""
+
+#: app/ui/group_admissions.gd
+msgid "Added. Waiting for %s to reconnect…"
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -879,8 +887,12 @@ msgstr ""
 msgid "Connecting to your friends…"
 msgstr ""
 
-#: app/scenes/devices_tab.gd app/scenes/group_rides_tab.gd app/ui/ride_devices.gd
+#: app/scenes/devices_tab.gd app/ui/group_admissions.gd app/ui/ride_devices.gd
 msgid "Connecting…"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Connection lost"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -1751,6 +1763,10 @@ msgstr ""
 msgid "Group connection ended. Your ride continues. Join again when you like."
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "Group ended"
+msgstr ""
+
 #: app/scenes/ride_screen.gd
 msgid "Group ride"
 msgstr ""
@@ -1789,6 +1805,10 @@ msgstr ""
 
 #: app/ui/profile_form.gd
 msgid "Hard effort"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Has left the group."
 msgstr ""
 
 #: app/scenes/world.gd
@@ -1929,6 +1949,10 @@ msgstr ""
 
 #: app/ui/group_invite_card.gd
 msgid "Invite friends"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Is back in the group after %s."
 msgstr ""
 
 #: app/ui/update_dialog.gd
@@ -2117,6 +2141,10 @@ msgstr ""
 
 #: app/scenes/workouts_tab.gd
 msgid "Looking up today's plan…"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Lost the connection. ORQWA keeps their place for five minutes."
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -2543,6 +2571,10 @@ msgstr ""
 msgid "ORQWA keeps each rendered world on this computer after it is built, so rides on that course start right away. A saved world uses about 10 MB per kilometre. If an update changes how the world looks, regenerate it from the course page."
 msgstr ""
 
+#: app/ui/group_admissions.gd
+msgid "ORQWA reconnects them by itself. If their network changed, paste the new reply %s sends you."
+msgstr ""
+
 #: app/scenes/remote_dialog.gd
 msgid "ORQWA remote"
 msgstr ""
@@ -2645,6 +2677,10 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "Pair moments of the video with places on the route."
+msgstr ""
+
+#: app/ui/group_admissions.gd
+msgid "Paste %s's new reply"
 msgstr ""
 
 #: app/ui/group_join_card.gd
@@ -2873,6 +2909,10 @@ msgstr ""
 
 #: app/ui/group_next_step.gd
 msgid "Reconnect now"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Reconnected"
 msgstr ""
 
 #: app/scenes/remote_dialog.gd
@@ -3535,8 +3575,16 @@ msgstr ""
 msgid "The organizer ended the group. Your local ride continues."
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "The organizer ended the group. Your ride continues alone."
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "The organizer removed you from the group. Your local ride continues."
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "The organizer removed you. Your ride continues alone."
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -4075,6 +4123,10 @@ msgstr ""
 msgid "You"
 msgstr ""
 
+#: app/ui/group_notices.gd
+msgid "You are back with the group."
+msgstr ""
+
 #: app/ui/continuation_dialog.gd
 msgid "You haven't finished this course. Would you like to save your place?"
 msgstr ""
@@ -4171,8 +4223,20 @@ msgstr ""
 msgid "Your last 90 days show an FTP of about %d W: critical power, W′ %.1f kJ. Now %d W."
 msgstr ""
 
+#: app/scenes/group_rides_tab.gd app/ui/group_next_step.gd
+msgid "Your network changed. Press Join again and send the new reply to %s."
+msgstr ""
+
 #: app/ui/group_joining_card.gd
 msgid "Your reply"
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Your ride continues alone. Join again in Group Rides."
+msgstr ""
+
+#: app/ui/group_notices.gd
+msgid "Your ride continues. ORQWA reconnects you for up to five minutes."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -4213,6 +4277,10 @@ msgstr ""
 
 #: app/ui/zones_editor.gd
 msgid "and above"
+msgstr ""
+
+#: app/scenes/group_rides_tab.gd
+msgid "away %s"
 msgstr ""
 
 #: app/scenes/devices_tab.gd

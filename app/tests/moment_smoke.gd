@@ -31,6 +31,7 @@ func _run() -> void:
 	_chime()
 	await _card_size()
 	await _card()
+	_group_notices()
 	if not _failed:
 		print("MOMENT SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -137,6 +138,32 @@ func _card() -> void:
 	_check(told.size() == 2, "an empty line is not shown: %s" % [told])
 	card.clear()
 	_check(not card.visible and not card.is_showing(), "cleared")
+	card.queue_free()
+
+
+## Group connections take the card in red when one dropped and green when back (R249).
+func _group_notices() -> void:
+	var away: Array = GroupNotices.card({"kind": "away", "name": "Ben"})
+	var figure: String = away[0]
+	var red: Color = away[2]
+	var bar: String = away[3]
+	_check(figure == "Ben" and red == UiTheme.DANGER, "a dropped friend in red: %s" % [away])
+	_check(bar.begins_with("Ben  ·  "), "the overlay names them: %s" % [away])
+	var back: Array = GroupNotices.card({"kind": "back", "name": "Ben", "away_s": 72.0})
+	var green: Color = back[2]
+	var since: String = back[1]
+	_check(green == UiTheme.SUCCESS, "a friend back in green")
+	_check(since.contains("1:12"), "with how long they were away: %s" % since)
+	var removed: String = GroupNotices.card({"kind": "ended", "ending": "removed"})[1]
+	_check(removed.contains("removed"), "this rider reads why: %s" % removed)
+	var unknown: String = GroupNotices.card({"kind": "joined"})[1]
+	_check(unknown.is_empty(), "nothing for an unknown notice")
+	var card: MomentCard = MomentCard.new()
+	root.add_child(card)
+	card.callv("tell", away.slice(0, 3))
+	var style: StyleBoxFlat = card.get("_style")
+	_check(style.border_color.is_equal_approx(Color(UiTheme.DANGER, 0.7)), "the card in red")
+	card.clear()
 	card.queue_free()
 
 

@@ -96,6 +96,14 @@ pub(super) struct Coordinator {
     retry_at: Option<Instant>,
 }
 
+/// Whether a fallback whose link to the organizer is lost takes over: every rider still
+/// reaching it over standby links (`others`) has told it they lost the organizer too (`lost`).
+/// A fallback that reaches nobody lost its own network rather than the organizer, unless the
+/// organizer left for good (`left`): taking over then, it would lead the group once back.
+const fn takes_over(others: u8, lost: u8, left: bool) -> bool {
+    (others != 0 || left) && others & !lost == 0
+}
+
 impl Coordinator {
     pub(super) fn new(options: ConnectOptions, rider: Rider) -> Self {
         let (notices, receive) = mpsc::channel(1);
@@ -943,6 +951,7 @@ impl Coordinator {
             // Riding on after losing the organizer: the new one's clock arrives next.
             snapshot.workout_clock = None;
             snapshot.reconnecting = None;
+            snapshot.moved = false;
             for id in 0..orqwa_net::state::MAX_RIDERS {
                 snapshot.away[id] = self.away & (1 << id) != 0;
                 // The group goes on without whoever left, the old organizer among them.
@@ -1240,7 +1249,7 @@ impl Coordinator {
         let others = self.connected & !(1 << snapshot.me);
         if lost
             && !self.revealed
-            && others & !self.lost == 0
+            && takes_over(others, self.lost, self.old_lost)
             && let (Some(proof), Some(Session::Host(host))) = (&self.proof, &self.replacement)
         {
             host.take_over(context.epoch, proof.clone(), self.clock)
@@ -1323,6 +1332,20 @@ mod tests {
     use super::*;
     use orqwa_domain::units::Kilograms;
     use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
+
+    #[test]
+    fn a_fallback_takes_over_only_when_the_riders_it_reaches_lost_the_organizer_too() {
+        let (ben, carla) = (1 << 2, 1 << 3);
+        assert!(takes_over(ben | carla, ben | carla, false));
+        assert!(
+            !takes_over(ben | carla, ben, false),
+            "Carla still reaches the organizer"
+        );
+        // Its own network dropped: it reaches nobody, so it must not lead the group once back.
+        assert!(!takes_over(0, 0, false));
+        // The organizer left for good: a fallback alone with them still takes over.
+        assert!(takes_over(0, 0, true));
+    }
 
     #[test]
     fn a_fallback_must_be_reachable_by_everyone_the_group_has() {

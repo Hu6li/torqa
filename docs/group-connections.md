@@ -45,6 +45,15 @@ stalled side closes it with the *reconnect* close code, so neither side takes it
   at once. Their ride goes on alone; voice pauses.
 - Back in time, the friend has the same seat. Otherwise the organizer releases the seat and the
   friend's group ends as lost.
+- **A changed network** (another Wi-Fi, a cable, a new address) leaves the friend's sockets
+  bound to addresses that are gone: nothing they send arrives. ORQWA checks every two seconds,
+  starts reconnecting at once rather than after the 30 s timeout, stops sending from the dead
+  sockets and offers Join again (R250). Everyone sees how long a friend is away; the organizer
+  has a field for that friend's new reply.
+- **Join again works while reconnecting**: the organizer adds the new reply, also while it
+  still counts the friend as connected, as long as it brings new addresses; the stale
+  connection is ended, the seat held, and the friend takes it back. Where the organizer's
+  network lets the new address in, the friend is back before the reply is even added.
 
 ## Joining again
 
@@ -67,8 +76,15 @@ the group still rides the same activity. **New reply** after a reply ran out is 
 | The organizer leaves or is lost, with a fallback who agreed | old links end, the fallback takes over | rides on with the new organizer | yes, to the new organizer |
 | The takeover fails | why the old link ended, recorded first | as that cause | only if lost |
 
+During a ride, the ride screen tells each of these on the moments' card with their chime
+(R249): a friend who dropped (*Lost the connection…*), who is back, or who left after
+dropping; this rider losing the group, reconnecting, or their group ending with why. What
+went wrong shows in red, who is back in green. The core compares successive group snapshots
+(`group::notices`), so each change is told once.
+
 A fallback takes over when the organizer leaves or stays unreachable for about a minute
-(R187). Friends move to the links they prepared with it, take its invitation for Join again,
+(R187), and only if the friends it still reaches lost the organizer too: a fallback whose own
+network dropped reaches nobody and does not take over (R251). Friends move to the links they prepared with it, take its invitation for Join again,
 and answer it with the certificate they joined with; the new organizer asks the next fallback.
 
 ## Known issues
@@ -100,7 +116,11 @@ packets and NAT behaviour are reasoned about, not measured.
    that the group waits for their ride to end.
 10. **A takeover's links get one minute** to connect: a friend whose link fails loses the
     takeover and is offered Join again to the new organizer.
-11. **Builds without the close codes.** `REMOVED` and `ENDED` came without a protocol version
+11. **A changed public address alone goes unnoticed.** ORQWA sees a network change only when
+    the computer's own address goes away. A provider or carrier-grade NAT that changes only the
+    public address or port still shows after the 30 s timeout, and reconnecting then fails
+    unless the organizer's side lets the new address in; Join again works as usual.
+12. **Builds without the close codes.** `REMOVED` and `ENDED` came without a protocol version
     change; a version 19 build without them reads a plain close and shows the generic ending.
 
 Deciding about 1 to 3 is in [Open questions](OPEN-QUESTIONS.md#group-endings-a-friend-cannot-tell-2026-11-15).

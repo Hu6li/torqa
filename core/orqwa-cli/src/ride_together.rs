@@ -295,6 +295,9 @@ impl Others {
             LobbyEvent::Expired(name) => {
                 println!("{name}'s connection never arrived; ask for a fresh reply.");
             }
+            LobbyEvent::Moved => {
+                println!("This computer's network changed; join again with a fresh reply.");
+            }
             LobbyEvent::Failed {
                 peer,
                 error,

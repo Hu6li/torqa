@@ -46,6 +46,9 @@ pub const RECONNECT_TRYING: Duration =
     Duration::from_secs(RECONNECT_WINDOW.as_secs() + crate::tls::IDLE_TIMEOUT.as_secs());
 /// The pause between a joiner's attempts to reconnect.
 const RECONNECT_EVERY: Duration = Duration::from_secs(5);
+/// How often a joiner checks that the network under its sockets is still there: a changed
+/// one is told at once rather than after the connection's idle timeout (#536).
+const NETWORK_CHECK: Duration = Duration::from_secs(2);
 type States = [Option<RiderState>; MAX_RIDERS];
 /// A fixed-size roster, indexed by the host-assigned rider number.
 pub type Roster = [Option<Rider>; MAX_RIDERS];
@@ -192,6 +195,9 @@ pub enum LobbyEvent {
     Expired(String),
     /// The host or networking task ended. The local ride continues.
     HostLeft,
+    /// While reconnecting: the network under this rider's sockets changed, so reconnecting by
+    /// itself cannot work until it is back, but a new reply for the organizer can (#536).
+    Moved,
     /// Local networking diagnostics, delivered before departure/end. Never peer-supplied text.
     Failed {
         /// Affected admitted rider, or `None` for the local organizer task.
@@ -957,6 +963,12 @@ impl JoinerLobby {
     pub fn reconnect(&self) {
         self.retry.notify_one();
     }
+    /// Changes the network under this rider's sockets, as moving to another one would (#536).
+    #[cfg(any(test, feature = "testing"))]
+    #[doc(hidden)]
+    pub fn move_network(&self) {
+        current(&self.connection).move_network();
+    }
     /// Loses the connection as a failing network would, without a goodbye (#434).
     #[cfg(feature = "testing")]
     #[doc(hidden)]
@@ -1087,6 +1099,24 @@ fn lost(connection: &Connection, stalled: bool) -> bool {
     connection.lost()
 }
 
+/// Whether the network under `connection`'s sockets changed, checked off the async threads.
+async fn moved(connection: &Connection) -> bool {
+    let connection = connection.clone();
+    tokio::task::spawn_blocking(move || connection.moved())
+        .await
+        .unwrap_or(false)
+}
+
+/// Returns once the network under `connection`'s sockets changed (#536).
+async fn network_changed(connection: &Connection) {
+    loop {
+        tokio::time::sleep(NETWORK_CHECK).await;
+        if moved(connection).await {
+            return;
+        }
+    }
+}
+
 /// What the joiner's actor keeps across reconnections: its channels to the lobby owner and
 /// what the owner was last told about the group.
 struct Link {
@@ -1146,28 +1176,38 @@ struct Rejoin {
 type Rejoined = (Connection, SendStream, RecvStream, Roster);
 impl Rejoin {
     /// Tries again every few seconds, or at once when asked, until `until`; `None` once the
-    /// organizer turned this rider away or the time is up.
+    /// organizer turned this rider away or the time is up. Nothing sent from sockets whose
+    /// network is gone arrives: it then tells the owner once and waits for it (#536).
     async fn until(&self, until: Instant, link: &Link) -> Option<Rejoined> {
+        let mut told = false;
         loop {
             let round = Instant::now();
             if round >= until {
                 return None;
             }
-            match timeout_at(until, self.attempt(link)).await {
-                Ok(Ok(rejoined)) => return Some(rejoined),
-                Ok(Err(LobbyError::Link(LinkError::Replay))) => {
-                    // The seat was released before the organizer's hold could have run out:
-                    // they removed this rider while away (#536).
-                    if Instant::now() + crate::tls::IDLE_TIMEOUT < until {
-                        *link
-                            .ending
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner) = Ending::Removed;
-                    }
-                    return None;
+            let connection = current(&self.current).clone();
+            if moved(&connection).await {
+                if !told {
+                    told = event(&link.controls, LobbyEvent::Moved).is_ok();
                 }
-                Ok(Err(LobbyError::Protocol)) | Err(_) => return None,
-                Ok(Err(_)) => {}
+            } else {
+                match timeout_at(until, self.attempt(link)).await {
+                    Ok(Ok(rejoined)) => return Some(rejoined),
+                    Ok(Err(LobbyError::Link(LinkError::Replay))) => {
+                        // The seat was released before the organizer's hold could have run out:
+                        // they removed this rider while away (#536).
+                        if Instant::now() + crate::tls::IDLE_TIMEOUT < until {
+                            *link
+                                .ending
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                                Ending::Removed;
+                        }
+                        return None;
+                    }
+                    Ok(Err(LobbyError::Protocol)) | Err(_) => return None,
+                    Ok(Err(_)) => {}
+                }
             }
             tokio::select! {
                 () = tokio::time::sleep_until((round + RECONNECT_EVERY).min(until)) => {}
@@ -1212,7 +1252,13 @@ async fn supervise(
 ) {
     let mut resumed = false;
     loop {
-        let result = client_actor(&connection, send, recv, &mut link, resumed).await;
+        let result = tokio::select! {
+            result = client_actor(&connection, send, recv, &mut link, resumed) => result,
+            () = network_changed(&connection) => {
+                connection.close_for_reconnect();
+                Err(LobbyError::Link(LinkError::Timeout))
+            }
+        };
         let stalled = matches!(result, Err(LobbyError::Link(LinkError::Timeout)));
         // Mid-handover, the prepared successor link takes over instead; a standby link waits
         // for a takeover all ride long, so it reconnects too.
@@ -1682,6 +1728,9 @@ async fn host_loop(
             command = commands.recv() => match command {
                 Some(Command::Admit(reply, result)) => {
                     let answer = if prepared.as_ref().is_some_and(|prepared| !prepared.active) { Err(LobbyError::Protocol) } else if !activities.enabled && lock(&shared).start.is_some() { Err(LobbyError::Started) } else { host.admit(&reply).map_err(Into::into) };
+                    // A reply from a friend still counted as connected comes from a changed network:
+                    // their old connection is gone, so its seat is held for them now (#536).
+                    if matches!(answer, Ok(Added::Held)) && let Some(peer) = peers.iter().flatten().find(|peer| peer.connection.client() == Some(reply.client)) {peer.connection.close_for_reconnect();}
                     let _ = result.send(answer);
                 }
                 Some(Command::Start(countdown, result)) => {
@@ -1771,8 +1820,9 @@ async fn host_loop(
                     if let Some(peer) = peers[slot].as_ref().filter(|peer| peer.member == member) {
                         let available = {
                             let mailbox = lock(&shared);
-                            elapsed(mailbox.start).is_some() && !mailbox.entered[slot]
-                                && activities.can_enter(member.rider(), revision)
+                            // Again for a rider who entered before: a fresh lobby taking a held seat back
+                            // from a changed network rides on where it is (#536).
+                            elapsed(mailbox.start).is_some() && activities.can_enter(member.rider(), revision)
                         };
                         let current = (*progress.borrow()).filter(|(_, at)| at.elapsed() <= Duration::from_secs(2))
                             .map(|(current, _)| current).filter(|_| available);
@@ -2161,6 +2211,8 @@ async fn client_actor(
     let mut entered = false;
     // A reconnected rider first learns whether it had entered the running ride (#434).
     let mut rejoined = !resumed;
+    // A held seat is taken back by a fresh lobby too, from a changed network (#536).
+    let mut told_rejoined = false;
     let mut requested = None;
     let mut count = 0_u8;
     let mut control_period = Instant::now();
@@ -2195,7 +2247,8 @@ async fn client_actor(
                     if app_lobby && control_period.elapsed()>=Duration::from_secs(1) {count=0;control_period=Instant::now();}
                     count = count.checked_add(1).filter(|n| *n <= 64).ok_or(LobbyError::Protocol)?;
                     match message.ok_or(LobbyError::Lost)? {
-                        Message::Rejoined(was_entered) if !rejoined => {rejoined = true; entered = was_entered;}
+                        // Fresh, this lobby asks for entry again: it has no ride state to resume.
+                        Message::Rejoined(was_entered) if !told_rejoined => {told_rejoined = true; rejoined = true; if resumed {entered = was_entered;}}
                         Message::Lobby(revision) if app_lobby && revision > 0 && revision >= selection_revision => {
                             start = None; selection_revision = revision; workout_sequence = 0;
                             late = false; entered = false; requested = None;
@@ -3286,6 +3339,42 @@ mod tests {
         host.close().await;
         client_event(&mut ben, |e| matches!(e, LobbyEvent::HostLeft)).await;
         assert_eq!(ben.ending(), Ending::Ended);
+    }
+
+    #[tokio::test]
+    async fn a_rider_whose_network_changed_hears_it_at_once_and_returns_with_a_new_reply() {
+        let mut host = HostLobby::open(
+            Host::lobby("Host", &options()).await.unwrap(),
+            rider("Host"),
+        )
+        .unwrap();
+        let credential = crate::link::Credential::generate().unwrap();
+        let mut anna = join_as(&host, "Anna", &credential).await;
+        let seat = anna.me();
+        // #536: told within a few seconds, not after the connection's idle timeout, and
+        // nothing is sent from sockets whose network is gone.
+        anna.move_network();
+        timeout(Duration::from_secs(8), async {
+            while !matches!(anna.next().await, Some(LobbyEvent::Moved) | None) {}
+        })
+        .await
+        .expect("Anna hears her network changed");
+        host_event(
+            &mut host,
+            |e| matches!(e, LobbyEvent::Away {id} if *id == seat),
+        )
+        .await;
+        // A new reply from her new network, with the same certificate, takes the held seat.
+        drop(anna);
+        let back = join_as(&host, "Anna", &credential).await;
+        assert_eq!(back.me(), seat);
+        host_event(
+            &mut host,
+            |e| matches!(e, LobbyEvent::Back {id} if *id == seat),
+        )
+        .await;
+        drop(back);
+        host.close().await;
     }
 
     #[tokio::test]

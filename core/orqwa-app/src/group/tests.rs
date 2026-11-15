@@ -687,6 +687,53 @@ fn a_removed_friend_or_one_whose_organizer_ended_the_group_cannot_join_again() {
 }
 
 #[test]
+fn a_friend_whose_network_changed_joins_again_while_reconnecting_and_keeps_their_seat() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Riding
+    });
+    let seat = peer.group().me;
+    assert!(
+        !peer.group_can_rejoin(),
+        "a connected friend has nothing to join again"
+    );
+    // #536: reconnecting from sockets whose network is gone cannot work; a new reply can.
+    peer.group_command(Command::MoveNetwork).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        p.group().moved && p.group_can_rejoin() && h.group().away[usize::from(seat)]
+    });
+    assert!(
+        host.group_away_for(usize::from(seat)).is_some(),
+        "everyone sees how long the friend is away"
+    );
+    peer.group_rejoin().unwrap();
+    // Where the organizer's network lets the new address in, as here, the friend is back in
+    // the held seat before the organizer adds anything; otherwise the reply gets them in.
+    wait(&mut host, &mut peer, |_, p| {
+        !p.group().reply.is_empty() || !p.group_rides_alone()
+    });
+    if peer.group_rides_alone() {
+        host.group_admit(&peer.group().reply).unwrap();
+    }
+    wait(&mut host, &mut peer, |h, p| {
+        !p.group_rides_alone() && !h.group().away[usize::from(seat)]
+    });
+    assert_eq!(peer.group().me, seat, "the friend keeps their seat");
+    assert_eq!(
+        host.group().admitting,
+        0,
+        "they came back to it, not as someone new"
+    );
+    assert_eq!(host.group_away_for(usize::from(seat)), None);
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
 fn a_friend_joining_again_while_the_group_rides_something_else_rides_on_alone() {
     let from = Directory::new();
     let to = Directory::new();

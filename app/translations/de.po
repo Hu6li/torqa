@@ -3293,3 +3293,54 @@ msgstr "Nach Steigung: grün bergab, gelb flach, rot bergauf"
 
 msgid "Plain"
 msgstr "Schlicht"
+
+msgid "Lost the connection. ORQWA keeps their place for five minutes."
+msgstr "Verbindung verloren. ORQWA hält den Platz fünf Minuten lang frei."
+
+msgid "Is back in the group after %s."
+msgstr "Ist nach %s wieder in der Gruppe."
+
+msgid "Has left the group."
+msgstr "Hat die Gruppe verlassen."
+
+msgid "Connection lost"
+msgstr "Verbindung verloren"
+
+msgid "Your ride continues. ORQWA reconnects you for up to five minutes."
+msgstr "Deine Fahrt läuft weiter. ORQWA versucht bis zu fünf Minuten lang, dich wieder zu verbinden."
+
+msgid "Reconnected"
+msgstr "Wieder verbunden"
+
+msgid "You are back with the group."
+msgstr "Du bist wieder bei der Gruppe."
+
+msgid "Group ended"
+msgstr "Gruppe beendet"
+
+msgid "Your ride continues alone. Join again in Group Rides."
+msgstr "Deine Fahrt läuft allein weiter. Tritt unter Gruppenfahrten erneut bei."
+
+msgid "The organizer removed you. Your ride continues alone."
+msgstr "Der Organisator hat dich entfernt. Deine Fahrt läuft allein weiter."
+
+msgid "The organizer ended the group. Your ride continues alone."
+msgstr "Der Organisator hat die Gruppe beendet. Deine Fahrt läuft allein weiter."
+
+msgid "%s lost the connection %s ago."
+msgstr "%s hat die Verbindung vor %s verloren."
+
+msgid "Added. Waiting for %s to reconnect…"
+msgstr "Hinzugefügt. Warte, bis %s wieder verbunden ist…"
+
+msgid "ORQWA reconnects them by itself. If their network changed, paste the new reply %s sends you."
+msgstr "ORQWA verbindet von selbst neu. Hat sich das Netzwerk geändert, füge die neue Antwort ein, die %s dir schickt."
+
+msgid "Paste %s's new reply"
+msgstr "Neue Antwort von %s einfügen"
+
+msgid "Your network changed. Press Join again and send the new reply to %s."
+msgstr "Dein Netzwerk hat sich geändert. Klicke auf Erneut beitreten und schicke die neue Antwort an %s."
+
+msgid "away %s"
+msgstr "weg seit %s"

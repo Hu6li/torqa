@@ -115,6 +115,7 @@ func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa.ride_finished.connect(_on_ride_finished, CONNECT_DEFERRED)
 	_orqwa.ride_saved.connect(_on_ride_saved)
 	_orqwa.moment.connect(_on_moment)
+	_orqwa.group_connection.connect(func(n: Dictionary) -> void: _tell.callv(GroupNotices.card(n)))
 	_orqwa.failed.connect(_on_failed)
 	_orqwa.control_requested.connect(_on_control_requested)
 	_group_controls.bind(orqwa)
@@ -722,23 +723,22 @@ func _fit_navigation() -> void:
 	map.custom_minimum_size.y = clampf(available, 64.0, 300.0)
 
 
-## Tells of a moment of the ride (R124) in the rider's voice: on a card, or in the overlay's
-## bar; not at all with the voice off.
+## Tells of a moment of the ride (R124) in the rider's voice; not at all with the voice off.
 func _on_moment(moment: Dictionary) -> void:
-	if not visible or _finished:
-		return
 	var voice: String = _orqwa.profile().get("voice", "casual")
-	if voice == "off":
-		return
-	var line: String = MomentLines.line(moment, voice, _imperial)
-	if is_overlay():
-		_overlay_hud.tell(line)
+	var line: String = "" if voice == "off" else MomentLines.line(moment, voice, _imperial)
+	_tell(MomentLines.figure(moment, _imperial), line)
+
+
+## On a card in `accent`, or as `bar` (else `line`) in the overlay's: a moment or connection (R249).
+func _tell(figure: String, line: String, accent := UiTheme.ACCENT, bar := "") -> void:
+	if visible and not _finished and not line.is_empty() and is_overlay():
+		_overlay_hud.tell(line if bar.is_empty() else bar)
 		_play_chime()
-	else:
-		_moment_card.tell(MomentLines.figure(moment, _imperial), line)
+	elif visible and not _finished:
+		_moment_card.tell(figure, line, accent)
 
 
-## The chime of a moment, unless the app's sounds are off (R125).
 func _build_group_window() -> void:
 	_group_controls.compact = true
 	_group_window.theme = UiTheme.build()
@@ -776,7 +776,7 @@ func _show_group(status: Dictionary) -> void:
 		if offered:
 			var reach: String = status.get("reachability", "")
 			_offer.show_offer(
-				_organizer(status), _group_controls.reach_warning(reach, false), standby
+				GroupNotices.organizer(status), _group_controls.reach_warning(reach, false), standby
 			)
 			_play_chime()
 	_offer.visible = _offer_pending and not is_overlay()
@@ -795,19 +795,12 @@ func _show_listen(status: Dictionary) -> void:
 	_listen.offset_bottom = -bottom
 
 
-static func _organizer(status: Dictionary) -> String:
-	for rider: Dictionary in status.get("roster", []):
-		if rider.get("organizer", false):
-			var rider_name: String = rider.get("name", "")
-			return rider_name
-	return ""
-
-
 func _answer_offer(accept: bool) -> void:
 	_offer_pending = false
 	_orqwa.group_handover_answer(accept)
 
 
+## The chime of a moment, unless the app's sounds are off (R125).
 func _play_chime() -> void:
 	if _orqwa.sounds():
 		_chime.play()

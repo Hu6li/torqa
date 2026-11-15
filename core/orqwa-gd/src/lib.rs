@@ -298,6 +298,13 @@ impl OrqwaApp {
     #[signal]
     fn moment(info: VarDictionary);
 
+    /// Someone's connection to the group dropped, came back or ended (R249): `kind` ("away",
+    /// "back", "gone", "lost", "reconnected" or "ended"), the friend's `name`, "" for this
+    /// rider, for "back" how long they were away (`away_s`), and for "ended" the `ending`
+    /// ("lost", "removed" or "ended").
+    #[signal]
+    fn group_connection(info: VarDictionary);
+
     /// The ride was saved as a FIT file.
     #[signal]
     fn ride_saved(path: GString);
@@ -4139,6 +4146,23 @@ impl OrqwaApp {
                 self.signals().group_started().emit(on_course, workout);
             }
             AppEvent::GroupReturnedToLobby => self.signals().group_returned().emit(),
+            AppEvent::GroupConnection(notice) => {
+                let ending = match &notice {
+                    orqwa_app::group::ConnectionNotice::Ended(ending) => match ending {
+                        orqwa_app::group::Ending::Removed => "removed",
+                        orqwa_app::group::Ending::Ended => "ended",
+                        orqwa_app::group::Ending::Lost => "lost",
+                    },
+                    _ => "",
+                };
+                let away = match &notice {
+                    orqwa_app::group::ConnectionNotice::Back(_, away) => away.as_secs_f64(),
+                    _ => 0.0,
+                };
+                self.signals().group_connection().emit(&vdict! {
+                    "kind"=>notice.key(),"name"=>notice.name(),"ending"=>ending,"away_s"=>away
+                });
+            }
             AppEvent::DevicesFound(devices) => {
                 self.signals().devices_found().emit(&device_array(devices));
             }

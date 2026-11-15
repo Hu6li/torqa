@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::net::{SocketAddr, UdpSocket as StdSocket};
+use std::net::{IpAddr, SocketAddr, UdpSocket as StdSocket};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -77,8 +77,9 @@ pub enum Ending {
 pub enum Added {
     /// A new admission: its rider connects within one connection window, or it expires.
     Waiting,
-    /// The rider's seat is still held for them: they come back by reconnecting, and the
-    /// reply only adds addresses to probe.
+    /// The rider's seat is held for them, or they still count as connected: they come back
+    /// by reconnecting, and the reply only adds addresses to probe. A rider still connected
+    /// is on a network that changed, so the owner ends that connection to hold the seat.
     Held,
 }
 
@@ -219,6 +220,8 @@ struct Local {
     paths: Vec<Path>,
     candidates: Vec<crate::code::Candidate>,
     nat: crate::code::NatObservation,
+    /// Tests stand in for a network that changed under the sockets.
+    moved: AtomicBool,
 }
 
 impl Local {
@@ -233,6 +236,7 @@ impl Local {
             paths: Vec::with_capacity(2),
             candidates: Vec::new(),
             nat: crate::code::NatObservation::None,
+            moved: AtomicBool::new(false),
         };
         for path in sockets {
             let socket = path.socket.into_std().map_err(|_| LinkError::Socket)?;
@@ -271,6 +275,23 @@ impl Local {
                     .is_ok_and(|a| a.is_ipv4() == address.is_ipv4())
             })
             .map(|path| &path.endpoint)
+    }
+
+    /// Whether none of the addresses its sockets are bound to is on this computer any more
+    /// (#536): its network changed, so nothing sent from them arrives, and reconnecting
+    /// cannot work. Loopback, as in tests, never moves.
+    fn moved(&self) -> bool {
+        if self.moved.load(Ordering::Relaxed) {
+            return true;
+        }
+        let bound: Vec<IpAddr> = self
+            .paths
+            .iter()
+            .filter_map(|path| path.endpoint.local_addr().ok())
+            .map(|address| address.ip())
+            .filter(|ip| !ip.is_loopback())
+            .collect();
+        !bound.is_empty() && !discovery::present(&bound)
     }
 
     fn probers(&self) -> Vec<StdSocket> {
@@ -336,7 +357,8 @@ struct LiveConnection {
     /// transport's reason. [`OPEN`], [`LOST`] or [`LEFT`].
     ended: AtomicU8,
     _permit: Option<ConnectionPermit>,
-    _owner: Option<Arc<Local>>,
+    /// Keeps a joiner's sockets open, and tells whether their network changed.
+    owner: Option<Arc<Local>>,
 }
 
 impl Drop for LiveConnection {
@@ -473,6 +495,18 @@ impl Connection {
                 Ending::Ended
             }
             _ => Ending::Lost,
+        }
+    }
+    /// Whether the network under this side's sockets changed (#536), checking this computer's
+    /// addresses: blocking, if briefly.
+    pub(crate) fn moved(&self) -> bool {
+        self.0.owner.as_ref().is_some_and(|local| local.moved())
+    }
+    /// Stands in for a network that changed under this side's sockets.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn move_network(&self) {
+        if let Some(local) = &self.0.owner {
+            local.moved.store(true, Ordering::Relaxed);
         }
     }
     /// Closes a connection that stalled, telling the peer to reconnect rather than leave.
@@ -713,6 +747,21 @@ impl Host {
                         held: false,
                     };
                 }
+                // Still counted as connected, a rider whose reply shares no address with what is
+                // known of them, fresh sockets having fresh ports, sends it from a changed network
+                // (#536): the owner ends the old connection, and the hold probes these too. The
+                // same reply again, or one from where they already connect, stays a replay.
+                Some(entry)
+                    if entry.state == AdmissionState::Used
+                        && targets.iter().all(|target| !entry.targets.contains(target)) =>
+                {
+                    for target in &targets {
+                        if !entry.targets.contains(target) {
+                            entry.targets.push(*target);
+                        }
+                    }
+                    return Ok(Added::Held);
+                }
                 Some(_) => return Err(LinkError::Replay),
                 None if full => return Err(LinkError::Full),
                 None => {
@@ -920,7 +969,12 @@ fn auth_message(invite: &Invite) -> [u8; AUTH_LEN] {
     bytes
 }
 
-fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, Option<Instant>) {
+fn take_credential(
+    shared: &Shared,
+    bytes: &[u8],
+    client: Fingerprint,
+    from: SocketAddr,
+) -> (u8, Option<Instant>) {
     if bytes.len() != AUTH_LEN
         || bytes[0] != 1
         || bytes[1..17] != shared.invite.ride.0
@@ -944,6 +998,10 @@ fn take_credential(shared: &Shared, bytes: &[u8], client: Fingerprint) -> (u8, O
     entry.state = AdmissionState::Used;
     entry.held = false;
     entry.stop.store(true, Ordering::Relaxed);
+    // Where the rider connects from: their reply added later is no news from a changed network.
+    if !entry.targets.contains(&from) {
+        entry.targets.push(from);
+    }
     // A held credential may last minutes; the lobby handshake still gets one connection window.
     (
         ACK_OK,
@@ -963,7 +1021,7 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
     let result = async {
         let (mut send, mut recv) = until(end, quic.accept_bi()).await?;
         let bytes = until(end, recv.read_to_end(AUTH_LEN)).await?;
-        let (ack, expires) = take_credential(&shared, &bytes, client);
+        let (ack, expires) = take_credential(&shared, &bytes, client, quic.remote_address());
         until(end, send.write_all(&[ack])).await?;
         send.finish().map_err(|_| LinkError::Lost)?;
         if ack != ACK_OK {
@@ -983,7 +1041,7 @@ async fn welcome(incoming: quinn::Incoming, shared: Arc<Shared>, permit: Connect
                 deadline: expires,
                 ended: AtomicU8::new(OPEN),
                 _permit: Some(permit),
-                _owner: None,
+                owner: None,
             }));
             // A full/closed queue drops the wrapper, which closes this connection and permit.
             let _ = shared.events.try_send(HostEvent::Joined(connection));
@@ -1216,7 +1274,7 @@ fn live(quic: quinn::Connection, deadline: Instant, local: Arc<Local>) -> Connec
         deadline,
         ended: AtomicU8::new(OPEN),
         _permit: None,
-        _owner: Some(local),
+        owner: Some(local),
     }))
 }
 
@@ -1691,6 +1749,8 @@ mod tests {
         host.admit(&used).unwrap();
         let client = first.connect().await.unwrap();
         let peer = joined(&mut host).await;
+        // The same reply again while connected is a replay; only new addresses mean a changed
+        // network (#536).
         assert!(matches!(host.admit(&used), Err(LinkError::Replay)));
         let pending = joiner(&host).await;
         host.admit(pending.reply()).unwrap();
@@ -1834,8 +1894,13 @@ mod tests {
             host.admit(other.reply()).unwrap();
             others.push(other);
         }
-        // While connected, the same reply admits no second connection.
+        // While connected, the same reply admits no second connection; one from a changed
+        // network, with new addresses, only adds them (#536).
         assert!(matches!(host.admit(&reply), Err(LinkError::Replay)));
+        let mut moved = reply.clone();
+        moved.candidates = joiner(&host).await.reply().candidates.clone();
+        assert_eq!(host.admit(&moved).unwrap(), Added::Held);
+        assert!(matches!(resume.connect().await, Err(LinkError::Timeout)));
         // While the seat is held, a reply for it is welcome even with the table full: the
         // rider who gave up reconnecting a moment early comes back to it, by reconnecting
         // rather than as someone new to wait for (#536).

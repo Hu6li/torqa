@@ -612,7 +612,30 @@ func _group_activity() -> void:
 	var line: String = group._next_step._line.text
 	_check(line.contains("4:32"), "and says how long: %s" % line)
 	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
-	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
+	_check(sam.text == "Reconnecting… · away 0:00", "a friend whose seat is held: %s" % sam.text)
+	# R249, #536: everyone sees how long; from a changed network reconnecting cannot work,
+	# and a new reply can.
+	away[1]["away_s"] = 42.5
+	var moved: Dictionary = {
+		"host": false,
+		"phase": "riding",
+		"reconnect_s": 272.4,
+		"moved": true,
+		"can_rejoin": true,
+		"roster": away,
+	}
+	group._show_status(moved)
+	sam = group._roster.get_child(1).get_child(1).get_child(1)
+	_check(sam.text.contains("0:42"), "how long Sam is away: %s" % sam.text)
+	_check(
+		group._next_step._rejoin.visible and not group._next_step._reconnect.visible,
+		"a changed network joins again rather than reconnecting"
+	)
+	_check(group._next_step._line.text.contains("network changed"), group._next_step._line.text)
+	group._show_status({"host": true, "phase": "riding", "invite": "private", "roster": away})
+	_check(group._admitting._away.get_child_count() == 1, "the organizer can paste a new reply")
+	var told: Label = group._admitting._rows[1]["label"]
+	_check(told.text.contains("Sam") and told.text.contains("0:42"), told.text)
 	group._show_status({"host": false, "phase": "riding", "roster": away})
 	_check(not group._next_step._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")

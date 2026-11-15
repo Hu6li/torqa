@@ -137,7 +137,8 @@ func show_status(
 		or (_action == "enter" and not status.get("can_enter", false))
 	)
 	_retry.visible = can_retry and reconnect <= 0.0
-	_reconnect.visible = reconnect > 0.0
+	# From a changed network only a new reply gets this rider back (#536).
+	_reconnect.visible = reconnect > 0.0 and not status.get("moved", false)
 	_rejoin.visible = rejoin
 	_working.visible = (
 		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
@@ -226,6 +227,11 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 		text = (
 			tr("Trying for another %s. You keep your place in the group.")
 			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
+		)
+	# Reconnecting cannot work from a changed network; a new reply keeps the place (#536).
+	if reconnect > 0.0 and status.get("moved", false):
+		text = (
+			tr("Your network changed. Press Join again and send the new reply to %s.") % organizer
 		)
 	# The countdown replaces readiness here so no new row shifts the course preview (R204).
 	if phase == "countdown" and not late and reconnect <= 0.0:

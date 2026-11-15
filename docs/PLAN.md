@@ -1085,6 +1085,9 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] A friend whose connection has ended joins again with the same invitation and a fresh
   reply, also mid-ride: the ride goes on and is taken up where it is when the group still
   rides it (R248, #536)
+- [x] Dropped and restored group connections told on the moments' card, red and green (R249)
+- [x] A changed network noticed within seconds; Join again while reconnecting, in the same seat;
+  a fallback whose own connection dropped does not take over (R250, R251)
 - [x] A fallback organizer stands by while riding and takes over if the organizer is lost; the
   next one is chosen at once, and the old organizer rejoins as a rider (R187, #426)
 - [x] Voice restarts (reconnect, takeover, handover, device change) keep the microphone as it

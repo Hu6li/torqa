@@ -52,6 +52,9 @@ pub(super) enum Command {
     /// End the connection to the organizer for good, neither removed nor the group ended.
     #[cfg(test)]
     EndConnection,
+    /// Change the network under this rider's sockets, as moving to another one would.
+    #[cfg(test)]
+    MoveNetwork,
     Failure(String),
     Voice(u64, bool, bool, bool, f32),
     Volume(f32),
@@ -602,6 +605,8 @@ async fn run_inner(
                     Command::LoseConnection => {if let Session::Join(lobby) = &session {lobby.lose_connection();} Ok(())}
                     #[cfg(test)]
                     Command::EndConnection => {if let Session::Join(lobby) = &session {lobby.end_connection();} Ok(())}
+                    #[cfg(test)]
+                    Command::MoveNetwork => {if let Session::Join(lobby) = &session {lobby.move_network();} Ok(())}
                     Command::Failure(error) => {snapshot.activity_error(error); Ok(())}
                     Command::Devices => {
                         if scans.is_empty() {scans.spawn(async {tokio::task::spawn_blocking(||orqwa_voice::device::devices().map(|devices|devices.into_iter().take(32).map(|d|(d.id,d.name,d.input,d.output)).collect::<Vec<_>>()).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?});} Ok(())
@@ -770,8 +775,10 @@ async fn run_inner(
                         snapshot.states.fill(None); snapshot.workout_clock = None;
                     }
                 }
+                // Reconnecting cannot work until it is back; a new reply can (#536).
+                Some(LobbyEvent::Moved) => snapshot.moved = true,
                 Some(LobbyEvent::Reconnected) => {
-                    snapshot.reconnecting = None; handover.reconnected(); previews.failed = None;
+                    snapshot.reconnecting = None; snapshot.moved = false; handover.reconnected(); previews.failed = None;
                     // A download the lost connection cut off starts again on the new one.
                     if snapshot.phase == Phase::Downloading || snapshot.can_retry() {download_again(&session,snapshot,&mut jobs,&progress,&request.data).await?;}
                 }
@@ -986,6 +993,7 @@ fn end(snapshot: &mut Snapshot) {
     snapshot.speaker_test = false;
     snapshot.microphone_voice_detected = false;
     snapshot.reconnecting = None;
+    snapshot.moved = false;
     snapshot.away = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.speaking = [false; orqwa_net::state::MAX_RIDERS];
     snapshot.voice = false;

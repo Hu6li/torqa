@@ -527,6 +527,16 @@ func _run() -> void:
 	print("saved ride moment")
 	var moment_card: MomentCard = moment_screen.get("_moment_card")
 	moment_card.clear()
+	# A friend's group connection dropping and coming back, on the same card (R249).
+	for notice: Dictionary in [
+		{"kind": "away", "name": "Ben"}, {"kind": "back", "name": "Ben", "away_s": 72.0}
+	]:
+		moment_screen.callv("_tell", GroupNotices.card(notice))
+		await create_timer(0.6).timeout
+		var shot: String = "ride-group-%s.png" % notice["kind"]
+		root.get_texture().get_image().save_png(out_dir.path_join(shot))
+		print("saved ", shot)
+		moment_card.clear()
 
 	# A close side view of the rider, for checking the avatar.
 	var rider: Node3D = world.get_node("Rider")
