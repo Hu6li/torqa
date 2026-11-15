@@ -702,3 +702,14 @@ selection still repeats them. The organizer's change is acknowledged by its lobb
 than dropped on a full queue, as only the latest choice counts. Protocol/invitation version 18
 and ALPN `orqwa-group/18` keep older clients from silently missing it. No endpoint, service or
 dependency changes.
+
+### Withdrawing before the start — 2026-11-15
+
+R252 lets the organizer end the selected revision before the countdown, not only during it or
+while riding (#556). The activity actor's end no longer requires a started activity, only the
+current selection's revision, and sends the same `Lobby(ended_revision)` control. Friends
+already took that control before a start: it stops selected-content serving, so their
+downloads end, and their apps cancel world building as for any end. The organizer's app also
+drops a newer choice still being hashed, so nothing ended is shared afterwards. A delayed or
+repeated end still cannot touch a later revision. The control and its meaning are unchanged, so
+no protocol or invitation version change; no endpoint, service or dependency changes.

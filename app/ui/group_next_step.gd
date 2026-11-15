@@ -23,7 +23,8 @@ var _rejoin: Button = Button.new()
 var _layout: Control = Control.new()
 var _line_slot: HBoxContainer = HBoxContainer.new()
 var _progress_slot: Control = Control.new()
-var _action_slot: Control = Control.new()
+## Start and Cancel share it before the countdown; any other button fills it alone.
+var _action_slot: HBoxContainer = HBoxContainer.new()
 ## What the main button does now: `devices`, `start` or `enter`.
 var _action: String = ""
 
@@ -66,9 +67,12 @@ func _ready() -> void:
 	_layout.add_child(_action_slot)
 	_action_slot.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_action_slot.offset_bottom = 48
+	_action_slot.add_theme_constant_override("separation", 10)
 	_main.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_main.pressed.connect(_act)
 	_cancel.text = tr("Cancel")
+	_cancel.tooltip_text = tr("Withdraw the shared course or workout for everyone")
+	_cancel.custom_minimum_size.x = 120
 	UiTheme.danger_button(_cancel)
 	_cancel.pressed.connect(func() -> void: _orqwa.group_end_activity())
 	_retry.text = tr("Retry download")
@@ -82,8 +86,8 @@ func _ready() -> void:
 	for button: Button in [_main, _cancel, _retry, _reconnect, _rejoin]:
 		button.custom_minimum_size.y = 48
 		button.add_theme_font_size_override("font_size", 17)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_action_slot.add_child(button)
-		button.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
 func _act() -> void:
@@ -129,7 +133,13 @@ func show_status(
 	}
 	_main.visible = not _action.is_empty() and not can_retry and reconnect <= 0.0
 	_main.text = labels.get(_action, "")
-	_cancel.visible = host and phase == "countdown" and reconnect <= 0.0
+	# Also before the start, while friends still download or build what is shared (#556).
+	_cancel.visible = (
+		host and (phase == "countdown" or status.get("can_cancel", false)) and reconnect <= 0.0
+	)
+	_cancel.size_flags_horizontal = (
+		Control.SIZE_SHRINK_END if _main.visible else Control.SIZE_EXPAND_FILL
+	)
 	var entering: bool = status.get("entering", false)
 	_main.disabled = (
 		entering

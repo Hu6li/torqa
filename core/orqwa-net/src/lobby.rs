@@ -652,10 +652,11 @@ impl HostLobby {
             .map_err(|_| LobbyError::Lost)?;
         receive.await.map_err(|_| LobbyError::Lost)?
     }
-    /// Ends the current activity for everyone, preserving connections and voice.
+    /// Ends the current activity for everyone, preserving connections and voice. Before the
+    /// countdown this withdraws the selection while riders still download or build it.
     ///
     /// # Errors
-    /// Returns [`LobbyError`] for an obsolete revision, inactive activity or unavailable queue.
+    /// Returns [`LobbyError`] for an obsolete revision, no selection or an unavailable queue.
     pub async fn end_activity(&self, revision: u64) -> Result<(), LobbyError> {
         let (send, receive) = oneshot::channel();
         self.commands

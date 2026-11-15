@@ -115,6 +115,7 @@ static func _lobby_controls(tree: SceneTree, verify: Callable) -> void:
 			"ready": true,
 			"prepared": true,
 			"can_start": true,
+			"can_cancel": true,
 			"preferred_fallback": "Friend",
 			"preferred_fallback_accepted": true
 		},
@@ -123,12 +124,23 @@ static func _lobby_controls(tree: SceneTree, verify: Callable) -> void:
 	group._show_status(status)
 	await _settle(tree)
 	var step: GroupNextStep = group._next_step
+	var slot: Rect2 = step._action_slot.get_global_rect()
 	var start_rect: Rect2 = step._main.get_global_rect()
 	verify.call(
 		step._main.text == TranslationServer.translate("Start group ride"),
 		"the prepared organizer has the Start action"
 	)
+	# #556: what is shared can be withdrawn before anyone presses Start.
+	verify.call(
+		step._cancel.visible and step._cancel.get_global_rect().position.x > start_rect.end.x,
+		"Cancel stands beside Start before the countdown"
+	)
+	verify.call(
+		slot.encloses(start_rect) and slot.encloses(step._cancel.get_global_rect()),
+		"Start and Cancel share the action slot"
+	)
 	status["phase"] = "countdown"
+	status["can_cancel"] = false
 	group._show_status(status)
 	await _settle(tree)
 	verify.call(
@@ -140,8 +152,8 @@ static func _lobby_controls(tree: SceneTree, verify: Callable) -> void:
 		"the countdown action says Cancel"
 	)
 	verify.call(
-		step._cancel.get_global_rect().is_equal_approx(start_rect),
-		"Cancel keeps the Start button's place and size"
+		step._cancel.get_global_rect().is_equal_approx(slot),
+		"Cancel takes Start's place and the whole slot"
 	)
 	verify.call(
 		not group._end_activity.visible, "the lobby has no separate end-for-everyone button"

@@ -144,9 +144,10 @@ impl Activities {
         self.announced = (None, None);
         Ok(())
     }
+    /// Ends the selected `revision` for everyone, also before the countdown while riders
+    /// still download or build it (#556).
     pub(super) fn end(&mut self, revision: u64) -> Result<(), LobbyError> {
         if !self.enabled
-            || !self.started
             || self
                 .lobby
                 .selection()

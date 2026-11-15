@@ -147,6 +147,7 @@ static func status(app: OrqwaApp, host: bool, state: String) -> Dictionary:
 		"prepared": prepared,
 		"ready": ready,
 		"can_start": ready and host,
+		"can_cancel": host and state not in ["downloading", "countdown"],
 		"countdown_s": 5,
 		"name": app.courses()[0]["name"],
 		"course_path": app.courses()[0]["path"],

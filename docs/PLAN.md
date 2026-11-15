@@ -1127,6 +1127,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Organizer setup in the lobby (R238): show the fallback choice before Start, remember a
   connected friend's consent immediately, retain it across rides, explain the solo case, and replace Start
   with Cancel in the same action slot during countdown
+- [x] Withdraw a shared course or workout before the start (R252, #556): Cancel beside Start
+  stops friends' downloads and world building and returns the group to the lobby
 - [x] Automatically choose and ask a fallback in the lobby (R239), try another after a decline,
   timeout or departure, retain manual override and consent across rides, and still replace the
   fallback during a ride after the original organizer is lost

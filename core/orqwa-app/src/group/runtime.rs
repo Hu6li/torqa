@@ -581,8 +581,10 @@ async fn run_inner(
                     }
                     Command::Start => start(&session,snapshot).await,
                     Command::End(revision) => async {
-                        if snapshot.host && snapshot.start.is_some() && snapshot.selection.as_ref().is_some_and(|s| s.revision == revision) {
+                        if snapshot.host && snapshot.selection.as_ref().is_some_and(|s| s.revision == revision) {
                             handover.cancel(&session,snapshot)?;
+                            // A newer choice still being hashed would otherwise be shared after the end.
+                            jobs.abort_all(); while jobs.join_next().await.is_some() {}
                             if let Session::Host(lobby) = &session {lobby.end_activity(revision).await.map_err(|error|error.to_string())?;}
                         }
                         Ok(())
