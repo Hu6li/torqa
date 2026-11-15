@@ -17,6 +17,8 @@ const VIEWS: Array = [
 	["chase", Vector3(0.6, 1.9, 4.2), Vector3(0.0, 1.0, -0.4), 200.0],
 	["face", Vector3(0.7, 1.4, -1.6), Vector3(0.0, 1.25, -0.35), 120.0],
 	["head", Vector3(-0.75, 1.55, 0.45), Vector3(0.0, 1.3, -0.4), 160.0],
+	["kit-back", Vector3(0.0, 1.32, 1.2), Vector3(0.0, 1.04, -0.08), 160.0],
+	["kit-back-standing", Vector3(0.0, 1.32, 1.2), Vector3(0.0, 1.04, -0.08), 90.0, false, 1.0],
 	["helmet-side", Vector3(0.6, 0.0, 0.0), Vector3.ZERO, 0.0],
 	["helmet-rear", Vector3(0.0, 0.0, 0.6), Vector3.ZERO, 0.0],
 	["lean", Vector3(0.0, 1.6, 4.0), Vector3(0.0, 0.9, -0.4), 60.0, true],
@@ -47,12 +49,16 @@ func _run() -> void:
 	var out: String = OS.get_environment("OUT_DIR")
 	DirAccess.make_dir_recursive_absolute(out)
 	var gallery: String = OS.get_environment("GALLERY")
+	var season: String = OS.get_environment("SEASON")
+	var winter: bool = season in ["Autumn", "Winter"]
+	var suffix: String = "-winter" if winter else ""
 	if not gallery.is_empty():
 		gallery = gallery.path_join("riders")
 		DirAccess.make_dir_recursive_absolute(gallery)
 	for rider: String in RiderAvatar.RIDERS:
 		var avatar: RiderAvatar = RiderAvatar.new()
 		avatar.rider = rider
+		avatar.winter_clothing = winter
 		root.add_child(avatar)
 		var turned: float = 0.0
 		for view: Array in VIEWS:
@@ -94,7 +100,7 @@ func _run() -> void:
 			for frame: int in range(12):
 				await process_frame
 			var image: Image = root.get_texture().get_image()
-			image.save_png(out.path_join(rider + "-" + view_name + ".png"))
+			image.save_png(out.path_join(rider + suffix + "-" + view_name + ".png"))
 			print(
 				(
 					"rendered %s-%s: %d draw calls, %d primitives"
@@ -114,7 +120,7 @@ func _run() -> void:
 			)
 			if not gallery.is_empty():
 				image.resize(GALLERY_SIZE.x, GALLERY_SIZE.y, Image.INTERPOLATE_LANCZOS)
-				image.save_jpg(gallery.path_join(rider + "-" + view_name + ".jpg"), 0.8)
+				image.save_jpg(gallery.path_join(rider + suffix + "-" + view_name + ".jpg"), 0.8)
 		print("rendered ", rider)
 		avatar.free()
 	quit(0)

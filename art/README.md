@@ -345,7 +345,7 @@ bends with the road. Every prop is in the [gallery](#props).
 ## Riders (`riders/`)
 
 `build.py` makes a female and a male rider, each on their own bike, into
-`app/assets/models/riders/rider_<sex>.glb`:
+`app/assets/models/riders/rider_<sex>.glb` and `rider_<sex>_winter.glb`:
 
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/riders/build.py
@@ -408,6 +408,7 @@ Exports are deterministic. `PREVIEW=<dir>` also renders Cycles previews of the r
 |---|---|
 | `skin`, `hair` | skin; hair and ponytail |
 | `jersey`, `sleeve`, `shorts`, `socks`, `shoes` | the kit |
+| `cap`, `gloves`, `tights`, `gilet`, `zip` | thermal kit, gilet shell and its front zip (R245) |
 | `helmet`, `vents`, `glasses` | helmet and its vent slots, sunglasses |
 | `frame` | the frame and fork |
 | `tyre`, `sidewall` | rubber tread and the darker brown casing |
@@ -434,6 +435,21 @@ avatar grows by about 16%, with the same six bike objects and no per-link animat
 `riders.json` is rebuilt with the updated hips, hoods and hubs. Node/bone names and metadata
 fields stay stable, and kept worlds need no regeneration.
 Both riders, from every side, are in the [gallery](#riders).
+
+`winter_kit.py` adds the Autumn/Winter kit: a thin cap under the helmet covering the ears and
+nape, full-finger gloves, full-length tights, long sleeves and a fitted zipped gilet with
+closed hems. The gilet copies the torso's weights and is thinned independently. Winter
+assets are `rider_<sex>_winter.glb`; they retain the same skeleton, bike and fit metadata.
+The hem stays on its authored waist plane after surface fitting. Winter torso weights keep
+thigh motion below the waist, blended through the upper hips, so the gilet and its base layer
+stay smooth through the pedal stroke; the front zip is excluded from back-facing geometry.
+The winter bodies have 41,819 triangles (female) and 40,455 (male), within the short-kit budget.
+`KIT=winter` or `KIT=summer` passed through `scripts/art.sh env … blender …` limits rebuilding;
+the default builds both and validates that their fit metadata agrees.
+`RiderAvatar` maps the winter fabrics to the existing kit palette, with the gilet carrying
+the rider/ghost/group colour. Set `SEASON=Winter` or `Autumn` in the rider renderer; gallery
+filenames gain `-winter` so both kits remain visible. See the
+[seasonal clothing review](../docs/seasonal-rider-clothing.md).
 
 The rider renderer uses the app's atmospheric sky, AgX tone mapping and midday light energy.
 For bike-only close-ups, run `VIEWS="bike-side bike-drive bike-front bike-cockpit"` with
@@ -569,6 +585,18 @@ and route screenshots check their cost and coverage in context.
 | ![power_pole](../docs/images/models/props/power_pole.jpg)<br>`power_pole` | | |
 
 ### Riders
+
+Autumn and Winter share the following thermal kit; the short kit follows below.
+
+| View | Female | Male |
+|---|---|---|
+| side | ![female winter side](../docs/images/models/riders/female-winter-side.jpg) | ![male winter side](../docs/images/models/riders/male-winter-side.jpg) |
+| front | ![female winter front](../docs/images/models/riders/female-winter-front.jpg) | ![male winter front](../docs/images/models/riders/male-winter-front.jpg) |
+| chase | ![female winter chase](../docs/images/models/riders/female-winter-chase.jpg) | ![male winter chase](../docs/images/models/riders/male-winter-chase.jpg) |
+| cap | ![female winter cap](../docs/images/models/riders/female-winter-helmet-side.jpg) | ![male winter cap](../docs/images/models/riders/male-winter-helmet-side.jpg) |
+| standing | ![female winter standing](../docs/images/models/riders/female-winter-standing.jpg) | ![male winter standing](../docs/images/models/riders/male-winter-standing.jpg) |
+| back hem, seated | ![female winter back hem](../docs/images/models/riders/female-winter-kit-back.jpg) | ![male winter back hem](../docs/images/models/riders/male-winter-kit-back.jpg) |
+| back hem, standing | ![female winter standing back hem](../docs/images/models/riders/female-winter-kit-back-standing.jpg) | ![male winter standing back hem](../docs/images/models/riders/male-winter-kit-back-standing.jpg) |
 
 | | Female | Male |
 |---|---|---|

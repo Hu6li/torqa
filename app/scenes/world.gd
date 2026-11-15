@@ -241,6 +241,7 @@ var _ghost_lean: float = 0.0
 var _placed: bool = false
 var _avatar: RiderAvatar
 var _ghost: RiderAvatar
+var _group_riders: GroupRidersWorld
 var _ghost_distance: float = 0.0
 ## The land beyond the corridor: ground and lakes.
 var _horizon_ground: MeshInstance3D
@@ -482,6 +483,10 @@ func _apply_options_over_preset(options: Dictionary) -> void:
 ## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
 func apply_options(options: Dictionary) -> void:
 	_seasons.apply_options(self, _orqwa, _terrain_material, options)
+	var winter_clothing: bool = _seasons.season in ["Autumn", "Winter"]
+	_avatar.winter_clothing = winter_clothing
+	_ghost.winter_clothing = winter_clothing
+	_group_riders.winter_clothing = winter_clothing
 
 
 ## Full upload completion for benchmarks and captures, including background ground LODs.
@@ -499,7 +504,8 @@ func _ready() -> void:
 	# Inherited scenes replace scripts before ready; create owned nodes only once.
 	_avatar = RiderAvatar.new()
 	_ghost = RiderAvatar.new()
-	add_child(GroupRidersWorld.new())
+	_group_riders = GroupRidersWorld.new()
+	add_child(_group_riders)
 	_horizon_ground = MeshInstance3D.new()
 	_horizon_water = MeshInstance3D.new()
 	_railways = MeshInstance3D.new()

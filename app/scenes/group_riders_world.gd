@@ -2,6 +2,12 @@ class_name GroupRidersWorld
 extends Node3D
 ## Owns current group avatars independently of course meshes and the local riding camera.
 
+## All riders shown in this world dress for its locally selected season.
+var winter_clothing: bool = false:
+	set(value):
+		winter_clothing = value
+		for avatar: GroupRiderAvatar in _avatars.values():
+			avatar.winter_clothing = value
 var _avatars: Dictionary[int, GroupRiderAvatar] = {}
 var _visibility: GroupNameplateVisibility
 var _visibility_camera: Camera3D
@@ -36,6 +42,7 @@ func show_riders(peers: Array, delta: float) -> void:
 		if avatar == null:
 			var look: String = peer.get("avatar", "")
 			avatar = GroupRiderAvatar.new(id, generation, look)
+			avatar.winter_clothing = winter_clothing
 			_avatars[id] = avatar
 			add_child(avatar)
 		avatar.show_state(peer, delta)

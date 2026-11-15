@@ -94,6 +94,14 @@ Rider renders include head-relative, orthographic `helmet-side` and `helmet-rear
 at the fit dial at the back, with exhausts either side of the spine above a solid lower band.
 A chase view alone cannot establish that rear layout.
 
+For seasonal rider kit (R245), pass `SEASON=Winter` or `Autumn` to the rider runner. Output
+names gain `-winter`, including gallery JPEGs, leaving the short-kit gallery intact. Inspect
+both fits, the cap beneath the helmet and over the ears, gloves on the hoods, full leg and arm
+coverage, zipped gilet hems and the seated/standing views. Verify season reversal, first-person
+hiding and ghost/group identifying colours with the headless seasons/rider checks.
+Use `kit-back` and `kit-back-standing` to inspect the waist closely from behind on both fits:
+the hem must remain continuous through pedalling, without body intersections or zip fragments.
+
 Standing review uses `standing`, `standing-down`, `standing-back` and `standing-up` at
 quarter-turn crank positions, `standing-rise` halfway out of the saddle, and `standing-chase`.
 Review both fits: the hips must clear the saddle, hands hold the hoods and feet stay on the
