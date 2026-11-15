@@ -12,8 +12,7 @@ signal cancelled
 ## The rider wants a new reply, the last one having run out.
 signal renewed
 
-## The accent style pads two pixels more than the theme, so both buttons ask for its height.
-const BUTTON_SIZE: Vector2 = Vector2(140, 42)
+const BUTTON_SIZE: Vector2 = Vector2(140, 40)
 const TROUBLESHOOTING: String = "https://github.com/ORQWA/ORQWA/wiki/Group-rides#connection-troubleshooting-and-privacy"
 
 var _title: Label = Label.new()
@@ -48,7 +47,13 @@ func _ready() -> void:
 	second.add_child(_left)
 	_renew.text = tr("New reply")
 	_renew.custom_minimum_size = BUTTON_SIZE
-	_renew.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	# The accent style pads more than the theme; with the theme's padding New reply stays the
+	# height of Copy, Show QR code and Cancel.
+	var accent: StyleBoxFlat = UiTheme.accent_button()
+	var plain: StyleBox = _renew.get_theme_stylebox("normal")
+	accent.content_margin_top = plain.content_margin_top
+	accent.content_margin_bottom = plain.content_margin_bottom
+	_renew.add_theme_stylebox_override("normal", accent)
 	_renew.pressed.connect(renewed.emit)
 	second.add_child(_renew)
 	_reason.add_theme_font_size_override("font_size", 13)
