@@ -175,7 +175,8 @@ Built in rideable steps:
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
-- [x] `.oqc` (ORQWA course, #501), with a removable startup migration of legacy library files
+- [x] `.oqc` (ORQWA course, #501); the startup migration of legacy `.tqc` library files ran
+  from v0.6.1 to v0.6.4 and has been retired (#515)
 - [x] `.oqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
   versions (ADR 0007 amendment)
 - [x] Course library in the data directory; list, import, save-as-course in the app
