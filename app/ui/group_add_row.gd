@@ -9,7 +9,7 @@ var _orqwa: OrqwaApp
 var _field: LineEdit = LineEdit.new()
 var _add: Button = Button.new()
 var _error: Label = Label.new()
-var _check: Button = Button.new()
+var _check: LinkButton = LinkButton.new()
 var _refusals: int = -1
 
 
@@ -44,11 +44,13 @@ func _ready() -> void:
 	_error.hide()
 	var lines: VBoxContainer = VBoxContainer.new()
 	lines.add_child(_error)
+	lines.add_theme_constant_override("separation", 6)
 	_check.text = tr("How to check")
-	_check.flat = true
+	_check.uri = GroupInviteCard.HOSTING_GUIDE
+	_check.underline = LinkButton.UNDERLINE_MODE_ON_HOVER
 	_check.add_theme_color_override("font_color", UiTheme.ACCENT)
+	_check.add_theme_font_size_override("font_size", 13)
 	_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_check.pressed.connect(func() -> void: OS.shell_open(GroupInviteCard.HOSTING_GUIDE))
 	_check.hide()
 	lines.add_child(_check)
 	below.add_child(lines)

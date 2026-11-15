@@ -12,6 +12,8 @@ signal cancelled
 ## The rider wants a new reply, the last one having run out.
 signal renewed
 
+## The accent style pads two pixels more than the theme, so both buttons ask for its height.
+const BUTTON_SIZE: Vector2 = Vector2(140, 42)
 const TROUBLESHOOTING: String = "https://github.com/ORQWA/ORQWA/wiki/Group-rides#connection-troubleshooting-and-privacy"
 
 var _title: Label = Label.new()
@@ -45,20 +47,23 @@ func _ready() -> void:
 	_left.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	second.add_child(_left)
 	_renew.text = tr("New reply")
-	_renew.custom_minimum_size = Vector2(140, 40)
+	_renew.custom_minimum_size = BUTTON_SIZE
 	_renew.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_renew.pressed.connect(renewed.emit)
 	second.add_child(_renew)
-	_reason.add_theme_color_override("font_color", UiTheme.MUTED)
+	_reason.add_theme_font_size_override("font_size", 13)
+	_reason.add_theme_color_override("font_color", UiTheme.DANGER)
 	_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_reason.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_why.add_child(_reason)
-	var guide: Button = Button.new()
+	_why.add_theme_constant_override("separation", 6)
+	var guide: LinkButton = LinkButton.new()
 	guide.text = tr("Connection troubleshooting")
-	guide.flat = true
+	guide.uri = TROUBLESHOOTING
+	guide.underline = LinkButton.UNDERLINE_MODE_ON_HOVER
 	guide.add_theme_color_override("font_color", UiTheme.ACCENT)
+	guide.add_theme_font_size_override("font_size", 13)
 	guide.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	guide.pressed.connect(func() -> void: OS.shell_open(TROUBLESHOOTING))
 	_why.add_child(guide)
 	_why_row = _indented(_why)
 	add_child(_why_row)
@@ -72,7 +77,7 @@ func _ready() -> void:
 	add_child(_indented(_waiting))
 	var cancel: Button = Button.new()
 	cancel.text = tr("Cancel")
-	cancel.custom_minimum_size.x = 140
+	cancel.custom_minimum_size = BUTTON_SIZE
 	cancel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	cancel.pressed.connect(cancelled.emit)
 	add_child(cancel)
