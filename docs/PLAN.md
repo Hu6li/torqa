@@ -373,6 +373,8 @@ Built in rideable steps:
 - [x] Implement the [ride layout](ride-layout-review.md) (R236): compact map/profile,
   climb before Riders, Rust-calculated remaining climb ascent and aligned effort/gap
   columns without scrolling; adaptive HUD columns and workout targets on the left.
+- [x] Let the ride map grow to 300 px on small screens when the visible sidebar panels
+  leave room, adapting as riders, climbs and ghosts appear or disappear (R247, #617).
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
 - [x] Returning to Courses from another tab keeps the selected course, its options and loading
   progress; Back or another click on the active Courses tab returns to the gallery (R246, #569)

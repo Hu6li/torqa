@@ -16,7 +16,14 @@ the column does not scroll. Workout targets follow the metrics on the left, and
 a large selection of HUD figures can use extra columns without changing the
 rider's saved order. Ghost feedback remains below Riders.
 
-![Implemented ride screen at 1280 × 720](images/ride-layout/proposed.png)
+The map grows to 300 px whenever the visible panels leave enough room, including
+on small screens during solo rides (#617, R247). It shrinks only as much as the
+profile, climb, riders and ghost need, then grows again when those panels shrink
+or disappear. Resizing the window recalculates the same available space.
+
+![Solo ride with the larger map at 1280 × 720](images/ride-layout/solo-720-en.jpg)
+
+![Full group ride at 1280 × 720](images/ride-layout/group-720-en.jpg)
 
 The climb keeps its title and uses one uniformly sized line, for example
 **108m ascent · 1.4km · 7.1% to go**. German ends in **verbleibend**, without an
@@ -29,7 +36,7 @@ column headers, rider count, legend, comma or slash separators; **W/kg** retains
 its standard unit spelling. Long names are ellipsized with the full name in a
 tooltip. Column widths are shared across riders, including when gap lengths vary.
 
-![Implemented German ride screen](images/ride-layout/implemented-de.png)
+![German group ride at 1280 × 720](images/ride-layout/group-720-de.jpg)
 
 ## Remaining climb ascent
 
@@ -42,18 +49,18 @@ formats the one-line summary. No scenery or networking format changes are needed
 
 ## Rendering and validation
 
-The current images use the implemented ride scene, a Gurtenstrasse course at
-700 m, the chase camera and the existing seven-peer presentation fixture. The
-remaining climb ascent comes from the Rust route data, replacing the proposal's
-sample value. English, German and solo ride captures use the same frozen scene.
+The current images use the implemented ride scene, the bundled Twann–Chasseral
+course at 730 m, the chase camera and seven-peer presentation fixtures. Remaining
+climb ascent comes from the Rust route data. English, German and solo captures use the
+same frozen scene through the devcontainer's Godot/software Vulkan pipeline.
 The original image is retained for comparison.
 
-The Rust extension was built and these screenshots were captured through the
-devcontainer's Godot/software Vulkan pipeline. No further tests were run, as
-requested. Route coverage was added for partial segments, intermediate descents,
-climb-end bounds and empty intervals; existing rider UI expectations were updated.
-Those tests have not been run for this implementation. The earlier proposal's
-passing test run does not validate these application changes.
+Layout verification covers English and German at 1024 × 640, 1280 × 720 and
+1600 × 900, with zero, one and seven peers, with and without a ghost, including
+returning to a solo ride. Solo maps reach 300 px and the sidebar stays within its
+visible bounds. The container checks cover Rust formatting, Clippy, tests,
+dependency policy, GDScript lint/format, translations, wiki links and the existing
+headless/display smoke suites.
 
-The scratch capture fixture and logs remain in the task worktree's ignored
-`screenshots/ride-layout/` directory.
+The scratch capture fixture and layout measurements remain in the task worktree's
+ignored `screenshots/617/` directory.
