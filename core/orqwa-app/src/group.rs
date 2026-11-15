@@ -1907,7 +1907,8 @@ fn built(stage: crate::import::LoadStage, done: usize, total: usize) -> u8 {
         LoadStage::Elevation => (30, 45),
         LoadStage::CourseMap => (45, 50),
         LoadStage::Countries => (50, 55),
-        LoadStage::World => (55, 99),
+        // A kept world is read in place of building it; one found missing is built next.
+        LoadStage::KeptWorld | LoadStage::World => (55, 99),
     };
     let share = done.min(total) * usize::from(to - from) / total.max(1);
     from + u8::try_from(share).unwrap_or(to - from)

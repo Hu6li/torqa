@@ -515,14 +515,16 @@ enum JobResult {
 struct Reporter {
     tx: mpsc::Sender<JobResult>,
     load: u64,
-    last: Option<(LoadStage, usize)>,
+    /// The stage, percent and total last sent: a step that learns its total at 0 % still shows
+    /// it (#566).
+    last: Option<(LoadStage, usize, usize)>,
 }
 
 impl Reporter {
     fn report(&mut self, stage: LoadStage, done: usize, total: usize) {
         let percent = done * 100 / total.max(1);
-        if self.last != Some((stage, percent)) {
-            self.last = Some((stage, percent));
+        if self.last != Some((stage, percent, total)) {
+            self.last = Some((stage, percent, total));
             let _ = self
                 .tx
                 .send(JobResult::Progress(self.load, stage, done, total));
@@ -2138,10 +2140,11 @@ impl App {
             };
             let mut keep_as = None;
             if let Some((course, keeper)) = kept {
-                reporter.report(LoadStage::World, 0, 1);
+                reporter.report(LoadStage::KeptWorld, 0, 1);
                 let found = tokio::task::spawn_blocking(move || keeper.find(&course)).await;
                 match found {
                     Ok(kept::Found::World(world, generator)) => {
+                        reporter.report(LoadStage::KeptWorld, 1, 1);
                         let _ = tx.send(JobResult::World(load, Arc::from(world), generator, None));
                         return;
                     }
@@ -6857,6 +6860,30 @@ mod tests {
 
         assert!(matches!(events.last(), Some(AppEvent::WorldReady { chunks, .. }) if *chunks > 0));
         assert!(app.world().is_some_and(|w| !w.road.vertices.is_empty()));
+    }
+
+    #[test]
+    fn a_step_shows_its_total_as_soon_as_it_is_known() {
+        let (tx, rx) = mpsc::channel();
+        let mut reporter = Reporter {
+            tx,
+            load: 1,
+            last: None,
+        };
+        reporter.report(LoadStage::World, 0, 1);
+        reporter.report(LoadStage::World, 0, 400);
+        // Only a new percent is worth showing once the total stays.
+        reporter.report(LoadStage::World, 1, 400);
+        reporter.report(LoadStage::World, 4, 400);
+        drop(reporter);
+        let sent: Vec<(usize, usize)> = rx
+            .iter()
+            .map(|result| match result {
+                JobResult::Progress(_, _, done, total) => (done, total),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(sent, [(0, 1), (0, 400), (4, 400)]);
     }
 
     #[test]

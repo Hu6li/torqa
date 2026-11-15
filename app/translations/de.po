@@ -1366,6 +1366,9 @@ msgstr "Zielleistung"
 msgid "Reading route"
 msgstr "Route wird eingelesen"
 
+msgid "Reading the saved world"
+msgstr "Gespeicherte Welt wird gelesen"
+
 msgid "Reconnect devices"
 msgstr "Geräte erneut verbinden"
 
