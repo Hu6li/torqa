@@ -122,13 +122,16 @@ pub(super) fn preview(app: &App, shown: &orqwa_app::group::Previewed) -> VarDict
     let workout = preview
         .workout
         .as_ref()
-        .map_or_else(VarDictionary::new, |plan| {
-            vdict! {
-                "name" => plan.name.as_str(),
-                "description" => plan.description.as_str(),
-                "duration_s" => plan.duration().as_secs_f64(),
-                "steps" => &super::plan_steps(plan, app.profile().profile.ftp, false),
-            }
-        });
+        .map_or_else(VarDictionary::new, |plan| workout(app, plan));
     vdict! {"course" => &course, "workout" => &workout}
+}
+
+/// `plan` as `OrqwaApp.workouts()` lists a workout, its steps for the active rider's FTP.
+pub(super) fn workout(app: &App, plan: &orqwa_domain::workout::Plan) -> VarDictionary {
+    vdict! {
+        "name" => plan.name.as_str(),
+        "description" => plan.description.as_str(),
+        "duration_s" => plan.duration().as_secs_f64(),
+        "steps" => &super::plan_steps(plan, app.profile().profile.ftp, false),
+    }
 }

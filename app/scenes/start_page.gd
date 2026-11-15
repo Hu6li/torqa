@@ -333,5 +333,12 @@ func _group_started(on_course: bool, workout: bool) -> void:
 	options["bike_volume"] = volumes["bike"]
 	options["on_course"] = on_course
 	if workout:
-		options["workout"] = {"kind": "plan", "id": _orqwa.group_status()["workout_id"]}
+		# The group's own plan: a friend's is the organizer's, not in their library (#537).
+		var plan: Dictionary = _orqwa.group_workout()
+		options["workout"] = {
+			"kind": "plan",
+			"id": _orqwa.group_status()["workout_id"],
+			"name": plan.get("name", ""),
+			"plan": plan,
+		}
 	ride_started.emit(options)

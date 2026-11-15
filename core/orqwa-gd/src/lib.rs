@@ -2276,6 +2276,18 @@ impl OrqwaApp {
             .preview
             .map_or_else(VarDictionary::new, |shown| group::preview(app, &shown))
     }
+    /// The structured workout the group rides (#537), as `workouts()` lists one, its steps for
+    /// the active rider's FTP; empty without one. A friend rides the organizer's workout,
+    /// which need not be in their own library.
+    #[func]
+    fn group_workout(&self) -> VarDictionary {
+        let Some(app) = self.app.as_ref() else {
+            return VarDictionary::new();
+        };
+        app.group()
+            .plan
+            .map_or_else(VarDictionary::new, |plan| group::workout(app, &plan))
+    }
     /// Marks the local prepared rider ready or not ready.
     #[func]
     fn group_ready(&mut self, ready: bool) -> bool {
