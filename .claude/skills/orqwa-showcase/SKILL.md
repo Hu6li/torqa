@@ -8,7 +8,7 @@ description: Re-render ORQWA's showcase pictures (docs/images/showcase — the g
 The showcase is ORQWA at its best: saved real-world courses at the **Ultra** preset, rendered
 on a real GPU in a 3200 × 1800 window, exported as 1600 × 900 JPEGs to `docs/images/showcase/`.
 They appear in [docs/screenshots.md#showcase](../../../docs/screenshots.md#showcase), the
-README (`fuji-lakeside-evening`, `alpenbrevet-furka-group-climb`) and the wiki home page
+README (`fuji-lake-spring`, `alpenbrevet-furka-group-climb`) and the wiki home page
 (`saimaa-ridge-group-evening`). App and route screenshots are a different job, done in the dev
 container (`orqwa-render-review`).
 
