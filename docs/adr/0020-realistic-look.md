@@ -272,7 +272,7 @@ edge-biased drifts, physical scale, rain response and subpixel filtering live in
 material. No texture download, stored data or generated geometry changes; season selection
 remains reversible and has no effect on resistance or grip.
 
-### Seasonal rider clothing (2026-11-15, R243)
+### Seasonal rider clothing (2026-11-15, R245)
 
 Autumn and Winter use alternate rider assets with fitted thermal caps, full-finger gloves,
 long tights, long sleeves and zipped gilets. The Blender build keeps the skeleton, bike and

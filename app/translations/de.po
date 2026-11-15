@@ -2634,8 +2634,8 @@ msgstr "Zu dieser Fahrt können keine weiteren Freunde hinzukommen."
 msgid "The ride has started. No more friends can be added."
 msgstr "Die Fahrt hat begonnen. Es können keine weiteren Freunde hinzukommen."
 
-msgid "Too late. Ask your friend for a new reply."
-msgstr "Zu spät. Bitte um eine neue Antwort."
+msgid "Couldn't reach %s's computer: their connection never arrived. A router or firewall probably blocked it."
+msgstr "Der Computer von %s war nicht erreichbar: Die Verbindung kam nie an. Wahrscheinlich hat ein Router oder eine Firewall sie blockiert."
 
 msgid "Join friends"
 msgstr "Bei Freunden mitfahren"
@@ -2683,8 +2683,11 @@ msgstr "Scanne den Code mit deinem Handy und sende den Text an %s."
 msgid "%s adds you"
 msgstr "%s fügt dich hinzu"
 
-msgid "%s didn't add you in time"
-msgstr "%s hat dich nicht rechtzeitig hinzugefügt"
+msgid "%s didn't add you in time, or the connection was blocked"
+msgstr "%s hat dich nicht rechtzeitig hinzugefügt, oder die Verbindung wurde blockiert"
+
+msgid "Connection troubleshooting"
+msgstr "Verbindungsprobleme beheben"
 
 msgid "Waiting for %s…"
 msgstr "Warte auf %s…"

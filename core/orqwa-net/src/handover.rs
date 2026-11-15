@@ -762,17 +762,22 @@ mod tests {
         assert_eq!(format!("{proof:?}"), "Proof([REDACTED])");
     }
 
-    #[test]
-    fn handover_frames_reject_truncation_trailing_data_and_invalid_ids_flags_or_epochs() {
-        let (plan, proof) = prepared();
-        let reply = Reply {
+    fn reply(plan: &Plan) -> Reply {
+        Reply {
             ride: plan.invite.ride,
             fingerprint: plan.invite.fingerprint,
             route: RouteHash::LOBBY,
             client: crate::code::Fingerprint([7; 32]),
+            name: "Alex".into(),
             candidates: plan.invite.candidates.clone(),
             nat: NatObservation::None,
-        };
+        }
+    }
+
+    #[test]
+    fn handover_frames_reject_truncation_trailing_data_and_invalid_ids_flags_or_epochs() {
+        let (plan, proof) = prepared();
+        let reply = reply(&plan);
         for message in [
             Message::FallbackConsent { epoch: 2 },
             Message::FallbackDecision {

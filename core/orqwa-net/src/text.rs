@@ -117,6 +117,7 @@ mod tests {
             fingerprint: invite.fingerprint,
             route: invite.route,
             client: Fingerprint([5; 32]),
+            name: "Alex".into(),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };

@@ -753,7 +753,10 @@ impl Coordinator {
             ));
             self.connected = 1 << snapshot.me;
         } else {
-            let options = self.options.clone();
+            let mut options = self.options.clone();
+            // A replacement reply passes between computers, not people, in moments; a link
+            // that cannot connect gives the change up as soon as it did before (R243).
+            options.reply = options.window;
             let rider = self.rider.clone();
             let notices = self.notices.clone();
             let plan = plan.clone();
@@ -762,7 +765,7 @@ impl Coordinator {
             let me = RiderId::new(snapshot.me).map_err(text)?;
             let standby = self.standby;
             self.jobs.spawn(async move {
-                let joiner = Joiner::lobby(plan.invite.clone(), &options)
+                let joiner = Joiner::lobby(&rider.name, plan.invite.clone(), &options)
                     .await
                     .map_err(text)?;
                 notices

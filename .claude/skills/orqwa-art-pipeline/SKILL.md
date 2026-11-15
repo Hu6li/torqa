@@ -239,7 +239,7 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   A complete bike is about 18k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
   in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
-- Autumn/Winter assets (`rider_<sex>_winter.glb`, R243) add `winter_kit.py`'s thermal cap,
+- Autumn/Winter assets (`rider_<sex>_winter.glb`, R245) add `winter_kit.py`'s thermal cap,
   full-finger gloves, tights, long sleeves and zipped gilet. Keep the same skeleton and fit;
   the build validates `riders.json` against each cold-weather fit. `KIT=winter`/`summer`
   limits rebuilding (default: both). New fabric names map to existing kit palette entries

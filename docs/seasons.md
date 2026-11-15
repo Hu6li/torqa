@@ -12,7 +12,7 @@ the same course, including kept worlds: neither the generator nor stored format 
 Season does not change trainer resistance, ride speed or the map.
 
 Autumn and Winter dress both rider fits in thermal caps beneath their helmets, full-finger
-gloves, full-length tights and long-sleeved tops under fitted zipped gilets (R243). The local
+gloves, full-length tights and long-sleeved tops under fitted zipped gilets (R245). The local
 season applies to the rider, ghost and all group riders, including later arrivals. Spring and
 Summer use the existing short kit. Changing season replaces the model while retaining crank
 phase, wheel rotation, identifying colours, ghost transparency and first-person body hiding.

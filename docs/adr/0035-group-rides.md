@@ -410,6 +410,36 @@ round trip, so a 40 MB course took minutes and could outlast the 15-minute trans
 peers that stop reading. A loopback test through a 50 ms delay relay requires 8 MiB to arrive
 within ten seconds. Window sizes are QUIC transport parameters, so the ALPN is unchanged.
 
+### Reply window and unreached friends — 2026-11-15
+
+A joiner's reply was valid for the same one-minute deadline that bounds a connection, counted
+from before discovery. Nearly all of it went to people: copying the reply, sending it by chat,
+the organizer noticing and pasting it. A blocked connection then looked exactly like a reply
+added too late (#574): the joiner read "didn't add you in time" with the reason dropped, and
+the organizer "Too late". The one-minute deadline answered the original review's unbounded
+work, and replies no longer carry a secret (Joiner certificates, above), so a longer life
+exposes nothing more.
+
+`ConnectOptions` now separates the two. `window`, still at most one minute, bounds discovery
+and every connection: the host's admission of an added reply, credential exchange and the lobby
+handshake, on both sides. `reply`, from one window to `REPLY_WINDOW` (ten minutes), bounds how
+long a joiner waits to be added. For its first window a joiner tries every five seconds, then
+every quarter window (15 s): waiting joiners would otherwise spend the handshake budget an
+admitted friend needs, a quarter still gives four attempts within the host's window for an
+added reply, and each attempt keeps the joiner's NAT mapping open. Replacement links of a
+handover keep a one-window reply, as computers pass those on in moments. Probe budgets,
+admission table bounds and tombstones are unchanged.
+
+A reply now carries the joiner's display name, validated like the host's, so the host's
+`HostEvent::Expired` and `LobbyEvent::Expired` name whose added reply never connected. The app
+says it could not reach that friend's computer, as a router or firewall probably blocked it,
+with the hosting check of the usage guide. The joiner keeps the failure's reason beside **New
+reply**, without a failure event, and an `ACK_EXPIRED` answer ends the reply too. The joiner
+cannot tell a reply never added from a blocked one, as neither sends it anything, so its
+message names both (R243). Names already reached every rider once connected; the reply only
+tells the organizer earlier. Protocol/invitation version 19 and ALPN `orqwa-group/19` require
+matching builds and fresh codes.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

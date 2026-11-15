@@ -185,8 +185,8 @@ pub enum LobbyEvent {
         /// Physical state without heart rate.
         state: RiderState,
     },
-    /// A pending reply expired.
-    Expired,
+    /// An added reply's connection never arrived in its window, named by the reply.
+    Expired(String),
     /// The host or networking task ended. The local ride continues.
     HostLeft,
     /// Local networking diagnostics, delivered before departure/end. Never peer-supplied text.
@@ -1794,7 +1794,7 @@ async fn host_loop(
                     tasks.spawn(hello(connection, route));
                 }
                 Some(HostEvent::Joined(connection)) => connection.close(),
-                Some(HostEvent::Expired) => event(controls, LobbyEvent::Expired)?,
+                Some(HostEvent::Expired(name)) => event(controls, LobbyEvent::Expired(name))?,
                 None => return Err(LobbyError::Lost),
             },
             done = tasks.join_next(), if !tasks.is_empty() => match done {
@@ -3230,6 +3230,7 @@ mod tests {
                 ..GatherOptions::default()
             },
             window: Duration::from_secs(2),
+            reply: Duration::from_secs(2),
             ..ConnectOptions::default()
         }
     }
@@ -3251,9 +3252,14 @@ mod tests {
         .unwrap()
     }
     async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         host.admit(joiner.reply()).await.unwrap();
         JoinerLobby::join(joiner, rider(name))
             .await
@@ -3419,9 +3425,14 @@ mod tests {
         for number in 1..MAX_RIDERS {
             clients.push(join(&host, &format!("Rider {number}")).await);
         }
-        let ninth = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let ninth = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         host.admit(ninth.reply()).await.unwrap();
         assert!(JoinerLobby::join(ninth, rider("Ninth")).await.is_err());
         assert_eq!(clients.len(), MAX_RIDERS - 1);
@@ -3430,9 +3441,14 @@ mod tests {
             host.start(Duration::from_secs(1)).await,
             Err(LobbyError::Started)
         ));
-        let late = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let late = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         assert!(matches!(
             host.admit(late.reply()).await,
             Err(LobbyError::Started)
@@ -3443,9 +3459,14 @@ mod tests {
     }
 
     async fn raw_join(host: &HostLobby) -> (Connection, SendStream, RecvStream, RiderId) {
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         host.admit(joiner.reply()).await.unwrap();
         let connection = joiner.connect().await.unwrap();
         let (mut send, mut recv) = connection.open_bi().await.unwrap();
@@ -3465,9 +3486,14 @@ mod tests {
         let mut host = Host::open("Host", "Test course", RouteHash([9; 32]), &options())
             .await
             .unwrap();
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         host.admit(joiner.reply()).unwrap();
         let joining = tokio::spawn(JoinerLobby::join(joiner, rider("Peer")));
         let Some(HostEvent::Joined(connection)) = host.next().await else {
@@ -3722,12 +3748,18 @@ mod tests {
     async fn a_pinned_host_cannot_extend_the_join_deadline_by_stalling_its_lobby_welcome() {
         let mut settings = options();
         settings.window = Duration::from_millis(250);
+        settings.reply = Duration::from_millis(250);
         let mut host = Host::open("Host", "Test course", RouteHash([7; 32]), &settings)
             .await
             .unwrap();
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &settings)
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &settings,
+        )
+        .await
+        .unwrap();
         host.admit(joiner.reply()).unwrap();
         let mut tasks = JoinSet::new();
         tasks.spawn(async move {
@@ -3759,9 +3791,14 @@ mod tests {
             .iter()
             .map(|candidate| candidate.addr())
             .collect();
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         addresses.extend(
             joiner
                 .reply()
@@ -3844,9 +3881,14 @@ mod tests {
         let mut host = Host::open("Host", "Test course", RouteHash([7; 32]), &options())
             .await
             .unwrap();
-        let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
-            .await
-            .unwrap();
+        let joiner = Joiner::open(
+            "Rider",
+            host.invite().clone(),
+            host.invite().route,
+            &options(),
+        )
+        .await
+        .unwrap();
         let addresses: Vec<_> = joiner
             .reply()
             .candidates

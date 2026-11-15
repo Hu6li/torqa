@@ -1,6 +1,6 @@
 # Seasonal rider clothing
 
-Autumn and Winter use the same thermal kit on both rider fits (R243): a cap under the
+Autumn and Winter use the same thermal kit on both rider fits (R245): a cap under the
 helmet covering the ears and nape, full-finger gloves, full-length tights, long sleeves and
 a fitted gilet. The cap replaces the hair beneath the helmet; the female ponytail remains.
 The gilet retains the rider's identifying colour and has closed hems and a front zip.

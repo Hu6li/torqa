@@ -408,7 +408,7 @@ Exports are deterministic. `PREVIEW=<dir>` also renders Cycles previews of the r
 |---|---|
 | `skin`, `hair` | skin; hair and ponytail |
 | `jersey`, `sleeve`, `shorts`, `socks`, `shoes` | the kit |
-| `cap`, `gloves`, `tights`, `gilet`, `zip` | thermal kit, gilet shell and its front zip (R243) |
+| `cap`, `gloves`, `tights`, `gilet`, `zip` | thermal kit, gilet shell and its front zip (R245) |
 | `helmet`, `vents`, `glasses` | helmet and its vent slots, sunglasses |
 | `frame` | the frame and fork |
 | `tyre`, `sidewall` | rubber tread and the darker brown casing |
