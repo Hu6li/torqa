@@ -96,6 +96,8 @@ func open(course: Dictionary) -> void:
 	var rider: Dictionary = _orqwa.profile()
 	var difficulty: float = rider.get("default_difficulty_pct", 50.0)
 	_options.set_difficulty(difficulty)
+	# Likewise the sounds chosen in the settings (#619), whatever the last ride changed.
+	_options.set_default_volumes()
 	_loading_bar.hide()
 	_continuation.hide()
 	_ride_button.show()

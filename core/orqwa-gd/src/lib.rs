@@ -17,7 +17,7 @@ use orqwa_app::failure::{Failure, Kind};
 use orqwa_app::hud::{MetricKind, Zones};
 use orqwa_app::media::MediaCommand;
 use orqwa_app::moments::Moment;
-use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, TrainerChoice, paths};
+use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, RideVolumes, TrainerChoice, paths};
 use orqwa_app::{library, view};
 use orqwa_devices::ble::{ControllerModel, DeviceKind};
 use orqwa_devices::fake::{FakeHeart, FakeRider};
@@ -1827,6 +1827,23 @@ impl OrqwaApp {
     #[func]
     fn set_sounds(&mut self, on: bool) {
         self.command(|app| app.set_sounds(on));
+    }
+
+    /// The wind and bicycle volumes every ride starts with (#619), `{wind, bike}` in percent.
+    #[func]
+    fn default_ride_volumes(&self) -> VarDictionary {
+        let volumes = self.app.as_ref().map(App::ride_volumes).unwrap_or_default();
+        vdict! { "wind" => volumes.wind.0, "bike" => volumes.bike.0 }
+    }
+
+    /// Remembers the volumes every ride starts with, in percent.
+    #[func]
+    fn set_default_ride_volumes(&mut self, wind: f64, bike: f64) {
+        let volumes = RideVolumes {
+            wind: Percent(wind),
+            bike: Percent(bike),
+        };
+        self.command(|app| app.set_ride_volumes(volumes));
     }
 
     /// Whether the app fills the screen (#218).

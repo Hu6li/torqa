@@ -2396,6 +2396,9 @@ msgstr "Ein kurzer Klang, wenn eine Karte von einem geschafften Anstieg, einem M
 msgid "Play the chime"
 msgstr "Klang abspielen"
 
+msgid "Every ride starts with these volumes; its own settings change them for that ride only."
+msgstr "Jede Fahrt beginnt mit diesen Lautstärken; ihre eigenen Einstellungen ändern sie nur für diese Fahrt."
+
 msgid "Your first ride on {course} is done, and now you know the way!"
 msgstr "Deine erste Fahrt auf {course} ist geschafft, jetzt kennst du den Weg!"
 

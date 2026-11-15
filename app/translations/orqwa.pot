@@ -567,7 +567,7 @@ msgstr ""
 msgid "Best {duration} power: {power}."
 msgstr ""
 
-#: app/ui/ride_options.gd
+#: app/ui/ride_options.gd app/ui/sound_settings.gd
 msgid "Bicycle sound"
 msgstr ""
 
@@ -663,7 +663,7 @@ msgstr ""
 msgid "Cat 4"
 msgstr ""
 
-#: app/ui/ride_options.gd
+#: app/ui/ride_options.gd app/ui/sound_settings.gd
 msgid "Chain, freewheel and gear shift volume; 0 mutes them"
 msgstr ""
 
@@ -1433,6 +1433,10 @@ msgstr ""
 
 #: app/scenes/world.gd
 msgid "Evening"
+msgstr ""
+
+#: app/ui/sound_settings.gd
+msgid "Every ride starts with these volumes; its own settings change them for that ride only."
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3963,11 +3967,11 @@ msgstr ""
 msgid "Whole route"
 msgstr ""
 
-#: app/ui/ride_options.gd
+#: app/ui/ride_options.gd app/ui/sound_settings.gd
 msgid "Wind and rain volume; 0 mutes them"
 msgstr ""
 
-#: app/ui/ride_options.gd
+#: app/ui/ride_options.gd app/ui/sound_settings.gd
 msgid "Wind sound"
 msgstr ""
 

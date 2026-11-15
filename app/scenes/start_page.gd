@@ -326,6 +326,10 @@ func _group_started(on_course: bool, workout: bool) -> void:
 	# Group startup takes this value from the profile, even if no course page was opened.
 	var difficulty: float = _orqwa.profile()["default_difficulty_pct"]
 	options["difficulty"] = difficulty
+	# And the sounds chosen in the settings (#619).
+	var volumes: Dictionary = _orqwa.default_ride_volumes()
+	options["wind_volume"] = volumes["wind"]
+	options["bike_volume"] = volumes["bike"]
 	options["on_course"] = on_course
 	if workout:
 		options["workout"] = {"kind": "plan", "id": _orqwa.group_status()["workout_id"]}

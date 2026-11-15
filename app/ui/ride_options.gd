@@ -128,6 +128,7 @@ func options() -> Dictionary:
 func bind(orqwa: OrqwaApp) -> void:
 	_orqwa = orqwa
 	set_season(_orqwa.season())
+	set_default_volumes()
 
 
 ## Updates the season alone when returning from another options panel, without emitting changes.
@@ -140,6 +141,19 @@ func set_season(season: String) -> void:
 ## course opens.
 func set_difficulty(value: float) -> void:
 	_difficulty.set_value_no_signal(clampf(value, _difficulty.min_value, _difficulty.max_value))
+	_update_labels()
+
+
+## Sets wind and bicycle sound to the volumes every ride starts with (#619), without emitting
+## `changed`.
+func set_default_volumes() -> void:
+	if _orqwa == null:
+		return
+	var volumes: Dictionary = _orqwa.default_ride_volumes()
+	var wind: float = volumes["wind"]
+	var bike: float = volumes["bike"]
+	_wind_volume.set_value_no_signal(wind)
+	_bike_volume.set_value_no_signal(bike)
 	_update_labels()
 
 
