@@ -33,6 +33,7 @@ pub struct Pace {
     lower: Option<fn()>,
     /// Where the build was last asked to turn to and hasn't yet.
     turn: Mutex<Option<Entry>>,
+    stopped: AtomicBool,
     /// Cores to build on instead of the device's, and the threads given to each batch.
     #[cfg(test)]
     pub(crate) test: (Option<usize>, std::sync::Mutex<Vec<usize>>),
@@ -49,6 +50,7 @@ impl Pace {
             hurrying: AtomicBool::new(false),
             lower,
             turn: Mutex::new(None),
+            stopped: AtomicBool::new(false),
             #[cfg(test)]
             test: (None, std::sync::Mutex::new(Vec::new())),
         }
@@ -67,6 +69,18 @@ impl Pace {
     pub fn ride_at(&self, distance: Option<Meters>) {
         let distance = distance.map_or(f64::NAN, |distance| distance.0);
         self.rider.store(distance.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Requests cancellation at the next preparation or batch checkpoint, including when
+    /// all elevation lookups are cached and the async task does not yield.
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether this build was asked to stop.
+    #[must_use]
+    pub fn stopped(&self) -> bool {
+        self.stopped.load(Ordering::Relaxed)
     }
 
     /// Turns the build to `entry`: once the world has been handed over, the chunks around it

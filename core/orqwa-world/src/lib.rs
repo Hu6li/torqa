@@ -431,7 +431,6 @@ pub struct Rest {
 /// asks for, and whichever chunks it says were [written](Ahead::written) before.
 /// `progress` counts the chunks built of those needed first until `ahead` is told it has
 /// them, then of all to build.
-#[allow(clippy::too_many_lines)] // the preparation, then one pass over the chunks
 pub async fn generate_into<M: ElevationModel>(
     route: &Route,
     model: &mut M,
@@ -440,6 +439,43 @@ pub async fn generate_into<M: ElevationModel>(
     sink: &(dyn Fn(usize, TerrainChunk) + Sync),
     ahead: Ahead<'_>,
 ) -> Rest {
+    let result = try_generate_into(
+        route,
+        model,
+        map,
+        progress,
+        &|index, chunk| {
+            sink(index, chunk);
+            Ok::<(), std::convert::Infallible>(())
+        },
+        ahead,
+        &|| Ok(()),
+    )
+    .await;
+    match result {
+        Ok(rest) => rest,
+        Err(never) => match never {},
+    }
+}
+
+/// Builds as [`generate_into`], stopping when storing a chunk fails or `check` asks it to
+/// stop. Workers of the current batch are joined before returning, so its preparation and
+/// chunk buffers are released before another build may begin.
+///
+/// # Errors
+/// The error from `sink` or `check`. A failed build is never reported complete; its caller
+/// may already have received the starting surroundings through [`Ahead::ready`].
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)] // one preparation and batch loop
+pub async fn try_generate_into<M: ElevationModel, E: Send>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+    sink: &(dyn Fn(usize, TerrainChunk) -> Result<(), E> + Sync),
+    ahead: Ahead<'_>,
+    check: &(dyn Fn() -> Result<(), E> + Sync),
+) -> Result<Rest, E> {
+    check()?;
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
     road.set_appearances(&appearance::Index::new(map, &projection));
@@ -559,9 +595,12 @@ pub async fn generate_into<M: ElevationModel>(
     let mut handed = vec![false; pieces.len()];
     let (chunks, trees) = (AtomicUsize::new(0), AtomicUsize::new(0));
     let counted = |index, chunk: TerrainChunk| {
+        check()?;
+        let tree_count = chunk.trees.len();
+        sink(index, chunk)?;
         chunks.fetch_add(1, Ordering::Relaxed);
-        trees.fetch_add(chunk.trees.len(), Ordering::Relaxed);
-        sink(index, chunk);
+        trees.fetch_add(tree_count, Ordering::Relaxed);
+        Ok(())
     };
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
@@ -576,6 +615,7 @@ pub async fn generate_into<M: ElevationModel>(
     let mut built = 0;
     let mut fallback_samples = 0;
     loop {
+        check()?;
         // Everything needed first is built once `first` chunks are: it comes first in order.
         // A build taking up what a stopped one wrote may have none of it to build again.
         if built >= first
@@ -610,6 +650,7 @@ pub async fn generate_into<M: ElevationModel>(
         let batch = &order[built..(built + workers.threads * 2).min(order.len())];
         let mut jobs = Vec::with_capacity(batch.len());
         for &((cx, cn), _) in batch {
+            check()?;
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
             jobs.push((cx, cn, elevations));
         }
@@ -626,7 +667,8 @@ pub async fn generate_into<M: ElevationModel>(
         } else {
             progress(built, total);
         }
-        stages.finish(workers, &counted);
+        check()?;
+        stages.finish(workers, &counted)?;
         let bridges = stages.build_bridges(&pieces, &below);
         stages.drop_unneeded();
         if ready.is_none() && bridges > 0 {
@@ -643,6 +685,7 @@ pub async fn generate_into<M: ElevationModel>(
     // Those not built again count their samples without elevation data as when first built.
     for (index, &(cx, cn)) in stages.cells().iter().enumerate() {
         if !to_build[index] {
+            check()?;
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
             fallback_samples += elevations.iter().filter(|e| e.is_none()).count();
         }
@@ -665,7 +708,7 @@ pub async fn generate_into<M: ElevationModel>(
     }
     let (chunks, trees) = (chunks.into_inner(), trees.into_inner());
     info!(chunks, trees, "world generated");
-    rest
+    Ok(rest)
 }
 
 /// The drawn road's sample nearest `distance` along the route, roughly.

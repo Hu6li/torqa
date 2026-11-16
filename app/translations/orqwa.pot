@@ -1120,6 +1120,10 @@ msgid "Could not start the update's installer."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
+msgid "Could not store the course's 3D world. Check free storage and reopen the course."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
 msgid "Could not update the course."
 msgstr ""
 

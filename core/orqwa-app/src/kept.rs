@@ -86,20 +86,14 @@ impl Keeper {
         }
     }
 
-    /// A store to build a world into (ADR 0040), named `name`; `None`, with the chunks held in
-    /// memory, if it cannot be made.
-    pub(crate) fn store(&self, name: &str) -> Option<Building> {
-        self.kept
-            .building(name)
-            .inspect(|store| {
-                if !store.locked() {
-                    warn!("cannot lock the world's store; another ORQWA may tidy it once old");
-                }
-            })
-            .inspect_err(|error| {
-                warn!(%error, "cannot store the world being built; holding it in memory");
-            })
-            .ok()
+    /// A store to build a world into (ADR 0040). The caller chooses whether failure may
+    /// fall back to memory: that is unsafe on Android.
+    pub(crate) fn store(&self, name: &str) -> std::io::Result<Building> {
+        self.kept.building(name).inspect(|store| {
+            if !store.locked() {
+                warn!("cannot lock the world's store; another ORQWA may tidy it once old");
+            }
+        })
     }
 
     /// Keeps the world whose parts built whole are `world` and whose chunks are `chunks`,
@@ -292,6 +286,12 @@ impl App {
     /// memory to fall back on and are not checked.
     pub fn check_free_storage(&mut self, free: FreeStorage) {
         self.free_storage = Some(free);
+    }
+
+    /// Requires a writable world store even when free-space checks succeed or cannot run.
+    /// Android cannot safely hold an unstored world in memory (R100).
+    pub fn require_world_store(&mut self) {
+        self.builds.required = true;
     }
 
     /// Whether the cache has room for the store of `route`'s world, about to be built: where

@@ -223,7 +223,11 @@ impl<'a> Stages<'a> {
     /// Finishes every chunk whose neighbours are built, and gives them to `sink` with their
     /// indices, but for those written before. Chunks go on the `workers`, and to `sink` from
     /// them, so that it can store them on them too.
-    pub(crate) fn finish(&mut self, workers: Workers, sink: &(dyn Fn(usize, TerrainChunk) + Sync)) {
+    pub(crate) fn finish<E: Send>(
+        &mut self,
+        workers: Workers,
+        sink: &(dyn Fn(usize, TerrainChunk) -> Result<(), E> + Sync),
+    ) -> Result<(), E> {
         let ready: Vec<usize> = self
             .waiting
             .keys()
@@ -239,17 +243,21 @@ impl<'a> Stages<'a> {
             .map(|i| (*i, Mutex::new(self.waiting.remove(i))))
             .collect();
         let this = &*self;
-        in_parallel(&jobs, workers, |(index, waiting)| {
+        let results = in_parallel(&jobs, workers, |(index, waiting)| {
             let waiting = waiting
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take()
                 .expect("a chunk is finished once");
-            sink(*index, this.finish_one(*index, waiting));
+            sink(*index, this.finish_one(*index, waiting))
         });
+        for result in results {
+            result?;
+        }
         for index in ready {
             self.finished[index] = true;
         }
+        Ok(())
     }
 
     fn finish_one(&self, index: usize, waiting: Waiting) -> TerrainChunk {
@@ -438,15 +446,19 @@ mod tests {
                 );
                 built.insert(cell);
             }
-            stages.finish(Workers::new(2), &|index, chunk| {
-                let (cx, cn) = cells[index];
-                assert_eq!(chunk.center, centre((cx, cn)));
-                let around = (cx - 1..=cx + 1).flat_map(|x| (cn - 1..=cn + 1).map(move |n| (x, n)));
-                for neighbour in around.filter(|cell| cells.contains(cell)) {
-                    assert!(built.contains(&neighbour), "{neighbour:?} not built yet");
-                }
-                finished.lock().unwrap()[index] += 1;
-            });
+            stages
+                .finish(Workers::new(2), &|index, chunk| {
+                    let (cx, cn) = cells[index];
+                    assert_eq!(chunk.center, centre((cx, cn)));
+                    let around =
+                        (cx - 1..=cx + 1).flat_map(|x| (cn - 1..=cn + 1).map(move |n| (x, n)));
+                    for neighbour in around.filter(|cell| cells.contains(cell)) {
+                        assert!(built.contains(&neighbour), "{neighbour:?} not built yet");
+                    }
+                    finished.lock().unwrap()[index] += 1;
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .unwrap();
             held = held.max(stages.built.len());
             stages.drop_unneeded();
         }
@@ -495,7 +507,11 @@ mod tests {
                     ([Vec::new(), Vec::new()], 0),
                 );
             }
-            stages.finish(Workers::new(2), &|_, _| {});
+            stages
+                .finish(Workers::new(2), &|_, _| {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .unwrap();
             let bridge_built = stages.structures[0].is_some();
             stages.build_bridges(&pieces, &below);
             stages.drop_unneeded();

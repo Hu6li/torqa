@@ -161,6 +161,8 @@ pub enum Kind {
     /// Riding this course needs %s of free storage for its 3D world; %s is free. Free up some
     /// storage, then ride again.
     WorldStorage,
+    /// Could not store the course's 3D world. Check free storage and reopen the course.
+    WriteWorld,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -261,6 +263,9 @@ impl Kind {
             Self::PrepareRegion => "Could not prepare the map detail of %s.",
             Self::WorldStorage => {
                 "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+            }
+            Self::WriteWorld => {
+                "Could not store the course's 3D world. Check free storage and reopen the course."
             }
         }
         // i18n-end

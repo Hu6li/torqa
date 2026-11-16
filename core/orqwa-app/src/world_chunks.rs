@@ -12,6 +12,8 @@ use orqwa_storage::worlds::{Building, Chunks};
 use orqwa_world::{SnowGroundMask, TerrainChunk, World};
 use tracing::warn;
 
+use crate::failure::{Failure, Kind};
+
 /// The winter ground's mask of a world, as far as it is made.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WinterMask<'a> {
@@ -37,6 +39,8 @@ pub struct WorldChunks {
     /// Whether the store failed, so chunks finished since are held in memory (ADR 0040:
     /// desktops only rely on it).
     failed: AtomicBool,
+    required: bool,
+    failure: OnceLock<Failure>,
     /// The chunks no store holds, by index.
     memory: Mutex<Vec<Option<TerrainChunk>>>,
     /// Which chunks are finished, by index.
@@ -53,19 +57,21 @@ pub struct WorldChunks {
 impl WorldChunks {
     /// Chunks read from a kept world.
     pub(crate) fn kept(chunks: Chunks) -> Self {
-        let this = Self::building(None);
+        let this = Self::building(None, false);
         let _ = this.stored.set(chunks);
         this.complete.store(true, Ordering::Relaxed);
         this
     }
 
     /// The chunks of a world about to be built into `store`, or into memory without one.
-    pub(crate) fn building(store: Option<Arc<Building>>) -> Self {
+    pub(crate) fn building(store: Option<Arc<Building>>, required: bool) -> Self {
         Self {
             stored: OnceLock::new(),
             centres: OnceLock::new(),
             store: Mutex::new(store),
             failed: AtomicBool::new(false),
+            required,
+            failure: OnceLock::new(),
             memory: Mutex::new(Vec::new()),
             finished: Mutex::new(Vec::new()),
             complete: AtomicBool::new(false),
@@ -83,23 +89,38 @@ impl WorldChunks {
     }
 
     /// Takes chunk `index`, just finished. Called on the cores that finish chunks.
-    pub(crate) fn take(&self, index: usize, chunk: TerrainChunk) {
+    pub(crate) fn take(&self, index: usize, chunk: TerrainChunk) -> Result<(), Failure> {
+        if let Some(failure) = self.failure.get() {
+            return Err(failure.clone());
+        }
         let store = lock(&self.store).clone();
         let stored = store
             .filter(|_| !self.failed.load(Ordering::Relaxed))
             .is_some_and(|store| match store.write(index, &chunk) {
                 Ok(()) => true,
                 Err(error) => {
-                    if !self.failed.swap(true, Ordering::Relaxed) {
+                    if self.required {
+                        let _ = self.failure.set(Failure::new(Kind::WriteWorld, &error));
+                    }
+                    if !self.failed.swap(true, Ordering::Relaxed) && !self.required {
                         warn!(%error, "cannot store the world being built; holding it in memory");
                     }
                     false
                 }
             });
         if !stored {
+            if self.required {
+                return Err(self
+                    .failure
+                    .get_or_init(|| {
+                        Failure::new(Kind::WriteWorld, "the world has no writable store")
+                    })
+                    .clone());
+            }
             set(&self.memory, index, Some(chunk));
         }
         set(&self.finished, index, true);
+        Ok(())
     }
 
     /// Notes where the chunks lie, by index, once the rider's surroundings are finished:
@@ -249,6 +270,9 @@ impl WorldChunks {
         world: &World,
         generator: u32,
     ) {
+        if self.failure.get().is_some() {
+            return;
+        }
         if !self.complete() {
             warn!("cannot keep the course's world before it is complete");
             return;
@@ -285,4 +309,69 @@ fn set<T: Default + Clone>(items: &Mutex<Vec<T>>, index: usize, item: T) {
         items.resize(index + 1, T::default());
     }
     items[index] = item;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orqwa_storage::worlds::KeptWorlds;
+    use orqwa_world::{MeshData, Props, Trees};
+
+    fn chunk() -> TerrainChunk {
+        TerrainChunk {
+            center: [0.0; 3],
+            mesh: MeshData::default(),
+            buildings: MeshData::default(),
+            modelled: Vec::new(),
+            streets: MeshData::default(),
+            tracks: MeshData::default(),
+            urban: MeshData::default(),
+            water: MeshData::default(),
+            trees: Trees::default(),
+            props: Props::default(),
+        }
+    }
+
+    #[test]
+    fn a_required_store_never_retains_unwritten_chunks_or_keeps_a_failed_world() {
+        let dir = crate::tests::temp_dir("required-store-write");
+        let kept = KeptWorlds::new(&dir);
+        let store = Arc::new(kept.building("test").unwrap());
+        let chunks = WorldChunks::building(Some(Arc::clone(&store)), true);
+        chunks.locate(&[[0.0; 3], [480.0, 0.0, 0.0]]);
+        let chunk = chunk();
+        chunks.take(0, chunk.clone()).unwrap();
+
+        // An unwriteable chunk destination, as when the filesystem rejects a write.
+        let path = std::fs::read_dir(dir.join("worlds"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        std::fs::create_dir(path.join("chunks/1.part")).unwrap();
+        assert_eq!(
+            chunks.take(1, chunk.clone()).unwrap_err().kind,
+            Kind::WriteWorld
+        );
+        assert_eq!(chunks.take(1, chunk).unwrap_err().kind, Kind::WriteWorld);
+        assert!(chunks.memory.lock().unwrap().is_empty());
+        assert!(!chunks.finished(1));
+        assert!(chunks.get(0).is_some(), "earlier chunks remain readable");
+        chunks.keep(&kept, "failed", &World::default(), orqwa_world::GENERATOR);
+        assert!(!kept.has("failed"));
+    }
+
+    #[test]
+    fn a_desktop_can_still_ride_and_keep_a_world_without_a_store() {
+        let dir = crate::tests::temp_dir("desktop-store-fallback");
+        let chunks = WorldChunks::building(None, false);
+        chunks.locate(&[[0.0; 3]]);
+        chunks.take(0, chunk()).unwrap();
+        assert!(chunks.get(0).is_some());
+        chunks.completed();
+        let kept = KeptWorlds::new(&dir);
+        chunks.keep(&kept, "desktop", &World::default(), orqwa_world::GENERATOR);
+        assert!(kept.has("desktop"));
+    }
 }

@@ -724,3 +724,9 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | ID | Requirement |
 |---|---|
 | R253 | Refines R236 (2026-11-16): a workout ridden **on its own**, solo or as a group, shows its targets at the **top of the right column**, where a course's map and elevation profile would be; the metrics on the left keep their full height. A workout **on a course** keeps its targets below the metrics on the left, so the map, profile, climb and Riders still fit without scrolling. |
+
+## Safe Android course preparation
+
+| ID | Requirement |
+|---|---|
+| R254 | Refines R100 (2026-11-16): on Android, a 3D world that cannot be stored, before or during its build, stops building and reports a storage error instead of holding the unstored chunks in RAM. A ride already started pauses locally, releases trainer resistance and preserves its recording for **Finish & save**; it stays paused until ended. Reopening the course after restoring storage retries preparation. Starting another build or a ride that stops background building waits without blocking the interface until the stopped workers have released their preparation and chunk buffers. |

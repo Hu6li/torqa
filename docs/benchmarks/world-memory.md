@@ -404,6 +404,13 @@ against 43 when built along the route). Still open.
 
 ## Still to do
 
+The R254 storage/cancellation fixes prevent Android from collecting unwritten chunks in RAM
+after an I/O failure and serialize replacement builds behind actual task termination. Their
+regression tests inject an unwritable chunk destination and hold a cancelled task inside
+synchronous work across repeated Cancel/Retry operations. These checks establish behavior,
+not new peak-memory figures; repeat the tablet run while switching courses and starting
+workouts, including a storage failure during generation.
+
 On the tablet, neither the throttled build (`screenshots/mem/tablet-ride.sh`, `world_memory`
 cross-built) nor the app as a whole riding (frame time against a world already built, R240)
 has been measured; the latter needs a branch APK.

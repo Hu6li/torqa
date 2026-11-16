@@ -9,6 +9,8 @@ pub mod failure;
 pub mod graphics;
 pub mod group;
 use failure::{Failure, Kind};
+#[cfg(test)]
+mod build_tests;
 mod continuation;
 mod detail;
 #[cfg(test)]
@@ -2165,7 +2167,9 @@ impl App {
     pub fn cancel_loading(&mut self) {
         if self.loading.as_ref().is_some_and(|job| !job.is_finished()) {
             // Stopped, not left to go on in the background.
-            self.pace = None;
+            if let Some(pace) = self.pace.take() {
+                pace.stop();
+            }
             let _ = self.start_loading(self.offline);
         }
     }
@@ -2205,6 +2209,9 @@ impl App {
     /// Forgets the current route, stops its job and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
         self.leave_world();
+        if let Some(pace) = self.pace.take() {
+            pace.stop();
+        }
         let building = self.builds.building.take();
         if let Some(job) = self.loading.take() {
             self.stop_build(job, building);
@@ -2223,6 +2230,7 @@ impl App {
         self.video = None;
         self.view = View::World;
         self.world = None;
+        self.builds.failed = false;
         self.keep_as = None;
         self.world_ahead = (false, WHOLE_WORLD);
         self.grown = None;
@@ -2425,6 +2433,7 @@ impl App {
     }
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
+    #[allow(clippy::too_many_lines)] // one load-scoped task: early hand-over, completion and errors
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
         if self.take_over_background() {
             return;
@@ -2458,77 +2467,98 @@ impl App {
         let pace = Arc::new(orqwa_world::Pace::new(radius, self.lower_priority));
         self.pace = Some(Arc::clone(&pace));
         let start = self.start_build();
+        let stopping = self.builds.stopping.clone();
+        let required = self.builds.required;
         self.spawn_load(load, async move {
-            let mut reporter = Reporter {
-                tx: tx.clone(),
-                load,
-                last: None,
-            };
-            let mut keep_as = None;
-            if let Some(course) = kept {
-                reporter.report(LoadStage::KeptWorld, 0, 1);
-                let finder = keeper.clone();
-                let found = tokio::task::spawn_blocking(move || finder.find(&course)).await;
-                match found {
-                    Ok(kept::Found::World(world, generator, chunks)) => {
-                        reporter.report(LoadStage::KeptWorld, 1, 1);
-                        let loaded = LoadedWorld {
-                            world: Arc::from(world),
-                            chunks: Arc::from(chunks),
-                            generator,
-                            keep_as: None,
-                        };
-                        let _ = tx.send(JobResult::World(load, Box::new(loaded)));
-                        return;
+            crate::resuming::ended(&stopping).await;
+            let result = async {
+                let mut reporter = Reporter {
+                    tx: tx.clone(),
+                    load,
+                    last: None,
+                };
+                let mut keep_as = None;
+                if let Some(course) = kept {
+                    reporter.report(LoadStage::KeptWorld, 0, 1);
+                    let finder = keeper.clone();
+                    let found = tokio::task::spawn_blocking(move || finder.find(&course)).await;
+                    match found {
+                        Ok(kept::Found::World(world, generator, chunks)) => {
+                            reporter.report(LoadStage::KeptWorld, 1, 1);
+                            let loaded = LoadedWorld {
+                                world: Arc::from(world),
+                                chunks: Arc::from(chunks),
+                                generator,
+                                keep_as: None,
+                            };
+                            let _ = tx.send(JobResult::World(load, Box::new(loaded)));
+                            return Ok(());
+                        }
+                        Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
+                        Ok(kept::Found::Unknown) | Err(_) => {}
                     }
-                    Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
-                    Ok(kept::Found::Unknown) | Err(_) => {}
                 }
+                // Every world is built into a store and ridden from it, so its chunks are never all
+                // held (ADR 0040). It is ridden once the rider's surroundings are finished, while
+                // the rest is built. A build of the course stopped before left one to take up.
+                let (chunks, written) = start
+                    .chunks(&keeper, keep_as.as_deref().unwrap_or("ride"), required)
+                    .await?;
+                let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
+                // Its tiles are not needed again, so they are not held while the chunks are built.
+                drop(distant);
+                let mut keep_as = Some(keep_as);
+                let sink = |index, chunk| chunks.take(index, chunk);
+                let (ready_tx, structures_tx) = (tx.clone(), tx.clone());
+                let check = || {
+                    if pace.stopped() {
+                        Err(Failure::new(
+                            Kind::PreparationStopped,
+                            "the world build was stopped",
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                };
+                let rest = orqwa_world::try_generate_into(
+                    &route,
+                    &mut detailed,
+                    &map,
+                    &mut |done, total| reporter.report(LoadStage::World, done, total),
+                    &sink,
+                    orqwa_world::Ahead {
+                        from,
+                        at,
+                        radius,
+                        ready: &mut |world, centres| {
+                            chunks.locate(centres);
+                            let loaded = LoadedWorld {
+                                world: Arc::new(World {
+                                    horizon: horizon.take().unwrap_or_default(),
+                                    ..world
+                                }),
+                                chunks: Arc::clone(&chunks),
+                                generator: orqwa_world::GENERATOR,
+                                keep_as: keep_as.take().flatten(),
+                            };
+                            let _ = ready_tx.send(JobResult::World(load, Box::new(loaded)));
+                        },
+                        structures: &mut |mesh| {
+                            let _ = structures_tx.send(JobResult::Structures(load, Box::new(mesh)));
+                        },
+                        pace: Some(&pace),
+                        written: &written,
+                    },
+                    &check,
+                )
+                .await?;
+                let _ = tx.send(JobResult::Built(load, Box::new(rest)));
+                Ok(())
             }
-            // Every world is built into a store and ridden from it, so its chunks are never all
-            // held (ADR 0040). It is ridden once the rider's surroundings are finished, while
-            // the rest is built. A build of the course stopped before left one to take up.
-            let (chunks, written) = start
-                .chunks(&keeper, keep_as.as_deref().unwrap_or("ride"))
-                .await;
-            let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
-            // Its tiles are not needed again, so they are not held while the chunks are built.
-            drop(distant);
-            let mut keep_as = Some(keep_as);
-            let sink = |index, chunk| chunks.take(index, chunk);
-            let (ready_tx, structures_tx) = (tx.clone(), tx.clone());
-            let rest = orqwa_world::generate_into(
-                &route,
-                &mut detailed,
-                &map,
-                &mut |done, total| reporter.report(LoadStage::World, done, total),
-                &sink,
-                orqwa_world::Ahead {
-                    from,
-                    at,
-                    radius,
-                    ready: &mut |world, centres| {
-                        chunks.locate(centres);
-                        let loaded = LoadedWorld {
-                            world: Arc::new(World {
-                                horizon: horizon.take().unwrap_or_default(),
-                                ..world
-                            }),
-                            chunks: Arc::clone(&chunks),
-                            generator: orqwa_world::GENERATOR,
-                            keep_as: keep_as.take().flatten(),
-                        };
-                        let _ = ready_tx.send(JobResult::World(load, Box::new(loaded)));
-                    },
-                    structures: &mut |mesh| {
-                        let _ = structures_tx.send(JobResult::Structures(load, Box::new(mesh)));
-                    },
-                    pace: Some(&pace),
-                    written: &written,
-                },
-            )
             .await;
-            let _ = tx.send(JobResult::Built(load, Box::new(rest)));
+            if let Err(failure) = result {
+                let _ = tx.send(JobResult::Route(load, Err(failure)));
+            }
         });
     }
 
@@ -3270,7 +3300,9 @@ impl App {
         }
         // Its preparation and chunks never share memory with a ride (R240); a 3D ride of the
         // same course took it over already.
-        self.stop_background();
+        if !self.prepare_ride() || (self.builds.failed && self.view == View::World) {
+            return Err(AppError::CourseNotReady);
+        }
         let ghost = self.ghost_for(&route, descent, ghost)?;
         let along = self.video.as_ref().filter(|_| self.view == View::Video);
         let player = along
@@ -3307,6 +3339,9 @@ impl App {
         self.check_group_start()?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
+        }
+        if !self.prepare_ride() || (on_course && self.builds.failed) {
+            return Err(AppError::CourseNotReady);
         }
         let config = self.ride_config(Percent(100.0), descent);
         if on_course {
@@ -3530,6 +3565,10 @@ impl App {
     /// trainer is freed of its resistance; resumed, it gets its gradient or power back on the
     /// next tick. Returns whether the ride is paused afterwards.
     pub fn set_paused(&mut self, paused: bool) -> bool {
+        // A scene's automatic wait must not resume a ride whose world cannot be finished.
+        if !paused && self.builds.failed && self.view == View::World {
+            return self.is_paused();
+        }
         let Some(active) = &mut self.ride else {
             return false;
         };
@@ -7337,7 +7376,7 @@ mod tests {
         // the chunk the rider is in.
         app.world_ahead.1 = Meters(0.0);
         app.group_radius = Meters(0.0);
-        let building = Arc::new(WorldChunks::building(None));
+        let building = Arc::new(WorldChunks::building(None, false));
         building.locate(built.centres());
         app.chunks = Some(Arc::clone(&building));
         assert!(!app.finished_around(Meters(200.0)));
@@ -7347,13 +7386,17 @@ mod tests {
         let around = &plan.indices[..plan.nearby];
         let (last, others) = around.split_last().unwrap();
         for &index in others {
-            building.take(index, built.get(index).unwrap().into_owned());
+            building
+                .take(index, built.get(index).unwrap().into_owned())
+                .unwrap();
         }
         assert!(
             !app.finished_around(Meters(200.0)),
             "one chunk still missing"
         );
-        building.take(*last, built.get(*last).unwrap().into_owned());
+        building
+            .take(*last, built.get(*last).unwrap().into_owned())
+            .unwrap();
         assert!(app.finished_around(Meters(200.0)));
 
         // A quality raised in the lobby after the build started: the scene draws more.

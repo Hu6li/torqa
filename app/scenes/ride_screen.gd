@@ -1,9 +1,7 @@
 class_name RideScreen
 extends Control
-## The live ride HUD: a compact metrics column, the map with the elevation profile below it,
-## status toasts and one settings button (R48) — the rest of the screen is the ride. A workout
-## (R56) adds its targets; on its own (R58) it has no map or world, but a chart of power and
-## heart rate over its own backdrop.
+## Ride metrics, course map/profile and controls (R48), with workout targets (R56).
+## Workouts without a course show power and heart-rate charts over their own backdrop (R58).
 
 signal closed
 ## The ride was saved to `path`; show its summary (R42).
@@ -996,4 +994,7 @@ func _on_ride_saved(path: String) -> void:
 
 func _on_failed(message: String) -> void:
 	if visible:
+		if _orqwa.world_failed():
+			_bar.show_paused(true)
+			_overlay_hud.show_paused(true)
 		_show_toast(message)

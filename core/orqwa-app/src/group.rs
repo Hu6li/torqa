@@ -1564,6 +1564,7 @@ impl App {
                 .group
                 .as_ref()
                 .is_some_and(|g| !g.launched && g.prepared == revision)
+            && self.prepare_ride()
         {
             if let Some(g) = &mut self.group {
                 g.launched = true;

@@ -33,7 +33,7 @@ impl App {
     /// Lets the world being built go on in the background as the loaded course is left, if
     /// it is a course whose world is kept once built; otherwise the build stops as before.
     pub(crate) fn leave_world(&mut self) {
-        let Some(pace) = self.pace.take() else {
+        let Some(pace) = self.pace.clone() else {
             return;
         };
         // A kept world was found: nothing is being built.
@@ -71,6 +71,7 @@ impl App {
             .or_else(|| self.waiting_world.take().map(|waiting| *waiting));
         self.entering = None;
         info!("building the world left on in the background");
+        self.pace = None;
         // Nothing rides now: every core may build.
         pace.ride_at(None);
         self.stop_background();
@@ -89,6 +90,7 @@ impl App {
     pub(crate) fn stop_background(&mut self) {
         if let Some(background) = self.background.take() {
             info!("stopping the world built in the background");
+            background.pace.stop();
             self.stop_build(background.job, background.slot);
             if let Some(loaded) = background.loaded {
                 self.drop_world(loaded);
@@ -112,12 +114,30 @@ impl App {
     /// The world being built for the loaded course failed: nothing more comes of it, so it is
     /// neither left to the background nor waited for; opening the course again builds afresh.
     pub(crate) fn world_build_failed(&mut self) {
+        self.builds.failed = true;
+        if self.view == crate::View::World {
+            self.set_paused(true);
+        }
         self.pace = None;
         self.builds.building = None;
         self.entering = None;
         if let Some(waiting) = self.waiting_world.take() {
             self.drop_world(waiting);
         }
+    }
+
+    /// Stops any other course's background build before a ride begins. Poll until true;
+    /// the UI stays responsive while its workers release their preparation and chunks.
+    pub fn prepare_ride(&mut self) -> bool {
+        self.stop_background();
+        self.builds.stopping.retain(|job| !job.is_finished());
+        self.builds.stopping.is_empty()
+    }
+
+    /// Whether the loaded world's build failed and reopening the course is needed.
+    #[must_use]
+    pub fn world_failed(&self) -> bool {
+        self.builds.failed
     }
 
     /// Takes over the world built in the background if it is the loaded course's, turned to

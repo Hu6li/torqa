@@ -6751,3 +6751,69 @@ async fn a_build_taken_up_from_what_a_stopped_one_wrote_finishes_only_the_rest_t
         );
     }
 }
+#[tokio::test]
+async fn a_sink_failure_stops_generation_before_handing_over_an_incomplete_start() {
+    let route = route_north(&[]).await;
+    let mut ready = false;
+    let result = try_generate_into(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+        &|_, _| Err("disk full"),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |_, _| ready = true,
+            structures: &mut |_| {},
+            pace: None,
+            written: &[],
+        },
+        &|| Ok(()),
+    )
+    .await;
+    assert_eq!(result.unwrap_err(), "disk full");
+    assert!(!ready);
+}
+
+#[tokio::test]
+async fn stopping_a_build_after_ready_works_without_any_async_io() {
+    let route = route_north(&[]).await;
+    let pace = Pace::new(Meters(0.0), None);
+    let count = std::sync::atomic::AtomicUsize::new(0);
+    let mut total = 0;
+    let result = try_generate_into(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+        &|_, _| {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        },
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |_, centres| {
+                total = centres.len();
+                pace.stop();
+            },
+            structures: &mut |_| {},
+            pace: Some(&pace),
+            written: &[],
+        },
+        &|| {
+            if pace.stopped() {
+                Err("stopped")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .await;
+    assert_eq!(result.unwrap_err(), "stopped");
+    let finished = count.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(finished > 0 && finished < total);
+}

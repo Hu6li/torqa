@@ -982,6 +982,9 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] on Android, **Ride** stops before building when free storage is short and says how
         much the course needs (20 MB per km measured on Wada, 25 to be safe), asked of Java's
         `File.getUsableSpace`; a kept world needs none
+      - [x] Android requires a writable store independently of the free-space estimate:
+        creation or chunk-write errors stop generation; a ride already started stays paused
+        with trainer resistance released and its recording available to save (R254)
       - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
         keeping is turned off; others' go by age
     - [x] Godot frees far chunks
@@ -1013,6 +1016,9 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
         started, **Cancel**, or another course opened with keeping off) keep their store, and
         the course's next build takes it up: only the chunks not yet written are finished,
         the world comes out the same
+      - [x] a replacement build and ride start wait asynchronously for every stopped
+        generation task to release its buffers, including builds without resumable stores;
+        cancellation is checked between batches even with fully cached elevations (R254)
   - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
     on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
   - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes

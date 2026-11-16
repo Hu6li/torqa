@@ -3365,3 +3365,6 @@ msgstr "Wahrscheinlich ist dein eigenes Netzwerk ausgefallen. Die Plätze bleibe
 
 msgid "Withdraw the shared course or workout for everyone"
 msgstr "Geteilte Strecke oder geteiltes Training für alle zurückziehen"
+
+msgid "Could not store the course's 3D world. Check free storage and reopen the course."
+msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den freien Speicherplatz und öffne die Strecke erneut."

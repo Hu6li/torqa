@@ -202,6 +202,7 @@ impl INode for OrqwaApp {
             });
             #[cfg(target_os = "android")]
             let app = app.map(|mut app| {
+                app.require_world_store();
                 app.check_free_storage(std::sync::Arc::new(android_storage::free));
                 app
             });
@@ -808,6 +809,18 @@ impl OrqwaApp {
         if let Some(app) = self.app.as_mut() {
             app.set_group_upload_radius(Meters(radius));
         }
+    }
+
+    /// Whether stopped background builds have released their memory for the next ride.
+    #[func]
+    fn prepare_ride(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::prepare_ride)
+    }
+
+    /// Whether a failed world must be reopened before it can be ridden again.
+    #[func]
+    fn world_failed(&self) -> bool {
+        self.app.as_ref().is_some_and(App::world_failed)
     }
 
     /// Builds the loaded course's world again with this ORQWA, in place of the one kept from an

@@ -31,6 +31,9 @@ func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 
 ## Goes on once the rider's surroundings are uploaded; until then, says why it waits.
 func update() -> void:
+	if _orqwa.world_failed():
+		_waiting = false
+		return
 	var free: bool = _world.is_free_camera()
 	if _was_free and not free:
 		_wait()

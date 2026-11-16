@@ -23,6 +23,13 @@ use crate::world_chunks::WorldChunks;
 /// The stores of world builds the app holds on to.
 #[derive(Default)]
 pub(crate) struct Builds {
+    /// Whether this installation requires stores instead of falling back to RAM.
+    pub(crate) required: bool,
+    /// The loaded world's build failed: automatic scene waits must not resume it.
+    pub(crate) failed: bool,
+    /// Cancellation does not release preparation buffers until the task actually ends.
+    /// Kept independently of resumable stores, including builds that made no store.
+    pub(crate) stopping: Vec<tokio::task::AbortHandle>,
     /// Where the store of the loaded course's world being built lands.
     pub(crate) building: Option<Slot>,
     /// The store of the last build stopped before its world was complete.
@@ -40,23 +47,42 @@ impl Start {
     /// The chunks of the world to build, into a store named `name` if new, and which are
     /// in it already, by index: the store the stopped build left, or a new one, or none, with
     /// the chunks held in memory, if it cannot be made.
-    pub(crate) async fn chunks(self, keeper: &Keeper, name: &str) -> (Arc<WorldChunks>, Vec<bool>) {
+    pub(crate) async fn chunks(
+        self,
+        keeper: &Keeper,
+        name: &str,
+        required: bool,
+    ) -> Result<(Arc<WorldChunks>, Vec<bool>), crate::failure::Failure> {
         let taken_up = match self.stopped {
             Some(stopped) => stopped.take_up().await,
             None => None,
         };
-        let (store, written) = match taken_up {
-            Some((store, written)) => (Some(store), written),
-            None => (keeper.store(name).map(Arc::new), Vec::new()),
+        let (store, written) = if let Some((store, written)) = taken_up {
+            (Some(store), written)
+        } else {
+            let store = match keeper.store(name) {
+                Ok(store) => Some(Arc::new(store)),
+                Err(error) if required => {
+                    return Err(crate::failure::Failure::new(
+                        crate::failure::Kind::WriteWorld,
+                        error,
+                    ));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "cannot store the world being built; holding it in memory");
+                    None
+                }
+            };
+            (store, Vec::new())
         };
         // A store that could not be taken up was noted in the slot already, so this build,
         // stopped, leaves nothing: the next one starts afresh.
         if let (Some(slot), Some(store)) = (self.slot, &store) {
             slot.set(store);
         }
-        let chunks = WorldChunks::building(store);
+        let chunks = WorldChunks::building(store, required);
         chunks.taken_up(&written);
-        (Arc::new(chunks), written)
+        Ok((Arc::new(chunks), written))
     }
 }
 
@@ -103,9 +129,15 @@ impl Stopped {
     /// Once the builds that wrote into the store have ended: an aborted job lets go of it
     /// only when it next waits.
     async fn ended(&self) {
-        while !self.jobs.iter().all(tokio::task::AbortHandle::is_finished) {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        ended(&self.jobs).await;
+    }
+}
+
+/// Waits outside the frame thread for every stopped task, including those without a
+/// resumable store. An abort request alone does not stop a synchronous generation batch.
+pub(crate) async fn ended(jobs: &[tokio::task::AbortHandle]) {
+    while !jobs.iter().all(tokio::task::AbortHandle::is_finished) {
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
 
@@ -147,6 +179,8 @@ impl App {
             })
             .filter(|(_, store, _)| store.whole());
         job.abort();
+        self.builds.stopping.retain(|job| !job.is_finished());
+        self.builds.stopping.push(job.clone());
         if let Some((fingerprint, store, mut jobs)) = store {
             info!("keeping what the stopped build wrote for the course's next build");
             jobs.retain(|job| !job.is_finished());
