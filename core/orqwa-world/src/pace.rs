@@ -10,8 +10,8 @@ use orqwa_domain::units::Meters;
 /// the build takes half the cores at low priority; when its lead over the rider falls below
 /// twice the radius the scene uploads chunks within, it takes them all, until the lead has
 /// doubled. With no ride running, or the ride paused (also while a rider who caught up waits
-/// for it), it takes every core at the usual priority: nothing moves on screen that it would
-/// hold up.
+/// for it, or a late joiner waits to enter a group ride), it takes every core at the usual
+/// priority: nothing moves on screen that it would hold up.
 ///
 /// The lowered threads are never reused at the usual priority: lowering can't be undone
 /// without privileges, so the build starts fresh threads for every batch rather than keeping

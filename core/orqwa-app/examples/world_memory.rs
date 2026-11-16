@@ -30,6 +30,10 @@
 //! the ride as it does in the app (`orqwa_world::Pace`, without lowering its threads' priority
 //! as nothing is drawn): how fast chunks were built while the build kept half the cores and
 //! while it hurried on all, and how far ahead of the rider it stayed, are printed.
+//!
+//! With `--stream --ahead <metres> --turn <metres along the route>`, the build is turned there
+//! as a late joiner's is (`orqwa_world::Pace::turn_to`), to see what the chunks left waiting
+//! at the start's frontier hold meanwhile.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -185,6 +189,10 @@ fn stream(
     let centres = std::sync::Mutex::new(Vec::new());
     let ride = Ride::from_args();
     let pace = orqwa_world::Pace::new(pace_radius(ride), None);
+    let turn = turn_to(&imported.route);
+    if let Some(entry) = turn {
+        pace.turn_to(entry);
+    }
     let set_off = std::sync::OnceLock::new();
     let mut parts = None;
     let start = imported.route.points()[0];
@@ -207,7 +215,7 @@ fn stream(
             );
         },
         structures: &mut |_| {},
-        pace: ride.is_some().then_some(&pace),
+        pace: (ride.is_some() || turn.is_some()).then_some(&pace),
     };
     let mut log = PaceLog::default();
     let riding = std::sync::atomic::AtomicBool::new(true);
@@ -302,6 +310,28 @@ fn stream(
     }
 }
 
+/// Where `--turn` turns the build to along `route`, the first route point at or past it.
+fn turn_to(route: &orqwa_routes::Route) -> Option<orqwa_world::Entry> {
+    let distance: f64 = std::env::args()
+        .skip_while(|arg| arg != "--turn")
+        .nth(1)?
+        .parse()
+        .expect("--turn <metres>");
+    let point = route
+        .points()
+        .iter()
+        .find(|point| point.distance.0 >= distance)
+        .expect("--turn within the route");
+    let at = orqwa_routes::LocalProjection::for_route(route).project(point.lat, point.lon);
+    Some(orqwa_world::Entry {
+        from: point.distance,
+        at: (
+            orqwa_domain::units::Meters(at.0),
+            orqwa_domain::units::Meters(at.1),
+        ),
+    })
+}
+
 /// A rider setting off once the world around the start is built, at a steady speed.
 #[derive(Clone, Copy)]
 struct Ride {
@@ -326,9 +356,18 @@ impl Ride {
     }
 }
 
-/// The radius built before a ride, `ride`'s or the whole world.
+/// The radius built before a ride: `ride`'s, `--ahead`'s, or the whole world.
 fn pace_radius(ride: Option<Ride>) -> orqwa_domain::units::Meters {
-    ride.map_or(orqwa_app::WHOLE_WORLD, |ride| ride.radius)
+    ride.map(|ride| ride.radius)
+        .or_else(|| {
+            std::env::args()
+                .skip_while(|arg| arg != "--ahead")
+                .nth(1)
+                .map(|radius| {
+                    orqwa_domain::units::Meters(radius.parse().expect("--ahead <metres>"))
+                })
+        })
+        .unwrap_or(orqwa_app::WHOLE_WORLD)
 }
 
 /// How fast chunks were built while the build gave way to a ride and while it hurried.

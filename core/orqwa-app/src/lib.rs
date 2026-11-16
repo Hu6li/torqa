@@ -2300,15 +2300,12 @@ impl App {
         });
     }
 
-    /// Tells the world being built where the rider is, so it gives way to the ride: in a
-    /// group ride, the front rider, as the others don't wait for it.
+    /// Tells the world being built where the rider is, so it gives way to the ride. In a
+    /// group ride too it is this rider alone: the scene draws the chunks around them, and
+    /// riders further ahead are drawn only once they are within that.
     fn pace_build(&self) {
         if let Some(pace) = &self.pace {
-            let rider = match (self.riding_at(), self.group_front()) {
-                (Some(own), Some(front)) => Some(Meters(own.0.max(front.0))),
-                (own, front) => own.or(front),
-            };
-            pace.ride_at(rider);
+            pace.ride_at(self.riding_at());
         }
     }
 
@@ -2333,7 +2330,8 @@ impl App {
     }
 
     /// Whether the chunks the scene draws around `distance` along the route are finished,
-    /// or no world is being built.
+    /// or no world is being built. The group's radius counts if it grew after the build
+    /// started, as the scene draws that much.
     pub(crate) fn finished_around(&self, distance: Meters) -> bool {
         let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) else {
             return true;
@@ -2345,7 +2343,7 @@ impl App {
             chunks.centres(),
             Meters(east),
             Meters(north),
-            self.world_ahead.1,
+            Meters(self.world_ahead.1.0.max(self.group_radius.0)),
         );
         plan.indices[..plan.nearby]
             .iter()
@@ -7258,7 +7256,7 @@ mod tests {
     }
 
     #[test]
-    fn a_late_joiner_waits_for_the_chunks_around_where_they_enter() {
+    fn an_entry_point_counts_as_built_once_every_chunk_drawn_around_it_is_finished() {
         let dir = temp_dir("entry");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
         app.load_route(write_route(&dir), true);
@@ -7269,6 +7267,7 @@ mod tests {
         // The same world while it is still being built, the scene drawing no farther than
         // the chunk the rider is in.
         app.world_ahead.1 = Meters(0.0);
+        app.group_radius = Meters(0.0);
         let building = Arc::new(WorldChunks::building(None));
         building.locate(built.centres());
         app.chunks = Some(Arc::clone(&building));
@@ -7287,6 +7286,13 @@ mod tests {
         );
         building.take(*last, built.get(*last).unwrap().into_owned());
         assert!(app.finished_around(Meters(200.0)));
+
+        // A quality raised in the lobby after the build started: the scene draws more.
+        app.group_radius = Meters(1000.0);
+        assert!(
+            !app.finished_around(Meters(200.0)),
+            "the group's wider radius"
+        );
     }
 
     #[test]

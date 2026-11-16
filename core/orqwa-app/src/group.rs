@@ -1536,23 +1536,6 @@ impl App {
         }
     }
 
-    /// How far along the route the group's front rider is, as the organizer last heard,
-    /// while the group rides.
-    pub(crate) fn group_front(&self) -> Option<Meters> {
-        let snapshot = self.group.as_ref()?.snapshot.borrow();
-        if snapshot.phase != Phase::Riding {
-            return None;
-        }
-        snapshot
-            .roster
-            .iter()
-            .zip(&snapshot.states)
-            .filter(|(rider, _)| rider.is_some())
-            .filter_map(|(_, state)| state.as_ref().map(|(state, _)| state.distance.0))
-            .reduce(f64::max)
-            .map(Meters)
-    }
-
     fn launch_group(&mut self, snapshot: &Snapshot, revision: u64, events: &mut Vec<AppEvent>) {
         if self.ride.is_some() {
             self.ride_on_with_group(snapshot, revision);
