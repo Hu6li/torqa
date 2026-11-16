@@ -747,7 +747,10 @@ mod tests {
             "the chunks stay on disk"
         );
         assert_eq!(read(&keeper, &fingerprint), (ridden.clone(), GENERATOR));
-        // Ridden on from the kept world: the store goes.
+        // Publication precedes the background writer releasing its temporary store.
+        wait_for(&mut app, |_| {
+            worlds_left(&dir) == [format!("{fingerprint}.world")]
+        });
         assert_eq!(worlds_left(&dir), [format!("{fingerprint}.world")]);
         assert_eq!(loaded(&app), ridden);
         app.shutdown();

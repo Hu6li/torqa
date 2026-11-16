@@ -814,6 +814,14 @@ impl OrqwaApp {
         }
     }
 
+    /// Actual graphics residency, separate from generation waiting for a whole course.
+    #[func]
+    fn set_world_upload_radius(&mut self, radius: f64) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_world_upload_radius(Meters(radius));
+        }
+    }
+
     /// Whether stopped background builds have released their memory for the next ride.
     #[func]
     fn prepare_ride(&mut self) -> bool {

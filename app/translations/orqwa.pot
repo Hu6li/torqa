@@ -448,7 +448,7 @@ msgid "Analysis"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
-msgid "Android reports low memory (%s available). Close other apps or lower graphics, then reopen the course."
+msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -2875,6 +2875,10 @@ msgstr ""
 msgid "Preparing the 3D scene"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Press"
 msgstr ""
@@ -3701,10 +3705,6 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "This course has no video."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "This course needs about %s of available memory, including room for Android; %s is available. Close other apps or lower graphics, then reopen the course."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

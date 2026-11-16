@@ -275,13 +275,13 @@ impl Kind {
                 "Could not store the course's 3D world. Check free storage and reopen the course."
             }
             Self::WorldMemory => {
-                "This course needs about %s of available memory, including room for Android; %s is available. Close other apps or lower graphics, then reopen the course."
+                "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
             }
             Self::ReadMemory => {
                 "Could not check Android's available memory. Reopen ORQWA and try again."
             }
             Self::MemoryPressure => {
-                "Android reports low memory (%s available). Close other apps or lower graphics, then reopen the course."
+                "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
             }
         }
         // i18n-end

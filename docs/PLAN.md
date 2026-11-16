@@ -988,6 +988,9 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] Android checks current available system memory against estimated course preparation
         and resident scene needs, preserving system headroom; generation and scene uploads
         recheck headroom and stop with a local pause and saveable recording when short (R255)
+        - [x] bound the estimate by circular chunk residency and current batch sizes; count
+          additional allocations, separate Android's reserve in GB, and verify Wada's Low
+          estimate against the reported 3.59 GB snapshot without generating its world
       - [ ] verify memory admission and pressure recovery on the Galaxy S25 Ultra and Tab S7
       - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
         keeping is turned off; others' go by age

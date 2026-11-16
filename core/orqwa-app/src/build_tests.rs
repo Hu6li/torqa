@@ -85,6 +85,34 @@ fn memory_is_read_after_cancelled_workers_release_their_buffers() {
 }
 
 #[test]
+fn whole_course_generation_uses_the_selected_view_distance_for_memory_admission() {
+    let dir = temp_dir("memory-render-radius");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    let path = course(&mut app, &dir, 40, 0.0);
+    open(&mut app, &path);
+    let crate::WorldPlan::OnRequest(Some(map)) = &app.world_plan else {
+        panic!("course map");
+    };
+    let cores = std::thread::available_parallelism().unwrap().get();
+    let low = crate::memory::estimate(app.route().unwrap(), map, Meters(3925.0), cores);
+    let high = crate::memory::estimate(app.route().unwrap(), map, Meters(6500.0), cores);
+    let between = 800 * MB + u64::midpoint(low.build, high.build);
+    app.check_free_memory(Arc::new(move || Some(memory(between))));
+    app.set_world_upload_radius(Meters(6500.0));
+    app.build_world(false, crate::WHOLE_WORLD);
+    let events = run_until(&mut app, |event| matches!(event, AppEvent::Error(_)));
+    assert!(events.iter().any(|event| matches!(event,
+        AppEvent::Error(failure) if failure.kind == Kind::WorldMemory)));
+    open(&mut app, &path);
+    app.set_world_upload_radius(Meters(3925.0));
+    app.build_world(false, crate::WHOLE_WORLD);
+    run_until(&mut app, |event| {
+        matches!(event, AppEvent::WorldReady { .. })
+    });
+    app.shutdown();
+}
+
+#[test]
 fn a_kept_world_checks_rendering_memory_without_charging_for_another_build() {
     let dir = temp_dir("memory-kept-world");
     let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
@@ -97,7 +125,7 @@ fn a_kept_world_checks_rendering_memory_without_charging_for_another_build() {
     let crate::WorldPlan::OnRequest(Some(map)) = &app.world_plan else {
         panic!("loaded course map");
     };
-    let estimate = crate::memory::estimate(app.route().unwrap(), map, Meters(1000.0));
+    let estimate = crate::memory::estimate(app.route().unwrap(), map, Meters(1000.0), 8);
     let between = u64::midpoint(estimate.ride, estimate.build);
     app.check_free_memory(Arc::new(move || Some(memory(800 * MB + between))));
     app.build_world(false, Meters(1000.0));

@@ -410,22 +410,67 @@ plus 256 MB for Android, and refuses if `lowMemory` is already true. A read fail
 3D explicitly. Admission is sampled after cancelled workers release their buffers; opening a
 course again retries with a fresh reading.
 
-The initial estimate is deliberately conservative and provisional:
+The estimate is provisional; its components are additional allocations after the memory
+snapshot, not the file size or a measured process peak:
 
 | Additional memory | Planning coefficient |
 |---|---|
-| Generation preparation | 192 MB baseline; ridden route 1,024 bytes/m plus 256 bytes/point; mapped roads and rails 256 bytes/m plus 128 bytes/raw point; building outline 512 bytes/point; area rings 128 bytes/point |
-| Concurrent generation batch | 64 MB per available core, including the all-core pace when paused |
-| Rendered scene | 384 MB baseline at Low's 3,925 m upload radius, scaling with larger view area; whole ridden-route allocation; busiest coarse spatial window's roads/rails 512 bytes/m, buildings 1,024 bytes/outline point and area rings 256 bytes/point |
+| Generation preparation/working data | 0.192 GB baseline; ridden route 1,024 bytes/m plus 256 bytes/point; mapped roads and rails 256 bytes/m plus 128 bytes/raw point; building outline 512 bytes/point; area rings 128 bytes/point |
+| Concurrent generation batch | 0.016 GB per available core, at least 0.128 GB; the current two-chunks-per-core batches added about 0.10 GB on eight cores in the measurements above |
+| Additional rendered scene | 0.128 GB headroom at Low's 3,925 m upload radius, scaling with larger view area; ridden-road uploads 256 bytes/m; busiest circular window's roads/rails 512 bytes/m, buildings 1,024 bytes/outline point and area rings 256 bytes/point |
 
-These coefficients take margin over the measured Wada preparation, batch and Low scene
-above; they are not fitted bounds for every possible course. The busiest-window estimate
-uses 2 km cells and the upload/eviction margins, so it does not assume the start is densest
-or sum every distant chunk into the resident scene. Kept worlds are charged only for riding.
+These coefficients are planning proxies, not fitted bounds for every possible course. The
+busiest-window estimate uses 480 m cells, a circular distance check and the upload/eviction
+margins, so it does not assume the start is densest or sum every distant chunk into the
+resident scene. Cell-position uncertainty adds a margin on both sides. Generation waiting
+for the entire world uses the selected graphics radius, supplied separately by presentation.
+Godot and its renderer already exist at the free-memory snapshot, so their baseline is not
+charged a second time. Road upload sizing follows its six vertices per two metres and
+index buffers (about 144 bytes/m on the GPU, rounded to 256 for conversion margin).
+Kept worlds are charged only for riding.
 Actual graphics-driver/allocator peaks and detailed geometry can differ. Checkpoints therefore
 also sample headroom during preparation and generation, before scene uploads, and while a
 completed world is visible. At most 100 ms of sampled memory is shared between these checks.
-Generation requires the batch headroom; uploads require another 128 MB above Android's reserve.
+Generation requires the batch headroom; uploads require another 0.128 GB above Android's
+reserve. Rider messages use decimal GB and show the course's additional estimate, memory
+usable after Android's reserve, and that reserve separately, with exact bytes in diagnostics.
+
+### Offline estimate regression, 2026-11-16
+
+The original heuristic rejected Wada on Low with 4.688 GB required and 3.591 GB available.
+Replaying the local course's inputs reproduced 3.523 GB before Android's reserve: 1.096 GB
+preparation, 0.512 GB batch, 1.915 GB scene. Adding about 1.165 GB reserve explains the reported
+total. Its 2 km square rounding covered an 18 × 18 km window at Low; it also used a batch
+allowance for the earlier, larger batches and charged already-allocated renderer memory.
+
+`memory_estimate` reads only a copy of the course's offline inputs. It generates and renders
+no world. The corrected estimates on eight cores are:
+
+| Course / upload radius | Preparation proxy | Batch | Additional scene | Total additional |
+|---|---:|---:|---:|---:|
+| Wada – Ōtarumi Pass, Low / 3,925 m | 1.096 GB | 0.128 GB | 1.179 GB | **2.402 GB** |
+| Wada, High / 7,075 m | 1.096 GB | 0.128 GB | 1.837 GB | 3.060 GB |
+| Twann – Chasseral, Low / 3,925 m | 0.381 GB | 0.128 GB | 0.423 GB | 0.933 GB |
+| Bielersee, Low / 3,925 m | 0.853 GB | 0.128 GB | 0.766 GB | 1.747 GB |
+
+Columns are rounded independently; totals use exact bytes.
+
+The Wada input has 15,118 mapped roads, 51,961 buildings and 2,310 areas. With the same
+1.165 GB reserve, Low's initial requirement becomes about 3.567 GB, within the reported
+3.591 GB snapshot; High still exceeds it. This validates the false-positive correction,
+not the phone's actual peak memory or a new hardware-stability claim. Runtime checks remain
+active, and device acceptance is still required.
+
+For a local copy at `dist/memory-estimate/wada.oqc`, assert that the additional estimate
+fits the reported snapshot after that reserve (2.426 GB):
+
+```sh
+scripts/dev.sh sh -c 'cd core && cargo run --profile test -p orqwa-app --example memory_estimate -- ../dist/memory-estimate/wada.oqc 3925 8 2.426'
+```
+
+No local course files are committed. Tests also cover separated diagonal towns outside
+the resident circle, GB rounding and reserve separation, and changing viewing distance
+while retaining whole-course generation.
 
 Injected-memory tests cover rejection before generation, Android's low-memory flag and
 threshold, query failure, a changed reading after stopped workers end, a successful retry,

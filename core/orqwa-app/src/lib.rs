@@ -2479,7 +2479,12 @@ impl App {
             let result = async {
                 let estimate = if let Some(guard) = &memory {
                     guard.check(memory::UPLOAD_HEADROOM, true)?;
-                    Some(memory::estimate(&route, &map, radius))
+                    Some(memory::estimate(
+                        &route,
+                        &map,
+                        guard.radius(radius),
+                        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
+                    ))
                 } else {
                     None
                 };

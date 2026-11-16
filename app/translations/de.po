@@ -3369,11 +3369,11 @@ msgstr "Geteilte Strecke oder geteiltes Training für alle zurückziehen"
 msgid "Could not store the course's 3D world. Check free storage and reopen the course."
 msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den freien Speicherplatz und öffne die Strecke erneut."
 
-msgid "This course needs about %s of available memory, including room for Android; %s is available. Close other apps or lower graphics, then reopen the course."
-msgstr "Diese Strecke benötigt etwa %s verfügbaren Arbeitsspeicher, einschließlich Platz für Android; %s ist verfügbar. Schließe andere Apps oder reduziere die Grafik und öffne die Strecke erneut."
+msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
+msgstr "Die Vorbereitung dieser Strecke benötigt etwa %s zusätzlichen Arbeitsspeicher; %s sind nach einer Reserve von %s für Android verfügbar. Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
 
 msgid "Could not check Android's available memory. Reopen ORQWA and try again."
 msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden. Öffne ORQWA erneut und versuche es noch einmal."
 
-msgid "Android reports low memory (%s available). Close other apps or lower graphics, then reopen the course."
-msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Grafik und öffne die Strecke erneut."
+msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
+msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."

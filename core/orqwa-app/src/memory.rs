@@ -12,7 +12,11 @@ use crate::App;
 use crate::failure::{Failure, Kind};
 
 const MB: u64 = 1_000_000;
-const CELL: f64 = 2000.0;
+const CELL: f64 = 480.0;
+/// Current two-chunks-per-core batches added about 0.10 GB on eight cores in Wada's
+/// measurements; 0.016 GB/core rounds that up (docs/benchmarks/world-memory.md).
+const BATCH_PER_CORE: u64 = 16 * MB;
+const LOW_UPLOAD_RADIUS: Meters = Meters(3925.0);
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 /// Room for a chunk's deserialization, Godot arrays and mesh upload, beyond the OS reserve.
 pub(crate) const UPLOAD_HEADROOM: u64 = 128 * MB;
@@ -36,6 +40,8 @@ pub type FreeMemory = Arc<dyn Fn() -> Option<MemoryInfo> + Send + Sync>;
 #[derive(Clone)]
 pub(crate) struct Guard {
     free: FreeMemory,
+    /// Rendering extent is independent of whether generation waits for the whole world.
+    radius: Option<Meters>,
     // Generation workers and the frame thread share one sample instead of querying Java for
     // every sink in a batch. Admission always takes a fresh sample after stopped jobs end.
     sample: Arc<Mutex<Option<Sample>>>,
@@ -48,6 +54,15 @@ struct Sample {
 }
 
 impl Guard {
+    pub(crate) fn radius(&self, generation: Meters) -> Meters {
+        self.radius.unwrap_or_else(|| {
+            if generation.0.is_finite() {
+                generation
+            } else {
+                LOW_UPLOAD_RADIUS
+            }
+        })
+    }
     fn read(&self, fresh: bool) -> Option<MemoryInfo> {
         let mut sample = self.sample.lock().unwrap_or_else(PoisonError::into_inner);
         if !fresh
@@ -100,7 +115,7 @@ impl Guard {
                     info.available, info.threshold
                 ),
             )
-            .arg(format!("{} MB", info.available / MB)));
+            .arg(gigabytes(info.available, false)));
         }
         if info.available >= needed {
             return Ok(());
@@ -112,28 +127,56 @@ impl Guard {
                 info.available, info.total, info.threshold, info.low
             ),
         )
-        .arg(format!("{} MB", needed.div_ceil(MB)))
-        .arg(format!("{} MB", info.available / MB)))
+        .arg(gigabytes(additional, true))
+        .arg(gigabytes(info.available.saturating_sub(reserve), false))
+        .arg(gigabytes(reserve, true)))
     }
+}
+
+fn gigabytes(bytes: u64, round_up: bool) -> String {
+    const HUNDREDTH: u64 = 10_000_000;
+    let hundredths = if round_up {
+        bytes.div_ceil(HUNDREDTH)
+    } else {
+        bytes / HUNDREDTH
+    };
+    format!("{}.{:02} GB", hundredths / 100, hundredths % 100)
 }
 
 /// The next synchronous batch can use all cores even while a ride is paused. This is also
 /// allowed for in the admission estimate, alongside the preparation and rendered scene.
 pub(crate) fn batch_headroom() -> u64 {
-    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get) as u64 * 64 * MB
+    batch_bytes(std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get))
 }
 
-pub(crate) struct Estimate {
-    pub(crate) build: u64,
-    pub(crate) ride: u64,
+fn batch_bytes(cores: usize) -> u64 {
+    (cores.max(1) as u64 * BATCH_PER_CORE).max(UPLOAD_HEADROOM)
+}
+
+/// Provisional additional-memory planning values, in bytes, not measured process peaks.
+#[derive(Debug)]
+pub struct Estimate {
+    /// Whole-route preparation, before concurrent chunks or rendering.
+    pub preparation: u64,
+    /// A concurrent chunk batch on the requested number of cores.
+    pub batch: u64,
+    /// Resident rendered surroundings, including whole-route geometry.
+    pub ride: u64,
+    /// Preparation, concurrent batch and rendered surroundings together.
+    pub build: u64,
 }
 
 /// Conservative planning coefficients, grounded in the measured Wada preparation/batch and
 /// Low scene (docs/benchmarks/world-memory.md). They are not an allocation limit: checkpoints
 /// still check live memory. Count resampled street length and footprint complexity, not the
 /// compressed file or a universal course-length limit.
-#[allow(clippy::cast_possible_truncation)] // the finite coarse-cell reach is at most 8
-pub(crate) fn estimate(route: &Route, map: &MapData, radius: Meters) -> Estimate {
+pub fn estimate(route: &Route, map: &MapData, radius: Meters, cores: usize) -> Estimate {
+    // Finishing the entire build before hand-over does not render the entire course.
+    let radius = if radius.0.is_finite() {
+        radius
+    } else {
+        LOW_UPLOAD_RADIUS
+    };
     let projection = LocalProjection::for_route(route);
     let mut cells = HashMap::new();
     let route_bytes = bytes(route.length().0, 1024) + route.points().len() as u64 * 256;
@@ -169,24 +212,28 @@ pub(crate) fn estimate(route: &Route, map: &MapData, radius: Meters) -> Estimate
         let b = projection.project(pair[1].lat, pair[1].lon);
         charge_segment(&mut cells, a, b, 1024);
     }
-    // Bound the busiest surroundings anywhere on the course, including the eviction margin,
-    // rather than assuming the start is its densest part. Coarse squares overestimate a disk.
-    let reach = ((radius.0 + 720.0) / CELL).ceil();
-    let scene = if !reach.is_finite() || reach > 8.0 {
-        cells.values().sum()
-    } else {
-        busiest(&cells, reach.max(0.0) as i64 + 1)
-    };
-    // Terrain, vegetation, render targets and LOD work grow with the view's area even in an
-    // empty map. 3,925 m is the measured Low upload radius, including its movement margin.
-    let area = if radius.0.is_finite() {
-        (radius.0 / 3925.0).max(1.0).powi(2)
-    } else {
-        1.0
-    };
-    let ride = bytes(area, 384 * MB) + route_bytes + scene;
+    // A square window counts distant towns together even when they cannot be resident at
+    // once. Match the circular upload/eviction area, allowing a cell's position error on
+    // both sides. Chunk-sized cells keep this rounding to a small margin.
+    let scene = busiest(&cells, radius);
+    // Admission reads free RAM after Godot and its renderer already exist: don't charge the
+    // engine's roughly 0.3 GB baseline again. Keep extra room for terrain/vegetation and LOD
+    // uploads, growing with the view area. The ridden road's six vertices per two metres
+    // and index buffers need about 144 bytes/m on the GPU; 256 leaves conversion margin.
+    let area = (radius.0 / LOW_UPLOAD_RADIUS.0).max(1.0).powi(2);
+    let ride = bytes(area, UPLOAD_HEADROOM) + bytes(route.length().0, 256) + scene;
+    tracing::info!(
+        preparation,
+        batch = batch_bytes(cores),
+        scene = ride,
+        radius = radius.0,
+        cores,
+        "estimated additional 3D memory; Android reserve is separate"
+    );
     Estimate {
-        build: preparation + batch_headroom() + ride,
+        preparation,
+        batch: batch_bytes(cores),
+        build: preparation + batch_bytes(cores) + ride,
         ride,
     }
 }
@@ -246,12 +293,19 @@ fn charge(cells: &mut HashMap<(i64, i64), u64>, at: (f64, f64), bytes: u64) {
         .or_default() += bytes;
 }
 
-fn busiest(cells: &HashMap<(i64, i64), u64>, reach: i64) -> u64 {
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)] // bounded spatial bins
+fn busiest(cells: &HashMap<(i64, i64), u64>, radius: Meters) -> u64 {
+    let metres = radius.0.max(0.0) + 720.0 + CELL * std::f64::consts::SQRT_2;
+    if metres > 30_000.0 {
+        return cells.values().sum();
+    }
+    let reach = (metres / CELL).ceil() as i64;
     cells
         .keys()
         .map(|&(x, y)| {
             (x - reach..=x + reach)
                 .flat_map(|a| (y - reach..=y + reach).map(move |b| (a, b)))
+                .filter(|&(a, b)| ((a - x) as f64 * CELL).hypot((b - y) as f64 * CELL) <= metres)
                 .filter_map(|cell| cells.get(&cell))
                 .sum()
         })
@@ -265,8 +319,20 @@ impl App {
     pub fn check_free_memory(&mut self, free: FreeMemory) {
         self.memory = Some(Guard {
             free,
+            radius: None,
             sample: Arc::default(),
         });
+    }
+
+    /// Supplies the actual graphics upload radius independently of generation's hand-over
+    /// radius. Finishing a complete course before riding still renders only nearby chunks.
+    pub fn set_world_upload_radius(&mut self, radius: Meters) {
+        if radius.0.is_finite()
+            && radius.0 >= 0.0
+            && let Some(guard) = &mut self.memory
+        {
+            guard.radius = Some(radius);
+        }
     }
 
     /// Checks headroom before scene uploads, including after generation has finished. A failed
@@ -303,6 +369,7 @@ mod tests {
     fn guard(info: Option<MemoryInfo>) -> Guard {
         Guard {
             free: Arc::new(move || info),
+            radius: None,
             sample: Arc::default(),
         }
     }
@@ -322,7 +389,7 @@ mod tests {
         assert!(free.check(200 * MB, true).is_ok());
         let error = free.check(201 * MB, true).unwrap_err();
         assert_eq!(error.kind, Kind::WorldMemory);
-        assert_eq!(error.args, ["1001 MB", "1000 MB"]);
+        assert_eq!(error.args, ["0.21 GB", "0.20 GB", "0.80 GB"]);
 
         let free = guard(Some(MemoryInfo {
             threshold: 900 * MB,
@@ -359,13 +426,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn memory_messages_separate_additional_ram_and_androids_reserve_in_gb() {
+        let free = guard(Some(MemoryInfo {
+            total: 11_650 * MB,
+            ..phone(3591 * MB)
+        }));
+        assert!(
+            free.check(2402 * MB, true).is_ok(),
+            "corrected Wada estimate fits this snapshot"
+        );
+        let error = free.check(3523 * MB, true).unwrap_err();
+        assert_eq!(error.args, ["3.53 GB", "2.42 GB", "1.17 GB"]);
+        assert_eq!(gigabytes(1_000_000_000, true), "1.00 GB");
+        assert_eq!(gigabytes(1_000_000_001, true), "1.01 GB");
+        assert_eq!(gigabytes(1_000_000_001, false), "1.00 GB");
+    }
+
+    #[test]
+    fn diagonal_towns_outside_the_resident_circle_are_not_added_together() {
+        let mut cells = HashMap::new();
+        charge(&mut cells, (0.0, 0.0), 100);
+        charge(&mut cells, (5000.0, 5000.0), 1000);
+        charge(&mut cells, (-5000.0, -5000.0), 1000);
+        assert_eq!(busiest(&cells, LOW_UPLOAD_RADIUS), 1000);
+    }
+
     #[tokio::test]
     async fn geometry_complexity_and_viewing_distance_change_the_estimate() {
         let route = Route::from_gpx(
             r#"<gpx><trk><trkseg><trkpt lat="46" lon="7"><ele>500</ele></trkpt><trkpt lat="46.001" lon="7"><ele>500</ele></trkpt></trkseg></trk></gpx>"#,
             None,
         ).await.unwrap();
-        let empty = estimate(&route, &MapData::default(), Meters(1000.0));
+        let empty = estimate(&route, &MapData::default(), Meters(1000.0), 8);
         let mut map = MapData::default();
         for i in 0..30 {
             map.buildings.push(orqwa_osm::Building {
@@ -376,8 +469,14 @@ mod tests {
                 color: None,
             });
         }
-        let near = estimate(&route, &map, Meters(1000.0));
-        let far = estimate(&route, &map, Meters(6000.0));
+        let near = estimate(&route, &map, Meters(1000.0), 8);
+        let far = estimate(&route, &map, Meters(6000.0), 8);
+        let whole = estimate(&route, &map, crate::WHOLE_WORLD, 8);
+        let low = estimate(&route, &map, LOW_UPLOAD_RADIUS, 8);
+        assert_eq!(
+            whole.build, low.build,
+            "whole generation is not whole-course rendering"
+        );
         assert!(near.build > empty.build, "same route, more complex map");
         assert!(
             far.ride > near.ride,

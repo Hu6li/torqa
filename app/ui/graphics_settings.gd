@@ -26,6 +26,7 @@ func bind(orqwa: OrqwaApp) -> void:
 			_quality.select(i)
 	_show_quality_note()
 	_build_details()
+	_remember_upload_radius()
 
 
 func _init() -> void:
@@ -168,6 +169,7 @@ func _app_window() -> Window:
 func _on_quality_selected(index: int) -> void:
 	var key: String = _quality.get_item_metadata(index)
 	_orqwa.set_graphics_quality(key)
+	_remember_upload_radius()
 	_show_quality_note()
 	_show_benchmark_help()
 
@@ -259,6 +261,7 @@ func _value_name(option: String, value: String, values: Dictionary[String, Strin
 func _on_detail_selected(index: int, option: String) -> void:
 	var value: String = _details[option].get_item_metadata(index)
 	_orqwa.set_graphics_option(option, value)
+	_remember_upload_radius()
 	_show_benchmark_help()
 
 
@@ -266,3 +269,11 @@ func _reset_details() -> void:
 	for option: String in _details:
 		_orqwa.set_graphics_option(option, "auto")
 		_details[option].select(0)
+	_remember_upload_radius()
+
+
+## Memory admission needs the graphics extent even when a GPX builds its whole world first.
+func _remember_upload_radius() -> void:
+	_orqwa.set_world_upload_radius(
+		RideWorld.upload_radius(_orqwa.graphics_quality(), _orqwa.graphics_options())
+	)
