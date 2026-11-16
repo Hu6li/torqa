@@ -2453,11 +2453,7 @@ impl App {
         let kept = self.course.clone().filter(|_| self.keeps_worlds());
         let radius = self.world_ahead.1;
         let from = self.entry_distance();
-        let at = self
-            .rider_position(from, false)
-            .map_or((Meters(0.0), Meters(0.0)), |(east, north)| {
-                (Meters(east), Meters(north))
-            });
+        let at = self.entry_position(from);
         let keeper = self.keeper();
         let pace = Arc::new(orqwa_world::Pace::new(radius, self.lower_priority));
         self.pace = Some(Arc::clone(&pace));

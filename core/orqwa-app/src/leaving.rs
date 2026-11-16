@@ -169,6 +169,15 @@ impl App {
         )
     }
 
+    /// Where on the map a ride entering `from` along the course starts, or the map's origin
+    /// when the route can't place it.
+    pub(crate) fn entry_position(&self, from: Meters) -> (Meters, Meters) {
+        self.rider_position(from, false)
+            .map_or((Meters(0.0), Meters(0.0)), |(east, north)| {
+                (Meters(east), Meters(north))
+            })
+    }
+
     /// The world `loaded` handed over by a build taken over: ready to ride once its chunks
     /// around where the ride enters are finished, which [`App::check_entering`] waits for.
     pub(crate) fn enter_world(&mut self, loaded: LoadedWorld) {
