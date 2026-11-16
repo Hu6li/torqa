@@ -87,7 +87,8 @@ Every world is built into a store in the cache directory, never the data directo
 - **When the store can't be written** (disk full, unwritable cache):
   - On desktops, the chunks stay in memory as they do today, with a warning in the log.
   - On Android, that fallback is the low-memory kill again. So **Ride** stops before building
-    and tells the rider how much free storage the course needs, from the estimate above.
+    and tells the rider how much free storage the course needs. Until 2a has measured real
+    stores, the check uses the upper end of the estimate: 25 MB per kilometre.
 - Android may clear the cache under storage pressure while a course is open. A missing chunk
   is handled like a damaged one (see Consequences).
 
@@ -182,6 +183,9 @@ uploads").
     until the chunks around the entry point, taken from the organizer's progress at that
     moment, are finished. If the organizer has moved past them, building follows them until
     they are.
+  - A late joiner waits for finished chunks, while riders already in the group ride on
+    without them. Entering is an explicit step that happens once, so a short wait costs less
+    than starting in an empty scene. Riders already in the ride can't be asked to wait.
 - **Throttle.** While a ride runs, background building starts at half the cores (at least
   one), at low priority, so drawing keeps its frame time and a tablet stays cool.
   - Its share rises, up to all cores, when its lead over the rider (or the group's front
@@ -191,19 +195,25 @@ uploads").
     about 1.9 chunks a second (about 9 km of route a minute), came from all cores with nothing
     drawn, while the tablet was thrashing swap.
 - **When the rider catches up** with chunks that aren't finished:
-  - **Solo:** the ride pauses itself as the pause button would: clock, recording and distance
-    stop, and the trainer keeps the last grade. The loading page shows, and the ride goes on
-    by itself when the chunks are ready.
+  - **Solo:** the ride pauses itself exactly as the pause button does (`App::set_paused`).
+    Clock, recording and distance stop, and the trainer is released. The loading page shows.
+    When the chunks are ready, the ride resumes by itself, and the grade is sent to the
+    trainer again.
   - **Group ride:** nothing pauses, because the others keep riding. The road, structures and
     horizon are whole parts, so they are always there. The rider rides on them while the
-    missing chunks are built first, and the chunks appear as they arrive.
+    missing chunks are built first, and the chunks appear as they arrive. Whether the horizon's
+    ground reaches under the corridor decides whether that looks like a road over a hole. The
+    2d PR renders it.
   - **Jump** in a simulated ride (`App::jump_to`, `jump_near`, 2c too): the simulated ride
-    holds at the new point until its surroundings are uploaded, under the loading page. A
-    simulated ride records nothing, so nothing else changes.
+    pauses at the new point as above, clock included, until its surroundings are uploaded. A
+    simulated ride is recorded, flagged as simulated, and sets no records, so nothing else
+    changes.
 - **Leaving early.** A ride left before its world is complete:
   - With **Keep courses ready to ride** on, building goes on in the background, throttled,
-    while ORQWA stays open, also after the course is closed. It stops only for another world
-    to be built. The world is kept once complete, as R101 promises for a course first ridden.
+    while ORQWA stays open, also after the course is closed. It pauses while any ride runs,
+    so the preparation and two rings of an unfinished world never share memory with another
+    course's ride, and R240's figures, measured one course at a time, still hold. It stops for
+    another world to be built. The world is kept once complete, as R101 promises for a course first ridden.
     If ORQWA closes first, the partial store is deleted, and the next ride builds the world
     again.
   - Otherwise, the building directory is deleted with the course.
