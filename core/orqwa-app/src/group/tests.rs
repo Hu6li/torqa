@@ -2376,6 +2376,14 @@ fn a_ride_going_on_alone_keeps_building_its_world_when_the_group_ends_its_activi
     let route = from.0.join("alone.gpx");
     std::fs::write(&route, gpx).unwrap();
     host.load_route(route, true);
+    // The course file holds the route, not its world: it is saved once the world's start is
+    // built. An import waits for every chunk first, over 2000 here, which an unoptimized
+    // build under a parallel test run does not finish within `run_until`'s limit.
+    host.world_ahead.1 = Meters(0.0);
+    crate::tests::run_until(&mut host, |e| {
+        matches!(e, crate::AppEvent::WorldReady { .. })
+    });
+    host.save_course().unwrap();
     let events =
         crate::tests::run_until(&mut host, |e| matches!(e, crate::AppEvent::CourseAdded(_)));
     let Some(crate::AppEvent::CourseAdded(course)) = events.last() else {
