@@ -209,7 +209,9 @@ func _init() -> void:
 	var patterns: PackedStringArray = PackedStringArray()
 	for extension: String in OrqwaApp.workout_extensions():
 		patterns.append("*." + extension)
-	_import_dialog.filters = PackedStringArray([", ".join(patterns) + " ; " + tr("Workouts")])
+	_import_dialog.filters = PickedFile.open_filters(
+		PackedStringArray([", ".join(patterns) + " ; " + tr("Workouts")])
+	)
 	_import_dialog.use_native_dialog = true
 	_import_dialog.file_selected.connect(_import)
 	add_child(_import_dialog)

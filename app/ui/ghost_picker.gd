@@ -36,7 +36,9 @@ func _init() -> void:
 	_file_dialog.title = tr("Race against a recorded activity")
 	_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	_file_dialog.filters = PackedStringArray(["*.gpx, *.fit ; GPX or FIT activities"])
+	_file_dialog.filters = PickedFile.open_filters(
+		PackedStringArray(["*.gpx, *.fit ; GPX or FIT activities"])
+	)
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	_file_dialog.canceled.connect(func() -> void: _option.select(Ghost.NONE))

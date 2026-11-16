@@ -11,6 +11,14 @@ const COPIES: String = "user://picked"
 const ANDROID: StringName = &"OrqwaAndroid"
 
 
+## The filters for a file dialog that opens one of `filters`' files: none on Android. Its picker
+## turns each extension into a MIME type and greys out files stored under another one, which in
+## Recent and Downloads is whatever the download was typed as (a GPX as application/gpx+xml,
+## say): the core goes by the picked file's name instead.
+static func open_filters(filters: PackedStringArray) -> PackedStringArray:
+	return PackedStringArray() if OS.has_feature("android") else filters
+
+
 ## The path to give the core for `picked`; `picked` itself if an Android file cannot be copied,
 ## so the core reports it as unreadable as before.
 static func local_path(picked: String) -> String:

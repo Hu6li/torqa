@@ -62,6 +62,10 @@ build image. That is too much for the dev image, which every check pulls.
     answer an address ending in a document id (`…/document/msf:…`), which names nothing: the
     plugin names the copy by the provider's display name, so the import still sees the file's
     extension.
+  - The pickers that open a file to import show every file on Android. Godot turns a dialog's
+    extension filters into MIME types, and Recent and Downloads list a file under the type its
+    download gave it (a GPX as `application/gpx+xml`, say), so a matching file was greyed out
+    there and could only be picked by browsing to its folder.
 
 ## Phase A result (2026-10-19)
 
