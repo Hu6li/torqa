@@ -4,6 +4,7 @@ use orqwa_devices::fake::FakeRider;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Rpm, Watts};
 use orqwa_net::code::{ConnectionMode, Setup};
+use std::fmt::Write as _;
 use std::path::Path;
 use std::time::Duration;
 
@@ -2353,6 +2354,109 @@ fn a_rider_is_ready_once_the_surroundings_of_the_groups_start_are_built() {
             "chunk {index} at the start not finished"
         );
     }
+    host.group_leave();
+}
+
+#[test]
+fn a_ride_going_on_alone_keeps_building_its_world_when_the_group_ends_its_activity() {
+    // #536 with ADR 0040, 2d: the group's course is ridden while its world is built, and a
+    // friend who joined again rides it on alone. The group ending what it rides instead must
+    // not take that world away mid-ride.
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    // 120 km, far more than is built while the test rides it.
+    let mut gpx = String::from("<gpx><trk><name>Alone</name><trkseg>");
+    for i in 0..=12_000_u32 {
+        let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+        let _ = write!(gpx, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
+    }
+    gpx.push_str("</trkseg></trk></gpx>");
+    let route = from.0.join("alone.gpx");
+    std::fs::write(&route, gpx).unwrap();
+    host.load_route(route, true);
+    let events =
+        crate::tests::run_until(&mut host, |e| matches!(e, crate::AppEvent::CourseAdded(_)));
+    let Some(crate::AppEvent::CourseAdded(course)) = events.last() else {
+        unreachable!()
+    };
+    let course = course.clone();
+    for app in [&mut host, &mut peer] {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(180.0),
+            cadence: Rpm(85.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.set_group_upload_radius(Meters(0.0));
+    }
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    host.group_select(Some(course), None).unwrap();
+    wait_up_to(Duration::from_secs(120), &mut host, &mut peer, |h, p| {
+        h.group().prepared && p.group().prepared
+    });
+    host.group_ready(true).unwrap();
+    peer.group_ready(true).unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.ride_state().is_some() && p.ride_state().is_some()
+    });
+
+    let chunks = std::sync::Arc::clone(peer.chunks.as_ref().expect("the course's world"));
+    assert!(!chunks.complete(), "the rest is still being built");
+    let keeps_its_world = |peer: &App| {
+        assert!(peer.ride.is_some(), "the ride goes on alone");
+        assert!(
+            peer.chunks
+                .as_ref()
+                .is_some_and(|ridden| std::sync::Arc::ptr_eq(ridden, &chunks)),
+            "the ride keeps its world"
+        );
+        assert!(
+            peer.loading.as_ref().is_some_and(|job| !job.is_finished()) || chunks.complete(),
+            "its world goes on being built"
+        );
+    };
+
+    // The friend's connection ends; meanwhile the group leaves the course for a workout.
+    peer.group_command(Command::EndConnection).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, _| {
+        h.ride.is_none() && h.group().phase == Phase::Waiting
+    });
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().prepared);
+    host.group_ready(true).unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait(&mut host, &mut peer, |h, _| h.ride_state().is_some());
+    // Joining again, the friend hears of the course's end and rides it on alone.
+    peer.group_rejoin().unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group_waits_for_ride());
+    assert!(peer.group_rides_alone());
+    keeps_its_world(&peer);
+
+    // And of the workout's end, too.
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.ride.is_none() && p.group().phase == Phase::Waiting
+    });
+    keeps_its_world(&peer);
+    peer.group_leave();
     host.group_leave();
 }
 

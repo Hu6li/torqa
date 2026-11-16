@@ -1419,36 +1419,43 @@ impl App {
             events.extend(notices.into_iter().map(AppEvent::GroupConnection));
         }
     }
+    /// Back in the lobby once the group's activity has ended.
+    fn return_to_lobby(&mut self, snapshot: &Snapshot, events: &mut Vec<AppEvent>) {
+        // Saving and trainer release happen locally; remote controls supply no samples.
+        if self.group.as_ref().is_some_and(|group| group.launched) {
+            crate::release_trainer(self.trainer.as_ref());
+            events.extend(self.save_ride(false));
+        }
+        // A ride the group has not taken up again goes on alone (#536), on a world that may
+        // still be being built (ADR 0040, 2d).
+        if self.ride.is_none() {
+            self.cancel_loading();
+        }
+        if let Some(group) = &mut self.group {
+            group.returned_revision = snapshot.ended_revision;
+            group.end_requested = None;
+            group.launched = false;
+            group.launching = false;
+            group.preparing = None;
+            group.prepared = 0;
+            group.built = 0;
+            if snapshot.selection.is_none() {
+                group.workout_id.clear();
+            }
+            group.peers = orqwa_session::group::Riders::default();
+            group.effect = orqwa_physics::GroupEffect::default();
+            group.transition = None;
+            group.states.send_replace(None);
+        }
+        events.push(AppEvent::GroupReturnedToLobby);
+    }
     pub(crate) fn poll_group(&mut self, events: &mut Vec<AppEvent>) {
         let Some(group) = &self.group else {
             return;
         };
         let snapshot = group.snapshot.borrow().clone();
         if snapshot.ended_revision > group.returned_revision {
-            // Saving and trainer release happen locally; remote controls supply no samples.
-            // A ride the group has not taken up again goes on alone (#536).
-            if group.launched {
-                crate::release_trainer(self.trainer.as_ref());
-                events.extend(self.save_ride(false));
-            }
-            self.cancel_loading();
-            if let Some(group) = &mut self.group {
-                group.returned_revision = snapshot.ended_revision;
-                group.end_requested = None;
-                group.launched = false;
-                group.launching = false;
-                group.preparing = None;
-                group.prepared = 0;
-                group.built = 0;
-                if snapshot.selection.is_none() {
-                    group.workout_id.clear();
-                }
-                group.peers = orqwa_session::group::Riders::default();
-                group.effect = orqwa_physics::GroupEffect::default();
-                group.transition = None;
-                group.states.send_replace(None);
-            }
-            events.push(AppEvent::GroupReturnedToLobby);
+            self.return_to_lobby(&snapshot, events);
         }
         let Some(group) = &self.group else {
             return;
