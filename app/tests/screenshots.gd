@@ -752,7 +752,7 @@ func _keep_a_world(orqwa: OrqwaApp) -> void:
 		var first: Dictionary = library[0]
 		var path: String = first["path"]
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(path)

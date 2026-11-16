@@ -342,12 +342,22 @@ pub enum AppEvent {
     },
     /// A route was imported; its 3D world is being generated.
     RouteLoaded(RouteSummary),
-    /// The 3D world for the loaded route is ready.
+    /// The 3D world for the loaded route can be ridden: the chunks around where the ride
+    /// enters it are finished, and the rest is built in the background (ADR 0040), reported
+    /// by [`AppEvent::WorldGrew`].
     WorldReady {
         /// Number of terrain chunks.
         chunks: usize,
-        /// Terrain samples without elevation data (terrain follows the road there).
+        /// Terrain samples without elevation data (terrain follows the road there), in the
+        /// chunks finished so far.
         fallback_samples: usize,
+    },
+    /// More of the 3D world being ridden was built.
+    WorldGrew {
+        /// Whether the structures changed: bridges were built.
+        structures: bool,
+        /// Whether the world is complete now.
+        complete: bool,
     },
     /// A device connected (also after a reconnect).
     Connected(String),
@@ -487,6 +497,10 @@ pub enum TrainerChoice {
 }
 
 /// A world loaded for a ride.
+/// The radius for [`App::build_world`] that has every chunk finished before the world is
+/// ridden.
+pub const WHOLE_WORLD: Meters = Meters(f64::INFINITY);
+
 struct LoadedWorld {
     /// Its parts built whole.
     world: Arc<World>,
@@ -504,6 +518,10 @@ enum JobResult {
     Route(u64, Result<Box<Imported>, Failure>),
     Video(u64, Result<Box<(Imported, video::VideoSource)>, Failure>),
     World(u64, Box<LoadedWorld>),
+    /// The structures of the world being built, with the bridges built since it was ready.
+    Structures(u64, Box<orqwa_world::MeshData>),
+    /// The world being built is complete: its parts built whole, with every structure.
+    Built(u64, Box<World>),
     Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, Failure>),
     /// The loaded route was saved as this course.
@@ -780,6 +798,14 @@ pub struct App {
     /// The loaded world's parts built whole, and its chunks.
     world: Option<Arc<World>>,
     chunks: Option<Arc<WorldChunks>>,
+    /// How many of the chunks of the world being built were finished when last reported.
+    chunks_reported: usize,
+    /// The fingerprint of the library course whose world is being built, to keep it as once
+    /// complete (R101).
+    keep_as: Option<String>,
+    /// Whether the next world built is for a ride continuing the course (R220), and how far
+    /// around where the ride enters the scene draws: that much is built before it is ridden.
+    world_ahead: (bool, Meters),
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
     offline: bool,
@@ -920,6 +946,9 @@ impl App {
             letting_go: Vec::new(),
             computer,
             world_generator: orqwa_world::GENERATOR,
+            chunks_reported: 0,
+            keep_as: None,
+            world_ahead: (false, WHOLE_WORLD),
             index: Mutex::new(index),
             continuation_undo: Mutex::new(None),
         })
@@ -1617,7 +1646,7 @@ impl App {
         let keep = self
             .world
             .clone()
-            .zip(self.chunks.clone())
+            .zip(self.chunks.clone().filter(|chunks| chunks.complete()))
             .filter(|_| self.keeps_worlds())
             .map(|(world, chunks)| (world, chunks, self.world_generator, self.keeper()));
         self.runtime.spawn_blocking(move || {
@@ -1654,11 +1683,15 @@ impl App {
     }
 
     /// Builds the 3D world of a course opened with [`App::open_course`], now or as soon as its
-    /// route is loaded; reports [`AppEvent::WorldReady`]. True if the world is ready already.
-    pub fn build_world(&mut self) -> bool {
+    /// route is loaded; reports [`AppEvent::WorldReady`] once the chunks within `radius` of
+    /// where the ride enters the course are finished, at its start or where it is continued
+    /// (R220), and [`AppEvent::WorldGrew`] as the rest is built in the background (ADR 0040).
+    /// [`WHOLE_WORLD`] waits for every chunk. True if the world is ready already.
+    pub fn build_world(&mut self, continuing: bool, radius: Meters) -> bool {
         if self.world.is_some() {
             return true;
         }
+        self.world_ahead = (continuing, radius);
         // A video course's file holds the data of its route only, as no world was built when
         // it was saved: the world fetches the rest when online.
         if self.video.is_some() {
@@ -2118,6 +2151,8 @@ impl App {
         self.video = None;
         self.view = View::World;
         self.world = None;
+        self.keep_as = None;
+        self.world_ahead = (false, WHOLE_WORLD);
         if let Some(chunks) = self.chunks.take() {
             // Deleting the store it was ridden from takes a while.
             self.drop_world(chunks);
@@ -2139,6 +2174,73 @@ impl App {
         self.letting_go.retain(|deleting| !deleting.is_finished());
         let deleting = self.runtime.spawn_blocking(move || drop(world));
         self.letting_go.push(deleting);
+    }
+
+    /// The world `loaded` can be ridden: the rider's surroundings are finished.
+    fn world_ready(&mut self, loaded: LoadedWorld, events: &mut Vec<AppEvent>) {
+        let LoadedWorld {
+            world,
+            chunks,
+            generator,
+            keep_as,
+        } = loaded;
+        events.push(AppEvent::WorldReady {
+            chunks: chunks.len(),
+            fallback_samples: world.fallback_samples,
+        });
+        self.world_generator = generator;
+        self.keep_as = keep_as;
+        self.road_widths = orqwa_world::RoadWidths::new(&world.road);
+        self.chunks_reported = chunks.finished_count();
+        self.world = Some(world);
+        self.chunks = Some(chunks);
+    }
+
+    /// The world being ridden is complete, its parts built whole `rest`: it gets every
+    /// structure, its winter ground's mask can be made, and it is kept (R101) or, built for a
+    /// prepared GPX, goes into the course library with it (R39).
+    fn world_built(&mut self, rest: World, events: &mut Vec<AppEvent>) {
+        let (Some(world), Some(chunks)) = (&mut self.world, &self.chunks) else {
+            return;
+        };
+        let parts = Arc::make_mut(world);
+        parts.structures = rest.structures;
+        parts.fallback_samples = rest.fallback_samples;
+        if chunks.completed() {
+            let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+            self.runtime
+                .spawn_blocking(move || chunks.make_snow_ground_mask(&world));
+        }
+        events.push(AppEvent::WorldGrew {
+            structures: true,
+            complete: true,
+        });
+        let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+        if !self.from_course {
+            if let Err(error) = self.save_course() {
+                warn!(%error, "cannot add the course to the library");
+            }
+        } else if let Some(fingerprint) = self.keep_as.take() {
+            self.keep_built_world(fingerprint, world, chunks);
+        } else if let Some(course) = self.course.clone().filter(|_| self.keeps_worlds()) {
+            // Keeping was turned on while it was built.
+            self.keep_world(course, world, chunks);
+        }
+    }
+
+    /// Reports chunks of the world being ridden finished since last reported.
+    fn report_growth(&mut self, events: &mut Vec<AppEvent>) {
+        let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) else {
+            return;
+        };
+        let finished = chunks.finished_count();
+        if finished != self.chunks_reported {
+            self.chunks_reported = finished;
+            events.push(AppEvent::WorldGrew {
+                structures: false,
+                complete: false,
+            });
+        }
     }
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
@@ -2165,6 +2267,17 @@ impl App {
         let mut distant = terrain(TileSource::distant());
         // A library course's world may be kept, and is kept once built (R101).
         let kept = self.course.clone().filter(|_| self.keeps_worlds());
+        let (continuing, radius) = self.world_ahead;
+        let from = Meters(
+            self.continuation_point()
+                .filter(|_| continuing)
+                .map_or(0.0, |point| point.distance_m),
+        );
+        let at = self
+            .rider_position(from, false)
+            .map_or((Meters(0.0), Meters(0.0)), |(east, north)| {
+                (Meters(east), Meters(north))
+            });
         let keeper = self.keeper();
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
@@ -2182,7 +2295,7 @@ impl App {
                         reporter.report(LoadStage::KeptWorld, 1, 1);
                         let loaded = LoadedWorld {
                             world: Arc::from(world),
-                            chunks: Arc::new(chunks),
+                            chunks: Arc::from(chunks),
                             generator,
                             keep_as: None,
                         };
@@ -2194,24 +2307,46 @@ impl App {
                 }
             }
             // Every world is built into a store and ridden from it, so its chunks are never all
-            // held (ADR 0040); a build stopped deletes what it wrote.
-            let sink = world_chunks::Sink::new(keeper.store(keep_as.as_deref().unwrap_or("ride")));
-            let mut world = orqwa_world::generate_into(
+            // held (ADR 0040); a build stopped deletes what it wrote. It is ridden once the
+            // rider's surroundings are finished, while the rest is built.
+            let chunks = Arc::new(WorldChunks::building(
+                keeper.store(keep_as.as_deref().unwrap_or("ride")),
+            ));
+            let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
+            let mut keep_as = Some(keep_as);
+            let sink = |index, chunk| chunks.take(index, chunk);
+            let (ready_tx, structures_tx) = (tx.clone(), tx.clone());
+            let rest = orqwa_world::generate_into(
                 &route,
                 &mut detailed,
                 &map,
                 &mut |done, total| reporter.report(LoadStage::World, done, total),
-                &|index, chunk| sink.take(index, chunk),
+                &sink,
+                orqwa_world::Ahead {
+                    from,
+                    at,
+                    radius,
+                    ready: &mut |world, centres| {
+                        chunks.locate(centres);
+                        let loaded = LoadedWorld {
+                            world: Arc::new(World {
+                                horizon: horizon.take().unwrap_or_default(),
+                                ..world.clone()
+                            }),
+                            chunks: Arc::clone(&chunks),
+                            generator: orqwa_world::GENERATOR,
+                            keep_as: keep_as.take().flatten(),
+                        };
+                        let _ = ready_tx.send(JobResult::World(load, Box::new(loaded)));
+                    },
+                    structures: &mut |mesh| {
+                        let mesh = Box::new(mesh.clone());
+                        let _ = structures_tx.send(JobResult::Structures(load, mesh));
+                    },
+                },
             )
             .await;
-            world.horizon = orqwa_world::horizon(&route, &mut distant).await;
-            let loaded = LoadedWorld {
-                world: Arc::new(world),
-                chunks: Arc::new(sink.finish()),
-                generator: orqwa_world::GENERATOR,
-                keep_as,
-            };
-            let _ = tx.send(JobResult::World(load, Box::new(loaded)));
+            let _ = tx.send(JobResult::Built(load, Box::new(rest)));
         });
     }
 
@@ -3922,6 +4057,7 @@ impl App {
     pub fn update(&mut self, dt: Duration) -> Vec<AppEvent> {
         let mut events = Vec::new();
         self.poll_events(&mut events);
+        self.report_growth(&mut events);
 
         if let Some(active) = &mut self.ride
             && active.started.is_some()
@@ -4131,6 +4267,8 @@ impl App {
                 }
                 JobResult::Route(load, _)
                 | JobResult::Video(load, _)
+                | JobResult::Structures(load, _)
+                | JobResult::Built(load, _)
                 | JobResult::Progress(load, ..)
                     if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
@@ -4164,31 +4302,17 @@ impl App {
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
-                JobResult::World(_, loaded) => {
-                    let LoadedWorld {
-                        world,
-                        chunks,
-                        generator,
-                        keep_as,
-                    } = *loaded;
-                    events.push(AppEvent::WorldReady {
-                        chunks: chunks.len(),
-                        fallback_samples: world.fallback_samples,
-                    });
-                    self.world_generator = generator;
-                    if let Some(fingerprint) = keep_as {
-                        self.keep_built_world(fingerprint, Arc::clone(&world), Arc::clone(&chunks));
-                    }
-                    self.road_widths = orqwa_world::RoadWidths::new(&world.road);
-                    self.world = Some(world);
-                    self.chunks = Some(chunks);
-                    // A prepared GPX goes into the course library (R39).
-                    if !self.from_course
-                        && let Err(error) = self.save_course()
-                    {
-                        warn!(%error, "cannot add the course to the library");
+                JobResult::World(_, loaded) => self.world_ready(*loaded, events),
+                JobResult::Structures(_, structures) => {
+                    if let Some(world) = &mut self.world {
+                        Arc::make_mut(world).structures = *structures;
+                        events.push(AppEvent::WorldGrew {
+                            structures: true,
+                            complete: false,
+                        });
                     }
                 }
+                JobResult::Built(_, rest) => self.world_built(*rest, events),
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
                 JobResult::CourseSaved(Ok(path)) => {
                     self.saving = None;
@@ -5916,10 +6040,10 @@ mod tests {
             other.update(Duration::from_millis(16));
         }
         assert!(other.world().is_none());
-        assert!(!other.build_world());
+        assert!(!other.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
         assert!(other.world().is_some());
-        assert!(other.build_world());
+        assert!(other.build_world(false, crate::WHOLE_WORLD));
     }
 
     #[test]
@@ -5935,7 +6059,7 @@ mod tests {
 
         // Back and forth quickly, as when leaving and re-entering a course page.
         app.open_course(course.clone());
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         app.open_course(course.clone());
         let events = run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         for _ in 0..60 {
@@ -6535,7 +6659,7 @@ mod tests {
         app.remove_video().unwrap();
         assert!(app.video().is_none());
         assert!(course::read_manifest(file).unwrap().video.is_none());
-        assert!(!app.build_world());
+        assert!(!app.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
     }
 
@@ -6666,7 +6790,7 @@ mod tests {
 
         // In 3D: the route's world is built, the video stays off.
         app.ride_along_video(false);
-        assert!(!app.build_world());
+        assert!(!app.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
         start(&mut app);
         assert!(!app.riding_along_video());
@@ -6968,6 +7092,55 @@ mod tests {
             })
             .collect();
         assert_eq!(sent, [(0, 1), (0, 400), (4, 400)]);
+    }
+
+    #[test]
+    fn a_course_is_ridden_once_its_start_is_built_and_kept_once_complete() {
+        let dir = temp_dir("ahead");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(course)) = events.last() else {
+            unreachable!()
+        };
+        let read_all = |chunks: &WorldChunks| -> Vec<orqwa_world::TerrainChunk> {
+            (0..chunks.len())
+                .map(|index| chunks.get(index).unwrap().into_owned())
+                .collect()
+        };
+        let whole = read_all(app.world_chunks().unwrap());
+
+        app.open_course(course.clone());
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.set_keeps_worlds(true).unwrap();
+        assert!(!app.build_world(false, Meters(0.0)));
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        // The chunks the scene uploads around the start can be read.
+        let chunks = Arc::clone(app.chunks.as_ref().unwrap());
+        let (east, north) = app.ride_start_position(false).unwrap();
+        let plan =
+            orqwa_world::chunk_plan(chunks.centres(), Meters(east), Meters(north), Meters(0.0));
+        assert!(plan.nearby > 0);
+        for &index in &plan.indices[..plan.nearby] {
+            assert!(chunks.finished(index) && chunks.get(index).is_some());
+        }
+        if !chunks.complete() {
+            run_until(&mut app, |e| {
+                matches!(e, AppEvent::WorldGrew { complete: true, .. })
+            });
+        }
+
+        assert_eq!(
+            read_all(&chunks),
+            whole,
+            "the same world, built from its start"
+        );
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while app.kept_worlds().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+        assert_eq!(app.kept_worlds().len(), 1, "kept once complete (R101)");
     }
 
     #[test]

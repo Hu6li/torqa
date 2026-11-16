@@ -125,7 +125,7 @@ func _build(course: String) -> bool:
 	var began: int = Time.get_ticks_msec()
 	if course.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(course)

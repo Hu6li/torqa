@@ -135,7 +135,10 @@ func build() -> void:
 		return
 	_building = true
 	_show_building()
-	if _orqwa.build_world():
+	var radius: float = RideWorld.upload_radius(
+		_orqwa.graphics_quality(), _orqwa.graphics_options()
+	)
+	if _orqwa.build_world(_continuing, radius):
 		_on_world_ready({})
 
 

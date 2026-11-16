@@ -615,7 +615,7 @@ msgstr ""
 msgid "Braking"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/workouts_tab.gd core/orqwa-app/src/import.rs
+#: app/scenes/course_detail.gd app/scenes/ride_jumps.gd app/scenes/workouts_tab.gd core/orqwa-app/src/import.rs
 msgid "Building 3D world"
 msgstr ""
 

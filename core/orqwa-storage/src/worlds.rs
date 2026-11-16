@@ -399,12 +399,13 @@ enum Source {
 }
 
 impl Chunks {
-    /// The chunks built into `store`, centred at `centres` by index.
+    /// The chunks built into `store`, centred at `centres` by index. The store may still be
+    /// written to: a chunk can be read once it is written.
     #[must_use]
-    pub fn built(store: Building, centres: Vec<[f32; 3]>) -> Self {
+    pub fn built(store: Arc<Building>, centres: Vec<[f32; 3]>) -> Self {
         Self {
             centres,
-            source: Mutex::new(Source::Building(Arc::new(store))),
+            source: Mutex::new(Source::Building(store)),
             damaged: AtomicBool::new(false),
         }
     }
@@ -1049,7 +1050,7 @@ mod tests {
         assert!(store.whole());
         assert_eq!(store.read(7).unwrap(), built.chunks[7], "readable at once");
         let (whole, centres) = parts(&built);
-        let chunks = Chunks::built(store, centres.clone());
+        let chunks = Chunks::built(Arc::new(store), centres.clone());
         assert_eq!(chunks.read(8).unwrap(), built.chunks[8]);
         assert!(!kept.has("f"), "kept only once asked");
         chunks.keep(&kept, "f", &whole, 3).unwrap();
@@ -1074,7 +1075,7 @@ mod tests {
         for index in [0, 2] {
             store.write(index, &built.chunks[index]).unwrap();
         }
-        let chunks = Chunks::built(store, parts(&built).1);
+        let chunks = Chunks::built(Arc::new(store), parts(&built).1);
         assert!(chunks.keep(&kept, "f", &World::default(), 2).is_err());
         assert_eq!(
             std::fs::read(kept.file("f")).unwrap(),
@@ -1099,7 +1100,7 @@ mod tests {
         );
         std::fs::remove_dir(store.chunk(0)).unwrap();
         store.write(0, &built.chunks[0]).unwrap();
-        let chunks = Chunks::built(store, parts(&world(2)).1);
+        let chunks = Chunks::built(Arc::new(store), parts(&world(2)).1);
         assert!(chunks.keep(&kept, "f", &World::default(), 2).is_err());
         assert_eq!(std::fs::read(kept.file("f")).unwrap(), before);
         drop(chunks);

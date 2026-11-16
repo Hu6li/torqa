@@ -280,9 +280,15 @@ impl OrqwaApp {
     #[signal]
     fn route_loaded(route: VarDictionary);
 
-    /// The 3D world for the loaded route is ready: `{chunks, fallback_samples}`.
+    /// The 3D world for the loaded route can be ridden: `{chunks, fallback_samples}`. The
+    /// chunks around where the ride enters it are finished; the rest follow (`world_grew`).
     #[signal]
     fn world_ready(world: VarDictionary);
+
+    /// More of the 3D world being ridden was built: `{structures, complete}`, whether bridges
+    /// were (`structures_mesh` changed) and whether every chunk is finished now.
+    #[signal]
+    fn world_grew(info: VarDictionary);
 
     /// A device connected (also after reconnecting).
     #[signal]
@@ -780,11 +786,15 @@ impl OrqwaApp {
         }
     }
 
-    /// Builds the opened course's 3D world, for riding it (emits `world_ready`); true if it is
-    /// ready already.
+    /// Builds the opened course's 3D world, for riding it from its start or, `continuing`, from
+    /// where the rider left it (R220). Emits `world_ready` once the chunks within `radius`
+    /// metres of there are finished (`INF` waits for all), then `world_grew` as the rest is
+    /// built in the background (ADR 0040). True if it is ready already.
     #[func]
-    fn build_world(&mut self) -> bool {
-        self.app.as_mut().is_some_and(App::build_world)
+    fn build_world(&mut self, continuing: bool, radius: f64) -> bool {
+        self.app
+            .as_mut()
+            .is_some_and(|app| app.build_world(continuing, Meters(radius)))
     }
 
     /// Builds the loaded course's world again with this ORQWA, in place of the one kept from an
@@ -3621,6 +3631,26 @@ impl OrqwaApp {
             .map_or(0, |chunks| i64::try_from(chunks.len()).unwrap_or(0))
     }
 
+    /// Whether world chunk `index` is finished, so it can be uploaded: the world is ridden
+    /// while the rest of it is built (ADR 0040).
+    #[func]
+    fn world_chunk_finished(&self, index: i64) -> bool {
+        self.app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .zip(usize::try_from(index).ok())
+            .is_some_and(|(chunks, index)| chunks.finished(index))
+    }
+
+    /// Whether every chunk of the loaded world is finished.
+    #[func]
+    fn world_complete(&self) -> bool {
+        self.app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .is_some_and(orqwa_app::WorldChunks::complete)
+    }
+
     /// The rider's start (east/north metres), including a validated continuation point.
     #[func]
     fn world_start_position(&self, continuing: bool) -> Vector2 {
@@ -4228,6 +4258,16 @@ impl OrqwaApp {
                     "fallback_samples" => i64::try_from(fallback_samples).unwrap_or(0),
                 };
                 self.signals().world_ready().emit(&info);
+            }
+            AppEvent::WorldGrew {
+                structures,
+                complete,
+            } => {
+                let info = vdict! {
+                    "structures" => structures,
+                    "complete" => complete,
+                };
+                self.signals().world_grew().emit(&info);
             }
             AppEvent::Connected(name) => {
                 self.signals()
@@ -5160,7 +5200,7 @@ mod sample_course_tests {
             unreachable!()
         };
         assert_eq!(summary.elevation_source, ElevationSource::Terrain);
-        app.build_world();
+        app.build_world(false, orqwa_app::WHOLE_WORLD);
         let ready = |e: &AppEvent| matches!(e, AppEvent::WorldReady { .. });
         let AppEvent::WorldReady {
             fallback_samples, ..

@@ -12,6 +12,9 @@ const FRAME_BUDGET_US: int = 4000
 
 var _order: PackedInt32Array = PackedInt32Array()
 var _required: PackedInt32Array = PackedInt32Array()
+## How many chunks within reach are not built yet: the world is ridden while the rest of it is
+## built (ADR 0040).
+var _missing: int = 0
 ## Chunk index → its node, or null for a chunk that couldn't be read (it is tried again once it
 ## has been let go and comes back within reach).
 var _uploaded: Dictionary[int, Node3D] = {}
@@ -24,6 +27,7 @@ var _replan: float = 0.0
 func reset() -> void:
 	_order.clear()
 	_required.clear()
+	_missing = 0
 	_uploaded.clear()
 	_cursor = 0
 	_focus = Vector2(INF, INF)
@@ -42,9 +46,14 @@ func prioritize(world: RideWorld, focus: Vector2) -> void:
 	var kept: int = plan["kept"]
 	_required = indices.slice(0, nearby)
 	_order.clear()
+	_missing = 0
 	for index: int in _required:
-		if not _uploaded.has(index):
+		if _uploaded.has(index):
+			continue
+		if world._orqwa.world_chunk_finished(index):
 			_order.append(index)
+		else:
+			_missing += 1
 	var reach: Dictionary[int, bool] = {}
 	for index: int in indices.slice(0, kept):
 		reach[index] = true
@@ -63,6 +72,18 @@ func follow(world: RideWorld) -> void:
 	var focus: Vector2 = _current_focus(world)
 	if _focus.distance_to(focus) >= _replan or _upload_radius(world) != _radius:
 		prioritize(world, focus)
+
+
+## More of the world was built: the chunks within reach that were missing are uploaded once
+## they are there.
+func grew(world: RideWorld) -> void:
+	if _missing > 0 and _focus.is_finite():
+		prioritize(world, _focus)
+
+
+## Chunks within reach are still being built.
+func missing() -> bool:
+	return _missing > 0
 
 
 ## Full-resolution ground already draws while its optional LODs are made in the background.
@@ -88,7 +109,10 @@ func uploaded() -> int:
 func complete(world: RideWorld) -> bool:
 	if world._benchmark != null:
 		return not _uploaded.is_empty()
-	return world._chunk_count == 0 or (_focus.is_finite() and _cursor >= _order.size())
+	return (
+		world._chunk_count == 0
+		or (_focus.is_finite() and _cursor >= _order.size() and _missing == 0)
+	)
 
 
 func upload_some(world: RideWorld) -> void:

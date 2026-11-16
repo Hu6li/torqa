@@ -46,6 +46,7 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 
+use orqwa_domain::units::Meters;
 use orqwa_osm::{LandCover, MapData, RoadClass};
 use orqwa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
@@ -353,14 +354,21 @@ pub async fn generate<M: ElevationModel>(
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
     let chunks = Mutex::new(Vec::new());
-    let mut world = generate_into(route, model, map, progress, &|index, chunk| {
+    let sink = |index, chunk| {
         let mut chunks = chunks.lock().unwrap_or_else(PoisonError::into_inner);
         if chunks.len() <= index {
             chunks.resize_with(index + 1, || None);
         }
         chunks[index] = Some(chunk);
-    })
-    .await;
+    };
+    let whole = Ahead {
+        from: Meters(0.0),
+        at: (Meters(0.0), Meters(0.0)),
+        radius: Meters(f64::INFINITY),
+        ready: &mut |_, _| {},
+        structures: &mut |_| {},
+    };
+    let mut world = generate_into(route, model, map, progress, &sink, whole).await;
     // `generate_into` finishes every chunk once.
     world.chunks = chunks
         .into_inner()
@@ -371,10 +379,30 @@ pub async fn generate<M: ElevationModel>(
     world
 }
 
+/// What a ride needs first of a world being built, and how it is told it has it (ADR 0040,
+/// 2d): the chunks the scene uploads around where the ride enters the course, finished, and
+/// the bridges over them. The rest follows ahead of the rider, then behind.
+pub struct Ahead<'a> {
+    /// How far along the route the ride enters it.
+    pub from: Meters,
+    /// Where it enters, in metres east/north of the route start.
+    pub at: (Meters, Meters),
+    /// How far around that the scene uploads chunks, as asked of [`chunk_plan`].
+    pub radius: Meters,
+    /// Told once, when those chunks are finished: the parts built whole, with the structures
+    /// built so far but without the horizon, and every chunk's centre by index.
+    pub ready: &'a mut (dyn FnMut(&World, &[[f32; 3]]) + Send),
+    /// Told the structures again each time bridges built after that add to them.
+    pub structures: &'a mut (dyn FnMut(&MeshData) + Send),
+}
+
 /// Builds the world as [`generate`] does, but gives each chunk to `sink` as soon as it is
 /// finished, with its index in [`World::chunks`], instead of keeping it: only the chunks
 /// around those being built are held (ADR 0040). Chunks are finished in no set order, each
-/// once, several at a time on all cores. The world returned has every part but its chunks.
+/// once, several at a time on all cores: those `ahead` asks for first. The world returned has
+/// every part but its chunks and horizon, and is the same whatever `ahead` asks for.
+/// `progress` counts the chunks built of those needed first until `ahead` is told it has
+/// them, then of all.
 #[allow(clippy::too_many_lines)] // the preparation, then one pass over the chunks
 pub async fn generate_into<M: ElevationModel>(
     route: &Route,
@@ -382,6 +410,7 @@ pub async fn generate_into<M: ElevationModel>(
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
     sink: &(dyn Fn(usize, TerrainChunk) + Sync),
+    ahead: Ahead<'_>,
 ) -> World {
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
@@ -455,14 +484,36 @@ pub async fn generate_into<M: ElevationModel>(
         places: &places,
     };
     let pieces = structures::pieces(&road, &ways.network.index);
-    let mut stages =
-        stages::Stages::new(reached.keys().copied().collect(), urban.pavement(), &pieces);
+    // Tunnels stand on nothing drawn, so they are there from the start of a ride.
+    let mut tunnels = Vec::with_capacity(pieces.len());
+    for piece in &pieces {
+        tunnels.push(if piece.is_bridge() {
+            None
+        } else {
+            Some(piece.tunnel(&road, &shapers, &projection, model).await)
+        });
+    }
+    let cells: Vec<(i32, i32)> = reached.keys().copied().collect();
+    let centres: Vec<[f32; 3]> = cells.iter().map(|&cell| stages::centre(cell)).collect();
+    let mut stages = stages::Stages::new(cells, urban.pavement(), &pieces);
+    let plan = chunk_plan(&centres, ahead.at.0, ahead.at.1, ahead.radius);
+    let needed = stages.needed(&plan.indices[..plan.nearby]);
+    let first = needed.iter().filter(|&&n| n).count();
     // Again once the whole-route preparation is done, so its memory can be told from the
     // chunks'.
-    progress(0, total);
-    // Along the route, so neighbours are built close together and few wait for theirs.
-    let mut order: Vec<((i32, i32), usize)> = reached.into_iter().collect();
-    order.sort_by_key(|&(cell, reach)| (reach, cell));
+    progress(0, first);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
+    let order = build_order(
+        reached,
+        &needed,
+        (ahead.from.0.max(0.0) / (CHUNK_SIZE / 2.0)) as usize,
+    );
+    let Ahead {
+        ready,
+        structures: grew,
+        ..
+    } = ahead;
+    let mut ready = Some(ready);
     let (chunks, trees) = (AtomicUsize::new(0), AtomicUsize::new(0));
     let counted = |index, chunk: TerrainChunk| {
         chunks.fetch_add(1, Ordering::Relaxed);
@@ -491,24 +542,36 @@ pub async fn generate_into<M: ElevationModel>(
             world.fallback_samples += fallbacks;
         }
         built += batch.len();
-        progress(built, total);
+        if ready.is_some() {
+            progress(built.min(first), first);
+        } else {
+            progress(built, total);
+        }
         stages.finish(threads, &counted);
-        stages.build_bridges(&pieces, &below);
+        let bridges = stages.build_bridges(&pieces, &below);
         stages.drop_unneeded();
+        // Everything needed first is built once `first` chunks are: it comes first in order.
+        if built >= first
+            && let Some(ready) = ready.take()
+        {
+            world.structures = structures::join(so_far(&tunnels, stages.bridges()));
+            ready(&world, &centres);
+        } else if ready.is_none() && bridges > 0 {
+            grew(&structures::join(so_far(&tunnels, stages.bridges())));
+        }
     }
     debug_assert!(stages.done(), "a chunk or bridge was left waiting");
-    // Tunnels stand on nothing drawn; all are joined in the pieces' order.
-    let mut parts = Vec::with_capacity(pieces.len());
-    for (piece, bridge) in pieces.iter().zip(stages.take_bridges()) {
-        parts.push(match bridge {
-            Some(bridge) => bridge,
-            None => (
-                piece.tunnel(&road, &shapers, &projection, model).await,
-                Vec::new(),
-            ),
-        });
+    // All are joined in the pieces' order, however they were built.
+    world.structures = structures::join(
+        tunnels
+            .into_iter()
+            .zip(stages.take_bridges())
+            .filter_map(|(tunnel, bridge)| bridge.or(tunnel.map(|mesh| (mesh, Vec::new())))),
+    );
+    if let Some(ready) = ready {
+        // A world without chunks.
+        ready(&world, &centres);
     }
-    world.structures = structures::join(parts);
     if world.fallback_samples > 0 {
         warn!(
             samples = world.fallback_samples,
@@ -518,6 +581,39 @@ pub async fn generate_into<M: ElevationModel>(
     let (chunks, trees) = (chunks.into_inner(), trees.into_inner());
     info!(chunks, trees, "world generated");
     world
+}
+
+/// The order the corridor's cells, each with the road sample that first reaches it, are built
+/// in: those `needed` (by index in [`World::chunks`]) first, then those ahead of road sample
+/// `from`, then those behind, each nearest to it first. Along the route, neighbours are built
+/// close together and few wait for theirs.
+fn build_order(
+    reached: BTreeMap<(i32, i32), usize>,
+    needed: &[bool],
+    from: usize,
+) -> Vec<((i32, i32), usize)> {
+    let mut order: Vec<(bool, (i32, i32), usize)> = reached
+        .into_iter()
+        .zip(needed)
+        .map(|((cell, reach), &needed)| (needed, cell, reach))
+        .collect();
+    order.sort_by_key(|&(needed, cell, reach)| (!needed, reach < from, reach.abs_diff(from), cell));
+    order
+        .into_iter()
+        .map(|(_, cell, reach)| (cell, reach))
+        .collect()
+}
+
+/// The structures built so far, by piece: every tunnel, and the bridges built.
+fn so_far<'a>(
+    tunnels: &'a [Option<MeshData>],
+    bridges: &'a [Option<stages::StructureMesh>],
+) -> impl Iterator<Item = stages::StructureMesh> + 'a {
+    tunnels.iter().zip(bridges).filter_map(|(tunnel, bridge)| {
+        bridge
+            .clone()
+            .or_else(|| tunnel.clone().map(|mesh| (mesh, Vec::new())))
+    })
 }
 
 /// Buildings near the route, the map's and `extra` ones (lighthouses standing alone), grouped

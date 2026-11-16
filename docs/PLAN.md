@@ -991,6 +991,18 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] a simulated ride's jump, or the camera's return from the free camera, waits, clock
         included, until the rider's surroundings are uploaded, and goes on by itself
     - [ ] generated ahead of the rider (#237)
+      - [x] a course's ride starts once the chunks within the upload radius of where it is
+        entered (its start, or where it is continued) are finished, with the bridges over them;
+        the rest is built in the background, ahead of the rider first, then behind
+      - [x] the scene uploads chunks as they are finished, and bridges as they are built
+      - [x] a rider riding alone who catches up with the world being built waits, clock
+        included, and goes on by itself
+      - [x] a world is kept, and its winter ground's mask made, once complete
+      - [ ] background building throttled while riding, measured on the tablet
+      - [ ] group rides: **Ready** once the group's start is built; a late joiner's entry
+        point first
+      - [ ] leaving a ride before its world is complete: kept worlds built on in the
+        background, others stopped and taken up again from their store
   - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
     on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
   - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes

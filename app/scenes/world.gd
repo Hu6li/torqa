@@ -279,6 +279,7 @@ var _ground_lods: GroundLods = GroundLods.new()
 func bind(orqwa: OrqwaApp) -> void:
 	_orqwa = orqwa
 	_orqwa.world_ready.connect(_on_world_ready)
+	_orqwa.world_grew.connect(_on_world_grew)
 	# A switch of riders changes the avatar on the bike at once, in a world built already.
 	_orqwa.profile_changed.connect(_apply_rider)
 
@@ -488,6 +489,21 @@ func apply_options(options: Dictionary) -> void:
 	_group_riders.winter_clothing = winter_clothing
 
 
+## How far around the rider chunks are uploaded with graphics `quality` and `options` (R224):
+## a course's world is ridden once that much of it is built (ADR 0040).
+static func upload_radius(quality: String, options: Dictionary) -> float:
+	var view_distance: String = options.get("view_distance", "auto")
+	var preset: Dictionary = QUALITY.get(view_distance, QUALITY.get(quality, QUALITY["medium"]))
+	var distance: float = preset["distance"]
+	return VISIBILITY_RANGE * distance + WorldStreaming.LOOK_AHEAD
+
+
+## The rider (or the free camera) has come where chunks of the world are still being built.
+func waiting_for_world() -> bool:
+	_streaming.follow(self)
+	return _streaming.missing()
+
+
 ## Every chunk within reach of the rider (or the free camera) where they are now is in the
 ## scene: the rest of a long course never is (ADR 0040).
 func chunks_uploaded() -> bool:
@@ -636,6 +652,14 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_railways.material_override = _rail_material
 	_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
 	_structures.material_override = _structure_material
+
+
+## The world being ridden grew: the bridges built since, and the chunks the scene waits for.
+func _on_world_grew(info: Dictionary) -> void:
+	if info.get("structures", false):
+		_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
+	if _chunk_count > 0:
+		_streaming.grew(self)
 
 
 func _build_some_chunks() -> void:

@@ -24,6 +24,9 @@ use crate::{CHUNK_SIZE, MeshData, TerrainChunk, chunk_of, in_parallel, props};
 const SPILL: f64 = 200.0;
 const _: () = assert!(2.0 * SPILL < CHUNK_SIZE);
 
+/// A structure's mesh and the index ranges in it of barriers pavement crosses.
+pub(crate) type StructureMesh = (MeshData, Vec<Range<usize>>);
+
 /// A built chunk waiting for its neighbours.
 struct Waiting {
     chunk: TerrainChunk,
@@ -62,7 +65,7 @@ pub(crate) struct Stages<'a> {
     holds: Vec<usize>,
     bridges: Vec<Bridge>,
     /// Bridges built, by piece: the mesh and the index ranges of barriers pavement crosses.
-    structures: Vec<Option<(MeshData, Vec<Range<usize>>)>>,
+    structures: Vec<Option<StructureMesh>>,
 }
 
 impl<'a> Stages<'a> {
@@ -132,6 +135,11 @@ impl<'a> Stages<'a> {
         mut chunk: TerrainChunk,
         (barriers, track_length): ([Vec<Barrier>; 2], usize),
     ) {
+        debug_assert_eq!(
+            chunk.center,
+            centre(self.cells[index]),
+            "centres known ahead"
+        );
         let pavement = Pavement::as_built(&chunk, track_length);
         debug_assert!(
             pavement
@@ -237,12 +245,33 @@ impl<'a> Stages<'a> {
         chunk
     }
 
-    /// Builds every bridge whose chunks are built, standing on `below`'s ways.
-    pub(crate) fn build_bridges(&mut self, pieces: &[Piece], below: &Below<'_>) {
+    /// The chunks to build before those at `nearby` are finished and the bridges over them
+    /// built: them, their neighbours, and the chunks those bridges stand on. By index.
+    pub(crate) fn needed(&self, nearby: &[usize]) -> Vec<bool> {
+        let mut needed = vec![false; self.cells.len()];
+        for &index in nearby {
+            for neighbour in self.neighbours(index, 1) {
+                needed[neighbour] = true;
+            }
+        }
+        for bridge in &self.bridges {
+            if bridge.needs.iter().any(|i| nearby.contains(i)) {
+                for &i in &bridge.needs {
+                    needed[i] = true;
+                }
+            }
+        }
+        needed
+    }
+
+    /// Builds every bridge whose chunks are built, standing on `below`'s ways. Returns how
+    /// many were built.
+    pub(crate) fn build_bridges(&mut self, pieces: &[Piece], below: &Below<'_>) -> usize {
         let (ready, waiting): (Vec<Bridge>, Vec<Bridge>) = std::mem::take(&mut self.bridges)
             .into_iter()
             .partition(|bridge| bridge.needs.iter().all(|&i| self.is_built[i]));
         self.bridges = waiting;
+        let count = ready.len();
         for bridge in ready {
             let piece = &pieces[bridge.piece];
             let ground = self.ground(&bridge.needs, bridge.beyond.iter().copied());
@@ -274,6 +303,7 @@ impl<'a> Stages<'a> {
                 self.holds[i] -= 1;
             }
         }
+        count
     }
 
     /// Drops the ground and pavement no chunk or bridge still waiting needs.
@@ -291,9 +321,15 @@ impl<'a> Stages<'a> {
         }
     }
 
+    /// The bridges built so far, by piece (`None` for tunnels and bridges still waiting):
+    /// each mesh and the index ranges of its barriers pavement crosses.
+    pub(crate) fn bridges(&self) -> &[Option<StructureMesh>] {
+        &self.structures
+    }
+
     /// The bridges built, by piece (`None` for tunnels): each mesh and the index ranges of
     /// its barriers pavement crosses.
-    pub(crate) fn take_bridges(&mut self) -> Vec<Option<(MeshData, Vec<Range<usize>>)>> {
+    pub(crate) fn take_bridges(&mut self) -> Vec<Option<StructureMesh>> {
         std::mem::take(&mut self.structures)
     }
 
@@ -312,7 +348,7 @@ fn within(center: [f32; 3], x: f64, z: f64) -> bool {
 
 /// Centre of the chunk at `cell`, as `Corridor::chunk` sets it.
 #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
-fn centre((cx, cn): (i32, i32)) -> [f32; 3] {
+pub(crate) fn centre((cx, cn): (i32, i32)) -> [f32; 3] {
     [
         ((f64::from(cx) + 0.5) * CHUNK_SIZE) as f32,
         0.0,

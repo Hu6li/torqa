@@ -3,7 +3,8 @@ extends RefCounted
 ## Jumps along a simulated ride, from the minimap or the elevation profile. The scene keeps only
 ## the surroundings of the rider, or of the free camera while it flies (ADR 0040): after a jump,
 ## or when the camera comes back to the rider from afar, the clock and the road wait for the
-## rider's surroundings, as a pause does, and go on by themselves.
+## rider's surroundings, as a pause does, and go on by themselves. A rider riding alone who
+## catches up with the world still being built waits the same way; a group rides on.
 
 var _orqwa: OrqwaApp
 var _world: RideWorld
@@ -34,13 +35,15 @@ func update() -> void:
 	if _was_free and not free:
 		_wait()
 	_was_free = free
+	if not _waiting and _world.waiting_for_world() and _riding_alone():
+		_wait()
 	if not _waiting:
 		return
 	if _world.surroundings_ready():
 		_waiting = false
 		_orqwa.set_paused(false)
 	else:
-		_say.call(tr("Preparing the 3D scene"))
+		_say.call(_why())
 
 
 ## A new ride began: no longer waiting.
@@ -66,4 +69,13 @@ func _wait() -> void:
 		return
 	_orqwa.set_paused(true)
 	_waiting = true
-	_say.call(tr("Preparing the 3D scene"))
+	_say.call(_why())
+
+
+func _why() -> String:
+	return tr("Building 3D world") if _world.waiting_for_world() else tr("Preparing the 3D scene")
+
+
+## Others ride on in a group ride, so its world comes in around the road instead.
+func _riding_alone() -> bool:
+	return _orqwa.group_status().get("phase", "idle") == "idle"

@@ -404,7 +404,10 @@ func _on_route_loaded(_route: Dictionary) -> void:
 func _build() -> void:
 	_loading_route = false
 	_orqwa.ride_along_video(false)
-	if _orqwa.build_world():
+	var radius: float = RideWorld.upload_radius(
+		_orqwa.graphics_quality(), _orqwa.graphics_options()
+	)
+	if _orqwa.build_world(false, radius):
 		_done()
 		return
 	_building = true

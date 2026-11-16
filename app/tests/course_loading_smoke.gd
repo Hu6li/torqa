@@ -52,6 +52,9 @@ func _run() -> void:
 	var uploaded: int = _world._streaming.uploaded()
 	_check(uploaded < _world._chunk_count, "riding starts before distant chunks are uploaded")
 	print("Ride started with %d / %d chunks uploaded" % [uploaded, _world._chunk_count])
+	_check(not _world.waiting_for_world(), "the start's surroundings are built before riding")
+	# The rest of the world is built while riding (ADR 0040); jumps below land where it is.
+	await _wait_until(_orqwa.world_complete, "the rest of the world is built while riding")
 	await _moving_priority()
 	await _wait_until(_world.uploads_complete, "distant chunks finish while riding")
 	var elapsed: float = _orqwa.ride_state().get("elapsed_s", 0.0)

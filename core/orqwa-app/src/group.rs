@@ -1493,7 +1493,7 @@ impl App {
                 } else if group.preparing == Some((revision, self.load)) {
                     self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
-                        self.build_world();
+                        self.build_world(false, crate::WHOLE_WORLD);
                     }
                     if self.world.is_some() {
                         self.group_prepared(revision);

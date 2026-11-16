@@ -20,6 +20,10 @@
 //! ready is the core's while riding (R240), and the checksums and sizes are made from the
 //! chunks read back one at a time. With `--keep`, a course (`.oqc`) is put in the library and
 //! its world kept in `cache`: the first run builds and keeps it, the next rides it from there.
+//!
+//! With `--ahead <metres>`, a course's world can be ridden once the chunks within that radius
+//! of its start are finished (ADR 0040, 2d): when that was, and when the rest was built, are
+//! printed.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
@@ -77,8 +81,24 @@ fn main() {
         }
         app.open_course(course);
         wait(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
-        if !app.build_world() {
+        let radius = std::env::args()
+            .skip_while(|arg| arg != "--ahead")
+            .nth(1)
+            .map_or(orqwa_app::WHOLE_WORLD, |radius| {
+                orqwa_domain::units::Meters(radius.parse().expect("--ahead <metres>"))
+            });
+        if !app.build_world(false, radius) {
             wait(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+            println!(
+                "ready to ride in {:.1} s; {}",
+                began.elapsed().as_secs_f64(),
+                memory()
+            );
+            if !app.world_chunks().is_some_and(WorldChunks::complete) {
+                wait(&mut app, |e| {
+                    matches!(e, AppEvent::WorldGrew { complete: true, .. })
+                });
+            }
         }
     }
     println!(
@@ -156,6 +176,16 @@ fn stream(
     let store = kept.map(|kept| kept.building("course").expect("store"));
     let hashes = std::sync::Mutex::new(Vec::new());
     let centres = std::sync::Mutex::new(Vec::new());
+    let whole = orqwa_world::Ahead {
+        from: orqwa_domain::units::Meters(0.0),
+        at: (
+            orqwa_domain::units::Meters(0.0),
+            orqwa_domain::units::Meters(0.0),
+        ),
+        radius: orqwa_app::WHOLE_WORLD,
+        ready: &mut |_, _| {},
+        structures: &mut |_| {},
+    };
     let world = runtime.block_on(orqwa_world::generate_into(
         &imported.route,
         &mut terrain,
@@ -177,6 +207,7 @@ fn stream(
             }
             centres[index] = chunk.center;
         },
+        whole,
     ));
     println!(
         "generated in {:.0} s; {}",
@@ -193,7 +224,7 @@ fn stream(
     if let (Some(kept), Some(store)) = (kept, store) {
         let packing = Instant::now();
         let centres = centres.into_inner().expect("centres");
-        orqwa_storage::worlds::Chunks::built(store, centres)
+        orqwa_storage::worlds::Chunks::built(std::sync::Arc::new(store), centres)
             .keep(kept, "course", &world, orqwa_world::GENERATOR)
             .expect("kept");
         println!(

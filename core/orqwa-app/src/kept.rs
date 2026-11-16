@@ -42,7 +42,7 @@ pub struct KeptWorld {
 pub(crate) enum Found {
     /// Its world kept: the parts built whole, the version of the generator that built it, and
     /// its chunks to read when needed.
-    World(Box<World>, u32, WorldChunks),
+    World(Box<World>, u32, Box<WorldChunks>),
     /// None to ride: one built is kept under this fingerprint.
     Missing(String),
     /// Nothing that can be told: the course file cannot be read.
@@ -72,7 +72,11 @@ impl Keeper {
         match self.kept.open(&fingerprint) {
             Ok(Some((world, generator, chunks))) => {
                 info!(chunks = chunks.len(), generator, "riding the kept world");
-                Found::World(Box::new(world), generator, WorldChunks::kept(chunks))
+                Found::World(
+                    Box::new(world),
+                    generator,
+                    Box::new(WorldChunks::kept(chunks)),
+                )
             }
             Ok(None) => Found::Missing(fingerprint),
             Err(error) => {
@@ -162,7 +166,8 @@ impl App {
     }
 
     /// Turns keeping the courses' worlds on or off for this computer. On, the world of the
-    /// course loaded is kept at once; off, every kept world is deleted.
+    /// course loaded is kept at once, or once complete if it is still being built; off, every
+    /// kept world is deleted.
     ///
     /// # Errors
     /// [`AppError::Reported`] if it cannot be saved.
@@ -170,6 +175,8 @@ impl App {
         computer::set_keep_worlds(&self.computer, on)
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))?;
         match (on, &self.world, &self.chunks, &self.course) {
+            // A world still being built is kept once complete.
+            (true, Some(_), Some(chunks), Some(_)) if !chunks.complete() => {}
             (true, Some(world), Some(chunks), Some(course)) => {
                 self.keep_world(course.clone(), Arc::clone(world), Arc::clone(chunks));
             }
@@ -264,7 +271,7 @@ impl App {
             warn!(%error, "cannot delete the kept world");
         }
         self.open_course(course);
-        self.build_world();
+        self.build_world(false, crate::WHOLE_WORLD);
         Ok(true)
     }
 
@@ -426,7 +433,7 @@ mod tests {
     /// tells a world marked in its kept file apart from one built again.
     fn ride(app: &mut App, course: &Path) -> usize {
         app.open_course(course.to_owned());
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         let events = run_until(app, |e| {
             matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
         });
@@ -655,7 +662,7 @@ mod tests {
     /// The steps of making `course`'s world reported while it is opened, in order.
     fn steps(app: &mut App, course: &Path) -> Vec<(LoadStage, usize, usize)> {
         app.open_course(course.to_owned());
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         run_until(app, |e| matches!(e, AppEvent::WorldReady { .. }))
             .into_iter()
             .filter_map(|e| match e {
@@ -855,7 +862,7 @@ mod tests {
         let course = prepare(&mut app, &dir);
         let left = free_storage(&mut app, 3_400_000);
         app.open_course(course);
-        assert!(!app.build_world());
+        assert!(!app.build_world(false, crate::WHOLE_WORLD));
         let events = run_until(&mut app, |e| {
             matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
         });
@@ -871,7 +878,7 @@ mod tests {
         assert!(app.world().is_none(), "nothing built");
         // The rider makes room and rides again.
         left.store(u64::MAX, std::sync::atomic::Ordering::Relaxed);
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         let events = run_until(&mut app, |e| {
             matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
         });
@@ -953,7 +960,7 @@ mod tests {
         std::fs::write(keeper.kept.file(&fingerprint), b"not a world").unwrap();
         free_storage(&mut app, 0);
         app.open_course(course);
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         let events = run_until(&mut app, |e| {
             matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
         });

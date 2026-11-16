@@ -119,7 +119,7 @@ func _run() -> void:
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
 	if route.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(gpx)

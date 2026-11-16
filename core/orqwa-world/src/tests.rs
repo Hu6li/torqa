@@ -6320,3 +6320,90 @@ async fn power_lines_run_on_poles_with_wires_from_pole_to_pole() {
         }
     }
 }
+
+#[test]
+fn chunks_needed_first_come_first_then_ahead_of_the_rider_then_behind() {
+    // Cells along a route, each with the road sample first reaching it; the rider enters at
+    // sample 10, and the cells around there are needed first.
+    let reached: BTreeMap<(i32, i32), usize> = (0..10).map(|x| ((x, 0), x as usize * 2)).collect();
+    let needed: Vec<bool> = (0..10).map(|x| x == 5 || x == 6).collect();
+    let order: Vec<i32> = build_order(reached, &needed, 10)
+        .into_iter()
+        .map(|((x, _), _)| x)
+        .collect();
+    assert_eq!(order, [5, 6, 7, 8, 9, 4, 3, 2, 1, 0]);
+}
+
+#[tokio::test]
+async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_out_the_same() {
+    // A railway bridge over the road 300 m along a 1 km route, which the rider enters at its
+    // end: the bridge lies behind them.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (27.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+
+    let at = (Meters(0.0), Meters(1000.0));
+    let radius = Meters(100.0);
+    let sunk = Mutex::new(Vec::new());
+    let mut told = None;
+    let mut structures = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(1000.0),
+            at,
+            radius,
+            ready: &mut |world, centres| {
+                let finished: Vec<usize> = sunk.lock().unwrap().iter().map(|(i, _)| *i).collect();
+                told = Some((world.clone(), centres.to_vec(), finished));
+            },
+            structures: &mut |mesh| structures = Some(mesh.clone()),
+        },
+    )
+    .await;
+
+    let (ready, centres, finished) = told.expect("told when the surroundings are ready");
+    let plan = chunk_plan(&centres, at.0, at.1, radius);
+    assert!(plan.nearby > 0);
+    for index in &plan.indices[..plan.nearby] {
+        assert!(
+            finished.contains(index),
+            "chunk {index} around the start not finished"
+        );
+    }
+    assert_eq!(ready.road, whole.road, "the road is whole from the start");
+    assert_eq!(ready.railways, whole.railways);
+    // The structures told are those built by then, and grow to the whole world's.
+    let last = structures.unwrap_or(ready.structures);
+    assert_eq!(last, whole.structures);
+
+    // Every chunk, once, as the whole world has it, centred where told ahead.
+    let mut sunk = sunk.into_inner().unwrap();
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(chunks, whole.chunks);
+    let whole_centres: Vec<[f32; 3]> = whole.chunks.iter().map(|c| c.center).collect();
+    assert_eq!(centres, whole_centres);
+    assert_eq!(
+        World {
+            chunks: Vec::new(),
+            ..whole
+        },
+        rest
+    );
+}
