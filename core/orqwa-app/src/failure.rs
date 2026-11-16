@@ -158,6 +158,9 @@ pub enum Kind {
     DownloadRegion,
     /// Could not prepare the map detail of %s.
     PrepareRegion,
+    /// Riding this course needs %s of free storage for its 3D world; %s is free. Free up some
+    /// storage, then ride again.
+    WorldStorage,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -256,6 +259,9 @@ impl Kind {
             Self::LoadRegions => "Could not load the regions to download.",
             Self::DownloadRegion => "Could not download the map detail of %s.",
             Self::PrepareRegion => "Could not prepare the map detail of %s.",
+            Self::WorldStorage => {
+                "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+            }
         }
         // i18n-end
     }

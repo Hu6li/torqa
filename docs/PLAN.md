@@ -972,12 +972,13 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] worlds to keep: each chunk written as finished, copied into the kept world as it
         is; Wada 20 MB per km, packed in 2 s, the world unchanged
       - [x] every world, once the core reads chunks from the store
-    - [ ] the core reads chunks from the store while riding
+    - [x] the core reads chunks from the store while riding
       - [x] chunks read one at a time from the store or the kept world, indexed by their
         centres; held in memory only where no store can be written
       - [x] the winter ground's mask made from every chunk read once, when first asked for
-      - [ ] on Android, **Ride** stops before building when free storage is short and says how
-        much the course needs (20 MB per km measured on Wada, 25 to be safe)
+      - [x] on Android, **Ride** stops before building when free storage is short and says how
+        much the course needs (20 MB per km measured on Wada, 25 to be safe), asked of Java's
+        `File.getUsableSpace`; a kept world needs none
       - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
         keeping is turned off; others' go by age
     - [ ] Godot frees far chunks

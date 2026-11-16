@@ -3103,6 +3103,10 @@ msgstr ""
 msgid "Riding"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Right (left pod)"
 msgstr ""

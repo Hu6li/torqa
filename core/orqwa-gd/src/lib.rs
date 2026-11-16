@@ -195,17 +195,22 @@ impl INode for OrqwaApp {
         } else {
             // Set once per process; a second node keeps the first one's.
             let _ = tracing::subscriber::set_global_default(log::StderrLog);
-            App::new(data_dir(), paths::cache_dir())
-                .inspect(|app| {
-                    if let Err(error) = app.add_sample_course(SAMPLE_COURSE_FILE, SAMPLE_COURSE) {
-                        tracing::warn!(%error, "cannot add the sample course");
-                    }
-                })
-                .inspect_err(|error| {
-                    godot_error!("ORQWA: {error}");
-                    startup_failure = Some(Failure::new(Kind::Runtime, error));
-                })
-                .ok()
+            let app = App::new(data_dir(), paths::cache_dir());
+            #[cfg(target_os = "android")]
+            let app = app.map(|mut app| {
+                app.check_free_storage(std::sync::Arc::new(android_storage::free));
+                app
+            });
+            app.inspect(|app| {
+                if let Err(error) = app.add_sample_course(SAMPLE_COURSE_FILE, SAMPLE_COURSE) {
+                    tracing::warn!(%error, "cannot add the sample course");
+                }
+            })
+            .inspect_err(|error| {
+                godot_error!("ORQWA: {error}");
+                startup_failure = Some(Failure::new(Kind::Runtime, error));
+            })
+            .ok()
         };
         Self {
             base,
@@ -5187,6 +5192,42 @@ fn data_dir() -> PathBuf {
         return paths::android_shared_data_dir(shared);
     }
     paths::data_dir()
+}
+
+/// Free storage on Android, for the check before a world is built (ADR 0040).
+#[cfg(target_os = "android")]
+mod android_storage {
+    use std::path::Path;
+
+    use orqwa_devices::android::jni::objects::JValue;
+    use orqwa_devices::android::jni::{self, JavaVM, jni_sig, jni_str};
+
+    /// The storage this app may still use on the filesystem holding `dir`, as Java's
+    /// `File.getUsableSpace` tells it, Rust's standard library having no way to ask. Asked of
+    /// the nearest directory there is: Java answers 0 for one that is missing.
+    pub(super) fn free(dir: &Path) -> Option<u64> {
+        let dir = dir.ancestors().find(|dir| dir.is_dir())?.to_str()?;
+        // Set when Android loaded the library (`JNI_OnLoad`).
+        let vm = JavaVM::singleton().ok()?;
+        let free = vm.attach_current_thread(|env| -> jni::errors::Result<i64> {
+            let path = env.new_string(dir)?;
+            let file = env.new_object(
+                jni_str!(jni = orqwa_devices::android::jni, "java/io/File"),
+                jni_sig!(jni = orqwa_devices::android::jni, "(Ljava/lang/String;)V"),
+                &[JValue::Object(&path)],
+            )?;
+            env.call_method(
+                &file,
+                jni_str!(jni = orqwa_devices::android::jni, "getUsableSpace"),
+                jni_sig!(jni = orqwa_devices::android::jni, "()J"),
+                &[],
+            )?
+            .j()
+        });
+        free.inspect_err(|error| tracing::warn!(%error, "cannot tell the free storage"))
+            .ok()
+            .and_then(|free| u64::try_from(free).ok())
+    }
 }
 
 /// ORQWA's own folder in Android's shared storage, from the APK's plugin.

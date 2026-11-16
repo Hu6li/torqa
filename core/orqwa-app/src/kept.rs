@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use orqwa_domain::units::Meters;
+use orqwa_routes::Route;
 use orqwa_storage::computer;
 use orqwa_storage::course;
 use orqwa_storage::worlds::{Building, KeptWorlds};
@@ -17,6 +19,14 @@ use tracing::{info, warn};
 use crate::failure::{Failure, Kind};
 use crate::world_chunks::WorldChunks;
 use crate::{App, AppError, CourseEntry};
+
+/// What a world's store takes at most per kilometre of route, above the densest course
+/// measured: Wada's 20.1 MB (ADR 0040).
+const STORE_PER_KM: f64 = 25_000_000.0;
+
+/// How many bytes of storage are free on the filesystem that holds a directory, if that can be
+/// told.
+pub type FreeStorage = Arc<dyn Fn(&Path) -> Option<u64> + Send + Sync>;
 
 /// A world this computer keeps, as the settings list it to delete (R136).
 #[derive(Debug, Clone, PartialEq)]
@@ -254,6 +264,41 @@ impl App {
         self.runtime.spawn_blocking(move || keeper.tidy());
     }
 
+    /// Has every world built checked first for room for its store in the cache, `free` telling
+    /// how much storage is free (ADR 0040). For Android: where a store cannot be written, the
+    /// chunks are held in memory, which on a tablet is the low-memory kill the store is there to
+    /// avoid, so the rider is told how much room the course needs instead. Desktops have the
+    /// memory to fall back on and are not checked.
+    pub fn check_free_storage(&mut self, free: FreeStorage) {
+        self.free_storage = Some(free);
+    }
+
+    /// Whether the cache has room for the store of `route`'s world, about to be built: where
+    /// free storage is checked, refused with how much it needs and how much is free. A world
+    /// ridden from where it is kept needs none.
+    pub(crate) fn room_for_world(&self, route: &Route) -> Result<(), Failure> {
+        let Some(free) = &self.free_storage else {
+            return Ok(());
+        };
+        let kept = || {
+            self.course
+                .as_deref()
+                .filter(|_| self.keeps_worlds())
+                .and_then(|course| course::fingerprint(course).ok())
+                .is_some_and(|fingerprint| self.keeper().kept.has(&fingerprint))
+        };
+        let needed = store_size(route.length());
+        match free(&self.cache_dir) {
+            Some(left) if left < needed && !kept() => Err(Failure::new(
+                Kind::WorldStorage,
+                format!("{left} bytes free in the cache, the world's store needs {needed}"),
+            )
+            .arg(megabytes(needed.div_ceil(MEGABYTE)))
+            .arg(megabytes(left / MEGABYTE))),
+            _ => Ok(()),
+        }
+    }
+
     pub(crate) fn keeper(&self) -> Keeper {
         Keeper {
             kept: KeptWorlds::new(&self.cache_dir),
@@ -287,6 +332,20 @@ impl App {
             });
         }
     }
+}
+
+const MEGABYTE: u64 = 1_000_000;
+
+/// At most how many bytes the store of the world of a route `length` long takes.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // positive, far below 2⁶⁴
+fn store_size(length: Meters) -> u64 {
+    (length.0.max(0.0) / 1000.0 * STORE_PER_KM).ceil() as u64
+}
+
+/// `count` megabytes, in the decimal megabytes Android's storage settings show, without
+/// separators that differ between languages.
+fn megabytes(count: u64) -> String {
+    format!("{count} MB")
 }
 
 #[cfg(test)]
@@ -736,6 +795,65 @@ mod tests {
             WinterMask::Made(&whole),
             "from the kept world"
         );
+        app.shutdown();
+    }
+
+    /// Tells `app` that `free` bytes of storage are free, as Android's does, until changed.
+    fn free_storage(app: &mut App, free: u64) -> Arc<std::sync::atomic::AtomicU64> {
+        let left = Arc::new(std::sync::atomic::AtomicU64::new(free));
+        let told = Arc::clone(&left);
+        app.check_free_storage(Arc::new(move |_| {
+            Some(told.load(std::sync::atomic::Ordering::Relaxed))
+        }));
+        left
+    }
+
+    #[test]
+    fn a_course_without_room_for_its_world_tells_the_rider_how_much_it_needs() {
+        let dir = temp_dir("kept-room");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        let course = prepare(&mut app, &dir);
+        let left = free_storage(&mut app, 3_400_000);
+        app.open_course(course);
+        assert!(!app.build_world());
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        let Some(AppEvent::Error(failure)) = events.last() else {
+            panic!("built without room: {events:?}");
+        };
+        assert_eq!(failure.kind, Kind::WorldStorage);
+        // 25 MB per kilometre, above the densest course measured (ADR 0040).
+        let length = app.route().expect("a route").length().0;
+        assert!(length > 0.0);
+        let needed = (length / 1000.0 * 25.0).ceil();
+        assert_eq!(failure.args, [format!("{needed} MB"), "3 MB".to_owned()]);
+        assert!(app.world().is_none(), "nothing built");
+        // The rider makes room and rides again.
+        left.store(u64::MAX, std::sync::atomic::Ordering::Relaxed);
+        app.build_world();
+        let events = run_until(&mut app, |e| {
+            matches!(e, AppEvent::WorldReady { .. } | AppEvent::Error(_))
+        });
+        assert!(
+            matches!(events.last(), Some(AppEvent::WorldReady { .. })),
+            "{events:?}"
+        );
+        app.shutdown();
+    }
+
+    #[test]
+    fn a_kept_world_is_ridden_without_room_for_another() {
+        let dir = temp_dir("kept-no-room");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.set_keeps_worlds(true).unwrap();
+        let course = prepare(&mut app, &dir);
+        let keeper = app.keeper();
+        let fingerprint = course::fingerprint(&course).unwrap();
+        wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
+        free_storage(&mut app, 0);
+        ride(&mut app, &course);
+        assert!(app.world().is_some(), "read where it is kept");
         app.shutdown();
     }
 }

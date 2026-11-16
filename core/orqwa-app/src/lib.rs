@@ -30,7 +30,7 @@ mod world_chunks;
 
 pub use detail::{DetailRegion, DetailStep, RegionOffer};
 pub use import::{Imported, LoadStage, Progress, countries, course_map, import_gpx, import_route};
-pub use kept::KeptWorld;
+pub use kept::{FreeStorage, KeptWorld};
 pub use world_chunks::{WinterMask, WorldChunks};
 
 use std::collections::HashMap;
@@ -814,6 +814,8 @@ pub struct App {
     detail: detail::DetailState,
     data_dir: PathBuf,
     cache_dir: PathBuf,
+    /// Tells the free storage where a world's store is checked for room (Android, ADR 0040).
+    free_storage: Option<kept::FreeStorage>,
     /// This computer's own settings (R78), next to the cache: never synced with the data.
     computer: PathBuf,
     /// The version of the generator that built the loaded world: an older one when it was
@@ -912,6 +914,7 @@ impl App {
             detail: detail::DetailState::default(),
             data_dir,
             cache_dir,
+            free_storage: None,
             computer,
             world_generator: orqwa_world::GENERATOR,
             index: Mutex::new(index),
@@ -2130,6 +2133,12 @@ impl App {
 
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
+        if let Err(failure) = self.room_for_world(&route) {
+            // Built on the next Ride, once the rider has made room.
+            self.world_plan = WorldPlan::OnRequest(Some(Box::new(map)));
+            let _ = self.jobs_tx.send(JobResult::Failed(failure));
+            return;
+        }
         let tx = self.jobs_tx.clone();
         let load = self.load;
         let terrain = |sources| {

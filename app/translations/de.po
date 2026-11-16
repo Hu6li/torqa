@@ -2445,6 +2445,9 @@ msgstr "Die Regionen zum Herunterladen konnten nicht geladen werden."
 msgid "Could not prepare the map detail of %s."
 msgstr "Die Kartendetails von %s konnten nicht vorbereitet werden."
 
+msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+msgstr "Diese Route braucht für ihre 3D-Welt %s freien Speicherplatz, frei sind %s. Gib Speicherplatz frei und fahre dann erneut los."
+
 msgid "Delete region"
 msgstr "Region löschen"
 
