@@ -3630,7 +3630,8 @@ impl OrqwaApp {
             .map_or(Vector2::ZERO, |(east, north)| vector2(east, north))
     }
 
-    /// Spatial upload order around a rider (east/north metres), with the visible-area prefix.
+    /// Spatial upload order around a rider (east/north metres), with the visible-area prefix,
+    /// the prefix the scene keeps, and how far the rider may move before the plan is made again.
     #[func]
     fn world_chunk_plan(&self, east: f64, north: f64, radius: f64) -> VarDictionary {
         let Some(chunks) = self.app.as_ref().and_then(App::world_chunks) else {
@@ -3650,6 +3651,8 @@ impl OrqwaApp {
         vdict! {
             "indices" => &indices,
             "nearby" => i64::try_from(plan.nearby).unwrap_or(i64::MAX),
+            "kept" => i64::try_from(plan.kept).unwrap_or(i64::MAX),
+            "replan" => orqwa_world::REPLAN_DISTANCE.0,
         }
     }
 

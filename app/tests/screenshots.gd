@@ -468,11 +468,7 @@ func _run() -> void:
 	var edit_dialog: Window = course_page.get("_edit_dialog")
 	edit_dialog.hide()
 	# Let the world stream its chunks in.
-	while true:
-		var next_chunk: int = world.get("_next_chunk")
-		var chunk_count: int = world.get("_chunk_count")
-		if next_chunk >= chunk_count:
-			break
+	while not world.chunks_uploaded():
 		await process_frame
 	# A custom HUD, e.g. SCREENSHOT_HUD=power_3s,speed,normalized_power,upcoming_grade
 	var hud: String = OS.get_environment("SCREENSHOT_HUD")

@@ -62,7 +62,7 @@ use road::RoadIndex;
 pub use route_distances::{DENSE_FOREST, DISTANCE_STEP, RouteDistances, route_distances};
 pub use seasonal_snow::{Snowbank, road_snow_exposure, snow_depth, snowbanks};
 pub use snow_ground::{SnowGroundMask, snow_ground_mask};
-pub use streaming::{ChunkPlan, chunk_plan};
+pub use streaming::{ChunkPlan, REPLAN_DISTANCE, chunk_plan};
 pub use vegetation::Trees;
 
 /// What worlds look like. Raise it whenever a change makes the same course come out

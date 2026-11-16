@@ -214,7 +214,6 @@ var _orqwa: OrqwaApp
 ## A calibration scene owns no rider data and never replaces the loaded course (R151).
 var _benchmark: OrqwaGraphicsBenchmark
 var _chunk_count: int = 0
-var _next_chunk: int = 0
 var _streaming: WorldStreaming = WorldStreaming.new()
 ## Invalidates a preparation waiting on chunks that a new course or setting replaced.
 var _chunk_revision: int = 0
@@ -489,9 +488,23 @@ func apply_options(options: Dictionary) -> void:
 	_group_riders.winter_clothing = winter_clothing
 
 
-## Full upload completion for benchmarks and captures, including background ground LODs.
+## Every chunk within reach of the rider (or the free camera) where they are now is in the
+## scene: the rest of a long course never is (ADR 0040).
+func chunks_uploaded() -> bool:
+	if _benchmark == null and _chunk_count > 0:
+		_streaming.follow(self)
+	return _streaming.complete(self)
+
+
+## The visible surroundings of where the rider (or the free camera) is now are in the scene.
+func surroundings_ready() -> bool:
+	_streaming.follow(self)
+	return _streaming.nearby_ready()
+
+
+## Upload completion for benchmarks and captures, including background ground LODs.
 func uploads_complete() -> bool:
-	return _next_chunk >= _chunk_count and not _ground_lods.pending()
+	return chunks_uploaded() and not _ground_lods.pending()
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.

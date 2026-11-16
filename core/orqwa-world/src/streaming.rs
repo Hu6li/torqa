@@ -1,9 +1,16 @@
 //! Spatial upload order for a complete generated or kept world (R224), from its chunks' centres
-//! alone: the chunks themselves stay on disk until uploaded (ADR 0040).
+//! alone: the chunks themselves stay on disk until uploaded, and the scene lets go of those the
+//! rider has left far behind (ADR 0040).
 
 use orqwa_domain::units::Meters;
 
 use crate::CHUNK_SIZE;
+
+/// How far the rider (or the free camera) moves before the plan is made again. Chunks are let go
+/// only beyond this and one chunk more than the upload radius, so a chunk at the edge isn't
+/// dropped and uploaded again with every new plan, and none a plan needs is ever dropped before
+/// the next.
+pub const REPLAN_DISTANCE: Meters = Meters(240.0);
 
 /// Chunks nearest a rider first, with every chunk touching the requested area in the prefix.
 #[derive(Debug, PartialEq, Eq)]
@@ -12,6 +19,9 @@ pub struct ChunkPlan {
     pub indices: Vec<usize>,
     /// Number of leading indices needed to cover the requested area.
     pub nearby: usize,
+    /// Number of leading indices the scene keeps: the rest is dropped from it until the rider
+    /// comes back within reach.
+    pub kept: usize,
 }
 
 /// Prioritizes uploads around a rider in metres east/north of the route start.
@@ -31,9 +41,12 @@ pub fn chunk_plan(centres: &[[f32; 3]], east: Meters, north: Meters, radius: Met
     distances.sort_unstable_by(|(a, da), (b, db)| da.total_cmp(db).then_with(|| a.cmp(b)));
     let reach = radius.0.max(0.0) + CHUNK_SIZE * std::f64::consts::FRAC_1_SQRT_2;
     let nearby = distances.partition_point(|(_, distance)| *distance <= reach);
+    let keep = radius.0.max(0.0) + REPLAN_DISTANCE.0 + CHUNK_SIZE;
+    let kept = distances.partition_point(|(_, distance)| *distance <= keep);
     ChunkPlan {
         indices: distances.into_iter().map(|(index, _)| index).collect(),
         nearby,
+        kept,
     }
 }
 
@@ -78,5 +91,23 @@ mod tests {
         let empty = chunk_plan(&[], Meters(0.0), Meters(0.0), Meters(5000.0));
         assert_eq!(empty.indices, Vec::<usize>::new());
         assert_eq!(empty.nearby, 0);
+        assert_eq!(empty.kept, 0);
+    }
+
+    #[test]
+    fn chunks_left_far_behind_are_let_go_but_not_those_a_replan_may_need() {
+        // Upload radius 1000 m: kept up to 1000 + 240 + 480 = 1720 m from the plan's focus.
+        let centres = [
+            [0.0, 0.0, 0.0],
+            [1570.0, 0.0, 0.0],
+            [1750.0, 0.0, 0.0],
+            [0.0, 0.0, 9000.0],
+        ];
+        let plan = chunk_plan(&centres, Meters(0.0), Meters(0.0), Meters(1000.0));
+        assert_eq!(plan.indices[..plan.kept], [0, 1]);
+        // Just short of the next plan, towards the edge, the rider needs the chunk at 1570 m,
+        // which was kept.
+        let moved = chunk_plan(&centres, Meters(239.0), Meters(0.0), Meters(1000.0));
+        assert_eq!(moved.indices[..moved.nearby], [0, 1]);
     }
 }

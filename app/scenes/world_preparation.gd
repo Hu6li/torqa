@@ -47,4 +47,3 @@ static func restart(world: RideWorld) -> void:
 	for chunk: Node in world._terrain.get_children():
 		world._terrain.remove_child(chunk)
 		chunk.queue_free()
-	world._next_chunk = 0

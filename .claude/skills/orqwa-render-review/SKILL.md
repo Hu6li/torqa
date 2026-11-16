@@ -280,7 +280,8 @@ isolate sample data, capture device/error/planned-workout fixtures and licensed 
 review contact sheets, then export to stable wiki image paths. `SCREENSHOT_DIR` chooses the app
 capture folder, and `OUT_DIR` also works for model and rider runners. The app and route wrappers
 set `ORQWA_RENDER_SOFTWARE=1` for FXAA without MSAA or glow under lavapipe. Standard route views
-wait for all chunks while hidden, pause the rider and include city streets, benches and ferns.
+wait while hidden for the chunks within reach of each view's place (far ones are freed, ADR
+0040), pause the rider and include city streets, benches and ferns.
 
 - A script error makes Godot wait forever for `world_ready`: always use `timeout`, and grep the
   output for `SCRIPT ERROR` / `SHADER ERROR` — a scene that fails to compile renders nothing.

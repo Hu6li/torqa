@@ -295,6 +295,4 @@ fixtures and Wada, also read back from the store and from the kept world.
 
 ## Still to do
 
-Godot still holds its own copy of every chunk it uploads, never freeing one (2c), and the
-whole world is built before the ride starts (2d). On Android, **Ride** doesn't yet check that
-the cache has room for the store.
+The whole world is built before the ride starts (2d).

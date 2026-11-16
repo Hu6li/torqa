@@ -1,6 +1,6 @@
 extends SceneTree
 ## Measures what a course's world costs to draw (docs/development.md#measuring-frame-rate). It
-## opens a course, waits for its whole world, pauses the rider at each place asked for and
+## opens a course, waits for its world, pauses the rider at each place asked for and
 ## samples the frames there: everything shown, then with one thing taken away at a time. On a
 ## real GPU (TIMED=1) a sample times frames for seconds; under software rendering it only counts
 ## draw calls and primitives, as its timings say nothing about a GPU.
@@ -141,18 +141,14 @@ func _build(course: String) -> bool:
 	return true
 
 
-## Turns the world's chunks into meshes, as the world does frame by frame, timing each frame's
-## share: a slow one stalls the start of a ride.
+## Turns the chunks around the start into meshes, as the world does frame by frame, timing each
+## frame's share: a slow one stalls the start of a ride.
 func _upload_chunks() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	var slowest: int = 0
 	var total: int = 0
 	var frames: int = 0
-	var count: int = _world.get("_chunk_count")
-	while true:
-		var next_chunk: int = _world.get("_next_chunk")
-		if next_chunk >= count:
-			break
+	while not _world.chunks_uploaded():
 		var started: int = Time.get_ticks_usec()
 		_world.call("_build_some_chunks")
 		var spent: int = Time.get_ticks_usec() - started
@@ -161,6 +157,8 @@ func _upload_chunks() -> void:
 		frames += 1
 		await process_frame
 	_world.process_mode = Node.PROCESS_MODE_INHERIT
+	var streaming: WorldStreaming = _world.get("_streaming")
+	var count: int = streaming.uploaded()
 	print(
 		(
 			"PERF %d chunks uploaded in %d frames: %d ms, the slowest frame %d ms"
@@ -216,6 +214,9 @@ func _go_to(place: float) -> void:
 	_world.set("_free", false)
 	_world.set_camera(int(_setting("CAMERA", "0")))
 	_world.set("_placed", false)
+	# Only the surroundings are in the scene (ADR 0040): those of the new place come first.
+	while not _world.uploads_complete():
+		await process_frame
 	await _settle(SETTLE_FRAMES, SETTLE_S)
 	var rider: Node3D = _world.get_node("Rider")
 	print("PERF place %.0f m, rider at %s" % [place, rider.position])
