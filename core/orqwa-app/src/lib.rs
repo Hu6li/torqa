@@ -830,6 +830,9 @@ pub struct App {
     /// Whether the next world built is for a ride continuing the course (R220), and how far
     /// around where the ride enters the scene draws: that much is built before it is ridden.
     world_ahead: (bool, Meters),
+    /// How far around the rider the scene draws in group rides, which build their world
+    /// themselves: that much around the group's start is built before a rider is ready.
+    group_radius: Meters,
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
     offline: bool,
@@ -978,6 +981,7 @@ impl App {
             lower_priority: None,
             keep_as: None,
             world_ahead: (false, WHOLE_WORLD),
+            group_radius: WHOLE_WORLD,
             index: Mutex::new(index),
             continuation_undo: Mutex::new(None),
         })
@@ -2296,11 +2300,56 @@ impl App {
         });
     }
 
-    /// Tells the world being built where the rider is, so it gives way to the ride.
+    /// Tells the world being built where the rider is, so it gives way to the ride: in a
+    /// group ride, the front rider, as the others don't wait for it.
     fn pace_build(&self) {
         if let Some(pace) = &self.pace {
-            pace.ride_at(self.riding_at());
+            let rider = match (self.riding_at(), self.group_front()) {
+                (Some(own), Some(front)) => Some(Meters(own.0.max(front.0))),
+                (own, front) => own.or(front),
+            };
+            pace.ride_at(rider);
         }
+    }
+
+    /// How far around the rider the scene draws chunks in group rides, as passed to
+    /// [`App::build_world`] for a ride alone: a group's world is ridden once that much
+    /// around its start is built. Until set, the whole world is built first.
+    pub fn set_group_upload_radius(&mut self, radius: Meters) {
+        self.group_radius = radius;
+    }
+
+    /// Turns the world being built to `distance` along the route, where a rider enters a
+    /// ride under way (ADR 0040, 2d): the chunks around it come next.
+    pub(crate) fn turn_build(&self, distance: Meters) {
+        if let (Some(pace), Some((east, north))) =
+            (&self.pace, self.rider_position(distance, false))
+        {
+            pace.turn_to(orqwa_world::Entry {
+                from: distance,
+                at: (Meters(east), Meters(north)),
+            });
+        }
+    }
+
+    /// Whether the chunks the scene draws around `distance` along the route are finished,
+    /// or no world is being built.
+    pub(crate) fn finished_around(&self, distance: Meters) -> bool {
+        let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) else {
+            return true;
+        };
+        let Some((east, north)) = self.rider_position(distance, false) else {
+            return true;
+        };
+        let plan = orqwa_world::chunk_plan(
+            chunks.centres(),
+            Meters(east),
+            Meters(north),
+            self.world_ahead.1,
+        );
+        plan.indices[..plan.nearby]
+            .iter()
+            .all(|&index| chunks.finished(index))
     }
 
     /// Where the rider is along the route while the ride moves: not before it starts, after
@@ -7206,6 +7255,38 @@ mod tests {
             })
             .collect();
         assert_eq!(sent, [(0, 1), (0, 400), (4, 400)]);
+    }
+
+    #[test]
+    fn a_late_joiner_waits_for_the_chunks_around_where_they_enter() {
+        let dir = temp_dir("entry");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        let built = Arc::clone(app.chunks.as_ref().unwrap());
+        assert!(app.finished_around(Meters(200.0)), "a world built whole");
+
+        // The same world while it is still being built, the scene drawing no farther than
+        // the chunk the rider is in.
+        app.world_ahead.1 = Meters(0.0);
+        let building = Arc::new(WorldChunks::building(None));
+        building.locate(built.centres());
+        app.chunks = Some(Arc::clone(&building));
+        assert!(!app.finished_around(Meters(200.0)));
+        let (east, north) = app.rider_position(Meters(200.0), false).unwrap();
+        let plan =
+            orqwa_world::chunk_plan(built.centres(), Meters(east), Meters(north), Meters(0.0));
+        let around = &plan.indices[..plan.nearby];
+        let (last, others) = around.split_last().unwrap();
+        for &index in others {
+            building.take(index, built.get(index).unwrap().into_owned());
+        }
+        assert!(
+            !app.finished_around(Meters(200.0)),
+            "one chunk still missing"
+        );
+        building.take(*last, built.get(*last).unwrap().into_owned());
+        assert!(app.finished_around(Meters(200.0)));
     }
 
     #[test]

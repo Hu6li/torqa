@@ -1,6 +1,7 @@
 //! How much of the device a world takes while it is built under a ride (ADR 0040, 2d).
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
 
 use orqwa_domain::units::Meters;
 
@@ -16,6 +17,9 @@ use orqwa_domain::units::Meters;
 /// without privileges, so the build starts fresh threads for every batch rather than keeping
 /// a pool.
 ///
+/// It also turns the build to where a rider enters a ride under way, as a late joiner of a
+/// group ride does (ADR 0040, 2d): see [`Pace::turn_to`].
+///
 /// Shared between the build and whoever knows where the rider is.
 #[derive(Debug)]
 pub struct Pace {
@@ -27,6 +31,8 @@ pub struct Pace {
     hurrying: AtomicBool,
     /// Lowers the calling thread's priority, where the platform's glue can.
     lower: Option<fn()>,
+    /// Where the build was last asked to turn to and hasn't yet.
+    turn: Mutex<Option<Entry>>,
     /// Cores to build on instead of the device's, and the threads given to each batch.
     #[cfg(test)]
     pub(crate) test: (Option<usize>, std::sync::Mutex<Vec<usize>>),
@@ -42,6 +48,7 @@ impl Pace {
             radius: radius.0,
             hurrying: AtomicBool::new(false),
             lower,
+            turn: Mutex::new(None),
             #[cfg(test)]
             test: (None, std::sync::Mutex::new(Vec::new())),
         }
@@ -60,6 +67,21 @@ impl Pace {
     pub fn ride_at(&self, distance: Option<Meters>) {
         let distance = distance.map_or(f64::NAN, |distance| distance.0);
         self.rider.store(distance.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Turns the build to `entry`: once the world has been handed over, the chunks around it
+    /// are built next, then those ahead of it, then those behind. A later turn replaces one not
+    /// yet taken. What is built stays the same; only its order changes.
+    pub fn turn_to(&self, entry: Entry) {
+        *self.turn.lock().unwrap_or_else(PoisonError::into_inner) = Some(entry);
+    }
+
+    /// The turn asked for since last taken, if any.
+    pub(crate) fn take_turn(&self) -> Option<Entry> {
+        self.turn
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
 
     /// Whether the build takes every core because its lead fell short.
@@ -101,6 +123,15 @@ impl Pace {
             lower: self.lower,
         }
     }
+}
+
+/// Where a ride enters a course, as [`crate::Ahead`] has it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Entry {
+    /// How far along the route.
+    pub from: Meters,
+    /// Where, in metres east/north of the route start.
+    pub at: (Meters, Meters),
 }
 
 /// The threads a step of the build runs on.

@@ -1002,8 +1002,10 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
         of them while its lead over the rider is short; the world is handed over when the ride
         can start, not copied
       - [ ] the throttle measured on the tablet while riding (frame time, R240)
-      - [ ] group rides: **Ready** once the group's start is built; a late joiner's entry
-        point first
+      - [x] group rides: **Ready** once the group's start is built; a late joiner's entry
+        point first: the build turns to the organizer on **Join ride now** and the rider
+        enters once the chunks around the entry point are finished; the throttle measures its
+        lead from the group's front rider
       - [ ] leaving a ride before its world is complete: kept worlds built on in the
         background, others stopped and taken up again from their store
   - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride

@@ -705,6 +705,8 @@ impl App {
                 && snapshot.phase == Phase::Riding
             {
                 snapshot.phase = Phase::Ready;
+                // Until the world around the entry point is built.
+                snapshot.entering = true;
             }
             snapshot
         })
@@ -1115,10 +1117,16 @@ impl App {
         if !self.trainer_connected() {
             return Err(AppError::NoTrainer);
         }
-        if !self.group().can_enter() {
+        let group = self.group();
+        if !group.can_enter() {
             return Err(error("Prepare the activity before joining the ride."));
         }
-        self.group_command(Command::Enter)
+        self.group_command(Command::Enter)?;
+        // The organizer will most likely still be about there when they answer.
+        if let Some((state, _)) = group.states[usize::from(group.organizer)] {
+            self.turn_build(state.distance);
+        }
+        Ok(())
     }
 
     /// Pauses or resumes the group's workout clock; personal safety pause remains local.
@@ -1493,7 +1501,7 @@ impl App {
                 } else if group.preparing == Some((revision, self.load)) {
                     self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
-                        self.build_world(false, crate::WHOLE_WORLD);
+                        self.build_world(false, self.group_radius);
                     }
                     if self.world.is_some() {
                         self.group_prepared(revision);
@@ -1528,9 +1536,35 @@ impl App {
         }
     }
 
+    /// How far along the route the group's front rider is, as the organizer last heard,
+    /// while the group rides.
+    pub(crate) fn group_front(&self) -> Option<Meters> {
+        let snapshot = self.group.as_ref()?.snapshot.borrow();
+        if snapshot.phase != Phase::Riding {
+            return None;
+        }
+        snapshot
+            .roster
+            .iter()
+            .zip(&snapshot.states)
+            .filter(|(rider, _)| rider.is_some())
+            .filter_map(|(_, state)| state.as_ref().map(|(state, _)| state.distance.0))
+            .reduce(f64::max)
+            .map(Meters)
+    }
+
     fn launch_group(&mut self, snapshot: &Snapshot, revision: u64, events: &mut Vec<AppEvent>) {
         if self.ride.is_some() {
             self.ride_on_with_group(snapshot, revision);
+            return;
+        }
+        // A late joiner enters where the organizer was when answering, once the world is
+        // built around there; the others ride on meanwhile (ADR 0040, 2d).
+        if let Some(entry) = snapshot.entry
+            && self.group.as_ref().is_some_and(|g| !g.launched)
+            && !self.finished_around(entry.distance)
+        {
+            self.turn_build(entry.distance);
             return;
         }
         if (!snapshot.late || snapshot.entry.is_some())

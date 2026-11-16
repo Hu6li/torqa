@@ -801,6 +801,15 @@ impl OrqwaApp {
             .is_some_and(|app| app.build_world(continuing, Meters(radius)))
     }
 
+    /// How far around the rider the scene draws chunks in group rides, in metres: a group's
+    /// world is ridden once that much around its start is built (ADR 0040).
+    #[func]
+    fn set_group_upload_radius(&mut self, radius: f64) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_group_upload_radius(Meters(radius));
+        }
+    }
+
     /// Builds the loaded course's world again with this ORQWA, in place of the one kept from an
     /// older one (R101); emits `world_ready` like `build_world`. False if no library course is
     /// loaded.

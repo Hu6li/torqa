@@ -58,8 +58,8 @@ pub use forest_mask::{ForestMask, forest_mask};
 pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{FlatMap, MapFeature, minimap};
-pub use pace::Pace;
 use pace::Workers;
+pub use pace::{Entry, Pace};
 pub use props::{Label, Props};
 pub use riding::RoadWidths;
 use road::RoadIndex;
@@ -526,13 +526,19 @@ pub async fn generate_into<M: ElevationModel>(
     progress(0, first);
     // The route's distance only roughly matches the drawn road's samples `reached` counts;
     // the drift changes only the order chunks are built in, never what is built.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
-    let from = (ahead.from.0.max(0.0) / SAMPLE_SPACING) as usize;
-    let order = build_order(reached, &needed, from);
+    let mut from = sample(ahead.from);
+    let mut order = build_order(
+        reached
+            .into_iter()
+            .zip(&needed)
+            .map(|((cell, reach), &needed)| (cell, reach, needed)),
+        from,
+    );
     let Ahead {
         ready,
         structures: grew,
         pace,
+        radius,
         ..
     } = ahead;
     let mut ready = Some(ready);
@@ -558,6 +564,21 @@ pub async fn generate_into<M: ElevationModel>(
     let mut built = 0;
     let mut fallback_samples = 0;
     while built < order.len() {
+        // A turn waits until the world is handed over: until then the chunks it needs first
+        // come first.
+        if ready.is_none()
+            && let Some(entry) = pace.and_then(Pace::take_turn)
+        {
+            let plan = chunk_plan(&centres, entry.at.0, entry.at.1, radius);
+            let needed = stages.needed(&plan.indices[..plan.nearby]);
+            from = sample(entry.from);
+            let rest = order.split_off(built);
+            order.extend(build_order(
+                rest.into_iter()
+                    .map(|(cell, reach)| (cell, reach, needed[stages.index(cell)])),
+                from,
+            ));
+        }
         let workers = pace.map_or(Workers::new(cores), |pace| {
             pace.workers(front(&order[built..], from), cores)
         });
@@ -628,6 +649,12 @@ pub async fn generate_into<M: ElevationModel>(
     rest
 }
 
+/// The drawn road's sample nearest `distance` along the route, roughly.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
+fn sample(distance: Meters) -> usize {
+    (distance.0.max(0.0) / SAMPLE_SPACING) as usize
+}
+
 /// How far apart the drawn road's samples that `cells_near_route` counts lie, roughly, in
 /// metres along the route.
 const SAMPLE_SPACING: f64 = CHUNK_SIZE / 2.0;
@@ -646,19 +673,17 @@ fn front(order: &[((i32, i32), usize)], from: usize) -> Option<f64> {
         .map(|reach| reach as f64 * SAMPLE_SPACING)
 }
 
-/// The order the corridor's cells, each with the road sample that first reaches it, are built
-/// in: those `needed` (by index in [`World::chunks`]) first, then those ahead of road sample
-/// `from`, then those behind, each nearest to it first. Along the route, neighbours are built
-/// close together and few wait for theirs.
+/// The order `cells` are built in, each with the road sample that first reaches it and
+/// whether it is needed first: those needed first, then those ahead of road sample `from`,
+/// then those behind, each nearest to it first. Along the route, neighbours are built close
+/// together and few wait for theirs.
 fn build_order(
-    reached: BTreeMap<(i32, i32), usize>,
-    needed: &[bool],
+    cells: impl IntoIterator<Item = ((i32, i32), usize, bool)>,
     from: usize,
 ) -> Vec<((i32, i32), usize)> {
-    let mut order: Vec<(bool, (i32, i32), usize)> = reached
+    let mut order: Vec<(bool, (i32, i32), usize)> = cells
         .into_iter()
-        .zip(needed)
-        .map(|((cell, reach), &needed)| (needed, cell, reach))
+        .map(|(cell, reach, needed)| (needed, cell, reach))
         .collect();
     order.sort_by_key(|&(needed, cell, reach)| (!needed, reach < from, reach.abs_diff(from), cell));
     order

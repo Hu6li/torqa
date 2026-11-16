@@ -6330,7 +6330,11 @@ fn chunks_needed_first_come_first_then_ahead_of_the_rider_then_behind() {
     // sample 10, and the cells around there are needed first.
     let reached: BTreeMap<(i32, i32), usize> = (0..10).map(|x| ((x, 0), x as usize * 2)).collect();
     let needed: Vec<bool> = (0..10).map(|x| x == 5 || x == 6).collect();
-    let order: Vec<i32> = build_order(reached, &needed, 10)
+    let cells = reached
+        .into_iter()
+        .zip(needed)
+        .map(|((cell, reach), needed)| (cell, reach, needed));
+    let order: Vec<i32> = build_order(cells, 10)
         .into_iter()
         .map(|((x, _), _)| x)
         .collect();
@@ -6420,6 +6424,82 @@ async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_ou
             chunks: Vec::new(),
             ..whole
         },
+    );
+}
+
+#[tokio::test]
+async fn a_build_turned_to_a_late_entry_finishes_its_surroundings_first_and_comes_out_the_same() {
+    // 3 km north. The ride starts at the start; a late joiner then enters at 2.5 km, past
+    // the middle of the route (rows of chunks 960–1,920 m north), which neither entry needs.
+    let points: Vec<(f64, f64, f64)> = (0..=300)
+        .map(|i| (0.0, f64::from(i) * 10.0, 500.0))
+        .collect();
+    let mut map = MapData::default();
+    let route = route_through(&points, &mut map).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    let mut pace = Pace::new(Meters(0.0), None);
+    pace.test.0 = Some(1);
+    let entry = Entry {
+        from: Meters(2500.0),
+        at: (Meters(0.0), Meters(2500.0)),
+    };
+    let sunk = Mutex::new(Vec::new());
+    let mut ready = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, centres| {
+                pace.turn_to(entry);
+                ready = Some((world, centres.to_vec(), sunk.lock().unwrap().len()));
+            },
+            structures: &mut |_| {},
+            pace: Some(&pace),
+        },
+    )
+    .await;
+
+    let (ready, centres, handed) = ready.expect("handed over");
+    let sunk = sunk.into_inner().unwrap();
+    let plan = chunk_plan(&centres, entry.at.0, entry.at.1, Meters(0.0));
+    let around = &plan.indices[..plan.nearby];
+    assert!(plan.nearby > 0);
+    let last_around = sunk
+        .iter()
+        .rposition(|(index, _)| around.contains(index))
+        .expect("the entry's surroundings finished");
+    let middle = |index: usize| (960.0..1920.0).contains(&-centres[index][2]);
+    let first_middle = sunk
+        .iter()
+        .position(|(index, _)| middle(*index))
+        .expect("the middle finished too");
+    assert!(
+        handed <= last_around,
+        "the entry was finished before the turn"
+    );
+    assert!(
+        last_around < first_middle,
+        "the entry's surroundings come before the middle of the route"
+    );
+
+    let mut sunk = sunk;
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(
+        World {
+            chunks,
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready
+        },
+        whole
     );
 }
 
