@@ -66,31 +66,43 @@ built world byte-identical, so neither `GENERATOR` nor `stored::FORMAT` is raise
 ### One store, always
 
 Every world is built into a store in the cache directory, never the data directory (R30).
+2a builds only worlds the rider keeps into a store, as nothing reads it yet. From 2b, when
+the core reads chunks from the store, every world is.
 
 - While the world is being built, each finished chunk is written to
-  `<cache>/worlds/<fingerprint>.building/chunks/<n>`. Each file is a zip with one entry,
-  already named `chunks/<n>`, deflated at level 1 as kept worlds are. Each chunk can be read as
-  soon as it is written, while others are still being built. A chunk is written under a
-  temporary name and renamed when complete, as `KeptWorlds::write` does, so a chunk file
-  that exists is whole, also after a build was stopped or killed.
+  `<cache>/worlds/<fingerprint>.<pid>-<n>.building/chunks/<n>`. Each build claims its own
+  directory (the next `<n>` if one is there), so two builds of one course, one stopped while
+  the next begins, never share files. Process ids repeat after a crash and across sandboxes,
+  so a directory is claimed only if it is not already there. Each file is a zip with one
+  entry, already named `chunks/<n>`, deflated at level 1 as kept worlds are, on the core that
+  finished the chunk. Each chunk can be read as soon as it is written, while others are still
+  being built. A chunk is written under a temporary name and renamed when complete, as
+  `KeptWorlds::write` does, so a chunk file that exists is whole, also after a build was
+  stopped or killed. Chunk files are not synced to the disk: a store never outlives its
+  build, and the page cache outlives a process that is killed. Only the kept world is synced.
 - When building completes and the rider keeps worlds, the chunks are packed into the kept
   `<fingerprint>.world` with the `zip` crate's `ZipWriter::raw_copy_file`, in index order, so
   the kept file doesn't depend on build order. Nothing is inflated or deflated again, and no
   dependency is added. Raw copies carry their CRC unchecked, so a damaged chunk file shows only
   when the kept world is read, which ADR 0025 already handles. The building directory is then
   deleted. The kept world's layout stays as ADR 0025 describes it.
-- When the rider doesn't keep worlds, the building directory is the ride's store. It is deleted
-  when the course is closed or another course is opened, and at start, after a crash or a
-  low-memory kill.
+- A store belongs to the build that made it, and is deleted when that build lets go of it:
+  once kept, when the build is stopped, or when a chunk fails to be written (the disk may be
+  full). When the rider doesn't keep worlds, the store is the ride's, deleted when the course
+  is closed or another course is opened.
+- A store left by an ORQWA that stopped (a crash, a low-memory kill) is deleted by the next
+  tidy of the kept worlds once it hasn't grown for 10 minutes, as a half-written kept world
+  is. Age is only needed for other processes' stores: from 2b, ORQWA knows its own live
+  builds and never tidies them, however long their preparation takes.
 - **Size.** A store is the world deflated: ADR 0025 measured 10 MB per kilometre on Swiss
-  courses. A densely mapped course is about twice that: Wada's 3.2 GB world deflates to about
-  1.3 GB, about 23 MB per kilometre (estimated at ADR 0025's ratio; the 2a PR measures it). So
-  every ride of a course that isn't kept writes that much to flash.
+  courses. A densely mapped course is about twice that: Wada's store is 1,149 MB, 20.1 MB per
+  kilometre (measured in 2a), and packing it into the kept world takes about 2 s. So every
+  ride of a course that isn't kept writes that much to flash.
 - **When the store can't be written** (disk full, unwritable cache):
   - On desktops, the chunks stay in memory as they do today, with a warning in the log.
   - On Android, that fallback is the low-memory kill again. So **Ride** stops before building
-    and tells the rider how much free storage the course needs. Until 2a has measured real
-    stores, the check uses the upper end of the estimate: 25 MB per kilometre.
+    and tells the rider how much free storage the course needs. The check allows 25 MB per
+    kilometre, above the densest course measured.
 - Android may clear the cache under storage pressure while a course is open. A missing chunk
   is handled like a damaged one (see Consequences).
 
@@ -216,15 +228,16 @@ uploads").
     as R101 promises for a course first ridden.
   - When a ride of another course starts, or another world is to be built, the build is
     **stopped, not paused**. Its preparation and two rings are dropped from memory, so they
-    never share memory with another ride, and R240's one-course figures still hold. The
-    chunks already written stay in the building directory.
+    never share memory with another ride, and R240's one-course figures still hold. Its
+    store, with the chunks already written, stays: ORQWA holds on to it for the course's
+    next build.
   - Afterwards, the build prepares the route again and continues with the chunks not yet
     written. A written chunk whose neighbours aren't finished is built again in memory for
     its ground and as-built pavement, but not written again. Building is deterministic, so
     the result is byte-identical; the cost is preparing twice.
-  - If ORQWA closes first, the partial store is deleted at the next start, and the next ride
+  - If ORQWA closes first, the partial store is deleted by age, as above, and the next ride
     builds the world again.
-  - Otherwise, the building directory is deleted with the course.
+  - Otherwise, the store is deleted with the course.
 
 ### Steps and measuring
 
@@ -253,7 +266,7 @@ the tablet. Compact vertices (with the first `FORMAT` change) and coarser far st
   densely mapped chunk is still bigger than a sparse one.
 - **Godot's memory** follows the graphics preset's distance, so Low uses less, unlike today.
   Per chunk, the scene still costs what the chunk's meshes cost, until compact vertices.
-- **Every rider now writes the world to the cache:** 10 to 25 MB per kilometre, about 1.3 GB
+- **Every rider now writes the world to the cache:** 10 to 25 MB per kilometre, about 1.1 GB
   for Wada, also without **Keep courses ready to ride**. Without that setting it is deleted
   when the course is closed, so on disk those worlds are temporary. On Android, a rider without
   that much free storage can't ride the course and is told why.
