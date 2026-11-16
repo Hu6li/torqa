@@ -286,22 +286,43 @@ func _session_layouts() -> void:
 		ride.begin(options)
 		var workout: bool = options.has("workout")
 		_expect(panel._layout, Array(app.hud_layout(workout)), "solo session HUD")
+		var on_its_own: bool = workout and not options.get("on_course", false)
+		_check(_workout_on_right(ride) == on_its_own, "solo workout placed: %s" % options)
 	# Exercise the real group signal, including the transition back from a shared workout.
 	for workout: bool in [false, true, false]:
 		app.group_started.emit(true, workout)
 		await process_frame
 		await process_frame
 		_expect(panel._layout, Array(app.hud_layout(workout)), "group course HUD")
+		_check(not _workout_on_right(ride), "on a course, the workout follows the metrics")
 		await _edit_session_hud(ride, app, workout)
 	app.group_started.emit(false, true)
 	await process_frame
 	await process_frame
 	_expect(panel._layout, Array(app.hud_layout(true)), "group workout without a course")
+	_check(_workout_on_right(ride), "without a course, the workout leads the right column")
 	await _edit_session_hud(ride, app, true)
 	app.select_profile(previous)
 	app.delete_profile(rider)
 	main.free()
 	await process_frame
+
+
+## Whether the workout leads the right column (R236 refined); otherwise it must directly follow
+## the metrics.
+func _workout_on_right(ride: RideScreen) -> bool:
+	var workout: Control = ride.get("_workout_panel")
+	var metrics: Control = ride.get_node("HudColumn/MetricsPanel")
+	if workout.get_parent() == ride.get_node("%RightColumn"):
+		return workout.get_index() == 0
+	_check(
+		(
+			workout.get_parent() == metrics.get_parent()
+			and workout.get_index() == metrics.get_index() + 1
+		),
+		"the workout follows the metrics"
+	)
+	return false
 
 
 func _edit_session_hud(ride: RideScreen, app: OrqwaApp, workout: bool) -> void:

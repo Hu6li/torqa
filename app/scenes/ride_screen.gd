@@ -148,6 +148,7 @@ func begin(options: Dictionary) -> void:
 	(get_node("Attribution") as Control).visible = not on_its_own
 	for panel: Control in [%Minimap.get_parent(), %Profile.get_parent().get_parent()]:
 		panel.visible = not on_its_own
+	_place_workout_panel(on_its_own)
 	_workout_panel.visible = not _workout.is_empty()
 	_workout_panel.show_workout(_workout)
 	var rider: Dictionary = _orqwa.profile()
@@ -189,7 +190,8 @@ func _ready() -> void:
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_backdrop()
-	_build_workout_panel()
+	_workout_panel.hide()
+	($HudColumn as VBoxContainer).add_child(_workout_panel)
 	_build_climb_panel()
 	(%RightColumn as VBoxContainer).add_child(_group_riders)
 	_build_ghost_panel()
@@ -600,10 +602,13 @@ func _build_backdrop() -> void:
 	move_child(_chart_panel, 1)
 
 
-func _build_workout_panel() -> void:
-	_workout_panel.hide()
-	var column: VBoxContainer = $HudColumn
-	column.add_child(_workout_panel)
+## On a course the right column holds the map, profile, climb and riders: the workout follows
+## the metrics (R236). Without a course it leads that column, leaving the metrics room (R253).
+func _place_workout_panel(on_its_own: bool) -> void:
+	var column: VBoxContainer = %RightColumn if on_its_own else $HudColumn
+	if _workout_panel.get_parent() != column:
+		_workout_panel.reparent(column, false)
+	column.move_child(_workout_panel, 0 if on_its_own else 1)
 
 
 func _build_ghost_panel() -> void:
