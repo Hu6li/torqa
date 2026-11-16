@@ -376,6 +376,8 @@ Built in rideable steps:
   columns without scrolling; adaptive HUD columns and workout targets on the left.
 - [x] Let the ride map grow to 300 px on small screens when the visible sidebar panels
   leave room, adapting as riders, climbs and ghosts appear or disappear (R247, #617).
+- [x] A workout on its own shows its targets at the top of the right column, where the map
+  would be; on a course they stay below the metrics on the left (R253).
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
 - [x] Returning to Courses from another tab keeps the selected course, its options and loading
   progress; Back or another click on the active Courses tab returns to the gallery (R246, #569)

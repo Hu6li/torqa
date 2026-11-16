@@ -12,9 +12,12 @@ part of a full group's rider list.
 
 The implemented layout places the map, full-course elevation profile, active
 climb and **Riders** in that order. The map and profile adapt to available height;
-the column does not scroll. Workout targets follow the metrics on the left, and
-a large selection of HUD figures can use extra columns without changing the
-rider's saved order. Ghost feedback remains below Riders.
+the column does not scroll. On a course, workout targets follow the metrics on
+the left, and a large selection of HUD figures can use extra columns without
+changing the rider's saved order. Ghost feedback remains below Riders.
+
+A workout ridden without a course has no map, profile or climb, so its targets
+lead the right column instead and the metrics keep their full height (R253).
 
 The map grows to 300 px whenever the visible panels leave enough room, including
 on small screens during solo rides (#617, R247). It shrinks only as much as the
