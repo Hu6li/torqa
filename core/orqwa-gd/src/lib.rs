@@ -17,7 +17,9 @@ use orqwa_app::failure::{Failure, Kind};
 use orqwa_app::hud::{MetricKind, Zones};
 use orqwa_app::media::MediaCommand;
 use orqwa_app::moments::Moment;
-use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, RideVolumes, TrainerChoice, paths};
+use orqwa_app::{
+    App, AppEvent, DetailStep, GhostChoice, RideVolumes, TrainerChoice, WinterMask, paths,
+};
 use orqwa_app::{library, view};
 use orqwa_devices::ble::{ControllerModel, DeviceKind};
 use orqwa_devices::fake::{FakeHeart, FakeRider};
@@ -3671,12 +3673,10 @@ impl OrqwaApp {
         let Some(app) = self.app.as_ref() else {
             return VarDictionary::new();
         };
-        let Some(mask) = app.snow_ground_mask() else {
-            return if app.world_chunks().is_some() {
-                vdict! { "pending" => true }
-            } else {
-                VarDictionary::new()
-            };
+        let mask = match app.snow_ground_mask() {
+            WinterMask::Made(mask) => mask,
+            WinterMask::Pending => return vdict! { "pending" => true },
+            WinterMask::None => return VarDictionary::new(),
         };
         let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
         else {

@@ -77,6 +77,11 @@ impl Keeper {
     pub(crate) fn store(&self, name: &str) -> Option<Building> {
         self.kept
             .building(name)
+            .inspect(|store| {
+                if !store.locked() {
+                    warn!("cannot lock the world's store; another ORQWA may tidy it once old");
+                }
+            })
             .inspect_err(|error| {
                 warn!(%error, "cannot store the world being built; holding it in memory");
             })
@@ -289,9 +294,9 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::AppEvent;
     use crate::import::LoadStage;
     use crate::tests::{run_until, temp_dir, write_route};
+    use crate::{AppEvent, WinterMask};
 
     /// Updates `app` until `done` holds, as the kept worlds are written in the background.
     fn wait_for(app: &mut App, mut done: impl FnMut(&App) -> bool) {
@@ -710,15 +715,27 @@ mod tests {
         let whole = orqwa_world::snow_ground_mask(&loaded(&app));
         assert!(whole.pixels.contains(&0), "the road is kept clear");
         // Made in the background, not on the caller's thread.
-        wait_for(&mut app, |app| app.snow_ground_mask().is_some());
-        assert_eq!(app.snow_ground_mask(), Some(&whole), "from the store");
+        wait_for(&mut app, |app| {
+            app.snow_ground_mask() != WinterMask::Pending
+        });
+        assert_eq!(
+            app.snow_ground_mask(),
+            WinterMask::Made(&whole),
+            "from the store"
+        );
         app.set_keeps_worlds(true).unwrap();
         let keeper = app.keeper();
         let fingerprint = course::fingerprint(&course).unwrap();
         wait_for(&mut app, |_| keeper.kept.has(&fingerprint));
         ride(&mut app, &course);
-        wait_for(&mut app, |app| app.snow_ground_mask().is_some());
-        assert_eq!(app.snow_ground_mask(), Some(&whole), "from the kept world");
+        wait_for(&mut app, |app| {
+            app.snow_ground_mask() != WinterMask::Pending
+        });
+        assert_eq!(
+            app.snow_ground_mask(),
+            WinterMask::Made(&whole),
+            "from the kept world"
+        );
         app.shutdown();
     }
 }

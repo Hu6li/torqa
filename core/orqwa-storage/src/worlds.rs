@@ -215,8 +215,10 @@ impl KeptWorlds {
             failed: AtomicBool::new(false),
         };
         let lock = File::create(store.dir.join(LOCK))?;
-        lock.lock()?;
-        store.lock = Some(lock);
+        // Some filesystems have no file locks (network shares, FUSE mounts): that costs only
+        // the protection from another ORQWA's tidy, which this build's own and the store's
+        // age still give for a while, not the store.
+        store.lock = lock.lock().is_ok().then_some(lock);
         std::fs::create_dir(store.dir.join(CHUNKS))?;
         Ok(store)
     }
@@ -303,6 +305,14 @@ pub struct Building {
 }
 
 impl Building {
+    /// Whether the store is locked, so that no other ORQWA running tidies it away (ADR 0040).
+    /// Not on a filesystem without file locks: another ORQWA then leaves it only while it is
+    /// young.
+    #[must_use]
+    pub fn locked(&self) -> bool {
+        self.lock.is_some()
+    }
+
     /// Writes chunk `index` of the world, deflated as a kept world's chunks are. Chunks may be
     /// written in any order, from several threads at once.
     ///
@@ -578,10 +588,15 @@ enum Reading {
 }
 
 /// Whether `error` means a chunk is damaged or missing, not that it could not be read for now.
+/// A broken deflate stream is `InvalidInput` (flate2); a chunk past the last is refused before
+/// it is read, so that kind means damage here too.
 fn damage(error: &io::Error) -> bool {
     matches!(
         error.kind(),
-        io::ErrorKind::InvalidData | io::ErrorKind::UnexpectedEof | io::ErrorKind::NotFound
+        io::ErrorKind::InvalidData
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::UnexpectedEof
+            | io::ErrorKind::NotFound
     )
 }
 
@@ -944,6 +959,72 @@ mod tests {
             "never kept again as it is"
         );
         assert!(!kept.has("f"));
+        drop(chunks);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_kept_world_whose_compressed_chunk_is_corrupt_is_built_again() {
+        let cache = temp_dir("corrupt");
+        let kept = KeptWorlds::new(&cache);
+        let built = world(3);
+        // Chunk 1's deflate stream starts with a stored block holding the centre, which opening
+        // the world reads, then breaks off into a block of the reserved type: the stream itself
+        // is corrupt, not only its checksum.
+        let mut chunk = Vec::new();
+        stored::write_chunk(&built.chunks[1], &mut chunk).unwrap();
+        let mut stream = vec![0b000];
+        stream.extend(32u16.to_le_bytes());
+        stream.extend((!32u16).to_le_bytes());
+        stream.extend(&chunk[..32]);
+        stream.push(0b111);
+        std::fs::create_dir_all(&kept.root).unwrap();
+        let file = kept.file("f");
+        let mut zip = ZipWriter::new(BufWriter::new(File::create(&file).unwrap()));
+        zip.start_file(WHOLE, options()).unwrap();
+        stored::write_whole(&built, 1, &mut zip).unwrap();
+        for index in 0..3 {
+            if index == 1 {
+                let raw =
+                    SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+                zip.start_file(format!("{CHUNKS}1"), raw).unwrap();
+                zip.write_all(&stream).unwrap();
+            } else {
+                zip.start_file(format!("{CHUNKS}{index}"), options())
+                    .unwrap();
+                stored::write_chunk(&built.chunks[index], &mut zip).unwrap();
+            }
+        }
+        finish(zip).unwrap();
+        // Then marked deflated, in its local header and in the central directory.
+        let mut bytes = std::fs::read(&file).unwrap();
+        let name = format!("{CHUNKS}1").into_bytes();
+        let names: Vec<_> = (0..bytes.len() - name.len())
+            .filter(|&at| bytes[at..].starts_with(&name))
+            .collect();
+        for at in names {
+            let method = if at >= 30 && bytes[at - 30..].starts_with(b"PK") {
+                at - 30 + 8
+            } else if at >= 46 && bytes[at - 46..].starts_with(b"PK") {
+                at - 46 + 10
+            } else {
+                continue;
+            };
+            bytes[method..method + 2].copy_from_slice(&8u16.to_le_bytes());
+        }
+        std::fs::write(&file, bytes).unwrap();
+        let (whole, _, chunks) = kept.open("f").unwrap().expect("kept");
+        let read = Mutex::new(Vec::new());
+        let each = chunks.read_each(&|index, _| read.lock().unwrap().push(index));
+        assert!(each.is_err());
+        let mut read = read.into_inner().unwrap();
+        read.sort_unstable();
+        assert_eq!(read, [0, 2], "the others are still read");
+        assert!(!kept.has("f"), "damaged, so the next ride builds it again");
+        assert!(
+            chunks.keep(&kept, "f", &whole, 1).is_err(),
+            "never kept again as it is"
+        );
         drop(chunks);
         std::fs::remove_dir_all(cache).unwrap();
     }

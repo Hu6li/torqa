@@ -3,6 +3,7 @@
 //! the parts built whole and the chunks' centres, not the chunks.
 
 use std::borrow::Cow;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
@@ -10,13 +11,24 @@ use orqwa_storage::worlds::{Building, Chunks};
 use orqwa_world::{SnowGroundMask, TerrainChunk, World};
 use tracing::warn;
 
+/// The winter ground's mask of a world, as far as it is made.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WinterMask<'a> {
+    /// No world is loaded, or the mask could not be made.
+    None,
+    /// Being made in the background.
+    Pending,
+    /// Made.
+    Made(&'a SnowGroundMask),
+}
+
 /// A world's chunks, by index.
 #[derive(Debug)]
 pub struct WorldChunks {
     held: Held,
     /// The winter ground's mask, made in the background once it is first asked for: it needs
-    /// every chunk.
-    snow: OnceLock<SnowGroundMask>,
+    /// every chunk. `None` if making it failed.
+    snow: OnceLock<Option<SnowGroundMask>>,
     /// Whether the mask was asked for.
     asked: AtomicBool,
 }
@@ -88,8 +100,12 @@ impl WorldChunks {
 
     /// The mask that keeps the winter ground's snow off the ways, once
     /// [made](Self::make_snow_ground_mask).
-    pub(crate) fn snow_ground_mask(&self) -> Option<&SnowGroundMask> {
-        self.snow.get()
+    pub(crate) fn snow_ground_mask(&self) -> WinterMask<'_> {
+        match self.snow.get() {
+            None => WinterMask::Pending,
+            Some(None) => WinterMask::None,
+            Some(Some(mask)) => WinterMask::Made(mask),
+        }
     }
 
     /// Whether the mask is to be made: true for the first who asks.
@@ -101,25 +117,32 @@ impl WorldChunks {
     /// parts built whole are `world`, from every chunk: seconds for a long, densely mapped
     /// course. A chunk that cannot be read is undrawn, so the mask leaves it out.
     pub(crate) fn make_snow_ground_mask(&self, world: &World) {
+        // A mask that cannot be made is recorded as such, or it would be waited for all ride.
         self.snow.get_or_init(|| {
-            let mask = Mutex::new(SnowGroundMask::around(world, self.centres()));
-            match &self.held {
-                Held::Stored(chunks) => {
-                    let cleared = chunks.read_each(&|_, chunk| {
-                        lock(&mask).clear_chunk(&chunk);
-                    });
-                    if let Err(error) = cleared {
-                        warn!(%error, "cannot read all of the world for its winter ground");
-                    }
-                }
-                Held::Memory { chunks, .. } => {
-                    for chunk in chunks.iter().flatten() {
-                        lock(&mask).clear_chunk(chunk);
-                    }
+            std::panic::catch_unwind(AssertUnwindSafe(|| self.mask(world)))
+                .inspect_err(|_| warn!("cannot make the winter ground's mask"))
+                .ok()
+        });
+    }
+
+    fn mask(&self, world: &World) -> SnowGroundMask {
+        let mask = Mutex::new(SnowGroundMask::around(world, self.centres()));
+        match &self.held {
+            Held::Stored(chunks) => {
+                let cleared = chunks.read_each(&|_, chunk| {
+                    lock(&mask).clear_chunk(&chunk);
+                });
+                if let Err(error) = cleared {
+                    warn!(%error, "cannot read all of the world for its winter ground");
                 }
             }
-            mask.into_inner().unwrap_or_else(PoisonError::into_inner)
-        });
+            Held::Memory { chunks, .. } => {
+                for chunk in chunks.iter().flatten() {
+                    lock(&mask).clear_chunk(chunk);
+                }
+            }
+        }
+        mask.into_inner().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Keeps the world as the course with `fingerprint`'s among `kept`, its parts built whole

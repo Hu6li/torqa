@@ -31,7 +31,7 @@ mod world_chunks;
 pub use detail::{DetailRegion, DetailStep, RegionOffer};
 pub use import::{Imported, LoadStage, Progress, countries, course_map, import_gpx, import_route};
 pub use kept::KeptWorld;
-pub use world_chunks::WorldChunks;
+pub use world_chunks::{WinterMask, WorldChunks};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -4036,12 +4036,14 @@ impl App {
     }
 
     /// The mask that keeps the winter ground's snow off the loaded world's road, streets,
-    /// tracks and paving; `None` until it is made. The first call starts making it in the
-    /// background, from every chunk: seconds for a long, densely mapped course, which Godot's
-    /// main thread must not wait for.
+    /// tracks and paving, [pending](WinterMask::Pending) until it is made. The first call
+    /// starts making it in the background, from every chunk: seconds for a long, densely
+    /// mapped course, which Godot's main thread must not wait for.
     #[must_use]
-    pub fn snow_ground_mask(&self) -> Option<&orqwa_world::SnowGroundMask> {
-        let (world, chunks) = (self.world.as_ref()?, self.chunks.as_ref()?);
+    pub fn snow_ground_mask(&self) -> WinterMask<'_> {
+        let (Some(world), Some(chunks)) = (self.world.as_ref(), self.chunks.as_ref()) else {
+            return WinterMask::None;
+        };
         if chunks.ask_snow_ground_mask() {
             let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
             self.runtime

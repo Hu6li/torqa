@@ -18,7 +18,9 @@ static func apply(world: RideWorld, orqwa: OrqwaApp, active: bool) -> void:
 	var pending: bool = mask.get("pending", false)
 	if pending:
 		# Made in the background from every chunk: asked again until it is ready.
+		# Meanwhile no mask, rather than an earlier course's clearing the wrong roads.
 		terrain.set_meta("winter_road_id", previous)
+		terrain.set_shader_parameter("winter_ground_size", Vector2.ZERO)
 		if not world.is_inside_tree():
 			return
 		var retry: Callable = func() -> void:
