@@ -135,7 +135,10 @@ func build() -> void:
 		return
 	_building = true
 	_show_building()
-	if _orqwa.build_world():
+	var radius: float = RideWorld.upload_radius(
+		_orqwa.graphics_quality(), _orqwa.graphics_options()
+	)
+	if _orqwa.build_world(_continuing, radius):
 		_on_world_ready({})
 
 
@@ -175,9 +178,11 @@ func cancel_preparation() -> void:
 
 ## Builds the world kept from an older ORQWA again with this one (R101); the rider rides after.
 func _regenerate_world() -> void:
-	if not _orqwa.regenerate_world():
-		return
+	# Set first: a refusal is reported during the call, and shown like a failed build.
 	_regenerating = true
+	if not _orqwa.regenerate_world():
+		_regenerating = false
+		return
 	_regenerate.hide()
 	_show_building()
 

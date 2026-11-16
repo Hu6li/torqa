@@ -8,6 +8,7 @@
 mod appearance;
 mod benchmark;
 mod buildings;
+mod cells;
 mod chains;
 mod channels;
 mod climate;
@@ -20,6 +21,7 @@ mod horizon;
 mod junctions;
 mod landcover;
 mod minimap;
+mod pace;
 mod palette;
 mod pavement;
 mod props;
@@ -30,6 +32,7 @@ mod roundabouts;
 mod route_distances;
 mod seasonal_snow;
 mod snow_ground;
+mod stages;
 pub mod stored;
 mod streaming;
 mod streets;
@@ -42,7 +45,9 @@ mod water_levels;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
+use orqwa_domain::units::Meters;
 use orqwa_osm::{LandCover, MapData, RoadClass};
 use orqwa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
@@ -53,20 +58,22 @@ pub use forest_mask::{ForestMask, forest_mask};
 pub use horizon::{HORIZON, Horizon, horizon};
 use landcover::LandIndex;
 pub use minimap::{FlatMap, MapFeature, minimap};
+use pace::Workers;
+pub use pace::{Entry, Pace};
 pub use props::{Label, Props};
 pub use riding::RoadWidths;
 use road::RoadIndex;
 pub use route_distances::{DENSE_FOREST, DISTANCE_STEP, RouteDistances, route_distances};
 pub use seasonal_snow::{Snowbank, road_snow_exposure, snow_depth, snowbanks};
 pub use snow_ground::{SnowGroundMask, snow_ground_mask};
-pub use streaming::{ChunkPlan, chunk_plan};
+pub use streaming::{ChunkPlan, REPLAN_DISTANCE, chunk_plan};
 pub use vegetation::Trees;
 
 /// What worlds look like. Raise it whenever a change makes the same course come out
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 40;
+pub const GENERATOR: u32 = 42;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -79,6 +86,11 @@ const ROAD_HALF_WIDTH: f64 = 3.0;
 /// Terrain cells near the road are split into this many pieces a side, so the ground can follow
 /// the road's verge, cuttings and embankments closely.
 const SUB: usize = 6;
+/// Far from the ride (`streets::FORMED_REACH_M`), the shelves of paved roads are split into
+/// these coarser pieces: nobody sees their cross-sections from there, and a town's streets far
+/// off would otherwise hold most of the world's vertices. A divisor of `SUB`, so the finer
+/// cells beside them close their edges on its vertices (`HeightGrid::close_edges`).
+const FAR_SUB: usize = 3;
 /// Walls and narrow shelves on steep hillsides need finer pieces than the usual ones...
 const STEEP_SUB: usize = 12;
 /// ...close, independently graded roads room for a bank between their carriageways.
@@ -182,7 +194,7 @@ impl MeshData {
 
 /// The ways and water of the map around the route, ready for the chunks.
 struct Ways {
-    streets: Vec<streets::Street>,
+    streets: streets::Shared,
     /// The railways, on their own lines (#85).
     network: railways::Network,
     streams: Vec<water::Stream>,
@@ -209,6 +221,7 @@ impl Ways {
     ) -> Self {
         let mut streets = streets::lines(map, projection, model).await;
         streets::connect(&mut streets, road);
+        let streets: streets::Shared = streets.into();
         let network = railways::network(map, projection, road, model).await;
         let streams = water::streams(&map.waterways, projection, road);
         let pools = water::pools(&map.areas, projection, road);
@@ -336,19 +349,139 @@ fn whole(shapers: &Shapers<'_>, ways: &Ways) -> World {
 
 /// Builds the world for `route`, sampling heights from `model` (e.g. the terrain tiles) and
 /// placing `map` features. Where the model has no data, the terrain follows the road.
-/// `progress` is called with (chunks done, chunks total).
-#[allow(clippy::too_many_lines)] // one pass over the chunks, each step of it named in order
+/// `progress` is called with (chunks built, chunks total).
 pub async fn generate<M: ElevationModel>(
     route: &Route,
     model: &mut M,
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
+    let chunks = Mutex::new(Vec::new());
+    let sink = |index, chunk| {
+        let mut chunks = chunks.lock().unwrap_or_else(PoisonError::into_inner);
+        if chunks.len() <= index {
+            chunks.resize_with(index + 1, || None);
+        }
+        chunks[index] = Some(chunk);
+    };
+    let mut world = World::default();
+    let whole = Ahead {
+        from: Meters(0.0),
+        at: (Meters(0.0), Meters(0.0)),
+        radius: Meters(f64::INFINITY),
+        ready: &mut |parts, _| world = parts,
+        structures: &mut |_| {},
+        pace: None,
+        written: &[],
+    };
+    let rest = generate_into(route, model, map, progress, &sink, whole).await;
+    world.structures = rest.structures;
+    world.fallback_samples = rest.fallback_samples;
+    // `generate_into` finishes every chunk once.
+    world.chunks = chunks
+        .into_inner()
+        .unwrap_or_else(PoisonError::into_inner)
+        .into_iter()
+        .flatten()
+        .collect();
+    world
+}
+
+/// What a ride needs first of a world being built, and how it is told it has it (ADR 0040,
+/// 2d): the chunks the scene uploads around where the ride enters the course, finished, and
+/// the bridges over them. The rest follows ahead of the rider, then behind.
+pub struct Ahead<'a> {
+    /// How far along the route the ride enters it.
+    pub from: Meters,
+    /// Where it enters, in metres east/north of the route start.
+    pub at: (Meters, Meters),
+    /// How far around that the scene uploads chunks, as asked of [`chunk_plan`].
+    pub radius: Meters,
+    /// Handed the world once those chunks are finished: the parts built whole, with the
+    /// structures built so far but without the horizon or chunks, and every chunk's centre by
+    /// index. The build keeps no copy of them.
+    pub ready: &'a mut (dyn FnMut(World, &[[f32; 3]]) + Send),
+    /// Handed the bridges built since, joined, each time some are built after that: the
+    /// structures handed over with the world and these together are every structure.
+    pub structures: &'a mut (dyn FnMut(MeshData) + Send),
+    /// How much of the device the build may take meanwhile; `None`: all of it.
+    pub pace: Option<&'a Pace>,
+    /// The chunks a build of the same world stopped before had finished, by index (ADR 0040,
+    /// 2d step 4b): not given to the sink again. Those whose neighbours or bridges are still
+    /// to be finished are built again in memory for their ground and pavement; the rest are
+    /// not built at all.
+    pub written: &'a [bool],
+}
+
+/// What the world handed over when its ride could begin lacks once every chunk is built.
+#[derive(Debug)]
+pub struct Rest {
+    /// Every structure: the tunnels and all bridges.
+    pub structures: MeshData,
+    /// Terrain samples without elevation data, in all chunks.
+    pub fallback_samples: usize,
+}
+
+/// Builds the world as [`generate`] does, but gives each chunk to `sink` as soon as it is
+/// finished, with its index in [`World::chunks`], instead of keeping it: only the chunks
+/// around those being built are held (ADR 0040). Chunks are finished in no set order, each
+/// once, several at a time on the cores `ahead`'s pace leaves it: those `ahead` asks for
+/// first. The world is handed to `ahead` without its chunks and horizon, also when it asks for
+/// every chunk first, and what it lacks then is returned; both are the same whatever `ahead`
+/// asks for, and whichever chunks it says were [written](Ahead::written) before.
+/// `progress` counts the chunks built of those needed first until `ahead` is told it has
+/// them, then of all to build.
+pub async fn generate_into<M: ElevationModel>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+    sink: &(dyn Fn(usize, TerrainChunk) + Sync),
+    ahead: Ahead<'_>,
+) -> Rest {
+    let result = try_generate_into(
+        route,
+        model,
+        map,
+        progress,
+        &|index, chunk| {
+            sink(index, chunk);
+            Ok::<(), std::convert::Infallible>(())
+        },
+        ahead,
+        &|| Ok(()),
+    )
+    .await;
+    match result {
+        Ok(rest) => rest,
+        Err(never) => match never {},
+    }
+}
+
+/// Builds as [`generate_into`], stopping when storing a chunk fails or `check` asks it to
+/// stop. Workers of the current batch are joined before returning, so its preparation and
+/// chunk buffers are released before another build may begin.
+///
+/// # Errors
+/// The error from `sink` or `check`. A failed build is never reported complete; its caller
+/// may already have received the starting surroundings through [`Ahead::ready`].
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)] // one preparation and batch loop
+pub async fn try_generate_into<M: ElevationModel, E: Send>(
+    route: &Route,
+    model: &mut M,
+    map: &MapData,
+    progress: &mut (dyn FnMut(usize, usize) + Send),
+    sink: &(dyn Fn(usize, TerrainChunk) -> Result<(), E> + Sync),
+    ahead: Ahead<'_>,
+    check: &(dyn Fn() -> Result<(), E> + Sync),
+) -> Result<Rest, E> {
+    check()?;
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
     road.set_appearances(&appearance::Index::new(map, &projection));
-    let cells = chunks_near_route(&road);
-    let total = cells.len();
+    check()?;
+    let reached = cells_near_route(&road);
+    let total = reached.len();
     // Announce the step before the slower preparation below.
     progress(0, total);
     let land = LandIndex::new(&map.areas, &projection);
@@ -356,7 +489,9 @@ pub async fn generate<M: ElevationModel>(
     let lone_lighthouses = buildings::lone_lighthouses(map, &projection);
     let buildings =
         buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
+    check()?;
     let mut ways = Ways::new(map, &projection, &road, model).await;
+    check()?;
     let portals = structures::open_portals(
         &mut road,
         &mut ways.network.index,
@@ -365,6 +500,7 @@ pub async fn generate<M: ElevationModel>(
         model,
     )
     .await;
+    check()?;
     let hollows = structures::hollows(&road, &ways.network.index, &portals);
     let shapers = Shapers {
         road: &road,
@@ -376,7 +512,7 @@ pub async fn generate<M: ElevationModel>(
     };
     let below = structures::Below::new(&road, &ways.network.index, &ways.streets, &ways.islands);
     let mut world = whole(&shapers, &ways);
-    let ridden_pavement = pavement::Pavement::new(&world, []);
+    check()?;
     let mut urban = urban::Urban::build(
         buildings.values().flatten(),
         &ways.streets,
@@ -384,17 +520,18 @@ pub async fn generate<M: ElevationModel>(
         &ways.clearance,
         &road,
         &land,
-        ridden_pavement,
+        pavement::Pavement::new(&world, []),
     );
+    check()?;
     // Walking joins need one datum even when their profile anchors lie in another chunk.
     let mut grades = Vec::new();
     for point in urban.grade_points() {
+        check()?;
         if let Some(height) = drawn_ground(model, &projection, &shapers, point).await {
             grades.push((point, height));
         }
     }
     urban.pin_grades(grades);
-    let mut chunk_barriers = Vec::new();
     let mouths = streets::mouths(&ways.streets, &road);
     let places: Vec<(String, (f64, f64))> = map
         .places
@@ -417,69 +554,231 @@ pub async fn generate<M: ElevationModel>(
         mouths: &mouths,
         places: &places,
     };
+    let pieces = structures::pieces(&road, &ways.network.index);
+    // Tunnels stand on nothing drawn, so they are there from the start of a ride.
+    let mut tunnels = Vec::with_capacity(pieces.len());
+    for piece in &pieces {
+        check()?;
+        tunnels.push(if piece.is_bridge() {
+            None
+        } else {
+            Some(piece.tunnel(&road, &shapers, &projection, model).await)
+        });
+    }
+    let cells: Vec<(i32, i32)> = reached.keys().copied().collect();
+    let centres: Vec<[f32; 3]> = cells.iter().map(|&cell| stages::centre(cell)).collect();
+    let mut stages = stages::Stages::new(cells, urban.pavement(), &pieces);
+    let to_build = stages.resume(ahead.written);
+    let plan = chunk_plan(&centres, ahead.at.0, ahead.at.1, ahead.radius);
+    let needed = stages.needed(&plan.indices[..plan.nearby]);
+    let first = needed
+        .iter()
+        .zip(&to_build)
+        .filter(|&(&n, &b)| n && b)
+        .count();
+    // Again once the whole-route preparation is done, so its memory can be told from the
+    // chunks'.
+    progress(0, first);
+    // The route's distance only roughly matches the drawn road's samples `reached` counts;
+    // the drift changes only the order chunks are built in, never what is built.
+    let mut from = sample(ahead.from);
+    let mut order = build_order(
+        reached
+            .into_iter()
+            .zip(needed.iter().zip(&to_build))
+            .filter(|(_, (_, build))| **build)
+            .map(|((cell, reach), (&needed, _))| (cell, reach, needed)),
+        from,
+    );
+    let total = order.len();
+    let Ahead {
+        ready,
+        structures: grew,
+        pace,
+        ..
+    } = ahead;
+    let mut ready = Some(ready);
+    // The bridges handed over so far, by piece: each is handed over once, so that the scene
+    // adds it rather than drawing every structure again.
+    let mut handed = vec![false; pieces.len()];
+    let (chunks, trees) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let counted = |index, chunk: TerrainChunk| {
+        check()?;
+        let tree_count = chunk.trees.len();
+        sink(index, chunk)?;
+        chunks.fetch_add(1, Ordering::Relaxed);
+        trees.fetch_add(tree_count, Ordering::Relaxed);
+        Ok(())
+    };
 
     // Chunks go in batches: their elevations one after the other, as the model is not shared,
-    // then the chunks themselves on all cores, where nearly all the time goes.
-    let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-    let cells: Vec<(i32, i32)> = cells.into_iter().collect();
-    for batch in cells.chunks(threads * 4) {
+    // then the chunks themselves on the cores the pace leaves, where nearly all the time goes.
+    // A batch's chunks are all held before any is finished, so they add to the peak: two per
+    // core keep the cores busy enough (Wada: about a tenth slower than four, 0.2 GB less at the
+    // peak; one per core peaks no lower, as the chunks kept for their neighbours set the floor
+    // then).
+    let cores = pace
+        .and_then(Pace::cores)
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, NonZeroUsize::get));
+    let mut built = 0;
+    let mut fallback_samples = 0;
+    loop {
+        check()?;
+        // Everything needed first is built once `first` chunks are: it comes first in order.
+        // A build taking up what a stopped one wrote may have none of it to build again.
+        if built >= first
+            && let Some(ready) = ready.take()
+        {
+            world.structures = structures::join(so_far(&tunnels, stages.bridges()));
+            world.fallback_samples = fallback_samples;
+            mark_handed(&mut handed, stages.bridges());
+            ready(std::mem::take(&mut world), &centres);
+        }
+        if built >= order.len() {
+            break;
+        }
+        // A turn waits until the world is handed over: until then the chunks it needs first
+        // come first.
+        if ready.is_none()
+            && let Some(entry) = pace.and_then(Pace::take_turn)
+        {
+            let plan = chunk_plan(&centres, entry.at.0, entry.at.1, entry.radius);
+            let needed = stages.needed(&plan.indices[..plan.nearby]);
+            from = sample(entry.from);
+            let rest = order.split_off(built);
+            order.extend(build_order(
+                rest.into_iter()
+                    .map(|(cell, reach)| (cell, reach, needed[stages.index(cell)])),
+                from,
+            ));
+        }
+        let workers = pace.map_or(Workers::new(cores), |pace| {
+            pace.workers(front(&order[built..], from), cores)
+        });
+        let batch = &order[built..(built + workers.threads * 2).min(order.len())];
         let mut jobs = Vec::with_capacity(batch.len());
-        for &(cx, cn) in batch {
+        for &((cx, cn), _) in batch {
+            check()?;
             let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
             jobs.push((cx, cn, elevations));
         }
-        let chunks = in_parallel(&jobs, threads, |(cx, cn, elevations)| {
+        let results = in_parallel(&jobs, workers, |(cx, cn, elevations)| {
             corridor.chunk(*cx, *cn, elevations)
         });
-        for (chunk, fallbacks, barriers) in chunks {
-            world.chunks.push(chunk);
-            chunk_barriers.push(barriers);
-            world.fallback_samples += fallbacks;
+        for (&(cell, _), (chunk, fallbacks, barriers)) in batch.iter().zip(results) {
+            stages.built(stages.index(cell), chunk, barriers);
+            fallback_samples += fallbacks;
         }
-        progress(world.chunks.len(), total);
+        built += batch.len();
+        if ready.is_some() {
+            progress(built.min(first), first);
+        } else {
+            progress(built, total);
+        }
+        check()?;
+        stages.finish(workers, &counted)?;
+        let bridges = stages.build_bridges(&pieces, &below);
+        stages.drop_unneeded();
+        if ready.is_none() && bridges > 0 {
+            let new = stages
+                .bridges()
+                .iter()
+                .zip(&handed)
+                .filter_map(|(bridge, &handed)| bridge.clone().filter(|_| !handed));
+            grew(structures::join(new));
+            mark_handed(&mut handed, stages.bridges());
+        }
     }
-    props::ground_protection(&mut world.chunks);
-    // Structures stand on the ground alone, which clearing barriers leaves as it is: built
-    // first, every barrier is known before the pavement they are checked against is gathered.
-    let mut barriers = Vec::new();
-    world.structures = structures::build_all(
-        (&road, &ways.network.index),
-        &below,
-        &shapers,
-        &foundations::Ground(&world.chunks),
-        &projection,
-        model,
-        &mut barriers,
-    )
-    .await;
-    let mut asked = pavement::Asked::default();
-    for (chunk, ([paved, unpaved], _)) in world.chunks.iter().zip(&chunk_barriers) {
-        asked.barriers(&chunk.streets, paved, chunk.center);
-        asked.barriers(&chunk.tracks, unpaved, chunk.center);
+    debug_assert!(stages.done(), "a chunk or bridge was left waiting");
+    // Those not built again count their samples without elevation data as when first built.
+    for (index, &(cx, cn)) in stages.cells().iter().enumerate() {
+        if !to_build[index] {
+            check()?;
+            let elevations = HeightGrid::elevations(cx, cn, &projection, model).await;
+            fallback_samples += elevations.iter().filter(|e| e.is_none()).count();
+        }
     }
-    for ([a, b], half_width) in props::fence_spans(&world.chunks) {
-        asked.span(a, b, half_width);
-    }
-    asked.barriers(&world.structures, &barriers, [0.0; 3]);
-    let pavement = pavement::Pavement::near(&world, chunk_barriers.iter().map(|(_, n)| *n), asked);
-    for (chunk, ([paved, unpaved], _)) in world.chunks.iter_mut().zip(chunk_barriers) {
-        pavement.clear(&mut chunk.streets, paved, chunk.center);
-        pavement.clear(&mut chunk.tracks, unpaved, chunk.center);
-    }
-    props::clear_fences(&mut world.chunks, &pavement);
-    pavement.clear(&mut world.structures, barriers, [0.0; 3]);
-    if world.fallback_samples > 0 {
+    // All are joined in the pieces' order, however they were built.
+    let rest = Rest {
+        structures: structures::join(
+            tunnels
+                .into_iter()
+                .zip(stages.take_bridges())
+                .filter_map(|(tunnel, bridge)| bridge.or(tunnel.map(|mesh| (mesh, Vec::new())))),
+        ),
+        fallback_samples,
+    };
+    if fallback_samples > 0 {
         warn!(
-            samples = world.fallback_samples,
+            samples = fallback_samples,
             "terrain data missing in places; terrain follows the road there"
         );
     }
-    info!(
-        chunks = world.chunks.len(),
-        trees = world.chunks.iter().map(|c| c.trees.len()).sum::<usize>(),
-        "world generated"
-    );
-    world
+    let (chunks, trees) = (chunks.into_inner(), trees.into_inner());
+    info!(chunks, trees, "world generated");
+    Ok(rest)
+}
+
+/// The drawn road's sample nearest `distance` along the route, roughly.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a sample's index
+fn sample(distance: Meters) -> usize {
+    (distance.0.max(0.0) / SAMPLE_SPACING) as usize
+}
+
+/// How far apart the drawn road's samples that `cells_near_route` counts lie, roughly, in
+/// metres along the route.
+const SAMPLE_SPACING: f64 = CHUNK_SIZE / 2.0;
+
+/// How far along the route the nearest of the cells in `order` ahead of road sample `from`
+/// lies, in metres; `None` if none is ahead. A cell counts from the first sample that comes
+/// near it, and samples drift from route metres, so the lead it gives errs short: the build
+/// hurries early rather than late.
+#[allow(clippy::cast_precision_loss)] // a sample's index
+fn front(order: &[((i32, i32), usize)], from: usize) -> Option<f64> {
+    order
+        .iter()
+        .map(|&(_, reach)| reach)
+        .filter(|&reach| reach >= from)
+        .min()
+        .map(|reach| reach as f64 * SAMPLE_SPACING)
+}
+
+/// The order `cells` are built in, each with the road sample that first reaches it and
+/// whether it is needed first: those needed first, then those ahead of road sample `from`,
+/// then those behind, each nearest to it first. Along the route, neighbours are built close
+/// together and few wait for theirs.
+fn build_order(
+    cells: impl IntoIterator<Item = ((i32, i32), usize, bool)>,
+    from: usize,
+) -> Vec<((i32, i32), usize)> {
+    let mut order: Vec<(bool, (i32, i32), usize)> = cells
+        .into_iter()
+        .map(|(cell, reach, needed)| (needed, cell, reach))
+        .collect();
+    order.sort_by_key(|&(needed, cell, reach)| (!needed, reach < from, reach.abs_diff(from), cell));
+    order
+        .into_iter()
+        .map(|(_, cell, reach)| (cell, reach))
+        .collect()
+}
+
+/// Notes each bridge in `bridges` (by piece) as handed over.
+fn mark_handed(handed: &mut [bool], bridges: &[Option<stages::StructureMesh>]) {
+    for (handed, bridge) in handed.iter_mut().zip(bridges) {
+        *handed |= bridge.is_some();
+    }
+}
+
+/// The structures built so far, by piece: every tunnel, and the bridges built.
+fn so_far<'a>(
+    tunnels: &'a [Option<MeshData>],
+    bridges: &'a [Option<stages::StructureMesh>],
+) -> impl Iterator<Item = stages::StructureMesh> + 'a {
+    tunnels.iter().zip(bridges).filter_map(|(tunnel, bridge)| {
+        bridge
+            .clone()
+            .or_else(|| tunnel.clone().map(|mesh| (mesh, Vec::new())))
+    })
 }
 
 /// Buildings near the route, the map's and `extra` ones (lighthouses standing alone), grouped
@@ -705,7 +1004,7 @@ impl Corridor<'_> {
 /// `jobs`. A panic in `work` is passed on.
 fn in_parallel<J: Sync, R: Send>(
     jobs: &[J],
-    threads: usize,
+    workers: Workers,
     work: impl Fn(&J) -> R + Sync,
 ) -> Vec<R> {
     // Each thread takes the next job when done with one: chunks differ a lot in work (a town
@@ -713,9 +1012,12 @@ fn in_parallel<J: Sync, R: Send>(
     let next = AtomicUsize::new(0);
     let mut results: Vec<Option<R>> = std::iter::repeat_with(|| None).take(jobs.len()).collect();
     std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..threads.clamp(1, jobs.len().max(1)))
+        let threads: Vec<_> = (0..workers.threads.clamp(1, jobs.len().max(1)))
             .map(|_| {
                 scope.spawn(|| {
+                    if let Some(lower) = workers.lower {
+                        lower();
+                    }
                     let mut done = Vec::new();
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
@@ -727,8 +1029,8 @@ fn in_parallel<J: Sync, R: Send>(
                 })
             })
             .collect();
-        for worker in workers {
-            for (index, result) in worker
+        for thread in threads {
+            for (index, result) in thread
                 .join()
                 .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
             {
@@ -749,10 +1051,16 @@ fn chunk_of(east: f64, north: f64) -> (i32, i32) {
 
 /// Chunk grid cells (east, north) within the corridor of any part of the route.
 pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
-    let mut cells = BTreeSet::new();
+    cells_near_route(road).into_keys().collect()
+}
+
+/// Chunk grid cells (east, north) within the corridor of any part of the route, each with
+/// how far along the route it is first reached (in road samples).
+fn cells_near_route(road: &RoadIndex) -> BTreeMap<(i32, i32), usize> {
+    let mut cells = BTreeMap::new();
     let reach = CORRIDOR + CHUNK_SIZE / 2.0 * std::f64::consts::SQRT_2;
     // Sampling the road every half chunk is enough to touch every chunk in reach.
-    for (east, north) in road.samples(CHUNK_SIZE / 2.0) {
+    for (sample, (east, north)) in road.samples(CHUNK_SIZE / 2.0).into_iter().enumerate() {
         let (low, high) = (
             chunk_of(east - reach, north - reach),
             chunk_of(east + reach, north + reach),
@@ -762,7 +1070,7 @@ pub(crate) fn chunks_near_route(road: &RoadIndex) -> BTreeSet<(i32, i32)> {
                 let center_e = (f64::from(cx) + 0.5) * CHUNK_SIZE;
                 let center_n = (f64::from(cn) + 0.5) * CHUNK_SIZE;
                 if (center_e - east).hypot(center_n - north) <= reach {
-                    cells.insert((cx, cn));
+                    cells.entry((cx, cn)).or_insert(sample);
                 }
             }
         }
@@ -781,7 +1089,8 @@ pub(crate) struct HeightGrid {
     heights: Vec<f64>,
     /// Natural heights of the grid's vertices, border included.
     natural: Vec<f64>,
-    /// Fine cells, normally `SUB` pieces a side and more finely split between close roads.
+    /// Fine cells, normally `SUB` pieces a side, `FAR_SUB` under far ways alone, and more
+    /// finely split between close roads.
     /// Their square lattice's heights run row by row from the south-west.
     fine: HashMap<(usize, usize), Vec<f64>>,
     /// Local downward correction beneath ground crossings (culverts), coarse and fine.
@@ -906,10 +1215,13 @@ impl HeightGrid {
         for j in 0..side - 1 {
             for i in 0..side - 1 {
                 let (east, north) = grid.position(i, j, 0.5, 0.5);
+                // On the chunk's edge cells keep the usual pieces at least: the neighbouring
+                // chunk's cell along it is predicted from the streets alone (`close_edges`).
+                let edge = i == 0 || j == 0 || i == side - 2 || j == side - 2;
                 let detail = if grid.needs_detail(i, j, shapers)
                     || water.0.near(east, north, half_diagonal)
                 {
-                    Some(grid.detail(i, j, shapers, water))
+                    Some(grid.detail(i, j, shapers, water, SUB))
                 } else if shapers
                     .streets
                     .nearest(east, north, half_diagonal)
@@ -917,9 +1229,16 @@ impl HeightGrid {
                 {
                     // Levelled across a street: split only where that changes the cell's
                     // ground, so cells on flat land stay plain. On the chunk's edge always, as
-                    // the neighbouring chunk's cell along it may be split.
-                    let edge = i == 0 || j == 0 || i == side - 2 || j == side - 2;
-                    Some(grid.detail(i, j, shapers, water))
+                    // the neighbouring chunk's cell along it may be split. A cell whose ground
+                    // any near way levels or banks keeps the usual pieces, also where none of
+                    // its carriageways touch it; only far ways' ground takes the coarser ones.
+                    let levelled = half_diagonal + streets::LEVEL_VERGE_M + streets::LEVEL_REACH_M;
+                    let near = shapers
+                        .streets
+                        .detail_near(east, north, levelled, false, FAR_SUB)
+                        > FAR_SUB;
+                    let floor = if edge || near { SUB } else { FAR_SUB };
+                    Some(grid.detail(i, j, shapers, water, floor))
                         .filter(|(fine, _)| edge || grid.departs(i, j, fine))
                 } else {
                     None
@@ -959,7 +1278,7 @@ impl HeightGrid {
                     self.origin.0 + (ni as f64 + 0.5) * GRID,
                     self.origin.1 + (nj as f64 + 0.5) * GRID,
                 );
-                shapers.detail_count(east, north)
+                shapers.detail_count(east, north, SUB)
             };
             let neighbours = [
                 neighbour(-1, 0),
@@ -1102,9 +1421,10 @@ impl HeightGrid {
             &LandIndex,
             &std::sync::Arc<water_levels::Levels>,
         ),
+        floor: usize,
     ) -> (Vec<f64>, Vec<f64>) {
         let (east, north) = self.position(i, j, 0.5, 0.5);
-        let count = shapers.detail_count(east, north);
+        let count = shapers.detail_count(east, north, floor);
         let mut fine = Vec::with_capacity((count + 1) * (count + 1));
         let mut drops = Vec::with_capacity((count + 1) * (count + 1));
         for b in 0..=count {
@@ -1562,20 +1882,26 @@ impl Shapers<'_> {
     /// Fine pieces a side in the cell centred at (`east`, `north`). Beds close beside the
     /// ridden road or a railway need room for the bank between them; every cell that may hold
     /// a narrowed hard verge (`Shapers::piece_diagonal`) shares that detail.
-    fn detail_count(&self, east: f64, north: f64) -> usize {
+    /// Cells split for the ridden road, water or a chunk's edge take the usual pieces at least
+    /// (`floor` `SUB`); those split for streets alone may take a far street's coarser ones.
+    fn detail_count(&self, east: f64, north: f64, floor: usize) -> usize {
         let half_diagonal = GRID * std::f64::consts::FRAC_1_SQRT_2;
         self.streets
-            .detail_near(east, north, half_diagonal, false)
+            .detail_near(east, north, half_diagonal, false, floor)
             .max(
                 self.streets
-                    .detail_near(east, north, half_diagonal + CLOSE_REACH, true),
+                    .detail_near(east, north, half_diagonal + CLOSE_REACH, true, floor),
             )
     }
 
     /// Diagonal of the coarsest terrain piece that can lie at (`east`, `north`) in a split
-    /// cell: any cell holding the point is split at least this finely (`detail_count`).
+    /// cell near the ridden road or a railway: cells within `VERGE` of them, where the hard
+    /// verge needs it, are split for them (`needs_detail`, so with the `SUB` floor) at least
+    /// this finely. Cells under far ways alone may be coarser (`FAR_SUB`).
     fn piece_diagonal(&self, east: f64, north: f64) -> f64 {
-        let count = self.streets.detail_near(east, north, CLOSE_REACH, true);
+        let count = self
+            .streets
+            .detail_near(east, north, CLOSE_REACH, true, SUB);
         #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
         let size = GRID / count as f64;
         size * std::f64::consts::SQRT_2

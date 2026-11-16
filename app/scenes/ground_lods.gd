@@ -9,18 +9,19 @@ extends RefCounted
 var _tasks: Dictionary[int, Array] = {}
 
 
-## Starts making the coarser versions of `ground`, a mesh of `arrays`.
+## Starts making the coarser versions of `ground`, a compressed mesh of `arrays`
+## (`WorldMeshes.from_arrays`).
 func make(ground: MeshInstance3D, arrays: Dictionary) -> void:
 	var made: Array[ImporterMesh] = [null]
 	var task: int = WorkerThreadPool.add_task(
-		func() -> void: made[0] = WorldMeshes.simplified(arrays), false, "Ground LODs"
+		func() -> void: made[0] = WorldMeshes.simplified(arrays, true), false, "Ground LODs"
 	)
 	_tasks[task] = [ground, made]
 
 
 ## Puts the versions made since the last call in place; the meshes are made here, on the main
 ## thread.
-func add_ready() -> void:
+func add_ready(discard: bool = false) -> void:
 	for task: int in _tasks.keys():
 		if not WorkerThreadPool.is_task_completed(task):
 			continue
@@ -28,7 +29,7 @@ func add_ready() -> void:
 		var entry: Array = _tasks[task]
 		_tasks.erase(task)
 		# Another course or quality may have replaced the chunk meanwhile.
-		if not is_instance_valid(entry[0]):
+		if discard or not is_instance_valid(entry[0]):
 			continue
 		var ground: MeshInstance3D = entry[0]
 		var made: Array[ImporterMesh] = entry[1]

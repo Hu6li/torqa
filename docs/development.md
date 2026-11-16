@@ -507,10 +507,16 @@ including chunks touching the visible area. `WorldStreaming` prepares the starti
 up to the preset's terrain range plus a 1 km movement/fade/camera margin; the loading page's
 progress covers that area. Riding then starts while farther chunks upload in the background.
 For Continue ride, Rust supplies the validated saved position before the ride starts.
-The upload loop yields after its current chunk once it uses 4 ms while riding, and reorders
-remaining chunks whenever the rider moves 240 m. Full-resolution ground draws while optional
-ground LODs finish, so these do not delay the start. Benchmarks still wait for all chunks
-and LODs through `uploads_complete`; capture tools retain their full-course chunk wait.
+The upload loop yields after its current chunk once it uses 4 ms while riding, and plans again
+whenever the rider moves 240 m (`orqwa_world::REPLAN_DISTANCE`). Only chunks within the upload
+radius are uploaded, but they are freed only beyond that radius plus that distance and one chunk,
+so turning back on a hairpin doesn't read them again; on the way back they are read again from
+the store (ADR 0040). The distance is measured from the rider, or from the free camera while it
+flies. After a jump in a simulated ride, or when the camera comes back to the rider from the
+free camera, the ride pauses until the rider's surroundings are uploaded. Full-resolution
+ground draws while optional ground LODs finish, so these do not delay the start. Benchmarks
+wait for their chunk and LODs through `uploads_complete`; capture tools wait through
+`chunks_uploaded`, for the chunks within reach of where the rider is now.
 
 Season and graphics are applied before preparing the surroundings, so starting the ride does
 not restart terrain uploads. Kept worlds skip generation, but still need scene uploads.
@@ -605,9 +611,9 @@ recommendation and restored rendering settings; software FPS still says nothing 
 Frame rate needs a real GPU: software Vulkan in the container draws the same draw calls and
 primitives, but its timings say nothing about a GPU. `app/tools/measure_frames.gd` measures a
 course's world either way. It opens a course (a `.oqc`, built offline from its saved inputs, or
-a GPX route), waits for every chunk, pauses the rider at each distance in `PLACES` and samples
-the frames there: everything shown (`all`), then with one thing taken away at a time, as `TAKE`
-asks. Each sample appends a row to `frames.csv`: frame rate, median and 95th-percentile frame
+a GPX route), waits for its world, pauses the rider at each distance in `PLACES` once the chunks
+around it are uploaded, and samples the frames there: everything shown (`all`), then with one
+thing taken away at a time, as `TAKE` asks. Each sample appends a row to `frames.csv`: frame rate, median and 95th-percentile frame
 time, and the draw calls and primitives in view and in the shadow maps. Each place gets a
 screenshot, the run a log with the world's build and upload times and its geometry by kind.
 

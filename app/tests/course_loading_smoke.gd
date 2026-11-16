@@ -1,6 +1,7 @@
 extends SceneTree
-## R223/R224: prepare the visible start area, then ride while distant chunks stream in; rides
-## along a course's video (R17) have no scene to prepare.
+## R223/R224: prepare the visible start area, then ride while distant chunks stream in; chunks
+## left far behind leave the scene and come back with the rider (ADR 0040). Rides along a
+## course's video (R17) have no scene to prepare.
 
 var _failed: bool = false
 var _main: Control
@@ -48,13 +49,19 @@ func _run() -> void:
 	_check(_starts == 0, "a duplicate request cannot skip preparation")
 	_world.set_process(true)
 	await _wait_until(func() -> bool: return _starts == 1, "first ride starts")
-	var uploaded: int = _world._next_chunk
+	var uploaded: int = _world._streaming.uploaded()
 	_check(uploaded < _world._chunk_count, "riding starts before distant chunks are uploaded")
 	print("Ride started with %d / %d chunks uploaded" % [uploaded, _world._chunk_count])
+	_check(not _world.waiting_for_world(), "the start's surroundings are built before riding")
+	# The rest of the world is built while riding (ADR 0040); jumps below land where it is.
+	await _wait_until(_orqwa.world_complete, "the rest of the world is built while riding")
 	await _moving_priority()
 	await _wait_until(_world.uploads_complete, "distant chunks finish while riding")
 	var elapsed: float = _orqwa.ride_state().get("elapsed_s", 0.0)
 	_check(elapsed > 0.0, "the ride clock runs while distant chunks load")
+	_check(
+		_world._streaming.uploaded() < _world._chunk_count, "a long course is never all uploaded"
+	)
 	_back_home()
 
 	# Already uploaded scenes need no second preparation pass.
@@ -112,23 +119,69 @@ func _unstarted_focus() -> void:
 
 
 func _moving_priority() -> void:
+	var terrain: Node3D = _world.get_node("Terrain")
+	var start: Vector2 = _rider()
+	var before: Array[Node] = terrain.get_children()
 	_world.set_process(false)
-	var before: int = _world._next_chunk
 	_check(_orqwa.jump_to_distance(9000.0), "move the fake rider to a distant part of the course")
+	var far: Vector2 = _rider()
+	_world.set_process(true)
+	await _wait_until(
+		func() -> bool: return _first_added(terrain, before) != null, "uploads follow the rider"
+	)
+	_check(
+		_centre(_first_added(terrain, before)).distance_to(far) < 1000.0,
+		"the next uploaded chunk is near the new position, rather than continuing the old queue"
+	)
+	await _wait_until(_world.chunks_uploaded, "the new surroundings are uploaded")
+	# Let go beyond the upload radius, the distance moved before the next plan and a chunk.
+	# 480 m is the core's CHUNK_SIZE. The ride goes on while uploading, so the focus may have moved.
+	var reach: float = _world._streaming._radius + _world._streaming._replan + 480.0
+	var focus: Vector2 = _world._streaming._focus
+	var within: bool = true
+	var behind: bool = false
+	for chunk: Node in terrain.get_children():
+		within = within and _centre(chunk).distance_to(focus) <= reach
+		behind = behind or _centre(chunk).distance_to(start) < 1000.0
+	_check(within, "no chunk beyond reach of the rider stays in the scene")
+	_check(not behind, "the start's chunks, 9 km behind, left the scene")
+	# Back through the elevation profile, as a rider would: the clock waits for the scene.
+	var ride_screen: RideScreen = _main.get_node("RideScreen")
+	ride_screen._profile.jump_requested.emit(0.0)
+	_check(_orqwa.is_paused(), "a jump into an unloaded place pauses the ride")
+	# Pause pressed while waiting keeps the ride paused, as the rider's own pause.
+	ride_screen._toggle_pause()
+	_check(_orqwa.is_paused(), "pause during the wait keeps the ride paused")
+	await _wait_until(_world.surroundings_ready, "the start's surroundings come back")
+	await process_frame
+	_check(_orqwa.is_paused(), "the rider's own pause outlasts the wait")
+	ride_screen._toggle_pause()
+	_check(not _orqwa.is_paused(), "the rider resumes")
+	# Without the rider's pause, the ride goes on by itself once the scene is there.
+	ride_screen._profile.jump_requested.emit(9000.0)
+	_check(_orqwa.is_paused(), "a jump back to the far place waits again")
+	await _wait_until(func() -> bool: return not _orqwa.is_paused(), "the ride goes on by itself")
+	_check(_world._streaming.nearby_ready(), "the far place's surroundings came first")
+	_check(_orqwa.jump_to_distance(0.0), "return to the starting area")
+
+
+func _rider() -> Vector2:
 	var state: Dictionary = _orqwa.ride_state()
 	var east: float = state["rider_x"]
 	var north: float = state["rider_y"]
-	_world.set_process(true)
-	await _wait_until(
-		func() -> bool: return _world._next_chunk > before, "uploads follow the rider"
-	)
-	var next: Node3D = _world.get_node("Terrain").get_child(before) as Node3D
-	var centre: Vector2 = Vector2(next.position.x, -next.position.z)
-	_check(
-		centre.distance_to(Vector2(east, north)) < 1000.0,
-		"the next uploaded chunk is near the new position, rather than continuing the old queue"
-	)
-	_check(_orqwa.jump_to_distance(0.0), "return to the prepared starting area")
+	return Vector2(east, north)
+
+
+func _first_added(terrain: Node3D, before: Array[Node]) -> Node:
+	for chunk: Node in terrain.get_children():
+		if not before.has(chunk):
+			return chunk
+	return null
+
+
+func _centre(chunk: Node) -> Vector2:
+	var position: Vector3 = (chunk as Node3D).position
+	return Vector2(position.x, -position.z)
 
 
 func _changed_options() -> void:
@@ -229,7 +282,7 @@ func _on_started(options: Dictionary) -> void:
 	_check(_world._streaming.nearby_ready(), "the first ride frame has its visible surroundings")
 	var terrain: Node3D = _world.get_node("Terrain")
 	_check(
-		terrain.get_child_count() == _world._next_chunk,
+		terrain.get_child_count() == _world._streaming.uploaded(),
 		"every completed chunk is present when riding starts"
 	)
 

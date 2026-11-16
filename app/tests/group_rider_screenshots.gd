@@ -202,9 +202,7 @@ static func capture(main: Control, out: String) -> void:
 
 
 static func _chunks_ready(world: RideWorld) -> bool:
-	var next: int = world.get("_next_chunk")
-	var count: int = world.get("_chunk_count")
-	return next >= count
+	return world.chunks_uploaded()
 
 
 static func _assistance(main: Control, out: String) -> void:

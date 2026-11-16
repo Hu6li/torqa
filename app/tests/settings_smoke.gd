@@ -184,12 +184,13 @@ func _tree_quality(world: RideWorld) -> void:
 	var dense_range: float = dense_nearby["tree_range"]
 	_check(dense_range == low_range, "a short range also works with dense trees")
 	# Changing density discards already uploaded chunks so the next ride uses fewer trees.
-	terrain.add_child(Node3D.new())
-	world.set("_next_chunk", 1)
+	var streaming: WorldStreaming = world.get("_streaming")
+	var uploaded: Node3D = Node3D.new()
+	terrain.add_child(uploaded)
+	streaming._uploaded[0] = uploaded
 	world.apply_quality("low")
-	var next_chunk: int = world.get("_next_chunk")
 	_check(terrain.get_child_count() == 0, "old density is removed from the scene")
-	_check(next_chunk == 0, "a changed density restarts chunk uploads")
+	_check(streaming.uploaded() == 0, "a changed density restarts chunk uploads")
 	world.apply_quality("medium")
 
 

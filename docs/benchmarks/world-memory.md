@@ -21,8 +21,9 @@ by part and by distance from the ridden road.
 
 ## Where the memory goes
 
-Before the chunks: the route, the map, the elevations and the course map take 170 MB. Building
-the chunks takes it to 4.8 GB; the whole-world passes after them (barriers against pavement,
+Before the world: the route, the map, the elevations and the course map take 170 MB. The
+world's whole-route preparation and the chunks take it to 4.8 GB (the preparation alone is
+measured below, under *Built chunk by chunk*); the whole-world passes after them (barriers against pavement,
 bridges) to the peak.
 
 The world, by part (MB):
@@ -73,8 +74,418 @@ position differ in normal or texture coordinate.
   the pavement in the cells their checks reach is gathered: the same answers, from a small
   fraction of the triangles.
 
-## Still to do
+## Built chunk by chunk
 
-Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,
-never freeing one; the tablet ends ORQWA about halfway through building the chunks. Only
-keeping the chunks near the rider bounds memory for any course length (PLAN Phase 12 G).
+2026-11-10, same container (8 cores, so 32 chunks a batch), release build. Each chunk is now
+finished once its neighbours are built and handed on (`orqwa_world::generate_into`, ADR 0040's
+step 2a); `generate` collects them into the same world. `world_memory <route.gpx> <cache>
+--stream` builds a GPX route that way without the app and keeps only each chunk's hash. Wada's
+route is the course's `route.gpx`, read offline from the cache the course was unpacked into.
+
+| | Whole world | Streamed |
+|---|---:|---:|
+| Kirchenfeldbrücke, peak | 1.64 GB | 1.34 GB |
+| Bielersee, peak | 1.43 GB | 1.00 GB |
+| Oberalp, peak | 1.41 GB | 0.73 GB |
+| **Wada, peak** | **4.78 GB** | **2.18 GB** |
+| Wada, generating | 98 s | 100 s |
+
+**The worlds are unchanged:** on all four courses the world's checksum is what it was before
+the change (Wada as a course: `a6a04ff670d2c2de`), in a debug build too, where a chunk or
+bridge reaching for ground or pavement it doesn't hold stops the build. A streamed build gives
+the same chunk checksum as a whole one; both run the new code, so that shows only that
+streaming drops nothing. The whole world's peak is lower than #541's 5.18 GB because the
+pavement gathered for every barrier at once, and every chunk's barriers, are no longer held
+together at the end.
+
+**Where Wada's streamed peak goes.** The import (map and route) leaves 78 MB resident. Once
+the whole-route preparation is done, before the first chunk, the process holds **1.16 GB**:
+about 1.08 GB for the preparation (streets, the urban network, buildings and the rest of what
+every chunk is built from, with the terrain tiles it read). The 170 MB "before the chunks"
+above is the app's report before that preparation starts. The chunks around the build front
+then take it to 1.71 GB after the first 32, 2.01 GB after 64, and 2.18 GB at most. ADR 0040
+counts the preparation among the small parts; on Wada it alone is above R240's 1 GB for the
+core while building, so it needs measuring by part, and shrinking, before that figure holds.
+
+**What bounds the chunks held.** A chunk waits, whole, until all its neighbours are built, and
+its ground and pavement stay until they are finished. Along one leg of a route that is a few
+rows of chunks around the build front, and the batch adds `2 × cores` chunks (64 on 32 cores).
+Where a later leg's corridor runs alongside an earlier one (out and back in a parallel valley,
+stacked switchbacks, laps a few kilometres apart), the earlier leg's chunks on that side wait
+for the later leg: chunks held then grow with the length of that seam. No build order avoids
+it.
+
+## Streets held once
+
+2026-11-10, same container, release build, Wada built chunk by chunk as above, with a counting
+allocator and a report after each step of the whole-route preparation. Before the first chunk
+the preparation held 1,073 MB of live heap: 305 MB of decoded terrain tiles, all kept (now at
+most 64 MB, `orqwa_terrain::TILE_BUDGET`), and a third in five indexes that each kept its own
+copy of the streets' centre lines (13,207 streets, 865,151 points, 31 MB), in lists per cell
+grown one item at a time. The streets are now held once (`streets::Shared`); the indexes keep
+a street's and a point's number, 8 bytes, in one array sorted by cell (`cells::CellIndex`).
+
+| Live heap (MB) | Before | After |
+|---|---:|---:|
+| Where plants keep off (`Clearance`) | 70 | 35 |
+| Where channels stop at streets (`Channels`) | 51 | 14 |
+| Formed street beds (`streets::Levels`) | 108 | 30 |
+| Streets under bridges (`Below`) | 79 | 21 |
+| Sidewalk ways, with the building sites | 99 | 35 |
+| **Preparation** | **1,073** | **792** |
+| Streamed peak | 2.25 GB | 2.01 GB |
+| Generating | 98–110 s | 102 s |
+
+With the tile cache as well, the preparation holds 555 MB live (676 MB resident) and the
+streamed peak is 1.73–1.75 GB, in 99–102 s.
+
+The worlds are unchanged: the four courses' checksums are main's (Kirchenfeldbrücke
+`d809883d0cce28ce`, Bielersee `4c70f2da7b782cb9`, Oberalp `5d69f358523b43ef`, Wada as a course
+`a6a04ff670d2c2de`), and on top of the tile cache the GPX routes' whole and streamed checksums
+are as before (Wada's chunk checksum `11713ce55c887625`).
+
+On the Tab S7, Wada streamed offline at the 64 MB tile budget, two runs each alternating with
+the same build without this change:
+
+| Tab S7 | Without | With |
+|---|---:|---:|
+| Resident after the preparation | 0.90–0.91 GB | 0.67 GB |
+| Peak | 1.71–1.73 GB | 1.48–1.49 GB |
+| Lowest memory available to the tablet | 0.90–1.00 GB | 1.23–1.31 GB |
+| Generating | 342–345 s | 341–350 s |
+
+The chunk checksum is `a0ca70babfcb9de9` in every run, with and without the change (the tablet's
+build has a checksum of its own, as before).
+
+## Sidewalks held compactly
+
+2026-11-10, measured the same way, on top of the streets held once and the tile cache. Of the
+555 MB the preparation then held, the urban surfaces' last step (cutting each sidewalk patch
+free of zones, carriageways, junction fans and buildings) added the most: 307,223 patches at
+102 MB (a third of it a list's spare room), the 361,033 polygons left after cutting at 59 MB
+(668,256 small lists, two thirds of their room spare), and the junction fans' 482,190
+triangles at 34 MB. The cutting also left its freed lists scattered through the heap, so the
+process stayed larger than what it held.
+
+Patches are quadrilaterals and junction fans triangles: each now holds its corners itself,
+rather than in a list of its own. The polygons left after cutting go into one store, points in
+one array (`urban::Shapes`), which the passes that follow (merging overlapping islands,
+dropping walks too short to keep) rebuild in turn rather than edit in place. A cut whose bounds
+miss a polygon keeps the polygon rather than copying it.
+
+| Container | Before | After |
+|---|---:|---:|
+| Sidewalk patches | 102 MB | 60 MB |
+| Polygons left after cutting | 59 MB | 28 MB |
+| Junction fans | 34 MB | 24 MB |
+| **Preparation**, live | **555 MB** | **472 MB** |
+| Preparation, resident | 666–676 MB | 536–554 MB |
+| Streamed peak | 1.74–1.75 GB | 1.60–1.63 GB |
+| Generating | 99–102 s | 98–101 s |
+
+The checksums are the same as above (the four courses whole, and the GPX routes streamed).
+
+| Tab S7 | Without | With |
+|---|---:|---:|
+| Resident after the preparation | 0.58 GB | 0.50 GB |
+| Peak | 1.48–1.49 GB | 1.41–1.42 GB |
+| Lowest memory available to the tablet | 1.03–1.15 GB | 1.17–1.26 GB |
+| Generating | 336–343 s | 338–342 s |
+
+Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
+
+## Smaller batches
+
+2026-11-10, measured the same way, with a report of live heap before, during and after each
+batch of chunks. The preparation ends at 472 MB live, but the streamed peak comes a gigabyte
+later, while the chunks are built. At four chunks per core (32 a batch), between batches up
+to 450 MB more is held: ground meshes and pavement kept for the neighbours of about 80 built
+chunks (110–135 and 100–130 MB), some 40 chunks waiting for theirs, and the bridges built. A
+batch's chunks are all built before any is finished, and add to that: 516 MB in the first
+batch (472 → 988 MB live) and 379 MB in the second (876 → 1,255 MB), the highest live heap
+of the build. The 130 MB held after the streets' lines are drawn, which the earlier report by
+part counted as one step, is the tile cache filling to its budget there (64 MB) and the
+streets themselves (31 MB).
+
+A batch is now two chunks per core instead of four (16 on the container's and the Tab S7's 8).
+The order chunks are built in, and so the world, stays the same; the cores are less evenly
+busy towards each batch's end.
+
+| Container | Four per core | Two per core | One per core |
+|---|---:|---:|---:|
+| Live between batches, highest | 925 MB | 970 MB | 970 MB |
+| Live after a batch is built, highest | 1,255 MB | 1,086 MB | 1,035 MB |
+| Streamed peak (resident) | 1.60–1.61 GB | 1.38–1.44 GB | 1.34–1.45 GB |
+| Generating | 100 s | 112 s | 139 s |
+
+From two per core on, the batch adds about 100 MB or less: the floor is what is held between
+batches, the preparation and the chunks kept for their neighbours, with about 350 MB more
+that the allocator keeps from it. One per core is no lower than two beyond the runs' spread,
+and a quarter slower. The checksums are the same as above (the four courses whole, and the
+GPX routes streamed).
+
+| Tab S7 | Four per core | Two per core |
+|---|---:|---:|
+| Peak | 1.41–1.43 GB | 1.21 GB |
+| Lowest memory available to the tablet | 1.14–1.18 GB | 1.29–1.30 GB |
+| Generating | 333–341 s | 369–378 s |
+
+Two runs each, alternating; the chunk checksum is `a0ca70babfcb9de9` in every run.
+
+## Built into a store
+
+2026-11-10, container, `world_memory <route.gpx> <cache> --stream --store`. A world to keep is
+written to the cache while it is built (ADR 0040): each chunk once finished, deflated at
+level 1 on the core that finished it, then copied into the kept world as it is.
+
+| Wada, container | Streamed | Streamed into a store |
+|---|---:|---:|
+| Peak (resident) | 1.42–1.47 GB | 1.45–1.47 GB |
+| Generating | 131–187 s | 154–161 s |
+| Store, and so the kept world | – | 1,149 MB, 20.1 MB per km |
+| Packing it into the kept world | – | 2.0–2.4 s |
+
+Two runs each, alternating, on a busy host: the times spread more than the store costs. The
+peak is the same, as each chunk is written and let go on the core that finished it. Wada's
+store is 20 MB per kilometre, twice ADR 0025's Swiss courses and within ADR 0040's estimate
+(10 to 25). Packing copies the chunks without inflating them; writing the world whole took
+the app seconds of deflating on one core after the ride began. The checksums are those of
+the runs above, for the three fixtures and Wada.
+
+On the Tab S7 (one run each, alternating): 377 and 384 s with the store, 365 and 381 s
+without; peak 1.17 GB both ways; packing 2.7–3.0 s; the same checksum.
+
+## Ridden from the store
+
+2026-11-10, container, `world_memory <course.oqc> [cache] [--keep]`, the app as it rides. The
+core no longer holds a world's chunks (ADR 0040, step 2b): every world is built into a store
+in the cache, and ridden from it or from its kept world, one chunk at a time.
+
+| Wada, the app | Before (chunks held) | Chunks on disk |
+|---|---:|---:|
+| Peak while building | 4.18 GB | 1.57–1.60 GB |
+| Resident once built | 4.12 GB | 0.86–1.03 GB |
+| Ridden from its kept world: peak | the whole world, 3.2 GB of it chunks | 0.24–0.27 GB |
+| Ridden from its kept world: ready in | – | 5 s |
+| Reading all 683 chunks back, one at a time | – | 5.5–12.7 s, 8–19 ms each |
+
+On the Tab S7, `world_memory wada.oqc <cache> --keep` through `adb`, one run each:
+
+| Wada on the Tab S7, the app | Built into a store and kept | Ridden from the kept world |
+|---|---:|---:|
+| Ready in | 374 s | 12 s |
+| Peak when ready | 1.18 GB | 108 MB |
+| Resident when ready | 116 MB | 92 MB |
+| Reading all 683 chunks back, one at a time | 14.5 s, 21 ms each | 14.5 s, 21 ms each |
+| Peak after reading them all | 1.18 GB | 136 MB |
+
+Both give the tablet's own checksums (`1af4d0bd8806698d`, chunk checksum `b5f02cf1272f2c19`),
+built and read back from the kept world; the kept world is 1.0 GB.
+
+The peak while building is now the streamed build's (above) plus the parts built whole. What
+stays resident after the build is mostly memory glibc keeps from building, not the world:
+ridden from its kept world, the core holds only the parts built whole and each chunk's centre,
+within R240's 500 MB for the core while riding.
+Reading a chunk back costs Godot's upload of it that much more time on the main thread: 21 ms
+on the tablet, more than a frame at 60 Hz, per chunk uploaded. The 2d PR measures the frame
+time while riding (R240) from there; reading ahead on a worker thread is the obvious remedy.
+The winter ground's mask reads every chunk too, so it is made in the background, never on the
+main thread. The checksums are unchanged for the three
+fixtures and Wada, also read back from the store and from the kept world.
+
+## Far chunks freed from the scene
+
+2026-11-10, container, Wada at **Low**, `app/tools/measure_frames.gd` under lavapipe (whose
+"GPU" memory is the process's own, as on a tablet), riding to 0, 20 and 40 km and back to 0,
+with Godot's own counts at each place (ADR 0040, step 2c):
+
+| Wada at Low | 0 km | 20 km | 40 km | back at 0 |
+|---|---:|---:|---:|---:|
+| Chunks in the scene, before → after | 683 → 108 | 683 → 180 | 683 → 162 | 683 → 108 |
+| Godot's video memory, before → after | 2,361 → 1,077 MB | 2,361 → 455 MB | 2,361 → 624 MB | 2,361 → 1,079 MB |
+| Nodes, before → after | 20,702 → 9,234 | 20,702 → 7,514 | 20,702 → 8,262 | 20,702 → 9,234 |
+
+Back where it started, the scene holds the same nodes and objects as before, with no orphans.
+Ridden seven times between 0 and 20 km (while chunks were still uploaded up to where they are
+freed), the process's resident memory stays at 4.14–4.19 GB after the first lap: freed chunks
+give their memory back.
+
+- **The GPU's memory stays at its peak.** Lavapipe holds 1.33 GB from the start onwards,
+  also at 20 km where the scene needs 455 MB: the Vulkan allocator keeps blocks that freed
+  meshes left partly empty. So the scene's GPU memory follows the densest surroundings ridden
+  so far, here Wada's start, no longer the whole course: 1.1–1.3 GB instead of 2.4 GB.
+- **Resident memory** peaks at 5.6 GB after against 7.9 GB before, with glibc's default
+  arenas. Of that, about 1.3 GB is freed memory glibc keeps for the build's and the ground
+  LODs' worker threads (4.35 GB with `MALLOC_ARENA_MAX=2`), which Android's allocator does not
+  keep the same way. The main heap still holds 1.2–1.3 GB left from building the world.
+- **Against R240's 1.5 GB on the tablet,** Wada's start alone needs 1.1 GB of meshes at Low,
+  before the core and Godot's own 0.3 GB. Freeing far chunks bounds the scene by the preset's
+  distance, but a densely mapped start still needs compact vertices (the first `FORMAT`
+  change) to fit.
+- Each place's surroundings are read and uploaded again, ground LODs included: about
+  2.5 minutes per place under software rendering, against 30 s when every chunk stays. How
+  much of a frame that costs on a GPU is the 2d PR's frame-time measurement.
+
+## Far streets in coarser pieces
+
+2026-11-10, same container. Paved roads more than 120 m from the ridden road keep their level
+shelf, but the ground under it is split into three pieces a side (5.3 m) rather than six
+(2.7 m), and the street is cut along those (ADR 0031, `GENERATOR` 41). Cells whose ground a way near
+the ride levels or banks keep six, as do those split for the ridden road, water or a chunk's
+edge; close and steep beds near the ride keep their finer pieces. Riders see no change near the
+road; far off, sidewalk paint and street verges follow the coarser triangles (review renders in
+`docs/images/far-streets/`).
+
+| Wada | Before | After |
+|---|---:|---:|
+| Whole world (683 chunks) | 3,246 MB | 2,609 MB |
+| Streets / ground / sidewalks | 1,069 / 920 / 627 MB | 789 / 690 / 503 MB |
+| Street / ground vertices | 20.1 M / 14.0 M | 14.8 M / 10.6 M |
+| Generating (two runs each) | 129–138 s | 133–143 s |
+| Whole-world build, peak | 1.48–1.54 GB | 1.32–1.33 GB |
+| **Godot at the start, Low (108 chunks): video memory** | **1,077 MB** | **853 MB** |
+| of which mesh buffers | 898 MB | 674 MB |
+| Street / ground / sidewalk vertices there | 9.8 M / 4.9 M / 4.3 M | 7.0 M / 3.3 M / 3.4 M |
+
+Split into two pieces (8 m), the world would shrink only to about 2,430 MB. The chunks within
+250 m of the road change least (streets 248 → 222 MB): most of what remains at the start is
+detail near the ride, which stays.
+
+## Compressed ground, water and buildings
+
+2026-11-11, same container and place. Godot keeps a world vertex in 28 bytes whatever the core
+sends: position 12, normal 4 (octahedral), UV 8, colour 4. With `ARRAY_FLAG_COMPRESS_ATTRIBUTES`
+it keeps 20: position and normal together in 12 (16 bits across the mesh's bounds), UV 4
+(16 bits across its largest value). Across a 480 m chunk positions step by 7 mm at most, so
+neighbouring chunks still meet. UVs step in proportion to their largest value: under a
+centimetre for buildings (up to 327 m along a wall), but 0.2–0.6 m for streets, tracks and
+sidewalks, whose UVs run in metres along whole ways. So only the chunks' ground (with its
+LODs), water and building shells are compressed; ground and water draw no UVs. Railways,
+structures and the horizon span the whole course in one mesh and stay as they are.
+
+| Wada at the start, Low (108 chunks) | Before | After |
+|---|---:|---:|
+| Godot's video memory | 853 MB | 793 MB |
+| of which mesh buffers | 674 MB | 614 MB |
+| Lavapipe's GPU memory (memfd) | 971 MB | 879 MB |
+| Uploading the 108 chunks | 2.65 s | 2.59 s |
+
+Both runs were made back to back with the same course and settings. The compressed kinds hold
+5.3 M of the start's 17.0 M vertices, 42 MB at 8 bytes each; Godot reports 60 MB less, the rest
+not traced. The streets (7.0 M) and sidewalks (3.4 M) would need their UVs made short, per
+piece, before they could follow.
+
+## Built while riding
+
+2026-11-11, same container (8 cores), Wada, Low (chunks within 3,925 m of the start first).
+The ride starts once the chunks around the start are finished (272 of 683), and the rest is
+built while riding (2d). While a ride runs the build gives way to it (`orqwa_world::Pace`):
+half the cores at low priority, all of them while its lead over the rider is below twice the
+upload radius, until the lead has doubled. `world_memory --stream --ride 1500 --ahead 3925`
+sets a simulated rider off at 1.5 km a minute, a fast descent, once the start is ready:
+
+| Wada, Low | Whole world first | Ridden once the start is built |
+|---|---:|---:|
+| Ride starts after | 105 s | 62–73 s |
+| Whole world built after | 105 s | 109–119 s |
+| Core peak, app (`VmHWM`) | 1.26 GB | 1.43–1.49 GB |
+| Core peak, streamed without the app | 1.19 GB | 1.38 GB |
+
+While the build gave way (4 threads) it built 7.6 chunks a second, about 0.6 km of route a
+second, against the rider's 0.025: the rider never came near. It hurried on all cores only
+right after the start, while the rider was still within twice the radius of the first chunks
+not yet built. The checksums are the same either way.
+
+The world's parts built whole are now handed to the app when the ride can start rather than
+copied, and the distant terrain tiles are let go of once the horizon is made, but neither
+moves the peak beyond run-to-run noise (about 50 MB). Building the start's surroundings first
+costs about 0.2 GB of peak; it is not the chunks waiting for their neighbours (at most 46,
+against 43 when built along the route). Still open.
+
+## Available-memory admission (R255)
+
+The Android guard uses current `ActivityManager.MemoryInfo`, not advertised RAM, the Java heap
+limit or free storage. It leaves the greater of 512 MB, a tenth of `totalMem`, and `threshold`
+plus 256 MB for Android, and refuses if `lowMemory` is already true. A read failure refuses
+3D explicitly. Admission is sampled after cancelled workers release their buffers; opening a
+course again retries with a fresh reading.
+
+The estimate is provisional; its components are additional allocations after the memory
+snapshot, not the file size or a measured process peak:
+
+| Additional memory | Planning coefficient |
+|---|---|
+| Generation preparation/working data | 0.192 GB baseline; ridden route 1,024 bytes/m plus 256 bytes/point; mapped roads and rails 256 bytes/m plus 128 bytes/raw point; building outline 512 bytes/point; area rings 128 bytes/point |
+| Concurrent generation batch | 0.016 GB per available core, at least 0.128 GB; the current two-chunks-per-core batches added about 0.10 GB on eight cores in the measurements above |
+| Additional rendered scene | 0.128 GB headroom at Low's 3,925 m upload radius, scaling with larger view area; ridden-road uploads 256 bytes/m; busiest circular window's roads/rails 512 bytes/m, buildings 1,024 bytes/outline point and area rings 256 bytes/point |
+
+These coefficients are planning proxies, not fitted bounds for every possible course. The
+busiest-window estimate uses 480 m cells, a circular distance check and the upload/eviction
+margins, so it does not assume the start is densest or sum every distant chunk into the
+resident scene. Cell-position uncertainty adds a margin on both sides. Generation waiting
+for the entire world uses the selected graphics radius, supplied separately by presentation.
+Godot and its renderer already exist at the free-memory snapshot, so their baseline is not
+charged a second time. Road upload sizing follows its six vertices per two metres and
+index buffers (about 144 bytes/m on the GPU, rounded to 256 for conversion margin).
+Kept worlds are charged only for riding.
+Actual graphics-driver/allocator peaks and detailed geometry can differ. Checkpoints therefore
+also sample headroom during preparation and generation, before scene uploads, and while a
+completed world is visible. At most 100 ms of sampled memory is shared between these checks.
+Generation requires the batch headroom; uploads require another 0.128 GB above Android's
+reserve. Rider messages use decimal GB and show the course's additional estimate, memory
+usable after Android's reserve, and that reserve separately, with exact bytes in diagnostics.
+
+### Offline estimate regression, 2026-11-16
+
+The original heuristic rejected Wada on Low with 4.688 GB required and 3.591 GB available.
+Replaying the local course's inputs reproduced 3.523 GB before Android's reserve: 1.096 GB
+preparation, 0.512 GB batch, 1.915 GB scene. Adding about 1.165 GB reserve explains the reported
+total. Its 2 km square rounding covered an 18 × 18 km window at Low; it also used a batch
+allowance for the earlier, larger batches and charged already-allocated renderer memory.
+
+`memory_estimate` reads only a copy of the course's offline inputs. It generates and renders
+no world. The corrected estimates on eight cores are:
+
+| Course / upload radius | Preparation proxy | Batch | Additional scene | Total additional |
+|---|---:|---:|---:|---:|
+| Wada – Ōtarumi Pass, Low / 3,925 m | 1.096 GB | 0.128 GB | 1.179 GB | **2.402 GB** |
+| Wada, High / 7,075 m | 1.096 GB | 0.128 GB | 1.837 GB | 3.060 GB |
+| Twann – Chasseral, Low / 3,925 m | 0.381 GB | 0.128 GB | 0.423 GB | 0.933 GB |
+| Bielersee, Low / 3,925 m | 0.853 GB | 0.128 GB | 0.766 GB | 1.747 GB |
+
+Columns are rounded independently; totals use exact bytes.
+
+The Wada input has 15,118 mapped roads, 51,961 buildings and 2,310 areas. With the same
+1.165 GB reserve, Low's initial requirement becomes about 3.567 GB, within the reported
+3.591 GB snapshot; High still exceeds it. This validates the false-positive correction,
+not the phone's actual peak memory or a new hardware-stability claim. Runtime checks remain
+active, and device acceptance is still required.
+
+For a local copy at `dist/memory-estimate/wada.oqc`, assert that the additional estimate
+fits the reported snapshot after that reserve (2.426 GB):
+
+```sh
+scripts/dev.sh sh -c 'cd core && cargo run --profile test -p orqwa-app --example memory_estimate -- ../dist/memory-estimate/wada.oqc 3925 8 2.426'
+```
+
+No local course files are committed. Tests also cover separated diagonal towns outside
+the resident circle, GB rounding and reserve separation, and changing viewing distance
+while retaining whole-course generation.
+
+Injected-memory tests cover rejection before generation, Android's low-memory flag and
+threshold, query failure, a changed reading after stopped workers end, a successful retry,
+kept-world admission, pressure during generation and local pause/save during riding. These
+are behavioral checks, not S25 Ultra measurements or proof that every memory kill is prevented.
+
+## Remaining device measurements
+
+The R254 storage/cancellation fixes prevent Android from collecting unwritten chunks in RAM
+after an I/O failure and serialize replacement builds behind actual task termination. Their
+regression tests inject an unwritable chunk destination and hold a cancelled task inside
+synchronous work across repeated Cancel/Retry operations. These checks establish behavior,
+not new peak-memory figures; repeat the tablet run while switching courses and starting
+workouts, including a storage failure during generation.
+
+On the tablet, neither the throttled build (`screenshots/mem/tablet-ride.sh`, `world_memory`
+cross-built) nor the app as a whole riding (frame time against a world already built, R240)
+has been measured; the latter needs a branch APK.

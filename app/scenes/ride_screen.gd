@@ -1,9 +1,7 @@
 class_name RideScreen
 extends Control
-## The live ride HUD: a compact metrics column, the map with the elevation profile below it,
-## status toasts and one settings button (R48) — the rest of the screen is the ride. A workout
-## (R56) adds its targets; on its own (R58) it has no map or world, but a chart of power and
-## heart rate over its own backdrop.
+## Ride metrics, course map/profile and controls (R48), with workout targets (R56).
+## Workouts without a course show power and heart-rate charts over their own backdrop (R58).
 
 signal closed
 ## The ride was saved to `path`; show its summary (R42).
@@ -75,6 +73,7 @@ var _offer_pending: bool = false
 var _offered: bool = false
 var _group_controls: GroupRidesTab = GroupRidesTab.new()
 var _simulating: bool = false
+var _jumps: RideJumps = RideJumps.new()
 ## The workout being ridden (`WorkoutsTab.workout()`), empty on a plain ride.
 var _workout: Dictionary = {}
 var _workout_panel: WorkoutPanel = WorkoutPanel.new()
@@ -107,6 +106,7 @@ var _layout_pending: bool = false
 func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa = orqwa
 	_world = world
+	_jumps.bind(orqwa, world)
 	_orqwa.device_connected.connect(_on_device_connected)
 	_orqwa.device_disconnected.connect(_on_device_disconnected)
 	_orqwa.remembered_missing.connect(_on_remembered_missing)
@@ -128,6 +128,7 @@ func begin(options: Dictionary) -> void:
 	_apply_sound_options(options)
 	_finished = false
 	_saved = false
+	_jumps.cancel()
 	_gear = 0
 	_moment_card.clear()
 	_assistance.show_feedback({})
@@ -199,12 +200,7 @@ func _ready() -> void:
 	(%RightColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
 	($HudColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
 	_request_navigation_layout()
-	_minimap.jump_requested.connect(
-		func(position_m: Vector2) -> void: _orqwa.jump_near(position_m.x, position_m.y)
-	)
-	_profile.jump_requested.connect(
-		func(distance_m: float) -> void: _orqwa.jump_to_distance(distance_m)
-	)
+	_jumps.listen(_minimap, _profile, _show_toast)
 	add_child(_settings_dialog)
 	_settings_dialog.options_changed.connect(_on_options_changed)
 	_settings_dialog.workout_changed.connect(_on_workout_changed)
@@ -314,6 +310,7 @@ func _process(delta: float) -> void:
 	if not visible or _finished:
 		_assistance.hide()
 		return
+	_jumps.update()
 	_watch_frame_time(delta)
 	var state: Dictionary = _orqwa.ride_state()
 	_show_assistance(state)
@@ -914,7 +911,7 @@ func _toggle_pause() -> void:
 		return
 	if _finished:
 		return
-	_show_paused(_orqwa.set_paused(not _orqwa.is_paused()))
+	_show_paused(true if _jumps.take_pause() else _orqwa.set_paused(not _orqwa.is_paused()))
 
 
 ## Paused, the ride settings open, to change what the pause was for (R98); the overlay has no
@@ -997,4 +994,7 @@ func _on_ride_saved(path: String) -> void:
 
 func _on_failed(message: String) -> void:
 	if visible:
+		if _orqwa.world_failed():
+			_bar.show_paused(true)
+			_overlay_hud.show_paused(true)
 		_show_toast(message)

@@ -22,6 +22,12 @@ The Rust extension, Android plugin and APK export target the documented Android 
 target. The image's FFmpeg libraries can still be built against API 24 and linked into this
 newer target; no SDK or NDK update is needed for this alignment.
 
+The plugin also retains the application's `ActivityManager` for 3D memory checks (R255).
+The Rust bridge reads `MemoryInfo.availMem`, `totalMem`, `threshold` and `lowMemory`; this
+requires no permission. The Java heap limit is not used for native/GPU memory. Admission
+checks and allocation checkpoints share the core policy; an unavailable reading refuses
+3D preparation. See [the memory policy](../docs/adr/0024-android.md#amendment-2026-11-16-available-memory-before-3d-r255).
+
 The plugin initializes CPAL's existing `ndk-context` before the extension can enumerate or
 open audio. Rust retains one global reference to the application context, surviving activity
 recreation without keeping an old Activity alive. Initialization opens no audio stream and

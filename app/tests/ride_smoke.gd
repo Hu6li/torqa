@@ -193,13 +193,13 @@ func _run() -> void:
 	var reopened_route: Dictionary = reopened[0]
 	var reopened_name: String = reopened_route["name"]
 	_check(reopened_name == "Smoke", "course reopened: %s" % reopened_route)
-	_check(not _orqwa.build_world(), "the world is built on request")
+	_check(not _orqwa.build_world(false, INF), "the world is built on request")
 	# Leaving and re-entering the course page while its world is being built.
 	_orqwa.open_course(course_path)
-	_orqwa.build_world()
+	_orqwa.build_world(false, INF)
 	_orqwa.open_course(course_path)
 	await _wait_for(_orqwa.route_loaded)
-	_orqwa.build_world()
+	_orqwa.build_world(false, INF)
 	await _wait_for(_orqwa.world_ready)
 	_check(_orqwa.world_chunk_count() > 0, "world of the course opened last")
 	# A workout on the course (R58): the trainer holds its power along the route.

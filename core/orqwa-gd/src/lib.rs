@@ -17,7 +17,9 @@ use orqwa_app::failure::{Failure, Kind};
 use orqwa_app::hud::{MetricKind, Zones};
 use orqwa_app::media::MediaCommand;
 use orqwa_app::moments::Moment;
-use orqwa_app::{App, AppEvent, DetailStep, GhostChoice, RideVolumes, TrainerChoice, paths};
+use orqwa_app::{
+    App, AppEvent, DetailStep, GhostChoice, RideVolumes, TrainerChoice, WinterMask, paths,
+};
 use orqwa_app::{library, view};
 use orqwa_devices::ble::{ControllerModel, DeviceKind};
 use orqwa_devices::fake::{FakeHeart, FakeRider};
@@ -39,6 +41,9 @@ use orqwa_world::MapFeature;
 
 #[cfg(target_os = "android")]
 mod android_audio;
+#[cfg(target_os = "android")]
+mod android_memory;
+mod background;
 mod graphics;
 mod group;
 mod log;
@@ -193,17 +198,27 @@ impl INode for OrqwaApp {
         } else {
             // Set once per process; a second node keeps the first one's.
             let _ = tracing::subscriber::set_global_default(log::StderrLog);
-            App::new(data_dir(), paths::cache_dir())
-                .inspect(|app| {
-                    if let Err(error) = app.add_sample_course(SAMPLE_COURSE_FILE, SAMPLE_COURSE) {
-                        tracing::warn!(%error, "cannot add the sample course");
-                    }
-                })
-                .inspect_err(|error| {
-                    godot_error!("ORQWA: {error}");
-                    startup_failure = Some(Failure::new(Kind::Runtime, error));
-                })
-                .ok()
+            let app = App::new(data_dir(), paths::cache_dir()).map(|mut app| {
+                app.set_lower_priority(background::lower_this_thread);
+                app
+            });
+            #[cfg(target_os = "android")]
+            let app = app.map(|mut app| {
+                app.require_world_store();
+                app.check_free_memory(std::sync::Arc::new(android_memory::free));
+                app.check_free_storage(std::sync::Arc::new(android_storage::free));
+                app
+            });
+            app.inspect(|app| {
+                if let Err(error) = app.add_sample_course(SAMPLE_COURSE_FILE, SAMPLE_COURSE) {
+                    tracing::warn!(%error, "cannot add the sample course");
+                }
+            })
+            .inspect_err(|error| {
+                godot_error!("ORQWA: {error}");
+                startup_failure = Some(Failure::new(Kind::Runtime, error));
+            })
+            .ok()
         };
         Self {
             base,
@@ -273,9 +288,15 @@ impl OrqwaApp {
     #[signal]
     fn route_loaded(route: VarDictionary);
 
-    /// The 3D world for the loaded route is ready: `{chunks, fallback_samples}`.
+    /// The 3D world for the loaded route can be ridden: `{chunks, fallback_samples}`. The
+    /// chunks around where the ride enters it are finished; the rest follow (`world_grew`).
     #[signal]
     fn world_ready(world: VarDictionary);
+
+    /// More of the 3D world being ridden was built: `{structures, complete}`, whether bridges
+    /// were (`structures_mesh` changed) and whether every chunk is finished now.
+    #[signal]
+    fn world_grew(info: VarDictionary);
 
     /// A device connected (also after reconnecting).
     #[signal]
@@ -773,11 +794,50 @@ impl OrqwaApp {
         }
     }
 
-    /// Builds the opened course's 3D world, for riding it (emits `world_ready`); true if it is
-    /// ready already.
+    /// Builds the opened course's 3D world, for riding it from its start or, `continuing`, from
+    /// where the rider left it (R220). Emits `world_ready` once the chunks within `radius`
+    /// metres of there are finished (`INF` waits for all), then `world_grew` as the rest is
+    /// built in the background (ADR 0040). True if it is ready already.
     #[func]
-    fn build_world(&mut self) -> bool {
-        self.app.as_mut().is_some_and(App::build_world)
+    fn build_world(&mut self, continuing: bool, radius: f64) -> bool {
+        self.app
+            .as_mut()
+            .is_some_and(|app| app.build_world(continuing, Meters(radius)))
+    }
+
+    /// How far around the rider the scene draws chunks in group rides, in metres: a group's
+    /// world is ridden once that much around its start is built (ADR 0040).
+    #[func]
+    fn set_group_upload_radius(&mut self, radius: f64) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_group_upload_radius(Meters(radius));
+        }
+    }
+
+    /// Actual graphics residency, separate from generation waiting for a whole course.
+    #[func]
+    fn set_world_upload_radius(&mut self, radius: f64) {
+        if let Some(app) = self.app.as_mut() {
+            app.set_world_upload_radius(Meters(radius));
+        }
+    }
+
+    /// Whether stopped background builds have released their memory for the next ride.
+    #[func]
+    fn prepare_ride(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::prepare_ride)
+    }
+
+    /// Whether a failed world must be reopened before it can be ridden again.
+    #[func]
+    fn world_failed(&self) -> bool {
+        self.app.as_ref().is_some_and(App::world_failed)
+    }
+
+    /// Whether Android has room for more 3D scene allocations; failure pauses the local ride.
+    #[func]
+    fn check_world_memory(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::check_world_memory)
     }
 
     /// Builds the loaded course's world again with this ORQWA, in place of the one kept from an
@@ -785,7 +845,11 @@ impl OrqwaApp {
     /// loaded.
     #[func]
     fn regenerate_world(&mut self) -> bool {
-        self.app.as_mut().is_some_and(App::regenerate_world)
+        let mut regenerating = false;
+        self.command(|app| {
+            regenerating = app.regenerate_world()?;
+            Ok(())
+        }) && regenerating
     }
 
     /// Whether the course at `path` has a world kept that an older ORQWA built, which
@@ -3606,8 +3670,28 @@ impl OrqwaApp {
     fn world_chunk_count(&self) -> i64 {
         self.app
             .as_ref()
-            .and_then(App::world)
-            .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
+            .and_then(App::world_chunks)
+            .map_or(0, |chunks| i64::try_from(chunks.len()).unwrap_or(0))
+    }
+
+    /// Whether world chunk `index` is finished, so it can be uploaded: the world is ridden
+    /// while the rest of it is built (ADR 0040).
+    #[func]
+    fn world_chunk_finished(&self, index: i64) -> bool {
+        self.app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .zip(usize::try_from(index).ok())
+            .is_some_and(|(chunks, index)| chunks.finished(index))
+    }
+
+    /// Whether every chunk of the loaded world is finished.
+    #[func]
+    fn world_complete(&self) -> bool {
+        self.app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .is_some_and(orqwa_app::WorldChunks::complete)
     }
 
     /// The rider's start (east/north metres), including a validated continuation point.
@@ -3619,13 +3703,19 @@ impl OrqwaApp {
             .map_or(Vector2::ZERO, |(east, north)| vector2(east, north))
     }
 
-    /// Spatial upload order around a rider (east/north metres), with the visible-area prefix.
+    /// Spatial upload order around a rider (east/north metres), with the visible-area prefix,
+    /// the prefix the scene keeps, and how far the rider may move before the plan is made again.
     #[func]
     fn world_chunk_plan(&self, east: f64, north: f64, radius: f64) -> VarDictionary {
-        let Some(world) = self.app.as_ref().and_then(App::world) else {
+        let Some(chunks) = self.app.as_ref().and_then(App::world_chunks) else {
             return VarDictionary::new();
         };
-        let plan = orqwa_world::chunk_plan(world, Meters(east), Meters(north), Meters(radius));
+        let plan = orqwa_world::chunk_plan(
+            chunks.centres(),
+            Meters(east),
+            Meters(north),
+            Meters(radius),
+        );
         let indices: PackedInt32Array = plan
             .indices
             .into_iter()
@@ -3634,6 +3724,8 @@ impl OrqwaApp {
         vdict! {
             "indices" => &indices,
             "nearby" => i64::try_from(plan.nearby).unwrap_or(i64::MAX),
+            "kept" => i64::try_from(plan.kept).unwrap_or(i64::MAX),
+            "replan" => orqwa_world::REPLAN_DISTANCE.0,
         }
     }
 
@@ -3658,13 +3750,19 @@ impl OrqwaApp {
             .collect()
     }
 
-    /// Conservative road/paving clearance for the raised winter ground blanket.
+    /// Conservative road/paving clearance for the raised winter ground blanket:
+    /// `{image, origin, size}`, or `{pending: true}` while it is made in the background (the
+    /// first call for a world starts that, reading all its chunks); empty without a world.
     #[func]
     fn winter_ground_mask(&self) -> VarDictionary {
-        let Some(world) = self.app.as_ref().and_then(App::world) else {
+        let Some(app) = self.app.as_ref() else {
             return VarDictionary::new();
         };
-        let mask = orqwa_world::snow_ground_mask(world);
+        let mask = match app.snow_ground_mask() {
+            WinterMask::Made(mask) => mask,
+            WinterMask::Pending => return vdict! { "pending" => true },
+            WinterMask::None => return VarDictionary::new(),
+        };
         let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
         else {
             return VarDictionary::new();
@@ -3672,7 +3770,7 @@ impl OrqwaApp {
         if width == 0 || height == 0 {
             return VarDictionary::new();
         }
-        let pixels = PackedByteArray::from(mask.pixels);
+        let pixels = PackedByteArray::from(mask.pixels.as_slice());
         let Some(image) = Image::create_from_data(width, height, false, ImageFormat::R8, &pixels)
         else {
             return VarDictionary::new();
@@ -3790,13 +3888,13 @@ impl OrqwaApp {
         let chunk = self
             .app
             .as_ref()
-            .and_then(App::world)
+            .and_then(App::world_chunks)
             .zip(usize::try_from(index).ok())
-            .and_then(|(world, index)| world.chunks.get(index));
+            .and_then(|(chunks, index)| chunks.get(index));
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
-        graphics::chunk_arrays(chunk, tree_density)
+        graphics::chunk_arrays(&chunk, tree_density)
     }
 
     /// Like `world_chunk_with_tree_density`, with the selected season's grass/flower balance.
@@ -3811,14 +3909,14 @@ impl OrqwaApp {
         let chunk = self
             .app
             .as_ref()
-            .and_then(App::world)
+            .and_then(App::world_chunks)
             .zip(usize::try_from(index).ok())
-            .and_then(|(world, index)| world.chunks.get(index));
+            .and_then(|(chunks, index)| chunks.get(index));
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
         let season = orqwa_domain::season::Season::from_name(&name.to_string()).unwrap_or_default();
-        graphics::chunk_arrays_for_season(chunk, tree_density, season)
+        graphics::chunk_arrays_for_season(&chunk, tree_density, season)
     }
 
     /// Converts small-plant transform buffers with the same seasonal rule used by courses.
@@ -3849,6 +3947,19 @@ impl OrqwaApp {
             .as_ref()
             .and_then(App::world)
             .map_or_else(VarDictionary::new, |world| mesh_arrays(&world.structures))
+    }
+
+    /// The bridges built since last taken while the world being ridden is built, as mesh
+    /// arrays like `structures_mesh()`'s, to add to the scene on `world_grew`: drawing every
+    /// structure again would stall the frame.
+    #[func]
+    fn take_added_structures(&mut self) -> Array<VarDictionary> {
+        self.app.as_mut().map_or_else(Array::new, |app| {
+            app.take_added_structures()
+                .iter()
+                .map(mesh_arrays)
+                .collect()
+        })
     }
 
     /// The minimap (R70) in the rider's map style: `{background, land, lines, corridor}`, all
@@ -4203,6 +4314,16 @@ impl OrqwaApp {
                     "fallback_samples" => i64::try_from(fallback_samples).unwrap_or(0),
                 };
                 self.signals().world_ready().emit(&info);
+            }
+            AppEvent::WorldGrew {
+                structures,
+                complete,
+            } => {
+                let info = vdict! {
+                    "structures" => structures,
+                    "complete" => complete,
+                };
+                self.signals().world_grew().emit(&info);
             }
             AppEvent::Connected(name) => {
                 self.signals()
@@ -5135,7 +5256,7 @@ mod sample_course_tests {
             unreachable!()
         };
         assert_eq!(summary.elevation_source, ElevationSource::Terrain);
-        app.build_world();
+        app.build_world(false, orqwa_app::WHOLE_WORLD);
         let ready = |e: &AppEvent| matches!(e, AppEvent::WorldReady { .. });
         let AppEvent::WorldReady {
             fallback_samples, ..
@@ -5174,6 +5295,55 @@ fn data_dir() -> PathBuf {
         return paths::android_shared_data_dir(shared);
     }
     paths::data_dir()
+}
+
+/// Free storage on Android, for the check before a world is built (ADR 0040).
+#[cfg(target_os = "android")]
+mod android_storage {
+    use std::path::Path;
+
+    use orqwa_devices::android::jni::objects::JValue;
+    use orqwa_devices::android::jni::{self, JavaVM, jni_sig, jni_str};
+
+    /// The storage this app may still use on the filesystem holding `dir`, as Java's
+    /// `File.getUsableSpace` tells it, Rust's standard library having no way to ask. Asked of
+    /// the nearest directory there is: Java answers 0 for one that is missing.
+    pub(super) fn free(dir: &Path) -> Option<u64> {
+        // Unchecked, the world's store may not fit: the low-memory kill again.
+        let skipped = |why: &dyn std::fmt::Display| {
+            tracing::warn!(%why, "cannot tell the free storage; not checked");
+        };
+        let Some(dir) = dir.ancestors().find(|dir| dir.is_dir()) else {
+            skipped(&"no directory of the cache is there");
+            return None;
+        };
+        let Some(dir) = dir.to_str() else {
+            skipped(&"the cache path is not UTF-8");
+            return None;
+        };
+        // Set when Android loaded the library (`JNI_OnLoad`).
+        let vm = JavaVM::singleton()
+            .inspect_err(|error| skipped(error))
+            .ok()?;
+        let free = vm.attach_current_thread(|env| -> jni::errors::Result<i64> {
+            let path = env.new_string(dir)?;
+            let file = env.new_object(
+                jni_str!(jni = orqwa_devices::android::jni, "java/io/File"),
+                jni_sig!(jni = orqwa_devices::android::jni, "(Ljava/lang/String;)V"),
+                &[JValue::Object(&path)],
+            )?;
+            env.call_method(
+                &file,
+                jni_str!(jni = orqwa_devices::android::jni, "getUsableSpace"),
+                jni_sig!(jni = orqwa_devices::android::jni, "()J"),
+                &[],
+            )?
+            .j()
+        });
+        free.inspect_err(|error| skipped(error))
+            .ok()
+            .and_then(|free| u64::try_from(free).ok())
+    }
 }
 
 /// ORQWA's own folder in Android's shared storage, from the APK's plugin.

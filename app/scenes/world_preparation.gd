@@ -20,6 +20,7 @@ static func prepare(
 	while true:
 		if (
 			not requested.call()
+			or orqwa.world_failed()
 			or revision != world._chunk_revision
 			or course != orqwa.loaded_course()
 			or orqwa.world_chunk_count() == 0
@@ -47,4 +48,3 @@ static func restart(world: RideWorld) -> void:
 	for chunk: Node in world._terrain.get_children():
 		world._terrain.remove_child(chunk)
 		chunk.queue_free()
-	world._next_chunk = 0

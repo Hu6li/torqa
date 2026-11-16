@@ -119,7 +119,7 @@ func _run() -> void:
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
 	if route.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(gpx)
@@ -133,11 +133,7 @@ func _run() -> void:
 		quit(1)
 		return
 	# Upload chunks while the world is hidden, instead of rendering every intermediate batch.
-	while true:
-		var next_chunk: int = world.get("_next_chunk")
-		var chunk_count: int = world.get("_chunk_count")
-		if next_chunk >= chunk_count:
-			break
+	while not world.chunks_uploaded():
 		await process_frame
 	var showcase: bool = OS.get_environment("SHOWCASE") == "1"
 	if showcase:
@@ -191,11 +187,7 @@ func _run() -> void:
 		var avatar: RiderAvatar = world.get("_avatar")
 		avatar.rider = options.get("rider", OS.get_environment("RIDER"))
 		world.apply_options({"time": time, "weather": weather, "camera": camera, "season": season})
-		while true:
-			var streamed: int = world.get("_next_chunk")
-			var chunks: int = world.get("_chunk_count")
-			if streamed >= chunks:
-				break
+		while not world.chunks_uploaded():
 			await process_frame
 		if spec.size() > 5 and spec[5] is Vector3:
 			# Place the rider at the requested distance before positioning a camera aside.

@@ -4,12 +4,13 @@
 //! crossing the road run up to it and under it, so junctions look joined; bridges are straight
 //! decks between their ends; tunnels stay under the ground.
 
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use orqwa_osm::{MapData, RoadClass, RoadKind, StructureKind};
 use orqwa_routes::{ElevationModel, LocalProjection, Surface};
 
 use crate::appearance::Appearance;
+use crate::cells::CellIndex;
 use crate::junctions::{self, Corner};
 use crate::railways::{self, Railway};
 use crate::road::{Mouth, RoadIndex};
@@ -118,6 +119,45 @@ impl Street {
     /// Whether it is paved (asphalt) rather than gravel or dirt.
     pub(crate) fn paved(&self) -> bool {
         self.appearance.paved()
+    }
+}
+
+/// The streets, held once: the indexes over their centre lines keep [`At`]s into them, not
+/// copies of their points (#542).
+pub(crate) type Shared = Arc<[Street]>;
+
+/// A point of a street by number, or the piece of its centre line from there to the next.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct At {
+    street: u32,
+    point: u32,
+}
+
+impl At {
+    pub(crate) fn new(street: usize, point: usize) -> Self {
+        Self {
+            street: u32::try_from(street).expect("fewer than 2^32 streets"),
+            point: u32::try_from(point).expect("fewer than 2^32 points"),
+        }
+    }
+
+    pub(crate) fn street(self, streets: &[Street]) -> &Street {
+        &streets[self.street as usize]
+    }
+
+    /// Its number along its street.
+    pub(crate) fn index(self) -> usize {
+        self.point as usize
+    }
+
+    pub(crate) fn point(self, streets: &[Street]) -> (f64, f64) {
+        self.street(streets).points[self.index()]
+    }
+
+    /// The piece of the centre line from it to the next point.
+    pub(crate) fn piece(self, streets: &[Street]) -> ((f64, f64), (f64, f64)) {
+        let points = &self.street(streets).points;
+        (points[self.index()], points[self.index() + 1])
     }
 }
 
@@ -540,13 +580,17 @@ fn ribbon(
         .resize(mesh.vertices.len(), street.appearance.color());
 }
 
-/// Street points with their half widths, by index cell.
-type StreetCells = std::collections::HashMap<(i64, i64), Vec<(f64, f64, f64)>>;
+/// Points with their half widths, by index cell.
+type PointCells = CellIndex<(f64, f64, f64)>;
 
 /// Where the map's streets, railways and shores are, to keep trees and grass off them.
 pub(crate) struct Clearance {
-    cells: StreetCells,
-    corners: StreetCells,
+    streets: Shared,
+    /// The streets' points.
+    cells: CellIndex<At>,
+    /// The railways' and shores' points.
+    others: PointCells,
+    corners: PointCells,
 }
 
 /// Index cell size; larger than half the widest street plus the margins used.
@@ -554,35 +598,39 @@ const CLEARANCE_CELL_M: f64 = 10.0;
 
 impl Clearance {
     pub(crate) fn new(
-        streets: &[Street],
+        streets: &Shared,
         corners: &[Corner],
         railways: &[Railway],
         pools: &[Pool],
     ) -> Self {
-        let mut cells = StreetCells::new();
-        let mut corner_cells = StreetCells::new();
         // Kerbs' outlines and apexes: the corners are filled between them and the streets.
-        for (e, n) in corners.iter().flat_map(Corner::outline) {
-            corner_cells
-                .entry(clearance_cell(e, n))
-                .or_default()
-                .push((e, n, 0.5));
-        }
-        let lines = streets
-            .iter()
-            .map(|s| (&s.points, s.half_width()))
-            .chain(railways.iter().map(|r| (&r.points, railways::BED_M / 2.0)))
-            .chain(pools.iter().map(|p| (&p.shore, water::SHORE_M / 2.0)));
-        for (points, half) in lines {
-            for &(e, n) in points {
-                cells
-                    .entry(clearance_cell(e, n))
-                    .or_default()
-                    .push((e, n, half));
+        let corner_cells = PointCells::build(|push| {
+            for (e, n) in corners.iter().flat_map(Corner::outline) {
+                push(clearance_cell(e, n), (e, n, 0.5));
             }
-        }
+        });
+        let cells = CellIndex::build(|push| {
+            for (s, street) in streets.iter().enumerate() {
+                for (i, &(e, n)) in street.points.iter().enumerate() {
+                    push(clearance_cell(e, n), At::new(s, i));
+                }
+            }
+        });
+        let others = PointCells::build(|push| {
+            let lines = railways
+                .iter()
+                .map(|r| (&r.points, railways::BED_M / 2.0))
+                .chain(pools.iter().map(|p| (&p.shore, water::SHORE_M / 2.0)));
+            for (points, half) in lines {
+                for &(e, n) in points {
+                    push(clearance_cell(e, n), (e, n, half));
+                }
+            }
+        });
         Self {
+            streets: Arc::clone(streets),
             cells,
+            others,
             corners: corner_cells,
         }
     }
@@ -596,7 +644,7 @@ impl Clearance {
         margin: f64,
         counts: impl Fn(f64, f64) -> bool,
     ) -> bool {
-        Self::blocked_in(&self.cells, east, north, margin, &counts)
+        self.blocked_on_lines(east, north, margin, &counts)
             || Self::blocked_in(&self.corners, east, north, margin, &counts)
     }
 
@@ -609,11 +657,32 @@ impl Clearance {
         margin: f64,
         counts: impl Fn(f64, f64) -> bool,
     ) -> bool {
-        Self::blocked_in(&self.cells, east, north, margin, &counts)
+        self.blocked_on_lines(east, north, margin, &counts)
+    }
+
+    /// Whether a street's, railway's or shore's point blocks (`east`, `north`).
+    fn blocked_on_lines(
+        &self,
+        east: f64,
+        north: f64,
+        margin: f64,
+        counts: &impl Fn(f64, f64) -> bool,
+    ) -> bool {
+        let streets = &self.streets;
+        let on_street = |x, y| {
+            self.cells.get((x, y)).iter().any(|&at| {
+                let (e, n) = at.point(streets);
+                let half = at.street(streets).half_width();
+                (e - east).hypot(n - north) < half + margin + STEP_M / 2.0 && counts(e, n)
+            })
+        };
+        let (ce, cn) = clearance_cell(east, north);
+        (ce - 1..=ce + 1).any(|x| (cn - 1..=cn + 1).any(|y| on_street(x, y)))
+            || Self::blocked_in(&self.others, east, north, margin, counts)
     }
 
     fn blocked_in(
-        cells: &StreetCells,
+        cells: &PointCells,
         east: f64,
         north: f64,
         margin: f64,
@@ -622,10 +691,8 @@ impl Clearance {
         let (ce, cn) = clearance_cell(east, north);
         (ce - 1..=ce + 1).any(|x| {
             (cn - 1..=cn + 1).any(|y| {
-                cells.get(&(x, y)).is_some_and(|points| {
-                    points.iter().any(|&(e, n, half)| {
-                        (e - east).hypot(n - north) < half + margin + STEP_M / 2.0 && counts(e, n)
-                    })
+                cells.get((x, y)).iter().any(|&(e, n, half)| {
+                    (e - east).hypot(n - north) < half + margin + STEP_M / 2.0 && counts(e, n)
                 })
             })
         })
@@ -669,17 +736,13 @@ const EARTH_STEEP_CROSS: f64 = 0.35;
 /// Beds are formed this near the ridden road, where riders see their cross-sections.
 const FORMED_REACH_M: f64 = 120.0;
 
-/// A piece of a street's centre line, metres east/north: its two ends and the street's half
-/// width.
+/// A piece of a street's centre line, with the terrain detail it needs. Its ends, the street's
+/// half width and its bed's heights are looked up in the street.
+#[derive(Clone, Copy, Default)]
 struct BedPiece {
-    from: (f64, f64),
-    to: (f64, f64),
-    half: f64,
-    heights: Option<[f64; 2]>,
-    subdivisions: usize,
+    at: At,
+    subdivisions: u8,
     padding: f64,
-    /// The level ground beyond its edge that the terrain pieces under it need.
-    verge: f64,
     /// Paved vehicle roads near the ride retain steep cuttings with walls; tracks and
     /// cycleways keep earth.
     facing: bool,
@@ -687,19 +750,36 @@ struct BedPiece {
     close: bool,
 }
 
+impl BedPiece {
+    /// The terrain pieces a side around it.
+    fn subdivisions(self) -> usize {
+        usize::from(self.subdivisions)
+    }
+
+    /// The level ground beyond its edge that the terrain pieces under it need. A far shelf's
+    /// coarser pieces keep the usual verge: their triangles at its edge may lean a little
+    /// across, which nobody sees from the ride, rather than widening the shelf.
+    fn verge(self) -> f64 {
+        #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
+        let piece = crate::GRID / self.subdivisions().max(crate::SUB) as f64;
+        piece * std::f64::consts::SQRT_2 + 0.2
+    }
+}
+
 /// Formed ground roads, vehicle tracks and cycleways. Small paths follow the land;
 /// bridges retain their separate structure profiles.
 pub(crate) struct Levels {
     /// Connected bridge profiles lower their approach banks without filling their valleys.
     pub(crate) bridges: RoadIndex,
-    /// Pieces of their centre lines, with their half widths.
+    streets: Shared,
+    /// Pieces of their centre lines.
     segments: Vec<BedPiece>,
-    cells: HashMap<(i64, i64), Vec<usize>>,
+    cells: CellIndex<u32>,
 }
 
 impl Levels {
     pub(crate) fn new(
-        streets: &[Street],
+        streets: &Shared,
         appearance: &crate::appearance::Index,
         road: &RoadIndex,
         rails: &RoadIndex,
@@ -736,8 +816,10 @@ impl Levels {
         let mut bridges = RoadIndex::from_lines(&lines);
         bridges.set_appearances(appearance);
         let mut segments = Vec::new();
-        let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-        for street in streets.iter().filter(|s| s.formed && !s.on_bridge()) {
+        for (s, street) in streets.iter().enumerate() {
+            if !street.formed || street.on_bridge() {
+                continue;
+            }
             let half = street.half_width();
             let facing = street.paved()
                 && matches!(
@@ -745,7 +827,6 @@ impl Levels {
                     RoadClass::Major | RoadClass::Street | RoadClass::Service
                 );
             for (i, pair) in street.points.windows(2).enumerate() {
-                let index = segments.len();
                 let bed = street.bed.as_ref().map(|bed| [bed[i], bed[i + 1]]);
                 let middle = (
                     f64::midpoint(pair[0].0, pair[1].0),
@@ -783,31 +864,21 @@ impl Levels {
                         .is_some_and(|c| c.iter().any(|&slope| slope >= threshold));
                 let level = bed.map(|[a, b]| f64::midpoint(a, b));
                 let (subdivisions, padding, close) =
-                    bed_detail((road, rails), (middle, half, level), steep);
+                    bed_detail((road, rails), (middle, half, level), (steep, near));
                 segments.push(BedPiece {
-                    from: pair[0],
-                    to: pair[1],
-                    half,
-                    heights: bed,
-                    subdivisions,
+                    at: At::new(s, i),
+                    subdivisions: u8::try_from(subdivisions).expect("a fixed subdivision count"),
                     padding,
-                    #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
-                    verge: crate::GRID / subdivisions as f64 * std::f64::consts::SQRT_2 + 0.2,
                     facing: walls,
                     close,
                 });
-                // Pieces are at most a step long: both ends' cells cover them.
-                let (first, second) = (level_cell(pair[0]), level_cell(pair[1]));
-                cells.entry(first).or_default().push(index);
-                if second != first {
-                    cells.entry(second).or_default().push(index);
-                }
             }
         }
         Self {
             bridges,
+            cells: piece_cells(streets, &segments),
+            streets: Arc::clone(streets),
             segments,
-            cells,
         }
     }
 
@@ -818,23 +889,33 @@ impl Levels {
 
     /// Check every carriageway touching a cell, including ones hidden by a nearer ridden
     /// copy at its centre. Missing one leaves a coarse/fine seam through that side road.
-    pub(crate) fn detail_near(&self, east: f64, north: f64, reach: f64, close: bool) -> usize {
+    /// The pieces a side are at least `floor`, which is what a cell without any takes.
+    pub(crate) fn detail_near(
+        &self,
+        east: f64,
+        north: f64,
+        reach: f64,
+        close: bool,
+        floor: usize,
+    ) -> usize {
         let scan = reach + 5.25 + STEP_M;
         let (low, high) = (
             level_cell((east - scan, north - scan)),
             level_cell((east + scan, north + scan)),
         );
-        let mut count = crate::SUB;
+        let mut count = floor;
         for x in low.0..=high.0 {
             for y in low.1..=high.1 {
-                for &i in self.cells.get(&(x, y)).into_iter().flatten() {
-                    let p = &self.segments[i];
+                for &i in self.cells.get((x, y)) {
+                    let p = self.segments[i as usize];
                     if close && !p.close {
                         continue;
                     }
-                    let foot = nearest_on(p.from, p.to, (east, north));
-                    if (east - foot.0).hypot(north - foot.1) <= p.half + reach {
-                        count = count.max(p.subdivisions);
+                    let (from, to) = p.at.piece(&self.streets);
+                    let half = p.at.street(&self.streets).half_width();
+                    let foot = nearest_on(from, to, (east, north));
+                    if (east - foot.0).hypot(north - foot.1) <= half + reach {
+                        count = count.max(p.subdivisions());
                     }
                 }
             }
@@ -856,9 +937,13 @@ impl Levels {
         let mut best: Option<Level> = None;
         for x in low.0..=high.0 {
             for y in low.1..=high.1 {
-                for &index in self.cells.get(&(x, y)).into_iter().flatten() {
-                    let piece = &self.segments[index];
-                    let (from, to, half, bed) = (piece.from, piece.to, piece.half, piece.heights);
+                for &index in self.cells.get((x, y)) {
+                    let piece = self.segments[index as usize];
+                    let street = piece.at.street(&self.streets);
+                    let (from, to) = piece.at.piece(&self.streets);
+                    let half = street.half_width();
+                    let i = piece.at.index();
+                    let bed = street.bed.as_ref().map(|bed| [bed[i], bed[i + 1]]);
                     let foot = nearest_on(from, to, (east, north));
                     let distance = (east - foot.0).hypot(north - foot.1);
                     let beyond = distance - half;
@@ -872,7 +957,7 @@ impl Levels {
                             foot,
                             height: bed.map(|[a, b]| a + (b - a) * t),
                             padding: piece.padding,
-                            verge: piece.verge,
+                            verge: piece.verge(),
                             facing: piece.facing,
                         });
                     }
@@ -883,15 +968,31 @@ impl Levels {
     }
 }
 
+/// Bed pieces by [`level_cell`]. Pieces are at most a step long: both ends' cells cover them.
+fn piece_cells(streets: &[Street], pieces: &[BedPiece]) -> CellIndex<u32> {
+    CellIndex::build(|push| {
+        for (index, piece) in pieces.iter().enumerate() {
+            let index = u32::try_from(index).expect("fewer than 2^32 pieces");
+            let (from, to) = piece.at.piece(streets);
+            let (first, second) = (level_cell(from), level_cell(to));
+            push(first, index);
+            if second != first {
+                push(second, index);
+            }
+        }
+    })
+}
+
 /// Terrain pieces a side around a bed piece at `middle`, the margin its own carriageway keeps
 /// and whether that serves a close carriageway: finer where its bed lies at another height
 /// than a ridden road or railway too close for the usual pieces to hold the bank between them,
 /// or for walls and narrow shelves on a steep hillside (`steep`). A joining road at the ridden
-/// road's level needs no bank, and no finer terrain.
+/// road's level needs no bank, and no finer terrain; a shelf far from the ride (not `near`)
+/// coarser terrain.
 fn bed_detail(
     (road, rails): (&RoadIndex, &RoadIndex),
     (middle, half, bed): ((f64, f64), f64, Option<f64>),
-    steep: bool,
+    (steep, near): (bool, bool),
 ) -> (usize, f64, bool) {
     let gap_to = |index: &RoadIndex, half_of: &dyn Fn(f64) -> f64| {
         index
@@ -924,11 +1025,15 @@ fn bed_detail(
         crate::CLOSE_SUB
     } else if steep {
         crate::STEEP_SUB
-    } else {
+    } else if near {
         crate::SUB
+    } else {
+        crate::FAR_SUB
     };
+    // As the verge (`BedPiece::verge`), far shelves keep the usual margin.
     #[allow(clippy::cast_precision_loss)] // one of the fixed subdivision counts
-    let padding = (crate::GRID / subdivisions as f64 * std::f64::consts::SQRT_2 + 0.2)
+    let padding = (crate::GRID / subdivisions.max(crate::SUB) as f64 * std::f64::consts::SQRT_2
+        + 0.2)
         .min((gap / 3.0).max(0.1));
     (subdivisions, padding, close)
 }

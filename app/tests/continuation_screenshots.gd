@@ -52,11 +52,7 @@ static func capture(main: Control, out: String) -> void:
 	)
 	await app.world_ready
 	var world: RideWorld = main.get_node("World")
-	while true:
-		var next: int = world.get("_next_chunk")
-		var count: int = world.get("_chunk_count")
-		if next >= count:
-			break
+	while not world.chunks_uploaded():
 		await tree.process_frame
 	app.connect_fake_trainer(250.0, 90.0)
 	app.start_ride(50.0, false, {"kind": "none"})

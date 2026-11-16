@@ -740,6 +740,9 @@ physically based materials and light, restyled group by group.
     - [x] Parallel tracks under one bridge or in one tunnel (#99), at one height
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
+    - [x] Bends tighter than the road is wide (a planner's zigzag through a forecourt, as at
+      the start of Wada – Ōtarumi Pass) close their inside in a corner instead of folding over
+      into dark fans (`GENERATOR` 42)
     - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
       metres into a side road or past a junction and straight back rides on; longer turns back
       and turns at roundabouts stay; video courses keep their track
@@ -961,8 +964,72 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   - [x] the same world for less: room meshes grew into while built given back, and the pavement
     barriers are checked against gathered only where they stand; peak 6.3 → 5.2 GB, the world
     unchanged
+  - [x] the whole-route preparation holds the streets once: its indexes keep their numbers, not
+    copies of their centre lines; Wada's preparation 1.07 → 0.79 GB, the world unchanged
+  - [x] the sidewalks held compactly: patch corners inline, the cut polygons in one store;
+    Wada's preparation 555 → 472 MB live, the tablet's peak 1.48 → 1.42 GB, the world unchanged
   - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
-  - [ ] far streets and their ground in coarser pieces (a generator change, with review renders)
+    - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
+      those around the ones being built held; the world unchanged
+    - [x] every world built into a store in the cache, packed into the kept world by raw copy
+      - [x] worlds to keep: each chunk written as finished, copied into the kept world as it
+        is; Wada 20 MB per km, packed in 2 s, the world unchanged
+      - [x] every world, once the core reads chunks from the store
+    - [x] the core reads chunks from the store while riding
+      - [x] chunks read one at a time from the store or the kept world, indexed by their
+        centres; held in memory only where no store can be written
+      - [x] the winter ground's mask made from every chunk read once, when first asked for
+      - [x] on Android, **Ride** stops before building when free storage is short and says how
+        much the course needs (20 MB per km measured on Wada, 25 to be safe), asked of Java's
+        `File.getUsableSpace`; a kept world needs none
+      - [x] Android requires a writable store independently of the free-space estimate:
+        creation or chunk-write errors stop generation; a ride already started stays paused
+        with trainer resistance released and its recording available to save (R254)
+      - [x] Android checks current available system memory against estimated course preparation
+        and resident scene needs, preserving system headroom; generation and scene uploads
+        recheck headroom and stop with a local pause and saveable recording when short (R255)
+        - [x] bound the estimate by circular chunk residency and current batch sizes; count
+          additional allocations, separate Android's reserve in GB, and verify Wada's Low
+          estimate against the reported 3.59 GB snapshot without generating its world
+      - [ ] verify memory admission and pressure recovery on the Galaxy S25 Ultra and Tab S7
+      - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
+        keeping is turned off; others' go by age
+    - [x] Godot frees far chunks
+      - [x] chunks uploaded within the upload radius, freed only beyond it plus 240 m and a
+        chunk, and read and uploaded again when the rider comes back
+      - [x] measured from the rider, or from the free camera while it flies
+      - [x] a simulated ride's jump, or the camera's return from the free camera, waits, clock
+        included, until the rider's surroundings are uploaded, and goes on by itself
+    - [ ] generated ahead of the rider (#237)
+      - [x] a course's ride starts once the chunks within the upload radius of where it is
+        entered (its start, or where it is continued) are finished, with the bridges over them;
+        the rest is built in the background, ahead of the rider first, then behind
+      - [x] the scene uploads chunks as they are finished, and bridges as they are built
+      - [x] a rider riding alone who catches up with the world being built waits, clock
+        included, and goes on by itself
+      - [x] a world is kept, and its winter ground's mask made, once complete
+      - [x] background building gives way to the ride: half the cores at low priority, all
+        of them while its lead over the rider is short; the world is handed over when the ride
+        can start, not copied
+      - [ ] the throttle measured on the tablet while riding (frame time, R240)
+      - [x] group rides: **Ready** once the group's start is built; a late joiner's entry
+        point first: the build turns to the organizer on **Join ride now** and the rider
+        enters once the chunks around the entry point are finished
+      - [x] leaving a ride before its world is complete: a kept course's world built on in
+        the background and kept once complete; opening the course again (also from a group
+        lobby) takes the build over, turned to where the ride enters; continuing a course
+        turns its build to the continuation point
+      - [x] builds stopped before their world is complete (another world built, a ride
+        started, **Cancel**, or another course opened with keeping off) keep their store, and
+        the course's next build takes it up: only the chunks not yet written are finished,
+        the world comes out the same
+      - [x] a replacement build and ride start wait asynchronously for every stopped
+        generation task to release its buffers, including builds without resumable stores;
+        cancellation is checked between batches even with fully cached elevations (R254)
+  - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
+    on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
+  - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes
+    instead of 28); streets, tracks and sidewalks keep full precision for their UVs in metres
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
 
 ### Phase 13 — Group rides (R159–R169, [ADR 0035](adr/0035-group-rides.md))

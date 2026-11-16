@@ -74,6 +74,8 @@ var _ready_pill: Button
 var _own_row: HBoxContainer
 var _own_state: Label
 var _activity_key: String = ""
+## The lobby step the scene's upload radius was last told at.
+var _radius_phase: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
 var _elapsed: float = 0.0
@@ -444,6 +446,7 @@ func refresh() -> void:
 		return
 	_picker.refresh()
 	_activity_key = ""
+	_radius_phase = ""
 	_update()
 
 
@@ -461,6 +464,13 @@ func _update() -> void:
 func _show_status(status: Dictionary) -> void:
 	_status = status
 	var phase: String = _status.get("phase", "idle")
+	# A group's world is ridden once the scene's surroundings of its start are built: told
+	# at every step, so a quality chosen meanwhile counts by the time it is built.
+	if phase != _radius_phase:
+		_radius_phase = phase
+		_orqwa.set_group_upload_radius(
+			RideWorld.upload_radius(_orqwa.graphics_quality(), _orqwa.graphics_options())
+		)
 	var host: bool = _status.get("host", false)
 	var late: bool = _status.get("late", false)
 	var name: String = _status.get("name", "")

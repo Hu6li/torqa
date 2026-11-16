@@ -705,6 +705,8 @@ impl App {
                 && snapshot.phase == Phase::Riding
             {
                 snapshot.phase = Phase::Ready;
+                // Until the world around the entry point is built.
+                snapshot.entering = true;
             }
             snapshot
         })
@@ -1115,10 +1117,16 @@ impl App {
         if !self.trainer_connected() {
             return Err(AppError::NoTrainer);
         }
-        if !self.group().can_enter() {
+        let group = self.group();
+        if !group.can_enter() {
             return Err(error("Prepare the activity before joining the ride."));
         }
-        self.group_command(Command::Enter)
+        self.group_command(Command::Enter)?;
+        // The organizer will most likely still be about there when they answer.
+        if let Some((state, _)) = group.states[usize::from(group.organizer)] {
+            self.turn_build(state.distance);
+        }
+        Ok(())
     }
 
     /// Pauses or resumes the group's workout clock; personal safety pause remains local.
@@ -1411,36 +1419,43 @@ impl App {
             events.extend(notices.into_iter().map(AppEvent::GroupConnection));
         }
     }
+    /// Back in the lobby once the group's activity has ended.
+    fn return_to_lobby(&mut self, snapshot: &Snapshot, events: &mut Vec<AppEvent>) {
+        // Saving and trainer release happen locally; remote controls supply no samples.
+        if self.group.as_ref().is_some_and(|group| group.launched) {
+            crate::release_trainer(self.trainer.as_ref());
+            events.extend(self.save_ride(false));
+        }
+        // A ride the group has not taken up again goes on alone (#536), on a world that may
+        // still be being built (ADR 0040, 2d).
+        if self.ride.is_none() {
+            self.cancel_loading();
+        }
+        if let Some(group) = &mut self.group {
+            group.returned_revision = snapshot.ended_revision;
+            group.end_requested = None;
+            group.launched = false;
+            group.launching = false;
+            group.preparing = None;
+            group.prepared = 0;
+            group.built = 0;
+            if snapshot.selection.is_none() {
+                group.workout_id.clear();
+            }
+            group.peers = orqwa_session::group::Riders::default();
+            group.effect = orqwa_physics::GroupEffect::default();
+            group.transition = None;
+            group.states.send_replace(None);
+        }
+        events.push(AppEvent::GroupReturnedToLobby);
+    }
     pub(crate) fn poll_group(&mut self, events: &mut Vec<AppEvent>) {
         let Some(group) = &self.group else {
             return;
         };
         let snapshot = group.snapshot.borrow().clone();
         if snapshot.ended_revision > group.returned_revision {
-            // Saving and trainer release happen locally; remote controls supply no samples.
-            // A ride the group has not taken up again goes on alone (#536).
-            if group.launched {
-                crate::release_trainer(self.trainer.as_ref());
-                events.extend(self.save_ride(false));
-            }
-            self.cancel_loading();
-            if let Some(group) = &mut self.group {
-                group.returned_revision = snapshot.ended_revision;
-                group.end_requested = None;
-                group.launched = false;
-                group.launching = false;
-                group.preparing = None;
-                group.prepared = 0;
-                group.built = 0;
-                if snapshot.selection.is_none() {
-                    group.workout_id.clear();
-                }
-                group.peers = orqwa_session::group::Riders::default();
-                group.effect = orqwa_physics::GroupEffect::default();
-                group.transition = None;
-                group.states.send_replace(None);
-            }
-            events.push(AppEvent::GroupReturnedToLobby);
+            self.return_to_lobby(&snapshot, events);
         }
         let Some(group) = &self.group else {
             return;
@@ -1493,7 +1508,7 @@ impl App {
                 } else if group.preparing == Some((revision, self.load)) {
                     self.report_building(events);
                     if events.iter().any(|e| matches!(e, AppEvent::RouteLoaded(_))) {
-                        self.build_world();
+                        self.build_world(false, self.group_radius);
                     }
                     if self.world.is_some() {
                         self.group_prepared(revision);
@@ -1533,6 +1548,15 @@ impl App {
             self.ride_on_with_group(snapshot, revision);
             return;
         }
+        // A late joiner enters where the organizer was when answering, once the world is
+        // built around there; the others ride on meanwhile (ADR 0040, 2d).
+        if let Some(entry) = snapshot.entry
+            && self.group.as_ref().is_some_and(|g| !g.launched)
+            && !self.finished_around(entry.distance)
+        {
+            self.turn_build(entry.distance);
+            return;
+        }
         if (!snapshot.late || snapshot.entry.is_some())
             && self.trainer_connected()
             && snapshot.start.is_some_and(|at| Instant::now() >= at)
@@ -1540,6 +1564,7 @@ impl App {
                 .group
                 .as_ref()
                 .is_some_and(|g| !g.launched && g.prepared == revision)
+            && self.prepare_ride()
         {
             if let Some(g) = &mut self.group {
                 g.launched = true;

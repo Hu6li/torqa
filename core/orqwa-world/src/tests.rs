@@ -467,6 +467,12 @@ async fn terrain_surrounds_the_route() {
             x.abs() < 2000.0 && (-2700.0..1700.0).contains(&z),
             "{x}, {z}"
         );
+        // Its ground is its square: what is known of a chunk without reading it (ADR 0040).
+        #[allow(clippy::cast_possible_truncation)] // 240 m
+        let half = (CHUNK_SIZE / 2.0) as f32;
+        for [x, _, z] in &chunk.mesh.vertices {
+            assert!(x.abs() <= half && z.abs() <= half, "{x}, {z}");
+        }
     }
     assert_eq!(world.fallback_samples, 0);
 }
@@ -659,47 +665,92 @@ async fn streets_meeting_the_road_ridden_get_kerbs_at_its_edge() {
 async fn streets_on_a_hillside_are_level_across_the_ground_shaped_around_them() {
     use orqwa_osm::{Road, RoadClass};
 
-    // #116: a street along the hillside, which rises 10 % eastwards. It lay tilted with the
-    // slope, its uphill edge half a metre above its downhill one.
+    // #116: streets along the hillside, which rises 10 % eastwards. They lay tilted with the
+    // slope, their uphill edge half a metre above their downhill one. One lies near the ride,
+    // one far from it, where the ground under its shelf is split more coarsely (ADR 0031).
+    // Both lie off the 16 m grid, so pieces at their edges lean where the ground is coarser.
+    let (near, far) = (87.0_f32, 407.0_f32);
     let world = world(&MapData {
-        roads: vec![Road {
-            class: RoadClass::Street,
-            details: orqwa_osm::RoadDetails::default(),
-            line: vec![at(200.0, 100.0), at(200.0, 900.0)],
-            structure: None,
-        }],
+        roads: [near, far]
+            .map(|street| Road {
+                class: RoadClass::Street,
+                details: orqwa_osm::RoadDetails::default(),
+                line: vec![at(f64::from(street), 100.0), at(f64::from(street), 900.0)],
+                structure: None,
+            })
+            .to_vec(),
         ..MapData::default()
     })
     .await;
 
-    // The natural ground at the street's centre line.
-    let level = 500.0 + 0.1 * 200.0;
-    for north in (200..=800).step_by(50) {
-        let z = -(north as f32);
-        let edge = |x: f32| street_at(&world, x, z).expect("the street");
-        let (west, east) = (edge(200.0 - 2.5), edge(200.0 + 2.5));
+    for street in [near, far] {
+        // The natural ground at the street's centre line.
+        let level = 500.0 + 0.1 * street;
+        // Far off, the 5.3 m pieces under its edges reach past its levelled verge onto the
+        // bank and lean the street by a few centimetres across (#116's was half a metre):
+        // a 1 % cross slope, which nobody sees from 120 m.
+        let tilt = if street == far { 0.05 } else { 0.02 };
+        for north in (200..=800).step_by(50) {
+            let z = -(north as f32);
+            let edge = |x: f32| street_at(&world, x, z).expect("the street");
+            let (west, east) = (edge(street - 2.5), edge(street + 2.5));
+            assert!(
+                (west - east).abs() < tilt,
+                "a tilted street at {street}, {north}: {west} west, {east} east"
+            );
+            assert!((west - level).abs() < 0.15, "the street at {west}");
+            // Near the ride, the ground beside it level with it, then back on the natural slope
+            // a little way out: cut into the hillside above, banked down below. Far off, the
+            // coarser pieces at the shelf's edge may lean.
+            if street == far {
+                continue;
+            }
+            for x in [street - 5.0, street + 5.0] {
+                let ground = ground_at(&world, x, z).expect("ground");
+                assert!(
+                    (ground - level).abs() < 0.05,
+                    "the ground beside the street at {x}, {north}: {ground}"
+                );
+            }
+            for x in [street - 25.0, street + 25.0] {
+                let ground = ground_at(&world, x, z).expect("ground");
+                let natural = 500.0 + 0.1 * x;
+                assert!(
+                    (ground - natural).abs() < 0.05,
+                    "the ground away from the street at {x}, {north}: {ground}, not {natural}"
+                );
+            }
+        }
+    }
+    // The cell 10–24 m west of either street holds none of its carriageway but is still split
+    // for its bank: in the usual pieces near the ride, in the coarser ones only far from it.
+    // (Its rows away from the chunk's edge at 480 m, whose cells keep the usual pieces.)
+    for (street, count) in [(near, crate::SUB), (far, crate::FAR_SUB)] {
+        #[allow(clippy::cast_precision_loss)] // a small count
+        let size = GRID as f32 / count as f32;
+        let legs: Vec<f32> = world
+            .chunks
+            .iter()
+            .flat_map(|c| triangles(&c.mesh).map(move |t| (t, c.center)))
+            .filter_map(|(t, centre)| {
+                let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
+                let (x, north) = (middle[0] + centre[0], -(middle[1] + centre[2]));
+                let inside = x < street - 10.0 && x > street - 24.0;
+                (inside && (500.0..560.0).contains(&north)).then(|| {
+                    (0..3)
+                        .map(|k| {
+                            let (a, b) = (t[k], t[(k + 1) % 3]);
+                            (a[0] - b[0]).hypot(a[2] - b[2])
+                        })
+                        .fold(f32::INFINITY, f32::min)
+                })
+            })
+            .collect();
+        assert!(!legs.is_empty(), "no ground beside the street at {street}");
         assert!(
-            (west - east).abs() < 0.02,
-            "a tilted street at {north}: {west} west, {east} east"
+            legs.iter().all(|&leg| (leg - size).abs() < 0.01),
+            "the bank beside the street at {street} in pieces of {legs:?}, not {size} m"
         );
-        assert!((west - level).abs() < 0.15, "the street at {west}");
-        // The ground beside it level with it, then back on the natural slope a little way out:
-        // cut into the hillside above, banked down below.
-        for x in [200.0 - 5.0, 200.0 + 5.0] {
-            let ground = ground_at(&world, x, z).expect("ground");
-            assert!(
-                (ground - level).abs() < 0.05,
-                "the ground beside the street at {x}, {north}: {ground}"
-            );
-        }
-        for x in [200.0 - 25.0, 200.0 + 25.0] {
-            let ground = ground_at(&world, x, z).expect("ground");
-            let natural = 500.0 + 0.1 * x;
-            assert!(
-                (ground - natural).abs() < 0.05,
-                "the ground away from the street at {x}, {north}: {ground}, not {natural}"
-            );
-        }
     }
 }
 
@@ -864,21 +915,22 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
 async fn roundabouts_get_a_raised_island_with_a_kerb() {
     use orqwa_osm::{Road, RoadClass};
 
-    // A roundabout of 20 m radius east of the route; a long thin loop, a road round a square
-    // block and a footpath round a pond (no roundabouts).
+    // A roundabout of 20 m radius east of the route, near enough for the usual detail; a
+    // long thin loop, a road round a square block and a footpath round a pond (no
+    // roundabouts).
     let ring: Vec<(f64, f64)> = (0..=24)
         .map(|k| {
             let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
-            at(200.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
+            at(100.0 + 20.0 * angle.cos(), 500.0 + 20.0 * angle.sin())
         })
         .collect();
     let loop_ = vec![
+        at(50.0, 800.0),
         at(150.0, 800.0),
-        at(250.0, 800.0),
-        at(250.0, 806.0),
-        at(200.0, 807.0),
         at(150.0, 806.0),
-        at(150.0, 800.0),
+        at(100.0, 807.0),
+        at(50.0, 806.0),
+        at(50.0, 800.0),
     ];
     // The block's road has a point every 10 m, as mapped roads do.
     let block: Vec<(f64, f64)> = (0..=20)
@@ -891,13 +943,13 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
                 3 => (-25.0, 25.0 - step),
                 _ => (-25.0, -25.0),
             };
-            at(200.0 + east, 300.0 + north)
+            at(100.0 + east, 300.0 + north)
         })
         .collect();
     let path: Vec<(f64, f64)> = (0..=24)
         .map(|k| {
             let angle = std::f64::consts::TAU * f64::from(k) / 24.0;
-            at(200.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
+            at(100.0 + 15.0 * angle.cos(), 650.0 + 15.0 * angle.sin())
         })
         .collect();
     let world = world(&MapData {
@@ -924,24 +976,24 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
     // Inside the ring, the island stands 20 cm up from the ground (which the ring levels
     // beside it, #116); on the ring and outside, the ground is as it was.
     for (x, z) in [
-        (200.0, -500.0),
-        (210.0, -505.0),
-        (190.0, -492.0),
-        (214.0, -500.0),
+        (100.0, -500.0),
+        (110.0, -505.0),
+        (90.0, -492.0),
+        (114.0, -500.0),
     ] {
         let top = top_of_ground(&world, x, z).expect("island");
         let up = top - ground_at(&world, x, z).expect("ground");
         assert!((up - 0.2).abs() < 0.02, "island at {up} m at {x}, {z}");
     }
-    assert!(lift(200.0, -500.0).is_some_and(|up| (up - 0.2).abs() < 0.02));
+    assert!(lift(100.0, -500.0).is_some_and(|up| (up - 0.2).abs() < 0.02));
     for (x, z) in [
-        (220.0, -500.0),
-        (230.0, -500.0),
-        (200.0, -525.0),
-        (200.0, -803.0),
-        (200.0, -300.0),
-        (210.0, -290.0),
-        (200.0, -650.0),
+        (120.0, -500.0),
+        (130.0, -500.0),
+        (100.0, -525.0),
+        (100.0, -803.0),
+        (100.0, -300.0),
+        (110.0, -290.0),
+        (100.0, -650.0),
     ] {
         let up = lift(x, z).expect("ground");
         assert!(up.abs() < 0.02, "ground raised by {up} m at {x}, {z}");
@@ -955,7 +1007,7 @@ async fn roundabouts_get_a_raised_island_with_a_kerb() {
             let normal = face_normal(*t);
             let middle = [0, 2].map(|k| t.iter().map(|v| v[k]).sum::<f32>() / 3.0);
             let (x, z) = (middle[0] + centre[0], middle[1] + centre[2]);
-            normal[1].abs() < 0.01 && ((x - 200.0).hypot(z + 500.0) - 16.6).abs() < 1.0
+            normal[1].abs() < 0.01 && ((x - 100.0).hypot(z + 500.0) - 16.6).abs() < 1.0
         })
         .count();
     assert!(kerb >= 40, "{kerb} kerb faces");
@@ -4887,18 +4939,21 @@ async fn chunks_come_in_corridor_order_with_progress() {
 fn parallel_work_keeps_the_order_of_its_jobs() {
     let jobs: Vec<u64> = (0..100).collect();
     // Uneven work, so the threads finish out of order.
-    let squares = in_parallel(&jobs, 8, |&n| {
+    let squares = in_parallel(&jobs, Workers::new(8), |&n| {
         std::thread::sleep(std::time::Duration::from_micros(n * 37 % 11 * 100));
         n * n
     });
     assert_eq!(squares, jobs.iter().map(|n| n * n).collect::<Vec<_>>());
-    assert_eq!(in_parallel(&[] as &[u64], 8, |&n| n), Vec::<u64>::new());
+    assert_eq!(
+        in_parallel(&[] as &[u64], Workers::new(8), |&n| n),
+        Vec::<u64>::new()
+    );
 }
 
 #[test]
 #[should_panic(expected = "bad chunk")]
 fn a_panic_in_parallel_work_is_passed_on() {
-    in_parallel(&[1, 2, 3], 2, |&n| {
+    in_parallel(&[1, 2, 3], Workers::new(2), |&n| {
         assert!(n != 2, "bad chunk");
         n
     });
@@ -5554,7 +5609,9 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
     let islands = roundabouts::islands(&map, &projection);
     assert_eq!(islands.len(), 1);
     let rails = road::RoadIndex::from_lines(&[]);
-    let streets = streets::lines(&map, &projection, &mut Level(500.0)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Level(500.0))
+        .await
+        .into();
     let ridden = RoadIndex::new(&route, &projection);
     let levels = streets::Levels::new(
         &streets,
@@ -5562,7 +5619,7 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
         &ridden,
         &rails,
     );
-    let ground = foundations::Ground(&world.chunks);
+    let ground = foundations::Ground::of(&world.chunks);
     let mut line: Vec<_> = (0..=40)
         .map(|i| (0.0, 400.0 + f64::from(i) * 2.0))
         .collect();
@@ -5606,7 +5663,6 @@ async fn bridge_tags_through_a_roundabout_do_not_fence_off_its_interior() {
             &ground,
             &projection,
             &mut Level(500.0),
-            &mut Vec::new(),
         )
         .await;
         let mut inside = 0;
@@ -5852,7 +5908,9 @@ async fn roadside_fence_models_cannot_span_the_carriageway() {
     for name in ["guard_rail", "fence"] {
         chunk.props.models.insert(name.into(), buffer.clone());
     }
-    props::clear_fences(&mut world.chunks, &pavement);
+    for chunk in &mut world.chunks {
+        props::clear_fences(chunk, &pavement);
+    }
     let chunk = world.chunks.iter().find(|c| c.center == center).unwrap();
     for name in ["guard_rail", "fence"] {
         let remaining = &chunk.props.models[name];
@@ -6264,4 +6322,498 @@ async fn power_lines_run_on_poles_with_wires_from_pole_to_pole() {
             );
         }
     }
+}
+
+#[test]
+fn chunks_needed_first_come_first_then_ahead_of_the_rider_then_behind() {
+    // Cells along a route, each with the road sample first reaching it; the rider enters at
+    // sample 10, and the cells around there are needed first.
+    let reached: BTreeMap<(i32, i32), usize> = (0..10).map(|x| ((x, 0), x as usize * 2)).collect();
+    let needed: Vec<bool> = (0..10).map(|x| x == 5 || x == 6).collect();
+    let cells = reached
+        .into_iter()
+        .zip(needed)
+        .map(|((cell, reach), needed)| (cell, reach, needed));
+    let order: Vec<i32> = build_order(cells, 10)
+        .into_iter()
+        .map(|((x, _), _)| x)
+        .collect();
+    assert_eq!(order, [5, 6, 7, 8, 9, 4, 3, 2, 1, 0]);
+}
+
+#[tokio::test]
+async fn a_ride_starts_once_its_surroundings_are_finished_and_the_world_comes_out_the_same() {
+    // A railway bridge over the road 300 m along a 1 km route, which the rider enters at its
+    // end: the bridge lies behind them.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (27.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+
+    let at = (Meters(0.0), Meters(1000.0));
+    let radius = Meters(100.0);
+    let sunk = Mutex::new(Vec::new());
+    let mut told = None;
+    let mut added = Vec::new();
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(1000.0),
+            at,
+            radius,
+            ready: &mut |world, centres| {
+                let finished: Vec<usize> = sunk.lock().unwrap().iter().map(|(i, _)| *i).collect();
+                told = Some((world, centres.to_vec(), finished));
+            },
+            structures: &mut |mesh| added.push(mesh),
+            pace: None,
+            written: &[],
+        },
+    )
+    .await;
+
+    let (ready, centres, finished) = told.expect("told when the surroundings are ready");
+    let plan = chunk_plan(&centres, at.0, at.1, radius);
+    assert!(plan.nearby > 0);
+    for index in &plan.indices[..plan.nearby] {
+        assert!(
+            finished.contains(index),
+            "chunk {index} around the start not finished"
+        );
+    }
+    assert_eq!(ready.road, whole.road, "the road is whole from the start");
+    assert_eq!(ready.railways, whole.railways);
+    assert_eq!(ready.chunks.len(), 0, "handed over without chunks");
+    // The structures told are those built by then; with the bridges added after, they are
+    // the whole world's, each once.
+    let mut all = ready.structures.clone();
+    for mesh in added {
+        all.append(mesh);
+    }
+    assert_eq!(sorted_triangles(&all), sorted_triangles(&whole.structures));
+
+    // Every chunk, once, as the whole world has it, centred where told ahead.
+    let mut sunk = sunk.into_inner().unwrap();
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(chunks, whole.chunks);
+    let whole_centres: Vec<[f32; 3]> = whole.chunks.iter().map(|c| c.center).collect();
+    assert_eq!(centres, whole_centres);
+    assert_eq!(rest.structures, whole.structures);
+    assert_eq!(rest.fallback_samples, whole.fallback_samples);
+    assert_eq!(
+        World {
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready
+        },
+        World {
+            chunks: Vec::new(),
+            ..whole
+        },
+    );
+}
+
+#[tokio::test]
+async fn a_build_turned_to_a_late_entry_finishes_its_surroundings_first_and_comes_out_the_same() {
+    // 3 km north. The ride starts at the start; a late joiner then enters at 2.5 km, past
+    // the middle of the route (rows of chunks 960–1,920 m north), which neither entry needs.
+    let points: Vec<(f64, f64, f64)> = (0..=300)
+        .map(|i| (0.0, f64::from(i) * 10.0, 500.0))
+        .collect();
+    let mut map = MapData::default();
+    let route = route_through(&points, &mut map).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    let mut pace = Pace::new(Meters(0.0), None);
+    pace.test.0 = Some(1);
+    let entry = Entry {
+        from: Meters(2500.0),
+        at: (Meters(0.0), Meters(2500.0)),
+        // Wider than the build's own: the scene was set to draw farther.
+        radius: Meters(300.0),
+    };
+    let sunk = Mutex::new(Vec::new());
+    let mut ready = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, centres| {
+                pace.turn_to(entry);
+                ready = Some((world, centres.to_vec(), sunk.lock().unwrap().len()));
+            },
+            structures: &mut |_| {},
+            pace: Some(&pace),
+            written: &[],
+        },
+    )
+    .await;
+
+    let (ready, centres, handed) = ready.expect("handed over");
+    let sunk = sunk.into_inner().unwrap();
+    let plan = chunk_plan(&centres, entry.at.0, entry.at.1, entry.radius);
+    let around = &plan.indices[..plan.nearby];
+    assert!(plan.nearby > 0);
+    let last_around = sunk
+        .iter()
+        .rposition(|(index, _)| around.contains(index))
+        .expect("the entry's surroundings finished");
+    let middle = |index: usize| (960.0..1920.0).contains(&-centres[index][2]);
+    let first_middle = sunk
+        .iter()
+        .position(|(index, _)| middle(*index))
+        .expect("the middle finished too");
+    assert!(
+        handed <= last_around,
+        "the entry was finished before the turn"
+    );
+    assert!(
+        last_around < first_middle,
+        "the entry's surroundings come before the middle of the route"
+    );
+
+    let mut sunk = sunk;
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(
+        World {
+            chunks,
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready
+        },
+        whole
+    );
+}
+
+/// A mesh's triangles by their corners' positions, in no set order.
+fn sorted_triangles(mesh: &MeshData) -> Vec<[[u32; 3]; 3]> {
+    let mut sorted: Vec<[[u32; 3]; 3]> = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|t| t.map(|i| mesh.vertices[i as usize].map(f32::to_bits)))
+        .collect();
+    sorted.sort_unstable();
+    sorted
+}
+
+#[tokio::test]
+async fn a_world_built_while_its_pace_changes_comes_out_the_same() {
+    let route = route_north(&[]).await;
+    let map = MapData::default();
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    // The rider waits at the start: the build hurries on both cores (batches of four) until
+    // it is 400 m ahead, then gives way on one (batches of two).
+    let mut pace = Pace::new(Meters(100.0), None);
+    pace.test.0 = Some(2);
+    pace.ride_at(Some(Meters(0.0)));
+    let sunk = Mutex::new(Vec::new());
+    let mut ready = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, _| ready = Some(world),
+            structures: &mut |_| {},
+            pace: Some(&pace),
+            written: &[],
+        },
+    )
+    .await;
+
+    let given = pace.test.1.into_inner().unwrap();
+    let switch = given.iter().position(|&threads| threads == 1);
+    assert!(
+        given.first() == Some(&2) && switch.is_some(),
+        "the pace never changed: {given:?}"
+    );
+    let mut sunk = sunk.into_inner().unwrap();
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(
+        World {
+            chunks,
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready.expect("handed over")
+        },
+        whole
+    );
+}
+
+#[tokio::test]
+async fn a_world_built_under_a_ride_gives_way_to_it_and_comes_out_the_same() {
+    static LOWERED: AtomicUsize = AtomicUsize::new(0);
+    fn lower() {
+        LOWERED.fetch_add(1, Ordering::Relaxed);
+    }
+    let route = route_north(&[]).await;
+    let map = MapData::default();
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+
+    // The rider is on the road already, far behind the build's front.
+    let pace = Pace::new(Meters(0.0), Some(lower));
+    pace.ride_at(Some(Meters(0.0)));
+    let sunk = Mutex::new(Vec::new());
+    let mut ready = None;
+    let rest = generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, _| ready = Some(world),
+            structures: &mut |_| {},
+            pace: Some(&pace),
+            written: &[],
+        },
+    )
+    .await;
+
+    assert!(LOWERED.load(Ordering::Relaxed) > 0, "never gave way");
+    assert!(!pace.hurrying());
+    let mut sunk = sunk.into_inner().unwrap();
+    sunk.sort_by_key(|(index, _)| *index);
+    let chunks: Vec<TerrainChunk> = sunk.into_iter().map(|(_, chunk)| chunk).collect();
+    assert_eq!(chunks, whole.chunks);
+    assert_eq!(
+        World {
+            chunks,
+            structures: rest.structures,
+            fallback_samples: rest.fallback_samples,
+            ..ready.expect("handed over")
+        },
+        whole
+    );
+}
+
+#[tokio::test]
+async fn a_bridge_over_the_start_is_there_when_the_ride_starts() {
+    // A railway viaduct over the road 300 m along the route, where the rider enters it,
+    // running on 1.2 km east: it stands on chunks beyond those around the start.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (1200.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(1200.0, 300.0), (1500.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastwardSlope, &map, &mut |_, _| {}).await;
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+
+    let mut told = None;
+    generate_into(
+        &route,
+        &mut EastwardSlope,
+        &map,
+        &mut |_, _| {},
+        &|_, _| {},
+        Ahead {
+            from: Meters(300.0),
+            at: (Meters(0.0), Meters(300.0)),
+            radius: Meters(0.0),
+            ready: &mut |world, _| told = Some(world.structures),
+            structures: &mut |_| {},
+            pace: None,
+            written: &[],
+        },
+    )
+    .await;
+
+    assert_eq!(told.expect("told"), whole.structures);
+}
+
+#[tokio::test]
+async fn a_build_taken_up_from_what_a_stopped_one_wrote_finishes_only_the_rest_the_same() {
+    /// [`EastwardSlope`], with no terrain data east of 300 m: chunks there count samples
+    /// without it, also those not built again.
+    struct EastHalf;
+    impl ElevationModel for EastHalf {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(if east > 300.0 {
+                Err("offline".to_owned())
+            } else {
+                Ok(500.0 + 0.1 * east)
+            })
+        }
+    }
+
+    // The railway bridge over the road of the first test.
+    let map = MapData {
+        railways: vec![
+            railway(&[(-300.0, 300.0), (-13.0, 300.0)], None),
+            railway(
+                &[(-13.0, 300.0), (27.0, 300.0)],
+                Some(StructureKind::Bridge),
+            ),
+            railway(&[(27.0, 300.0), (300.0, 300.0)], None),
+        ],
+        ..MapData::default()
+    };
+    let route = route_north(&[]).await;
+    let whole = generate(&route, &mut EastHalf, &map, &mut |_, _| {}).await;
+    assert!(whole.fallback_samples > 0);
+    assert!(!whole.structures.indices.is_empty(), "no bridge");
+    let count = whole.chunks.len();
+
+    // A build stopped after finishing some chunks, the first ones by index or all of them.
+    for done in [count / 2, count] {
+        let written: Vec<bool> = (0..count).map(|i| i < done).collect();
+        let sunk = Mutex::new(Vec::new());
+        let mut to_build = 0;
+        let mut parts = None;
+        let rest = generate_into(
+            &route,
+            &mut EastHalf,
+            &map,
+            &mut |_, total| to_build = total,
+            &|index, chunk| sunk.lock().unwrap().push((index, chunk)),
+            Ahead {
+                from: Meters(0.0),
+                at: (Meters(0.0), Meters(0.0)),
+                radius: Meters(100.0),
+                ready: &mut |world, _| parts = Some(world),
+                structures: &mut |_| {},
+                pace: None,
+                written: &written,
+            },
+        )
+        .await;
+
+        let mut sunk = sunk.into_inner().unwrap();
+        sunk.sort_by_key(|(index, _)| *index);
+        let indices: Vec<usize> = sunk.iter().map(|(index, _)| *index).collect();
+        assert_eq!(
+            indices,
+            (done..count).collect::<Vec<_>>(),
+            "only the chunks not written, each once"
+        );
+        for (index, chunk) in &sunk {
+            assert_eq!(chunk, &whole.chunks[*index], "chunk {index}");
+        }
+        assert!(to_build < count, "chunks written are not all built again");
+        assert_eq!(rest.structures, whole.structures);
+        assert_eq!(rest.fallback_samples, whole.fallback_samples);
+        assert_eq!(
+            World {
+                structures: rest.structures,
+                fallback_samples: rest.fallback_samples,
+                ..parts.expect("handed over")
+            },
+            World {
+                chunks: Vec::new(),
+                ..whole.clone()
+            },
+        );
+    }
+}
+#[tokio::test]
+async fn a_sink_failure_stops_generation_before_handing_over_an_incomplete_start() {
+    let route = route_north(&[]).await;
+    let mut ready = false;
+    let result = try_generate_into(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+        &|_, _| Err("disk full"),
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |_, _| ready = true,
+            structures: &mut |_| {},
+            pace: None,
+            written: &[],
+        },
+        &|| Ok(()),
+    )
+    .await;
+    assert_eq!(result.unwrap_err(), "disk full");
+    assert!(!ready);
+}
+
+#[tokio::test]
+async fn stopping_a_build_after_ready_works_without_any_async_io() {
+    let route = route_north(&[]).await;
+    let pace = Pace::new(Meters(0.0), None);
+    let count = std::sync::atomic::AtomicUsize::new(0);
+    let mut total = 0;
+    let result = try_generate_into(
+        &route,
+        &mut EastwardSlope,
+        &MapData::default(),
+        &mut |_, _| {},
+        &|_, _| {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        },
+        Ahead {
+            from: Meters(0.0),
+            at: (Meters(0.0), Meters(0.0)),
+            radius: Meters(0.0),
+            ready: &mut |_, centres| {
+                total = centres.len();
+                pace.stop();
+            },
+            structures: &mut |_| {},
+            pace: Some(&pace),
+            written: &[],
+        },
+        &|| {
+            if pace.stopped() {
+                Err("stopped")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .await;
+    assert_eq!(result.unwrap_err(), "stopped");
+    let finished = count.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(finished > 0 && finished < total);
 }

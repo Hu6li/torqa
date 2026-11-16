@@ -214,7 +214,6 @@ var _orqwa: OrqwaApp
 ## A calibration scene owns no rider data and never replaces the loaded course (R151).
 var _benchmark: OrqwaGraphicsBenchmark
 var _chunk_count: int = 0
-var _next_chunk: int = 0
 var _streaming: WorldStreaming = WorldStreaming.new()
 ## Invalidates a preparation waiting on chunks that a new course or setting replaced.
 var _chunk_revision: int = 0
@@ -280,6 +279,7 @@ var _ground_lods: GroundLods = GroundLods.new()
 func bind(orqwa: OrqwaApp) -> void:
 	_orqwa = orqwa
 	_orqwa.world_ready.connect(_on_world_ready)
+	_orqwa.world_grew.connect(_on_world_grew)
 	# A switch of riders changes the avatar on the bike at once, in a world built already.
 	_orqwa.profile_changed.connect(_apply_rider)
 
@@ -489,9 +489,38 @@ func apply_options(options: Dictionary) -> void:
 	_group_riders.winter_clothing = winter_clothing
 
 
-## Full upload completion for benchmarks and captures, including background ground LODs.
+## How far around the rider chunks are uploaded with graphics `quality` and `options` (R224):
+## a course's world is ridden once that much of it is built (ADR 0040).
+static func upload_radius(quality: String, options: Dictionary) -> float:
+	var view_distance: String = options.get("view_distance", "auto")
+	var preset: Dictionary = QUALITY.get(view_distance, QUALITY.get(quality, QUALITY["medium"]))
+	var distance: float = preset["distance"]
+	return VISIBILITY_RANGE * distance + WorldStreaming.LOOK_AHEAD
+
+
+## The rider (or the free camera) has come where chunks of the world are still being built.
+func waiting_for_world() -> bool:
+	_streaming.follow(self)
+	return _streaming.missing()
+
+
+## Every chunk within reach of the rider (or the free camera) where they are now is in the
+## scene: the rest of a long course never is (ADR 0040).
+func chunks_uploaded() -> bool:
+	if _benchmark == null and _chunk_count > 0:
+		_streaming.follow(self)
+	return _streaming.complete(self)
+
+
+## The visible surroundings of where the rider (or the free camera) is now are in the scene.
+func surroundings_ready() -> bool:
+	_streaming.follow(self)
+	return _streaming.nearby_ready()
+
+
+## Upload completion for benchmarks and captures, including background ground LODs.
 func uploads_complete() -> bool:
-	return _next_chunk >= _chunk_count and not _ground_lods.pending()
+	return chunks_uploaded() and not _ground_lods.pending()
 
 
 ## Snaps rider and camera to the start of a new ride instead of gliding there.
@@ -572,10 +601,20 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	if _orqwa != null and _orqwa.world_failed():
+		if _chunk_count > 0:
+			WorldPreparation.restart(self)
+			_chunk_count = 0
+		_ground_lods.add_ready(true)
+		return
+	if visible and _orqwa != null and _chunk_count > 0 and not _orqwa.check_world_memory():
+		return
 	if not _paused:
 		_wind_time += delta
 		RenderingServer.global_shader_parameter_set("wind_time", _wind_time)
 	_build_some_chunks()
+	if _orqwa != null and _orqwa.world_failed():
+		return
 	_ground_lods.add_ready()
 	if _rain.emitting:
 		# Round the camera, falling straight whichever way it looks.
@@ -602,6 +641,8 @@ func _apply_rider() -> void:
 
 
 func _on_world_ready(_info: Dictionary) -> void:
+	if not _orqwa.check_world_memory():
+		return
 	apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
@@ -621,8 +662,25 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_horizon_water.material_override = _water_material
 	_railways.mesh = WorldMeshes.from_arrays(_orqwa.railways_mesh())
 	_railways.material_override = _rail_material
+	for added: Node in _structures.get_children():
+		added.queue_free()
 	_structures.mesh = WorldMeshes.from_arrays(_orqwa.structures_mesh())
 	_structures.material_override = _structure_material
+
+
+## The world being ridden grew: the bridges built since, and the chunks the scene waits for.
+func _on_world_grew(info: Dictionary) -> void:
+	if not _orqwa.check_world_memory():
+		return
+	if info.get("structures", false):
+		# Only the new bridges: drawing every structure again stalls the frame.
+		for arrays: Dictionary in _orqwa.take_added_structures():
+			var added: MeshInstance3D = MeshInstance3D.new()
+			added.mesh = WorldMeshes.from_arrays(arrays)
+			added.material_override = _structure_material
+			_structures.add_child(added)
+	if _chunk_count > 0:
+		_streaming.grew(self)
 
 
 func _build_some_chunks() -> void:
@@ -650,16 +708,19 @@ func _add_modelled(node: Node3D, cell: Dictionary) -> void:
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		node.add_child(instance)
 	var shell_arrays: Dictionary = cell["shells"]
-	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material)
+	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material, true)
 	shells.visibility_range_begin = model_range
 	shells.visibility_range_begin_margin = MODEL_FADE
 	shells.visibility_range_end = DETAIL_RANGE * _distance
 	node.add_child(shells)
 
 
-func _mesh_instance(arrays: Dictionary, material: Material) -> MeshInstance3D:
+## `compressed` as in `WorldMeshes.from_arrays`.
+func _mesh_instance(
+	arrays: Dictionary, material: Material, compressed: bool = false
+) -> MeshInstance3D:
 	var instance: MeshInstance3D = MeshInstance3D.new()
-	instance.mesh = WorldMeshes.from_arrays(arrays)
+	instance.mesh = WorldMeshes.from_arrays(arrays, compressed)
 	instance.material_override = material
 	instance.visibility_range_end_margin = 300.0
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

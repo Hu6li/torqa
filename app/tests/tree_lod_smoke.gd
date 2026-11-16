@@ -35,12 +35,16 @@ func _rebatch() -> void:
 	root.add_child(world)
 	world.apply_quality("ultra", {"tree_density": "low"})
 	var terrain: Node3D = world.get_node("Terrain")
-	terrain.add_child(Node3D.new())
-	world.set("_next_chunk", 1)
+	var streaming: WorldStreaming = world.get("_streaming")
+	var uploaded: Node3D = Node3D.new()
+	terrain.add_child(uploaded)
+	streaming._uploaded[0] = uploaded
 	# Density stays 12.5%; switching to Low must still restore its cheaper batch budget.
 	world.apply_quality("low")
-	var next_chunk: int = world.get("_next_chunk")
-	_check(terrain.get_child_count() == 0 and next_chunk == 0, "Low refreshes uploaded batches")
+	_check(
+		terrain.get_child_count() == 0 and streaming.uploaded() == 0,
+		"Low refreshes uploaded batches"
+	)
 	world.free()
 
 

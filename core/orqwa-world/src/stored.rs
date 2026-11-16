@@ -99,6 +99,15 @@ pub fn read_chunk(input: &mut impl Read) -> io::Result<TerrainChunk> {
     Ok(chunk)
 }
 
+/// The centre of a chunk [`write_chunk`] wrote, reading only the beginning: to index a stored
+/// world's chunks without reading them (ADR 0040).
+///
+/// # Errors
+/// On read errors, and [`io::ErrorKind::InvalidData`] if the bytes are not a stored chunk.
+pub fn read_center(input: &mut impl Read) -> io::Result<[f32; 3]> {
+    Reader(input).one()
+}
+
 fn invalid(what: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, what)
 }
@@ -447,6 +456,17 @@ mod tests {
         assert_eq!(read_generator(&mut stored.0.as_slice()).unwrap(), BUILT_BY);
         let empty = World::default();
         assert_eq!(read_back(&self::stored(&empty)), empty);
+    }
+
+    #[test]
+    fn a_stored_chunk_tells_its_centre_from_its_beginning() {
+        let world = sample();
+        for (chunk, bytes) in world.chunks.iter().zip(stored(&world).1) {
+            // Its first bytes are enough: what follows is never read.
+            let mut beginning = &bytes[..16];
+            assert_eq!(read_center(&mut beginning).unwrap(), chunk.center);
+        }
+        assert!(read_center(&mut [3, 0, 0, 0].as_slice()).is_err());
     }
 
     /// The sample as this format stores it, kept in the repository: a world stored by an

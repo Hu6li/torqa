@@ -2,6 +2,7 @@ package org.orqwa.android;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
 import android.content.BroadcastReceiver;
@@ -56,6 +57,8 @@ public class OrqwaAndroid extends GodotPlugin {
         super(godot);
         System.loadLibrary("orqwa_gd");
         initStorage(sharedFolder(godot.getContext()));
+        initMemory((ActivityManager) godot.getContext().getApplicationContext()
+                .getSystemService(Context.ACTIVITY_SERVICE));
         initVoice(godot.getContext().getApplicationContext());
     }
 
@@ -67,6 +70,9 @@ public class OrqwaAndroid extends GodotPlugin {
 
     /** Readies CPAL's embedded AAudio host without opening a microphone or speaker stream. */
     private static native void initVoice(Context context);
+
+    /** Current system memory for native 3D preparation, including Android's low-memory state. */
+    private static native void initMemory(ActivityManager manager);
 
     /**
      * ORQWA's own folder in shared storage, `Android/media/org.orqwa.bike`, which Android

@@ -447,6 +447,10 @@ msgstr ""
 msgid "Analysis"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "Anti-aliasing"
 msgstr ""
@@ -615,7 +619,7 @@ msgstr ""
 msgid "Braking"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/workouts_tab.gd core/orqwa-app/src/import.rs
+#: app/scenes/course_detail.gd app/scenes/ride_jumps.gd app/scenes/workouts_tab.gd core/orqwa-app/src/import.rs
 msgid "Building 3D world"
 msgstr ""
 
@@ -956,6 +960,10 @@ msgid "Correcting elevations"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
+msgid "Could not check Android's available memory. Reopen ORQWA and try again."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
 msgid "Could not complete the group ride action."
 msgstr ""
 
@@ -1117,6 +1125,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not start the update's installer."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Could not store the course's 3D world. Check free storage and reopen the course."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2863,8 +2875,12 @@ msgstr ""
 msgid "Preparing %s…"
 msgstr ""
 
-#: app/scenes/course_detail.gd app/scenes/workouts_tab.gd
+#: app/scenes/course_detail.gd app/scenes/ride_jumps.gd app/scenes/workouts_tab.gd
 msgid "Preparing the 3D scene"
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3105,6 +3121,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Riding"
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
 msgstr ""
 
 #: app/scenes/button_dialog.gd

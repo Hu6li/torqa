@@ -1078,6 +1078,7 @@ fn line_mesh(segments: &[Segment], half_width: f64, mouths: &[Mouth]) -> MeshDat
             .any(|&(along, at, half)| at * side > 0.0 && (along - distance).abs() <= half + 1.0)
     };
     let mut rings: u32 = 0;
+    let mut travel: Vec<(f64, f64)> = Vec::new();
     for (index, &((east, north), elevation, distance)) in centres.iter().enumerate() {
         // Across the road square to the curve: halfway between the pieces either side. Sharp
         // corners get a fan of rings turning from the one piece to the other, so they are
@@ -1113,13 +1114,89 @@ fn line_mesh(segments: &[Segment], half_width: f64, mouths: &[Mouth]) -> MeshDat
                 (joined(distance, -1.0), joined(distance, 1.0)),
                 before.surface == Surface::Bridge || after.surface == Surface::Bridge,
             );
+            travel.push((de, dn));
             if let Some(appearance) = after.appearance {
                 mesh.colors.extend([appearance.color(); RING]);
             }
             rings += 1;
         }
     }
+    untangle(&mut mesh, &travel);
     mesh
+}
+
+/// On the inside of a turn's fan of rings, and wherever the road bends tighter than it is wide
+/// (a planner's zigzag through a forecourt), the ribbon runs back against the travel, `travel`
+/// (each ring's direction), and the triangles there fold over, upside down. Each line of
+/// vertices along the road is cut where it crosses itself instead, as an offset curve is: the
+/// stretch that ran back gathers in the crossing, at the height there, and the inside of the
+/// bend closes in a corner. Where the line does not cross itself (a turn back onto a parallel
+/// road), the stretch stays where it turned back, at its height there.
+fn untangle(mesh: &mut MeshData, travel: &[(f64, f64)]) {
+    // Rings ahead and behind searched for the crossing: wider than any fan at a turn back.
+    const REACH: usize = 24;
+    for lane in 0..RING {
+        // East and north of the lane's vertex at ring `i`; vertices are east, up and south.
+        let at = |mesh: &MeshData, i: usize| {
+            let v = mesh.vertices[i * RING + lane];
+            (f64::from(v[0]), -f64::from(v[2]))
+        };
+        let height = |mesh: &MeshData, i: usize| mesh.vertices[i * RING + lane][1];
+        let back = |mesh: &MeshData, i: usize| {
+            let ((e0, n0), (e1, n1)) = (at(mesh, i - 1), at(mesh, i));
+            (e1 - e0) * travel[i].0 + (n1 - n0) * travel[i].1 < 0.0
+        };
+        let mut i = 1;
+        while i < travel.len() {
+            if !back(mesh, i) {
+                i += 1;
+                continue;
+            }
+            let mut last = i;
+            while last + 1 < travel.len() && back(mesh, last + 1) {
+                last += 1;
+            }
+            let crossing = (1..i)
+                .rev()
+                .take(REACH)
+                .flat_map(|a| (last + 1..travel.len()).take(REACH).map(move |b| (a, b)))
+                .find_map(|(a, b)| {
+                    crossing(
+                        (at(mesh, a - 1), at(mesh, a)),
+                        (at(mesh, b - 1), at(mesh, b)),
+                    )
+                    .map(|(point, along)| {
+                        let (h0, h1) = (height(mesh, a - 1), height(mesh, a));
+                        #[allow(clippy::cast_possible_truncation)] // a fraction
+                        (a, b, point, h0 + (h1 - h0) * along as f32)
+                    })
+                });
+            let (from, to, (east, north), up) =
+                crossing.unwrap_or((i, last + 1, at(mesh, i - 1), height(mesh, i - 1)));
+            #[allow(clippy::cast_possible_truncation)] // geometry is stored as f32 for the GPU
+            for k in from..to {
+                mesh.vertices[k * RING + lane] = [east as f32, up, -north as f32];
+            }
+            i = to.max(i + 1);
+        }
+    }
+}
+
+/// Where segments `(a0, a1)` and `(b0, b1)` cross, if they do, and how far along the first.
+fn crossing(
+    ((ae0, an0), (ae1, an1)): ((f64, f64), (f64, f64)),
+    ((be0, bn0), (be1, bn1)): ((f64, f64), (f64, f64)),
+) -> Option<((f64, f64), f64)> {
+    let (ae, an, be, bn) = (ae1 - ae0, an1 - an0, be1 - be0, bn1 - bn0);
+    let denominator = ae * bn - an * be;
+    if denominator.abs() < 1e-12 {
+        return None;
+    }
+    let (de, dn) = (be0 - ae0, bn0 - an0);
+    let s = (de * bn - dn * be) / denominator;
+    let u = (de * an - dn * ae) / denominator;
+    ((0.0..=1.0).contains(&s) && (0.0..=1.0).contains(&u))
+        .then_some(((ae0 + s * ae, an0 + s * an), s))
 }
 
 /// Ring `index` of vertices across the road at a centre point (its position, elevation and
@@ -1367,5 +1444,110 @@ mod ownership_tests {
             1,
             "mismatched return tags must not create short extra decks or fences at the roundabout entry"
         );
+    }
+}
+
+#[cfg(test)]
+mod bend_tests {
+    use super::*;
+
+    /// The road through `corners` (metres east/north), rising by `grade`, drawn as the route's
+    /// is.
+    fn road(corners: &[(f64, f64)], grade: f64) -> MeshData {
+        let mut distance = 0.0;
+        let points: Vec<Centre> = corners
+            .iter()
+            .enumerate()
+            .map(|(i, &position)| {
+                if i > 0 {
+                    distance += super::distance(corners[i - 1], position);
+                }
+                Centre {
+                    position,
+                    elevation: 100.0 + grade * distance,
+                    distance,
+                    surface: Surface::Ground,
+                    mapped: true,
+                }
+            })
+            .collect();
+        let mesh = RoadIndex::from_lines(&[smooth_curve(&points)]).mesh(3.0, &[]);
+        assert!(mesh.indices.len() > RING, "the road is drawn");
+        mesh
+    }
+
+    /// A planner's route through a forecourt: legs of 10–15 m turning by 120° and more, as at
+    /// the start of Wada – Ōtarumi Pass.
+    fn zigzag() -> Vec<(f64, f64)> {
+        vec![
+            (0.0, 0.0),
+            (-2.1, -2.4),
+            (-16.3, 9.6),
+            (-3.9, 16.5),
+            (-1.1, 16.7),
+            (-2.0, 21.7),
+            (-3.0, 25.4),
+            (-5.1, 24.1),
+            (-20.1, 15.9),
+            (-40.0, 15.0),
+        ]
+    }
+
+    /// Triangles of the level road through `corners` that face down: folded over, seen from
+    /// above as dark fans. Only those of the asphalt between the road's edges if `asphalt`, not
+    /// its bevels and skirts.
+    fn folds(corners: &[(f64, f64)], asphalt: bool) -> usize {
+        let mesh = road(corners, 0.0);
+        mesh.indices
+            .chunks(3)
+            // A quad's triangles start at its vertex on the left.
+            .filter(|t| !asphalt || t[0] as usize % RING == RING / 2 - 1)
+            .filter(|t| {
+                let [a, b, c] = [t[0], t[1], t[2]].map(|k| mesh.vertices[k as usize]);
+                // The ribbon's triangles wind clockwise seen from above (east, up, south).
+                (b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0]) < -1e-4
+            })
+            .count()
+    }
+
+    #[test]
+    fn a_hairpin_or_a_turn_onto_the_road_alongside_closes_its_inside_without_folding() {
+        let hairpin = [(0.0, -40.0), (0.0, 0.0), (-2.0, 1.0), (-40.0, 1.0)];
+        let alongside = [(0.0, -40.0), (0.0, 0.0), (-8.0, 0.0), (-8.0, -40.0)];
+        assert_eq!(folds(&hairpin, false), 0, "hairpin");
+        assert_eq!(folds(&alongside, false), 0, "turn onto the road alongside");
+    }
+
+    #[test]
+    fn the_asphalt_never_lies_upside_down_where_the_road_bends_tighter_than_it_is_wide() {
+        let mut tight = vec![(0.0, -40.0), (0.0, 0.0)];
+        for k in 1..12 {
+            let angle = f64::from(k) * 0.5;
+            tight.push((-3.0 + 3.0 * angle.cos(), 3.0 * angle.sin()));
+        }
+        tight.push((-40.0, 0.0));
+        assert_eq!(folds(&tight, true), 0, "loop of 3 m radius");
+        assert_eq!(folds(&zigzag(), true), 0, "zigzag");
+    }
+
+    #[test]
+    fn the_inside_of_a_tight_bend_on_a_slope_closes_without_a_step() {
+        // The zigzag rising 10 %: where the inside of a bend gathers in one point, it is one
+        // point in height too, not a step or fin standing up from the road.
+        let mesh = road(&zigzag(), 0.1);
+        let gathered = |p: [f32; 3], q: [f32; 3]| (p[0] - q[0]).hypot(p[2] - q[2]) < 1e-3;
+        let mut points = 0;
+        for k in RING..mesh.vertices.len() {
+            let (p, q) = (mesh.vertices[k - RING], mesh.vertices[k]);
+            if gathered(p, q) {
+                points += 1;
+                assert!(
+                    (p[1] - q[1]).abs() < 1e-3,
+                    "{} m apart in height: {p:?} {q:?}",
+                    p[1] - q[1]
+                );
+            }
+        }
+        assert!(points > 0, "the inside of a bend gathers somewhere");
     }
 }

@@ -251,6 +251,8 @@ func _start_workout() -> void:
 		return
 	var workout: Dictionary = _pending_workout
 	var revision: int = _preparation_revision
+	if not await _wait_for_stopped_builds(revision):
+		return
 	# On a course, its world looks as last chosen on the course page.
 	var options: Dictionary = _detail.ride_options()
 	if _workout_on_course:
@@ -283,6 +285,8 @@ func _start_ride() -> void:
 	var options: Dictionary = _pending_ride[0]
 	var ghost: Dictionary = _pending_ride[1]
 	var revision: int = _preparation_revision
+	if not await _wait_for_stopped_builds(revision):
+		return
 	# The core knows whether a ride plays the video only once it has started.
 	if not _detail.rides_along_video():
 		var prepared: bool = await WorldPreparation.prepare(
@@ -308,6 +312,14 @@ func _start_ride() -> void:
 	)
 	if started:
 		ride_started.emit(options)
+
+
+func _wait_for_stopped_builds(revision: int) -> bool:
+	while revision == _preparation_revision:
+		if _orqwa.prepare_ride():
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _cancel_preparation() -> void:

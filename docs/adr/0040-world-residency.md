@@ -113,7 +113,12 @@ the core reads chunks from the store, every world is.
     built (2d), and the store is deleted when the world is let go of.
   - On Android, that fallback is the low-memory kill again. So **Ride** stops before building
     and tells the rider how much free storage the course needs. The check allows 25 MB per
-    kilometre, above the densest course measured.
+    kilometre, above the densest course measured. The estimate is not a guarantee that writes
+    will succeed: Android also requires a writable store independently of the free-space
+    query. Store creation or chunk-write errors stop generation instead of retaining chunks
+    in RAM. A ride already started pauses locally, releases trainer resistance and preserves
+    its recording for saving; reopening the course retries preparation (R254,
+    [ADR 0025 amendment](0025-kept-worlds.md#amendment--2026-11-16-storage-failures-and-stopped-builds-r254)).
 - Android may clear the cache under storage pressure while a course is open. A missing chunk
   is handled like a damaged one (see Consequences).
 
@@ -268,7 +273,9 @@ uploads").
     as R101 promises for a course first ridden.
   - When a ride of another course starts, or another world is to be built, the build is
     **stopped, not paused**. Its preparation and two rings are dropped from memory, so they
-    never share memory with another ride, and R240's one-course figures still hold. Its
+    never share memory with another ride, and R240's one-course figures still hold. An abort
+    request alone does not release synchronous workers: replacement builds and ride starts
+    wait asynchronously until every stopped task has actually ended (R254). Its
     store, with the chunks already written, stays: ORQWA holds on to it for the course's
     next build. So does every build stopped before its world is complete: with keeping off
     when another course is opened, and on **Cancel**, after which the rider likely tries

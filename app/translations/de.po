@@ -2449,6 +2449,9 @@ msgstr "Die Regionen zum Herunterladen konnten nicht geladen werden."
 msgid "Could not prepare the map detail of %s."
 msgstr "Die Kartendetails von %s konnten nicht vorbereitet werden."
 
+msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+msgstr "Diese Route braucht für ihre 3D-Welt %s freien Speicherplatz, frei sind %s. Gib Speicherplatz frei und fahre dann erneut los."
+
 msgid "Delete region"
 msgstr "Region löschen"
 
@@ -3366,3 +3369,15 @@ msgstr "Wahrscheinlich ist dein eigenes Netzwerk ausgefallen. Die Plätze bleibe
 
 msgid "Withdraw the shared course or workout for everyone"
 msgstr "Geteilte Strecke oder geteiltes Training für alle zurückziehen"
+
+msgid "Could not store the course's 3D world. Check free storage and reopen the course."
+msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den freien Speicherplatz und öffne die Strecke erneut."
+
+msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
+msgstr "Die Vorbereitung dieser Strecke benötigt etwa %s zusätzlichen Arbeitsspeicher; %s sind nach einer Reserve von %s für Android verfügbar. Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "Could not check Android's available memory. Reopen ORQWA and try again."
+msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden. Öffne ORQWA erneut und versuche es noch einmal."
+
+msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
+msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
