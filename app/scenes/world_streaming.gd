@@ -82,12 +82,14 @@ func upload_some(world: RideWorld) -> void:
 			if world._benchmark != null
 			else world._orqwa.world_chunk_for_season(index, density, world._seasons.season)
 		)
-		# The core drops old geometry as soon as another course is opened.
-		if chunk.is_empty():
+		# The core drops old geometry as soon as another course is opened. A chunk it cannot
+		# read from disk stays undrawn (ADR 0040).
+		if chunk.is_empty() and world._orqwa.world_chunk_count() == 0:
 			world._chunk_count = 0
 			reset()
 			return
-		_add_chunk(world, chunk)
+		if not chunk.is_empty():
+			_add_chunk(world, chunk)
 		_uploaded[index] = true
 		_cursor += 1
 		world._next_chunk += 1

@@ -968,16 +968,18 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
     - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
       those around the ones being built held; the world unchanged
-    - [ ] every world built into a store in the cache, packed into the kept world by raw copy
+    - [x] every world built into a store in the cache, packed into the kept world by raw copy
       - [x] worlds to keep: each chunk written as finished, copied into the kept world as it
         is; Wada 20 MB per km, packed in 2 s, the world unchanged
-      - [ ] every world, once the core reads chunks from the store
+      - [x] every world, once the core reads chunks from the store
     - [ ] the core reads chunks from the store while riding
+      - [x] chunks read one at a time from the store or the kept world, indexed by their
+        centres; held in memory only where no store can be written
+      - [x] the winter ground's mask made from every chunk read once, when first asked for
       - [ ] on Android, **Ride** stops before building when free storage is short and says how
         much the course needs (20 MB per km measured on Wada, 25 to be safe)
-      - [ ] a ride's store safe from tidying: turning keeping off clears all of `worlds/`, and
-        a store this ORQWA is building can look abandoned before its first chunk or after
-        its last (by age, which only other processes' stores need)
+      - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
+        keeping is turned off; others' go by age
     - [ ] Godot frees far chunks
     - [ ] generated ahead of the rider (#237)
   - [ ] far streets and their ground in coarser pieces (a generator change, with review renders)

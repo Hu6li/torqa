@@ -467,6 +467,12 @@ async fn terrain_surrounds_the_route() {
             x.abs() < 2000.0 && (-2700.0..1700.0).contains(&z),
             "{x}, {z}"
         );
+        // Its ground is its square: what is known of a chunk without reading it (ADR 0040).
+        #[allow(clippy::cast_possible_truncation)] // 240 m
+        let half = (CHUNK_SIZE / 2.0) as f32;
+        for [x, _, z] in &chunk.mesh.vertices {
+            assert!(x.abs() <= half && z.abs() <= half, "{x}, {z}");
+        }
     }
     assert_eq!(world.fallback_samples, 0);
 }

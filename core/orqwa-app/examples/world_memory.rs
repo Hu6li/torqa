@@ -15,13 +15,18 @@
 //! With `--stream --store`, each chunk is also written to a world store as the app writes one
 //! it keeps (ADR 0040), in a temporary directory, which is then packed into a kept world: the
 //! store's size and how long packing takes are printed.
+//!
+//! The app holds a world's chunks on disk (ADR 0040): the memory printed once the world is
+//! ready is the core's while riding (R240), and the checksums and sizes are made from the
+//! chunks read back one at a time. With `--keep`, a course (`.oqc`) is put in the library and
+//! its world kept in `cache`: the first run builds and keeps it, the next rides it from there.
 #![allow(clippy::cast_precision_loss)] // megabytes for reading, not counting
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
-use orqwa_app::{App, AppEvent};
+use orqwa_app::{App, AppEvent, WorldChunks};
 use orqwa_world::{MeshData, TerrainChunk, World};
 
 fn main() {
@@ -48,16 +53,29 @@ fn main() {
         let _ = std::fs::remove_dir_all(dir);
         return;
     }
-    let mut app = App::new(dir.join("data"), cache).expect("app");
-    let began = Instant::now();
     let gpx = std::path::Path::new(&course)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("gpx"));
+    let keep = std::env::args().any(|arg| arg == "--keep");
+    let mut course = std::path::PathBuf::from(course);
+    if keep && !gpx {
+        // Only the library's courses' worlds stay kept: it is there before the app tidies.
+        let library = dir.join("data/courses");
+        std::fs::create_dir_all(&library).expect("library");
+        let copy = library.join(course.file_name().expect("a course file"));
+        std::fs::copy(&course, &copy).expect("course in the library");
+        course = copy;
+    }
+    let mut app = App::new(dir.join("data"), cache).expect("app");
+    let began = Instant::now();
     if gpx {
-        app.load_route(course.into(), false);
+        app.load_route(course, false);
         wait(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
     } else {
-        app.open_course(course.into());
+        if keep {
+            app.set_keeps_worlds(true).expect("keeping worlds");
+        }
+        app.open_course(course);
         wait(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         if !app.build_world() {
             wait(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
@@ -68,15 +86,46 @@ fn main() {
         began.elapsed().as_secs_f64(),
         memory()
     );
+    if keep {
+        // Kept in the background, as it is ridden.
+        while app.kept_worlds().is_empty() {
+            app.update(Duration::from_millis(20));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        println!("kept: {}", memory());
+    }
     let world = app.world().expect("world");
-    println!("checksum {:016x}", checksum(world));
-    let hashes: Vec<u64> = world.chunks.iter().map(chunk_hash).collect();
+    let chunks = app.world_chunks().expect("chunks");
+    let reading = Instant::now();
+    let (mut whole, mut hashes, mut spare) = (hasher(), Vec::new(), 0);
+    each_chunk(chunks, |chunk| {
+        hash_chunk(&mut whole, chunk);
+        hashes.push(chunk_hash(chunk));
+        spare += meshes(chunk).map(self::spare).sum::<usize>();
+    });
+    println!(
+        "read back one by one in {:.1} s; {}",
+        reading.elapsed().as_secs_f64(),
+        memory()
+    );
+    println!("checksum {:016x}", checksum(whole, world));
     println!("chunk checksum {:016x}", chunk_checksum(&hashes, world));
-    let spare: usize = world.chunks.iter().flat_map(meshes).map(spare).sum();
     println!("unused mesh capacity {:.0} MB", mb(spare));
-    by_part(world);
-    by_distance(world);
+    by_part(world, chunks);
+    by_distance(world, chunks);
+    drop(app);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Gives each chunk of `chunks` to `each` in index order, read one at a time.
+fn each_chunk(chunks: &WorldChunks, mut each: impl FnMut(&TerrainChunk)) {
+    for index in 0..chunks.len() {
+        each(&chunks.get(index).expect("every chunk readable"));
+    }
+}
+
+fn hasher() -> std::collections::hash_map::DefaultHasher {
+    std::collections::hash_map::DefaultHasher::new()
 }
 
 /// Builds the world of the GPX route at `path` offline from `cache`, keeping only each chunk's
@@ -106,6 +155,7 @@ fn stream(
             .offline();
     let store = kept.map(|kept| kept.building("course").expect("store"));
     let hashes = std::sync::Mutex::new(Vec::new());
+    let centres = std::sync::Mutex::new(Vec::new());
     let world = runtime.block_on(orqwa_world::generate_into(
         &imported.route,
         &mut terrain,
@@ -121,6 +171,11 @@ fn stream(
                 hashes.resize(index + 1, None);
             }
             hashes[index] = Some(chunk_hash(&chunk));
+            let mut centres = centres.lock().expect("centres");
+            if centres.len() <= index {
+                centres.resize(index + 1, [0.0; 3]);
+            }
+            centres[index] = chunk.center;
         },
     ));
     println!(
@@ -137,8 +192,9 @@ fn stream(
     println!("chunk checksum {:016x}", chunk_checksum(&hashes, &world));
     if let (Some(kept), Some(store)) = (kept, store) {
         let packing = Instant::now();
-        store
-            .keep(&world, orqwa_world::GENERATOR, hashes.len())
+        let centres = centres.into_inner().expect("centres");
+        orqwa_storage::worlds::Chunks::built(store, centres)
+            .keep(kept, "course", &world, orqwa_world::GENERATOR)
             .expect("kept");
         println!(
             "kept {:.0} MB ({:.1} MB per km) in {:.1} s",
@@ -272,22 +328,20 @@ fn hash_chunk(h: &mut impl Hasher, c: &TerrainChunk) {
     }
 }
 
-fn checksum(world: &World) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    for c in &world.chunks {
-        hash_chunk(&mut h, c);
-    }
+/// A checksum of the world from `h`, which hashed its chunks in index order, and its other
+/// meshes.
+fn checksum(mut h: impl Hasher, world: &World) -> u64 {
     for m in [&world.road, &world.structures, &world.railways] {
         mesh_hash(&mut h, m);
     }
     h.finish()
 }
 
-fn by_part(world: &World) {
+fn by_part(world: &World, chunks: &WorldChunks) {
     let mut parts: BTreeMap<String, usize> = BTreeMap::new();
     let mut add = |name: &str, bytes: usize| *parts.entry(name.to_owned()).or_default() += bytes;
     let floats = |v: &[f32]| size_of_val(v);
-    for c in &world.chunks {
+    each_chunk(chunks, |c| {
         add("ground", bytes(&c.mesh));
         add("streets", bytes(&c.streets));
         add("tracks", bytes(&c.tracks));
@@ -308,7 +362,7 @@ fn by_part(world: &World) {
         );
         add("props", c.props.models.values().map(|v| floats(v)).sum());
         add("wires", bytes(&c.props.wires));
-    }
+    });
     add("road", bytes(&world.road));
     add("structures", bytes(&world.structures));
     add("railways", bytes(&world.railways));
@@ -319,7 +373,7 @@ fn by_part(world: &World) {
     let total: usize = parts.values().sum();
     let mut sorted: Vec<_> = parts.into_iter().collect();
     sorted.sort_by_key(|part| std::cmp::Reverse(part.1));
-    println!("{} chunks; world {:.0} MB", world.chunks.len(), mb(total));
+    println!("{} chunks; world {:.0} MB", chunks.len(), mb(total));
     for (name, bytes) in sorted {
         println!("{:>9.1} MB  {name}", mb(bytes));
     }
@@ -327,7 +381,7 @@ fn by_part(world: &World) {
 
 /// Sizes by how far each chunk's middle lies from the ridden road, against the draw ranges in
 /// `app/scenes/world.gd`.
-fn by_distance(world: &World) {
+fn by_distance(world: &World, chunks: &WorldChunks) {
     let road: Vec<(f32, f32)> = world
         .road
         .vertices
@@ -336,7 +390,7 @@ fn by_distance(world: &World) {
         .map(|v| (v[0], v[2]))
         .collect();
     let mut bands: BTreeMap<u32, [usize; 5]> = BTreeMap::new();
-    for c in &world.chunks {
+    each_chunk(chunks, |c| {
         let distance = road
             .iter()
             .map(|&(x, z)| (x - c.center[0]).hypot(z - c.center[2]))
@@ -348,7 +402,7 @@ fn by_distance(world: &World) {
         band[2] += bytes(&c.mesh);
         band[3] += bytes(&c.urban);
         band[4] += bytes(&c.tracks);
-    }
+    });
     println!("from road  chunks  streets   ground    urban   tracks (MB)");
     for (from, [n, streets, ground, urban, tracks]) in bands {
         println!(

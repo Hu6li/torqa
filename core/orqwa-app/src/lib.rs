@@ -26,10 +26,12 @@ pub mod updates;
 pub mod uploads;
 pub mod video;
 pub mod view;
+mod world_chunks;
 
 pub use detail::{DetailRegion, DetailStep, RegionOffer};
 pub use import::{Imported, LoadStage, Progress, countries, course_map, import_gpx, import_route};
 pub use kept::KeptWorld;
+pub use world_chunks::WorldChunks;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -484,14 +486,24 @@ pub enum TrainerChoice {
     Discovered(usize),
 }
 
+/// A world loaded for a ride.
+struct LoadedWorld {
+    /// Its parts built whole.
+    world: Arc<World>,
+    /// Its chunks, on disk (ADR 0040).
+    chunks: Arc<WorldChunks>,
+    /// The version of the generator that built it.
+    generator: u32,
+    /// The fingerprint of the library course it was just built for, to keep it as (R101).
+    keep_as: Option<String>,
+}
+
 enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
     // Loading results carry the load they belong to; those of an abandoned load are dropped.
     Route(u64, Result<Box<Imported>, Failure>),
     Video(u64, Result<Box<(Imported, video::VideoSource)>, Failure>),
-    /// A world, the version of the generator that built it, and how to keep it once built
-    /// for a library course (R101).
-    World(u64, Arc<World>, u32, Option<kept::ToKeep>),
+    World(u64, Box<LoadedWorld>),
     Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, Failure>),
     /// The loaded route was saved as this course.
@@ -765,7 +777,9 @@ pub struct App {
     /// were worked out for: a search refreshes the gallery on every key, too often to ride
     /// every course again.
     estimates: Estimates,
+    /// The loaded world's parts built whole, and its chunks.
     world: Option<Arc<World>>,
+    chunks: Option<Arc<WorldChunks>>,
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
     offline: bool,
@@ -874,6 +888,7 @@ impl App {
             filling_countries: None,
             estimates: Estimates::default(),
             world: None,
+            chunks: None,
             road_widths: orqwa_world::RoadWidths::default(),
             driving_left: Vec::new(),
             offline: false,
@@ -1596,8 +1611,9 @@ impl App {
         let keep = self
             .world
             .clone()
+            .zip(self.chunks.clone())
             .filter(|_| self.keeps_worlds())
-            .map(|world| (world, self.world_generator, self.keeper()));
+            .map(|(world, chunks)| (world, chunks, self.world_generator, self.keeper()));
         self.runtime.spawn_blocking(move || {
             let result = std::fs::create_dir_all(&library)
                 .map_err(course::CourseError::from)
@@ -1624,8 +1640,8 @@ impl App {
                 .map_err(|e| Failure::new(Kind::SaveCourse, e));
             let saved = result.as_ref().ok().cloned();
             let _ = tx.send(JobResult::CourseSaved(result));
-            if let (Some(course), Some((world, generator, keeper))) = (saved, keep) {
-                keeper.keep(&course, &world, generator);
+            if let (Some(course), Some((world, chunks, generator, keeper))) = (saved, keep) {
+                keeper.keep(&course, &world, &chunks, generator);
             }
         });
         Ok(())
@@ -2096,6 +2112,10 @@ impl App {
         self.video = None;
         self.view = View::World;
         self.world = None;
+        if let Some(chunks) = self.chunks.take() {
+            // Deleting the store it was ridden from takes a while.
+            self.runtime.spawn_blocking(move || drop(chunks));
+        }
         self.road_widths = orqwa_world::RoadWidths::default();
         self.driving_left.clear();
         self.route = None;
@@ -2125,49 +2145,54 @@ impl App {
         // The land beyond the corridor needs only coarse tiles, a few for the whole view.
         let mut distant = terrain(TileSource::distant());
         // A library course's world may be kept, and is kept once built (R101).
-        let kept = self
-            .course
-            .clone()
-            .filter(|_| self.keeps_worlds())
-            .map(|course| (course, self.keeper()));
+        let kept = self.course.clone().filter(|_| self.keeps_worlds());
+        let keeper = self.keeper();
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
                 load,
                 last: None,
             };
-            let mut to_keep = None;
-            if let Some((course, keeper)) = kept {
+            let mut keep_as = None;
+            if let Some(course) = kept {
                 reporter.report(LoadStage::KeptWorld, 0, 1);
-                let found = tokio::task::spawn_blocking(move || keeper.find(&course)).await;
+                let finder = keeper.clone();
+                let found = tokio::task::spawn_blocking(move || finder.find(&course)).await;
                 match found {
-                    Ok(kept::Found::World(world, generator)) => {
+                    Ok(kept::Found::World(world, generator, chunks)) => {
                         reporter.report(LoadStage::KeptWorld, 1, 1);
-                        let _ = tx.send(JobResult::World(load, Arc::from(world), generator, None));
+                        let loaded = LoadedWorld {
+                            world: Arc::from(world),
+                            chunks: Arc::new(chunks),
+                            generator,
+                            keep_as: None,
+                        };
+                        let _ = tx.send(JobResult::World(load, Box::new(loaded)));
                         return;
                     }
-                    Ok(kept::Found::Missing(keep)) => to_keep = Some(keep),
+                    Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
                     Ok(kept::Found::Unknown) | Err(_) => {}
                 }
             }
-            // A world to keep is written as it is built (ADR 0040); a build stopped deletes
-            // what it wrote.
-            let store = to_keep.as_ref();
-            let mut world = orqwa_world::generate_storing(
+            // Every world is built into a store and ridden from it, so its chunks are never all
+            // held (ADR 0040); a build stopped deletes what it wrote.
+            let sink = world_chunks::Sink::new(keeper.store(keep_as.as_deref().unwrap_or("ride")));
+            let mut world = orqwa_world::generate_into(
                 &route,
                 &mut detailed,
                 &map,
                 &mut |done, total| reporter.report(LoadStage::World, done, total),
-                &|index, chunk| {
-                    if let Some(store) = store {
-                        store.store(index, chunk);
-                    }
-                },
+                &|index, chunk| sink.take(index, chunk),
             )
             .await;
             world.horizon = orqwa_world::horizon(&route, &mut distant).await;
-            let generator = orqwa_world::GENERATOR;
-            let _ = tx.send(JobResult::World(load, Arc::new(world), generator, to_keep));
+            let loaded = LoadedWorld {
+                world: Arc::new(world),
+                chunks: Arc::new(sink.finish()),
+                generator: orqwa_world::GENERATOR,
+                keep_as,
+            };
+            let _ = tx.send(JobResult::World(load, Box::new(loaded)));
         });
     }
 
@@ -3997,10 +4022,26 @@ impl App {
         self.route.as_ref()
     }
 
-    /// The 3D world of the loaded route, once generated.
+    /// The 3D world of the loaded route, once generated: its parts built whole, without its
+    /// chunks, which [`App::world_chunks`] reads one at a time (ADR 0040).
     #[must_use]
     pub fn world(&self) -> Option<&World> {
         self.world.as_deref()
+    }
+
+    /// The chunks of the loaded route's 3D world, once generated.
+    #[must_use]
+    pub fn world_chunks(&self) -> Option<&WorldChunks> {
+        self.chunks.as_deref()
+    }
+
+    /// The mask that keeps the winter ground's snow off the loaded world's road, streets,
+    /// tracks and paving. Made the first time it is asked for, from every chunk: seconds for a
+    /// long, densely mapped course.
+    #[must_use]
+    pub fn snow_ground_mask(&self) -> Option<&orqwa_world::SnowGroundMask> {
+        let (world, chunks) = (self.world.as_ref()?, self.chunks.as_ref()?);
+        Some(chunks.snow_ground_mask(world))
     }
 
     /// Avatar position in metres east/north, on the local traffic side of the drawn road.
@@ -4057,13 +4098,12 @@ impl App {
                 JobResult::Scan(Ok((bluetooth, devices))) => {
                     self.scanned(bluetooth, devices, events);
                 }
-                JobResult::World(load, _, _, Some(to_keep)) if load != self.load => {
-                    // Deleting a store takes a while.
-                    self.runtime.spawn_blocking(move || drop(to_keep));
+                JobResult::World(load, loaded) if load != self.load => {
+                    // Deleting its store takes a while.
+                    self.runtime.spawn_blocking(move || drop(loaded));
                 }
                 JobResult::Route(load, _)
                 | JobResult::Video(load, _)
-                | JobResult::World(load, ..)
                 | JobResult::Progress(load, ..)
                     if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
@@ -4097,17 +4137,24 @@ impl App {
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
-                JobResult::World(_, world, generator, to_keep) => {
+                JobResult::World(_, loaded) => {
+                    let LoadedWorld {
+                        world,
+                        chunks,
+                        generator,
+                        keep_as,
+                    } = *loaded;
                     events.push(AppEvent::WorldReady {
-                        chunks: world.chunks.len(),
+                        chunks: chunks.len(),
                         fallback_samples: world.fallback_samples,
                     });
                     self.world_generator = generator;
-                    if let Some(to_keep) = to_keep {
-                        self.keep_built_world(to_keep, Arc::clone(&world));
+                    if let Some(fingerprint) = keep_as {
+                        self.keep_built_world(fingerprint, Arc::clone(&world), Arc::clone(&chunks));
                     }
                     self.road_widths = orqwa_world::RoadWidths::new(&world.road);
                     self.world = Some(world);
+                    self.chunks = Some(chunks);
                     // A prepared GPX goes into the course library (R39).
                     if !self.from_course
                         && let Err(error) = self.save_course()
@@ -4927,11 +4974,11 @@ mod tests {
         ));
         app.load_route(fixture, true);
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
-        let world = app.world().expect("the world");
-        let mut counts = std::collections::BTreeMap::<&str, usize>::new();
-        for chunk in &world.chunks {
+        let chunks = app.world_chunks().expect("the world");
+        let mut counts = std::collections::BTreeMap::<String, usize>::new();
+        for chunk in (0..chunks.len()).filter_map(|index| chunks.get(index)) {
             for (name, buffer) in &chunk.props.models {
-                *counts.entry(name.as_str()).or_default() += buffer.len() / 12;
+                *counts.entry(name.clone()).or_default() += buffer.len() / 12;
             }
         }
         eprintln!("props on the Oberalp: {counts:?}");

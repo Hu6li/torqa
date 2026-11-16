@@ -252,11 +252,30 @@ store is 20 MB per kilometre, twice ADR 0025's Swiss courses and within ADR 0040
 the app seconds of deflating on one core after the ride began. The checksums are those of
 the runs above, for the three fixtures and Wada.
 
-For now only worlds the rider keeps are built into a store: until the core reads chunks from
-it while riding, writing the others would only cost flash.
+## Ridden from the store
+
+2026-11-10, container, `world_memory <course.oqc> [cache] [--keep]`, the app as it rides. The
+core no longer holds a world's chunks (ADR 0040, step 2b): every world is built into a store
+in the cache, and ridden from it or from its kept world, one chunk at a time.
+
+| Wada, the app | Before (chunks held) | Chunks on disk |
+|---|---:|---:|
+| Peak while building | 4.18 GB | 1.57–1.60 GB |
+| Resident once built | 4.12 GB | 0.86–1.03 GB |
+| Ridden from its kept world: peak | the whole world, 3.2 GB of it chunks | 0.24–0.27 GB |
+| Ridden from its kept world: ready in | – | 5 s |
+| Reading all 683 chunks back, one at a time | – | 5.5–12.7 s, 8–19 ms each |
+
+The peak while building is now the streamed build's (above) plus the parts built whole. What
+stays resident after the build is mostly memory glibc keeps from building, not the world:
+ridden from its kept world, the core holds only the parts built whole and each chunk's centre,
+within R240's 500 MB for the core while riding.
+Reading a chunk back costs Godot's upload of it that much more time on the main thread; the
+2d PR measures the frame time while riding (R240). The checksums are unchanged for the three
+fixtures and Wada, also read back from the store and from the kept world.
 
 ## Still to do
 
-Even so, the world alone is 3.2 GB, and Godot holds its own copy of every chunk it uploads,
-never freeing one; the tablet ends ORQWA about halfway through building the chunks. Only
-keeping the chunks near the rider bounds memory for any course length (PLAN Phase 12 G).
+Godot still holds its own copy of every chunk it uploads, never freeing one (2c), and the
+whole world is built before the ride starts (2d). On Android, **Ride** doesn't yet check that
+the cache has room for the store.

@@ -3606,8 +3606,8 @@ impl OrqwaApp {
     fn world_chunk_count(&self) -> i64 {
         self.app
             .as_ref()
-            .and_then(App::world)
-            .map_or(0, |world| i64::try_from(world.chunks.len()).unwrap_or(0))
+            .and_then(App::world_chunks)
+            .map_or(0, |chunks| i64::try_from(chunks.len()).unwrap_or(0))
     }
 
     /// The rider's start (east/north metres), including a validated continuation point.
@@ -3622,10 +3622,15 @@ impl OrqwaApp {
     /// Spatial upload order around a rider (east/north metres), with the visible-area prefix.
     #[func]
     fn world_chunk_plan(&self, east: f64, north: f64, radius: f64) -> VarDictionary {
-        let Some(world) = self.app.as_ref().and_then(App::world) else {
+        let Some(chunks) = self.app.as_ref().and_then(App::world_chunks) else {
             return VarDictionary::new();
         };
-        let plan = orqwa_world::chunk_plan(world, Meters(east), Meters(north), Meters(radius));
+        let plan = orqwa_world::chunk_plan(
+            chunks.centres(),
+            Meters(east),
+            Meters(north),
+            Meters(radius),
+        );
         let indices: PackedInt32Array = plan
             .indices
             .into_iter()
@@ -3658,13 +3663,13 @@ impl OrqwaApp {
             .collect()
     }
 
-    /// Conservative road/paving clearance for the raised winter ground blanket.
+    /// Conservative road/paving clearance for the raised winter ground blanket. The first call
+    /// for a world reads all its chunks: seconds for a long, densely mapped course.
     #[func]
     fn winter_ground_mask(&self) -> VarDictionary {
-        let Some(world) = self.app.as_ref().and_then(App::world) else {
+        let Some(mask) = self.app.as_ref().and_then(App::snow_ground_mask) else {
             return VarDictionary::new();
         };
-        let mask = orqwa_world::snow_ground_mask(world);
         let (Ok(width), Ok(height)) = (i32::try_from(mask.columns), i32::try_from(mask.rows))
         else {
             return VarDictionary::new();
@@ -3672,7 +3677,7 @@ impl OrqwaApp {
         if width == 0 || height == 0 {
             return VarDictionary::new();
         }
-        let pixels = PackedByteArray::from(mask.pixels);
+        let pixels = PackedByteArray::from(mask.pixels.as_slice());
         let Some(image) = Image::create_from_data(width, height, false, ImageFormat::R8, &pixels)
         else {
             return VarDictionary::new();
@@ -3790,13 +3795,13 @@ impl OrqwaApp {
         let chunk = self
             .app
             .as_ref()
-            .and_then(App::world)
+            .and_then(App::world_chunks)
             .zip(usize::try_from(index).ok())
-            .and_then(|(world, index)| world.chunks.get(index));
+            .and_then(|(chunks, index)| chunks.get(index));
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
-        graphics::chunk_arrays(chunk, tree_density)
+        graphics::chunk_arrays(&chunk, tree_density)
     }
 
     /// Like `world_chunk_with_tree_density`, with the selected season's grass/flower balance.
@@ -3811,14 +3816,14 @@ impl OrqwaApp {
         let chunk = self
             .app
             .as_ref()
-            .and_then(App::world)
+            .and_then(App::world_chunks)
             .zip(usize::try_from(index).ok())
-            .and_then(|(world, index)| world.chunks.get(index));
+            .and_then(|(chunks, index)| chunks.get(index));
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
         let season = orqwa_domain::season::Season::from_name(&name.to_string()).unwrap_or_default();
-        graphics::chunk_arrays_for_season(chunk, tree_density, season)
+        graphics::chunk_arrays_for_season(&chunk, tree_density, season)
     }
 
     /// Converts small-plant transform buffers with the same seasonal rule used by courses.

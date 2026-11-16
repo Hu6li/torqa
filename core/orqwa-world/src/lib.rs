@@ -347,22 +347,8 @@ pub async fn generate<M: ElevationModel>(
     map: &MapData,
     progress: &mut (dyn FnMut(usize, usize) + Send),
 ) -> World {
-    generate_storing(route, model, map, progress, &|_, _| {}).await
-}
-
-/// Builds the world as [`generate`] does, and also gives each chunk to `store` as soon as it
-/// is finished, with its index in [`World::chunks`], on the core that finished it: to write
-/// the world while it is built (ADR 0040).
-pub async fn generate_storing<M: ElevationModel>(
-    route: &Route,
-    model: &mut M,
-    map: &MapData,
-    progress: &mut (dyn FnMut(usize, usize) + Send),
-    store: &(dyn Fn(usize, &TerrainChunk) + Sync),
-) -> World {
     let chunks = Mutex::new(Vec::new());
     let mut world = generate_into(route, model, map, progress, &|index, chunk| {
-        store(index, &chunk);
         let mut chunks = chunks.lock().unwrap_or_else(PoisonError::into_inner);
         if chunks.len() <= index {
             chunks.resize_with(index + 1, || None);

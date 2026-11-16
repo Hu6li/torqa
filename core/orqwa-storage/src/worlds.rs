@@ -6,11 +6,14 @@
 //! ```text
 //! worlds/<fingerprint>.world   one zip per course: `whole`, the parts built whole, and
 //!                              `chunks/<n>` for each chunk, deflated
-//! worlds/<fingerprint>.<write>.building/chunks/<n>
-//!                              a world being built (ADR 0040): each chunk once finished, as a
-//!                              zip of its one entry `chunks/<n>`, copied into the `.world` as
-//!                              it is once the world is complete
+//! worlds/<name>.<write>.building/chunks/<n>
+//!                              a world being built and ridden (ADR 0040): each chunk once
+//!                              finished, as a zip of its one entry `chunks/<n>`, copied into
+//!                              the `.world` as it is once the world is complete and kept
 //! ```
+//!
+//! Every world is built into a store, kept or not, and ridden from it or from its kept world:
+//! its [chunks](Chunks) are read one at a time, never all held (ADR 0040).
 //!
 //! A course's world is found by the [fingerprint](crate::course::fingerprint) of what it is
 //! built from. It stays kept across updates of ORQWA: one of another
@@ -23,6 +26,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use orqwa_world::{TerrainChunk, World, stored};
@@ -42,6 +46,17 @@ const LEVEL: i64 = 1;
 const ABANDONED: Duration = Duration::from_secs(600);
 /// Numbers the writes, so two of the same world at once do not write into one file.
 static WRITES: AtomicU64 = AtomicU64::new(0);
+/// The stores of this ORQWA's builds, never tidied however long they stay unchanged: a world
+/// is ridden from its store long after its last chunk was written.
+static LIVE: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// Whether `path` is the store of one of this ORQWA's builds.
+fn ours(path: &Path) -> bool {
+    LIVE.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .any(|dir| dir == path)
+}
 
 /// The worlds this computer keeps.
 #[derive(Debug, Clone)]
@@ -90,13 +105,14 @@ impl KeptWorlds {
         stored::read_generator(&mut BufReader::new(whole)).ok()
     }
 
-    /// The kept world of the course with `fingerprint` and the version of the generator that
-    /// built it; `None` if there is none. Its chunks are read on all cores.
+    /// The kept world of the course with `fingerprint`: its parts built whole, the version of
+    /// the generator that built it, and its chunks to read when needed. `None` if there is
+    /// none. Only each chunk's centre is read now.
     ///
     /// # Errors
     /// On I/O errors, and if the file is damaged or of another
     /// [format](orqwa_world::stored::FORMAT).
-    pub fn read(&self, fingerprint: &str) -> io::Result<Option<(World, u32)>> {
+    pub fn open(&self, fingerprint: &str) -> io::Result<Option<(World, u32, Chunks)>> {
         let path = self.file(fingerprint);
         let file = match File::open(&path) {
             Ok(file) => file,
@@ -104,46 +120,15 @@ impl KeptWorlds {
             Err(e) => return Err(e),
         };
         let mut zip = ZipArchive::new(BufReader::new(file))?;
-        let (mut world, generator) = stored::read_whole(&mut BufReader::new(zip.by_name(WHOLE)?))?;
-        let count = zip.len() - 1;
-        let threads = std::thread::available_parallelism()
-            .map_or(1, NonZeroUsize::get)
-            .min(count)
-            .max(1);
-        let read = std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..threads)
-                .map(|first| {
-                    let path = &path;
-                    scope.spawn(move || -> io::Result<Vec<TerrainChunk>> {
-                        let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
-                        (first..count)
-                            .step_by(threads)
-                            .map(|index| {
-                                let entry = zip.by_name(&format!("{CHUNKS}{index}"))?;
-                                stored::read_chunk(&mut BufReader::new(entry))
-                            })
-                            .collect()
-                    })
-                })
-                .collect();
-            workers
-                .into_iter()
-                .map(|worker| {
-                    worker
-                        .join()
-                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-                })
-                .collect::<io::Result<Vec<_>>>()
-        })?;
-        // Back in their order: worker `w` read chunks w, w + threads, …
-        let mut workers: Vec<_> = read.into_iter().map(Vec::into_iter).collect();
-        for index in 0..count {
-            let chunk = workers[index % threads]
-                .next()
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "chunk missing"))?;
-            world.chunks.push(chunk);
-        }
-        Ok(Some((world, generator)))
+        let (world, generator) = stored::read_whole(&mut BufReader::new(zip.by_name(WHOLE)?))?;
+        let centres = (0..zip.len().saturating_sub(1))
+            .map(|index| stored::read_center(&mut zip.by_name(&format!("{CHUNKS}{index}"))?))
+            .collect::<io::Result<_>>()?;
+        let chunks = Chunks {
+            centres,
+            source: Mutex::new(Source::Kept { file: path, zip }),
+        };
+        Ok(Some((world, generator, chunks)))
     }
 
     /// Keeps `world`, built by the [generator](orqwa_world::GENERATOR) of version
@@ -153,35 +138,53 @@ impl KeptWorlds {
     /// # Errors
     /// On I/O errors.
     pub fn write(&self, fingerprint: &str, world: &World, generator: u32) -> io::Result<()> {
+        self.write_parts(fingerprint, world, &world.chunks, generator)
+    }
+
+    /// Keeps a world as [`write`](Self::write) does, of `whole`'s parts built whole and
+    /// `chunks`.
+    ///
+    /// # Errors
+    /// On I/O errors.
+    pub fn write_parts(
+        &self,
+        fingerprint: &str,
+        whole: &World,
+        chunks: &[TerrainChunk],
+        generator: u32,
+    ) -> io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
         written_whole(&self.file(fingerprint), |partial| {
-            write_to(partial, world, generator)
+            write_to(partial, whole, chunks, generator)
         })
     }
 
-    /// A store to build the world of the course with `fingerprint` into, chunk by chunk, and
-    /// to [keep](Building::keep) it from once complete (ADR 0040). Each build has its own, so
+    /// A store to build a world into, chunk by chunk, to ride it from and to
+    /// [keep](Chunks::keep) it from once complete (ADR 0040), named after its course's
+    /// fingerprint, or anything else for a world of no course yet. Each build has its own, so
     /// one stopped never deletes another's chunks.
     ///
     /// # Errors
     /// On I/O errors.
-    pub fn building(&self, fingerprint: &str) -> io::Result<Building> {
+    pub fn building(&self, name: &str) -> io::Result<Building> {
         std::fs::create_dir_all(&self.root)?;
         // Process ids repeat, after a crash and across sandboxes: a directory already there is
         // another build's, live or left behind.
         let dir = loop {
             let dir = self
                 .root
-                .join(format!("{fingerprint}.{}.{BUILDING}", write_name()));
+                .join(format!("{name}.{}.{BUILDING}", write_name()));
             match std::fs::create_dir(&dir) {
                 Ok(()) => break dir,
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(e),
             }
         };
+        LIVE.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(dir.clone());
         let store = Building {
             dir,
-            world: self.file(fingerprint),
             failed: AtomicBool::new(false),
         };
         std::fs::create_dir(store.dir.join(CHUNKS))?;
@@ -213,14 +216,16 @@ impl KeptWorlds {
                 });
             // A world being written or built is left to its writer, unless that stopped long
             // ago: a build's chunks go into its `chunks` directory, which changes with each.
-            let writing = path
-                .extension()
-                .is_some_and(|e| e == "part" || e == BUILDING)
-                && [path.clone(), path.join(CHUNKS)].iter().any(|path| {
-                    std::fs::metadata(path)
-                        .and_then(|m| m.modified())
-                        .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED))
-                });
+            // This ORQWA's own stores are ridden from, also once complete.
+            let writing = ours(&path)
+                || path
+                    .extension()
+                    .is_some_and(|e| e == "part" || e == BUILDING)
+                    && [path.clone(), path.join(CHUNKS)].iter().any(|path| {
+                        std::fs::metadata(path)
+                            .and_then(|m| m.modified())
+                            .is_ok_and(|at| at.elapsed().is_ok_and(|age| age < ABANDONED))
+                    });
             if !live && !writing {
                 remove(&path)?;
             }
@@ -228,15 +233,22 @@ impl KeptWorlds {
         Ok(())
     }
 
-    /// Drops every kept world.
+    /// Drops every kept world. The stores of this ORQWA's builds stay: worlds are ridden from
+    /// them.
     ///
     /// # Errors
     /// On I/O errors.
     pub fn clear(&self) -> io::Result<()> {
-        remove(&self.root)
+        for entry in read_dir(&self.root)? {
+            if !ours(&entry.path()) {
+                remove(&entry.path())?;
+            }
+        }
+        Ok(())
     }
 
-    /// How many bytes the kept worlds take on disk.
+    /// How many bytes the kept worlds take on disk, without the worlds this ORQWA is building
+    /// or riding that are not kept.
     #[must_use]
     pub fn size(&self) -> u64 {
         fn size_of(path: &Path) -> u64 {
@@ -250,7 +262,13 @@ impl KeptWorlds {
                 Err(_) => 0,
             }
         }
-        size_of(&self.root)
+        read_dir(&self.root)
+            .unwrap_or_default()
+            .iter()
+            .map(std::fs::DirEntry::path)
+            .filter(|path| !ours(path))
+            .map(|path| size_of(&path))
+            .sum()
     }
 }
 
@@ -260,8 +278,6 @@ impl KeptWorlds {
 #[derive(Debug)]
 pub struct Building {
     dir: PathBuf,
-    /// The kept world it becomes.
-    world: PathBuf,
     /// Whether a chunk could not be written, so the store cannot become the world.
     failed: AtomicBool,
 }
@@ -271,7 +287,8 @@ impl Building {
     /// written in any order, from several threads at once.
     ///
     /// # Errors
-    /// On I/O errors; the store then cannot be [kept](Building::keep).
+    /// On I/O errors; the store then cannot be [kept](Chunks::keep). The chunks written before
+    /// stay readable: they may be the only copy.
     pub fn write(&self, index: usize, chunk: &TerrainChunk) -> io::Result<()> {
         let path = self.chunk(index);
         let partial = path.with_extension("part");
@@ -279,9 +296,10 @@ impl Building {
             stored::write_chunk(chunk, out)
         })
         .and_then(|()| std::fs::rename(&partial, &path));
-        if written.is_err() && !self.failed.swap(true, Ordering::Relaxed) {
-            // Never kept now: its room is given back at once, as the disk may be full.
-            let _ = remove(&self.dir);
+        if written.is_err() {
+            self.failed.store(true, Ordering::Relaxed);
+            // The disk may be full: what the chunk took of it is given back.
+            let _ = std::fs::remove_file(&partial);
         }
         written
     }
@@ -301,29 +319,18 @@ impl Building {
         !self.failed.load(Ordering::Relaxed)
     }
 
-    /// Keeps the world built, in place of one kept before: `world`'s parts built whole, by the
-    /// [generator](orqwa_world::GENERATOR) of version `generator`, and the first `chunks`
-    /// chunks written here. The chunks are copied as they are, in index order, neither inflated
-    /// nor deflated again. The file appears whole or not at all.
-    ///
-    /// # Errors
-    /// On I/O errors, and if a chunk is missing or failed to be written.
-    pub fn keep(self, world: &World, generator: u32, chunks: usize) -> io::Result<()> {
+    /// Packs the world built into the kept world `file`, in place of one kept before:
+    /// `whole`'s parts built whole, by the [generator](orqwa_world::GENERATOR) of version
+    /// `generator`, and the first `chunks` chunks written here. The chunks are copied as they
+    /// are, in index order, neither inflated nor deflated again. The file appears whole or not
+    /// at all.
+    fn pack(&self, file: &Path, whole: &World, generator: u32, chunks: usize) -> io::Result<()> {
         if !self.whole() {
             return Err(io::Error::other("a chunk of the world was not written"));
         }
-        written_whole(&self.world, |partial| {
-            let mut zip = ZipWriter::new(BufWriter::new(File::create(partial)?));
-            zip.start_file(WHOLE, options())?;
-            let mut out = BufWriter::new(&mut zip);
-            stored::write_whole(world, generator, &mut out)?;
-            out.flush()?;
-            drop(out);
-            for index in 0..chunks {
-                let mut chunk = ZipArchive::new(BufReader::new(File::open(self.chunk(index))?))?;
-                zip.raw_copy_file(chunk.by_index_raw(0)?)?;
-            }
-            finish(zip)
+        packed(file, whole, generator, chunks, |zip, index| {
+            let mut chunk = ZipArchive::new(BufReader::new(File::open(self.chunk(index))?))?;
+            zip.raw_copy_file(chunk.by_index_raw(0)?)
         })
     }
 
@@ -335,7 +342,186 @@ impl Building {
 impl Drop for Building {
     fn drop(&mut self) {
         let _ = remove(&self.dir);
+        LIVE.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|dir| *dir != self.dir);
     }
+}
+
+/// A world's chunks on disk, read one at a time while it is ridden (ADR 0040): from the store
+/// it was built into, or from its kept world.
+#[derive(Debug)]
+pub struct Chunks {
+    centres: Vec<[f32; 3]>,
+    source: Mutex<Source>,
+}
+
+#[derive(Debug)]
+enum Source {
+    Building(Arc<Building>),
+    Kept {
+        file: PathBuf,
+        zip: ZipArchive<BufReader<File>>,
+    },
+}
+
+impl Chunks {
+    /// The chunks built into `store`, centred at `centres` by index.
+    #[must_use]
+    pub fn built(store: Building, centres: Vec<[f32; 3]>) -> Self {
+        Self {
+            centres,
+            source: Mutex::new(Source::Building(Arc::new(store))),
+        }
+    }
+
+    /// How many chunks the world has.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.centres.len()
+    }
+
+    /// Whether the world has no chunks.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.centres.is_empty()
+    }
+
+    /// The chunks' centres, by index.
+    #[must_use]
+    pub fn centres(&self) -> &[[f32; 3]] {
+        &self.centres
+    }
+
+    /// Reads chunk `index`. A kept world a chunk cannot be read from is damaged: it is
+    /// deleted, so that the course's next ride builds it again.
+    ///
+    /// # Errors
+    /// On I/O errors, and if the chunk is missing or damaged, e.g. the system cleared the
+    /// cache.
+    pub fn read(&self, index: usize) -> io::Result<TerrainChunk> {
+        let mut source = self.source.lock().unwrap_or_else(PoisonError::into_inner);
+        match &mut *source {
+            Source::Building(store) => store.read(index),
+            Source::Kept { file, zip } => {
+                let read = read_kept(zip, index);
+                if read.is_err() {
+                    let _ = remove(file);
+                }
+                read
+            }
+        }
+    }
+
+    /// Reads every chunk on all cores and gives each to `each` with its index, in no set
+    /// order, holding no more than one per core.
+    ///
+    /// # Errors
+    /// As [`read`](Self::read), on the first chunk that cannot be read.
+    pub fn read_each(&self, each: &(dyn Fn(usize, TerrainChunk) + Sync)) -> io::Result<()> {
+        // Each core reads through its own handle.
+        let from = match &*self.source.lock().unwrap_or_else(PoisonError::into_inner) {
+            Source::Building(store) => Reading::Store(Arc::clone(store)),
+            Source::Kept { file, .. } => Reading::Kept(file.clone()),
+        };
+        let count = self.len();
+        let threads = std::thread::available_parallelism()
+            .map_or(1, NonZeroUsize::get)
+            .min(count)
+            .max(1);
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..threads)
+                .map(|first| {
+                    let from = &from;
+                    scope.spawn(move || -> io::Result<()> {
+                        let mut zip = match from {
+                            Reading::Kept(file) => {
+                                Some(ZipArchive::new(BufReader::new(File::open(file)?))?)
+                            }
+                            Reading::Store(_) => None,
+                        };
+                        for index in (first..count).step_by(threads) {
+                            let chunk = match (&mut zip, from) {
+                                (Some(zip), _) => read_kept(zip, index)?,
+                                (None, Reading::Store(store)) => store.read(index)?,
+                                (None, Reading::Kept(_)) => unreachable!("opened above"),
+                            };
+                            each(index, chunk);
+                        }
+                        Ok(())
+                    })
+                })
+                .collect();
+            // The scope waits for the other workers too.
+            workers.into_iter().try_for_each(|worker| {
+                worker
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+        })
+    }
+
+    /// Keeps the world as that of the course with `fingerprint` among `kept`: `whole`'s parts
+    /// built whole, by the [generator](orqwa_world::GENERATOR) of version `generator`, and
+    /// these chunks. Built into a store, its chunks are copied from it as they are, then read
+    /// from the kept world, and the store is deleted once no chunk is being read from it. A
+    /// world read from a kept one is kept already. Blocks for seconds.
+    ///
+    /// # Errors
+    /// On I/O errors, and if a chunk is missing or failed to be written; the chunks are then
+    /// still read from the store.
+    pub fn keep(
+        &self,
+        kept: &KeptWorlds,
+        fingerprint: &str,
+        whole: &World,
+        generator: u32,
+    ) -> io::Result<()> {
+        std::fs::create_dir_all(&kept.root)?;
+        let file = kept.file(fingerprint);
+        let mut source = self.source.lock().unwrap_or_else(PoisonError::into_inner);
+        let store = match &mut *source {
+            Source::Building(store) => Arc::clone(store),
+            Source::Kept { file: read, .. } if *read == file && file.is_file() => return Ok(()),
+            Source::Kept { zip, .. } => {
+                // Deleted since, e.g. keeping worlds was turned off and on again: copied from
+                // the file still open. Chunks wait meanwhile.
+                packed(&file, whole, generator, self.len(), |out, index| {
+                    let name = format!("{CHUNKS}{index}");
+                    let at = zip
+                        .index_for_name(&name)
+                        .ok_or(zip::result::ZipError::FileNotFound)?;
+                    out.raw_copy_file(zip.by_index_raw(at)?)
+                })?;
+                let zip = ZipArchive::new(BufReader::new(File::open(&file)?))?;
+                *source = Source::Kept { file, zip };
+                return Ok(());
+            }
+        };
+        drop(source);
+        // Packed while the ride reads on from the store.
+        store.pack(&file, whole, generator, self.len())?;
+        let zip = ZipArchive::new(BufReader::new(File::open(&file)?))?;
+        let replaced = std::mem::replace(
+            &mut *self.source.lock().unwrap_or_else(PoisonError::into_inner),
+            Source::Kept { file, zip },
+        );
+        // The store is deleted here, unless a `read_each` still reads from it: not while a
+        // chunk is waited for.
+        drop((replaced, store));
+        Ok(())
+    }
+}
+
+/// Where [`Chunks::read_each`]'s cores read from.
+enum Reading {
+    Store(Arc<Building>),
+    Kept(PathBuf),
+}
+
+fn read_kept(zip: &mut ZipArchive<BufReader<File>>, index: usize) -> io::Result<TerrainChunk> {
+    let entry = zip.by_name(&format!("{CHUNKS}{index}"))?;
+    stored::read_chunk(&mut BufReader::new(entry))
 }
 
 /// A name no other write of this ORQWA, or of another running, uses.
@@ -356,6 +542,30 @@ fn written_whole(path: &Path, write: impl FnOnce(&Path) -> io::Result<()>) -> io
         let _ = std::fs::remove_file(&partial);
     }
     written
+}
+
+/// Makes the kept world `file`, so that it appears whole or not at all: `whole`'s parts built
+/// whole, by the [generator](orqwa_world::GENERATOR) of version `generator`, and `chunks`
+/// chunks, each copied in index order by `copy`, deflated as they are.
+fn packed(
+    file: &Path,
+    whole: &World,
+    generator: u32,
+    chunks: usize,
+    mut copy: impl FnMut(&mut ZipWriter<BufWriter<File>>, usize) -> zip::result::ZipResult<()>,
+) -> io::Result<()> {
+    written_whole(file, |partial| {
+        let mut zip = ZipWriter::new(BufWriter::new(File::create(partial)?));
+        zip.start_file(WHOLE, options())?;
+        let mut out = BufWriter::new(&mut zip);
+        stored::write_whole(whole, generator, &mut out)?;
+        out.flush()?;
+        drop(out);
+        for index in 0..chunks {
+            copy(&mut zip, index)?;
+        }
+        finish(zip)
+    })
 }
 
 fn options() -> SimpleFileOptions {
@@ -384,7 +594,7 @@ fn write_entry(
         .flush()
 }
 
-fn write_to(path: &Path, world: &World, generator: u32) -> io::Result<()> {
+fn write_to(path: &Path, world: &World, chunks: &[TerrainChunk], generator: u32) -> io::Result<()> {
     let mut zip = ZipWriter::new(BufWriter::new(File::create(path)?));
     let mut entry = |name: String, write: &dyn Fn(&mut dyn Write) -> io::Result<()>| {
         zip.start_file(name, options())?;
@@ -395,7 +605,7 @@ fn write_to(path: &Path, world: &World, generator: u32) -> io::Result<()> {
     entry(WHOLE.to_owned(), &|mut out| {
         stored::write_whole(world, generator, &mut out)
     })?;
-    for (index, chunk) in world.chunks.iter().enumerate() {
+    for (index, chunk) in chunks.iter().enumerate() {
         entry(format!("{CHUNKS}{index}"), &|mut out| {
             stored::write_chunk(chunk, &mut out)
         })?;
@@ -481,6 +691,34 @@ mod tests {
         }
     }
 
+    impl KeptWorlds {
+        /// The kept world of the course with `fingerprint`, its chunks read one by one as a
+        /// ride reads them.
+        fn read(&self, fingerprint: &str) -> io::Result<Option<(World, u32)>> {
+            let Some((mut world, generator, chunks)) = self.open(fingerprint)? else {
+                return Ok(None);
+            };
+            world.chunks = (0..chunks.len())
+                .map(|index| chunks.read(index))
+                .collect::<io::Result<_>>()?;
+            let centres: Vec<_> = world.chunks.iter().map(|chunk| chunk.center).collect();
+            assert_eq!(chunks.centres(), centres, "indexed as read");
+            Ok(Some((world, generator)))
+        }
+    }
+
+    /// `world` without its chunks, and its chunks' centres.
+    fn parts(world: &World) -> (World, Vec<[f32; 3]>) {
+        let whole = World {
+            chunks: Vec::new(),
+            ..world.clone()
+        };
+        (
+            whole,
+            world.chunks.iter().map(|chunk| chunk.center).collect(),
+        )
+    }
+
     #[test]
     fn a_kept_world_reads_back_whole_and_in_order() {
         let cache = temp_dir("kept");
@@ -539,7 +777,76 @@ mod tests {
     }
 
     #[test]
-    fn a_world_built_into_a_store_is_kept_as_one_written_whole() {
+    fn a_kept_world_is_ridden_one_chunk_at_a_time() {
+        let cache = temp_dir("open");
+        let kept = KeptWorlds::new(&cache);
+        assert!(kept.open("f").unwrap().is_none());
+        let built = world(30);
+        kept.write("f", &built, 3).unwrap();
+        let (whole, generator, chunks) = kept.open("f").unwrap().expect("kept");
+        let (parts, centres) = parts(&built);
+        assert_eq!(
+            (whole, generator),
+            (parts.clone(), 3),
+            "the parts built whole"
+        );
+        assert_eq!(chunks.centres(), centres, "indexed without being read");
+        assert_eq!(chunks.read(29).unwrap(), built.chunks[29]);
+        assert_eq!(chunks.read(0).unwrap(), built.chunks[0]);
+        // Every chunk once, on all cores.
+        let read = Mutex::new(vec![None; 30]);
+        chunks
+            .read_each(&|index, chunk| {
+                let mut read = read.lock().unwrap();
+                assert!(read[index].is_none(), "chunk {index} read twice");
+                read[index] = Some(chunk);
+            })
+            .unwrap();
+        let read: Vec<_> = read.into_inner().unwrap().into_iter().flatten().collect();
+        assert_eq!(read, built.chunks);
+        assert!(chunks.read(30).is_err());
+        // Deleted while ridden, e.g. keeping worlds turned off: ridden on, and kept again
+        // from the file still open once turned on.
+        kept.clear().unwrap();
+        assert_eq!(chunks.read(3).unwrap(), built.chunks[3]);
+        chunks.keep(&kept, "f", &parts, 3).unwrap();
+        assert_eq!(kept.read("f").unwrap(), Some((built.clone(), 3)));
+        assert_eq!(chunks.read(4).unwrap(), built.chunks[4]);
+        drop(chunks);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_kept_world_a_chunk_cannot_be_read_from_is_built_again() {
+        let cache = temp_dir("open-damaged");
+        let kept = KeptWorlds::new(&cache);
+        let built = world(2);
+        // Chunk 1's centre reads, the rest of it is cut off.
+        std::fs::create_dir_all(&kept.root).unwrap();
+        let mut zip = ZipWriter::new(BufWriter::new(File::create(kept.file("f")).unwrap()));
+        zip.start_file(WHOLE, options()).unwrap();
+        stored::write_whole(&built, 1, &mut zip).unwrap();
+        for index in 0..2 {
+            let mut bytes = Vec::new();
+            stored::write_chunk(&built.chunks[index], &mut bytes).unwrap();
+            if index == 1 {
+                bytes.truncate(20);
+            }
+            zip.start_file(format!("{CHUNKS}{index}"), options())
+                .unwrap();
+            zip.write_all(&bytes).unwrap();
+        }
+        finish(zip).unwrap();
+        let (_, _, chunks) = kept.open("f").unwrap().expect("kept");
+        assert_eq!(chunks.read(0).unwrap(), built.chunks[0]);
+        assert!(chunks.read(1).is_err());
+        assert!(!kept.has("f"), "damaged, so the next ride builds it again");
+        drop(chunks);
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn a_world_built_into_a_store_is_ridden_from_it_and_kept_as_one_written_whole() {
         let cache = temp_dir("store");
         let kept = KeptWorlds::new(&cache);
         let built = world(40);
@@ -557,20 +864,23 @@ mod tests {
         });
         assert!(store.whole());
         assert_eq!(store.read(7).unwrap(), built.chunks[7], "readable at once");
-        assert!(!kept.has("f"), "kept only once complete");
-        let whole_parts = World {
-            chunks: Vec::new(),
-            ..built.clone()
-        };
-        store.keep(&whole_parts, 3, 40).unwrap();
+        let (whole, centres) = parts(&built);
+        let chunks = Chunks::built(store, centres.clone());
+        assert_eq!(chunks.read(8).unwrap(), built.chunks[8]);
+        assert!(!kept.has("f"), "kept only once asked");
+        chunks.keep(&kept, "f", &whole, 3).unwrap();
         assert_eq!(kept.read("f").unwrap(), Some((built.clone(), 3)));
         assert_eq!(kept.generator("f"), Some(3));
         assert_eq!(names(&kept.root), ["f.world"], "the store is gone");
+        // Ridden on from the kept world.
+        assert_eq!(chunks.centres(), centres);
+        assert_eq!(chunks.read(39).unwrap(), built.chunks[39]);
+        chunks.keep(&kept, "f", &whole, 3).unwrap();
         std::fs::remove_dir_all(cache).unwrap();
     }
 
     #[test]
-    fn a_store_missing_a_chunk_keeps_nothing_and_leaves_nothing() {
+    fn a_store_missing_a_chunk_is_never_kept() {
         let cache = temp_dir("store-missing");
         let kept = KeptWorlds::new(&cache);
         kept.write("f", &world(1), 1).unwrap();
@@ -580,29 +890,35 @@ mod tests {
         for index in [0, 2] {
             store.write(index, &built.chunks[index]).unwrap();
         }
-        assert!(store.keep(&World::default(), 2, 3).is_err());
+        let chunks = Chunks::built(store, parts(&built).1);
+        assert!(chunks.keep(&kept, "f", &World::default(), 2).is_err());
         assert_eq!(
             std::fs::read(kept.file("f")).unwrap(),
             before,
             "the world kept before stays"
         );
+        assert_eq!(chunks.read(2).unwrap(), built.chunks[2], "still ridden");
+        drop(chunks);
         assert_eq!(names(&kept.root), ["f.world"]);
 
-        // A store a chunk could not be written into is never kept, and gives its room back
-        // at once, as the disk may be full.
+        // A store a chunk could not be written into is never kept. The chunks written before
+        // stay: they may be the only copy.
         let store = kept.building("f").unwrap();
         store.write(1, &built.chunks[1]).unwrap();
-        let chunks = store.dir.join(CHUNKS.trim_end_matches('/'));
-        std::fs::remove_dir_all(&chunks).unwrap();
-        std::fs::write(&chunks, b"not a directory").unwrap();
+        std::fs::create_dir(store.chunk(0)).unwrap();
         assert!(store.write(0, &built.chunks[0]).is_err());
         assert!(!store.whole());
-        assert!(!store.dir.exists(), "its room given back");
-        std::fs::create_dir_all(&chunks).unwrap();
+        assert_eq!(store.read(1).unwrap(), built.chunks[1]);
+        assert!(
+            !store.chunk(0).with_extension("part").exists(),
+            "room given back"
+        );
+        std::fs::remove_dir(store.chunk(0)).unwrap();
         store.write(0, &built.chunks[0]).unwrap();
-        store.write(1, &built.chunks[1]).unwrap();
-        assert!(store.keep(&World::default(), 2, 2).is_err());
+        let chunks = Chunks::built(store, parts(&world(2)).1);
+        assert!(chunks.keep(&kept, "f", &World::default(), 2).is_err());
         assert_eq!(std::fs::read(kept.file("f")).unwrap(), before);
+        drop(chunks);
         std::fs::remove_dir_all(cache).unwrap();
     }
 
@@ -631,22 +947,36 @@ mod tests {
     }
 
     /// A store left by an ORQWA that stopped, e.g. killed for memory, is deleted by the next
-    /// tidy, while a store still being built stays.
+    /// tidy, while this ORQWA's own stay however long ago they were written: worlds are ridden
+    /// from them.
     #[cfg(unix)] // directories' times are set through an open file
     #[test]
     fn a_store_left_long_ago_is_deleted() {
         let cache = temp_dir("store-left");
         let kept = KeptWorlds::new(&cache);
-        let (left, live) = (kept.building("f").unwrap(), kept.building("f").unwrap());
-        left.write(0, &world(1).chunks[0]).unwrap();
+        let live = kept.building("f").unwrap();
         live.write(0, &world(1).chunks[0]).unwrap();
+        let left = kept.root.join(format!("f.1-0.{BUILDING}"));
+        std::fs::create_dir_all(left.join(CHUNKS)).unwrap();
+        std::fs::write(left.join(CHUNKS).join("0"), b"chunk").unwrap();
         let long_ago = std::time::SystemTime::now() - 2 * ABANDONED;
-        for dir in [left.dir.clone(), left.dir.join(CHUNKS)] {
-            File::open(&dir).unwrap().set_modified(long_ago).unwrap();
+        for dir in [&left, &live.dir] {
+            for dir in [dir.clone(), dir.join(CHUNKS)] {
+                File::open(&dir).unwrap().set_modified(long_ago).unwrap();
+            }
         }
         kept.keep_only(&HashSet::from(["f".to_owned()])).unwrap();
-        assert!(!left.dir.exists(), "the store left is gone");
-        assert!(live.read(0).is_ok(), "the live one stays");
+        assert!(!left.exists(), "the store left is gone");
+        assert!(live.read(0).is_ok(), "this ORQWA's own stays");
+        std::fs::create_dir_all(&left).unwrap();
+        kept.clear().unwrap();
+        assert!(!left.exists());
+        assert!(
+            live.read(0).is_ok(),
+            "also once keeping worlds is turned off"
+        );
+        assert_eq!(kept.size(), 0, "a world not kept is not counted as kept");
+        drop(live);
         std::fs::remove_dir_all(cache).unwrap();
     }
 
