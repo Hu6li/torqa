@@ -6,7 +6,7 @@
 use crate::failure::{Failure, Kind};
 use crate::import::text;
 use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -17,8 +17,9 @@ use orqwa_session::ghost::Ghost;
 use orqwa_video::audio::{Audio, Stereo, Stretcher};
 use orqwa_video::{Frame, Video, gps_track, gpx_from_track, incyclist, tacx};
 
-/// File extensions of the videos ORQWA reads directly (GoPro and similar).
-pub const VIDEO_EXTENSIONS: [&str; 4] = ["mp4", "mov", "m4v", "mkv"];
+/// File extensions of the videos ORQWA reads directly (GoPro and similar, and AVI as Tacx
+/// courses come with).
+pub const VIDEO_EXTENSIONS: [&str; 5] = ["mp4", "mov", "m4v", "mkv", "avi"];
 
 /// What a video course is prepared from.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +157,16 @@ pub fn tacx_course_name(path: &Path) -> Option<String> {
 /// Characters a PGMF course name can hold (34 bytes of UTF-16).
 const PGMF_NAME_CHARS: usize = 17;
 
+/// `reference`, a path a control file gives relative to its folder `dir`, if it stays inside:
+/// the file is the rider's, so one naming an absolute path or `..` may not read others.
+fn within(dir: &Path, reference: &str) -> Option<PathBuf> {
+    let relative = Path::new(reference);
+    relative
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+        .then(|| dir.join(relative))
+}
+
 /// The file in `dir` whose name `matches`, if any.
 fn find_file(dir: &Path, matches: impl Fn(&str) -> bool) -> Option<PathBuf> {
     std::fs::read_dir(dir)
@@ -222,12 +233,22 @@ pub fn source(path: &Path) -> Result<VideoSource, Failure> {
         let xml = std::fs::read(path).map(text).map_err(|e| unreadable(&e))?;
         let route = incyclist::parse(&xml).map_err(|e| unreadable(&e))?;
         let dir = path.parent().unwrap_or(Path::new("."));
-        let gpx_path = dir.join(&route.gpx_file);
+        let inside = |reference: &str| {
+            within(dir, reference).ok_or_else(|| {
+                Failure::new(
+                    Kind::ReadFile,
+                    format!("{} points outside its folder: {reference}", path.display()),
+                )
+                .arg(path.display())
+            })
+        };
+        let gpx_path = inside(&route.gpx_file)?;
+        let video = inside(&route.video_file)?;
         let gpx = std::fs::read(&gpx_path)
             .map(text)
             .map_err(|e| Failure::new(Kind::ReadFile, e).arg(gpx_path.display()))?;
         return Ok(VideoSource {
-            video: dir.join(&route.video_file),
+            video,
             name: route.title.clone(),
             gpx,
             offset: route.video_offset(),
@@ -816,6 +837,43 @@ impl std::fmt::Debug for SoundPlayer {
 mod tests {
     use super::*;
     use orqwa_video::testing::test_video;
+
+    #[test]
+    fn an_incyclist_control_file_reads_nothing_outside_its_folder() {
+        let dir = std::env::temp_dir().join(format!("orqwa-escape-{}", std::process::id()));
+        let videos = dir.join("videos");
+        std::fs::create_dir_all(&videos).unwrap();
+        std::fs::write(dir.join("secret.gpx"), "<gpx><trk><trkseg/></trk></gpx>").unwrap();
+        let control = videos.join("climb.xml");
+        let secret = dir.join("secret.gpx").display().to_string();
+        for (gpx, video) in [
+            ("../secret.gpx", "climb.mp4"),
+            (secret.as_str(), "climb.mp4"),
+            ("climb.gpx", "../climb.mp4"),
+        ] {
+            std::fs::write(
+                &control,
+                format!(
+                    "<gpx-import><video-file-path>{video}</video-file-path>\
+                     <gpx-file-path>{gpx}</gpx-file-path><framerate>30</framerate></gpx-import>"
+                ),
+            )
+            .unwrap();
+
+            assert!(source(&control).is_err(), "{gpx} {video}");
+        }
+
+        std::fs::create_dir_all(videos.join("tracks")).unwrap();
+        std::fs::write(videos.join("tracks/climb.gpx"), "<gpx/>").unwrap();
+        std::fs::write(
+            &control,
+            "<gpx-import><video-file-path>./climb.mp4</video-file-path>\
+             <gpx-file-path>tracks/climb.gpx</gpx-file-path><framerate>30</framerate></gpx-import>",
+        )
+        .unwrap();
+        assert_eq!(source(&control).unwrap().video, videos.join("climb.mp4"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn an_incyclist_route_video_saved_as_windows_1252_is_read() {

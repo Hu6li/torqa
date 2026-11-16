@@ -35,6 +35,11 @@ Options considered:
   compatible with our GPL-3.0; no GPL-only or non-free parts are enabled. *(Until 2026-10-08
   `ffmpeg-sys-next`'s `build` feature cloned FFmpeg's release/9.0 branch at build time:
   unpinned, unverified, and compiled again on every cold build.)*
+- **A file is opened only as what its extension says** (`open_input`): MP4/MOV/M4V with the
+  `mov` demuxer, MKV with `matroska`, AVI (Tacx) with `avi`, MP3 with `mp3`, and only through
+  the `file` protocol. FFmpeg otherwise picks the demuxer by content, so a renamed file could
+  reach any of the built-in ones, among them playlists and concat lists that open further
+  files. Other extensions are refused before FFmpeg sees the file. *(Since 2026-11-16.)*
 - Frames are decoded in software on a background thread; hardware decoding (VideoToolbox on
   macOS) is a follow-up, see PLAN Phase 5, and would add Apple's frameworks to the link.
 

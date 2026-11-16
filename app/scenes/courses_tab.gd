@@ -713,6 +713,13 @@ static func _select(option: OptionButton, choice: String) -> void:
 
 
 func _on_file_selected(picked: String) -> void:
+	var refusal: String = PickedFile.refusal(
+		picked, PackedStringArray(["gpx", "oqc"]) + OrqwaApp.video_extensions()
+	)
+	if not refusal.is_empty():
+		_status.text = refusal
+		_status.show()
+		return
 	var path: String = PickedFile.local_path(picked)
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()

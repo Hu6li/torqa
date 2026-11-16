@@ -1,6 +1,7 @@
 extends SceneTree
 ## Picked files (ADR 0024): paths pass through as they are; Android's content addresses are
-## named by the file they end in, or by the display name their provider gives.
+## named by the file they end in, or by the display name their provider gives; a file whose
+## name says it is something else is refused before anything reads it.
 
 var _failed: bool = false
 
@@ -29,6 +30,16 @@ func _run() -> void:
 		PickedFile._content_name(document, "Ride.gpx") == "Ride.gpx",
 		"a provider's display name names the copy"
 	)
+	var routes: PackedStringArray = PackedStringArray(["gpx", "fit"])
+	_check(PickedFile.refusal("/rides/Ride.GPX", routes).is_empty(), "a route is opened")
+	_check(PickedFile.refusal(address, routes).is_empty(), "by its name behind an address")
+	var refused: String = PickedFile.refusal("/rides/Ride.pdf", routes)
+	_check(
+		refused.contains("Ride.pdf") and refused.contains(".gpx, .fit"),
+		"another file is refused, naming it and what opens instead: " + refused
+	)
+	_check(not PickedFile.refusal("/rides/Ride", routes).is_empty(), "so is one without extension")
+	_check(not PickedFile.refusal(document, routes).is_empty(), "and an unnamed document")
 	if not _failed:
 		print("PICKED FILE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)

@@ -8,7 +8,7 @@ use ffmpeg::format::Sample;
 use ffmpeg::format::sample::Type;
 use ffmpeg_next as ffmpeg;
 
-use crate::{VideoError, f64_from, init};
+use crate::{VideoError, f64_from};
 
 /// A stereo sample: left, right, from −1 to 1.
 pub type Stereo = [f32; 2];
@@ -38,8 +38,7 @@ impl Audio {
     /// # Errors
     /// [`VideoError`] if the file cannot be read or its sound cannot be decoded.
     pub fn open(path: &Path) -> Result<Option<Self>, VideoError> {
-        init();
-        let input = ffmpeg::format::input(path)?;
+        let input = crate::open_input(path)?;
         let Some(stream) = input.streams().best(ffmpeg::media::Type::Audio) else {
             return Ok(None);
         };

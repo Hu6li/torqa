@@ -378,6 +378,10 @@ func _on_saved(id: String) -> void:
 
 
 func _import(picked: String) -> void:
+	var refusal: String = PickedFile.refusal(picked, OrqwaApp.workout_extensions())
+	if not refusal.is_empty():
+		_status.text = refusal
+		return
 	var id: String = _orqwa.import_workout(PickedFile.local_path(picked))
 	if id.is_empty():
 		return

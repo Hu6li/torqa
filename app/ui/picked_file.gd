@@ -19,6 +19,22 @@ static func open_filters(filters: PackedStringArray) -> PackedStringArray:
 	return PackedStringArray() if OS.has_feature("android") else filters
 
 
+## Why ORQWA does not open `picked`, which the rider meant as one of `extensions` (lower case,
+## without the dot); "" if it has one of them. Checked by name before the file is copied or
+## read, so a file that is something else is never handed to a reader for another format.
+static func refusal(picked: String, extensions: PackedStringArray) -> String:
+	var file: String = name_of(picked).get_file()
+	if file.get_extension().to_lower() in extensions:
+		return ""
+	var dotted: PackedStringArray = PackedStringArray()
+	for extension: String in extensions:
+		dotted.append("." + extension)
+	return (
+		TranslationServer.translate("ORQWA cannot open %s: it opens %s files.")
+		% [file, ", ".join(dotted)]
+	)
+
+
 ## The path to give the core for `picked`; `picked` itself if an Android file cannot be copied,
 ## so the core reports it as unreadable as before.
 static func local_path(picked: String) -> String:
