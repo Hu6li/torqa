@@ -2547,6 +2547,10 @@ msgstr ""
 msgid "ORQWA %s is available; you have %s."
 msgstr ""
 
+#: app/ui/picked_file.gd
+msgid "ORQWA cannot open %s: it opens %s files."
+msgstr ""
+
 #: app/scenes/account_dialog.gd
 msgid "ORQWA could not connect. Go back to ORQWA to try again."
 msgstr ""

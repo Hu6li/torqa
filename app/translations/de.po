@@ -2217,6 +2217,10 @@ msgstr "ORQWA %s ist verfügbar."
 msgid "ORQWA %s is available; you have %s."
 msgstr "ORQWA %s ist verfügbar; du hast %s."
 
+#: app/ui/picked_file.gd
+msgid "ORQWA cannot open %s: it opens %s files."
+msgstr "ORQWA kann %s nicht öffnen: Es öffnet Dateien vom Typ %s."
+
 msgid "ORQWA downloads and installs it; then open ORQWA again."
 msgstr "ORQWA lädt sie herunter und installiert sie; öffne ORQWA danach wieder."
 

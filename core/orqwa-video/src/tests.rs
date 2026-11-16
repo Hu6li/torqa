@@ -67,6 +67,36 @@ fn files_without_video_are_refused() {
 }
 
 #[test]
+fn videos_are_only_opened_as_what_their_extension_says() {
+    let video = test_video("renamed", 64, 48);
+    let as_text = video.with_extension("txt");
+    let as_mkv = video.with_extension("mkv");
+    std::fs::copy(&video, &as_text).unwrap();
+    std::fs::copy(&video, &as_mkv).unwrap();
+
+    assert!(matches!(Video::open(&as_text), Err(VideoError::Unsupported(e)) if e == "txt"));
+    assert!(Video::open(&as_mkv).is_err());
+    assert!(has_gps(&as_mkv).is_err());
+    assert!(Video::open(&video).is_ok());
+    for path in [video, as_text, as_mkv] {
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn a_list_named_like_a_video_opens_no_other_file() {
+    let video = test_video("listed", 64, 48);
+    let list = video.with_file_name(format!("orqwa-video-list-{}.mp4", std::process::id()));
+    let listed = video.file_name().unwrap().to_string_lossy().into_owned();
+    std::fs::write(&list, format!("ffconcat version 1.0\nfile '{listed}'\n")).unwrap();
+
+    assert!(Video::open(&list).is_err());
+    assert!(gps_track(&list).is_err());
+    std::fs::remove_file(list).unwrap();
+    std::fs::remove_file(video).unwrap();
+}
+
+#[test]
 fn reads_the_gps_track_with_video_times() {
     let path = gopro_video("gps");
 

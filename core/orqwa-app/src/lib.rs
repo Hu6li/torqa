@@ -4501,10 +4501,17 @@ fn best_climb_time(records: &[&RideRecord], climb: &ClimbTime) -> Option<Duratio
 
 /// The timed positions of a recorded activity: a GPX file with times, or a FIT file.
 fn activity_points(path: &Path) -> Result<Vec<orqwa_routes::TimedPoint>, Failure> {
-    let is_fit = path
+    let extension = path
         .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("fit"));
-    if is_fit {
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if extension != "fit" && extension != "gpx" {
+        return Err(Failure::new(
+            Kind::LoadGhost,
+            format!("{} is no GPX or FIT activity", path.display()),
+        ));
+    }
+    if extension == "fit" {
         let (start, samples) = read_fit(path).map_err(|e| Failure::new(Kind::LoadGhost, e))?;
         let start = start
             .duration_since(std::time::UNIX_EPOCH)
@@ -4714,6 +4721,21 @@ mod tests {
         let path = dir.join("route.gpx");
         std::fs::write(&path, xml).unwrap();
         path
+    }
+
+    #[test]
+    fn a_ghost_is_read_only_from_a_gpx_or_fit_activity() {
+        let dir = temp_dir("ghost-file");
+        let gpx = "<gpx><trk><trkseg>\
+            <trkpt lat=\"46.9\" lon=\"7\"><time>2024-06-01T08:00:00Z</time></trkpt>\
+            <trkpt lat=\"46.91\" lon=\"7\"><time>2024-06-01T08:01:00Z</time></trkpt>\
+            </trkseg></trk></gpx>";
+        std::fs::write(dir.join("Ride.GPX"), gpx).unwrap();
+        std::fs::write(dir.join("Ride.txt"), gpx).unwrap();
+
+        assert_eq!(activity_points(&dir.join("Ride.GPX")).unwrap().len(), 2);
+        assert!(activity_points(&dir.join("Ride.txt")).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
