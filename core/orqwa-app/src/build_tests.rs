@@ -11,8 +11,203 @@ use orqwa_session::workout::Workout;
 
 use crate::failure::{Failure, Kind};
 use crate::leaving::tests::{course, open, wait_for};
+use crate::memory::MemoryInfo;
 use crate::tests::{run_until, temp_dir};
 use crate::{App, AppError, AppEvent, GhostChoice, JobResult, TrainerChoice};
+
+const MB: u64 = 1_000_000;
+
+fn memory(available: u64) -> MemoryInfo {
+    MemoryInfo {
+        available,
+        total: 8_000 * MB,
+        threshold: 200 * MB,
+        low: false,
+    }
+}
+
+#[test]
+fn memory_admission_refuses_before_building_and_reopening_rechecks_current_free_memory() {
+    use std::sync::atomic::AtomicU64;
+    let dir = temp_dir("memory-admission");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    let path = course(&mut app, &dir, 40, 0.0);
+    open(&mut app, &path);
+    let free = Arc::new(AtomicU64::new(900 * MB));
+    let reading = Arc::clone(&free);
+    app.check_free_memory(Arc::new(move || {
+        Some(memory(reading.load(Ordering::SeqCst)))
+    }));
+    app.build_world(false, Meters(1000.0));
+    let events = run_until(&mut app, |event| matches!(event, AppEvent::Error(_)));
+    assert!(events.iter().any(|event| matches!(event,
+        AppEvent::Error(failure) if failure.kind == Kind::WorldMemory)));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AppEvent::WorldReady { .. }
+            | AppEvent::LoadProgress {
+                stage: crate::LoadStage::World,
+                ..
+            }
+    )));
+    assert!(app.world().is_none());
+    free.store(7_000 * MB, Ordering::SeqCst);
+    open(&mut app, &path);
+    app.build_world(false, Meters(1000.0));
+    run_until(&mut app, |event| {
+        matches!(event, AppEvent::WorldReady { .. })
+    });
+    app.shutdown();
+}
+
+#[test]
+fn memory_is_read_after_cancelled_workers_release_their_buffers() {
+    let dir = temp_dir("memory-after-cancel");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    let path = course(&mut app, &dir, 40, 0.0);
+    open(&mut app, &path);
+    let mut old = held(&app);
+    let released = Arc::clone(&old.released);
+    app.stop_build(old.job.clone(), None);
+    app.check_free_memory(Arc::new(move || {
+        assert!(
+            released.load(Ordering::SeqCst),
+            "do not reject based on memory about to be freed"
+        );
+        Some(memory(7_000 * MB))
+    }));
+    app.build_world(false, Meters(1000.0));
+    old.release();
+    run_until(&mut app, |event| {
+        matches!(event, AppEvent::WorldReady { .. })
+    });
+    app.shutdown();
+}
+
+#[test]
+fn a_kept_world_checks_rendering_memory_without_charging_for_another_build() {
+    let dir = temp_dir("memory-kept-world");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    let path = course(&mut app, &dir, 40, 0.0);
+    app.set_keeps_worlds(true).unwrap();
+    assert!(wait_for(&mut app, |app| crate::leaving::tests::kept(
+        app, &path
+    )));
+    open(&mut app, &path);
+    let crate::WorldPlan::OnRequest(Some(map)) = &app.world_plan else {
+        panic!("loaded course map");
+    };
+    let estimate = crate::memory::estimate(app.route().unwrap(), map, Meters(1000.0));
+    let between = u64::midpoint(estimate.ride, estimate.build);
+    app.check_free_memory(Arc::new(move || Some(memory(800 * MB + between))));
+    app.build_world(false, Meters(1000.0));
+    let events = run_until(&mut app, |event| {
+        matches!(event, AppEvent::WorldReady { .. })
+    });
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AppEvent::LoadProgress {
+            stage: crate::LoadStage::World,
+            ..
+        }
+    )));
+    open(&mut app, &path);
+    app.check_free_memory(Arc::new(move || Some(memory(800 * MB + estimate.ride - 1))));
+    app.build_world(false, Meters(1000.0));
+    let events = run_until(&mut app, |event| matches!(event, AppEvent::Error(_)));
+    assert!(events.iter().any(|event| matches!(event,
+        AppEvent::Error(failure) if failure.kind == Kind::WorldMemory)));
+    assert!(
+        app.world().is_none(),
+        "kept meshes do not bypass rendering admission"
+    );
+    app.shutdown();
+}
+
+#[test]
+fn memory_falling_during_generation_stops_before_world_ready() {
+    use std::sync::atomic::AtomicUsize;
+    let dir = temp_dir("memory-during-build");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    let path = course(&mut app, &dir, 40, 0.0);
+    open(&mut app, &path);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let reading = Arc::clone(&reads);
+    app.check_free_memory(Arc::new(move || {
+        let read = reading.fetch_add(1, Ordering::SeqCst);
+        // Initial snapshot and admission succeed; memory runs short during the horizon.
+        // The fresh checkpoint before chunk preparation must catch this without timing.
+        Some(memory(if read < 2 { 7_000 * MB } else { 100 * MB }))
+    }));
+    app.build_world(false, Meters(1000.0));
+    let events = run_until(&mut app, |event| matches!(event, AppEvent::Error(_)));
+    assert!(events.iter().any(|event| matches!(event,
+        AppEvent::Error(failure) if failure.kind == Kind::WorldMemory)));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AppEvent::WorldReady { .. }))
+    );
+    assert!(app.world_failed());
+    app.shutdown();
+}
+
+#[test]
+fn memory_pressure_during_a_ride_preserves_samples_and_blocks_further_uploads() {
+    let dir = temp_dir("memory-during-ride");
+    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+    course(&mut app, &dir, 40, 0.0);
+    app.connect_trainer(TrainerChoice::Fake(FakeRider {
+        power: Watts(150.0),
+        cadence: Rpm(90.0),
+        heart: None,
+    }))
+    .unwrap();
+    app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+        .unwrap();
+    assert!(wait_for(&mut app, |app| !app
+        .ride
+        .as_ref()
+        .unwrap()
+        .ride
+        .samples()
+        .is_empty()));
+    let samples = app.ride.as_ref().unwrap().ride.samples().len();
+    app.check_free_memory(Arc::new(|| Some(memory(100 * MB))));
+    assert!(!app.check_world_memory());
+    assert!(app.is_paused());
+    assert!(
+        !app.check_world_memory(),
+        "no more chunks read or uploaded after failure"
+    );
+    // An aborted job or already queued progress cannot replace the useful memory error.
+    app.jobs_tx
+        .send(JobResult::Route(
+            app.world_load,
+            Err(Failure::new(Kind::PreparationStopped, "cancelled")),
+        ))
+        .unwrap();
+    let events = app.update(Duration::from_millis(16));
+    let failures: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            AppEvent::Error(failure) => Some(failure.kind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(failures, [Kind::WorldMemory]);
+    assert_eq!(app.ride.as_ref().unwrap().ride.samples().len(), samples);
+    assert!(
+        app.set_paused(false),
+        "scene waits cannot automatically resume it"
+    );
+    assert!(
+        app.save_ride(false)
+            .iter()
+            .any(|event| matches!(event, AppEvent::RideSaved(_)))
+    );
+    app.shutdown();
+}
 
 struct Buffers {
     released: Arc<AtomicBool>,

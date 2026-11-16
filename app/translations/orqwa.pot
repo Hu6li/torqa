@@ -447,6 +447,10 @@ msgstr ""
 msgid "Analysis"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Android reports low memory (%s available). Close other apps or lower graphics, then reopen the course."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "Anti-aliasing"
 msgstr ""
@@ -953,6 +957,10 @@ msgstr ""
 
 #: core/orqwa-app/src/import.rs
 msgid "Correcting elevations"
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Could not check Android's available memory. Reopen ORQWA and try again."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -3693,6 +3701,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "This course has no video."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "This course needs about %s of available memory, including room for Android; %s is available. Close other apps or lower graphics, then reopen the course."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

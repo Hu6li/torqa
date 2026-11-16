@@ -479,6 +479,7 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
     let projection = LocalProjection::for_route(route);
     let mut road = RoadIndex::new(route, &projection);
     road.set_appearances(&appearance::Index::new(map, &projection));
+    check()?;
     let reached = cells_near_route(&road);
     let total = reached.len();
     // Announce the step before the slower preparation below.
@@ -488,7 +489,9 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
     let lone_lighthouses = buildings::lone_lighthouses(map, &projection);
     let buildings =
         buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
+    check()?;
     let mut ways = Ways::new(map, &projection, &road, model).await;
+    check()?;
     let portals = structures::open_portals(
         &mut road,
         &mut ways.network.index,
@@ -497,6 +500,7 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
         model,
     )
     .await;
+    check()?;
     let hollows = structures::hollows(&road, &ways.network.index, &portals);
     let shapers = Shapers {
         road: &road,
@@ -508,6 +512,7 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
     };
     let below = structures::Below::new(&road, &ways.network.index, &ways.streets, &ways.islands);
     let mut world = whole(&shapers, &ways);
+    check()?;
     let mut urban = urban::Urban::build(
         buildings.values().flatten(),
         &ways.streets,
@@ -517,9 +522,11 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
         &land,
         pavement::Pavement::new(&world, []),
     );
+    check()?;
     // Walking joins need one datum even when their profile anchors lie in another chunk.
     let mut grades = Vec::new();
     for point in urban.grade_points() {
+        check()?;
         if let Some(height) = drawn_ground(model, &projection, &shapers, point).await {
             grades.push((point, height));
         }
@@ -551,6 +558,7 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
     // Tunnels stand on nothing drawn, so they are there from the start of a ride.
     let mut tunnels = Vec::with_capacity(pieces.len());
     for piece in &pieces {
+        check()?;
         tunnels.push(if piece.is_bridge() {
             None
         } else {

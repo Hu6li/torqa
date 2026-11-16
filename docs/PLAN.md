@@ -985,6 +985,10 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
       - [x] Android requires a writable store independently of the free-space estimate:
         creation or chunk-write errors stop generation; a ride already started stays paused
         with trainer resistance released and its recording available to save (R254)
+      - [x] Android checks current available system memory against estimated course preparation
+        and resident scene needs, preserving system headroom; generation and scene uploads
+        recheck headroom and stop with a local pause and saveable recording when short (R255)
+      - [ ] verify memory admission and pressure recovery on the Galaxy S25 Ultra and Tab S7
       - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
         keeping is turned off; others' go by age
     - [x] Godot frees far chunks

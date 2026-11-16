@@ -21,6 +21,7 @@ mod kept;
 mod leaving;
 pub mod library;
 pub mod media;
+pub mod memory;
 pub mod moments;
 pub mod paths;
 pub mod remote;
@@ -886,6 +887,8 @@ pub struct App {
     cache_dir: PathBuf,
     /// Tells the free storage where a world's store is checked for room (Android, ADR 0040).
     free_storage: Option<kept::FreeStorage>,
+    /// Android's current shared system memory, sampled across generation and scene uploads.
+    memory: Option<memory::Guard>,
     /// Worlds being let go of in the background, whose stores are being deleted.
     letting_go: Vec<tokio::task::JoinHandle<()>>,
     /// This computer's own settings (R78), next to the cache: never synced with the data.
@@ -987,6 +990,7 @@ impl App {
             data_dir,
             cache_dir,
             free_storage: None,
+            memory: None,
             letting_go: Vec::new(),
             computer,
             world_generator: orqwa_world::GENERATOR,
@@ -2469,9 +2473,16 @@ impl App {
         let start = self.start_build();
         let stopping = self.builds.stopping.clone();
         let required = self.builds.required;
+        let memory = self.memory.clone();
         self.spawn_load(load, async move {
             crate::resuming::ended(&stopping).await;
             let result = async {
+                let estimate = if let Some(guard) = &memory {
+                    guard.check(memory::UPLOAD_HEADROOM, true)?;
+                    Some(memory::estimate(&route, &map, radius))
+                } else {
+                    None
+                };
                 let mut reporter = Reporter {
                     tx: tx.clone(),
                     load,
@@ -2479,6 +2490,9 @@ impl App {
                 };
                 let mut keep_as = None;
                 if let Some(course) = kept {
+                    if let (Some(guard), Some(estimate)) = (&memory, &estimate) {
+                        guard.check(estimate.ride, true)?;
+                    }
                     reporter.report(LoadStage::KeptWorld, 0, 1);
                     let finder = keeper.clone();
                     let found = tokio::task::spawn_blocking(move || finder.find(&course)).await;
@@ -2498,6 +2512,9 @@ impl App {
                         Ok(kept::Found::Unknown) | Err(_) => {}
                     }
                 }
+                if let (Some(guard), Some(estimate)) = (&memory, &estimate) {
+                    guard.check(estimate.build, true)?;
+                }
                 // Every world is built into a store and ridden from it, so its chunks are never all
                 // held (ADR 0040). It is ridden once the rider's surroundings are finished, while
                 // the rest is built. A build of the course stopped before left one to take up.
@@ -2507,6 +2524,9 @@ impl App {
                 let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
                 // Its tiles are not needed again, so they are not held while the chunks are built.
                 drop(distant);
+                if let Some(guard) = &memory {
+                    guard.check(memory::batch_headroom(), true)?;
+                }
                 let mut keep_as = Some(keep_as);
                 let sink = |index, chunk| chunks.take(index, chunk);
                 let (ready_tx, structures_tx) = (tx.clone(), tx.clone());
@@ -2517,7 +2537,9 @@ impl App {
                             "the world build was stopped",
                         ))
                     } else {
-                        Ok(())
+                        memory
+                            .as_ref()
+                            .map_or(Ok(()), |guard| guard.check(memory::batch_headroom(), false))
                     }
                 };
                 let rest = orqwa_world::try_generate_into(
@@ -4481,6 +4503,7 @@ impl App {
             .ok_or(AppError::UnknownDevice)
     }
 
+    #[allow(clippy::too_many_lines)] // exhaustive job dispatch, including stale failure results
     fn poll_jobs(&mut self, events: &mut Vec<AppEvent>) {
         while let Ok(result) = self.jobs_rx.try_recv() {
             match result {
@@ -4498,6 +4521,12 @@ impl App {
                     if load != self.world_load => {}
                 // A build taken over may still fail.
                 JobResult::Route(load, Err(_)) if load != self.load && load != self.world_load => {}
+                JobResult::World(load, _)
+                | JobResult::Structures(load, _)
+                | JobResult::Built(load, _)
+                | JobResult::Progress(load, ..)
+                | JobResult::Route(load, Err(_))
+                    if self.builds.failed && load == self.world_load => {}
                 JobResult::Route(load, Ok(_)) | JobResult::Video(load, _) if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
                     let map = imported.map.clone();

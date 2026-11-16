@@ -20,6 +20,7 @@ static func prepare(
 	while true:
 		if (
 			not requested.call()
+			or orqwa.world_failed()
 			or revision != world._chunk_revision
 			or course != orqwa.loaded_course()
 			or orqwa.world_chunk_count() == 0

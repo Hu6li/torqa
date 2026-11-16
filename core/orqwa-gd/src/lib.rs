@@ -41,6 +41,8 @@ use orqwa_world::MapFeature;
 
 #[cfg(target_os = "android")]
 mod android_audio;
+#[cfg(target_os = "android")]
+mod android_memory;
 mod background;
 mod graphics;
 mod group;
@@ -203,6 +205,7 @@ impl INode for OrqwaApp {
             #[cfg(target_os = "android")]
             let app = app.map(|mut app| {
                 app.require_world_store();
+                app.check_free_memory(std::sync::Arc::new(android_memory::free));
                 app.check_free_storage(std::sync::Arc::new(android_storage::free));
                 app
             });
@@ -821,6 +824,12 @@ impl OrqwaApp {
     #[func]
     fn world_failed(&self) -> bool {
         self.app.as_ref().is_some_and(App::world_failed)
+    }
+
+    /// Whether Android has room for more 3D scene allocations; failure pauses the local ride.
+    #[func]
+    fn check_world_memory(&mut self) -> bool {
+        self.app.as_mut().is_some_and(App::check_world_memory)
     }
 
     /// Builds the loaded course's world again with this ORQWA, in place of the one kept from an

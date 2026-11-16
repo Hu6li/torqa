@@ -402,7 +402,37 @@ moves the peak beyond run-to-run noise (about 50 MB). Building the start's surro
 costs about 0.2 GB of peak; it is not the chunks waiting for their neighbours (at most 46,
 against 43 when built along the route). Still open.
 
-## Still to do
+## Available-memory admission (R255)
+
+The Android guard uses current `ActivityManager.MemoryInfo`, not advertised RAM, the Java heap
+limit or free storage. It leaves the greater of 512 MB, a tenth of `totalMem`, and `threshold`
+plus 256 MB for Android, and refuses if `lowMemory` is already true. A read failure refuses
+3D explicitly. Admission is sampled after cancelled workers release their buffers; opening a
+course again retries with a fresh reading.
+
+The initial estimate is deliberately conservative and provisional:
+
+| Additional memory | Planning coefficient |
+|---|---|
+| Generation preparation | 192 MB baseline; ridden route 1,024 bytes/m plus 256 bytes/point; mapped roads and rails 256 bytes/m plus 128 bytes/raw point; building outline 512 bytes/point; area rings 128 bytes/point |
+| Concurrent generation batch | 64 MB per available core, including the all-core pace when paused |
+| Rendered scene | 384 MB baseline at Low's 3,925 m upload radius, scaling with larger view area; whole ridden-route allocation; busiest coarse spatial window's roads/rails 512 bytes/m, buildings 1,024 bytes/outline point and area rings 256 bytes/point |
+
+These coefficients take margin over the measured Wada preparation, batch and Low scene
+above; they are not fitted bounds for every possible course. The busiest-window estimate
+uses 2 km cells and the upload/eviction margins, so it does not assume the start is densest
+or sum every distant chunk into the resident scene. Kept worlds are charged only for riding.
+Actual graphics-driver/allocator peaks and detailed geometry can differ. Checkpoints therefore
+also sample headroom during preparation and generation, before scene uploads, and while a
+completed world is visible. At most 100 ms of sampled memory is shared between these checks.
+Generation requires the batch headroom; uploads require another 128 MB above Android's reserve.
+
+Injected-memory tests cover rejection before generation, Android's low-memory flag and
+threshold, query failure, a changed reading after stopped workers end, a successful retry,
+kept-world admission, pressure during generation and local pause/save during riding. These
+are behavioral checks, not S25 Ultra measurements or proof that every memory kill is prevented.
+
+## Remaining device measurements
 
 The R254 storage/cancellation fixes prevent Android from collecting unwritten chunks in RAM
 after an I/O failure and serialize replacement builds behind actual task termination. Their

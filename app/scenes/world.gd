@@ -601,10 +601,20 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	if _orqwa != null and _orqwa.world_failed():
+		if _chunk_count > 0:
+			WorldPreparation.restart(self)
+			_chunk_count = 0
+		_ground_lods.add_ready(true)
+		return
+	if visible and _orqwa != null and _chunk_count > 0 and not _orqwa.check_world_memory():
+		return
 	if not _paused:
 		_wind_time += delta
 		RenderingServer.global_shader_parameter_set("wind_time", _wind_time)
 	_build_some_chunks()
+	if _orqwa != null and _orqwa.world_failed():
+		return
 	_ground_lods.add_ready()
 	if _rain.emitting:
 		# Round the camera, falling straight whichever way it looks.
@@ -631,6 +641,8 @@ func _apply_rider() -> void:
 
 
 func _on_world_ready(_info: Dictionary) -> void:
+	if not _orqwa.check_world_memory():
+		return
 	apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
@@ -658,6 +670,8 @@ func _on_world_ready(_info: Dictionary) -> void:
 
 ## The world being ridden grew: the bridges built since, and the chunks the scene waits for.
 func _on_world_grew(info: Dictionary) -> void:
+	if not _orqwa.check_world_memory():
+		return
 	if info.get("structures", false):
 		# Only the new bridges: drawing every structure again stalls the frame.
 		for arrays: Dictionary in _orqwa.take_added_structures():

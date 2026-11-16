@@ -163,10 +163,17 @@ pub enum Kind {
     WorldStorage,
     /// Could not store the course's 3D world. Check free storage and reopen the course.
     WriteWorld,
+    /// Not enough available memory for this course and Android's system reserve.
+    WorldMemory,
+    /// Android reports memory pressure even if a planning estimate would fit.
+    MemoryPressure,
+    /// Could not read Android's current available memory.
+    ReadMemory,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
     #[must_use]
+    #[allow(clippy::too_many_lines)] // one exhaustive gettext-key table
     pub fn message(self) -> &'static str {
         // i18n-begin
         match self {
@@ -266,6 +273,15 @@ impl Kind {
             }
             Self::WriteWorld => {
                 "Could not store the course's 3D world. Check free storage and reopen the course."
+            }
+            Self::WorldMemory => {
+                "This course needs about %s of available memory, including room for Android; %s is available. Close other apps or lower graphics, then reopen the course."
+            }
+            Self::ReadMemory => {
+                "Could not check Android's available memory. Reopen ORQWA and try again."
+            }
+            Self::MemoryPressure => {
+                "Android reports low memory (%s available). Close other apps or lower graphics, then reopen the course."
             }
         }
         // i18n-end

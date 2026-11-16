@@ -127,6 +127,8 @@ func upload_some(world: RideWorld) -> void:
 	var began: int = Time.get_ticks_usec()
 	var built: int = 0
 	while _cursor < _order.size() and built < RideWorld.CHUNKS_PER_FRAME:
+		if not world._orqwa.check_world_memory():
+			return
 		var index: int = _order[_cursor]
 		var density: float = world._quality["tree_density"]
 		var chunk: Dictionary = world._orqwa.world_chunk_for_season(
