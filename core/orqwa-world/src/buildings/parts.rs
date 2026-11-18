@@ -26,6 +26,8 @@ const LOWER_ROWS: f64 = 30.0;
 const LOWER_STOREY_SLACK: f64 = 1.0;
 /// No wall shows more lower storeys than this.
 const LOWER_STOREYS: f64 = 4.0;
+/// How far over its floor a storey's windows begin (`app/shaders/building.gdshader`).
+const WINDOW_SILL: f64 = 1.0;
 
 /// The whole storeys showing below the ground floor where the ground lies `drop` below it.
 fn lower_storeys(drop: f64) -> f64 {
@@ -173,6 +175,36 @@ impl Builder<'_> {
         for i in 0..outline.len() {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
             self.wall(a, b, (bottom, top), paint, side, 0.0);
+        }
+    }
+
+    /// Walls from `bottom` to `top` along a counter-clockwise `outline`, facing out, above the
+    /// ground floor: where a wall's ground, at its higher end, lies over a storey's window
+    /// sills, as on the uphill side of a building set into a slope, that storey shows no
+    /// windows on that wall, so none is seen half sunk in the ground.
+    pub(crate) fn facade(&mut self, outline: &[Point], bottom: f64, top: f64, paint: Paint) {
+        let blank = match paint.style {
+            Style::Plaster => paint.with(Style::Blank),
+            Style::Timber => paint.with(Style::Boards),
+            _ => paint,
+        };
+        for i in 0..outline.len() {
+            let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+            let buried = self.terrain.map_or(f64::NEG_INFINITY, |terrain| {
+                terrain.at(a.0, a.1).max(terrain.at(b.0, b.1)) - self.ground
+            });
+            let blind = if blank == paint || buried <= WINDOW_SILL {
+                bottom
+            } else {
+                let storeys = ((buried - WINDOW_SILL) / STOREY).ceil();
+                (self.ground + storeys * STOREY).clamp(bottom, top)
+            };
+            if blind > bottom {
+                self.wall(a, b, (bottom, blind), blank, 1.0, 0.0);
+            }
+            if top > blind {
+                self.wall(a, b, (blind, top), paint, 1.0, 0.0);
+            }
         }
     }
 

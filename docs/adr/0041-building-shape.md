@@ -116,26 +116,38 @@ the buildings that have them. Each step is described here as it is made.
 
 ## Step 2: buildings on slopes (2026-11-18, R257)
 
-A building's ground floor stays at the highest ground under it: a hillside house has its
-entrance on the uphill side, and lowering it would bury doors and shop fronts. What changes is
-the wall below the floor. Each wall reaches down to its own ground and shows as many lower
-storeys, up to four, as fit with their windows clear of it: a storey whose floor lies up to
-1 m below the ground still shows, as a semi-basement's windows do. They have the windows of
-the building's ground floor. Only the rest is plinth, so windows start within a storey of the
-ground on every downhill wall. The shell shader draws
-windows from 1 m above its texture's zero, so lower storeys lift their texture rows by 30 m,
-a whole number of storeys and of every wall texture's repeat: rows and texture run on
-unbroken. A wall's ground is the higher of its two ends, so side walls across the slope keep a
-plinth and only downhill walls open up.
+A building on a slope is set into it, as hillside houses are dug in: its ground floor lies at
+the mean ground under its footprint, buried no more than `SET_IN` (2.4 m, about a storey) on
+the uphill side. The terrain stays as it is: there it hides the walls' lower part, so the
+building looks dug in without a pit or platform being shaped. Before, the floor stood at the
+highest ground, so buildings on slopes stood a storey or more too tall from below (#554).
 
-Fitted models carry a 3 m stone basement. They were used where the ground fell up to 2.8 m,
-which left a storey-high stone wall downhill. Now they are used up to 1.8 m, a plinth's
-height; steeper plots get shells with lower storeys. The shell drawn far from a model keeps
-the model's plinth, so the two still match when they swap.
+A wall whose ground, at its higher end, lies over a storey's window sills (1 m over its floor)
+shows no windows in that storey (`Builder::facade`), so none is seen half sunk in the ground;
+side walls across the slope lose their lowest windows where the uphill end buries them.
 
-In the tests, two houses lie across a 10 % slope. On the 36 m one (3.6 m fall), windows
-downhill started 4.6 m above the ground; now 1.6 m, in a lower storey. On the 24 m one (2.4 m
-fall) they started 3.4 m up; now 0.4 m, in a semi-basement. Generator 43; the stored format stays 3.
+Downhill each wall reaches down to its own ground and shows as many lower storeys, up to four,
+as fit with their windows clear of it: a storey whose floor lies up to 1 m below the ground
+still shows, as a semi-basement's windows do. They have the windows of the building's ground
+floor. Only the rest is plinth, so windows start within a storey of the ground on every
+downhill wall. The shell shader draws windows from 1 m above its texture's zero, so lower
+storeys lift their texture rows by 30 m, a whole number of storeys and of every wall
+texture's repeat: rows and texture run on unbroken.
+
+Fitted models, whose doors may face uphill, are set in no more than 1 m (`MODEL_SET_IN`), and
+are used where the ground falls less than 1.8 m below their floor: their 3 m basement is a
+plain stone plinth. Steeper plots get shells with lower storeys. The shell drawn far from a
+model keeps the model's plinth, so the two still match when they swap.
+
+In the tests, three houses lie across a 10 % slope:
+
+| House | Fall | Set in | Downhill windows over the ground, on main → now |
+|---|---:|---:|---:|
+| 24 m | 2.4 m | 1.2 m | 3.4 m → 2.2 m |
+| 36 m | 3.6 m | 1.8 m | 4.6 m → 2.8 m |
+| 60 m | 6.0 m | 2.4 m | 7.0 m → 1.6 m, over a lower storey |
+
+No uphill window lies under the ground. Generator 43; the stored format stays 3.
 
 ## Step 3: parts and mapped heights (2026-11-18, R258)
 
@@ -143,7 +155,7 @@ The tiles' `building` layer carries `building:part` outlines with `render_min_he
 the outline of a building with parts `hide_3d`. ORQWA now reads both (`Building::in_parts`,
 `Building::min_height`). After churches, landmarks, purposes and shops are marked, each part
 whose centre lies in an outline drawn in parts is drawn as that outline's part, standing on the
-outline's highest ground; the outline itself is no longer drawn, but stays a plot, so plants
+outline's ground, set in as step 2 sets a building in; the outline itself is no longer drawn, but stays a plot, so plants
 and props still keep off it. A church, castle or lighthouse keeps its outline drawn whole, as
 its builders make towers and keeps of their own, and its parts are left out. Parts are never
 fitted models. A part starting above the ground has walls only from there, an underside facing
