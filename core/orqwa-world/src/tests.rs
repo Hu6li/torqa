@@ -2511,8 +2511,9 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
 
     let faces = building_faces(&world, (60.0, 500.0), 30.0);
     // From below the lowest corner, 55 m east, to a pitched roof (perhaps with a chimney)
-    // over two storeys of walls from the highest corner, 65 m east.
-    let eaves = slope_at(65.0) + 2.0 * 3.0 + 0.4;
+    // over two storeys of walls from the floor, set into the slope at its mean ground, 60 m
+    // east.
+    let eaves = slope_at(60.0) + 2.0 * 3.0 + 0.4;
     let top = highest(&faces);
     assert!((eaves + 3.0..eaves + 6.0).contains(&top), "top {top}");
     assert!((lowest(&faces) - (slope_at(55.0) - 1.0)).abs() < 0.01);
@@ -2534,20 +2535,23 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
 }
 
 #[tokio::test]
-async fn buildings_on_slopes_show_lower_storeys_downhill_not_a_blank_plinth() {
-    // Houses of two storeys across ground rising eastwards by 10 %, 36 m and 24 m long: their
-    // west ends stand 3.6 m and 2.4 m lower than their east ends (#554, R257).
-    let houses = [(43, 500.0, 18.0), (44, 540.0, 12.0)].map(|(id, north, half)| Building {
-        id,
-        outline: rectangle(60.0, north, half, 5.0),
-        height: None,
-        levels: Some(2.0),
-        color: None,
-        min_height: None,
-        in_parts: false,
-        kind: None,
-        shape: None,
-    });
+async fn buildings_on_slopes_are_set_into_them() {
+    // Houses of two storeys across ground rising eastwards by 10 %, 24 m, 36 m and 60 m long:
+    // they fall 2.4 m, 3.6 m and 6 m from end to end (#554, R257).
+    let houses =
+        [(43, 470.0, 12.0), (44, 510.0, 18.0), (45, 550.0, 30.0)].map(|(id, north, half)| {
+            Building {
+                id,
+                outline: rectangle(60.0, north, half, 5.0),
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+                kind: None,
+                shape: None,
+            }
+        });
     let world = world(&MapData {
         buildings: houses.to_vec(),
         ..MapData::default()
@@ -2570,42 +2574,66 @@ async fn buildings_on_slopes_show_lower_storeys_downhill_not_a_blank_plinth() {
             f32::MAX
         }
     };
-    for (_, north, half) in [(43, 500.0_f32, 18.0_f32), (44, 540.0, 12.0)] {
-        let faces = building_faces(&world, (60.0, north), 25.0);
+    for (north, half) in [(470.0_f32, 12.0_f32), (510.0, 18.0), (550.0, 30.0)] {
+        let faces = building_faces(&world, (60.0, north), half + 8.0);
         let (west, east) = (60.0 - half, 60.0 + half);
-        let floor = slope_at(east);
-        let lowest_windows = faces
+        let lowest_windows = |downhill: bool| {
+            faces
+                .iter()
+                .filter(|f| {
+                    if downhill {
+                        f.normal[0] < -0.9 && f.middle()[0] < west + 1.0
+                    } else {
+                        f.normal[0] > 0.9 && f.middle()[0] > east - 1.0
+                    }
+                })
+                .filter(|f| matches!(f.style(), 0 | 2))
+                .map(windows_from)
+                .fold(f32::MAX, f32::min)
+        };
+        // The ground floor is set into the slope: below the uphill ground, by a storey at most.
+        // Walls count their texture's height from it.
+        let floor = faces
             .iter()
-            .filter(|f| f.normal[0] < -0.9 && f.middle()[0] < west + 1.0)
-            .filter(|f| matches!(f.style(), 0 | 2))
-            .map(windows_from)
-            .fold(f32::MAX, f32::min);
+            .filter(|f| f.normal[1].abs() < 0.1 && matches!(f.style(), 0 | 1))
+            .flat_map(|f| f.corners.iter().zip(f.uvs))
+            .filter(|(_, uv)| uv[1].abs() < 20.0)
+            .map(|(c, uv)| c[1] - uv[1])
+            .fold(f32::MIN, f32::max);
+        let top = slope_at(east);
+        assert!(
+            floor < top - 0.5 && floor >= top - 2.41,
+            "{half} m: floor {floor} under the uphill ground {top}"
+        );
+        // Uphill, no storey shows windows under the ground there.
+        let uphill = lowest_windows(false);
+        assert!(
+            uphill > slope_at(east) && uphill - slope_at(east) < 3.5,
+            "{half} m: uphill windows from {uphill} over ground {}",
+            slope_at(east)
+        );
+        // Downhill, windows start within a storey of the ground.
+        let downhill = lowest_windows(true);
         let ground = slope_at(west);
         assert!(
-            lowest_windows - ground < 3.0,
-            "{half} m: windows start {} m above the downhill ground, not within a storey",
-            lowest_windows - ground
-        );
-        assert!(
-            lowest_windows < floor,
-            "{half} m: the downhill wall shows a storey below the ground floor"
-        );
-        assert!(
-            lowest_windows > ground,
-            "{half} m: the lower storey's windows clear the ground"
-        );
-        // Uphill, the ground floor stands at the highest ground, as before.
-        let east_windows = faces
-            .iter()
-            .filter(|f| f.normal[0] > 0.9 && f.middle()[0] > east - 1.0)
-            .filter(|f| matches!(f.style(), 0 | 2))
-            .map(windows_from)
-            .fold(f32::MAX, f32::min);
-        assert!(
-            (east_windows - (floor + 1.0)).abs() < 0.01,
-            "{half} m: uphill windows from {east_windows}, floor {floor}"
+            downhill > ground && downhill - ground < 3.0,
+            "{half} m: downhill windows from {} m over the ground",
+            downhill - ground
         );
     }
+    // The long house falls 6 m: downhill, a storey shows below its ground floor, which is
+    // set in no more than a storey uphill.
+    let faces = building_faces(&world, (60.0, 550.0), 38.0);
+    let lower = faces
+        .iter()
+        .filter(|f| f.normal[0] < -0.9 && f.middle()[0] < 31.0 && matches!(f.style(), 0 | 2))
+        .map(windows_from)
+        .fold(f32::MAX, f32::min);
+    let floor = slope_at(90.0) - 2.4;
+    assert!(
+        lower < floor,
+        "a lower storey downhill: windows from {lower}, floor {floor}"
+    );
 }
 
 /// Writes the terrain, building shells and model instances of `world` around the building
@@ -2767,8 +2795,8 @@ async fn buildings_mapped_in_parts_stand_as_their_parts() {
     })
     .await;
     let faces = building_faces(&world, (80.0, 500.0), 30.0);
-    // Both parts stand on the outline's ground, its highest corner.
-    let ground = slope_at(90.0);
+    // Both parts stand on the outline's ground, set into the slope at its mean, 80 m east.
+    let ground = slope_at(80.0);
     // Clear of the low part's roof, which overhangs its walls.
     let east: Vec<&Face> = faces.iter().filter(|f| f.middle()[0] > 82.0).collect();
     assert!(!east.is_empty());
@@ -3092,9 +3120,9 @@ async fn buildings_are_what_the_map_says_they_are() {
             .any(|f| f.normal[1].abs() < 0.1 && windowed(&f)),
         "a garage has no windows"
     );
-    // The carport: a roof 2.5 m over its ground, and below it only posts.
+    // The carport: a roof 2.5 m over its ground, set in at its mean, and below it only posts.
     let carport = building_faces(&world, (60.0, 500.0), 5.0);
-    let ground = slope_at(63.0);
+    let ground = slope_at(60.0);
     assert!(
         carport
             .iter()
@@ -3209,7 +3237,8 @@ async fn roofs_are_the_shape_the_map_gives() {
         ..MapData::default()
     })
     .await;
-    let eaves = slope_at(66.0) + 2.0 * 3.0 + 0.4;
+    // Two storeys over a floor set into the slope at the houses' mean ground, 60 m east.
+    let eaves = slope_at(60.0) + 2.0 * 3.0 + 0.4;
     // Roof faces over the eaves, sloped and facing up.
     let sloped = |north: f32| -> Vec<Face> {
         building_faces(&world, (60.0, north), 9.0)
@@ -3653,9 +3682,10 @@ async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
     .await;
 
     let faces = building_faces(&world, (80.0, 500.0), 30.0);
-    // Six storeys of 3 m make the mapped 18 m above the highest corner; a parapet capped by
-    // its cornice, and perhaps a stair housing, top them.
-    let eaves = slope_at(90.0) + 6.0 * 3.0 + 0.4;
+    // Six storeys of 3 m make the mapped 18 m above the floor, set into the slope at the
+    // mean ground, 80 m east; a parapet capped by its cornice, and perhaps a stair housing,
+    // top them.
+    let eaves = slope_at(80.0) + 6.0 * 3.0 + 0.4;
     let top = highest(&faces);
     assert!(
         (top - (eaves + 0.88)).abs() < 0.01 || (top - (eaves + 2.6)).abs() < 0.01,
@@ -4028,11 +4058,11 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
     assert_eq!(models.len(), 1, "only the rectangular house");
     let house = &models[0];
     assert!(house.model.starts_with("house_"), "{}", house.model);
-    // Standing on its footprint's centre, at the highest ground (65 m east), stretched by no
-    // more than a quarter, its length along the outline's.
+    // Standing on its footprint's centre, set into the slope at its mean ground (60 m east),
+    // stretched by no more than a quarter, its length along the outline's.
     assert!((house.origin[0] - 60.0).abs() < 0.01 && (house.origin[2] + 500.0).abs() < 0.01);
     assert!(
-        (house.origin[1] - slope_at(64.5)).abs() < 0.01,
+        (house.origin[1] - slope_at(60.0)).abs() < 0.01,
         "{}",
         house.origin[1]
     );
