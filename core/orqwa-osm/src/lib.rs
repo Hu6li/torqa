@@ -108,6 +108,80 @@ pub struct Building {
     /// Mapped in parts, each drawn on its own (`OpenMapTiles`' `hide_3d`): its outline is the
     /// building's on the ground, its parts are what stands on it.
     pub in_parts: bool,
+    /// What it is, where the map says and its region's detail is at hand.
+    pub kind: Option<BuildingKind>,
+}
+
+/// What a building is, as the map's `building=*` says (ADR 0041, step 5). The tiles leave it
+/// out; a region's map detail keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildingKind {
+    /// A house for one or two families, a terraced house, a bungalow.
+    House,
+    /// Apartments.
+    Apartments,
+    /// A farmhouse.
+    Farmhouse,
+    /// A barn, stable or cowshed: a farm's working building.
+    Barn,
+    /// A garage, or a row of them.
+    Garage,
+    /// A carport or a shelter: a roof on posts.
+    Carport,
+    /// A shed or a hut.
+    Shed,
+    /// A church, chapel or cathedral.
+    Church,
+    /// A factory, warehouse or hangar.
+    Industrial,
+    /// A shop, store or office building.
+    Commercial,
+    /// A school, hospital, town hall, station and the like.
+    Public,
+    /// A hotel.
+    Hotel,
+}
+
+impl BuildingKind {
+    /// Every kind.
+    pub const ALL: [Self; 12] = [
+        Self::House,
+        Self::Apartments,
+        Self::Farmhouse,
+        Self::Barn,
+        Self::Garage,
+        Self::Carport,
+        Self::Shed,
+        Self::Church,
+        Self::Industrial,
+        Self::Commercial,
+        Self::Public,
+        Self::Hotel,
+    ];
+
+    /// The kind a `building=*` value names, if it names one that changes what is drawn;
+    /// `yes`, `residential` and the like say no more than the tiles do.
+    #[must_use]
+    pub fn from_tag(value: &str) -> Option<Self> {
+        Some(match value {
+            "house" | "detached" | "semidetached_house" | "bungalow" | "terrace"
+            | "dwelling_house" => Self::House,
+            "apartments" => Self::Apartments,
+            "farm" | "farmhouse" => Self::Farmhouse,
+            "barn" | "farm_auxiliary" | "stable" | "cowshed" | "sty" => Self::Barn,
+            "garage" | "garages" => Self::Garage,
+            "carport" | "roof" => Self::Carport,
+            "shed" | "hut" => Self::Shed,
+            "church" | "chapel" | "cathedral" => Self::Church,
+            "industrial" | "warehouse" | "factory" | "manufacture" | "hangar" => Self::Industrial,
+            "commercial" | "retail" | "office" | "supermarket" => Self::Commercial,
+            "school" | "hospital" | "public" | "civic" | "government" | "university"
+            | "college" | "kindergarten" | "train_station" | "fire_station" => Self::Public,
+            "hotel" => Self::Hotel,
+            _ => return None,
+        })
+    }
 }
 
 /// A river, stream or canal centre line.
@@ -333,6 +407,12 @@ impl MapData {
     /// comes after it.
     pub fn apply_surfaces(&mut self) {
         detail::apply::surfaces(&mut self.roads, self.detail.surfaces());
+    }
+
+    /// Tells the buildings what they are, as their [`detail`] knows it (ADR 0041): each takes
+    /// the kind mapped at a point within its outline.
+    pub fn apply_building_kinds(&mut self) {
+        detail::apply::building_kinds(&mut self.buildings, self.detail.buildings());
     }
 }
 

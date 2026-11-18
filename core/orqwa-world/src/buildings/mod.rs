@@ -17,7 +17,7 @@ mod skeleton;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
 
-use orqwa_osm::{Building, MapData};
+use orqwa_osm::{Building, BuildingKind, MapData};
 use orqwa_routes::LocalProjection;
 
 use crate::climate::Climate;
@@ -201,6 +201,8 @@ pub(crate) enum Kind {
     Castle,
     /// A lighthouse: a round tower in bands of colour, a lantern on top.
     Lighthouse,
+    /// A carport or shelter the map names: a roof on posts, open below.
+    Canopy,
 }
 
 /// A building the map marks by a point of interest of its own, other than a church.
@@ -564,6 +566,7 @@ pub(crate) fn lone_lighthouses(map: &MapData, projection: &LocalProjection) -> V
                     color: None,
                     min_height: None,
                     in_parts: false,
+                    kind: None,
                 }
             })
         })
@@ -920,7 +923,24 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
         None => {}
     }
     let height = mapped_height(plot.building);
-    if area < 30.0 && height.is_none_or(|h| h < 5.0) {
+    // What the map says a building is goes before what its size and setting suggest.
+    match plot.building.kind {
+        Some(BuildingKind::Church) => return Kind::Church,
+        Some(BuildingKind::Garage | BuildingKind::Shed | BuildingKind::Barn) => return Kind::Shed,
+        Some(BuildingKind::Carport) => return Kind::Canopy,
+        Some(BuildingKind::Industrial) => return Kind::Hall,
+        Some(BuildingKind::Commercial) => {
+            return if area > STORE_AREA && height.is_none_or(|h| h < 10.0) {
+                Kind::Hall
+            } else {
+                Kind::Office
+            };
+        }
+        Some(BuildingKind::Public) => return Kind::Public,
+        Some(BuildingKind::Hotel) => return Kind::Hotel,
+        _ => {}
+    }
+    if area < 30.0 && height.is_none_or(|h| h < 5.0) && plot.building.kind.is_none() {
         return Kind::Shed;
     }
     // Guest houses in a house, a doctor's office or a post office in a shop stay what they
@@ -946,6 +966,20 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     let regional = asian || nordic || french;
     let alpine =
         !tropical && !regional && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
+    // Homes the map names stay homes, as their region builds them.
+    let home = if alpine { Kind::Chalet } else { Kind::House };
+    match plot.building.kind {
+        Some(BuildingKind::Apartments) if area > 150.0 || height.is_some_and(|h| h >= 9.0) => {
+            return Kind::Block;
+        }
+        Some(BuildingKind::Farmhouse) if !(alpine || tropical || regional) => {
+            return Kind::Farmhouse;
+        }
+        Some(BuildingKind::House | BuildingKind::Apartments | BuildingKind::Farmhouse) => {
+            return home;
+        }
+        _ => {}
+    }
     match plot.setting {
         Setting::Industrial | Setting::Commercial if area < 80.0 => Kind::Shed,
         Setting::Industrial => Kind::Hall,
@@ -1080,7 +1114,8 @@ fn design(
         Kind::House => recipe.house(),
         Kind::Chalet => recipe.chalet(),
         Kind::Farmhouse => recipe.farmhouse(),
-        Kind::Shed => recipe.shed(),
+        // A canopy takes a shed's paints for its posts and roof.
+        Kind::Shed | Kind::Canopy => recipe.shed(),
         Kind::Block if region == Region::France => recipe.french_city(),
         Kind::Block => recipe.block(),
         Kind::Office => recipe.office(),
@@ -1631,6 +1666,52 @@ fn roof(
     }
 }
 
+/// A canopy's roof stands this high over its ground, this thick, its posts this far in from
+/// its edges and at most this far apart.
+const CANOPY_HEIGHT: f64 = 2.5;
+const CANOPY_THICKNESS: f64 = 0.15;
+const CANOPY_INSET: f64 = 0.2;
+const CANOPY_SPAN: f64 = 4.0;
+
+/// A carport or shelter: a thin flat roof over its whole outline on posts, open below.
+fn canopy(b: &mut Builder, outline: &[Point], design: &Design) {
+    let paint = design.roof_paint;
+    let top = b.ground + CANOPY_HEIGHT;
+    b.underside(outline, top, paint.under);
+    b.walls(outline, top, top + CANOPY_THICKNESS, paint.under);
+    b.flat_roof(
+        outline,
+        top + CANOPY_THICKNESS,
+        0.0,
+        paint.top,
+        paint.gables,
+    );
+    let middle = centroid(outline);
+    let count = outline.len();
+    for i in 0..count {
+        let (a, c) = (outline[i], outline[(i + 1) % count]);
+        // A post at every corner and between them no more than `CANOPY_SPAN` apart.
+        let posts = (distance(a, c) / CANOPY_SPAN).ceil().max(1.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few posts
+        for k in 0..posts as u32 {
+            let t = f64::from(k) / posts;
+            let at = (a.0 + (c.0 - a.0) * t, a.1 + (c.1 - a.1) * t);
+            let towards = distance(at, middle).max(1e-6);
+            let inset = CANOPY_INSET.min(towards / 2.0);
+            let post = Rect {
+                centre: (
+                    at.0 + (middle.0 - at.0) / towards * inset,
+                    at.1 + (middle.1 - at.1) / towards * inset,
+                ),
+                axis: (1.0, 0.0),
+                half_length: 0.07,
+                half_width: 0.07,
+            };
+            b.cuboid(&post, (b.footing, top), design.wall, design.wall, false);
+        }
+    }
+}
+
 /// Walls, roof and details of every kind but churches; `walls`, if given, is the height of the
 /// walls instead of what the map and the design say.
 fn build(
@@ -1650,6 +1731,10 @@ fn build(
         rect.filter(|r| signed_area(footprint) / r.area() >= DRAWN_RECTANGULAR)
     };
     let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
+    if design.kind == Kind::Canopy {
+        canopy(b, &outline, design);
+        return;
+    }
     let parapet = match design.roof {
         Roof::Flat { parapet } => Some(parapet),
         Roof::Gable | Roof::Hipped => None,
@@ -2630,6 +2715,7 @@ mod tests {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         }
     }
 

@@ -29,7 +29,16 @@ pub struct Region {
     /// update. `None` for a download ORQWA did not make itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// What its extract holds, as [`CONTENT`] counts: 0 for extracts made before it did.
+    #[serde(default)]
+    pub content: u32,
 }
+
+/// What extracts hold: 1 the roads' surfaces and roundabouts, 2 also what buildings are
+/// (ADR 0041). A region whose extract holds less is not ready, so its download is read again.
+/// The directory [`VERSION`] stays: courses carry the cells they used under it, and a cell
+/// without buildings reads as one whose buildings say nothing.
+pub const CONTENT: u32 = 2;
 
 /// Where region `id`'s download goes in the map cache `osm_dir`.
 #[must_use]
@@ -187,7 +196,9 @@ pub fn installed(osm_dir: &Path) -> Vec<Region> {
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
         .filter_map(|path| serde_json::from_slice(&fs::read(path).ok()?).ok())
-        .filter(|region: &Region| osm_dir.join(VERSION).join(&region.extract).is_dir())
+        .filter(|region: &Region| {
+            region.content >= CONTENT && osm_dir.join(VERSION).join(&region.extract).is_dir()
+        })
         .collect();
     regions.sort_by(|a, b| a.id.cmp(&b.id));
     regions
@@ -257,6 +268,7 @@ pub fn install(
         extract: made.name,
         data_time: made.data_time,
         source: source.map(ToOwned::to_owned),
+        content: CONTENT,
     };
     let json = serde_json::to_vec_pretty(&region).map_err(|e| OsmError::Invalid(e.to_string()))?;
     let aside = record.with_extension("json.part");
@@ -393,6 +405,7 @@ mod tests {
             extract: extract.to_owned(),
             data_time: None,
             source: None,
+            content: CONTENT,
         };
         let here = [
             ready("switzerland", "switzerland-2026-11-20"),
@@ -436,5 +449,25 @@ mod tests {
 
         assert_eq!(installed(&osm), []);
         fs::remove_dir_all(osm).unwrap();
+    }
+
+    #[test]
+    fn a_region_whose_extract_holds_less_than_buildings_is_read_again() {
+        let osm = std::env::temp_dir().join(format!("orqwa-content-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&osm);
+        fs::create_dir_all(osm.join(VERSION).join("bern-2026-10-24")).unwrap();
+        fs::create_dir_all(osm.join(DOWNLOADS)).unwrap();
+        let record = |content: &str| {
+            format!(r#"{{"id":"bern","name":"Bern","extract":"bern-2026-10-24"{content}}}"#)
+        };
+        fs::write(osm.join(DOWNLOADS).join("bern.json"), record("")).unwrap();
+        assert_eq!(installed(&osm), [], "made before extracts held buildings");
+        fs::write(
+            osm.join(DOWNLOADS).join("bern.json"),
+            record(&format!(r#","content":{CONTENT}"#)),
+        )
+        .unwrap();
+        assert_eq!(installed(&osm).len(), 1);
+        fs::remove_dir_all(&osm).unwrap();
     }
 }

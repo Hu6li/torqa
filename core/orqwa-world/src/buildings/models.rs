@@ -122,7 +122,7 @@ pub(crate) fn fitting_to(
         Kind::Castle if wanted.region == Region::Nordic => "nordic_castle",
         Kind::Castle => "castle",
         Kind::Lighthouse => "lighthouse",
-        Kind::Block | Kind::Hall => return None,
+        Kind::Block | Kind::Hall | Kind::Canopy => return None,
     };
     let (length, width) = (2.0 * rect.half_length, 2.0 * rect.half_width);
     MODELS

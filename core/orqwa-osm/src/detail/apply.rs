@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use super::extract::{Roundabout, SurfaceWay};
-use crate::{LatLon, Road, RoadKind, RoadSurface};
+use super::extract::{KindAt, Roundabout, SurfaceWay};
+use crate::{Building, LatLon, Road, RoadKind, RoadSurface};
 
 /// Farthest a mapped way may lie from a road to be that road (metres): the tiles keep
 /// positions to about half a metre and a parallel sidewalk or lane lies further off.
@@ -17,6 +17,73 @@ const ALIGNED: f64 = 0.9;
 const SHORTEST: f64 = 5.0;
 /// Cells of the index of mapped ways (metres).
 const CELL: f64 = 25.0;
+
+/// Cells of the index of buildings' kinds (degrees, about 50 m).
+const KIND_CELL: f64 = 0.0005;
+
+/// Gives each building the kind mapped at a point within its outline. The tiles and the
+/// detail come from the same ways, so a building's point lies within the tile's outline of it.
+pub(crate) fn building_kinds(buildings: &mut [Building], kinds: &[KindAt]) {
+    if kinds.is_empty() {
+        return;
+    }
+    #[allow(clippy::cast_possible_truncation)] // degrees over a small cell size
+    let cell = |(lat, lon): LatLon| {
+        (
+            (lat / KIND_CELL).floor() as i64,
+            (lon / KIND_CELL).floor() as i64,
+        )
+    };
+    let mut index: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (i, kind) in kinds.iter().enumerate() {
+        let at = (f64::from(kind.at[0]) * 1e-7, f64::from(kind.at[1]) * 1e-7);
+        index.entry(cell(at)).or_default().push(i);
+    }
+    for building in buildings {
+        let Some(&first) = building.outline.first() else {
+            continue;
+        };
+        let (low, high) =
+            building
+                .outline
+                .iter()
+                .fold((first, first), |(low, high), &(lat, lon)| {
+                    (
+                        (low.0.min(lat), low.1.min(lon)),
+                        (high.0.max(lat), high.1.max(lon)),
+                    )
+                });
+        let (from, to) = (cell(low), cell(high));
+        'cells: for a in from.0..=to.0 {
+            for b in from.1..=to.1 {
+                for &i in index.get(&(a, b)).into_iter().flatten() {
+                    let at = (
+                        f64::from(kinds[i].at[0]) * 1e-7,
+                        f64::from(kinds[i].at[1]) * 1e-7,
+                    );
+                    if inside(&building.outline, at) {
+                        building.kind = Some(kinds[i].kind);
+                        break 'cells;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Whether `point` lies within the closed `ring`.
+fn inside(ring: &[LatLon], (lat, lon): LatLon) -> bool {
+    let mut within = false;
+    for pair in ring.windows(2) {
+        let ((a_lat, a_lon), (b_lat, b_lon)) = (pair[0], pair[1]);
+        if (a_lat > lat) != (b_lat > lat)
+            && lon < a_lon + (lat - a_lat) * (b_lon - a_lon) / (b_lat - a_lat)
+        {
+            within = !within;
+        }
+    }
+    within
+}
 
 /// Gives each road the surface of the mapped ways along it, splitting it at its points where
 /// that changes. Only a surface the tile's own tells no different of is taken: setts for a
@@ -324,6 +391,7 @@ fn distance_to_segment(at: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BuildingKind;
     use crate::{RoadClass, RoadDetails};
 
     /// A point `east` and `north` metres from Bern's Zytglogge, as (lat, lon).
@@ -567,5 +635,43 @@ mod tests {
         let mut same = roads.clone();
         surfaces(&mut same, &[]);
         assert_eq!(same, roads);
+    }
+
+    #[test]
+    fn buildings_take_the_kind_mapped_within_them() {
+        let square = |lat: f64, lon: f64| {
+            let d = 0.0001;
+            vec![
+                (lat, lon),
+                (lat, lon + d),
+                (lat + d, lon + d),
+                (lat + d, lon),
+                (lat, lon),
+            ]
+        };
+        let building = |id, outline| Building {
+            id,
+            outline,
+            height: None,
+            levels: None,
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+        };
+        let mut buildings = vec![
+            building(1, square(46.948, 7.447)),
+            building(2, square(46.9483, 7.447)),
+        ];
+        let kinds = [KindAt {
+            at: [469_480_500, 74_470_500],
+            kind: BuildingKind::Barn,
+        }];
+        building_kinds(&mut buildings, &kinds);
+        assert_eq!(buildings[0].kind, Some(BuildingKind::Barn));
+        assert_eq!(
+            buildings[1].kind, None,
+            "its neighbour's point is not within it"
+        );
     }
 }

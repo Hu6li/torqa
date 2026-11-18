@@ -760,3 +760,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R259 | Refines R16, R89 and R258 (2026-11-18): **buildings stand on their mapped outline under a roof over it**. A building is drawn as the rectangle around its outline only where the outline fills at least 95 % of it; gable roofs, balconies and chimneys stay on those. Every other building's walls follow its outline, and a pitched roof over it rises from every wall at the same pitch to hips, valleys and ridges, eaves standing out all round, instead of a band with a flat top. Fitted models, drawn on that rectangle, stand only on outlines filling 90 % of it. Flat roofs keep following their outline. Kept worlds offer regeneration (R101). |
+
+## What buildings are
+
+| ID | Requirement |
+|---|---|
+| R260 | Extends R142, R144 and R258 (2026-11-18): **where a region's map detail is downloaded, buildings are what the map says they are** (`building=*`). Garages, sheds and barns are drawn without windows, carports and shelters as a roof on posts open below, churches as churches even without a church point, factories and warehouses as halls, shops and offices, public buildings and hotels as such, apartments as blocks where they are large, and houses and farmhouses stay homes, as their region and elevation build them. Buildings the map says nothing more of, and courses without map detail, are drawn as before. Regions downloaded before keep working and are prepared again from their downloads in the background; courses carry the detail they used, so a course opened elsewhere draws the same buildings. Kept worlds offer regeneration (R101). |

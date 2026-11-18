@@ -558,7 +558,7 @@ physically based materials and light, restyled group by group.
     parts drawn as their parts (`hide_3d`, `render_min_height`, R258)
   - [x] Step 4 — walls along the mapped outline and a roof computed over it, every building
     (R259)
-  - [ ] Step 5 — the kind of every building (`building=*`) in the map detail extract
+  - [x] Step 5 — the kind of every building (`building=*`) in the map detail extract (R260)
   - [ ] Step 6 — roof shapes, levels, colours and materials from the extract
   - [ ] Step 7 — buildings assembled on their outlines from Blender parts
   - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR

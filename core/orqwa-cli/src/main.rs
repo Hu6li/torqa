@@ -73,7 +73,8 @@ enum Command {
     /// the Analysis tab.
     SampleRides(sample_rides::SampleRidesArgs),
     /// Make the map detail of an OpenStreetMap region download (`.osm.pbf`, e.g. from
-    /// Geofabrik): its road surfaces and roundabouts, with how long it took and its size.
+    /// Geofabrik): its road surfaces, roundabouts and building kinds, with how long it took and
+    /// its size.
     Detail {
         /// The region's download.
         pbf: PathBuf,
@@ -278,10 +279,11 @@ async fn detail(pbf: PathBuf, out: PathBuf, region: Option<String>) -> Result<()
     .await??;
     eprintln!();
     println!(
-        "{}: {} surfaces, {} roundabouts in {} cells, {:.1} MB, {:.0} s",
+        "{}: {} surfaces, {} roundabouts, {} building kinds in {} cells, {:.1} MB, {:.0} s",
         extract.name,
         extract.surfaces,
         extract.roundabouts,
+        extract.buildings,
         extract.cells,
         extract.bytes as f64 / 1e6,
         started.elapsed().as_secs_f64(),

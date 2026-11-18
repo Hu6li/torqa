@@ -74,6 +74,7 @@ async fn regional_rides_place_houses_and_only_mapped_castles_offline() {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         };
         let map = MapData {
             buildings: vec![
@@ -1902,6 +1903,7 @@ async fn ferns_grow_on_the_nearby_forest_floor_and_keep_clear_of_obstacles() {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         }],
         roads: vec![orqwa_osm::Road {
             class: orqwa_osm::RoadClass::Street,
@@ -1968,6 +1970,7 @@ async fn rocks_lie_on_rocky_ground_off_the_road_and_out_of_buildings() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         areas: vec![scree],
@@ -2467,6 +2470,7 @@ async fn buildings_drawn_into_the_road_are_left_out() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house(1, diamond(8.5, 4.2)), house(2, diamond(30.0, 25.7))],
@@ -2490,6 +2494,7 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -2533,6 +2538,7 @@ async fn buildings_on_slopes_show_lower_storeys_downhill_not_a_blank_plinth() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     });
     let world = world(&MapData {
         buildings: houses.to_vec(),
@@ -2695,6 +2701,7 @@ async fn slope_buildings_render_fixture() {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         },
     )
     .collect();
@@ -2724,6 +2731,7 @@ async fn buildings_mapped_in_parts_stand_as_their_parts() {
         color: None,
         min_height,
         in_parts: false,
+        kind: None,
     };
     let outline = Building {
         id: 60,
@@ -2733,6 +2741,7 @@ async fn buildings_mapped_in_parts_stand_as_their_parts() {
         color: None,
         min_height: None,
         in_parts: true,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![
@@ -2789,6 +2798,7 @@ async fn fitted_models_have_the_storeys_the_map_gives() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![
@@ -2841,6 +2851,7 @@ async fn parts_buildings_render_fixture() {
         color: None,
         min_height,
         in_parts: false,
+        kind: None,
     };
     let buildings = vec![
         Building {
@@ -2851,6 +2862,7 @@ async fn parts_buildings_render_fixture() {
             color: None,
             min_height: None,
             in_parts: true,
+            kind: None,
         },
         part(81, (67.5, 485.0, 7.5, 10.0), None, 10.0),
         part(82, (85.0, 485.0, 10.0, 10.0), Some(6.5), 16.0),
@@ -2876,6 +2888,7 @@ async fn outlines_keep_their_shape_under_a_roof_over_them() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let l_shape = [
         (50.0, 460.0),
@@ -2997,6 +3010,7 @@ async fn outline_buildings_render_fixture() {
                 color: None,
                 min_height: None,
                 in_parts: false,
+                kind: None,
             }
         })
         .collect();
@@ -3006,6 +3020,127 @@ async fn outline_buildings_render_fixture() {
     })
     .await;
     export_building_scene(&world, "outline-buildings.json");
+}
+
+#[tokio::test]
+async fn buildings_are_what_the_map_says_they_are() {
+    // In a residential area (R260): a garage of 8 × 5 m, a carport of 6 × 5 m and a house of
+    // 25 × 20 m, which by its size alone would be a block of flats.
+    let town = Area {
+        cover: LandCover::Residential,
+        outer: vec![square(80.0, 500.0, 60.0)],
+        inner: vec![],
+    };
+    let building = |id, outline, kind| Building {
+        id,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(kind),
+    };
+    let world = world(&MapData {
+        areas: vec![town],
+        buildings: vec![
+            building(
+                110,
+                rectangle(60.0, 470.0, 4.0, 2.5),
+                orqwa_osm::BuildingKind::Garage,
+            ),
+            building(
+                111,
+                rectangle(60.0, 500.0, 3.0, 2.5),
+                orqwa_osm::BuildingKind::Carport,
+            ),
+            building(
+                112,
+                rectangle(95.0, 520.0, 12.5, 10.0),
+                orqwa_osm::BuildingKind::House,
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let windowed = |f: &&Face| matches!(f.style(), 0 | 2);
+    let garage = building_faces(&world, (60.0, 470.0), 6.0);
+    assert!(!garage.is_empty());
+    assert!(
+        !garage
+            .iter()
+            .any(|f| f.normal[1].abs() < 0.1 && windowed(&f)),
+        "a garage has no windows"
+    );
+    // The carport: a roof 2.5 m over its ground, and below it only posts.
+    let carport = building_faces(&world, (60.0, 500.0), 5.0);
+    let ground = slope_at(63.0);
+    assert!(
+        carport
+            .iter()
+            .any(|f| f.normal[1] < -0.99 && (f.middle()[1] - (ground + 2.5)).abs() < 0.01),
+        "a roof on posts"
+    );
+    for wall in carport
+        .iter()
+        .filter(|f| f.normal[1].abs() < 0.1 && f.middle()[1] < ground + 2.0)
+    {
+        let width = wall
+            .corners
+            .iter()
+            .flat_map(|a| {
+                wall.corners
+                    .iter()
+                    .map(move |b| (a[0] - b[0]).hypot(a[2] - b[2]))
+            })
+            .fold(0.0, f32::max);
+        assert!(
+            width < 0.2,
+            "open below but for posts: a wall {width} m wide"
+        );
+    }
+    // The house keeps a pitched roof, where a block would have a flat one.
+    let house = building_faces(&world, (95.0, 520.0), 20.0);
+    assert!(
+        house.iter().any(|f| (0.2..0.95).contains(&f.normal[1])),
+        "the mapped house has a pitched roof"
+    );
+}
+
+#[tokio::test]
+#[ignore = "exports buildings of mapped kinds for Godot visual review"]
+async fn kinds_buildings_render_fixture() {
+    use orqwa_osm::BuildingKind::{Barn, Carport, Church, Garage, House};
+    // In a residential area: a garage, a carport, a barn, a large house and a church, each
+    // only by what the map says it is.
+    let town = Area {
+        cover: LandCover::Residential,
+        outer: vec![square(80.0, 485.0, 70.0)],
+        inner: vec![],
+    };
+    let building = |id, outline, kind| Building {
+        id,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(kind),
+    };
+    let world = world(&MapData {
+        areas: vec![town],
+        buildings: vec![
+            building(120, rectangle(45.0, 465.0, 4.0, 3.0), Garage),
+            building(121, rectangle(58.0, 465.0, 3.0, 2.5), Carport),
+            building(122, rectangle(80.0, 465.0, 12.0, 8.0), Barn),
+            building(123, rectangle(50.0, 500.0, 12.0, 10.0), House),
+            building(124, rectangle(95.0, 500.0, 14.0, 7.0), Church),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "kinds-buildings.json");
 }
 
 #[tokio::test]
@@ -3019,6 +3154,7 @@ async fn churches_get_a_tower_and_chapels_a_turret() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let chapel = Building {
         id: 4,
@@ -3076,6 +3212,7 @@ async fn walls_show_whole_windows_only() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![block],
@@ -3134,6 +3271,7 @@ async fn blocks_have_a_cornice_and_stacked_balconies() {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         })
         .collect();
     let world = world(&MapData {
@@ -3190,6 +3328,7 @@ async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![block],
@@ -3229,6 +3368,7 @@ async fn halls_on_industrial_land_are_low_and_clad_in_metal() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![hall],
@@ -3256,6 +3396,7 @@ async fn offices_hotels_and_public_buildings_come_from_the_map() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let land = |cover: LandCover, east: f64, north: f64| Area {
         cover,
@@ -3328,6 +3469,7 @@ async fn chalets_in_the_mountains_have_timber_walls_and_deep_eaves() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let map = MapData {
         buildings: vec![house],
@@ -3381,6 +3523,7 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -3419,6 +3562,7 @@ async fn shops_get_a_front_and_an_awning_onto_their_street() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house(31, 80.0), house(32, 120.0)],
@@ -3489,6 +3633,7 @@ async fn roads_stay_clear_of_buildings() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![
@@ -3534,6 +3679,7 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let l_shape = [
         (60.0, 700.0),
@@ -3613,6 +3759,7 @@ async fn chalets_show_their_front_to_the_valley_and_churches_their_choir_to_the_
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let church = Building {
         id: 32,
@@ -3664,6 +3811,7 @@ async fn houses_on_steep_slopes_keep_their_shells() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let map = MapData {
         buildings: vec![house],
@@ -5054,6 +5202,7 @@ async fn all_world_meshes_face_their_normals() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -5126,6 +5275,7 @@ async fn minimap_draws_map_features_near_the_route_only() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let map = MapData {
         areas: vec![forest, far_lake],
@@ -5406,6 +5556,7 @@ async fn mapped_building_colours_turn_into_palette_colours() {
         color: Some([0.15, 0.15, 0.17]),
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -5516,6 +5667,7 @@ async fn castles_and_lighthouses_from_the_map_get_their_models() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let tower = Building {
         id: 62,
@@ -5641,6 +5793,7 @@ async fn forest_and_houses(origin: (f64, f64)) -> World {
             color: None,
             min_height: None,
             in_parts: false,
+            kind: None,
         })
         .collect();
     let map = MapData {
@@ -5707,6 +5860,7 @@ async fn a_castle_with_a_free_outline_gets_towers_windows_and_a_roof() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let world = world(&MapData {
         buildings: vec![castle],
@@ -6568,6 +6722,7 @@ async fn towns_get_lamps_benches_and_shelters_with_room_to_stand() {
         color: None,
         min_height: None,
         in_parts: false,
+        kind: None,
     };
     let side_street = orqwa_osm::Road {
         class: orqwa_osm::RoadClass::Street,

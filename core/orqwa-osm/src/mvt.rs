@@ -367,6 +367,7 @@ fn add_building(
             color,
             min_height,
             in_parts,
+            kind: None,
         });
     }
 }

@@ -193,6 +193,44 @@ with up to 256 corners, every outline but seven got a checked skeleton, in 1.3 s
 
 Generator 45; the stored format stays 3.
 
+## Step 5: what buildings are (2026-11-18, R260)
+
+The map detail extract keeps, for every building whose `building=*` names a kind that
+changes what is drawn (`BuildingKind`: house, apartments, farmhouse, barn, garage, carport,
+shed, church, industrial, commercial, public, hotel), one point and that kind, in the cell of
+the point: halfway between its first corner and the one halfway round, which lies within the
+outlines of buildings. `yes`, `residential` and the like say no more than the tiles and are
+not kept. When a course is prepared, each tile building takes the kind at a point within its
+outline (`MapData::apply_building_kinds`).
+
+The world puts the mapped kind before what size and setting suggest, after churches and
+landmarks marked by points of interest: garages, sheds and barns are windowless sheds,
+carports and shelters a new `Canopy` (a flat roof 2.5 m up on posts at most 4 m apart),
+churches churches, industrial buildings halls, commercial buildings stores or offices,
+public buildings and hotels such. Houses, apartments and farmhouses stay homes as their
+region and elevation build them, apartments over 150 m² (or 9 m) blocks.
+
+Measured with `orqwa-cli detail` (dev container, release build, process peak):
+
+| Region | Building kinds | Extract before → with them | Peak memory before → with | Time |
+|---|---:|---:|---:|---:|
+| Switzerland (2026-11-17) | 718,828 | 36.9 → 69.0 MB | 76 → 119 MB | 7 s |
+| DACH (2026-10-25) | 13,365,330 | 609 → 1,205 MB | 933 → 1,794 MB | 83 → 95 s |
+
+Each building held while the file is read takes 16 bytes, its kind packed into its first
+corner's node id. DACH is among the largest downloads offered; on tablets, smaller regions
+(a country's parts) keep the preparation within their memory.
+
+What extracts hold is now versioned in each region's record (`Region::content`, `CONTENT`
+2) rather than by raising the extracts' directory, `detail-v1`: courses carry the cells they
+used under that directory, and a course opened where its region is not downloaded must still
+find them. A region whose extract holds less is not ready, so ORQWA prepares it again from its
+download at start-up (ADR 0033); cells without buildings read as buildings the map says
+nothing more of. A course in the library keeps the cells it carries until its region's
+extract has a new name, at its next update (R144 compares extracts by name).
+
+Generator 46; the stored format stays 3.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

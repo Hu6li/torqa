@@ -1,6 +1,6 @@
 //! A region's map detail, made from its `.osm.pbf`: the roads whose surface the vector tiles
-//! cannot tell and the roundabouts, written as small JSON cells (tiles at [`CELL_ZOOM`]) in a
-//! directory named for the region and the date of its data.
+//! cannot tell, the roundabouts and what buildings are (ADR 0041), written as small JSON cells
+//! (tiles at [`CELL_ZOOM`]) in a directory named for the region and the date of its data.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::pbf::{self, NodeBlock, WayBlock};
 use crate::mvt::{road_class, road_kind, road_surface};
-use crate::{OsmError, RoadKind, RoadSurface, tile_of};
+use crate::{BuildingKind, OsmError, RoadKind, RoadSurface, tile_of};
 
 /// The directory of extracts in the map cache. Raised when what an extract holds changes, so
 /// they are made again from the regions' downloads.
@@ -49,6 +49,8 @@ pub struct Extract {
     pub surfaces: usize,
     /// Roads going round a roundabout.
     pub roundabouts: usize,
+    /// Buildings whose kind the map tells.
+    pub buildings: usize,
     /// Cells written.
     pub cells: usize,
     /// Bytes written.
@@ -62,6 +64,17 @@ pub(crate) struct Cell {
     pub surfaces: Vec<SurfaceWay>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roundabouts: Vec<Roundabout>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buildings: Vec<KindAt>,
+}
+
+/// What a building is, at a point within its outline: halfway between its first corner and
+/// the one halfway round it, which for the outlines of buildings lies inside.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct KindAt {
+    /// Latitude, longitude in 1e-7 degrees.
+    pub at: [i32; 2],
+    pub kind: BuildingKind,
 }
 
 /// A road with a surface the tiles cannot tell.
@@ -117,6 +130,7 @@ pub fn extract(
     )?;
     let ways = Ways::joined(found);
     let mut needed = ways.refs.clone();
+    needed.extend(ways.buildings.iter().flat_map(|b| b.corners()));
     needed.sort_unstable();
     needed.dedup();
     let positions: Vec<AtomicI64> = needed.iter().map(|_| AtomicI64::new(NOWHERE)).collect();
@@ -141,35 +155,8 @@ pub fn extract(
     };
 
     let mut cells: HashMap<(u32, u32), Cell> = HashMap::new();
-    let (mut surfaces, mut roundabouts) = (0, 0);
-    for way in &ways.found {
-        // Nodes the download lacks are left out; Geofabrik keeps the ways crossing its border
-        // whole, so this is rare.
-        let line: Vec<[i32; 2]> = ways.refs[way.refs.clone()].iter().filter_map(at).collect();
-        if line.len() < 2 {
-            continue;
-        }
-        for cell in cells_of(&line) {
-            let cell = cells.entry(cell).or_default();
-            if let Some(surface) = way.surface {
-                cell.surfaces.push(SurfaceWay {
-                    id: way.id,
-                    kind: way.kind,
-                    surface,
-                    line: line.clone(),
-                });
-            }
-            if way.roundabout {
-                cell.roundabouts.push(Roundabout {
-                    id: way.id,
-                    kind: way.kind,
-                    line: line.clone(),
-                });
-            }
-        }
-        surfaces += usize::from(way.surface.is_some());
-        roundabouts += usize::from(way.roundabout);
-    }
+    let (surfaces, roundabouts) = place_ways(&ways, &at, &mut cells);
+    let buildings = place_buildings(&ways.buildings, &at, &mut cells);
 
     let data_time = header.data_time;
     let name = format!(
@@ -208,9 +195,76 @@ pub fn extract(
         data_time,
         surfaces,
         roundabouts,
+        buildings,
         cells: cells.len(),
         bytes,
     })
+}
+
+/// Puts each road in every cell it passes, whole, given where its nodes are (`at`); how many
+/// have a surface and how many go round a roundabout.
+fn place_ways(
+    ways: &Ways,
+    at: &impl Fn(&i64) -> Option<[i32; 2]>,
+    cells: &mut HashMap<(u32, u32), Cell>,
+) -> (usize, usize) {
+    let (mut surfaces, mut roundabouts) = (0, 0);
+    for way in &ways.found {
+        // Nodes the download lacks are left out; Geofabrik keeps the ways crossing its border
+        // whole, so this is rare.
+        let line: Vec<[i32; 2]> = ways.refs[way.refs.clone()].iter().filter_map(at).collect();
+        if line.len() < 2 {
+            continue;
+        }
+        for cell in cells_of(&line) {
+            let cell = cells.entry(cell).or_default();
+            if let Some(surface) = way.surface {
+                cell.surfaces.push(SurfaceWay {
+                    id: way.id,
+                    kind: way.kind,
+                    surface,
+                    line: line.clone(),
+                });
+            }
+            if way.roundabout {
+                cell.roundabouts.push(Roundabout {
+                    id: way.id,
+                    kind: way.kind,
+                    line: line.clone(),
+                });
+            }
+        }
+        surfaces += usize::from(way.surface.is_some());
+        roundabouts += usize::from(way.roundabout);
+    }
+    (surfaces, roundabouts)
+}
+
+/// Puts each building's kind in the cell of its point, given where its corners are (`at`);
+/// how many found their place.
+fn place_buildings(
+    buildings: &[FoundBuilding],
+    at: &impl Fn(&i64) -> Option<[i32; 2]>,
+    cells: &mut HashMap<(u32, u32), Cell>,
+) -> usize {
+    let mut placed = 0;
+    for building in buildings {
+        let [Some(a), Some(b)] = building.corners().map(|node| at(&node)) else {
+            continue;
+        };
+        let middle = [0, 1].map(|k| i32::midpoint(a[k], b[k]));
+        let degrees = (f64::from(middle[0]) * 1e-7, f64::from(middle[1]) * 1e-7);
+        cells
+            .entry(tile_of(CELL_ZOOM, degrees.0, degrees.1))
+            .or_default()
+            .buildings
+            .push(KindAt {
+                at: middle,
+                kind: building.kind(),
+            });
+        placed += 1;
+    }
+    placed
 }
 
 /// The ways found in the blocks one thread read; their nodes one list.
@@ -218,6 +272,33 @@ pub fn extract(
 struct Ways {
     found: Vec<Found>,
     refs: Vec<i64>,
+    buildings: Vec<FoundBuilding>,
+}
+
+/// A building whose kind the map tells, and two of its corners: its first and the one halfway
+/// round. Tens of millions of them are held at once for a large region, so its kind is kept
+/// in the top byte of the first corner's node id (OpenStreetMap's ids are far below 2^56).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct FoundBuilding([i64; 2]);
+
+impl FoundBuilding {
+    const SHIFT: u32 = 56;
+
+    fn new(kind: BuildingKind, corners: [i64; 2]) -> Option<Self> {
+        let index = BuildingKind::ALL.iter().position(|&k| k == kind)?;
+        let index = i64::try_from(index).ok()?;
+        (corners[0] >> Self::SHIFT == 0)
+            .then_some(Self([corners[0] | (index << Self::SHIFT), corners[1]]))
+    }
+
+    fn kind(self) -> BuildingKind {
+        let index = usize::try_from(self.0[0] >> Self::SHIFT).unwrap_or(0);
+        BuildingKind::ALL[index.min(BuildingKind::ALL.len() - 1)]
+    }
+
+    fn corners(self) -> [i64; 2] {
+        [self.0[0] & ((1 << Self::SHIFT) - 1), self.0[1]]
+    }
 }
 
 struct Found {
@@ -241,8 +322,25 @@ impl Ways {
                     b"surface" => tags.surface = value,
                     b"junction" => tags.junction = value,
                     b"bicycle" => tags.bicycle = value,
+                    b"building" => tags.building = value,
                     _ => {}
                 }
+            }
+            if let Some(kind) = BuildingKind::from_tag(tags.building) {
+                let mut node = 0;
+                let nodes: Vec<i64> = way
+                    .refs
+                    .iter()
+                    .map(|delta| {
+                        node += delta;
+                        node
+                    })
+                    .collect();
+                if nodes.len() >= 4 {
+                    self.buildings
+                        .extend(FoundBuilding::new(kind, [nodes[0], nodes[nodes.len() / 2]]));
+                }
+                continue;
             }
             let Some((kind, surface, roundabout)) = tags.detail() else {
                 continue;
@@ -275,8 +373,11 @@ impl Ways {
                 refs: way.refs.start + offset..way.refs.end + offset,
                 ..way
             }));
+            all.buildings.extend(part.buildings);
         }
         all.found.sort_unstable_by_key(|way| way.id);
+        // By their corners: the same download makes the same cells.
+        all.buildings.sort_unstable();
         all
     }
 }
@@ -288,6 +389,7 @@ struct Tags<'a> {
     surface: &'a str,
     junction: &'a str,
     bicycle: &'a str,
+    building: &'a str,
 }
 
 impl Tags<'_> {
@@ -603,6 +705,50 @@ pub(crate) mod tests {
                     kind: RoadKind::Cycleway,
                     surface: RoadSurface::Paving,
                     line: vec![[469_482_000, 74_510_000], [469_482_500, 74_520_000]],
+                },
+            ]
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn keeps_what_buildings_are_at_a_point_within_them() {
+        let (dir, extract) = extract_of(
+            "buildings",
+            &[
+                // A garage on nodes 1, 2, 3 and back: its point halfway between 1 and 3.
+                TestWay {
+                    id: 30,
+                    tags: &[("building", "garage")],
+                    nodes: &[1, 2, 3, 1],
+                },
+                // Saying only that it is a building, it says no more than the tiles.
+                TestWay {
+                    id: 31,
+                    tags: &[("building", "yes")],
+                    nodes: &[4, 5, 6, 4],
+                },
+                TestWay {
+                    id: 32,
+                    tags: &[("building", "roof"), ("highway", "residential")],
+                    nodes: &[4, 5, 6, 4],
+                },
+            ],
+        );
+        assert_eq!(extract.buildings, 2);
+        assert_eq!(extract.surfaces, 0, "a building is no road");
+        let cells = cells(&dir, &extract);
+        let buildings: Vec<&KindAt> = cells.iter().flat_map(|(_, c)| &c.buildings).collect();
+        assert_eq!(
+            buildings,
+            [
+                &KindAt {
+                    at: [469_480_500, 74_480_000],
+                    kind: BuildingKind::Garage
+                },
+                &KindAt {
+                    at: [469_482_000, 74_510_000],
+                    kind: BuildingKind::Carport
                 },
             ]
         );
