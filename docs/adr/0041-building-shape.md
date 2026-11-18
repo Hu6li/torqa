@@ -1,6 +1,6 @@
 # ADR 0041 — Building shape from map data
 
-- Status: proposed (step 1 of 5: the measurement)
+- Status: proposed (step 1 of 7: the measurement)
 - Date: 2026-11-18
 
 ## Context
@@ -17,13 +17,18 @@ drawn in parts (`building:part`, "Simple 3D Buildings"). The tiles drop all of t
 Geofabrik region downloads (ADR 0033) carry it. National surveys (swissBUILDINGS3D, 3D BAG,
 the German states' LOD2) have measured roofs for every building, but only in their country.
 
-The plan, in five steps:
+The plan, in seven steps. Steps 2 to 4 need no download and change every world:
 
 1. Measure how much of this OpenStreetMap has.
-2. Place buildings on slopes as they are built (#554), in every world.
-3. Use the heights the tiles already carry, for models as well as shells.
-4. Keep building tags in the map detail extract.
-5. Build roofs, parts, colours and materials from those tags.
+2. Place buildings on slopes as they are built (#554).
+3. Use the heights the tiles carry for models too, and draw buildings mapped in parts as
+   their parts: the tiles carry `building:part` outlines with `render_min_height`, and flag
+   the outline of a building with parts `hide_3d`.
+4. Walls along the mapped outline of every building, and a roof computed over it.
+5. Keep the kind of every building (`building=*`) in the map detail extract.
+6. Keep the shape tags, colours and materials there too, and build from them.
+7. Assemble buildings on their outlines from Blender parts (windows, doors, balconies,
+   chimneys, dormers) instead of fitting whole models to rectangles.
 
 National data is to come later as an overlay, if step 1 shows the map is thin where riders
 ride.
@@ -75,6 +80,11 @@ the mapped shapes. Japan maps few roofs, but 5 % of those are round.
 `barn` and 26,170 `farm`. In Japan, 16 % of buildings have a measured `height` but hardly any
 a roof shape.
 
+In the 3,104 zoom-14 tiles of the courses prepared on the author's computer, 188 of 9,863
+building features (1.9 %) are outlines flagged `hide_3d` and 916 (9.3 %) start above the
+ground. ORQWA read neither, so a building drawn in parts was drawn twice: its outline and
+its parts, all from the ground. The tile with Bern's old town has seven such outlines.
+
 ## What this means
 
 - **The map describes about one building in ten.** Switzerland's shape tags cover 9 %, and
@@ -94,9 +104,9 @@ a roof shape.
 
 ## Decision so far
 
-Steps 2 and 3 go ahead as planned. Step 4 keeps `building=*` for every building, and the
-shape tags, colours and materials for those that have them. Steps 4 and 5 decide the
-format of the extract and are described when they are made.
+Steps 2 to 4 go first, from the tiles alone. Step 5 keeps `building=*` for every building,
+as a point and a kind, which is small; step 6 adds the shape tags, colours and materials of
+the buildings that have them. Each step is described here as it is made.
 
 ## Open
 
