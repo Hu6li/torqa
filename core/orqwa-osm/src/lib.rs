@@ -110,6 +110,198 @@ pub struct Building {
     pub in_parts: bool,
     /// What it is, where the map says and its region's detail is at hand.
     pub kind: Option<BuildingKind>,
+    /// What the map says of its shape and look, where its region's detail is at hand.
+    pub shape: Option<Shape>,
+}
+
+/// What the map says of a building's roof and walls beyond what the tiles carry (ADR 0041,
+/// step 6): its levels, the shape, height and lie of its roof, colours and materials.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Shape {
+    /// Storeys above the ground (`building:levels`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub levels: Option<u8>,
+    /// The roof's shape (`roof:shape`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roof: Option<RoofShape>,
+    /// How high the roof rises over the eaves, in metres (`roof:height`, or `roof:levels`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roof_height: Option<f32>,
+    /// The ridge runs across the building rather than along it (`roof:orientation=across`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub across: bool,
+    /// The roof's colour (`roof:colour`), sRGB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roof_colour: Option<[u8; 3]>,
+    /// The walls' colour (`building:colour`), sRGB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
+    /// What the walls are (`building:material`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<WallMaterial>,
+    /// What the roof is (`roof:material`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roof_material: Option<RoofMaterial>,
+}
+
+/// A roof's shape, as `roof:shape` says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoofShape {
+    /// Flat.
+    Flat,
+    /// Two slopes meeting at a ridge, with gables at the ends.
+    Gabled,
+    /// Slopes on every side.
+    Hipped,
+    /// Gables cut back by small hips at the top.
+    HalfHipped,
+    /// Slopes on every side meeting at a point.
+    Pyramidal,
+    /// One slope.
+    Skillion,
+    /// A gable roof steeper below than above, as on barns.
+    Gambrel,
+    /// Steep slopes on every side under a flatter top.
+    Mansard,
+    /// A dome, onion or round roof.
+    Round,
+}
+
+/// What a building's walls are, as `building:material` says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WallMaterial {
+    /// Plaster or render.
+    Plaster,
+    /// Brick.
+    Brick,
+    /// Stone.
+    Stone,
+    /// Timber.
+    Wood,
+    /// Concrete.
+    Concrete,
+    /// Glass.
+    Glass,
+    /// Metal.
+    Metal,
+}
+
+/// What a building's roof is, as `roof:material` says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoofMaterial {
+    /// Clay or concrete tiles.
+    Tiles,
+    /// Slate.
+    Slate,
+    /// Metal sheet.
+    Metal,
+    /// Concrete, gravel or a membrane, as on flat roofs.
+    Concrete,
+    /// Thatch.
+    Thatch,
+    /// Glass.
+    Glass,
+}
+
+impl Shape {
+    /// What the tags of a building or building part say, if anything beyond the tiles.
+    #[allow(clippy::too_many_arguments)] // one per tag read
+    #[must_use]
+    pub fn from_tags(
+        levels: &str,
+        roof: &str,
+        roof_height: &str,
+        roof_levels: &str,
+        orientation: &str,
+        roof_colour: &str,
+        colour: &str,
+        (material, roof_material): (&str, &str),
+    ) -> Option<Self> {
+        let number = |value: &str| {
+            value
+                .trim()
+                .trim_end_matches('m')
+                .trim()
+                .parse::<f32>()
+                .ok()
+                .filter(|n| n.is_finite() && *n >= 0.0)
+        };
+        // Channels are clamped to 0–255 first.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let rgb = |value: &str| {
+            mvt::color(value)
+                .map(|c| c.map(|channel| (channel * 255.0).round().clamp(0.0, 255.0) as u8))
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped small counts
+        let shape = Self {
+            levels: number(levels).map(|n| n.round().min(200.0) as u8),
+            roof: RoofShape::from_tag(roof),
+            roof_height: number(roof_height)
+                .or_else(|| number(roof_levels).map(|n| n * 2.8))
+                .filter(|h| *h < 60.0),
+            across: orientation.trim() == "across",
+            roof_colour: rgb(roof_colour),
+            colour: rgb(colour),
+            material: WallMaterial::from_tag(material),
+            roof_material: RoofMaterial::from_tag(roof_material),
+        };
+        (shape != Self::default()).then_some(shape)
+    }
+}
+
+impl RoofShape {
+    /// The shape a `roof:shape` value names.
+    #[must_use]
+    pub fn from_tag(value: &str) -> Option<Self> {
+        Some(match value.trim() {
+            "flat" => Self::Flat,
+            "gabled" | "pitched" | "saltbox" | "side_hipped" => Self::Gabled,
+            "hipped" | "side_half-hipped" => Self::Hipped,
+            "half-hipped" | "half_hipped" => Self::HalfHipped,
+            "pyramidal" | "cone" => Self::Pyramidal,
+            "skillion" | "lean_to" => Self::Skillion,
+            "gambrel" => Self::Gambrel,
+            "mansard" => Self::Mansard,
+            "dome" | "onion" | "round" => Self::Round,
+            _ => return None,
+        })
+    }
+}
+
+impl WallMaterial {
+    /// The material a `building:material` value names.
+    #[must_use]
+    pub fn from_tag(value: &str) -> Option<Self> {
+        Some(match value.trim() {
+            "plaster" | "render" | "cement_block" => Self::Plaster,
+            "brick" | "bricks" | "clay" => Self::Brick,
+            "stone" | "sandstone" | "limestone" | "granite" => Self::Stone,
+            "wood" | "timber_framing" | "timber" => Self::Wood,
+            "concrete" => Self::Concrete,
+            "glass" => Self::Glass,
+            "metal" | "steel" => Self::Metal,
+            _ => return None,
+        })
+    }
+}
+
+impl RoofMaterial {
+    /// The material a `roof:material` value names.
+    #[must_use]
+    pub fn from_tag(value: &str) -> Option<Self> {
+        Some(match value.trim() {
+            "roof_tiles" | "tiles" | "tile" | "clay" => Self::Tiles,
+            "slate" | "eternit" | "stone" => Self::Slate,
+            "metal" | "metal_sheet" | "copper" | "tin" | "zinc" => Self::Metal,
+            "concrete" | "gravel" | "tar_paper" | "asphalt" | "plants" | "grass" => Self::Concrete,
+            "thatch" => Self::Thatch,
+            "glass" => Self::Glass,
+            _ => return None,
+        })
+    }
 }
 
 /// What a building is, as the map's `building=*` says (ADR 0041, step 5). The tiles leave it
@@ -409,10 +601,10 @@ impl MapData {
         detail::apply::surfaces(&mut self.roads, self.detail.surfaces());
     }
 
-    /// Tells the buildings what they are, as their [`detail`] knows it (ADR 0041): each takes
-    /// the kind mapped at a point within its outline.
+    /// Tells the buildings what they are and what they look like, as their [`detail`] knows
+    /// it (ADR 0041): each takes what is mapped at a point within its outline.
     pub fn apply_building_kinds(&mut self) {
-        detail::apply::building_kinds(&mut self.buildings, self.detail.buildings());
+        detail::apply::buildings(&mut self.buildings, self.detail.buildings());
     }
 }
 
@@ -674,6 +866,33 @@ fn tile_name(zoom: u8, (x, y): (u32, u32)) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shape_tags_read_as_riders_map_them() {
+        let shape = |levels, roof, height, roof_levels, orientation| {
+            Shape::from_tags(
+                levels,
+                roof,
+                height,
+                roof_levels,
+                orientation,
+                "",
+                "",
+                ("", ""),
+            )
+        };
+        assert_eq!(shape("", "", "", "", ""), None, "nothing mapped");
+        assert_eq!(shape("2.6", "", "", "", "").unwrap().levels, Some(3));
+        assert_eq!(
+            shape("", "", "3.5 m", "", "").unwrap().roof_height,
+            Some(3.5)
+        );
+        let roof = shape("", "pitched", "", "1", "across").unwrap();
+        assert_eq!(roof.roof, Some(RoofShape::Gabled));
+        assert!((roof.roof_height.unwrap() - 2.8).abs() < 1e-6);
+        assert!(roof.across);
+        assert_eq!(shape("many", "unknown", "high", "", "along"), None);
+    }
 
     /// The test tile's coordinates (see `tests/data`).
     const TEST_TILE: (u32, u32) = (8531, 5767);

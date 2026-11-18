@@ -368,6 +368,7 @@ fn add_building(
             min_height,
             in_parts,
             kind: None,
+            shape: None,
         });
     }
 }
@@ -385,7 +386,7 @@ fn bounds_centre(ring: &LineString<f64>) -> Option<(f64, f64)> {
 
 /// A mapped façade colour (`building:colour`, or a material's colour): `#rrggbb`, `#rgb` or a
 /// name. Named colours are the muted tones façades have rather than pure CSS colours.
-fn color(value: &str) -> Option<[f32; 3]> {
+pub(crate) fn color(value: &str) -> Option<[f32; 3]> {
     let value = value.trim().to_ascii_lowercase();
     let named = match value.as_str() {
         "white" => Some([0.93, 0.93, 0.91]),

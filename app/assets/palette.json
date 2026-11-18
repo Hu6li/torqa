@@ -93,6 +93,7 @@
     "tiles": ["#9c4a32", "#8a4f3c", "#6e3328", "#5e5a5c", "#6c6a6e"],
     "mountain_roofs": ["#5e5a5c", "#6c6a6e", "#5a3f2c"],
     "slate": "#55585e",
+    "concrete": "#a7a49e",
     "modern_walls": ["#ece8de", "#e0d6b8", "#c9d0d4", "#cfd6c8", "#dfd9cd", "#b98a72"],
     "accents": ["#8c3a2c", "#3e5f66", "#3f6a92", "#4a3a4e", "#c7a050", "#6a665e"],
     "cladding": ["#d0ccc2", "#c2c6c0", "#b4bcbc", "#dcd6ca", "#a2a8ac"],

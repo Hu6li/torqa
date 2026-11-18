@@ -559,7 +559,7 @@ physically based materials and light, restyled group by group.
   - [x] Step 4 — walls along the mapped outline and a roof computed over it, every building
     (R259)
   - [x] Step 5 — the kind of every building (`building=*`) in the map detail extract (R260)
-  - [ ] Step 6 — roof shapes, levels, colours and materials from the extract
+  - [x] Step 6 — roof shapes, levels, colours and materials from the extract (R261)
   - [ ] Step 7 — buildings assembled on their outlines from Blender parts
   - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use super::extract::{KindAt, Roundabout, SurfaceWay};
+use super::extract::{MappedAt, Roundabout, SurfaceWay};
 use crate::{Building, LatLon, Road, RoadKind, RoadSurface};
 
 /// Farthest a mapped way may lie from a road to be that road (metres): the tiles keep
@@ -23,7 +23,7 @@ const KIND_CELL: f64 = 0.0005;
 
 /// Gives each building the kind mapped at a point within its outline. The tiles and the
 /// detail come from the same ways, so a building's point lies within the tile's outline of it.
-pub(crate) fn building_kinds(buildings: &mut [Building], kinds: &[KindAt]) {
+pub(crate) fn buildings(buildings: &mut [Building], kinds: &[MappedAt]) {
     if kinds.is_empty() {
         return;
     }
@@ -62,7 +62,15 @@ pub(crate) fn building_kinds(buildings: &mut [Building], kinds: &[KindAt]) {
                         f64::from(kinds[i].at[1]) * 1e-7,
                     );
                     if inside(&building.outline, at) {
-                        building.kind = Some(kinds[i].kind);
+                        let mapped = &kinds[i];
+                        building.kind = mapped.kind;
+                        building.shape = mapped.shape;
+                        if let Some(shape) = mapped.shape {
+                            building.levels = building.levels.or(shape.levels.map(f64::from));
+                            building.color = building
+                                .color
+                                .or(shape.colour.map(|c| c.map(|v| f32::from(v) / 255.0)));
+                        }
                         break 'cells;
                     }
                 }
@@ -658,16 +666,18 @@ mod tests {
             min_height: None,
             in_parts: false,
             kind: None,
+            shape: None,
         };
         let mut buildings = vec![
             building(1, square(46.948, 7.447)),
             building(2, square(46.9483, 7.447)),
         ];
-        let kinds = [KindAt {
+        let kinds = [MappedAt {
             at: [469_480_500, 74_470_500],
-            kind: BuildingKind::Barn,
+            kind: Some(BuildingKind::Barn),
+            shape: None,
         }];
-        building_kinds(&mut buildings, &kinds);
+        super::buildings(&mut buildings, &kinds);
         assert_eq!(buildings[0].kind, Some(BuildingKind::Barn));
         assert_eq!(
             buildings[1].kind, None,

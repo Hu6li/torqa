@@ -23,7 +23,7 @@ use std::path::Path;
 use orqwa_domain::files::UsedFiles;
 use tracing::warn;
 
-use extract::{CELL_ZOOM, Cell, KindAt, Roundabout, SurfaceWay, cell_path};
+use extract::{CELL_ZOOM, Cell, MappedAt, Roundabout, SurfaceWay, cell_path};
 
 /// The map detail around a route, from the extracts it was asked of (see
 /// [`crate::Osm::with_detail`]).
@@ -36,7 +36,7 @@ pub struct Detail {
     /// Roads going round a roundabout, each once.
     roundabouts: Vec<Roundabout>,
     /// What buildings are, at points within them.
-    buildings: Vec<KindAt>,
+    buildings: Vec<MappedAt>,
 }
 
 impl Detail {
@@ -54,7 +54,7 @@ impl Detail {
         &self.roundabouts
     }
 
-    pub(crate) fn buildings(&self) -> &[KindAt] {
+    pub(crate) fn buildings(&self) -> &[MappedAt] {
         &self.buildings
     }
 }

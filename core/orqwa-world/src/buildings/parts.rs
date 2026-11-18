@@ -561,6 +561,114 @@ impl Builder<'_> {
         Some(pitch.eaves + skeleton.height * slope + t)
     }
 
+    /// A pyramidal roof over a convex counter-clockwise `outline`: a face from every wall up
+    /// to a point over its middle, as high as the pitch reaches from the nearest wall. None
+    /// for outlines that are not convex.
+    pub(crate) fn pyramid_roof(
+        &mut self,
+        outline: &[Point],
+        pitch: Pitch,
+        paint: RoofPaint,
+    ) -> Option<f64> {
+        let count = outline.len();
+        let convex = (0..count).all(|i| {
+            let (a, b, c) = (
+                outline[i],
+                outline[(i + 1) % count],
+                outline[(i + 2) % count],
+            );
+            (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0) >= -1e-9
+        });
+        if count < 3 || !convex {
+            return None;
+        }
+        let middle = super::shape::centroid(outline);
+        let height = (0..count)
+            .map(|i| {
+                let (a, b) = (outline[i], outline[(i + 1) % count]);
+                let length = distance(a, b).max(1e-9);
+                ((b.0 - a.0) * (middle.1 - a.1) - (b.1 - a.1) * (middle.0 - a.0)) / length
+            })
+            .fold(f64::INFINITY, f64::min);
+        if height <= 0.1 {
+            return None;
+        }
+        let skeleton = Skeleton {
+            faces: (0..count)
+                .map(|i| {
+                    vec![
+                        (outline[i], 0.0),
+                        (outline[(i + 1) % count], 0.0),
+                        (middle, height),
+                    ]
+                })
+                .collect(),
+            height,
+        };
+        self.skeleton_roof(outline, &skeleton, pitch, paint)
+    }
+
+    /// A roof of one slope over `rect`, rising across it from one long side to the other,
+    /// over walls rising with it at its ends and a wall up to it on its high side. Returns
+    /// its top.
+    pub(crate) fn skillion_roof(&mut self, rect: &Rect, pitch: Pitch, paint: RoofPaint) -> f64 {
+        let (length, width) = (rect.half_length, rect.half_width);
+        let slope = pitch.angle.tan();
+        let at = |across: f64| pitch.eaves + (across + width) * slope;
+        let (low, high) = (at(-width), at(width));
+        let (reach, out) = (length + pitch.verge, width + pitch.overhang);
+        let rafter = (2.0 * out / pitch.angle.cos()) as f32;
+        let along = (2.0 * reach) as f32;
+        for (lift, upper, roof) in [(ROOF_THICKNESS, true, paint.top), (0.0, false, paint.under)] {
+            self.slope(
+                &[
+                    (rect.point(-reach, -out), at(-out) + lift),
+                    (rect.point(reach, -out), at(-out) + lift),
+                    (rect.point(reach, out), at(out) + lift),
+                    (rect.point(-reach, out), at(out) + lift),
+                ],
+                &[[0.0, 0.0], [along, 0.0], [along, rafter], [0.0, rafter]],
+                roof,
+                upper,
+            );
+        }
+        for end in [-1.0, 1.0] {
+            let gable = end * length;
+            self.upright(
+                &[
+                    (rect.point(gable, -width), low),
+                    (rect.point(gable, width), low),
+                    (rect.point(gable, width), high),
+                ],
+                &[
+                    self.wall_uv(0.0, low),
+                    self.wall_uv(2.0 * width, low),
+                    self.wall_uv(2.0 * width, high),
+                ],
+                (rect.axis.0 * end, rect.axis.1 * end),
+                paint.gables,
+            );
+        }
+        let side = rect.across();
+        self.upright(
+            &[
+                (rect.point(-length, width), low),
+                (rect.point(length, width), low),
+                (rect.point(length, width), high),
+                (rect.point(-length, width), high),
+            ],
+            &[
+                self.wall_uv(0.0, low),
+                self.wall_uv(2.0 * length, low),
+                self.wall_uv(2.0 * length, high),
+                self.wall_uv(0.0, high),
+            ],
+            side,
+            paint.gables,
+        );
+        at(out) + ROOF_THICKNESS
+    }
+
     pub(crate) fn hip_band_roof(
         &mut self,
         outline: &[Point],

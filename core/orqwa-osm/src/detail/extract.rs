@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::pbf::{self, NodeBlock, WayBlock};
 use crate::mvt::{road_class, road_kind, road_surface};
-use crate::{BuildingKind, OsmError, RoadKind, RoadSurface, tile_of};
+use crate::{BuildingKind, OsmError, RoadKind, RoadSurface, Shape, tile_of};
 
 /// The directory of extracts in the map cache. Raised when what an extract holds changes, so
 /// they are made again from the regions' downloads.
@@ -65,16 +65,19 @@ pub(crate) struct Cell {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roundabouts: Vec<Roundabout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub buildings: Vec<KindAt>,
+    pub buildings: Vec<MappedAt>,
 }
 
-/// What a building is, at a point within its outline: halfway between its first corner and
-/// the one halfway round it, which for the outlines of buildings lies inside.
+/// What a building is and looks like, at a point within its outline: halfway between its
+/// first corner and the one halfway round it, which for the outlines of buildings lies inside.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct KindAt {
+pub(crate) struct MappedAt {
     /// Latitude, longitude in 1e-7 degrees.
     pub at: [i32; 2],
-    pub kind: BuildingKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<BuildingKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<Shape>,
 }
 
 /// A road with a surface the tiles cannot tell.
@@ -131,6 +134,7 @@ pub fn extract(
     let ways = Ways::joined(found);
     let mut needed = ways.refs.clone();
     needed.extend(ways.buildings.iter().flat_map(|b| b.corners()));
+    needed.extend(ways.shaped.iter().flat_map(|(b, _)| b.corners()));
     needed.sort_unstable();
     needed.dedup();
     let positions: Vec<AtomicI64> = needed.iter().map(|_| AtomicI64::new(NOWHERE)).collect();
@@ -156,7 +160,15 @@ pub fn extract(
 
     let mut cells: HashMap<(u32, u32), Cell> = HashMap::new();
     let (surfaces, roundabouts) = place_ways(&ways, &at, &mut cells);
-    let buildings = place_buildings(&ways.buildings, &at, &mut cells);
+    let buildings = place_buildings(
+        ways.buildings.iter().map(|&found| (found, None)).chain(
+            ways.shaped
+                .iter()
+                .map(|&(found, shape)| (found, Some(shape))),
+        ),
+        &at,
+        &mut cells,
+    );
 
     let data_time = header.data_time;
     let name = format!(
@@ -243,12 +255,12 @@ fn place_ways(
 /// Puts each building's kind in the cell of its point, given where its corners are (`at`);
 /// how many found their place.
 fn place_buildings(
-    buildings: &[FoundBuilding],
+    buildings: impl Iterator<Item = (FoundBuilding, Option<Shape>)>,
     at: &impl Fn(&i64) -> Option<[i32; 2]>,
     cells: &mut HashMap<(u32, u32), Cell>,
 ) -> usize {
     let mut placed = 0;
-    for building in buildings {
+    for (building, shape) in buildings {
         let [Some(a), Some(b)] = building.corners().map(|node| at(&node)) else {
             continue;
         };
@@ -258,9 +270,10 @@ fn place_buildings(
             .entry(tile_of(CELL_ZOOM, degrees.0, degrees.1))
             .or_default()
             .buildings
-            .push(KindAt {
+            .push(MappedAt {
                 at: middle,
                 kind: building.kind(),
+                shape,
             });
         placed += 1;
     }
@@ -272,28 +285,35 @@ fn place_buildings(
 struct Ways {
     found: Vec<Found>,
     refs: Vec<i64>,
+    /// Buildings the map tells the kind of, and nothing more.
     buildings: Vec<FoundBuilding>,
+    /// Buildings and parts the map tells more of: their shape too.
+    shaped: Vec<(FoundBuilding, Shape)>,
 }
 
-/// A building whose kind the map tells, and two of its corners: its first and the one halfway
-/// round. Tens of millions of them are held at once for a large region, so its kind is kept
-/// in the top byte of the first corner's node id (OpenStreetMap's ids are far below 2^56).
+/// A building whose kind or shape the map tells, and two of its corners: its first and the
+/// one halfway round. Tens of millions of them are held at once for a large region, so its
+/// kind is kept in the top byte of the first corner's node id (OpenStreetMap's ids are far
+/// below 2^56), `NO_KIND` where the map gives none.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct FoundBuilding([i64; 2]);
 
 impl FoundBuilding {
     const SHIFT: u32 = 56;
+    const NO_KIND: i64 = 0xff;
 
-    fn new(kind: BuildingKind, corners: [i64; 2]) -> Option<Self> {
-        let index = BuildingKind::ALL.iter().position(|&k| k == kind)?;
-        let index = i64::try_from(index).ok()?;
+    fn new(kind: Option<BuildingKind>, corners: [i64; 2]) -> Option<Self> {
+        let index = match kind {
+            Some(kind) => i64::try_from(BuildingKind::ALL.iter().position(|&k| k == kind)?).ok()?,
+            None => Self::NO_KIND,
+        };
         (corners[0] >> Self::SHIFT == 0)
             .then_some(Self([corners[0] | (index << Self::SHIFT), corners[1]]))
     }
 
-    fn kind(self) -> BuildingKind {
-        let index = usize::try_from(self.0[0] >> Self::SHIFT).unwrap_or(0);
-        BuildingKind::ALL[index.min(BuildingKind::ALL.len() - 1)]
+    fn kind(self) -> Option<BuildingKind> {
+        let index = usize::try_from(self.0[0] >> Self::SHIFT).ok()?;
+        BuildingKind::ALL.get(index).copied()
     }
 
     fn corners(self) -> [i64; 2] {
@@ -323,10 +343,25 @@ impl Ways {
                     b"junction" => tags.junction = value,
                     b"bicycle" => tags.bicycle = value,
                     b"building" => tags.building = value,
+                    b"building:part" => tags.part = value,
+                    b"building:levels" => tags.levels = value,
+                    b"roof:shape" => tags.roof = value,
+                    b"roof:height" => tags.roof_height = value,
+                    b"roof:levels" => tags.roof_levels = value,
+                    b"roof:orientation" => tags.orientation = value,
+                    b"roof:colour" => tags.roof_colour = value,
+                    b"building:colour" => tags.colour = value,
+                    b"building:material" => tags.material = value,
+                    b"roof:material" => tags.roof_material = value,
                     _ => {}
                 }
             }
-            if let Some(kind) = BuildingKind::from_tag(tags.building) {
+            let kind = BuildingKind::from_tag(tags.building);
+            let building = [tags.building, tags.part]
+                .iter()
+                .any(|v| !v.is_empty() && *v != "no");
+            let shape = building.then(|| tags.shape()).flatten();
+            if kind.is_some() || shape.is_some() {
                 let mut node = 0;
                 let nodes: Vec<i64> = way
                     .refs
@@ -336,9 +371,13 @@ impl Ways {
                         node
                     })
                     .collect();
-                if nodes.len() >= 4 {
-                    self.buildings
-                        .extend(FoundBuilding::new(kind, [nodes[0], nodes[nodes.len() / 2]]));
+                let found = (nodes.len() >= 4)
+                    .then(|| FoundBuilding::new(kind, [nodes[0], nodes[nodes.len() / 2]]))
+                    .flatten();
+                match (found, shape) {
+                    (Some(found), Some(shape)) => self.shaped.push((found, shape)),
+                    (Some(found), None) => self.buildings.push(found),
+                    (None, _) => {}
                 }
                 continue;
             }
@@ -374,10 +413,12 @@ impl Ways {
                 ..way
             }));
             all.buildings.extend(part.buildings);
+            all.shaped.extend(part.shaped);
         }
         all.found.sort_unstable_by_key(|way| way.id);
         // By their corners: the same download makes the same cells.
         all.buildings.sort_unstable();
+        all.shaped.sort_unstable_by_key(|(found, _)| *found);
         all
     }
 }
@@ -390,9 +431,33 @@ struct Tags<'a> {
     junction: &'a str,
     bicycle: &'a str,
     building: &'a str,
+    part: &'a str,
+    levels: &'a str,
+    roof: &'a str,
+    roof_height: &'a str,
+    roof_levels: &'a str,
+    orientation: &'a str,
+    roof_colour: &'a str,
+    colour: &'a str,
+    material: &'a str,
+    roof_material: &'a str,
 }
 
 impl Tags<'_> {
+    /// What a building's or part's tags say of its shape and look.
+    fn shape(&self) -> Option<Shape> {
+        Shape::from_tags(
+            self.levels,
+            self.roof,
+            self.roof_height,
+            self.roof_levels,
+            self.orientation,
+            self.roof_colour,
+            self.colour,
+            (self.material, self.roof_material),
+        )
+    }
+
     /// What the way is to map detail: a road the tiles keep (as `road_class` decides for
     /// them), with a surface they cannot tell or going round a roundabout.
     fn detail(&self) -> Option<(RoadKind, Option<RoadSurface>, bool)> {
@@ -738,17 +803,79 @@ pub(crate) mod tests {
         assert_eq!(extract.buildings, 2);
         assert_eq!(extract.surfaces, 0, "a building is no road");
         let cells = cells(&dir, &extract);
-        let buildings: Vec<&KindAt> = cells.iter().flat_map(|(_, c)| &c.buildings).collect();
+        let buildings: Vec<&MappedAt> = cells.iter().flat_map(|(_, c)| &c.buildings).collect();
         assert_eq!(
             buildings,
             [
-                &KindAt {
+                &MappedAt {
                     at: [469_480_500, 74_480_000],
-                    kind: BuildingKind::Garage
+                    kind: Some(BuildingKind::Garage),
+                    shape: None,
                 },
-                &KindAt {
+                &MappedAt {
                     at: [469_482_000, 74_510_000],
-                    kind: BuildingKind::Carport
+                    kind: Some(BuildingKind::Carport),
+                    shape: None,
+                },
+            ]
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn keeps_what_buildings_and_their_parts_say_of_their_shape() {
+        let (dir, extract) = extract_of(
+            "shapes",
+            &[
+                TestWay {
+                    id: 40,
+                    tags: &[
+                        ("building", "yes"),
+                        ("building:levels", "3"),
+                        ("roof:shape", "hipped"),
+                        ("roof:colour", "#8b0000"),
+                        ("building:material", "brick"),
+                    ],
+                    nodes: &[1, 2, 3, 1],
+                },
+                TestWay {
+                    id: 41,
+                    tags: &[
+                        ("building:part", "yes"),
+                        ("roof:shape", "dome"),
+                        ("roof:height", "4 m"),
+                    ],
+                    nodes: &[4, 5, 6, 4],
+                },
+                // A building saying nothing of its shape and kind is left out.
+                TestWay {
+                    id: 42,
+                    tags: &[("building", "yes"), ("name", "Haus")],
+                    nodes: &[4, 6, 5, 4],
+                },
+            ],
+        );
+        assert_eq!(extract.buildings, 2);
+        let cells = cells(&dir, &extract);
+        let shapes: Vec<Shape> = cells
+            .iter()
+            .flat_map(|(_, c)| &c.buildings)
+            .filter_map(|b| b.shape)
+            .collect();
+        assert_eq!(
+            shapes,
+            [
+                Shape {
+                    levels: Some(3),
+                    roof: Some(crate::RoofShape::Hipped),
+                    roof_colour: Some([0x8b, 0, 0]),
+                    material: Some(crate::WallMaterial::Brick),
+                    ..Shape::default()
+                },
+                Shape {
+                    roof: Some(crate::RoofShape::Round),
+                    roof_height: Some(4.0),
+                    ..Shape::default()
                 },
             ]
         );

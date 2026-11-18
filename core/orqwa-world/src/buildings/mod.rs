@@ -17,7 +17,7 @@ mod skeleton;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
 
-use orqwa_osm::{Building, BuildingKind, MapData};
+use orqwa_osm::{Building, BuildingKind, MapData, RoofMaterial, RoofShape, WallMaterial};
 use orqwa_routes::LocalProjection;
 
 use crate::climate::Climate;
@@ -567,6 +567,7 @@ pub(crate) fn lone_lighthouses(map: &MapData, projection: &LocalProjection) -> V
                     min_height: None,
                     in_parts: false,
                     kind: None,
+                    shape: None,
                 }
             })
         })
@@ -662,7 +663,9 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
                 .then_some(design.as_ref())
                 .flatten()
                 .map(|d| wall_height(plot.building, rise(d, &rect), d));
-            models::fitting_to(&rect, wanted, mapped, &dice).map(|fit| (rect, fit))
+            models::fitting_to(&rect, wanted, mapped, &dice)
+                .filter(|fit| model_roof_as_mapped(plot.building, fit))
+                .map(|fit| (rect, fit))
         });
     let footing = raised.unwrap_or(lowest - FOUNDATION);
     let Some((rect, fit)) = fit else {
@@ -1106,7 +1109,7 @@ fn design(
         rectangular,
         dice,
     };
-    match kind {
+    let design = match kind {
         Kind::House if tropical => recipe.tropical_house(),
         Kind::House if region == Region::Asia => recipe.japanese_house(),
         Kind::House if region == Region::France => recipe.french_house(),
@@ -1123,7 +1126,152 @@ fn design(
         Kind::Hotel => recipe.hotel(),
         // `church`, `castle` and `lighthouse` build those; none get here.
         Kind::Hall | Kind::Church | Kind::Castle | Kind::Lighthouse => recipe.hall(),
+    };
+    mapped(design, building)
+}
+
+/// What the map says of a building's roof and walls goes before what its recipe chose
+/// (ADR 0041, step 6): the roof's shape and height, the roof's and walls' materials and
+/// colours. Pyramidal and single-sloped roofs are built in `roof` from the mapped shape.
+fn mapped(mut design: Design, building: &Building) -> Design {
+    let Some(shape) = building.shape else {
+        return design;
+    };
+    let pitched_before = !matches!(design.roof, Roof::Flat { .. });
+    if let Some(roof) = shape.roof {
+        design.roof = match roof {
+            RoofShape::Flat => Roof::Flat {
+                parapet: match design.roof {
+                    Roof::Flat { parapet } => parapet,
+                    _ => 0.0,
+                },
+            },
+            RoofShape::Gabled | RoofShape::Gambrel | RoofShape::Skillion => Roof::Gable,
+            RoofShape::Hipped
+            | RoofShape::HalfHipped
+            | RoofShape::Mansard
+            | RoofShape::Pyramidal
+            | RoofShape::Round => Roof::Hipped,
+        };
     }
+    let pitched = !matches!(design.roof, Roof::Flat { .. });
+    if pitched && !pitched_before {
+        // A recipe for a flat roof has no pitch, eaves or tiles of its own.
+        design.pitch_degrees = 30.0;
+        design.max_rise = design.max_rise.max(6.0);
+        design.overhang = design.overhang.max(0.4);
+        design.verge = design.verge.max(0.3);
+        design.roof_paint.top = Paint::new(TILES[0], Style::Tiles);
+        design.roof_paint.under = design.wall.with(Style::Blank);
+        design.roof_paint.gables = design.wall;
+    }
+    if let Some(height) = shape.roof_height.filter(|h| *h > 0.3).filter(|_| pitched) {
+        // Steep enough that the rise is what the map says, on any width.
+        design.pitch_degrees = 75.0;
+        design.max_rise = f64::from(height);
+    }
+    match shape.roof_material {
+        Some(RoofMaterial::Tiles | RoofMaterial::Thatch) if pitched => {
+            design.roof_paint.top = design.roof_paint.top.with(Style::Tiles);
+        }
+        Some(RoofMaterial::Slate) => {
+            design.roof_paint.top = Paint::new(rgb("buildings.slate"), Style::Tiles);
+        }
+        Some(RoofMaterial::Metal | RoofMaterial::Glass) => {
+            design.roof_paint.top = design.roof_paint.top.with(Style::Sheet);
+        }
+        _ => {}
+    }
+    if let Some(colour) = shape.roof_colour {
+        design.roof_paint.top.rgb = plausible(colour.map(|c| f32::from(c) / 255.0), ROOF_LIGHT);
+    }
+    let windowed = design.windows;
+    match shape.material {
+        Some(WallMaterial::Wood) => {
+            design.wall = design.wall.with(if windowed {
+                Style::Timber
+            } else {
+                Style::Boards
+            });
+        }
+        Some(WallMaterial::Metal) => design.wall = design.wall.with(Style::Cladding),
+        Some(WallMaterial::Glass) if windowed => design.wall = design.wall.with(Style::Ribbon),
+        _ => {}
+    }
+    if building.color.is_none() {
+        let colour = match shape.material {
+            Some(WallMaterial::Brick) => Some(*BRICK),
+            Some(WallMaterial::Stone) => Some(*STONE),
+            Some(WallMaterial::Concrete) => Some(rgb("buildings.concrete")),
+            Some(WallMaterial::Wood) => WOOD.first().copied(),
+            _ => None,
+        };
+        if let Some(colour) = colour {
+            design.wall.rgb = colour;
+        }
+    }
+    design
+}
+
+/// Whether a model's roof is the one the map gives, if it gives one: a model with another
+/// roof, under a ridge the map lays across it, or of another height than mapped would
+/// contradict it.
+fn model_roof_as_mapped(building: &Building, fit: &models::Fit) -> bool {
+    let Some(shape) = building.shape else {
+        return true;
+    };
+    if shape.across || shape.roof_height.is_some() {
+        return false;
+    }
+    match shape.roof {
+        None => true,
+        Some(RoofShape::Gabled | RoofShape::Gambrel) => fit.model.roof == "gable",
+        Some(RoofShape::Hipped | RoofShape::HalfHipped | RoofShape::Mansard) => {
+            fit.model.roof == "hipped"
+        }
+        Some(RoofShape::Flat) => fit.model.roof == "flat",
+        Some(RoofShape::Pyramidal | RoofShape::Round | RoofShape::Skillion) => false,
+    }
+}
+
+/// Lightness a mapped colour is kept within, and its greatest saturation, for walls and roofs:
+/// a mapped colour keeps its hue but no façade glows and no roof is white.
+const WALL_LIGHT: (f32, f32, f32) = (0.62, 0.92, 0.4);
+const ROOF_LIGHT: (f32, f32, f32) = (0.12, 0.55, 0.6);
+
+/// `mapped`, an sRGB colour from the map, as a plausible building colour: its hue kept, its
+/// lightness within `(least, most)` and its saturation at most `saturation`.
+fn plausible(mapped: [f32; 3], (least, most, saturation): (f32, f32, f32)) -> [f32; 3] {
+    let [red, green, blue] = mapped.map(|c| c.clamp(0.0, 1.0));
+    let (high, low) = (red.max(green).max(blue), red.min(green).min(blue));
+    let light = f32::midpoint(high, low);
+    let chroma = high - low;
+    let (hue, sat) = if chroma < 1e-6 {
+        (0.0, 0.0)
+    } else {
+        let hue = if (high - red).abs() < 1e-6 {
+            ((green - blue) / chroma).rem_euclid(6.0)
+        } else if (high - green).abs() < 1e-6 {
+            (blue - red) / chroma + 2.0
+        } else {
+            (red - green) / chroma + 4.0
+        };
+        (hue, chroma / (1.0 - (2.0 * light - 1.0).abs()))
+    };
+    let light = light.clamp(least, most);
+    let chroma = (1.0 - (2.0 * light - 1.0).abs()) * sat.min(saturation);
+    let second = chroma * (1.0 - (hue.rem_euclid(2.0) - 1.0).abs());
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // hue sextant 0–5
+    let rgb = match hue.floor() as u8 {
+        0 => [chroma, second, 0.0],
+        1 => [second, chroma, 0.0],
+        2 => [0.0, chroma, second],
+        3 => [0.0, second, chroma],
+        4 => [second, 0.0, chroma],
+        _ => [chroma, 0.0, second],
+    };
+    let lift = light - chroma / 2.0;
+    rgb.map(|channel| channel + lift)
 }
 
 /// What goes into one building's design.
@@ -1220,7 +1368,7 @@ impl Recipe<'_> {
     fn facade(&self, palette: &[[f32; 3]], style: Style) -> Paint {
         let rgb = self.building.color.map_or_else(
             || self.dice.pick(1, palette),
-            |mapped| nearest(mapped, palette),
+            |mapped| plausible(mapped, WALL_LIGHT),
         );
         Paint::new(self.dice.tint(rgb), style)
     }
@@ -1636,13 +1784,23 @@ fn walls_up(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) 
 fn roof(
     b: &mut Builder,
     design: &Design,
-    rect: Option<Rect>,
-    outline: &[Point],
+    (rect, outline): (Option<Rect>, &[Point]),
     skeleton: Option<&skeleton::Skeleton>,
     pitch: Pitch,
+    form: Option<RoofShape>,
 ) -> f64 {
     let paint = design.roof_paint;
     let eaves = pitch.eaves;
+    // The shapes the map names that recipes have not: a point, or one slope.
+    match (form, rect) {
+        (Some(RoofShape::Pyramidal | RoofShape::Round), _) => {
+            if let Some(top) = b.pyramid_roof(outline, pitch, paint) {
+                return top;
+            }
+        }
+        (Some(RoofShape::Skillion), Some(rect)) => return b.skillion_roof(&rect, pitch, paint),
+        _ => {}
+    }
     match (design.roof, rect) {
         (Roof::Flat { parapet }, _) => {
             b.flat_roof(outline, eaves, parapet, paint.top, paint.gables);
@@ -1731,6 +1889,14 @@ fn build(
         rect.filter(|r| signed_area(footprint) / r.area() >= DRAWN_RECTANGULAR)
     };
     let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
+    // A ridge the map lays across the building: the same rectangle, turned.
+    let rect = rect.map(|r| {
+        if building.shape.is_some_and(|shape| shape.across) {
+            r.turned()
+        } else {
+            r
+        }
+    });
     if design.kind == Kind::Canopy {
         canopy(b, &outline, design);
         return;
@@ -1770,7 +1936,8 @@ fn build(
         overhang: design.overhang,
         verge: design.verge,
     };
-    let top = roof(b, design, rect, &outline, skeleton.as_ref(), pitch);
+    let form = building.shape.and_then(|shape| shape.roof);
+    let top = roof(b, design, (rect, &outline), skeleton.as_ref(), pitch, form);
 
     if let Some(trim) = design.trim {
         finish(
@@ -2716,6 +2883,7 @@ mod tests {
             min_height: None,
             in_parts: false,
             kind: None,
+            shape: None,
         }
     }
 

@@ -34,11 +34,11 @@ pub struct Region {
     pub content: u32,
 }
 
-/// What extracts hold: 1 the roads' surfaces and roundabouts, 2 also what buildings are
-/// (ADR 0041). A region whose extract holds less is not ready, so its download is read again.
+/// What extracts hold: 1 the roads' surfaces and roundabouts, 2 also what buildings are,
+/// 3 also their shape and look (ADR 0041). A region whose extract holds less is not ready, so its download is read again.
 /// The directory [`VERSION`] stays: courses carry the cells they used under it, and a cell
 /// without buildings reads as one whose buildings say nothing.
-pub const CONTENT: u32 = 2;
+pub const CONTENT: u32 = 3;
 
 /// Where region `id`'s download goes in the map cache `osm_dir`.
 #[must_use]

@@ -231,6 +231,31 @@ extract has a new name, at its next update (R144 compares extracts by name).
 
 Generator 46; the stored format stays 3.
 
+## Step 6: roofs, colours and materials from the map (2026-11-18, R261)
+
+The extract keeps, beside a building's kind, what its tags say of its shape and look
+(`orqwa_osm::Shape`): `building:levels`, `roof:shape`, `roof:height` (or `roof:levels`
+× 2.8 m), `roof:orientation=across`, `roof:colour`, `building:colour`, `building:material`
+and `roof:material`, for buildings and building parts that have any of them. Region records
+go to content 3, so regions are prepared again.
+
+The world lets them override the recipe (`buildings::mapped`): the roof becomes the shape
+mapped, with recipes for flat roofs given a pitch, eaves and tiles where the map says the
+roof is pitched; a mapped roof height becomes the rise (a steep pitch limited to it); levels
+set the storeys through the existing wall heights. Pyramidal roofs, and domes as pyramids,
+rise from every wall to one point over convex outlines; roofs of one slope (`skillion`) rise
+across a rectangle over walls rising with them. Half-hipped and mansard roofs are built
+hipped, gambrels gabled. A ridge mapped across a rectangle turns it. Fitted models stand
+only where their roof is the one mapped and no roof height or orientation is given.
+
+Mapped colours no longer snap to the nearest palette colour (ADR 0020's palette fit): they
+keep their hue, with lightness 0.62–0.92 and saturation at most 0.4 on walls (dark walls
+stay out, as before) and lightness 0.12–0.55 and saturation at most 0.6 on roofs. Materials
+choose styles (timber boards, metal cladding, bands of glass; sheet or slate roofs) and,
+where no colour is mapped, colours (brick, stone, concrete).
+
+Generator 47; the stored format stays 3.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider
