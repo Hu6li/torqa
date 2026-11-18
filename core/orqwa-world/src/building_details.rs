@@ -118,7 +118,7 @@ fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
                 continue;
             }
             let mesh = cells.entry(cell(middle)).or_default();
-            window(mesh, face, pane);
+            window(mesh, face, pane, face.style == 10);
         }
         if matches!(face.style, 0 | 2) && face.bounds[3] >= 3.0 {
             let [left, bottom, right, top] = face.bounds;
@@ -154,7 +154,9 @@ fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
         .collect()
 }
 
-fn window(mesh: &mut MeshData, face: &Face, pane: Rect) {
+/// A pane's glass carries its seed in U and, for a shop window, V lifted by one: shops show a
+/// lit sales floor rather than a home's curtains.
+fn window(mesh: &mut MeshData, face: &Face, pane: Rect, shop: bool) {
     let horizontal = 0.07 / length(face.along);
     let vertical = 0.07 / length(face.up);
     let [left, bottom, right, top] = pane;
@@ -210,6 +212,7 @@ fn window(mesh: &mut MeshData, face: &Face, pane: Rect) {
             ^ ((position[2] * 10.0) as i64).wrapping_mul(31),
     ) * 64.0)
         .floor() as f32;
+    let floor = if shop { 1.0 } else { 0.0 };
     quad_uv(
         mesh,
         [
@@ -219,10 +222,10 @@ fn window(mesh: &mut MeshData, face: &Face, pane: Rect) {
             face.point(left, top, 0.014),
         ],
         [
-            [seed, 0.0],
-            [seed + 0.999, 0.0],
-            [seed + 0.999, 0.999],
-            [seed, 0.999],
+            [seed, floor],
+            [seed + 0.999, floor],
+            [seed + 0.999, floor + 0.999],
+            [seed, floor + 0.999],
         ],
         face.normal,
         color("buildings.glass", 1),

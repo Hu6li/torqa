@@ -15,7 +15,8 @@ func _run() -> void:
 	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(source))
 	var material: ShaderMaterial = ShaderMaterial.new()
 	BuildingModels.configure_shell(material)
-	for kind: String in ["model", "facade", "model-far", "facade-far"]:
+	# The fade kinds stand inside the band where the close and ordinary appearances swap.
+	for kind: String in ["model", "facade", "model-far", "facade-far", "model-150", "model-170"]:
 		for preset: String in ["medium", "ultra"]:
 			var stage: Node3D = Node3D.new()
 			root.add_child(stage)
@@ -63,6 +64,10 @@ func _run() -> void:
 				_camera.look_at_from_position(Vector3(19, 1.75, 26), Vector3(0, 6, 0))
 			if kind.ends_with("far"):
 				_camera.look_at_from_position(Vector3(104, 1.75, 160), Vector3(0, 5, 0))
+			elif kind.begins_with("model-"):
+				var away: Vector2 = Vector2(13, 20).normalized() * float(kind.get_slice("-", 1))
+				_camera.look_at_from_position(Vector3(away.x, 1.75, away.y), Vector3(0, 4.1, 0))
+				_camera.fov = 6.0
 			for frame: int in range(8):
 				await process_frame
 			await RenderingServer.frame_post_draw
@@ -70,6 +75,7 @@ func _run() -> void:
 			picture.save_png(_out.path_join(kind + "-" + preset + ".png"))
 			print("BUILDING saved ", kind, " ", preset)
 			stage.queue_free()
+			_camera.fov = 40.0
 			await process_frame
 	quit(0)
 

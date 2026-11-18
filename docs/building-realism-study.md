@@ -1,6 +1,6 @@
 # Building detail
 
-R233 integrates the building study into the production renderer. **Ultra** selects detailed
+R256 integrates the building study into the production renderer. **Ultra** selects detailed
 fitted models and adds nearby façade geometry; Low, Medium and High retain the ordinary
 geometry. Scanned plaster and roof materials are shared across presets and preserve the
 existing regional palette hues. All resources are bundled and work offline.
@@ -11,7 +11,9 @@ existing regional palette hues. All resources are bundled and work offline.
 under `app/assets/models/buildings/detail/`, preserving the existing names, dimensions and
 placement manifest. These variants add glazing bars and main-roof drainage where appropriate.
 Window panes carry normalized UVs plus stable seeds in the second UV channel; the opaque
-glass shader suggests curtains, blinds and dark rooms while retaining sky reflections.
+glass shader shows homes as mostly dim rooms, a minority with drawn-back curtains, a blind
+partly down or a sheer net, while retaining sky reflections. Shop windows (their glass marked by
+V lifted by one) show a lit sales floor with shelves and ceiling lights, never curtains.
 Tall French blocks keep their existing balcony/dormer geometry budget and use the interior
 shader without extra glazing bars.
 
@@ -28,7 +30,12 @@ refreshes after 64 m of movement, uploads at most one detail chunk per frame and
 additions when their chunks leave that margin. Ride preparation waits for nearby additions;
 the whole course never retains close façade geometry. Fitted models switch between ordinary and
 detailed appearances at **160 m**, with a **20 m** fade; shell additions use the same close
-range. The range remains fixed when View distance changes. Switching to a lighter preset
+range. Only the appearance going away dithers: the one taking over is already drawn, opaque
+and without a fade of its own, before it starts (from 140 m for ordinary models, and shells
+from 40 m short of the model range). Two copies dithering over the same distances left
+holes where neither was drawn, so buildings looked nearly transparent mid-fade. Model ranges
+come from the quality preset alone; View distance changes no longer stretch models uploaded
+earlier past the shells that replace them. The range remains fixed when View distance changes. Switching to a lighter preset
 refreshes uploaded chunks and releases the detailed model cache. The offline graphics
 benchmark uses the same quality-dependent model upload path.
 
@@ -54,6 +61,12 @@ Production comparisons use the same cameras and light:
 | Fitted house | [Ordinary model](images/building-integration/model-medium.jpg) | [Close model](images/building-integration/model-ultra.jpg) |
 | Generated façade | [Shell](images/building-integration/facade-medium.jpg) | [Frames, glazing and trim](images/building-integration/facade-ultra.jpg) |
 | Saved Bern course | [Street](images/building-integration/city-medium.jpg) | [Street](images/building-integration/city-ultra.jpg) |
+
+The [fade before](images/building-integration/fade-before.jpg) and
+[after](images/building-integration/fade-after.jpg) views stand 170 m from the house, inside the
+swap between appearances; the [shop windows before](images/building-integration/shops-before.jpg)
+and [after](images/building-integration/shops-after.jpg) show the façade fixture's ground-floor
+shop. The saved Bern course views predate these two fixes.
 
 The same course also has [Low](images/building-integration/city-low.jpg) and
 [Winter](images/building-integration/city-winter.jpg) captures. The distant

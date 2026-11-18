@@ -54,11 +54,16 @@ static func add_to(
 	detailed: bool
 ) -> void:
 	var models: Dictionary = cell["models"]
+	# Two dithered copies fading over the same distances leave holes where neither is drawn, so
+	# the farther copy starts opaque where the nearer one starts fading, wherever Godot puts
+	# its fade band around a threshold, and only the copy going away dithers.
 	for name: String in models:
 		var buffer: PackedFloat32Array = models[name]
 		var ordinary: MultiMeshInstance3D = _instance(mesh(name), buffer)
 		ordinary.visibility_range_end = model_range
 		ordinary.visibility_range_end_margin = MODEL_FADE
+		# Quality sets this range, not View distance, as for models uploaded later.
+		ordinary.set_meta("fixed_range", true)
 		if detailed:
 			var close_mesh: Mesh = mesh(name, true)
 			if close_mesh != ordinary.multimesh.mesh:
@@ -68,15 +73,15 @@ static func add_to(
 				close.set_meta("building_detail", true)
 				close.set_meta("fixed_range", true)
 				parent.add_child(close)
-				ordinary.visibility_range_begin = close.visibility_range_end
-				ordinary.visibility_range_begin_margin = BuildingDetails.FADE
+				ordinary.visibility_range_begin = maxf(
+					close.visibility_range_end - BuildingDetails.FADE, 0.0
+				)
 		parent.add_child(ordinary)
 	var shells: MeshInstance3D = MeshInstance3D.new()
 	var shell_arrays: Dictionary = cell["shells"]
-	shells.mesh = WorldMeshes.from_arrays(shell_arrays)
+	shells.mesh = WorldMeshes.from_arrays(shell_arrays, true)
 	shells.material_override = shell_material
-	shells.visibility_range_begin = model_range
-	shells.visibility_range_begin_margin = MODEL_FADE
+	shells.visibility_range_begin = maxf(model_range - MODEL_FADE, 0.0)
 	shells.visibility_range_end = shell_range
 	shells.visibility_range_end_margin = 300.0
 	shells.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

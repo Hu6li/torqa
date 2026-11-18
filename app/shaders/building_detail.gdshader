@@ -22,7 +22,9 @@ void fragment() {
 	float metallic = 0.0;
 	if (style == 1) {
 		float seed = fract(sin(floor(UV.x) * 12.9898) * 43758.5453);
-		albedo = building_interior(vec2(fract(UV.x), UV.y), seed);
+		// Shop panes have V lifted by one (`building_details.rs`).
+		vec2 pane = vec2(fract(UV.x), fract(UV.y));
+		albedo = UV.y >= 1.0 ? shop_interior(pane, seed) : building_interior(pane, seed);
 		roughness = 0.13;
 	} else if (style == 2) {
 		metallic = 0.7;

@@ -138,13 +138,21 @@ fn shop_fronts_cover_the_house_windows_behind_them() {
     let details = building_details(&shell);
     let mut panes = 0;
     for mesh in &details {
-        for (point, color) in mesh.vertices.iter().zip(&mesh.colors) {
-            if (color[3] - 0.5).abs() < 1e-5 && point[1] < 3.0 {
-                assert!(
-                    point[2] > 0.08,
-                    "only shop glazing appears on the ground floor"
+        for ((point, color), uv) in mesh.vertices.iter().zip(&mesh.colors).zip(&mesh.uvs) {
+            if (color[3] - 0.5).abs() < 1e-5 {
+                let shop = point[1] < 3.0;
+                assert_eq!(
+                    uv[1] >= 1.0,
+                    shop,
+                    "shop glass shows a sales floor, house glass a home"
                 );
-                panes += 1;
+                if shop {
+                    assert!(
+                        point[2] > 0.08,
+                        "only shop glazing appears on the ground floor"
+                    );
+                    panes += 1;
+                }
             }
         }
     }
@@ -179,6 +187,19 @@ fn building_detail_render_fixture() {
         }
         shell.append(facade);
     }
+    // A shop on the ground floor of the side the review camera faces.
+    let mut shop = wall(10, -6.4);
+    for (point, uv) in shop.vertices.iter_mut().zip(&mut shop.uvs) {
+        if point[1] > 0.0 {
+            point[1] = 3.0;
+            uv[1] = 3.0;
+        }
+        point[2] = 6.48;
+    }
+    for paint in &mut shop.colors {
+        paint[..3].copy_from_slice(&palette::pick("buildings.walls", 2, 0.0)[..3]);
+    }
+    shell.append(shop);
     quad_uv(
         &mut shell,
         [

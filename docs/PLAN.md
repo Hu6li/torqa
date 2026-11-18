@@ -536,12 +536,18 @@ physically based materials and light, restyled group by group.
 - [x] Standalone [building realism study](building-realism-study.md): fixed-camera house and
   town-façade comparisons, scanned plaster/roof materials, glazing bars, curtains, drainage,
   cornices and open balcony railings; application assets and generation unchanged.
-- [x] Integrate the reviewed building detail into nearby models and generated façades (R233):
+- [x] Integrate the reviewed building detail into nearby models and generated façades (R256):
   extra geometry and window interiors only on Ultra within 160 m; shared scanned materials,
   unchanged kept-world data and no additional geometry on Low–High.
-- [x] Record native M5 Pro town samples for R233, including movement-bound façade allocation
+- [x] Record native M5 Pro town samples for R256, including movement-bound façade allocation
   and identical Medium primitive/draw-call counts. [Evidence](building-realism-study.md#native-measurement-2026-11-08).
-- [ ] Complete Medium/M1 and long-course frame-rate acceptance for R233; M5 samples do not
+- [x] No see-through buildings while appearances swap (ordinary/close and model/shell): only
+  the outgoing appearance dithers over an opaque replacement. Shop windows show a lit sales
+  floor instead of curtains, and fewer home windows have curtains or blinds (R256).
+- [x] Close façades stream with ADR 0040's chunk residency: chunks let go of release their
+  additions, which are read through the chunk store.
+- [ ] Native check of the swap on the Mac (software renders show it fixed; see the study).
+- [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
   verify the target hardware.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)

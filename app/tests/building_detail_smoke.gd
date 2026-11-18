@@ -40,9 +40,10 @@ func _run() -> void:
 	_check(_details(terrain) > 0, "increasing View distance cannot extend close detail")
 	world.apply_quality("medium", {"tree_density": "low"})
 	_check(terrain.get_child_count() == 0, "downgrading refreshes already uploaded Ultra chunks")
-	var next: int = world.get("_next_chunk")
-	_check(next == 0, "the same kept course can upload with its new detail budget")
+	var streaming: WorldStreaming = world.get("_streaming")
+	_check(streaming.uploaded() == 0, "the same kept course can upload with its new detail budget")
 	world.free()
+	_crossfades(uploaded_models)
 	_models()
 	_streaming()
 	if not _failed:
@@ -62,6 +63,36 @@ func _details(node: Node) -> int:
 	for child: Node in node.get_children():
 		count += _details(child)
 	return count
+
+
+## A building is never see-through between its appearances: whichever appearance takes over is
+## opaque, with no fade of its own, before the one it replaces starts dithering away.
+func _crossfades(cells: Array) -> void:
+	var model_range: float = 600.0
+	var checked: int = 0
+	for cell: Dictionary in cells:
+		var parent: Node3D = Node3D.new()
+		BuildingModels.add_to(parent, cell, StandardMaterial3D.new(), model_range, 1800.0, true)
+		for child: Node in parent.get_children():
+			var geometry: GeometryInstance3D = child as GeometryInstance3D
+			if geometry.has_meta("building_detail") or geometry.visibility_range_begin <= 0.0:
+				continue
+			checked += 1
+			_check(
+				is_zero_approx(geometry.visibility_range_begin_margin),
+				"an appearance taking over does not fade in"
+			)
+			var replaced: float = (
+				BuildingDetails.RANGE - BuildingDetails.FADE
+				if geometry is MultiMeshInstance3D
+				else model_range - BuildingModels.MODEL_FADE
+			)
+			_check(
+				geometry.visibility_range_begin <= replaced + 0.001,
+				"an appearance taking over is drawn before the nearer one fades"
+			)
+		parent.free()
+	_check(checked > 0, "the calibration scene has buildings changing appearance")
 
 
 func _models() -> void:

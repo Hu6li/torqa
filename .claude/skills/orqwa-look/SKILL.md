@@ -99,10 +99,12 @@ Blender Python; its header shows how to run it).
 
 ## How to get it
 
-Close building detail (R233) belongs to Ultra within 160 m, fading over 20 m. Keep ordinary
+Close building detail (R256) belongs to Ultra within 160 m, fading over 20 m. Keep ordinary
 geometry on Low–High and preserve the regional proportions/colours. Use the shared neutral
-scans across presets; inspect raised façade frames, sills, glazing bars, curtains and roof
-drainage at eye height, at the distance transition and in Winter. Derive shell additions from
+scans across presets; inspect raised façade frames, sills, glazing bars, home interiors, shop
+windows (lit, never curtained) and roof drainage at eye height, in Winter and across the
+140–180 m transition, where no building may turn see-through: only the appearance going away
+dithers, over the opaque one replacing it. Derive shell additions from
 saved data on nearby requests so existing courses and quality switches need no regeneration.
 Release far façade buffers; a short visibility range alone does not bound course memory.
 The production fixture and acceptance limits are in `docs/building-realism-study.md`.
