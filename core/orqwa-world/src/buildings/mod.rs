@@ -67,6 +67,10 @@ const STORE_AREA: f64 = 2500.0;
 /// shells, which show lower storeys there as buildings on slopes do (#554). Castles and
 /// lighthouses, on hilltops and rocks, reach 8 m down (`art/buildings`, `DEEP`).
 const MODEL_BASEMENT: f64 = 1.8;
+/// How deep a ground floor is set into a slope at most, on its uphill side: about a storey, as
+/// a hillside house dug into it; a model's, whose door may face uphill, a metre.
+const SET_IN: f64 = 2.4;
+const MODEL_SET_IN: f64 = 1.0;
 const DEEP_BASEMENT: f64 = 7.8;
 /// A castle's walls rise this far at least and at most, to a wall walk behind a parapet this
 /// high; over a free outline the keep rises this far over the walk before its roof, and the
@@ -509,11 +513,17 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     if footprint.len() < 3 {
         return;
     }
-    // Floors are level: the ground floor is at the highest ground, and on slopes the walls
-    // go down to the lowest like a basement.
+    // Floors are level and set into the slope as buildings on slopes are built (#554): at the
+    // mean ground under the footprint, buried no more than `SET_IN` on the uphill side, where
+    // the ground hides the walls; downhill the walls go down to the lowest ground, showing
+    // lower storeys. Models, whose doors can be on any side, are set in less.
     let grounds: Vec<f64> = footprint.iter().map(|&(e, n)| heights.at(e, n)).collect();
-    let ground = grounds.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let highest = grounds.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let lowest = grounds.iter().copied().fold(f64::INFINITY, f64::min);
+    #[allow(clippy::cast_precision_loss)] // a footprint's few corners
+    let mean = grounds.iter().sum::<f64>() / grounds.len() as f64;
+    let model_ground = mean.max(highest - MODEL_SET_IN);
+    let ground = mean.max(highest - SET_IN);
     let area = signed_area(footprint);
     let dice = Dice(plot.building.id);
     let kind = kind(plot, area, ground, &dice);
@@ -542,7 +552,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     };
     // A shop's front is drawn on the shell, which shows it up close too.
     let fit = rect
-        .filter(|_| ground - lowest < basement && plot.shop.is_none())
+        .filter(|_| model_ground - lowest < basement && plot.shop.is_none())
         .and_then(|rect| {
             let wanted = Wanted {
                 kind,
@@ -570,6 +580,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         return;
     };
 
+    let ground = model_ground;
     #[allow(clippy::cast_possible_truncation)] // world coordinates are far below 2^63 cells
     let cell = (
         (rect.centre.0 / CELL).floor() as i64,
@@ -1493,11 +1504,11 @@ fn build(
     b.plinth(&outline, bottom, lower, design.windows.then_some(lower));
     match design.base {
         Some(base) if ground + STOREY < wall_top => {
-            b.walls(&outline, ground, ground + STOREY, base);
-            b.walls(&outline, ground + STOREY, wall_top, design.wall);
+            b.facade(&outline, ground, ground + STOREY, base);
+            b.facade(&outline, ground + STOREY, wall_top, design.wall);
         }
-        Some(base) => b.walls(&outline, ground, wall_top, base),
-        None => b.walls(&outline, ground, wall_top, design.wall),
+        Some(base) => b.facade(&outline, ground, wall_top, base),
+        None => b.facade(&outline, ground, wall_top, design.wall),
     }
 
     let pitch = Pitch {
