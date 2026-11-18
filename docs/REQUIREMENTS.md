@@ -754,3 +754,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R258 | Refines R16 and R89 (2026-11-18): **a building mapped in parts stands as its parts**. The map tiles carry the outline of such a building, marked as drawn in parts, beside its parts: the outline is not drawn as a building of its own, and each part stands on the outline's ground with its own height. A part mapped from a height above the ground (an overhang, a passage, the upper stage of a tower) starts there and is closed from below; trim and balconies start there too. Churches, castles and lighthouses mapped in parts stay whole, from their outline, as before. Outlines still keep plants and props off the ground. **Fitted models follow a mapped height**: where the map gives one, a model fits only if it reaches the mapped walls within 15 %, stretched up or down to them; otherwise the building is generated. Models without a mapped height keep theirs. Kept worlds offer regeneration (R101). |
+
+## Buildings on their mapped outlines
+
+| ID | Requirement |
+|---|---|
+| R259 | Refines R16, R89 and R258 (2026-11-18): **buildings stand on their mapped outline under a roof over it**. A building is drawn as the rectangle around its outline only where the outline fills at least 95 % of it; gable roofs, balconies and chimneys stay on those. Every other building's walls follow its outline, and a pitched roof over it rises from every wall at the same pitch to hips, valleys and ridges, eaves standing out all round, instead of a band with a flat top. Fitted models, drawn on that rectangle, stand only on outlines filling 90 % of it. Flat roofs keep following their outline. Kept worlds offer regeneration (R101). |

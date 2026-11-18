@@ -12,6 +12,7 @@ mod models;
 mod parts;
 mod region;
 mod shape;
+mod skeleton;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
@@ -34,9 +35,17 @@ const STOREY: f64 = 3.0;
 const EAVES_MARGIN: f64 = 0.4;
 /// Walls reach this far below the lowest ground point, so slopes never show a gap.
 const FOUNDATION: f64 = 1.0;
-/// Footprints filling this much of the rectangle around them are built as that rectangle,
-/// which can carry gable and hipped roofs; the difference does not show from the road.
+/// Footprints filling this much of the rectangle around them have designs for it: gable and
+/// hipped roofs, balconies, chimneys.
 const RECTANGULAR: f64 = 0.8;
+/// Models stand on the rectangle around a footprint, squaring away the rest of its outline,
+/// so only footprints filling this much of it get one.
+const MODEL_RECTANGULAR: f64 = 0.9;
+/// Shells are drawn as their rectangle, which gable roofs and the details on them need, only
+/// where the footprint fills this much of it: in 2026 tiles of Switzerland, Germany, Finland
+/// and Japan, 55 % of outlines. The others stand on their mapped outline under a hipped roof
+/// from its straight skeleton (ADR 0041, step 4).
+const DRAWN_RECTANGULAR: f64 = 0.95;
 /// Churches keep their nave shape even with a choir or porch, castles theirs with towers
 /// standing out, and lighthouses theirs though round (a circle fills 79 % of its square).
 const RECTANGULAR_CHURCH: f64 = 0.7;
@@ -630,6 +639,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     // A shop's front is drawn on the shell, which shows it up close too; a part is no whole
     // building a model could stand for.
     let fit = rect
+        .filter(|r| special || area / r.area() >= MODEL_RECTANGULAR)
         .filter(|_| ground - lowest < basement && plot.shop.is_none())
         .filter(|_| plot.drawn == Drawn::Whole && raised.is_none())
         .and_then(|rect| {
@@ -1585,6 +1595,42 @@ fn walls_up(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) 
     true
 }
 
+/// The roof of a design over `outline` (its rectangle, if drawn as one), from its eaves at
+/// `pitch`: a gable or hipped roof over a rectangle, a hipped roof from the outline's
+/// `skeleton`, failing that a hipped band, or a flat roof. Returns its top.
+fn roof(
+    b: &mut Builder,
+    design: &Design,
+    rect: Option<Rect>,
+    outline: &[Point],
+    skeleton: Option<&skeleton::Skeleton>,
+    pitch: Pitch,
+) -> f64 {
+    let paint = design.roof_paint;
+    let eaves = pitch.eaves;
+    match (design.roof, rect) {
+        (Roof::Flat { parapet }, _) => {
+            b.flat_roof(outline, eaves, parapet, paint.top, paint.gables);
+            eaves
+        }
+        (Roof::Gable, Some(rect)) => b.gable_roof(&rect, pitch, paint),
+        (Roof::Hipped, Some(rect)) => b.hipped_roof(&rect, pitch, paint),
+        (_, None) => skeleton
+            .and_then(|skeleton| b.skeleton_roof(outline, skeleton, pitch, paint))
+            .or_else(|| b.hip_band_roof(outline, pitch, paint))
+            .unwrap_or_else(|| {
+                b.flat_roof(
+                    outline,
+                    eaves,
+                    0.0,
+                    paint.top.with(Style::Flat),
+                    paint.gables,
+                );
+                eaves
+            }),
+    }
+}
+
 /// Walls, roof and details of every kind but churches; `walls`, if given, is the height of the
 /// walls instead of what the map and the design say.
 fn build(
@@ -1596,15 +1642,34 @@ fn build(
     walls: Option<f64>,
     dice: &Dice,
 ) {
+    // A model's shell keeps the model's rectangle (`walls` given); others are drawn as their
+    // rectangle only where it is nearly their outline.
+    let rect = if walls.is_some() {
+        rect
+    } else {
+        rect.filter(|r| signed_area(footprint) / r.area() >= DRAWN_RECTANGULAR)
+    };
     let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
     let parapet = match design.roof {
         Roof::Flat { parapet } => Some(parapet),
         Roof::Gable | Roof::Hipped => None,
     };
-    let (angle, rise) = match (parapet, rect) {
-        (Some(_), _) => (design.pitch_degrees.to_radians(), 0.0),
-        (None, Some(rect)) => pitch_over(design, &rect),
-        (None, None) => (design.pitch_degrees.to_radians(), 2.0),
+    let skeleton = (rect.is_none() && parapet.is_none())
+        .then(|| skeleton::skeleton(&outline))
+        .flatten()
+        .filter(|s| s.height > 0.1);
+    let (angle, rise) = match (parapet, rect, &skeleton) {
+        (Some(_), _, _) => (design.pitch_degrees.to_radians(), 0.0),
+        (None, Some(rect), _) => pitch_over(design, &rect),
+        (None, None, Some(skeleton)) => {
+            // As over rectangles: flatter on wide buildings, rising no more than allowed.
+            let angle = design
+                .pitch_degrees
+                .to_radians()
+                .min((design.max_rise / skeleton.height).atan());
+            (angle, skeleton.height * angle.tan())
+        }
+        (None, None, None) => (design.pitch_degrees.to_radians(), 2.0),
     };
     let walls = walls.unwrap_or_else(|| wall_height(building, rise, design));
     let ground = b.ground;
@@ -1620,25 +1685,7 @@ fn build(
         overhang: design.overhang,
         verge: design.verge,
     };
-    let paint = design.roof_paint;
-    let top = match (design.roof, rect) {
-        (Roof::Flat { parapet }, _) => {
-            b.flat_roof(&outline, eaves, parapet, paint.top, paint.gables);
-            eaves
-        }
-        (Roof::Gable, Some(rect)) => b.gable_roof(&rect, pitch, paint),
-        (Roof::Hipped, Some(rect)) => b.hipped_roof(&rect, pitch, paint),
-        (_, None) => b.hip_band_roof(&outline, pitch, paint).unwrap_or_else(|| {
-            b.flat_roof(
-                &outline,
-                eaves,
-                0.0,
-                paint.top.with(Style::Flat),
-                paint.gables,
-            );
-            eaves
-        }),
-    };
+    let top = roof(b, design, rect, &outline, skeleton.as_ref(), pitch);
 
     if let Some(trim) = design.trim {
         finish(

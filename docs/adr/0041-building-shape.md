@@ -158,6 +158,41 @@ mostly the number of storeys: a house mapped three storeys high no longer gets a
 model. Unmapped buildings keep their models' heights. The instance transform already held a
 vertical scale, so the stored format stays 3; generator 44.
 
+## Step 4: outlines and roofs over them (2026-11-18, R259)
+
+Shells were drawn as the rectangle around their outline wherever it filled 80 % of it, and
+other outlines got a band of roof with a flat top. Over the outlines in the 3,104 cached
+tiles, 746,540 of at least 20 m², the fill is:
+
+| Fill of the rectangle | Share |
+|---|---:|
+| Below 80 % | 14.5 % |
+| 80–90 % | 16.9 % |
+| 90–95 % | 14.0 % |
+| 95–97 % | 16.4 % |
+| 97 % and more | 38.2 % |
+
+Now a shell is drawn as its rectangle only from 95 %, which keeps gable roofs, balconies and
+chimneys on the 55 % that are nearly one; a fitted model, which squares the outline on its
+rectangle, stands only from 90 %. Every other shell's walls follow its outline, and its
+pitched roof comes from the outline's straight skeleton (`buildings::skeleton`): each wall's
+roof face rises at the design's pitch to the hips, valleys and ridges where faces meet,
+flatter where the roof would rise more than the design allows, with the same overhanging
+eaves as other roofs. Designs still choose the roof as before; a gable over a non-rectangle
+becomes hipped.
+
+The skeleton is our own sweep, with no new dependency: edges move inwards, corners follow
+their bisectors, an edge whose corners meet is gone and a reflex corner reaching another edge
+splits the outline. Building outlines put many events at one place and time (a T's inner
+corners and ridges), so where the outline as it is fails, the sweep runs on it moved by a
+ten-thousandth of its size and the faces are put back on its corners. Every result is checked:
+the faces must cover the outline exactly and every point lie at its height from its edge, or
+the roof falls back to the band, then flat. Over all 815,606 building outlines of those tiles,
+with up to 256 corners, every outline but seven got a checked skeleton, in 1.3 s together
+(slowest 5 ms; dev container, release build).
+
+Generator 45; the stored format stays 3.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

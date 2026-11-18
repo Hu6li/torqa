@@ -556,7 +556,8 @@ physically based materials and light, restyled group by group.
     plinth (#554, R257)
   - [x] Step 3 — the heights the tiles carry, for fitted models too; buildings mapped in
     parts drawn as their parts (`hide_3d`, `render_min_height`, R258)
-  - [ ] Step 4 — walls along the mapped outline and a roof computed over it, every building
+  - [x] Step 4 — walls along the mapped outline and a roof computed over it, every building
+    (R259)
   - [ ] Step 5 — the kind of every building (`building=*`) in the map detail extract
   - [ ] Step 6 — roof shapes, levels, colours and materials from the extract
   - [ ] Step 7 — buildings assembled on their outlines from Blender parts

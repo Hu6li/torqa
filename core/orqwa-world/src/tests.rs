@@ -2865,6 +2865,150 @@ async fn parts_buildings_render_fixture() {
 }
 
 #[tokio::test]
+async fn outlines_keep_their_shape_under_a_roof_over_them() {
+    // An L-shaped house, and a house whose 20 × 10 m rectangle misses a 4 × 6 m corner: walls
+    // follow both outlines, and pitched roofs rise over them to ridges (R259).
+    let house = |id, outline: Vec<(f64, f64)>| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+    };
+    let l_shape = [
+        (50.0, 460.0),
+        (70.0, 460.0),
+        (70.0, 468.0),
+        (58.0, 468.0),
+        (58.0, 476.0),
+        (50.0, 476.0),
+        (50.0, 460.0),
+    ];
+    let notched = [
+        (50.0, 520.0),
+        (70.0, 520.0),
+        (70.0, 524.0),
+        (66.0, 524.0),
+        (66.0, 530.0),
+        (50.0, 530.0),
+        (50.0, 520.0),
+    ];
+    let world = world(&MapData {
+        buildings: vec![
+            house(90, l_shape.iter().map(|&(e, n)| at(e, n)).collect()),
+            house(91, notched.iter().map(|&(e, n)| at(e, n)).collect()),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    // The L: a hipped roof over all of it, with no flat band on top as before.
+    let faces = building_faces(&world, (60.0, 468.0), 14.0);
+    let eaves = slope_at(70.0) + 2.0 * 3.0 + 0.4;
+    let roof: Vec<&Face> = faces
+        .iter()
+        .filter(|f| f.normal[1] > 0.1 && f.middle()[1] > eaves + 0.5)
+        .collect();
+    assert!(!roof.is_empty());
+    assert!(
+        roof.iter().all(|f| f.normal[1] < 0.99),
+        "the roof over the L rises to ridges throughout"
+    );
+    let top = highest(&faces);
+    assert!(
+        top > eaves + 2.0,
+        "a pitched roof, top {top}, eaves {eaves}"
+    );
+    // The notched house: nothing stands in its missing corner, beyond its eaves' overhang.
+    let notch = building_faces(&world, (60.0, 525.0), 16.0)
+        .into_iter()
+        .filter(|f| {
+            let m = f.middle();
+            (67.5..69.5).contains(&m[0]) && (525.5..529.5).contains(&-m[2])
+        })
+        .count();
+    assert_eq!(notch, 0, "faces in the corner the outline leaves out");
+}
+
+#[tokio::test]
+#[ignore = "exports buildings of common outlines for Godot visual review"]
+async fn outline_buildings_render_fixture() {
+    // An L, a T, a U, a house with a corner missing and one with a bay, two storeys each.
+    let shapes: [&[(f64, f64)]; 5] = [
+        &[
+            (30.0, 450.0),
+            (48.0, 450.0),
+            (48.0, 458.0),
+            (38.0, 458.0),
+            (38.0, 470.0),
+            (30.0, 470.0),
+        ],
+        &[
+            (58.0, 450.0),
+            (82.0, 450.0),
+            (82.0, 458.0),
+            (74.0, 458.0),
+            (74.0, 470.0),
+            (66.0, 470.0),
+            (66.0, 458.0),
+            (58.0, 458.0),
+        ],
+        &[
+            (92.0, 450.0),
+            (112.0, 450.0),
+            (112.0, 468.0),
+            (106.0, 468.0),
+            (106.0, 457.0),
+            (98.0, 457.0),
+            (98.0, 468.0),
+            (92.0, 468.0),
+        ],
+        &[
+            (40.0, 490.0),
+            (58.0, 490.0),
+            (58.0, 494.0),
+            (54.0, 494.0),
+            (54.0, 500.0),
+            (40.0, 500.0),
+        ],
+        &[
+            (75.0, 490.0),
+            (79.0, 490.0),
+            (79.0, 488.5),
+            (83.0, 488.5),
+            (83.0, 490.0),
+            (87.0, 490.0),
+            (87.0, 499.0),
+            (75.0, 499.0),
+        ],
+    ];
+    let buildings = shapes
+        .iter()
+        .zip(100..)
+        .map(|(shape, id)| {
+            let mut outline: Vec<_> = shape.iter().map(|&(e, n)| at(e, n)).collect();
+            outline.push(outline[0]);
+            Building {
+                id,
+                outline,
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+            }
+        })
+        .collect();
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "outline-buildings.json");
+}
+
+#[tokio::test]
 async fn churches_get_a_tower_and_chapels_a_turret() {
     // A 14 × 30 m church and a 7 × 12 m chapel, with their church points inside.
     let church = Building {

@@ -5,6 +5,7 @@ use crate::{HeightGrid, MeshData};
 
 use super::STOREY;
 use super::shape::{Point, Rect, distance, offset, perimeter, signed_area, triangulate};
+use super::skeleton::Skeleton;
 
 /// Roofs are this thick at their edges.
 const ROOF_THICKNESS: f64 = 0.22;
@@ -481,6 +482,85 @@ impl Builder<'_> {
     /// A roof for outlines no rectangle fits: a band sloping up from the eaves all round to
     /// a flat top, which reads as a hipped roof from the ground. Returns the height of its
     /// top, or `None` where the outline is too irregular for the band.
+    /// A hipped roof over any counter-clockwise `outline` from its straight `skeleton`: a face
+    /// over every wall rising at the pitch to the hips, valleys and ridges where they meet, and
+    /// eaves standing out all round. Its top, or None if the eaves cannot be laid round it.
+    pub(crate) fn skeleton_roof(
+        &mut self,
+        outline: &[Point],
+        skeleton: &Skeleton,
+        pitch: Pitch,
+        paint: RoofPaint,
+    ) -> Option<f64> {
+        let count = outline.len();
+        if skeleton.faces.len() != count {
+            return None;
+        }
+        let outer = offset(outline, -pitch.overhang)?;
+        let slope = pitch.angle.tan();
+        let rafter = 1.0 / pitch.angle.cos();
+        let t = ROOF_THICKNESS;
+        for (i, face) in skeleton.faces.iter().enumerate() {
+            let start = outline[i];
+            let end = outline[(i + 1) % count];
+            let length = distance(start, end);
+            let along = ((end.0 - start.0) / length, (end.1 - start.1) / length);
+            let ring: Vec<Point> = face.iter().map(|&(p, _)| p).collect();
+            for triangle in triangulate(&ring) {
+                let corners = triangle.map(|k| face[k as usize]);
+                let [first, second, third] = corners.map(|(p, _)| p);
+                let twice_area = (second.0 - first.0) * (third.1 - first.1)
+                    - (second.1 - first.1) * (third.0 - first.0);
+                if twice_area.abs() < 1e-6 {
+                    continue;
+                }
+                let uvs = corners.map(|((e, n), h)| {
+                    let u = (e - start.0) * along.0 + (n - start.1) * along.1;
+                    [u as f32, (h * rafter) as f32]
+                });
+                self.slope(
+                    &corners.map(|(p, h)| (p, pitch.eaves + h * slope + t)),
+                    &uvs,
+                    paint.top,
+                    true,
+                );
+            }
+        }
+        let edge = pitch.eaves - pitch.overhang * slope;
+        let overhang = (pitch.overhang * rafter) as f32;
+        let mut along = 0.0;
+        for i in 0..count {
+            let j = (i + 1) % count;
+            let length = distance(outer[i], outer[j]);
+            let (from, to) = (along as f32, (along + length) as f32);
+            self.slope(
+                &[
+                    (outer[i], edge + t),
+                    (outer[j], edge + t),
+                    (outline[j], pitch.eaves + t),
+                    (outline[i], pitch.eaves + t),
+                ],
+                &[[from, -overhang], [to, -overhang], [to, 0.0], [from, 0.0]],
+                paint.top,
+                true,
+            );
+            self.slope(
+                &[
+                    (outer[i], edge),
+                    (outer[j], edge),
+                    (outline[j], pitch.eaves),
+                    (outline[i], pitch.eaves),
+                ],
+                &[[0.0; 2]; 4],
+                paint.under,
+                false,
+            );
+            along += length;
+        }
+        self.walls(&outer, edge, edge + t, paint.under);
+        Some(pitch.eaves + skeleton.height * slope + t)
+    }
+
     pub(crate) fn hip_band_roof(
         &mut self,
         outline: &[Point],
