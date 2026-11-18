@@ -237,14 +237,10 @@ impl Builder<'_> {
         };
         for i in 0..outline.len() {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
-            let buried = self.terrain.map_or(f64::NEG_INFINITY, |terrain| {
-                terrain.at(a.0, a.1).max(terrain.at(b.0, b.1)) - self.ground
-            });
-            let blind = if blank == paint || buried <= WINDOW_SILL {
+            let blind = if blank == paint {
                 bottom
             } else {
-                let storeys = ((buried - WINDOW_SILL) / STOREY).ceil();
-                (self.ground + storeys * STOREY).clamp(bottom, top)
+                (self.ground + self.buried_storeys(a, b) * STOREY).clamp(bottom, top)
             };
             if blind > bottom {
                 self.wall(a, b, (bottom, blind), blank, 1.0, 0.0);
@@ -253,6 +249,21 @@ impl Builder<'_> {
                 self.wall(a, b, (blind, top), paint, 1.0, 0.0);
             }
         }
+    }
+
+    /// How many storeys from the ground floor up the ground buries on the wall from `a` to `b`:
+    /// those whose window sills lie under its ground at the wall's higher end.
+    pub(crate) fn buried_storeys(&self, a: Point, b: Point) -> f64 {
+        let Some(terrain) = self.terrain else {
+            return 0.0;
+        };
+        let buried = terrain.at(a.0, a.1).max(terrain.at(b.0, b.1)) - self.ground;
+        ((buried - WINDOW_SILL) / STOREY).ceil().max(0.0)
+    }
+
+    /// The ground at a point, if the building knows its ground.
+    pub(crate) fn ground_at(&self, at: Point) -> Option<f64> {
+        self.terrain.map(|terrain| terrain.at(at.0, at.1))
     }
 
     /// The walls below the ground floor, from `bottom` up, along a counter-clockwise

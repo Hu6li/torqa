@@ -1816,16 +1816,14 @@ fn walls_up(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) 
 }
 
 /// The windows and door of a building assembled from parts, on the grid the walls draw their
-/// windows on: every storey up to the walls' top, on every wall wide enough for a window, and
-/// the door on the ground floor in the middle of the longest wall. Gables and lower storeys
-/// keep the windows the walls draw.
+/// windows on: every storey up to the walls' top on every wall wide enough for a window, but
+/// none in a storey the ground buries on that wall; and the door in the middle of the ground
+/// floor of the longest wall whose ground there lies by the floor, as an entrance does. Gables
+/// and lower storeys keep the windows the walls draw.
 fn lay_parts(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) {
     let ground = b.ground;
-    let Some(parts) = b.parts.as_deref_mut() else {
-        return;
-    };
     let windowed = |paint: Paint| matches!(paint.style, Style::Plaster | Style::Timber);
-    if !design.windows || !windowed(design.wall) {
+    if b.parts.is_none() || !design.windows || !windowed(design.wall) {
         return;
     }
     let ground_floor = design.base.is_none_or(windowed);
@@ -1836,7 +1834,29 @@ fn lay_parts(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64)
         .max(0.0) as u32;
     let count = outline.len();
     let length = |i: usize| distance(outline[i], outline[(i + 1) % count]);
-    let longest = (0..count).max_by(|&i, &j| length(i).total_cmp(&length(j)));
+    let middle_of = |i: usize| {
+        let (a, c) = (outline[i], outline[(i + 1) % count]);
+        let (middles, _) = parts::window_columns(length(i));
+        let t = middles.get(middles.len() / 2).copied()? / length(i);
+        Some((a.0 + (c.0 - a.0) * t, a.1 + (c.1 - a.1) * t))
+    };
+    let buried: Vec<f64> = (0..count)
+        .map(|i| b.buried_storeys(outline[i], outline[(i + 1) % count]))
+        .collect();
+    // The door's wall: the longest whose ground floor shows and whose ground at the door lies
+    // by the floor.
+    let entrance = (0..count)
+        .filter(|&i| buried[i] < 1.0)
+        .filter(|&i| {
+            middle_of(i).is_some_and(|at| {
+                b.ground_at(at)
+                    .is_none_or(|there| (there - ground).abs() <= DOOR_STEP)
+            })
+        })
+        .max_by(|&i, &j| length(i).total_cmp(&length(j)));
+    let Some(parts) = b.parts.as_deref_mut() else {
+        return;
+    };
     for i in 0..count {
         let (a, c) = (outline[i], outline[(i + 1) % count]);
         let wall = length(i);
@@ -1845,8 +1865,10 @@ fn lay_parts(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64)
         }
         let along = ((c.0 - a.0) / wall, (c.1 - a.1) / wall);
         let (middles, stretch) = parts::window_columns(wall);
-        let door = (Some(i) == longest).then_some(middles.len() / 2);
-        for storey in u32::from(!ground_floor)..storeys {
+        let door = (Some(i) == entrance).then_some(middles.len() / 2);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few storeys
+        let first = u32::from(!ground_floor).max(buried[i] as u32);
+        for storey in first..storeys {
             for (column, &middle) in middles.iter().enumerate() {
                 let part = if storey == 0 && door == Some(column) {
                     Part::Door
@@ -1867,6 +1889,10 @@ fn lay_parts(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64)
         }
     }
 }
+
+/// A door stands where its wall's ground lies at most this far from the floor: its step sinks
+/// into the ground or rises from it so far.
+const DOOR_STEP: f64 = 0.6;
 
 /// The top of a storey's windows over its floor, as the walls draw them.
 const WINDOW_TOP: f64 = 2.44;

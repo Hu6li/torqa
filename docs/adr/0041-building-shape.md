@@ -275,7 +275,9 @@ with windows the shader draws. Now homes of the general region no model fits are
 from Blender parts on those walls (`art/buildings/parts.py`): a window and a door, exported as
 `parts/window.glb` and `parts/door.glb` beside the models. `lay_parts` puts a window on every
 storey of every wall where the walls' window grid has one, stretched as the wall stretches the
-grid, and the door in the middle of the ground floor of the longest wall; a part's opening
+grid, but none in a storey the ground buries on that wall (step 2), and the door in the middle
+of the ground floor of the longest wall whose ground floor shows and whose ground at the door
+lies within 0.6 m of the floor, as an entrance's (none where no wall has such ground); a part's opening
 covers the casing the shader draws, so up close the part is seen and further off, once parts
 have faded at the model range, the walls' own windows. Gables and lower storeys keep the
 shader's windows for now; regional parts (Nordic, French, Japanese windows) are to follow.

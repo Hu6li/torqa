@@ -3460,8 +3460,44 @@ async fn homes_no_model_fits_are_assembled_from_parts() {
     };
     assert_eq!(count("parts/door"), 1, "one door");
     // The walls draw a window every 3.2 m, stretched to whole windows: 20 m, 10 m, 11 m, 10 m,
-    // 9 m and 20 m make 6 + 3 + 3 + 3 + 3 + 6 = 24 a storey, one of them the door.
-    assert_eq!(count("parts/window"), 2 * 24 - 1);
+    // 9 m and 20 m make 6 + 3 + 3 + 3 + 3 + 6 = 24 a storey. The upper storey has them all; on
+    // the ground floor, set into the slope, walls whose ground buries their sills have none.
+    let parts: Vec<(String, [f32; 3])> = world
+        .chunks
+        .iter()
+        .flat_map(|chunk| {
+            chunk.modelled.iter().flat_map(move |cell| {
+                cell.models.iter().flat_map(move |(name, buffer)| {
+                    buffer.as_chunks::<20>().0.iter().map(move |b| {
+                        let at = [
+                            b[3] + chunk.center[0],
+                            b[7] + chunk.center[1],
+                            -b[11] - chunk.center[2],
+                        ];
+                        (name.clone(), at)
+                    })
+                })
+            })
+        })
+        .collect();
+    let floor = parts.iter().map(|(_, at)| at[1]).fold(f32::MAX, f32::min);
+    let upper = parts.iter().filter(|(_, at)| at[1] > floor + 1.0).count();
+    assert_eq!(upper, 24, "the upper storey's windows");
+    for (name, at) in &parts {
+        let ground = slope_at(at[0]);
+        if name == "parts/door" {
+            assert!(
+                (ground - floor).abs() <= 0.61,
+                "a door {} m off the ground",
+                ground - floor
+            );
+        } else {
+            assert!(
+                at[1] + 1.0 > ground,
+                "a window sunk in the ground at {at:?}"
+            );
+        }
+    }
     // Every part faces out of the house, its z axis away from the L's inside.
     for chunk in &world.chunks {
         for cell in &chunk.modelled {
