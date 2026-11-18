@@ -4,7 +4,7 @@ A `Mesh` collects faces with named materials; texture coordinates are metres on 
 (walls: along and up; roofs: along the eaves and up the slope). Walls get recessed openings
 with windows, doors, sills and shutters; roofs get thickness, soffits, fascia and ridge caps.
 Ordinary variants keep small parts lean. The separately exported Ultra variants add glazing
-bars and main-roof drainage through `details.py` (R233).
+bars and main-roof drainage through `details.py` (R256).
 
 Coordinates are metres: x along the building, y across it, z up, the origin at the centre of
 the footprint at ground-floor level. Faces wind counter-clockwise seen from the front (the

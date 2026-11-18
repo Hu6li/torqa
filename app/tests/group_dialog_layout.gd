@@ -42,6 +42,7 @@ static func check(tree: SceneTree, app: OrqwaApp, verify: Callable, tag: String)
 		for tick: int in range(3):
 			var friend: Dictionary = roster[1]
 			friend["gap_m"] = 14.0 + tick * 0.1
+			friend["ping_ms"] = 25 if tick == 0 else 60000
 			status["voice"] = tick != 1
 			group._show_status(status)
 			await _settle(tree)
@@ -107,6 +108,7 @@ static func _status() -> Dictionary:
 				"gap_m": 14.0,
 				"power_w": 230.0,
 				"watts_per_kg": 3.2,
+				"ping_ms": 45,
 			},
 			{"id": 2, "name": "Mia", "me": false, "ready": true, "fallback": true},
 		],

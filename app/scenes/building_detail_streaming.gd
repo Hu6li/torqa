@@ -18,6 +18,7 @@ func reset() -> void:
 
 
 func register(index: int, node: Node3D, bounds: AABB) -> void:
+	unregister(index)
 	var corner: Vector3 = node.position + bounds.position
 	_entries.append(
 		{
@@ -28,6 +29,18 @@ func register(index: int, node: Node3D, bounds: AABB) -> void:
 			"detail": null
 		}
 	)
+
+
+## Forgets a chunk the streaming let go of; its additions go with the chunk's node.
+func unregister(index: int) -> void:
+	for at: int in range(_entries.size() - 1, -1, -1):
+		var entry: Dictionary = _entries[at]
+		if entry["index"] == index:
+			var detail: Node3D = entry["detail"]
+			if detail != null and is_instance_valid(detail):
+				detail.get_parent().remove_child(detail)
+				detail.queue_free()
+			_entries.remove_at(at)
 
 
 func update(focus: Vector2, load_details: Callable) -> void:

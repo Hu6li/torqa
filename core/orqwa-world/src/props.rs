@@ -172,73 +172,87 @@ pub(crate) fn place(
 
 /// Attach ground-mounted markers across chunk boundaries to the final terrain. Guardrails
 /// are fitted to their owning carriageway instead: another hairpin can cut the bank below it.
+/// `terrain` holds the chunk's ground and its neighbours'.
 #[allow(clippy::cast_possible_truncation)] // f32 instance buffers
-pub(crate) fn ground_protection(chunks: &mut [crate::TerrainChunk]) {
-    let terrain = crate::foundations::Ground(chunks);
-    let mut corrections = Vec::new();
-    for (chunk_index, chunk) in chunks.iter().enumerate() {
-        for name in ["snow_pole", "delineator"] {
-            let Some(buffer) = chunk.props.models.get(name) else {
+pub(crate) fn ground_protection(
+    chunk: &mut crate::TerrainChunk,
+    terrain: &crate::foundations::Ground<'_>,
+) {
+    let center = chunk.center;
+    for name in ["snow_pole", "delineator"] {
+        let Some(buffer) = chunk.props.models.get_mut(name) else {
+            continue;
+        };
+        for transform in buffer.as_chunks_mut::<12>().0 {
+            if transform[3].abs().max(transform[11].abs()) <= crate::CHUNK_SIZE as f32 / 2.0 {
                 continue;
-            };
-            for (index, transform) in buffer.as_chunks::<12>().0.iter().enumerate() {
-                if transform[3].abs().max(transform[11].abs()) <= crate::CHUNK_SIZE as f32 / 2.0 {
-                    continue;
-                }
-                let east = f64::from(transform[3] + chunk.center[0]);
-                let north = -f64::from(transform[11] + chunk.center[2]);
-                if let Some(height) = terrain.at(east, north) {
-                    corrections.push((chunk_index, name, index, height as f32 - chunk.center[1]));
-                }
+            }
+            let east = f64::from(transform[3] + center[0]);
+            let north = -f64::from(transform[11] + center[2]);
+            if let Some(height) = terrain.at(east, north) {
+                transform[7] = height as f32 - center[1];
             }
         }
     }
-    for (chunk, name, index, height) in corrections {
-        let buffer = chunks[chunk]
-            .props
-            .models
-            .get_mut(name)
-            .expect("existing protection");
-        buffer[index * 12 + 7] = height;
-    }
+}
+
+/// The ends (absolute Godot coordinates) of a fence or guard-rail model placed by `transform`
+/// in a chunk centred at `center`, and how far beside its line it must stay off pavement;
+/// `None` for other models.
+fn fence_span(name: &str, transform: &[f32], center: [f32; 3]) -> Option<([[f64; 3]; 2], f64)> {
+    let half = match name {
+        "guard_rail" | "guard_rail_start" | "guard_rail_end" => RAIL_SPAN / 2.0,
+        "fence" => FENCE_SPAN / 2.0,
+        _ => return None,
+    };
+    let ends = [-half, half].map(|z| {
+        [0, 1, 2].map(|k| {
+            f64::from(transform[k * 4 + 3])
+                + f64::from(center[k])
+                + f64::from(transform[k * 4 + 2]) * z
+        })
+    });
+    // Terminal blades flare 35 cm away from the road, beyond the post.
+    let width = if name.starts_with("guard_rail_") {
+        0.5
+    } else {
+        crate::pavement::SPAN_HALF_WIDTH
+    };
+    Some((ends, width))
+}
+
+/// Every fence and guard-rail span of `chunk`, as `clear_fences` checks them.
+pub(crate) fn fence_spans(
+    chunk: &crate::TerrainChunk,
+) -> impl Iterator<Item = ([[f64; 3]; 2], f64)> + '_ {
+    chunk.props.models.iter().flat_map(move |(name, buffer)| {
+        buffer
+            .as_chunks::<12>()
+            .0
+            .iter()
+            .filter_map(move |t| fence_span(name, t, chunk.center))
+    })
 }
 
 /// A fixed model cannot be clipped halfway through a blade or plank. Remove spans crossing
 /// actual pavement, including roads joining between their endpoints.
-pub(crate) fn clear_fences(
-    chunks: &mut [crate::TerrainChunk],
-    pavement: &crate::pavement::Pavement,
-) {
-    for chunk in chunks {
-        for (name, buffer) in &mut chunk.props.models {
-            let half = match name.as_str() {
-                "guard_rail" | "guard_rail_start" | "guard_rail_end" => RAIL_SPAN / 2.0,
-                "fence" => FENCE_SPAN / 2.0,
-                _ => continue,
-            };
-            *buffer = buffer
-                .as_chunks::<12>()
-                .0
-                .iter()
-                .filter(|t| {
-                    let ends = [-half, half].map(|z| {
-                        [0, 1, 2].map(|k| {
-                            f64::from(t[k * 4 + 3])
-                                + f64::from(chunk.center[k])
-                                + f64::from(t[k * 4 + 2]) * z
-                        })
-                    });
-                    if name.starts_with("guard_rail_") {
-                        // Terminal blades flare 35 cm away from the road, beyond the post.
-                        !pavement.crosses_width(ends[0], ends[1], 0.5)
-                    } else {
-                        !pavement.crosses(ends[0], ends[1])
-                    }
-                })
-                .flatten()
-                .copied()
-                .collect();
+pub(crate) fn clear_fences(chunk: &mut crate::TerrainChunk, pavement: &crate::pavement::Pavement) {
+    let center = chunk.center;
+    for (name, buffer) in &mut chunk.props.models {
+        if fence_span(name, &[0.0; 12], center).is_none() {
+            continue;
         }
+        *buffer = buffer
+            .as_chunks::<12>()
+            .0
+            .iter()
+            .filter(|t| {
+                fence_span(name, t.as_slice(), center)
+                    .is_none_or(|([a, b], width)| !pavement.crosses_width(a, b, width))
+            })
+            .flatten()
+            .copied()
+            .collect();
     }
 }
 

@@ -17,7 +17,7 @@ pub const MAX_NAME_BYTES: usize = 64;
 /// Maximum destinations in either code, also limiting probe fan-out.
 pub const MAX_CANDIDATES: usize = 8;
 /// Wire version. Older codes are incompatible with the current security contract.
-pub const VERSION: u8 = 14;
+pub const VERSION: u8 = 19;
 
 const INVITE: u8 = 1;
 const REPLY: u8 = 2;
@@ -352,6 +352,9 @@ pub struct Reply {
     /// SHA-256 of the joiner's per-ride client certificate. Admission requires TLS proof of
     /// its private key, which never leaves the joiner's computer; this value is not a secret.
     pub client: Fingerprint,
+    /// The joiner's display name, bounded like the host's, so the host can say whose
+    /// connection never arrived before the lobby handshake names them.
+    pub name: String,
     /// At most eight distinct permitted destinations.
     pub candidates: Vec<Candidate>,
     /// What STUN observed, if enabled.
@@ -367,9 +370,12 @@ pub enum CodeError {
     /// The format is malformed, truncated, padded, duplicated or semantically invalid.
     #[error("The group code is incomplete or invalid.")]
     Invalid,
-    /// The format version is unsupported.
-    #[error("The group code uses an unsupported format.")]
-    Version,
+    /// A newer ORQWA made the code: this one must update to use it.
+    #[error("The group code comes from a newer ORQWA version. Update ORQWA to use it.")]
+    Newer,
+    /// An older ORQWA made the code: whoever made it must update.
+    #[error("The group code comes from an older ORQWA version, which must be updated.")]
+    Older,
     /// An invite was supplied where a reply belongs, or vice versa.
     #[error("An invite and a reply were mixed up.")]
     WrongKind,
@@ -460,6 +466,7 @@ impl Reply {
             return Err(CodeError::Invalid);
         }
         out.extend(self.client.0);
+        put_name(&mut out, &self.name)?;
         put_candidates(&mut out, &self.candidates, policy)?;
         out.push(self.nat.byte());
         Ok(out)
@@ -476,6 +483,7 @@ impl Reply {
         if client.0 == [0; 32] {
             return Err(CodeError::Invalid);
         }
+        let name = reader.name()?;
         let candidates = reader.candidates(policy)?;
         let nat = NatObservation::from_byte(reader.byte()?)?;
         reader.end()?;
@@ -484,6 +492,7 @@ impl Reply {
             fingerprint,
             route,
             client,
+            name,
             candidates,
             nat,
         })
@@ -563,8 +572,10 @@ impl<'a> Reader<'a> {
             return Err(CodeError::TooLong);
         }
         let mut reader = Self(bytes);
-        if reader.byte()? != VERSION {
-            return Err(CodeError::Version);
+        match reader.byte()?.cmp(&VERSION) {
+            std::cmp::Ordering::Greater => return Err(CodeError::Newer),
+            std::cmp::Ordering::Less => return Err(CodeError::Older),
+            std::cmp::Ordering::Equal => {}
         }
         if reader.byte()? != kind {
             return Err(CodeError::WrongKind);
@@ -673,6 +684,7 @@ mod tests {
             fingerprint: invite.fingerprint,
             route: invite.route,
             client: Fingerprint([4; 32]),
+            name: "Alex".into(),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };
@@ -717,9 +729,13 @@ mod tests {
             Err(CodeError::TooLong)
         );
         assert_eq!(Reply::decode(&bytes, policy), Err(CodeError::WrongKind));
-        let mut newer = bytes;
+        // Riders read which side has to update (#536).
+        let mut newer = bytes.clone();
         newer[0] = VERSION + 1;
-        assert_eq!(Invite::decode(&newer, policy), Err(CodeError::Version));
+        assert_eq!(Invite::decode(&newer, policy), Err(CodeError::Newer));
+        let mut older = bytes;
+        older[0] = VERSION - 1;
+        assert_eq!(Invite::decode(&older, policy), Err(CodeError::Older));
     }
 
     #[test]

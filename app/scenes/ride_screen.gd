@@ -1,9 +1,7 @@
 class_name RideScreen
 extends Control
-## The live ride HUD: a compact metrics column, the map with the elevation profile below it,
-## status toasts and one settings button (R48) — the rest of the screen is the ride. A workout
-## (R56) adds its targets; on its own (R58) it has no map or world, but a chart of power and
-## heart rate over its own backdrop.
+## Ride metrics, course map/profile and controls (R48), with workout targets (R56).
+## Workouts without a course show power and heart-rate charts over their own backdrop (R58).
 
 signal closed
 ## The ride was saved to `path`; show its summary (R42).
@@ -50,8 +48,7 @@ var _sound: RideSound = RideSound.new()
 var _imperial: bool = false
 var _climb_panel: PanelContainer = PanelContainer.new()
 var _climb_title: Label = UiTheme.caption("")
-var _climb_left: Label = UiTheme.value(20)
-var _climb_time: Label = Label.new()
+var _climb_left: Label = UiTheme.value(14)
 var _ghost_panel: PanelContainer = PanelContainer.new()
 var _ghost_name: Label = UiTheme.caption("")
 var _ghost_gap: Label = UiTheme.value(20)
@@ -76,6 +73,7 @@ var _offer_pending: bool = false
 var _offered: bool = false
 var _group_controls: GroupRidesTab = GroupRidesTab.new()
 var _simulating: bool = false
+var _jumps: RideJumps = RideJumps.new()
 ## The workout being ridden (`WorkoutsTab.workout()`), empty on a plain ride.
 var _workout: Dictionary = {}
 var _workout_panel: WorkoutPanel = WorkoutPanel.new()
@@ -95,6 +93,7 @@ var _gear: int = 0
 var _frame_time: float = 0.0
 var _slow_for: float = 0.0
 var _budget_noted: bool = false
+var _layout_pending: bool = false
 
 @onready var _hud: HudPanel = %Metrics
 @onready var _minimap: Minimap = %Minimap
@@ -107,6 +106,7 @@ var _budget_noted: bool = false
 func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa = orqwa
 	_world = world
+	_jumps.bind(orqwa, world)
 	_orqwa.device_connected.connect(_on_device_connected)
 	_orqwa.device_disconnected.connect(_on_device_disconnected)
 	_orqwa.remembered_missing.connect(_on_remembered_missing)
@@ -115,6 +115,7 @@ func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa.ride_finished.connect(_on_ride_finished, CONNECT_DEFERRED)
 	_orqwa.ride_saved.connect(_on_ride_saved)
 	_orqwa.moment.connect(_on_moment)
+	_orqwa.group_connection.connect(func(n: Dictionary) -> void: _tell.callv(GroupNotices.card(n)))
 	_orqwa.failed.connect(_on_failed)
 	_orqwa.control_requested.connect(_on_control_requested)
 	_group_controls.bind(orqwa)
@@ -127,6 +128,7 @@ func begin(options: Dictionary) -> void:
 	_apply_sound_options(options)
 	_finished = false
 	_saved = false
+	_jumps.cancel()
 	_gear = 0
 	_moment_card.clear()
 	_assistance.show_feedback({})
@@ -147,6 +149,7 @@ func begin(options: Dictionary) -> void:
 	(get_node("Attribution") as Control).visible = not on_its_own
 	for panel: Control in [%Minimap.get_parent(), %Profile.get_parent().get_parent()]:
 		panel.visible = not on_its_own
+	_place_workout_panel(on_its_own)
 	_workout_panel.visible = not _workout.is_empty()
 	_workout_panel.show_workout(_workout)
 	var rider: Dictionary = _orqwa.profile()
@@ -155,13 +158,14 @@ func begin(options: Dictionary) -> void:
 	_show_plan(ftp)
 	_minimap.set_track(_orqwa.track(2000))
 	_minimap.set_map(_orqwa.minimap_mesh())
+	_profile.gradient_colours = rider.get("gradient_colours", false)
 	_profile.set_profile(_orqwa.elevation_profile(600))
 	var climb_info: Dictionary = _orqwa.climbs()
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
 	_climb_panel.hide()
-	var profile: Dictionary = _orqwa.profile()
-	_imperial = profile.get("units", "metric") == "imperial"
+	_ghost_panel.hide()
+	_imperial = rider.get("units", "metric") == "imperial"
 	_hud.imperial = _imperial
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if not _orqwa.trainer_connected():
@@ -187,16 +191,16 @@ func _ready() -> void:
 	opaque.bg_color = Color(0.1, 0.11, 0.12)
 	map_panel.add_theme_stylebox_override("panel", opaque)
 	_build_backdrop()
-	_build_workout_panel()
-	(%RightColumn as VBoxContainer).add_child(_group_riders)
+	_workout_panel.hide()
+	($HudColumn as VBoxContainer).add_child(_workout_panel)
 	_build_climb_panel()
+	(%RightColumn as VBoxContainer).add_child(_group_riders)
 	_build_ghost_panel()
-	_minimap.jump_requested.connect(
-		func(position_m: Vector2) -> void: _orqwa.jump_near(position_m.x, position_m.y)
-	)
-	_profile.jump_requested.connect(
-		func(distance_m: float) -> void: _orqwa.jump_to_distance(distance_m)
-	)
+	resized.connect(_request_navigation_layout)
+	(%RightColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
+	($HudColumn as VBoxContainer).minimum_size_changed.connect(_request_navigation_layout)
+	_request_navigation_layout()
+	_jumps.listen(_minimap, _profile, _show_toast)
 	add_child(_settings_dialog)
 	_settings_dialog.options_changed.connect(_on_options_changed)
 	_settings_dialog.workout_changed.connect(_on_workout_changed)
@@ -306,6 +310,7 @@ func _process(delta: float) -> void:
 	if not visible or _finished:
 		_assistance.hide()
 		return
+	_jumps.update()
 	_watch_frame_time(delta)
 	var state: Dictionary = _orqwa.ride_state()
 	_show_assistance(state)
@@ -515,6 +520,7 @@ func _on_profile_changed(profile: Dictionary) -> void:
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if profile.get("map_style") != before.get("map_style"):
 		_minimap.set_map(_orqwa.minimap_mesh())
+	_profile.gradient_colours = profile.get("gradient_colours", false)
 	var max_heart_rate: float = profile.get("max_heart_rate_bpm", 185.0)
 	_chart.heart_rate_range = Vector2(max_heart_rate * 0.5, max_heart_rate)
 	var ftp: float = profile.get("ftp_w", 200.0)
@@ -522,6 +528,8 @@ func _on_profile_changed(profile: Dictionary) -> void:
 	_settings_dialog.configure_workout(_orqwa.heart_rate_zones(), ftp, plans)
 	if _workout.get("kind", "") == "zone":
 		_orqwa.change_workout(_workout)
+	elif _orqwa.group_status().get("workout_shared", false):
+		_workout["plan"] = _orqwa.group_workout()
 	elif _workout.get("kind", "") == "plan":
 		for plan: Dictionary in plans:
 			if plan["id"] == _workout.get("id", ""):
@@ -559,7 +567,7 @@ func _build_backdrop() -> void:
 	_chart_panel.anchor_right = 1.0
 	_chart_panel.anchor_bottom = 1.0
 	_chart_panel.offset_left = 308.0
-	_chart_panel.offset_right = -348.0
+	_chart_panel.offset_right = -398.0
 	_chart_panel.offset_top = 24.0
 	_chart_panel.offset_bottom = -92.0
 	_chart.min_duration = CHART_MIN_S
@@ -591,11 +599,13 @@ func _build_backdrop() -> void:
 	move_child(_chart_panel, 1)
 
 
-func _build_workout_panel() -> void:
-	_workout_panel.hide()
-	var column: VBoxContainer = %RightColumn
-	column.add_child(_workout_panel)
-	column.move_child(_workout_panel, 0)
+## On a course the right column holds the map, profile, climb and riders: the workout follows
+## the metrics (R236). Without a course it leads that column, leaving the metrics room (R253).
+func _place_workout_panel(on_its_own: bool) -> void:
+	var column: VBoxContainer = %RightColumn if on_its_own else $HudColumn
+	if _workout_panel.get_parent() != column:
+		_workout_panel.reparent(column, false)
+	column.move_child(_workout_panel, 0 if on_its_own else 1)
 
 
 func _build_ghost_panel() -> void:
@@ -644,9 +654,10 @@ func _build_climb_panel() -> void:
 	rows.add_theme_constant_override("separation", 2)
 	rows.add_child(_climb_title)
 	rows.add_child(_climb_left)
-	_climb_time.add_theme_font_size_override("font_size", 14)
-	_climb_time.add_theme_color_override("font_color", UiTheme.MUTED)
-	rows.add_child(_climb_time)
+	var style: StyleBoxFlat = UiTheme.panel()
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	_climb_panel.add_theme_stylebox_override("panel", style)
 	_climb_panel.add_child(rows)
 	_climb_panel.hide()
 	(%RightColumn as VBoxContainer).add_child(_climb_panel)
@@ -663,41 +674,75 @@ func _show_climb(climb: Variant) -> void:
 	var category: String = info["category"]
 	var left_m: float = info["length_m"] - info["ridden_m"]
 	var grade: float = info["grade"]
-	var elapsed: float = info["elapsed_s"]
+	var ascent_m: float = info["remaining_ascent_m"]
 	_climb_title.text = (tr("%s  ·  climb %d of %d") % [tr(category).to_upper(), index + 1, count])
 	var color: Color = UiTheme.CLIMB_COLORS.get(category, UiTheme.MUTED)
 	_climb_title.add_theme_color_override("font_color", color)
 	var left: String = (
-		"%.2f mi" % (left_m / 1000.0 / KM_PER_MILE)
+		"%.2fmi" % (left_m / 1000.0 / KM_PER_MILE)
 		if _imperial
-		else ("%.1f km" % (left_m / 1000.0) if left_m >= 1000.0 else "%d m" % roundi(left_m))
+		else ("%.1fkm" % (left_m / 1000.0) if left_m >= 1000.0 else "%dm" % roundi(left_m))
 	)
-	_climb_left.text = tr("%s to go  ·  %.1f %%") % [left, grade]
-	var time: String = UiTheme.duration(elapsed)
-	if info["best_s"] != null:
-		var best: float = info["best_s"]
-		time += "  ·  " + tr("best %s") % UiTheme.duration(best)
-	_climb_time.text = time
+	var ascent: String = (
+		tr("%sft ascent") % roundi(ascent_m / METERS_PER_FOOT)
+		if _imperial
+		else tr("%sm ascent") % roundi(ascent_m)
+	)
+	_climb_left.text = tr("%s · %s · %.1f%% to go") % [ascent, left, grade]
 	_climb_panel.show()
 
 
-## Tells of a moment of the ride (R124) in the rider's voice: on a card, or in the overlay's
-## bar; not at all with the voice off.
+func _request_navigation_layout() -> void:
+	if _layout_pending:
+		return
+	_layout_pending = true
+	_fit_navigation.call_deferred()
+
+
+func _fit_navigation() -> void:
+	_layout_pending = false
+	var hud_column: VBoxContainer = $HudColumn
+	var hud_reserved: float = (
+		hud_column.get_combined_minimum_size().y - _hud.get_combined_minimum_size().y
+	)
+	_hud.fit_height(maxf(size.y - 110.0 - hud_reserved, 160.0))
+	hud_column.size.x = maxf(260.0, hud_column.get_combined_minimum_size().x)
+	_chart_panel.offset_left = hud_column.position.x + hud_column.size.x + 24.0
+	_chart_panel.offset_right = -($RightColumnScroll as Control).size.x - 48.0
+	var column: VBoxContainer = %RightColumn
+	var map: Control = _minimap.get_parent()
+	var profile_height: float = 58.0 if size.y >= 720.0 else 36.0
+	_profile.custom_minimum_size.y = profile_height
+	var reserved: float = 0.0
+	var count: int = 0
+	for panel: Control in column.get_children():
+		if not panel.visible:
+			continue
+		count += 1
+		if panel != map:
+			reserved += panel.get_combined_minimum_size().y
+	reserved += maxf(count - 1, 0) * 8.0
+	var available: float = size.y - 72.0 - reserved
+	# Only visible panels need room below the map, so solo rides keep the larger view.
+	map.custom_minimum_size.y = clampf(available, 64.0, 300.0)
+
+
+## Tells of a moment of the ride (R124) in the rider's voice; not at all with the voice off.
 func _on_moment(moment: Dictionary) -> void:
-	if not visible or _finished:
-		return
 	var voice: String = _orqwa.profile().get("voice", "casual")
-	if voice == "off":
-		return
-	var line: String = MomentLines.line(moment, voice, _imperial)
-	if is_overlay():
-		_overlay_hud.tell(line)
+	var line: String = "" if voice == "off" else MomentLines.line(moment, voice, _imperial)
+	_tell(MomentLines.figure(moment, _imperial), line)
+
+
+## On a card in `accent`, or as `bar` (else `line`) in the overlay's: a moment or connection (R249).
+func _tell(figure: String, line: String, accent := UiTheme.ACCENT, bar := "") -> void:
+	if visible and not _finished and not line.is_empty() and is_overlay():
+		_overlay_hud.tell(line if bar.is_empty() else bar)
 		_play_chime()
-	else:
-		_moment_card.tell(MomentLines.figure(moment, _imperial), line)
+	elif visible and not _finished:
+		_moment_card.tell(figure, line, accent)
 
 
-## The chime of a moment, unless the app's sounds are off (R125).
 func _build_group_window() -> void:
 	_group_controls.compact = true
 	_group_window.theme = UiTheme.build()
@@ -726,7 +771,8 @@ func _show_group(status: Dictionary) -> void:
 	var microphone: bool = status.get("microphone", false)
 	_bar.show_microphone(voice, microphone)
 	_show_listen(status)
-	var standby: bool = status.get("standby_offer", false)
+	var consent: String = status.get("fallback_consent", "")
+	var standby: bool = status.get("standby_offer", false) and consent.is_empty()
 	var offered: bool = status.get("handover_offer", false) or standby
 	if offered != _offered:
 		_offered = offered
@@ -734,7 +780,7 @@ func _show_group(status: Dictionary) -> void:
 		if offered:
 			var reach: String = status.get("reachability", "")
 			_offer.show_offer(
-				_organizer(status), _group_controls.reach_warning(reach, false), standby
+				GroupNotices.organizer(status), _group_controls.reach_warning(reach, false), standby
 			)
 			_play_chime()
 	_offer.visible = _offer_pending and not is_overlay()
@@ -753,19 +799,12 @@ func _show_listen(status: Dictionary) -> void:
 	_listen.offset_bottom = -bottom
 
 
-static func _organizer(status: Dictionary) -> String:
-	for rider: Dictionary in status.get("roster", []):
-		if rider.get("organizer", false):
-			var rider_name: String = rider.get("name", "")
-			return rider_name
-	return ""
-
-
 func _answer_offer(accept: bool) -> void:
 	_offer_pending = false
 	_orqwa.group_handover_answer(accept)
 
 
+## The chime of a moment, unless the app's sounds are off (R125).
 func _play_chime() -> void:
 	if _orqwa.sounds():
 		_chime.play()
@@ -872,7 +911,7 @@ func _toggle_pause() -> void:
 		return
 	if _finished:
 		return
-	_show_paused(_orqwa.set_paused(not _orqwa.is_paused()))
+	_show_paused(true if _jumps.take_pause() else _orqwa.set_paused(not _orqwa.is_paused()))
 
 
 ## Paused, the ride settings open, to change what the pause was for (R98); the overlay has no
@@ -923,14 +962,20 @@ func _on_ride_finished() -> void:
 	_finish_ride()
 
 
-func _finish_ride(remember: bool = false) -> void:
+## Close activity controls when finishing or returning the saved group to its lobby.
+func stop_presentation() -> void:
 	_finished = true
+	_settings_dialog.hide()
+	_continuation_dialog.hide()
+	_group_window.hide()
 	_assistance.show_feedback({})
 	_moment_card.clear()
-	_settings_dialog.hide()
 	_bar.show_pause(false)
 	_bar.show_settings(false)
-	_continuation_dialog.hide()
+
+
+func _finish_ride(remember: bool = false) -> void:
+	stop_presentation()
 	if remember:
 		_orqwa.finish_ride_remembering()
 	else:
@@ -942,14 +987,14 @@ func _finish_ride(remember: bool = false) -> void:
 
 
 func _on_ride_saved(path: String) -> void:
-	_finished = true
-	_assistance.show_feedback({})
-	_bar.show_pause(false)
+	stop_presentation()
 	_saved = true
-	_bar.show_settings(false)
 	summary_requested.emit(path)
 
 
 func _on_failed(message: String) -> void:
 	if visible:
+		if _orqwa.world_failed():
+			_bar.show_paused(true)
+			_overlay_hud.show_paused(true)
 		_show_toast(message)

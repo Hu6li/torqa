@@ -412,7 +412,7 @@ async fn ground_profiles_are_shared_at_tag_changes_and_branch_endpoints() {
     map.roads.extend([continuation, branch]);
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Bump).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Bump).await.into();
     let road = RoadIndex::new(&route, &projection);
     let levels = streets::Levels::new(
         &streets,
@@ -697,7 +697,9 @@ async fn the_ridden_roads_own_mapped_pieces_form_no_bed_where_tags_disagree() {
         ..MapData::default()
     };
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(1.1)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(1.1))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(
@@ -768,7 +770,9 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
     };
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(0.6)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(0.6))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(
@@ -779,16 +783,24 @@ async fn terrain_is_refined_only_for_close_beds_at_another_height() {
     );
     // A bed 4.8 m below the ridden road and 3 m from it needs a finer bank; one far off, or
     // at the ridden road's own level where it joins, keeps the usual pieces.
-    assert!(levels.detail_near(-8.0, 500.0, 0.0, true) > crate::SUB);
-    assert_eq!(levels.detail_near(30.0, 500.0, 0.0, true), crate::SUB);
-    let flat = streets::lines(&map, &projection, &mut Hillside(0.0)).await;
+    assert!(levels.detail_near(-8.0, 500.0, 0.0, true, crate::SUB) > crate::SUB);
+    assert_eq!(
+        levels.detail_near(30.0, 500.0, 0.0, true, crate::SUB),
+        crate::SUB
+    );
+    let flat: streets::Shared = streets::lines(&map, &projection, &mut Hillside(0.0))
+        .await
+        .into();
     let flat = streets::Levels::new(
         &flat,
         &appearance::Index::new(&map, &projection),
         &road,
         &RoadIndex::from_lines(&[]),
     );
-    assert_eq!(flat.detail_near(-8.0, 500.0, 0.0, true), crate::SUB);
+    assert_eq!(
+        flat.detail_near(-8.0, 500.0, 0.0, true, crate::SUB),
+        crate::SUB
+    );
 }
 
 #[tokio::test]
@@ -888,7 +900,9 @@ async fn far_tracks_follow_the_land_and_paved_roads_keep_plain_shelves() {
     };
     let route = route_north(&[]).await;
     let projection = LocalProjection::for_route(&route);
-    let streets = streets::lines(&map, &projection, &mut Hillside(1.1)).await;
+    let streets: streets::Shared = streets::lines(&map, &projection, &mut Hillside(1.1))
+        .await
+        .into();
     let mut road = RoadIndex::new(&route, &projection);
     road.set_appearances(&appearance::Index::new(&map, &projection));
     let levels = streets::Levels::new(
@@ -909,5 +923,13 @@ async fn far_tracks_follow_the_land_and_paved_roads_keep_plain_shelves() {
         .nearest(-400.0, 500.0, 0.0)
         .expect("a far paved road keeps a shelf");
     assert!(!far.facing, "no walls far from the ride");
-    assert_eq!(levels.detail_near(-400.0, 500.0, 0.0, false), crate::SUB);
+    assert_eq!(
+        levels.detail_near(-400.0, 500.0, 0.0, false, crate::SUB),
+        crate::SUB
+    );
+    assert_eq!(
+        levels.detail_near(-400.0, 500.0, 0.0, false, 1),
+        crate::FAR_SUB,
+        "its shelf takes coarser pieces"
+    );
 }

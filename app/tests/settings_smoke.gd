@@ -184,12 +184,13 @@ func _tree_quality(world: RideWorld) -> void:
 	var dense_range: float = dense_nearby["tree_range"]
 	_check(dense_range == low_range, "a short range also works with dense trees")
 	# Changing density discards already uploaded chunks so the next ride uses fewer trees.
-	terrain.add_child(Node3D.new())
-	world.set("_next_chunk", 1)
+	var streaming: WorldStreaming = world.get("_streaming")
+	var uploaded: Node3D = Node3D.new()
+	terrain.add_child(uploaded)
+	streaming._uploaded[0] = uploaded
 	world.apply_quality("low")
-	var next_chunk: int = world.get("_next_chunk")
 	_check(terrain.get_child_count() == 0, "old density is removed from the scene")
-	_check(next_chunk == 0, "a changed density restarts chunk uploads")
+	_check(streaming.uploaded() == 0, "a changed density restarts chunk uploads")
 	world.apply_quality("medium")
 
 
@@ -336,6 +337,36 @@ func _sound(orqwa: OrqwaApp, dialog: SettingsDialog) -> void:
 	_check(not orqwa.sounds(), "turned off")
 	sounds.button_pressed = true
 	_check(orqwa.sounds(), "and on again")
+	_ride_volumes(orqwa, sound)
+
+
+## The volumes every ride starts with (#619): chosen once on the Sound tab, changed in a ride's
+## own options for that ride only.
+func _ride_volumes(orqwa: OrqwaApp, sound: SoundSettings) -> void:
+	var wind: HSlider = sound.get("_wind")
+	var bike: HSlider = sound.get("_bike")
+	wind.value = 0.0
+	bike.value = 0.0
+	_check(orqwa.default_ride_volumes() == {"wind": 0.0, "bike": 0.0}, "muted by default")
+	var options: RideOptions = RideOptions.new()
+	root.add_child(options)
+	options.bind(orqwa)
+	var chosen: Dictionary = options.options()
+	var ride_wind_volume: float = chosen["wind_volume"]
+	var ride_bike_volume: float = chosen["bike_volume"]
+	_check(ride_wind_volume == 0.0 and ride_bike_volume == 0.0, "a ride starts muted")
+	var ride_wind: HSlider = options.get("_wind_volume")
+	ride_wind.value = 80.0
+	var default_wind: float = orqwa.default_ride_volumes()["wind"]
+	_check(default_wind == 0.0, "a ride's change stays its own")
+	options.set_default_volumes()
+	var next_wind: float = options.options()["wind_volume"]
+	_check(next_wind == 0.0, "the next ride starts muted again")
+	options.free()
+	wind.value = 50.0
+	bike.value = 50.0
+	sound.refresh()
+	_check(wind.value == 50.0 and bike.value == 50.0, "the sliders show the setting")
 
 
 ## Keeping the courses' worlds (R101): off until this computer turns it on, which lists them;

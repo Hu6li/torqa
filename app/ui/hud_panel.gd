@@ -98,6 +98,20 @@ func show_layout(layout: PackedStringArray) -> void:
 	add_child(grid)
 
 
+## Fits a live ride's selected figures into its vertical space without changing their order.
+func fit_height(available: float) -> void:
+	var grid: GridContainer = get_child(-1) as GridContainer
+	if grid == null or grid.get_child_count() == 0:
+		return
+	var row_height: float = 0.0
+	for cell: Control in grid.get_children():
+		row_height = maxf(row_height, cell.get_combined_minimum_size().y)
+	var gap: float = grid.get_theme_constant("v_separation")
+	var fixed: float = get_combined_minimum_size().y - grid.get_combined_minimum_size().y
+	var rows: int = maxi(1, floori((available - fixed + gap) / maxf(row_height + gap, 1.0)))
+	grid.columns = clampi(ceili(float(grid.get_child_count()) / rows), 2, 4)
+
+
 ## The metric id carried by drag `data`, or "" if it is not a HUD figure.
 static func dragged(data: Variant) -> String:
 	if typeof(data) != TYPE_DICTIONARY:

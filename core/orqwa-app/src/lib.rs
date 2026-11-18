@@ -9,28 +9,34 @@ pub mod failure;
 pub mod graphics;
 pub mod group;
 use failure::{Failure, Kind};
+#[cfg(test)]
+mod build_tests;
 mod continuation;
-mod course_migration;
 mod detail;
 #[cfg(test)]
 mod detail_tests;
 pub mod hud;
 mod import;
 mod kept;
+mod leaving;
 pub mod library;
 pub mod media;
+pub mod memory;
 pub mod moments;
 pub mod paths;
 pub mod remote;
+mod resuming;
 mod traffic;
 pub mod updates;
 pub mod uploads;
 pub mod video;
 pub mod view;
+mod world_chunks;
 
 pub use detail::{DetailRegion, DetailStep, RegionOffer};
 pub use import::{Imported, LoadStage, Progress, countries, course_map, import_gpx, import_route};
-pub use kept::KeptWorld;
+pub use kept::{FreeStorage, KeptWorld};
+pub use world_chunks::{WinterMask, WorldChunks};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -61,7 +67,7 @@ pub use orqwa_storage::computer::{AUTO as GRAPHICS_AUTO, GRAPHICS_OPTIONS};
 use orqwa_storage::course::{self, CourseCountry, Manifest};
 use orqwa_storage::index::HistoryIndex;
 use orqwa_storage::profiles::{self, DeviceRole, StoredProfile};
-pub use orqwa_storage::profiles::{GraphicsQuality, OverlayWindow};
+pub use orqwa_storage::profiles::{GraphicsQuality, OverlayWindow, RideVolumes};
 use orqwa_storage::rides::{self, ClimbTime, RideRecord};
 use orqwa_terrain::{Terrain, TileSource};
 pub use orqwa_video::Frame;
@@ -291,6 +297,8 @@ pub struct ClimbProgress {
     pub climb: Climb,
     /// Distance ridden on it so far.
     pub ridden: Meters,
+    /// Positive elevation gain still ahead before this climb ends.
+    pub remaining_ascent: Meters,
     /// Time on it so far.
     pub elapsed: Duration,
     /// The rider's best time on it.
@@ -315,6 +323,10 @@ pub const READING_AGE: Duration = Duration::from_secs(5);
 /// Something that happened since the last [`App::update`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppEvent {
+    /// A shared activity ended and the still-connected group may choose another one.
+    GroupReturnedToLobby,
+    /// Someone's connection to the group dropped, came back or ended (R249).
+    GroupConnection(group::ConnectionNotice),
     /// A prepared group ride reached its common start target.
     GroupRideStarted {
         /// The activity has a course.
@@ -335,12 +347,23 @@ pub enum AppEvent {
     },
     /// A route was imported; its 3D world is being generated.
     RouteLoaded(RouteSummary),
-    /// The 3D world for the loaded route is ready.
+    /// The 3D world for the loaded route can be ridden: the chunks around where the ride
+    /// enters it are finished, and the rest is built in the background (ADR 0040), reported
+    /// by [`AppEvent::WorldGrew`].
     WorldReady {
         /// Number of terrain chunks.
         chunks: usize,
-        /// Terrain samples without elevation data (terrain follows the road there).
+        /// Terrain samples without elevation data (terrain follows the road there), in the
+        /// chunks finished so far.
         fallback_samples: usize,
+    },
+    /// More of the 3D world being ridden was built.
+    WorldGrew {
+        /// Whether bridges were built, to be added to the scene from
+        /// [`App::take_added_structures`].
+        structures: bool,
+        /// Whether the world is complete now.
+        complete: bool,
     },
     /// A device connected (also after a reconnect).
     Connected(String),
@@ -479,14 +502,42 @@ pub enum TrainerChoice {
     Discovered(usize),
 }
 
+/// How the world being ridden grew since last reported.
+#[derive(Debug, Default, Clone, Copy)]
+struct Grown {
+    /// Every chunk is built.
+    complete: bool,
+}
+
+/// How often at most the scene is told of bridges built while the world is ridden.
+const BRIDGES_EVERY: Duration = Duration::from_secs(5);
+
+/// The radius for [`App::build_world`] that has every chunk finished before the world is
+/// ridden.
+pub const WHOLE_WORLD: Meters = Meters(f64::INFINITY);
+
+/// A world loaded for a ride.
+struct LoadedWorld {
+    /// Its parts built whole.
+    world: Arc<World>,
+    /// Its chunks, on disk (ADR 0040).
+    chunks: Arc<WorldChunks>,
+    /// The version of the generator that built it.
+    generator: u32,
+    /// The fingerprint of the library course it was just built for, to keep it as (R101).
+    keep_as: Option<String>,
+}
+
 enum JobResult {
     Scan(Result<(Bluetooth, Vec<DiscoveredDevice>), String>),
     // Loading results carry the load they belong to; those of an abandoned load are dropped.
     Route(u64, Result<Box<Imported>, Failure>),
     Video(u64, Result<Box<(Imported, video::VideoSource)>, Failure>),
-    /// A world, the version of the generator that built it, and the fingerprint to keep it
-    /// under once built for a library course (R101).
-    World(u64, Arc<World>, u32, Option<String>),
+    World(u64, Box<LoadedWorld>),
+    /// Bridges of the world being built, built since those last handed over.
+    Structures(u64, Box<orqwa_world::MeshData>),
+    /// The world being built is complete: what the world handed over at ready lacks.
+    Built(u64, Box<orqwa_world::Rest>),
     Progress(u64, LoadStage, usize, usize),
     CourseAdded(Result<PathBuf, Failure>),
     /// The loaded route was saved as this course.
@@ -509,14 +560,16 @@ enum JobResult {
 struct Reporter {
     tx: mpsc::Sender<JobResult>,
     load: u64,
-    last: Option<(LoadStage, usize)>,
+    /// The stage, percent and total last sent: a step that learns its total at 0 % still shows
+    /// it (#566).
+    last: Option<(LoadStage, usize, usize)>,
 }
 
 impl Reporter {
     fn report(&mut self, stage: LoadStage, done: usize, total: usize) {
         let percent = done * 100 / total.max(1);
-        if self.last != Some((stage, percent)) {
-            self.last = Some((stage, percent));
+        if self.last != Some((stage, percent, total)) {
+            self.last = Some((stage, percent, total));
             let _ = self
                 .tx
                 .send(JobResult::Progress(self.load, stage, done, total));
@@ -609,6 +662,8 @@ struct ActiveRide {
     assisted: bool,
     /// Continuation never changes a group's entry or a workout's timing.
     solo_course: bool,
+    /// The group activity this ride is, so joining the group again rides on in it (#536).
+    group_activity: Option<group::Activity>,
 }
 
 impl ActiveRide {
@@ -756,7 +811,46 @@ pub struct App {
     /// were worked out for: a search refreshes the gallery on every key, too often to ride
     /// every course again.
     estimates: Estimates,
+    /// The loaded world's parts built whole, and its chunks.
     world: Option<Arc<World>>,
+    chunks: Option<Arc<WorldChunks>>,
+    /// How many of the chunks of the world being built were finished when last reported.
+    chunks_reported: usize,
+    /// How the world being ridden grew since last reported, if it did: reported once per
+    /// update, however many chunks and bridges came in.
+    grown: Option<Grown>,
+    /// Bridges built since the scene last took them, to add rather than draw every
+    /// structure again: Wada's are 33 MB.
+    added_structures: Vec<orqwa_world::MeshData>,
+    /// When the scene was last told of bridges built, so it is told at most every
+    /// [`BRIDGES_EVERY`]: each time adds a mesh to draw.
+    bridges_reported: Option<Instant>,
+    /// How much of the device the world being built may take while it is ridden (ADR 0040).
+    pace: Option<Arc<orqwa_world::Pace>>,
+    /// Lowers the calling thread's priority, where the platform glue can.
+    lower_priority: Option<fn()>,
+    /// The fingerprint of the library course whose world is being built, to keep it as once
+    /// complete (R101).
+    keep_as: Option<String>,
+    /// Whether the next world built is for a ride continuing the course (R220), and how far
+    /// around where the ride enters the scene draws: that much is built before it is ridden.
+    world_ahead: (bool, Meters),
+    /// The load whose world job's results are the loaded course's: the current load's, or
+    /// that of a build taken over from the background (ADR 0040, 2d).
+    world_load: u64,
+    /// A kept course's world still being built after another course was opened.
+    background: Option<leaving::Background>,
+    /// The stores of world builds, held on to when a build is stopped for the course's next
+    /// build to take up (ADR 0040, 2d step 4b).
+    builds: resuming::Builds,
+    /// Where the ride enters a world taken over from the background, until the chunks around
+    /// there are finished.
+    entering: Option<Meters>,
+    /// The world taken over, handed over already, while the ride waits for [`Self::entering`].
+    waiting_world: Option<Box<LoadedWorld>>,
+    /// How far around the rider the scene draws in group rides, which build their world
+    /// themselves: that much around the group's start is built before a rider is ready.
+    group_radius: Meters,
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
     offline: bool,
@@ -791,6 +885,12 @@ pub struct App {
     detail: detail::DetailState,
     data_dir: PathBuf,
     cache_dir: PathBuf,
+    /// Tells the free storage where a world's store is checked for room (Android, ADR 0040).
+    free_storage: Option<kept::FreeStorage>,
+    /// Android's current shared system memory, sampled across generation and scene uploads.
+    memory: Option<memory::Guard>,
+    /// Worlds being let go of in the background, whose stores are being deleted.
+    letting_go: Vec<tokio::task::JoinHandle<()>>,
     /// This computer's own settings (R78), next to the cache: never synced with the data.
     computer: PathBuf,
     /// The version of the generator that built the loaded world: an older one when it was
@@ -810,7 +910,6 @@ impl App {
     /// # Errors
     /// [`AppError::Runtime`] if the async runtime cannot start.
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Result<Self, AppError> {
-        course_migration::run(&data_dir.join("courses"));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -866,6 +965,7 @@ impl App {
             filling_countries: None,
             estimates: Estimates::default(),
             world: None,
+            chunks: None,
             road_widths: orqwa_world::RoadWidths::default(),
             driving_left: Vec::new(),
             offline: false,
@@ -889,8 +989,25 @@ impl App {
             detail: detail::DetailState::default(),
             data_dir,
             cache_dir,
+            free_storage: None,
+            memory: None,
+            letting_go: Vec::new(),
             computer,
             world_generator: orqwa_world::GENERATOR,
+            chunks_reported: 0,
+            grown: None,
+            added_structures: Vec::new(),
+            bridges_reported: None,
+            pace: None,
+            lower_priority: None,
+            keep_as: None,
+            world_ahead: (false, WHOLE_WORLD),
+            group_radius: WHOLE_WORLD,
+            world_load: 0,
+            background: None,
+            builds: resuming::Builds::default(),
+            entering: None,
+            waiting_world: None,
             index: Mutex::new(index),
             continuation_undo: Mutex::new(None),
         })
@@ -1588,8 +1705,9 @@ impl App {
         let keep = self
             .world
             .clone()
+            .zip(self.chunks.clone().filter(|chunks| chunks.complete()))
             .filter(|_| self.keeps_worlds())
-            .map(|world| (world, self.world_generator, self.keeper()));
+            .map(|(world, chunks)| (world, chunks, self.world_generator, self.keeper()));
         self.runtime.spawn_blocking(move || {
             let result = std::fs::create_dir_all(&library)
                 .map_err(course::CourseError::from)
@@ -1616,19 +1734,27 @@ impl App {
                 .map_err(|e| Failure::new(Kind::SaveCourse, e));
             let saved = result.as_ref().ok().cloned();
             let _ = tx.send(JobResult::CourseSaved(result));
-            if let (Some(course), Some((world, generator, keeper))) = (saved, keep) {
-                keeper.keep(&course, &world, generator, None);
+            if let (Some(course), Some((world, chunks, generator, keeper))) = (saved, keep) {
+                keeper.keep(&course, &world, &chunks, generator);
             }
         });
         Ok(())
     }
 
     /// Builds the 3D world of a course opened with [`App::open_course`], now or as soon as its
-    /// route is loaded; reports [`AppEvent::WorldReady`]. True if the world is ready already.
-    pub fn build_world(&mut self) -> bool {
+    /// route is loaded; reports [`AppEvent::WorldReady`] once the chunks within `radius` of
+    /// where the ride enters the course are finished, at its start or where it is continued
+    /// (R220), and [`AppEvent::WorldGrew`] as the rest is built in the background (ADR 0040).
+    /// [`WHOLE_WORLD`] waits for every chunk. True if the world is ready already.
+    pub fn build_world(&mut self, continuing: bool, radius: Meters) -> bool {
         if self.world.is_some() {
+            // Still being built from where it was entered before: what is around where this
+            // ride enters comes next, while a rider who gets there first waits for it.
+            self.world_ahead.0 = continuing;
+            self.turn_build(self.entry_distance());
             return true;
         }
+        self.world_ahead = (continuing, radius);
         // A video course's file holds the data of its route only, as no world was built when
         // it was saved: the world fetches the rest when online.
         if self.video.is_some() {
@@ -1682,13 +1808,19 @@ impl App {
             .and_then(|manifest| manifest.video)
             .and_then(|reference| reference.locate(path))
             .filter(|video| video.parent() == path.parent());
+        let fingerprint = course::fingerprint(path).ok();
         std::fs::remove_file(path).map_err(|e| {
             AppError::Reported(Failure::new(Kind::DeleteFile, e).arg(path.display()))
         })?;
         if self.course.as_deref() == Some(path) {
             self.course = None;
         }
-        // Its kept world goes too (R101).
+        // Its kept world goes too (R101), one still being built for it, and what a build of it
+        // stopped wrote.
+        self.stop_background_unless_kept();
+        if let Some(fingerprint) = fingerprint {
+            self.forget_stopped(&fingerprint);
+        }
         self.tidy_kept_worlds();
         if let Some(video) = video {
             let shared = self.courses().into_iter().any(|c| {
@@ -2038,6 +2170,10 @@ impl App {
     /// and what it downloaded stays in the cache, so trying again is quick.
     pub fn cancel_loading(&mut self) {
         if self.loading.as_ref().is_some_and(|job| !job.is_finished()) {
+            // Stopped, not left to go on in the background.
+            if let Some(pace) = self.pace.take() {
+                pace.stop();
+            }
             let _ = self.start_loading(self.offline);
         }
     }
@@ -2076,10 +2212,20 @@ impl App {
 
     /// Forgets the current route, stops its job and starts recording the files a new one uses.
     fn start_loading(&mut self, offline: bool) -> UsedFiles {
+        self.leave_world();
+        if let Some(pace) = self.pace.take() {
+            pace.stop();
+        }
+        let building = self.builds.building.take();
         if let Some(job) = self.loading.take() {
-            job.abort();
+            self.stop_build(job, building);
         }
         self.load += 1;
+        self.world_load = self.load;
+        self.entering = None;
+        if let Some(waiting) = self.waiting_world.take() {
+            self.drop_world(waiting);
+        }
         self.offline = offline;
         self.world_plan = WorldPlan::Now;
         self.course = None;
@@ -2088,6 +2234,17 @@ impl App {
         self.video = None;
         self.view = View::World;
         self.world = None;
+        self.builds.failed = false;
+        self.keep_as = None;
+        self.world_ahead = (false, WHOLE_WORLD);
+        self.grown = None;
+        self.added_structures.clear();
+        self.bridges_reported = None;
+        self.pace = None;
+        if let Some(chunks) = self.chunks.take() {
+            // Deleting the store it was ridden from takes a while.
+            self.drop_world(chunks);
+        }
         self.road_widths = orqwa_world::RoadWidths::default();
         self.driving_left.clear();
         self.route = None;
@@ -2100,8 +2257,197 @@ impl App {
         self.used.clone()
     }
 
+    /// Lets go of `world` in the background: deleting its store takes a while.
+    fn drop_world(&mut self, world: impl Send + 'static) {
+        self.letting_go.retain(|deleting| !deleting.is_finished());
+        let deleting = self.runtime.spawn_blocking(move || drop(world));
+        self.letting_go.push(deleting);
+    }
+
+    /// The world `loaded` can be ridden: the rider's surroundings are finished.
+    fn world_ready(&mut self, loaded: LoadedWorld, events: &mut Vec<AppEvent>) {
+        let LoadedWorld {
+            world,
+            chunks,
+            generator,
+            keep_as,
+        } = loaded;
+        events.push(AppEvent::WorldReady {
+            chunks: chunks.len(),
+            fallback_samples: world.fallback_samples,
+        });
+        self.world_generator = generator;
+        self.keep_as = keep_as;
+        self.road_widths = orqwa_world::RoadWidths::new(&world.road);
+        self.chunks_reported = chunks.finished_count();
+        // The scene draws the world's structures whole now.
+        self.added_structures.clear();
+        self.world = Some(world);
+        self.chunks = Some(chunks);
+    }
+
+    /// The world being ridden is complete, its parts built whole `rest`: it gets every
+    /// structure, its winter ground's mask can be made, and it is kept (R101) or, built for a
+    /// prepared GPX, goes into the course library with it (R39).
+    fn world_built(&mut self, rest: orqwa_world::Rest) {
+        self.pace = None;
+        let (Some(world), Some(chunks)) = (&mut self.world, &self.chunks) else {
+            return;
+        };
+        let parts = Arc::make_mut(world);
+        // The same triangles as those handed over so far, already in the scene.
+        parts.structures = rest.structures;
+        parts.fallback_samples = rest.fallback_samples;
+        if chunks.completed() {
+            let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+            self.runtime
+                .spawn_blocking(move || chunks.make_snow_ground_mask(&world));
+        }
+        self.grown.get_or_insert_default().complete = true;
+        let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+        if !self.from_course {
+            if let Err(error) = self.save_course() {
+                warn!(%error, "cannot add the course to the library");
+            }
+        } else if let Some(fingerprint) = self.keep_as.take() {
+            self.keep_built_world(fingerprint, world, chunks);
+        } else if let Some(course) = self.course.clone().filter(|_| self.keeps_worlds()) {
+            // Keeping was turned on while it was built.
+            self.keep_world(course, world, chunks);
+        }
+    }
+
+    /// Reports once how the world being ridden grew since last reported: chunks finished,
+    /// every chunk built, or bridges built, those at most every [`BRIDGES_EVERY`] unless the
+    /// build hurries or the world is complete.
+    fn report_growth(&mut self, events: &mut Vec<AppEvent>) {
+        if let Some(chunks) = self.chunks.as_ref().filter(|chunks| !chunks.complete()) {
+            let finished = chunks.finished_count();
+            if finished != self.chunks_reported {
+                self.chunks_reported = finished;
+                self.grown.get_or_insert_default();
+            }
+        }
+        // Bridges are built well ahead of the rider, so they can wait to come in together:
+        // each time adds a mesh to draw. Not while the build hurries: the rider is then close
+        // behind, and a bridge held back could appear in view.
+        let complete = self.grown.is_some_and(|grown| grown.complete);
+        let hurrying = self.pace.as_ref().is_some_and(|pace| pace.hurrying());
+        let bridges = !self.added_structures.is_empty()
+            && (complete
+                || hurrying
+                || self
+                    .bridges_reported
+                    .is_none_or(|reported| reported.elapsed() >= BRIDGES_EVERY));
+        if self.grown.take().is_none() && !bridges {
+            return;
+        }
+        if bridges {
+            self.bridges_reported = Some(Instant::now());
+        }
+        events.push(AppEvent::WorldGrew {
+            structures: bridges,
+            complete,
+        });
+    }
+
+    /// Tells the world being built where the rider is, so it gives way to the ride. In a
+    /// group ride too it is this rider alone: the scene draws the chunks around them, and
+    /// riders further ahead are drawn only once they are within that.
+    fn pace_build(&self) {
+        if let Some(pace) = &self.pace {
+            pace.ride_at(self.riding_at());
+        }
+    }
+
+    /// How far around the rider the scene draws chunks in group rides, as passed to
+    /// [`App::build_world`] for a ride alone: a group's world is ridden once that much
+    /// around its start is built. Until set, the whole world is built first.
+    pub fn set_group_upload_radius(&mut self, radius: Meters) {
+        self.group_radius = radius;
+    }
+
+    /// Turns the world being built to `distance` along the route, where a rider enters a
+    /// ride under way (ADR 0040, 2d): the chunks around it come next.
+    pub(crate) fn turn_build(&self, distance: Meters) {
+        if let (Some(pace), Some((east, north))) =
+            (&self.pace, self.rider_position(distance, false))
+        {
+            pace.turn_to(orqwa_world::Entry {
+                from: distance,
+                at: (Meters(east), Meters(north)),
+                radius: self.drawn_radius(),
+            });
+        }
+    }
+
+    /// How far around the rider the scene draws chunks of the world being built: the
+    /// build's radius, or the group's if it grew after the build started.
+    fn drawn_radius(&self) -> Meters {
+        Meters(self.world_ahead.1.0.max(self.group_radius.0))
+    }
+
+    /// Whether the chunks the scene draws around `distance` along the route are finished,
+    /// or no world is being built.
+    pub(crate) fn finished_around(&self, distance: Meters) -> bool {
+        self.chunks
+            .as_ref()
+            .is_none_or(|chunks| self.finished_around_in(chunks, distance))
+    }
+
+    /// Whether the chunks the scene draws around `distance` along the route are finished
+    /// among `chunks`.
+    pub(crate) fn finished_around_in(&self, chunks: &WorldChunks, distance: Meters) -> bool {
+        if chunks.complete() {
+            return true;
+        }
+        let Some((east, north)) = self.rider_position(distance, false) else {
+            return true;
+        };
+        let plan = orqwa_world::chunk_plan(
+            chunks.centres(),
+            Meters(east),
+            Meters(north),
+            self.drawn_radius(),
+        );
+        plan.indices[..plan.nearby]
+            .iter()
+            .all(|&index| chunks.finished(index))
+    }
+
+    /// Where the rider is along the route while the ride moves: not before it starts, after
+    /// it ends, or while it is paused, also when a rider who caught up waits for the world.
+    fn riding_at(&self) -> Option<Meters> {
+        self.ride
+            .as_ref()
+            .filter(|active| active.started.is_some() && !active.finished && !active.paused)
+            .map(|active| active.ride.state().distance)
+    }
+
+    /// The bridges built since last taken, while the world being ridden is built
+    /// ([`AppEvent::WorldGrew`]): [`App::world`]'s structures hold them too.
+    pub fn take_added_structures(&mut self) -> Vec<orqwa_world::MeshData> {
+        std::mem::take(&mut self.added_structures)
+    }
+
+    /// How the platform lowers a thread's priority, for building a world while it is ridden
+    /// (ADR 0040): the building threads call it as they start.
+    pub fn set_lower_priority(&mut self, lower: fn()) {
+        self.lower_priority = Some(lower);
+    }
+
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
+    #[allow(clippy::too_many_lines)] // one load-scoped task: early hand-over, completion and errors
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
+        if self.take_over_background() {
+            return;
+        }
+        if let Err(failure) = self.room_for_world(&route) {
+            // Built on the next Ride, once the rider has made room.
+            self.world_plan = WorldPlan::OnRequest(Some(Box::new(map)));
+            let _ = self.jobs_tx.send(JobResult::Failed(failure));
+            return;
+        }
         let tx = self.jobs_tx.clone();
         let load = self.load;
         let terrain = |sources| {
@@ -2117,38 +2463,129 @@ impl App {
         // The land beyond the corridor needs only coarse tiles, a few for the whole view.
         let mut distant = terrain(TileSource::distant());
         // A library course's world may be kept, and is kept once built (R101).
-        let kept = self
-            .course
-            .clone()
-            .filter(|_| self.keeps_worlds())
-            .map(|course| (course, self.keeper()));
+        let kept = self.course.clone().filter(|_| self.keeps_worlds());
+        let radius = self.world_ahead.1;
+        let from = self.entry_distance();
+        let at = self.entry_position(from);
+        let keeper = self.keeper();
+        let pace = Arc::new(orqwa_world::Pace::new(radius, self.lower_priority));
+        self.pace = Some(Arc::clone(&pace));
+        let start = self.start_build();
+        let stopping = self.builds.stopping.clone();
+        let required = self.builds.required;
+        let memory = self.memory.clone();
         self.spawn_load(load, async move {
-            let mut reporter = Reporter {
-                tx: tx.clone(),
-                load,
-                last: None,
-            };
-            let mut keep_as = None;
-            if let Some((course, keeper)) = kept {
-                reporter.report(LoadStage::World, 0, 1);
-                let found = tokio::task::spawn_blocking(move || keeper.find(&course)).await;
-                match found {
-                    Ok(kept::Found::World(world, generator)) => {
-                        let _ = tx.send(JobResult::World(load, Arc::from(world), generator, None));
-                        return;
+            crate::resuming::ended(&stopping).await;
+            let result = async {
+                let estimate = if let Some(guard) = &memory {
+                    guard.check(memory::UPLOAD_HEADROOM, true)?;
+                    Some(memory::estimate(
+                        &route,
+                        &map,
+                        guard.radius(radius),
+                        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
+                    ))
+                } else {
+                    None
+                };
+                let mut reporter = Reporter {
+                    tx: tx.clone(),
+                    load,
+                    last: None,
+                };
+                let mut keep_as = None;
+                if let Some(course) = kept {
+                    if let (Some(guard), Some(estimate)) = (&memory, &estimate) {
+                        guard.check(estimate.ride, true)?;
                     }
-                    Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
-                    Ok(kept::Found::Unknown) | Err(_) => {}
+                    reporter.report(LoadStage::KeptWorld, 0, 1);
+                    let finder = keeper.clone();
+                    let found = tokio::task::spawn_blocking(move || finder.find(&course)).await;
+                    match found {
+                        Ok(kept::Found::World(world, generator, chunks)) => {
+                            reporter.report(LoadStage::KeptWorld, 1, 1);
+                            let loaded = LoadedWorld {
+                                world: Arc::from(world),
+                                chunks: Arc::from(chunks),
+                                generator,
+                                keep_as: None,
+                            };
+                            let _ = tx.send(JobResult::World(load, Box::new(loaded)));
+                            return Ok(());
+                        }
+                        Ok(kept::Found::Missing(fingerprint)) => keep_as = Some(fingerprint),
+                        Ok(kept::Found::Unknown) | Err(_) => {}
+                    }
                 }
+                if let (Some(guard), Some(estimate)) = (&memory, &estimate) {
+                    guard.check(estimate.build, true)?;
+                }
+                // Every world is built into a store and ridden from it, so its chunks are never all
+                // held (ADR 0040). It is ridden once the rider's surroundings are finished, while
+                // the rest is built. A build of the course stopped before left one to take up.
+                let (chunks, written) = start
+                    .chunks(&keeper, keep_as.as_deref().unwrap_or("ride"), required)
+                    .await?;
+                let mut horizon = Some(orqwa_world::horizon(&route, &mut distant).await);
+                // Its tiles are not needed again, so they are not held while the chunks are built.
+                drop(distant);
+                if let Some(guard) = &memory {
+                    guard.check(memory::batch_headroom(), true)?;
+                }
+                let mut keep_as = Some(keep_as);
+                let sink = |index, chunk| chunks.take(index, chunk);
+                let (ready_tx, structures_tx) = (tx.clone(), tx.clone());
+                let check = || {
+                    if pace.stopped() {
+                        Err(Failure::new(
+                            Kind::PreparationStopped,
+                            "the world build was stopped",
+                        ))
+                    } else {
+                        memory
+                            .as_ref()
+                            .map_or(Ok(()), |guard| guard.check(memory::batch_headroom(), false))
+                    }
+                };
+                let rest = orqwa_world::try_generate_into(
+                    &route,
+                    &mut detailed,
+                    &map,
+                    &mut |done, total| reporter.report(LoadStage::World, done, total),
+                    &sink,
+                    orqwa_world::Ahead {
+                        from,
+                        at,
+                        radius,
+                        ready: &mut |world, centres| {
+                            chunks.locate(centres);
+                            let loaded = LoadedWorld {
+                                world: Arc::new(World {
+                                    horizon: horizon.take().unwrap_or_default(),
+                                    ..world
+                                }),
+                                chunks: Arc::clone(&chunks),
+                                generator: orqwa_world::GENERATOR,
+                                keep_as: keep_as.take().flatten(),
+                            };
+                            let _ = ready_tx.send(JobResult::World(load, Box::new(loaded)));
+                        },
+                        structures: &mut |mesh| {
+                            let _ = structures_tx.send(JobResult::Structures(load, Box::new(mesh)));
+                        },
+                        pace: Some(&pace),
+                        written: &written,
+                    },
+                    &check,
+                )
+                .await?;
+                let _ = tx.send(JobResult::Built(load, Box::new(rest)));
+                Ok(())
             }
-            let mut world =
-                orqwa_world::generate(&route, &mut detailed, &map, &mut |done, total| {
-                    reporter.report(LoadStage::World, done, total);
-                })
-                .await;
-            world.horizon = orqwa_world::horizon(&route, &mut distant).await;
-            let generator = orqwa_world::GENERATOR;
-            let _ = tx.send(JobResult::World(load, Arc::new(world), generator, keep_as));
+            .await;
+            if let Err(failure) = result {
+                let _ = tx.send(JobResult::Route(load, Err(failure)));
+            }
         });
     }
 
@@ -2253,6 +2690,21 @@ impl App {
     /// [`AppError::Reported`] if it cannot be saved.
     pub fn set_sounds(&mut self, on: bool) -> Result<(), AppError> {
         profiles::set_sounds(&self.data_dir, on)
+            .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))
+    }
+
+    /// The wind and bicycle volumes every ride starts with (#619).
+    #[must_use]
+    pub fn ride_volumes(&self) -> profiles::RideVolumes {
+        profiles::ride_volumes(&self.data_dir)
+    }
+
+    /// Remembers the volumes every ride starts with.
+    ///
+    /// # Errors
+    /// [`AppError::Reported`] if they cannot be saved.
+    pub fn set_ride_volumes(&mut self, volumes: profiles::RideVolumes) -> Result<(), AppError> {
+        profiles::set_ride_volumes(&self.data_dir, volumes)
             .map_err(|e| AppError::Reported(Failure::new(Kind::SaveSetting, e)))
     }
 
@@ -2873,6 +3325,11 @@ impl App {
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
         }
+        // Its preparation and chunks never share memory with a ride (R240); a 3D ride of the
+        // same course took it over already.
+        if !self.prepare_ride() || (self.builds.failed && self.view == View::World) {
+            return Err(AppError::CourseNotReady);
+        }
         let ghost = self.ghost_for(&route, descent, ghost)?;
         let along = self.video.as_ref().filter(|_| self.view == View::Video);
         let player = along
@@ -2909,6 +3366,9 @@ impl App {
         self.check_group_start()?;
         if self.trainer.is_none() {
             return Err(AppError::NoTrainer);
+        }
+        if !self.prepare_ride() || (on_course && self.builds.failed) {
+            return Err(AppError::CourseNotReady);
         }
         let config = self.ride_config(Percent(100.0), descent);
         if on_course {
@@ -3124,6 +3584,7 @@ impl App {
             simulated: false,
             assisted: false,
             solo_course,
+            group_activity: None,
         });
     }
 
@@ -3131,6 +3592,10 @@ impl App {
     /// trainer is freed of its resistance; resumed, it gets its gradient or power back on the
     /// next tick. Returns whether the ride is paused afterwards.
     pub fn set_paused(&mut self, paused: bool) -> bool {
+        // A scene's automatic wait must not resume a ride whose world cannot be finished.
+        if !paused && self.builds.failed && self.view == View::World {
+            return self.is_paused();
+        }
         let Some(active) = &mut self.ride else {
             return false;
         };
@@ -3195,6 +3660,18 @@ impl App {
     /// Saves the activity and, only when explicitly requested, its unfinished course point.
     /// Saving a genuine solo course finish clears the point. Errors are returned as events.
     pub fn finish_ride_remembering(&mut self, remember: bool) -> Vec<AppEvent> {
+        let mut events = Vec::new();
+        if self.ride.is_some() && self.group().can_end_activity() {
+            // An organizer finishing locally also unlocks the shared lobby.
+            if let Err(error) = self.group_end_activity() {
+                events.push(AppEvent::Error(Failure::from(error)));
+            }
+        }
+        events.extend(self.save_ride(remember));
+        events
+    }
+
+    fn save_ride(&mut self, remember: bool) -> Vec<AppEvent> {
         let Some(active) = self.ride.take() else {
             return Vec::new();
         };
@@ -3670,9 +4147,8 @@ impl App {
     pub fn current_climb(&self) -> Option<ClimbProgress> {
         let active = self.ride.as_ref()?;
         let state = active.ride.state();
-        let (index, climb) = active
-            .ride
-            .route()?
+        let route = active.ride.route()?;
+        let (index, climb) = route
             .climbs()
             .iter()
             .enumerate()
@@ -3689,6 +4165,7 @@ impl App {
             index,
             climb: *climb,
             ridden: Meters(state.distance.0 - climb.start.0),
+            remaining_ascent: route.ascent_between(state.distance, climb.end),
             elapsed: state.elapsed.saturating_sub(started),
             best: active.records.climbs.get(index).copied().flatten(),
         })
@@ -3786,12 +4263,18 @@ impl App {
     /// Feeds the ride the shifts asked for, passes on the other controls, and reports the
     /// shifter's connection and why it fails to connect (R80).
     fn poll_shift_inputs(&mut self, events: &mut Vec<AppEvent>) {
-        for (input, was_connected) in self
+        for (index, (input, was_connected)) in self
             .shift_inputs
             .iter_mut()
             .zip(&mut self.shift_inputs_connected)
+            .enumerate()
         {
             drive_shift_input(input.as_mut(), &mut self.ride, was_connected, events);
+            // The keyboard comes first and is always connected: were it to clear the controller's
+            // failure, a controller that keeps failing would be reported again on every update.
+            if index == 0 {
+                continue;
+            }
             if *was_connected {
                 self.failures.remove(&DeviceKind::Controller);
             } else if let Some(reason) = input.failure()
@@ -3817,6 +4300,7 @@ impl App {
         self.poll_sensors(events);
         self.poll_shift_inputs(events);
         self.poll_phone_remote(events);
+        self.group_connections(events);
         self.poll_group(events);
     }
 
@@ -3824,6 +4308,9 @@ impl App {
     pub fn update(&mut self, dt: Duration) -> Vec<AppEvent> {
         let mut events = Vec::new();
         self.poll_events(&mut events);
+        self.check_entering(&mut events);
+        self.report_growth(&mut events);
+        self.pace_build();
 
         if let Some(active) = &mut self.ride
             && active.started.is_some()
@@ -3906,6 +4393,7 @@ impl App {
                 );
             }
         }
+        self.end_finished_group(&mut events);
         if let (Some(active), Some(video)) = (&self.ride, &self.video) {
             let time = video.time_at(active.ride.state().distance);
             if let Some(player) = &active.player {
@@ -3942,10 +4430,34 @@ impl App {
         self.route.as_ref()
     }
 
-    /// The 3D world of the loaded route, once generated.
+    /// The 3D world of the loaded route, once generated: its parts built whole, without its
+    /// chunks, which [`App::world_chunks`] reads one at a time (ADR 0040).
     #[must_use]
     pub fn world(&self) -> Option<&World> {
         self.world.as_deref()
+    }
+
+    /// The chunks of the loaded route's 3D world, once generated.
+    #[must_use]
+    pub fn world_chunks(&self) -> Option<&WorldChunks> {
+        self.chunks.as_deref()
+    }
+
+    /// The mask that keeps the winter ground's snow off the loaded world's road, streets,
+    /// tracks and paving, [pending](WinterMask::Pending) until it is made. The first call
+    /// starts making it in the background, from every chunk: seconds for a long, densely
+    /// mapped course, which Godot's main thread must not wait for.
+    #[must_use]
+    pub fn snow_ground_mask(&self) -> WinterMask<'_> {
+        let (Some(world), Some(chunks)) = (self.world.as_ref(), self.chunks.as_ref()) else {
+            return WinterMask::None;
+        };
+        if chunks.ask_snow_ground_mask() {
+            let (world, chunks) = (Arc::clone(world), Arc::clone(chunks));
+            self.runtime
+                .spawn_blocking(move || chunks.make_snow_ground_mask(&world));
+        }
+        chunks.snow_ground_mask()
     }
 
     /// Avatar position in metres east/north, on the local traffic side of the drawn road.
@@ -3996,17 +4508,31 @@ impl App {
             .ok_or(AppError::UnknownDevice)
     }
 
+    #[allow(clippy::too_many_lines)] // exhaustive job dispatch, including stale failure results
     fn poll_jobs(&mut self, events: &mut Vec<AppEvent>) {
         while let Ok(result) = self.jobs_rx.try_recv() {
             match result {
                 JobResult::Scan(Ok((bluetooth, devices))) => {
                     self.scanned(bluetooth, devices, events);
                 }
-                JobResult::Route(load, _)
-                | JobResult::Video(load, _)
-                | JobResult::World(load, ..)
+                result if self.background_result(&result) => self.in_background(result),
+                JobResult::World(load, loaded) if load != self.world_load => {
+                    // Deleting its store takes a while.
+                    self.drop_world(loaded);
+                }
+                JobResult::Structures(load, _)
+                | JobResult::Built(load, _)
                 | JobResult::Progress(load, ..)
-                    if load != self.load => {}
+                    if load != self.world_load => {}
+                // A build taken over may still fail.
+                JobResult::Route(load, Err(_)) if load != self.load && load != self.world_load => {}
+                JobResult::World(load, _)
+                | JobResult::Structures(load, _)
+                | JobResult::Built(load, _)
+                | JobResult::Progress(load, ..)
+                | JobResult::Route(load, Err(_))
+                    if self.builds.failed && load == self.world_load => {}
+                JobResult::Route(load, Ok(_)) | JobResult::Video(load, _) if load != self.load => {}
                 JobResult::Route(_, Ok(imported)) => {
                     let map = imported.map.clone();
                     self.route_loaded(*imported, events);
@@ -4038,26 +4564,23 @@ impl App {
                 JobResult::Progress(_, stage, done, total) => {
                     events.push(AppEvent::LoadProgress { stage, done, total });
                 }
-                JobResult::World(_, world, generator, keep_as) => {
-                    events.push(AppEvent::WorldReady {
-                        chunks: world.chunks.len(),
-                        fallback_samples: world.fallback_samples,
-                    });
-                    self.world_generator = generator;
-                    if let (Some(fingerprint), Some(course)) = (keep_as, &self.course)
-                        && self.keeps_worlds()
-                    {
-                        self.keep_world(course.clone(), Arc::clone(&world), Some(fingerprint));
-                    }
-                    self.road_widths = orqwa_world::RoadWidths::new(&world.road);
-                    self.world = Some(world);
-                    // A prepared GPX goes into the course library (R39).
-                    if !self.from_course
-                        && let Err(error) = self.save_course()
-                    {
-                        warn!(%error, "cannot add the course to the library");
+                JobResult::World(_, loaded) if self.entering.is_some() => {
+                    self.enter_world(*loaded);
+                }
+                JobResult::World(_, loaded) => self.world_ready(*loaded, events),
+                result @ (JobResult::Structures(..) | JobResult::Built(..))
+                    if self.waiting_world.is_some() =>
+                {
+                    self.while_entering(result, events);
+                }
+                JobResult::Structures(_, bridges) => {
+                    if let Some(world) = &mut self.world {
+                        // Kept whole too, for a scene drawn again from the world.
+                        Arc::make_mut(world).structures.append((*bridges).clone());
+                        self.added_structures.push(*bridges);
                     }
                 }
+                JobResult::Built(_, rest) => self.world_built(*rest),
                 JobResult::CourseAdded(Ok(path)) => events.push(AppEvent::CourseAdded(path)),
                 JobResult::CourseSaved(Ok(path)) => {
                     self.saving = None;
@@ -4079,8 +4602,13 @@ impl App {
                 JobResult::Detail(serial, done) => events.extend(self.detail_done(serial, done)),
                 JobResult::Countries(found) => self.countries_found(found, events),
                 JobResult::Scan(Err(message)) => self.scan_failed(message, events),
-                JobResult::Route(_, Err(message))
-                | JobResult::Video(_, Err(message))
+                JobResult::Route(load, Err(message)) => {
+                    if load == self.world_load {
+                        self.world_build_failed();
+                    }
+                    events.push(AppEvent::Error(message));
+                }
+                JobResult::Video(_, Err(message))
                 | JobResult::CourseAdded(Err(message))
                 | JobResult::Failed(message) => {
                     events.push(AppEvent::Error(message));
@@ -4456,10 +4984,17 @@ fn best_climb_time(records: &[&RideRecord], climb: &ClimbTime) -> Option<Duratio
 
 /// The timed positions of a recorded activity: a GPX file with times, or a FIT file.
 fn activity_points(path: &Path) -> Result<Vec<orqwa_routes::TimedPoint>, Failure> {
-    let is_fit = path
+    let extension = path
         .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("fit"));
-    if is_fit {
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if extension != "fit" && extension != "gpx" {
+        return Err(Failure::new(
+            Kind::LoadGhost,
+            format!("{} is no GPX or FIT activity", path.display()),
+        ));
+    }
+    if extension == "fit" {
         let (start, samples) = read_fit(path).map_err(|e| Failure::new(Kind::LoadGhost, e))?;
         let start = start
             .duration_since(std::time::UNIX_EPOCH)
@@ -4672,6 +5207,21 @@ mod tests {
     }
 
     #[test]
+    fn a_ghost_is_read_only_from_a_gpx_or_fit_activity() {
+        let dir = temp_dir("ghost-file");
+        let gpx = "<gpx><trk><trkseg>\
+            <trkpt lat=\"46.9\" lon=\"7\"><time>2024-06-01T08:00:00Z</time></trkpt>\
+            <trkpt lat=\"46.91\" lon=\"7\"><time>2024-06-01T08:01:00Z</time></trkpt>\
+            </trkseg></trk></gpx>";
+        std::fs::write(dir.join("Ride.GPX"), gpx).unwrap();
+        std::fs::write(dir.join("Ride.txt"), gpx).unwrap();
+
+        assert_eq!(activity_points(&dir.join("Ride.GPX")).unwrap().len(), 2);
+        assert!(activity_points(&dir.join("Ride.txt")).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn older_offline_courses_use_their_single_known_country_for_traffic() {
         let dir = temp_dir("traffic-country-fallback");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
@@ -4870,11 +5420,11 @@ mod tests {
         ));
         app.load_route(fixture, true);
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
-        let world = app.world().expect("the world");
-        let mut counts = std::collections::BTreeMap::<&str, usize>::new();
-        for chunk in &world.chunks {
+        let chunks = app.world_chunks().expect("the world");
+        let mut counts = std::collections::BTreeMap::<String, usize>::new();
+        for chunk in (0..chunks.len()).filter_map(|index| chunks.get(index)) {
             for (name, buffer) in &chunk.props.models {
-                *counts.entry(name.as_str()).or_default() += buffer.len() / 12;
+                *counts.entry(name.clone()).or_default() += buffer.len() / 12;
             }
         }
         eprintln!("props on the Oberalp: {counts:?}");
@@ -5785,10 +6335,10 @@ mod tests {
             other.update(Duration::from_millis(16));
         }
         assert!(other.world().is_none());
-        assert!(!other.build_world());
+        assert!(!other.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut other, |e| matches!(e, AppEvent::WorldReady { .. }));
         assert!(other.world().is_some());
-        assert!(other.build_world());
+        assert!(other.build_world(false, crate::WHOLE_WORLD));
     }
 
     #[test]
@@ -5804,7 +6354,7 @@ mod tests {
 
         // Back and forth quickly, as when leaving and re-entering a course page.
         app.open_course(course.clone());
-        app.build_world();
+        app.build_world(false, crate::WHOLE_WORLD);
         app.open_course(course.clone());
         let events = run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
         for _ in 0..60 {
@@ -6404,7 +6954,7 @@ mod tests {
         app.remove_video().unwrap();
         assert!(app.video().is_none());
         assert!(course::read_manifest(file).unwrap().video.is_none());
-        assert!(!app.build_world());
+        assert!(!app.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
     }
 
@@ -6513,6 +7063,36 @@ mod tests {
     }
 
     #[test]
+    fn a_world_being_built_gives_way_only_while_the_ride_moves() {
+        let dir = temp_dir("gives-way");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        assert_eq!(app.riding_at(), None, "no ride yet");
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(250.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.riding_at().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+        assert!(app.riding_at().is_some(), "the ride never moved");
+
+        // Paused, as when a rider who caught up waits for the world: the build may take
+        // everything.
+        app.set_paused(true);
+        assert_eq!(app.riding_at(), None);
+        app.set_paused(false);
+        assert!(app.riding_at().is_some());
+    }
+
+    #[test]
     fn a_video_course_is_ridden_along_its_video_or_in_3d() {
         let dir = temp_dir("video-or-3d");
         let video = video_in(
@@ -6535,7 +7115,7 @@ mod tests {
 
         // In 3D: the route's world is built, the video stays off.
         app.ride_along_video(false);
-        assert!(!app.build_world());
+        assert!(!app.build_world(false, crate::WHOLE_WORLD));
         run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
         start(&mut app);
         assert!(!app.riding_along_video());
@@ -6813,6 +7393,130 @@ mod tests {
 
         assert!(matches!(events.last(), Some(AppEvent::WorldReady { chunks, .. }) if *chunks > 0));
         assert!(app.world().is_some_and(|w| !w.road.vertices.is_empty()));
+    }
+
+    #[test]
+    fn a_step_shows_its_total_as_soon_as_it_is_known() {
+        let (tx, rx) = mpsc::channel();
+        let mut reporter = Reporter {
+            tx,
+            load: 1,
+            last: None,
+        };
+        reporter.report(LoadStage::World, 0, 1);
+        reporter.report(LoadStage::World, 0, 400);
+        // Only a new percent is worth showing once the total stays.
+        reporter.report(LoadStage::World, 1, 400);
+        reporter.report(LoadStage::World, 4, 400);
+        drop(reporter);
+        let sent: Vec<(usize, usize)> = rx
+            .iter()
+            .map(|result| match result {
+                JobResult::Progress(_, _, done, total) => (done, total),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(sent, [(0, 1), (0, 400), (4, 400)]);
+    }
+
+    #[test]
+    fn an_entry_point_counts_as_built_once_every_chunk_drawn_around_it_is_finished() {
+        let dir = temp_dir("entry");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        let built = Arc::clone(app.chunks.as_ref().unwrap());
+        assert!(app.finished_around(Meters(200.0)), "a world built whole");
+
+        // The same world while it is still being built, the scene drawing no farther than
+        // the chunk the rider is in.
+        app.world_ahead.1 = Meters(0.0);
+        app.group_radius = Meters(0.0);
+        let building = Arc::new(WorldChunks::building(None, false));
+        building.locate(built.centres());
+        app.chunks = Some(Arc::clone(&building));
+        assert!(!app.finished_around(Meters(200.0)));
+        let (east, north) = app.rider_position(Meters(200.0), false).unwrap();
+        let plan =
+            orqwa_world::chunk_plan(built.centres(), Meters(east), Meters(north), Meters(0.0));
+        let around = &plan.indices[..plan.nearby];
+        let (last, others) = around.split_last().unwrap();
+        for &index in others {
+            building
+                .take(index, built.get(index).unwrap().into_owned())
+                .unwrap();
+        }
+        assert!(
+            !app.finished_around(Meters(200.0)),
+            "one chunk still missing"
+        );
+        building
+            .take(*last, built.get(*last).unwrap().into_owned())
+            .unwrap();
+        assert!(app.finished_around(Meters(200.0)));
+
+        // A quality raised in the lobby after the build started: the scene draws more.
+        app.group_radius = Meters(1000.0);
+        assert!(
+            !app.finished_around(Meters(200.0)),
+            "the group's wider radius"
+        );
+    }
+
+    #[test]
+    fn a_course_is_ridden_once_its_start_is_built_and_kept_once_complete() {
+        let dir = temp_dir("ahead");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_route(&dir), true);
+        let events = run_until(&mut app, |e| matches!(e, AppEvent::CourseAdded(_)));
+        let Some(AppEvent::CourseAdded(course)) = events.last() else {
+            unreachable!()
+        };
+        let read_all = |chunks: &WorldChunks| -> Vec<orqwa_world::TerrainChunk> {
+            (0..chunks.len())
+                .map(|index| chunks.get(index).unwrap().into_owned())
+                .collect()
+        };
+        let whole = read_all(app.world_chunks().unwrap());
+
+        app.open_course(course.clone());
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        app.set_keeps_worlds(true).unwrap();
+        assert!(!app.build_world(false, Meters(0.0)));
+        run_until(&mut app, |e| matches!(e, AppEvent::WorldReady { .. }));
+        // The chunks the scene uploads around the start can be read.
+        let chunks = Arc::clone(app.chunks.as_ref().unwrap());
+        let (east, north) = app.ride_start_position(false).unwrap();
+        let plan =
+            orqwa_world::chunk_plan(chunks.centres(), Meters(east), Meters(north), Meters(0.0));
+        assert!(plan.nearby > 0);
+        for &index in &plan.indices[..plan.nearby] {
+            assert!(chunks.finished(index) && chunks.get(index).is_some());
+        }
+        // However many chunks and bridges come in between, Godot is told once per frame.
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while !chunks.complete() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(16));
+            let events = app.update(Duration::from_millis(16));
+            let grew = events
+                .iter()
+                .filter(|e| matches!(e, AppEvent::WorldGrew { .. }))
+                .count();
+            assert!(grew <= 1, "{grew} reports of growth in one update");
+        }
+        assert!(chunks.complete());
+
+        assert_eq!(
+            read_all(&chunks),
+            whole,
+            "the same world, built from its start"
+        );
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while app.kept_worlds().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(16));
+            app.update(Duration::from_millis(16));
+        }
+        assert_eq!(app.kept_worlds().len(), 1, "kept once complete (R101)");
     }
 
     #[test]
@@ -7283,6 +7987,34 @@ mod tests {
     }
 
     #[test]
+    fn a_shifter_that_keeps_failing_to_connect_is_told_of_once() {
+        let dir = temp_dir("shifter-failure-once");
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        {
+            let _runtime = app.runtime.enter();
+            let buttons = Arc::clone(&app.buttons);
+            app.controller_id = Some("click".to_owned());
+            app.add_shift_input(Box::new(orqwa_devices::shift::Controller::new(
+                fake::spawn_failing("Zwift Click", "device not found", Duration::from_millis(5)),
+                ControllerModel::ZwiftClick,
+                buttons,
+            )));
+        }
+        // Many updates, over many failed attempts: the always-connected keyboard beside it must
+        // not make the shifter's reason new again each time.
+        let mut told = 0;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(10));
+            told += app
+                .update(Duration::from_millis(10))
+                .iter()
+                .filter(|e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Zwift Click"))
+                .count();
+        }
+        assert_eq!(told, 1);
+    }
+
+    #[test]
     fn a_failed_attempt_to_connect_says_why_beside_the_device_until_it_is_let_go() {
         let dir = temp_dir("device-failure");
         let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
@@ -7306,14 +8038,16 @@ mod tests {
             name: name.to_owned(),
             reason: reason.to_owned(),
         };
-        let mut events = run_until(
-            &mut app,
-            |e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Polar H9"),
-        );
-        events.extend(run_until(
-            &mut app,
-            |e| matches!(e, AppEvent::ConnectionFailed { name, .. } if name == "Zwift Click"),
-        ));
+        // Waited for together: the shifter's reason is told only once, possibly in the same
+        // update as the sensor's.
+        let (mut sensor_told, mut shifter_told) = (false, false);
+        let events = run_until(&mut app, |e| {
+            if let AppEvent::ConnectionFailed { name, .. } = e {
+                sensor_told |= name == "Polar H9";
+                shifter_told |= name == "Zwift Click";
+            }
+            sensor_told && shifter_told
+        });
         assert!(events.contains(&failed("Polar H9", "connecting timed out")));
         assert!(events.contains(&failed("Zwift Click", "device not found")));
         // A link never made is not lost: the rider hears of the failure, not of a drop.

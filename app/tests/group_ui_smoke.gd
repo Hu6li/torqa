@@ -1,6 +1,5 @@
 extends SceneTree
 ## Group setup and activity preview behavior (R169).
-
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 
 var _failed: bool = false
@@ -13,11 +12,13 @@ func _initialize() -> void:
 func _run() -> void:
 	await _group_connections()
 	await _group_activity()
+	await GroupLifecycleChecks.check(self, _check)
 	await GroupJoinActivityChecks.check(self, _check)
 	await GroupCountdownLayout.check(self, _check)
+	await GroupReadinessLayout.check(self, _check)
 	await _group_motion()
 	await GroupAssistanceChecks.check(self, _check)
-	await _group_profile_difficulty()
+	await GroupLifecycleChecks.check_difficulty(self, _check)
 	await _microphone_permissions()
 	await _voice_failures()
 	await _ride_window_columns()
@@ -67,46 +68,6 @@ func _voice_failures() -> void:
 	_check(
 		history._failures.size() == 1, "a new failure appears after the earlier one was dismissed"
 	)
-	main.free()
-	await process_frame
-
-
-## A fresh group ride must show the difficulty the engine takes from the active profile.
-func _group_profile_difficulty() -> void:
-	var setup: OrqwaApp = OrqwaApp.new()
-	root.add_child(setup)
-	var previous: String = setup.profile()["id"]
-	var rider: String = setup.save_profile(
-		"", {"name": "Group difficulty check", "default_difficulty_pct": 100.0}
-	)
-	setup.free()
-	var main: Control = MAIN_SCENE.instantiate()
-	root.add_child(main)
-	var app: OrqwaApp = main.get_node("Orqwa")
-	var start: StartPage = main.get_node("StartPage")
-	var ride: RideScreen = main.get_node("RideScreen")
-	# No course page has initialized its options since this app instance opened.
-	app.group_started.emit(true, false)
-	for i: int in range(4):
-		await process_frame
-	var difficulty: float = ride._options["difficulty"]
-	_check(is_equal_approx(difficulty, 100.0), "the first group ride uses the saved 100% default")
-	ride._bar.settings_requested.emit()
-	var shown: float = ride._settings_dialog._options.options()["difficulty"]
-	_check(is_equal_approx(shown, 100.0), "the ride settings show the saved difficulty too")
-	ride._settings_dialog.hide()
-	# A previously visited course must not override the profile on a later group start either.
-	start._detail._options.set_difficulty(25.0)
-	var profile: Dictionary = app.profile()
-	profile["default_difficulty_pct"] = 75.0
-	app.save_profile(rider, profile)
-	app.group_started.emit(true, false)
-	for i: int in range(4):
-		await process_frame
-	difficulty = ride._options["difficulty"]
-	_check(is_equal_approx(difficulty, 75.0), "a group start ignores stale course difficulty")
-	app.select_profile(previous)
-	app.delete_profile(rider)
 	main.free()
 	await process_frame
 
@@ -187,9 +148,20 @@ func _next_steps(step: GroupNextStep) -> void:
 	_check(
 		not step._main.disabled and step._line.text == "Everyone is ready", "then starts the ride"
 	)
+	_check(not step._cancel.visible, "nothing shared, nothing to withdraw")
+	waiting["can_cancel"] = true
+	step.show_status(waiting, true, "Me", 0, true)
+	_check(
+		step._main.visible and step._cancel.visible,
+		"what is shared can be withdrawn beside Start (#556)"
+	)
+	var downloading: Dictionary = {"phase": "downloading", "host": true, "can_cancel": true}
+	step.show_status(downloading, true, "Me", 0, true)
+	_check(step._cancel.visible, "also while it is still being prepared")
 	var friend: Dictionary = {"phase": "ready", "host": false, "prepared": true}
 	step.show_status(friend, true, "Alex", 0, true)
 	_check(not step._main.visible, "a friend with a trainer has no main button")
+	_check(not step._cancel.visible, "and cannot withdraw what is shared")
 	friend["ready"] = true
 	step.show_status(friend, true, "Alex", 0, true)
 	_check(step._line.text == "You're ready. Alex starts the ride.", "and knows who starts it")
@@ -524,7 +496,7 @@ func _group_activity() -> void:
 	)
 	_check(
 		(
-			own.text == "I'm ready"
+			own.text == "Mark ready"
 			and own.disabled
 			and own.tooltip_text == "Connect your trainer first"
 		),
@@ -651,7 +623,8 @@ func _group_activity() -> void:
 	var line: String = group._next_step._line.text
 	_check(line.contains("4:32"), "and says how long: %s" % line)
 	var sam: Label = group._roster.get_child(1).get_child(1).get_child(1)
-	_check(sam.text == "Reconnecting…", "a friend whose seat is held: %s" % sam.text)
+	_check(sam.text == "Away 0:00", "a friend whose seat is held: %s" % sam.text)
+	GroupAwayChecks.check(group, away, _check)
 	group._show_status({"host": false, "phase": "riding", "roster": away})
 	_check(not group._next_step._reconnect.visible, "a connected rider has nothing to retry")
 	_check(not group._invitation_panel.visible, "joiners have no empty host invitation card")
@@ -851,9 +824,10 @@ func _group_motion() -> void:
 	_check(
 		first.generation == "1" and panel.visible, "fresh membership appears on the road and HUD"
 	)
-	_check(panel._labels[1].text == "12 m ahead", "relative gap uses metric distance")
+	_check(panel._labels[1].text == "12m ahead", "relative gap uses metric distance")
 	_check(first._avatar.rider == "male", "the rider's own avatar")
-	_check(panel._efforts[1].text == "252 W · 3.4 W/kg", "power and W/kg beside the name")
+	_check(panel._efforts[1].text == "252W", "power beside the name")
+	_check(panel._per_kg[1].text == "3.4 W/kg", "W/kg has its own aligned column")
 	var speaker: TextureRect = panel._speaking[1]
 	_check(speaker.modulate.a == 0.0, "no speaker beside a quiet rider")
 	peer["speaking"] = true
@@ -865,7 +839,7 @@ func _group_motion() -> void:
 	_check(first._name.text == "Alex <rider>", "only the literal rider name appears on the road")
 	peer["gap_m"] = -12.0
 	panel.show_riders([peer], true)
-	_check(panel._labels[1].text == "39 ft behind", "gap follows direction and rider units")
+	_check(panel._labels[1].text == "39ft behind", "gap follows direction and rider units")
 	peer["generation"] = "2"
 	avatars.show_riders([peer], 1.0 / 60.0)
 	var replacement: GroupRiderAvatar = avatars.get_child(0)
@@ -991,6 +965,10 @@ func _organizer_offer() -> void:
 		card.visible and card._accept.text == "Stand in as organizer",
 		"a request to stand in comes over the ride too"
 	)
+	ride._show_group(
+		{"phase": "riding", "roster": roster, "standby_offer": true, "fallback_consent": "42"}
+	)
+	_check(not card.visible, "an unanswered lobby dialog has no duplicate ride request")
 	main.free()
 
 

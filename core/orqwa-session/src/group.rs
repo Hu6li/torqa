@@ -232,6 +232,33 @@ fn interpolate(a: Sample, b: Sample, target: Duration) -> Sample {
     }
 }
 
+/// Requested assistance and the position constraint that must also hold after filtering.
+#[derive(Clone, Copy, Debug)]
+pub struct AssistanceRequest {
+    effect: GroupEffect,
+    band_gap: Option<Meters>,
+}
+
+impl AssistanceRequest {
+    /// The unsmoothed shelter and keep-together target.
+    #[must_use]
+    pub fn effect(self) -> GroupEffect {
+        self.effect
+    }
+
+    /// Cancels a retained band that points away from the group's current middle. With no
+    /// eligible reference, retains it so the caller can fade lost assistance normally.
+    #[must_use]
+    pub fn constrain_band(self, band: GradePercent) -> GradePercent {
+        GradePercent(match self.band_gap {
+            Some(gap) if gap.0 > 0.0 => band.0.min(0.0),
+            Some(gap) if gap.0 < 0.0 => band.0.max(0.0),
+            Some(_) => 0.0,
+            None => band.0,
+        })
+    }
+}
+
 /// Computes shelter and a band around the moving group, including live local motion (R211).
 /// The caller excludes the local echo and smooths the applied effects. Organizer identity
 /// has no role. Sources fade after the 800 ms delivery budget and expire at two seconds.
@@ -244,6 +271,20 @@ pub fn assistance(
     drafting: bool,
     keep_together: bool,
 ) -> GroupEffect {
+    assistance_request(riders, distance, speed, pedaling, drafting, keep_together).effect()
+}
+
+/// Computes the target and the group-middle constraint for applied assistance (R233).
+/// Filtering may retain an earlier magnitude, but never an effect in the wrong direction.
+#[must_use]
+pub fn assistance_request(
+    riders: &[Option<Rider>; MAX_RIDERS],
+    distance: Meters,
+    speed: MetersPerSecond,
+    pedaling: bool,
+    drafting: bool,
+    keep_together: bool,
+) -> AssistanceRequest {
     let mut shelter: f64 = 0.0;
     if drafting && pedaling {
         for rider in riders.iter().flatten() {
@@ -256,16 +297,24 @@ pub fn assistance(
             shelter = shelter.max(0.3 * strength * freshness(rider));
         }
     }
-    let band = if keep_together && pedaling {
-        reference(riders, distance, speed).map_or(0.0, |(center, pace, strength)| {
-            let gap = center.0 - distance.0;
-            let outside = (gap.abs() - 5.0).max(0.0) * gap.signum();
-            GroupEffect::band(Meters(outside), MetersPerSecond(speed.0 - pace.0)).0 * strength
-        })
+    let reference = if keep_together && pedaling {
+        reference(riders, distance, speed)
     } else {
-        0.0
+        None
     };
-    GroupEffect::new(1.0 - shelter, GradePercent(band))
+    let band_gap = reference.map(|(center, _, _)| {
+        let gap = center.0 - distance.0;
+        Meters((gap.abs() - 5.0).max(0.0) * gap.signum())
+    });
+    let band = reference
+        .zip(band_gap)
+        .map_or(0.0, |((_, pace, strength), gap)| {
+            GroupEffect::band(gap, MetersPerSecond(speed.0 - pace.0)).0 * strength
+        });
+    AssistanceRequest {
+        effect: GroupEffect::new(1.0 - shelter, GradePercent(band)),
+        band_gap,
+    }
 }
 
 fn freshness(rider: &Rider) -> f64 {

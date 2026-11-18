@@ -87,6 +87,7 @@ func open(course: Dictionary) -> void:
 	var profile: PackedVector2Array = course.get("profile", PackedVector2Array())
 	_path_card.set_track(track)
 	_path_card.set_map(_orqwa.course_preview(_path))
+	_profile.gradient_colours = _orqwa.profile().get("gradient_colours", false)
 	_profile.set_profile(profile)
 	_profile.set_climbs([])
 	_records.text = ""
@@ -95,6 +96,8 @@ func open(course: Dictionary) -> void:
 	var rider: Dictionary = _orqwa.profile()
 	var difficulty: float = rider.get("default_difficulty_pct", 50.0)
 	_options.set_difficulty(difficulty)
+	# Likewise the sounds chosen in the settings (#619), whatever the last ride changed.
+	_options.set_default_volumes()
 	_loading_bar.hide()
 	_continuation.hide()
 	_ride_button.show()
@@ -132,8 +135,16 @@ func build() -> void:
 		return
 	_building = true
 	_show_building()
-	if _orqwa.build_world():
+	var radius: float = RideWorld.upload_radius(
+		_orqwa.graphics_quality(), _orqwa.graphics_options()
+	)
+	if _orqwa.build_world(_continuing, radius):
 		_on_world_ready({})
+
+
+## Whether the ride being started goes along the course's video, with no 3D scene to prepare.
+func rides_along_video() -> bool:
+	return _along_video
 
 
 ## World data is built; keep the loading page until its scene has also been prepared (R223).
@@ -167,9 +178,11 @@ func cancel_preparation() -> void:
 
 ## Builds the world kept from an older ORQWA again with this one (R101); the rider rides after.
 func _regenerate_world() -> void:
-	if not _orqwa.regenerate_world():
-		return
+	# Set first: a refusal is reported during the call, and shown like a failed build.
 	_regenerating = true
+	if not _orqwa.regenerate_world():
+		_regenerating = false
+		return
 	_regenerate.hide()
 	_show_building()
 
@@ -425,6 +438,7 @@ func _show_route() -> void:
 	var climbs: Dictionary = _orqwa.climbs()
 	var climb_list: Array = climbs.get("climbs", [])
 	_profile.set_climbs(climb_list)
+	_profile.gradient_colours = _orqwa.profile().get("gradient_colours", false)
 	_profile.set_profile(_orqwa.elevation_profile(600))
 	_show_continuation()
 	var lines: PackedStringArray = PackedStringArray()

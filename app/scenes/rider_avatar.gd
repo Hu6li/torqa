@@ -17,6 +17,10 @@ const BIKE_PARTS: PackedStringArray = [
 ]
 ## Materials that take the accent colour, where one is set.
 const ACCENTED: PackedStringArray = ["jersey", "helmet", "frame"]
+## Winter fabrics reuse the rider's kit palette; the gilet keeps their identifying colour.
+const WINTER_COLORS: Dictionary[String, String] = {
+	"cap": "sleeve", "gloves": "sleeve", "tights": "shorts", "gilet": "jersey", "zip": "socks"
+}
 ## The feet point down a little, most at the back of the stroke (ankling): mean and swing, in
 ## radians (12° and 8°). art/riders/build.py fits the saddle height to this (FOOT_AT_BOTTOM).
 const ANKLE_PITCH: float = -0.21
@@ -56,6 +60,13 @@ var rider: String = RIDERS[0]:
 var accent: Color = Color.TRANSPARENT
 ## See-through, for ghost riders (R20); set before the avatar enters the tree.
 var ghostly: bool = false
+## Autumn and winter share fitted thermal kit, with the same skeleton and bike fit.
+var winter_clothing: bool = false:
+	set(value):
+		if winter_clothing != value:
+			winter_clothing = value
+			if is_node_ready():
+				_build()
 var _crank_angle: float = 0.0
 var _wheel_angle: float = 0.0
 # The rider's fit on the bike, from art/riders/build.py (riders.json).
@@ -125,7 +136,8 @@ func _build() -> void:
 	for hip: Variant in hips:
 		_hips.append(_vector(hip))
 
-	var scene: PackedScene = load(DIRECTORY + "rider_" + rider + ".glb")
+	var suffix: String = "_winter" if winter_clothing else ""
+	var scene: PackedScene = load(DIRECTORY + "rider_" + rider + suffix + ".glb")
 	_model = scene.instantiate()
 	add_child(_model)
 	for found: Node in _model.find_children("*", "MeshInstance3D", true, false):
@@ -396,7 +408,8 @@ func _dress(mesh_instance: MeshInstance3D) -> void:
 
 ## The material for a material name.
 func _material(kind: String) -> StandardMaterial3D:
-	var accented: bool = accent.a > 0.0 and ACCENTED.has(kind)
+	var color_kind: String = WINTER_COLORS.get(kind, kind)
+	var accented: bool = accent.a > 0.0 and ACCENTED.has(color_kind)
 	var key: String = "%s/%s/%s" % [rider, kind, accent.to_html() if accented else ""]
 	if not _materials.has(key):
 		var material: StandardMaterial3D = StandardMaterial3D.new()
@@ -405,7 +418,7 @@ func _material(kind: String) -> StandardMaterial3D:
 		elif BIKE_PARTS.has(kind):
 			material.albedo_color = Palette.color("bike." + kind)
 		else:
-			material.albedo_color = Palette.color("rider_" + rider + "." + kind)
+			material.albedo_color = Palette.color("rider_" + rider + "." + color_kind)
 		material.roughness = 0.45 if kind in ["rim", "metal", "frame", "helmet"] else 0.85
 		match kind:
 			"hair":

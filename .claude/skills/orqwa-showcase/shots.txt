@@ -1,0 +1,37 @@
+# The showcase in docs/images/showcase/: one shot per line, "<course> <shot>". The course is a
+# saved course's file name in ~/Library/Application Support/ORQWA/courses/ without .oqc; the
+# shot is name:distance:camera[:right,up,back][:key=value…] (app/tools/render_views.gd), and
+# its name is the published file's. Distances count from the start of the course.
+saimaa-cycling-tour saimaa-ridge-group-evening:220000:2:time=Evening:group=5:hud=0
+saimaa-cycling-tour saimaa-ridge-winter:220000:2:season=Winter:time=Midday:hud=0
+saimaa-cycling-tour saimaa-ridge-winter-group:220000:0:-6,4,-25:season=Winter:time=Morning:hud=0:group=4
+saimaa-cycling-tour saimaa-ridge-evening:220000:0:time=Evening:rider=male
+saimaa-cycling-tour saimaa-ridge-rain-group:220000:0:weather=Rain:time=Midday:group=2:rider=male
+saimaa-cycling-tour saimaa-ridge-side:220000:0:-45,25,20:time=Evening:hud=0
+fuji fuji-lake-spring-group:56200:2:time=Midday:group=4:season=Spring:hud=0
+fuji fuji-lake-evening:56200:0:-30,40,60:time=Evening:hud=0
+fuji fuji-lake-spring:56200:0:season=Spring:time=Morning:rider=male
+fuji fuji-lake-spring-riders:56200:0:-5,3,-22:season=Spring:time=Morning:hud=0:group=3
+fuji fuji-lakeside-evening:58000:0:season=Spring:time=Evening:rider=male
+georges-du-nesque nesque-gorge-autumn-group:17500:0:-5,3,-20:season=Autumn:time=Evening:hud=0:group=4
+georges-du-nesque nesque-gorge-autumn:17500:0:season=Autumn:time=Evening
+alpenbrevet-gold alpenbrevet-furka-group:185500:0:-5,3,-20:time=Evening:hud=0:group=5
+alpenbrevet-gold alpenbrevet-furka-drone:185500:2:time=Evening:hud=0:group=5
+alpenbrevet-gold alpenbrevet-nufenen-winter:153000:2:season=Winter:time=Morning:hud=0
+alpenbrevet-gold alpenbrevet-nufenen-morning:153000:0:time=Morning:weather=Hazy:rider=male
+alpenbrevet-gold alpenbrevet-oberalpsee-evening:10500:2:time=Evening:hud=0
+alpenbrevet-gold alpenbrevet-furka-group-climb:184800:0:time=Evening:group=3:rider=male
+alpenbrevet-gold alpenbrevet-furka-gradient:184800:0:time=Evening:group=3:rider=male:elevation=gradient:map=dark
+alpenbrevet-gold alpenbrevet-furka-dark:184800:0:time=Evening:group=3:rider=male:map=dark
+wada-Ōtarumi-pass wada-hairpin-autumn-group:21400:2:season=Autumn:group=4:hud=0
+wada-Ōtarumi-pass wada-autumn-evening:40500:2:season=Autumn:time=Evening:hud=0
+wada-Ōtarumi-pass wada-autumn-rain:22200:0:season=Autumn:weather=Rain:rider=male
+wada-Ōtarumi-pass wada-autumn-chase:40500:0:season=Autumn:time=Evening
+wada-Ōtarumi-pass wada-autumn-gradient:21400:0:season=Autumn:group=3:rider=male:elevation=gradient:map=dark
+wada-Ōtarumi-pass wada-autumn-dark:21400:0:season=Autumn:group=3:rider=male:map=dark
+grosse-scheidegg grosse-scheidegg-group-evening:116000:0:-5,3,-20:group=4:time=Evening:hud=0
+grosse-scheidegg grosse-scheidegg-winter:118500:0:season=Winter:time=Evening:hud=0
+grosse-scheidegg grosse-scheidegg-meadow:116000:0:-30,12,-35:time=Morning:hud=0
+grosse-scheidegg grosse-scheidegg-winter-climb:118500:0:season=Winter:time=Evening:rider=male
+grosse-scheidegg grosse-scheidegg-winter-gradient:118500:0:season=Winter:time=Midday:rider=male:elevation=gradient:map=dark
+grosse-scheidegg grosse-scheidegg-winter-dark:118500:0:season=Winter:time=Midday:rider=male:map=dark

@@ -72,6 +72,10 @@ pub(super) fn status(app: &App) -> VarDictionary {
             "percent"=>status.preparation[id].map_or(0,|(_,percent)|i64::from(percent)),
             // Their connection was lost and their seat is held while they reconnect (#434).
             "away"=>status.away[id],
+            // How long they have been away, for everyone to see (R249).
+            "away_s"=>app.group_away_for(id).map_or(0.0,|away|away.as_secs_f64()),
+            "fallback_eligible"=>status.fallback_eligible(id),
+            "ping_ms"=>status.ping(id).map_or(-1,|rtt|i64::try_from(rtt.as_millis()).unwrap_or(i64::MAX).max(1)),
             // Heard speaking now; this rider too, while their microphone sends speech.
             "speaking"=>status.speaking[id],
             // Standing by to take over if the organizer is lost (#426).
@@ -81,11 +85,19 @@ pub(super) fn status(app: &App) -> VarDictionary {
         .successor
         .and_then(|id| status.roster[usize::from(id)].as_ref())
         .map_or("", |rider| rider.name.as_str());
-    vdict! {"handover"=>status.handover.key(),"successor_name"=>successor_name,"handover_offer"=>status.handover==orqwa_app::group::Handover::Offered && status.successor==Some(status.me),"can_handover"=>status.can_handover(),"can_cancel_handover"=>status.handover!=orqwa_app::group::Handover::Idle && status.handover!=orqwa_app::group::Handover::Committing && (status.host || status.successor==Some(status.me)),"phase"=>status.phase.key(),"host"=>status.host,"invite"=>status.invite.as_str(),"reply"=>status.reply.as_str(),"reply_s"=>status.reply_until.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),"reply_expired"=>status.reply_expired,"admitting"=>i64::from(status.admitting),"refusal"=>status.refusal.key(),"refusals"=>i64::from(status.refusals),"reachability"=>status.reachability.map_or("",|reach| reach.key()),"prepared"=>status.prepared,"received"=>i64::try_from(status.received).unwrap_or(0),"total"=>i64::try_from(status.total).unwrap_or(0),"ready"=>status.ready[usize::from(status.me)],"can_start"=>status.can_start(),"workout_shared"=>status.plan.is_some() && matches!(status.phase,orqwa_app::group::Phase::Countdown | orqwa_app::group::Phase::Riding),"workout_paused"=>status.workout_clock.is_some_and(|clock|clock.paused),"local_paused"=>app.is_paused(),"can_control_workout"=>status.can_control_workout(),"workout_complete"=>status.workout_finished(),"late"=>status.late,"can_enter"=>status.can_enter(),"entering"=>status.entering,"name"=>status.selection.as_ref().map_or("",|s|s.name.as_str()),"error"=>status.error.as_str(),"can_retry"=>status.can_retry(),"activity_failed"=>status.activity_failed,"roster"=>&roster,"devices"=>&devices,"input_device"=>status.input_device.as_str(),"output_device"=>status.output_device.as_str(),"voice_volume"=>status.voice_volume,"echo_prevention"=>status.echo_prevention,"output_name"=>status.output_name.as_str(),"ask_listening"=>status.ask_listening,"microphone_test"=>status.microphone_test,"microphone_level"=>status.microphone_level,"speaker_test"=>status.speaker_test,"microphone_voice_detected"=>status.microphone_voice_detected,"microphone_voice_heard"=>status.microphone_voice_heard,"microphone_checked"=>status.microphone_checked,"voice"=>status.voice,"voice_pending"=>status.voice_pending,"microphone"=>status.microphone,"deafened"=>status.deafened,"countdown_s"=>status.start.map_or(0.0,|at|at.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),"drafting"=>status.assistance.drafting,"keep_together"=>status.assistance.keep_together,"workout_id"=>status.workout_id.as_str(),"course_path"=>status.course.as_ref().map_or(String::new(),|p|p.display().to_string()),
+    let preferred_fallback = status
+        .preferred_fallback
+        .and_then(|id| status.roster[usize::from(id)].as_ref())
+        .map_or("", |rider| rider.name.as_str());
+    vdict! {"handover"=>status.handover.key(),"successor_name"=>successor_name,"handover_offer"=>status.handover==orqwa_app::group::Handover::Offered && status.successor==Some(status.me),"can_handover"=>status.can_handover(),"can_cancel_handover"=>status.handover!=orqwa_app::group::Handover::Idle && status.handover!=orqwa_app::group::Handover::Committing && (status.host || status.successor==Some(status.me)),"phase"=>status.phase.key(),"host"=>status.host,"invite"=>status.invite.as_str(),"reply"=>status.reply.as_str(),"reply_s"=>status.reply_until.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),"reply_expired"=>status.reply_expired,"admitting"=>i64::from(status.admitting),"refusal"=>status.refusal.key(),"refusals"=>i64::from(status.refusals),"refused"=>status.refused.as_str(),"reachability"=>status.reachability.map_or("",|reach| reach.key()),"prepared"=>status.prepared,"received"=>i64::try_from(status.received).unwrap_or(0),"total"=>i64::try_from(status.total).unwrap_or(0),"ready"=>status.ready[usize::from(status.me)],"can_start"=>status.can_start(),"can_cancel"=>status.can_cancel_activity(),"workout_shared"=>status.plan.is_some() && matches!(status.phase,orqwa_app::group::Phase::Countdown | orqwa_app::group::Phase::Riding),"workout_paused"=>status.workout_clock.is_some_and(|clock|clock.paused),"local_paused"=>app.is_paused(),"can_control_workout"=>status.can_control_workout(),"workout_complete"=>status.workout_finished(),"late"=>status.late,"can_enter"=>status.can_enter(),"entering"=>status.entering,"name"=>status.selection.as_ref().map_or("",|s|s.name.as_str()),"error"=>status.error.as_str(),"can_retry"=>status.can_retry(),"activity_failed"=>status.activity_failed,"roster"=>&roster,"devices"=>&devices,"input_device"=>status.input_device.as_str(),"output_device"=>status.output_device.as_str(),"voice_volume"=>status.voice_volume,"echo_prevention"=>status.echo_prevention,"output_name"=>status.output_name.as_str(),"ask_listening"=>status.ask_listening,"microphone_test"=>status.microphone_test,"microphone_level"=>status.microphone_level,"speaker_test"=>status.speaker_test,"microphone_voice_detected"=>status.microphone_voice_detected,"microphone_voice_heard"=>status.microphone_voice_heard,"microphone_checked"=>status.microphone_checked,"voice"=>status.voice,"voice_pending"=>status.voice_pending,"microphone"=>status.microphone,"deafened"=>status.deafened,"countdown_s"=>status.start.map_or(0.0,|at|at.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),"drafting"=>status.assistance.drafting,"keep_together"=>status.assistance.keep_together,"workout_id"=>status.workout_id.as_str(),"course_path"=>status.course.as_ref().map_or(String::new(),|p|p.display().to_string()),
     // Asked to stand in as organizer if the organizer is lost; the organizer may pick another.
-    "standby_offer"=>status.standby_offer,"can_choose_fallback"=>status.host && status.phase==orqwa_app::group::Phase::Riding && status.handover==orqwa_app::group::Handover::Idle,
+    "standby_offer"=>status.standby_offer,"can_choose_fallback"=>status.can_choose_fallback(),"preferred_fallback"=>preferred_fallback,"preferred_fallback_accepted"=>status.preferred_fallback_accepted,"fallback_consent"=>status.fallback_consent.map_or(String::new(),|epoch|epoch.to_string()),
     // How long this rider keeps trying to reconnect, 0 while connected (#434).
+    // The network under this rider changed: a new reply rather than reconnecting (#536).
+    "moved"=>status.moved,
     "reconnect_s"=>status.reconnecting.map_or(0.0,|until|until.saturating_duration_since(std::time::Instant::now()).as_secs_f64()),
+    // Joining again with the same invitation, while a ride may go on alone (#536).
+    "can_rejoin"=>app.group_can_rejoin(),"ending"=>match status.ending {orqwa_app::group::Ending::Removed=>"removed",orqwa_app::group::Ending::Ended=>"ended",orqwa_app::group::Ending::Lost=>""},"rides_alone"=>app.group_rides_alone(),"waits_for_ride"=>app.group_waits_for_ride(),"invitation"=>app.group_joined_with(),
     // Names the organizer's preview, "" without one (#418); `group_preview_data()` has it.
     "preview"=>status.preview.as_ref().map_or_else(String::new,|shown|shown.id.basename())}
 }
@@ -110,13 +122,16 @@ pub(super) fn preview(app: &App, shown: &orqwa_app::group::Previewed) -> VarDict
     let workout = preview
         .workout
         .as_ref()
-        .map_or_else(VarDictionary::new, |plan| {
-            vdict! {
-                "name" => plan.name.as_str(),
-                "description" => plan.description.as_str(),
-                "duration_s" => plan.duration().as_secs_f64(),
-                "steps" => &super::plan_steps(plan, app.profile().profile.ftp, false),
-            }
-        });
+        .map_or_else(VarDictionary::new, |plan| workout(app, plan));
     vdict! {"course" => &course, "workout" => &workout}
+}
+
+/// `plan` as `OrqwaApp.workouts()` lists a workout, its steps for the active rider's FTP.
+pub(super) fn workout(app: &App, plan: &orqwa_domain::workout::Plan) -> VarDictionary {
+    vdict! {
+        "name" => plan.name.as_str(),
+        "description" => plan.description.as_str(),
+        "duration_s" => plan.duration().as_secs_f64(),
+        "steps" => &super::plan_steps(plan, app.profile().profile.ftp, false),
+    }
 }

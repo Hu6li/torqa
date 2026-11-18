@@ -7,6 +7,7 @@ enum Ghost { NONE, BEST, FTP, POWER, WATTS_PER_KG, ACTIVITY }
 var _option: OptionButton = OptionButton.new()
 var _value: SpinBox = SpinBox.new()
 var _file_dialog: FileDialog = FileDialog.new()
+var _refused: AcceptDialog = AcceptDialog.new()
 var _activity: String = ""
 var _ftp: float = 200.0
 
@@ -36,11 +37,17 @@ func _init() -> void:
 	_file_dialog.title = tr("Race against a recorded activity")
 	_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	_file_dialog.filters = PackedStringArray(["*.gpx, *.fit ; GPX or FIT activities"])
+	_file_dialog.filters = PickedFile.open_filters(
+		PackedStringArray(["*.gpx, *.fit ; GPX or FIT activities"])
+	)
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	_file_dialog.canceled.connect(func() -> void: _option.select(Ghost.NONE))
 	add_child(_file_dialog)
+	_refused.title = tr("Race against a recorded activity")
+	_refused.dialog_autowrap = true
+	_refused.min_size = Vector2i(480, 0)
+	add_child(_refused)
 
 
 ## Offers "your best" only where the rider has finished the course before; pacers at FTP use
@@ -87,6 +94,12 @@ func _set_value(low: float, high: float, step: float, suffix: String, value: flo
 
 
 func _on_file_selected(picked: String) -> void:
+	var refusal: String = PickedFile.refusal(picked, PackedStringArray(["gpx", "fit"]))
+	if not refusal.is_empty():
+		_option.select(Ghost.NONE)
+		_refused.dialog_text = refusal
+		_refused.popup_centered()
+		return
 	var path: String = PickedFile.local_path(picked)
 	_activity = path
 	_option.set_item_text(Ghost.ACTIVITY, tr("Activity: %s") % path.get_file())

@@ -1,7 +1,7 @@
 //! Barrier clearance against the pavement actually drawn, including junction fans and
 //! overlapping curves. Metadata is used only while generating; kept-world layout is unchanged.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::{MeshData, World};
@@ -10,11 +10,59 @@ const CELL: f64 = 16.0;
 /// Include the thickness of parapets, blades and posts around their placement line.
 const MARGIN: f64 = 0.01;
 const BARRIER_HEIGHT: f64 = 1.2;
+/// How far beside its line a fence or barrier span must stay off pavement, unless it says.
+pub(crate) const SPAN_HALF_WIDTH: f64 = 0.15;
 
 #[derive(Default)]
 pub(crate) struct Pavement {
     triangles: Vec<[[f64; 3]; 3]>,
     cells: HashMap<(i64, i64), Vec<usize>>,
+    /// The only cells kept, when the pavement is made for known questions
+    /// ([`Pavement::near_parts`]).
+    only: Option<HashSet<(i64, i64)>>,
+}
+
+/// The cells barriers will be checked in. A pavement keeping only those answers every check as
+/// the whole one would, without a copy of every street of the world: on a long course in a
+/// densely mapped country that copy alone took more memory than a tablet has to spare.
+#[derive(Default)]
+pub(crate) struct Asked(HashSet<(i64, i64)>);
+
+impl Asked {
+    /// A span from `a` to `b` checked `half_width` either side (`Pavement::crosses_width`).
+    pub(crate) fn span(&mut self, a: [f64; 3], b: [f64; 3], half_width: f64) {
+        let margin = half_width + MARGIN;
+        for x in cell(a[0].min(b[0]) - margin)..=cell(a[0].max(b[0]) + margin) {
+            for z in cell(a[2].min(b[2]) - margin)..=cell(a[2].max(b[2]) + margin) {
+                self.0.insert((x, z));
+            }
+        }
+    }
+
+    /// Whether every cell asked for lies wholly where `inside` holds (at Godot `x`, `z`).
+    pub(crate) fn all(&self, inside: impl Fn(f64, f64) -> bool) -> bool {
+        self.0.iter().all(|&(x, z)| {
+            #[allow(clippy::cast_precision_loss)] // cell numbers of a local world
+            let (x, z) = (x as f64 * CELL, z as f64 * CELL);
+            inside(x, z) && inside(x + CELL, z + CELL)
+        })
+    }
+
+    /// The checks `Pavement::clear` makes for `barriers` in `mesh`, centred at `origin`.
+    pub(crate) fn barriers(&mut self, mesh: &MeshData, barriers: &[Barrier], origin: [f32; 3]) {
+        for barrier in barriers {
+            if barrier.slab {
+                for &i in &mesh.indices[barrier.indices.clone()] {
+                    let v = mesh.vertices[i as usize];
+                    let x = f64::from(v[0]) + f64::from(origin[0]);
+                    let z = f64::from(v[2]) + f64::from(origin[2]);
+                    self.0.insert((cell(x), cell(z)));
+                }
+            } else {
+                self.span(barrier.a, barrier.b, barrier.half_width);
+            }
+        }
+    }
 }
 
 /// A generated barrier's triangles and its base line, in absolute Godot coordinates.
@@ -42,21 +90,73 @@ impl Pavement {
     /// Actual carriageway footprint in east/north, without the conservative terrain envelope.
     pub(crate) fn contains(&self, east: f64, north: f64) -> bool {
         let p = [east, 0.0, -north];
-        self.cells
-            .get(&(cell(east), cell(-north)))
-            .into_iter()
-            .flatten()
-            .any(|&i| {
-                let [a, b, c] = self.triangles[i];
-                let area = cross(a, b, c);
-                [cross(a, b, p), cross(b, c, p), cross(c, a, p)]
-                    .into_iter()
-                    .all(|side| side / area >= -1e-8)
-            })
+        self.in_cell((cell(east), cell(-north))).iter().any(|&i| {
+            let [a, b, c] = self.triangles[i];
+            let area = cross(a, b, c);
+            [cross(a, b, p), cross(b, c, p), cross(c, a, p)]
+                .into_iter()
+                .all(|side| side / area >= -1e-8)
+        })
     }
 
     pub(crate) fn new(world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
+        Self::default().with(world, track_lengths)
+    }
+
+    /// The pavement in the cells `asked` only, from the road ridden's `road` and `parts` of
+    /// other pavement (from [`Pavement::as_built`]): it answers those checks as a pavement of
+    /// the road and all those parts would.
+    pub(crate) fn near_parts<'a>(
+        road: &Pavement,
+        parts: impl IntoIterator<Item = &'a [[[f64; 3]; 3]]>,
+        asked: Asked,
+    ) -> Self {
+        if asked.0.is_empty() {
+            return Self {
+                only: Some(asked.0),
+                ..Self::default()
+            };
+        }
+        let mut near = Self {
+            only: Some(asked.0),
+            ..Self::default()
+        };
+        // Answers don't depend on the triangles' order: a check asks whether any crosses, or
+        // how deep the lowest lies.
+        let mut taken = HashSet::new();
+        let cells: Vec<_> = near.only.iter().flatten().copied().collect();
+        for key in cells {
+            for &i in road.cells.get(&key).map_or(&[][..], Vec::as_slice) {
+                if taken.insert(i) {
+                    near.insert(road.triangles[i]);
+                }
+            }
+        }
+        for part in parts {
+            for &triangle in part {
+                near.insert(triangle);
+            }
+        }
+        near
+    }
+
+    /// The pavement of a chunk's streets and of its tracks' first `track_length` indices
+    /// (before shore gravel), as built: before barriers are cleared from those meshes.
+    pub(crate) fn as_built(chunk: &crate::TerrainChunk, track_length: usize) -> Vec<[[f64; 3]; 3]> {
         let mut pavement = Self::default();
+        pavement.add(
+            &chunk.streets,
+            chunk.center,
+            false,
+            chunk.streets.indices.len(),
+        );
+        pavement.add(&chunk.tracks, chunk.center, false, track_length);
+        pavement.triangles.shrink_to_fit();
+        pavement.triangles
+    }
+
+    fn with(mut self, world: &World, track_lengths: impl IntoIterator<Item = usize>) -> Self {
+        let pavement = &mut self;
         pavement.add(&world.road, [0.0; 3], true, world.road.indices.len());
         for (chunk, track_length) in world.chunks.iter().zip(track_lengths) {
             pavement.add(
@@ -68,7 +168,7 @@ impl Pavement {
             // Shore gravel shares this GPU material but is not a road.
             pavement.add(&chunk.tracks, chunk.center, false, track_length);
         }
-        pavement
+        self
     }
 
     fn add(&mut self, mesh: &MeshData, origin: [f32; 3], ridden: bool, indices: usize) {
@@ -127,18 +227,25 @@ impl Pavement {
         let low = [a[0].min(b[0]).min(c[0]), a[2].min(b[2]).min(c[2])];
         let high = [a[0].max(b[0]).max(c[0]), a[2].max(b[2]).max(c[2])];
         let index = self.triangles.len();
-        self.triangles.push(triangle);
+        let mut kept = false;
         for x in cell(low[0])..=cell(high[0]) {
             for z in cell(low[1])..=cell(high[1]) {
-                self.cells.entry((x, z)).or_default().push(index);
+                if self.only.as_ref().is_none_or(|only| only.contains(&(x, z))) {
+                    self.cells.entry((x, z)).or_default().push(index);
+                    kept = true;
+                }
             }
+        }
+        if kept {
+            self.triangles.push(triangle);
         }
     }
 
     /// The whole barrier span is checked, even when both ends lie outside a narrow road.
     /// Pavement at a different level does not remove overpass protection.
+    #[cfg(test)]
     pub(crate) fn crosses(&self, a: [f64; 3], b: [f64; 3]) -> bool {
-        self.crosses_width(a, b, 0.15)
+        self.crosses_width(a, b, SPAN_HALF_WIDTH)
     }
 
     pub(crate) fn crosses_width(&self, a: [f64; 3], b: [f64; 3], half_width: f64) -> bool {
@@ -147,10 +254,8 @@ impl Pavement {
         let high = [a[0].max(b[0]) + margin, a[2].max(b[2]) + margin];
         (cell(low[0])..=cell(high[0])).any(|x| {
             (cell(low[1])..=cell(high[1])).any(|z| {
-                self.cells
-                    .get(&(x, z))
-                    .into_iter()
-                    .flatten()
+                self.in_cell((x, z))
+                    .iter()
                     .any(|&i| overlap(self.triangles[i], a, b, margin))
             })
         })
@@ -158,13 +263,25 @@ impl Pavement {
 
     /// Remove complete offending barrier pieces, keeping slab sides and undersides closed.
     pub(crate) fn clear(&self, mesh: &mut MeshData, barriers: Vec<Barrier>, origin: [f32; 3]) {
+        let blocked = self.recess(mesh, barriers, origin);
+        remove(mesh, &blocked);
+    }
+
+    /// Recesses slab edges below pavement joining them, and gives the index ranges of the
+    /// barrier pieces pavement crosses, for [`remove`].
+    pub(crate) fn recess(
+        &self,
+        mesh: &mut MeshData,
+        barriers: Vec<Barrier>,
+        origin: [f32; 3],
+    ) -> Vec<Range<usize>> {
         // A deck's exposed edge must also stay below a same-level junction's pavement.
         // Recess its top instead of deleting the slab wall and reopening its underside.
         for edge in barriers.iter().filter(|b| b.slab) {
             for &i in &mesh.indices[edge.indices.clone()] {
                 let vertex = &mut mesh.vertices[i as usize];
                 let point = [0, 1, 2].map(|k| f64::from(vertex[k]) + f64::from(origin[k]));
-                if let Some(height) = self.recess(point) {
+                if let Some(height) = self.recess_at(point) {
                     #[allow(clippy::cast_possible_truncation)] // f32 GPU vertices
                     {
                         vertex[1] = (height - f64::from(origin[1])) as f32;
@@ -172,44 +289,26 @@ impl Pavement {
                 }
             }
         }
-        let blocked: Vec<_> = barriers
+        barriers
             .into_iter()
             .filter(|b| !b.slab && self.crosses_width(b.a, b.b, b.half_width))
             .map(|b| b.indices)
-            .collect();
-        if blocked.is_empty() {
-            return;
-        }
-        let mut blocked = blocked.iter().peekable();
-        let mut output = MeshData::default();
-        let mut remap = vec![u32::MAX; mesh.vertices.len()];
-        for (i, face) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
-            while blocked.peek().is_some_and(|range| range.end <= i * 3) {
-                blocked.next();
-            }
-            if blocked.peek().is_some_and(|range| range.contains(&(i * 3))) {
-                continue;
-            }
-            for &old in face {
-                let old = old as usize;
-                if remap[old] == u32::MAX {
-                    remap[old] = u32::try_from(output.vertices.len()).expect("mesh fits u32");
-                    output.vertices.push(mesh.vertices[old]);
-                    output.normals.push(mesh.normals[old]);
-                    output.uvs.push(mesh.uvs[old]);
-                    if !mesh.colors.is_empty() {
-                        output.colors.push(mesh.colors[old]);
-                    }
-                }
-                output.indices.push(remap[old]);
-            }
-        }
-        *mesh = output;
+            .collect()
     }
 
-    fn recess(&self, point: [f64; 3]) -> Option<f64> {
-        self.cells
-            .get(&(cell(point[0]), cell(point[2])))?
+    /// The triangles touching cell `key`. A pavement gathered for known checks
+    /// ([`Pavement::near_parts`]) holds nothing outside the cells asked for, so a check reaching
+    /// beyond them would quietly find no pavement there: debug builds, and so the tests, stop.
+    fn in_cell(&self, key: (i64, i64)) -> &[usize] {
+        debug_assert!(
+            self.only.as_ref().is_none_or(|only| only.contains(&key)),
+            "pavement checked in cell {key:?}, which no barrier asked for"
+        );
+        self.cells.get(&key).map_or(&[], Vec::as_slice)
+    }
+
+    fn recess_at(&self, point: [f64; 3]) -> Option<f64> {
+        self.in_cell((cell(point[0]), cell(point[2])))
             .iter()
             .filter_map(|&i| {
                 let triangle = self.triangles[i];
@@ -227,6 +326,40 @@ impl Pavement {
             })
             .reduce(f64::min)
     }
+}
+
+/// Removes the triangles in the `blocked` index ranges (ascending) from `mesh`, keeping the
+/// vertices still used in the order first used. Nothing blocked leaves the mesh as it is.
+pub(crate) fn remove(mesh: &mut MeshData, blocked: &[Range<usize>]) {
+    if blocked.is_empty() {
+        return;
+    }
+    let mut blocked = blocked.iter().peekable();
+    let mut output = MeshData::default();
+    let mut remap = vec![u32::MAX; mesh.vertices.len()];
+    for (i, face) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
+        while blocked.peek().is_some_and(|range| range.end <= i * 3) {
+            blocked.next();
+        }
+        if blocked.peek().is_some_and(|range| range.contains(&(i * 3))) {
+            continue;
+        }
+        for &old in face {
+            let old = old as usize;
+            if remap[old] == u32::MAX {
+                remap[old] = u32::try_from(output.vertices.len()).expect("mesh fits u32");
+                output.vertices.push(mesh.vertices[old]);
+                output.normals.push(mesh.normals[old]);
+                output.uvs.push(mesh.uvs[old]);
+                if !mesh.colors.is_empty() {
+                    output.colors.push(mesh.colors[old]);
+                }
+            }
+            output.indices.push(remap[old]);
+        }
+    }
+    output.shrink_to_fit();
+    *mesh = output;
 }
 
 #[allow(clippy::many_single_char_names)] // vertices and interpolation in polygon clipping
@@ -344,6 +477,87 @@ mod tests {
         road.insert([[0.0, 0.0, 0.0], [100.0, 0.0, 0.001], [100.0, 0.0, 0.0]]);
         assert!(!road.crosses([40.0, 0.0, -0.6], [44.0, 0.0, -0.6]));
         assert!(road.crosses([40.0, 0.0, -0.6], [44.0, 0.0, 0.6]));
+    }
+
+    /// Pieces of road 2 km apart, each as in [`road`].
+    fn spread(pavement: &mut Pavement) {
+        for x in [0.0, 2_000.0] {
+            pavement.insert([
+                [x - 1.0, 0.0, -2.0],
+                [x - 1.0, 0.0, 2.0],
+                [x + 1.0, 0.0, 0.0],
+            ]);
+        }
+    }
+
+    fn slab(x: f32) -> MeshData {
+        MeshData {
+            vertices: vec![
+                [x - 0.25, -0.7, -0.2],
+                [x - 0.25, 0.1, -0.2],
+                [x + 0.25, 0.1, 0.2],
+                [x + 0.25, -0.7, 0.2],
+            ],
+            normals: vec![[1.0, 0.0, 0.0]; 4],
+            uvs: vec![[0.0; 2]; 4],
+            colors: vec![],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }
+    }
+
+    #[test]
+    fn pavement_gathered_for_known_checks_answers_them_as_the_whole_and_keeps_only_their_cells() {
+        let mut whole = Pavement::default();
+        spread(&mut whole);
+        let fence = ([-3.0, 0.0, 0.0], [3.0, 0.0, 0.0]);
+        let clear_fence = ([-3.0, 0.0, 4.0], [3.0, 0.0, 4.0]);
+        let flared = ([-3.0, 0.0, 2.3], [3.0, 0.0, 2.3]);
+        let mut asked = Asked::default();
+        asked.span(fence.0, fence.1, SPAN_HALF_WIDTH);
+        asked.span(clear_fence.0, clear_fence.1, SPAN_HALF_WIDTH);
+        asked.span(flared.0, flared.1, 0.5);
+        let barrier = Barrier::slab(0..6);
+        asked.barriers(&slab(0.0), std::slice::from_ref(&barrier), [0.0; 3]);
+        let mut near = Pavement {
+            only: Some(asked.0),
+            ..Pavement::default()
+        };
+        spread(&mut near);
+
+        assert_eq!(near.triangles.len(), 1, "the far piece is not kept");
+        for (a, b, width) in [
+            (fence.0, fence.1, SPAN_HALF_WIDTH),
+            (clear_fence.0, clear_fence.1, SPAN_HALF_WIDTH),
+            (flared.0, flared.1, 0.5),
+        ] {
+            assert_eq!(
+                near.crosses_width(a, b, width),
+                whole.crosses_width(a, b, width)
+            );
+        }
+        assert!(near.crosses(fence.0, fence.1));
+        assert!(near.crosses_width(flared.0, flared.1, 0.5));
+        let (mut by_whole, mut by_near) = (slab(0.0), slab(0.0));
+        whole.clear(&mut by_whole, vec![Barrier::slab(0..6)], [0.0; 3]);
+        near.clear(&mut by_near, vec![barrier], [0.0; 3]);
+        assert_eq!(
+            by_near, by_whole,
+            "the slab edge recedes as against the whole pavement"
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "no barrier asked for")]
+    fn a_check_beyond_the_cells_asked_for_stops_debug_builds() {
+        let mut asked = Asked::default();
+        asked.span([-3.0, 0.0, 0.0], [3.0, 0.0, 0.0], SPAN_HALF_WIDTH);
+        let mut near = Pavement {
+            only: Some(asked.0),
+            ..Pavement::default()
+        };
+        spread(&mut near);
+        near.contains(2_000.0, 0.0);
     }
 
     #[test]

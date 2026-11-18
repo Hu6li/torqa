@@ -3,7 +3,7 @@ resolver = "3"
 members = ["orqwa-domain", "orqwa-terrain", "orqwa-video", "orqwa-osm", "orqwa-routes", "orqwa-physics", "orqwa-devices", "orqwa-storage", "orqwa-workouts", "orqwa-session", "orqwa-world", "orqwa-upload", "orqwa-remote", "orqwa-update", "orqwa-app", "orqwa-gd", "orqwa-cli", "orqwa-net", "orqwa-voice"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.6.5"
 edition = "2024"
 rust-version = "1.99"
 license = "GPL-3.0-only"
@@ -60,7 +60,7 @@ rav1d = { version = "1.1.0", default-features = false, features = ["bitdepth_8",
 reqwest = "0.13.5"
 rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std"] }
 # SQLite compiled in: no system library to find on any platform (ADR 0002, R79).
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 rustyfit = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

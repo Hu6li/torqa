@@ -20,6 +20,7 @@ var _sidebar: VBoxContainer = VBoxContainer.new()
 ## The second column of the ride's window: voice and the shared workout.
 var _side_right: VBoxContainer = VBoxContainer.new()
 var _leave: Button
+var _end_activity: Button
 var _activity_panel: PanelContainer = PanelContainer.new()
 var _picker: GroupActivityPicker = GroupActivityPicker.new()
 var _stage: Label = Label.new()
@@ -36,7 +37,9 @@ var _joining: GroupJoiningCard = GroupJoiningCard.new()
 var _invite: GroupInviteCard = GroupInviteCard.new()
 var _roster: VBoxContainer = VBoxContainer.new()
 ## Friends whose reply the organizer added and who are still connecting (R195).
-var _admitting: VBoxContainer = VBoxContainer.new()
+var _admitting: GroupAdmissions = GroupAdmissions.new()
+## The organizer's field for each away friend's new reply, by seat, kept across rebuilds.
+var _away_replies: Dictionary[int, GroupAwayReply] = {}
 var _add: GroupAddRow = GroupAddRow.new()
 var _next_step: GroupNextStep = GroupNextStep.new()
 var _next_separator: HSeparator
@@ -51,13 +54,10 @@ var _organizer_status: Label = Label.new()
 var _organizer_reach: Label = Label.new()
 var _organizer_change: Button
 var _fallback_change: Button
-## Whether the organizer picker chooses a fallback rather than the next organizer (#426).
-var _picking_fallback: bool = false
 var _organizer_accept: Button
 var _organizer_decline: Button
 var _organizer_cancel: Button
-var _organizer_picker: AcceptDialog = AcceptDialog.new()
-var _organizer_choices: VBoxContainer = VBoxContainer.new()
+var _organizer_picker: GroupOrganizerPicker = GroupOrganizerPicker.new()
 var _connection: GroupConnectionDialog = GroupConnectionDialog.new()
 ## The invitation last joined, for a new reply when the organizer did not add the rider in
 ## time (R195), and its offline preview: the organizer and where everyone rides (R197).
@@ -68,9 +68,14 @@ var _roster_key: String = ""
 ## Each rider's voice button, by rider ID: their microphone on this rider's own row, a
 ## friend's speaker on theirs, lit while they are heard speaking (R190, R194).
 var _voice_buttons: Dictionary[int, Button] = {}
+var _pings: Dictionary[int, Label] = {}
 ## This rider's own readiness pill before the start (R196), null while there is none.
 var _ready_pill: Button
+var _own_row: HBoxContainer
+var _own_state: Label
 var _activity_key: String = ""
+## The lobby step the scene's upload radius was last told at.
+var _radius_phase: String = ""
 ## Names the organizer's preview the picker shows a friend (#418), "" for none.
 var _preview_key: String = ""
 var _elapsed: float = 0.0
@@ -126,11 +131,16 @@ func _ready() -> void:
 	var right: VBoxContainer = _side_right if compact else _sidebar
 	_build_invitation()
 	_build_roster()
-	_build_organizer()
+	if compact:
+		_build_organizer()
 	var audio: VBoxContainer = _card(right)
 	_label(audio, tr("Voice chat"), 20)
 	audio.add_child(_voice_controls)
+	# Readiness and organizer controls can move this card without resizing the sidebar.
+	(audio.get_parent() as Control).item_rect_changed.connect(_fit_activity_map.call_deferred)
 	_build_workout_controls(right)
+	if not compact:
+		_build_organizer()
 	_build_dialogs()
 	resized.connect(_reflow)
 	_picker.resized.connect(_fit_activity_map.call_deferred)
@@ -148,7 +158,7 @@ func _build_rules() -> void:
 	_drafting.tooltip_text = tr("Save effort when riding behind friends.") + "\n" + assisted
 	_together.text = tr("Keep together")
 	_together.tooltip_text = (
-		tr("Help everyone stay with the organizer while pedaling.") + "\n" + assisted
+		tr("Help everyone stay with the group while pedaling.") + "\n" + assisted
 	)
 	for option: CheckBox in [_drafting, _together]:
 		option.button_pressed = true
@@ -182,27 +192,18 @@ func _build_setup() -> void:
 ## Joins as the organizer chose, which the invitation says: nothing to ask (R197).
 func _join_ride(invitation: String) -> void:
 	var preview: Dictionary = _orqwa.group_invitation(invitation)
-	if preview.is_empty() or not _orqwa.group_join(invitation):
-		(
-			_join
-			. show_error(
-				tr(
-					"ORQWA could not join with this invitation. See Technical details for more information."
-				)
-			)
-		)
+	if not preview.has("organizer") or not _orqwa.group_join(invitation):
+		_join.show_refused(str(preview.get("version", "")))
 		return
 	_joined = preview
 	_joined_invite = invitation
 	_join.clear()
 
 
-## A new reply from the same invitation, the last one having run out (R195).
+## A new reply from the same invitation, the last one having run out (R195); during a ride
+## too, which goes on meanwhile (#536).
 func _renew_reply() -> void:
-	if _joined_invite.is_empty():
-		return
-	_orqwa.group_leave()
-	_orqwa.group_join(_joined_invite)
+	_orqwa.group_rejoin()
 
 
 func _build_connecting() -> void:
@@ -226,7 +227,6 @@ func _build_roster() -> void:
 	_label(card, tr("Your group"), 20)
 	_roster.add_theme_constant_override("separation", 12)
 	card.add_child(_roster)
-	_admitting.add_theme_constant_override("separation", 12)
 	card.add_child(_admitting)
 	card.add_child(_add)
 	_next_separator = HSeparator.new()
@@ -238,11 +238,13 @@ func _build_roster() -> void:
 func _build_dialogs() -> void:
 	add_child(_connection)
 	_connection.started.connect(_join.clear)
-	_organizer_picker.theme = UiTheme.build()
-	_organizer_picker.title = tr("Choose a new organizer")
-	_organizer_choices.add_theme_constant_override("separation", 12)
-	_organizer_choices.custom_minimum_size.x = 380
-	_organizer_picker.add_child(UiTheme.scrolling(_organizer_choices))
+	_organizer_picker.chosen.connect(
+		func(id: int, fallback: bool) -> void:
+			if fallback:
+				_orqwa.group_fallback(id)
+			else:
+				_orqwa.group_handover(id)
+	)
 	add_child(_organizer_picker)
 
 
@@ -257,6 +259,10 @@ func _build_organizer() -> void:
 	card.add_child(_organizer_reach)
 	_organizer_change = _button(card, tr("Change organizer…"), _choose_organizer.bind(false))
 	_fallback_change = _button(card, tr("Choose fallback organizer…"), _choose_organizer.bind(true))
+	_end_activity = _button(
+		card, tr("End course for everyone"), func() -> void: _orqwa.group_end_activity()
+	)
+	UiTheme.danger_button(_end_activity)
 	_organizer_accept = _button(
 		card, tr("Accept organizer duties"), func() -> void: _orqwa.group_handover_answer(true)
 	)
@@ -270,48 +276,21 @@ func _build_organizer() -> void:
 
 
 func _choose_organizer(fallback: bool) -> void:
-	_picking_fallback = fallback
-	_organizer_picker.title = (
-		tr("Choose a fallback organizer") if fallback else tr("Choose a new organizer")
-	)
-	for child: Node in _organizer_choices.get_children():
-		_organizer_choices.remove_child(child)
-		child.queue_free()
-	_muted(
-		_organizer_choices,
-		(
-			tr("Choose a friend who takes over if your connection is lost. They must accept.")
-			if fallback
-			else tr("Choose a friend who is ready. They must accept before anything changes.")
-		)
-	)
-	for rider: Dictionary in _status.get("roster", []):
-		if rider["me"] or not rider["ready"]:
-			continue
-		var id: int = rider["id"]
-		var rider_name: String = rider["name"]
-		var choice: Button = _button(
-			_organizer_choices,
-			rider_name,
-			func() -> void:
-				if _picking_fallback:
-					_orqwa.group_fallback(id)
-				else:
-					_orqwa.group_handover(id)
-				_organizer_picker.hide()
-		)
-		choice.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	UiScale.popup(_organizer_picker, Vector2i(520, 180 + 52 * _organizer_choices.get_child_count()))
+	_organizer_picker.choose(_status, fallback)
 
 
 func _show_organizer() -> void:
 	var phase: String = _status.get("phase", "idle")
 	var handover: String = _status.get("handover", "idle")
 	var host: bool = _status.get("host", false)
-	var standby: bool = _status.get("standby_offer", false)
+	var consent: String = _status.get("fallback_consent", "")
+	var standby: bool = _status.get("standby_offer", false) and consent.is_empty()
 	var offer: bool = _status.get("handover_offer", false) or standby
-	_organizer_panel.visible = phase == "riding" and (host or handover != "idle" or standby)
-	_organizer_change.visible = host and handover == "idle"
+	var lobby: bool = phase in ["waiting", "downloading", "preparing", "ready", "countdown"]
+	_organizer_panel.visible = (
+		(host and lobby) or (phase == "riding" and (host or handover != "idle" or standby))
+	)
+	_organizer_change.visible = host and phase == "riding" and handover == "idle"
 	_organizer_change.disabled = not _status.get("can_handover", false)
 	_fallback_change.visible = host and handover == "idle"
 	_fallback_change.disabled = not _status.get("can_choose_fallback", false)
@@ -322,6 +301,23 @@ func _show_organizer() -> void:
 	_organizer_decline.visible = offer
 	_organizer_cancel.visible = _status.get("can_cancel_handover", false) and not offer
 	_organizer_status.text = ""
+	if host and lobby:
+		var preferred: String = _status.get("preferred_fallback", "")
+		if not preferred.is_empty():
+			if _status.get("preferred_fallback_accepted", false):
+				_organizer_status.text = (
+					tr("%s agreed to stand in as fallback organizer.") % preferred
+				)
+			elif not consent.is_empty():
+				_organizer_status.text = tr("Waiting for %s to agree to stand in.") % preferred
+			else:
+				_organizer_status.text = tr("%s has not agreed to stand in.") % preferred
+		elif _status.get("can_choose_fallback", false):
+			_organizer_status.text = tr("Choose a fallback now to ask for their consent.")
+		else:
+			_organizer_status.text = tr(
+				"A friend must join before you can choose a fallback organizer."
+			)
 	if handover == "offered":
 		_organizer_status.text = (
 			tr("Waiting for %s to accept organizer duties.") % _status.get("successor_name", "")
@@ -450,6 +446,7 @@ func refresh() -> void:
 		return
 	_picker.refresh()
 	_activity_key = ""
+	_radius_phase = ""
 	_update()
 
 
@@ -467,6 +464,13 @@ func _update() -> void:
 func _show_status(status: Dictionary) -> void:
 	_status = status
 	var phase: String = _status.get("phase", "idle")
+	# A group's world is ridden once the scene's surroundings of its start are built: told
+	# at every step, so a quality chosen meanwhile counts by the time it is built.
+	if phase != _radius_phase:
+		_radius_phase = phase
+		_orqwa.set_group_upload_radius(
+			RideWorld.upload_radius(_orqwa.graphics_quality(), _orqwa.graphics_options())
+		)
 	var host: bool = _status.get("host", false)
 	var late: bool = _status.get("late", false)
 	var name: String = _status.get("name", "")
@@ -494,6 +498,20 @@ func _show_status(status: Dictionary) -> void:
 		"ended": tr("Group connection ended. Your local ride continues."),
 		"failed": tr("Could not connect. Leave the group and ask for a fresh invitation."),
 	}
+	# The friend may join again with the same invitation, unless the organizer removed them
+	# or ended the group (#536).
+	var ending: String = _status.get("ending", "")
+	if _status.get("can_rejoin", false):
+		captions["ended"] = tr(
+			"Group connection ended. Your ride continues. Join again when you like."
+		)
+		captions["failed"] = tr("Could not connect. Join again, or leave the group.")
+	elif ending == "removed":
+		captions["ended"] = tr(
+			"The organizer removed you from the group. Your local ride continues."
+		)
+	elif ending == "ended":
+		captions["ended"] = tr("The organizer ended the group. Your local ride continues.")
 	_stage.text = captions.get(phase, "")
 	if late and not underway:
 		_stage.text = tr("Your friends are already riding. Get ready and join when you like.")
@@ -507,24 +525,35 @@ func _show_status(status: Dictionary) -> void:
 	if _leave != null:
 		_leave.visible = phase != "idle"
 	_setup.visible = phase == "idle" and not compact
-	# Not added in time, the joiner makes a new reply on the same page (R195).
+	# Not added in time, the joiner makes a new reply on the same page (R195). Joining again
+	# during a ride shows the reply in the ride's window too (#536).
 	var expired: bool = _status.get("reply_expired", false)
+	var rides_alone: bool = _status.get("rides_alone", false)
 	_connecting.visible = (
-		not host and not compact and (phase == "connecting" or (phase == "failed" and expired))
+		not host
+		and (not compact or rides_alone)
+		and (phase == "connecting" or (phase == "failed" and expired))
 	)
+	var invitation: String = _status.get("invitation", "")
+	if not invitation.is_empty() and invitation != _joined_invite:
+		_joined_invite = invitation
+		_joined = _orqwa.group_invitation(invitation)
 	if expired:
 		_stage.text = ""
 	var reply: String = _status.get("reply", "")
 	var reply_s: float = _status.get("reply_s", 0.0)
 	var invited_by: String = _joined.get("organizer", "")
 	var mode: String = _joined.get("mode", "")
-	_joining.show_joining(invited_by, mode, reply, reply_s, expired)
+	var reason: String = _status.get("error", "") if expired else ""
+	_joining.show_joining(invited_by, mode, reply, reply_s, expired, reason)
 	_body.visible = phase != "idle" and not _connecting.visible
 	var inviting: bool = host and phase not in ["ended", "failed"]
 	_invitation_panel.visible = inviting
 	var reach: String = _status.get("reachability", "")
 	var invite: String = _status.get("invite", "")
 	var handing_over: bool = _status.get("handover", "idle") != "idle"
+	_end_activity.visible = compact and host and phase == "riding"
+	_end_activity.disabled = handing_over
 	_invite.show_invite("" if handing_over else invite, reach_warning(reach, true))
 	_show_admissions(inviting and not handing_over)
 	# What the organizer is choosing, for friends to talk over before it is shared (#418).
@@ -570,6 +599,10 @@ func _show_status(status: Dictionary) -> void:
 		# rebuilding the rows, and their buttons, under the rider's pointer.
 		listed.erase("speaking")
 		listed.erase("muted")
+		listed.erase("ping_ms")
+		# How long a friend is away counts up; the rows follow it once a second (R249).
+		var away: float = rider.get("away_s", 0.0)
+		listed["away_s"] = floori(away)
 		riders.append(listed)
 	var key: String = (
 		str(riders)
@@ -583,6 +616,7 @@ func _show_status(status: Dictionary) -> void:
 		_roster_key = key
 		_show_roster(phase, host)
 	_show_voice_buttons()
+	_show_pings()
 	_show_ready_pill()
 	_fit_activity_map.call_deferred()
 
@@ -636,11 +670,17 @@ func _show_workout_controls() -> void:
 
 
 func _show_roster(phase: String, host: bool) -> void:
+	for reply: GroupAwayReply in _away_replies.values():
+		reply.leave()
+	var away_ids: Array[int] = []
 	for child: Node in _roster.get_children():
 		_roster.remove_child(child)
 		child.queue_free()
 	_voice_buttons.clear()
+	_pings.clear()
 	_ready_pill = null
+	_own_row = null
+	_own_state = null
 	var before: bool = phase not in ["countdown", "riding", "ended"]
 	var removable: bool = host and before
 	# Readiness as a pill on every row, this rider's their button (R196); friends joining
@@ -653,9 +693,17 @@ func _show_roster(phase: String, host: bool) -> void:
 		row.add_child(UiTheme.initial(rider_name, 36))
 		var text: VBoxContainer = VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var label: Label = _label(text, rider_name, 17)
+		var heading: HBoxContainer = HBoxContainer.new()
+		text.add_child(heading)
+		var label: Label = _label(heading, rider_name, 17)
 		label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		var state: Label = _label(text, _rider_state(rider, phase, pills), 13)
+		# Progress and the readiness prompt share one line, even in a narrow German lobby.
+		for line: Label in [label, state]:
+			line.autowrap_mode = TextServer.AUTOWRAP_OFF
+			line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			line.tooltip_text = line.text
+		state.custom_minimum_size.y = state.get_theme_font("font").get_height(13)
 		var live: bool = (
 			not pills
 			and not rider.get("away", false)
@@ -663,10 +711,24 @@ func _show_roster(phase: String, host: bool) -> void:
 			and (phase != "riding" or rider["me"] or rider.get("present", false))
 		)
 		state.add_theme_color_override("font_color", UiTheme.SUCCESS if live else UiTheme.MUTED)
-		state.visible = not state.text.is_empty()
+		state.visible = before or phase == "countdown" or not state.text.is_empty()
 		row.add_child(text)
 		var id: int = rider["id"]
 		var me: bool = rider["me"]
+		# Away, a friend has no readiness or ping to show; the organizer pastes their new
+		# reply there instead (R249).
+		var away: bool = rider.get("away", false)
+		if away:
+			state.add_theme_color_override("font_color", UiTheme.DANGER)
+		if not me and not away:
+			var ping: Label = _label(heading, "", 13)
+			ping.custom_minimum_size.x = 95
+			ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+			ping.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			ping.autowrap_mode = TextServer.AUTOWRAP_OFF
+			ping.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			ping.add_theme_color_override("font_color", UiTheme.MUTED)
+			_pings[id] = ping
 		if _status.get("voice", false):
 			var voice: Button = Button.new()
 			voice.focus_mode = Control.FOCUS_NONE
@@ -675,14 +737,24 @@ func _show_roster(phase: String, host: bool) -> void:
 			row.add_child(voice)
 			_voice_buttons[id] = voice
 		if pills and me:
+			_own_row = row
+			_own_state = state
+			row.draw.connect(_draw_ready_row)
+			row.resized.connect(row.queue_redraw)
 			_ready_pill = _button(row, "", func() -> void: _orqwa.group_ready(not _is_ready()))
 			_ready_pill.focus_mode = Control.FOCUS_NONE
 			_ready_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			_ready_pill.custom_minimum_size.x = PILL_WIDTH
+			_ready_pill.custom_minimum_size = Vector2(PILL_WIDTH, 34)
+			_ready_pill.clip_text = true
 			_ready_pill.add_theme_font_size_override("font_size", 14)
-		elif pills:
+		elif pills and not away:
 			var ready: bool = rider["ready"]
-			row.add_child(_pill(ready))
+			row.add_child(GroupPill.make(ready, PILL_WIDTH))
+		if away and host and phase not in ["ended", "failed"]:
+			away_ids.append(id)
+			if not _away_replies.has(id):
+				_away_replies[id] = GroupAwayReply.new(_orqwa, rider_name)
+			row.add_child(_away_replies[id])
 		if removable:
 			var remove: Button = _button(row, "", func() -> void: _orqwa.group_remove(id))
 			remove.icon = UiIcons.texture("bin")
@@ -696,7 +768,34 @@ func _show_roster(phase: String, host: bool) -> void:
 				remove.modulate.a = 0.0
 				remove.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_roster.add_child(row)
+	for id: int in _away_replies.keys():
+		if id in away_ids:
+			_away_replies[id].resume()
+		else:
+			_away_replies[id].queue_free()
+			_away_replies.erase(id)
 	_show_ready_pill()
+	_show_pings()
+
+
+func _show_pings() -> void:
+	for rider: Dictionary in _status.get("roster", []):
+		var id: int = rider["id"]
+		if not _pings.has(id):
+			continue
+		var millis: int = rider.get("ping_ms", -1)
+		var available: bool = (
+			millis >= 0
+			and not rider.get("away", false)
+			and _status.get("reconnect_s", 0.0) <= 0.0
+			and _status.get("phase", "idle") not in ["idle", "ended", "failed"]
+		)
+		_pings[id].text = tr("Ping %d ms") % maxi(1, millis) if available else tr("Ping —")
+		_pings[id].tooltip_text = (
+			tr("Round-trip time from you to the organizer. Lower is better.")
+			if rider.get("organizer", false)
+			else tr("Round-trip time from this friend to the organizer. Lower is better.")
+		)
 
 
 ## The line below a rider's name: before the start how far they have got (#419), unless the
@@ -704,7 +803,9 @@ func _show_roster(phase: String, host: bool) -> void:
 ## their seat held while they reconnect (#434); and who they are to the group.
 func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 	var parts: PackedStringArray = []
-	var ready: bool = rider["ready"]
+	var me: bool = rider["me"]
+	var ready: bool = _is_ready() if me else rider["ready"]
+	var actionable: bool = pills and me and _can_mark_ready()
 	var stage: String = rider.get("stage", "")
 	var percent: int = rider.get("percent", 0)
 	if phase == "riding" and rider.get("present", false):
@@ -722,6 +823,8 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 		parts.append(tr("No signal") if ready else tr("Getting ready"))
 		if rider["me"]:
 			parts[0] = tr("Paused") if _status.get("local_paused", false) else tr("Riding")
+	elif pills and me and (ready or actionable):
+		parts.append(tr("You're ready") if ready else tr("Please mark ready"))
 	elif not ready and stage == "downloading":
 		parts.append(tr("Downloading · %d %%") % percent)
 	elif not ready and stage == "preparing" and percent < 100:
@@ -729,8 +832,14 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 	elif not pills:
 		parts.append(tr("Ready") if ready else tr("Getting ready"))
 	if rider.get("away", false):
-		parts = PackedStringArray([tr("Reconnecting…", "group_rider")])
-	if rider["me"] and not (phase == "riding" and rider.get("present", false)):
+		var seconds: float = rider.get("away_s", 0.0)
+		var away: String = GroupAdmissions.clock(seconds)
+		parts = PackedStringArray([tr("Away %s") % away])
+	if (
+		me
+		and not (pills and (ready or actionable))
+		and not (phase == "riding" and rider.get("present", false))
+	):
 		parts.append(tr("You"))
 	if rider.get("organizer", false):
 		parts.append(tr("Organizer"))
@@ -740,39 +849,26 @@ func _rider_state(rider: Dictionary, phase: String, pills: bool) -> String:
 	return " · ".join(parts)
 
 
-## A friend's readiness: green when ready, quiet while not.
-func _pill(ready: bool) -> PanelContainer:
-	var pill: PanelContainer = PanelContainer.new()
-	pill.custom_minimum_size.x = PILL_WIDTH
-	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var color: Color = UiTheme.SUCCESS if ready else UiTheme.MUTED
-	pill.add_theme_stylebox_override("panel", _pill_box(color, ready))
-	var word: Label = Label.new()
-	word.text = tr("Ready") if ready else tr("Not ready")
-	word.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	word.add_theme_font_size_override("font_size", 14)
-	word.add_theme_color_override("font_color", color)
-	pill.add_child(word)
-	return pill
-
-
-static func _pill_box(color: Color, strong: bool) -> StyleBoxFlat:
-	var box: StyleBoxFlat = StyleBoxFlat.new()
-	box.bg_color = Color(color, 0.18 if strong else 0.08)
-	box.border_color = Color(color, 0.6 if strong else 0.25)
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(15)
-	box.content_margin_left = 12
-	box.content_margin_right = 12
-	box.content_margin_top = 6
-	box.content_margin_bottom = 6
-	box.anti_aliasing = true
-	return box
-
-
 func _is_ready() -> bool:
 	var ready: bool = _status.get("ready", false)
 	return ready
+
+
+func _can_mark_ready() -> bool:
+	return not _is_ready() and _status.get("prepared", false) and _orqwa.trainer_connected()
+
+
+## Draw outside the row's content so highlighting never changes its margins or size.
+func _draw_ready_row() -> void:
+	if _own_row == null or not _can_mark_ready():
+		return
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = Color(UiTheme.ACCENT, 0.08)
+	box.border_color = Color(UiTheme.ACCENT, 0.3)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(10)
+	box.anti_aliasing = true
+	_own_row.draw_style_box(box, Rect2(Vector2(-6, -4), _own_row.size + Vector2(12, 8)))
 
 
 ## This rider's pill, their way to say they are ready: inviting while they can, green once
@@ -785,11 +881,22 @@ func _show_ready_pill() -> void:
 	var prepared: bool = _status.get("prepared", false)
 	var trainer: bool = _orqwa.trainer_connected()
 	_ready_pill.disabled = not ready and (not prepared or not trainer)
-	_ready_pill.text = tr("Ready") if ready else tr("I'm ready")
-	var box: StyleBoxFlat = _pill_box(UiTheme.SUCCESS, true)
+	_ready_pill.text = tr("Ready") if ready else tr("Mark ready")
+	# Trainer/preparation changes do not necessarily rebuild the roster.
+	var phase: String = _status.get("phase", "")
+	for rider: Dictionary in _status.get("roster", []):
+		if rider["me"]:
+			_own_state.text = _rider_state(rider, phase, true)
+			_own_state.tooltip_text = _own_state.text
+	var color: Color = UiTheme.SUCCESS if ready else UiTheme.MUTED
+	if _can_mark_ready():
+		color = UiTheme.ACCENT
+	_own_state.add_theme_color_override("font_color", color)
+	_own_row.queue_redraw()
+	var box: StyleBoxFlat = GroupPill.box(UiTheme.SUCCESS, true)
 	var font: Color = UiTheme.SUCCESS
 	if not ready:
-		box = _pill_box(UiTheme.ACCENT, true)
+		box = GroupPill.box(UiTheme.ACCENT, true)
 		box.bg_color = UiTheme.ACCENT
 		font = UiTheme.TEXT
 	var hover: StyleBoxFlat = box.duplicate()
@@ -798,7 +905,7 @@ func _show_ready_pill() -> void:
 		_ready_pill.add_theme_stylebox_override(state, box)
 	_ready_pill.add_theme_stylebox_override("hover", hover)
 	# Waiting, it still looks like this rider's button, not like a friend's Not ready.
-	_ready_pill.add_theme_stylebox_override("disabled", _pill_box(UiTheme.ACCENT, false))
+	_ready_pill.add_theme_stylebox_override("disabled", GroupPill.box(UiTheme.ACCENT, false))
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color"]:
 		_ready_pill.add_theme_color_override(state, font)
 	_ready_pill.add_theme_color_override("font_disabled_color", Color(UiTheme.ACCENT, 0.7))
@@ -871,27 +978,10 @@ func _select_activity(course: String, workout: String) -> void:
 ## one while the ride has room (R195).
 func _show_admissions(inviting: bool) -> void:
 	var admitting: int = _status.get("admitting", 0) if inviting else 0
-	while _admitting.get_child_count() > admitting:
-		var row: Node = _admitting.get_child(_admitting.get_child_count() - 1)
-		_admitting.remove_child(row)
-		row.queue_free()
-	while _admitting.get_child_count() < admitting:
-		_admitting.add_child(_connecting_row())
 	var roster: Array = _status.get("roster", [])
+	_admitting.show_status(admitting)
 	_add.visible = inviting and roster.size() + admitting < MAX_RIDERS
 	var refusal: String = _status.get("refusal", "")
 	var refusals: int = _status.get("refusals", 0)
-	_add.show_refusal(refusal, refusals)
-
-
-func _connecting_row() -> HBoxContainer:
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var slot: CenterContainer = CenterContainer.new()
-	slot.custom_minimum_size = Vector2(36, 36)
-	slot.add_child(Spinner.new(26.0))
-	row.add_child(slot)
-	var label: Label = _label(row, tr("Connecting…"), 17)
-	label.add_theme_color_override("font_color", UiTheme.MUTED)
-	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return row
+	var refused: String = _status.get("refused", "")
+	_add.show_refusal(refusal, refusals, refused)

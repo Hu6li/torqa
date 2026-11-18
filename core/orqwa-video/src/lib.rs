@@ -32,6 +32,9 @@ pub enum VideoError {
     /// FFmpeg could not read the file or decode it.
     #[error("cannot read video: {0}")]
     Ffmpeg(#[from] ffmpeg::Error),
+    /// The file's extension names no container ORQWA reads.
+    #[error("ORQWA does not read .{0} videos")]
+    Unsupported(String),
     /// The file has no video stream.
     #[error("the file contains no video")]
     NoVideo,
@@ -120,8 +123,7 @@ impl Video {
     /// # Errors
     /// [`VideoError`] if the file cannot be read or holds no video.
     pub fn open(path: &Path) -> Result<Self, VideoError> {
-        init();
-        let input = ffmpeg::format::input(path)?;
+        let input = open_input(path)?;
         let stream = input
             .streams()
             .best(ffmpeg::media::Type::Video)
@@ -449,8 +451,7 @@ pub struct TimedGps {
 /// # Errors
 /// [`VideoError`] if the file cannot be read.
 pub fn gps_track(path: &Path) -> Result<Vec<TimedGps>, VideoError> {
-    init();
-    let mut input = ffmpeg::format::input(path)?;
+    let mut input = open_input(path)?;
     // GoPro writes GPMF into a data track ("GoPro MET"); the track whose packets hold GPS is it.
     let data_streams: Vec<(usize, f64)> = input
         .streams()
@@ -494,8 +495,7 @@ pub fn has_gps(path: &Path) -> Result<bool, VideoError> {
     // GoPro writes a payload about once a second; a few without positions mean no GPS (or no
     // fix in the first seconds, when a track would start late anyway).
     const PAYLOADS_TO_CHECK: usize = 10;
-    init();
-    let mut input = ffmpeg::format::input(path)?;
+    let mut input = open_input(path)?;
     let data_streams: Vec<usize> = input
         .streams()
         .filter(|s| s.parameters().medium() == ffmpeg::media::Type::Data)
@@ -567,6 +567,38 @@ fn iso_time(seconds: f64) -> String {
 }
 
 /// Sets up FFmpeg once per process.
+/// Opens `path` for FFmpeg with only the demuxer its extension names and only local files.
+/// FFmpeg would otherwise go by the content, so a file renamed to `.mp4` could reach any of its
+/// demuxers, among them playlists and concat lists that open further files.
+///
+/// # Errors
+/// [`VideoError::Unsupported`] for other extensions, [`VideoError::Ffmpeg`] if the file is not
+/// what its extension says or cannot be read.
+pub(crate) fn open_input(path: &Path) -> Result<ffmpeg::format::context::Input, VideoError> {
+    init();
+    let extension = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let demuxer = demuxer(&extension).ok_or(VideoError::Unsupported(extension))?;
+    let mut options = ffmpeg::Dictionary::new();
+    options.set("format_whitelist", demuxer);
+    options.set("protocol_whitelist", "file");
+    Ok(ffmpeg::format::input_with_dictionary(path, options)?)
+}
+
+/// The FFmpeg demuxer for files with `extension` (lower case): GoPro and phone videos, MKV,
+/// the AVIs Tacx courses come with, and MP3 for the ambient recordings.
+fn demuxer(extension: &str) -> Option<&'static str> {
+    match extension {
+        "mp4" | "mov" | "m4v" => Some("mov"),
+        "mkv" => Some("matroska"),
+        "avi" => Some("avi"),
+        "mp3" => Some("mp3"),
+        _ => None,
+    }
+}
+
 pub(crate) fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {

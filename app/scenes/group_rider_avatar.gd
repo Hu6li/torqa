@@ -7,6 +7,10 @@ const NAME_GAP: float = 16.0
 const NAME_RANGE: float = 80.0
 
 var generation: String = ""
+var winter_clothing: bool = false:
+	set(value):
+		winter_clothing = value
+		_avatar.winter_clothing = value
 var _avatar: RiderAvatar = RiderAvatar.new()
 var _motion: RiderMotion = RiderMotion.new()
 var _name: GroupRiderNameplate

@@ -23,12 +23,12 @@ on your smart trainer, through a 3D world or along the video, alone or with frie
 <table align="center">
   <tr>
     <td width="50%" align="center">
-      <a href="docs/images/ride-lake.jpg"><img src="docs/images/ride-lake.jpg" alt="Riding along the Bielersee in ORQWA's 3D world" width="400"></a><br>
-      <sub>A GPX route along the Bielersee in 3D</sub>
+      <a href="docs/images/showcase/fuji-lake-spring.jpg"><img src="docs/images/showcase/fuji-lake-spring.jpg" alt="Climbing a forest road among cherry blossoms below Mount Fuji in spring in ORQWA's 3D world" width="400"></a><br>
+      <sub>A GPX route below Mount Fuji</sub>
     </td>
     <td width="50%" align="center">
-      <a href="docs/images/readme/group-ride.jpg"><img src="docs/images/readme/group-ride.jpg" alt="A group ride with a friend in ORQWA's 3D world" width="400"></a><br>
-      <sub>A group ride with a friend</sub>
+      <a href="docs/images/showcase/alpenbrevet-furka-group-climb.jpg"><img src="docs/images/showcase/alpenbrevet-furka-group-climb.jpg" alt="Climbing the Furka with friends in ORQWA's 3D world" width="400"></a><br>
+      <sub>A group ride with friends</sub>
     </td>
   </tr>
   <tr>
@@ -62,7 +62,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 - **[Continue another day](https://github.com/ORQWA/ORQWA/wiki/Courses#continue-another-day):**
   Save your place in a solo 3D or video course and continue with a fresh activity next time.
 - **[Group rides](https://github.com/ORQWA/ORQWA/wiki/Group-rides):** Ride in a group of up to
-  eight people, with voice chat.
+  eight people, with voice chat, and choose the next ride together in the same lobby.
 - **[Workouts](https://github.com/ORQWA/ORQWA/wiki/Workouts):** Import or create workouts,
   train to power or heart-rate targets, and take FTP tests.
 - **[Trainers and sensors](https://github.com/ORQWA/ORQWA/wiki/Devices-and-riding#devices):**
@@ -105,3 +105,10 @@ decisions: [docs/adr/](docs/adr/); third-party assets: [docs/CREDITS.md](docs/CR
 the Godot engine, FFmpeg, every Rust crate, and others' models and data. The video-course
 screenshot shows a frame of a CC BY-NC-SA 4.0 video and is under that licence (see
 [docs/CREDITS.md](docs/CREDITS.md)).
+
+## Trademarks
+
+ORQWA is an independent project. It is not affiliated with or endorsed by Zwift, Strava,
+intervals.icu, Garmin, Tacx, Wahoo, Shimano, Elite, TrainerRoad, Nextcloud or any other company
+or product named in this repository or the usage wiki. All names and trademarks belong to their
+owners.

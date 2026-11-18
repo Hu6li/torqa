@@ -286,3 +286,31 @@ Upload priorities follow the rider, with a frame budget that yields after the cu
 The generated/stored world is unchanged, so neither `GENERATOR` nor `FORMAT` changes.
 This shortens the scene preparation wait introduced by R223. It does not stream world
 generation itself: structure foundations and protection still depend on completed terrain.
+
+## Amendment — 2026-11-10: every world is built into a store
+
+[ADR 0040](0040-world-residency.md) builds every world into a store in the cache. Chunks are
+written to `<fingerprint>.building/` as they are finished, then packed into the kept `.world`
+by raw copy when the rider keeps worlds. Otherwise the store is deleted when the course is
+closed. The ride reads chunks from the store instead of holding them all in memory. The kept
+world's layout, `FORMAT` and `GENERATOR` are unchanged.
+
+## Amendment — 2026-11-16: storage failures and stopped builds (R254)
+
+On Android a store is mandatory, independently of the free-space estimate or whether the
+free-space query succeeds. Store creation and chunk-write errors propagate through the
+fallible generation sink, join the current workers and stop the build. Unwritten chunks
+are never held as a memory fallback or marked finished. A failed world is not kept. Earlier
+chunks remain readable while the loaded scene owns their store. Desktops retain the existing
+memory fallback. Successful output and the generator and stored-format versions are unchanged.
+
+If a store fails after riding begins, the local ride pauses, releases trainer resistance and
+retains its samples for saving. Automatic scene preparation cannot resume that failed world.
+Reopening the course starts a new preparation. Group peers continue their own rides.
+
+An abort request does not mean a synchronous generation batch has stopped. All stopped task
+handles are tracked independently of resumable stores. A new generation job waits for those
+tasks to finish before starting its horizon and whole-route preparation; ride and workout
+starts poll the same condition without blocking the frame thread. Cooperative checks at batch
+boundaries also stop builds whose cached elevation futures never yield. Background takeover
+keeps the existing task, and resuming a store still waits for every job that wrote into it.

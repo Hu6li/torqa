@@ -15,8 +15,16 @@ var _working: Spinner = Spinner.new(18.0)
 var _progress: ProgressBar = ProgressBar.new()
 var _bytes: Label = Label.new()
 var _main: Button = Button.new()
+var _cancel: Button = Button.new()
 var _retry: Button = Button.new()
 var _reconnect: Button = Button.new()
+## Joins again with the same invitation once the connection has ended (#536).
+var _rejoin: Button = Button.new()
+var _layout: Control = Control.new()
+var _line_slot: HBoxContainer = HBoxContainer.new()
+var _progress_slot: Control = Control.new()
+## Start and Cancel share it before the countdown; any other button fills it alone.
+var _action_slot: HBoxContainer = HBoxContainer.new()
 ## What the main button does now: `devices`, `start` or `enter`.
 var _action: String = ""
 
@@ -26,32 +34,60 @@ func bind(orqwa: OrqwaApp) -> void:
 
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 10)
-	var line_row: HBoxContainer = HBoxContainer.new()
-	line_row.add_theme_constant_override("separation", 10)
+	add_child(_layout)
+	_layout.add_child(_progress_slot)
+	_progress_slot.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_progress_slot.offset_bottom = 48
+	_progress_slot.add_child(_line_slot)
+	_line_slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_line_slot.offset_bottom = -8
+	_line_slot.add_theme_constant_override("separation", 10)
+	var spinner_slot: CenterContainer = CenterContainer.new()
+	spinner_slot.custom_minimum_size = _working.custom_minimum_size
 	_working.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	line_row.add_child(_working)
+	spinner_slot.add_child(_working)
+	_line_slot.add_child(spinner_slot)
 	_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_line.max_lines_visible = 2
 	_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_line.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	line_row.add_child(_line)
-	add_child(line_row)
+	_line_slot.add_child(_line)
 	_progress.show_percentage = false
-	_progress.custom_minimum_size.y = 6
-	add_child(_progress)
+	_progress_slot.add_child(_progress)
+	_progress.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_progress.offset_top = -6
 	_bytes.add_theme_color_override("font_color", UiTheme.MUTED)
-	add_child(_bytes)
+	_bytes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bytes.max_lines_visible = 2
+	_bytes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bytes.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_bytes.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_line_slot.add_child(_bytes)
+	_layout.add_child(_action_slot)
+	_action_slot.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_action_slot.offset_bottom = 48
+	_action_slot.add_theme_constant_override("separation", 10)
 	_main.add_theme_stylebox_override("normal", UiTheme.accent_button())
 	_main.pressed.connect(_act)
+	_cancel.text = tr("Cancel")
+	_cancel.tooltip_text = tr("Withdraw the shared course or workout for everyone")
+	_cancel.custom_minimum_size.x = 120
+	UiTheme.danger_button(_cancel)
+	_cancel.pressed.connect(func() -> void: _orqwa.group_end_activity())
 	_retry.text = tr("Retry download")
 	_retry.pressed.connect(func() -> void: _orqwa.group_retry())
 	_reconnect.text = tr("Reconnect now")
 	_reconnect.pressed.connect(func() -> void: _orqwa.group_reconnect())
+	_rejoin.text = tr("Join again")
+	_rejoin.add_theme_stylebox_override("normal", UiTheme.accent_button())
+	_rejoin.pressed.connect(func() -> void: _orqwa.group_rejoin())
 	# Every step's button the same size, whichever is next.
-	for button: Button in [_main, _retry, _reconnect]:
+	for button: Button in [_main, _cancel, _retry, _reconnect, _rejoin]:
 		button.custom_minimum_size.y = 48
 		button.add_theme_font_size_override("font_size", 17)
-		add_child(button)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_action_slot.add_child(button)
 
 
 func _act() -> void:
@@ -75,6 +111,11 @@ func show_status(
 	var late: bool = status.get("late", false)
 	var underway: bool = phase in ["countdown", "riding", "ended"]
 	var can_retry: bool = status.get("can_retry", false)
+	var reconnect: float = status.get("reconnect_s", 0.0)
+	# The joining card offers a new reply itself once the last one ran out (R195).
+	var rejoin: bool = status.get("can_rejoin", false) and not status.get("reply_expired", false)
+	# A ride going on alone is taken up by itself once the group's activity is ready (#536).
+	var rides_alone: bool = status.get("rides_alone", false)
 	_show_progress(status, percent)
 	_action = ""
 	if late and not underway:
@@ -83,31 +124,66 @@ func show_status(
 		_action = "devices"
 	elif not underway and host:
 		_action = "start"
-	if _action == "devices" and not devices:
+	if (_action == "devices" and not devices) or rides_alone or rejoin:
 		_action = ""
 	var labels: Dictionary[String, String] = {
 		"devices": tr("Connect your trainer"),
 		"start": tr("Start group ride"),
 		"enter": tr("Join ride now"),
 	}
-	_main.visible = not _action.is_empty()
+	_main.visible = not _action.is_empty() and not can_retry and reconnect <= 0.0
 	_main.text = labels.get(_action, "")
+	# Also before the start, while friends still download or build what is shared (#556).
+	_cancel.visible = (
+		host and (phase == "countdown" or status.get("can_cancel", false)) and reconnect <= 0.0
+	)
+	_cancel.size_flags_horizontal = (
+		Control.SIZE_SHRINK_END if _main.visible else Control.SIZE_EXPAND_FILL
+	)
 	var entering: bool = status.get("entering", false)
 	_main.disabled = (
 		entering
 		or (_action == "start" and not status.get("can_start", false))
 		or (_action == "enter" and not status.get("can_enter", false))
 	)
-	_retry.visible = can_retry
-	var reconnect: float = status.get("reconnect_s", 0.0)
-	_reconnect.visible = reconnect > 0.0
+	_retry.visible = can_retry and reconnect <= 0.0
+	# From a changed network only a new reply gets this rider back (#536).
+	_reconnect.visible = reconnect > 0.0 and not status.get("moved", false)
+	_rejoin.visible = rejoin
+	# Nothing is tried from a changed network: no spinner beside what to do instead (R250).
 	_working.visible = (
-		(phase in ["connecting", "downloading", "preparing"] and not can_retry) or reconnect > 0.0
+		(phase in ["connecting", "downloading", "preparing"] and not can_retry)
+		or (reconnect > 0.0 and not status.get("moved", false))
 	)
+	# The red line about a changed network lines up with Join again below it.
+	var spinner_slot: Control = _working.get_parent()
+	spinner_slot.visible = not (reconnect > 0.0 and status.get("moved", false))
 	_show_line(status, organizer, reconnect)
+	# Friends use one fixed area for connecting or progress; the organizer keeps Start below.
+	var lobby: bool = phase not in ["riding", "ended"]
+	# A changed network says what to do above Join again, in red (R250).
+	var moved: bool = reconnect > 0.0 and status.get("moved", false)
+	var separate_action: bool = host or late or not lobby or moved
+	_layout.custom_minimum_size.y = 106 if separate_action else 48
+	_action_slot.offset_top = 58 if separate_action else 0
+	_action_slot.offset_bottom = _action_slot.offset_top + 48
+	_action_slot.visible = (
+		_main.visible or _cancel.visible or _retry.visible or _reconnect.visible or _rejoin.visible
+	)
+	_progress_slot.visible = separate_action or not _action_slot.visible
+	_line.visible = _line.visible and not _progress.visible
+	_line_slot.visible = _line.visible or _bytes.visible or _working.visible
+	_retry.tooltip_text = _line.text
+	_reconnect.tooltip_text = _line.text
 	# Nothing to do and nothing to wait for, e.g. while riding: the block makes no room.
 	visible = (
-		_main.visible or _line.visible or _progress.visible or _retry.visible or _reconnect.visible
+		lobby
+		or _main.visible
+		or _line.visible
+		or _progress.visible
+		or _retry.visible
+		or _reconnect.visible
+		or _rejoin.visible
 	)
 
 
@@ -158,11 +234,22 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 		text = tr("Download stopped. Try again when you're ready.")
 	if status.get("entering", false):
 		text = tr("Joining your friends…")
+	# Joined again during a ride, which goes on alone until the group takes it up (#536).
+	if status.get("waits_for_ride", false):
+		text = tr("Your friends ride something else now. Join them once your ride ends.")
+	elif status.get("rides_alone", false) and phase not in ["connecting", "failed", "ended"]:
+		text = tr("Joining your friends…")
 	# The connection to the organizer was lost and comes back by itself (#434).
 	if reconnect > 0.0:
 		text = (
 			tr("Trying for another %s. You keep your place in the group.")
 			% ("%d:%02d" % [floori(reconnect / 60.0), floori(reconnect) % 60])
+		)
+	# Reconnecting cannot work from a changed network; a new reply keeps the place (#536).
+	var moved: bool = reconnect > 0.0 and status.get("moved", false)
+	if moved:
+		text = (
+			tr("Your network changed. Press Join again and send the new reply to %s.") % organizer
 		)
 	# The countdown replaces readiness here so no new row shifts the course preview (R204).
 	if phase == "countdown" and not late and reconnect <= 0.0:
@@ -170,5 +257,7 @@ func _show_line(status: Dictionary, organizer: String, reconnect: float) -> void
 		text = tr("Starting in %s seconds…") % ceili(countdown)
 		good = false
 	_line.text = text
+	_line.tooltip_text = text
 	_line.visible = not text.is_empty()
-	_line.add_theme_color_override("font_color", UiTheme.SUCCESS if good else UiTheme.MUTED)
+	var color: Color = UiTheme.SUCCESS if good else UiTheme.MUTED
+	_line.add_theme_color_override("font_color", UiTheme.DANGER if moved else color)

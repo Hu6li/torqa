@@ -272,10 +272,12 @@ edge-biased drifts, physical scale, rain response and subpixel filtering live in
 material. No texture download, stored data or generated geometry changes; season selection
 remains reversible and has no effect on resistance or grip.
 
-### Nearby Ultra buildings (2026-11-07, R233)
+### Nearby Ultra buildings (2026-11-07, R256)
 
 Separate close model appearances and Rust-derived façade additions are selected only by
-Ultra, within 160 m with a 20 m fade. View distance remains independent. Low–High upload
+Ultra, within 160 m with a 20 m fade. View distance remains independent. Only the
+appearance going away fades; the one replacing it is drawn opaque beneath it beforehand, so a
+building is never see-through between appearances. Low–High upload
 their existing geometry; all presets share neutralized scanned plaster/roof materials and
 regional palette tints. The benchmark follows the same upload path.
 
@@ -293,3 +295,13 @@ draw cost but retained millions of unnecessary triangles in the first native tow
 
 Native frame-rate acceptance remains separate from software-rendered appearance and unit
 checks. See [building detail](../building-realism-study.md) for authoring and review.
+
+### Seasonal rider clothing (2026-11-15, R245)
+
+Autumn and Winter use alternate rider assets with fitted thermal caps, full-finger gloves,
+long tights, long sleeves and zipped gilets. The Blender build keeps the skeleton, bike and
+fit metadata identical to short kit and checks the metadata when generating winter assets.
+The gilet inherits the torso's skin weights and has closed hems; the cap fits under the
+existing helmet. Presentation swaps the local rider, ghost and group avatars with the local
+season, retaining their identifying colours and visibility. Neither world versions nor the
+group protocol changes. The existing Season control is sufficient.

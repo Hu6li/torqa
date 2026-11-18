@@ -302,6 +302,7 @@ func _preview() -> void:
 		_map.set_map(picture)
 		_map.show()
 		_map_space.show()
+		_elevation.gradient_colours = _orqwa.profile().get("gradient_colours", false)
 		_elevation.set_profile(profile)
 		_elevation.visible = profile.size() >= 2
 		_figures.show()

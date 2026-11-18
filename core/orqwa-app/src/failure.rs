@@ -158,10 +158,22 @@ pub enum Kind {
     DownloadRegion,
     /// Could not prepare the map detail of %s.
     PrepareRegion,
+    /// Riding this course needs %s of free storage for its 3D world; %s is free. Free up some
+    /// storage, then ride again.
+    WorldStorage,
+    /// Could not store the course's 3D world. Check free storage and reopen the course.
+    WriteWorld,
+    /// Not enough available memory for this course and Android's system reserve.
+    WorldMemory,
+    /// Android reports memory pressure even if a planning estimate would fit.
+    MemoryPressure,
+    /// Could not read Android's current available memory.
+    ReadMemory,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
     #[must_use]
+    #[allow(clippy::too_many_lines)] // one exhaustive gettext-key table
     pub fn message(self) -> &'static str {
         // i18n-begin
         match self {
@@ -256,6 +268,21 @@ impl Kind {
             Self::LoadRegions => "Could not load the regions to download.",
             Self::DownloadRegion => "Could not download the map detail of %s.",
             Self::PrepareRegion => "Could not prepare the map detail of %s.",
+            Self::WorldStorage => {
+                "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+            }
+            Self::WriteWorld => {
+                "Could not store the course's 3D world. Check free storage and reopen the course."
+            }
+            Self::WorldMemory => {
+                "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
+            }
+            Self::ReadMemory => {
+                "Could not check Android's available memory. Reopen ORQWA and try again."
+            }
+            Self::MemoryPressure => {
+                "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
+            }
         }
         // i18n-end
     }

@@ -107,6 +107,18 @@ pub fn invitation(text: &str) -> Result<InvitationPreview, AppError> {
     })
 }
 
+/// Whether `text` is an invitation from another ORQWA version, `Greater` for a newer one:
+/// everyone in a group needs the same version, so one side must update (#536).
+#[must_use]
+pub fn invitation_version(text: &str) -> Option<std::cmp::Ordering> {
+    let code = pasted_invitation(text).unwrap_or(text);
+    match Invite::from_code(code, INSPECTION) {
+        Err(orqwa_net::code::CodeError::Newer) => Some(std::cmp::Ordering::Greater),
+        Err(orqwa_net::code::CodeError::Older) => Some(std::cmp::Ordering::Less),
+        _ => None,
+    }
+}
+
 /// The invitation's code and contents, holding only addresses its own setup permits: one
 /// for separate homes cannot carry home-network addresses (R174, R197).
 fn lobby_invitation(text: &str) -> Result<(&str, Invite), AppError> {
@@ -262,6 +274,7 @@ mod tests {
             fingerprint: invite.fingerprint,
             route: invite.route,
             client: Fingerprint([3; 32]),
+            name: "Alex".into(),
             candidates: invite.candidates.clone(),
             nat: NatObservation::None,
         };

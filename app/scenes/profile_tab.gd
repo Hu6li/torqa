@@ -290,6 +290,7 @@ func _setting_rows(rider: Dictionary) -> Array[Array]:
 		["Units", "Imperial (mi, lb)" if imperial else "Metric (km, kg)"],
 		["Rider on the bike", "Male rider" if rider.get("avatar") == "male" else "Female rider"],
 		["Ride map", "Dark" if rider.get("map_style") == "dark" else "Colored"],
+		["Elevation colors", "By gradient" if rider.get("gradient_colours", false) else "Plain"],
 		[
 			"Voice",
 			{"plain": "Plain facts", "off": "Off"}.get(

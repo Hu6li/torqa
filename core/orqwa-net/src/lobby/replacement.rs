@@ -151,6 +151,7 @@ mod tests {
                 ..GatherOptions::default()
             },
             window: Duration::from_secs(2),
+            reply: Duration::from_secs(2),
             ..ConnectOptions::default()
         }
     }
@@ -187,7 +188,7 @@ mod tests {
         roster: &Roster,
         selection: &Selection,
     ) -> JoinerLobby {
-        let joiner = Joiner::lobby(plan.invite.clone(), &options())
+        let joiner = Joiner::lobby("Rider", plan.invite.clone(), &options())
             .await
             .unwrap();
         host.admit_as(joiner.reply(), id).await.unwrap();
@@ -243,7 +244,7 @@ mod tests {
             }),
         )
         .unwrap();
-        let joiner = Joiner::lobby(transport.invite().clone(), &options())
+        let joiner = Joiner::lobby("Rider", transport.invite().clone(), &options())
             .await
             .unwrap();
         transport.admit(joiner.reply()).unwrap();
@@ -536,7 +537,7 @@ mod tests {
         .await
         .unwrap();
         first_voice.microphone(false).unwrap();
-        let joiner = Joiner::lobby(plan.invite.clone(), &options())
+        let joiner = Joiner::lobby("Rider", plan.invite.clone(), &options())
             .await
             .unwrap();
         host.admit(joiner.reply()).await.unwrap();
@@ -608,7 +609,7 @@ mod tests {
         roster: &Roster,
         selection: &Selection,
     ) -> JoinerLobby {
-        let joiner = Joiner::lobby(plan.invite.clone(), &options())
+        let joiner = Joiner::lobby("Rider", plan.invite.clone(), &options())
             .await
             .unwrap();
         host.admit_as(joiner.reply(), id).await.unwrap();

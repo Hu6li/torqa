@@ -4,7 +4,9 @@ extends SceneTree
 ## One run covers the views of route $ROUTE; scripts/render-views.sh runs all routes, and $VIEWS
 ## (space-separated names) limits it to some. A $ROUTE ending in .gpx or .oqc is a file, shot
 ## as $SHOTS says: space-separated name:distance:camera, optionally :right,up,back for a camera
-## standing aside.
+## standing aside and key=value fields for showcase pictures: time= and weather= (as in VIEWS),
+## season=, rider= (female or male), group= (friends riding along, up to 7), hud=0 (the 3D
+## world alone), fov=, elevation=gradient (the profile coloured by gradient) and map=dark.
 
 ## View name → [route, distance along it in metres, camera (`RideWorld.CameraMode`), time of
 ## day, weather], and optionally where a camera standing aside looks at the rider from (metres
@@ -71,16 +73,31 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	var wanted: PackedStringArray = OS.get_environment("VIEWS").split(" ", false)
 	var specs: Dictionary[String, Array] = VIEWS.duplicate()
+	var shot_options: Dictionary[String, Dictionary] = {}
 	var gpx: String = ProjectSettings.globalize_path("res://../core/fixtures/%s.gpx" % route)
 	if route.ends_with(".gpx") or route.ends_with(".oqc"):
 		gpx = route
 		specs.clear()
 		for shot: String in OS.get_environment("SHOTS").split(" ", false):
 			var parts: PackedStringArray = shot.split(":")
-			specs[parts[0]] = [route, float(parts[1]), int(parts[2]), "Midday", "Clear"]
-			if parts.size() > 3:
-				var aside: PackedFloat64Array = parts[3].split_floats(",")
-				specs[parts[0]].append(Vector3(aside[0], aside[1], aside[2]))
+			var options: Dictionary[String, String] = {}
+			var aside: Vector3 = Vector3.ZERO
+			for field: String in parts.slice(3):
+				if "=" in field:
+					options[field.get_slice("=", 0)] = field.get_slice("=", 1)
+				else:
+					var offsets: PackedFloat64Array = field.split_floats(",")
+					aside = Vector3(offsets[0], offsets[1], offsets[2])
+			specs[parts[0]] = [
+				route,
+				float(parts[1]),
+				int(parts[2]),
+				options.get("time", "Midday"),
+				options.get("weather", "Clear"),
+			]
+			if aside != Vector3.ZERO:
+				specs[parts[0]].append(aside)
+			shot_options[parts[0]] = options
 	var views: Array[String] = []
 	for view: String in specs:
 		var spec: Array = specs[view]
@@ -102,7 +119,7 @@ func _run() -> void:
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
 	if route.ends_with(".oqc"):
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(gpx)
@@ -116,13 +133,14 @@ func _run() -> void:
 		quit(1)
 		return
 	# Upload chunks while the world is hidden, instead of rendering every intermediate batch.
-	while true:
-		var next_chunk: int = world.get("_next_chunk")
-		var chunk_count: int = world.get("_chunk_count")
-		if next_chunk >= chunk_count:
-			break
+	while not world.chunks_uploaded():
 		await process_frame
-	orqwa.connect_fake_trainer(150.0, 85.0)
+	var showcase: bool = OS.get_environment("SHOWCASE") == "1"
+	if showcase:
+		# Website pictures in a fixed 16:9 size, not the rider's full-screen choice.
+		root.mode = Window.MODE_WINDOWED
+		root.size = Vector2i(3200, 1800)
+	orqwa.connect_fake_trainer(210.0 if showcase else 150.0, 88.0 if showcase else 85.0)
 	orqwa.start_ride(50.0, false, {"kind": "none"})
 	start.ride_started.emit(start.ride_options())
 	orqwa.set_paused(true)
@@ -134,6 +152,11 @@ func _run() -> void:
 	var capture_camera: Camera3D = world.get("_camera")
 	var default_fov: float = capture_camera.fov
 	var ride_screen: Control = _main.get_node("RideScreen")
+	# Notices such as connecting the trainer or a first ride on the course would date the picture.
+	var toast: Control = ride_screen.get("_toast")
+	toast.modulate = Color.TRANSPARENT
+	var moment_card: MomentCard = ride_screen.get("_moment_card")
+	moment_card.shown.connect(func(_text: String) -> void: moment_card.clear())
 	for view: String in views:
 		capture_camera.fov = default_fov
 		ride_screen.show()
@@ -148,17 +171,23 @@ func _run() -> void:
 		var camera: int = spec[2]
 		var time: String = spec[3]
 		var weather: String = spec[4]
+		# Before riding up: a changed profile lays the HUD out afresh, without figures.
+		var looks: Dictionary = shot_options.get(view, {})
+		_show_looks(orqwa, ride_screen, looks)
+		if showcase:
+			await _ride_up_to(orqwa, distance)
 		orqwa.jump_to_distance(distance)
 		world.set("_free", false)
 		world.set_camera(camera)
 		world.set("_placed", false)
-		var season: String = OS.get_environment("SEASON")
+		var options: Dictionary = shot_options.get(view, {})
+		var season: String = options.get("season", OS.get_environment("SEASON"))
+		var group: String = options.get("group", "0")
+		_show_group(orqwa, world, group.to_int(), distance)
+		var avatar: RiderAvatar = world.get("_avatar")
+		avatar.rider = options.get("rider", OS.get_environment("RIDER"))
 		world.apply_options({"time": time, "weather": weather, "camera": camera, "season": season})
-		while true:
-			var streamed: int = world.get("_next_chunk")
-			var chunks: int = world.get("_chunk_count")
-			if streamed >= chunks:
-				break
+		while not world.chunks_uploaded():
 			await process_frame
 		if spec.size() > 5 and spec[5] is Vector3:
 			# Place the rider at the requested distance before positioning a camera aside.
@@ -179,11 +208,102 @@ func _run() -> void:
 				push_error("No instance for screenshot: " + view)
 				quit(1)
 				return
+		if options.get("hud", "1") == "0":
+			ride_screen.hide()
+		if options.has("fov"):
+			var fov: String = options["fov"]
+			capture_camera.fov = fov.to_float()
 		for frame: int in range(SETTLE_FRAMES):
 			await process_frame
 		root.get_texture().get_image().save_png(out.path_join(view + ".png"))
 		print("saved %s" % view)
 	quit(0)
+
+
+## The rider's elevation colours and ride map for a shot (R242): elevation=gradient and
+## map=dark, else plain over the coloured map. Saved like a change in the ride's settings.
+func _show_looks(orqwa: OrqwaApp, ride_screen: Control, options: Dictionary) -> void:
+	var profile: Dictionary = orqwa.profile().duplicate()
+	var wanted: Dictionary = profile.duplicate()
+	wanted["gradient_colours"] = options.get("elevation", "plain") == "gradient"
+	wanted["map_style"] = "dark" if options.get("map", "coloured") == "dark" else "coloured"
+	if wanted != profile:
+		ride_screen.call("_on_profile_changed", wanted)
+
+
+## Rides the last stretch before a showcase shot and holds the HUD there, so speed, power and
+## time are those of riding the spot: pausing drops the fake trainer's power to its least.
+func _ride_up_to(orqwa: OrqwaApp, distance: float) -> void:
+	var ride: RideScreen = _main.get_node("RideScreen")
+	ride.set_process(true)
+	orqwa.jump_to_distance(maxf(distance - 1500.0, 0.0))
+	orqwa.set_paused(false)
+	orqwa.set_time_scale(20.0)
+	var until: int = Time.get_ticks_msec() + 45000
+	while Time.get_ticks_msec() < until:
+		var state: Dictionary = orqwa.ride_state()
+		var reached: float = state.get("distance_m", 0.0)
+		if reached >= distance - 5.0:
+			break
+		await process_frame
+	ride._process(1.0 / 60.0)
+	ride.set_process(false)
+	orqwa.set_paused(true)
+
+
+## Friends riding around the rider for a showcase shot, posed as during a live group ride
+## (the fixture of app/tests/group_rider_screenshots.gd); none clears them again.
+func _show_group(orqwa: OrqwaApp, world: RideWorld, count: int, distance: float) -> void:
+	var names: Array[String] = ["Alex", "Mia", "Noah", "Luca", "Sara", "Jonas", "Robin"]
+	var gaps: Array[float] = [4.0, 9.0, 14.0, -6.0, 21.0, -13.0, 28.0]
+	var looks: Array[String] = ["male", "female", "male", "male", "female", "male", "male"]
+	# Each friend's own effort and build, as in a real group.
+	var watts: Array[float] = [265.0, 205.0, 290.0, 240.0, 185.0, 250.0, 225.0]
+	var weights: Array[float] = [74.0, 58.0, 82.0, 70.0, 56.0, 78.0, 68.0]
+	var peers: Array[Dictionary] = []
+	for index: int in range(mini(count, names.size())):
+		orqwa.jump_to_distance(distance + gaps[index])
+		var peer: Dictionary = orqwa.ride_state().duplicate(true)
+		(
+			peer
+			. merge(
+				{
+					"id": index + 1,
+					"generation": "1",
+					"name": names[index],
+					"gap_m": gaps[index],
+					"speed_kmh": 24.0,
+					"power_w": watts[index],
+					"watts_per_kg": watts[index] / weights[index],
+					"avatar": looks[index],
+					"cadence": 88.0,
+					"effort": 4.0,
+				},
+				true
+			)
+		)
+		peers.append(peer)
+	orqwa.jump_to_distance(distance)
+	var ride: RideScreen = _main.get_node("RideScreen")
+	for child: Node in world.get_children():
+		if child is GroupRidersWorld:
+			var riders: GroupRidersWorld = child
+			riders.set_process(peers.is_empty())
+			# Poses stay frozen, but names must follow the camera each shot moves to.
+			var placing: Callable = riders._place_names
+			var placed: bool = RenderingServer.frame_pre_draw.is_connected(placing)
+			if peers.is_empty() and placed:
+				RenderingServer.frame_pre_draw.disconnect(placing)
+			elif not peers.is_empty() and not placed:
+				RenderingServer.frame_pre_draw.connect(placing)
+			for tick: int in range(120):
+				riders.show_riders(peers, 1.0 / 60.0)
+	if not peers.is_empty():
+		ride.set_process(false)
+	ride._bar.show_group(not peers.is_empty())
+	ride._group_riders.show_riders(peers, false)
+	ride._minimap.set_group_riders(peers)
+	ride._profile.set_group_riders(peers)
 
 
 func _forest_distance(orqwa: OrqwaApp) -> float:

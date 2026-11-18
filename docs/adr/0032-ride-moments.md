@@ -66,3 +66,15 @@ another notification needs a new improvement beyond the highest power reached so
 including the silent improvements. The recorded samples still supply the full power curve
 and final record badges. Detection stays in Rust, so cards, overlay lines and chimes all
 follow the same cooldown.
+
+## Amendment — 2026-11-15: group connections on the card (R249)
+
+The card now also tells group connections that drop, come back or end, the future source of
+messages the decision above left room for. The core compares successive group snapshots
+(`group::notices`) and reports each change once as `AppEvent::GroupConnection`. Friends'
+drops, returns and departures are gathered for two seconds and told on one card each, as a
+group often loses several friends at once and a card apiece would queue for half a minute; a
+drop shorter than that is not told at all. The ride screen only presents them: a dropped connection in red, one that is back in green, with the
+burst in that colour instead of the brand blue and the zone colours, and the same chime.
+These are not moments: they show whatever the moments' voice, as riders need to know who
+dropped out even with the cheering off, and they never count toward a ride's records.

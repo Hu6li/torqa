@@ -25,6 +25,8 @@ pub enum LoadStage {
     CourseMap,
     /// Finding the countries the route passes (#230).
     Countries,
+    /// Reading the course's world kept from an earlier ride (R101).
+    KeptWorld,
     /// Building the 3D world.
     World,
 }
@@ -40,6 +42,7 @@ impl LoadStage {
             Self::Elevation => "Correcting elevations",
             Self::CourseMap => "Downloading the course map",
             Self::Countries => "Finding the countries",
+            Self::KeptWorld => "Reading the saved world",
             Self::World => "Building 3D world",
         }
         // i18n-end
@@ -49,7 +52,7 @@ impl LoadStage {
     #[must_use]
     pub fn unit(self) -> &'static str {
         match self {
-            Self::Route => "files",
+            Self::Route | Self::KeptWorld => "files",
             Self::Map | Self::CourseMap => "tiles",
             Self::Countries => "steps",
             Self::Elevation => "points",
@@ -95,8 +98,9 @@ pub async fn import_route(
     progress: Progress<'_>,
 ) -> Result<Imported, Failure> {
     progress(LoadStage::Route, 0, 1);
-    let xml = tokio::fs::read_to_string(path)
+    let xml = tokio::fs::read(path)
         .await
+        .map(text)
         .map_err(|e| Failure::new(Kind::ReadFile, e).arg(path.display()))?;
     let fallback = path
         .file_stem()
@@ -293,9 +297,22 @@ impl<M: ElevationModel + Send> ElevationModel for Counting<'_, M> {
     }
 }
 
+/// A route or control file's text. Route and video libraries also ship Windows-1252 files;
+/// rather than refuse them, their odd characters are replaced, which garbles only accented
+/// names.
+pub(crate) fn text(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn files_that_are_not_utf8_are_still_read() {
+        assert_eq!(text("Col de Prémol".into()), "Col de Prémol");
+        assert_eq!(text(b"Col de Pr\xe9mol".to_vec()), "Col de Pr\u{fffd}mol");
+    }
 
     #[tokio::test]
     async fn traffic_side_comes_from_the_route_and_border_inputs_are_kept_offline() {

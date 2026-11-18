@@ -58,7 +58,14 @@ build image. That is too much for the dev image, which every check pulls.
   - The core's log goes to Android's log (`adb logcat -s ORQWA`), at debug level while support is
     young.
   - A file picked on Android arrives as a `content://` address, which the core cannot open.
-    `PickedFile` copies it into ORQWA's folder first. Elsewhere it changes nothing.
+    `PickedFile` copies it into ORQWA's folder first. Elsewhere it changes nothing. Some pickers
+    answer an address ending in a document id (`…/document/msf:…`), which names nothing: the
+    plugin names the copy by the provider's display name, so the import still sees the file's
+    extension.
+  - The pickers that open a file to import show every file on Android. Godot turns a dialog's
+    extension filters into MIME types, and Recent and Downloads list a file under the type its
+    download gave it (a GPX as `application/gpx+xml`, say), so a matching file was greyed out
+    there and could only be picked by browsing to its folder.
 
 ## Phase A result (2026-10-19)
 
@@ -252,3 +259,54 @@ load the native extension. SDK/NDK versions and desktop builds are unchanged.
 CPAL's Android backend links `libaaudio`, [available since API 26](https://developer.android.com/ndk/guides/stable_apis#aaudio).
 The former API 24 linker could not find this library once voice became an app dependency.
 FFmpeg's API 24 static libraries remain compatible with the extension's newer target.
+
+## Amendment 2026-11-16: available memory before 3D (R255)
+
+The Android plugin hands the application's `ActivityManager` to the native bridge once, before
+Godot opens the extension. At 3D admission the bridge reads `MemoryInfo.availMem`, `totalMem`,
+`threshold` and `lowMemory`, without permissions. The Java heap limit does not account for
+native generation and Godot's GPU allocations. A missing service, failed query or invalid
+reading refuses preparation explicitly; desktops do not install this guard.
+
+The Rust application policy retains the greatest of 512 MB, 10% of kernel-accessible RAM,
+and Android's low-memory threshold plus 256 MB. It compares the remaining available memory
+with a course estimate after stopped generation tasks have actually released their buffers.
+The estimate combines whole-route preparation, a batch at 0.016 GB per available core with
+a 0.128 GB minimum, and the resident scene. Mapped street/rail length and raw points,
+building footprints, land-cover vertices and the ridden road contribute; 480 m cells find
+the busiest circular surroundings along the course at the requested upload radius, including
+eviction margins and cell-position uncertainty. Graphics settings supply the rendering radius
+independently of generation's hand-over radius: building an entire course first does not
+render every chunk. Godot's already-allocated baseline is not charged again; extra scene
+headroom starts at 0.128 GB and scales with view area. A kept world is checked for rendering, without
+charging again for generation. The coefficients and their limits are documented with the
+[memory measurements](../benchmarks/world-memory.md#available-memory-admission-r255).
+
+Messages show decimal GB (10⁹ bytes), separating the estimated additional course allocation,
+memory available after Android's reserve, and the reserve itself. Required amounts round up
+and available amounts down to 0.01 GB. Logs retain exact byte values and the estimate's
+preparation, batch and scene components. The offline `memory_estimate` example reproduces
+these components without generating or rendering a world.
+
+Allocation checkpoints recheck live headroom during whole-route preparation, between batches
+and before scene uploads, including while riding a completed/kept world. Generation preserves
+room for another batch; scene uploads preserve 128 MB beyond the system reserve. Workers and
+the frame thread share a sample for at most 100 ms; admission and the transition from horizon
+to chunk preparation force a fresh reading. A failed check cooperatively stops workers and
+uses R254's local pause, trainer release and recording-preservation behavior. Further scene
+uploads and automatic resumes stop; uploaded terrain/scenery chunks are released and completed
+optional LOD results are discarded. Queued
+progress/results from a failed build cannot replace the memory error or revive preparation.
+
+This is conservative admission and cooperative pressure handling, not an allocator limit or
+protection from an unrelated native/driver crash. The estimate is heuristic, and allocations
+inside one synchronous operation can grow before its next checkpoint. Hardware acceptance on
+the S25 Ultra and Tab S7 remains required. No dependency, permission, generator or stored-world
+format change is needed.
+
+References: [MemoryInfo](https://developer.android.com/reference/android/app/ActivityManager.MemoryInfo),
+[getMemoryInfo](https://developer.android.com/reference/android/app/ActivityManager#getMemoryInfo(android.app.ActivityManager.MemoryInfo)).
+Foreground trim callbacks are no longer delivered from API 34, so
+[ComponentCallbacks2](https://developer.android.com/reference/android/content/ComponentCallbacks2)
+cannot be the sole trigger for current phones. Checks run at allocation checkpoints rather
+than depending on those callbacks.

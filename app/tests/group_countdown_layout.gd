@@ -1,6 +1,6 @@
 class_name GroupCountdownLayout
 extends RefCounted
-## The shared countdown locks choices without moving the activity preview (R204).
+## The shared countdown and live pings keep the activity preview still (R204, R235).
 
 
 static func check(tree: SceneTree, verify: Callable) -> void:
@@ -53,6 +53,8 @@ static func _countdown(
 			{"id": 1, "name": "Mia", "ready": true, "me": not host},
 		],
 	}
+	var friend: Dictionary = status["roster"][1 if host else 0]
+	friend["ping_ms"] = 45
 	group._show_status(status)
 	var picker: GroupActivityPicker = group._picker
 	# The organizer's draft may differ from the shared choice. The shared choice is shown
@@ -66,6 +68,7 @@ static func _countdown(
 	var elevation: Rect2 = picker._elevation.get_global_rect()
 	var chart: Rect2 = picker._chart.get_global_rect()
 	for seconds: int in [5, 3, 1]:
+		friend["ping_ms"] = 60000 if seconds == 3 else 45
 		status["phase"] = "countdown"
 		status["countdown_s"] = seconds
 		group._show_status(status)
@@ -74,7 +77,10 @@ static func _countdown(
 		if not course.is_empty():
 			verify.call(
 				picker._map.get_global_rect().is_equal_approx(map),
-				"countdown keeps the map's position and size: " + context
+				(
+					"countdown keeps the map's position and size: %s %s -> %s"
+					% [context, map, picker._map.get_global_rect()]
+				)
 			)
 			verify.call(
 				picker._elevation.get_global_rect().is_equal_approx(elevation),

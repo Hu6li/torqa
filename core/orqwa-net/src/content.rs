@@ -639,12 +639,13 @@ mod tests {
                 ..GatherOptions::default()
             },
             window: Duration::from_secs(10),
+            reply: Duration::from_secs(10),
             ..ConnectOptions::default()
         };
         let mut host = Host::open("Anna", "Test", RouteHash([7; 32]), &options)
             .await
             .unwrap();
-        let joiner = Joiner::open(host.invite().clone(), RouteHash([7; 32]), &options)
+        let joiner = Joiner::open("Rider", host.invite().clone(), RouteHash([7; 32]), &options)
             .await
             .unwrap();
         host.admit(joiner.reply()).unwrap();

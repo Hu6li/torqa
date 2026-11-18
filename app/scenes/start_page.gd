@@ -71,6 +71,12 @@ func refresh() -> void:
 		_analysis.refresh()
 
 
+## Open the connected group again after an activity ends.
+func show_group_lobby() -> void:
+	_tabs.current_tab = Tab.GROUP_RIDES
+	_group.refresh()
+
+
 ## The ride options of the course being ridden, e.g. to show them in the ride.
 func ride_options() -> Dictionary:
 	return _detail.ride_options()
@@ -166,7 +172,8 @@ func _align_brand() -> void:
 
 
 func _on_tab_clicked(tab: int) -> void:
-	if tab == Tab.COURSES and _detail.visible:
+	# tab_changed runs before tab_clicked, so current_tab already names the clicked tab.
+	if tab == Tab.COURSES and _tab_bar.get_previous_tab() == Tab.COURSES and _detail.visible:
 		_show_gallery()
 
 
@@ -244,6 +251,8 @@ func _start_workout() -> void:
 		return
 	var workout: Dictionary = _pending_workout
 	var revision: int = _preparation_revision
+	if not await _wait_for_stopped_builds(revision):
+		return
 	# On a course, its world looks as last chosen on the course page.
 	var options: Dictionary = _detail.ride_options()
 	if _workout_on_course:
@@ -276,7 +285,10 @@ func _start_ride() -> void:
 	var options: Dictionary = _pending_ride[0]
 	var ghost: Dictionary = _pending_ride[1]
 	var revision: int = _preparation_revision
-	if not _orqwa.riding_along_video():
+	if not await _wait_for_stopped_builds(revision):
+		return
+	# The core knows whether a ride plays the video only once it has started.
+	if not _detail.rides_along_video():
 		var prepared: bool = await WorldPreparation.prepare(
 			_world,
 			_orqwa,
@@ -302,6 +314,14 @@ func _start_ride() -> void:
 		ride_started.emit(options)
 
 
+func _wait_for_stopped_builds(revision: int) -> bool:
+	while revision == _preparation_revision:
+		if _orqwa.prepare_ride():
+			return true
+		await get_tree().process_frame
+	return false
+
+
 func _cancel_preparation() -> void:
 	_preparation_revision += 1
 	_detail.cancel_preparation()
@@ -319,7 +339,18 @@ func _group_started(on_course: bool, workout: bool) -> void:
 	# Group startup takes this value from the profile, even if no course page was opened.
 	var difficulty: float = _orqwa.profile()["default_difficulty_pct"]
 	options["difficulty"] = difficulty
+	# And the sounds chosen in the settings (#619).
+	var volumes: Dictionary = _orqwa.default_ride_volumes()
+	options["wind_volume"] = volumes["wind"]
+	options["bike_volume"] = volumes["bike"]
 	options["on_course"] = on_course
 	if workout:
-		options["workout"] = {"kind": "plan", "id": _orqwa.group_status()["workout_id"]}
+		# The group's own plan: a friend's is the organizer's, not in their library (#537).
+		var plan: Dictionary = _orqwa.group_workout()
+		options["workout"] = {
+			"kind": "plan",
+			"id": _orqwa.group_status()["workout_id"],
+			"name": plan.get("name", ""),
+			"plan": plan,
+		}
 	ride_started.emit(options)

@@ -347,6 +347,33 @@ abreast drafting, effective shelter/support and less than two percentage points 
 variation after settling. Slow-frame sample-time alignment and stale expiry are separate
 checks. Existing two-screen motion/overtake tests continue to protect playback.
 
+### Position-constrained assistance and real-time motion — 2026-11-08 (R233)
+
+The original critically damped band could reverse its position effect: a fast rider still
+behind the middle received braking, and the rider ahead support. R209 documented that
+behavior and a regression explicitly expected it. R233 supersedes it: the group middle
+determines the allowed direction, while relative speed may only reduce the restoring force
+to zero. The robust reference, freshness weights, five-metre middle dead zone and ±2
+gradient-percentage-point bound remain. The organizer has no special role.
+
+Each request retains the reference's position constraint. Before filtering, cancel any old
+band that now points away from the middle, including when a corrected position crosses it.
+New effects still ramp under the existing response and slew limit. With no eligible peer,
+retain the existing bounded fade. Direction cancellation is an explicit exception to the
+ordinary slew limit; retaining wrong-direction assistance to meet that limit is forbidden.
+The session invalidates its cached trainer command when a band clears or reverses, or
+drafting clears, so its one-second throttle and 0.1-point gradient threshold cannot leave
+an obsolete effect on the trainer. ERG targets remain unchanged.
+
+Investigation also reproduced sustained front support and back braking while the back lost
+ground with a slow-rendering client. Godot 4.7.2 caps process delta during slow frames, but
+group state is timestamped with real monotonic elapsed time. Advancing physics with the
+capped delta made reported virtual speed exceed actual progress per real second. The
+extension now supplies real monotonic frame duration to the Rust app, matching the group
+clock; explicit accelerated simulation remains separate. A five-fps Godot regression checks
+that riding time follows real elapsed time, alongside the direction and command regressions.
+No wire-format change is needed, and buffered presentation remains unchanged.
+
 ### Android publication and diagnostics repair — 2026-10-29
 
 Android's shared-storage filesystem rejects hard links even in the app-owned media folder.
@@ -539,8 +566,10 @@ optional workout in the shared encoding without its cues, 1 MiB in all. It is ne
 disk, published or ridden, and carries no route, map data or path. A course with a larger
 picture is previewed without it. The organizer's app builds it on a blocking worker from the
 course's manifest and map picture, halving pictures wider than 640 pixels with a box filter
-through the workspace's existing `png` crate: the link's flow-control windows make every
-kilobyte take time, and half the size arrives about three times sooner.
+through the workspace's existing `png` crate: the link's flow-control windows then made every
+kilobyte take time, and half the size arrived about three times sooner. Since #535 widened
+those windows (ADR 0035, Transfer windows) the halving mainly keeps previews small on slow
+uplinks.
 
 The organizer's lobby holds the latest preview in memory and names it in a `Preview` control
 of its content identity, a new `ContentKind::Preview`, at most every 500 ms however fast the
@@ -598,3 +627,89 @@ self echoes; app tests check presentation/recording isolation and own-echo assis
 exclusion. No service, endpoint, dependency or rider control changes. The shared start still
 uses the existing half-RTT estimate; arbitrary network outages cannot provide exact current
 positions. Cross-home and native trainer acceptance remain manual.
+
+### Reusable lobby — 2026-11-08
+
+R237 separates ending an activity from closing group networking. The authenticated organizer
+can end the selected revision during countdown or riding; the app does the same when its
+local ride finishes. Each app releases its trainer, saves its own samples and returns to
+Group Rides. A participant finishing locally does not end the shared activity. Structured
+workouts on courses retain their existing continuation to the course finish.
+
+Protocol/invitation version 16 and ALPN `orqwa-group/16` add a reliable organizer-only
+`Lobby(ended_revision)` control. The activity actor retains its revision high-water mark
+and membership generations while clearing selection, readiness, selected-content serving,
+entry permissions, start/workout clocks and motion. The app cancels preparation and fallback
+standby work, clears launch state and retains the original lobby and voice owners, consent,
+microphone gates, local mutes and assistance choices. Reusing content still requires a new
+selection revision and fresh readiness. Initial admission/reconnection controls include the
+last ended revision before any current selection/running state, so missing an end during a
+dropout cannot leave a rider locked into the previous course.
+
+App state datagrams append the selection revision to the existing fixed state encoding.
+Previous-revision packets are discarded under the existing bounded ingress budgets, including
+across successive rides with new elapsed clocks. Motion histories clear without renewing
+connection ingress allowances or voice generations. Revision-bound end requests cannot stop
+a later activity. CLI single-course lobbies keep their existing state encoding and lifecycle.
+No endpoint, service or dependency changes.
+
+### Organizer setup before starting — 2026-11-08
+
+R238 keeps one organizer-local preferred fallback while the group is in the lobby. Choosing
+it immediately sends a private consent-only request over the authenticated group connection,
+independent of activity selection and readiness. The bounded request has its own epoch and
+deadline; only its authenticated selected member can answer it. Replacing the choice, departure
+and timeout withdraw it. Consent and preference persist across activities for that membership.
+After the shared start, the existing coordinator prefers that member when every rider is ready,
+then uses the unchanged reachability, activity/epoch binding and standby preparation. No standby
+links open before riding. An accepted request answers subsequent standby offers automatically;
+a decline permits the normal automatic alternative without asking that member again.
+Leaving or replacing a membership clears its preference; queued choices bind its generation.
+Activity changes and returning to the lobby retain a preference for a member still present.
+
+The countdown's Cancel action occupies the reserved Start slot. The separate End course for
+everyone action appears only in the in-ride group panel. Both use the existing revision-bound
+activity end. Protocol/invitation version 17 and ALPN `orqwa-group/17` distinguish the two new
+consent controls from older clients. No endpoint, service or dependency changes.
+
+### Automatic fallback in the lobby — 2026-11-09
+
+R239 moves the coordinator's initial automatic candidate selection into the lobby. The first
+eligible connected friend is asked using the existing consent-only controls, independent of
+activity selection and readiness. A manual choice takes precedence. Pending requests and
+accepted members are left alone; declined or timed-out members are skipped until explicitly
+chosen again or replaced by a new membership. Departure permits the next eligible candidate.
+No standby links are prepared until the shared ride has started and everyone is ready.
+
+Once the original organizer is lost and the fallback becomes organizer during a ride, the
+existing in-ride automatic selection and consent still arrange a replacement fallback. The
+initial lobby decision and consent remain valid across subsequent activities. No protocol,
+endpoint, service or dependency changes.
+
+Cancelling a standby discards departures observed only on its disposable links. They become
+group departures only when a takeover commits; the original authority's roster remains valid
+while it stays connected. This keeps old standby teardown from removing the organizer before
+the next activity's fallback can be prepared.
+
+### Assistance before a selection — 2026-11-11
+
+Riders learned the organizer's drafting and keep-together choices only from a selection, so
+until one was shared, or when the organizer changed them while it was being prepared, their
+lobby kept showing both as on (#557). A new organizer-only `Assistance` control carries the two
+choices whenever they change before the countdown; joiners apply it only before the start.
+Newcomers receive it with their initial controls unless the choices are the defaults, and every
+selection still repeats them. The organizer's change is acknowledged by its lobby actor rather
+than dropped on a full queue, as only the latest choice counts. Protocol/invitation version 18
+and ALPN `orqwa-group/18` keep older clients from silently missing it. No endpoint, service or
+dependency changes.
+
+### Withdrawing before the start — 2026-11-15
+
+R252 lets the organizer end the selected revision before the countdown, not only during it or
+while riding (#556). The activity actor's end no longer requires a started activity, only the
+current selection's revision, and sends the same `Lobby(ended_revision)` control. Friends
+already took that control before a start: it stops selected-content serving, so their
+downloads end, and their apps cancel world building as for any end. The organizer's app also
+drops a newer choice still being hashed, so nothing ended is shared afterwards. A delayed or
+repeated end still cannot touch a later revision. The control and its meaning are unchanged, so
+no protocol or invitation version change; no endpoint, service or dependency changes.

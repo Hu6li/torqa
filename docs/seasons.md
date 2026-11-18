@@ -11,6 +11,21 @@ existing 2,400 m temperate snow line (4,500 m in the tropics). Rust also supplie
 the same course, including kept worlds: neither the generator nor stored format changes.
 Season does not change trainer resistance, ride speed or the map.
 
+Autumn and Winter dress both rider fits in thermal caps beneath their helmets, full-finger
+gloves, full-length tights and long-sleeved tops under fitted zipped gilets (R245). The local
+season applies to the rider, ghost and all group riders, including later arrivals. Spring and
+Summer use the existing short kit. Changing season replaces the model while retaining crank
+phase, wheel rotation, identifying colours, ghost transparency and first-person body hiding.
+The winter assets share the summer skeleton and `riders.json` fit, including the same bike.
+No world regeneration, protocol change or additional setting is needed.
+
+Generate only the cold-weather assets with `scripts/art.sh env KIT=winter blender
+--background --factory-startup --python art/riders/build.py`. The default builds both kits;
+`KIT=summer` builds the original kit. Render them with `SEASON=Winter` (or `Autumn`) and
+`GALLERY=docs/images/models` in `scripts/render-riders.sh`. Review both fits from the side,
+front and chase, the cap close up and all standing crank quarters. See the
+[seasonal clothing review](seasonal-rider-clothing.md) for images and validation.
+
 Summer keeps a stable 10% of the course's existing flower clumps in bloom and replaces the
 others with full grass tufts at the same transforms. Rust filters the presentation buffers
 when uploading chunks; switching season refreshes them without changing the kept world.

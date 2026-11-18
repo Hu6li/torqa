@@ -63,7 +63,7 @@ pub(crate) struct FootwayCorner {
 /// A convex piece of a curved footway and its two street heights.
 pub(crate) struct FootwaySection {
     /// Four corners, with the road-facing edge first.
-    pub polygon: Vec<(f64, f64)>,
+    pub polygon: [(f64, f64); 4],
     /// Street heights at the first and second cross-sections.
     pub lifts: [f64; 2],
     /// Fractions along the complete corner's shared height profile.
@@ -105,7 +105,7 @@ impl Corner {
                 .windows(2)
                 .enumerate()
                 .map(|(i, pair)| FootwaySection {
-                    polygon: vec![
+                    polygon: [
                         offset(pair[0], inset),
                         offset(pair[1], inset),
                         offset(pair[1], inset + width),

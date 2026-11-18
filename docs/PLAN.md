@@ -175,7 +175,8 @@ Built in rideable steps:
 - **Exit:** ride a real GPX on the KICKR in 3D at 60 fps and save a FIT
 
 ### Phase 3c — Course files (R32–R35, [ADR 0007](adr/0007-course-files.md))
-- [x] `.oqc` (ORQWA course, #501), with a removable startup migration of legacy library files
+- [x] `.oqc` (ORQWA course, #501); the startup migration of legacy `.tqc` library files ran
+  from v0.6.1 to v0.6.4 and has been retired (#515)
 - [x] `.oqc` format 1: manifest, GPX and the downloaded inputs, with format and generator
   versions (ADR 0007 amendment)
 - [x] Course library in the data directory; list, import, save-as-course in the app
@@ -239,6 +240,9 @@ Built in rideable steps:
   - [x] Rain sound (R153, #377): bundled CC0 rainfall in the Rain preset, fading with live
     weather changes and audible while stationary; controlled by Wind volume, with a
     weather-only listening preview and the existing playback boundaries.
+  - [x] Default volumes (R244, #619): **Settings → Sound** sets the wind and bicycle volumes
+    every course, workout and group ride starts with; a ride's own options change them for it
+    alone.
   - [x] Recorded gear changes (R116): one-shot on each accepted virtual shift through
     keyboard, BLE or remote, sharing bicycle volume; limit/no-change presses stay quiet,
     rapid shifts overlap with bounded voices and paused requests are never replayed.
@@ -365,7 +369,18 @@ Built in rideable steps:
     two bell notes rather than a recording) and a burst of particles on the card
 
 ### Phase 8 — Start page & course gallery (R36–R42, R48–R54)
+- [x] Render the current and proposed ride UI at 1280 × 720 in Godot with seven peers
+  ([review images](ride-layout-review.md)); retain the existing theme and controls.
+- [x] Implement the [ride layout](ride-layout-review.md) (R236): compact map/profile,
+  climb before Riders, Rust-calculated remaining climb ascent and aligned effort/gap
+  columns without scrolling; adaptive HUD columns and workout targets on the left.
+- [x] Let the ride map grow to 300 px on small screens when the visible sidebar panels
+  leave room, adapting as riders, climbs and ghosts appear or disappear (R247, #617).
+- [x] A workout on its own shows its targets at the top of the right column, where the map
+  would be; on a course they stay below the metrics on the left (R253).
 - [x] Start page with top tabs (Courses, History, Profile, Devices); ride view separated
+- [x] Returning to Courses from another tab keeps the selected course, its options and loading
+  progress; Back or another click on the active Courses tab returns to the gallery (R246, #569)
 - [x] Path card: route in `#2EB0FF` on black (elevation profile on the course page only); since
   #192 on the course's own map, drawn when the course is prepared and kept in the `.oqc`; since
   #203 the land around the whole route, black and white, with the names of its towns
@@ -564,6 +579,9 @@ physically based materials and light, restyled group by group.
 - [x] Autumn red, orange and gold broadleaf foliage (#350, R156), with the distant mixed
   canopy following it; conifers and tropical lowlands retain their green.
 - [x] Autumn has grass instead of meadow flowers and no flower-box blooms (R159).
+- [x] Autumn and winter rider clothing (R245): thermal caps below helmets, full-finger gloves,
+  long tights and long-sleeved tops with gilets on both fits, ghosts and group riders;
+  changing season restores the matching kit during a ride.
 - [x] Autumn has stronger orange/russet distant woodland collections and fallen leaves on
   forest streets, with open clearings, tropical lowlands and ridden tunnels excluded (R162).
 - [x] Winter snow where the route's climate and elevation allow it (#350, R157), on ground,
@@ -732,6 +750,9 @@ physically based materials and light, restyled group by group.
     - [x] Parallel tracks under one bridge or in one tunnel (#99), at one height
     - [x] The same road ridden twice is one road at one height (#101), drawn once, and sharp
       turns are round, not pointed
+    - [x] Bends tighter than the road is wide (a planner's zigzag through a forecourt, as at
+      the start of Wada – Ōtarumi Pass) close their inside in a corner instead of folding over
+      into dark fans (`GENERATOR` 42)
     - [x] Turns in place taken out for riding in 3D (#101): a track running a few dozen
       metres into a side road or past a junction and straight back rides on; longer turns back
       and turns at roundabouts stay; video courses keep their track
@@ -946,6 +967,79 @@ summary ([ADR 0014](adr/0014-ride-analysis-data.md)). One step per analysis:
   - [x] the folder, the move and the wiki
   - [ ] tried on the Tab S7: the move, and rides and courses synced both ways with a computer
   - [x] synced course videos on Android 16: **Allow videos** asks for Photos and videos (R149)
+- [ ] G — long, densely mapped courses within a tablet's memory: on the Tab S7 Android ended
+  ORQWA for low memory at 2.5 GB while building a 57 km course in Japan, whose whole world is
+  kept in memory, in the core and again in Godot
+  ([measurements](benchmarks/world-memory.md))
+  - [x] the same world for less: room meshes grew into while built given back, and the pavement
+    barriers are checked against gathered only where they stand; peak 6.3 → 5.2 GB, the world
+    unchanged
+  - [x] the whole-route preparation holds the streets once: its indexes keep their numbers, not
+    copies of their centre lines; Wada's preparation 1.07 → 0.79 GB, the world unchanged
+  - [x] the sidewalks held compactly: patch corners inline, the cut polygons in one store;
+    Wada's preparation 555 → 472 MB live, the tablet's peak 1.48 → 1.42 GB, the world unchanged
+  - [ ] only the chunks near the rider kept, in the core and in Godot (an ADR); tried on the Tab S7
+    - [x] built chunk by chunk: each finished once its neighbours are built and handed on, only
+      those around the ones being built held; the world unchanged
+    - [x] every world built into a store in the cache, packed into the kept world by raw copy
+      - [x] worlds to keep: each chunk written as finished, copied into the kept world as it
+        is; Wada 20 MB per km, packed in 2 s, the world unchanged
+      - [x] every world, once the core reads chunks from the store
+    - [x] the core reads chunks from the store while riding
+      - [x] chunks read one at a time from the store or the kept world, indexed by their
+        centres; held in memory only where no store can be written
+      - [x] the winter ground's mask made from every chunk read once, when first asked for
+      - [x] on Android, **Ride** stops before building when free storage is short and says how
+        much the course needs (20 MB per km measured on Wada, 25 to be safe), asked of Java's
+        `File.getUsableSpace`; a kept world needs none
+      - [x] Android requires a writable store independently of the free-space estimate:
+        creation or chunk-write errors stop generation; a ride already started stays paused
+        with trainer resistance released and its recording available to save (R254)
+      - [x] Android checks current available system memory against estimated course preparation
+        and resident scene needs, preserving system headroom; generation and scene uploads
+        recheck headroom and stop with a local pause and saveable recording when short (R255)
+        - [x] bound the estimate by circular chunk residency and current batch sizes; count
+          additional allocations, separate Android's reserve in GB, and verify Wada's Low
+          estimate against the reported 3.59 GB snapshot without generating its world
+      - [ ] verify memory admission and pressure recovery on the Galaxy S25 Ultra and Tab S7
+      - [x] a ride's store safe from tidying: this ORQWA's stores are never tidied, also when
+        keeping is turned off; others' go by age
+    - [x] Godot frees far chunks
+      - [x] chunks uploaded within the upload radius, freed only beyond it plus 240 m and a
+        chunk, and read and uploaded again when the rider comes back
+      - [x] measured from the rider, or from the free camera while it flies
+      - [x] a simulated ride's jump, or the camera's return from the free camera, waits, clock
+        included, until the rider's surroundings are uploaded, and goes on by itself
+    - [ ] generated ahead of the rider (#237)
+      - [x] a course's ride starts once the chunks within the upload radius of where it is
+        entered (its start, or where it is continued) are finished, with the bridges over them;
+        the rest is built in the background, ahead of the rider first, then behind
+      - [x] the scene uploads chunks as they are finished, and bridges as they are built
+      - [x] a rider riding alone who catches up with the world being built waits, clock
+        included, and goes on by itself
+      - [x] a world is kept, and its winter ground's mask made, once complete
+      - [x] background building gives way to the ride: half the cores at low priority, all
+        of them while its lead over the rider is short; the world is handed over when the ride
+        can start, not copied
+      - [ ] the throttle measured on the tablet while riding (frame time, R240)
+      - [x] group rides: **Ready** once the group's start is built; a late joiner's entry
+        point first: the build turns to the organizer on **Join ride now** and the rider
+        enters once the chunks around the entry point are finished
+      - [x] leaving a ride before its world is complete: a kept course's world built on in
+        the background and kept once complete; opening the course again (also from a group
+        lobby) takes the build over, turned to where the ride enters; continuing a course
+        turns its build to the continuation point
+      - [x] builds stopped before their world is complete (another world built, a ride
+        started, **Cancel**, or another course opened with keeping off) keep their store, and
+        the course's next build takes it up: only the chunks not yet written are finished,
+        the world comes out the same
+      - [x] a replacement build and ride start wait asynchronously for every stopped
+        generation task to release its buffers, including builds without resumable stores;
+        cancellation is checked between batches even with fully cached elevations (R254)
+  - [x] far streets and their ground in coarser pieces: paved roads beyond 120 m of the ride
+    on 5.3 m pieces instead of 2.7 m (`GENERATOR` 41, with review renders)
+  - [x] chunks' ground, water and building shells in Godot's compressed vertex format (20 bytes
+    instead of 28); streets, tracks and sidewalks keep full precision for their UVs in metres
 - **Exit:** a real ride on the tablet: course imported there, KICKR and Click, saved and uploaded
 
 ### Phase 13 — Group rides (R159–R169, [ADR 0035](adr/0035-group-rides.md))
@@ -986,6 +1080,8 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Group Rides tab, third after Workouts, and in-ride panel: private-code admission, activity selection,
   automatic retained downloads, byte progress/retry, local preparation, trainer readiness,
   common countdown, rider gaps, opt-in voice/device selection/local mute, usage guides and screenshots
+- [x] Friends' ping in the roster (R235): organizer-measured connection RTT, automatic refresh,
+  unavailable/stale/reconnecting states, and in-ride visibility confined to the Group Rides dialog
 - [x] Guided create/join flow with native page cards, course map/elevation and workout power/duration
   previews before sharing; trainer guidance and voice device changes with automatic muted reconnection
   - [x] Retired voice workers cannot revoke a replacement's consent or microphone on delayed
@@ -1032,6 +1128,10 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] Stable drafting and live assistance (R215): no abreast/overlap shelter, a smooth entry
   ramp, shared-time live comparisons, prediction/freshness covering ordinary delivery and
   filtered applied forces; ride traces cover jitter/loss without altering buffered playback
+- [x] Keep together direction and real-time motion (R233): the group middle determines the
+  allowed force direction before and after filtering; speed can only reduce its magnitude.
+  Real-time frame updates prevent slow-rendering drift, and trainer cancellation sends neutral
+  parameters without retaining sub-threshold assistance.
 - [x] Late joining (R167): independent preparation, explicit entry near the host at the current
   workout step, separate course position and recorded distance, no records for skipped sections
 - [x] Shared workout timing (R167): ordered host pause/resume/skips, a separate shared clock,
@@ -1062,6 +1162,12 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
   downloading it; organizers share their own copy, renamed or not (R185, #435)
 - [x] A rider whose connection is lost keeps their seat for five minutes and reconnects by
   themselves, without new codes (R186, #434)
+- [x] A friend whose connection has ended joins again with the same invitation and a fresh
+  reply, also mid-ride: the ride goes on and is taken up where it is when the group still
+  rides it (R248, #536)
+- [x] Dropped and restored group connections told on the moments' card, red and green (R249)
+- [x] A changed network noticed within seconds; Join again while reconnecting, in the same seat;
+  a fallback whose own connection dropped does not take over (R250, R251)
 - [x] A fallback organizer stands by while riding and takes over if the organizer is lost; the
   next one is chosen at once, and the old organizer rejoins as a rider (R187, #426)
 - [x] Voice restarts (reconnect, takeover, handover, device change) keep the microphone as it
@@ -1082,14 +1188,30 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - [x] One lobby for everyone: what is ridden beside the group, friends see who is choosing and
   what was chosen by name, a readiness pill on every row, the rider's own their button, one main button, and the
   in-ride group window at least as large as the ride's settings, in two columns (R196)
+- [x] Readiness uses **Mark ready** / **Bereit melden** beside the rider's name, with an
+  in-place prompt and row highlight; loading, readiness and countdown keep their space
+  without moving the rider rows, actions or activity preview (R234).
 - [x] The organizer chooses where everyone rides for the whole group: the invitation carries it,
   friends join without a question, and one home network warns nobody about reachability and
   lets anyone stand in as fallback organizer (R197)
+- [x] Replies wait ten minutes to be added; the organizer names a friend whose connection never
+  arrived, and the joiner reads why theirs failed, with links to the usage guide (R243, #574)
 - [x] Countdown keeps the course map, elevation and workout preview in place for organizer
   and friends; choices and shared rules lock without switching preview layouts (R204)
 - [x] Joiners see the shared activity's name while its files arrive, including after the ride
   starts; course-only images keep the organizer's preview size and stay above the voice
   card's bottom (R196, R216, #508)
+- [x] Reuse the connected lobby after the organizer ends a course for everyone or finishes
+  a ride/workout (R237): save local recordings, retain voice and membership, clear activity
+  clocks and readiness, and select/start again without new codes
+- [x] Organizer setup in the lobby (R238): show the fallback choice before Start, remember a
+  connected friend's consent immediately, retain it across rides, explain the solo case, and replace Start
+  with Cancel in the same action slot during countdown
+- [x] Withdraw a shared course or workout before the start (R252, #556): Cancel beside Start
+  stops friends' downloads and world building and returns the group to the lobby
+- [x] Automatically choose and ask a fallback in the lobby (R239), try another after a decline,
+  timeout or departure, retain manual override and consent across rides, and still replace the
+  fallback during a ride after the original organizer is lost
 - [ ] Rejoin with fresh codes during a local ride, continuing its recording, once a seat was
   given up or the organizer restarted (follow-up to #434)
 - [ ] Native microphone/headphone and audio-device permission/hotplug acceptance on supported desktops

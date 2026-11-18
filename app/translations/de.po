@@ -139,9 +139,6 @@ msgstr "Nicht gefunden: %s. Wecke die Geräte auf und suche erneut."
 msgid "%s not found — wake it, then reconnect again."
 msgstr "%s nicht gefunden — aktiviere das Gerät und verbinde es erneut."
 
-msgid "%s to go  ·  %.1f %%"
-msgstr "noch %s  ·  %.1f %%"
-
 msgid "%s was not found. It holds the course's slopes: put it next to the RLV file."
 msgstr "%s nicht gefunden. Sie enthält die Steigungen der Route: Lege sie neben die RLV-Datei."
 
@@ -1369,6 +1366,9 @@ msgstr "Zielleistung"
 msgid "Reading route"
 msgstr "Route wird eingelesen"
 
+msgid "Reading the saved world"
+msgstr "Gespeicherte Welt wird gelesen"
+
 msgid "Reconnect devices"
 msgstr "Geräte erneut verbinden"
 
@@ -1921,9 +1921,6 @@ msgstr "Batterie %d %%"
 msgid "battery %s"
 msgstr "Batterie %s"
 
-msgid "best %s"
-msgstr "Bestzeit %s"
-
 msgid "chunks"
 msgstr "Abschnitte"
 
@@ -2220,6 +2217,10 @@ msgstr "ORQWA %s ist verfügbar."
 msgid "ORQWA %s is available; you have %s."
 msgstr "ORQWA %s ist verfügbar; du hast %s."
 
+#: app/ui/picked_file.gd
+msgid "ORQWA cannot open %s: it opens %s files."
+msgstr "ORQWA kann %s nicht öffnen: Es öffnet Dateien vom Typ %s."
+
 msgid "ORQWA downloads and installs it; then open ORQWA again."
 msgstr "ORQWA lädt sie herunter und installiert sie; öffne ORQWA danach wieder."
 
@@ -2400,6 +2401,9 @@ msgstr "Ein kurzer Klang, wenn eine Karte von einem geschafften Anstieg, einem M
 msgid "Play the chime"
 msgstr "Klang abspielen"
 
+msgid "Every ride starts with these volumes; its own settings change them for that ride only."
+msgstr "Jede Fahrt beginnt mit diesen Lautstärken; ihre eigenen Einstellungen ändern sie nur für diese Fahrt."
+
 msgid "Your first ride on {course} is done, and now you know the way!"
 msgstr "Deine erste Fahrt auf {course} ist geschafft, jetzt kennst du den Weg!"
 
@@ -2444,6 +2448,9 @@ msgstr "Die Regionen zum Herunterladen konnten nicht geladen werden."
 
 msgid "Could not prepare the map detail of %s."
 msgstr "Die Kartendetails von %s konnten nicht vorbereitet werden."
+
+msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+msgstr "Diese Route braucht für ihre 3D-Welt %s freien Speicherplatz, frei sind %s. Gib Speicherplatz frei und fahre dann erneut los."
 
 msgid "Delete region"
 msgstr "Region löschen"
@@ -2541,9 +2548,29 @@ msgstr "ORQWA versucht es noch %s lang. Dein Platz in der Gruppe bleibt reservie
 msgid "Reconnect now"
 msgstr "Jetzt erneut verbinden"
 
-msgctxt "group_rider"
-msgid "Reconnecting…"
-msgstr "Verbindet sich erneut…"
+msgid "Join again"
+msgstr "Erneut beitreten"
+
+msgid "Group connection ended. Your ride continues. Join again when you like."
+msgstr "Gruppenverbindung beendet. Deine Fahrt läuft weiter. Tritt wieder bei, wann du willst."
+
+msgid "Could not connect. Join again, or leave the group."
+msgstr "Verbindung fehlgeschlagen. Tritt erneut bei oder verlasse die Gruppe."
+
+msgid "Your friends ride something else now. Join them once your ride ends."
+msgstr "Deine Freunde fahren jetzt etwas anderes. Schliesse dich ihnen an, wenn deine Fahrt endet."
+
+msgid "The organizer removed you from the group. Your local ride continues."
+msgstr "Der Organisator hat dich aus der Gruppe entfernt. Deine lokale Fahrt läuft weiter."
+
+msgid "The organizer ended the group. Your local ride continues."
+msgstr "Der Organisator hat die Gruppe beendet. Deine lokale Fahrt läuft weiter."
+
+msgid "This invitation is from a newer ORQWA version. Update ORQWA to join."
+msgstr "Diese Einladung stammt aus einer neueren ORQWA-Version. Aktualisiere ORQWA, um beizutreten."
+
+msgid "This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
+msgstr "Diese Einladung stammt aus einer älteren ORQWA-Version. Bitte den Organisator, ORQWA zu aktualisieren und eine neue Einladung zu senden."
 
 msgid "%s ft"
 msgstr "%s ft"
@@ -2638,8 +2665,8 @@ msgstr "Zu dieser Fahrt können keine weiteren Freunde hinzukommen."
 msgid "The ride has started. No more friends can be added."
 msgstr "Die Fahrt hat begonnen. Es können keine weiteren Freunde hinzukommen."
 
-msgid "Too late. Ask your friend for a new reply."
-msgstr "Zu spät. Bitte um eine neue Antwort."
+msgid "Couldn't reach %s's computer: their connection never arrived. A router or firewall probably blocked it."
+msgstr "Der Computer von %s war nicht erreichbar: Die Verbindung kam nie an. Wahrscheinlich hat ein Router oder eine Firewall sie blockiert."
 
 msgid "Join friends"
 msgstr "Bei Freunden mitfahren"
@@ -2687,8 +2714,11 @@ msgstr "Scanne den Code mit deinem Handy und sende den Text an %s."
 msgid "%s adds you"
 msgstr "%s fügt dich hinzu"
 
-msgid "%s didn't add you in time"
-msgstr "%s hat dich nicht rechtzeitig hinzugefügt"
+msgid "%s didn't add you in time, or the connection was blocked"
+msgstr "%s hat dich nicht rechtzeitig hinzugefügt, oder die Verbindung wurde blockiert"
+
+msgid "Connection troubleshooting"
+msgstr "Verbindungsprobleme beheben"
 
 msgid "Waiting for %s…"
 msgstr "Warte auf %s…"
@@ -2723,8 +2753,14 @@ msgstr "Du bist bereit. %s startet die Fahrt."
 msgid "Group ride"
 msgstr "Gruppenfahrt"
 
-msgid "I'm ready"
-msgstr "Ich bin bereit"
+msgid "Mark ready"
+msgstr "Bereit melden"
+
+msgid "Please mark ready"
+msgstr "Bitte bereit melden"
+
+msgid "You're ready"
+msgstr "Du bist bereit"
 
 msgid "Tell the group you're ready"
 msgstr "Sag der Gruppe, dass du bereit bist"
@@ -2846,8 +2882,8 @@ msgstr "Windschatten aus"
 msgid "Drafting on"
 msgstr "Windschatten an"
 
-msgid "Help everyone stay with the organizer while pedaling."
-msgstr "Hilft allen beim Treten, bei der organisierenden Person zu bleiben."
+msgid "Help everyone stay with the group while pedaling."
+msgstr "Hilft allen beim Treten, bei der Gruppe zu bleiben."
 
 msgid "Keep together"
 msgstr "Gruppe zusammenhalten"
@@ -2926,6 +2962,28 @@ msgstr "Organisation der Fahrt"
 #: app/scenes/group_rides_tab.gd
 msgid "Change organizer…"
 msgstr "Organisation übergeben…"
+
+#: app/scenes/group_rides_tab.gd
+msgid "End course for everyone"
+msgstr "Kurs für alle beenden"
+
+msgid "%s agreed to stand in as fallback organizer."
+msgstr "%s hat zugesagt, als Organisator einzuspringen."
+
+msgid "Waiting for %s to agree to stand in."
+msgstr "Warte auf die Zusage von %s als Vertretung."
+
+msgid "%s has not agreed to stand in."
+msgstr "%s hat noch nicht zugesagt, als Vertretung einzuspringen."
+
+msgid "Choose a fallback now to ask for their consent."
+msgstr "Wähle jetzt eine Vertretung, um sie um ihre Zustimmung zu bitten."
+
+msgid "Stand in as organizer if the organizer's connection is lost during a ride? Your agreement lasts while you stay in this group. Accepting allows ORQWA to share connection addresses with everyone in this group when preparing the fallback, using your connection settings."
+msgstr "Möchtest du als Organisator einspringen, falls während einer Fahrt die Verbindung des Organisators abbricht? Deine Zusage gilt, solange du in dieser Gruppe bleibst. Mit deiner Zustimmung darf ORQWA beim Vorbereiten der Vertretung Verbindungsadressen mit allen in dieser Gruppe teilen. Dabei gelten deine Verbindungseinstellungen."
+
+msgid "A friend must join before you can choose a fallback organizer."
+msgstr "Ein Freund muss der Gruppe beitreten, bevor du eine Vertretung wählen kannst."
 
 #: app/scenes/group_rides_tab.gd
 msgid "%s asks you to organize the ride"
@@ -3196,3 +3254,130 @@ msgstr "Ja"
 
 msgid "No"
 msgstr "Nein"
+
+msgid "Ping %d ms"
+msgstr "Ping %d ms"
+
+msgid "Ping —"
+msgstr "Ping —"
+
+msgid "Round-trip time from you to the organizer. Lower is better."
+msgstr "Zeit für Hin- und Rückweg zwischen dir und dem Organisator. Niedriger ist besser."
+
+msgid "Round-trip time from this friend to the organizer. Lower is better."
+msgstr "Zeit für Hin- und Rückweg zwischen diesem Freund und dem Organisator. Niedriger ist besser."
+
+msgid "%s · %s · %.1f%% to go"
+msgstr "%s · %s · %.1f%% verbleibend"
+
+msgid "%sft"
+msgstr "%sft"
+
+msgid "%sft ascent"
+msgstr "%sft Anstieg"
+
+msgid "%sm"
+msgstr "%sm"
+
+msgid "%sm ascent"
+msgstr "%sm Anstieg"
+
+msgctxt "In-ride group panel"
+msgid "Riders"
+msgstr "Fahrer"
+
+msgid "Elevation colors"
+msgstr "Farben im Höhenprofil"
+
+msgid "By gradient"
+msgstr "Nach Steigung"
+
+msgid "By gradient: green down, yellow flat, red up"
+msgstr "Nach Steigung: grün bergab, gelb flach, rot bergauf"
+
+msgid "Plain"
+msgstr "Schlicht"
+
+msgid "Lost the connection. Their place is kept for five minutes."
+msgstr "Verbindung verloren. Der Platz bleibt fünf Minuten lang frei."
+
+msgid "Has left the group."
+msgstr "Hat die Gruppe verlassen."
+
+msgid "Connection lost"
+msgstr "Verbindung verloren"
+
+msgid "Your ride continues. You are reconnected automatically for up to five minutes."
+msgstr "Deine Fahrt läuft weiter. Die Verbindung wird bis zu fünf Minuten lang automatisch wiederhergestellt."
+
+msgid "Reconnected"
+msgstr "Wieder verbunden"
+
+msgid "You are back with the group."
+msgstr "Du bist wieder bei der Gruppe."
+
+msgid "Group ended"
+msgstr "Gruppe beendet"
+
+msgid "Your ride continues alone. Join again in Group Rides."
+msgstr "Deine Fahrt läuft allein weiter. Tritt unter Gruppenfahrten erneut bei."
+
+msgid "The organizer removed you. Your ride continues alone."
+msgstr "Der Organisator hat dich entfernt. Deine Fahrt läuft allein weiter."
+
+msgid "The organizer ended the group. Your ride continues alone."
+msgstr "Der Organisator hat die Gruppe beendet. Deine Fahrt läuft allein weiter."
+
+msgid "They are reconnected automatically. If their network changed, paste the new reply %s sends you."
+msgstr "Die Verbindung wird automatisch wiederhergestellt. Hat sich das Netzwerk geändert, füge die neue Antwort ein, die %s dir schickt."
+
+msgid "%s's new reply"
+msgstr "Neue Antwort von %s"
+
+msgid "Your network changed. Press Join again and send the new reply to %s."
+msgstr "Dein Netzwerk hat sich geändert. Klicke auf Erneut beitreten und schicke die neue Antwort an %s."
+
+msgid "Away %s"
+msgstr "Weg seit %s"
+
+msgid "%s and %d more"
+msgstr "%s und %d weitere"
+
+msgid "%s and %s"
+msgstr "%s und %s"
+
+msgid "Added. Waiting for %s…"
+msgstr "Hinzugefügt. Warte auf %s…"
+
+msgid "Are back in the group."
+msgstr "Sind wieder in der Gruppe."
+
+msgid "Everyone lost the connection"
+msgstr "Alle haben die Verbindung verloren"
+
+msgid "Have left the group."
+msgstr "Haben die Gruppe verlassen."
+
+msgid "Is back in the group after {away}."
+msgstr "Ist nach {away} wieder in der Gruppe."
+
+msgid "Lost the connection. Their places are kept for five minutes."
+msgstr "Verbindung verloren. Die Plätze bleiben fünf Minuten lang frei."
+
+msgid "Your own network has probably dropped. Their places are kept for five minutes."
+msgstr "Wahrscheinlich ist dein eigenes Netzwerk ausgefallen. Die Plätze bleiben fünf Minuten lang frei."
+
+msgid "Withdraw the shared course or workout for everyone"
+msgstr "Geteilte Strecke oder geteiltes Training für alle zurückziehen"
+
+msgid "Could not store the course's 3D world. Check free storage and reopen the course."
+msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den freien Speicherplatz und öffne die Strecke erneut."
+
+msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
+msgstr "Die Vorbereitung dieser Strecke benötigt etwa %s zusätzlichen Arbeitsspeicher; %s sind nach einer Reserve von %s für Android verfügbar. Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "Could not check Android's available memory. Reopen ORQWA and try again."
+msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden. Öffne ORQWA erneut und versuche es noch einmal."
+
+msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
+msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."

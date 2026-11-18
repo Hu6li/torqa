@@ -151,7 +151,7 @@ all maps, normal-map import on normals, and keep these six textures with their s
 
 ## Regional buildings
 
-Nearby Ultra building variants (R233) are authored with
+Nearby Ultra building variants (R256) are authored with
 `art/buildings/build.py -- --detail`, into `app/assets/models/buildings/detail/`. Retain the
 ordinary GLBs, manifest, model names and dimensions. `details.py` adds normalized panes with
 stable second-UV seeds, glazing bars and main-roof drainage. Tall French city blocks keep
@@ -250,6 +250,15 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   A complete bike is about 18k triangles. `VIEWS="bike-side bike-drive bike-front bike-cockpit"`
   in the rider runner shows the bike without a body under the app's sky and tone mapping.
 - Male and female riders share node and material names; each has their own bike, sized to them.
+- Autumn/Winter assets (`rider_<sex>_winter.glb`, R245) add `winter_kit.py`'s thermal cap,
+  full-finger gloves, tights, long sleeves and zipped gilet. Keep the same skeleton and fit;
+  the build validates `riders.json` against each cold-weather fit. `KIT=winter`/`summer`
+  limits rebuilding (default: both). New fabric names map to existing kit palette entries
+  in `RiderAvatar`; preserve accent colours on gilets. Render with `SEASON=Winter` and
+  check the cap, wrists, knees, closed vest hems and all standing crank quarters on both fits.
+  Preserve the waist plane after conforming the shell, keep leg-bone influence out of the
+  winter torso above it and blend below the waist. Bound the zip to the front of the torso
+  as well as its facing normal; rear hem triangles can otherwise take its pale material.
 - Female hair lives in `art/riders/hair.py`: a fitted scalp cap and curved ponytail volumes,
   with a continuous lateral frame and broad tress relief. Preserve the `hair_shape` vertex
   group through body thinning; check the ends clear the shoulders seated and standing.

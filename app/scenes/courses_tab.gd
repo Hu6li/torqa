@@ -274,7 +274,7 @@ func _init() -> void:
 	var videos: PackedStringArray = PackedStringArray()
 	for extension: String in OrqwaApp.video_extensions():
 		videos.append("*." + extension)
-	_file_dialog.filters = PackedStringArray(
+	var filters: PackedStringArray = PackedStringArray(
 		[
 			"*.gpx, *.oqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
 			"*.gpx ; " + tr("GPX routes"),
@@ -288,6 +288,7 @@ func _init() -> void:
 			"*.oqc ; " + tr("ORQWA courses"),
 		]
 	)
+	_file_dialog.filters = PickedFile.open_filters(filters)
 	_file_dialog.use_native_dialog = true
 	_file_dialog.file_selected.connect(_on_file_selected)
 	add_child(_file_dialog)
@@ -712,6 +713,13 @@ static func _select(option: OptionButton, choice: String) -> void:
 
 
 func _on_file_selected(picked: String) -> void:
+	var refusal: String = PickedFile.refusal(
+		picked, PackedStringArray(["gpx", "oqc"]) + OrqwaApp.video_extensions()
+	)
+	if not refusal.is_empty():
+		_status.text = refusal
+		_status.show()
+		return
 	var path: String = PickedFile.local_path(picked)
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()

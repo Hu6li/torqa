@@ -233,7 +233,10 @@ async fn joiner_listening_keeps_the_group_connected_and_clears_roster_when_remov
             })),
         },
         voice_controls: Arc::default(),
-        invite: Some(host.invite().to_code(options.gather.policy).unwrap()),
+        invite: Some((
+            host.invite().to_code(options.gather.policy).unwrap(),
+            orqwa_net::link::Credential::generate().unwrap(),
+        )),
         rider: Rider {
             name: "Listening peer".into(),
             mass: Kilograms(83.0),

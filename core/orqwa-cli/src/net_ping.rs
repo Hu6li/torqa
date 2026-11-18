@@ -47,7 +47,7 @@ pub(crate) async fn run(args: NetPingArgs) -> Result<()> {
                         Some(Input::Line(line)) if line == "q" => break,
                         Some(Input::Line(line)) => match Reply::from_code(&line, options.gather.policy)
                             .map_err(anyhow::Error::from).and_then(|reply| host.admit(&reply).map_err(Into::into)) {
-                                Ok(()) => println!("Reply admitted for at most one minute."),
+                                Ok(_) => println!("Reply admitted for at most one minute."),
                                 Err(error) => eprintln!("Reply refused: {error}"),
                             },
                         Some(Input::Invalid) => eprintln!("Input refused: invalid text or more than 2048 bytes."),
@@ -55,7 +55,7 @@ pub(crate) async fn run(args: NetPingArgs) -> Result<()> {
                     event = host.next() => match event {
                         Some(HostEvent::Joined(connection)) if tasks.len() < 16 => { tasks.spawn(echo(connection)); },
                         Some(HostEvent::Joined(connection)) => connection.close(),
-                        Some(HostEvent::Expired) => println!("A reply expired; ask for a fresh reply."),
+                        Some(HostEvent::Expired(name)) => println!("{name}'s connection never arrived; ask for a fresh reply."),
                         None => break,
                     },
                     result = tasks.join_next(), if !tasks.is_empty() => {
@@ -68,9 +68,9 @@ pub(crate) async fn run(args: NetPingArgs) -> Result<()> {
         }
         Role::Join { invite } => {
             let invite = Invite::from_code(&invite, options.gather.policy)?;
-            let joiner = Joiner::open(invite, route, &options).await?;
+            let joiner = Joiner::open("CLI rider", invite, route, &options).await?;
             println!("Reply: {}", joiner.reply().to_code(options.gather.policy)?);
-            println!("Send the reply privately to the host now; it expires within one minute.");
+            println!("Send the reply privately to the host now; it expires within ten minutes.");
             let connection = tokio::select! {
                 result = joiner.connect() => result?,
                 _ = tokio::signal::ctrl_c() => return Ok(()),

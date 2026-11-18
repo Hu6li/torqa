@@ -191,6 +191,22 @@ fn selected_addresses(name: Option<&str>, lan: bool) -> Result<Vec<IpAddr>, Gath
     Ok(addresses)
 }
 
+/// Whether any of `addresses` is still on one of this computer's interfaces: once none is,
+/// sockets bound to them send nothing that arrives (#536).
+#[must_use]
+pub fn present(addresses: &[IpAddr]) -> bool {
+    netdev::get_interfaces().iter().any(|interface| {
+        interface
+            .ipv4
+            .iter()
+            .any(|net| addresses.contains(&IpAddr::V4(net.addr())))
+            || interface
+                .ipv6
+                .iter()
+                .any(|net| addresses.contains(&IpAddr::V6(net.addr())))
+    })
+}
+
 fn interface_addresses(interface: &netdev::Interface, lan: bool) -> Vec<IpAddr> {
     let v4 = interface
         .ipv4

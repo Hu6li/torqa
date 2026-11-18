@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use super::runtime::Session;
-use super::{Handover, Snapshot};
+use super::{Ending, Handover, Snapshot};
 
 const CONSENT: Duration = Duration::from_secs(30);
 const PREPARATION: Duration = Duration::from_secs(60);
@@ -42,6 +42,12 @@ pub(super) enum Event {
     Link(Option<LobbyEvent>),
 }
 
+struct ConsentRequest {
+    epoch: u64,
+    rider: RiderId,
+    until: Instant,
+}
+
 #[allow(clippy::struct_excessive_bools)] // independent deadline, proof, connection and announcement gates
 pub(super) struct Coordinator {
     options: ConnectOptions,
@@ -63,6 +69,8 @@ pub(super) struct Coordinator {
     announced: bool,
     revealed: bool,
     pub(super) old_lost: bool,
+    /// The certificate this friend joined with, to answer a new organizer with too (#536).
+    pub(super) credential: Option<orqwa_net::link::Credential>,
     /// The current operation is a standby, kept for the ride rather than committed (#426).
     standby: bool,
     /// Every standby link is ready: the fallback stands by.
@@ -71,6 +79,8 @@ pub(super) struct Coordinator {
     declined: u8,
     /// This rider agreed to stand in during this group, so a renewed standby asks no more.
     consented: bool,
+    approved: u8,
+    consent_request: Option<ConsentRequest>,
     /// Since when this rider has lost its organizer: its link reconnecting (#434), or, at the
     /// organizer, every rider away.
     lost_since: Option<Instant>,
@@ -84,6 +94,14 @@ pub(super) struct Coordinator {
     clock: Option<WorkoutClock>,
     /// No standby is offered before then, after one failed.
     retry_at: Option<Instant>,
+}
+
+/// Whether a fallback whose link to the organizer is lost takes over: every rider still
+/// reaching it over standby links (`others`) has told it they lost the organizer too (`lost`).
+/// A fallback that reaches nobody lost its own network rather than the organizer, unless the
+/// organizer left for good (`left`): taking over then, it would lead the group once back.
+const fn takes_over(others: u8, lost: u8, left: bool) -> bool {
+    (others != 0 || left) && others & !lost == 0
 }
 
 impl Coordinator {
@@ -100,6 +118,7 @@ impl Coordinator {
             replacement: None,
             jobs: JoinSet::new(),
             notices,
+            credential: None,
             receive,
             deadline: None,
             preparing: false,
@@ -113,6 +132,8 @@ impl Coordinator {
             standing: false,
             declined: 0,
             consented: false,
+            approved: 0,
+            consent_request: None,
             lost_since: None,
             reported: false,
             lost: 0,
@@ -149,6 +170,7 @@ impl Coordinator {
         {
             return Err("Choose a connected rider who has prepared the ride.".into());
         }
+        self.cancel_consent(session, snapshot)?;
         // A planned change replaces the standby; the new organizer chooses a fresh one.
         if self.standby {
             self.cancel(session, snapshot)?;
@@ -192,8 +214,7 @@ impl Coordinator {
         self.deadline = Some(Instant::now() + CONSENT);
     }
 
-    /// The organizer asks `successor` to stand in as fallback in place of the current one,
-    /// also a rider who declined before (#426).
+    /// Asks for group consent immediately; fallback links are prepared only while riding.
     pub(super) fn choose_fallback(
         &mut self,
         session: &Session,
@@ -201,50 +222,70 @@ impl Coordinator {
         successor: RiderId,
     ) -> Result<(), String> {
         let id = usize::from(successor.value());
-        if !snapshot.host
-            || !started(snapshot)
-            || snapshot.handover != Handover::Idle
-            || successor.value() == snapshot.me
-            || snapshot.roster[id].is_none()
-            || !snapshot.ready[id]
-            || snapshot.away[id]
-        {
+        if !snapshot.fallback_eligible(id) {
             return Err("Choose a connected rider who has prepared the ride.".into());
         }
+        if !started(snapshot) {
+            return self.request_consent(session, snapshot, successor);
+        }
+        self.cancel_consent(session, snapshot)?;
         if self.context.is_some() {
             self.cancel(session, snapshot)?;
         }
+        snapshot.preferred_fallback = Some(successor.value());
+        snapshot.preferred_fallback_accepted = self.approved & (1 << id) != 0;
         self.declined &= !(1 << id);
+        // Asked once the workout's clock is known (`stand_by` offers the preferred rider).
+        if !snapshot.workout_clock_known() {
+            return Ok(());
+        }
         self.offer(session, snapshot, successor, true)
     }
 
-    /// Keeps a fallback on standby while riding (#426): the organizer offers it to the first
-    /// prepared, connected rider in joining order who has not declined. Each rider's own app
-    /// declines at once when its discovery suggests friends could not reach it.
+    /// Chooses and asks a fallback in the lobby, preparing links only after starting. A new
+    /// organizer also replaces its fallback during the ride after a takeover (#426).
     fn stand_by(&mut self, session: &Session, snapshot: &mut Snapshot) -> Result<(), String> {
         if !snapshot.host
+            || self.consent_request.is_some()
             || self.context.is_some()
-            || !started(snapshot)
             || snapshot.handover != Handover::Idle
-            || snapshot.away.contains(&true)
+        {
+            return Ok(());
+        }
+        let riding = started(snapshot);
+        if riding
+            && (snapshot.away.contains(&true)
             || snapshot.selection.is_none()
+            || !snapshot.workout_clock_known()
             || self.retry_at.is_some_and(|at| at > Instant::now())
             // Everyone prepares a standby link, so a friend still joining the ride is waited for.
             || snapshot
                 .roster
                 .iter()
                 .enumerate()
-                .any(|(id, rider)| rider.is_some() && !snapshot.ready[id])
+                .any(|(id, rider)| rider.is_some() && !snapshot.ready[id]))
         {
             return Ok(());
         }
-        let candidate = (0..orqwa_net::state::MAX_RIDERS).find(|&id| {
-            id != usize::from(snapshot.me)
-                && snapshot.roster[id].is_some()
-                && snapshot.ready[id]
-                && self.declined & (1 << id) == 0
-        });
+        let eligible = |id: usize| snapshot.fallback_eligible(id) && self.declined & (1 << id) == 0;
+        let candidate = snapshot
+            .preferred_fallback
+            .map(usize::from)
+            .filter(|id| eligible(*id))
+            .or_else(|| (0..orqwa_net::state::MAX_RIDERS).find(|id| eligible(*id)));
         match candidate {
+            Some(id) if !riding => {
+                if snapshot.preferred_fallback == u8::try_from(id).ok()
+                    && snapshot.preferred_fallback_accepted
+                {
+                    return Ok(());
+                }
+                self.request_consent(
+                    session,
+                    snapshot,
+                    RiderId::new(u8::try_from(id).map_err(text)?).map_err(text)?,
+                )
+            }
             Some(id) => self.offer(
                 session,
                 snapshot,
@@ -252,6 +293,103 @@ impl Coordinator {
                 true,
             ),
             None => Ok(()),
+        }
+    }
+
+    fn request_consent(
+        &mut self,
+        session: &Session,
+        snapshot: &mut Snapshot,
+        rider: RiderId,
+    ) -> Result<(), String> {
+        if self
+            .consent_request
+            .as_ref()
+            .is_some_and(|request| request.rider == rider)
+        {
+            return Ok(());
+        }
+        self.cancel_consent(session, snapshot)?;
+        snapshot.preferred_fallback = Some(rider.value());
+        self.declined &= !(1 << rider.value());
+        snapshot.preferred_fallback_accepted = self.approved & (1 << rider.value()) != 0;
+        if snapshot.preferred_fallback_accepted {
+            return Ok(());
+        }
+        let epoch = self
+            .last_epoch
+            .max(snapshot.epoch)
+            .checked_add(1)
+            .ok_or("Authority epoch exhausted.")?;
+        session.handover(Some(rider), Message::FallbackConsent { epoch })?;
+        self.last_epoch = epoch;
+        self.consent_request = Some(ConsentRequest {
+            epoch,
+            rider,
+            until: Instant::now() + CONSENT,
+        });
+        snapshot.fallback_consent = Some(epoch);
+        Ok(())
+    }
+
+    fn cancel_consent(&mut self, session: &Session, snapshot: &mut Snapshot) -> Result<(), String> {
+        if let Some(request) = self.consent_request.take()
+            && snapshot.host
+        {
+            session.handover(
+                Some(request.rider),
+                Message::Cancel {
+                    epoch: request.epoch,
+                },
+            )?;
+        }
+        snapshot.fallback_consent = None;
+        snapshot.standby_offer = false;
+        Ok(())
+    }
+
+    fn consent_decision(
+        &mut self,
+        session: &Session,
+        snapshot: &mut Snapshot,
+        accepted: bool,
+    ) -> Result<(), String> {
+        let request = self
+            .consent_request
+            .as_ref()
+            .ok_or("There is no fallback consent request.")?;
+        if snapshot.host || request.rider.value() != snapshot.me || !snapshot.standby_offer {
+            return Err("This fallback request belongs to another rider.".into());
+        }
+        session.handover(
+            None,
+            Message::FallbackDecision {
+                epoch: request.epoch,
+                accepted,
+            },
+        )?;
+        self.consented |= accepted;
+        self.consent_request = None;
+        snapshot.fallback_consent = None;
+        snapshot.standby_offer = false;
+        Ok(())
+    }
+
+    pub(super) fn forget_member(&mut self, snapshot: &mut Snapshot, rider: RiderId) {
+        self.approved &= !(1 << rider.value());
+        self.declined &= !(1 << rider.value());
+        if self
+            .consent_request
+            .as_ref()
+            .is_some_and(|request| request.rider == rider)
+        {
+            self.consent_request = None;
+            snapshot.fallback_consent = None;
+            snapshot.standby_offer = false;
+        }
+        if snapshot.preferred_fallback == Some(rider.value()) {
+            snapshot.preferred_fallback = None;
+            snapshot.preferred_fallback_accepted = false;
         }
     }
 
@@ -270,6 +408,9 @@ impl Coordinator {
         snapshot: &mut Snapshot,
         accepted: bool,
     ) -> Result<(), String> {
+        if self.consent_request.is_some() {
+            return self.consent_decision(session, snapshot, accepted);
+        }
         let context = self
             .context
             .as_ref()
@@ -338,6 +479,63 @@ impl Coordinator {
         sender: RiderId,
         message: Message,
     ) -> Result<(), String> {
+        match &message {
+            Message::FallbackConsent { epoch } => {
+                if snapshot.host
+                    || sender.value() != snapshot.organizer
+                    || self.context.is_some()
+                    || *epoch <= self.last_epoch.max(snapshot.epoch)
+                {
+                    return Err("Unexpected fallback consent request.".into());
+                }
+                self.last_epoch = *epoch;
+                self.consent_request = Some(ConsentRequest {
+                    epoch: *epoch,
+                    rider: RiderId::new(snapshot.me).map_err(text)?,
+                    until: Instant::now() + CONSENT,
+                });
+                snapshot.fallback_consent = Some(*epoch);
+                snapshot.standby_offer = true;
+                if !Self::reachable(snapshot) {
+                    self.consent_decision(session, snapshot, false)?;
+                } else if self.consented {
+                    self.consent_decision(session, snapshot, true)?;
+                }
+                return Ok(());
+            }
+            Message::FallbackDecision { epoch, accepted } => {
+                if snapshot.host
+                    && self
+                        .consent_request
+                        .as_ref()
+                        .is_some_and(|request| request.epoch == *epoch && request.rider == sender)
+                {
+                    self.consent_request = None;
+                    snapshot.fallback_consent = None;
+                    snapshot.preferred_fallback_accepted = *accepted;
+                    if *accepted {
+                        self.approved |= 1 << sender.value();
+                    } else {
+                        self.declined |= 1 << sender.value();
+                    }
+                }
+                return Ok(());
+            }
+            Message::Cancel { epoch }
+                if !snapshot.host
+                    && sender.value() == snapshot.organizer
+                    && self
+                        .consent_request
+                        .as_ref()
+                        .is_some_and(|request| request.epoch == *epoch) =>
+            {
+                self.consent_request = None;
+                snapshot.fallback_consent = None;
+                snapshot.standby_offer = false;
+                return Ok(());
+            }
+            _ => {}
+        }
         if let Message::Offer {
             epoch,
             successor,
@@ -378,6 +576,12 @@ impl Coordinator {
         }
         match message {
             Message::Decision { accepted, .. } if snapshot.host && sender == context.successor => {
+                if self.standby && accepted {
+                    self.approved |= 1 << sender.value();
+                    if snapshot.preferred_fallback == Some(sender.value()) {
+                        snapshot.preferred_fallback_accepted = true;
+                    }
+                }
                 if !self.standby && snapshot.handover != Handover::Offered {
                     return Ok(());
                 }
@@ -560,8 +764,12 @@ impl Coordinator {
             ));
             self.connected = 1 << snapshot.me;
         } else {
-            let options = self.options.clone();
+            let mut options = self.options.clone();
+            // A replacement reply passes between computers, not people, in moments; a link
+            // that cannot connect gives the change up as soon as it did before (R243).
+            options.reply = options.window;
             let rider = self.rider.clone();
+            let credential = self.credential.clone();
             let notices = self.notices.clone();
             let plan = plan.clone();
             let roster = snapshot.roster.clone();
@@ -569,9 +777,14 @@ impl Coordinator {
             let me = RiderId::new(snapshot.me).map_err(text)?;
             let standby = self.standby;
             self.jobs.spawn(async move {
-                let joiner = Joiner::lobby(plan.invite.clone(), &options)
-                    .await
-                    .map_err(text)?;
+                let joiner = match &credential {
+                    Some(credential) => {
+                        Joiner::lobby_as(&rider.name, plan.invite.clone(), &options, credential)
+                            .await
+                    }
+                    None => Joiner::lobby(&rider.name, plan.invite.clone(), &options).await,
+                }
+                .map_err(text)?;
                 notices
                     .send((plan.context.epoch, joiner.reply().clone()))
                     .await
@@ -722,12 +935,23 @@ impl Coordinator {
         if snapshot.host {
             snapshot.reachability = Some(plan.invite.reachability());
         }
+        // Friends join the new organizer again, if ever, with its invitation (#536).
+        snapshot.joined_with = if snapshot.host {
+            String::new()
+        } else {
+            plan.invite
+                .to_code(self.options.gather.policy)
+                .map_err(text)?
+        };
+        snapshot.ending = Ending::Lost;
         snapshot.reply.clear();
         snapshot.states.fill(None);
+        snapshot.latencies.fill(None);
         if self.standby {
             // Riding on after losing the organizer: the new one's clock arrives next.
             snapshot.workout_clock = None;
             snapshot.reconnecting = None;
+            snapshot.moved = false;
             for id in 0..orqwa_net::state::MAX_RIDERS {
                 snapshot.away[id] = self.away & (1 << id) != 0;
                 // The group goes on without whoever left, the old organizer among them.
@@ -956,6 +1180,16 @@ impl Coordinator {
         session: &Session,
         snapshot: &mut Snapshot,
     ) -> Result<(), String> {
+        if let Some(request) = self
+            .consent_request
+            .as_ref()
+            .filter(|request| request.until <= Instant::now())
+        {
+            if snapshot.host {
+                self.declined |= 1 << request.rider.value();
+            }
+            self.cancel_consent(session, snapshot)?;
+        }
         if let Some(clock) = snapshot.workout_clock {
             self.clock = Some(clock);
         }
@@ -1015,7 +1249,7 @@ impl Coordinator {
         let others = self.connected & !(1 << snapshot.me);
         if lost
             && !self.revealed
-            && others & !self.lost == 0
+            && takes_over(others, self.lost, self.old_lost)
             && let (Some(proof), Some(Session::Host(host))) = (&self.proof, &self.replacement)
         {
             host.take_over(context.epoch, proof.clone(), self.clock)
@@ -1025,11 +1259,14 @@ impl Coordinator {
         Ok(())
     }
 
-    fn reset(&mut self, snapshot: &mut Snapshot) {
-        if self
-            .context
-            .as_ref()
-            .is_some_and(|context| snapshot.epoch != context.epoch)
+    pub(super) fn reset(&mut self, snapshot: &mut Snapshot) {
+        // Standby departures describe its disposable links until a takeover commits them.
+        // Cancelling those links must retain the still-authoritative group's membership.
+        if !self.standby
+            && self
+                .context
+                .as_ref()
+                .is_some_and(|context| snapshot.epoch != context.epoch)
         {
             for id in 0..orqwa_net::state::MAX_RIDERS {
                 if self.departed & (1 << id) != 0 {
@@ -1063,7 +1300,14 @@ impl Coordinator {
         snapshot.handover = Handover::Idle;
         snapshot.successor = None;
         snapshot.fallback = None;
-        snapshot.standby_offer = false;
+        snapshot.standby_offer = !snapshot.host && snapshot.fallback_consent.is_some();
+        if snapshot
+            .preferred_fallback
+            .is_some_and(|id| snapshot.roster[usize::from(id)].is_none())
+        {
+            snapshot.preferred_fallback = None;
+            snapshot.preferred_fallback_accepted = false;
+        }
     }
 }
 
@@ -1090,6 +1334,20 @@ mod tests {
     use orqwa_net::activity::{Assistance, ContentId, ContentKind, Selection};
 
     #[test]
+    fn a_fallback_takes_over_only_when_the_riders_it_reaches_lost_the_organizer_too() {
+        let (ben, carla) = (1 << 2, 1 << 3);
+        assert!(takes_over(ben | carla, ben | carla, false));
+        assert!(
+            !takes_over(ben | carla, ben, false),
+            "Carla still reaches the organizer"
+        );
+        // Its own network dropped: it reaches nobody, so it must not lead the group once back.
+        assert!(!takes_over(0, 0, false));
+        // The organizer left for good: a fallback alone with them still takes over.
+        assert!(takes_over(0, 0, true));
+    }
+
+    #[test]
     fn a_fallback_must_be_reachable_by_everyone_the_group_has() {
         let stands_in = |reach| {
             Coordinator::reachable(&Snapshot {
@@ -1109,6 +1367,191 @@ mod tests {
         ] {
             assert!(!stands_in(reach), "{reach:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_standby_keeps_members_whose_standby_links_closed() {
+        let rider = Rider {
+            name: "Rider".into(),
+            mass: Kilograms(80.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        };
+        let mut snapshot = Snapshot {
+            host: false,
+            me: 2,
+            root: Some(orqwa_net::code::RideId([1; 16])),
+            phase: super::super::Phase::Riding,
+            selection: Some(Selection {
+                revision: 1,
+                name: "Workout".into(),
+                course: None,
+                course_key: None,
+                workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
+                assistance: Assistance::default(),
+            }),
+            ..Snapshot::default()
+        };
+        for slot in 0..3 {
+            snapshot.roster[slot] = Some(rider.clone());
+        }
+        let mut coordinator = Coordinator::new(ConnectOptions::default(), rider);
+        let context = Coordinator::context(&snapshot, 2, RiderId::new(2).unwrap()).unwrap();
+        coordinator.begin(context.clone(), &mut snapshot, true);
+        coordinator.standing = true;
+        assert!(coordinator.standby_link(
+            &snapshot,
+            &context,
+            &LobbyEvent::Left { id: RiderId::HOST }
+        ));
+        coordinator.reset(&mut snapshot);
+        assert!(
+            snapshot.roster[0].is_some(),
+            "closing standby links must not remove the connected organizer"
+        );
+        snapshot.selection.as_mut().unwrap().revision = 2;
+        assert!(
+            Coordinator::context(&snapshot, 3, RiderId::new(2).unwrap()).is_ok(),
+            "the same group can prepare a fallback for the next activity"
+        );
+    }
+
+    #[tokio::test]
+    async fn lobby_consent_timeout_tries_another_friend_and_ignores_a_late_answer() {
+        let mut options = ConnectOptions::default();
+        options.gather.policy.loopback = true;
+        options.gather.stun_servers.clear();
+        let rider = Rider {
+            name: "Rider".into(),
+            mass: Kilograms(80.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        };
+        let host = Host::lobby(&rider.name, &options).await.unwrap();
+        let session = Session::Host(HostLobby::open(host, rider.clone()).unwrap());
+        let mut snapshot = Snapshot {
+            host: true,
+            phase: super::super::Phase::Waiting,
+            ..Snapshot::default()
+        };
+        for slot in 0..3 {
+            snapshot.roster[slot] = Some(rider.clone());
+        }
+        let mut source = Coordinator::new(options, rider);
+        source.tick(&session, &mut snapshot).unwrap();
+        assert_eq!(snapshot.preferred_fallback, Some(1));
+        let first = snapshot.fallback_consent.unwrap();
+        source.consent_request.as_mut().unwrap().until = Instant::now();
+        source.tick(&session, &mut snapshot).unwrap();
+        assert_eq!(snapshot.preferred_fallback, Some(2));
+        let second = snapshot.fallback_consent.unwrap();
+        assert!(second > first);
+        source
+            .message(
+                &session,
+                &mut snapshot,
+                RiderId::new(1).unwrap(),
+                Message::FallbackDecision {
+                    epoch: first,
+                    accepted: true,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(snapshot.fallback_consent, Some(second));
+        assert!(!snapshot.preferred_fallback_accepted);
+        source
+            .message(
+                &session,
+                &mut snapshot,
+                RiderId::new(2).unwrap(),
+                Message::FallbackDecision {
+                    epoch: second,
+                    accepted: false,
+                },
+            )
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            source.tick(&session, &mut snapshot).unwrap();
+            assert!(
+                snapshot.fallback_consent.is_none(),
+                "declines and timeouts are not asked again automatically"
+            );
+        }
+        assert!(
+            source.jobs.is_empty() && source.listener.is_none() && source.replacement.is_none(),
+            "consent in the lobby opens no standby connections"
+        );
+        source
+            .choose_fallback(&session, &mut snapshot, RiderId::new(1).unwrap())
+            .unwrap();
+        assert_eq!(snapshot.preferred_fallback, Some(1));
+        assert!(
+            snapshot.fallback_consent.unwrap() > second,
+            "the organizer may explicitly ask again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fallback_is_asked_to_stand_by_only_once_the_workout_clock_is_known() {
+        let mut options = ConnectOptions::default();
+        options.gather.policy.loopback = true;
+        options.gather.stun_servers.clear();
+        let rider = Rider {
+            name: "Rider".into(),
+            mass: Kilograms(80.0),
+            weight: Kilograms(70.0),
+            avatar: orqwa_domain::profile::Avatar::Female,
+        };
+        let host = Host::lobby(&rider.name, &options).await.unwrap();
+        let session = Session::Host(HostLobby::open(host, rider.clone()).unwrap());
+        let mut snapshot = Snapshot {
+            host: true,
+            root: Some(orqwa_net::code::RideId([1; 16])),
+            phase: super::super::Phase::Riding,
+            prepared: true,
+            start: Instant::now().checked_sub(Duration::from_secs(1)),
+            selection: Some(Selection {
+                revision: 1,
+                name: "Workout".into(),
+                course: None,
+                course_key: None,
+                workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
+                assistance: Assistance::default(),
+            }),
+            ..Snapshot::default()
+        };
+        for slot in 0..3 {
+            snapshot.roster[slot] = Some(rider.clone());
+            snapshot.ready[slot] = true;
+        }
+        let mut source = Coordinator::new(options, rider);
+        source.tick(&session, &mut snapshot).unwrap();
+        assert!(
+            source.context.is_none() && !snapshot.can_handover(),
+            "a plan would carry no workout position yet, which every rider refuses"
+        );
+        source
+            .choose_fallback(&session, &mut snapshot, RiderId::new(2).unwrap())
+            .unwrap();
+        assert!(source.context.is_none());
+        snapshot.workout_clock = Some(orqwa_net::lobby::WorkoutClock {
+            revision: 1,
+            sequence: 1,
+            elapsed: Duration::from_secs(1),
+            at: Instant::now(),
+            paused: false,
+        });
+        assert!(snapshot.can_handover());
+        source.tick(&session, &mut snapshot).unwrap();
+        let context = source.context.as_ref().expect("the standby is asked now");
+        assert!(source.standby);
+        assert_eq!(
+            context.successor.value(),
+            2,
+            "the organizer's choice is kept while waiting"
+        );
     }
 
     #[tokio::test]
@@ -1138,6 +1581,13 @@ mod tests {
                 course_key: None,
                 workout: Some(ContentId::of(ContentKind::Workout, b"workout").unwrap()),
                 assistance: Assistance::default(),
+            }),
+            workout_clock: Some(orqwa_net::lobby::WorkoutClock {
+                revision: 1,
+                sequence: 1,
+                elapsed: Duration::from_secs(1),
+                at: Instant::now(),
+                paused: false,
             }),
             ..Snapshot::default()
         };

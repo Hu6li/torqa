@@ -128,11 +128,22 @@ fn stale_riders_lose_influence_even_with_a_fresh_peer_and_expire_completely() {
 }
 
 #[test]
-fn relative_speed_can_brake_while_behind_and_nearby_equal_speed_riders_are_unaffected() {
-    let peer = rider(110.0, 10.0);
-    assert!(band(&peers(&[peer]), rider(100.0, 14.0)) > 0.0);
+fn catching_up_never_brakes_the_back_or_supports_the_front_even_far_apart() {
+    for gap in [20.0, 100.0, 500.0] {
+        for back_speed in [10.0, 12.0, 20.0, 30.0] {
+            let back = rider(1000.0, back_speed);
+            let front = rider(1000.0 + gap, 10.0);
+            assert!(band(&peers(&[front]), back) <= 0.0);
+            assert!(band(&peers(&[back]), front) >= 0.0);
+        }
+    }
     for gap in [-8.0, 0.0, 8.0] {
-        assert_eq!(band(&peers(&[peer]), rider(110.0 + gap, 10.0)), 0.0);
+        for speed in [1.0, 10.0, 30.0] {
+            assert_eq!(
+                band(&peers(&[rider(110.0, 10.0)]), rider(110.0 + gap, speed)),
+                0.0
+            );
+        }
     }
 }
 

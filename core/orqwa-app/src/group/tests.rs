@@ -4,8 +4,49 @@ use orqwa_devices::fake::FakeRider;
 use orqwa_domain::profile::Avatar;
 use orqwa_domain::units::{Kilograms, Rpm, Watts};
 use orqwa_net::code::{ConnectionMode, Setup};
+use std::fmt::Write as _;
 use std::path::Path;
 use std::time::Duration;
+
+#[test]
+fn roster_ping_uses_each_friends_organizer_link_and_hides_unavailable_readings() {
+    let mut snapshot = Snapshot {
+        phase: Phase::Riding,
+        me: 1,
+        organizer: 2,
+        ..Snapshot::default()
+    };
+    for id in 0..3 {
+        snapshot.roster[id] = Some(Rider {
+            name: format!("Rider {id}"),
+            mass: Kilograms(83.0),
+            weight: Kilograms(75.0),
+            avatar: Avatar::Female,
+        });
+    }
+    snapshot.latencies[0] = Some(Duration::from_millis(250));
+    snapshot.latencies[1] = Some(Duration::from_millis(70));
+    assert_eq!(snapshot.ping(0), Some(Duration::from_millis(250)));
+    assert_eq!(snapshot.ping(1), None, "no self ping");
+    assert_eq!(
+        snapshot.ping(2),
+        Some(Duration::from_millis(70)),
+        "our link to the organizer"
+    );
+    assert_eq!(snapshot.ping(3), None);
+    assert_eq!(snapshot.ping(MAX_RIDERS), None);
+    snapshot.away[0] = true;
+    assert_eq!(snapshot.ping(0), None);
+    snapshot.reconnecting = Some(Instant::now());
+    assert_eq!(snapshot.ping(2), None);
+    snapshot.reconnecting = None;
+    snapshot.me = 2;
+    snapshot.host = true;
+    assert_eq!(snapshot.ping(2), None);
+    assert_eq!(snapshot.ping(1), Some(Duration::from_millis(70)));
+    snapshot.phase = Phase::Ended;
+    assert_eq!(snapshot.ping(1), None);
+}
 
 struct Directory(PathBuf);
 impl Directory {
@@ -113,7 +154,17 @@ fn independent_failures_keep_retry_state_and_each_occurrence_is_reported_once() 
 }
 #[track_caller]
 fn wait(host: &mut App, peer: &mut App, condition: impl Fn(&App, &App) -> bool) {
-    let until = Instant::now() + Duration::from_secs(20);
+    wait_up_to(Duration::from_secs(20), host, peer, condition);
+}
+
+/// [`wait`] for up to `limit`.
+fn wait_up_to(
+    limit: Duration,
+    host: &mut App,
+    peer: &mut App,
+    condition: impl Fn(&App, &App) -> bool,
+) {
+    let until = Instant::now() + limit;
     while Instant::now() < until {
         host.update(Duration::from_millis(16));
         peer.update(Duration::from_millis(16));
@@ -221,11 +272,12 @@ fn buffered_group_positions_never_replace_live_telemetry_recording_or_assistance
 }
 
 #[test]
-fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly() {
+fn pasted_replies_add_friends_or_say_why_not_and_an_unreached_friend_is_named() {
     let (one, two, three) = (Directory::new(), Directory::new(), Directory::new());
     let (mut host, mut peer, mut late) = (one.app(), two.app(), three.app());
     let mut quick = options();
     quick.window = Duration::from_secs(1);
+    quick.reply = Duration::from_secs(1);
     host.group_open(None, quick.clone()).unwrap();
     wait(&mut host, &mut peer, |host, _| {
         !host.group().invite.is_empty()
@@ -257,7 +309,8 @@ fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly()
     wait(&mut host, &mut peer, |host, _| {
         host.group().refusal == Refusal::Again
     });
-    // A friend whose computer never connects runs out after the reply's minute, here one second.
+    // A friend whose computer never connects once added is named, after the organizer's
+    // connection window, here one second (#574).
     late.group_open(Some(host.group().invite), options())
         .unwrap();
     wait(&mut host, &mut late, |_, late| {
@@ -267,17 +320,22 @@ fn pasted_replies_add_friends_or_say_why_not_and_a_late_reply_runs_out_quietly()
     late.group_leave();
     host.group_admit(&gone).unwrap();
     wait(&mut host, &mut late, |host, _| {
-        host.group().refusal == Refusal::Late
+        host.group().refusal == Refusal::Unreached
     });
+    assert_eq!(host.group().refused, "Rider", "the reply names whom");
     assert_eq!(host.group().admitting, 0);
     assert_eq!(host.group().error, "");
-    // The joiner not added in time is told so, without a failure, and may make a new reply.
+    // The joiner not added in time is told why, without a failure, and may make a new reply.
     late.group_open(Some(host.group().invite), quick).unwrap();
     wait(&mut host, &mut late, |_, late| {
         late.group().phase == Phase::Failed
     });
     assert!(late.group().reply_expired);
-    assert!(late.group().error.is_empty(), "{}", late.group().error);
+    assert!(
+        !late.group().error.is_empty(),
+        "the reason is kept beside it"
+    );
+    assert!(late.group().failure.is_none(), "not raised as a failure");
 }
 
 #[test]
@@ -422,6 +480,96 @@ fn start_shared_workout(host: &mut App, peer: &mut App) {
 }
 
 #[test]
+fn ending_and_completing_activities_reuses_the_group_and_keeps_voice_and_recordings() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    speak(&mut host, &mut peer, true);
+    speak(&mut peer, &mut host, true);
+    let invite = host.group().invite;
+    let root = peer.group().root;
+    let memberships = peer.group().generations;
+    assert!(
+        peer.group_end_activity().is_err(),
+        "only the organizer ends everyone's ride"
+    );
+    for round in 0..2 {
+        wait(&mut host, &mut peer, |h, p| {
+            h.ride_samples().len() >= 2 && p.ride_samples().len() >= 2
+        });
+        if round == 0 {
+            host.group_end_activity().unwrap();
+        } else {
+            // A completed workout uses the same lifecycle without a UI finishing it.
+            let duration = host.group().plan.unwrap().duration();
+            host.group_command(Command::WorkoutSkip(duration)).unwrap();
+        }
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().phase == Phase::Waiting
+                && p.group().phase == Phase::Waiting
+                && h.ride_state().is_none()
+                && p.ride_state().is_none()
+        });
+        for app in [&host, &peer] {
+            let status = app.group();
+            assert!(status.selection.is_none() && status.start.is_none());
+            assert!(!status.ready.contains(&true));
+            assert!(status.states.iter().all(Option::is_none));
+            assert!(
+                status.voice && status.microphone,
+                "voice keeps the rider's gates"
+            );
+            assert_eq!(status.roster.iter().flatten().count(), 2);
+            assert_eq!(
+                app.history().len(),
+                round + 1,
+                "each local recording is saved once"
+            );
+        }
+        assert_eq!(host.group().invite, invite);
+        assert_eq!(peer.group().root, root);
+        assert_eq!(peer.group().generations, memberships);
+        host.group_select(None, Some("builtin:recovery-30"))
+            .unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().prepared && p.group().prepared
+        });
+        assert!(!host.group().can_start());
+        host.group_ready(true).unwrap();
+        peer.group_ready(true).unwrap();
+        wait(&mut host, &mut peer, |h, _| h.group().can_start());
+        host.group_start().unwrap();
+        if round == 0 {
+            wait(&mut host, &mut peer, |h, p| {
+                h.ride_state().is_some() && p.ride_state().is_some()
+            });
+            assert!(host.ride_state().unwrap().elapsed < Duration::from_secs(1));
+            assert!(peer.ride_state().unwrap().elapsed < Duration::from_secs(1));
+        }
+    }
+    // Cancel the third countdown, then wait beyond it: nobody launches a phantom ride.
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Countdown && p.group().phase == Phase::Countdown
+    });
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Waiting && p.group().phase == Phase::Waiting
+    });
+    let until = Instant::now() + Duration::from_secs(6);
+    while Instant::now() < until {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+        assert!(host.ride_state().is_none() && peer.ride_state().is_none());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(host.history().len(), 2);
+    assert_eq!(peer.history().len(), 2);
+    assert!(host.group().voice && peer.group().voice);
+}
+
+#[test]
 fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_groups_workout_step() {
     let from = Directory::new();
     let to = Directory::new();
@@ -456,6 +604,185 @@ fn a_rider_whose_connection_is_lost_rejoins_by_themselves_and_takes_up_the_group
     );
     assert!(peer.ride.is_some(), "the local ride never stopped");
     assert!(peer.group().microphone, "the microphone stays on as it was");
+    peer.group_leave();
+    host.group_leave();
+}
+
+/// Ends the peer's connection to the group mid-ride, as when its seat is given up after
+/// five minutes without a connection, and has the peer join again with a fresh reply.
+/// Returns the seat it had.
+fn join_again(host: &mut App, peer: &mut App) -> u8 {
+    assert!(
+        !peer.group_can_rejoin(),
+        "a connected friend has nothing to join again"
+    );
+    let seat = peer.group().me;
+    peer.group_command(Command::EndConnection).unwrap();
+    wait(host, peer, |_, p| p.group().phase == Phase::Ended);
+    assert!(peer.group_can_rejoin());
+    assert!(
+        !host.group_can_rejoin(),
+        "the organizer has no invitation to join with"
+    );
+    assert!(peer.ride.is_some(), "the ride goes on alone");
+    peer.group_rejoin().unwrap();
+    wait(host, peer, |_, p| !p.group().reply.is_empty());
+    assert!(peer.group_rides_alone(), "{}", peer.group().phase.key());
+    host.group_admit(&peer.group().reply).unwrap();
+    seat
+}
+
+#[test]
+fn a_friend_whose_connection_ended_joins_again_and_rides_on_where_they_are() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |h, p| {
+        p.group().phase == Phase::Riding && h.group_view().riders.len() == 1
+    });
+    let seat = join_again(&mut host, &mut peer);
+    let alone = peer.ride_state().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        !p.group_rides_alone()
+            && h.group_view().riders.len() == 1
+            && p.group_view().riders.len() == 1
+    });
+    assert_eq!(peer.group().me, seat, "the friend has their old seat back");
+    let state = peer.ride_state().unwrap();
+    assert!(
+        state.elapsed > alone.elapsed && state.distance.0 >= alone.distance.0,
+        "the ride was taken up, not started again"
+    );
+    assert!(!peer.group_waits_for_ride());
+    // The group's workout clock holds the ride again: the organizer pauses for everyone.
+    host.group_workout_pause(true).unwrap();
+    wait(&mut host, &mut peer, |_, p| {
+        p.ride_state().unwrap().workout.unwrap().paused
+    });
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
+fn a_removed_friend_or_one_whose_organizer_ended_the_group_cannot_join_again() {
+    for removed in [true, false] {
+        let from = Directory::new();
+        let to = Directory::new();
+        let mut host = from.app();
+        let mut peer = to.app();
+        start_shared_workout(&mut host, &mut peer);
+        wait(&mut host, &mut peer, |_, p| {
+            p.group().phase == Phase::Riding
+        });
+        if removed {
+            host.group_remove(peer.group().me).unwrap();
+        } else {
+            host.group_leave();
+        }
+        wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
+        // #536: the friend reads why, and only a lost connection offers Join again.
+        let ending = if removed {
+            Ending::Removed
+        } else {
+            Ending::Ended
+        };
+        assert_eq!(peer.group().ending, ending);
+        assert!(!peer.group_can_rejoin());
+        assert!(peer.group_rejoin().is_err());
+        assert!(peer.ride.is_some(), "the ride goes on alone");
+        peer.group_leave();
+        host.group_leave();
+    }
+}
+
+#[test]
+fn a_friend_whose_network_changed_joins_again_while_reconnecting_and_keeps_their_seat() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Riding
+    });
+    let seat = peer.group().me;
+    assert!(
+        !peer.group_can_rejoin(),
+        "a connected friend has nothing to join again"
+    );
+    // #536: reconnecting from sockets whose network is gone cannot work; a new reply can.
+    peer.group_command(Command::MoveNetwork).unwrap();
+    // Everyone sees how long the friend is away, from the update after the drop.
+    wait(&mut host, &mut peer, |h, p| {
+        p.group().moved && p.group_can_rejoin() && h.group_away_for(usize::from(seat)).is_some()
+    });
+    peer.group_rejoin().unwrap();
+    // Where the organizer's network lets the new address in, as here, the friend is back in
+    // the held seat before the organizer adds anything; otherwise the reply gets them in.
+    wait(&mut host, &mut peer, |_, p| {
+        !p.group().reply.is_empty() || !p.group_rides_alone()
+    });
+    if peer.group_rides_alone() {
+        host.group_admit(&peer.group().reply).unwrap();
+    }
+    wait(&mut host, &mut peer, |h, p| {
+        !p.group_rides_alone() && !h.group().away[usize::from(seat)]
+    });
+    assert_eq!(peer.group().me, seat, "the friend keeps their seat");
+    assert_eq!(
+        host.group().admitting,
+        0,
+        "they came back to it, not as someone new"
+    );
+    assert_eq!(host.group_away_for(usize::from(seat)), None);
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
+fn a_friend_joining_again_while_the_group_rides_something_else_rides_on_alone() {
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    start_shared_workout(&mut host, &mut peer);
+    wait(&mut host, &mut peer, |_, p| {
+        p.group().phase == Phase::Riding
+    });
+    peer.group_command(Command::EndConnection).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
+    // Meanwhile the group ends its workout and chooses another one.
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, _| {
+        h.ride.is_none() && h.group().phase == Phase::Waiting
+    });
+    host.group_select(None, Some("builtin:sweet-spot-3x10"))
+        .unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().prepared);
+    let workout = peer.ride_state().unwrap().workout.unwrap();
+    peer.group_rejoin().unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group_waits_for_ride());
+    for _ in 0..30 {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+    }
+    let state = peer.ride_state().expect("the ride goes on");
+    assert!(peer.group_rides_alone() && peer.group_waits_for_ride());
+    assert!(
+        !peer.group().prepared,
+        "nothing is prepared while the ride goes on"
+    );
+    // Recovery ramps gently; the group's sweet spot plan would set another step's power.
+    let own = state.workout.unwrap();
+    assert_eq!(own.progress.unwrap().step, workout.progress.unwrap().step);
+    assert!(
+        (own.target_power.unwrap().0 - workout.target_power.unwrap().0).abs() < 2.0,
+        "the ride keeps its own workout"
+    );
     peer.group_leave();
     host.group_leave();
 }
@@ -520,6 +847,13 @@ fn a_rider_reconnecting_keeps_the_start_and_an_organizer_change_waiting() {
     let mut riding = Snapshot {
         phase: Phase::Riding,
         start: Some(Instant::now()),
+        workout_clock: Some(orqwa_net::lobby::WorkoutClock {
+            revision: 1,
+            sequence: 1,
+            elapsed: Duration::ZERO,
+            at: Instant::now(),
+            paused: false,
+        }),
         ..lobby.clone()
     };
     assert!(!riding.can_handover());
@@ -559,8 +893,8 @@ fn wait3(apps: [&mut App; 3], condition: impl Fn(&App, &App, &App) -> bool) {
     );
 }
 
-/// The organizer and two friends riding a shared workout together.
-fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+/// The organizer and two friends connected, without a selected activity.
+fn lobby_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     for app in [&mut *host, &mut *anna, &mut *ben] {
         app.connect_trainer(TrainerChoice::Fake(FakeRider {
             power: Watts(180.0),
@@ -581,6 +915,16 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
             h.group().roster.iter().flatten().count() == count && f.group().phase == Phase::Waiting
         });
     }
+}
+
+/// The organizer and two friends prepared and ready, before any countdown.
+fn ready_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+    lobby_in_three(host, anna, ben);
+    prepare_in_three(host, anna, ben);
+}
+
+/// Selects a shared workout and readies an already connected group.
+fn prepare_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
     host.group_select(None, Some("builtin:recovery-30"))
         .unwrap();
     wait3([host, anna, ben], |h, a, b| {
@@ -592,6 +936,11 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
         app.group_ready(true).unwrap();
     }
     wait3([host, anna, ben], |h, _, _| h.group().can_start());
+}
+
+/// The organizer and two friends riding a shared workout together.
+fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
+    ready_in_three(host, anna, ben);
     host.group_start().unwrap();
     wait3([host, anna, ben], |h, a, b| {
         [h, a, b]
@@ -601,22 +950,238 @@ fn ride_in_three(host: &mut App, anna: &mut App, ben: &mut App) {
 }
 
 #[test]
+fn a_lobby_fallback_asks_immediately_and_keeps_consent_across_rides() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    lobby_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
+            && !b.group().standby_offer
+    });
+    assert!(
+        host.group().selection.is_none(),
+        "automatic consent needs no selected activity"
+    );
+    let selected = ben.group().me;
+    assert!(host.group().can_choose_fallback());
+    assert!(host.group_fallback(host.group().me).is_err());
+    assert!(anna.group_fallback(selected).is_err());
+    host.group_fallback(selected).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(selected)
+            && b.group().standby_offer
+            && b.group().fallback_consent.is_some()
+            && !a.group().standby_offer
+    });
+    for app in [&host, &anna, &ben] {
+        assert!(app.group().start.is_none());
+        assert!(
+            app.group().fallback.is_none(),
+            "lobby consent prepares no fallback links"
+        );
+    }
+    assert!(ben.ride.is_none());
+    ben.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, b| {
+        h.group().preferred_fallback_accepted && !b.group().standby_offer
+    });
+    assert!(host.group().fallback.is_none());
+    prepare_in_three(&mut host, &mut anna, &mut ben);
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(selected))
+    });
+    assert!(
+        !ben.group().standby_offer,
+        "accepted lobby consent needs no second answer"
+    );
+    host.group_end_activity().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().phase == Phase::Waiting)
+    });
+    assert_eq!(host.group().preferred_fallback, Some(selected));
+    assert!(host.group().preferred_fallback_accepted);
+    assert!(host.group().can_choose_fallback());
+    host.group_fallback(selected).unwrap();
+    prepare_in_three(&mut host, &mut anna, &mut ben);
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(selected))
+    });
+    assert!(
+        !ben.group().standby_offer,
+        "the next ride retains the group's consent"
+    );
+    host.group_end_activity().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().phase == Phase::Waiting
+    });
+    ben.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().roster[usize::from(selected)].is_none() && h.group().preferred_fallback.is_some()
+    });
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
+    assert!(!host.group().preferred_fallback_accepted);
+}
+
+#[test]
+fn a_declined_lobby_fallback_is_not_asked_again_when_the_ride_starts() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    let selected = ben.group().me;
+    host.group_fallback(selected).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().standby_offer
+    });
+    ben.group_handover_answer(false).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().fallback_consent.is_some()
+            && a.group().standby_offer
+            && !b.group().standby_offer
+    });
+    assert!(!host.group().preferred_fallback_accepted);
+    assert!(
+        anna.ride.is_none(),
+        "the alternative is asked before starting too"
+    );
+    assert!(
+        !ben.group().standby_offer,
+        "a previous decline is respected"
+    );
+    anna.group_handover_answer(true).unwrap();
+    let alternative = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().fallback == Some(alternative)
+    });
+    assert!(!anna.group().standby_offer && !ben.group().standby_offer);
+}
+
+#[test]
+fn changing_the_lobby_fallback_withdraws_the_previous_friends_request() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    host.group_fallback(ben.group().me).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().standby_offer
+    });
+    host.group_fallback(anna.group().me).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().standby_offer && !b.group().standby_offer && b.group().fallback_consent.is_none()
+    });
+    assert!(
+        ben.group_handover_answer(true).is_err(),
+        "withdrawn lobby offers cannot be accepted"
+    );
+    anna.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |h, a, _| {
+        h.group().preferred_fallback == Some(a.group().me) && h.group().preferred_fallback_accepted
+    });
+}
+
+#[test]
+fn a_lobby_without_a_friend_has_no_fallback_candidate() {
+    let directory = Directory::new();
+    let other = Directory::new();
+    let mut host = directory.app();
+    let mut peer = other.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| {
+        h.group().phase == Phase::Waiting
+    });
+    assert!(!host.group().can_choose_fallback());
+    assert!(host.group_fallback(host.group().me).is_err());
+    assert!(host.group_fallback(7).is_err());
+}
+
+#[test]
+fn a_departed_fallback_choice_cannot_select_a_replacement_in_the_same_slot() {
+    let directories = [
+        Directory::new(),
+        Directory::new(),
+        Directory::new(),
+        Directory::new(),
+    ];
+    let [mut host, mut anna, mut ben, mut replacement] = directories.each_ref().map(Directory::app);
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    let selected = ben.group().me;
+    let generation = host.group().generations[usize::from(selected)];
+    host.group_fallback(selected).unwrap();
+    wait(&mut host, &mut ben, |h, _| {
+        h.group().preferred_fallback == Some(selected)
+    });
+    ben.group_leave();
+    wait(&mut host, &mut anna, |h, a| {
+        h.group().roster[usize::from(selected)].is_none()
+            && h.group().preferred_fallback == Some(a.group().me)
+    });
+    replacement
+        .group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut replacement, |_, r| {
+        !r.group().reply.is_empty()
+    });
+    host.group_admit(&replacement.group().reply).unwrap();
+    wait(&mut host, &mut replacement, |h, r| {
+        r.group().phase == Phase::Ready && h.group().roster.iter().flatten().count() == 3
+    });
+    assert_eq!(replacement.group().me, selected);
+    host.group_command(Command::Fallback(
+        RiderId::new(selected).unwrap(),
+        generation,
+    ))
+    .unwrap();
+    wait(&mut host, &mut replacement, |h, _| {
+        h.group().error.contains("has left the group")
+    });
+    assert_eq!(host.group().preferred_fallback, Some(anna.group().me));
+    assert!(!replacement.group().standby_offer);
+}
+
+#[test]
 fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at_once() {
     let directories = [Directory::new(), Directory::new(), Directory::new()];
     let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
-    ride_in_three(&mut host, &mut anna, &mut ben);
-    // #426: the organizer asks the first friend who joined to stand in, and only her.
-    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
-        a.group().standby_offer
+    ready_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |h, a, _| {
+        h.group().preferred_fallback == Some(a.group().me)
+            && a.group().standby_offer
+            && a.group().fallback_consent.is_some()
     });
+    assert!(
+        anna.ride.is_none(),
+        "the first friend is asked automatically in the lobby"
+    );
     assert!(!ben.group().standby_offer);
     anna.group_handover_answer(true).unwrap();
     let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, _, _| {
+        h.group().preferred_fallback_accepted
+    });
+    host.group_start().unwrap();
     wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
         [h, a, b]
             .iter()
             .all(|app| app.group().fallback == Some(fallback))
     });
+    assert!(
+        !anna.group().standby_offer,
+        "no new prompt interrupts the first ride"
+    );
     for friend in [&mut anna, &mut ben] {
         speak(friend, &mut host, true);
     }
@@ -645,6 +1210,14 @@ fn a_fallback_takes_over_when_the_organizer_is_lost_and_the_next_one_is_asked_at
     // The new organizer keeps a fallback too, asking the next rider at once.
     wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
         b.group().standby_offer
+    });
+    assert!(
+        ben.group().fallback_consent.is_none(),
+        "a takeover still uses the in-ride request"
+    );
+    ben.group_handover_answer(true).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().fallback == Some(b.group().me) && b.group().fallback == Some(b.group().me)
     });
     anna.group_leave();
     ben.group_leave();
@@ -680,6 +1253,55 @@ fn when_the_organizer_leaves_the_fallback_takes_over_with_voice_as_it_was() {
     });
     assert!(anna.group().microphone, "Anna's microphone was on");
     assert!(!ben.group().microphone, "Ben's microphone was off");
+    anna.group_leave();
+    ben.group_leave();
+}
+
+#[test]
+fn after_a_takeover_a_friend_joins_the_new_organizer_again_in_their_seat() {
+    let directories = [Directory::new(), Directory::new(), Directory::new()];
+    let [mut host, mut anna, mut ben] = directories.each_ref().map(Directory::app);
+    ride_in_three(&mut host, &mut anna, &mut ben);
+    wait3([&mut host, &mut anna, &mut ben], |_, a, _| {
+        a.group().standby_offer
+    });
+    anna.group_handover_answer(true).unwrap();
+    let fallback = anna.group().me;
+    wait3([&mut host, &mut anna, &mut ben], |h, a, b| {
+        [h, a, b]
+            .iter()
+            .all(|app| app.group().fallback == Some(fallback))
+    });
+    let invitation = ben.group_joined_with();
+    host.group_leave();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        a.group().host && b.group().organizer == fallback && b.group().phase == Phase::Riding
+    });
+    // #536: Ben would join the new organizer again, never the one who left.
+    assert_ne!(ben.group_joined_with(), invitation);
+    assert!(
+        anna.group_joined_with().is_empty(),
+        "the organizer joins nobody"
+    );
+    let seat = ben.group().me;
+    ben.group_command(Command::EndConnection).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        b.group().phase == Phase::Ended
+    });
+    assert!(
+        ben.group_can_rejoin(),
+        "the organizer left, but the group went on"
+    );
+    ben.group_rejoin().unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, _, b| {
+        !b.group().reply.is_empty()
+    });
+    anna.group_admit(&ben.group().reply).unwrap();
+    wait3([&mut host, &mut anna, &mut ben], |_, a, b| {
+        !b.group_rides_alone() && a.group_view().riders.len() == 1
+    });
+    assert_eq!(ben.group().me, seat, "Ben has his seat back");
+    assert_eq!(anna.group().admitting, 0);
     anna.group_leave();
     ben.group_leave();
 }
@@ -870,7 +1492,9 @@ fn assistance_fixture() -> (Directory, App, Snapshot, Instant) {
         },
         now,
     ));
-    app.group.as_mut().unwrap().effect_at = now;
+    let group = app.group.as_mut().unwrap();
+    group.effect_at = now;
+    group.launched = true;
     (directory, app, snapshot, now)
 }
 
@@ -900,10 +1524,10 @@ fn assistance_feedback_reports_applied_effects_without_changing_measurements() {
         app.ride_state().unwrap().telemetry.cadence,
         before.telemetry.cadence
     );
-    // Relative speed may brake a rider who is still behind; never infer direction from gap.
+    // A fast catch-up can cancel support, but must never brake the rider still behind.
     snapshot.states[0].as_mut().unwrap().0.speed = MetersPerSecond(0.6);
     assistance_step(&mut app, &mut snapshot, now, 1100);
-    assert!(app.group_feedback().together < 0.0);
+    assert_eq!(app.group_feedback().together, 0.0);
     assert!(app.group_feedback().drafting > 0.0);
     let fresh = app.group_feedback();
     let effect = app.group.as_ref().unwrap().effect;
@@ -967,6 +1591,194 @@ fn assistance_transitions_keep_force_continuous_and_bounded() {
     assert!((middle.drag_share() - 0.85).abs() < 1e-9);
     assert!(middle.grade_offset().0.abs() < 1e-9);
     assert_eq!(blend(old, new, Duration::from_secs(2)), new);
+}
+
+#[test]
+fn assistance_cancels_filtered_forces_on_crossing_the_group_middle() {
+    let (_directory, mut app, mut snapshot, now) = assistance_fixture();
+    app.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
+    let local = app.ride_state().unwrap();
+    let peer = &mut snapshot.states[0].as_mut().unwrap().0;
+    peer.distance = Meters(local.distance.0 + 100.0);
+    peer.speed = local.speed;
+    assistance_step(&mut app, &mut snapshot, now, 1000);
+    assert!(app.group_feedback().together > 0.0);
+
+    // A fresh position correction puts the local rider ahead. Old support must not survive
+    // the filter for another frame, even though the new braking still ramps in gently.
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(0.0);
+    assistance_step(&mut app, &mut snapshot, now, 1100);
+    assert!(app.group_feedback().together < 0.0);
+
+    snapshot.states[0].as_mut().unwrap().0.distance = Meters(local.distance.0 + 100.0);
+    assistance_step(&mut app, &mut snapshot, now, 1200);
+    assert!(app.group_feedback().together > 0.0);
+
+    snapshot.states[0].as_mut().unwrap().0.distance = local.distance;
+    assistance_step(&mut app, &mut snapshot, now, 1300);
+    assert_eq!(
+        app.group_feedback().together,
+        0.0,
+        "the middle has no retained band"
+    );
+}
+
+#[test]
+fn a_new_unassisted_group_ride_does_not_inherit_the_previous_rides_effects() {
+    let (from, to) = (Directory::new(), Directory::new());
+    let (mut host, mut peer) = (from.app(), to.app());
+    for (app, power) in [(&mut host, 300.0), (&mut peer, 120.0)] {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(power),
+            cadence: Rpm(85.0),
+            heart: None,
+        }))
+        .unwrap();
+    }
+    let workout = host
+        .save_workout(
+            &orqwa_domain::workout::Plan {
+                name: "Unassisted group regression".into(),
+                steps: vec![orqwa_domain::workout::Step {
+                    duration: Duration::from_secs(600),
+                    target: orqwa_domain::workout::Target::Free,
+                    cadence: None,
+                }],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    for enabled in [true, false] {
+        host.group_open(None, options()).unwrap();
+        wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+        peer.group_open(Some(host.group().invite), options())
+            .unwrap();
+        wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+        host.group_admit(&peer.group().reply).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+        });
+        host.group_select(None, Some(&workout)).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.group().prepared
+                && p.group().prepared
+                && h.trainer_connected()
+                && p.trainer_connected()
+        });
+        host.group_assistance(enabled, enabled).unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            [h, p].iter().all(|a| {
+                a.group().assistance
+                    == Assistance {
+                        drafting: enabled,
+                        keep_together: enabled,
+                    }
+            })
+        });
+        host.group_ready(true).unwrap();
+        peer.group_ready(true).unwrap();
+        wait(&mut host, &mut peer, |h, _| h.group().can_start());
+        host.group_start().unwrap();
+        wait(&mut host, &mut peer, |h, p| {
+            h.ride_state().is_some() && p.ride_state().is_some()
+        });
+        if enabled {
+            // Establish material assistance before ending the first ride.
+            host.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
+            wait(&mut host, &mut peer, |h, p| {
+                h.group_feedback().together < -0.1 && p.group_feedback().together > 0.1
+            });
+        } else {
+            wait(&mut host, &mut peer, |h, p| {
+                h.ride_state().unwrap().telemetry.power == Some(Watts(300.0))
+                    && p.ride_state().unwrap().telemetry.power == Some(Watts(120.0))
+            });
+            let mut solo = [&host, &peer]
+                .map(|a| orqwa_physics::Motion::moving_at(a.ride_state().unwrap().speed));
+            let mut distances = [&host, &peer].map(|a| a.ride_state().unwrap().distance.0);
+            let step = Duration::from_millis(100);
+            for _ in 0..20 {
+                host.update(step);
+                peer.update(step);
+                for (id, app) in [&host, &peer].into_iter().enumerate() {
+                    let state = app.ride_state().unwrap();
+                    distances[id] += solo[id]
+                        .step(
+                            &app.rider_setup(),
+                            state.telemetry.power.unwrap(),
+                            orqwa_domain::units::GradePercent(0.0),
+                            MetersPerSecond(0.0),
+                            step,
+                        )
+                        .0;
+                    assert_eq!(app.group_feedback(), AssistanceFeedback::default());
+                    assert!((state.distance.0 - distances[id]).abs() < 1e-9);
+                    assert!((state.speed.0 - solo[id].speed().0).abs() < 1e-9);
+                    assert!(!app.ride.as_ref().unwrap().assisted);
+                }
+            }
+        }
+        host.group_leave();
+        peer.group_leave();
+        host.abort_ride();
+        peer.abort_ride();
+    }
+}
+
+#[test]
+fn joiners_see_the_organizers_assistance_choices_whenever_they_are_made() {
+    // #557: a joiner's lobby showed "Drafting on · Keep together on" whatever the organizer chose.
+    let (from, to) = (Directory::new(), Directory::new());
+    let (mut host, mut peer) = (from.app(), to.app());
+    let workout = host
+        .save_workout(
+            &orqwa_domain::workout::Plan {
+                name: "Assistance choices".into(),
+                steps: vec![orqwa_domain::workout::Step {
+                    duration: Duration::from_secs(600),
+                    target: orqwa_domain::workout::Target::Free,
+                    cadence: None,
+                }],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    let off = Assistance {
+        drafting: false,
+        keep_together: false,
+    };
+    let only_drafting = Assistance {
+        drafting: true,
+        keep_together: false,
+    };
+    // Before anything is selected.
+    host.group_assistance(off.drafting, off.keep_together)
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().assistance == off && p.group().assistance == off
+    });
+    // Selecting keeps them, and so does a change while the selection is being prepared.
+    host.group_select(None, Some(&workout)).unwrap();
+    host.group_assistance(only_drafting.drafting, only_drafting.keep_together)
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().prepared
+            && p.group().prepared
+            && [h, p].iter().all(|a| a.group().assistance == only_drafting)
+    });
+    host.group_leave();
+    peer.group_leave();
 }
 
 #[test]
@@ -1105,6 +1917,7 @@ fn assistance_is_identical_for_organizers_friends_and_reassigned_slots() {
         assistance_step(&mut app, &mut snapshot, now, 1000);
         assert!((app.group_feedback().together - support).abs() < 1e-9);
         // The peer is now behind: the organizer must also receive braking.
+        app.ride.as_mut().unwrap().ride.jump_to(Meters(1000.0));
         snapshot.organizer = me;
         snapshot.states[peer].as_mut().unwrap().0.distance = Meters(0.0);
         snapshot.states[peer].as_mut().unwrap().0.speed = MetersPerSecond(0.6);
@@ -1514,6 +2327,140 @@ fn library(to: &Directory) -> Vec<PathBuf> {
 }
 
 #[test]
+fn a_rider_is_ready_once_the_surroundings_of_the_groups_start_are_built() {
+    // ADR 0040, 2d: Ready means the whole-route preparation is done and the chunks the scene
+    // draws around the group's start are finished; the rest is built while the group rides.
+    let from = Directory::new();
+    let idle_directory = Directory::new();
+    let mut host = from.app();
+    let mut idle = idle_directory.app();
+    host.set_group_upload_radius(Meters(0.0));
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut idle, |h, _| !h.group().invite.is_empty());
+    host.group_select(Some(sample_course()), None).unwrap();
+    // An unoptimized build of a real course's surroundings, as `run_until` allows for.
+    wait_up_to(Duration::from_secs(120), &mut host, &mut idle, |h, _| {
+        h.group().prepared
+    });
+
+    let chunks = host.world_chunks().expect("ridden from its store");
+    assert!(!chunks.complete(), "the rest is still being built");
+    let (east, north) = host.ride_start_position(false).unwrap();
+    let plan = orqwa_world::chunk_plan(chunks.centres(), Meters(east), Meters(north), Meters(0.0));
+    assert!(plan.nearby > 0);
+    for &index in &plan.indices[..plan.nearby] {
+        assert!(
+            chunks.finished(index),
+            "chunk {index} at the start not finished"
+        );
+    }
+    host.group_leave();
+}
+
+#[test]
+fn a_ride_going_on_alone_keeps_building_its_world_when_the_group_ends_its_activity() {
+    // #536 with ADR 0040, 2d: the group's course is ridden while its world is built, and a
+    // friend who joined again rides it on alone. The group ending what it rides instead must
+    // not take that world away mid-ride.
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    // 120 km, far more than is built while the test rides it.
+    let mut gpx = String::from("<gpx><trk><name>Alone</name><trkseg>");
+    for i in 0..=12_000_u32 {
+        let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+        let _ = write!(gpx, r#"<trkpt lat="{lat}" lon="7"><ele>500</ele></trkpt>"#);
+    }
+    gpx.push_str("</trkseg></trk></gpx>");
+    let route = from.0.join("alone.gpx");
+    std::fs::write(&route, gpx).unwrap();
+    host.load_route(route, true);
+    let events =
+        crate::tests::run_until(&mut host, |e| matches!(e, crate::AppEvent::CourseAdded(_)));
+    let Some(crate::AppEvent::CourseAdded(course)) = events.last() else {
+        unreachable!()
+    };
+    let course = course.clone();
+    for app in [&mut host, &mut peer] {
+        app.connect_trainer(TrainerChoice::Fake(FakeRider {
+            power: Watts(180.0),
+            cadence: Rpm(85.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.set_group_upload_radius(Meters(0.0));
+    }
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    host.group_select(Some(course), None).unwrap();
+    wait_up_to(Duration::from_secs(120), &mut host, &mut peer, |h, p| {
+        h.group().prepared && p.group().prepared
+    });
+    host.group_ready(true).unwrap();
+    peer.group_ready(true).unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.ride_state().is_some() && p.ride_state().is_some()
+    });
+
+    let chunks = std::sync::Arc::clone(peer.chunks.as_ref().expect("the course's world"));
+    assert!(!chunks.complete(), "the rest is still being built");
+    let keeps_its_world = |peer: &App| {
+        assert!(peer.ride.is_some(), "the ride goes on alone");
+        assert!(
+            peer.chunks
+                .as_ref()
+                .is_some_and(|ridden| std::sync::Arc::ptr_eq(ridden, &chunks)),
+            "the ride keeps its world"
+        );
+        assert!(
+            peer.loading.as_ref().is_some_and(|job| !job.is_finished()) || chunks.complete(),
+            "its world goes on being built"
+        );
+    };
+
+    // The friend's connection ends; meanwhile the group leaves the course for a workout.
+    peer.group_command(Command::EndConnection).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group().phase == Phase::Ended);
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, _| {
+        h.ride.is_none() && h.group().phase == Phase::Waiting
+    });
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().prepared);
+    host.group_ready(true).unwrap();
+    wait(&mut host, &mut peer, |h, _| h.group().can_start());
+    host.group_start().unwrap();
+    wait(&mut host, &mut peer, |h, _| h.ride_state().is_some());
+    // Joining again, the friend hears of the course's end and rides it on alone.
+    peer.group_rejoin().unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |_, p| p.group_waits_for_ride());
+    assert!(peer.group_rides_alone());
+    keeps_its_world(&peer);
+
+    // And of the workout's end, too.
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.ride.is_none() && p.group().phase == Phase::Waiting
+    });
+    keeps_its_world(&peer);
+    peer.group_leave();
+    host.group_leave();
+}
+
+#[test]
 fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_copy() {
     let to = Directory::new();
     let downloaded = course_on_joining(&to, |_| {});
@@ -1522,6 +2469,60 @@ fn a_late_lobby_admission_receives_the_already_selected_course_without_a_local_c
         std::fs::read(sample_course()).unwrap(),
         std::fs::read(downloaded).unwrap()
     );
+}
+
+#[test]
+fn the_organizer_withdraws_a_shared_course_while_friends_still_prepare_it() {
+    // #556: the organizer need not wait for everyone to be ready to change their mind.
+    let from = Directory::new();
+    let to = Directory::new();
+    let mut host = from.app();
+    let mut peer = to.app();
+    host.group_open(None, options()).unwrap();
+    wait(&mut host, &mut peer, |h, _| !h.group().invite.is_empty());
+    peer.group_open(Some(host.group().invite), options())
+        .unwrap();
+    wait(&mut host, &mut peer, |_, p| !p.group().reply.is_empty());
+    host.group_admit(&peer.group().reply).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().roster.iter().flatten().count() == 2 && p.group().phase == Phase::Waiting
+    });
+    assert!(
+        !host.group().can_cancel_activity(),
+        "nothing is shared to withdraw"
+    );
+    host.group_select(Some(sample_course()), None).unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().can_cancel_activity()
+            && matches!(p.group().phase, Phase::Downloading | Phase::Preparing)
+    });
+    assert!(
+        peer.group_end_activity().is_err(),
+        "only the organizer withdraws the group's course"
+    );
+    host.group_end_activity().unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().phase == Phase::Waiting && p.group().phase == Phase::Waiting
+    });
+    for app in [&host, &peer] {
+        let status = app.group();
+        assert!(status.selection.is_none() && status.course.is_none());
+        assert!(!status.prepared && !status.ready.contains(&true));
+        assert!(app.group.as_ref().unwrap().preparing.is_none());
+        assert_eq!(status.roster.iter().flatten().count(), 2);
+    }
+    // What was withdrawn is not prepared afterwards, and something else can be shared.
+    for _ in 0..60 {
+        host.update(Duration::from_millis(16));
+        peer.update(Duration::from_millis(16));
+        assert!(peer.group().selection.is_none() && peer.world.is_none());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    host.group_select(None, Some("builtin:recovery-30"))
+        .unwrap();
+    wait(&mut host, &mut peer, |h, p| {
+        h.group().prepared && p.group().prepared && p.group().course.is_none()
+    });
 }
 
 #[test]

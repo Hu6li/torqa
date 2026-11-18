@@ -209,7 +209,9 @@ func _init() -> void:
 	var patterns: PackedStringArray = PackedStringArray()
 	for extension: String in OrqwaApp.workout_extensions():
 		patterns.append("*." + extension)
-	_import_dialog.filters = PackedStringArray([", ".join(patterns) + " ; " + tr("Workouts")])
+	_import_dialog.filters = PickedFile.open_filters(
+		PackedStringArray([", ".join(patterns) + " ; " + tr("Workouts")])
+	)
 	_import_dialog.use_native_dialog = true
 	_import_dialog.file_selected.connect(_import)
 	add_child(_import_dialog)
@@ -376,6 +378,10 @@ func _on_saved(id: String) -> void:
 
 
 func _import(picked: String) -> void:
+	var refusal: String = PickedFile.refusal(picked, OrqwaApp.workout_extensions())
+	if not refusal.is_empty():
+		_status.text = refusal
+		return
 	var id: String = _orqwa.import_workout(PickedFile.local_path(picked))
 	if id.is_empty():
 		return
@@ -404,7 +410,10 @@ func _on_route_loaded(_route: Dictionary) -> void:
 func _build() -> void:
 	_loading_route = false
 	_orqwa.ride_along_video(false)
-	if _orqwa.build_world():
+	var radius: float = RideWorld.upload_radius(
+		_orqwa.graphics_quality(), _orqwa.graphics_options()
+	)
+	if _orqwa.build_world(false, radius):
 		_done()
 		return
 	_building = true

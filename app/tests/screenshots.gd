@@ -69,6 +69,8 @@ func _group_screens(start: StartPage, orqwa: OrqwaApp, out: String) -> void:
 	group.set_process(false)
 	await GroupVoiceScreenshots.capture(self, start, group, out)
 	await GroupCodeScreenshots.capture(self, group, str(orqwa.group_status()["invite"]), out)
+	await GroupReadinessLayout.capture(self, start, group, orqwa, out)
+	await GroupLifecycleChecks.capture(self, start, group, orqwa, out)
 	orqwa.group_leave()
 	await _group_preview_screens(start, group, orqwa, out)
 	await _group_late_screens(start, group, orqwa, out)
@@ -466,11 +468,7 @@ func _run() -> void:
 	var edit_dialog: Window = course_page.get("_edit_dialog")
 	edit_dialog.hide()
 	# Let the world stream its chunks in.
-	while true:
-		var next_chunk: int = world.get("_next_chunk")
-		var chunk_count: int = world.get("_chunk_count")
-		if next_chunk >= chunk_count:
-			break
+	while not world.chunks_uploaded():
 		await process_frame
 	# A custom HUD, e.g. SCREENSHOT_HUD=power_3s,speed,normalized_power,upcoming_grade
 	var hud: String = OS.get_environment("SCREENSHOT_HUD")
@@ -525,6 +523,18 @@ func _run() -> void:
 	print("saved ride moment")
 	var moment_card: MomentCard = moment_screen.get("_moment_card")
 	moment_card.clear()
+	# A friend's group connection dropping and coming back, on the same card (R249).
+	var notices: Array[Dictionary] = [
+		{"kind": "away", "names": PackedStringArray(["Ben", "Carla"])},
+		{"kind": "back", "names": PackedStringArray(["Ben"]), "away_s": 72.0},
+	]
+	for notice: Dictionary in notices:
+		moment_screen.callv("_tell", GroupNotices.card(notice))
+		await create_timer(0.6).timeout
+		var shot: String = "ride-group-%s.png" % notice["kind"]
+		root.get_texture().get_image().save_png(out_dir.path_join(shot))
+		print("saved ", shot)
+		moment_card.clear()
 
 	# A close side view of the rider, for checking the avatar.
 	var rider: Node3D = world.get_node("Rider")
@@ -742,7 +752,7 @@ func _keep_a_world(orqwa: OrqwaApp) -> void:
 		var first: Dictionary = library[0]
 		var path: String = first["path"]
 		orqwa.route_loaded.connect(
-			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world"),
+			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT
 		)
 		orqwa.open_course(path)

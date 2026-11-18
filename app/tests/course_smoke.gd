@@ -18,6 +18,7 @@ func _run() -> void:
 	_estimates()
 	_card_countries()
 	_saved_map_position()
+	await _courses_tab()
 	await _course_loading()
 	await _preparation_log()
 	await _course_gallery()
@@ -184,6 +185,64 @@ func _estimates() -> void:
 		shown == PackedStringArray(["5 min", "15 min", "1 h 00", "1 h 45", "2 h 10"]),
 		"estimates to 5 minutes: %s" % shown
 	)
+
+
+## Switching tabs keeps the course page (#569); clicking Courses again opens the gallery (#188).
+func _courses_tab() -> void:
+	var main: Control = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	root.add_child(main)
+	await process_frame
+	var start: StartPage = main.get_node("StartPage")
+	var detail: Control = start.get("_detail")
+	var courses: Control = start.get("_courses")
+	var tab_bar: TabBar = start.get("_tab_bar")
+	var tabs: TabContainer = start.get("_tabs")
+	courses.hide()
+	detail.show()
+	await process_frame
+	for tab: int in [StartPage.Tab.WORKOUTS, StartPage.Tab.PROFILE, StartPage.Tab.DEVICES]:
+		_click_tab(tab_bar, tab)
+		_click_tab(tab_bar, StartPage.Tab.COURSES)
+		_check(
+			detail.is_visible_in_tree() and not courses.visible,
+			"returning from tab %d keeps the selected course" % tab
+		)
+	# Devices can also be opened in code when Ride needs a trainer.
+	tabs.current_tab = StartPage.Tab.DEVICES
+	_click_tab(tab_bar, StartPage.Tab.COURSES)
+	_check(detail.is_visible_in_tree(), "returning from a trainer prompt keeps the course")
+	_click_tab(tab_bar, StartPage.Tab.COURSES)
+	_check(courses.visible and not detail.visible, "the Courses tab brings the gallery back")
+	_click_tab(tab_bar, StartPage.Tab.PROFILE)
+	_click_tab(tab_bar, StartPage.Tab.COURSES)
+	_check(courses.is_visible_in_tree() and not detail.visible, "an explicit gallery return stays")
+	courses.hide()
+	detail.show()
+	_check(start.go_back(), "Back returns from a selected course")
+	_click_tab(tab_bar, StartPage.Tab.DEVICES)
+	_click_tab(tab_bar, StartPage.Tab.COURSES)
+	_check(courses.is_visible_in_tree() and not detail.visible, "Back keeps the gallery selected")
+	# An import that hangs is given up on (#219): the library is usable again.
+	courses.call("_start_loading", "gpx", "route.gpx")
+	var loading: Control = courses.get("_loading")
+	var import_button: Button = courses.get("_import_button")
+	_check(loading.visible and import_button.disabled, "importing: the loading bar, no import")
+	_button_with_text(loading, "Cancel").pressed.emit()
+	_check(not loading.visible and not import_button.disabled, "Cancel: back to the library")
+	main.queue_free()
+
+
+## Deliver real mouse input so the engine's tab selection/click signal order is covered.
+func _click_tab(tab_bar: TabBar, tab: int) -> void:
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.position = tab_bar.get_global_transform() * tab_bar.get_tab_rect(tab).get_center()
+	press.global_position = press.position
+	press.pressed = true
+	root.push_input(press, true)
+	var release: InputEventMouseButton = press.duplicate()
+	release.pressed = false
+	root.push_input(release, true)
 
 
 ## While a course's route is prepared, a spinner turns on its page and Ride waits (R40). A

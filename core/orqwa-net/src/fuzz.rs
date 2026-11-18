@@ -129,6 +129,7 @@ pub fn stun(data: &[u8]) {
 
 /// Valid inputs for each property, as starting points for the fuzzer: `(target, bytes)`.
 #[must_use]
+#[allow(clippy::too_many_lines)] // one seed catalogue covers every bounded control and fuzz target
 pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
     let invite = invite();
     let reply = Reply {
@@ -136,6 +137,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         fingerprint: invite.fingerprint,
         route: invite.route,
         client: Fingerprint([4; 32]),
+        name: "Alex".into(),
         candidates: invite.candidates.clone(),
         nat: NatObservation::OneServer,
     };
@@ -156,6 +158,7 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Joined(anna, rider),
         Message::Left(anna),
         Message::Start(5000),
+        Message::Lobby(1),
         Message::VoiceEnabled(true),
         Message::VoiceRoster([1, 2, 0, 0, 0, 0, 0, 0]),
         Message::Selection(selection.clone()),
@@ -169,8 +172,14 @@ pub fn seeds() -> Vec<(&'static str, Vec<u8>)> {
         Message::Rejoined(true),
         Message::Preview(Some(preview_id())),
         Message::Preview(None),
+        Message::Latencies(latency_seed()),
     ];
     let handover = [
+        crate::handover::Message::FallbackConsent { epoch: 2 },
+        crate::handover::Message::FallbackDecision {
+            epoch: 2,
+            accepted: true,
+        },
         crate::handover::Message::Offer {
             epoch: 2,
             successor: anna,
@@ -256,6 +265,13 @@ fn invite() -> Invite {
         nat: NatObservation::SameMapping,
         setup: Setup::new(ConnectionMode::Mixed, true),
     }
+}
+
+fn latency_seed() -> [Option<Duration>; crate::state::MAX_RIDERS] {
+    let mut values = [None; crate::state::MAX_RIDERS];
+    values[1] = Some(Duration::from_millis(45));
+    values[2] = Some(Duration::ZERO);
+    values
 }
 
 fn selection_seed() -> Selection {

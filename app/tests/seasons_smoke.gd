@@ -33,6 +33,7 @@ func _run() -> void:
 	_winter()
 	_spring()
 	_autumn()
+	_clothing()
 	if not _failed:
 		print("SEASONS SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -153,4 +154,69 @@ func _spring() -> void:
 	_check(bloom == 0.0, "summer restores smaller flower heads")
 	strength = leaves.get_shader_parameter("spring_strength")
 	_check(strength == 0.0, "summer restores leaf silhouettes on flowering trees")
+	world.free()
+
+
+func _clothing() -> void:
+	var world: RideWorld = _new_world()
+	root.add_child(world)
+	var local: RiderAvatar = world.get("_avatar")
+	var ghost: RiderAvatar = world.get("_ghost")
+	var group: GroupRidersWorld = world.get("_group_riders")
+	group.set_process(false)
+	var peer: Dictionary = {
+		"id": 1,
+		"generation": "1",
+		"avatar": "male",
+		"name": "Alex",
+		"rider_x": 0.0,
+		"rider_y": 5.0,
+		"elevation_m": 0.0,
+		"heading": 0.0,
+		"grade": 0.0,
+		"speed_kmh": 20.0,
+		"cadence": 80.0,
+		"effort": 2.0,
+		"curvature": 0.0,
+	}
+	group.show_riders([peer], 0.0)
+	local.animate(0.25, 60.0, 20.0)
+	var crank: float = local.crank_angle()
+	var wheel: Node3D = local.find_child("wheel_front", true, false) as Node3D
+	var wheel_rotation: Vector3 = wheel.rotation
+	for season: String in ["Autumn", "Winter", "Spring", "Winter", "Summer", "unknown"]:
+		world.apply_options({"season": season, "weather": "Clear", "time": "Midday", "camera": 1})
+		var winter: bool = season in ["Autumn", "Winter"]
+		var friend: GroupRiderAvatar = group.get_child(0)
+		for avatar: RiderAvatar in [local, ghost, friend._avatar]:
+			_check(avatar.winter_clothing == winter, "%s dresses local, ghost and friends" % season)
+			var body: MeshInstance3D = avatar.find_child("body", true, false) as MeshInstance3D
+			_check(
+				is_equal_approx(body.transparency, 0.45 if avatar.ghostly else 0.0),
+				"changing kit preserves ghost transparency"
+			)
+			var worn: PackedStringArray = []
+			for surface: int in range(body.mesh.get_surface_count()):
+				var kind: String = body.mesh.surface_get_material(surface).resource_name
+				worn.append(kind)
+				if kind == "gilet":
+					var fabric: StandardMaterial3D = body.get_surface_override_material(surface)
+					var color: Color = avatar.accent
+					if color.a == 0.0:
+						color = Palette.color("rider_" + avatar.rider + ".jersey")
+					_check(fabric.albedo_color == color, "gilets retain rider and ghost colours")
+			for item: String in ["cap", "gloves", "tights", "gilet"]:
+				_check(worn.has(item) == winter, "%s uses the expected %s" % [season, item])
+		_check(is_equal_approx(local.crank_angle(), crank), "changing kit preserves pedal phase")
+		wheel = local.find_child("wheel_front", true, false) as Node3D
+		_check(
+			wheel.rotation.is_equal_approx(wheel_rotation), "changing kit preserves wheel rotation"
+		)
+		var local_body: Node3D = local.find_child("body", true, false) as Node3D
+		_check(not local_body.visible, "changing kit preserves first-person body hiding")
+		var id: int = peer["id"]
+		peer["id"] = id + 1
+		group.show_riders([peer], 0.0)
+		var joined: GroupRiderAvatar = group.get_child(0)
+		_check(joined._avatar.winter_clothing == winter, "new friends inherit the selected season")
 	world.free()

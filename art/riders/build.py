@@ -13,6 +13,9 @@ until the hands reach the fixed hoods of a reference-sized road frame, the feet 
 Each rider has their own frame size. The riding pose becomes the skeleton's rest; the body is
 thinned for the app, the kit cut into it along planes across the limbs (shorts, jersey with
 sleeves, socks, white shoes), shoes closed over the toes, bare hands gripping the hoods.
+Autumn/Winter variants add winter_kit.py's thermal cap, gloves, long tights, long sleeves
+and zipped gilet, sharing the same skeleton, bike and fit. KIT=summer or winter limits
+rebuilding; the default builds both.
 
 `rider_<sex>.glb` holds, in Godot's axes (x right, y up, −z forward; metres, the origin on the
 ground between the wheels):
@@ -45,6 +48,7 @@ sys.path.insert(0, HERE)
 import helmet  # noqa: E402  (needs the path above)
 import bike_fit  # noqa: E402
 import hair as female_hair  # noqa: E402
+import winter_kit  # noqa: E402
 
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "app", "assets", "models", "riders"))
 
@@ -83,6 +87,9 @@ PREVIEW = {
     "sidewall": (0.39, 0.34, 0.29), "carbon": (0.08, 0.09, 0.1),
     "alloy": (0.12, 0.13, 0.15), "bottle": (0.8, 0.81, 0.78),
     "socks": (0.92, 0.92, 0.9),
+    "cap": (0.12, 0.13, 0.15), "gloves": (0.12, 0.13, 0.15),
+    "tights": (0.09, 0.10, 0.11), "gilet": (0.65, 0.18, 0.30),
+    "zip": (0.65, 0.67, 0.66),
 }
 
 
@@ -329,7 +336,7 @@ def shell(gear, patch, inner, outer, material_name, shape=None):
                 gear.add([low[a], low[b], high[b], high[a]], material_name, middle_point)
 
 
-def headgear(parts, sex):
+def headgear(parts, sex, winter=False):
     """Hair, helmet and sunglasses on the upright head facing +y, fitted to its shape and
     parented to it."""
     head = parts["head"]
@@ -359,7 +366,9 @@ def headgear(parts, sex):
         return hair["thickness"] if point.z < helmet_rim(point) + 0.01 else helmet.GAP * 0.5
 
     gear = Faces()
-    if sex == "female":
+    if winter:
+        winter_kit.cap(gear, head, eyes, parts["skull_tree"])
+    elif sex == "female":
         female_hair.scalp(gear, parts["skull"], parts["skull_tree"], eyes, centre.x)
     else:
         shell(gear, scalp(head, lambda c: c.z > hairline(c) and not face(c)),
@@ -442,7 +451,8 @@ def headgear(parts, sex):
             for k in range(6):
                 point = start + (end - start) * (k / 6)
                 nearest = skin.find_nearest(point)
-                spine.append(nearest[0] + nearest[1] * 0.004 if nearest[0] is not None
+                clearance = 0.011 if winter and point.z > eyes - 0.07 else 0.004
+                spine.append(nearest[0] + nearest[1] * clearance if nearest[0] is not None
                              else point)
         spine.append(corners[-1])
         gear.sweep(spine, [(0.007, 0.007)] * len(spine), "vents", sides=6)
@@ -1224,7 +1234,7 @@ def turn_bone(rig, name, angle, axis="X", about=None):
 EYES_ABOVE_NOSE = 0.036
 
 
-def realistic_headgear(body, rig, sex, scale):
+def realistic_headgear(body, rig, sex, scale, winter=False):
     """Hair, helmet and sunglasses for the realistic head, as `headgear` fits them to the
     primitive heads: on a copy of the upright head (the faces the head bone moves) with eyes and
     ears placed by its proportions. Returned parented to the head bone."""
@@ -1265,7 +1275,7 @@ def realistic_headgear(body, rig, sex, scale):
                                       [list(p.vertices) for p in body.data.polygons])
     parts = {"head": head, "nose": head, "nose_bridge": head, "skull": skull,
              "skull_tree": skull_tree, **markers}
-    headgear(parts, sex)
+    headgear(parts, sex, winter)
     gear = bpy.data.objects["headgear"]
     world = gear.matrix_world.copy()
     gear.parent = rig
@@ -1353,7 +1363,7 @@ def finish_rest_pose(body, rig):
 
 # The headgear's own materials, kept when the body is dressed (the hair tie is in the kit's
 # sleeve colour).
-HEADGEAR_MATERIALS = ("hair", "helmet", "vents", "glasses", "sleeve")
+HEADGEAR_MATERIALS = ("hair", "helmet", "vents", "glasses", "sleeve", "cap")
 
 
 # Body regions by the bones that move them, for dressing.
@@ -1366,7 +1376,7 @@ REGIONS = {
 }
 
 
-def dress_realistic(body, rig):
+def dress_realistic(body, rig, winter=False):
     """The cycling kit, cut by planes across the skeleton so its edges run clean: shorts over
     the pelvis and thighs to above the knee, the jersey over the trunk with sleeves to half way
     down the upper arm, socks above white shoes; skin elsewhere, bare hands included. The toes
@@ -1475,6 +1485,8 @@ def dress_realistic(body, rig):
         else:
             choice = "jersey"
         polygon.material_index = material_slot(body, choice)
+    if winter:
+        winter_kit.dress(body, rig, REGIONS, material_slot)
     smooth(mesh)
 
 
@@ -1540,7 +1552,7 @@ def material_slot(obj, name):
     return len(obj.data.materials) - 1
 
 
-def build(sex):
+def build(sex, winter=False):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     fit = bike_fit.layout(sex, BOTTOM_BRACKET, WHEEL_RADIUS)
     hoods = fit["hoods"]
@@ -1575,7 +1587,7 @@ def build(sex):
     # the inner thighs, far lower, which put the saddle and hoods too low and the back flat.
     saddle_top = centre.z - SIT_BONES_BELOW_HIPS * scale
     rig = realistic_skeleton(body, joints, scale)
-    gear = realistic_headgear(body, rig, sex, scale)
+    gear = realistic_headgear(body, rig, sex, scale, winter)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode="POSE")
 
@@ -1665,7 +1677,7 @@ def build(sex):
     bpy.ops.object.mode_set(mode="OBJECT")
     bake_rest_pose(body, gear, rig)
     thin_body(body)
-    dress_realistic(body, rig)
+    dress_realistic(body, rig, winter)
     finish_rest_pose(body, rig)
 
     saddle = Vector((0.0, centre.y - 0.02, saddle_top))
@@ -1677,17 +1689,18 @@ def build(sex):
     body.name = "body"
     rig.name = "skeleton"
     os.makedirs(OUT, exist_ok=True)
-    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, f"rider_{sex}.glb"),
+    suffix = "_winter" if winter else ""
+    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, f"rider_{sex}{suffix}.glb"),
                               export_format="GLB", export_yup=True, export_skins=True,
                               export_apply=False, export_animations=False)
-    print(f"built realistic rider_{sex}: torso {math.degrees(angle):.0f}° above horizontal, "
+    print(f"built realistic rider_{sex}{suffix}: torso {math.degrees(angle):.0f}° above horizontal, "
           f"hoods {hoods.y:.3f} m ahead of the bottom bracket, wheelbase "
           f"{front_hub.y - rear_hub.y:.3f} m; {triangles([body])} rider and "
           f"{triangles(bike_objects)} bike triangles")
     preview_dir = os.environ.get("PREVIEW")
     if preview_dir:
         import preview  # noqa: E402  (art/preview.py; on the path below)
-        preview.render([body, *bike_objects], preview_dir, f"realistic_{sex}",
+        preview.render([body, *bike_objects], preview_dir, f"realistic_{sex}{suffix}",
                        views=("right", "quarter", "front"))
     pose = rig.pose.bones
     return {
@@ -1709,10 +1722,21 @@ def build(sex):
 def main():
     # art/preview.py, for PREVIEW=<dir>.
     sys.path.insert(0, os.path.dirname(HERE))
-    manifest = {sex: build(sex) for sex in ("female", "male")}
-    with open(os.path.join(OUT, "riders.json"), "w", encoding="utf-8") as file:
-        json.dump(manifest, file, indent=1)
-        file.write("\n")
+    kit = os.environ.get("KIT", "all")
+    if kit not in ("all", "summer", "winter"):
+        raise ValueError("KIT must be all, summer or winter")
+    manifest_path = os.path.join(OUT, "riders.json")
+    if kit != "winter":
+        manifest = {sex: build(sex) for sex in ("female", "male")}
+        with open(manifest_path, "w", encoding="utf-8") as file:
+            json.dump(manifest, file, indent=1)
+            file.write("\n")
+    if kit != "summer":
+        with open(manifest_path, encoding="utf-8") as file:
+            manifest = json.load(file)
+        for sex in ("female", "male"):
+            if build(sex, winter=True) != manifest[sex]:
+                raise RuntimeError(f"{sex}: winter clothing changed the rider's fit")
 
 
 main()

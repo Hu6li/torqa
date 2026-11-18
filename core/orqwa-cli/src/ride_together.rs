@@ -151,9 +151,9 @@ async fn with_devices(
             invite.route == hash,
             "Everyone must use exactly the same GPX file."
         );
-        let joiner = Joiner::open(invite, hash, &options).await?;
+        let joiner = Joiner::open(&args.name, invite, hash, &options).await?;
         println!("Reply: {}", joiner.reply().to_code(options.gather.policy)?);
-        println!("Send the reply privately to the host within one minute.");
+        println!("Send the reply privately to the host within ten minutes.");
         let lobby = tokio::select! {
             result = JoinerLobby::join(joiner, me) => result?,
             _ = tokio::signal::ctrl_c() => return Ok(()),
@@ -252,7 +252,7 @@ async fn ride_loop(
                     }
                     Some(Input::Line(line)) if !line.is_empty() && start.is_none() => if let Group::Host(lobby) = group {
                         match Reply::from_code(&line, args.network.options().policy) {
-                            Ok(reply) => match lobby.admit(&reply).await { Ok(()) => println!("Reply admitted; waiting for the rider to join."), Err(error) => eprintln!("Reply refused: {error}"), },
+                            Ok(reply) => match lobby.admit(&reply).await { Ok(_) => println!("Reply admitted; waiting for the rider to join."), Err(error) => eprintln!("Reply refused: {error}"), },
                             Err(error) => eprintln!("Reply refused: {error}"),
                         }
                     },
@@ -292,7 +292,12 @@ impl Others {
             LobbyEvent::State { id, state } => {
                 self.distances.insert(id, state.distance.0);
             }
-            LobbyEvent::Expired => println!("A reply expired; ask for a fresh reply."),
+            LobbyEvent::Expired(name) => {
+                println!("{name}'s connection never arrived; ask for a fresh reply.");
+            }
+            LobbyEvent::Moved => {
+                println!("This computer's network changed; join again with a fresh reply.");
+            }
             LobbyEvent::Failed {
                 peer,
                 error,
@@ -303,8 +308,10 @@ impl Others {
             LobbyEvent::Start { .. }
             | LobbyEvent::HostLeft
             | LobbyEvent::Selection(_)
+            | LobbyEvent::Lobby { .. }
             // CLI rides choose their course before anyone joins: nothing to preview (#418).
             | LobbyEvent::Preview(_)
+            | LobbyEvent::Assistance(_)
             | LobbyEvent::Readiness { .. }
             | LobbyEvent::Preparation { .. }
             | LobbyEvent::Running { .. }

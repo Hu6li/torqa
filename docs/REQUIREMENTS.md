@@ -624,8 +624,121 @@ Click, R75), and a Zwift Click v2 (R77, R96).
 | R231 | Refines R46 and R91 (2026-11-07): standing on the pedals has a distinct silhouette for both riders: hips move forward clear of the saddle, rise within leg reach, and the torso pitches independently while elbows bend to keep hands on the hoods. Preserve pedal contact throughout the crank cycle, a small body bob, counterbalance against the bike's rock and smooth transitions through the existing motion springs. Review side views across the stroke, the transition and the chase view. |
 | R232 | Refines R231 (2026-11-07): place the standing rider farther back and more upright, with the hips 6 cm behind the previous standing pose and the torso about 10° more upright. Keep the seated saddle fit, fixed hood grips, pedal contact and smooth motion; both arm and leg reach must accommodate the upright stance throughout the crank cycle. |
 
+## Keep together direction and real-time motion
+
+| ID | Requirement |
+|---|---|
+| R233 | Refines R166, R209, R211 and R215 (2026-11-08), superseding R209's braking-while-behind behavior: **position relative to the middle of the moving group determines Keep together's direction**, including for the organizer. Behind the reference, apply support or zero; ahead, braking or zero; within the existing middle dead zone, zero. Relative speed may reduce the position effect to zero but must never reverse it or strengthen it. Constrain retained, filtered effects too: an old effect in the wrong direction clears immediately, while allowed effects retain their existing transition limits and missing-source fading. Physics and riding time follow real monotonic elapsed time, including when slow rendering caps Godot frame delta, so a rider's reported speed and progress do not diverge because of frame rate. Cancellation or direction reversal sends the trainer its updated simulation parameters without retaining a tiny residual effect through ordinary command thresholds. Both shared rules off remain unassisted across consecutive rides without an app or trainer restart. Measured telemetry, ERG targets, buffered group presentation and assisted-record eligibility retain their behavior. |
+
+## Group readiness without layout shifts
+
+| ID | Requirement |
+|---|---|
+| R234 | Refines R53, R196 and R204 (2026-11-08): the rider marks themselves ready using **Mark ready** (**Bereit melden** in German), in the existing button beside their name. Once their ride is prepared and their trainer connected, the existing subtitle says **Please mark ready** (**Bitte bereit melden**) and their row has a subtle blue highlight. Pressing the button changes the subtitle to **You're ready** (**Du bist bereit**) and the button to green **Ready**; pressing it again takes readiness back. Preparing, marking ready and the countdown keep rider rows, readiness buttons, the next-action area and activity previews in place: names and subtitles use fixed single lines, and loading messages, spinner, progress and action controls have reserved space. English and German layouts work at the supported small and normal window sizes. |
+
+## Group connection latency
+
+| ID | Requirement |
+|---|---|
+| R235 | Extends R169 (2026-11-08): **friends' ping in milliseconds** appears in the group roster before a ride and, during a ride, only in the **Group Rides** dialog. Each friend's figure measures their connection's round trip to the organizer; the organizer's row measures this rider's connection to them. The local rider has no self ping. Readings refresh automatically, explain that lower is better, and show an unavailable value before measurement, during reconnection and after stale measurements expire. Membership reuse and organizer changes discard old readings. Ping does not appear in the ride HUD, beside the map or on rider nameplates. |
+
+## Ride screen without scrolling
+
+| ID | Requirement |
+|---|---|
+| R236 | Refines R23, R53, R164 and R190 (2026-11-09): at **1280 × 720**, the ride's map, full-course elevation profile, active climb and all seven other **Riders** fit together without scrolling, in that order. The map and profile adapt to the available height. Workout targets follow the metrics on the left, whose selected figures can use extra columns without changing their saved order. The climb keeps its category/title and one uniformly sized line for positive ascent still to climb before its end, remaining distance and average gradient, ending in **to go**, or **verbleibend** in German, without a prefix, arrows, an average suffix or separate timing line. Rust calculates the remaining ascent, including intermediate dips and partial segments; Godot converts units for display. The **Riders** panel has aligned name, watts, W/kg and distance-gap columns, with identity colors and speaking indicators, explicit ahead/behind words and no column headers, rider count, legend, comma or slash separators. |
+
+## Reusable group lobby
+
+| ID | Requirement |
+|---|---|
+| R237 | Refines R164–R168 and R196 (2026-11-08): the organizer can **End course for everyone** during countdown or riding. Ending deliberately, completing the organizer's course or workout-only ride, or the organizer using **Finish & save** saves each rider's own recording and returns everyone to the **Group Rides** lobby without closing their connections or voice. Countdown cancellation saves no empty recording. Memberships, invitation, assistance choices and personal voice gates remain; selection, preparation, readiness, entry, motion and workout/start clocks reset. The organizer can select the same or a different activity, everyone readies again and a fresh countdown starts a new recording. Participants cannot end the group's activity; their own finish affects only themselves. Delayed previous-activity controls, readiness and motion cannot end, ready or move riders in the next activity. Reconnecting riders learn the current lobby/activity state. Connection loss and leaving continue local riding as before. |
+
+## Organizer controls before starting
+
+| ID | Requirement |
+|---|---|
+| R238 | Refines R187, R196 and R237 (2026-11-09): the organizer sees **Choose fallback organizer…** in the lobby before pressing Start. With nobody else present it remains visible and disabled, with an explanation. Choosing a connected friend immediately asks for their consent, even before readiness or selecting an activity. The lobby shows whether they agreed or the reply is pending. Consent opens no standby connections before riding, lasts while the friend remains in the group and is not requested again at ride start or in later activities. A decline is respected; without a previous decision, the existing in-ride consent and automatic alternative selection still apply. Reachability checks remain. Leaving, replacing the choice, timeout or slot reuse dismisses obsolete requests; queued choices cannot select a replacement membership. During countdown, **Cancel** occupies the same action slot as **Start group ride**. The lobby has no separate End course for everyone control; that wording remains in the in-ride group panel. Cancellation retains the connected group and saves no empty recording. |
+
+## Automatic fallback consent in the lobby
+
+| ID | Requirement |
+|---|---|
+| R239 | Refines R187 and R238 (2026-11-09): ORQWA automatically chooses the first eligible connected friend and requests fallback consent in the lobby, before selecting an activity or marking ready. The organizer can override the choice. A decline, timeout or departure moves to another eligible friend without repeatedly asking someone who declined or timed out; obsolete replies cannot approve a later request. Acceptance and the selected membership persist across activities, with no new prompt at ride start. Standby connections are prepared only while riding. If the original organizer unexpectedly leaves and the fallback takes over during a ride, the new organizer still automatically chooses and asks a replacement fallback during that ride. |
+
+## Course worlds within a tablet's memory
+
+| ID | Requirement |
+|---|---|
+| R240 | Refines R101, R223 and R224 (2026-11-10, #542), superseding R224's "course world data generation still finishes before scene uploads": long, densely mapped courses build and ride on tablets with about 6 GB of RAM ([ADR 0040](adr/0040-world-residency.md)). **Memory:** *Wada – Ōtarumi Pass* (57 km, Japan), where ORQWA was ended for low memory at about 2.5 GB, builds and is ridden end to end on a Galaxy Tab S7 without a low-memory kill, with ORQWA's peak, counting swap, below 1.5 GB. In the dev container, the core's peak while building Wada stays below 1 GB, and while riding it stays below 500 MB. Riding a lower graphics preset needs less memory. **Storage:** while a course is open, its world is kept in the cache directory even when courses are not kept ready to ride (10 to 25 MB per kilometre, about 1.1 GB for Wada), and deleted when the course is closed unless it is kept. On Android, a course whose world doesn't fit in the free storage isn't started, and the rider is told how much room it needs. **Start:** the first ride of a course starts once the surroundings of the rider's start are built. The rest is built while riding. On the Tab S7, frame time stays within 10 % of the same ride with the world already built. A solo rider who reaches parts not yet built is paused automatically with the loading page, and the ride goes on by itself when they are ready. In a group ride nobody is paused, and the scenery appears around the road. With **Keep courses ready to ride** on, a world left unfinished when the ride ends is finished in the background while ORQWA stays open and no other ride runs, and kept (R101). **Identity:** worlds come out byte for byte as before on the same platform. |
+
+## Gradient colours in the elevation profile
+
+| ID | Requirement |
+|---|---|
+| R241 | Refines R19 and R40 (2026-11-11): the area under the elevation profile is coloured by gradient, during a ride and wherever a course's profile is shown: **yellow on the flat, green going down and red going up, darker the steeper**, reaching the darkest green or red at 25% and beyond. During a ride the colours stay strong so they read at a glance in the small panel over the 3D world: the ridden part nearly solid and the part still ahead lighter but clearly coloured; the course view shows the whole profile solid. The outline, rider, friends, ghost and climb bands are unchanged. |
+| R242 | Refines R241 (2026-11-11): gradient colours are **opt-in**, per rider: **Elevation colors** in the rider's profile, a dropdown like **Ride map**: **Plain** (for new and existing riders) or **By gradient**. Plain, the profile looks as before, with the ridden part in the accent colour and the rest light. The choice applies to the ride, course detail and group activity previews, and to a ride in progress as soon as it is saved. |
+| R243 | Refines R195 (2026-11-15, #574): a joiner's reply waits **ten minutes** to be added instead of one, as passing it on by chat takes longer than connecting; the organizer's computer still waits one minute for a friend's connection, from when it adds their reply. The reply carries the friend's name, so a reply added whose connection never arrives says **Couldn't reach Alex's computer**, as a router or firewall probably blocked it, with **How to check** opening the usage guide, instead of calling the reply too late. A joiner whose reply runs out, or whose connection the organizer gave up on, reads **Alex didn't add you in time, or the connection was blocked**, with why the connection failed and a link to the usage guide's connection troubleshooting, still without a failure, and **New reply** as before. |
+| R244 | Refines R114 and R153 (2026-11-15, #619): **Settings → Sound** sets the **Wind sound** and **Bicycle sound** volumes every ride starts with, for the installation; half until changed. Course rides, workouts and group rides all start with them, so a rider who never wants these sounds sets them to zero once. The ride's own options still change them for that ride only, without changing the default. |
+
+## Seasonal rider clothing
+
+| ID | Requirement |
+|---|---|
+| R245 | In Autumn and Winter, both rider avatars wear a thermal cap beneath the helmet, full-finger gloves, full-length cycling tights and a long-sleeved top with a gilet. The selected local season dresses the rider, ghost and group riders, including friends joining later. Switching to Spring or Summer restores short kit during the ride, preserving rider colours, ghost transparency, first-person hiding and pedalling. Clothing follows the existing seated and standing animation and requires no course regeneration. |
+
+## Selected course across tabs
+
+| ID | Requirement |
+|---|---|
+| R246 | Refines R39 and R40 (2026-11-15, #569): after selecting a course, switching to another start-page tab and returning to **Courses** shows that course again, including while its route or world is loading. Its ride options and preparation are preserved. **Back** on the course page, Escape or the remote's Back, or clicking **Courses** while that tab is already active explicitly returns to the gallery; subsequent tab switches keep the gallery until another course is selected. |
+
+## Adaptive ride map
+
+| ID | Requirement |
+|---|---|
+| R247 | Refines R19 and R236 (2026-11-15, #617): the ride map grows to its larger **300 px** height even on small screens whenever there is enough room below it, including solo rides. Its height follows the space needed by the visible elevation profile, active climb, riders and ghost panels, adapting when panels change or the window resizes while keeping the sidebar visible without scrolling. |
+
+## Joining the group again
+
+| ID | Requirement |
+|---|---|
+| R248 | Extends R186 and R195 (2026-11-12, #536): when a friend's connection to the group **has ended**, because the five minutes of R186 passed or the connection closed otherwise, or connecting failed, their page offers **Join again** instead of only Leave group. A friend the organizer **removed**, or whose organizer **ended the group**, reads which instead and is not offered Join again. ORQWA makes a **fresh reply from the same invitation** for the organizer to add as before, also **during a ride**, in the ride's window. Once the organizer adds it, the friend gets **their old seat back** while it is free, and joining again never uses up the group's room for replies. Reconnecting by itself (R186) keeps trying until the organizer has released the seat, so Join again appears only then. The ride and its recording **go on meanwhile**. If the group still rides the same activity, the friend **rides on where they are**, nothing is downloaded or built again, and the group's workout step and assistance apply again. Otherwise their ride goes on alone, and the group's activity is prepared once they end it. **New reply**, after a reply ran out, works the same way. After a fallback organizer took over (R187), Join again goes to the new organizer. An invitation from another ORQWA version says whether this rider or the organizer must update. |
+
+## Dropped connections told during a ride
+
+| ID | Requirement |
+|---|---|
+| R249 | Extends R124, R186 and R248 (2026-11-15, #536): during a group ride, a dropped connection is told on the moments' card with their chime, in **red**: a friend who **lost the connection** (named, with their place kept for five minutes), one who then **left the group**, this rider **losing the group** (their ride goes on, reconnected automatically for up to five minutes), and this rider's **group ending**, with why: lost (Join again in Group Rides), removed or ended by the organizer. A friend **back in the group**, with how long they were away, or this rider **reconnected**, is told the same way in **green**. Friends who drop, come back or leave **together are told on one card** ("Ben and Carla"), and a drop shorter than two seconds not at all; when everyone else dropped at the organizer, the card says the organizer's own network has probably dropped. While a friend is away, everyone's group list shows how long, in red, and no readiness or ping for them; in the organizer's list that friend's row has a **field for their new reply** with Add instead (R250). Joining, leaving on purpose and the lobby's comings and goings stay untold. In the overlay, the line names the friend in its bar. They show whatever the moments' voice, and the chime follows the app's sounds. |
+
+## Changed networks and the fallback organizer
+
+| ID | Requirement |
+|---|---|
+| R250 | Extends R186 and R248 (2026-11-15, #536): when the network under a friend's ORQWA changes (another Wi-Fi, a cable, a new address), ORQWA notices **within seconds** rather than after the connection's 30 s timeout, starts reconnecting at once and says that reconnecting cannot work from the changed network: the page offers **Join again** at once, and no **Reconnect now**. Join again is offered **while reconnecting** too, not only once the group connection has ended. The organizer adds the new reply as any, also while ORQWA still counts that friend as connected: a reply from them with new addresses ends the old connection and holds the friend's place, so they get **their seat back**. Where the organizer's network lets the friend's new address in, they are back in their held seat before the organizer adds anything. The same reply added again, or one from where the friend already connects, still says it was added already. |
+| R251 | Refines R187 (2026-11-15): a fallback organizer whose own connection drops does **not** take over: after the organizer has been unreachable for half a minute, it takes over only when the friends it still reaches all lost the organizer too, or the organizer left for good. A fallback that reaches nobody lost its own network, and once back it rides on in the group under the same organizer. |
+| R252 | Refines R237 and R238 (2026-11-15, #556): once the organizer has shared a course or workout, **Cancel** stands beside **Start group ride** before the countdown too, while friends still download or build the ride or are not yet ready. It withdraws the shared activity for everyone: their downloads and world building stop, and everyone is back in the lobby, connected and with voice, to share the same or another activity. Friends cannot withdraw it. During the countdown Cancel replaces Start as before. |
+
+## Workout targets without a course
+
+| ID | Requirement |
+|---|---|
+| R253 | Refines R236 (2026-11-16): a workout ridden **on its own**, solo or as a group, shows its targets at the **top of the right column**, where a course's map and elevation profile would be; the metrics on the left keep their full height. A workout **on a course** keeps its targets below the metrics on the left, so the map, profile, climb and Riders still fit without scrolling. |
+
+## Safe Android course preparation
+
+| ID | Requirement |
+|---|---|
+| R254 | Refines R100 (2026-11-16): on Android, a 3D world that cannot be stored, before or during its build, stops building and reports a storage error instead of holding the unstored chunks in RAM. A ride already started pauses locally, releases trainer resistance and preserves its recording for **Finish & save**; it stays paused until ended. Reopening the course after restoring storage retries preparation. Starting another build or a ride that stops background building waits without blocking the interface until the stopped workers have released their preparation and chunk buffers. |
+| R255 | Extends R100 and R254 (2026-11-16): before preparing a course in 3D on Android, compare its estimated generation and resident scene memory with the phone or tablet's **current available system memory**, preserving headroom for Android. Account for map complexity, viewing distance and concurrent generation, rather than only the course's length or file size. Read memory again after cancelled workers release their buffers. Refuse preparation with the estimated need and available memory when short, and refuse it explicitly if memory cannot be read. Kept worlds still need a rendering-memory check. Recheck memory during generation and before further scene uploads; when short, stop preparing, pause only the local 3D ride, release trainer resistance, preserve its recording for **Finish & save**, and require the course to be reopened to retry. |
+
+R255 clarification (2026-11-16): show memory in decimal **GB**, separating the course's
+estimated additional need, usable memory after Android's reserve, and the reserve. Count
+only additional allocations after the free-memory snapshot, and use the selected graphics
+residency even when generation finishes the whole course before riding.
+
 ## Close building detail
 
 | ID | Requirement |
 |---|---|
-| R233 | Extends R43, R89 and R101 (2026-11-07, #521): **Ultra** adds nearby building detail: glazing bars, main-roof gutters and downpipes on fitted models, plus raised frames, sills, glazing and trim on supported generated façade panels, with stable simulated curtains/blinds. Draw this detail within 160 m with a short fade; allocate façade buffers only around the camera and release them as it moves, rather than retaining them for the whole course. View distance overrides do not enable it on other presets or extend its range. Low, Medium and High retain their original building geometry and do not upload the extra façade meshes. Shared scanned plaster and roof materials preserve regional colours. Preset changes refresh already uploaded scenery, including when reusing a kept course, without regeneration; world inputs, model names and instance data remain valid. Materials work offline and across seasons. |
+| R256 | Extends R43, R89 and R101 (2026-11-07, #521): **Ultra** adds nearby building detail: glazing bars, main-roof gutters and downpipes on fitted models, plus raised frames, sills, glazing and trim on supported generated façade panels, with varied simulated home interiors: mostly plain rooms, some curtains, blinds or nets. Shop windows show a lit sales floor, never curtains. A building is never see-through while it changes between its ordinary and close appearances, or between model and shell. Draw this detail within 160 m with a short fade; allocate façade buffers only around the camera and release them as it moves, rather than retaining them for the whole course. View distance overrides do not enable it on other presets or extend its range. Low, Medium and High retain their original building geometry and do not upload the extra façade meshes. Shared scanned plaster and roof materials preserve regional colours. Preset changes refresh already uploaded scenery, including when reusing a kept course, without regeneration; world inputs, model names and instance data remain valid. Materials work offline and across seasons. |

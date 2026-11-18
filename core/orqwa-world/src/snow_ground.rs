@@ -1,8 +1,9 @@
 //! Conservative clearance for a disposable snow blanket, derived from retained surfaces.
 
-use crate::{MeshData, World};
+use crate::{CHUNK_SIZE, MeshData, TerrainChunk, World};
 
 /// Ground on which snow may gain depth, with roads and raised paving kept clear.
+#[derive(Debug, Clone, PartialEq)]
 pub struct SnowGroundMask {
     /// North-west corner in Godot x/z metres.
     pub origin: [f32; 2],
@@ -19,63 +20,72 @@ pub struct SnowGroundMask {
 /// A bounded, conservative mask of the actual retained road, streets, tracks and paving.
 /// One-cell padding keeps interpolated snow depth from burying narrow ways or chunk joins.
 #[must_use]
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss
-)] // bounded 2048-cell grid
 pub fn snow_ground_mask(world: &World) -> SnowGroundMask {
-    let mut low = [f32::INFINITY; 2];
-    let mut high = [f32::NEG_INFINITY; 2];
-    for point in world
-        .road
-        .vertices
-        .iter()
-        .copied()
-        .chain(world.chunks.iter().flat_map(|chunk| {
-            chunk
-                .mesh
-                .vertices
-                .iter()
-                .map(move |v| [v[0] + chunk.center[0], v[1], v[2] + chunk.center[2]])
-        }))
-    {
-        for (axis, component) in [0, 2].into_iter().enumerate() {
-            low[axis] = low[axis].min(point[component]);
-            high[axis] = high[axis].max(point[component]);
-        }
-    }
-    if !low[0].is_finite() {
-        return SnowGroundMask {
-            origin: [0.0; 2],
-            cell: 16.0,
-            columns: 0,
-            rows: 0,
-            pixels: Vec::new(),
-        };
-    }
-    let cell = 16.0_f32.max((high[0] - low[0]).max(high[1] - low[1]) / 2044.0);
-    let origin = low.map(|value| value - cell * 2.0);
-    let columns = ((high[0] - origin[0]) / cell).ceil() as usize + 1;
-    let rows = ((high[1] - origin[1]) / cell).ceil() as usize + 1;
-    let mut mask = SnowGroundMask {
-        origin,
-        cell,
-        columns,
-        rows,
-        pixels: vec![255; columns * rows],
-    };
-    mask.exclude(&world.road, [0.0; 3]);
-    mask.exclude(&world.railways, [0.0; 3]);
+    let centres: Vec<[f32; 3]> = world.chunks.iter().map(|chunk| chunk.center).collect();
+    let mut mask = SnowGroundMask::around(world, &centres);
     for chunk in &world.chunks {
-        for mesh in [&chunk.streets, &chunk.tracks, &chunk.urban] {
-            mask.exclude(mesh, chunk.center);
-        }
+        mask.clear_chunk(chunk);
     }
     mask
 }
 
 impl SnowGroundMask {
+    /// The mask of `world`'s parts built whole, over the squares of the chunks centred at
+    /// `centres`, with their ways still to be [cleared](Self::clear_chunk) one by one: a world
+    /// whose chunks are read from disk is never held whole (ADR 0040).
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )] // bounded 2048-cell grid
+    pub fn around(world: &World, centres: &[[f32; 3]]) -> Self {
+        let mut low = [f32::INFINITY; 2];
+        let mut high = [f32::NEG_INFINITY; 2];
+        // A chunk's ground is its square.
+        let half = (CHUNK_SIZE / 2.0) as f32;
+        for point in world.road.vertices.iter().copied().chain(
+            centres
+                .iter()
+                .flat_map(|&[x, y, z]| [[x - half, y, z - half], [x + half, y, z + half]]),
+        ) {
+            for (axis, component) in [0, 2].into_iter().enumerate() {
+                low[axis] = low[axis].min(point[component]);
+                high[axis] = high[axis].max(point[component]);
+            }
+        }
+        if !low[0].is_finite() {
+            return Self {
+                origin: [0.0; 2],
+                cell: 16.0,
+                columns: 0,
+                rows: 0,
+                pixels: Vec::new(),
+            };
+        }
+        let cell = 16.0_f32.max((high[0] - low[0]).max(high[1] - low[1]) / 2044.0);
+        let origin = low.map(|value| value - cell * 2.0);
+        let columns = ((high[0] - origin[0]) / cell).ceil() as usize + 1;
+        let rows = ((high[1] - origin[1]) / cell).ceil() as usize + 1;
+        let mut mask = Self {
+            origin,
+            cell,
+            columns,
+            rows,
+            pixels: vec![255; columns * rows],
+        };
+        mask.exclude(&world.road, [0.0; 3]);
+        mask.exclude(&world.railways, [0.0; 3]);
+        mask
+    }
+
+    /// Keeps `chunk`'s streets, tracks and paving clear.
+    pub fn clear_chunk(&mut self, chunk: &TerrainChunk) {
+        for mesh in [&chunk.streets, &chunk.tracks, &chunk.urban] {
+            self.exclude(mesh, chunk.center);
+        }
+    }
+
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -122,7 +132,7 @@ mod tests {
         let chunk = crate::TerrainChunk {
             center: [100.0, 0.0, 100.0],
             mesh: MeshData {
-                vertices: vec![[-100.0, 700.0, -100.0], [900.0, 700.0, 900.0]],
+                vertices: vec![[-240.0, 700.0, -240.0], [240.0, 700.0, 240.0]],
                 ..MeshData::default()
             },
             streets: MeshData {

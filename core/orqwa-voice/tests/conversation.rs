@@ -190,6 +190,7 @@ fn options() -> ConnectOptions {
             ..GatherOptions::default()
         },
         window: Duration::from_secs(2),
+        reply: Duration::from_secs(2),
         ..ConnectOptions::default()
     }
 }
@@ -208,7 +209,7 @@ async fn host() -> HostLobby {
     .unwrap()
 }
 async fn join(host: &HostLobby, name: &str) -> JoinerLobby {
-    let joiner = Joiner::open(host.invite().clone(), host.invite().route, &options())
+    let joiner = Joiner::open(name, host.invite().clone(), host.invite().route, &options())
         .await
         .unwrap();
     host.admit(joiner.reply()).await.unwrap();

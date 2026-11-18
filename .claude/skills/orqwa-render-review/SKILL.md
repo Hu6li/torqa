@@ -18,7 +18,7 @@ shots, run them in the background, and read the PNGs with the Read tool. Output 
 
 ## Ready-made
 
-For close building detail (R233), export `building_detail_render_fixture` from the world
+For close building detail (R256), export `building_detail_render_fixture` from the world
 crate's ignored tests and render `app/tools/render_building_details.gd`. It captures the same
 model and Rust-derived shell on Medium and Ultra with fixed cameras/light. Pair with town
 course views, Winter and the 160 m transition. `BUILDING_DETAIL=1` selects Ultra variants in
@@ -73,6 +73,13 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   `SHOTS="shortcut:4200:2:0,180,-20"` (adjust the distance/camera as needed). This opens its saved
   inputs and builds offline, rather than preparing a GPX with fresh provider requests.
 
+- `scripts/render-showcase.sh` (on the host, with the portable Godot editor and a release
+  extension in `app/bin/`) — website and gallery pictures of saved courses on a real GPU at
+  Ultra. `SHOTS` fields `time=`, `weather=`, `season=`, `rider=`, `group=`, `hud=0`,
+  `fov=`, `elevation=gradient` and `map=dark` set each shot's conditions. The published
+  shots and their runner are in the `orqwa-showcase` skill. Free cameras aside can land
+  inside terrain: render a few framings and look at every picture.
+
 - `scripts/dev.sh scripts/screenshots.sh` — the standard app screenshots (`app/tests/
   screenshots.gd`): start page tabs, course page, a ride in each camera, the settings, summary,
   history, analysis, workouts and the overlay. The rider gets 16 weeks of made-up rides first
@@ -96,6 +103,14 @@ Rider renders include head-relative, orthographic `helmet-side` and `helmet-rear
 (R226). Compare these with the Z1 KinetiCore views linked in `art/README.md`: the ribs meet
 at the fit dial at the back, with exhausts either side of the spine above a solid lower band.
 A chase view alone cannot establish that rear layout.
+
+For seasonal rider kit (R245), pass `SEASON=Winter` or `Autumn` to the rider runner. Output
+names gain `-winter`, including gallery JPEGs, leaving the short-kit gallery intact. Inspect
+both fits, the cap beneath the helmet and over the ears, gloves on the hoods, full leg and arm
+coverage, zipped gilet hems and the seated/standing views. Verify season reversal, first-person
+hiding and ghost/group identifying colours with the headless seasons/rider checks.
+Use `kit-back` and `kit-back-standing` to inspect the waist closely from behind on both fits:
+the hem must remain continuous through pedalling, without body intersections or zip fragments.
 
 Standing review uses `standing`, `standing-down`, `standing-back` and `standing-up` at
 quarter-turn crank positions, `standing-rise` halfway out of the saddle, and `standing-chase`.
@@ -274,7 +289,8 @@ isolate sample data, capture device/error/planned-workout fixtures and licensed 
 review contact sheets, then export to stable wiki image paths. `SCREENSHOT_DIR` chooses the app
 capture folder, and `OUT_DIR` also works for model and rider runners. The app and route wrappers
 set `ORQWA_RENDER_SOFTWARE=1` for FXAA without MSAA or glow under lavapipe. Standard route views
-wait for all chunks while hidden, pause the rider and include city streets, benches and ferns.
+wait while hidden for the chunks within reach of each view's place (far ones are freed, ADR
+0040), pause the rider and include city streets, benches and ferns.
 
 - A script error makes Godot wait forever for `world_ready`: always use `timeout`, and grep the
   output for `SCRIPT ERROR` / `SHADER ERROR` — a scene that fails to compile renders nothing.

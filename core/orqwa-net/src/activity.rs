@@ -301,6 +301,7 @@ pub struct ActivityLobby {
     selection: Option<Selection>,
     slots: [Option<(u64, bool)>; MAX_RIDERS],
     next_generation: u64,
+    revision: u64,
     started: bool,
 }
 impl Default for ActivityLobby {
@@ -317,6 +318,7 @@ impl ActivityLobby {
             selection: None,
             slots: [None; MAX_RIDERS],
             next_generation: 0,
+            revision: 0,
             started: false,
         }
     }
@@ -335,13 +337,10 @@ impl ActivityLobby {
             return Err(ActivityError::Started);
         }
         selection.validate()?;
-        if self
-            .selection
-            .as_ref()
-            .is_some_and(|old| old.revision >= selection.revision)
-        {
+        if self.revision >= selection.revision {
             return Err(ActivityError::Revision);
         }
+        self.revision = selection.revision;
         self.selection = Some(selection);
         for (_, ready) in self.slots.iter_mut().flatten() {
             *ready = false;
@@ -421,6 +420,15 @@ impl ActivityLobby {
         }
         self.started = true;
         Ok(())
+    }
+
+    /// Returns current memberships to an empty lobby, retaining the revision boundary.
+    pub fn end(&mut self) {
+        self.started = false;
+        self.selection = None;
+        for (_, ready) in self.slots.iter_mut().flatten() {
+            *ready = false;
+        }
     }
 }
 
@@ -531,5 +539,16 @@ mod tests {
         assert_eq!(lobby.start(), Err(ActivityError::Started));
         let late = lobby.join(RiderId::new(2).unwrap()).unwrap();
         lobby.ready(late, 2, true).unwrap();
+        lobby.end();
+        assert!(lobby.selection().is_none());
+        assert!(!lobby.can_start());
+        assert_eq!(lobby.select(selection(2)), Err(ActivityError::Revision));
+        assert_eq!(lobby.ready(new, 2, true), Err(ActivityError::Revision));
+        lobby.select(selection(3)).unwrap();
+        assert!(!lobby.can_start());
+        for member in [host, new, late] {
+            lobby.ready(member, 3, true).unwrap();
+        }
+        lobby.start().unwrap();
     }
 }

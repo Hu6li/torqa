@@ -385,6 +385,155 @@ bounded by the existing policy, port and count limits, and it comes from the pri
 the invitation is already trusted through. The CLI maps `--lan` to the mixed choice, so the
 app can still join its invitations.
 
+### Connection latency in the roster — 2026-11-08
+
+R235 uses QUIC's smoothed round-trip estimate on each admitted organizer link. Once per
+second the active app lobby shares a fixed eight-slot table over its existing authenticated
+control streams; riders cannot submit tables. Entries are bounded integer milliseconds
+(0–60,000), with a distinct unavailable sentinel, and contain no addresses. Receivers retain
+only the latest table outside the application event queue and expire it after three seconds.
+Disconnects, membership reuse and replacement authorities clear old readings. Prepared
+fallback links do not publish readings until active. No additional endpoint or probe is added.
+
+The app's roster maps each friend to their own organizer link; the organizer row uses the
+viewer's link to them. Self rows have no reading. The roster is shared by the lobby and the
+in-ride Group Rides dialog; the map panel, HUD and nameplates receive no ping field.
+Protocol/invitation version 15 and ALPN `orqwa-group/15` require matching builds and fresh codes.
+
+### Transfer windows — 2026-11-10
+
+A reliable stream carries at most one flow-control window per round trip. The original 4 KiB
+stream and 8 KiB connection windows limited a shared course to roughly 80 KiB/s at a 50 ms
+round trip, so a 40 MB course took minutes and could outlast the 15-minute transfer budget
+(#535). Streams now get 1 MiB, connections and the send buffer 2 MiB: about 10 MiB/s at
+100 ms. Memory stays bounded: a host with all 16 connections buffers at most 32 MiB from
+peers that stop reading. A loopback test through a 50 ms delay relay requires 8 MiB to arrive
+within ten seconds. Window sizes are QUIC transport parameters, so the ALPN is unchanged.
+
+### Reply window and unreached friends — 2026-11-15
+
+A joiner's reply was valid for the same one-minute deadline that bounds a connection, counted
+from before discovery. Nearly all of it went to people: copying the reply, sending it by chat,
+the organizer noticing and pasting it. A blocked connection then looked exactly like a reply
+added too late (#574): the joiner read "didn't add you in time" with the reason dropped, and
+the organizer "Too late". The one-minute deadline answered the original review's unbounded
+work, and replies no longer carry a secret (Joiner certificates, above), so a longer life
+exposes nothing more.
+
+`ConnectOptions` now separates the two. `window`, still at most one minute, bounds discovery
+and every connection: the host's admission of an added reply, credential exchange and the lobby
+handshake, on both sides. `reply`, from one window to `REPLY_WINDOW` (ten minutes), bounds how
+long a joiner waits to be added. For its first window a joiner tries every five seconds, then
+every quarter window (15 s): waiting joiners would otherwise spend the handshake budget an
+admitted friend needs, a quarter still gives four attempts within the host's window for an
+added reply, and each attempt keeps the joiner's NAT mapping open. Replacement links of a
+handover keep a one-window reply, as computers pass those on in moments. Probe budgets,
+admission table bounds and tombstones are unchanged.
+
+A reply now carries the joiner's display name, validated like the host's, so the host's
+`HostEvent::Expired` and `LobbyEvent::Expired` name whose added reply never connected. The app
+says it could not reach that friend's computer, as a router or firewall probably blocked it,
+with the hosting check of the usage guide. The joiner keeps the failure's reason beside **New
+reply**, without a failure event, and an `ACK_EXPIRED` answer ends the reply too. The joiner
+cannot tell a reply never added from a blocked one, as neither sends it anything, so its
+message names both (R243). Names already reached every rider once connected; the reply only
+tells the organizer earlier. Protocol/invitation version 19 and ALPN `orqwa-group/19` require
+matching builds and fresh codes.
+
+### Joining again — 2026-11-12
+
+Reconnecting (above) ends when the five minutes pass, the organizer removes the rider, or the
+connection closes as a goodbye. The friend then only had **Leave group**, and the app refused
+to join while their ride went on, the follow-up left open above (#536). The app now keeps
+the invitation a friend joined with, and **Join again** opens a new joiner lobby with it and
+a fresh reply, also while a ride goes on; the organizer adds it as any reply.
+
+**The same seat.** The friend gets their old seat back, as reconnecting gives it. The app
+keeps the per-ride certificate it answered the invitation with, so the fresh reply names
+the same pin and the organizer recognizes the friend: the handshake still proves the
+private key, which never left the friend's computer. The host remembers which certificate
+last had each seat and gives a returning one its own while it is free, otherwise the first
+free one. This amends the trust rule above for this one case: a certificate whose seat was
+released (its five minutes passed, or a goodbye) admits a connection again once the
+organizer adds a reply for it again. Adding it is the organizer's consent, so nobody comes
+back on their own. A reply still pending or
+connected stays refused as a replay, and one added again takes no new place in the
+admission table, which holds 16 replies for the whole ride: before, each fresh certificate
+took one, and after 16 joins and rejoins nobody could come in at all. A reply for a seat
+still held only adds the friend's new addresses to the host's probes, even with the table
+full. The friend also keeps trying to reconnect half a minute longer than the host holds
+the seat, the connection's idle timeout, the longest the host may take to notice the loss,
+so **Join again** appears only once the seat is released. The certificate lives only in
+memory: after the app restarts, a friend gets a new seat.
+
+**Removed, or the group ended.** A friend the organizer removed, or whose organizer ended the
+group, is not offered **Join again**: the page says which. Before, both looked like a lost
+connection, so the friend would send replies nobody meant to add. The organizer now closes a
+removed rider's connection with its own application close code, and ending the group closes
+the host's endpoints with another before the lobby's tasks stop, which would close each
+connection without a reason; the joiner lobby reports this as `Ending`. A rider removed
+while away has no connection to close, and a host waiting for nobody answers no handshake,
+so the host keeps answering that rider's attempts to reconnect for 15 seconds, more than two
+of them, with the released seat; one turned away before the host's hold could have run out
+reads as removed. A rider whose seat the host released after the five minutes still
+reads a lost connection and may join again. Riders who lose the connection to an organizer
+who quits without ending the group, or crashes, cannot tell either and are offered Join
+again, which their organizer cannot answer. Adding a reply for a seat still held is not
+counted as a friend connecting on the organizer's page: that friend comes back by
+reconnecting.
+
+**After a takeover.** Once a fallback organizer took over, a friend joins the new organizer
+again, never the one who left: the commit gives every friend the new organizer's invitation,
+and their replacement links answer it with the certificate they joined with, so the new
+organizer gives them their seat back too. The organizer who took over is offered no Join
+again. Why the old connection ended is recorded before a takeover is tried, so a takeover that
+fails after the organizer ended the group still offers none, and cleared once it succeeds.
+
+How connecting, reconnecting, joining again and every ending fit together, and the issues
+left, is summarized in [Group ride connections](../group-connections.md).
+
+**Changed networks.** A joiner's sockets are bound to the addresses it gathered, so when its
+network changes they send nothing that arrives, and reconnecting by itself cannot work, while
+the organizer notices only from the 30 s idle timeout. The joiner now checks every two seconds
+whether any of those addresses is still on the computer; once none is, it closes the link for
+a reconnection at once, stops sending reconnection attempts from the dead sockets, and tells
+the app (`LobbyEvent::Moved`), which offers Join again. Join again is offered while
+reconnecting anyway: a new reply, from fresh sockets, with the same certificate. The host
+accepts it also for a certificate it still counts as connected, when it brings new addresses:
+the lobby closes the stale connection for a reconnection, so the seat is held and the hold
+probes the new addresses (`Added::Held`). The host records where each connection comes from,
+so only a reply that shares no address with those is news; fresh sockets have fresh ports. The
+same reply again, or one from where the rider already connects, stays a replay. A held seat
+admits its certificate anyway, so where the organizer's network lets the new address in, the
+friend is back before the organizer adds the reply. A fresh joiner
+lobby taking a held seat back accepts the host's `Rejoined` and asks for entry again, which the
+host now answers for a seat that entered before; riders report their own positions, so that
+grants nothing new. The app takes the ride up where it is, as after any Join again.
+
+**A fallback that lost its own network.** A standby fallback took over once its link to the
+organizer had been lost for half a minute and every rider it still reached over standby links
+had reported losing the organizer too. Cut off itself, it reached nobody, so the condition held
+with no evidence at all, and in a group of two the organizer, who saw everyone else away,
+accepted the takeover once the fallback was back. A timed-out takeover now needs at least one
+rider who reaches the fallback and lost the organizer; only an organizer who left for good lets
+a fallback take over alone (R251).
+
+**Other versions.** Everyone in a group needs the same ORQWA version, and the codes say which
+one made them. An invitation from a newer or older one now says which side must update,
+instead of only that ORQWA could not join with it.
+
+The ride remembers which group activity it is: the course key and workout ID of its
+selection, so a renamed copy of the course counts too. Joined again during a ride, a selection
+of the same activity in a group already riding counts as prepared at once: no course is
+opened and no world built, and its files are already kept, so nothing is downloaded. The app
+then asks for entry itself and, once the organizer's entry arrives, takes the ride up instead
+of starting one: the rider keeps their own place and recording, since the organizer's entry
+only names where the organizer is, and the group's workout clock and assistance apply again.
+Until then neither touches the ride. Any other selection, or one not yet started, waits:
+nothing is prepared while the ride goes on, an activity the group ends does not save it, and
+preparation starts as usual once the rider ends their ride. **New reply** after a reply ran
+out takes the same path. The protocol and invitation version are unchanged.
+
 ## Consequences
 
 Code exchange exposes peer addresses and relies on the chosen channel's confidentiality and

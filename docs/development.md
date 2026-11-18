@@ -64,6 +64,11 @@ starts its first group ride without visiting a course page. It checks the ride o
 settings, then changes the profile to 75% with stale course controls at 25% and starts another
 group ride. Both starts must show the active profile's value (R14, R48).
 
+The course and course-loading smoke suites deliver mouse clicks to the start-page tabs (R246,
+#569). Returning to Courses retains the selected course while loading, after loading and
+during scene preparation, with its ride options and pending start. Back and a second click
+on the active Courses tab return to the gallery, which stays selected across later tab switches.
+
 Course continuation (R220, #497) is covered by `cargo test -p orqwa-app continuation` and
 `cargo test -p orqwa-storage continuation`, including restart persistence, rider isolation,
 explicit consent, discard/reset, fresh FIT samples and video frame seeking. The summary
@@ -79,12 +84,36 @@ Map-marker checks cover north-up placement, both forms of letterboxing, resizing
 on reset or course changes. The summary suite checks the blue Yes/red No question and that
 the map and elevation profile use the same saved course position (R222).
 
+Reusable-lobby regressions (R237) run two real loopback activities on the same connections,
+reject previous-revision motion/end requests, and reconnect to the empty lobby. The app
+tests preserve live voice/microphone gates and saved recordings across organizer cancellation,
+workout completion and another selection/start, then cancel a countdown and verify it cannot
+launch later. The group UI smoke test checks returning to the Group Rides tab, closing ride
+windows and opening a fresh ride. Native trainers and two-home acceptance remain manual.
+
+Lobby organizer tests (R238–R239) verify automatic selection and consent before activity
+selection or readiness, and overriding that choice with the second friend. No standby links
+are prepared before start. They check consent across activities without another prompt,
+automatic alternatives after a decline or timeout, rejecting late answers, withdrawing an
+obsolete request, clearing departed members and rejecting queued choices for reused slots.
+An organizer-loss test checks consenting in the lobby, taking over while riding and asking
+and preparing the next fallback during the ride. A deterministic teardown regression keeps
+the authoritative roster when old standby links close before activity cancellation arrives.
+UI checks cover the
+early consent dialog, the disabled solo fallback choice, unready friends in its picker, and
+Cancel replacing Start at the same position and size, with no separate lobby end action.
+
 It also checks joining before and after a group starts with no local activity files (#508,
 R196, R216): the shared name remains visible during download and retry, then gives way to
 the local course map and workout chart. English/German layout comparisons from 1024 × 640 to
 2560 × 1440 keep joiners' course images within the organizer's preview size and above the
 voice card's bottom. Group screenshot fixtures include these downloads and matching
 organizer, course-only and course/workout views.
+
+Readiness layout checks (R234) compare the roster, action area, map, elevation profile and
+voice card through download, preparation, the readiness prompt, confirmation and countdown.
+They cover organizer and joiner views at 1600 × 900 and 1024 × 640 in English and German.
+The group screenshot run also captures preparation, the prompt and confirmation in both languages.
 
 For group-position changes (R193), run `cargo test -p orqwa-session group::tests` for
 deterministic frame traces through jitter, packet loss, close overtakes, acceleration and
@@ -460,7 +489,8 @@ They preserve placement and stored worlds. Compare the same native GPU, camera a
 dimensions before and after, with Low included; see the [tree LOD measurements](benchmarks/tree-lods.md).
 
 The current [screenshot gallery](screenshots.md) links the app screens and standard route
-views; [Art](../art/README.md#gallery) contains the model galleries. Run captures separately
+views; [Scenery reviews](scenery-reviews.md) keeps the before/after images of scenery fixes,
+and [Art](../art/README.md#gallery) contains the model galleries. Run captures separately
 from checks. For a documentation refresh, isolate the generated sample rides from your own
 profile by setting `XDG_DATA_HOME` inside the container:
 
@@ -477,10 +507,16 @@ including chunks touching the visible area. `WorldStreaming` prepares the starti
 up to the preset's terrain range plus a 1 km movement/fade/camera margin; the loading page's
 progress covers that area. Riding then starts while farther chunks upload in the background.
 For Continue ride, Rust supplies the validated saved position before the ride starts.
-The upload loop yields after its current chunk once it uses 4 ms while riding, and reorders
-remaining chunks whenever the rider moves 240 m. Full-resolution ground draws while optional
-ground LODs finish, so these do not delay the start. Benchmarks still wait for all chunks
-and LODs through `uploads_complete`; capture tools retain their full-course chunk wait.
+The upload loop yields after its current chunk once it uses 4 ms while riding, and plans again
+whenever the rider moves 240 m (`orqwa_world::REPLAN_DISTANCE`). Only chunks within the upload
+radius are uploaded, but they are freed only beyond that radius plus that distance and one chunk,
+so turning back on a hairpin doesn't read them again; on the way back they are read again from
+the store (ADR 0040). The distance is measured from the rider, or from the free camera while it
+flies. After a jump in a simulated ride, or when the camera comes back to the rider from the
+free camera, the ride pauses until the rider's surroundings are uploaded. Full-resolution
+ground draws while optional ground LODs finish, so these do not delay the start. Benchmarks
+wait for their chunk and LODs through `uploads_complete`; capture tools wait through
+`chunks_uploaded`, for the chunks within reach of where the rider is now.
 
 Season and graphics are applied before preparing the surroundings, so starting the ride does
 not restart terrain uploads. Kept worlds skip generation, but still need scene uploads.
@@ -488,8 +524,24 @@ Returning to the gallery or opening another course invalidates the pending start
 The underlying world generation remains one job: structures and protection depend on the
 completed terrain. `course_loading_smoke.gd` checks a first start before distant chunks finish,
 background loading during a real fake-trainer ride, repeat starts, season/graphics changes,
-cancellation and workouts. Rust tests check spatial ordering, chunk-edge coverage and moving
-the priority point without changing the generated world.
+cancellation, workouts, and rides along a course's video, which start without a scene to
+prepare. Rust tests check spatial ordering, chunk-edge coverage and moving the priority point
+without changing the generated world.
+
+For showcase pictures (the website, README and [gallery](screenshots.md#showcase)), render
+saved courses on a real GPU with the portable Godot editor and the extension of the
+checked-out commit in `app/bin/` (on macOS, from `main`'s CI artifact):
+`GODOT=… COURSE=… SHOTS=… scripts/render-showcase.sh` (macOS, or a Linux host).
+Besides `name:distance:camera[:right,up,back]`, each shot takes `time=`, `weather=`,
+`season=`, `rider=` (female or male), `group=` (friends riding along, up to seven), `hud=0`,
+`fov=`, `elevation=gradient` (the profile coloured by gradient) and `map=dark` fields, e.g.
+`saimaa-ridge:220000:2:time=Evening:group=5:hud=0`. It renders at the Ultra preset in a
+3200×1800 window and rides the last 1.5 km before each shot, so the HUD shows riding figures.
+A separate `HOME` keeps your profile and settings out of it but reuses downloaded tiles and
+kept worlds. Saved courses' distances come from the start of the course. The published shots
+are listed in `.claude/skills/orqwa-showcase/shots.txt`, and
+`GODOT=… .claude/skills/orqwa-showcase/render.sh` re-renders them all (or `ONLY=` some) into
+`docs/images/showcase/`; see that skill.
 
 The software-rendering runners select FXAA instead of MSAA and disable glow, which otherwise
 produces bright halos under lavapipe. They wait for route preparation and streamed chunks;
@@ -559,9 +611,9 @@ recommendation and restored rendering settings; software FPS still says nothing 
 Frame rate needs a real GPU: software Vulkan in the container draws the same draw calls and
 primitives, but its timings say nothing about a GPU. `app/tools/measure_frames.gd` measures a
 course's world either way. It opens a course (a `.oqc`, built offline from its saved inputs, or
-a GPX route), waits for every chunk, pauses the rider at each distance in `PLACES` and samples
-the frames there: everything shown (`all`), then with one thing taken away at a time, as `TAKE`
-asks. Each sample appends a row to `frames.csv`: frame rate, median and 95th-percentile frame
+a GPX route), waits for its world, pauses the rider at each distance in `PLACES` once the chunks
+around it are uploaded, and samples the frames there: everything shown (`all`), then with one
+thing taken away at a time, as `TAKE` asks. Each sample appends a row to `frames.csv`: frame rate, median and 95th-percentile frame
 time, and the draw calls and primitives in view and in the shadow maps. Each place gets a
 screenshot, the run a log with the world's build and upload times and its geometry by kind.
 
@@ -720,7 +772,7 @@ window sizes: simultaneous drafting and Support/Braking, inactive effects, pause
 course-free workouts, overlay exclusion, matching the metrics HUD's width below it and clearance
 around controls and organizer offers.
 The app's `assistance_feedback_` Rust regression checks that feedback follows applied effects,
-including braking while catching up and authority blending, without replacing measured power
+including cancellation during a fast catch-up and authority blending, without replacing measured power
 or ERG targets. `SCREENSHOT_GROUP_RIDERS_ONLY=1 scripts/screenshots.sh` also captures the
 indicators from all three cameras in both languages using presentation fixtures. Review at
 `SCREENSHOT_SIZE=1024x640` too. Video rides intentionally have no indicators.
@@ -746,6 +798,23 @@ clock and can show a separate motion-speed wobble even with both assistance rule
 For native trainer acceptance, alternate leading and following as organizer and friend,
 sprint, coast, stop and reconnect; check gradual Support/Braking, quiet equal-speed riding
 near the group and immediate cancellation when paused. Native resistance feel remains manual.
+
+R233 constrains the direction on both sides of filtering: a rider behind the group middle
+receives support or zero, and a rider ahead braking or zero, regardless of relative speed.
+Regressions include 20–500 m catch-ups, position corrections across the middle, its dead zone
+and prompt trainer updates when clearing or reversing offsets smaller than 0.1 percentage point.
+`ride_clock_smoke.gd` runs a workout at five frames per second and compares riding time against
+the monotonic clock, exercising Godot's capped process delta through the real GDExtension.
+The extension supplies real elapsed time to the Rust engine; accelerated fake rides still use
+their explicit simulation multiplier. The group tooltip names the group rather than its organizer.
+
+For R235, loopback networking tests verify organizer-measured ping tables, nonzero organizer
+slots and removal/reconnection cleanup; deterministic tests cover expiry and unavailable
+readings. The dialog smoke suite checks live ping updates preserve voice buttons, and the
+countdown/layout regressions exercise 45–60,000 ms in English and German. On two native
+computers, compare friends' organizer-link readings, interrupt and reconnect a link, then
+change organizer. Check readings return, no self ping appears, and the ride shows ping only
+inside the Group Rides dialog. Cross-home latency acceptance remains manual.
 
 ### Group rider nameplates
 
