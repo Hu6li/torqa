@@ -627,7 +627,9 @@ func _process(delta: float) -> void:
 	_follow_ride(state, delta)
 	if _quality["building_detail"]:
 		var at: Vector3 = _camera.global_position
-		_building_detail_streaming.update(Vector2(at.x, at.z), _orqwa.world_building_details)
+		_building_detail_streaming.update(
+			Vector2(at.x, at.z), _orqwa.world_building_details, _orqwa.let_go_of_building_details
+		)
 
 
 ## The rider's own avatar (R46), on a new world and whenever the active rider changes; the

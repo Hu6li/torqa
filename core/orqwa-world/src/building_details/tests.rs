@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::*;
 
 fn wall(style: u8, offset: f64) -> MeshData {
@@ -48,13 +50,67 @@ fn streamed_details_follow_the_view_without_changing_saved_surfaces() {
     let mut shell = wall(0, 0.0);
     shell.append(wall(0, 1000.0));
     let saved = shell.clone();
-    let near = nearby_building_details(&shell, [0.0, 0.0], 100.0);
-    let far = nearby_building_details(&shell, [1000.0, 0.0], 100.0);
+    let facades = Facades::new(&shell);
+    let none = BTreeSet::new();
+    let near = facades.nearby([0.0, 0.0], 100.0, &none);
+    let far = facades.nearby([1000.0, 0.0], 100.0, &none);
     assert!(!near.is_empty() && !far.is_empty());
-    assert!(near.iter().flat_map(|m| &m.vertices).all(|p| p[0] < 100.0));
-    assert!(far.iter().flat_map(|m| &m.vertices).all(|p| p[0] > 900.0));
+    let vertices = |cells: &[(DetailCell, MeshData)]| {
+        cells
+            .iter()
+            .flat_map(|(_, mesh)| mesh.vertices.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(vertices(&near).iter().all(|p| p[0] < 100.0));
+    assert!(vertices(&far).iter().all(|p| p[0] > 900.0));
     assert_eq!(shell, saved);
-    assert_eq!(nearby_building_details(&shell, [f64::NAN, 0.0], 100.0), []);
+    assert_eq!(facades.nearby([f64::NAN, 0.0], 100.0, &none), []);
+}
+
+#[test]
+fn moving_on_adds_only_the_cells_newly_in_reach_and_they_join_up() {
+    let mut shell = MeshData::default();
+    for offset in [-200.0, -100.0, 0.0, 100.0, 200.0] {
+        shell.append(wall(0, offset));
+        shell.append(wall(10, offset + 6.4));
+    }
+    let facades = Facades::new(&shell);
+    let mut loaded = BTreeSet::new();
+    let mut streamed = Vec::new();
+    for x in [-120.0, -56.0, 8.0, 72.0, 136.0] {
+        let added = facades.nearby([x, 0.0], 90.0, &loaded);
+        for (cell, mesh) in added {
+            assert!(
+                loaded.insert(cell),
+                "a cell is derived once while it stays loaded"
+            );
+            assert!(in_reach(cell, [x, 0.0], 90.0));
+            streamed.push((cell, mesh));
+        }
+    }
+    let mut whole = facades.nearby([8.0, 0.0], 1000.0, &BTreeSet::new());
+    whole.retain(|(cell, _)| loaded.contains(cell));
+    streamed.sort_by_key(|(cell, _)| *cell);
+    assert_eq!(
+        streamed, whole,
+        "cells loaded at different places are the same as derived at once"
+    );
+    let behind = out_of_reach(&loaded, [136.0, 0.0], 60.0);
+    assert!(
+        behind.contains(&(-2, 0)) && behind.contains(&(-4, 0)),
+        "cells left behind are let go of"
+    );
+    assert!(loaded.contains(&(0, 0)) && !in_reach((0, 0), [136.0, 0.0], 60.0));
+    assert!(
+        !behind.contains(&(0, 0)),
+        "cells just outside reach stay, so moving to and fro does not reload them"
+    );
+    let everything: Vec<MeshData> = facades
+        .nearby([0.0, 0.0], 1000.0, &BTreeSet::new())
+        .into_iter()
+        .map(|(_, mesh)| mesh)
+        .collect();
+    assert_eq!(everything, building_details(&shell));
 }
 
 #[test]

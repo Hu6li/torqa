@@ -6,6 +6,7 @@
 // `#[gdextension]` macro drops item-level attributes, so the allow must be crate-wide.
 #![allow(unsafe_code)]
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -37,7 +38,7 @@ use orqwa_physics::{DescentMode, lean_angle};
 use orqwa_routes::{ElevationSource, LocalProjection};
 use orqwa_session::estimate;
 use orqwa_session::workout::{EffortTest, HeartRateHold, RampTest, Workout};
-use orqwa_world::MapFeature;
+use orqwa_world::{DetailCell, MapFeature};
 
 #[cfg(target_os = "android")]
 mod android_audio;
@@ -3919,29 +3920,74 @@ impl OrqwaApp {
         graphics::chunk_arrays_for_season(&chunk, tree_density, season)
     }
 
-    /// Streams nearby façade additions without uploading the rest of the chunk again.
+    /// The close façade cells of chunk `index` around world `(x, z)` for Ultra (R256), given the
+    /// cells already `loaded` (cell `x, z` pairs): `added`, the cells newly within `radius`
+    /// metres by cell (`Vector2i`), and `dropped`, the loaded cells to let go of. The chunk's
+    /// façades are read once, until [`let_go_of_building_details`](Self::let_go_of_building_details).
     #[func]
-    fn world_building_details(&self, index: i64, x: f64, z: f64, radius: f64) -> VarArray {
-        let chunk = self
+    #[allow(clippy::needless_pass_by_value)] // Godot passes arrays by value.
+    fn world_building_details(
+        &self,
+        index: i64,
+        x: f64,
+        z: f64,
+        radius: f64,
+        loaded: PackedInt32Array,
+    ) -> VarDictionary {
+        let mut result = VarDictionary::new();
+        let Some((chunks, index)) = self
             .app
             .as_ref()
             .and_then(App::world_chunks)
             .zip(usize::try_from(index).ok())
-            .and_then(|(chunks, index)| chunks.get(index));
-        let Some(chunk) = chunk else {
-            return VarArray::new();
+        else {
+            return result;
         };
-        orqwa_world::nearby_building_details(
-            &chunk.buildings,
-            [
-                x - f64::from(chunk.center[0]),
-                z - f64::from(chunk.center[2]),
-            ],
-            radius.clamp(0.0, 512.0),
-        )
-        .iter()
-        .map(|mesh| mesh_arrays(mesh).to_variant())
-        .collect()
+        let Some(&[cx, _, cz]) = chunks.centres().get(index) else {
+            return result;
+        };
+        let loaded: BTreeSet<DetailCell> = loaded
+            .as_slice()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&[x, z]| (i64::from(x), i64::from(z)))
+            .collect();
+        let center = [x - f64::from(cx), z - f64::from(cz)];
+        let radius = radius.clamp(0.0, 512.0);
+        let key = |(cell_x, cell_z): DetailCell| {
+            Some(Vector2i::new(
+                i32::try_from(cell_x).ok()?,
+                i32::try_from(cell_z).ok()?,
+            ))
+        };
+        let mut added = VarDictionary::new();
+        for (cell, mesh) in chunks.building_details(index, center, radius, &loaded) {
+            if let Some(key) = key(cell) {
+                added.set(key, &mesh_arrays(&mesh));
+            }
+        }
+        let dropped: VarArray = orqwa_world::out_of_reach(&loaded, center, radius)
+            .into_iter()
+            .filter_map(key)
+            .map(|key| key.to_variant())
+            .collect();
+        result.set("added", &added);
+        result.set("dropped", &dropped);
+        result
+    }
+
+    /// Lets go of chunk `index`'s façades once the camera is out of their reach.
+    #[func]
+    fn let_go_of_building_details(&self, index: i64) {
+        if let Some((chunks, index)) = self
+            .app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .zip(usize::try_from(index).ok())
+        {
+            chunks.let_go_of_facades(index);
+        }
     }
 
     /// Converts small-plant transform buffers with the same seasonal rule used by courses.

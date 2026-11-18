@@ -289,7 +289,9 @@ do not change. Preserving material names when styling imported resources allows 
 Ultra/lighter preset switches without losing the glass treatment.
 
 Façade buffers are requested only around the camera, refreshed after 64 m of movement and
-released outside a 308 m loading margin. Preparation includes the nearby additions; background
+released outside a 308 m loading margin. A refresh adds only the 64 m cells newly in reach and
+drops those left behind; each chunk's façade panels are read from the world once while the
+camera is near it, not on every refresh. Preparation includes the nearby additions; background
 uploads never build close façades for every course chunk. A visibility range alone bounded
 draw cost but retained millions of unnecessary triangles in the first native town review.
 

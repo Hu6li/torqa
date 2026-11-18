@@ -546,6 +546,8 @@ physically based materials and light, restyled group by group.
   floor instead of curtains, and fewer home windows have curtains or blinds (R256).
 - [x] Close façades stream with ADR 0040's chunk residency: chunks let go of release their
   additions, which are read through the chunk store.
+- [x] Close façade refreshes add only the 64 m cells newly in reach and keep the rest uploaded;
+  each chunk's façades are read once while near, not on every 64 m of movement.
 - [ ] Native check of the swap on the Mac (software renders show it fixed; see the study).
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
   verify the target hardware.

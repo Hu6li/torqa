@@ -25,9 +25,16 @@ ordinary ground-floor window detail behind them. Decorations follow each façade
 and are grouped on a 64 m grid for culling.
 
 Only Ultra derives those extra meshes, on demand around the camera. Ordinary chunk uploads
-carry no extra façade buffers. The renderer requests windows within a 308 m loading margin,
-refreshes after 64 m of movement, uploads at most one detail chunk per frame and releases
-additions when their chunks leave that margin. Ride preparation waits for nearby additions;
+carry no extra façade buffers. The renderer requests windows within a 308 m loading margin and
+refreshes after 64 m of movement, at most one chunk per frame. Additions come in 64 m cells:
+a refresh names the cells already uploaded, the core derives only those newly in reach and
+names the ones to let go of, a cell's width beyond the margin so moving to and fro does not
+reload them; cells still in reach stay uploaded. The core reads a chunk's façade panels once
+(`orqwa_world::Facades`, kept by `WorldChunks`) and forgets them when the camera leaves the
+chunk's margin or the chunk is let go of. In a dense synthetic town of four-storey blocks
+(container, release build) a refresh went from 1.9 million derived triangles and 43 ms on
+the main thread, besides reading the whole chunk from disk again, to 0.28 million and 7 ms
+on average, the first full load included. Ride preparation waits for nearby additions;
 the whole course never retains close façade geometry. Fitted models switch between ordinary and
 detailed appearances at **160 m**, with a **20 m** fade; shell additions use the same close
 range. Only the appearance going away dithers: the one taking over is already drawn, opaque

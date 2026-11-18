@@ -150,21 +150,49 @@ func _streaming() -> void:
 	streaming.register(0, nearby, bounds)
 	streaming.register(1, distant, bounds)
 	var loaded: Array[int] = []
-	var loader: Callable = func(index: int, _x: float, _z: float, _radius: float) -> Array:
+	var known: Array[PackedInt32Array] = []
+	var let_go: Array[int] = []
+	var empty: Dictionary = {
+		"vertices": PackedVector3Array(),
+		"normals": PackedVector3Array(),
+		"uvs": PackedVector2Array(),
+		"colors": PackedColorArray(),
+		"indices": PackedInt32Array()
+	}
+	# The core's answer: the first refresh of a chunk adds cells 0 and 1, the next drops 0 and
+	# adds 2.
+	var loader: Callable = func(
+		index: int, _x: float, _z: float, _radius: float, cells: PackedInt32Array
+	) -> Dictionary:
 		loaded.append(index)
-		return []
-	streaming.update(Vector2.ZERO, loader)
+		known.append(cells)
+		if cells.is_empty():
+			return {"added": {Vector2i(0, 0): empty, Vector2i(1, 0): empty}, "dropped": []}
+		return {"added": {Vector2i(2, 0): empty}, "dropped": [Vector2i(0, 0)]}
+	var releaser: Callable = func(index: int) -> void: let_go.append(index)
+	streaming.update(Vector2.ZERO, loader, releaser)
 	_check(loaded == [0], "distant course chunks never allocate façade additions")
+	_check(nearby.get_child_count() == 2, "nearby cells are uploaded one node each")
 	_check(streaming.ready_at(Vector2.ZERO), "nearby additions are ready before riding")
-	streaming.update(Vector2(2000, 0), loader)
-	_check(loaded == [0, 1], "moving or jumping streams the new surroundings")
-	_check(nearby.get_child_count() == 0, "far additions are released")
-	streaming.update(Vector2(2001, 0), loader)
-	_check(loaded.size() == 2, "the movement margin avoids rebuilding every frame")
-	streaming.update(Vector2(2090, 0), loader)
-	_check(loaded.size() == 3, "moving beyond the margin refreshes the nearby subset")
+	var kept: Node = nearby.get_child(1)
+	streaming.update(Vector2(1, 0), loader, releaser)
+	_check(loaded.size() == 1, "the movement margin avoids rebuilding every frame")
+	streaming.update(Vector2(70, 0), loader, releaser)
+	_check(loaded.size() == 2, "moving beyond the margin refreshes the nearby subset")
+	_check(known[1].size() == 4, "a refresh tells the core which cells are uploaded already")
+	_check(is_instance_valid(kept) and not kept.is_queued_for_deletion(), "cells in reach stay")
+	_check(nearby.get_child(0).is_queued_for_deletion(), "cells left behind are let go of")
+	streaming.update(Vector2(2000, 0), loader, releaser)
+	_check(loaded == [0, 0, 1], "moving or jumping streams the new surroundings")
+	_check(let_go == [0], "the core forgets the façades of chunks left behind")
+	var remaining: int = 0
+	for child: Node in nearby.get_children():
+		if not child.is_queued_for_deletion():
+			remaining += 1
+	_check(remaining == 0, "far additions are released")
+	streaming.unregister(1)
+	_check(let_go == [0, 1], "chunks the world lets go of release their façades")
 	streaming.reset()
-	_check(distant.get_child_count() == 0, "preset/course changes release streamed additions")
 	nearby.free()
 	distant.free()
 

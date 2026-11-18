@@ -36,7 +36,9 @@ static func prepare(
 		var nearby: Vector2i = world._streaming.nearby_progress()
 		progress.call(nearby.x, nearby.y)
 		var detail_focus: Vector2 = Vector2(focus.x, -focus.y)
-		world._building_detail_streaming.update(detail_focus, orqwa.world_building_details)
+		world._building_detail_streaming.update(
+			detail_focus, orqwa.world_building_details, orqwa.let_go_of_building_details
+		)
 		if (
 			world._streaming.nearby_ready()
 			and world._building_detail_streaming.ready_at(detail_focus)

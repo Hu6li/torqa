@@ -1,6 +1,6 @@
 //! Presentation-only façade additions reconstructed from the saved shell surface contract.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{MeshData, hash, palette, structures::quad_uv};
 
@@ -19,25 +19,88 @@ type Rect = [f64; 4];
 /// Non-rectangular panels and unsupported surface styles retain their ordinary appearance.
 #[must_use]
 pub fn building_details(shell: &MeshData) -> Vec<MeshData> {
-    details(shell, None)
+    details(&faces(shell), &|_| true, None)
+        .into_values()
+        .filter(|mesh| !mesh.indices.is_empty())
+        .collect()
 }
 
-/// Derives nearby windows within `radius` metres of shell-local `(x, z)` `center`.
-#[must_use]
-pub fn nearby_building_details(shell: &MeshData, center: [f64; 2], radius: f64) -> Vec<MeshData> {
-    if !radius.is_finite() || radius <= 0.0 || center.iter().any(|n| !n.is_finite()) {
-        return Vec::new();
+/// A chunk's façades, read once from its saved shell, from which close details are derived cell
+/// by cell as the camera moves: a refresh adds only the cells newly in reach.
+#[derive(Debug, Clone, Default)]
+pub struct Facades {
+    faces: Vec<Face>,
+}
+
+/// A 64 m cell of close details, by shell-local `(x, z)` cell index.
+pub type DetailCell = (i64, i64);
+
+impl Facades {
+    /// Reads the façade panels of a chunk's shell `shell`, which stays unchanged.
+    #[must_use]
+    pub fn new(shell: &MeshData) -> Self {
+        Self {
+            faces: faces(shell),
+        }
     }
-    details(shell, Some((center, radius)))
+
+    /// The detail cells within `radius` metres of shell-local `(x, z)` `center` that are not
+    /// `loaded` yet, each whole whatever the view, so cells loaded at different times join up.
+    /// Cells with nothing to add are left out.
+    #[must_use]
+    pub fn nearby(
+        &self,
+        center: [f64; 2],
+        radius: f64,
+        loaded: &BTreeSet<DetailCell>,
+    ) -> Vec<(DetailCell, MeshData)> {
+        if !radius.is_finite() || radius <= 0.0 || center.iter().any(|n| !n.is_finite()) {
+            return Vec::new();
+        }
+        let wanted = |cell: DetailCell| !loaded.contains(&cell) && in_reach(cell, center, radius);
+        details(&self.faces, &wanted, Some((center, radius + CELL * 1.5)))
+            .into_iter()
+            .filter(|(_, mesh)| !mesh.indices.is_empty())
+            .collect()
+    }
 }
 
+/// The `loaded` cells to let go of: those a cell's width beyond `radius` metres of shell-local
+/// `(x, z)` `center`, so a camera moving to and fro along the edge does not reload them.
+#[must_use]
+pub fn out_of_reach(
+    loaded: &BTreeSet<DetailCell>,
+    center: [f64; 2],
+    radius: f64,
+) -> Vec<DetailCell> {
+    loaded
+        .iter()
+        .copied()
+        .filter(|&cell| !in_reach(cell, center, radius + CELL))
+        .collect()
+}
+
+/// Whether any of `cell` lies within `radius` metres of shell-local `(x, z)` `center`.
+#[must_use]
+pub fn in_reach((x, z): DetailCell, center: [f64; 2], radius: f64) -> bool {
+    #[allow(clippy::cast_precision_loss)] // Cell indices of local world metres are small.
+    let (left, top) = (x as f64 * CELL, z as f64 * CELL);
+    let dx = (center[0] - center[0].clamp(left, left + CELL)).abs();
+    let dz = (center[1] - center[1].clamp(top, top + CELL)).abs();
+    dx.hypot(dz) <= radius
+}
+
+/// The details of the `wanted` cells; `near` skips faces too far from a centre to reach them.
 #[allow(clippy::too_many_lines)] // One bounded pass over the saved façade styles and their trim.
-fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
-    let faces = faces(shell);
+fn details(
+    faces: &[Face],
+    wanted: &dyn Fn(DetailCell) -> bool,
+    near: Option<([f64; 2], f64)>,
+) -> BTreeMap<DetailCell, MeshData> {
     let shops: Vec<&Face> = faces.iter().filter(|face| face.style == 10).collect();
-    let mut cells: BTreeMap<(i64, i64), MeshData> = BTreeMap::new();
-    for face in &faces {
-        if let Some((center, radius)) = view {
+    let mut cells: BTreeMap<DetailCell, MeshData> = BTreeMap::new();
+    for face in faces {
+        if let Some((center, radius)) = near {
             let a = face.point(face.bounds[0], face.bounds[1], 0.0);
             let b = face.point(face.bounds[2], face.bounds[1], 0.0);
             let line = [b[0] - a[0], b[2] - a[2]];
@@ -112,9 +175,7 @@ fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
                 f64::midpoint(pane[1], pane[3]),
                 0.0,
             );
-            if view.is_some_and(|(center, radius)| {
-                (middle[0] - center[0]).hypot(middle[2] - center[1]) > radius
-            }) {
+            if !wanted(cell(middle)) {
                 continue;
             }
             let mesh = cells.entry(cell(middle)).or_default();
@@ -123,6 +184,9 @@ fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
         if matches!(face.style, 0 | 2) && face.bounds[3] >= 3.0 {
             let [left, bottom, right, top] = face.bounds;
             let middle = face.point(f64::midpoint(left, right), f64::midpoint(bottom, top), 0.0);
+            if !wanted(cell(middle)) {
+                continue;
+            }
             let mesh = cells.entry(cell(middle)).or_default();
             let paint = face.color;
             face.box_mesh(
@@ -149,9 +213,6 @@ fn details(shell: &MeshData, view: Option<([f64; 2], f64)>) -> Vec<MeshData> {
         }
     }
     cells
-        .into_values()
-        .filter(|mesh| !mesh.indices.is_empty())
-        .collect()
 }
 
 /// A pane's glass carries its seed in U and, for a shop window, V lifted by one: shops show a
@@ -232,6 +293,7 @@ fn window(mesh: &mut MeshData, face: &Face, pane: Rect, shop: bool) {
     );
 }
 
+#[derive(Debug, Clone)]
 struct Face {
     origin: Point,
     along: Point,
@@ -411,7 +473,7 @@ fn length(a: Point) -> f64 {
 }
 
 #[allow(clippy::cast_possible_truncation)] // Local world metres are far below i64 bounds.
-fn cell([x, _, z]: Point) -> (i64, i64) {
+fn cell([x, _, z]: Point) -> DetailCell {
     ((x / CELL).floor() as i64, (z / CELL).floor() as i64)
 }
 

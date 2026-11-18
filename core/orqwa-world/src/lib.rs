@@ -54,7 +54,7 @@ use orqwa_routes::{ElevationModel, LocalProjection, Route, Surface};
 use tracing::{info, warn};
 
 pub use benchmark::benchmark;
-pub use building_details::{building_details, nearby_building_details};
+pub use building_details::{DetailCell, Facades, building_details, in_reach, out_of_reach};
 pub use climate::{SeasonClimate, season_climate};
 pub use forest_mask::{ForestMask, forest_mask};
 pub use horizon::{HORIZON, Horizon, horizon};

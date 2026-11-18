@@ -4,12 +4,13 @@
 //! rest of it is still being built: each chunk can be read once it is finished.
 
 use std::borrow::Cow;
+use std::collections::{BTreeSet, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use orqwa_storage::worlds::{Building, Chunks};
-use orqwa_world::{SnowGroundMask, TerrainChunk, World};
+use orqwa_world::{DetailCell, Facades, MeshData, SnowGroundMask, TerrainChunk, World};
 use tracing::warn;
 
 use crate::failure::{Failure, Kind};
@@ -52,6 +53,9 @@ pub struct WorldChunks {
     snow: OnceLock<Option<SnowGroundMask>>,
     /// Whether the mask was asked for.
     asked: AtomicBool,
+    /// The façades of chunks near the camera on Ultra, read once from each chunk so moving on
+    /// derives only the close details newly in reach (R256), until let go of.
+    facades: Mutex<HashMap<usize, Arc<Facades>>>,
 }
 
 impl WorldChunks {
@@ -77,6 +81,7 @@ impl WorldChunks {
             complete: AtomicBool::new(false),
             snow: OnceLock::new(),
             asked: AtomicBool::new(false),
+            facades: Mutex::new(HashMap::new()),
         }
     }
 
@@ -208,6 +213,36 @@ impl WorldChunks {
             .inspect_err(|error| warn!(%error, index, "cannot read a chunk of the world"))
             .ok()
             .map(Cow::Owned)
+    }
+
+    /// The close-detail cells of chunk `index` within `radius` metres of its local `(x, z)`
+    /// `center` that are not `loaded` yet (R256). The chunk's façades are read once and kept
+    /// until [let go of](Self::let_go_of_facades); none for a chunk not finished or unreadable.
+    #[must_use]
+    pub fn building_details(
+        &self,
+        index: usize,
+        center: [f64; 2],
+        radius: f64,
+        loaded: &BTreeSet<DetailCell>,
+    ) -> Vec<(DetailCell, MeshData)> {
+        let cached = lock(&self.facades).get(&index).cloned();
+        let facades = if let Some(facades) = cached {
+            facades
+        } else {
+            let Some(chunk) = self.get(index) else {
+                return Vec::new();
+            };
+            let facades = Arc::new(Facades::new(&chunk.buildings));
+            lock(&self.facades).insert(index, Arc::clone(&facades));
+            facades
+        };
+        facades.nearby(center, radius, loaded)
+    }
+
+    /// Lets go of chunk `index`'s façades, once the camera is out of their reach.
+    pub fn let_go_of_facades(&self, index: usize) {
+        lock(&self.facades).remove(&index);
     }
 
     /// The mask that keeps the winter ground's snow off the ways, once
@@ -373,5 +408,54 @@ mod tests {
         let kept = KeptWorlds::new(&dir);
         chunks.keep(&kept, "desktop", &World::default(), orqwa_world::GENERATOR);
         assert!(kept.has("desktop"));
+    }
+
+    /// A 12.8 m plastered wall with a window grid, as the generator saves shells.
+    fn plastered_wall() -> MeshData {
+        MeshData {
+            vertices: vec![
+                [0.0, -1.0, 0.0],
+                [12.8, -1.0, 0.0],
+                [12.8, 12.4, 0.0],
+                [0.0, 12.4, 0.0],
+            ],
+            normals: vec![[0.0, 0.0, 1.0]; 4],
+            uvs: vec![[0.0, -1.0], [12.8, -1.0], [12.8, 12.4], [0.0, 12.4]],
+            colors: vec![[0.8, 0.7, 0.6, 0.0]; 4],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }
+    }
+
+    #[test]
+    fn close_details_come_from_finished_chunks_once_per_cell() {
+        let chunks = WorldChunks::building(None, false);
+        chunks.locate(&[[0.0; 3]]);
+        let none = BTreeSet::new();
+        assert!(
+            chunks
+                .building_details(0, [0.0, 0.0], 100.0, &none)
+                .is_empty(),
+            "a chunk still being built has no details yet"
+        );
+        chunks
+            .take(
+                0,
+                TerrainChunk {
+                    buildings: plastered_wall(),
+                    ..chunk()
+                },
+            )
+            .unwrap();
+        let cells = chunks.building_details(0, [0.0, 0.0], 100.0, &none);
+        assert_ne!(cells.len(), 0);
+        let loaded: BTreeSet<DetailCell> = cells.iter().map(|(cell, _)| *cell).collect();
+        assert!(
+            chunks
+                .building_details(0, [0.0, 0.0], 100.0, &loaded)
+                .is_empty(),
+            "loaded cells are not derived again"
+        );
+        chunks.let_go_of_facades(0);
+        assert_eq!(chunks.building_details(0, [0.0, 0.0], 100.0, &none), cells);
     }
 }
