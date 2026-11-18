@@ -748,3 +748,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R257 | Refines R16 and R89 (2026-11-18, #554): **a building on a slope stands as one on a hillside does**. Its ground floor stays at the uphill ground, and where the ground falls below it, that wall shows as many lower storeys as fit with their windows clear of the ground, at most four, instead of a blank plinth; a semi-basement's floor may lie up to 1 m below the ground. Only the remainder is plinth, so windows start within a storey of the downhill ground. Walls whose ground falls less, including side walls across the slope, keep a plinth. Fitted models, whose basement is a plain stone plinth, are used only where the ground falls less than 1.8 m under them; steeper plots get the generated building with its lower storeys. Kept worlds offer regeneration (R101). |
+
+## Buildings mapped in parts and mapped heights
+
+| ID | Requirement |
+|---|---|
+| R258 | Refines R16 and R89 (2026-11-18): **a building mapped in parts stands as its parts**. The map tiles carry the outline of such a building, marked as drawn in parts, beside its parts: the outline is not drawn as a building of its own, and each part stands on the outline's ground with its own height. A part mapped from a height above the ground (an overhang, a passage, the upper stage of a tower) starts there and is closed from below; trim and balconies start there too. Churches, castles and lighthouses mapped in parts stay whole, from their outline, as before. Outlines still keep plants and props off the ground. **Fitted models follow a mapped height**: where the map gives one, a model fits only if it reaches the mapped walls within 15 %, stretched up or down to them; otherwise the building is generated. Models without a mapped height keep theirs. Kept worlds offer regeneration (R101). |

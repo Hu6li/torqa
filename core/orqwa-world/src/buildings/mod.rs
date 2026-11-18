@@ -234,6 +234,73 @@ pub(crate) struct Plot<'a> {
     pub(crate) climate: Climate,
     /// Architecture follows geography separately from the climate.
     pub(crate) region: Region,
+    /// Whether it is drawn whole or as one of the parts of a building mapped in parts.
+    pub(crate) drawn: Drawn,
+}
+
+/// How a plot is drawn. A building mapped in parts stands as its parts, each from its own
+/// height, on its outline's ground; its outline still keeps plants and props off the ground.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) enum Drawn {
+    /// As a building of its own.
+    #[default]
+    Whole,
+    /// Not at all: its parts are drawn instead.
+    AsParts,
+    /// As a part of the building with this outline, standing on that outline's ground.
+    Part(Vec<Point>),
+    /// Not at all: it is part of a church, castle or lighthouse drawn whole from its outline.
+    Within,
+}
+
+/// Draws buildings mapped in parts as their parts: the tiles carry both the outline, flagged
+/// as drawn in parts, and the parts within it, and drawing both stacked the parts inside a
+/// building of the outline's own. Churches, castles and lighthouses stay whole, as their
+/// builders make towers and keeps of their own, and their parts are left out.
+pub(crate) fn resolve_parts(plots: &mut [Plot]) {
+    let centres: Vec<Point> = plots.iter().map(|p| centroid(&p.footprint)).collect();
+    let outlines: Vec<usize> = (0..plots.len())
+        .filter(|&i| plots[i].building.in_parts)
+        .collect();
+    for o in outlines {
+        let landmark = plots[o].church || plots[o].landmark.is_some();
+        let outline = plots[o].footprint.clone();
+        let (low, high) = bounds(&outline);
+        let mut parts = 0;
+        for (i, &(e, n)) in centres.iter().enumerate() {
+            if i == o
+                || plots[i].building.in_parts
+                || plots[i].drawn != Drawn::Whole
+                || e < low.0
+                || e > high.0
+                || n < low.1
+                || n > high.1
+                || !contains(&outline, (e, n))
+            {
+                continue;
+            }
+            parts += 1;
+            plots[i].drawn = if landmark {
+                Drawn::Within
+            } else {
+                Drawn::Part(outline.clone())
+            };
+        }
+        if parts > 0 && !landmark {
+            plots[o].drawn = Drawn::AsParts;
+        }
+    }
+}
+
+/// The south-west and north-east corners of the box around `points`.
+fn bounds(points: &[Point]) -> (Point, Point) {
+    points.iter().fold(
+        (
+            (f64::INFINITY, f64::INFINITY),
+            (f64::NEG_INFINITY, f64::NEG_INFINITY),
+        ),
+        |(low, high), &(e, n)| ((low.0.min(e), low.1.min(n)), (high.0.max(e), high.1.max(n))),
+    )
 }
 
 /// What a building is used for, from the points of interest in or by it; later ones win over
@@ -486,6 +553,8 @@ pub(crate) fn lone_lighthouses(map: &MapData, projection: &LocalProjection) -> V
                     height: None,
                     levels: None,
                     color: None,
+                    min_height: None,
+                    in_parts: false,
                 }
             })
         })
@@ -509,11 +578,29 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     if footprint.len() < 3 {
         return;
     }
+    // A part stands on the ground of its building's outline, so parts stack as mapped.
+    let standing = match &plot.drawn {
+        Drawn::AsParts | Drawn::Within => return,
+        Drawn::Part(outline) => outline,
+        Drawn::Whole => footprint,
+    };
     // Floors are level: the ground floor is at the highest ground, and on slopes the walls
     // go down to the lowest like a basement.
-    let grounds: Vec<f64> = footprint.iter().map(|&(e, n)| heights.at(e, n)).collect();
-    let ground = grounds.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let lowest = grounds.iter().copied().fold(f64::INFINITY, f64::min);
+    let ground = standing
+        .iter()
+        .map(|&(e, n)| heights.at(e, n))
+        .fold(f64::NEG_INFINITY, f64::max);
+    let lowest = footprint
+        .iter()
+        .map(|&(e, n)| heights.at(e, n))
+        .fold(f64::INFINITY, f64::min);
+    // A part raised off the ground (an overhang, a tower's upper stage) starts there.
+    let raised = plot.building.min_height.map(|height| ground + height);
+    if let (Some(bottom), Some(height)) = (raised, plot.building.height)
+        && bottom > ground + height - STOREY / 2.0
+    {
+        return;
+    }
     let area = signed_area(footprint);
     let dice = Dice(plot.building.id);
     let kind = kind(plot, area, ground, &dice);
@@ -540,9 +627,11 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     } else {
         MODEL_BASEMENT
     };
-    // A shop's front is drawn on the shell, which shows it up close too.
+    // A shop's front is drawn on the shell, which shows it up close too; a part is no whole
+    // building a model could stand for.
     let fit = rect
         .filter(|_| ground - lowest < basement && plot.shop.is_none())
+        .filter(|_| plot.drawn == Drawn::Whole && raised.is_none())
         .and_then(|rect| {
             let wanted = Wanted {
                 kind,
@@ -555,9 +644,14 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
                     .map(|d| storeys_of(wall_height(plot.building, rise(d, &rect), d))),
                 hipped: design.as_ref().is_some_and(|d| d.roof == Roof::Hipped),
             };
-            models::fitting(&rect, wanted, &dice).map(|fit| (rect, fit))
+            // The walls the map gives, if it gives a height: models stretch up to them.
+            let mapped = (plot.building.height.is_some() || plot.building.levels.is_some())
+                .then_some(design.as_ref())
+                .flatten()
+                .map(|d| wall_height(plot.building, rise(d, &rect), d));
+            models::fitting_to(&rect, wanted, mapped, &dice).map(|fit| (rect, fit))
         });
-    let footing = lowest - FOUNDATION;
+    let footing = raised.unwrap_or(lowest - FOUNDATION);
     let Some((rect, fit)) = fit else {
         let mut builder = Builder {
             mesh: &mut chunk.shells,
@@ -653,7 +747,7 @@ fn shell(
         if let Some(pitch) = fit.model.pitch {
             matched.pitch_degrees = pitch;
         }
-        let walls = Some(fit.model.eaves);
+        let walls = Some(fit.eaves());
         build(
             b,
             &plot.footprint,
@@ -735,7 +829,7 @@ impl Instance<'_> {
                 north * across,
                 position[0],
                 0.0,
-                1.0,
+                self.fit.height,
                 0.0,
                 position[1],
                 -north * along,
@@ -1463,6 +1557,34 @@ impl Recipe<'_> {
     }
 }
 
+/// The walls of a building along `outline` up to `wall_top`, from its plinth or lower storeys
+/// (`Builder::plinth`) or, for a part raised off the ground, from its own bottom with its
+/// underside. False if no walls stand: a raised part starting above them.
+fn walls_up(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) -> bool {
+    let ground = b.ground;
+    let bottom = b.footing;
+    // A raised part's walls start at its own bottom, which shows from below.
+    let start = ground.max(bottom);
+    if start >= wall_top {
+        return false;
+    }
+    if bottom > ground {
+        b.underside(outline, bottom, design.wall);
+    } else {
+        let lower = design.base.unwrap_or(design.wall);
+        b.plinth(outline, bottom, lower, design.windows.then_some(lower));
+    }
+    match design.base {
+        Some(base) if start < ground + STOREY && ground + STOREY < wall_top => {
+            b.walls(outline, start, ground + STOREY, base);
+            b.walls(outline, ground + STOREY, wall_top, design.wall);
+        }
+        Some(base) if start < ground + STOREY => b.walls(outline, start, wall_top, base),
+        _ => b.walls(outline, start, wall_top, design.wall),
+    }
+    true
+}
+
 /// Walls, roof and details of every kind but churches; `walls`, if given, is the height of the
 /// walls instead of what the map and the design say.
 fn build(
@@ -1488,16 +1610,8 @@ fn build(
     let ground = b.ground;
     let eaves = ground + walls;
     let wall_top = eaves + parapet.unwrap_or(0.0);
-    let bottom = b.footing;
-    let lower = design.base.unwrap_or(design.wall);
-    b.plinth(&outline, bottom, lower, design.windows.then_some(lower));
-    match design.base {
-        Some(base) if ground + STOREY < wall_top => {
-            b.walls(&outline, ground, ground + STOREY, base);
-            b.walls(&outline, ground + STOREY, wall_top, design.wall);
-        }
-        Some(base) => b.walls(&outline, ground, wall_top, base),
-        None => b.walls(&outline, ground, wall_top, design.wall),
+    if !walls_up(b, &outline, design, wall_top) {
+        return;
     }
 
     let pitch = Pitch {
@@ -1586,14 +1700,18 @@ fn finish(
     trim: Trim,
     dice: &Dice,
 ) {
+    // A part raised off the ground has walls, and so trim, only from its own bottom up.
+    let walls_from = b.footing.max(ground) + 0.5;
     if trim.floors {
         // A band at every floor up to the top storey's.
         let mut floor = ground + STOREY;
         while floor < eaves - STOREY / 2.0 {
-            b.band(outline, (floor - 0.2, floor + 0.2), 0.1, trim.band);
+            if floor > walls_from {
+                b.band(outline, (floor - 0.2, floor + 0.2), 0.1, trim.band);
+            }
             floor += STOREY;
         }
-    } else if base && ground + STOREY < eaves {
+    } else if base && ground + STOREY < eaves && ground + STOREY > walls_from {
         let floor = ground + STOREY;
         b.band(outline, (floor - 0.12, floor + 0.12), 0.08, trim.band);
     }
@@ -1607,7 +1725,13 @@ fn finish(
         return;
     };
     if let Some(paint) = trim.balconies {
-        balconies(b, rect, (ground, eaves), (paint, trim.every_column), dice);
+        balconies(
+            b,
+            rect,
+            (ground, eaves, walls_from),
+            (paint, trim.every_column),
+            dice,
+        );
     }
     if wall_top > eaves {
         let units = if dice.roll(17) < 0.4 {
@@ -1647,13 +1771,14 @@ fn luminance([r, g, b]: [f32; 3]) -> f32 {
 /// Balconies stand this far out of the wall.
 const BALCONY_DEPTH: f64 = 1.2;
 
-/// Stacked balconies on a block's long sides, one storey over another from the first floor up,
+/// Stacked balconies on a block's long sides, one storey over another from the first floor (or
+/// the walls' bottom, `walls_from`, on a raised part) up,
 /// in every other column of windows or `every` one (never the outermost), each a solid box:
 /// slab and balustrade in one, below its window.
 fn balconies(
     b: &mut Builder,
     rect: &Rect,
-    (ground, eaves): (f64, f64),
+    (ground, eaves, walls_from): (f64, f64, f64),
     (paint, every): (Paint, bool),
     dice: &Dice,
 ) {
@@ -1683,7 +1808,9 @@ fn balconies(
             for floor in 1..=floors as i64 {
                 #[allow(clippy::cast_precision_loss)] // a few storeys
                 let level = ground + floor as f64 * STOREY;
-                b.cuboid(&balcony, (level - 0.15, level + 1.0), paint, paint, true);
+                if level > walls_from {
+                    b.cuboid(&balcony, (level - 0.15, level + 1.0), paint, paint, true);
+                }
             }
         }
     }
@@ -1869,7 +1996,7 @@ fn castle(
                 .map_or(0.45 * area.sqrt(), |height| height * 0.6)
                 .clamp(CASTLE_WALLS_MIN, CASTLE_WALLS_MAX)
         },
-        |fit| fit.model.eaves,
+        |fit| fit.eaves(),
     );
     let eaves = b.ground + walls;
     let parapet_top = eaves + CASTLE_PARAPET;
@@ -2110,7 +2237,7 @@ fn lighthouse(b: &mut Builder, plot: &Plot, rect: Option<Rect>, dice: &Dice, fit
                     .map_or(around.half_width * 6.8, |height| height - 4.0)
                     .clamp(10.0, 40.0)
             },
-            |fit| fit.model.eaves,
+            |fit| fit.eaves(),
         );
     let plinth = b.ground + 1.0;
     b.walls(outline, b.footing, plinth, stone);
@@ -2443,6 +2570,7 @@ mod tests {
             landmark: None,
             climate: Climate::Temperate,
             region: Region::Generic,
+            drawn: Drawn::Whole,
         }
     }
 
@@ -2453,6 +2581,8 @@ mod tests {
             height: None,
             levels: None,
             color: None,
+            min_height: None,
+            in_parts: false,
         }
     }
 

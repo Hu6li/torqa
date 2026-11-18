@@ -102,6 +102,12 @@ pub struct Building {
     pub levels: Option<f64>,
     /// Façade colour as mapped (sRGB, 0–1), if known.
     pub color: Option<[f32; 3]>,
+    /// Height in metres above the ground its walls start at, for a part raised off it (an
+    /// overhang, the upper stage of a tower), if mapped.
+    pub min_height: Option<f64>,
+    /// Mapped in parts, each drawn on its own (`OpenMapTiles`' `hide_3d`): its outline is the
+    /// building's on the ground, its parts are what stands on it.
+    pub in_parts: bool,
 }
 
 /// A river, stream or canal centre line.

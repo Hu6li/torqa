@@ -310,6 +310,12 @@ impl Builder<'_> {
 
     /// A flat roof at `height` behind a parapet `parapet` high, whose outside the walls
     /// provide by reaching its top.
+    /// The underside of a part raised off the ground, at `height` under a counter-clockwise
+    /// `outline`, facing down.
+    pub(crate) fn underside(&mut self, outline: &[Point], height: f64, paint: Paint) {
+        self.flat(outline, height, paint, false);
+    }
+
     pub(crate) fn flat_roof(
         &mut self,
         outline: &[Point],

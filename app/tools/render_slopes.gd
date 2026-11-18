@@ -1,6 +1,8 @@
 extends SceneTree
-## Offline review of buildings on a hillside (R257), from meshes exported by
-## slope_buildings_render_fixture: production shell material, models and terrain.
+## Offline review of building scenes, from meshes exported by the world crate's ignored
+## `*_buildings_render_fixture` tests: production shell material, models and terrain. FIXTURE
+## names the export in screenshots/ (slope-buildings.json, R257, by default;
+## parts-buildings.json, R258), PREFIX the pictures.
 
 
 func _initialize() -> void:
@@ -8,7 +10,13 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var source: String = ProjectSettings.globalize_path("res://../screenshots/slope-buildings.json")
+	var fixture: String = OS.get_environment("FIXTURE")
+	if fixture.is_empty():
+		fixture = "slope-buildings.json"
+	var prefix: String = OS.get_environment("PREFIX")
+	if prefix.is_empty():
+		prefix = "slope"
+	var source: String = ProjectSettings.globalize_path("res://../screenshots/" + fixture)
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(source))
 	var out: String = OS.get_environment("OUT_DIR")
 	var scene: Node3D = Node3D.new()
@@ -60,7 +68,7 @@ func _run() -> void:
 		camera.position = eye
 		camera.look_at(target)
 		var name: String = view[0]
-		await _save(out.path_join("slope-%s.png" % name))
+		await _save(out.path_join("%s-%s.png" % [prefix, name]))
 	quit()
 
 
@@ -69,7 +77,7 @@ func _save(path: String) -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(path)
-	print("saved slope: " + path)
+	print("saved: " + path)
 
 
 func _terrain(material: ShaderMaterial) -> void:

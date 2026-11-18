@@ -348,6 +348,8 @@ fn add_building(
         .number("render_height")
         .filter(|&h| h > 0.0 && (h - DEFAULT_RENDER_HEIGHT).abs() > f64::EPSILON);
     let color = color(tags.text("colour"));
+    let min_height = tags.number("render_min_height").filter(|&h| h > 0.0);
+    let in_parts = matches!(tags.0.get("hide_3d"), Some(Value::Bool(true)));
     // Buildings with equal tags arrive merged into one feature, so neither the feature nor
     // its id stands for a single building: each polygon is one.
     for polygon in polygons(geometry) {
@@ -363,6 +365,8 @@ fn add_building(
             height,
             levels: None,
             color,
+            min_height,
+            in_parts,
         });
     }
 }
@@ -822,6 +826,34 @@ mod tests {
                 .all(|b| b.outline.first() == b.outline.last())
         );
         assert!(data.buildings.iter().any(|b| b.height.is_some()));
+    }
+
+    #[test]
+    fn decodes_buildings_drawn_in_parts_and_parts_raised_off_the_ground() {
+        let mut data = MapData::default();
+        merge(
+            14,
+            (8530, 5766),
+            include_bytes!("../tests/data/14_8530_5766.pbf").to_vec(),
+            &mut data,
+        )
+        .unwrap();
+        let outlines = data.buildings.iter().filter(|b| b.in_parts).count();
+        let raised = data
+            .buildings
+            .iter()
+            .filter(|b| b.min_height.is_some())
+            .count();
+        assert!(
+            outlines > 0 && raised > 0,
+            "{outlines} outlines, {raised} raised"
+        );
+        assert!(
+            data.buildings
+                .iter()
+                .filter_map(|b| b.min_height.zip(b.height))
+                .all(|(min, height)| min > 0.0 && min < height)
+        );
     }
 
     #[test]

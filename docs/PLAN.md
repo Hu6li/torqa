@@ -554,8 +554,8 @@ physically based materials and light, restyled group by group.
     (`orqwa-cli building-census`): about one building in ten in Switzerland and Germany
   - [x] Step 2 — buildings on slopes stand as built, with a lower storey instead of a blank
     plinth (#554, R257)
-  - [ ] Step 3 — the heights the tiles carry, for fitted models too; buildings mapped in
-    parts drawn as their parts (`hide_3d`, `render_min_height`)
+  - [x] Step 3 — the heights the tiles carry, for fitted models too; buildings mapped in
+    parts drawn as their parts (`hide_3d`, `render_min_height`, R258)
   - [ ] Step 4 — walls along the mapped outline and a roof computed over it, every building
   - [ ] Step 5 — the kind of every building (`building=*`) in the map detail extract
   - [ ] Step 6 — roof shapes, levels, colours and materials from the extract

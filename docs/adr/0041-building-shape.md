@@ -137,6 +137,27 @@ In the tests, two houses lie across a 10 % slope. On the 36 m one (3.6 m fall), 
 downhill started 4.6 m above the ground; now 1.6 m, in a lower storey. On the 24 m one (2.4 m
 fall) they started 3.4 m up; now 0.4 m, in a semi-basement. Generator 43; the stored format stays 3.
 
+## Step 3: parts and mapped heights (2026-11-18, R258)
+
+The tiles' `building` layer carries `building:part` outlines with `render_min_height`, and flags
+the outline of a building with parts `hide_3d`. ORQWA now reads both (`Building::in_parts`,
+`Building::min_height`). After churches, landmarks, purposes and shops are marked, each part
+whose centre lies in an outline drawn in parts is drawn as that outline's part, standing on the
+outline's highest ground; the outline itself is no longer drawn, but stays a plot, so plants
+and props still keep off it. A church, castle or lighthouse keeps its outline drawn whole, as
+its builders make towers and keeps of their own, and its parts are left out. Parts are never
+fitted models. A part starting above the ground has walls only from there, an underside facing
+down, and floor bands and balconies only above it; one starting within half a storey of its
+top is left out.
+
+Mapped heights now reach fitted models. Where the map gives a height or levels, the walls it
+means (`wall_height`) must be met by the model's eaves within 15 %, and the model's instance
+is scaled up or down to them; models that cannot are not fitted, and the building is
+generated instead. A model's whole storeys sit within 2 % of the generator's, so the effect is
+mostly the number of storeys: a house mapped three storeys high no longer gets a two-storey
+model. Unmapped buildings keep their models' heights. The instance transform already held a
+vertical scale, so the stored format stays 3; generator 44.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

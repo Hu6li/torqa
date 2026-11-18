@@ -20,6 +20,8 @@ fn house(id: i64, east: f64, north: f64, half: f64) -> Building {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
     }
 }
 
@@ -875,6 +877,8 @@ async fn dense_blocks_get_paving_but_parks_and_suburban_gardens_stay_green() {
                 height: None,
                 levels: Some(4.0),
                 color: None,
+                min_height: None,
+                in_parts: false,
             });
         }
     }
@@ -1008,6 +1012,8 @@ async fn city_benches_use_free_sidewalks_without_blocking_entrances_or_junctions
             height: None,
             levels: Some(2.0),
             color: None,
+            min_height: None,
+            in_parts: false,
         },
     ];
     map.shops.push(at(12.0, 30.0));
