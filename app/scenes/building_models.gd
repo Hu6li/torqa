@@ -86,6 +86,20 @@ static func add_to(
 	shells.visibility_range_end_margin = 300.0
 	shells.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	parent.add_child(shells)
+	# Buildings assembled from parts: their walls stand at every distance, their parts (in
+	# `models`) only up close, over the windows the walls draw further off.
+	var wall_arrays: Dictionary = cell.get("walls", {})
+	if not wall_arrays.is_empty():
+		var walls: MeshInstance3D = MeshInstance3D.new()
+		walls.mesh = WorldMeshes.from_arrays(wall_arrays, true)
+		if walls.mesh.get_surface_count() > 0:
+			walls.material_override = shell_material
+			walls.visibility_range_end = shell_range
+			walls.visibility_range_end_margin = 300.0
+			walls.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			parent.add_child(walls)
+		else:
+			walls.free()
 
 
 static func _instance(geometry: Mesh, buffer: PackedFloat32Array) -> MultiMeshInstance3D:

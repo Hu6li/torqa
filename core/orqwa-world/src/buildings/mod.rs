@@ -24,7 +24,7 @@ use crate::climate::Climate;
 use crate::{BuildingCell, HeightGrid, MeshData, hash, palette};
 use models::{Fit, Wanted};
 pub(crate) use parts::Style;
-use parts::{Builder, Paint, Pitch, RoofPaint};
+use parts::{Builder, Paint, Part, PartAt, Pitch, RoofPaint};
 pub(crate) use region::Region;
 pub(crate) use shape::{Point, centroid, contains, footprint, signed_area, triangulate};
 use shape::{Rect, distance};
@@ -669,12 +669,39 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         });
     let footing = raised.unwrap_or(lowest - FOUNDATION);
     let Some((rect, fit)) = fit else {
+        if let Some(design) = design
+            .as_ref()
+            .filter(|d| assembled(plot, kind, d, tropical))
+        {
+            let mut placed = Vec::new();
+            let (east, north) = centroid(footprint);
+            #[allow(clippy::cast_possible_truncation)] // world coordinates are far below 2^63 cells
+            let key = ((east / CELL).floor() as i64, (north / CELL).floor() as i64);
+            let cell = chunk.cells.entry(key).or_default();
+            let mut builder = Builder {
+                mesh: &mut cell.walls,
+                origin,
+                ground,
+                footing,
+                terrain: Some(heights),
+                parts: Some(&mut placed),
+            };
+            shell(&mut builder, plot, area, rect, Some(design), &dice, None);
+            let paints = colours(plot, Some(design), &dice);
+            let variant = dice.roll(50);
+            for part in &placed {
+                let buffer = cell.models.entry(part.part.model().to_owned()).or_default();
+                push_part(buffer, origin, part, paints, variant);
+            }
+            return;
+        }
         let mut builder = Builder {
             mesh: &mut chunk.shells,
             origin,
             ground,
             footing,
             terrain: Some(heights),
+            parts: None,
         };
         shell(&mut builder, plot, area, rect, design.as_ref(), &dice, None);
         return;
@@ -716,6 +743,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         footing,
         // As the model it stands for, whose basement is a stone plinth.
         terrain: None,
+        parts: None,
     };
     shell(
         &mut builder,
@@ -1778,6 +1806,110 @@ fn walls_up(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) 
     true
 }
 
+/// The windows and door of a building assembled from parts, on the grid the walls draw their
+/// windows on: every storey up to the walls' top, on every wall wide enough for a window, and
+/// the door on the ground floor in the middle of the longest wall. Gables and lower storeys
+/// keep the windows the walls draw.
+fn lay_parts(b: &mut Builder, outline: &[Point], design: &Design, wall_top: f64) {
+    let ground = b.ground;
+    let Some(parts) = b.parts.as_deref_mut() else {
+        return;
+    };
+    let windowed = |paint: Paint| matches!(paint.style, Style::Plaster | Style::Timber);
+    if !design.windows || !windowed(design.wall) {
+        return;
+    }
+    let ground_floor = design.base.is_none_or(windowed);
+    // The top of the last storey's windows, as the walls draw them, under the walls' top.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few storeys
+    let storeys = ((wall_top - ground - WINDOW_TOP) / STOREY + 1.0)
+        .floor()
+        .max(0.0) as u32;
+    let count = outline.len();
+    let length = |i: usize| distance(outline[i], outline[(i + 1) % count]);
+    let longest = (0..count).max_by(|&i, &j| length(i).total_cmp(&length(j)));
+    for i in 0..count {
+        let (a, c) = (outline[i], outline[(i + 1) % count]);
+        let wall = length(i);
+        if wall < 1e-6 {
+            continue;
+        }
+        let along = ((c.0 - a.0) / wall, (c.1 - a.1) / wall);
+        let (middles, stretch) = parts::window_columns(wall);
+        let door = (Some(i) == longest).then_some(middles.len() / 2);
+        for storey in u32::from(!ground_floor)..storeys {
+            for (column, &middle) in middles.iter().enumerate() {
+                let part = if storey == 0 && door == Some(column) {
+                    Part::Door
+                } else {
+                    Part::Window
+                };
+                parts.push(PartAt {
+                    part,
+                    at: (
+                        a.0 + along.0 * middle,
+                        a.1 + along.1 * middle,
+                        ground + STOREY * f64::from(storey),
+                    ),
+                    along,
+                    stretch,
+                });
+            }
+        }
+    }
+}
+
+/// The top of a storey's windows over its floor, as the walls draw them.
+const WINDOW_TOP: f64 = 2.44;
+
+/// Whether a building is assembled from parts (ADR 0041, step 7): homes of the general
+/// region with walls of windows, standing on the ground, without a shop front. The others keep
+/// their shells; regional parts are to follow.
+fn assembled(plot: &Plot, kind: Kind, design: &Design, tropical: bool) -> bool {
+    matches!(kind, Kind::House | Kind::Chalet | Kind::Farmhouse)
+        && plot.region == Region::Generic
+        && !tropical
+        && design.windows
+        && plot.shop.is_none()
+        && plot.drawn == Drawn::Whole
+        && plot.building.min_height.is_none()
+}
+
+/// Appends a part's instance in Godot `MultiMesh` buffer layout: its x along the wall,
+/// stretched with the wall's windows, y up and z out of the wall, relative to `origin`; the
+/// wall's colour as instance colour and the roof's with the building's variant as custom data.
+#[allow(clippy::cast_possible_truncation)] // stored as f32 for the GPU
+fn push_part(
+    buffer: &mut Vec<f32>,
+    origin: [f64; 3],
+    part: &PartAt,
+    (plaster, roof): ([f32; 3], [f32; 3]),
+    variant: f64,
+) {
+    let (along, stretch) = (part.along, part.stretch);
+    let out = (along.1, -along.0);
+    let (east, north, height) = part.at;
+    buffer.extend(
+        [
+            along.0 * stretch,
+            0.0,
+            out.0,
+            east - origin[0],
+            0.0,
+            1.0,
+            0.0,
+            height - origin[1],
+            -along.1 * stretch,
+            0.0,
+            -out.1,
+            -north - origin[2],
+        ]
+        .map(|v| v as f32),
+    );
+    buffer.extend([plaster[0], plaster[1], plaster[2], 1.0]);
+    buffer.extend([roof[0], roof[1], roof[2], variant as f32]);
+}
+
 /// The roof of a design over `outline` (its rectangle, if drawn as one), from its eaves at
 /// `pitch`: a gable or hipped roof over a rectangle, a hipped roof from the outline's
 /// `skeleton`, failing that a hipped band, or a flat roof. Returns its top.
@@ -1929,6 +2061,7 @@ fn build(
     if !walls_up(b, &outline, design, wall_top) {
         return;
     }
+    lay_parts(b, &outline, design, wall_top);
 
     let pitch = Pitch {
         eaves,
@@ -3078,6 +3211,7 @@ mod tests {
                 ground: 0.0,
                 footing: -1.0,
                 terrain: None,
+                parts: None,
             };
             let rect = rectangular.then(|| Rect::around(&plot.footprint).unwrap());
             shell(

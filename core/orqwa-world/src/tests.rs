@@ -2347,8 +2347,9 @@ impl Face {
 fn building_faces(world: &World, (east, north): (f32, f32), radius: f32) -> Vec<Face> {
     let mut faces = Vec::new();
     for chunk in &world.chunks {
-        let shells =
-            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        let shells = std::iter::once(&chunk.buildings)
+            .chain(chunk.modelled.iter().map(|c| &c.shells))
+            .chain(chunk.modelled.iter().map(|c| &c.walls));
         for mesh in shells {
             faces.extend(shell_faces(chunk, mesh, (east, north), radius));
         }
@@ -2401,7 +2402,8 @@ fn placed(world: &World) -> Vec<Placed> {
     for chunk in &world.chunks {
         for cell in &chunk.modelled {
             assert_valid(&cell.shells);
-            for (model, buffer) in &cell.models {
+            // Parts of buildings assembled from them are no models fitted to a building.
+            for (model, buffer) in cell.models.iter().filter(|(m, _)| !m.starts_with("parts/")) {
                 assert_eq!(buffer.len() % 20, 0);
                 for b in buffer.as_chunks::<20>().0 {
                     all.push(Placed {
@@ -2639,9 +2641,11 @@ fn export_building_scene(world: &World, name: &str) {
         meshes.extend(mesh_json(chunk, &chunk.mesh, "terrain"));
         meshes.extend(mesh_json(chunk, &chunk.buildings, "shells"));
         for cell in &chunk.modelled {
-            let Some(shells) = mesh_json(chunk, &cell.shells, "shells") else {
+            let shells = mesh_json(chunk, &cell.shells, "shells");
+            let walls = mesh_json(chunk, &cell.walls, "shells");
+            if shells.is_none() && walls.is_none() {
                 continue;
-            };
+            }
             let models: serde_json::Map<String, serde_json::Value> = cell
                 .models
                 .iter()
@@ -2664,6 +2668,7 @@ fn export_building_scene(world: &World, name: &str) {
             cells.push(serde_json::json!({
                 "models": models,
                 "shells": shells,
+                "walls": walls,
             }));
         }
     }
@@ -3323,6 +3328,133 @@ async fn shapes_buildings_render_fixture() {
 }
 
 #[tokio::test]
+#[ignore = "exports houses assembled from parts for Godot visual review"]
+async fn assembly_buildings_render_fixture() {
+    // Homes whose outlines no model fits: an L, a house with a bay, a long farmhouse.
+    let shapes: [&[(f64, f64)]; 3] = [
+        &[
+            (40.0, 470.0),
+            (58.0, 470.0),
+            (58.0, 478.0),
+            (48.0, 478.0),
+            (48.0, 490.0),
+            (40.0, 490.0),
+        ],
+        &[
+            (70.0, 470.0),
+            (74.0, 470.0),
+            (74.0, 468.0),
+            (79.0, 468.0),
+            (79.0, 470.0),
+            (83.0, 470.0),
+            (83.0, 480.0),
+            (70.0, 480.0),
+        ],
+        &[
+            (92.0, 470.0),
+            (118.0, 470.0),
+            (118.0, 482.0),
+            (92.0, 482.0),
+            (92.0, 476.0),
+            (90.0, 476.0),
+            (90.0, 474.0),
+            (92.0, 474.0),
+        ],
+    ];
+    let buildings = shapes
+        .iter()
+        .zip(150..)
+        .map(|(shape, id)| {
+            let mut outline: Vec<_> = shape.iter().map(|&(e, n)| at(e, n)).collect();
+            outline.push(outline[0]);
+            Building {
+                id,
+                outline,
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+                kind: Some(orqwa_osm::BuildingKind::House),
+                shape: None,
+            }
+        })
+        .collect();
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "assembly-buildings.json");
+}
+
+#[tokio::test]
+async fn homes_no_model_fits_are_assembled_from_parts() {
+    // An L-shaped house of two storeys (R262): its walls, at every distance, and a window part
+    // where its walls draw windows, its door on the longest wall.
+    let l_shape = [
+        (50.0, 480.0),
+        (70.0, 480.0),
+        (70.0, 490.0),
+        (59.0, 490.0),
+        (59.0, 500.0),
+        (50.0, 500.0),
+        (50.0, 480.0),
+    ];
+    let house = Building {
+        id: 160,
+        outline: l_shape.iter().map(|&(e, n)| at(e, n)).collect(),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::House),
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+    let cells: Vec<&BuildingCell> = world.chunks.iter().flat_map(|c| &c.modelled).collect();
+    assert!(
+        cells.iter().any(|c| !c.walls.vertices.is_empty()),
+        "its walls"
+    );
+    let count = |name: &str| -> usize {
+        cells
+            .iter()
+            .filter_map(|c| c.models.get(name))
+            .map(|buffer| buffer.len() / 20)
+            .sum()
+    };
+    assert_eq!(count("parts/door"), 1, "one door");
+    // The walls draw a window every 3.2 m, stretched to whole windows: 20 m, 10 m, 11 m, 10 m,
+    // 9 m and 20 m make 6 + 3 + 3 + 3 + 3 + 6 = 24 a storey, one of them the door.
+    assert_eq!(count("parts/window"), 2 * 24 - 1);
+    // Every part faces out of the house, its z axis away from the L's inside.
+    for chunk in &world.chunks {
+        for cell in &chunk.modelled {
+            for b in cell
+                .models
+                .values()
+                .flat_map(|buffer| buffer.as_chunks::<20>().0)
+            {
+                let out = (b[2], -b[10]);
+                let at = (b[3] + chunk.center[0], -b[11] - chunk.center[2]);
+                let ahead = (at.0 + out.0 * 0.5, at.1 + out.1 * 0.5);
+                let inside = |(e, n): (f32, f32)| {
+                    (50.0..70.0).contains(&e) && (480.0..490.0).contains(&n)
+                        || (50.0..59.0).contains(&e) && (490.0..500.0).contains(&n)
+                };
+                assert!(!inside(ahead), "a part at {at:?} faces into the house");
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn churches_get_a_tower_and_chapels_a_turret() {
     // A 14 × 30 m church and a 7 × 12 m chapel, with their church points inside.
     let church = Building {
@@ -3403,8 +3535,9 @@ async fn walls_show_whole_windows_only() {
 
     let mut walls = 0;
     for chunk in &world.chunks {
-        let shells =
-            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        let shells = std::iter::once(&chunk.buildings)
+            .chain(chunk.modelled.iter().map(|c| &c.shells))
+            .chain(chunk.modelled.iter().map(|c| &c.walls));
         for mesh in shells {
             for (k, color) in mesh.colors.iter().enumerate() {
                 // Windowed walls: plaster and timber every 3.2 m, churches every 4.5 m.
@@ -3913,12 +4046,19 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
     // Both still have shells: the house's for the distance, the farmhouse's always.
     assert!(!building_faces(&world, (60.0, 500.0), 12.0).is_empty());
     assert!(!building_faces(&world, (70.0, 710.0), 15.0).is_empty());
+    // Drawn at every distance: as a shell, or as the walls of a building assembled from parts.
     let unmodelled: usize = world
         .chunks
         .iter()
-        .map(|c| c.buildings.vertices.len())
+        .map(|c| {
+            c.buildings.vertices.len()
+                + c.modelled
+                    .iter()
+                    .map(|m| m.walls.vertices.len())
+                    .sum::<usize>()
+        })
         .sum();
-    assert!(unmodelled > 0, "the farmhouse is drawn as its shell");
+    assert!(unmodelled > 0, "the farmhouse is drawn at every distance");
 }
 
 /// Terrain sloping down eastwards by `grade`, 1300 m at the route start: mountains.

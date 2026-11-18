@@ -75,7 +75,7 @@ pub use vegetation::Trees;
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 47;
+pub const GENERATOR: u32 = 48;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -317,6 +317,9 @@ pub struct BuildingCell {
     pub models: BTreeMap<String, Vec<f32>>,
     /// The same buildings as shells, for the distance.
     pub shells: MeshData,
+    /// Buildings assembled from parts, whose parts `models` holds too: their walls and roofs,
+    /// drawn at every distance (ADR 0041, step 7).
+    pub walls: MeshData,
 }
 
 /// The generated world.

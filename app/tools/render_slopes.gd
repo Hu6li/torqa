@@ -51,8 +51,13 @@ func _run() -> void:
 		for name: String in placed:
 			var values: Array = placed[name]
 			models[name] = PackedFloat32Array(values)
-		var shells: Dictionary = cell["shells"]
-		var upload: Dictionary = {"models": models, "shells": _arrays(shells)}
+		var upload: Dictionary = {"models": models, "shells": _arrays({}), "walls": {}}
+		if cell["shells"] != null:
+			var shells: Dictionary = cell["shells"]
+			upload["shells"] = _arrays(shells)
+		if cell.get("walls") != null:
+			var walls: Dictionary = cell["walls"]
+			upload["walls"] = _arrays(walls)
 		BuildingModels.add_to(scene, upload, shell_material, 400.0, 1800.0, false)
 	var camera: Camera3D = Camera3D.new()
 	scene.add_child(camera)
@@ -100,17 +105,17 @@ func _arrays(data: Dictionary) -> Dictionary:
 	var normals: PackedVector3Array = PackedVector3Array()
 	var uvs: PackedVector2Array = PackedVector2Array()
 	var colors: PackedColorArray = PackedColorArray()
-	var indices: Array = data["indices"]
-	for v: Array in data["vertices"]:
+	var indices: Array = data.get("indices", [])
+	for v: Array in data.get("vertices", []):
 		var p: PackedFloat32Array = PackedFloat32Array(v)
 		vertices.append(Vector3(p[0], p[1], p[2]))
-	for v: Array in data["normals"]:
+	for v: Array in data.get("normals", []):
 		var p: PackedFloat32Array = PackedFloat32Array(v)
 		normals.append(Vector3(p[0], p[1], p[2]))
-	for v: Array in data["uvs"]:
+	for v: Array in data.get("uvs", []):
 		var p: PackedFloat32Array = PackedFloat32Array(v)
 		uvs.append(Vector2(p[0], p[1]))
-	for v: Array in data["colors"]:
+	for v: Array in data.get("colors", []):
 		var p: PackedFloat32Array = PackedFloat32Array(v)
 		colors.append(Color(p[0], p[1], p[2], p[3]))
 	return {

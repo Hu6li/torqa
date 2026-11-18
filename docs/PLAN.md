@@ -560,7 +560,9 @@ physically based materials and light, restyled group by group.
     (R259)
   - [x] Step 5 — the kind of every building (`building=*`) in the map detail extract (R260)
   - [x] Step 6 — roof shapes, levels, colours and materials from the extract (R261)
-  - [ ] Step 7 — buildings assembled on their outlines from Blender parts
+  - [x] Step 7 — buildings assembled on their outlines from Blender parts (R262): windows and
+    doors on homes of the general region
+  - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
   - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
   verify the target hardware.

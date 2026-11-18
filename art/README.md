@@ -222,6 +222,26 @@ Nearby requests also bound allocation: camera movement adds the cells newly in r
 releases far façade buffers, instead of adding detailed geometry to every uploaded course chunk.
 See [implementation, review and reproduction](../docs/building-realism-study.md).
 
+### Parts buildings are assembled from (R262)
+
+`parts.py` builds the window and door that homes no model fits are assembled from on their
+mapped outlines (ADR 0041, step 7), into `app/assets/models/buildings/parts/`:
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/buildings/parts.py
+```
+
+Each part stands on a wall in the x–z plane facing −y, its origin on the wall under the
+middle of its opening at its storey's floor. Its opening covers the casing the generated walls
+draw (1.48 m along the wall, 0.95–2.44 m up; `app/shaders/building.gdshader`), so the world
+lays parts where the walls draw windows (`lay_parts` in `core/orqwa-world/src/buildings`) and
+the walls' windows show where the parts have faded, beyond the model range. The window has a
+frame with mullion and transom, a sill, shutters and a flower box; the door a stone surround,
+a step and a tiled canopy. Materials are the models' (`frame`, `glass`, `shutter`, `stone`,
+`door`, `tiles`, `wood`, `flowers`, `leaves`), so the app styles them alike, shutters and
+flowers by each building's variant. The window has 92 triangles, the door 58. `blender_io.py`
+holds the export shared with `build.py`.
+
 ## Vegetation (`vegetation/`)
 
 `build.py` holds the catalogue and the kinds in one file: `conifer` (a spruce: a trunk under

@@ -772,3 +772,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R261 | Extends R260 (2026-11-18): **where a region's map detail is downloaded, a building's roof, levels, colours and materials are those the map gives**. A mapped roof shape is built: flat, gabled, hipped, pyramidal (with domes and onions as pyramids) or of one slope, with half-hipped and mansard roofs hipped and gambrel roofs gabled; a ridge mapped across the building runs across it, and a mapped roof height is its rise. Mapped levels set the storeys. A mapped wall or roof colour keeps its hue, its lightness and saturation kept to what buildings show, walls light; a colour no longer snaps to the nearest palette colour. Timber walls show boards, metal walls cladding, glass walls bands of glass, brick, stone and concrete walls their colour where none is mapped; slate roofs slate, metal and glass roofs sheet. Fitted models stand only where their roof is the one mapped. Regions downloaded before are prepared again. Kept worlds offer regeneration (R101). |
+
+## Buildings assembled from parts
+
+| ID | Requirement |
+|---|---|
+| R262 | Refines R89 and R259 (2026-11-18): **homes no model fits are assembled from parts on their mapped outline**. Houses, chalets and farmhouses of the general region whose walls have windows, standing on the ground and without a shop front, get a window on every storey of every wall where their walls draw one, with frame, mullion and transom, sill, and shutters and flower boxes as models have them, and a front door with a canopy in the middle of the ground floor of their longest wall. Parts show up close, as models do, over the windows their walls draw further off; the walls stand at every distance. Gables and lower storeys keep the windows the walls draw. Kept worlds of an earlier format are built again. |

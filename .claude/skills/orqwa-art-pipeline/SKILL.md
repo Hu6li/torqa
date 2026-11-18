@@ -113,6 +113,14 @@ scripts/art.sh blender --background --factory-startup --python art/textures/buil
 Coordinates: metres, x along the model, y across, z up, origin at the footprint centre on the
 ground; walls reach 3 m below ground for slopes. glTF/Godot turn Blender's y into −z.
 
+## Parts of assembled buildings
+
+`art/buildings/parts.py` exports `parts/window.glb` and `parts/door.glb` (ADR 0041, step 7). Their
+openings must match the casing the generated walls draw (1.48 m wide, 0.95–2.44 m over the
+storey's floor); change `lay_parts` in `core/orqwa-world/src/buildings`, the shader's window
+grid and the parts together. Parts are instances named `parts/<name>` in a cell's `models`,
+beside the building's walls in the cell's `walls`.
+
 ## Contracts — change both sides together
 
 - **Material names → looks.** Files carry no textures; every face has a material *name* and the

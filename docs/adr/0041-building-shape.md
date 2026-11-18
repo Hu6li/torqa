@@ -256,6 +256,26 @@ where no colour is mapped, colours (brick, stone, concrete).
 
 Generator 47; the stored format stays 3.
 
+## Step 7: buildings assembled from parts (2026-11-18, R262)
+
+Models only fit rectangles; since step 4 the other homes stand on their outlines as shells,
+with windows the shader draws. Now homes of the general region no model fits are assembled
+from Blender parts on those walls (`art/buildings/parts.py`): a window and a door, exported as
+`parts/window.glb` and `parts/door.glb` beside the models. `lay_parts` puts a window on every
+storey of every wall where the walls' window grid has one, stretched as the wall stretches the
+grid, and the door in the middle of the ground floor of the longest wall; a part's opening
+covers the casing the shader draws, so up close the part is seen and further off, once parts
+have faded at the model range, the walls' own windows. Gables and lower storeys keep the
+shader's windows for now; regional parts (Nordic, French, Japanese windows) are to follow.
+
+The parts are instances in the building's cell (`BuildingCell::models`, named
+`parts/<name>`), drawn by the same `MultiMesh` path as models, their shutters and flowers by
+the building's variant. The building's walls and roof go into a new mesh of the cell,
+`BuildingCell::walls`, drawn at every distance, rather than the chunk's shells: the close
+façade detail of Ultra (R256) is derived from the chunk's shells only, so it does not lay
+frames of its own over the parts. A cell's layout changed, so the stored format is 4; kept
+worlds of format 3 are built again. Generator 48.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

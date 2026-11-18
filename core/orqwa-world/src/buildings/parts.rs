@@ -147,6 +147,53 @@ pub(crate) struct Builder<'a> {
     /// The ground the building stands on: where it lies a storey or more below the ground
     /// floor, the walls there show lower storeys. None for shapes built on their own.
     pub(crate) terrain: Option<&'a HeightGrid>,
+    /// Where a building assembled from parts takes its windows and door, if it is one.
+    pub(crate) parts: Option<&'a mut Vec<PartAt>>,
+}
+
+/// A part of a building assembled from parts (ADR 0041, step 7): which, where and which way.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PartAt {
+    pub(crate) part: Part,
+    /// East, north and height of its origin: on the wall, under the middle of its opening, at
+    /// the floor of its storey.
+    pub(crate) at: (f64, f64, f64),
+    /// The wall's direction (unit, east/north); the part faces out to its right.
+    pub(crate) along: Point,
+    /// How much the wall stretches its windows' spacing, which the part follows.
+    pub(crate) stretch: f64,
+}
+
+/// The parts buildings are assembled from, made in `art/buildings/parts.py`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Part {
+    Window,
+    Door,
+}
+
+impl Part {
+    /// The model it is drawn with.
+    pub(crate) fn model(self) -> &'static str {
+        match self {
+            Self::Window => "parts/window",
+            Self::Door => "parts/door",
+        }
+    }
+}
+
+/// Where the shader's grid of windows has openings on a wall of `length` metres: each
+/// column's middle along the wall, and the stretch of the grid to whole windows.
+pub(crate) fn window_columns(length: f64) -> (Vec<f64>, f64) {
+    let columns = (length / WINDOW_SPACING).round();
+    if columns < 1.0 {
+        return (Vec::new(), 1.0);
+    }
+    let stretch = length / (columns * WINDOW_SPACING);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few dozen columns
+    let middles = (0..columns as u32)
+        .map(|c| (f64::from(c) * WINDOW_SPACING + WINDOW_SPACING / 2.0) * stretch)
+        .collect();
+    (middles, stretch)
 }
 
 // Geometry is stored as f32 for the GPU.

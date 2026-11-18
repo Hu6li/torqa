@@ -142,7 +142,12 @@ pub(super) fn chunk_arrays_for_graphics(
             for (name, buffer) in &cell.models {
                 models.set(name.as_str(), &PackedFloat32Array::from(buffer.as_slice()));
             }
-            vdict! { "models" => &models, "shells" => &mesh_arrays(&cell.shells) }.to_variant()
+            vdict! {
+                "models" => &models,
+                "shells" => &mesh_arrays(&cell.shells),
+                "walls" => &mesh_arrays(&cell.walls),
+            }
+            .to_variant()
         })
         .collect();
     let mut result = vdict! {
