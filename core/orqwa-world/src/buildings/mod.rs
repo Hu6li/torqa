@@ -62,10 +62,11 @@ const HOTEL_AREA: f64 = 150.0;
 const OFFICE_AREA: f64 = 150.0;
 /// Larger low buildings on commercial land are stores, built as halls.
 const STORE_AREA: f64 = 2500.0;
-/// Models' walls reach 3 m below their ground floor; on plots falling more than this they
-/// would float, so those buildings keep their shells. Castles and lighthouses, on hilltops and
-/// rocks, reach 8 m down (`art/buildings`, `DEEP`).
-const MODEL_BASEMENT: f64 = 2.8;
+/// Models' walls reach 3 m below their ground floor as a plain stone plinth. On plots falling
+/// more than this, a plinth would stand as tall as a storey, so those buildings keep their
+/// shells, which show lower storeys there as buildings on slopes do (#554). Castles and
+/// lighthouses, on hilltops and rocks, reach 8 m down (`art/buildings`, `DEEP`).
+const MODEL_BASEMENT: f64 = 1.8;
 const DEEP_BASEMENT: f64 = 7.8;
 /// A castle's walls rise this far at least and at most, to a wall walk behind a parapet this
 /// high; over a free outline the keep rises this far over the walk before its roof, and the
@@ -563,6 +564,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
             origin,
             ground,
             footing,
+            terrain: Some(heights),
         };
         shell(&mut builder, plot, area, rect, design.as_ref(), &dice, None);
         return;
@@ -602,6 +604,8 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         origin,
         ground,
         footing,
+        // As the model it stands for, whose basement is a stone plinth.
+        terrain: None,
     };
     shell(
         &mut builder,
@@ -1485,13 +1489,15 @@ fn build(
     let eaves = ground + walls;
     let wall_top = eaves + parapet.unwrap_or(0.0);
     let bottom = b.footing;
+    let lower = design.base.unwrap_or(design.wall);
+    b.plinth(&outline, bottom, lower, design.windows.then_some(lower));
     match design.base {
         Some(base) if ground + STOREY < wall_top => {
-            b.walls(&outline, bottom, ground + STOREY, base);
+            b.walls(&outline, ground, ground + STOREY, base);
             b.walls(&outline, ground + STOREY, wall_top, design.wall);
         }
-        Some(base) => b.walls(&outline, bottom, wall_top, base),
-        None => b.walls(&outline, bottom, wall_top, design.wall),
+        Some(base) => b.walls(&outline, ground, wall_top, base),
+        None => b.walls(&outline, ground, wall_top, design.wall),
     }
 
     let pitch = Pitch {
@@ -2640,6 +2646,7 @@ mod tests {
                 origin: [0.0; 3],
                 ground: 0.0,
                 footing: -1.0,
+                terrain: None,
             };
             let rect = rectangular.then(|| Rect::around(&plot.footprint).unwrap());
             shell(

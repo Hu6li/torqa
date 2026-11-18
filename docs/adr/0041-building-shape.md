@@ -114,6 +114,29 @@ the buildings that have them. Each step is described here as it is made.
   Switzerland by these numbers, at the cost of a new server and a 3D format to read. This
   needs its own ADR.
 
+## Step 2: buildings on slopes (2026-11-18, R257)
+
+A building's ground floor stays at the highest ground under it: a hillside house has its
+entrance on the uphill side, and lowering it would bury doors and shop fronts. What changes is
+the wall below the floor. Each wall reaches down to its own ground and shows as many lower
+storeys, up to four, as fit with their windows clear of it: a storey whose floor lies up to
+1 m below the ground still shows, as a semi-basement's windows do. They have the windows of
+the building's ground floor. Only the rest is plinth, so windows start within a storey of the
+ground on every downhill wall. The shell shader draws
+windows from 1 m above its texture's zero, so lower storeys lift their texture rows by 30 m,
+a whole number of storeys and of every wall texture's repeat: rows and texture run on
+unbroken. A wall's ground is the higher of its two ends, so side walls across the slope keep a
+plinth and only downhill walls open up.
+
+Fitted models carry a 3 m stone basement. They were used where the ground fell up to 2.8 m,
+which left a storey-high stone wall downhill. Now they are used up to 1.8 m, a plinth's
+height; steeper plots get shells with lower storeys. The shell drawn far from a model keeps
+the model's plinth, so the two still match when they swap.
+
+In the tests, two houses lie across a 10 % slope. On the 36 m one (3.6 m fall), windows
+downhill started 4.6 m above the ground; now 1.6 m, in a lower storey. On the 24 m one (2.4 m
+fall) they started 3.4 m up; now 0.4 m, in a semi-basement. Generator 43; the stored format stays 3.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

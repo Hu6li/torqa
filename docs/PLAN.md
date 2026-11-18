@@ -552,8 +552,8 @@ physically based materials and light, restyled group by group.
 - Buildings from map data ([ADR 0041](adr/0041-building-shape.md)):
   - [x] Step 1 — measure what OpenStreetMap says of buildings beyond their outline
     (`orqwa-cli building-census`): about one building in ten in Switzerland and Germany
-  - [ ] Step 2 — buildings on slopes stand as built, with a lower storey instead of a blank
-    plinth (#554)
+  - [x] Step 2 — buildings on slopes stand as built, with a lower storey instead of a blank
+    plinth (#554, R257)
   - [ ] Step 3 — the heights the tiles carry, for fitted models too; buildings mapped in
     parts drawn as their parts (`hide_3d`, `render_min_height`)
   - [ ] Step 4 — walls along the mapped outline and a roof computed over it, every building

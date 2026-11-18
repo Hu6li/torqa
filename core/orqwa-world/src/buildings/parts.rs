@@ -1,8 +1,9 @@
 //! Surfaces of buildings: walls, roofs of several shapes, boxes and windows.
 
-use crate::MeshData;
 use crate::structures::{quad_uv, triangle_uv};
+use crate::{HeightGrid, MeshData};
 
+use super::STOREY;
 use super::shape::{Point, Rect, distance, offset, perimeter, signed_area, triangulate};
 
 /// Roofs are this thick at their edges.
@@ -15,6 +16,22 @@ const SHOP_RELIEF: f64 = 0.08;
 /// (`app/shaders/building.gdshader`: `window_spacing`, and the church's 4.5 m).
 pub(crate) const WINDOW_SPACING: f64 = 3.2;
 const CHURCH_WINDOW_SPACING: f64 = 4.5;
+/// Lower storeys count their rows of windows from this far below the ground floor: whole
+/// storeys and whole repeats of the walls' textures, so rows and texture run on unbroken, and
+/// the shader, drawing windows from 1 m above its zero, draws them there too.
+const LOWER_ROWS: f64 = 30.0;
+/// A lower storey shows where its ground lies at most this far above its floor, as a
+/// semi-basement's does: its windows, from 1 m up, still clear the ground.
+const LOWER_STOREY_SLACK: f64 = 1.0;
+/// No wall shows more lower storeys than this.
+const LOWER_STOREYS: f64 = 4.0;
+
+/// The whole storeys showing below the ground floor where the ground lies `drop` below it.
+fn lower_storeys(drop: f64) -> f64 {
+    ((drop + LOWER_STOREY_SLACK) / STOREY)
+        .floor()
+        .clamp(0.0, LOWER_STOREYS)
+}
 
 /// How the building shader draws a surface. Stored in the vertex colour's alpha as
 /// code / `Style::LAST`; `app/shaders/building.gdshader` uses the same codes.
@@ -126,6 +143,9 @@ pub(crate) struct Builder<'a> {
     pub(crate) ground: f64,
     /// Where walls end below the ground.
     pub(crate) footing: f64,
+    /// The ground the building stands on: where it lies a storey or more below the ground
+    /// floor, the walls there show lower storeys. None for shapes built on their own.
+    pub(crate) terrain: Option<&'a HeightGrid>,
 }
 
 // Geometry is stored as f32 for the GPU.
@@ -151,29 +171,82 @@ impl Builder<'_> {
     fn walls_facing(&mut self, outline: &[Point], bottom: f64, top: f64, paint: Paint, side: f64) {
         for i in 0..outline.len() {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
-            let length = distance(a, b);
-            if length < 0.01 {
-                continue;
-            }
-            let span = match paint.style.window_spacing() {
-                Some(spacing) => (length / spacing).round() * spacing,
-                None => length,
-            };
-            // Counter-clockwise outline: the outside is to the right of travel.
-            let out = ((b.1 - a.1) / length * side, (a.0 - b.0) / length * side);
-            let uvs = [
-                self.wall_uv(0.0, bottom),
-                self.wall_uv(span, bottom),
-                self.wall_uv(span, top),
-                self.wall_uv(0.0, top),
-            ];
-            self.upright(
-                &[(a, bottom), (b, bottom), (b, top), (a, top)],
-                &uvs,
-                out,
-                paint,
-            );
+            self.wall(a, b, (bottom, top), paint, side, 0.0);
         }
+    }
+
+    /// The walls below the ground floor, from `bottom` up, along a counter-clockwise
+    /// `outline`. Where a wall's ground lies one or more whole storeys below the floor, as on
+    /// the downhill side of a building on a slope, those storeys show the windows of
+    /// `storeys` (a building on a hillside has its lower floors there); the rest is a plinth.
+    pub(crate) fn plinth(
+        &mut self,
+        outline: &[Point],
+        bottom: f64,
+        plinth: Paint,
+        storeys: Option<Paint>,
+    ) {
+        for i in 0..outline.len() {
+            let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+            let lower = match (self.terrain, storeys) {
+                (Some(terrain), Some(_)) => {
+                    let ground = terrain.at(a.0, a.1).max(terrain.at(b.0, b.1));
+                    lower_storeys(self.ground - ground)
+                }
+                _ => 0.0,
+            };
+            let top = self.ground - lower * STOREY;
+            // A lower storey reaching the footing leaves no plinth, not a sliver of one.
+            if top > bottom + 0.01 {
+                self.wall(a, b, (bottom, top), plinth, 1.0, 0.0);
+            }
+            if let Some(storeys) = storeys.filter(|_| lower > 0.0) {
+                self.wall(
+                    a,
+                    b,
+                    (top.max(bottom), self.ground),
+                    storeys,
+                    1.0,
+                    LOWER_ROWS,
+                );
+            }
+        }
+    }
+
+    /// A wall from `a` to `b` between heights `bottom` and `top`; `rows` added to its height
+    /// in the texture moves the rows of windows the shader draws from the ground floor up.
+    fn wall(
+        &mut self,
+        a: Point,
+        b: Point,
+        (bottom, top): (f64, f64),
+        paint: Paint,
+        side: f64,
+        rows: f64,
+    ) {
+        let length = distance(a, b);
+        if length < 0.01 {
+            return;
+        }
+        let span = match paint.style.window_spacing() {
+            Some(spacing) => (length / spacing).round() * spacing,
+            None => length,
+        };
+        // Counter-clockwise outline: the outside is to the right of travel.
+        let out = ((b.1 - a.1) / length * side, (a.0 - b.0) / length * side);
+        let lift = |[u, v]: [f32; 2]| [u, v + rows as f32];
+        let uvs = [
+            lift(self.wall_uv(0.0, bottom)),
+            lift(self.wall_uv(span, bottom)),
+            lift(self.wall_uv(span, top)),
+            lift(self.wall_uv(0.0, top)),
+        ];
+        self.upright(
+            &[(a, bottom), (b, bottom), (b, top), (a, top)],
+            &uvs,
+            out,
+            paint,
+        );
     }
 
     /// A vertical quad or triangle facing the horizontal direction `out` (east, north).

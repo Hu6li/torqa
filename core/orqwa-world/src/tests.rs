@@ -2315,6 +2315,8 @@ struct Face {
     corners: [[f32; 3]; 3],
     normal: [f32; 3],
     color: [f32; 4],
+    /// Texture coordinates of the corners: along a wall and up it, from its ground floor.
+    uvs: [[f32; 2]; 3],
 }
 
 impl Face {
@@ -2360,6 +2362,7 @@ fn shell_faces(
             corners,
             normal: mesh.normals[t[0] as usize],
             color: mesh.colors[t[0] as usize],
+            uvs: t.map(|k| mesh.uvs[k as usize]),
         };
         let middle = face.middle();
         if (middle[0] - east).hypot(-middle[2] - north) < radius {
@@ -2503,6 +2506,185 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
         assert!(facing > 0.0, "face at {middle:?} faces in");
     }
     assert!(outside >= 8);
+}
+
+#[tokio::test]
+async fn buildings_on_slopes_show_lower_storeys_downhill_not_a_blank_plinth() {
+    // Houses of two storeys across ground rising eastwards by 10 %, 36 m and 24 m long: their
+    // west ends stand 3.6 m and 2.4 m lower than their east ends (#554, R257).
+    let houses = [(43, 500.0, 18.0), (44, 540.0, 12.0)].map(|(id, north, half)| Building {
+        id,
+        outline: rectangle(60.0, north, half, 5.0),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+    });
+    let world = world(&MapData {
+        buildings: houses.to_vec(),
+        ..MapData::default()
+    })
+    .await;
+    // Shell walls draw a row of windows every storey, from 1 m above their texture's zero:
+    // the height of the lowest row on a face, if it has one.
+    let windows_from = |face: &Face| {
+        let heights = face
+            .corners
+            .iter()
+            .zip(face.uvs)
+            .map(|(c, uv)| (c[1], uv[1]));
+        let (bottom, low) = heights.clone().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+        let high = heights.map(|(_, v)| v).fold(f32::MIN, f32::max);
+        let row = (((low - 1.0) / 3.0).ceil() * 3.0 + 1.0).max(1.0);
+        if row < high {
+            bottom + row - low
+        } else {
+            f32::MAX
+        }
+    };
+    for (_, north, half) in [(43, 500.0_f32, 18.0_f32), (44, 540.0, 12.0)] {
+        let faces = building_faces(&world, (60.0, north), 25.0);
+        let (west, east) = (60.0 - half, 60.0 + half);
+        let floor = slope_at(east);
+        let lowest_windows = faces
+            .iter()
+            .filter(|f| f.normal[0] < -0.9 && f.middle()[0] < west + 1.0)
+            .filter(|f| matches!(f.style(), 0 | 2))
+            .map(windows_from)
+            .fold(f32::MAX, f32::min);
+        let ground = slope_at(west);
+        assert!(
+            lowest_windows - ground < 3.0,
+            "{half} m: windows start {} m above the downhill ground, not within a storey",
+            lowest_windows - ground
+        );
+        assert!(
+            lowest_windows < floor,
+            "{half} m: the downhill wall shows a storey below the ground floor"
+        );
+        assert!(
+            lowest_windows > ground,
+            "{half} m: the lower storey's windows clear the ground"
+        );
+        // Uphill, the ground floor stands at the highest ground, as before.
+        let east_windows = faces
+            .iter()
+            .filter(|f| f.normal[0] > 0.9 && f.middle()[0] > east - 1.0)
+            .filter(|f| matches!(f.style(), 0 | 2))
+            .map(windows_from)
+            .fold(f32::MAX, f32::min);
+        assert!(
+            (east_windows - (floor + 1.0)).abs() < 0.01,
+            "{half} m: uphill windows from {east_windows}, floor {floor}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "exports houses on a hillside for Godot visual review"]
+#[allow(clippy::too_many_lines)] // one scene: its terrain, houses and their export
+async fn slope_buildings_render_fixture() {
+    struct Hillside;
+    impl ElevationModel for Hillside {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(500.0 + 0.2 * east))
+        }
+    }
+    // Houses across a 20 % slope, falling 1.6 m to 6.4 m from end to end, and a block.
+    let buildings: Vec<Building> = [
+        (51, 50.0, 470.0, 4.0, 5.0, 2.0),
+        (52, 70.0, 470.0, 7.0, 5.0, 2.0),
+        (53, 95.0, 470.0, 10.0, 6.0, 3.0),
+        (54, 55.0, 500.0, 6.0, 5.0, 2.0),
+        (55, 85.0, 500.0, 16.0, 7.0, 4.0),
+    ]
+    .into_iter()
+    .map(
+        |(id, east, north, half_east, half_north, levels)| Building {
+            id,
+            outline: rectangle(east, north, half_east, half_north),
+            height: None,
+            levels: Some(levels),
+            color: None,
+        },
+    )
+    .collect();
+    let world = generate(
+        &route_north(&[]).await,
+        &mut Hillside,
+        &MapData {
+            buildings,
+            ..MapData::default()
+        },
+        &mut |_, _| {},
+    )
+    .await;
+    let inside =
+        |x: f32, north: f32| (20.0..=140.0).contains(&x) && (440.0..=530.0).contains(&north);
+    let mesh_json = |chunk: &TerrainChunk, mesh: &MeshData, kind: &str| {
+        let indices: Vec<u32> = mesh
+            .indices
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .filter(|face| {
+                face.iter().all(|&i| {
+                    let v = mesh.vertices[i as usize];
+                    inside(v[0] + chunk.center[0], -v[2] - chunk.center[2])
+                })
+            })
+            .flatten()
+            .copied()
+            .collect();
+        (!indices.is_empty()).then(|| serde_json::json!({
+            "vertices": mesh.vertices.iter().map(|v| [v[0] + chunk.center[0], v[1] - 500.0, v[2] + chunk.center[2]]).collect::<Vec<_>>(),
+            "normals": mesh.normals, "uvs": mesh.uvs, "colors": mesh.colors,
+            "indices": indices, "kind": kind,
+        }))
+    };
+    let mut meshes = Vec::new();
+    let mut cells = Vec::new();
+    for chunk in &world.chunks {
+        meshes.extend(mesh_json(chunk, &chunk.mesh, "terrain"));
+        meshes.extend(mesh_json(chunk, &chunk.buildings, "shells"));
+        for cell in &chunk.modelled {
+            let Some(shells) = mesh_json(chunk, &cell.shells, "shells") else {
+                continue;
+            };
+            let models: serde_json::Map<String, serde_json::Value> = cell
+                .models
+                .iter()
+                .map(|(name, buffer)| {
+                    let placed: Vec<f32> = buffer
+                        .as_chunks::<20>()
+                        .0
+                        .iter()
+                        .flat_map(|b| {
+                            let mut b = *b;
+                            b[3] += chunk.center[0];
+                            b[7] += chunk.center[1] - 500.0;
+                            b[11] += chunk.center[2];
+                            b
+                        })
+                        .collect();
+                    (name.clone(), serde_json::json!(placed))
+                })
+                .collect();
+            cells.push(serde_json::json!({
+                "models": models,
+                "shells": shells,
+            }));
+        }
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../screenshots/slope-buildings.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let fixture = serde_json::json!({"meshes": meshes, "cells": cells});
+    std::fs::write(path, serde_json::to_vec(&fixture).unwrap()).unwrap();
 }
 
 #[tokio::test]
