@@ -84,6 +84,13 @@ enum Command {
         #[arg(long)]
         region: Option<String>,
     },
+    /// Count the buildings of OpenStreetMap region downloads (`.osm.pbf`) and how many give a
+    /// height, levels, roof shape, colours or materials, as a Markdown table (ADR 0041).
+    BuildingCensus {
+        /// The regions' downloads.
+        #[arg(required = true)]
+        pbf: Vec<PathBuf>,
+    },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -241,6 +248,7 @@ async fn main() -> Result<()> {
         Command::Route(args) => route_info(&args).await,
         Command::Video { file, seconds } => video_check(&file, seconds),
         Command::Detail { pbf, out, region } => detail(pbf, out, region).await,
+        Command::BuildingCensus { pbf } => building_census(pbf).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
@@ -279,6 +287,145 @@ async fn detail(pbf: PathBuf, out: PathBuf, region: Option<String>) -> Result<()
         started.elapsed().as_secs_f64(),
     );
     Ok(())
+}
+
+async fn building_census(downloads: Vec<PathBuf>) -> Result<()> {
+    use orqwa_osm::detail::{BuildingCensus, building_census};
+    let mut regions: Vec<(String, BuildingCensus, f64)> = Vec::new();
+    for pbf in downloads {
+        let name = pbf
+            .file_name()
+            .map(|n| n.to_string_lossy().trim_end_matches(".osm.pbf").to_owned())
+            .unwrap_or_default();
+        let started = std::time::Instant::now();
+        let census = tokio::task::spawn_blocking(move || {
+            let mut shown = None;
+            let mut progress = |done: u64, total: u64| {
+                let percent = (done * 100).checked_div(total).unwrap_or(100);
+                if shown != Some(percent) {
+                    shown = Some(percent);
+                    eprint!("\r{percent:3} %");
+                }
+            };
+            let never = std::sync::atomic::AtomicBool::new(false);
+            building_census(&pbf, &mut progress, &never)
+        })
+        .await??;
+        eprintln!("\r{name}: {:.0} s", started.elapsed().as_secs_f64());
+        regions.push((name, census, started.elapsed().as_secs_f64()));
+    }
+    print_census_table(&regions);
+    print_census_values(&regions);
+    Ok(())
+}
+
+/// One column per region: its buildings and the share of them carrying each shape tag.
+#[allow(clippy::cast_precision_loss)] // shares and sizes shown rounded
+fn print_census_table(regions: &[(String, orqwa_osm::detail::BuildingCensus, f64)]) {
+    use orqwa_osm::detail::SHAPE_TAGS;
+    let share = |part: u64, whole: u64| {
+        if whole == 0 {
+            "–".to_owned()
+        } else {
+            format!("{:.1} %", part as f64 * 100.0 / whole as f64)
+        }
+    };
+    let row = |label: &str, cells: Vec<String>| println!("| {label} | {} |", cells.join(" | "));
+    row("", regions.iter().map(|(name, ..)| name.clone()).collect());
+    row("---", regions.iter().map(|_| "---:".to_owned()).collect());
+    row(
+        "Building ways",
+        regions
+            .iter()
+            .map(|(_, c, _)| c.buildings.to_string())
+            .collect(),
+    );
+    row(
+        "Building multipolygons",
+        regions
+            .iter()
+            .map(|(_, c, _)| c.multipolygons.to_string())
+            .collect(),
+    );
+    row(
+        "`building:part` ways",
+        regions
+            .iter()
+            .map(|(_, c, _)| c.parts.to_string())
+            .collect(),
+    );
+    row(
+        "Height or levels",
+        regions
+            .iter()
+            .map(|(_, c, _)| share(c.with_height, c.buildings))
+            .collect(),
+    );
+    row(
+        "Any shape tag",
+        regions
+            .iter()
+            .map(|(_, c, _)| share(c.described, c.buildings))
+            .collect(),
+    );
+    for tag in SHAPE_TAGS {
+        row(
+            &format!("`{tag}`"),
+            regions
+                .iter()
+                .map(|(_, c, _)| share(c.tagged.get(tag).copied().unwrap_or(0), c.buildings))
+                .collect(),
+        );
+    }
+    // Nodes as JSON pairs of seven-decimal coordinates, plus id and tags per way.
+    row(
+        "Extract estimate",
+        regions
+            .iter()
+            .map(|(_, c, _)| {
+                let ways = c.described + c.parts;
+                format!(
+                    "{:.0} MB",
+                    (c.described_nodes * 22 + ways * 90) as f64 / 1e6
+                )
+            })
+            .collect(),
+    );
+    row(
+        "Read in",
+        regions
+            .iter()
+            .map(|(.., seconds)| format!("{seconds:.0} s"))
+            .collect(),
+    );
+}
+
+/// The most common roof shapes and building kinds of each region, and the tags of its parts.
+fn print_census_values(regions: &[(String, orqwa_osm::detail::BuildingCensus, f64)]) {
+    use orqwa_osm::detail::SHAPE_TAGS;
+    for (name, census, _) in regions {
+        let mut shapes: Vec<_> = census.roof_shapes.iter().collect();
+        shapes.sort_by(|a, b| b.1.cmp(a.1));
+        let shapes: Vec<String> = shapes
+            .iter()
+            .take(10)
+            .map(|(shape, count)| format!("{shape} {count}"))
+            .collect();
+        let mut kinds: Vec<_> = census.kinds.iter().collect();
+        kinds.sort_by(|a, b| b.1.cmp(a.1));
+        let kinds: Vec<String> = kinds
+            .iter()
+            .take(10)
+            .map(|(kind, count)| format!("{kind} {count}"))
+            .collect();
+        println!("\n{name} roof shapes: {}", shapes.join(", "));
+        println!("{name} building kinds: {}", kinds.join(", "));
+        let parts: Vec<String> = SHAPE_TAGS
+            .iter()
+            .filter_map(|tag| census.parts_tagged.get(tag).map(|n| format!("{tag} {n}")))
+            .collect();
+        println!("{name} part tags: {}", parts.join(", "));
+    }
 }
 
 async fn scan(seconds: u64) -> Result<()> {

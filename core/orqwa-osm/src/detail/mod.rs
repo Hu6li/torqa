@@ -3,11 +3,13 @@
 //! region (`.osm.pbf`, from Geofabrik) a rider asked for, and kept in the map cache.
 
 pub(crate) mod apply;
+mod census;
 mod extract;
 mod geofabrik;
 mod pbf;
 mod regions;
 
+pub use census::{BuildingCensus, SHAPE_TAGS, building_census};
 pub use extract::{Extract, Stage, VERSION, extract};
 pub use geofabrik::{Geofabrik, INDEX, Latest, Offer, cached_offers};
 pub use regions::{

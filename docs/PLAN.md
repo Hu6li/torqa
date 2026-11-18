@@ -549,6 +549,15 @@ physically based materials and light, restyled group by group.
 - [x] Close façade refreshes add only the 64 m cells newly in reach and keep the rest uploaded;
   each chunk's façades are read once while near, not on every 64 m of movement.
 - [ ] Native check of the swap on the Mac (software renders show it fixed; see the study).
+- Buildings from map data ([ADR 0041](adr/0041-building-shape.md)):
+  - [x] Step 1 — measure what OpenStreetMap says of buildings beyond their outline
+    (`orqwa-cli building-census`): about one building in ten in Switzerland and Germany
+  - [ ] Step 2 — buildings on slopes stand as built, with a lower storey instead of a blank
+    plinth (#554)
+  - [ ] Step 3 — the heights the tiles carry, for fitted models too
+  - [ ] Step 4 — building kinds and shape tags in the map detail extract
+  - [ ] Step 5 — roofs, parts, colours and materials from those tags
+  - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
   verify the target hardware.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
