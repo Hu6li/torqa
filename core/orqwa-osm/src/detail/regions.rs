@@ -222,8 +222,17 @@ pub fn for_course(carried: &[String], ready: &[Region]) -> Vec<String> {
     extracts
 }
 
-/// The region of an extract's name: all but its date (`-yyyy-mm-dd`).
+/// The region of an extract's name: all but its date (`-yyyy-mm-dd`) and what it holds
+/// (`-c<content>`, if given).
 fn region_of(extract: &str) -> Option<&str> {
+    let extract = match extract.rsplit_once("-c") {
+        Some((before, content))
+            if !content.is_empty() && content.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            before
+        }
+        _ => extract,
+    };
     let (region, date) = extract.split_at_checked(extract.len().checked_sub(11)?)?;
     let digits = |range: std::ops::Range<usize>| date[range].bytes().all(|b| b.is_ascii_digit());
     let dated = date.len() == 11
@@ -317,7 +326,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(region.extract, "bern-2026-10-24");
+        assert_eq!(region.extract, format!("bern-2026-10-24-c{CONTENT}"));
         assert_eq!(installed(&osm), vec![region]);
         fs::remove_dir_all(osm).unwrap();
     }
@@ -344,7 +353,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(region.extract, "bern-2026-10-25");
+        assert_eq!(region.extract, format!("bern-2026-10-25-c{CONTENT}"));
         assert_eq!(installed(&osm), vec![region]);
         let extracts: Vec<_> = fs::read_dir(osm.join(VERSION)).unwrap().collect();
         assert_eq!(extracts.len(), 1);
@@ -431,6 +440,11 @@ mod tests {
             own
         });
         assert_eq!(region_of("bern-2026-10-24"), Some("bern"));
+        assert_eq!(region_of("bern-2026-10-24-c2"), Some("bern"));
+        assert_eq!(
+            region_of("us-california-2026-11-20-c12"),
+            Some("us-california")
+        );
         assert_eq!(region_of("bern-latest"), None);
     }
 
@@ -469,5 +483,24 @@ mod tests {
         .unwrap();
         assert_eq!(installed(&osm).len(), 1);
         fs::remove_dir_all(&osm).unwrap();
+    }
+
+    #[test]
+    fn a_course_takes_its_regions_extract_made_again_for_more_content() {
+        // The same download, extracted again now that extracts hold what buildings are: a
+        // course carrying the extract from before takes the new one when opened (R144).
+        let ready = Region {
+            id: "bern".to_owned(),
+            name: "Bern".to_owned(),
+            extract: format!("bern-2026-10-24-c{CONTENT}"),
+            data_time: None,
+            source: None,
+            content: CONTENT,
+        };
+        let carried = ["bern-2026-10-24".to_owned()];
+        assert_eq!(
+            for_course(&carried, std::slice::from_ref(&ready)),
+            [ready.extract]
+        );
     }
 }
