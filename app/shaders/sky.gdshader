@@ -138,8 +138,10 @@ void sky() {
 	float clouds = 0.0;
 	if (dir.y > 0.0) {
 		// The cloud layer as a plane overhead: its pattern shrinks towards the horizon.
-		// Wrapped, so the hash keeps its precision however far the clouds drifted.
-		vec2 uv = mod(dir.xz / (dir.y + 0.08) * 0.35 + cloud_offset, 1024.0);
+		// Wrapped, so the hash keeps its precision however far the clouds drifted. The pattern
+		// jumps where it wraps: centred half a wrap away, that line stays out of the sky until
+		// the clouds have drifted for a day and more, not overhead from the start (#560).
+		vec2 uv = mod(dir.xz / (dir.y + 0.08) * 0.35 + cloud_offset + 512.0, 1024.0);
 		float density = fbm(uv, 6);
 		float threshold = mix(0.68, 0.22, cloud_cover);
 		clouds = smoothstep(threshold, threshold + 0.25, density);
