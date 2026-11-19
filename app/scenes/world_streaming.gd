@@ -220,13 +220,23 @@ func _add_stand_in(world: RideWorld, node: Node3D, index: int) -> void:
 		stand_in.position = -node.position
 		stand_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		stand_in.set_meta("stand_in", true)
-		stand_in.visibility_range_begin = stand_in_begin(world._distance)
+		follow_distance(stand_in, world._distance)
 		node.add_child(stand_in)
 
 
 ## Where the land under a chunk begins to show, for the drawn distance `factor`.
 static func stand_in_begin(factor: float) -> float:
 	return maxf(RideWorld.VISIBILITY_RANGE * factor - STAND_IN_OVERLAP, 0.0)
+
+
+## Sets the range of a chunk's stand-in or water for the drawn distance `factor`. The water
+## fades out only once the ground under it has: fading over it, it showed the lake bed where the
+## land under the chunk has no lake of its own, by the shore (#560).
+static func follow_distance(geometry: GeometryInstance3D, factor: float) -> void:
+	if geometry.has_meta("stand_in"):
+		geometry.visibility_range_begin = stand_in_begin(factor)
+	else:
+		geometry.visibility_range_end = RideWorld.VISIBILITY_RANGE * factor + STAND_IN_OVERLAP
 
 
 ## Its ground versions still being made are dropped when they finish (`GroundLods.add_ready`).
@@ -267,6 +277,9 @@ func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 			var compressed: bool = surface[2]
 			var way: MeshInstance3D = world._mesh_instance(arrays, material, compressed)
 			way.visibility_range_end = RideWorld.VISIBILITY_RANGE * world._distance
+			if surface[0] == "water":
+				way.set_meta("chunk_water", true)
+				follow_distance(way, world._distance)
 			if material == world._track_material:
 				way.visibility_range_end = RideWorld.TRACK_RANGE
 				way.set_meta("fixed_range", true)

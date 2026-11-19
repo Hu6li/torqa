@@ -936,8 +936,8 @@ func _set_distance(factor: float) -> void:
 			var tree_range: float = _quality["tree_range"]
 			geometry.visibility_range_end = tree_range
 			geometry.visibility_range_end_margin = minf(tree_range * 0.15, 300.0)
-		elif geometry.has_meta("stand_in"):
-			geometry.visibility_range_begin = WorldStreaming.stand_in_begin(factor)
+		elif geometry.has_meta("stand_in") or geometry.has_meta("chunk_water"):
+			WorldStreaming.follow_distance(geometry, factor)
 		elif geometry.visibility_range_end > 0.0 and not geometry.has_meta("fixed_range"):
 			geometry.visibility_range_end *= change
 	_camera.far = maxf(VISIBILITY_RANGE * factor * 1.6, HORIZON_RANGE)
