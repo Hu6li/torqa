@@ -353,6 +353,10 @@ itself and what we make of it:
   does a street ending inside; roads on another level (`layer`, now read from the tiles) pass
   beneath or above, and streets pass beneath roofs on posts (`building=roof`, carports).
 - **Buildings over tunnels stay.** The ridden road's tunnels are no carriageway on the ground.
+- **Shop fronts stand on the walls as drawn.** Since step 4 a building filling less than 95 %
+  of the rectangle around it stands on its outline, but its shop front and awning were still
+  put on that rectangle wherever the outline filled 80 % of it: metres in front of a wall
+  stepped back from the rectangle's side, standing on the pavement by themselves.
 
 On the planned Grosse Scheidegg route (263 km) 42 buildings reach the road or a street: 27 by
 their rectangle alone stand on their walls, 13 are cut along the road (most by 0.1–0.4 m; the

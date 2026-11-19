@@ -831,10 +831,25 @@ fn shell(
     } else {
         build(b, &plot.footprint, rect, design, plot.building, None, dice);
         if let Some(street) = plot.shop {
-            let outline = rect.map_or_else(|| plot.footprint.clone(), |r| r.corners());
+            // On the walls as drawn, not on the rectangle around a building drawn on its
+            // outline, which can stand metres in front of them.
+            let (_, outline) = walls_on(&plot.footprint, rect, false);
             shop_front(b, &outline, street, dice);
         }
     }
+}
+
+/// The rectangle a building's walls stand on, if they do, and the outline they stand on: a
+/// model's shell keeps the model's rectangle; other buildings stand on their rectangle only
+/// where it is nearly their outline. What goes on the walls (a shop front) goes on these.
+fn walls_on(footprint: &[Point], rect: Option<Rect>, model: bool) -> (Option<Rect>, Vec<Point>) {
+    let rect = if model {
+        rect
+    } else {
+        rect.filter(|r| signed_area(footprint) / r.area() >= DRAWN_RECTANGULAR)
+    };
+    let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
+    (rect, outline)
 }
 
 /// A shop front with an awning on the ground floor of the wall facing `street`, if one does.
@@ -2067,14 +2082,7 @@ fn build(
     walls: Option<f64>,
     dice: &Dice,
 ) {
-    // A model's shell keeps the model's rectangle (`walls` given); others are drawn as their
-    // rectangle only where it is nearly their outline.
-    let rect = if walls.is_some() {
-        rect
-    } else {
-        rect.filter(|r| signed_area(footprint) / r.area() >= DRAWN_RECTANGULAR)
-    };
-    let outline = rect.map_or_else(|| footprint.to_vec(), |r| r.corners());
+    let (rect, outline) = walls_on(footprint, rect, walls.is_some());
     // A ridge the map lays across the building: the same rectangle, turned.
     let rect = rect.map(|r| {
         if building.shape.is_some_and(|shape| shape.across) {

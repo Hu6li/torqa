@@ -4019,6 +4019,70 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
 }
 
 #[tokio::test]
+async fn shop_fronts_stand_on_the_walls_of_buildings_drawn_on_their_outline() {
+    use orqwa_osm::{Road, RoadClass};
+
+    // A 12 × 9 m shop whose street wall steps back 1.5 m along its eastern half: it fills
+    // 92 % of the rectangle around it and stands on its outline, so the rectangle's street
+    // side lies in front of half its front.
+    let corners = [
+        (74.0, 495.5),
+        (80.0, 495.5),
+        (80.0, 497.0),
+        (86.0, 497.0),
+        (86.0, 504.5),
+        (74.0, 504.5),
+    ];
+    let mut outline: Vec<_> = corners.iter().map(|&(e, n)| at(e, n)).collect();
+    outline.push(outline[0]);
+    let world = world(&MapData {
+        buildings: vec![Building {
+            id: 33,
+            outline,
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            details: orqwa_osm::RoadDetails::default(),
+            line: vec![at(40.0, 489.0), at(160.0, 489.0)],
+            structure: None,
+        }],
+        shops: vec![at(81.0, 501.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let fronts: Vec<Face> = building_faces(&world, (80.0, 500.0), 9.0)
+        .into_iter()
+        .filter(|f| f.style() == 10)
+        .collect();
+    assert!(!fronts.is_empty(), "no shop front");
+    let on_wall = |(east, north): (f64, f64)| {
+        (0..corners.len()).any(|k| {
+            let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
+            let (de, dn) = (b.0 - a.0, b.1 - a.1);
+            let t =
+                (((east - a.0) * de + (north - a.1) * dn) / (de * de + dn * dn)).clamp(0.0, 1.0);
+            (east - a.0 - de * t).hypot(north - a.1 - dn * t) < 0.2
+        })
+    };
+    for front in &fronts {
+        let [east, _, south] = front.middle();
+        assert!(
+            on_wall((f64::from(east), -f64::from(south))),
+            "a shop front off the walls at {:?}",
+            front.middle()
+        );
+    }
+}
+
+#[tokio::test]
 async fn shops_get_a_front_and_an_awning_onto_their_street() {
     use orqwa_osm::{Road, RoadClass};
 
