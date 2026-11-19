@@ -4363,6 +4363,58 @@ async fn roads_into_buildings_or_on_other_levels_leave_them_whole() {
 }
 
 #[tokio::test]
+async fn buildings_whose_roof_is_not_mapped_take_their_neighbours_roofs() {
+    // A village of 24 houses mapped with gabled roofs, and an apartment block whose roof the
+    // map leaves out: blocks are mostly flat-roofed, but this one takes the village's roof.
+    let gabled = orqwa_osm::Shape {
+        roof: Some(orqwa_osm::RoofShape::Gabled),
+        ..orqwa_osm::Shape::default()
+    };
+    let mut buildings: Vec<Building> = (0..24_i32)
+        .map(|i| Building {
+            id: 600 + i64::from(i),
+            outline: rectangle(
+                40.0 + f64::from(i % 6) * 25.0,
+                300.0 + f64::from(i / 6) * 30.0,
+                5.0,
+                4.0,
+            ),
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: Some(gabled),
+        })
+        .collect();
+    buildings.push(Building {
+        id: 700,
+        outline: rectangle(100.0, 520.0, 12.0, 8.0),
+        height: None,
+        levels: Some(4.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::Apartments),
+        shape: None,
+    });
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+
+    let block = building_faces(&world, (100.0, 520.0), 13.0);
+    assert!(!block.is_empty(), "the block is gone");
+    let sloped = block
+        .iter()
+        .filter(|f| (0.3..0.97).contains(&f.normal[1]) && f.middle()[1] > lowest(&block) + 11.0)
+        .count();
+    assert!(sloped >= 2, "the block has a flat roof among gabled houses");
+}
+
+#[tokio::test]
 async fn buildings_raised_over_the_road_span_it_whole() {
     // A bridge between two buildings, mapped from 5 m up to 8 m, across the road.
     let world = world(&MapData {

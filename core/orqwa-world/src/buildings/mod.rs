@@ -9,6 +9,7 @@
 //! selected independently of climate. Each kind gets its own proportions and materials.
 
 mod models;
+pub(crate) mod neighbours;
 mod parts;
 pub(crate) mod passage;
 mod region;
@@ -260,6 +261,9 @@ pub(crate) struct Plot<'a> {
     pub(crate) drawn: Drawn,
     /// Whether it is a piece of a building the road or a street runs through.
     pub(crate) cut: passage::Cut,
+    /// The roof the roofs mapped around it suggest, where the map gives it none
+    /// (`neighbours::roofs_like_neighbours`).
+    pub(crate) roof: Option<RoofShape>,
 }
 
 impl Plot<'_> {
@@ -652,7 +656,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     let design = (!special).then(|| {
         design(
             kind,
-            plot.building,
+            (plot.building, plot.roof),
             rect.is_some(),
             tropical,
             plot.region,
@@ -690,7 +694,7 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
                 .flatten()
                 .map(|d| wall_height(plot.building, rise(d, &rect), d));
             models::fitting_to(&rect, wanted, mapped, &dice)
-                .filter(|fit| model_roof_as_mapped(plot.building, fit))
+                .filter(|fit| model_roof_as_mapped(plot.building, plot.roof, fit))
                 .map(|fit| (rect, fit))
         });
     let footing = raised.unwrap_or(lowest - FOUNDATION);
@@ -1167,7 +1171,7 @@ struct Trim {
 /// heat.
 fn design(
     kind: Kind,
-    building: &Building,
+    (building, neighbours): (&Building, Option<RoofShape>),
     rectangular: bool,
     tropical: bool,
     region: Region,
@@ -1197,35 +1201,36 @@ fn design(
         // `church`, `castle` and `lighthouse` build those; none get here.
         Kind::Hall | Kind::Church | Kind::Castle | Kind::Lighthouse => recipe.hall(),
     };
-    mapped(design, building)
+    let design = mapped(design, building);
+    // Where the map gives no roof, the roofs mapped around it say what this one is like; a
+    // canopy stays a roof on posts.
+    match neighbours.filter(|_| kind != Kind::Canopy) {
+        Some(roof) if building.shape.and_then(|s| s.roof).is_none() => with_roof(design, roof),
+        _ => design,
+    }
 }
 
 /// What the map says of a building's roof and walls goes before what its recipe chose
 /// (ADR 0041, step 6): the roof's shape and height, the roof's and walls' materials and
 /// colours. Pyramidal and single-sloped roofs are built in `roof` from the mapped shape.
-fn mapped(mut design: Design, building: &Building) -> Design {
-    let Some(shape) = building.shape else {
-        return design;
-    };
+/// A design with `roof` in place of its own.
+fn with_roof(mut design: Design, roof: RoofShape) -> Design {
     let pitched_before = !matches!(design.roof, Roof::Flat { .. });
-    if let Some(roof) = shape.roof {
-        design.roof = match roof {
-            RoofShape::Flat => Roof::Flat {
-                parapet: match design.roof {
-                    Roof::Flat { parapet } => parapet,
-                    _ => 0.0,
-                },
+    design.roof = match roof {
+        RoofShape::Flat => Roof::Flat {
+            parapet: match design.roof {
+                Roof::Flat { parapet } => parapet,
+                _ => 0.0,
             },
-            RoofShape::Gabled | RoofShape::Gambrel | RoofShape::Skillion => Roof::Gable,
-            RoofShape::Hipped
-            | RoofShape::HalfHipped
-            | RoofShape::Mansard
-            | RoofShape::Pyramidal
-            | RoofShape::Round => Roof::Hipped,
-        };
-    }
-    let pitched = !matches!(design.roof, Roof::Flat { .. });
-    if pitched && !pitched_before {
+        },
+        RoofShape::Gabled | RoofShape::Gambrel | RoofShape::Skillion => Roof::Gable,
+        RoofShape::Hipped
+        | RoofShape::HalfHipped
+        | RoofShape::Mansard
+        | RoofShape::Pyramidal
+        | RoofShape::Round => Roof::Hipped,
+    };
+    if !matches!(design.roof, Roof::Flat { .. }) && !pitched_before {
         // A recipe for a flat roof has no pitch, eaves or tiles of its own.
         design.pitch_degrees = 30.0;
         design.max_rise = design.max_rise.max(6.0);
@@ -1235,6 +1240,17 @@ fn mapped(mut design: Design, building: &Building) -> Design {
         design.roof_paint.under = design.wall.with(Style::Blank);
         design.roof_paint.gables = design.wall;
     }
+    design
+}
+
+fn mapped(mut design: Design, building: &Building) -> Design {
+    let Some(shape) = building.shape else {
+        return design;
+    };
+    if let Some(roof) = shape.roof {
+        design = with_roof(design, roof);
+    }
+    let pitched = !matches!(design.roof, Roof::Flat { .. });
     if let Some(height) = shape.roof_height.filter(|h| *h > 0.3).filter(|_| pitched) {
         // Steep enough that the rise is what the map says, on any width.
         design.pitch_degrees = 75.0;
@@ -1283,17 +1299,22 @@ fn mapped(mut design: Design, building: &Building) -> Design {
     design
 }
 
-/// Whether a model's roof is the one the map gives, if it gives one: a model with another
-/// roof, under a ridge the map lays across it, or of another height than mapped would
-/// contradict it.
-fn model_roof_as_mapped(building: &Building, fit: &models::Fit) -> bool {
-    let Some(shape) = building.shape else {
-        return true;
-    };
-    if shape.across || shape.roof_height.is_some() {
+/// Whether a model's roof is the one the map gives, if it gives one, or else the one like its
+/// neighbours': a model with another roof, under a ridge the map lays across it, or of another
+/// height than mapped would contradict it.
+fn model_roof_as_mapped(
+    building: &Building,
+    neighbours: Option<RoofShape>,
+    fit: &models::Fit,
+) -> bool {
+    if building
+        .shape
+        .is_some_and(|shape| shape.across || shape.roof_height.is_some())
+    {
         return false;
     }
-    match shape.roof {
+    // A roof like the neighbours' (`Plot::roof`) rules out models as a mapped one does.
+    match building.shape.and_then(|shape| shape.roof).or(neighbours) {
         None => true,
         Some(RoofShape::Gabled | RoofShape::Gambrel) => fit.model.roof == "gable",
         Some(RoofShape::Hipped | RoofShape::HalfHipped | RoofShape::Mansard) => {
@@ -3070,6 +3091,7 @@ mod tests {
             region: Region::Generic,
             drawn: Drawn::Whole,
             cut: passage::Cut::Whole,
+            roof: None,
         }
     }
 
@@ -3127,7 +3149,14 @@ mod tests {
                     assert_eq!(kind(&plot, area, elevation, &Dice(id)), Kind::House);
                 }
             }
-            let design = design(Kind::House, &building, true, false, Region::Asia, &Dice(id));
+            let design = design(
+                Kind::House,
+                (&building, None),
+                true,
+                false,
+                Region::Asia,
+                &Dice(id),
+            );
             assert!(!design.chimney);
             assert!(design.overhang >= 0.9);
             assert!(ASIAN_ROOFS.contains(&design.roof_paint.top.rgb));
@@ -3165,7 +3194,7 @@ mod tests {
             }
             let design = design(
                 Kind::House,
-                &building,
+                (&building, None),
                 true,
                 false,
                 Region::Nordic,
@@ -3205,7 +3234,7 @@ mod tests {
             assert_eq!(kind(&plot, 600.0, 1500.0, &Dice(id)), Kind::House);
             let design = design(
                 Kind::House,
-                &building,
+                (&building, None),
                 true,
                 false,
                 Region::France,
@@ -3232,7 +3261,7 @@ mod tests {
 
         let design = design(
             Kind::Block,
-            &building,
+            (&building, None),
             true,
             false,
             Region::France,
@@ -3542,7 +3571,7 @@ mod tests {
             .map(|id| {
                 design(
                     Kind::House,
-                    &untagged(id),
+                    (&untagged(id), None),
                     true,
                     true,
                     Region::Generic,
@@ -3569,7 +3598,7 @@ mod tests {
             .map(|id| {
                 design(
                     Kind::House,
-                    &untagged(id),
+                    (&untagged(id), None),
                     true,
                     false,
                     Region::Generic,

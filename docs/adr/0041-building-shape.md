@@ -108,11 +108,15 @@ Steps 2 to 4 go first, from the tiles alone. Step 5 keeps `building=*` for every
 as a point and a kind, which is small; step 6 adds the shape tags, colours and materials of
 the buildings that have them. Each step is described here as it is made.
 
-## Open
+## Settled: no national data (2026-11-19)
 
-- A national overlay (swissBUILDINGS3D first) behind a `BuildingSource` trait: worth it in
-  Switzerland by these numbers, at the cost of a new server and a 3D format to read. This
-  needs its own ADR.
+National 3D building models (swissBUILDINGS3D, the German states' LoD2, 3DBAG) and lidar
+surface models (swissSURFACE3D, IGN LiDAR HD, BEV ALS, AHN, …) were looked at and are not
+used. Each country publishes its own formats on its own servers under its own terms, Denmark
+and Spain only with an account, Sweden, Finland and North America only as point clouds; a
+course would download hundreds of megabytes to gigabytes for a few numbers per building.
+Buildings come from OpenStreetMap and ORQWA's own rules: where the map says nothing, the
+buildings mapped around one say what it is like (roofs like the neighbours', below).
 
 ## Step 2: buildings on slopes (2026-11-18, R257)
 
@@ -363,6 +367,34 @@ their rectangle alone stand on their walls, 13 are cut along the road (most by 0
 others in Unterdorf's lane, walled on both sides, and a garage, a hut and a carport on the
 road), and 2 are cut by a street into passages. Before, 106 were cut, 84 of them by service
 roads. Generator 49, and 50 for the road fitted between buildings and shop fronts on the walls as drawn: worlds kept by builds of the first are built again.
+
+## Amendment 2026-11-19: roofs like the neighbours'
+
+Without a mapped roof, each kind of building had a roof of its own: houses gabled or hipped,
+but blocks, hotels, offices and most public buildings flat, as were sheds and halls whose
+outline is no rectangle. That made Brienz, where hardly a roof is flat, a village of
+flat-roofed hotels, schools and barns (121 of 2,639 buildings), and no fixed rule fits both
+it and Biel, around whose centre most mapped roofs are flat.
+
+Few roofs are mapped (6–8 % in Switzerland and its neighbours), but enough for a place's
+roofs to show: on the planned Grosse Scheidegg route, 66 % of the mapped roofs within 1 km of
+Biel's centre are flat, 27 % around Thun, none around Brienz and Grindelwald. A building whose
+roof the map leaves out now takes one as the mapped roofs around it go
+(`buildings::neighbours`), told apart as flat, gabled or hipped:
+
+- **Of buildings its size**: sheds and garages (under 60 m²), houses (to 200 m²), large
+  houses (to 600 m²), blocks (to 1,500 m²) and larger, as a town builds each differently.
+  The mapped roofs of its size within 1, 2, 3 or 5 km, the first reach with 8 of them.
+- **Else of all sizes within 5 km**, those of sizes nearer its own counting more (4, 2, 1),
+  if at least 10 are mapped there; with fewer, its kind's own roof stays.
+- **Picked by the building's dice**, so worlds come out the same, from whole counts kept per
+  250 m cell and size; a canopy stays a roof on posts. The roof replaces the design's as a
+  mapped one does, and rules out models with another.
+
+The roofs come with the map detail (step 6); without it nothing changes. On the planned
+route's excerpts, Brienz's 2,625 unmapped roofs are all pitched (its 12 mapped are), and
+around Biel's centre the guessed roofs follow the mapped by size: sheds 74 % flat as mapped,
+houses 23 % (12 % mapped), blocks 53 % (61 %), the largest 82 % (78 %). Generator 51.
 
 ## Consequences
 

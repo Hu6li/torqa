@@ -564,11 +564,12 @@ physically based materials and light, restyled group by group.
     doors on homes of the general region
   - [x] No building left out by the road (R263): the road lies in the street its buildings
     line, and what still stands on it or a street is cut along it, with passages over them
-  - [ ] Heights and kinds guessed from their surroundings (villages, footprints) where the map
-    gives none, tuned on the buildings that map their levels
-  - [ ] Swiss register of buildings (GWR): storeys and categories where the map is thin
+  - [x] Roofs like the neighbours' (R264): a building without a mapped roof takes the roofs
+    mapped around it, those of buildings its size first
+  - [ ] Storeys like the neighbours': from the buildings around that map their levels
   - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
-  - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR
+  - [ ] ~~National data (GWR, swissBUILDINGS3D, lidar surface models) where the map is thin~~ —
+    dropped 2026-11-19: buildings come from the map and our rules (ADR 0041)
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
   verify the target hardware.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower

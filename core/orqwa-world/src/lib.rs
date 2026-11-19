@@ -75,7 +75,7 @@ pub use vegetation::Trees;
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 50;
+pub const GENERATOR: u32 = 51;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -887,6 +887,7 @@ fn buildings_by_chunk<'a>(
     }
     buildings::mark_shops(&mut plots, &project(&map.shops), &frontage);
     buildings::resolve_parts(&mut plots);
+    buildings::neighbours::roofs_like_neighbours(&mut plots);
 
     let mut by_chunk: HashMap<_, Vec<_>> = HashMap::new();
     for plot in plots {
@@ -930,6 +931,7 @@ fn plot<'a>(
         region: buildings::Region::at(projection.unproject(e, n)),
         drawn: buildings::Drawn::Whole,
         cut,
+        roof: None,
     }
 }
 
