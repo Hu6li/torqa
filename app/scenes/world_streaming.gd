@@ -185,9 +185,9 @@ func horizon_changed() -> void:
 
 ## Makes the land filling in for the chunks not in the scene again, once they changed: it
 ## covers the route's corridor where its chunks aren't loaded, are still being built or could
-## not be read (#560).
+## not be read (#560). The benchmark's chunk lies on no route: no land fills in around it.
 func update_fill(world: RideWorld) -> void:
-	if not _fill_stale:
+	if not _fill_stale or world._benchmark != null:
 		return
 	_fill_stale = false
 	var drawn: PackedInt32Array = PackedInt32Array()
