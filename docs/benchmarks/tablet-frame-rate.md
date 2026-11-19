@@ -83,8 +83,57 @@ crowns:
 | ![Lake from above, before](../images/low-tree-cells/lake-drone-before.jpg) | ![Lake from above, after](../images/low-tree-cells/lake-drone-after.jpg) |
 | ![Climb, before](../images/low-tree-cells/climb-chase-before.jpg) | ![Climb, after](../images/low-tree-cells/climb-chase-after.jpg) |
 
+## Small plants in 160 m cells
+
+Bushes, ferns and rocks were still batched by 480 m chunk. Probes on the tree-cells build
+(without the terrain fix, so frames are slower; GPU ms saved at 2 / 9 / 16 km; each row is
+its own sample, so rows that overlap differ by the run's spread of about ±1 ms, and the probe
+and the build tables below are separate runs):
+
+| Change | Saved |
+|---|---:|
+| sun shadows off | 10 / 3.5 / 11 |
+| nothing casts shadows (the shadow map's own pass) | 7.6 / 1.5 / 8.5 |
+| … small plants or trees alone cast none | 4 / 0.3 / 4 and 2 / 0.3 / 3.7 |
+| one shadow split, 1024 atlas or 120 m reach | 3.4 / 0.6 / 3.3, ≤ 1.7, ≤ 0.5 |
+| hard shadow filter | 0 (already hard on Android) |
+| small plants hidden | 7.5 / 0.7 / 6.2 |
+| … ferns alone | 7.1 / 0.6 / 6.4 |
+| small plants in 160 m cells | 3.7 / 0.5 / 3.8 |
+| small plants' range 250 or 150 m, in chunks or cells | ≤ 0.5 |
+
+Ferns are nearly all of the small plants' cost. They have no coarser levels, yet in cells they
+cost less at the same range, though more of them stay in view and shorter ranges save nothing:
+the cost is not distance alone. The remaining shadow savings all change the look, so shadows
+stay as they are for now.
+
+Every preset now batches small plants on the same grid as trees. The grid runs every 160 m
+from the chunk's centre, where plants are placed, so a chunk has 4 × 4 batches whose outer
+ones are 80 m wide. Same base, each build measured twice: a range gives the two runs, a single
+value means they agreed to within 0.1 ms.
+
+| GPU ms | 2 km | 9 km | 16 km |
+|---|---:|---:|---:|
+| trees in 160 m cells | 89.4–91.3 | 83.3–84.0 | 96.1–96.3 |
+| + small plants in the same cells | 87.8 | 83.5–84.5 | 93.1 |
+| … with nine whole 160 m cells per chunk instead, trees too | 89.0 | 83.3–83.4 | 96.6 |
+
+That is about 2–3 ms per frame in forest and nothing in open country. Nine whole cells, an
+evener grid, gave the trees fewer, larger batches whose far levels took over later: trees
+cost 16 → 20 ms at 16 km, cancelling the gain, so the grid stays as it was. Render CPU is
+unchanged (3.9–4.8 ms). On High at 1920 × 1080 on an RTX 5080, GPU time went from
+4.6 / 3.1 / 4.1 to 4.4 / 3.0 / 3.8 ms with the same render CPU and 2–3 % more draw calls, so the
+stronger presets lose nothing. Native renders of Low before and after differ only by the leaf
+shadows moving in the wind:
+
+| Before | After |
+|---|---|
+| ![Forest floor, before](../images/plant-cells/forest-floor-before.jpg) | ![Forest floor, after](../images/plant-cells/forest-floor-after.jpg) |
+| ![Hairpin, before](../images/plant-cells/hairpin-chase-before.jpg) | ![Hairpin, after](../images/plant-cells/hairpin-chase-after.jpg) |
+| ![Forest road in autumn, before](../images/plant-cells/autumn-forest-road-before.jpg) | ![Forest road in autumn, after](../images/plant-cells/autumn-forest-road-after.jpg) |
+
 ## What is left
 
-Terrain (~20–30 ms), sun shadows (~15–20 ms), trees (~12–16 ms, mostly the cut-out cards'
-overdraw), small plants (~8 ms) and the ~27 ms floor of a frame with no 3D world (interface,
-post-processing).
+Terrain (~20–30 ms), sun shadows (~10 ms, of which ~8 ms the shadow map's pass), trees
+(~12–16 ms, mostly the cut-out cards' overdraw), small plants (~3–5 ms) and the ~27 ms floor
+of a frame with no 3D world (interface, post-processing).

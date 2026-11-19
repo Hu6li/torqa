@@ -84,9 +84,9 @@ Blender Python; its header shows how to run it).
 - **Tree LODs (R43/R108):** keep original nearby meshes and authored medium/far crowns from
   `art/vegetation/lods.py`. Preserve species, crown volumes, materials and every chosen tree.
   Godot selects by projected size for camera and shadow geometry; every preset uses 160 m
-  batches, and Low takes the coarser levels sooner (tree LOD bias 0.5). Review forest
-  coverage from chase and drone cameras,
-  check switching while moving, and compare native FPS with Low included.
+  batches (small plants too), and Low takes the coarser levels sooner (tree LOD bias 0.5).
+  Review forest coverage from chase and drone cameras, check switching while moving, and
+  compare native FPS with Low included.
 - **Distant canopy (R146):** forest ground is the baked `canopy` texture where the generator
   thinned the woods, beyond 300 m from the route, wherever the camera is (a free camera may
   hover above them), and from 300 m from the camera on (150 m on Low: nearer the fewer trees

@@ -112,16 +112,20 @@ func _lod_indices(mesh: ArrayMesh, surface_index: int, vertex_count: int) -> voi
 func _batches() -> void:
 	var buffer: PackedFloat32Array = PackedFloat32Array()
 	var expected: Array[PackedFloat32Array] = []
-	for point: Vector3 in [Vector3(-2, 7, 3), Vector3(170, 9, -4), Vector3(350, 12, 310)]:
-		var record: PackedFloat32Array = [
-			1, 0, 0, point.x, 0, 1, 0, point.y, 0, 0, 1, point.z, 0.2, 0.4, 0.6, 1
-		]
-		expected.append(record)
-		buffer.append_array(record)
+	# Plants across a whole 480 m chunk, placed relative to its centre as uploaded.
+	for column: int in 12:
+		for row: int in 12:
+			var x: float = -220.0 + column * 40.0
+			var z: float = -220.0 + row * 40.0
+			var record: PackedFloat32Array = [
+				1, 0, 0, x, 0, 1, 0, 7.0 + row, 0, 0, 1, z, 0.2, 0.4, 0.6, 1
+			]
+			expected.append(record)
+			buffer.append_array(record)
 	# Every preset, Low too: one close tree must not keep a whole chunk at full detail.
 	var parent: Node3D = Node3D.new()
 	VegetationModels.add_to(parent, "conifer_tall", buffer, 1200, 600, 0.5)
-	_check(parent.get_child_count() == 3, "trees in different 160 m cells are batched apart")
+	_check(parent.get_child_count() == 16, "a chunk's trees are batched on a 160 m grid")
 	var found: Array[PackedFloat32Array] = []
 	for child: Node in parent.get_children():
 		var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
@@ -137,6 +141,19 @@ func _batches() -> void:
 	for record: PackedFloat32Array in expected:
 		_check(found.has(record), "placement and colour retained across batch boundaries")
 	parent.free()
+	# Ferns have no coarser levels, but a tablet still draws them cheaper in cells.
+	var ferns: Node3D = Node3D.new()
+	VegetationModels.add_to(ferns, "fern_upright", buffer, 1200, 390, 0.5)
+	_check(ferns.get_child_count() == 16, "a chunk's small plants are batched in the same cells")
+	var ferns_found: int = 0
+	for child: Node in ferns.get_children():
+		var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
+		_check(not placed.has_meta("tree"), "small plants are not taken for trees")
+		_check(placed.visibility_range_end == 390, "small plants keep their own range")
+		_check(placed.lod_bias == 1.0, "the tree LOD bias leaves small plants alone")
+		ferns_found += placed.multimesh.instance_count
+	_check(ferns_found == expected.size(), "batching retains every small plant")
+	ferns.free()
 
 
 func _triangles(mesh: ArrayMesh) -> int:

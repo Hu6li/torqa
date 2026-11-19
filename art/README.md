@@ -288,7 +288,8 @@ crown volumes and ground origins. They are rendering assets outside `models.json
 `TreeLodMesh` combines them with the original nearby geometry for Godot's automatic,
 screen-size-based LOD selection in the visible scene and shadows. No trees are removed by
 LOD. Every preset splits tree instances into 160 m batches, and Low takes the coarser levels
-sooner (tree LOD bias 0.5). Kept world files need no changes or regeneration.
+sooner (tree LOD bias 0.5). Bushes, ferns and rocks are batched in the same 160 m cells.
+Kept world files need no changes or regeneration.
 
 | Name | Used for |
 |---|---|

@@ -146,6 +146,13 @@ batches kept every tree near the route at full detail; the far levels' fewer, la
 saved 7–14 ms of GPU time per frame for about 1 ms of render CPU
 ([tablet frame rate](../benchmarks/tablet-frame-rate.md#trees-in-160-m-cells-on-low)).
 
+*Amended 2026-11-16 (#542):* bushes, ferns and rocks use the same 160 m batches as trees on
+every preset. They have no coarser levels, but on the Galaxy Tab S7 ferns in cells saved about
+2–3 ms of GPU time per frame in forest (nothing in open country) at the same range. The grid
+runs from the chunk's centre, so a chunk has 4 × 4 batches with 80 m outer ones; nine whole
+cells per chunk made far trees take their coarser levels later and cancelled the gain
+([tablet frame rate](../benchmarks/tablet-frame-rate.md#small-plants-in-160-m-cells)).
+
 Evaluate this against the same native GPU, course, camera and pixel dimensions; compare Low
 as well as dense forests. Smaller batches alone did not improve the tested valley scene,
 so a batch-only optimization is insufficient. The base M1 target still needs its own GPU test.
