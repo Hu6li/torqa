@@ -9,6 +9,10 @@ extends RefCounted
 const LOOK_AHEAD: float = 1000.0
 ## A background upload may finish its current chunk, but must then yield to rendering.
 const FRAME_BUDGET_US: int = 4000
+## The land under a chunk (#560) shows from this much before the chunk's ground ends: that ground
+## fades out over its last few hundred metres (`RideWorld._mesh_instance`), and there must be
+## land below it while it does.
+const STAND_IN_OVERLAP: float = 300.0
 
 var _order: PackedInt32Array = PackedInt32Array()
 var _required: PackedInt32Array = PackedInt32Array()
@@ -22,10 +26,15 @@ var _cursor: int = 0
 var _focus: Vector2 = Vector2(INF, INF)
 var _radius: float = 0.0
 var _replan: float = 0.0
+## The chunks in the scene changed since the land filling in for the others was made.
+var _fill_stale: bool = true
+## That land: "ground" and "water" → its mesh instance, made with the first fill.
+var _fill: Dictionary[String, MeshInstance3D] = {}
 
 
 func reset() -> void:
 	_order.clear()
+	_fill_stale = true
 	_required.clear()
 	_missing = 0
 	_uploaded.clear()
@@ -121,7 +130,7 @@ func upload_some(world: RideWorld) -> void:
 	if world._benchmark != null:
 		if _uploaded.is_empty():
 			var density: float = world._quality["tree_density"]
-			_uploaded[0] = _add_chunk(world, world._benchmark.chunk(density))
+			_uploaded[0] = _add_chunk(world, world._benchmark.chunk(density), -1)
 		return
 	follow(world)
 	var began: int = Time.get_ticks_usec()
@@ -140,7 +149,8 @@ func upload_some(world: RideWorld) -> void:
 			world._chunk_count = 0
 			reset()
 			return
-		_uploaded[index] = null if chunk.is_empty() else _add_chunk(world, chunk)
+		_uploaded[index] = null if chunk.is_empty() else _add_chunk(world, chunk, index)
+		_fill_stale = true
 		_cursor += 1
 		built += 1
 		if world.visible and Time.get_ticks_usec() - began >= FRAME_BUDGET_US:
@@ -165,16 +175,71 @@ func _current_focus(world: RideWorld) -> Vector2:
 	return _focus if _focus.is_finite() else Vector2.ZERO
 
 
+## The world's distant land was made again (`OrqwaApp.horizon_meshes`).
+func horizon_changed() -> void:
+	_fill_stale = true
+
+
+## Makes the land filling in for the chunks not in the scene again, once they changed: it
+## covers the route's corridor where its chunks aren't loaded, are still being built or could
+## not be read (#560).
+func update_fill(world: RideWorld) -> void:
+	if not _fill_stale:
+		return
+	_fill_stale = false
+	var drawn: PackedInt32Array = PackedInt32Array()
+	for index: int in _uploaded:
+		if _uploaded[index] != null:
+			drawn.append(index)
+	var land: Dictionary = world._orqwa.horizon_fill(drawn)
+	for surface: Array in [["ground", world._terrain_material], ["water", world._water_material]]:
+		var kind: String = surface[0]
+		if not _fill.has(kind):
+			var instance: MeshInstance3D = MeshInstance3D.new()
+			# Far away: its shadows would not show.
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			world.add_child(instance)
+			_fill[kind] = instance
+		var arrays: Dictionary = land.get(kind, {})
+		_fill[kind].mesh = null if arrays.is_empty() else WorldMeshes.from_arrays(arrays)
+		_fill[kind].material_override = surface[1]
+
+
+## Ground is drawn only so far: beyond, the chunk's distant land stands in for it (#560).
+func _add_stand_in(world: RideWorld, node: Node3D, index: int) -> void:
+	var land: Dictionary = world._orqwa.horizon_under(index)
+	for surface: Array in [["ground", world._terrain_material], ["water", world._water_material]]:
+		var arrays: Dictionary = land.get(surface[0], {})
+		var vertices: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+		if vertices.is_empty():
+			continue
+		var stand_in: MeshInstance3D = MeshInstance3D.new()
+		stand_in.mesh = WorldMeshes.from_arrays(arrays)
+		stand_in.material_override = surface[1]
+		# The land is in route coordinates, the chunk's node at its centre.
+		stand_in.position = -node.position
+		stand_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		stand_in.set_meta("stand_in", true)
+		stand_in.visibility_range_begin = stand_in_begin(world._distance)
+		node.add_child(stand_in)
+
+
+## Where the land under a chunk begins to show, for the drawn distance `factor`.
+static func stand_in_begin(factor: float) -> float:
+	return maxf(RideWorld.VISIBILITY_RANGE * factor - STAND_IN_OVERLAP, 0.0)
+
+
 ## Its ground versions still being made are dropped when they finish (`GroundLods.add_ready`).
 func _let_go(world: RideWorld, index: int) -> void:
 	var node: Node3D = _uploaded[index]
 	_uploaded.erase(index)
+	_fill_stale = true
 	if node != null:
 		world._terrain.remove_child(node)
 		node.queue_free()
 
 
-func _add_chunk(world: RideWorld, chunk: Dictionary) -> Node3D:
+func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 	var center: Vector3 = chunk["center"]
 	var node: Node3D = Node3D.new()
 	node.position = center
@@ -188,6 +253,8 @@ func _add_chunk(world: RideWorld, chunk: Dictionary) -> Node3D:
 	world._ground_lods.make(ground, terrain_arrays)
 	ground.visibility_range_end = RideWorld.VISIBILITY_RANGE * world._distance
 	node.add_child(ground)
+	if index >= 0:
+		_add_stand_in(world, node, index)
 	for surface: Array in [
 		["streets", world._street_material, false],
 		["tracks", world._track_material, false],

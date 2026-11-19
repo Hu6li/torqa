@@ -660,6 +660,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_horizon_ground.material_override = _terrain_material
 	_horizon_water.mesh = WorldMeshes.from_arrays(lakes)
 	_horizon_water.material_override = _water_material
+	_streaming.horizon_changed()
 	_railways.mesh = WorldMeshes.from_arrays(_orqwa.railways_mesh())
 	_railways.material_override = _rail_material
 	for added: Node in _structures.get_children():
@@ -685,6 +686,7 @@ func _on_world_grew(info: Dictionary) -> void:
 
 func _build_some_chunks() -> void:
 	_streaming.upload_some(self)
+	_streaming.update_fill(self)
 
 
 ## Buildings drawn as Blender-made models up close and as shells beyond `model_range`, the two
@@ -934,6 +936,8 @@ func _set_distance(factor: float) -> void:
 			var tree_range: float = _quality["tree_range"]
 			geometry.visibility_range_end = tree_range
 			geometry.visibility_range_end_margin = minf(tree_range * 0.15, 300.0)
+		elif geometry.has_meta("stand_in"):
+			geometry.visibility_range_begin = WorldStreaming.stand_in_begin(factor)
 		elif geometry.visibility_range_end > 0.0 and not geometry.has_meta("fixed_range"):
 			geometry.visibility_range_end *= change
 	_camera.far = maxf(VISIBILITY_RANGE * factor * 1.6, HORIZON_RANGE)

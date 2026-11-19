@@ -5,9 +5,14 @@
 //! on the slopes below the tree line, and lakes where the ground is dead level (the terrain
 //! models measure their surface). The terrain shader makes steep facets rock and high ones
 //! snow, as on the detailed ground.
+//!
+//! The land covers the corridor too (#560): the detailed ground is drawn only near the camera
+//! and loaded only around the rider, so farther along the route the coarse land stands in for
+//! it, chunk by chunk ([`HorizonParts`]); otherwise the sky showed through where the route runs
+//! on into the distance.
 
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use orqwa_routes::{ElevationModel, LocalProjection, Route};
 
@@ -31,8 +36,9 @@ const TREE_LINE: f64 = 1800.0;
 /// Water lies this far above the lake's measured surface, as on the detailed ground.
 const WATER_LIFT: f64 = 0.02;
 
-/// The land beyond the corridor: its ground (vertex colours as the detailed ground's) and its
-/// lakes (for the water material), in route coordinates.
+/// The coarse land around the route, beyond the corridor and under it: its ground (vertex
+/// colours as the detailed ground's) and its lakes (for the water material), in route
+/// coordinates.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Horizon {
     /// Ground.
@@ -41,9 +47,9 @@ pub struct Horizon {
     pub water: MeshData,
 }
 
-/// The land beyond the detailed ground of `route` out to [`HORIZON`], with heights from
-/// `model` (a coarse one: the land is drawn in facets of `CELL`). Where `model` has no height
-/// the land has a hole, hidden by the haze.
+/// The land around `route` out to [`HORIZON`], under its detailed ground too, with heights
+/// from `model` (a coarse one: the land is drawn in facets of `CELL`). Where `model` has no
+/// height the land has a hole, hidden by the haze.
 ///
 /// # Panics
 /// If the land had more than 2³² vertices; out to [`HORIZON`] it has a few hundred thousand.
@@ -61,12 +67,10 @@ pub async fn horizon<M: ElevationModel>(route: &Route, model: &mut M) -> Horizon
         for ce in low_e..=high_e {
             for cn in low_n..=high_n {
                 let middle = middle_of(ce, cn);
-                let chunk = (
-                    (middle.0 / CHUNK_SIZE).floor() as i32,
-                    (middle.1 / CHUNK_SIZE).floor() as i32,
-                );
-                if !detailed.contains(&chunk)
-                    && (middle.0 - east).hypot(middle.1 - north) <= HORIZON
+                // The detailed ground's cells reach a little beyond `HORIZON` on a short
+                // route; their stand-ins must still be there.
+                if detailed.contains(&chunk_at(middle))
+                    || (middle.0 - east).hypot(middle.1 - north) <= HORIZON
                 {
                     cells.insert((ce, cn));
                 }
@@ -128,6 +132,102 @@ pub async fn horizon<M: ElevationModel>(route: &Route, model: &mut M) -> Horizon
         mesh.indices.extend([sw, nw, ne, sw, ne, se]);
     }
     horizon
+}
+
+/// The land of a [`Horizon`] split by where the detailed ground lies: the part that is never
+/// detailed, always drawn, and for each chunk of the detailed ground the land under it, which
+/// stands in for the chunk wherever the chunk is not drawn.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HorizonParts {
+    /// The land beyond the detailed ground.
+    pub outside: Horizon,
+    /// The land under each chunk of the detailed ground, by its [`chunk_key`].
+    pub corridor: BTreeMap<(i32, i32), Horizon>,
+}
+
+impl HorizonParts {
+    /// Splits `horizon`, made for `route`, by the chunks of the route's detailed ground. A
+    /// world kept from before the land covered the corridor has nothing under it.
+    #[must_use]
+    pub fn new(route: &Route, horizon: &Horizon) -> Self {
+        let projection = LocalProjection::for_route(route);
+        let detailed = chunks_near_route(&RoadIndex::new(route, &projection));
+        let mut parts = Self::default();
+        for (mesh, water) in [(&horizon.ground, false), (&horizon.water, true)] {
+            for cell in cells(mesh) {
+                let key = chunk_key(cell_middle(&cell));
+                let part = if detailed.contains(&key) {
+                    parts.corridor.entry(key).or_default()
+                } else {
+                    &mut parts.outside
+                };
+                let target = if water {
+                    &mut part.water
+                } else {
+                    &mut part.ground
+                };
+                target.append(cell);
+            }
+        }
+        parts
+    }
+
+    /// The land under every chunk not in `drawn`, as one: it fills in for the chunks that are
+    /// not loaded, still being built or could not be read.
+    #[must_use]
+    pub fn fill(&self, drawn: &BTreeSet<(i32, i32)>) -> Horizon {
+        let mut fill = Horizon::default();
+        for (key, part) in &self.corridor {
+            if !drawn.contains(key) {
+                fill.ground.append(part.ground.clone());
+                fill.water.append(part.water.clone());
+            }
+        }
+        fill
+    }
+}
+
+/// The chunk of the detailed ground at `center` (in route coordinates, as
+/// [`TerrainChunk::center`](crate::TerrainChunk) and the land's vertices): its grid cell, east
+/// and north.
+#[must_use]
+pub fn chunk_key(center: [f32; 3]) -> (i32, i32) {
+    chunk_at((f64::from(center[0]), -f64::from(center[2])))
+}
+
+#[allow(clippy::cast_possible_truncation)] // local metres stay far below 2^31 chunks
+fn chunk_at((east, north): (f64, f64)) -> (i32, i32) {
+    (
+        (east / CHUNK_SIZE).floor() as i32,
+        (north / CHUNK_SIZE).floor() as i32,
+    )
+}
+
+/// The land's cells, each its own four vertices and two triangles as [`horizon`] lays them.
+fn cells(mesh: &MeshData) -> impl Iterator<Item = MeshData> + '_ {
+    (0..mesh.vertices.len() / 4).map(move |cell| {
+        let corners = cell * 4..cell * 4 + 4;
+        MeshData {
+            vertices: mesh.vertices[corners.clone()].to_vec(),
+            normals: mesh.normals[corners.clone()].to_vec(),
+            uvs: mesh.uvs[corners.clone()].to_vec(),
+            colors: mesh.colors[corners].to_vec(),
+            indices: mesh.indices[cell * 6..cell * 6 + 6]
+                .iter()
+                .map(|i| i - u32::try_from(cell * 4).expect("the horizon fits u32"))
+                .collect(),
+        }
+    })
+}
+
+fn cell_middle(cell: &MeshData) -> [f32; 3] {
+    let mut middle = [0.0; 3];
+    for vertex in &cell.vertices {
+        for (sum, value) in middle.iter_mut().zip(vertex) {
+            *sum += value / 4.0;
+        }
+    }
+    middle
 }
 
 #[allow(clippy::cast_possible_truncation)] // local metres stay far below 2^63 cells

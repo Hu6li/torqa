@@ -736,3 +736,9 @@ R255 clarification (2026-11-16): show memory in decimal **GB**, separating the c
 estimated additional need, usable memory after Android's reserve, and the reserve. Count
 only additional allocations after the free-memory snapshot, and use the selected graphics
 residency even when generation finishes the whole course before riding.
+
+## Distant land
+
+| ID | Requirement |
+|---|---|
+| R256 | Refines R45 and #75 (2026-11-19, #560): **the land never has holes where the route runs on into the distance**. The coarse distant land also lies under the route's detailed corridor and stands in for each chunk wherever that chunk is not drawn: beyond the drawn distance, before it is loaded, while it is still being built, or when it cannot be read. On every preset, mountains along the route therefore stay whole out to the horizon, without sky showing through them or the sky's ground colour lying across a valley. Nearby chunks keep their detailed ground unchanged. Worlds kept from before offer to be built again (R101). |

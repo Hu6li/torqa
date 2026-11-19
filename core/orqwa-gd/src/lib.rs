@@ -186,6 +186,8 @@ pub struct OrqwaApp {
     last_failure: VarDictionary,
     startup_failure: Option<Failure>,
     updated_at: Instant,
+    /// The loaded world's distant land split by its chunks (#560), made with `horizon_meshes`.
+    horizon_parts: orqwa_world::HorizonParts,
 }
 
 #[godot_api]
@@ -226,6 +228,7 @@ impl INode for OrqwaApp {
             last_failure: VarDictionary::new(),
             startup_failure,
             updated_at: Instant::now(),
+            horizon_parts: orqwa_world::HorizonParts::default(),
         }
     }
 
@@ -3850,18 +3853,59 @@ impl OrqwaApp {
     }
 
     /// The land beyond the corridor: `{ground, water}` as mesh arrays in route coordinates,
-    /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes.
+    /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes. Call it
+    /// once a world is ready: it also prepares the land under the chunks for `horizon_fill` and
+    /// `horizon_under` (#560).
     #[func]
-    fn horizon_meshes(&self) -> VarDictionary {
-        self.app
+    fn horizon_meshes(&mut self) -> VarDictionary {
+        let Some((world, route)) = self
+            .app
             .as_ref()
-            .and_then(App::world)
-            .map_or_else(VarDictionary::new, |world| {
-                vdict! {
-                    "ground" => &mesh_arrays(&world.horizon.ground),
-                    "water" => &mesh_arrays(&world.horizon.water),
-                }
+            .and_then(|app| Some((app.world()?, app.route()?)))
+        else {
+            self.horizon_parts = orqwa_world::HorizonParts::default();
+            return VarDictionary::new();
+        };
+        self.horizon_parts = orqwa_world::HorizonParts::new(route, &world.horizon);
+        horizon_arrays(&self.horizon_parts.outside)
+    }
+
+    /// The land under every chunk of the detailed ground but those in `drawn` (chunk indices),
+    /// as `horizon_meshes` gives it: it fills in for the chunks not in the scene.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn horizon_fill(&self, drawn: PackedInt32Array) -> VarDictionary {
+        let centres = self
+            .app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .map_or(&[][..], |chunks| chunks.centres());
+        let drawn = drawn
+            .as_slice()
+            .iter()
+            .filter_map(|&index| centres.get(usize::try_from(index).ok()?))
+            .map(|&center| orqwa_world::chunk_key(center))
+            .collect();
+        horizon_arrays(&self.horizon_parts.fill(&drawn))
+    }
+
+    /// The land under world chunk `index`, as `horizon_meshes` gives it, in route coordinates:
+    /// it stands in for the chunk where the chunk is too far away to be drawn. Empty for a
+    /// world kept from before the land covered the corridor.
+    #[func]
+    fn horizon_under(&self, index: i64) -> VarDictionary {
+        let center = self
+            .app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .and_then(|chunks| chunks.centres().get(usize::try_from(index).ok()?).copied());
+        center
+            .and_then(|center| {
+                self.horizon_parts
+                    .corridor
+                    .get(&orqwa_world::chunk_key(center))
             })
+            .map_or_else(VarDictionary::new, horizon_arrays)
     }
 
     /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, urban, water,
@@ -4803,6 +4847,14 @@ fn uploads_dict(entry: &orqwa_app::HistoryEntry) -> VarDictionary {
         dict.set(platform.as_str(), upload.url.as_str());
     }
     dict
+}
+
+/// Distant land as `{ground, water}` mesh arrays.
+fn horizon_arrays(land: &orqwa_world::Horizon) -> VarDictionary {
+    vdict! {
+        "ground" => &mesh_arrays(&land.ground),
+        "water" => &mesh_arrays(&land.water),
+    }
 }
 
 /// Converts mesh data to the arrays Godot's `ArrayMesh` takes; `colors` is empty when the

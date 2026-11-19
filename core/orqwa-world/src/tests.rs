@@ -860,24 +860,10 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
         }
     }
     let route = route_north(&[]).await;
-    let world = generate(&route, &mut Far, &MapData::default(), &mut |_, _| {}).await;
     let land = horizon(&route, &mut Far).await;
 
     assert_valid(&land.ground);
     assert_valid(&land.water);
-    let detailed = |x: f32, z: f32| {
-        world.chunks.iter().any(|c| {
-            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
-                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
-        })
-    };
-    for cell in land.ground.vertices.as_chunks::<4>().0 {
-        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
-        assert!(
-            !detailed(middle[0], middle[1]),
-            "land over the detailed ground at {middle:?}"
-        );
-    }
     // Out to the horizon, west and east, at the land's height (a little lower).
     let reach = land
         .ground
@@ -909,6 +895,90 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
             .all(|v| v[0] >= 6000.0 && (v[1] - 600.02).abs() < 0.01)
     );
     assert!(land.ground.vertices.iter().all(|v| v[0] <= 6240.0));
+}
+
+#[tokio::test]
+async fn the_land_stands_in_for_the_chunks_not_drawn() {
+    struct Slope;
+    impl ElevationModel for Slope {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            std::future::ready(Ok(500.0 + 1000.0 * (lon - 7.0)))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Slope, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Slope).await;
+
+    // Under every chunk of the detailed ground lies land of its own, covering the whole
+    // chunk, to stand in for it where it is not drawn (#560); the rest never overlaps it.
+    let detailed = |x: f32, z: f32| {
+        world.chunks.iter().any(|c| {
+            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
+                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
+        })
+    };
+    let parts = HorizonParts::new(&route, &land);
+    for cell in parts.outside.ground.vertices.as_chunks::<4>().0 {
+        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+        assert!(
+            !detailed(middle[0], middle[1]),
+            "always drawn land over the detailed ground at {middle:?}"
+        );
+    }
+    let keys: BTreeSet<(i32, i32)> = world.chunks.iter().map(|c| chunk_key(c.center)).collect();
+    assert_eq!(
+        parts.corridor.keys().copied().collect::<BTreeSet<_>>(),
+        keys
+    );
+    for chunk in &world.chunks {
+        let under = &parts.corridor[&chunk_key(chunk.center)].ground;
+        let (half, [x, _, z]) = (CHUNK_SIZE as f32 / 2.0, chunk.center);
+        let covered: f32 = under
+            .vertices
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|cell| (cell[1][0] - cell[0][0]) * (cell[2][2] - cell[0][2]).abs())
+            .sum();
+        assert!(
+            (covered - (2.0 * half).powi(2)).abs() < 1.0,
+            "{covered} m² of land under the chunk at {:?}",
+            chunk.center
+        );
+        assert!(
+            under
+                .vertices
+                .iter()
+                .all(|v| (v[0] - x).abs() <= half && (v[2] - z).abs() <= half)
+        );
+    }
+    // What is not drawn is filled in, nothing else: drawn chunks and the fill leave no gap.
+    let drawn: BTreeSet<(i32, i32)> = keys.iter().copied().step_by(2).collect();
+    let fill = parts.fill(&drawn);
+    let filled: BTreeSet<(i32, i32)> = fill
+        .ground
+        .vertices
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|cell| {
+            let middle = [0, 1, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+            chunk_key(middle)
+        })
+        .collect();
+    assert_eq!(filled, &keys - &drawn);
+    assert_eq!(
+        parts.fill(&BTreeSet::new()).ground.vertices.len(),
+        parts
+            .corridor
+            .values()
+            .map(|p| p.ground.vertices.len())
+            .sum::<usize>()
+    );
 }
 
 #[tokio::test]
