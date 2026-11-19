@@ -598,7 +598,10 @@ mod tests {
         );
         assert_eq!(app.map_detail_size(), switzerland.size);
         let ready = detail::installed(&cache.join("osm"));
-        assert_eq!(ready[0].extract, "switzerland-2026-10-24");
+        assert_eq!(
+            ready[0].extract,
+            format!("switzerland-2026-10-24-c{}", orqwa_osm::detail::CONTENT)
+        );
         app.shutdown();
         std::fs::remove_dir_all(dir).unwrap();
     }

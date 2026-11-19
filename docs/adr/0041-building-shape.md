@@ -238,8 +238,10 @@ What extracts hold is now versioned in each region's record (`Region::content`, 
 used under that directory, and a course opened where its region is not downloaded must still
 find them. A region whose extract holds less is not ready, so ORQWA prepares it again from its
 download at start-up (ADR 0033); cells without buildings read as buildings the map says
-nothing more of. A course in the library keeps the cells it carries until its region's
-extract has a new name, at its next update (R144 compares extracts by name).
+nothing more of. An extract's name ends in what it holds (`switzerland-2026-10-24-c2`),
+so the extract made again from the same download has a new name: a course in the library
+that carries the older one takes it when next opened, as after an update (R144 compares
+extracts by name).
 
 Generator 46; the stored format stays 3.
 

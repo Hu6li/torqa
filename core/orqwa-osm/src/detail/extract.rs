@@ -172,9 +172,10 @@ pub fn extract(
 
     let data_time = header.data_time;
     let name = format!(
-        "{}-{}",
+        "{}-{}{}",
         file_name(region),
-        date(data_time.or_else(|| modified(pbf)).unwrap_or(0))
+        date(data_time.or_else(|| modified(pbf)).unwrap_or(0)),
+        content_suffix(),
     );
     let aside_name = format!("{name}.part");
     let aside = dir.join(&aside_name);
@@ -533,6 +534,17 @@ fn unpack(packed: i64) -> Option<[i32; 2]> {
 }
 
 /// A region's name as part of a directory's: letters, digits, `-` and `_`.
+/// What an extract's name ends in after its date: what it holds (`-c2` for content 2, see
+/// `regions::CONTENT`). A region extracted again for more content gets a new name, so courses
+/// carrying the older extract take the new one when opened (R144), as at an update.
+fn content_suffix() -> String {
+    if super::regions::CONTENT > 1 {
+        format!("-c{}", super::regions::CONTENT)
+    } else {
+        String::new()
+    }
+}
+
 pub(crate) fn file_name(region: &str) -> String {
     region
         .chars()
@@ -746,7 +758,7 @@ pub(crate) mod tests {
                 },
             ],
         );
-        assert_eq!(extract.name, "bern-2026-10-24");
+        assert_eq!(extract.name, format!("bern-2026-10-24{}", content_suffix()));
         assert_eq!(extract.data_time, Some(1_792_875_600));
         assert_eq!((extract.surfaces, extract.roundabouts), (2, 0));
         let cells = cells(&dir, &extract);
