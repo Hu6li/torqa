@@ -7,12 +7,17 @@ use orqwa_routes::LocalProjection;
 use crate::buildings::{signed_area, triangulate};
 use crate::minimap::simplify;
 use crate::road::RoadIndex;
-use crate::{CORRIDOR, HeightGrid, MeshData, On, drape};
+use crate::{CHUNK_SIZE, CORRIDOR, HeightGrid, MeshData, On, drape};
 
 /// Shores are simplified to this tolerance in metres.
 const SHORE_SIMPLIFY: f64 = 3.0;
 /// Waterway lines are sampled this often.
 const STEP: f64 = 10.0;
+/// Water areas count as near the route when their shore comes this close: as far as the
+/// detailed ground reaches, the far corner of a chunk at the corridor's edge.
+const POOL_REACH: f64 = CORRIDOR + CHUNK_SIZE * std::f64::consts::SQRT_2;
+/// Their shores are sampled this often for it, far finer than the chunk.
+const NEAR_STEP: f64 = 50.0;
 /// Water lies this far above the ground: below every street and the road ridden
 /// (`streets::lift`, `ROAD_SINK`), so where it meets one it passes under it.
 const LIFT: f64 = 0.02;
@@ -109,7 +114,7 @@ impl Pool {
     }
 }
 
-/// The map's water areas that reach into the corridor around the road, triangulated.
+/// The map's water areas that reach under the detailed ground around the road, triangulated.
 pub(crate) fn pools(areas: &[Area], projection: &LocalProjection, road: &RoadIndex) -> Vec<Pool> {
     let mut pools = Vec::new();
     for area in areas.iter().filter(|a| a.cover == LandCover::Water) {
@@ -118,10 +123,12 @@ pub(crate) fn pools(areas: &[Area], projection: &LocalProjection, road: &RoadInd
                 .iter()
                 .map(|&(lat, lon)| projection.project(lat, lon))
                 .collect();
-            let near = projected
+            // The whole shore, not some of its corners: map tiles cut a lake into pieces, and
+            // a piece whose corners all lie far off can still reach under the ground near the
+            // road, which then showed through the lake (#560).
+            let near = drape::densify(&projected, NEAR_STEP)
                 .iter()
-                .step_by((projected.len() / 32).max(1))
-                .any(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some());
+                .any(|&(e, n)| road.nearest(e, n, POOL_REACH).is_some());
             if !near {
                 continue;
             }

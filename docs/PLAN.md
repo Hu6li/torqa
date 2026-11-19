@@ -558,6 +558,8 @@ physically based materials and light, restyled group by group.
 - [x] Distant land under the corridor too (R256, #560): the coarse land stands in for every
   chunk of the detailed ground that is not drawn, so the sky no longer shows through mountains
   where the route runs on into the distance
+- [x] Lakes cover all the detailed ground they reach, also where map tiles cut them into
+  pieces, and the clouds show no seam (R257, #560)
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
   - [x] Forest ground turns into a baked canopy of crowns with distance, nearer the fewer trees
     are drawn, out to the horizon; tracks and paths end at 1 km

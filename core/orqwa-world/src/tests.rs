@@ -4880,6 +4880,58 @@ async fn lakes_lie_level_in_the_land() {
 }
 
 #[tokio::test]
+async fn a_lake_cut_by_map_tiles_covers_all_the_ground_it_reaches() {
+    // Map tiles cut a lake into pieces (#560): one beside the road, and one whose corners all
+    // lie beyond the corridor while its edge runs within it, 1.3 km east of the road.
+    struct Lake;
+    impl ElevationModel for Lake {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if east > 50.0 { 429.0 } else { 440.0 }))
+        }
+    }
+    let piece = |east: f64, north: f64, half_east: f64, half_north: f64| Area {
+        cover: LandCover::Water,
+        outer: vec![rectangle(east, north, half_east, half_north)],
+        inner: vec![],
+    };
+    let near = piece(700.0, 500.0, 600.0, 700.0);
+    let far = piece(2150.0, 500.0, 850.0, 2000.0);
+    let route = route_north(&[]).await;
+    let map = MapData {
+        areas: vec![near, far],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Lake, &map, &mut |_, _| {}).await;
+
+    // Water wherever the detailed ground lies over either piece.
+    let mut checked = 0;
+    for x in (200..=2900).step_by(50) {
+        for north in (-1400..=2400).step_by(50) {
+            #[allow(clippy::cast_precision_loss)] // small numbers
+            let (x, z) = (x as f32, -(north as f32));
+            let inside_near = (110.0..1290.0).contains(&x) && (-190.0..1190.0).contains(&-z);
+            let inside_far = (1310.0..2990.0).contains(&x) && (-1490.0..2490.0).contains(&-z);
+            if !(inside_near || inside_far) || ground_at(&world, x, z).is_none() {
+                continue;
+            }
+            assert!(
+                height_on(&world, |c| &c.water, x, z).is_some(),
+                "no water at {x}, {z}"
+            );
+            if inside_far {
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 100, "{checked} points of the far piece checked");
+}
+
+#[tokio::test]
 async fn rivers_slope_with_their_course_in_their_channel() {
     // A river 40 m wide running east, where the land rises 0.1 m per metre: its surface,
     // which the terrain model measures, falls 130 m along it.
