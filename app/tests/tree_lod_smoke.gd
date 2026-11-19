@@ -33,7 +33,8 @@ func _run() -> void:
 func _low_in_place() -> void:
 	var world: RideWorld = (load("res://scenes/world.tscn") as PackedScene).instantiate()
 	root.add_child(world)
-	world.apply_quality("ultra", {"tree_density": "low"})
+	# High, as Low, draws no building detail: switching that would rebuild the world.
+	world.apply_quality("high", {"tree_density": "low"})
 	var terrain: Node3D = world.get_node("Terrain")
 	var streaming: WorldStreaming = world.get("_streaming")
 	var chunk: Node3D = Node3D.new()
@@ -48,7 +49,7 @@ func _low_in_place() -> void:
 		terrain.get_child_count() == 1 and streaming.uploaded() == 1, "Low keeps uploaded batches"
 	)
 	_check(tree.lod_bias < 1.0, "Low takes uploaded trees' coarser levels sooner")
-	world.apply_quality("ultra", {"tree_density": "low"})
+	world.apply_quality("high", {"tree_density": "low"})
 	_check(tree.lod_bias == 1.0, "other presets keep trees' full detail nearby")
 	world.free()
 
