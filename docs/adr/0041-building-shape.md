@@ -396,6 +396,19 @@ route's excerpts, Brienz's 2,625 unmapped roofs are all pitched (its 12 mapped a
 around Biel's centre the guessed roofs follow the mapped by size: sheds 74 % flat as mapped,
 houses 23 % (12 % mapped), blocks 53 % (61 %), the largest 82 % (78 %). Generator 51.
 
+## Amendment 2026-11-19: no flat-roofed chalets (R265)
+
+The neighbours' roof replaced the design's whatever the building's kind, so chalets and
+Bernese farmhouses, whose pitched roofs are what they are, came out flat-roofed wherever flat
+roofs are mapped among buildings their size nearby. On the Alpenbrevet course 701 of 11,680
+chalets were flat-roofed: 689 by their neighbours' roofs, 12 by mapped ones; another 12
+irregular outlines took a flat roof when no pitched one fitted them.
+
+What a building's roof is, mapped or like its neighbours', is now settled before its kind: a
+building under a flat roof is a house of its region, built with that roof, and never a chalet
+or a farmhouse. The flat roofs a place has stay as many; they go on houses. Pitched roofs like
+the neighbours' still replace a chalet's or farmhouse's own. Generator 52.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

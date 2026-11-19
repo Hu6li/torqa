@@ -566,6 +566,8 @@ physically based materials and light, restyled group by group.
     line, and what still stands on it or a street is cut along it, with passages over them
   - [x] Roofs like the neighbours' (R264): a building without a mapped roof takes the roofs
     mapped around it, those of buildings its size first
+  - [x] No flat-roofed chalets (R265): a building under a flat roof, mapped or like the
+    neighbours', is a house of its region, never a chalet or a Bernese farmhouse
   - [ ] Storeys like the neighbours': from the buildings around that map their levels
   - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
   - [ ] ~~National data (GWR, swissBUILDINGS3D, lidar surface models) where the map is thin~~ —

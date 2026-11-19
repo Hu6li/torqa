@@ -988,8 +988,8 @@ fn storeys_of(walls: f64) -> u32 {
     count
 }
 
-/// What a building is, from what is in it, its surroundings, size, mapped height and
-/// elevation.
+/// What a building is, from what is in it, its surroundings, size, mapped height, roof
+/// (mapped or like its neighbours') and elevation.
 fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     if plot.church {
         return Kind::Church;
@@ -1041,15 +1041,20 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
     let nordic = plot.region == Region::Nordic;
     let french = plot.region == Region::France;
     let regional = asian || nordic || french;
-    let alpine =
-        !tropical && !regional && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
+    // Chalets and Bernese farmhouses are their pitched roofs: under a flat one, mapped or like
+    // the neighbours', a building is a house of its region instead.
+    let flat = plot.building.shape.and_then(|s| s.roof).or(plot.roof) == Some(RoofShape::Flat);
+    let alpine = !tropical
+        && !regional
+        && !flat
+        && dice.roll(0) < smoothstep(CHALETS_FROM, CHALETS_ONLY, ground);
     // Homes the map names stay homes, as their region builds them.
     let home = if alpine { Kind::Chalet } else { Kind::House };
     match plot.building.kind {
         Some(BuildingKind::Apartments) if area > 150.0 || height.is_some_and(|h| h >= 9.0) => {
             return Kind::Block;
         }
-        Some(BuildingKind::Farmhouse) if !(alpine || tropical || regional) => {
+        Some(BuildingKind::Farmhouse) if !(alpine || tropical || regional || flat) => {
             return Kind::Farmhouse;
         }
         Some(BuildingKind::House | BuildingKind::Apartments | BuildingKind::Farmhouse) => {
@@ -1067,7 +1072,7 @@ fn kind(plot: &Plot, area: f64, ground: f64, dice: &Dice) -> Kind {
         Setting::Town if area > 400.0 => Kind::Block,
         Setting::Countryside if area > 1500.0 => Kind::Hall,
         _ if alpine => Kind::Chalet,
-        Setting::Countryside if area > 220.0 && !tropical && !regional => Kind::Farmhouse,
+        Setting::Countryside if area > 220.0 && !tropical && !regional && !flat => Kind::Farmhouse,
         _ => Kind::House,
     }
 }
@@ -3134,6 +3139,60 @@ mod tests {
         // In between, both.
         let mixed = kinds(Setting::Countryside, 120.0, 900.0);
         assert!(mixed.contains(&Kind::Chalet) && mixed.contains(&Kind::House));
+    }
+
+    #[test]
+    fn chalets_and_farmhouses_are_never_flat_roofed() {
+        // High in the mountains every home is a chalet, and big ones in the lowland
+        // countryside are farmhouses; under a flat roof, mapped or like the neighbours', all
+        // are houses, built with that roof.
+        let flat = orqwa_osm::Shape {
+            roof: Some(RoofShape::Flat),
+            ..orqwa_osm::Shape::default()
+        };
+        for id in 0..100 {
+            let farm = Building {
+                kind: Some(BuildingKind::Farmhouse),
+                ..untagged(id)
+            };
+            for building in [untagged(id), farm] {
+                let mapped = Building {
+                    shape: Some(flat),
+                    ..building.clone()
+                };
+                let guessed = Plot {
+                    roof: Some(RoofShape::Flat),
+                    ..plot(&building, Setting::Countryside, false)
+                };
+                for plot in [plot(&mapped, Setting::Countryside, false), guessed] {
+                    for (area, ground) in [(120.0, 1500.0), (400.0, 1500.0), (400.0, 400.0)] {
+                        let kind = kind(&plot, area, ground, &Dice(id));
+                        assert_eq!(kind, Kind::House, "{area} m² at {ground} m");
+                        let design = design(
+                            kind,
+                            (plot.building, plot.roof),
+                            true,
+                            false,
+                            Region::Generic,
+                            &Dice(id),
+                        );
+                        assert!(
+                            matches!(design.roof, Roof::Flat { .. }),
+                            "{:?}",
+                            design.roof
+                        );
+                    }
+                }
+            }
+        }
+        // A pitched roof like the neighbours' leaves them what they are.
+        let building = untagged(1);
+        let gabled = Plot {
+            roof: Some(RoofShape::Gabled),
+            ..plot(&building, Setting::Countryside, false)
+        };
+        assert_eq!(kind(&gabled, 120.0, 1500.0, &Dice(1)), Kind::Chalet);
+        assert_eq!(kind(&gabled, 400.0, 400.0, &Dice(1)), Kind::Farmhouse);
     }
 
     #[test]
