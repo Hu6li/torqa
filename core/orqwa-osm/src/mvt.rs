@@ -516,6 +516,11 @@ fn road_details(tags: &Tags) -> RoadDetails {
             || tags.number("oneway").is_some_and(|n| n.abs() == 1.0),
         ramp: tags.text("ramp") == "1" || tags.number("ramp") == Some(1.0),
         roundabout: false,
+        #[allow(clippy::cast_possible_truncation)] // clamped to the few levels mapped
+        layer: tags
+            .number("layer")
+            .or_else(|| tags.text("layer").trim().parse().ok())
+            .map_or(0, |layer| layer.round().clamp(-5.0, 5.0) as i8),
     }
 }
 

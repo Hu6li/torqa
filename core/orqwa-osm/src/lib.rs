@@ -411,6 +411,9 @@ pub struct RoadDetails {
     pub ramp: bool,
     /// Goes round a roundabout, drawn the way traffic goes; known only from map detail.
     pub roundabout: bool,
+    /// Level relative to the ground (`layer`): below it under a building or a deck, above it
+    /// on a deck or a roof; 0 on the ground.
+    pub layer: i8,
 }
 
 /// Road hierarchy retained for widths and markings, without changing routing priorities.

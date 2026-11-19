@@ -14,6 +14,9 @@ struct Span {
     widths: [f64; 2],
 }
 
+/// A carriageway's width at a point and its middle there (east, north).
+type Found = (f64, (f64, f64));
+
 /// Widths of the drawn road, indexed for rider placement. Reading the mesh rather than
 /// estimating again from the map also follows worlds kept with an older generator.
 #[derive(Debug, Default)]
@@ -69,8 +72,29 @@ impl RoadWidths {
     /// Without a drawn road, uses the generator's six-metre fallback.
     #[must_use]
     pub fn at(&self, east: f64, north: f64, elevation: Meters) -> Meters {
+        Meters(
+            self.nearest(east, north, elevation)
+                .map_or(6.0, |(width, _)| width),
+        )
+    }
+
+    /// The middle of the carriageway nearest the route at metres east/north and the route's
+    /// elevation, in metres east/north: the road is laid off the map's line where the
+    /// buildings beside it show the street lies (`RoadIndex::fit_between`). The route's own
+    /// point without a drawn road.
+    #[must_use]
+    pub fn middle(&self, east: f64, north: f64, elevation: Meters) -> (f64, f64) {
+        // Further off, the nearest carriageway is another stretch of the road (a hairpin's).
+        self.nearest(east, north, elevation)
+            .map(|(_, middle)| middle)
+            .filter(|m| (m.0 - east).hypot(m.1 - north) <= crate::road::MAX_SHIFT + 0.5)
+            .unwrap_or((east, north))
+    }
+
+    /// The width of the nearest stretch of carriageway and its middle there (east, north).
+    fn nearest(&self, east: f64, north: f64, elevation: Meters) -> Option<Found> {
         let (cx, cy) = cell(east, north);
-        let mut best: Option<(f64, f64)> = None;
+        let mut best: Option<(f64, Found)> = None;
         for x in cx - 1..=cx + 1 {
             for y in cy - 1..=cy + 1 {
                 for &i in self.cells.get(&(x, y)).into_iter().flatten() {
@@ -93,13 +117,16 @@ impl RoadWidths {
                     if best.is_none_or(|(near, _)| distance < near) {
                         best = Some((
                             distance,
-                            span.widths[0] + (span.widths[1] - span.widths[0]) * t,
+                            (
+                                span.widths[0] + (span.widths[1] - span.widths[0]) * t,
+                                (point[0], -point[2]),
+                            ),
                         ));
                     }
                 }
             }
         }
-        Meters(best.map_or(6.0, |(_, width)| width))
+        best.map(|(_, found)| found)
     }
 }
 

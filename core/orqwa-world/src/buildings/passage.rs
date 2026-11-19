@@ -146,8 +146,9 @@ impl Line {
 }
 
 /// The pieces a building with `footprint` stands as: the footprint itself if neither the
-/// road nor a street runs where it is drawn, or what does passes `beneath` it, else its drawn
-/// outline cut along them.
+/// road nor a street runs where it is drawn, or what does passes `beneath` it; the footprint
+/// drawn on its own walls if only the rectangle it would be drawn as reaches them; else its
+/// drawn outline cut along them.
 pub(crate) fn pieces(
     footprint: Vec<Point>,
     beneath: Beneath,
@@ -168,6 +169,10 @@ pub(crate) fn pieces(
         return vec![(footprint, Cut::Whole)];
     }
     let area = signed_area(&footprint);
+    // Only the rectangle around it reaches the road: it stands on its walls, which keep off.
+    if outline != footprint && crossing(&footprint, road, streets).is_none() {
+        return vec![(footprint, Cut::Beside(area))];
+    }
     let mut kept = Vec::new();
     let mut queue = vec![(outline, 0)];
     while let Some((piece, round)) = queue.pop() {

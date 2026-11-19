@@ -819,15 +819,15 @@ fn buildings_by_chunk<'a>(
         .flat_map(|r| drape::densify(&project(&r.line), 3.0))
         .chain(road.samples(3.0));
     let frontage = buildings::Frontage::new(streets);
+    // Streets cut the buildings they run through into passages; service roads lead into
+    // them (a garage, a barn, a car park), and roads on another level pass beneath or above.
     let passing = buildings::passage::Streets::new(
         map.roads
             .iter()
             .filter(|r| {
                 r.structure.is_none()
-                    && matches!(
-                        r.class,
-                        RoadClass::Major | RoadClass::Street | RoadClass::Service
-                    )
+                    && r.details.layer == 0
+                    && matches!(r.class, RoadClass::Major | RoadClass::Street)
             })
             .map(|r| project(&r.line))
             .filter(|line| line.len() >= 2)
@@ -844,15 +844,16 @@ fn buildings_by_chunk<'a>(
                 .is_some_and(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some())
         })
         .collect();
-    // The road is as wide as the buildings beside it leave room for; those it passes beneath
-    // leave all of it.
+    // The road lies in the room the buildings' walls leave it; those it passes beneath leave
+    // all of it. A building whose rectangle would reach onto the road stands on its walls
+    // instead (`passage::pieces`).
     let walls: Vec<_> = footprints
         .iter()
         .filter(|(building, _)| {
             buildings::passage::Beneath::of(building) != buildings::passage::Beneath::Everything
         })
         .map(|(_, footprint)| {
-            let mut ring = buildings::drawn_outline(footprint);
+            let mut ring = footprint.clone();
             ring.push(ring[0]);
             ring
         })

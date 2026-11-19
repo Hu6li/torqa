@@ -211,7 +211,7 @@ impl Route {
         // From the track as recorded: rides and records on a file keep matching as the map
         // (and the matching) changes.
         let key = key_of(&resample(&recorded)?);
-        let snapped = snap::to_roads(&recorded, &map.roads);
+        let snapped = snap::to_roads_among(&recorded, &map.roads, &map.buildings);
         let mut track = dedup(snapped.track);
         // The file's own elevations, kept beside the model's to check it against (#172).
         let file_track = track.clone();

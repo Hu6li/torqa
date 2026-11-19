@@ -377,6 +377,7 @@ async fn road_profiles_render_fixture() {
                     ramp,
                     oneway: kind == RoadKind::Motorway,
                     roundabout: false,
+                    layer: 0,
                 },
                 line: vec![at(east, -20.0), at(east, 1020.0)],
                 structure: None,
@@ -2468,28 +2469,19 @@ fn faces_on_road(world: &World, (from, to): (f32, f32), clear: f32) -> usize {
         .filter(|face| {
             let [east, height, south] = face.middle();
             let north = -south;
-            let on = (from..=to).contains(&north)
+            (from..=to).contains(&north)
                 && height < 500.0 + clear
-                && east.abs() < road_half(world, f64::from(north)) - 0.05;
-            if on {
-                eprintln!(
-                    "ON ROAD {:?} normal {:?} half {}",
-                    face.corners,
-                    face.normal,
-                    road_half(world, f64::from(north))
-                );
-            }
-            on
+                && east.abs() < road_half(world, f64::from(north)) - 0.05
         })
         .count()
 }
 
 #[tokio::test]
-async fn buildings_drawn_into_the_road_narrow_it_and_stay() {
+async fn buildings_only_their_rectangle_brings_onto_the_road_stand_on_their_walls() {
     // A square house turned 45° to the road, its corner towards it clipped in the map: the
-    // footprint keeps 4.2 m off the centre line, but the house is drawn on the whole square,
-    // its corner 2.5 m off, on the road as the map estimates it (#138). The road is no wider
-    // than the houses beside it leave room for, so it narrows there and the house stays.
+    // footprint keeps 4.2 m off the centre line, but the rectangle around it, which a house
+    // filling it is drawn as, reaches 2.5 m off, onto the road (#138). The house stands on its
+    // walls instead, and the road keeps its width. The same house further off stays as it is.
     let diamond = |east: f64, clip: f64| {
         let reach = clip - east + 6.0;
         let points = [
@@ -2522,14 +2514,10 @@ async fn buildings_drawn_into_the_road_narrow_it_and_stay() {
     let faces = |east: f32| building_faces(&world, (east, 500.0), 7.0).len();
     assert!(faces(8.5) > 0, "the house reaching onto the road is gone");
     assert!(faces(30.0) > 0, "the house off the road is gone");
-    let (narrowed, open) = (road_half(&world, 500.0), road_half(&world, 800.0));
+    let (by_house, open) = (road_half(&world, 500.0), road_half(&world, 800.0));
     assert!(
-        (1.7..=2.5).contains(&narrowed),
-        "the road keeps its width by the house: {narrowed}"
-    );
-    assert!(
-        open > narrowed + 0.5,
-        "the road narrows away from the house"
+        (by_house - open).abs() < 0.05,
+        "the road narrows by the house: {by_house} of {open}"
     );
     assert_eq!(
         faces_on_road(&world, (480.0, 520.0), 20.0),
@@ -4106,7 +4094,7 @@ async fn roads_stay_clear_of_buildings_standing_across_them() {
     use orqwa_osm::{Road, RoadClass};
 
     // A 60 × 20 m block across the road ridden (its corners far from it), a 40 × 12 m block
-    // a street runs through, a barn a lane ends in, and a house beside each block.
+    // a street runs through, and a house beside each block.
     let building = |id: i64, outline| Building {
         id,
         outline,
@@ -4130,12 +4118,8 @@ async fn roads_stay_clear_of_buildings_standing_across_them() {
             building(42, rectangle(20.0, 400.0, 6.0, 4.5)),
             building(43, rectangle(100.0, 600.0, 20.0, 6.0)),
             building(44, rectangle(100.0, 615.0, 6.0, 4.0)),
-            building(45, rectangle(100.0, 800.0, 12.0, 8.0)),
         ],
-        roads: vec![
-            street(vec![at(40.0, 600.0), at(200.0, 600.0)]),
-            street(vec![at(40.0, 800.0), at(100.0, 800.0)]),
-        ],
+        roads: vec![street(vec![at(40.0, 600.0), at(200.0, 600.0)])],
         ..MapData::default()
     })
     .await;
@@ -4169,7 +4153,7 @@ async fn roads_stay_clear_of_buildings_standing_across_them() {
         .filter(|face| {
             let [east, height, south] = face.middle();
             (80.5..=119.5).contains(&east)
-                && (-south - 600.0).abs() < 1.7
+                && (-south - 600.0).abs() < 1.45
                 && height < slope_at(east) + 3.9
         })
         .count();
@@ -4188,19 +4172,130 @@ async fn roads_stay_clear_of_buildings_standing_across_them() {
         stands((100.0, 615.0), 3.0),
         "the house by the street is gone"
     );
-    // The lane leads to the barn's door: the barn stands whole on it.
+}
+
+#[tokio::test]
+async fn the_road_lies_in_the_street_its_houses_line() {
+    // A row of houses 1 m east of the map's line, the other side open: the map's line runs
+    // off the middle of the street they line, as villages' lines often do. The road moves
+    // west into the street, as far as it keeps the line on it, and narrows by the rest; the
+    // houses stand whole, and riders ride in the middle of the road as drawn.
+    let house = |id: i64, north: f64| Building {
+        id,
+        outline: rectangle(6.0, north, 5.0, 6.0),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house(48, 480.0), house(49, 495.0), house(50, 510.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let widths = crate::RoadWidths::new(&world.road);
+    let (middle, _) = widths.middle(0.0, 495.0, Meters(500.0));
+    let half = road_half(&world, 495.0);
+    let open = road_half(&world, 800.0);
     assert!(
-        stands((100.0, 800.0), 10.0),
-        "the barn a lane ends in is gone"
+        middle < -0.9 && middle + f64::from(half) > 0.4,
+        "the road stays on the map's line by the houses: middle {middle}, half {half}"
     );
-    let cut = building_faces(&world, (100.0, 800.0), 10.0)
-        .into_iter()
-        .filter(|face| {
-            let [east, height, south] = face.middle();
-            (-south - 800.0).abs() < 2.0 && height < slope_at(east) + 3.0
-        })
-        .count();
-    assert_eq!(cut, 0, "the barn a lane ends in is cut along it");
+    assert!(
+        middle + f64::from(half) <= 0.75,
+        "the road reaches the houses: middle {middle}, half {half}"
+    );
+    assert!(half >= 1.5 && half < open, "{half} of {open}");
+    assert!(
+        widths.middle(0.0, 800.0, Meters(500.0)).0.abs() < 0.05,
+        "the road leaves the map's line away from the houses"
+    );
+    // Whole: their walls facing the road stand where the map draws them.
+    let walls: Vec<f32> = building_faces(&world, (6.0, 495.0), 25.0)
+        .iter()
+        .filter(|face| face.normal[0] < -0.9 && face.middle()[1] < 506.0)
+        .map(|face| face.middle()[0])
+        .collect();
+    assert!(!walls.is_empty(), "the houses are gone");
+    assert!(
+        walls.iter().all(|&east| (east - 1.0).abs() < 0.05),
+        "a house is cut: walls at {walls:?}"
+    );
+}
+
+#[tokio::test]
+async fn roads_into_buildings_or_on_other_levels_leave_them_whole() {
+    use orqwa_osm::{Road, RoadClass};
+
+    // A service road through a barn (its drive-through), a street on a deck through the upper
+    // floor of a car park, and a lane ending at a barn's door: none cuts its building.
+    let building = |id: i64, outline| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let road = |class, layer, line| Road {
+        class,
+        details: orqwa_osm::RoadDetails {
+            layer,
+            ..orqwa_osm::RoadDetails::default()
+        },
+        line,
+        structure: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            building(51, rectangle(100.0, 400.0, 12.0, 8.0)),
+            building(52, rectangle(100.0, 700.0, 15.0, 10.0)),
+            building(45, rectangle(100.0, 800.0, 12.0, 8.0)),
+        ],
+        roads: vec![
+            road(
+                RoadClass::Service,
+                0,
+                vec![at(40.0, 400.0), at(160.0, 400.0)],
+            ),
+            road(
+                RoadClass::Street,
+                1,
+                vec![at(40.0, 700.0), at(160.0, 700.0)],
+            ),
+            road(
+                RoadClass::Street,
+                0,
+                vec![at(40.0, 800.0), at(100.0, 800.0)],
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+
+    for north in [400.0, 700.0, 800.0] {
+        let cut = building_faces(&world, (100.0, north), 18.0)
+            .iter()
+            .filter(|face| {
+                let [east, height, south] = face.middle();
+                (-south - north).abs() < 3.0
+                    && (90.0..=110.0).contains(&east)
+                    && height < slope_at(east) + 3.0
+            })
+            .count();
+        assert!(
+            !building_faces(&world, (100.0, north), 18.0).is_empty(),
+            "the building at {north} is gone"
+        );
+        assert_eq!(cut, 0, "the building at {north} is cut along its road");
+    }
 }
 
 #[tokio::test]

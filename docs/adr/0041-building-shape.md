@@ -298,47 +298,67 @@ Roads stay clear of buildings (#100, #138), and so far that meant leaving a buil
 those whose walls came within 1 m of the ridden road's edge, at its drawn width, checked on the
 rectangle around the footprint, and those a paved street ran through. On the Grosse Scheidegg
 course that took 643 of the 122,789 buildings in the corridor, most of them standing in
-villages right by the road. But the road's width is mostly estimated from its class, and where
-houses stand closer to its middle than that, it is the width that is wrong, not the houses.
-Now no building is left out (R263):
+villages right by the road. Now no building is left out, and the road stays clear (R263).
 
-- **The road is as wide as the buildings leave room for.** Where the outline a building is
-  drawn on comes closer to the ridden road's middle than its estimated half width, the road
-  narrows to keep 0.3 m off the wall, down to 3.5 m (`RoadIndex::fit_between`), easing in and
-  out over the distance other width changes take. Where the road runs inside a building's
-  outline, as through a gate, it is 3.5 m throughout. Everything that follows the road's
-  width follows: its mesh, the ground shaped around it, sidewalks, props and where riders
-  ride (`RoadWidths` reads the drawn road). On Grosse Scheidegg 2.1 km of 236 km narrow by
-  more than 0.5 m, 349 m of it to 3.5 m.
+**Why buildings stand on the road.** On the planned (komoot) Grosse Scheidegg route, compared
+with the raw OpenStreetMap extract: the tiles' streets lie within 0.1–0.2 m of OpenStreetMap's,
+their buildings likewise, and the road ridden, matched to the tiles' streets and smoothed,
+within 0.2 m of the street at most places. What brings buildings onto the road is the map
+itself and what we make of it:
+
+- Village streets' lines in OpenStreetMap often run 0.5–2 m from the walls of the houses
+  lining them (Unterdorf in Unterseen, mapped 3 m wide, 0.5–1.8 m from its walls). The
+  buildings come from the official survey; the streets' lines were traced from imagery and
+  GPS and lie a metre or two off the middle of the street. A road of the width estimated from
+  its class, centred on the line, reaches into the houses.
+- Large buildings filling 90 % of the rectangle around them were checked on that rectangle
+  (they might get a model), which reaches 2–3 m beyond their walls.
+- Smoothing the matched route rounded corners by up to 2.5 m, into the houses in them.
+- Almost all buildings a "street" ran through had a service road in them: a driveway into a
+  garage, a farm road through a barn, an aisle in a car park, many of them on another level
+  (`layer`: a ramp below, a deck above). Only 2 of 84 were streets.
+
+**What happens now:**
+
+- **The road lies in the street its buildings line** (`RoadIndex::fit_between`). Each side
+  of the road keeps 0.3 m off the walls of the buildings beside it. Where walls stand on one
+  side, the road moves away from them, by at most 1.5 m and never so far that the map's line
+  leaves it, so that the map's ways of the road ridden are still seen to be it; where walls
+  stand on both, it narrows, down to 3 m. Where it runs through a building, as through a
+  gate, it is 3 m wide on the map's line. Shifts and narrowings ease in and out over the
+  distance other width changes take (0.2 m of width per metre); bridges, tunnels and the
+  road ridden again stay as they are. Everything that follows the road follows: its mesh, the
+  ground shaped around it, sidewalks, props, and riders, who ride from the middle of the road
+  as drawn (`RoadWidths::middle`).
+- **Smoothing keeps to the map's line where buildings line the road**: a point within 8 m of
+  a wall moves at most 1 m when the matched route is smoothed (2.5 m elsewhere).
+- **A building whose rectangle alone reaches the road stands on its walls** (as a shell or
+  assembled from parts, not as a model).
 - **Buildings mapped raised off the ground span the road** (`min_height` of 3 m or more: a
   bridge between two buildings, upper floors over a street). They are neither cut nor narrow
   the road.
-- **What still stands on the road is cut along it** (`buildings::passage`). The outline the
-  building is drawn on is cut along the stretch of road it reaches deepest onto, at the road's
-  edges, and again along each further stretch where the road bends away from that line; a
-  piece still reaching less than 0.3 m onto the road after 24 cuts stands as it is. The pieces
-  beside the road stand as buildings on their own outlines, of the kind and design the whole
-  building is, as shells or assembled from parts but not as models, which would give each
-  piece a house of its own. A piece across the road's middle is raised over it for riders to
-  pass beneath, from a storey and a window sill (4 m) above the highest ground under it, so
-  its first row of windows shows whole; with no storey above that, it is not drawn. Pieces
-  under a bridge's deck, and scraps of less than 4 m² or 0.75 m thick, are left out.
-- **Streets running through a building** (their middle more than 1 m inside, entering and
-  leaving it) cut it the same way, at 3.5 m wide, with the piece across raised: a passage. A
-  street ending inside, as a farm lane at a barn's door, leaves the building whole, and
-  streets pass beneath roofs on posts (`building=roof`, carports) without cutting them.
+- **What still stands on the road is cut along it** (`buildings::passage`). The outline is cut
+  along the stretch of road it reaches deepest onto, at the road's edges, and again along each
+  further stretch where the road bends away from that line; a piece still reaching less than
+  0.3 m onto the road after 24 cuts stands as it is. The pieces beside the road stand as
+  buildings on their own outlines, of the kind and design the whole building is, as shells or
+  assembled from parts but not as models, which would give each piece a house of its own. A
+  piece across the road's middle is raised over it for riders to pass beneath, from a storey
+  and a window sill (4 m) above the highest ground under it, so its first row of windows shows
+  whole; with no storey above that, it is not drawn. Pieces under a bridge's deck, and scraps
+  of less than 4 m² or 0.75 m thick, are left out.
+- **Streets on the ground running through a building** (minor streets and up, their middle
+  more than 1 m inside, entering and leaving it) cut it the same way into a 3 m passage.
+  Service roads, driveways and car park aisles lead into buildings and leave them whole, as
+  does a street ending inside; roads on another level (`layer`, now read from the tiles) pass
+  beneath or above, and streets pass beneath roofs on posts (`building=roof`, carports).
 - **Buildings over tunnels stay.** The ridden road's tunnels are no carriageway on the ground.
 
-The outline a building is drawn on (`drawn_outline`) is the one checked, not the rectangle
-around its footprint: since step 4 only footprints filling 90 % of it are drawn on it, and the
-rectangle of an L or a house with a bay reaches far beyond its walls. Pieces stand on their own
-outline unless it is its rectangle (a cut along a wall), so the rectangle never reaches back
-onto the road.
-
-On Grosse Scheidegg 6 raised buildings span the road and 137 buildings are cut into 397
-pieces, 121 of them with a piece across: 2 over the ridden road, the others over streets.
-None keeps less than half its area. The road ridden again, which is drawn once, is left out of
-both narrowing and cutting. Generator 49.
+On the planned Grosse Scheidegg route (263 km) 42 buildings reach the road or a street: 27 by
+their rectangle alone stand on their walls, 13 are cut along the road (most by 0.1–0.4 m; the
+others in Unterdorf's lane, walled on both sides, and a garage, a hut and a carport on the
+road), and 2 are cut by a street into passages. Before, 106 were cut, 84 of them by service
+roads. Generator 49.
 
 ## Consequences
 
