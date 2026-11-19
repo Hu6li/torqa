@@ -140,6 +140,12 @@ No per-frame instance filtering or buffer copying is needed. Medium through Ultr
 Low retains chunk-sized batches to protect its CPU/draw-call budget. Density and view-distance
 controls retain their independent meanings. Neither generator nor stored format changes.
 
+*Amended 2026-11-16 (#542):* Low uses 160 m batches too, and takes trees' coarser levels
+sooner (tree LOD bias 0.5). On the Galaxy Tab S7, the weakest target and GPU-bound, chunk-sized
+batches kept every tree near the route at full detail; the far levels' fewer, larger cards
+saved 7–14 ms of GPU time per frame for about 1 ms of render CPU
+([tablet frame rate](../benchmarks/tablet-frame-rate.md#trees-in-160-m-cells-on-low)).
+
 Evaluate this against the same native GPU, course, camera and pixel dimensions; compare Low
 as well as dense forests. Smaller batches alone did not improve the tested valley scene,
 so a batch-only optimization is insufficient. The base M1 target still needs its own GPU test.

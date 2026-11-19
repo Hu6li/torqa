@@ -324,7 +324,7 @@ func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 		)
 	var plants: Dictionary = chunk.get("plants", {})
 	var tree_range: float = world._quality["tree_range"]
-	var tree_cell: float = world._quality["tree_cell"]
+	var tree_lod_bias: float = world._quality["tree_lod_bias"]
 	for model: String in plants:
 		var buffer: PackedFloat32Array = plants[model]
 		VegetationModels.add_to(
@@ -333,7 +333,7 @@ func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 			buffer,
 			tree_range,
 			RideWorld.SMALL_PLANT_RANGE * world._distance,
-			tree_cell
+			tree_lod_bias
 		)
 	var props: Dictionary = chunk.get("props", {})
 	for model: String in props:

@@ -230,6 +230,11 @@ square gaps, clipped ends or paving across the carriageway. Curb stones have joi
 beveled lip; lowered entrances remain continuous. Placement is inferred from the existing
 road and land-use data, with mapped green spaces preserved.
 
+Rendering implementation note (2026-11-16, R43/R108, #542): Low no longer keeps chunk-sized
+tree batches. Every preset batches trees in 160 m cells so far trees take their simpler
+levels, and Low takes them sooner; on the Galaxy Tab S7 this costs about 1 ms of CPU and saves
+7–14 ms of GPU time per frame. Population, placement and kept worlds are unchanged.
+
 ## Workouts & overlay
 
 | ID | Requirement |

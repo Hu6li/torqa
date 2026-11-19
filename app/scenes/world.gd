@@ -86,12 +86,14 @@ const FREE_TURN: float = 1.2
 const JUMP_M: float = 50.0
 ## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
 ## scales terrain and details; trees have their own range and uploaded density (R108).
+## `tree_lod_bias` below 1 takes trees' coarser levels sooner: on Low it saves a tablet GPU
+## 2–4 ms per frame.
 ## MSAA stays at 2×; 4× previously caused bright distant pixels to spread through bloom.
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
 		"tree_density": 0.125,
-		"tree_cell": 480.0,
+		"tree_lod_bias": 0.5,
 		"tree_range": 600.0,
 		"model_range": 200.0,
 		"building_detail": false,
@@ -113,7 +115,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"medium":
 	{
 		"tree_density": 0.25,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 1200.0,
 		"model_range": 400.0,
 		"building_detail": false,
@@ -135,7 +137,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"high":
 	{
 		"tree_density": 0.5,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 2200.0,
 		"model_range": 600.0,
 		"building_detail": false,
@@ -157,7 +159,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"ultra":
 	{
 		"tree_density": 1.0,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 3240.0,
 		"model_range": 900.0,
 		"building_detail": true,
@@ -391,7 +393,6 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 ## the preset).
 func apply_quality(name: String, options: Dictionary = {}) -> void:
 	var previous_density: float = _quality["tree_density"]
-	var previous_cell: float = _quality["tree_cell"]
 	var previous_building_detail: bool = _quality["building_detail"]
 	var preset: Dictionary = QUALITY.get(name, QUALITY["medium"])
 	_quality = preset.duplicate()
@@ -434,7 +435,6 @@ func apply_quality(name: String, options: Dictionary = {}) -> void:
 	# A course may already be uploaded when settings change before the next ride.
 	if (
 		previous_density != _quality["tree_density"]
-		or previous_cell != _quality["tree_cell"]
 		or previous_building_detail != _quality["building_detail"]
 	):
 		WorldPreparation.restart(self)
@@ -913,6 +913,7 @@ func _set_distance(factor: float) -> void:
 			var tree_range: float = _quality["tree_range"]
 			geometry.visibility_range_end = tree_range
 			geometry.visibility_range_end_margin = minf(tree_range * 0.15, 300.0)
+			geometry.lod_bias = _quality["tree_lod_bias"]
 		elif geometry.has_meta("stand_in") or geometry.has_meta("chunk_water"):
 			WorldStreaming.follow_distance(geometry, factor)
 		elif geometry.visibility_range_end > 0.0 and not geometry.has_meta("fixed_range"):

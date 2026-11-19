@@ -15,42 +15,51 @@ const LOOKS: Dictionary[String, Array] = {
 	"frond": ["vegetation", 2, "", 1.0, 1.0, 0.12],
 	"rock": ["vegetation", 3, "rock", 1.6, 1.0, 0.0],
 }
+## Trees are batched in cells of this size (metres): Godot chooses one level of detail per batch
+## from its closest point, so in a whole 480 m chunk one close tree kept every tree at full
+## detail. Low too: on the Galaxy Tab S7 the far levels' fewer, larger cards save 5–10 ms of GPU
+## time per frame for about 1 ms of render CPU (docs/benchmarks/tablet-frame-rate.md).
+const TREE_CELL_M: float = 160.0
 
 static var _materials: Dictionary[String, ShaderMaterial] = {}
 static var _meshes: Dictionary[String, Mesh] = {}
 
 
-## Bound the closest tree used by Godot's batch-wide LOD selection. Low keeps its original
-## chunk-sized batches to avoid additional draw calls on weaker CPUs.
+## One model's uploaded plants of a chunk, trees in cells of `TREE_CELL_M`.
 static func add_to(
 	parent: Node3D,
 	name: String,
 	buffer: PackedFloat32Array,
 	tree_range: float,
 	small_range: float,
-	cell_m: float
+	tree_lod_bias: float = 1.0
 ) -> void:
 	if buffer.is_empty():
 		return
-	if not _is_tree(name) or cell_m >= 480.0:
+	if not _is_tree(name):
 		parent.add_child(instance(name, buffer, tree_range, small_range))
 		return
 	var cells: Dictionary[Vector2i, PackedFloat32Array] = {}
 	for offset: int in range(0, buffer.size(), 16):
 		var key: Vector2i = Vector2i(
-			floori(buffer[offset + 3] / cell_m), floori(buffer[offset + 11] / cell_m)
+			floori(buffer[offset + 3] / TREE_CELL_M), floori(buffer[offset + 11] / TREE_CELL_M)
 		)
 		var values: PackedFloat32Array = cells.get(key, PackedFloat32Array())
 		values.append_array(buffer.slice(offset, offset + 16))
 		cells[key] = values
 	for values: PackedFloat32Array in cells.values():
-		parent.add_child(instance(name, values, tree_range, small_range))
+		parent.add_child(instance(name, values, tree_range, small_range, tree_lod_bias))
 
 
 ## One model's uploaded plants. Tree ranges follow the preset or View distance override;
 ## smaller plants stay nearby. A short fade keeps Low from drawing well past its budget.
+## `tree_lod_bias` below 1 takes trees' coarser levels sooner (Low).
 static func instance(
-	name: String, buffer: PackedFloat32Array, tree_range: float, small_range: float
+	name: String,
+	buffer: PackedFloat32Array,
+	tree_range: float,
+	small_range: float,
+	tree_lod_bias: float = 1.0
 ) -> MultiMeshInstance3D:
 	var multimesh: MultiMesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -63,6 +72,7 @@ static func instance(
 	var tree: bool = _is_tree(name)
 	if tree:
 		placed.set_meta("tree", true)
+		placed.lod_bias = tree_lod_bias
 	placed.visibility_range_end = tree_range if tree else small_range
 	placed.visibility_range_end_margin = minf(tree_range * 0.15, 300.0) if tree else 100.0
 	placed.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

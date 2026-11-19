@@ -23,28 +23,33 @@ func _run() -> void:
 	for name: String in TREES:
 		_model(name)
 	_batches()
-	_rebatch()
+	_low_in_place()
 	await _ground()
 	if not _failed:
 		print("TREE LOD SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
 
 
-func _rebatch() -> void:
+func _low_in_place() -> void:
 	var world: RideWorld = (load("res://scenes/world.tscn") as PackedScene).instantiate()
 	root.add_child(world)
 	world.apply_quality("ultra", {"tree_density": "low"})
 	var terrain: Node3D = world.get_node("Terrain")
 	var streaming: WorldStreaming = world.get("_streaming")
-	var uploaded: Node3D = Node3D.new()
-	terrain.add_child(uploaded)
-	streaming._uploaded[0] = uploaded
-	# Density stays 12.5%; switching to Low must still restore its cheaper batch budget.
+	var chunk: Node3D = Node3D.new()
+	terrain.add_child(chunk)
+	streaming._uploaded[0] = chunk
+	var buffer: PackedFloat32Array = [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 5, 1, 1, 1, 1]
+	VegetationModels.add_to(chunk, "conifer_tall", buffer, 1200, 600)
+	var tree: GeometryInstance3D = chunk.get_child(0)
+	# Density stays 12.5% and every preset batches alike: Low takes coarser levels in place.
 	world.apply_quality("low")
 	_check(
-		terrain.get_child_count() == 0 and streaming.uploaded() == 0,
-		"Low refreshes uploaded batches"
+		terrain.get_child_count() == 1 and streaming.uploaded() == 1, "Low keeps uploaded batches"
 	)
+	_check(tree.lod_bias < 1.0, "Low takes uploaded trees' coarser levels sooner")
+	world.apply_quality("ultra", {"tree_density": "low"})
+	_check(tree.lod_bias == 1.0, "other presets keep trees' full detail nearby")
 	world.free()
 
 
@@ -113,25 +118,25 @@ func _batches() -> void:
 		]
 		expected.append(record)
 		buffer.append_array(record)
-	for cell_m: float in [160.0, 480.0]:
-		var parent: Node3D = Node3D.new()
-		VegetationModels.add_to(parent, "conifer_tall", buffer, 1200, 600, cell_m)
-		var found: Array[PackedFloat32Array] = []
-		for child: Node in parent.get_children():
-			var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
-			_check(placed.has_meta("tree"), "batched trees retain their range metadata")
-			_check(placed.visibility_range_end == 1200, "tree range remains independent of LOD")
-			# The dummy renderer retains bulk buffers but not per-instance GPU readbacks.
-			var uploaded: PackedFloat32Array = placed.multimesh.buffer
-			_check(uploaded.size() == placed.multimesh.instance_count * 16, "complete records")
-			for index: int in placed.multimesh.instance_count:
-				found.append(uploaded.slice(index * 16, (index + 1) * 16))
-		_check(found.size() == expected.size(), "batching retains every tree")
-		for record: PackedFloat32Array in expected:
-			_check(found.has(record), "placement and colour retained across batch boundaries")
-		if cell_m == 480:
-			_check(parent.get_child_count() == 1, "Low keeps its original draw-call budget")
-		parent.free()
+	# Every preset, Low too: one close tree must not keep a whole chunk at full detail.
+	var parent: Node3D = Node3D.new()
+	VegetationModels.add_to(parent, "conifer_tall", buffer, 1200, 600, 0.5)
+	_check(parent.get_child_count() == 3, "trees in different 160 m cells are batched apart")
+	var found: Array[PackedFloat32Array] = []
+	for child: Node in parent.get_children():
+		var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
+		_check(placed.has_meta("tree"), "batched trees retain their range metadata")
+		_check(placed.visibility_range_end == 1200, "tree range remains independent of LOD")
+		_check(placed.lod_bias == 0.5, "a preset's tree LOD bias reaches every batch")
+		# The dummy renderer retains bulk buffers but not per-instance GPU readbacks.
+		var uploaded: PackedFloat32Array = placed.multimesh.buffer
+		_check(uploaded.size() == placed.multimesh.instance_count * 16, "complete records")
+		for index: int in placed.multimesh.instance_count:
+			found.append(uploaded.slice(index * 16, (index + 1) * 16))
+	_check(found.size() == expected.size(), "batching retains every tree")
+	for record: PackedFloat32Array in expected:
+		_check(found.has(record), "placement and colour retained across batch boundaries")
+	parent.free()
 
 
 func _triangles(mesh: ArrayMesh) -> int:
