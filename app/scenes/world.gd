@@ -64,8 +64,6 @@ const VISIBILITY_RANGE: float = 4500.0
 ## The land beyond the corridor reaches 12 km from the route (`orqwa_world::HORIZON`); the
 ## camera sees that far, the haze hides its end.
 const HORIZON_RANGE: float = 14000.0
-## Buildings switch between their models and their shells over this distance.
-const MODEL_FADE: float = 40.0
 ## Buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
 ## Bushes and rocks are smaller still.
@@ -96,6 +94,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"tree_cell": 480.0,
 		"tree_range": 600.0,
 		"model_range": 200.0,
+		"building_detail": false,
 		"grass_range": 0.0,
 		"grass_shadows": false,
 		"shadow_atlas": 2048,
@@ -117,6 +116,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"tree_cell": 160.0,
 		"tree_range": 1200.0,
 		"model_range": 400.0,
+		"building_detail": false,
 		"grass_range": 60.0,
 		"grass_shadows": false,
 		"shadow_atlas": 4096,
@@ -138,6 +138,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"tree_cell": 160.0,
 		"tree_range": 2200.0,
 		"model_range": 600.0,
+		"building_detail": false,
 		"grass_range": 120.0,
 		"grass_shadows": true,
 		"shadow_atlas": 4096,
@@ -159,6 +160,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 		"tree_cell": 160.0,
 		"tree_range": 3240.0,
 		"model_range": 900.0,
+		"building_detail": true,
 		"grass_range": 180.0,
 		"grass_shadows": true,
 		"shadow_atlas": 8192,
@@ -215,6 +217,7 @@ var _orqwa: OrqwaApp
 var _benchmark: OrqwaGraphicsBenchmark
 var _chunk_count: int = 0
 var _streaming: WorldStreaming = WorldStreaming.new()
+var _building_detail_streaming: BuildingDetailStreaming = BuildingDetailStreaming.new()
 ## Invalidates a preparation waiting on chunks that a new course or setting replaced.
 var _chunk_revision: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
@@ -386,6 +389,7 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 func apply_quality(name: String, options: Dictionary = {}) -> void:
 	var previous_density: float = _quality["tree_density"]
 	var previous_cell: float = _quality["tree_cell"]
+	var previous_building_detail: bool = _quality["building_detail"]
 	var preset: Dictionary = QUALITY.get(name, QUALITY["medium"])
 	_quality = preset.duplicate()
 	_apply_options_over_preset(options)
@@ -425,8 +429,14 @@ func apply_quality(name: String, options: Dictionary = {}) -> void:
 	var tree_density: float = _quality["tree_density"]
 	TerrainMaterial.set_tree_density(_terrain_material, tree_density)
 	# A course may already be uploaded when settings change before the next ride.
-	if previous_density != _quality["tree_density"] or previous_cell != _quality["tree_cell"]:
+	if (
+		previous_density != _quality["tree_density"]
+		or previous_cell != _quality["tree_cell"]
+		or previous_building_detail != _quality["building_detail"]
+	):
 		WorldPreparation.restart(self)
+		if not _quality["building_detail"]:
+			BuildingModels.clear_detail_cache()
 	var fps_limit: String = options.get("fps_limit", "auto")
 	Engine.max_fps = 60
 	if fps_limit != "auto":
@@ -545,22 +555,7 @@ func _ready() -> void:
 	_water_material.shader = preload("res://shaders/water.gdshader")
 	_water_material.set_shader_parameter("deep_color", Palette.color("water.deep"))
 	_water_material.set_shader_parameter("shallow_color", Palette.color("water.shallow"))
-	_building_material.shader = preload("res://shaders/building.gdshader")
-	_building_material.set_shader_parameter("glass", Palette.color("buildings.glass"))
-	_building_material.set_shader_parameter("frame", Palette.color("buildings.frame"))
-	_building_material.set_shader_parameter(
-		"stained_glass", Palette.color("buildings.stained_glass")
-	)
-	_building_material.set_shader_parameter("stone", Palette.color("buildings.stone"))
-	var shell_textures: Dictionary[String, String] = {
-		"plaster_texture": "plaster",
-		"boards_texture": "planks",
-		"tiles_texture": "roof_tiles",
-		"gravel_texture": "gravel",
-	}
-	for uniform: String in shell_textures:
-		var path: String = "res://assets/textures/%s_albedo.webp" % shell_textures[uniform]
-		_building_material.set_shader_parameter(uniform, load(path))
+	BuildingModels.configure_shell(_building_material)
 	_sky.shader = preload("res://shaders/sky.gdshader")
 	_sky.set_shader_parameter("ground_color", Palette.color("plants.grass_base"))
 	_sky.set_shader_parameter("cloud_color", Palette.color("sky.cloud"))
@@ -630,6 +625,11 @@ func _process(delta: float) -> void:
 	if state.is_empty():
 		return
 	_follow_ride(state, delta)
+	if _quality["building_detail"]:
+		var at: Vector3 = _camera.global_position
+		_building_detail_streaming.update(
+			Vector2(at.x, at.z), _orqwa.world_building_details, _orqwa.let_go_of_building_details
+		)
 
 
 ## The rider's own avatar (R46), on a new world and whenever the active rider changes; the
@@ -687,34 +687,6 @@ func _on_world_grew(info: Dictionary) -> void:
 func _build_some_chunks() -> void:
 	_streaming.upload_some(self)
 	_streaming.update_fill(self)
-
-
-## Buildings drawn as Blender-made models up close and as shells beyond `model_range`, the two
-## crossfading.
-func _add_modelled(node: Node3D, cell: Dictionary) -> void:
-	var model_range: float = _quality["model_range"]
-	var models: Dictionary = cell["models"]
-	for model: String in models:
-		var multimesh: MultiMesh = MultiMesh.new()
-		multimesh.transform_format = MultiMesh.TRANSFORM_3D
-		multimesh.use_colors = true
-		multimesh.use_custom_data = true
-		multimesh.mesh = BuildingModels.mesh(model)
-		var buffer: PackedFloat32Array = models[model]
-		multimesh.instance_count = buffer.size() / 20
-		multimesh.buffer = buffer
-		var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
-		instance.multimesh = multimesh
-		instance.visibility_range_end = model_range
-		instance.visibility_range_end_margin = MODEL_FADE
-		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-		node.add_child(instance)
-	var shell_arrays: Dictionary = cell["shells"]
-	var shells: MeshInstance3D = _mesh_instance(shell_arrays, _building_material, true)
-	shells.visibility_range_begin = model_range
-	shells.visibility_range_begin_margin = MODEL_FADE
-	shells.visibility_range_end = DETAIL_RANGE * _distance
-	node.add_child(shells)
 
 
 ## `compressed` as in `WorldMeshes.from_arrays`.

@@ -65,7 +65,10 @@ fn install_bern(cache: &Path, street: &Road) {
     std::fs::write(cell, json).unwrap();
     let record = osm.join(orqwa_osm::detail::DOWNLOADS).join("bern.json");
     std::fs::create_dir_all(record.parent().unwrap()).unwrap();
-    let json = format!(r#"{{"id":"bern","name":"Bern","extract":"{EXTRACT}"}}"#);
+    let json = format!(
+        r#"{{"id":"bern","name":"Bern","extract":"{EXTRACT}","content":{}}}"#,
+        orqwa_osm::detail::CONTENT
+    );
     std::fs::write(record, json).unwrap();
 }
 

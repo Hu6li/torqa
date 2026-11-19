@@ -1,0 +1,17 @@
+[
+  {
+    "file": "roof_tiles_diff_1k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles/roof_tiles_diff_1k.jpg",
+    "sha256": "1b30c1f0a9d3f761afb1354d95b36990fc670fac5f811889af8cb2ab682c8e66"
+  },
+  {
+    "file": "roof_tiles_nor_gl_1k.exr",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/exr/1k/roof_tiles/roof_tiles_nor_gl_1k.exr",
+    "sha256": "8182a0b24fdb8f640d42d0ff0ad886b56fb01478d62e96b6921748012ad1db17"
+  },
+  {
+    "file": "roof_tiles_rough_1k.exr",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/exr/1k/roof_tiles/roof_tiles_rough_1k.exr",
+    "sha256": "2337a1c0f1cb6b076347575bb93ff44ac499d5fde5e7d263022589ab961fcbaa"
+  }
+]

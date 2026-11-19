@@ -348,6 +348,8 @@ fn add_building(
         .number("render_height")
         .filter(|&h| h > 0.0 && (h - DEFAULT_RENDER_HEIGHT).abs() > f64::EPSILON);
     let color = color(tags.text("colour"));
+    let min_height = tags.number("render_min_height").filter(|&h| h > 0.0);
+    let in_parts = matches!(tags.0.get("hide_3d"), Some(Value::Bool(true)));
     // Buildings with equal tags arrive merged into one feature, so neither the feature nor
     // its id stands for a single building: each polygon is one.
     for polygon in polygons(geometry) {
@@ -363,6 +365,10 @@ fn add_building(
             height,
             levels: None,
             color,
+            min_height,
+            in_parts,
+            kind: None,
+            shape: None,
         });
     }
 }
@@ -380,7 +386,7 @@ fn bounds_centre(ring: &LineString<f64>) -> Option<(f64, f64)> {
 
 /// A mapped façade colour (`building:colour`, or a material's colour): `#rrggbb`, `#rgb` or a
 /// name. Named colours are the muted tones façades have rather than pure CSS colours.
-fn color(value: &str) -> Option<[f32; 3]> {
+pub(crate) fn color(value: &str) -> Option<[f32; 3]> {
     let value = value.trim().to_ascii_lowercase();
     let named = match value.as_str() {
         "white" => Some([0.93, 0.93, 0.91]),
@@ -510,6 +516,11 @@ fn road_details(tags: &Tags) -> RoadDetails {
             || tags.number("oneway").is_some_and(|n| n.abs() == 1.0),
         ramp: tags.text("ramp") == "1" || tags.number("ramp") == Some(1.0),
         roundabout: false,
+        #[allow(clippy::cast_possible_truncation)] // clamped to the few levels mapped
+        layer: tags
+            .number("layer")
+            .or_else(|| tags.text("layer").trim().parse().ok())
+            .map_or(0, |layer| layer.round().clamp(-5.0, 5.0) as i8),
     }
 }
 
@@ -822,6 +833,34 @@ mod tests {
                 .all(|b| b.outline.first() == b.outline.last())
         );
         assert!(data.buildings.iter().any(|b| b.height.is_some()));
+    }
+
+    #[test]
+    fn decodes_buildings_drawn_in_parts_and_parts_raised_off_the_ground() {
+        let mut data = MapData::default();
+        merge(
+            14,
+            (8530, 5766),
+            include_bytes!("../tests/data/14_8530_5766.pbf").to_vec(),
+            &mut data,
+        )
+        .unwrap();
+        let outlines = data.buildings.iter().filter(|b| b.in_parts).count();
+        let raised = data
+            .buildings
+            .iter()
+            .filter(|b| b.min_height.is_some())
+            .count();
+        assert!(
+            outlines > 0 && raised > 0,
+            "{outlines} outlines, {raised} raised"
+        );
+        assert!(
+            data.buildings
+                .iter()
+                .filter_map(|b| b.min_height.zip(b.height))
+                .all(|(min, height)| min > 0.0 && min < height)
+        );
     }
 
     #[test]

@@ -3,16 +3,18 @@
 //! region (`.osm.pbf`, from Geofabrik) a rider asked for, and kept in the map cache.
 
 pub(crate) mod apply;
+mod census;
 mod extract;
 mod geofabrik;
 mod pbf;
 mod regions;
 
+pub use census::{BuildingCensus, SHAPE_TAGS, building_census};
 pub use extract::{Extract, Stage, VERSION, extract};
 pub use geofabrik::{Geofabrik, INDEX, Latest, Offer, cached_offers};
 pub use regions::{
-    DOWNLOADS, Kept, Region, download_path, download_source, for_course, install, installed, kept,
-    remove,
+    CONTENT, DOWNLOADS, Kept, Region, download_path, download_source, for_course, install,
+    installed, kept, remove,
 };
 
 use std::collections::BTreeSet;
@@ -21,7 +23,7 @@ use std::path::Path;
 use orqwa_domain::files::UsedFiles;
 use tracing::warn;
 
-use extract::{CELL_ZOOM, Cell, Roundabout, SurfaceWay, cell_path};
+use extract::{CELL_ZOOM, Cell, MappedAt, Roundabout, SurfaceWay, cell_path};
 
 /// The map detail around a route, from the extracts it was asked of (see
 /// [`crate::Osm::with_detail`]).
@@ -33,6 +35,8 @@ pub struct Detail {
     surfaces: Vec<SurfaceWay>,
     /// Roads going round a roundabout, each once.
     roundabouts: Vec<Roundabout>,
+    /// What buildings are, at points within them.
+    buildings: Vec<MappedAt>,
 }
 
 impl Detail {
@@ -48,6 +52,10 @@ impl Detail {
 
     pub(crate) fn roundabouts(&self) -> &[Roundabout] {
         &self.roundabouts
+    }
+
+    pub(crate) fn buildings(&self) -> &[MappedAt] {
+        &self.buildings
     }
 }
 
@@ -79,6 +87,7 @@ pub(crate) async fn load(
                     used.record(&path);
                     detail.surfaces.extend(content.surfaces);
                     detail.roundabouts.extend(content.roundabouts);
+                    detail.buildings.extend(content.buildings);
                     found = true;
                 }
                 Err(error) => warn!(path = %path.display(), %error, "map detail unreadable"),
@@ -93,6 +102,9 @@ pub(crate) async fn load(
     detail.surfaces.dedup_by_key(|way| way.id);
     detail.roundabouts.sort_by_key(|way| way.id);
     detail.roundabouts.dedup_by_key(|way| way.id);
+    // The same building in two extracts is at the same point.
+    detail.buildings.sort_by_key(|building| building.at);
+    detail.buildings.dedup_by_key(|building| building.at);
     detail
 }
 
@@ -115,7 +127,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let cell = Cell {
             surfaces,
-            roundabouts: Vec::new(),
+            ..Cell::default()
         };
         std::fs::write(path, serde_json::to_vec(&cell).unwrap()).unwrap();
     }

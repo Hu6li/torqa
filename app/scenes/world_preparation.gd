@@ -35,7 +35,14 @@ static func prepare(
 			world._streaming.prioritize(world, focus)
 		var nearby: Vector2i = world._streaming.nearby_progress()
 		progress.call(nearby.x, nearby.y)
-		if world._streaming.nearby_ready():
+		var detail_focus: Vector2 = Vector2(focus.x, -focus.y)
+		world._building_detail_streaming.update(
+			detail_focus, orqwa.world_building_details, orqwa.let_go_of_building_details
+		)
+		if (
+			world._streaming.nearby_ready()
+			and world._building_detail_streaming.ready_at(detail_focus)
+		):
 			return true
 		await world.get_tree().process_frame
 	return false
@@ -45,6 +52,7 @@ static func prepare(
 static func restart(world: RideWorld) -> void:
 	world._chunk_revision += 1
 	world._streaming.reset()
+	world._building_detail_streaming.reset()
 	for chunk: Node in world._terrain.get_children():
 		world._terrain.remove_child(chunk)
 		chunk.queue_free()

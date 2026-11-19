@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://shaders/winter.gdshaderinc"
+#include "res://shaders/building_interior.gdshaderinc"
 // Materials of the Blender-made building models (R89, ADR 0020, art/buildings): textures baked
 // in Blender (plaster, clay tiles, slate, boards, masonry, gravel) by the models' coordinates in
 // metres, tinted by palette colours; glass dark and reflective, metal and copper with a sheen,
@@ -30,6 +31,7 @@ const int LEADED = 17;
 const int ACCENT = 18;
 const int FLAT_ROOF = 19;
 const int PAINTED_WOOD = 20;
+const int GLASS_DETAIL = 21;
 
 uniform int pattern = 0;
 uniform bool autumn_flowers_hidden = false;
@@ -38,6 +40,8 @@ uniform vec4 shutter_colors[4] : source_color;
 uniform vec4 flower_colors[3] : source_color;
 uniform vec3 gold : source_color = vec3(0.957, 0.757, 0.431);
 uniform bool textured = false;
+uniform bool roughness_mapped = false;
+uniform sampler2D roughness_texture : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float tile = 2.0;
@@ -47,6 +51,7 @@ varying float variant;
 varying vec3 world_position;
 varying float height_up;
 varying vec3 winter_normal;
+varying float window_seed;
 
 // A number in [0, 1) for the lattice point `p`, exact far from the origin (see ground.gdshaderinc).
 float hash(vec2 p) {
@@ -68,6 +73,7 @@ void vertex() {
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	height_up = VERTEX.y;
 	winter_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
+	window_seed = UV2.x;
 }
 
 void fragment() {
@@ -88,6 +94,10 @@ void fragment() {
 		// Dark panes mirroring the sky, each a little different, as rooms behind them are.
 		tint = color * (0.45 + 0.2 * hash(floor(world_position.xz * 0.8) + floor(world_position.y)));
 		roughness = 0.04;
+		specular = 0.5;
+	} else if (pattern == GLASS_DETAIL) {
+		tint = building_interior(vec2(UV.x, 1.0 - UV.y), fract(window_seed + variant * 0.713));
+		roughness = 0.13;
 		specular = 0.5;
 	} else if (pattern == SHUTTER) {
 		// Some buildings have none; the others one of the palette's shutter colours.
@@ -148,6 +158,9 @@ void fragment() {
 			: texel * tint * 1.25;
 		NORMAL_MAP = vec3(texture(normal_texture, uv).rg, 1.0);
 		NORMAL_MAP_DEPTH = 1.0;
+		if (roughness_mapped) {
+			roughness = texture(roughness_texture, uv).r;
+		}
 	}
 	// Walls darken towards the ground, where rain splashes and dirt collects.
 	if (pattern == PLASTER || pattern == STONE || pattern == WOOD || pattern == WOOD_DARK

@@ -152,6 +152,12 @@ fn assets() -> String {
         text.push('\n');
     }
     text.push_str(
+        "\nBuilding textures (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/):\n\
+         Painted Plaster Wall by Amal Kumar (https://polyhaven.com/a/painted_plaster_wall);\n\
+         Roof Tiles by Stephan Seeliger (https://polyhaven.com/a/roof_tiles).\n\
+         Albedo neutralized for regional colours; normal and roughness maps converted by ORQWA.\n",
+    );
+    text.push_str(
         "\nRide audio textures (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/):\n\
          Wind and Leaves.wav by ecfike (https://freesound.org/people/ecfike/sounds/183496/);\n\
          Light Rain by soundrecorder7 (https://freesound.org/people/soundrecorder7/sounds/167034/);\n\

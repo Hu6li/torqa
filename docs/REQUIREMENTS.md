@@ -737,9 +737,63 @@ estimated additional need, usable memory after Android's reserve, and the reserv
 only additional allocations after the free-memory snapshot, and use the selected graphics
 residency even when generation finishes the whole course before riding.
 
+## Close building detail
+
+| ID | Requirement |
+|---|---|
+| R256 | Extends R43, R89 and R101 (2026-11-07, #521): **Ultra** adds nearby building detail: glazing bars, main-roof gutters and downpipes on fitted models, plus raised frames, sills, glazing and trim on supported generated façade panels, with varied simulated home interiors: mostly plain rooms, some curtains, blinds or nets. Shop windows show a lit sales floor, never curtains. A building is never see-through while it changes between its ordinary and close appearances, or between model and shell. Draw this detail within 160 m with a short fade; allocate façade buffers only around the camera and release them as it moves, rather than retaining them for the whole course. View distance overrides do not enable it on other presets or extend its range. Low, Medium and High retain their original building geometry and do not upload the extra façade meshes. Shared scanned plaster and roof materials preserve regional colours. Preset changes refresh already uploaded scenery, including when reusing a kept course, without regeneration; world inputs, model names and instance data remain valid. Materials work offline and across seasons. |
+
+## Buildings on slopes
+
+| ID | Requirement |
+|---|---|
+| R257 | Refines R16 and R89 (2026-11-18, #554): **a building on a slope is set into it** as hillside buildings are dug in. Its ground floor lies at the mean ground under it, buried at most about a storey (2.4 m) on the uphill side, where the unchanged terrain hides the lower walls; fitted models, whose doors may face uphill, are set in at most 1 m. No storey shows windows on a wall whose ground lies over their sills. Downhill, where the ground falls below the floor, the wall shows as many lower storeys as fit with their windows clear of the ground, at most four, instead of a blank plinth; a semi-basement's floor may lie up to 1 m below the ground. Only the remainder is plinth, so windows start within a storey of the downhill ground. Fitted models, whose basement is a plain stone plinth, are used only where the ground falls less than 1.8 m below their floor; steeper plots get the generated building with its lower storeys. Kept worlds offer regeneration (R101). |
+
+## Buildings mapped in parts and mapped heights
+
+| ID | Requirement |
+|---|---|
+| R258 | Refines R16 and R89 (2026-11-18): **a building mapped in parts stands as its parts**. The map tiles carry the outline of such a building, marked as drawn in parts, beside its parts: the outline is not drawn as a building of its own, and each part stands on the outline's ground with its own height. A part mapped from a height above the ground (an overhang, a passage, the upper stage of a tower) starts there and is closed from below; trim and balconies start there too. Churches, castles and lighthouses mapped in parts stay whole, from their outline, as before. Outlines still keep plants and props off the ground. **Fitted models follow a mapped height**: where the map gives one, a model fits only if it reaches the mapped walls within 15 %, stretched up or down to them; otherwise the building is generated. Models without a mapped height keep theirs. Kept worlds offer regeneration (R101). |
+
+## Buildings on their mapped outlines
+
+| ID | Requirement |
+|---|---|
+| R259 | Refines R16, R89 and R258 (2026-11-18): **buildings stand on their mapped outline under a roof over it**. A building is drawn as the rectangle around its outline only where the outline fills at least 95 % of it; gable roofs, balconies and chimneys stay on those. Every other building's walls follow its outline, and a pitched roof over it rises from every wall at the same pitch to hips, valleys and ridges, eaves standing out all round, instead of a band with a flat top. Fitted models, drawn on that rectangle, stand only on outlines filling 90 % of it. Flat roofs keep following their outline. Kept worlds offer regeneration (R101). |
+
+## What buildings are
+
+| ID | Requirement |
+|---|---|
+| R260 | Extends R142, R144 and R258 (2026-11-18): **where a region's map detail is downloaded, buildings are what the map says they are** (`building=*`). Garages, sheds and barns are drawn without windows, carports and shelters as a roof on posts open below, churches as churches even without a church point, factories and warehouses as halls, shops and offices, public buildings and hotels as such, apartments as blocks where they are large, and houses and farmhouses stay homes, as their region and elevation build them. Buildings the map says nothing more of, and courses without map detail, are drawn as before. Regions downloaded before keep working and are prepared again from their downloads in the background; courses carry the detail they used, so a course opened elsewhere draws the same buildings. Kept worlds offer regeneration (R101). |
+
+## Roofs, colours and materials the map gives
+
+| ID | Requirement |
+|---|---|
+| R261 | Extends R260 (2026-11-18): **where a region's map detail is downloaded, a building's roof, levels, colours and materials are those the map gives**. A mapped roof shape is built: flat, gabled, hipped, pyramidal (with domes and onions as pyramids) or of one slope, with half-hipped and mansard roofs hipped and gambrel roofs gabled; a ridge mapped across the building runs across it, and a mapped roof height is its rise. Mapped levels set the storeys. A mapped wall or roof colour keeps its hue, its lightness and saturation kept to what buildings show, walls light; a colour no longer snaps to the nearest palette colour. Timber walls show boards, metal walls cladding, glass walls bands of glass, brick, stone and concrete walls their colour where none is mapped; slate roofs slate, metal and glass roofs sheet. Fitted models stand only where their roof is the one mapped. Regions downloaded before are prepared again. Kept worlds offer regeneration (R101). |
+
+## Buildings assembled from parts
+
+| ID | Requirement |
+|---|---|
+| R262 | Refines R89 and R259 (2026-11-18): **homes no model fits are assembled from parts on their mapped outline**. Houses, chalets and farmhouses of the general region whose walls have windows, standing on the ground and without a shop front, get a window on every storey of every wall where their walls draw one, with frame, mullion and transom, sill, and shutters and flower boxes as models have them, and a front door with a canopy in the middle of the ground floor of the longest wall whose ground there lies by the floor, never sunk in the ground; a storey the ground buries on a wall, on a slope, gets no windows there. Parts show up close, as models do, over the windows their walls draw further off; the walls stand at every distance. Gables and lower storeys keep the windows the walls draw. Kept worlds of an earlier format are built again. |
+
+## Buildings by the road
+
+| ID | Requirement |
+|---|---|
+| R263 | Refines R16 and R259 (2026-11-19, #100, #138): **no building is left out for the road, and the road stays clear**. The ridden road lies in the street its buildings line: where houses stand on one side closer to the map's line than the road's estimated width allows, the road moves away from them (as far as the map's line stays on it) and narrows by the rest; between houses on both sides it narrows, down to 3 m, easing in and out; riders, sidewalks and the ground beside it follow. Smoothing the route keeps to the map's line where buildings line it. A building whose drawn rectangle alone would reach the road stands on its own walls. What still stands on the road is cut along its edges: the pieces beside it stand, and the piece across its middle is raised at least 4 m above the road for riders to pass beneath, as through a gate. A street on the ground running through a building cuts it the same way into a passage; service roads, driveways and car park aisles lead into buildings and leave them whole, as does a street ending inside one, roads on another level pass beneath or above, and streets pass beneath roofs on posts. Buildings mapped raised off the ground (bridges between buildings) span the road whole, and buildings above tunnels stay. Kept worlds offer regeneration (R101). |
+
+## Roofs like the neighbours'
+
+| ID | Requirement |
+|---|---|
+| R264 | Refines R261 (2026-11-19): **where a region's map detail is downloaded, a building whose roof the map leaves out takes the roofs mapped around it**: flat, gabled or hipped as often as the mapped roofs of buildings its size within a few kilometres are, so a village of pitched roofs has no flat-roofed hotels, schools or barns, and a town centre of flat roofs keeps them. Where too few roofs are mapped nearby, each kind of building keeps its own roof. The same building gets the same roof every time. Kept worlds offer regeneration (R101). |
+
 ## Distant land
 
 | ID | Requirement |
 |---|---|
-| R256 | Refines R45 and #75 (2026-11-19, #560): **the land never has holes where the route runs on into the distance**. The coarse distant land also lies under the route's detailed corridor and stands in for each chunk wherever that chunk is not drawn: beyond the drawn distance, before it is loaded, while it is still being built, or when it cannot be read. On every preset, mountains along the route therefore stay whole out to the horizon, without sky showing through them or the sky's ground colour lying across a valley. Nearby chunks keep their detailed ground unchanged. Worlds kept from before offer to be built again (R101). |
-| R257 | Refines R256 (2026-11-19, #560): **lakes and the sky stay whole too**. A lake covers all the detailed ground it reaches, also where the map's tiles cut it into pieces whose corners lie beyond the corridor; no bare lake bed shows through it as a flat slab. The sky's clouds show no straight seam, however long the rider has ridden. Worlds kept from before offer to be built again (R101). |
+| R265 | Refines R45 and #75 (2026-11-19, #560): **the land never has holes where the route runs on into the distance**. The coarse distant land also lies under the route's detailed corridor and stands in for each chunk wherever that chunk is not drawn: beyond the drawn distance, before it is loaded, while it is still being built, or when it cannot be read. On every preset, mountains along the route therefore stay whole out to the horizon, without sky showing through them or the sky's ground colour lying across a valley. Nearby chunks keep their detailed ground unchanged. Worlds kept from before offer to be built again (R101). |
+| R266 | Refines R265 (2026-11-19, #560): **lakes and the sky stay whole too**. A lake covers all the detailed ground it reaches, also where the map's tiles cut it into pieces whose corners lie beyond the corridor; no bare lake bed shows through it as a flat slab. The sky's clouds show no straight seam, however long the rider has ridden. Worlds kept from before offer to be built again (R101). |

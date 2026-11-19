@@ -12,7 +12,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
-use orqwa_osm::{Road, RoadClass, Structure};
+use orqwa_osm::{Building, Road, RoadClass, Structure};
 
 use crate::gpx::RawPoint;
 
@@ -78,6 +78,11 @@ const STEP_M: f64 = 5.0;
 /// ...and it is smoothed so it bends like a road, no point moving further than this from where
 /// it was put: corners round off, the route stays on its road.
 const MAX_SHIFT_M: f64 = 2.5;
+/// Where buildings line the road (a wall within `BUILT_REACH_M` of the point), the map's line
+/// runs between them and rounding a corner would take the road into them: points move at most
+/// this far.
+const BUILT_SHIFT_M: f64 = 1.0;
+const BUILT_REACH_M: f64 = 8.0;
 /// Pairs of smoothing passes; each pair shrinks and re-inflates the line (Taubin), which takes
 /// out kinks and jitter but keeps long bends as they are.
 const SMOOTHING_PAIRS: usize = 8;
@@ -166,7 +171,18 @@ struct Node {
 }
 
 /// The track on the roads it rides, smoothed, and the bridges and tunnels it uses.
+#[cfg(test)]
 pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Snapped {
+    to_roads_among(track, roads, &[])
+}
+
+/// As [`to_roads`], smoothed less where `buildings` line the road: there the map's line is
+/// all that keeps the road between them.
+pub(crate) fn to_roads_among(
+    track: &[RawPoint],
+    roads: &[Road],
+    buildings: &[Building],
+) -> Snapped {
     let Some(first) = track.first() else {
         return Snapped::default();
     };
@@ -209,7 +225,8 @@ pub(crate) fn to_roads(track: &[RawPoint], roads: &[Road]) -> Snapped {
     remove_folds(&mut nodes);
     let mut nodes = densify(&nodes);
     straighten_excursions(&mut nodes);
-    let nodes = smooth(&nodes);
+    let limits = shift_limits(&nodes, buildings, &flat);
+    let nodes = smooth(&nodes, &limits);
 
     used.sort_unstable();
     used.dedup();
@@ -1225,9 +1242,49 @@ fn is_excursion(nodes: &[Node], start: usize, end: usize, lead: usize) -> bool {
     one_side && (1.0..=EXCURSION_OFFSET_M).contains(&widest) && turned >= EXCURSION_TURN
 }
 
-/// Rounds corners and takes out jitter, keeping every point within `MAX_SHIFT_M` of where it
-/// was put; the ends stay.
-fn smooth(nodes: &[Node]) -> Vec<Node> {
+/// How far smoothing may move each node: `MAX_SHIFT_M`, or `BUILT_SHIFT_M` within
+/// `BUILT_REACH_M` of a building's wall.
+fn shift_limits(nodes: &[Node], buildings: &[Building], flat: &Flat) -> Vec<f64> {
+    let mut limits = vec![MAX_SHIFT_M; nodes.len()];
+    let key = |(x, y): (f64, f64)| (cell(x), cell(y));
+    let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (i, node) in nodes.iter().enumerate() {
+        cells.entry(key(node.anchor)).or_default().push(i);
+    }
+    for building in buildings {
+        let Some(&(lat, lon)) = building.outline.first() else {
+            continue;
+        };
+        // Most buildings stand far from the track: cells are larger than a building.
+        let (cx, cy) = key(flat.to_xy(lat, lon));
+        if !(cx - 1..=cx + 1).any(|x| (cy - 1..=cy + 1).any(|y| cells.contains_key(&(x, y)))) {
+            continue;
+        }
+        let ring: Vec<(f64, f64)> = building
+            .outline
+            .iter()
+            .map(|&(lat, lon)| flat.to_xy(lat, lon))
+            .collect();
+        for pair in ring.windows(2) {
+            let (low, high) = (key(pair[0]), key(pair[1]));
+            for x in low.0.min(high.0) - 1..=low.0.max(high.0) + 1 {
+                for y in low.1.min(high.1) - 1..=low.1.max(high.1) + 1 {
+                    for &i in cells.get(&(x, y)).into_iter().flatten() {
+                        let near = project(nodes[i].anchor, pair[0], pair[1]).0;
+                        if distance(nodes[i].anchor, near) <= BUILT_REACH_M {
+                            limits[i] = BUILT_SHIFT_M;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    limits
+}
+
+/// Rounds corners and takes out jitter, keeping every point within its limit (`limits`) of
+/// where it was put; the ends stay.
+fn smooth(nodes: &[Node], limits: &[f64]) -> Vec<Node> {
     let mut out = nodes.to_vec();
     for pass in 0..2 * SMOOTHING_PAIRS {
         // Taubin's factors: shrink, then inflate a little more.
@@ -1239,8 +1296,8 @@ fn smooth(nodes: &[Node]) -> Vec<Node> {
             let anchor = out[i].anchor;
             let (dx, dy) = (moved.0 - anchor.0, moved.1 - anchor.1);
             let shift = dx.hypot(dy);
-            out[i].at = if shift > MAX_SHIFT_M {
-                let scale = MAX_SHIFT_M / shift;
+            out[i].at = if shift > limits[i] {
+                let scale = limits[i] / shift;
                 (anchor.0 + dx * scale, anchor.1 + dy * scale)
             } else {
                 moved
@@ -1693,6 +1750,52 @@ mod tests {
             sharpest_turn(&snapped) < 65.0,
             "{}",
             sharpest_turn(&snapped)
+        );
+    }
+
+    #[test]
+    fn corners_lined_by_buildings_keep_to_the_maps_line() {
+        // The same corner, a house standing in it 2 m off both streets: rounding the corner
+        // as in open country would take the road into the house.
+        let north = road(&[(0.0, -10.0), (0.0, 200.0)]);
+        let east = road(&[(0.0, 200.0), (300.0, 200.0)]);
+        let track: Vec<RawPoint> = [(0.0, 0.0), (0.0, 120.0), (90.0, 200.0), (250.0, 200.0)]
+            .iter()
+            .map(|&(x, y)| point(x, y))
+            .collect();
+        let streets = [(0.0, -10.0), (0.0, 200.0), (300.0, 200.0)];
+        let house = |corners: &[(f64, f64)]| Building {
+            id: 1,
+            outline: corners.iter().map(|&c| flat().to_lat_lon(c)).collect(),
+            height: None,
+            levels: None,
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        };
+        let corner = house(&[
+            (2.0, 188.0),
+            (12.0, 188.0),
+            (12.0, 198.0),
+            (2.0, 198.0),
+            (2.0, 188.0),
+        ]);
+
+        let open = xy(&to_roads(&track, &[north.clone(), east.clone()]).track);
+        let built = xy(&to_roads_among(&track, &[north, east], &[corner]).track);
+
+        let furthest = |line: &[(f64, f64)]| {
+            line.iter()
+                .map(|&p| off(&streets, p))
+                .fold(0.0_f64, f64::max)
+        };
+        assert!(furthest(&open) > BUILT_SHIFT_M, "{}", furthest(&open));
+        assert!(
+            furthest(&built) <= BUILT_SHIFT_M + 1e-6,
+            "{}",
+            furthest(&built)
         );
     }
 

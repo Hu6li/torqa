@@ -288,8 +288,12 @@ impl Urban {
             streets: std::sync::Arc::clone(streets),
             ..Self::default()
         };
-        for plot in plots {
-            let outline = buildings::drawn_outline(&plot.footprint);
+        // The ground under a building's piece over a passage stays the street's.
+        for plot in plots
+            .into_iter()
+            .filter(|p| !matches!(p.cut, buildings::passage::Cut::Over(_)))
+        {
+            let outline = plot.outline();
             let mut mask = outline.clone();
             if signed_area(&mask) < 0.0 {
                 mask.reverse();

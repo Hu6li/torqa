@@ -314,3 +314,10 @@ tasks to finish before starting its horizon and whole-route preparation; ride an
 starts poll the same condition without blocking the frame thread. Cooperative checks at batch
 boundaries also stop builds whose cached elevation futures never yield. Background takeover
 keeps the existing task, and resuming a store still waits for every job that wrote into it.
+
+## Amendment — 2026-11-18: buildings assembled from parts (format 4)
+
+Each building cell of a chunk also holds the walls of the buildings assembled from parts
+there (`BuildingCell::walls`, ADR 0041 step 7), stored after its shells. Worlds of format 3
+are not read: **Ride** builds and keeps them again. Generator 48.
+

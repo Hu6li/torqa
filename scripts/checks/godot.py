@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ERROR = re.compile(r"SCRIPT ERROR|SHADER ERROR|^ERROR:", re.MULTILINE)
 HEADLESS = """
 ride ui group_ui seasons touch summary workouts devices window dialog settings benchmark
-tree_lod hud course course_loading rider profile analysis upload error moment ride_clock
-picked_file
+tree_lod building_detail hud course course_loading rider profile analysis upload error moment
+ride_clock picked_file
 """.split()
 
 

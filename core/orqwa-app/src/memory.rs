@@ -467,6 +467,10 @@ mod tests {
                 height: None,
                 levels: None,
                 color: None,
+                min_height: None,
+                in_parts: false,
+                kind: None,
+                shape: None,
             });
         }
         let near = estimate(&route, &map, Meters(1000.0), 8);

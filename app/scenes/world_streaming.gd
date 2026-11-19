@@ -130,7 +130,10 @@ func upload_some(world: RideWorld) -> void:
 	if world._benchmark != null:
 		if _uploaded.is_empty():
 			var density: float = world._quality["tree_density"]
-			_uploaded[0] = _add_chunk(world, world._benchmark.chunk(density), -1)
+			var detailed: bool = world._quality["building_detail"]
+			_uploaded[0] = _add_chunk(
+				world, world._benchmark.chunk_with_building_detail(density, detailed), -1
+			)
 		return
 	follow(world)
 	var began: int = Time.get_ticks_usec()
@@ -244,6 +247,7 @@ func _let_go(world: RideWorld, index: int) -> void:
 	var node: Node3D = _uploaded[index]
 	_uploaded.erase(index)
 	_fill_stale = true
+	world._building_detail_streaming.unregister(index)
 	if node != null:
 		world._terrain.remove_child(node)
 		node.queue_free()
@@ -290,9 +294,23 @@ func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 	)
 	buildings.visibility_range_end = RideWorld.DETAIL_RANGE * world._distance
 	node.add_child(buildings)
+	var detailed: bool = world._quality["building_detail"]
+	if detailed and world._benchmark != null:
+		var detail_arrays: Array = chunk.get("building_details", [])
+		BuildingDetails.add_to(node, detail_arrays)
+	elif detailed and buildings.mesh.get_surface_count() > 0:
+		world._building_detail_streaming.register(index, node, buildings.mesh.get_aabb())
 	var modelled: Array = chunk.get("modelled", [])
+	var model_range: float = world._quality["model_range"]
 	for cell: Dictionary in modelled:
-		world._add_modelled(node, cell)
+		BuildingModels.add_to(
+			node,
+			cell,
+			world._building_material,
+			model_range,
+			RideWorld.DETAIL_RANGE * world._distance,
+			detailed
+		)
 	var plants: Dictionary = chunk.get("plants", {})
 	var tree_range: float = world._quality["tree_range"]
 	var tree_cell: float = world._quality["tree_cell"]

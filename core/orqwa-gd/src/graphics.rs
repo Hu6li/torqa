@@ -76,6 +76,17 @@ impl OrqwaGraphicsBenchmark {
     fn chunk(&self, density: f64) -> VarDictionary {
         chunk_arrays(&self.scene.chunks[0], density)
     }
+
+    /// Calibrates Ultra with the same close building details as a ride.
+    #[func]
+    fn chunk_with_building_detail(&self, density: f64, detailed: bool) -> VarDictionary {
+        chunk_arrays_for_graphics(
+            &self.scene.chunks[0],
+            density,
+            orqwa_domain::season::Season::Summer,
+            detailed,
+        )
+    }
 }
 
 /// The same conversion for course and calibration chunks, including quality's tree subset.
@@ -88,6 +99,16 @@ pub(super) fn chunk_arrays_for_season(
     chunk: &orqwa_world::TerrainChunk,
     tree_density: f64,
     season: orqwa_domain::season::Season,
+) -> VarDictionary {
+    chunk_arrays_for_graphics(chunk, tree_density, season, false)
+}
+
+/// Derives presentation-only building additions only for the preset that draws them.
+pub(super) fn chunk_arrays_for_graphics(
+    chunk: &orqwa_world::TerrainChunk,
+    tree_density: f64,
+    season: orqwa_domain::season::Season,
+    detailed: bool,
 ) -> VarDictionary {
     let [x, y, z] = chunk.center;
     let (grass, flowers) = chunk.trees.small_plants(season.flower_share());
@@ -121,10 +142,15 @@ pub(super) fn chunk_arrays_for_season(
             for (name, buffer) in &cell.models {
                 models.set(name.as_str(), &PackedFloat32Array::from(buffer.as_slice()));
             }
-            vdict! { "models" => &models, "shells" => &mesh_arrays(&cell.shells) }.to_variant()
+            vdict! {
+                "models" => &models,
+                "shells" => &mesh_arrays(&cell.shells),
+                "walls" => &mesh_arrays(&cell.walls),
+            }
+            .to_variant()
         })
         .collect();
-    vdict! {
+    let mut result = vdict! {
         "center" => Vector3::new(x, y, z),
         "terrain" => &mesh_arrays(&chunk.mesh),
         "buildings" => &mesh_arrays(&chunk.buildings),
@@ -139,5 +165,13 @@ pub(super) fn chunk_arrays_for_season(
         "wires" => &mesh_arrays(&chunk.props.wires),
         "grass" => &PackedFloat32Array::from(grass.as_ref()),
         "flowers" => &PackedFloat32Array::from(flowers.as_ref()),
+    };
+    if detailed {
+        let details: VarArray = orqwa_world::building_details(&chunk.buildings)
+            .iter()
+            .map(|mesh| mesh_arrays(mesh).to_variant())
+            .collect();
+        result.set("building_details", &details);
     }
+    result
 }

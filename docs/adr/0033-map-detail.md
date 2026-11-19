@@ -129,3 +129,16 @@ built again on the next ride (R101) and the old one is tidied away. The route ke
 the track as recorded, so the rider's records on the course stay its own. A course opened
 from outside the library, or with no region ready, stays as it was; a video course keeps
 what it carries.
+
+## Amendment 2026-11-18 — buildings, and versions of what extracts hold
+
+Extracts also keep what buildings are, as a point and a kind each (ADR 0041, step 5).
+Changing what they hold no longer raises `detail-v1`: courses carry their cells under it, and
+one opened elsewhere must still find them there. Each region's record says what its extract
+holds (`content`); a region whose extract holds less than `CONTENT` is not ready, and its
+download is prepared again at start-up, as one stopped while being read. Its extract's name
+ends in what it holds (`-c2`), so courses carrying the extract from before take the new one
+when opened (R144). The Switzerland
+extract grows from 36.9 MB to 69.0 MB, and preparing DACH takes 1.8 GB at its peak, up from
+0.9 GB; see ADR 0041.
+

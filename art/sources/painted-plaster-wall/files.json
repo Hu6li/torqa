@@ -1,0 +1,17 @@
+[
+  {
+    "file": "painted_plaster_wall_nor_gl_1k.exr",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/exr/1k/painted_plaster_wall/painted_plaster_wall_nor_gl_1k.exr",
+    "sha256": "54bf692f10b04c5d1fd92715822df3624fbbdea82841b34af989947cdbaa52f6"
+  },
+  {
+    "file": "painted_plaster_wall_rough_1k.exr",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/exr/1k/painted_plaster_wall/painted_plaster_wall_rough_1k.exr",
+    "sha256": "48dc55bafd92b447753ae4097bdf0582702d57b76d64dbdac67082fcd13b786b"
+  },
+  {
+    "file": "painted_plaster_wall_diff_1k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/painted_plaster_wall/painted_plaster_wall_diff_1k.jpg",
+    "sha256": "440310f05af089f2c93353167573403cbc3f805948203237b5d26431eeb9e19c"
+  }
+]

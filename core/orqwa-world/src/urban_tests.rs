@@ -20,6 +20,10 @@ fn house(id: i64, east: f64, north: f64, half: f64) -> Building {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     }
 }
 
@@ -272,9 +276,11 @@ async fn sidewalk_clipping_respects_the_drawn_outline_of_an_irregular_building()
         height_on(&world, |c| &c.urban, 3.3, -501.5).is_some(),
         "the strip outside the drawn building remains open"
     );
+    // Filling 77 % of its rectangle, it is drawn on its mapped footprint (ADR 0041, step 4):
+    // its walls keep sidewalks out, its notch does not.
     assert!(
-        height_on(&world, |c| &c.urban, 4.7, -501.5).is_none(),
-        "the fitted model occupies the notch in its mapped footprint"
+        height_on(&world, |c| &c.urban, 5.5, -498.5).is_none(),
+        "a sidewalk inside the building's walls"
     );
 }
 
@@ -875,6 +881,10 @@ async fn dense_blocks_get_paving_but_parks_and_suburban_gardens_stay_green() {
                 height: None,
                 levels: Some(4.0),
                 color: None,
+                min_height: None,
+                in_parts: false,
+                kind: None,
+                shape: None,
             });
         }
     }
@@ -1008,6 +1018,10 @@ async fn city_benches_use_free_sidewalks_without_blocking_entrances_or_junctions
             height: None,
             levels: Some(2.0),
             color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
         },
     ];
     map.shops.push(at(12.0, 30.0));

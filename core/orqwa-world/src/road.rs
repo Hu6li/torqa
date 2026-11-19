@@ -20,6 +20,52 @@ const BEVEL_DROP: f64 = 0.25;
 const SKIRT_DEPTH: f64 = 1.2;
 const SKIRT_REACH: f64 = 0.8;
 
+/// The narrowest the road is drawn where buildings stand closer to it than its width: a
+/// village lane, room for a car or riders two abreast.
+pub(crate) const NARROWEST: f64 = 3.0;
+/// Walls stand this far off the road's edge, beyond the bevel's lip.
+const WALL_CLEARANCE: f64 = 0.3;
+/// The road moves at most this far off the map's line into the room the buildings leave: as
+/// far as streets' lines in the map lie off the street its buildings line...
+pub(crate) const MAX_SHIFT: f64 = 1.5;
+/// ...and keeps the line this far inside its edge, so that the map's ways of the road ridden
+/// are still seen to be it.
+const ON_LINE: f64 = 0.5;
+/// Widths and shifts change by at most this much per metre along the road (a width change of
+/// 0.2 m per metre, as `set_appearances` eases).
+const EASE: f64 = 0.1;
+
+/// The half width and the shift right of the line a road of `half` width takes in the `room`
+/// (to the nearest wall left and right of the line): as wide as it is, where the walls leave
+/// room, as near the line as they let it, and narrower between walls on both sides.
+fn fit(half: f64, (left, right): (f64, f64)) -> (f64, f64) {
+    let (left, right) = (left - WALL_CLEARANCE, right - WALL_CLEARANCE);
+    let width = (2.0 * half).min(left + right).max(NARROWEST);
+    // The shifts keeping both edges off the walls, if any do.
+    let (low, high) = (width / 2.0 - left, right - width / 2.0);
+    let shift = if low <= high {
+        0.0_f64.clamp(low, high)
+    } else {
+        f64::midpoint(low, high)
+    };
+    (width / 2.0, shift)
+}
+
+/// The cells of an index of segments: those of both ends of each.
+fn cells_of(segments: &[Segment]) -> HashMap<(i64, i64), Vec<usize>> {
+    let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (index, segment) in segments.iter().enumerate() {
+        // Segments are a few metres long, far shorter than a cell: both end cells cover them.
+        for point in [segment.a, segment.b] {
+            let list = cells.entry(cell_of(point.0, point.1)).or_default();
+            if list.last() != Some(&index) {
+                list.push(index);
+            }
+        }
+    }
+    cells
+}
+
 /// Vertices across the road: skirt, bevel and edge on either side.
 pub(crate) const RING: usize = 6;
 /// Where the road turns more than this at a point (radians), it turns in a fan of rings this
@@ -173,6 +219,272 @@ impl RoadIndex {
         self.appearance_at(east, north).width / 2.0
     }
 
+    /// Lays the road on the ground in the room the buildings beside it leave. Its width is mostly
+    /// estimated from its class and its line is the map's, which in villages often runs a metre
+    /// or two off the middle of the street its buildings line: the buildings show where the
+    /// street really is. Each side keeps `WALL_CLEARANCE` off the `walls` (closed rings) on
+    /// it: the road moves away from walls on one side, by at most `MAX_SHIFT` and never so far
+    /// that the map's line leaves it, and narrows between walls on both, down to `NARROWEST`.
+    /// Through a building, as through a gate, it is `NARROWEST` throughout; narrower places
+    /// are left to the buildings ([`crate::buildings::passage`]). Shifts and widths ease in
+    /// and out over the distance other width changes take; bridges and tunnels stay as they
+    /// are.
+    pub(crate) fn fit_between<'a>(&mut self, walls: impl Iterator<Item = &'a [(f64, f64)]>) {
+        let count = self.segments.len();
+        // The nearest wall on each side of every segment: left, right of travel.
+        let mut room = vec![(f64::INFINITY, f64::INFINITY); count];
+        let mut through = vec![false; count];
+        for wall in walls {
+            // Most buildings stand far from the road.
+            let Some(&(east, north)) = wall.first() else {
+                continue;
+            };
+            if self.on_ground_near(east, north).next().is_none() {
+                continue;
+            }
+            for (east, north) in crate::drape::densify(wall, 1.0) {
+                for index in self.on_ground_near(east, north) {
+                    let segment = &self.segments[index];
+                    let (de, dn) = (segment.b.0 - segment.a.0, segment.b.1 - segment.a.1);
+                    let length = de.hypot(dn);
+                    if length < 1e-6 {
+                        continue;
+                    }
+                    // Walls beside the segment bound it; those ahead or behind bound others.
+                    let along = (de * (east - segment.a.0) + dn * (north - segment.a.1)) / length;
+                    if !(0.0..=length).contains(&along) {
+                        continue;
+                    }
+                    let left = (de * (north - segment.a.1) - dn * (east - segment.a.0)) / length;
+                    if left.abs() < WALL_CLEARANCE {
+                        // A wall across the road: it runs into a building here.
+                        through[index] = true;
+                    } else if left > 0.0 {
+                        room[index].0 = room[index].0.min(left);
+                    } else {
+                        room[index].1 = room[index].1.min(-left);
+                    }
+                    let middle = (
+                        f64::midpoint(segment.a.0, segment.b.0),
+                        f64::midpoint(segment.a.1, segment.b.1),
+                    );
+                    through[index] |= crate::buildings::contains(wall, middle);
+                }
+            }
+        }
+        // Where each segment would lie: its half width and its shift right of the line.
+        let mut halves = Vec::with_capacity(count);
+        let mut shifts = Vec::with_capacity(count);
+        for (i, segment) in self.segments.iter().enumerate() {
+            let half = segment.appearance.map_or(0.0, |a| a.width / 2.0);
+            let fixed = segment.surface != Surface::Ground || segment.repeat;
+            let (half, shift) = if fixed {
+                (half, 0.0)
+            } else if through[i] {
+                (half.min(NARROWEST / 2.0), 0.0)
+            } else {
+                fit(half, room[i])
+            };
+            halves.push(half);
+            shifts.push(shift);
+        }
+        self.ease_shifts(&mut shifts, &halves, (&room, &through));
+        for (i, half) in halves.iter_mut().enumerate() {
+            // Shifted less than wanted, the road narrows to keep off the walls.
+            let (left, right) = room[i];
+            let fits = (left - WALL_CLEARANCE + shifts[i]).min(right - WALL_CLEARANCE - shifts[i]);
+            if !through[i] && self.segments[i].surface == Surface::Ground {
+                *half = half.min(fits.max(NARROWEST / 2.0));
+            }
+        }
+        self.ease_narrowing(&mut halves);
+        for (segment, half) in self.segments.iter_mut().zip(&halves) {
+            if let Some(look) = segment.appearance.as_mut() {
+                look.width = look.width.min(2.0 * half);
+            }
+        }
+        self.shift(&shifts);
+    }
+
+    /// Spreads each segment's shift to the segments before and after it, fading by the rate
+    /// width changes ease at, so the road bends into a shift and out of it; each keeps within
+    /// what its own walls, its width and its surface allow.
+    fn ease_shifts(
+        &self,
+        shifts: &mut [f64],
+        halves: &[f64],
+        (room, through): (&[(f64, f64)], &[bool]),
+    ) {
+        let step = |i: usize| {
+            let segment = &self.segments[i];
+            (segment.distance_b - segment.distance_a).max(0.0) * EASE
+        };
+        for line in &self.lines {
+            for reverse in [false, true] {
+                let indices: Vec<_> = if reverse {
+                    line.clone().rev().collect()
+                } else {
+                    line.clone().collect()
+                };
+                // The furthest shift either way carried along, fading.
+                let (mut right, mut left) = (0.0_f64, 0.0_f64);
+                for i in indices {
+                    right = (right - step(i)).max(0.0).max(shifts[i]);
+                    left = (left + step(i)).min(0.0).min(shifts[i]);
+                    let carried = if right > -left { right } else { left };
+                    if carried.abs() > shifts[i].abs() {
+                        shifts[i] = carried;
+                    }
+                }
+            }
+        }
+        // Bridges, tunnels and the way through a building stay; the road bends away from them
+        // gradually.
+        let mut bound: Vec<f64> = self
+            .segments
+            .iter()
+            .zip(halves)
+            .zip(through)
+            .map(|((s, half), &through)| {
+                if s.surface == Surface::Ground && !s.repeat && !through {
+                    MAX_SHIFT.min(half - ON_LINE).max(0.0)
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        for line in &self.lines {
+            for reverse in [false, true] {
+                let indices: Vec<_> = if reverse {
+                    line.clone().rev().collect()
+                } else {
+                    line.clone().collect()
+                };
+                let mut previous: Option<f64> = None;
+                for i in indices {
+                    if let Some(limit) = previous {
+                        bound[i] = bound[i].min(limit + step(i));
+                    }
+                    previous = Some(bound[i]);
+                }
+            }
+        }
+        for (i, shift) in shifts.iter_mut().enumerate() {
+            // A shift carried along stops short of this segment's own walls, where they leave
+            // room for it.
+            let (left, right) = room[i];
+            let (low, high) = (
+                halves[i] - (left - WALL_CLEARANCE),
+                right - WALL_CLEARANCE - halves[i],
+            );
+            if low <= high {
+                *shift = shift.clamp(low, high);
+            }
+            *shift = shift.clamp(-bound[i], bound[i]);
+        }
+    }
+
+    /// Eases every narrowing in and out over the distance other width changes take.
+    fn ease_narrowing(&self, halves: &mut [f64]) {
+        for line in &self.lines {
+            for reverse in [false, true] {
+                let indices: Vec<_> = if reverse {
+                    line.clone().rev().collect()
+                } else {
+                    line.clone().collect()
+                };
+                let mut previous: Option<f64> = None;
+                for i in indices {
+                    let segment = &self.segments[i];
+                    let step = (segment.distance_b - segment.distance_a).max(0.0) * EASE;
+                    if let Some(half) = previous {
+                        halves[i] = halves[i].min(half + step);
+                    }
+                    previous = Some(halves[i]);
+                }
+            }
+        }
+    }
+
+    /// Moves the road's line right of travel by each segment's shift: its corners by the mean
+    /// of the segments meeting there, square to them.
+    fn shift(&mut self, shifts: &[f64]) {
+        if shifts.iter().all(|s| s.abs() < 1e-9) {
+            return;
+        }
+        let right = |s: &Segment| {
+            let (de, dn) = direction(s);
+            (dn, -de)
+        };
+        for line in self.lines.clone() {
+            let range: Vec<usize> = line.collect();
+            // Each corner: the start of every segment, and the end of the last.
+            let mut corners = Vec::with_capacity(range.len() + 1);
+            for (k, &i) in range.iter().enumerate() {
+                let before = k.checked_sub(1).map(|k| range[k]);
+                let (shift, normal) = match before {
+                    Some(j) => {
+                        let (a, b) = (right(&self.segments[j]), right(&self.segments[i]));
+                        let sum = (a.0 + b.0, a.1 + b.1);
+                        let length = sum.0.hypot(sum.1);
+                        let normal = if length > 1e-6 {
+                            (sum.0 / length, sum.1 / length)
+                        } else {
+                            b
+                        };
+                        (f64::midpoint(shifts[j], shifts[i]), normal)
+                    }
+                    None => (shifts[i], right(&self.segments[i])),
+                };
+                let at = self.segments[i].a;
+                corners.push((at.0 + normal.0 * shift, at.1 + normal.1 * shift));
+            }
+            if let Some(&last) = range.last() {
+                let (normal, at) = (right(&self.segments[last]), self.segments[last].b);
+                corners.push((
+                    at.0 + normal.0 * shifts[last],
+                    at.1 + normal.1 * shifts[last],
+                ));
+            }
+            for (k, &i) in range.iter().enumerate() {
+                self.segments[i].a = corners[k];
+                self.segments[i].b = corners[k + 1];
+            }
+        }
+        self.cells = cells_of(&self.segments);
+    }
+
+    /// The segments of road on the ground whose cells lie around a point, ridden the first
+    /// time.
+    fn on_ground_near(&self, east: f64, north: f64) -> impl Iterator<Item = usize> + '_ {
+        let (ce, cn) = cell_of(east, north);
+        (ce - 1..=ce + 1)
+            .flat_map(move |x| (cn - 1..=cn + 1).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .copied()
+            .filter(|&i| self.segments[i].surface == Surface::Ground && !self.segments[i].repeat)
+    }
+
+    /// The road's carriageway around a point, which buildings keep clear of: each stretch's
+    /// ends, half width and whether it is a bridge. Tunnels are left out, as buildings may
+    /// stand above them, and so is the road ridden again, which is drawn once.
+    pub(crate) fn carriageway_near(
+        &self,
+        east: f64,
+        north: f64,
+    ) -> impl Iterator<Item = ((f64, f64), (f64, f64), f64, bool)> + '_ {
+        let (ce, cn) = cell_of(east, north);
+        (ce - 1..=ce + 1)
+            .flat_map(move |x| (cn - 1..=cn + 1).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .map(|&i| &self.segments[i])
+            .filter(|s| s.surface != Surface::Tunnel && !s.repeat)
+            .map(|s| {
+                let half = s.appearance.unwrap_or_default().width / 2.0;
+                (s.a, s.b, half, s.surface == Surface::Bridge)
+            })
+    }
+
     pub(crate) fn edge_distance(&self, east: f64, north: f64) -> f64 {
         self.near_shaped(east, north, 30.0)
             .iter()
@@ -285,21 +597,10 @@ impl RoadIndex {
                 ranges.push(start..segments.len());
             }
         }
-        let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-        for (index, segment) in segments.iter().enumerate() {
-            // Segments are a few metres long, far shorter than a cell: both end cells cover
-            // them.
-            for point in [segment.a, segment.b] {
-                let list = cells.entry(cell_of(point.0, point.1)).or_default();
-                if list.last() != Some(&index) {
-                    list.push(index);
-                }
-            }
-        }
         Self {
+            cells: cells_of(&segments),
             segments,
             lines: ranges,
-            cells,
             source_cells: HashMap::new(),
         }
     }

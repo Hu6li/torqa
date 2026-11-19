@@ -72,6 +72,10 @@ async fn regional_rides_place_houses_and_only_mapped_castles_offline() {
             height: None,
             levels: Some(2.0),
             color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
         };
         let map = MapData {
             buildings: vec![
@@ -373,6 +377,7 @@ async fn road_profiles_render_fixture() {
                     ramp,
                     oneway: kind == RoadKind::Motorway,
                     roundabout: false,
+                    layer: 0,
                 },
                 line: vec![at(east, -20.0), at(east, 1020.0)],
                 structure: None,
@@ -1968,6 +1973,10 @@ async fn ferns_grow_on_the_nearby_forest_floor_and_keep_clear_of_obstacles() {
             height: None,
             levels: Some(1.0),
             color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
         }],
         roads: vec![orqwa_osm::Road {
             class: orqwa_osm::RoadClass::Street,
@@ -2032,6 +2041,10 @@ async fn rocks_lie_on_rocky_ground_off_the_road_and_out_of_buildings() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         areas: vec![scree],
@@ -2385,6 +2398,8 @@ struct Face {
     corners: [[f32; 3]; 3],
     normal: [f32; 3],
     color: [f32; 4],
+    /// Texture coordinates of the corners: along a wall and up it, from its ground floor.
+    uvs: [[f32; 2]; 3],
 }
 
 impl Face {
@@ -2403,8 +2418,9 @@ impl Face {
 fn building_faces(world: &World, (east, north): (f32, f32), radius: f32) -> Vec<Face> {
     let mut faces = Vec::new();
     for chunk in &world.chunks {
-        let shells =
-            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        let shells = std::iter::once(&chunk.buildings)
+            .chain(chunk.modelled.iter().map(|c| &c.shells))
+            .chain(chunk.modelled.iter().map(|c| &c.walls));
         for mesh in shells {
             faces.extend(shell_faces(chunk, mesh, (east, north), radius));
         }
@@ -2430,6 +2446,7 @@ fn shell_faces(
             corners,
             normal: mesh.normals[t[0] as usize],
             color: mesh.colors[t[0] as usize],
+            uvs: t.map(|k| mesh.uvs[k as usize]),
         };
         let middle = face.middle();
         if (middle[0] - east).hypot(-middle[2] - north) < radius {
@@ -2443,8 +2460,10 @@ fn shell_faces(
 struct Placed {
     model: String,
     origin: [f32; 3],
-    /// The model's x axis (its length, scaled) and z axis (its width, scaled).
+    /// The model's x axis (its length, scaled), y axis (up, scaled) and z axis (its width,
+    /// scaled).
     x: [f32; 3],
+    y: [f32; 3],
     z: [f32; 3],
     plaster: [f32; 4],
 }
@@ -2454,7 +2473,8 @@ fn placed(world: &World) -> Vec<Placed> {
     for chunk in &world.chunks {
         for cell in &chunk.modelled {
             assert_valid(&cell.shells);
-            for (model, buffer) in &cell.models {
+            // Parts of buildings assembled from them are no models fitted to a building.
+            for (model, buffer) in cell.models.iter().filter(|(m, _)| !m.starts_with("parts/")) {
                 assert_eq!(buffer.len() % 20, 0);
                 for b in buffer.as_chunks::<20>().0 {
                     all.push(Placed {
@@ -2465,6 +2485,7 @@ fn placed(world: &World) -> Vec<Placed> {
                             b[11] + chunk.center[2],
                         ],
                         x: [b[0], b[4], b[8]],
+                        y: [b[1], b[5], b[9]],
                         z: [b[2], b[6], b[10]],
                         plaster: [b[12], b[13], b[14], b[15]],
                     });
@@ -2500,11 +2521,37 @@ fn slope_at(east: f32) -> f32 {
     500.0 + 0.1 * east
 }
 
+/// Half the drawn road's width at `north` on the test road due north.
+fn road_half(world: &World, north: f64) -> f32 {
+    #[allow(clippy::cast_possible_truncation)] // metres
+    let width = crate::RoadWidths::new(&world.road)
+        .at(0.0, north, Meters(500.0))
+        .0 as f32;
+    width / 2.0
+}
+
+/// Building faces of a world reaching onto the test road due north between `from` and `to`
+/// below `clear` metres above it.
+fn faces_on_road(world: &World, (from, to): (f32, f32), clear: f32) -> usize {
+    let middle = f32::midpoint(from, to);
+    building_faces(world, (0.0, middle), (to - from) / 2.0 + 30.0)
+        .iter()
+        .filter(|face| {
+            let [east, height, south] = face.middle();
+            let north = -south;
+            (from..=to).contains(&north)
+                && height < 500.0 + clear
+                && east.abs() < road_half(world, f64::from(north)) - 0.05
+        })
+        .count()
+}
+
 #[tokio::test]
-async fn buildings_drawn_into_the_road_are_left_out() {
+async fn buildings_only_their_rectangle_brings_onto_the_road_stand_on_their_walls() {
     // A square house turned 45° to the road, its corner towards it clipped in the map: the
-    // footprint keeps 4.2 m off the centre line, but the house is drawn on the whole square,
-    // its corner 2.5 m off, on the road (#138). The same house further off stays.
+    // footprint keeps 4.2 m off the centre line, but the rectangle around it, which a house
+    // filling it is drawn as, reaches 2.5 m off, onto the road (#138). The house stands on its
+    // walls instead, and the road keeps its width. The same house further off stays as it is.
     let diamond = |east: f64, clip: f64| {
         let reach = clip - east + 6.0;
         let points = [
@@ -2523,6 +2570,10 @@ async fn buildings_drawn_into_the_road_are_left_out() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![house(1, diamond(8.5, 4.2)), house(2, diamond(30.0, 25.7))],
@@ -2531,8 +2582,64 @@ async fn buildings_drawn_into_the_road_are_left_out() {
     .await;
 
     let faces = |east: f32| building_faces(&world, (east, 500.0), 7.0).len();
-    assert_eq!(faces(8.5), 0, "a house drawn on the road");
+    assert!(faces(8.5) > 0, "the house reaching onto the road is gone");
     assert!(faces(30.0) > 0, "the house off the road is gone");
+    let (by_house, open) = (road_half(&world, 500.0), road_half(&world, 800.0));
+    assert!(
+        (by_house - open).abs() < 0.05,
+        "the road narrows by the house: {by_house} of {open}"
+    );
+    assert_eq!(
+        faces_on_road(&world, (480.0, 520.0), 20.0),
+        0,
+        "a wall stands on the road"
+    );
+}
+
+#[tokio::test]
+async fn buildings_whose_walls_keep_off_the_road_stay_by_it() {
+    // An L-shaped house turned so the corner it leaves open faces the road: its walls keep
+    // 6 m off the centre line, but the rectangle around it reaches onto the road. It is drawn
+    // on its outline (ADR 0041, step 4), so it stays.
+    let turn = std::f64::consts::FRAC_PI_4 * 3.0;
+    let l_shape: Vec<(f64, f64)> = [
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 4.0),
+        (4.0, 4.0),
+        (4.0, 10.0),
+        (0.0, 10.0),
+    ]
+    .iter()
+    .map(|&(x, y): &(f64, f64)| {
+        (
+            16.0 + x * turn.cos() - y * turn.sin(),
+            500.0 + x * turn.sin() + y * turn.cos(),
+        )
+    })
+    .collect();
+    let mut outline: Vec<_> = l_shape.iter().map(|&(e, n)| at(e, n)).collect();
+    outline.push(outline[0]);
+    let house = Building {
+        id: 170,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+    assert!(
+        !building_faces(&world, (11.0, 500.0), 8.0).is_empty(),
+        "the house by the road is gone"
+    );
 }
 
 #[tokio::test]
@@ -2544,6 +2651,10 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -2553,8 +2664,9 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
 
     let faces = building_faces(&world, (60.0, 500.0), 30.0);
     // From below the lowest corner, 55 m east, to a pitched roof (perhaps with a chimney)
-    // over two storeys of walls from the highest corner, 65 m east.
-    let eaves = slope_at(65.0) + 2.0 * 3.0 + 0.4;
+    // over two storeys of walls from the floor, set into the slope at its mean ground, 60 m
+    // east.
+    let eaves = slope_at(60.0) + 2.0 * 3.0 + 0.4;
     let top = highest(&faces);
     assert!((eaves + 3.0..eaves + 6.0).contains(&top), "top {top}");
     assert!((lowest(&faces) - (slope_at(55.0) - 1.0)).abs() < 0.01);
@@ -2576,6 +2688,991 @@ async fn buildings_stand_on_the_ground_with_walls_facing_out() {
 }
 
 #[tokio::test]
+async fn buildings_on_slopes_are_set_into_them() {
+    // Houses of two storeys across ground rising eastwards by 10 %, 24 m, 36 m and 60 m long:
+    // they fall 2.4 m, 3.6 m and 6 m from end to end (#554, R257).
+    let houses =
+        [(43, 470.0, 12.0), (44, 510.0, 18.0), (45, 550.0, 30.0)].map(|(id, north, half)| {
+            Building {
+                id,
+                outline: rectangle(60.0, north, half, 5.0),
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+                kind: None,
+                shape: None,
+            }
+        });
+    let world = world(&MapData {
+        buildings: houses.to_vec(),
+        ..MapData::default()
+    })
+    .await;
+    // Shell walls draw a row of windows every storey, from 1 m above their texture's zero:
+    // the height of the lowest row on a face, if it has one.
+    let windows_from = |face: &Face| {
+        let heights = face
+            .corners
+            .iter()
+            .zip(face.uvs)
+            .map(|(c, uv)| (c[1], uv[1]));
+        let (bottom, low) = heights.clone().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+        let high = heights.map(|(_, v)| v).fold(f32::MIN, f32::max);
+        let row = (((low - 1.0) / 3.0).ceil() * 3.0 + 1.0).max(1.0);
+        if row < high {
+            bottom + row - low
+        } else {
+            f32::MAX
+        }
+    };
+    for (north, half) in [(470.0_f32, 12.0_f32), (510.0, 18.0), (550.0, 30.0)] {
+        let faces = building_faces(&world, (60.0, north), half + 8.0);
+        let (west, east) = (60.0 - half, 60.0 + half);
+        let lowest_windows = |downhill: bool| {
+            faces
+                .iter()
+                .filter(|f| {
+                    if downhill {
+                        f.normal[0] < -0.9 && f.middle()[0] < west + 1.0
+                    } else {
+                        f.normal[0] > 0.9 && f.middle()[0] > east - 1.0
+                    }
+                })
+                .filter(|f| matches!(f.style(), 0 | 2))
+                .map(windows_from)
+                .fold(f32::MAX, f32::min)
+        };
+        // The ground floor is set into the slope: below the uphill ground, by a storey at most.
+        // Walls count their texture's height from it.
+        let floor = faces
+            .iter()
+            .filter(|f| f.normal[1].abs() < 0.1 && matches!(f.style(), 0 | 1))
+            .flat_map(|f| f.corners.iter().zip(f.uvs))
+            .filter(|(_, uv)| uv[1].abs() < 20.0)
+            .map(|(c, uv)| c[1] - uv[1])
+            .fold(f32::MIN, f32::max);
+        let top = slope_at(east);
+        assert!(
+            floor < top - 0.5 && floor >= top - 2.41,
+            "{half} m: floor {floor} under the uphill ground {top}"
+        );
+        // Uphill, no storey shows windows under the ground there.
+        let uphill = lowest_windows(false);
+        assert!(
+            uphill > slope_at(east) && uphill - slope_at(east) < 3.5,
+            "{half} m: uphill windows from {uphill} over ground {}",
+            slope_at(east)
+        );
+        // Downhill, windows start within a storey of the ground.
+        let downhill = lowest_windows(true);
+        let ground = slope_at(west);
+        assert!(
+            downhill > ground && downhill - ground < 3.0,
+            "{half} m: downhill windows from {} m over the ground",
+            downhill - ground
+        );
+    }
+    // The long house falls 6 m: downhill, a storey shows below its ground floor, which is
+    // set in no more than a storey uphill.
+    let faces = building_faces(&world, (60.0, 550.0), 38.0);
+    let lower = faces
+        .iter()
+        .filter(|f| f.normal[0] < -0.9 && f.middle()[0] < 31.0 && matches!(f.style(), 0 | 2))
+        .map(windows_from)
+        .fold(f32::MAX, f32::min);
+    let floor = slope_at(90.0) - 2.4;
+    assert!(
+        lower < floor,
+        "a lower storey downhill: windows from {lower}, floor {floor}"
+    );
+}
+
+/// Writes the terrain, building shells and model instances of `world` around the building
+/// review scenes (20–140 m east, 440–530 m north) to `screenshots/<name>`, for
+/// `app/tools/render_slopes.gd`.
+fn export_building_scene(world: &World, name: &str) {
+    let inside =
+        |x: f32, north: f32| (20.0..=140.0).contains(&x) && (440.0..=530.0).contains(&north);
+    let mesh_json = |chunk: &TerrainChunk, mesh: &MeshData, kind: &str| {
+        let indices: Vec<u32> = mesh
+            .indices
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .filter(|face| {
+                face.iter().all(|&i| {
+                    let v = mesh.vertices[i as usize];
+                    inside(v[0] + chunk.center[0], -v[2] - chunk.center[2])
+                })
+            })
+            .flatten()
+            .copied()
+            .collect();
+        (!indices.is_empty()).then(|| serde_json::json!({
+            "vertices": mesh.vertices.iter().map(|v| [v[0] + chunk.center[0], v[1] - 500.0, v[2] + chunk.center[2]]).collect::<Vec<_>>(),
+            "normals": mesh.normals, "uvs": mesh.uvs, "colors": mesh.colors,
+            "indices": indices, "kind": kind,
+        }))
+    };
+    let mut meshes = Vec::new();
+    let mut cells = Vec::new();
+    for chunk in &world.chunks {
+        meshes.extend(mesh_json(chunk, &chunk.mesh, "terrain"));
+        meshes.extend(mesh_json(chunk, &chunk.buildings, "shells"));
+        for cell in &chunk.modelled {
+            let shells = mesh_json(chunk, &cell.shells, "shells");
+            let walls = mesh_json(chunk, &cell.walls, "shells");
+            if shells.is_none() && walls.is_none() {
+                continue;
+            }
+            let models: serde_json::Map<String, serde_json::Value> = cell
+                .models
+                .iter()
+                .map(|(name, buffer)| {
+                    let placed: Vec<f32> = buffer
+                        .as_chunks::<20>()
+                        .0
+                        .iter()
+                        .flat_map(|b| {
+                            let mut b = *b;
+                            b[3] += chunk.center[0];
+                            b[7] += chunk.center[1] - 500.0;
+                            b[11] += chunk.center[2];
+                            b
+                        })
+                        .collect();
+                    (name.clone(), serde_json::json!(placed))
+                })
+                .collect();
+            cells.push(serde_json::json!({
+                "models": models,
+                "shells": shells,
+                "walls": walls,
+            }));
+        }
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../screenshots")
+        .join(name);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let fixture = serde_json::json!({"meshes": meshes, "cells": cells});
+    std::fs::write(path, serde_json::to_vec(&fixture).unwrap()).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "exports houses on a hillside for Godot visual review"]
+async fn slope_buildings_render_fixture() {
+    struct Hillside;
+    impl ElevationModel for Hillside {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(500.0 + 0.2 * east))
+        }
+    }
+    // Houses across a 20 % slope, falling 1.6 m to 6.4 m from end to end, and a block.
+    let buildings: Vec<Building> = [
+        (51, 50.0, 470.0, 4.0, 5.0, 2.0),
+        (52, 70.0, 470.0, 7.0, 5.0, 2.0),
+        (53, 95.0, 470.0, 10.0, 6.0, 3.0),
+        (54, 55.0, 500.0, 6.0, 5.0, 2.0),
+        (55, 85.0, 500.0, 16.0, 7.0, 4.0),
+    ]
+    .into_iter()
+    .map(
+        |(id, east, north, half_east, half_north, levels)| Building {
+            id,
+            outline: rectangle(east, north, half_east, half_north),
+            height: None,
+            levels: Some(levels),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        },
+    )
+    .collect();
+    let world = generate(
+        &route_north(&[]).await,
+        &mut Hillside,
+        &MapData {
+            buildings,
+            ..MapData::default()
+        },
+        &mut |_, _| {},
+    )
+    .await;
+    export_building_scene(&world, "slope-buildings.json");
+}
+
+#[tokio::test]
+async fn buildings_mapped_in_parts_stand_as_their_parts() {
+    // A 20 × 20 m building mapped in parts (R258): its west half 9 m high, its east half a
+    // storey raised over a passage, from 9 m to 21 m. The tiles carry the outline, flagged as
+    // drawn in parts, beside the parts.
+    let part = |id, east: f64, min_height, height| Building {
+        id,
+        outline: rectangle(east, 500.0, 5.0, 10.0),
+        height: Some(height),
+        levels: None,
+        color: None,
+        min_height,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let outline = Building {
+        id: 60,
+        outline: square(80.0, 500.0, 10.0),
+        height: Some(21.0),
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: true,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            outline,
+            part(61, 75.0, None, 9.0),
+            part(62, 85.0, Some(9.0), 21.0),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let faces = building_faces(&world, (80.0, 500.0), 30.0);
+    // Both parts stand on the outline's ground, set into the slope at its mean, 80 m east.
+    let ground = slope_at(80.0);
+    // Clear of the low part's roof, which overhangs its walls.
+    let east: Vec<&Face> = faces.iter().filter(|f| f.middle()[0] > 82.0).collect();
+    assert!(!east.is_empty());
+    let bottom = east
+        .iter()
+        .flat_map(|f| f.corners)
+        .map(|c| c[1])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        (bottom - (ground + 9.0)).abs() < 0.01,
+        "the raised part starts at {bottom}, not 9 m above the ground at {ground}: the outline \
+         or the part reaches down"
+    );
+    assert!(
+        east.iter()
+            .any(|f| f.normal[1] < -0.99 && (f.middle()[1] - (ground + 9.0)).abs() < 0.01),
+        "the raised part is closed from below"
+    );
+    // Clear of the raised part's balconies, which stand out over the low part.
+    let west_top = faces
+        .iter()
+        .filter(|f| f.middle()[0] < 77.0)
+        .flat_map(|f| f.corners)
+        .map(|c| c[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        west_top < ground + 13.0,
+        "the low part keeps its own height, {west_top} for ground {ground}"
+    );
+}
+
+#[tokio::test]
+async fn fitted_models_have_the_storeys_the_map_gives() {
+    // Houses of 9 × 12 m, mapped 9 m and 11.5 m high to the top of their roofs (R258), and
+    // one without a height.
+    let house = |id, north: f64, height| Building {
+        id,
+        outline: rectangle(60.0, north, 4.5, 6.0),
+        height,
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            house(70, 480.0, Some(9.0)),
+            house(71, 520.0, Some(11.5)),
+            house(72, 560.0, None),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let manifest: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../app/assets/models/buildings/models.json"
+    ))
+    .unwrap();
+    let placed = placed(&world);
+    for (north, eaves) in [(480.0, Some(6.4)), (520.0, Some(9.4)), (560.0, None)] {
+        let instance = placed
+            .iter()
+            .find(|p| (-p.origin[2] - north).abs() < 3.0)
+            .unwrap_or_else(|| panic!("a model for the house at {north}"));
+        let model = manifest["models"][&instance.model]["eaves"]
+            .as_f64()
+            .unwrap();
+        let up = length(instance.y);
+        match eaves {
+            Some(eaves) => {
+                assert!(
+                    (f64::from(up) * model - eaves).abs() < 0.01,
+                    "{}: eaves {} m, mapped {eaves} m",
+                    instance.model,
+                    f64::from(up) * model
+                );
+                assert!((1.0 / 1.15..=1.15).contains(&up));
+            }
+            None => assert!((up - 1.0).abs() < 1e-6, "unmapped models keep their height"),
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "exports a building mapped in parts for Godot visual review"]
+async fn parts_buildings_render_fixture() {
+    // A building mapped in parts on the eastward slope: a low wing, a wing raised over a
+    // passage and a slim tower, with the outline the tiles carry beside them.
+    let part = |id, (east, north, half_east, half_north), min_height, height| Building {
+        id,
+        outline: rectangle(east, north, half_east, half_north),
+        height: Some(height),
+        levels: None,
+        color: None,
+        min_height,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let buildings = vec![
+        Building {
+            id: 80,
+            outline: rectangle(80.0, 485.0, 20.0, 10.0),
+            height: Some(30.0),
+            levels: None,
+            color: None,
+            min_height: None,
+            in_parts: true,
+            kind: None,
+            shape: None,
+        },
+        part(81, (67.5, 485.0, 7.5, 10.0), None, 10.0),
+        part(82, (85.0, 485.0, 10.0, 10.0), Some(6.5), 16.0),
+        part(83, (97.5, 485.0, 2.5, 2.5), None, 30.0),
+    ];
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "parts-buildings.json");
+}
+
+#[tokio::test]
+async fn outlines_keep_their_shape_under_a_roof_over_them() {
+    // An L-shaped house, and a house whose 20 × 10 m rectangle misses a 4 × 6 m corner: walls
+    // follow both outlines, and pitched roofs rise over them to ridges (R259).
+    let house = |id, outline: Vec<(f64, f64)>| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let l_shape = [
+        (50.0, 460.0),
+        (70.0, 460.0),
+        (70.0, 468.0),
+        (58.0, 468.0),
+        (58.0, 476.0),
+        (50.0, 476.0),
+        (50.0, 460.0),
+    ];
+    let notched = [
+        (50.0, 520.0),
+        (70.0, 520.0),
+        (70.0, 524.0),
+        (66.0, 524.0),
+        (66.0, 530.0),
+        (50.0, 530.0),
+        (50.0, 520.0),
+    ];
+    let world = world(&MapData {
+        buildings: vec![
+            house(90, l_shape.iter().map(|&(e, n)| at(e, n)).collect()),
+            house(91, notched.iter().map(|&(e, n)| at(e, n)).collect()),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    // The L: a hipped roof over all of it, with no flat band on top as before.
+    let faces = building_faces(&world, (60.0, 468.0), 14.0);
+    let eaves = slope_at(70.0) + 2.0 * 3.0 + 0.4;
+    let roof: Vec<&Face> = faces
+        .iter()
+        .filter(|f| f.normal[1] > 0.1 && f.middle()[1] > eaves + 0.5)
+        .collect();
+    assert!(!roof.is_empty());
+    assert!(
+        roof.iter().all(|f| f.normal[1] < 0.99),
+        "the roof over the L rises to ridges throughout"
+    );
+    let top = highest(&faces);
+    assert!(
+        top > eaves + 2.0,
+        "a pitched roof, top {top}, eaves {eaves}"
+    );
+    // The notched house: nothing stands in its missing corner, beyond its eaves' overhang.
+    let notch = building_faces(&world, (60.0, 525.0), 16.0)
+        .into_iter()
+        .filter(|f| {
+            let m = f.middle();
+            (67.5..69.5).contains(&m[0]) && (525.5..529.5).contains(&-m[2])
+        })
+        .count();
+    assert_eq!(notch, 0, "faces in the corner the outline leaves out");
+}
+
+#[tokio::test]
+#[ignore = "exports buildings of common outlines for Godot visual review"]
+async fn outline_buildings_render_fixture() {
+    // An L, a T, a U, a house with a corner missing and one with a bay, two storeys each.
+    let shapes: [&[(f64, f64)]; 5] = [
+        &[
+            (30.0, 450.0),
+            (48.0, 450.0),
+            (48.0, 458.0),
+            (38.0, 458.0),
+            (38.0, 470.0),
+            (30.0, 470.0),
+        ],
+        &[
+            (58.0, 450.0),
+            (82.0, 450.0),
+            (82.0, 458.0),
+            (74.0, 458.0),
+            (74.0, 470.0),
+            (66.0, 470.0),
+            (66.0, 458.0),
+            (58.0, 458.0),
+        ],
+        &[
+            (92.0, 450.0),
+            (112.0, 450.0),
+            (112.0, 468.0),
+            (106.0, 468.0),
+            (106.0, 457.0),
+            (98.0, 457.0),
+            (98.0, 468.0),
+            (92.0, 468.0),
+        ],
+        &[
+            (40.0, 490.0),
+            (58.0, 490.0),
+            (58.0, 494.0),
+            (54.0, 494.0),
+            (54.0, 500.0),
+            (40.0, 500.0),
+        ],
+        &[
+            (75.0, 490.0),
+            (79.0, 490.0),
+            (79.0, 488.5),
+            (83.0, 488.5),
+            (83.0, 490.0),
+            (87.0, 490.0),
+            (87.0, 499.0),
+            (75.0, 499.0),
+        ],
+    ];
+    let buildings = shapes
+        .iter()
+        .zip(100..)
+        .map(|(shape, id)| {
+            let mut outline: Vec<_> = shape.iter().map(|&(e, n)| at(e, n)).collect();
+            outline.push(outline[0]);
+            Building {
+                id,
+                outline,
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+                kind: None,
+                shape: None,
+            }
+        })
+        .collect();
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "outline-buildings.json");
+}
+
+#[tokio::test]
+async fn buildings_are_what_the_map_says_they_are() {
+    // In a residential area (R260): a garage of 8 × 5 m, a carport of 6 × 5 m and a house of
+    // 25 × 20 m, which by its size alone would be a block of flats.
+    let town = Area {
+        cover: LandCover::Residential,
+        outer: vec![square(80.0, 500.0, 60.0)],
+        inner: vec![],
+    };
+    let building = |id, outline, kind| Building {
+        id,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(kind),
+        shape: None,
+    };
+    let world = world(&MapData {
+        areas: vec![town],
+        buildings: vec![
+            building(
+                110,
+                rectangle(60.0, 470.0, 4.0, 2.5),
+                orqwa_osm::BuildingKind::Garage,
+            ),
+            building(
+                111,
+                rectangle(60.0, 500.0, 3.0, 2.5),
+                orqwa_osm::BuildingKind::Carport,
+            ),
+            building(
+                112,
+                rectangle(95.0, 520.0, 12.5, 10.0),
+                orqwa_osm::BuildingKind::House,
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    let windowed = |f: &&Face| matches!(f.style(), 0 | 2);
+    let garage = building_faces(&world, (60.0, 470.0), 6.0);
+    assert!(!garage.is_empty());
+    assert!(
+        !garage
+            .iter()
+            .any(|f| f.normal[1].abs() < 0.1 && windowed(&f)),
+        "a garage has no windows"
+    );
+    // The carport: a roof 2.5 m over its ground, set in at its mean, and below it only posts.
+    let carport = building_faces(&world, (60.0, 500.0), 5.0);
+    let ground = slope_at(60.0);
+    assert!(
+        carport
+            .iter()
+            .any(|f| f.normal[1] < -0.99 && (f.middle()[1] - (ground + 2.5)).abs() < 0.01),
+        "a roof on posts"
+    );
+    for wall in carport
+        .iter()
+        .filter(|f| f.normal[1].abs() < 0.1 && f.middle()[1] < ground + 2.0)
+    {
+        let width = wall
+            .corners
+            .iter()
+            .flat_map(|a| {
+                wall.corners
+                    .iter()
+                    .map(move |b| (a[0] - b[0]).hypot(a[2] - b[2]))
+            })
+            .fold(0.0, f32::max);
+        assert!(
+            width < 0.2,
+            "open below but for posts: a wall {width} m wide"
+        );
+    }
+    // The house keeps a pitched roof, where a block would have a flat one.
+    let house = building_faces(&world, (95.0, 520.0), 20.0);
+    assert!(
+        house.iter().any(|f| (0.2..0.95).contains(&f.normal[1])),
+        "the mapped house has a pitched roof"
+    );
+}
+
+#[tokio::test]
+#[ignore = "exports buildings of mapped kinds for Godot visual review"]
+async fn kinds_buildings_render_fixture() {
+    use orqwa_osm::BuildingKind::{Barn, Carport, Church, Garage, House};
+    // In a residential area: a garage, a carport, a barn, a large house and a church, each
+    // only by what the map says it is.
+    let town = Area {
+        cover: LandCover::Residential,
+        outer: vec![square(80.0, 485.0, 70.0)],
+        inner: vec![],
+    };
+    let building = |id, outline, kind| Building {
+        id,
+        outline,
+        height: None,
+        levels: None,
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(kind),
+        shape: None,
+    };
+    let world = world(&MapData {
+        areas: vec![town],
+        buildings: vec![
+            building(120, rectangle(45.0, 465.0, 4.0, 3.0), Garage),
+            building(121, rectangle(58.0, 465.0, 3.0, 2.5), Carport),
+            building(122, rectangle(80.0, 465.0, 12.0, 8.0), Barn),
+            building(123, rectangle(50.0, 500.0, 12.0, 10.0), House),
+            building(124, rectangle(95.0, 500.0, 14.0, 7.0), Church),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "kinds-buildings.json");
+}
+
+#[tokio::test]
+async fn roofs_are_the_shape_the_map_gives() {
+    // Two-storey houses on 12 × 9 m (R261): mapped flat, pyramidal, with one slope, with
+    // their ridge across and with a roof 2 m high.
+    use orqwa_osm::{RoofShape, Shape};
+    let house = |id, north: f64, shape: Shape| Building {
+        id,
+        outline: rectangle(60.0, north, 6.0, 4.5),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::House),
+        shape: Some(shape),
+    };
+    let roof = |shape| Shape {
+        roof: Some(shape),
+        ..Shape::default()
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            house(130, 440.0, roof(RoofShape::Flat)),
+            house(131, 470.0, roof(RoofShape::Pyramidal)),
+            house(132, 500.0, roof(RoofShape::Skillion)),
+            house(
+                133,
+                530.0,
+                Shape {
+                    across: true,
+                    ..roof(RoofShape::Gabled)
+                },
+            ),
+            house(
+                134,
+                560.0,
+                Shape {
+                    roof_height: Some(2.0),
+                    ..roof(RoofShape::Gabled)
+                },
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    // Two storeys over a floor set into the slope at the houses' mean ground, 60 m east.
+    let eaves = slope_at(60.0) + 2.0 * 3.0 + 0.4;
+    // Roof faces over the eaves, sloped and facing up.
+    let sloped = |north: f32| -> Vec<Face> {
+        building_faces(&world, (60.0, north), 9.0)
+            .into_iter()
+            .filter(|f| (0.1..0.99).contains(&f.normal[1]) && f.middle()[1] > eaves)
+            .collect()
+    };
+    assert_eq!(sloped(440.0).len(), 0, "a flat roof");
+    // The pyramid: its slopes meet at one point over the middle.
+    let pyramid = sloped(470.0);
+    let top = highest(&pyramid);
+    let apexes: Vec<[f32; 3]> = pyramid
+        .iter()
+        .flat_map(|f| f.corners)
+        .filter(|c| (c[1] - top).abs() < 0.01)
+        .collect();
+    assert!(
+        apexes
+            .iter()
+            .all(|c| (c[0] - 60.0).abs() < 0.05 && (-c[2] - 470.0).abs() < 0.05),
+        "a pyramid's point over its middle: {apexes:?}"
+    );
+    // One slope: every face of it faces the same way.
+    let skillion = sloped(500.0);
+    assert!(!skillion.is_empty());
+    assert!(
+        skillion
+            .iter()
+            .all(|f| (0..3).all(|k| (f.normal[k] - skillion[0].normal[k]).abs() < 0.01)),
+        "a roof of one slope"
+    );
+    // Across: the ridge runs north–south, across the house's east–west length, so the
+    // slopes face east and west.
+    assert!(
+        sloped(530.0).iter().all(|f| f.normal[2].abs() < 0.01),
+        "slopes facing east and west"
+    );
+    // The roof 2 m high.
+    let high = highest(&sloped(560.0));
+    assert!(
+        (high - (eaves + 2.0)).abs() < 0.35,
+        "a roof 2 m high: {} m",
+        high - eaves
+    );
+}
+
+#[tokio::test]
+#[ignore = "exports buildings of mapped shapes for Godot visual review"]
+async fn shapes_buildings_render_fixture() {
+    use orqwa_osm::{RoofMaterial, RoofShape, Shape, WallMaterial};
+    let house = |id, (east, north): (f64, f64), shape: Shape| Building {
+        id,
+        outline: rectangle(east, north, 6.0, 4.5),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::House),
+        shape: Some(shape),
+    };
+    let roof = |shape| Shape {
+        roof: Some(shape),
+        ..Shape::default()
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            house(140, (40.0, 460.0), roof(RoofShape::Pyramidal)),
+            house(141, (70.0, 460.0), roof(RoofShape::Skillion)),
+            house(
+                142,
+                (100.0, 460.0),
+                Shape {
+                    across: true,
+                    ..roof(RoofShape::Gabled)
+                },
+            ),
+            house(
+                143,
+                (40.0, 495.0),
+                Shape {
+                    roof_colour: Some([0xb0, 0x30, 0x20]),
+                    ..roof(RoofShape::Hipped)
+                },
+            ),
+            house(
+                144,
+                (70.0, 495.0),
+                Shape {
+                    material: Some(WallMaterial::Wood),
+                    ..roof(RoofShape::Gabled)
+                },
+            ),
+            house(
+                145,
+                (100.0, 495.0),
+                Shape {
+                    material: Some(WallMaterial::Brick),
+                    roof_material: Some(RoofMaterial::Slate),
+                    ..roof(RoofShape::Hipped)
+                },
+            ),
+            house(
+                146,
+                (70.0, 520.0),
+                Shape {
+                    colour: Some([0x10, 0x70, 0x70]),
+                    ..Shape::default()
+                },
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "shapes-buildings.json");
+}
+
+#[tokio::test]
+#[ignore = "exports houses assembled from parts for Godot visual review"]
+async fn assembly_buildings_render_fixture() {
+    // Homes whose outlines no model fits: an L, a house with a bay, a long farmhouse.
+    let shapes: [&[(f64, f64)]; 3] = [
+        &[
+            (40.0, 470.0),
+            (58.0, 470.0),
+            (58.0, 478.0),
+            (48.0, 478.0),
+            (48.0, 490.0),
+            (40.0, 490.0),
+        ],
+        &[
+            (70.0, 470.0),
+            (74.0, 470.0),
+            (74.0, 468.0),
+            (79.0, 468.0),
+            (79.0, 470.0),
+            (83.0, 470.0),
+            (83.0, 480.0),
+            (70.0, 480.0),
+        ],
+        &[
+            (92.0, 470.0),
+            (118.0, 470.0),
+            (118.0, 482.0),
+            (92.0, 482.0),
+            (92.0, 476.0),
+            (90.0, 476.0),
+            (90.0, 474.0),
+            (92.0, 474.0),
+        ],
+    ];
+    let buildings = shapes
+        .iter()
+        .zip(150..)
+        .map(|(shape, id)| {
+            let mut outline: Vec<_> = shape.iter().map(|&(e, n)| at(e, n)).collect();
+            outline.push(outline[0]);
+            Building {
+                id,
+                outline,
+                height: None,
+                levels: Some(2.0),
+                color: None,
+                min_height: None,
+                in_parts: false,
+                kind: Some(orqwa_osm::BuildingKind::House),
+                shape: None,
+            }
+        })
+        .collect();
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+    export_building_scene(&world, "assembly-buildings.json");
+}
+
+#[tokio::test]
+async fn homes_no_model_fits_are_assembled_from_parts() {
+    // An L-shaped house of two storeys (R262): its walls, at every distance, and a window part
+    // where its walls draw windows, its door on the longest wall.
+    let l_shape = [
+        (50.0, 480.0),
+        (70.0, 480.0),
+        (70.0, 490.0),
+        (59.0, 490.0),
+        (59.0, 500.0),
+        (50.0, 500.0),
+        (50.0, 480.0),
+    ];
+    let house = Building {
+        id: 160,
+        outline: l_shape.iter().map(|&(e, n)| at(e, n)).collect(),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::House),
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+    let cells: Vec<&BuildingCell> = world.chunks.iter().flat_map(|c| &c.modelled).collect();
+    assert!(
+        cells.iter().any(|c| !c.walls.vertices.is_empty()),
+        "its walls"
+    );
+    let count = |name: &str| -> usize {
+        cells
+            .iter()
+            .filter_map(|c| c.models.get(name))
+            .map(|buffer| buffer.len() / 20)
+            .sum()
+    };
+    assert_eq!(count("parts/door"), 1, "one door");
+    // The walls draw a window every 3.2 m, stretched to whole windows: 20 m, 10 m, 11 m, 10 m,
+    // 9 m and 20 m make 6 + 3 + 3 + 3 + 3 + 6 = 24 a storey. The upper storey has them all; on
+    // the ground floor, set into the slope, walls whose ground buries their sills have none.
+    let parts: Vec<(String, [f32; 3])> = world
+        .chunks
+        .iter()
+        .flat_map(|chunk| {
+            chunk.modelled.iter().flat_map(move |cell| {
+                cell.models.iter().flat_map(move |(name, buffer)| {
+                    buffer.as_chunks::<20>().0.iter().map(move |b| {
+                        let at = [
+                            b[3] + chunk.center[0],
+                            b[7] + chunk.center[1],
+                            -b[11] - chunk.center[2],
+                        ];
+                        (name.clone(), at)
+                    })
+                })
+            })
+        })
+        .collect();
+    let floor = parts.iter().map(|(_, at)| at[1]).fold(f32::MAX, f32::min);
+    let upper = parts.iter().filter(|(_, at)| at[1] > floor + 1.0).count();
+    assert_eq!(upper, 24, "the upper storey's windows");
+    for (name, at) in &parts {
+        let ground = slope_at(at[0]);
+        if name == "parts/door" {
+            assert!(
+                (ground - floor).abs() <= 0.61,
+                "a door {} m off the ground",
+                ground - floor
+            );
+        } else {
+            assert!(
+                at[1] + 1.0 > ground,
+                "a window sunk in the ground at {at:?}"
+            );
+        }
+    }
+    // Every part faces out of the house, its z axis away from the L's inside.
+    for chunk in &world.chunks {
+        for cell in &chunk.modelled {
+            for b in cell
+                .models
+                .values()
+                .flat_map(|buffer| buffer.as_chunks::<20>().0)
+            {
+                let out = (b[2], -b[10]);
+                let at = (b[3] + chunk.center[0], -b[11] - chunk.center[2]);
+                let ahead = (at.0 + out.0 * 0.5, at.1 + out.1 * 0.5);
+                let inside = |(e, n): (f32, f32)| {
+                    (50.0..70.0).contains(&e) && (480.0..490.0).contains(&n)
+                        || (50.0..59.0).contains(&e) && (490.0..500.0).contains(&n)
+                };
+                assert!(!inside(ahead), "a part at {at:?} faces into the house");
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn churches_get_a_tower_and_chapels_a_turret() {
     // A 14 × 30 m church and a 7 × 12 m chapel, with their church points inside.
     let church = Building {
@@ -2584,6 +3681,10 @@ async fn churches_get_a_tower_and_chapels_a_turret() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let chapel = Building {
         id: 4,
@@ -2639,6 +3740,10 @@ async fn walls_show_whole_windows_only() {
         height: Some(15.0),
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![block],
@@ -2648,8 +3753,9 @@ async fn walls_show_whole_windows_only() {
 
     let mut walls = 0;
     for chunk in &world.chunks {
-        let shells =
-            std::iter::once(&chunk.buildings).chain(chunk.modelled.iter().map(|c| &c.shells));
+        let shells = std::iter::once(&chunk.buildings)
+            .chain(chunk.modelled.iter().map(|c| &c.shells))
+            .chain(chunk.modelled.iter().map(|c| &c.walls));
         for mesh in shells {
             for (k, color) in mesh.colors.iter().enumerate() {
                 // Windowed walls: plaster and timber every 3.2 m, churches every 4.5 m.
@@ -2695,6 +3801,10 @@ async fn blocks_have_a_cornice_and_stacked_balconies() {
             height: Some(18.0),
             levels: None,
             color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
         })
         .collect();
     let world = world(&MapData {
@@ -2749,6 +3859,10 @@ async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
         height: Some(18.0),
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![block],
@@ -2757,9 +3871,10 @@ async fn tall_blocks_have_flat_roofs_behind_a_parapet() {
     .await;
 
     let faces = building_faces(&world, (80.0, 500.0), 30.0);
-    // Six storeys of 3 m make the mapped 18 m above the highest corner; a parapet capped by
-    // its cornice, and perhaps a stair housing, top them.
-    let eaves = slope_at(90.0) + 6.0 * 3.0 + 0.4;
+    // Six storeys of 3 m make the mapped 18 m above the floor, set into the slope at the
+    // mean ground, 80 m east; a parapet capped by its cornice, and perhaps a stair housing,
+    // top them.
+    let eaves = slope_at(80.0) + 6.0 * 3.0 + 0.4;
     let top = highest(&faces);
     assert!(
         (top - (eaves + 0.88)).abs() < 0.01 || (top - (eaves + 2.6)).abs() < 0.01,
@@ -2786,6 +3901,10 @@ async fn halls_on_industrial_land_are_low_and_clad_in_metal() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![hall],
@@ -2811,6 +3930,10 @@ async fn offices_hotels_and_public_buildings_come_from_the_map() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let land = |cover: LandCover, east: f64, north: f64| Area {
         cover,
@@ -2881,6 +4004,10 @@ async fn chalets_in_the_mountains_have_timber_walls_and_deep_eaves() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let map = MapData {
         buildings: vec![house],
@@ -2932,6 +4059,10 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -2958,6 +4089,70 @@ async fn roofs_of_irregular_outlines_stay_over_them() {
 }
 
 #[tokio::test]
+async fn shop_fronts_stand_on_the_walls_of_buildings_drawn_on_their_outline() {
+    use orqwa_osm::{Road, RoadClass};
+
+    // A 12 × 9 m shop whose street wall steps back 1.5 m along its eastern half: it fills
+    // 92 % of the rectangle around it and stands on its outline, so the rectangle's street
+    // side lies in front of half its front.
+    let corners = [
+        (74.0, 495.5),
+        (80.0, 495.5),
+        (80.0, 497.0),
+        (86.0, 497.0),
+        (86.0, 504.5),
+        (74.0, 504.5),
+    ];
+    let mut outline: Vec<_> = corners.iter().map(|&(e, n)| at(e, n)).collect();
+    outline.push(outline[0]);
+    let world = world(&MapData {
+        buildings: vec![Building {
+            id: 33,
+            outline,
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        roads: vec![Road {
+            class: RoadClass::Street,
+            details: orqwa_osm::RoadDetails::default(),
+            line: vec![at(40.0, 489.0), at(160.0, 489.0)],
+            structure: None,
+        }],
+        shops: vec![at(81.0, 501.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let fronts: Vec<Face> = building_faces(&world, (80.0, 500.0), 9.0)
+        .into_iter()
+        .filter(|f| f.style() == 10)
+        .collect();
+    assert!(!fronts.is_empty(), "no shop front");
+    let on_wall = |(east, north): (f64, f64)| {
+        (0..corners.len()).any(|k| {
+            let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
+            let (de, dn) = (b.0 - a.0, b.1 - a.1);
+            let t =
+                (((east - a.0) * de + (north - a.1) * dn) / (de * de + dn * dn)).clamp(0.0, 1.0);
+            (east - a.0 - de * t).hypot(north - a.1 - dn * t) < 0.2
+        })
+    };
+    for front in &fronts {
+        let [east, _, south] = front.middle();
+        assert!(
+            on_wall((f64::from(east), -f64::from(south))),
+            "a shop front off the walls at {:?}",
+            front.middle()
+        );
+    }
+}
+
+#[tokio::test]
 async fn shops_get_a_front_and_an_awning_onto_their_street() {
     use orqwa_osm::{Road, RoadClass};
 
@@ -2968,6 +4163,10 @@ async fn shops_get_a_front_and_an_awning_onto_their_street() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![house(31, 80.0), house(32, 120.0)],
@@ -3025,17 +4224,27 @@ async fn shops_get_a_front_and_an_awning_onto_their_street() {
 }
 
 #[tokio::test]
-async fn roads_stay_clear_of_buildings() {
+async fn roads_stay_clear_of_buildings_standing_across_them() {
     use orqwa_osm::{Road, RoadClass};
 
     // A 60 × 20 m block across the road ridden (its corners far from it), a 40 × 12 m block
-    // a street runs through, and a house beside each.
+    // a street runs through, and a house beside each block.
     let building = |id: i64, outline| Building {
         id,
         outline,
         height: None,
         levels: Some(3.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let street = |line| Road {
+        class: RoadClass::Street,
+        details: orqwa_osm::RoadDetails::default(),
+        line,
+        structure: None,
     };
     let world = world(&MapData {
         buildings: vec![
@@ -3044,12 +4253,7 @@ async fn roads_stay_clear_of_buildings() {
             building(43, rectangle(100.0, 600.0, 20.0, 6.0)),
             building(44, rectangle(100.0, 615.0, 6.0, 4.0)),
         ],
-        roads: vec![Road {
-            class: RoadClass::Street,
-            details: orqwa_osm::RoadDetails::default(),
-            line: vec![at(40.0, 600.0), at(200.0, 600.0)],
-            structure: None,
-        }],
+        roads: vec![street(vec![at(40.0, 600.0), at(200.0, 600.0)])],
         ..MapData::default()
     })
     .await;
@@ -3061,13 +4265,304 @@ async fn roads_stay_clear_of_buildings() {
                 .iter()
                 .any(|m| (m.origin[0] - east).hypot(-m.origin[2] - north) < radius)
     };
-    assert!(!stands((0.0, 300.0), 25.0), "a block stands on the road");
-    assert!(!stands((100.0, 600.0), 8.0), "a block stands on the street");
+    // Riders pass beneath the block's middle: nothing stands on the road below it, and the
+    // block stands on either side and over the road.
+    assert_eq!(
+        faces_on_road(&world, (280.0, 320.0), 3.9),
+        0,
+        "a block stands on the road"
+    );
+    assert!(
+        stands((-15.0, 300.0), 5.0) && stands((15.0, 300.0), 5.0),
+        "the block is gone"
+    );
+    let over = building_faces(&world, (0.0, 300.0), 1.5);
+    assert!(
+        !over.is_empty() && lowest(&over) >= 503.9,
+        "nothing passes over the road where the block stands"
+    );
+    // The same where the street runs through the other block.
+    let on_street = building_faces(&world, (100.0, 600.0), 25.0)
+        .into_iter()
+        .filter(|face| {
+            let [east, height, south] = face.middle();
+            (80.5..=119.5).contains(&east)
+                && (-south - 600.0).abs() < 1.45
+                && height < slope_at(east) + 3.9
+        })
+        .count();
+    assert_eq!(on_street, 0, "a block stands on the street");
+    let side = |north: f32| {
+        building_faces(&world, (100.0, 600.0), 25.0)
+            .iter()
+            .any(|face| (-face.middle()[2] - north).abs() < 2.0)
+            || models
+                .iter()
+                .any(|m| (-m.origin[2] - north).abs() < 2.0 && (m.origin[0] - 100.0).abs() < 20.0)
+    };
+    assert!(side(604.0) && side(596.0), "the block is gone");
     assert!(stands((20.0, 400.0), 5.0), "the house by the road is gone");
     assert!(
         stands((100.0, 615.0), 3.0),
         "the house by the street is gone"
     );
+}
+
+#[tokio::test]
+async fn the_road_lies_in_the_street_its_houses_line() {
+    // A row of houses 1 m east of the map's line, the other side open: the map's line runs
+    // off the middle of the street they line, as villages' lines often do. The road moves
+    // west into the street, as far as it keeps the line on it, and narrows by the rest; the
+    // houses stand whole, and riders ride in the middle of the road as drawn.
+    let house = |id: i64, north: f64| Building {
+        id,
+        outline: rectangle(6.0, north, 5.0, 6.0),
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house(48, 480.0), house(49, 495.0), house(50, 510.0)],
+        ..MapData::default()
+    })
+    .await;
+
+    let widths = crate::RoadWidths::new(&world.road);
+    let (middle, _) = widths.middle(0.0, 495.0, Meters(500.0));
+    let half = road_half(&world, 495.0);
+    let open = road_half(&world, 800.0);
+    assert!(
+        middle < -0.9 && middle + f64::from(half) > 0.4,
+        "the road stays on the map's line by the houses: middle {middle}, half {half}"
+    );
+    assert!(
+        middle + f64::from(half) <= 0.75,
+        "the road reaches the houses: middle {middle}, half {half}"
+    );
+    assert!(half >= 1.5 && half < open, "{half} of {open}");
+    assert!(
+        widths.middle(0.0, 800.0, Meters(500.0)).0.abs() < 0.05,
+        "the road leaves the map's line away from the houses"
+    );
+    // Whole: their walls facing the road stand where the map draws them.
+    let walls: Vec<f32> = building_faces(&world, (6.0, 495.0), 25.0)
+        .iter()
+        .filter(|face| face.normal[0] < -0.9 && face.middle()[1] < 506.0)
+        .map(|face| face.middle()[0])
+        .collect();
+    assert!(!walls.is_empty(), "the houses are gone");
+    assert!(
+        walls.iter().all(|&east| (east - 1.0).abs() < 0.05),
+        "a house is cut: walls at {walls:?}"
+    );
+}
+
+#[tokio::test]
+async fn roads_into_buildings_or_on_other_levels_leave_them_whole() {
+    use orqwa_osm::{Road, RoadClass};
+
+    // A service road through a barn (its drive-through), a street on a deck through the upper
+    // floor of a car park, and a lane ending at a barn's door: none cuts its building.
+    let building = |id: i64, outline| Building {
+        id,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let road = |class, layer, line| Road {
+        class,
+        details: orqwa_osm::RoadDetails {
+            layer,
+            ..orqwa_osm::RoadDetails::default()
+        },
+        line,
+        structure: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![
+            building(51, rectangle(100.0, 400.0, 12.0, 8.0)),
+            building(52, rectangle(100.0, 700.0, 15.0, 10.0)),
+            building(45, rectangle(100.0, 800.0, 12.0, 8.0)),
+        ],
+        roads: vec![
+            road(
+                RoadClass::Service,
+                0,
+                vec![at(40.0, 400.0), at(160.0, 400.0)],
+            ),
+            road(
+                RoadClass::Street,
+                1,
+                vec![at(40.0, 700.0), at(160.0, 700.0)],
+            ),
+            road(
+                RoadClass::Street,
+                0,
+                vec![at(40.0, 800.0), at(100.0, 800.0)],
+            ),
+        ],
+        ..MapData::default()
+    })
+    .await;
+
+    for north in [400.0, 700.0, 800.0] {
+        let cut = building_faces(&world, (100.0, north), 18.0)
+            .iter()
+            .filter(|face| {
+                let [east, height, south] = face.middle();
+                (-south - north).abs() < 3.0
+                    && (90.0..=110.0).contains(&east)
+                    && height < slope_at(east) + 3.0
+            })
+            .count();
+        assert!(
+            !building_faces(&world, (100.0, north), 18.0).is_empty(),
+            "the building at {north} is gone"
+        );
+        assert_eq!(cut, 0, "the building at {north} is cut along its road");
+    }
+}
+
+#[tokio::test]
+async fn buildings_whose_roof_is_not_mapped_take_their_neighbours_roofs() {
+    // A village of 24 houses mapped with gabled roofs, and an apartment block whose roof the
+    // map leaves out: blocks are mostly flat-roofed, but this one takes the village's roof.
+    let gabled = orqwa_osm::Shape {
+        roof: Some(orqwa_osm::RoofShape::Gabled),
+        ..orqwa_osm::Shape::default()
+    };
+    let mut buildings: Vec<Building> = (0..24_i32)
+        .map(|i| Building {
+            id: 600 + i64::from(i),
+            outline: rectangle(
+                40.0 + f64::from(i % 6) * 25.0,
+                300.0 + f64::from(i / 6) * 30.0,
+                5.0,
+                4.0,
+            ),
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: Some(gabled),
+        })
+        .collect();
+    buildings.push(Building {
+        id: 700,
+        outline: rectangle(100.0, 520.0, 12.0, 8.0),
+        height: None,
+        levels: Some(4.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: Some(orqwa_osm::BuildingKind::Apartments),
+        shape: None,
+    });
+    let world = world(&MapData {
+        buildings,
+        ..MapData::default()
+    })
+    .await;
+
+    let block = building_faces(&world, (100.0, 520.0), 13.0);
+    assert!(!block.is_empty(), "the block is gone");
+    let sloped = block
+        .iter()
+        .filter(|f| (0.3..0.97).contains(&f.normal[1]) && f.middle()[1] > lowest(&block) + 11.0)
+        .count();
+    assert!(sloped >= 2, "the block has a flat roof among gabled houses");
+}
+
+#[tokio::test]
+async fn buildings_raised_over_the_road_span_it_whole() {
+    // A bridge between two buildings, mapped from 5 m up to 8 m, across the road.
+    let world = world(&MapData {
+        buildings: vec![Building {
+            id: 47,
+            outline: rectangle(0.0, 500.0, 12.0, 3.0),
+            height: Some(8.0),
+            levels: None,
+            color: None,
+            min_height: Some(5.0),
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        ..MapData::default()
+    })
+    .await;
+
+    let bridge = building_faces(&world, (0.0, 500.0), 14.0);
+    assert!(!bridge.is_empty(), "the bridge is gone");
+    assert!(lowest(&bridge) > 504.0, "the bridge comes down to the road");
+    let cut = bridge
+        .iter()
+        // Walls cut along the road face across it, below the roof and its chimney.
+        .filter(|face| {
+            face.normal[0].abs() > 0.9 && face.middle()[0].abs() < 10.0 && face.middle()[1] < 508.0
+        })
+        .count();
+    assert_eq!(cut, 0, "the bridge is cut along the road");
+    assert!(
+        road_half(&world, 500.0) > 2.5,
+        "the road narrows under the bridge"
+    );
+}
+
+#[tokio::test]
+async fn buildings_above_a_tunnel_of_the_road_stay_whole() {
+    // A hill 60 m high over the road's tunnel, and a house on top of it, right above the road.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (60.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let route = route_north(&[Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 250.0), at(0.0, 750.0)],
+    }])
+    .await;
+    let map = MapData {
+        buildings: vec![Building {
+            id: 46,
+            outline: rectangle(0.0, 500.0, 5.0, 4.0),
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Hill, &map, &mut |_, _| {}).await;
+
+    let house = building_faces(&world, (0.0, 500.0), 12.0);
+    assert!(!house.is_empty(), "the house above the tunnel is gone");
+    let cut = house
+        .iter()
+        // Walls cut along the road face across it.
+        .filter(|face| face.normal[0].abs() > 0.9 && face.middle()[0].abs() < 4.0)
+        .count();
+    assert_eq!(cut, 0, "the house above the tunnel is cut along the road");
 }
 
 #[tokio::test]
@@ -3079,6 +4574,10 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let l_shape = [
         (60.0, 700.0),
@@ -3104,11 +4603,11 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
     assert_eq!(models.len(), 1, "only the rectangular house");
     let house = &models[0];
     assert!(house.model.starts_with("house_"), "{}", house.model);
-    // Standing on its footprint's centre, at the highest ground (65 m east), stretched by no
-    // more than a quarter, its length along the outline's.
+    // Standing on its footprint's centre, set into the slope at its mean ground (60 m east),
+    // stretched by no more than a quarter, its length along the outline's.
     assert!((house.origin[0] - 60.0).abs() < 0.01 && (house.origin[2] + 500.0).abs() < 0.01);
     assert!(
-        (house.origin[1] - slope_at(64.5)).abs() < 0.01,
+        (house.origin[1] - slope_at(60.0)).abs() < 0.01,
         "{}",
         house.origin[1]
     );
@@ -3122,12 +4621,19 @@ async fn rectangular_houses_become_models_with_shells_for_the_distance() {
     // Both still have shells: the house's for the distance, the farmhouse's always.
     assert!(!building_faces(&world, (60.0, 500.0), 12.0).is_empty());
     assert!(!building_faces(&world, (70.0, 710.0), 15.0).is_empty());
+    // Drawn at every distance: as a shell, or as the walls of a building assembled from parts.
     let unmodelled: usize = world
         .chunks
         .iter()
-        .map(|c| c.buildings.vertices.len())
+        .map(|c| {
+            c.buildings.vertices.len()
+                + c.modelled
+                    .iter()
+                    .map(|m| m.walls.vertices.len())
+                    .sum::<usize>()
+        })
         .sum();
-    assert!(unmodelled > 0, "the farmhouse is drawn as its shell");
+    assert!(unmodelled > 0, "the farmhouse is drawn at every distance");
 }
 
 /// Terrain sloping down eastwards by `grade`, 1300 m at the route start: mountains.
@@ -3156,6 +4662,10 @@ async fn chalets_show_their_front_to_the_valley_and_churches_their_choir_to_the_
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let church = Building {
         id: 32,
@@ -3205,6 +4715,10 @@ async fn houses_on_steep_slopes_keep_their_shells() {
         height: None,
         levels: Some(2.0),
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let map = MapData {
         buildings: vec![house],
@@ -4593,6 +6107,10 @@ async fn all_world_meshes_face_their_normals() {
         height: Some(9.0),
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![house],
@@ -4663,6 +6181,10 @@ async fn minimap_draws_map_features_near_the_route_only() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let map = MapData {
         areas: vec![forest, far_lake],
@@ -4985,38 +6507,45 @@ async fn rivers_slope_with_their_course_in_their_channel() {
 }
 
 #[tokio::test]
-async fn mapped_building_colours_turn_into_palette_colours() {
-    // A house mapped in dark grey: it keeps a wall colour of the light pastel palette.
-    let house = Building {
-        id: 5,
-        outline: square(60.0, 500.0, 5.0),
+async fn mapped_building_colours_keep_their_hue_in_light_tones() {
+    // A house mapped in dark grey keeps light walls, and one mapped teal stays teal, lighter
+    // and less saturated, rather than the palette colour nearest to it (R261).
+    let house = |id, north, color| Building {
+        id,
+        outline: square(60.0, north, 5.0),
         height: None,
         levels: Some(2.0),
-        color: Some([0.15, 0.15, 0.17]),
+        color: Some(color),
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
-        buildings: vec![house],
+        buildings: vec![
+            house(5, 480.0, [0.15, 0.15, 0.17]),
+            house(6, 530.0, [0.05, 0.45, 0.45]),
+        ],
         ..MapData::default()
     })
     .await;
-
     // Plastered walls carry style code 0 in their alpha.
-    let walls: Vec<[f32; 4]> = world
-        .chunks
-        .iter()
-        .flat_map(|c| {
-            c.modelled
-                .iter()
-                .flat_map(|cell| cell.shells.colors.iter())
-                .chain(c.buildings.colors.iter())
-        })
-        .filter(|colour| colour[3] == 0.0)
-        .copied()
-        .collect();
-    assert_ne!(walls.len(), 0, "no plastered walls");
-    for [r, g, b, _] in walls {
+    let walls = |north: f32| -> Vec<[f32; 4]> {
+        building_faces(&world, (60.0, north), 9.0)
+            .iter()
+            .filter(|f| f.style() == 0)
+            .map(|f| f.color)
+            .collect()
+    };
+    let (grey, teal) = (walls(480.0), walls(530.0));
+    assert_ne!(grey.len(), 0, "no plastered walls");
+    assert_ne!(teal.len(), 0, "no plastered walls");
+    for [r, g, b, _] in grey.into_iter().chain(teal.iter().copied()) {
         let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         assert!(luminance > 0.6, "dark wall {r} {g} {b}");
+    }
+    for [r, g, b, _] in teal {
+        assert!(g > r + 0.05 && b > r + 0.05, "teal kept: {r} {g} {b}");
     }
 }
 
@@ -5101,6 +6630,10 @@ async fn castles_and_lighthouses_from_the_map_get_their_models() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let tower = Building {
         id: 62,
@@ -5224,6 +6757,10 @@ async fn forest_and_houses(origin: (f64, f64)) -> World {
             height: None,
             levels: None,
             color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
         })
         .collect();
     let map = MapData {
@@ -5288,6 +6825,10 @@ async fn a_castle_with_a_free_outline_gets_towers_windows_and_a_roof() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let world = world(&MapData {
         buildings: vec![castle],
@@ -6147,6 +7688,10 @@ async fn towns_get_lamps_benches_and_shelters_with_room_to_stand() {
         height: None,
         levels: None,
         color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
     };
     let side_street = orqwa_osm::Road {
         class: orqwa_osm::RoadClass::Street,

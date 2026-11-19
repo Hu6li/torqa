@@ -74,6 +74,8 @@ func _run() -> void:
 	for place: float in _setting("PLACES", "").split_floats(" ", false):
 		await _go_to(place)
 		await _sample("all")
+		# Nearby additions stream after the camera moves; include their allocated geometry too.
+		_print_totals()
 		root.get_texture().get_image().save_png(
 			_setting("OUT_DIR", ".").path_join("%s-%.0f.png" % [_label, place])
 		)
@@ -414,7 +416,11 @@ func _kind(geometry: GeometryInstance3D) -> String:
 		_world.get("_water_material"): "water",
 		UrbanSurfaces.material(): "urban",
 	}
-	return by_material.get(material, "other")
+	return (
+		"building_details"
+		if geometry.has_meta("building_detail")
+		else by_material.get(material, "other")
+	)
 
 
 ## How much of each kind the world holds: nodes, surfaces (draw calls per pass when all are in

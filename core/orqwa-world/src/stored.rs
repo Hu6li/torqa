@@ -17,7 +17,7 @@ use crate::{BuildingCell, Horizon, Label, MeshData, Props, TerrainChunk, Trees, 
 /// `tests/data/stored-world-<FORMAT>.bin` fails then), or a change in what the app makes of the
 /// data, such as a model renamed or removed or another layout of an instance buffer. Worlds of
 /// another format are built again.
-pub const FORMAT: u32 = 3;
+pub const FORMAT: u32 = 4;
 
 /// The first bytes of a world's parts built whole.
 const MAGIC: &[u8; 8] = b"TQWORLD\0";
@@ -185,9 +185,15 @@ impl<W: Write> Writer<'_, W> {
             self.mesh(mesh)?;
         }
         self.len(modelled.len())?;
-        for BuildingCell { models, shells } in modelled {
+        for BuildingCell {
+            models,
+            shells,
+            walls,
+        } in modelled
+        {
             self.models(models)?;
             self.mesh(shells)?;
+            self.mesh(walls)?;
         }
         for mesh in [streets, tracks, urban, water] {
             self.mesh(mesh)?;
@@ -323,6 +329,7 @@ impl<R: Read> Reader<'_, R> {
             modelled.push(BuildingCell {
                 models: self.models()?,
                 shells: self.mesh()?,
+                walls: self.mesh()?,
             });
         }
         let streets = self.mesh()?;
@@ -387,6 +394,7 @@ mod tests {
             modelled: vec![BuildingCell {
                 models: models("house"),
                 shells: mesh(seed + 2.0),
+                walls: mesh(seed + 21.0),
             }],
             streets: mesh(seed + 3.0),
             tracks: mesh(seed + 4.0),

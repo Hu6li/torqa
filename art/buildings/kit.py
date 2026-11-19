@@ -3,8 +3,8 @@
 A `Mesh` collects faces with named materials; texture coordinates are metres on each surface
 (walls: along and up; roofs: along the eaves and up the slope). Walls get recessed openings
 with windows, doors, sills and shutters; roofs get thickness, soffits, fascia and ridge caps.
-Parts are chunky and few (ADR 0011): nothing that does not show at riding distance — no
-gutters, downpipes, rafters or glazing bars.
+Ordinary variants keep small parts lean. The separately exported Ultra variants add glazing
+bars and main-roof drainage through `details.py` (R256).
 
 Coordinates are metres: x along the building, y across it, z up, the origin at the centre of
 the footprint at ground-floor level. Faces wind counter-clockwise seen from the front (the
@@ -14,6 +14,8 @@ glTF convention).
 import math
 
 from mathutils import Vector
+
+import details
 
 UP = Vector((0.0, 0.0, 1.0))
 
@@ -27,20 +29,25 @@ class Mesh:
         self.materials = []
         self.uvs = []
         self.smooth = []
+        self.detailed = details.ENABLED
+        self.glazing_bars = details.GLAZING_BARS
+        self.detail_footprint = details.FOOTPRINT
+        self.detail_uvs = []
 
     def add(self, other, offset=(0.0, 0.0, 0.0), turn=0.0):
         """Adds the faces of `other`, turned `turn` degrees about z and then moved by `offset`.
         Texture coordinates are recomputed where they are metric."""
         cos, sin = math.cos(math.radians(turn)), math.sin(math.radians(turn))
         shift = Vector(offset)
-        for face, material, uvs, smooth in zip(other.faces, other.materials, other.uvs,
-                                               other.smooth):
+        for face, material, uvs, smooth, detail_uvs in zip(other.faces, other.materials, other.uvs,
+                                                          other.smooth, other.detail_uvs):
             points = [
                 Vector((v.x * cos - v.y * sin, v.x * sin + v.y * cos, v.z)) + shift
                 for v in (other.verts[i] for i in face)
             ]
             metric = uvs == metric_uvs([other.verts[i] for i in face])
             self.face(points, material, None if metric else uvs, smooth)
+            self.detail_uvs[-1] = detail_uvs
 
     def face(self, points, material, uvs=None, smooth=False):
         """A planar polygon, counter-clockwise seen from the side it faces."""
@@ -53,6 +60,7 @@ class Mesh:
         self.materials.append(material)
         self.uvs.append(uvs if uvs is not None else metric_uvs(points))
         self.smooth.append(smooth)
+        self.detail_uvs.append([(0.0, 0.0)] * len(points))
 
     def facing(self, points, normal, material, uvs=None, smooth=False):
         """A planar polygon wound so that it faces `normal`."""
@@ -293,9 +301,12 @@ def window(mesh, facade, o, frame="frame", sill="stone", shutters=None, flowers=
         mesh.facing([p(a, b, front), p(c, e, front), p(c, e, glass), p(a, b, glass)],
                     normal, frame)
     # Church windows (metal frames) have stained glass of their own colour.
-    mesh.facing([p(inner[0], inner[2], glass), p(inner[1], inner[2], glass),
-                 p(inner[1], inner[3], glass), p(inner[0], inner[3], glass)],
-                facade.out, "leaded" if frame == "metal" else "glass")
+    if mesh.detailed and frame != "metal":
+        details.glazing(mesh, facade, inner, front - 0.01, glass, frame)
+    else:
+        mesh.facing([p(inner[0], inner[2], glass), p(inner[1], inner[2], glass),
+                     p(inner[1], inner[3], glass), p(inner[0], inner[3], glass)],
+                    facade.out, "leaded" if frame == "metal" else "glass")
     if sill:
         mesh_sill(mesh, facade, o, sill)
     else:
@@ -459,6 +470,8 @@ def gable_roof(mesh, rect, eaves, pitch_deg, overhang, verge, roof="tiles", unde
         if gable_window:
             for o in gable_openings:
                 gable_window(facade, o)
+    if mesh.detailed:
+        details.drainage(mesh, rect, eaves, pitch_deg, overhang, verge)
     return ridge + t
 
 
@@ -498,6 +511,8 @@ def hipped_roof(mesh, rect, eaves, pitch_deg, overhang, roof="tiles", under="woo
         for sy in (-1.0, 1.0):
             mesh.beam((sx * lr, sy * wr, edge + t + 0.03), (sx * half_ridge, 0.0, ridge + t + 0.03),
                       0.24, 0.1, caps or roof)
+    if mesh.detailed:
+        details.drainage(mesh, rect, eaves, pitch_deg, overhang)
     return ridge + t
 
 
