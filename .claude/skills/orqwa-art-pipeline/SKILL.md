@@ -113,6 +113,14 @@ scripts/art.sh blender --background --factory-startup --python art/textures/buil
 Coordinates: metres, x along the model, y across, z up, origin at the footprint centre on the
 ground; walls reach 3 m below ground for slopes. glTF/Godot turn Blender's y into −z.
 
+## Parts of assembled buildings
+
+`art/buildings/parts.py` exports `parts/window.glb` and `parts/door.glb` (ADR 0041, step 7). Their
+openings must match the casing the generated walls draw (1.48 m wide, 0.95–2.44 m over the
+storey's floor); change `lay_parts` in `core/orqwa-world/src/buildings`, the shader's window
+grid and the parts together. Parts are instances named `parts/<name>` in a cell's `models`,
+beside the building's walls in the cell's `walls`.
+
 ## Contracts — change both sides together
 
 - **Material names → looks.** Files carry no textures; every face has a material *name* and the
@@ -150,6 +158,17 @@ all maps, normal-map import on normals, and keep these six textures with their s
   If a rebuild changes files you did not touch, find out why before committing.
 
 ## Regional buildings
+
+Nearby Ultra building variants (R256) are authored with
+`art/buildings/build.py -- --detail`, into `app/assets/models/buildings/detail/`. Retain the
+ordinary GLBs, manifest, model names and dimensions. `details.py` adds normalized panes with
+stable second-UV seeds, glazing bars and main-roof drainage. Tall French city blocks keep
+their geometry budget and only add the interior treatment. Use
+`art/textures/building_scans.py` for the archived plaster/roof scans; neutral albedo preserves
+regional hues. Review Low/Medium as well as Ultra, and preset changes on a loaded course.
+Generated shell detail is derived in Rust on nearby Ultra requests, rather than stored or built
+in GDScript. Stream and release it with camera movement; never allocate façade buffers for the
+whole course. See `docs/building-realism-study.md` for the production fixture and range rules.
 
 Asian buildings (`art/buildings/japanese.py`, R164) use the existing named materials and
 `japanese_house` / `japanese_castle` catalogue kinds. Keep the palette and gallery's regional

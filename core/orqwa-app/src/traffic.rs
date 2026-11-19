@@ -108,10 +108,12 @@ pub(crate) fn position(
     } else {
         1.0
     };
-    // Halfway into the local half of the carriageway, scaling down with narrow paths.
+    // Halfway into the local half of the carriageway, scaling down with narrow paths, from
+    // its middle, which lies off the route's line where buildings show the street does.
     // Ghosts stay nearer the centre on the same side, including in left-hand traffic.
     let offset =
         widths.at(east, north, at.elevation).0 * 0.25 * sign * if ghost { 0.35 } else { 1.0 };
+    let (east, north) = widths.middle(east, north, at.elevation);
     (
         east + at.heading.cos() * offset,
         north - at.heading.sin() * offset,

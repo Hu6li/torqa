@@ -14,10 +14,13 @@ static func apply(world: RideWorld, active: bool, climate: Dictionary) -> void:
 	materials.append(plants)
 	var shell: ShaderMaterial = world.get("_building_material")
 	materials.append(shell)
+	materials.append(BuildingDetails.material())
 	for key: String in ["_road_material", "_street_material", "_track_material"]:
 		var road: ShaderMaterial = world.get(key)
 		materials.append(road)
-	for name: String in ["tiles", "slate", "sheet", "roof_flat", "copper", "flowers"]:
+	for name: String in [
+		"tiles", "slate", "sheet", "roof_flat", "copper", "flowers", "metal", "frame", "stone"
+	]:
 		materials.append(BuildingModels.material(name) as ShaderMaterial)
 	for material: ShaderMaterial in materials:
 		material.set_shader_parameter("winter_strength", 1.0 if active else 0.0)

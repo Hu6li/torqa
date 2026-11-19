@@ -27,6 +27,8 @@ uniform sampler2D plaster_texture : source_color, filter_linear_mipmap_anisotrop
 uniform sampler2D boards_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tiles_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D gravel_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D plaster_rough_texture : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D tiles_rough_texture : filter_linear_mipmap_anisotropic, repeat_enable;
 
 const int PLASTER = 0;
 const int BLANK = 1;
@@ -71,6 +73,11 @@ void fragment() {
 	vec3 color = base;
 	vec3 average = base;
 	float roughness = 0.9;
+	if (style == TILES) {
+		roughness = texture(tiles_rough_texture, uv / 2.0).r;
+	} else if (style == BLANK) {
+		roughness = texture(plaster_rough_texture, uv / 2.0).r;
+	}
 	float specular = 0.2;
 	bool wall = style <= CLADDING || style == RIBBON;
 

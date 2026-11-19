@@ -151,7 +151,7 @@ func _stage() -> void:
 func _mesh(group: String, name: String) -> Mesh:
 	match group:
 		"buildings":
-			return BuildingModels.mesh(name)
+			return BuildingModels.mesh(name, OS.get_environment("BUILDING_DETAIL") == "1")
 		"props":
 			return PropModels.mesh(name)
 	return VegetationModels.mesh(name)
@@ -253,7 +253,9 @@ func _close_up(mesh: Mesh) -> void:
 ## Lets the picture settle, then saves it as `group`/`name`.png and, with `gallery`, as a small
 ## JPEG into the gallery.
 func _save(group: String, name: String, gallery: bool) -> void:
-	for frame: int in range(20):
+	var setting: String = OS.get_environment("RENDER_FRAMES")
+	var frames: int = maxi(1, int(setting)) if not setting.is_empty() else 20
+	for frame: int in range(frames):
 		await process_frame
 	var image: Image = root.get_texture().get_image()
 	image.save_png(_out.path_join(group).path_join(name + ".png"))

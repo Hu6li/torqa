@@ -1,0 +1,45 @@
+{
+  "measured_on": "2026-11-08",
+  "device": "Apple M5 Pro",
+  "renderer": "Metal 4.0, Forward+, Godot 4.7.2",
+  "native_binary_and_current_source": "b955ac1655ea3fd9765bc9f1d3b9d5e391507978",
+  "baseline_source": "bcf38eb76f41e1dac1a12eb432694b50e34be0d8",
+  "ci_run": "https://github.com/ORQWA/ORQWA/actions/runs/42411571735",
+  "course_fixture": "core/fixtures/kirchenfeldbruecke.gpx",
+  "prepared_course_sha256": "7fe570e509c50a5db12af51ac8754798441d4a779252dc53878e622b7b7e8df4",
+  "course_chunks": 61,
+  "viewport_logical_pixels": [
+    1361,
+    855
+  ],
+  "capture_pixels": [
+    2722,
+    1710
+  ],
+  "camera": "chase",
+  "settle_seconds": 5,
+  "sample_seconds": 3,
+  "fps_limit": "uncapped, V-Sync disabled",
+  "timing_note": "Both Medium trials are retained; background workload and run-to-run variation prevent claiming a stable timing delta.",
+  "medium_geometry_counts_match_baseline": true,
+  "initial_whole_course_facade_triangles": 35083010,
+  "initial_geometry_source": "4d06543dbe538a331cd9583e20413cc4eb2440f1",
+  "streamed_facades": [
+    {
+      "place_m": 0,
+      "mesh_nodes": 102,
+      "triangles": 2574874
+    },
+    {
+      "place_m": 100,
+      "mesh_nodes": 96,
+      "triangles": 2578858
+    },
+    {
+      "place_m": 450,
+      "mesh_nodes": 70,
+      "triangles": 894656
+    }
+  ],
+  "m1_target_verified": false
+}

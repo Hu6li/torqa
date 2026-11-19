@@ -15,6 +15,9 @@ const MANIFEST: &str = include_str!("../../../../app/assets/models/buildings/mod
 /// Models are stretched or squeezed at most this much to fit a footprint; beyond it windows
 /// and roofs would look wrong, and the building keeps its shell.
 pub(crate) const MAX_STRETCH: f64 = 1.25;
+/// Models stand at most this much taller or lower than built to meet a mapped height: their
+/// windows, doors and storeys stretch too, which shows beyond it.
+pub(crate) const MAX_HEIGHT_STRETCH: f64 = 1.15;
 
 /// One model, as the manifest describes it.
 #[derive(Debug, Clone, Deserialize)]
@@ -73,11 +76,32 @@ pub(crate) struct Fit {
     pub(crate) model: &'static Model,
     /// Stretch along the model's length and across it.
     pub(crate) scale: (f64, f64),
+    /// Stretch up, meeting a mapped height (`MAX_HEIGHT_STRETCH`); 1 where none is mapped.
+    pub(crate) height: f64,
+}
+
+impl Fit {
+    /// The height of the fitted model's eaves above its ground floor.
+    pub(crate) fn eaves(&self) -> f64 {
+        self.model.eaves * self.height
+    }
 }
 
 /// The model that fits `rect` best, if any fits within `MAX_STRETCH`: among those of the
 /// wanted kind, the least stretched, with storeys and roof as wanted where possible.
+#[cfg(test)]
 pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
+    fitting_to(rect, wanted, None, dice)
+}
+
+/// As [`fitting`], to walls `eaves` high where the map gives a height: only a model that
+/// reaches them within `MAX_HEIGHT_STRETCH` fits, stretched up or down to them.
+pub(crate) fn fitting_to(
+    rect: &Rect,
+    wanted: Wanted,
+    eaves: Option<f64>,
+    dice: &Dice,
+) -> Option<Fit> {
     let kind = match wanted.kind {
         Kind::House if wanted.tropical => "tropical",
         Kind::House if wanted.region == Region::Asia => "japanese_house",
@@ -98,7 +122,7 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
         Kind::Castle if wanted.region == Region::Nordic => "nordic_castle",
         Kind::Castle => "castle",
         Kind::Lighthouse => "lighthouse",
-        Kind::Block | Kind::Hall => return None,
+        Kind::Block | Kind::Hall | Kind::Canopy => return None,
     };
     let (length, width) = (2.0 * rect.half_length, 2.0 * rect.half_width);
     MODELS
@@ -108,6 +132,10 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
             let scale = (length / model.length, width / model.width);
             let fits = |s: f64| (1.0 / MAX_STRETCH..=MAX_STRETCH).contains(&s);
             if !fits(scale.0) || !fits(scale.1) {
+                return None;
+            }
+            let height = eaves.map_or(1.0, |eaves| eaves / model.eaves);
+            if !(1.0 / MAX_HEIGHT_STRETCH..=MAX_HEIGHT_STRETCH).contains(&height) {
                 return None;
             }
             let storeys = match (wanted.storeys, model.storeys) {
@@ -125,8 +153,20 @@ pub(crate) fn fitting(rect: &Rect, wanted: Wanted, dice: &Dice) -> Option<Fit> {
                 .bytes()
                 .fold(7_i64, |h, b| h.wrapping_mul(31).wrapping_add(i64::from(b)));
             let variety = 0.08 * dice.roll(salt);
-            let cost = scale.0.ln().abs() + scale.1.ln().abs() + storeys + roof + variety;
-            Some((cost, Fit { model, scale }))
+            let cost = scale.0.ln().abs()
+                + scale.1.ln().abs()
+                + 2.0 * height.ln().abs()
+                + storeys
+                + roof
+                + variety;
+            Some((
+                cost,
+                Fit {
+                    model,
+                    scale,
+                    height,
+                },
+            ))
         })
         .min_by(|(a, _), (b, _)| a.total_cmp(b))
         .map(|(_, fit)| fit)

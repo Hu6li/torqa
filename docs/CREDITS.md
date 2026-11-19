@@ -35,6 +35,16 @@ No speech recording or third-party voice service is used.
 
 ## Models
 
+Building materials ([R256 and integration](building-realism-study.md)) use
+[Painted Plaster Wall](https://polyhaven.com/a/painted_plaster_wall) by **Amal Kumar** and
+[Roof Tiles](https://polyhaven.com/a/roof_tiles) by **Stephan Seeliger**, Poly Haven,
+**CC0 1.0**. Untouched 1K diffuse, OpenGL normal and roughness sources are archived under
+`art/sources/painted-plaster-wall/` and `art/sources/roof-tiles/`, with source URLs and SHA-256
+checksums. `art/textures/building_scans.py` converts them offline to WebP albedo, OpenGL normal
+and roughness maps, neutralizing colour so regional palettes retain their hues. These maps
+are bundled with the application; riders make no asset-provider requests. Close Ultra model
+variants, façade geometry and simulated interiors are own work.
+
 The East Asian house and castle archetypes for Asian rides, Nordic painted-timber houses and
 stone keeps, and French village houses, Haussmann-inspired city houses and château-inspired
 keeps (R164) are own work,

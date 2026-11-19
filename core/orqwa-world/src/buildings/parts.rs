@@ -1,9 +1,11 @@
 //! Surfaces of buildings: walls, roofs of several shapes, boxes and windows.
 
-use crate::MeshData;
 use crate::structures::{quad_uv, triangle_uv};
+use crate::{HeightGrid, MeshData};
 
+use super::STOREY;
 use super::shape::{Point, Rect, distance, offset, perimeter, signed_area, triangulate};
+use super::skeleton::Skeleton;
 
 /// Roofs are this thick at their edges.
 const ROOF_THICKNESS: f64 = 0.22;
@@ -15,6 +17,24 @@ const SHOP_RELIEF: f64 = 0.08;
 /// (`app/shaders/building.gdshader`: `window_spacing`, and the church's 4.5 m).
 pub(crate) const WINDOW_SPACING: f64 = 3.2;
 const CHURCH_WINDOW_SPACING: f64 = 4.5;
+/// Lower storeys count their rows of windows from this far below the ground floor: whole
+/// storeys and whole repeats of the walls' textures, so rows and texture run on unbroken, and
+/// the shader, drawing windows from 1 m above its zero, draws them there too.
+const LOWER_ROWS: f64 = 30.0;
+/// A lower storey shows where its ground lies at most this far above its floor, as a
+/// semi-basement's does: its windows, from 1 m up, still clear the ground.
+const LOWER_STOREY_SLACK: f64 = 1.0;
+/// No wall shows more lower storeys than this.
+const LOWER_STOREYS: f64 = 4.0;
+/// How far over its floor a storey's windows begin (`app/shaders/building.gdshader`).
+const WINDOW_SILL: f64 = 1.0;
+
+/// The whole storeys showing below the ground floor where the ground lies `drop` below it.
+fn lower_storeys(drop: f64) -> f64 {
+    ((drop + LOWER_STOREY_SLACK) / STOREY)
+        .floor()
+        .clamp(0.0, LOWER_STOREYS)
+}
 
 /// How the building shader draws a surface. Stored in the vertex colour's alpha as
 /// code / `Style::LAST`; `app/shaders/building.gdshader` uses the same codes.
@@ -126,6 +146,56 @@ pub(crate) struct Builder<'a> {
     pub(crate) ground: f64,
     /// Where walls end below the ground.
     pub(crate) footing: f64,
+    /// The ground the building stands on: where it lies a storey or more below the ground
+    /// floor, the walls there show lower storeys. None for shapes built on their own.
+    pub(crate) terrain: Option<&'a HeightGrid>,
+    /// Where a building assembled from parts takes its windows and door, if it is one.
+    pub(crate) parts: Option<&'a mut Vec<PartAt>>,
+}
+
+/// A part of a building assembled from parts (ADR 0041, step 7): which, where and which way.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PartAt {
+    pub(crate) part: Part,
+    /// East, north and height of its origin: on the wall, under the middle of its opening, at
+    /// the floor of its storey.
+    pub(crate) at: (f64, f64, f64),
+    /// The wall's direction (unit, east/north); the part faces out to its right.
+    pub(crate) along: Point,
+    /// How much the wall stretches its windows' spacing, which the part follows.
+    pub(crate) stretch: f64,
+}
+
+/// The parts buildings are assembled from, made in `art/buildings/parts.py`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Part {
+    Window,
+    Door,
+}
+
+impl Part {
+    /// The model it is drawn with.
+    pub(crate) fn model(self) -> &'static str {
+        match self {
+            Self::Window => "parts/window",
+            Self::Door => "parts/door",
+        }
+    }
+}
+
+/// Where the shader's grid of windows has openings on a wall of `length` metres: each
+/// column's middle along the wall, and the stretch of the grid to whole windows.
+pub(crate) fn window_columns(length: f64) -> (Vec<f64>, f64) {
+    let columns = (length / WINDOW_SPACING).round();
+    if columns < 1.0 {
+        return (Vec::new(), 1.0);
+    }
+    let stretch = length / (columns * WINDOW_SPACING);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a few dozen columns
+    let middles = (0..columns as u32)
+        .map(|c| (f64::from(c) * WINDOW_SPACING + WINDOW_SPACING / 2.0) * stretch)
+        .collect();
+    (middles, stretch)
 }
 
 // Geometry is stored as f32 for the GPU.
@@ -151,29 +221,123 @@ impl Builder<'_> {
     fn walls_facing(&mut self, outline: &[Point], bottom: f64, top: f64, paint: Paint, side: f64) {
         for i in 0..outline.len() {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
-            let length = distance(a, b);
-            if length < 0.01 {
-                continue;
-            }
-            let span = match paint.style.window_spacing() {
-                Some(spacing) => (length / spacing).round() * spacing,
-                None => length,
-            };
-            // Counter-clockwise outline: the outside is to the right of travel.
-            let out = ((b.1 - a.1) / length * side, (a.0 - b.0) / length * side);
-            let uvs = [
-                self.wall_uv(0.0, bottom),
-                self.wall_uv(span, bottom),
-                self.wall_uv(span, top),
-                self.wall_uv(0.0, top),
-            ];
-            self.upright(
-                &[(a, bottom), (b, bottom), (b, top), (a, top)],
-                &uvs,
-                out,
-                paint,
-            );
+            self.wall(a, b, (bottom, top), paint, side, 0.0);
         }
+    }
+
+    /// Walls from `bottom` to `top` along a counter-clockwise `outline`, facing out, above the
+    /// ground floor: where a wall's ground, at its higher end, lies over a storey's window
+    /// sills, as on the uphill side of a building set into a slope, that storey shows no
+    /// windows on that wall, so none is seen half sunk in the ground.
+    pub(crate) fn facade(&mut self, outline: &[Point], bottom: f64, top: f64, paint: Paint) {
+        let blank = match paint.style {
+            Style::Plaster => paint.with(Style::Blank),
+            Style::Timber => paint.with(Style::Boards),
+            _ => paint,
+        };
+        for i in 0..outline.len() {
+            let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+            let blind = if blank == paint {
+                bottom
+            } else {
+                (self.ground + self.buried_storeys(a, b) * STOREY).clamp(bottom, top)
+            };
+            if blind > bottom {
+                self.wall(a, b, (bottom, blind), blank, 1.0, 0.0);
+            }
+            if top > blind {
+                self.wall(a, b, (blind, top), paint, 1.0, 0.0);
+            }
+        }
+    }
+
+    /// How many storeys from the ground floor up the ground buries on the wall from `a` to `b`:
+    /// those whose window sills lie under its ground at the wall's higher end.
+    pub(crate) fn buried_storeys(&self, a: Point, b: Point) -> f64 {
+        let Some(terrain) = self.terrain else {
+            return 0.0;
+        };
+        let buried = terrain.at(a.0, a.1).max(terrain.at(b.0, b.1)) - self.ground;
+        ((buried - WINDOW_SILL) / STOREY).ceil().max(0.0)
+    }
+
+    /// The ground at a point, if the building knows its ground.
+    pub(crate) fn ground_at(&self, at: Point) -> Option<f64> {
+        self.terrain.map(|terrain| terrain.at(at.0, at.1))
+    }
+
+    /// The walls below the ground floor, from `bottom` up, along a counter-clockwise
+    /// `outline`. Where a wall's ground lies one or more whole storeys below the floor, as on
+    /// the downhill side of a building on a slope, those storeys show the windows of
+    /// `storeys` (a building on a hillside has its lower floors there); the rest is a plinth.
+    pub(crate) fn plinth(
+        &mut self,
+        outline: &[Point],
+        bottom: f64,
+        plinth: Paint,
+        storeys: Option<Paint>,
+    ) {
+        for i in 0..outline.len() {
+            let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+            let lower = match (self.terrain, storeys) {
+                (Some(terrain), Some(_)) => {
+                    let ground = terrain.at(a.0, a.1).max(terrain.at(b.0, b.1));
+                    lower_storeys(self.ground - ground)
+                }
+                _ => 0.0,
+            };
+            let top = self.ground - lower * STOREY;
+            // A lower storey reaching the footing leaves no plinth, not a sliver of one.
+            if top > bottom + 0.01 {
+                self.wall(a, b, (bottom, top), plinth, 1.0, 0.0);
+            }
+            if let Some(storeys) = storeys.filter(|_| lower > 0.0) {
+                self.wall(
+                    a,
+                    b,
+                    (top.max(bottom), self.ground),
+                    storeys,
+                    1.0,
+                    LOWER_ROWS,
+                );
+            }
+        }
+    }
+
+    /// A wall from `a` to `b` between heights `bottom` and `top`; `rows` added to its height
+    /// in the texture moves the rows of windows the shader draws from the ground floor up.
+    fn wall(
+        &mut self,
+        a: Point,
+        b: Point,
+        (bottom, top): (f64, f64),
+        paint: Paint,
+        side: f64,
+        rows: f64,
+    ) {
+        let length = distance(a, b);
+        if length < 0.01 {
+            return;
+        }
+        let span = match paint.style.window_spacing() {
+            Some(spacing) => (length / spacing).round() * spacing,
+            None => length,
+        };
+        // Counter-clockwise outline: the outside is to the right of travel.
+        let out = ((b.1 - a.1) / length * side, (a.0 - b.0) / length * side);
+        let lift = |[u, v]: [f32; 2]| [u, v + rows as f32];
+        let uvs = [
+            lift(self.wall_uv(0.0, bottom)),
+            lift(self.wall_uv(span, bottom)),
+            lift(self.wall_uv(span, top)),
+            lift(self.wall_uv(0.0, top)),
+        ];
+        self.upright(
+            &[(a, bottom), (b, bottom), (b, top), (a, top)],
+            &uvs,
+            out,
+            paint,
+        );
     }
 
     /// A vertical quad or triangle facing the horizontal direction `out` (east, north).
@@ -237,6 +401,12 @@ impl Builder<'_> {
 
     /// A flat roof at `height` behind a parapet `parapet` high, whose outside the walls
     /// provide by reaching its top.
+    /// The underside of a part raised off the ground, at `height` under a counter-clockwise
+    /// `outline`, facing down.
+    pub(crate) fn underside(&mut self, outline: &[Point], height: f64, paint: Paint) {
+        self.flat(outline, height, paint, false);
+    }
+
     pub(crate) fn flat_roof(
         &mut self,
         outline: &[Point],
@@ -402,6 +572,193 @@ impl Builder<'_> {
     /// A roof for outlines no rectangle fits: a band sloping up from the eaves all round to
     /// a flat top, which reads as a hipped roof from the ground. Returns the height of its
     /// top, or `None` where the outline is too irregular for the band.
+    /// A hipped roof over any counter-clockwise `outline` from its straight `skeleton`: a face
+    /// over every wall rising at the pitch to the hips, valleys and ridges where they meet, and
+    /// eaves standing out all round. Its top, or None if the eaves cannot be laid round it.
+    pub(crate) fn skeleton_roof(
+        &mut self,
+        outline: &[Point],
+        skeleton: &Skeleton,
+        pitch: Pitch,
+        paint: RoofPaint,
+    ) -> Option<f64> {
+        let count = outline.len();
+        if skeleton.faces.len() != count {
+            return None;
+        }
+        let outer = offset(outline, -pitch.overhang)?;
+        let slope = pitch.angle.tan();
+        let rafter = 1.0 / pitch.angle.cos();
+        let t = ROOF_THICKNESS;
+        for (i, face) in skeleton.faces.iter().enumerate() {
+            let start = outline[i];
+            let end = outline[(i + 1) % count];
+            let length = distance(start, end);
+            let along = ((end.0 - start.0) / length, (end.1 - start.1) / length);
+            let ring: Vec<Point> = face.iter().map(|&(p, _)| p).collect();
+            for triangle in triangulate(&ring) {
+                let corners = triangle.map(|k| face[k as usize]);
+                let [first, second, third] = corners.map(|(p, _)| p);
+                let twice_area = (second.0 - first.0) * (third.1 - first.1)
+                    - (second.1 - first.1) * (third.0 - first.0);
+                if twice_area.abs() < 1e-6 {
+                    continue;
+                }
+                let uvs = corners.map(|((e, n), h)| {
+                    let u = (e - start.0) * along.0 + (n - start.1) * along.1;
+                    [u as f32, (h * rafter) as f32]
+                });
+                self.slope(
+                    &corners.map(|(p, h)| (p, pitch.eaves + h * slope + t)),
+                    &uvs,
+                    paint.top,
+                    true,
+                );
+            }
+        }
+        let edge = pitch.eaves - pitch.overhang * slope;
+        let overhang = (pitch.overhang * rafter) as f32;
+        let mut along = 0.0;
+        for i in 0..count {
+            let j = (i + 1) % count;
+            let length = distance(outer[i], outer[j]);
+            let (from, to) = (along as f32, (along + length) as f32);
+            self.slope(
+                &[
+                    (outer[i], edge + t),
+                    (outer[j], edge + t),
+                    (outline[j], pitch.eaves + t),
+                    (outline[i], pitch.eaves + t),
+                ],
+                &[[from, -overhang], [to, -overhang], [to, 0.0], [from, 0.0]],
+                paint.top,
+                true,
+            );
+            self.slope(
+                &[
+                    (outer[i], edge),
+                    (outer[j], edge),
+                    (outline[j], pitch.eaves),
+                    (outline[i], pitch.eaves),
+                ],
+                &[[0.0; 2]; 4],
+                paint.under,
+                false,
+            );
+            along += length;
+        }
+        self.walls(&outer, edge, edge + t, paint.under);
+        Some(pitch.eaves + skeleton.height * slope + t)
+    }
+
+    /// A pyramidal roof over a convex counter-clockwise `outline`: a face from every wall up
+    /// to a point over its middle, as high as the pitch reaches from the nearest wall. None
+    /// for outlines that are not convex.
+    pub(crate) fn pyramid_roof(
+        &mut self,
+        outline: &[Point],
+        pitch: Pitch,
+        paint: RoofPaint,
+    ) -> Option<f64> {
+        let count = outline.len();
+        let convex = (0..count).all(|i| {
+            let (a, b, c) = (
+                outline[i],
+                outline[(i + 1) % count],
+                outline[(i + 2) % count],
+            );
+            (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0) >= -1e-9
+        });
+        if count < 3 || !convex {
+            return None;
+        }
+        let middle = super::shape::centroid(outline);
+        let height = (0..count)
+            .map(|i| {
+                let (a, b) = (outline[i], outline[(i + 1) % count]);
+                let length = distance(a, b).max(1e-9);
+                ((b.0 - a.0) * (middle.1 - a.1) - (b.1 - a.1) * (middle.0 - a.0)) / length
+            })
+            .fold(f64::INFINITY, f64::min);
+        if height <= 0.1 {
+            return None;
+        }
+        let skeleton = Skeleton {
+            faces: (0..count)
+                .map(|i| {
+                    vec![
+                        (outline[i], 0.0),
+                        (outline[(i + 1) % count], 0.0),
+                        (middle, height),
+                    ]
+                })
+                .collect(),
+            height,
+        };
+        self.skeleton_roof(outline, &skeleton, pitch, paint)
+    }
+
+    /// A roof of one slope over `rect`, rising across it from one long side to the other,
+    /// over walls rising with it at its ends and a wall up to it on its high side. Returns
+    /// its top.
+    pub(crate) fn skillion_roof(&mut self, rect: &Rect, pitch: Pitch, paint: RoofPaint) -> f64 {
+        let (length, width) = (rect.half_length, rect.half_width);
+        let slope = pitch.angle.tan();
+        let at = |across: f64| pitch.eaves + (across + width) * slope;
+        let (low, high) = (at(-width), at(width));
+        let (reach, out) = (length + pitch.verge, width + pitch.overhang);
+        let rafter = (2.0 * out / pitch.angle.cos()) as f32;
+        let along = (2.0 * reach) as f32;
+        for (lift, upper, roof) in [(ROOF_THICKNESS, true, paint.top), (0.0, false, paint.under)] {
+            self.slope(
+                &[
+                    (rect.point(-reach, -out), at(-out) + lift),
+                    (rect.point(reach, -out), at(-out) + lift),
+                    (rect.point(reach, out), at(out) + lift),
+                    (rect.point(-reach, out), at(out) + lift),
+                ],
+                &[[0.0, 0.0], [along, 0.0], [along, rafter], [0.0, rafter]],
+                roof,
+                upper,
+            );
+        }
+        for end in [-1.0, 1.0] {
+            let gable = end * length;
+            self.upright(
+                &[
+                    (rect.point(gable, -width), low),
+                    (rect.point(gable, width), low),
+                    (rect.point(gable, width), high),
+                ],
+                &[
+                    self.wall_uv(0.0, low),
+                    self.wall_uv(2.0 * width, low),
+                    self.wall_uv(2.0 * width, high),
+                ],
+                (rect.axis.0 * end, rect.axis.1 * end),
+                paint.gables,
+            );
+        }
+        let side = rect.across();
+        self.upright(
+            &[
+                (rect.point(-length, width), low),
+                (rect.point(length, width), low),
+                (rect.point(length, width), high),
+                (rect.point(-length, width), high),
+            ],
+            &[
+                self.wall_uv(0.0, low),
+                self.wall_uv(2.0 * length, low),
+                self.wall_uv(2.0 * length, high),
+                self.wall_uv(0.0, high),
+            ],
+            side,
+            paint.gables,
+        );
+        at(out) + ROOF_THICKNESS
+    }
+
     pub(crate) fn hip_band_roof(
         &mut self,
         outline: &[Point],

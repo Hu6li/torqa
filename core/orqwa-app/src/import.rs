@@ -179,6 +179,7 @@ pub async fn import_gpx(
         route = route.without_turns_in_place();
     }
     map.apply_surfaces();
+    map.apply_building_kinds();
     progress(LoadStage::Elevation, track.len(), track.len());
     let name = route
         .name()

@@ -152,9 +152,8 @@ scripts/art.sh blender --background --factory-startup --python art/textures/buil
 - `kit.py` holds the pieces: walls with recessed openings, windows with frames, sills and
   shutters, doors, balconies with solid balustrades, flower boxes, gable, hipped and
   half-hipped roofs with thick edges, flat roofs behind a parapet with a cornice, bands round
-  the walls, canopies, roof machinery, flags, spires and clocks. Parts are chunky and few (ADR 0011):
-  no gutters, downpipes, rafters or glazing bars, nothing that does not show at riding
-  distance.
+  the walls, canopies, roof machinery, flags, spires and clocks. Ordinary parts stay lean (ADR 0011);
+  Ultra variants add glazing bars and main-roof gutters/downpipes for nearby views.
 
 Models use metres with x along the building, y across it and z up; the origin is the centre of
 the footprint at ground level, and walls reach 3 m below it for slopes. Texture coordinates
@@ -204,6 +203,44 @@ five limestone city wall colours and four zinc roof colours. Regional selectors 
 tropical lowland houses; castles remain mapped points of interest. See
 [regional buildings](../docs/regional-buildings.md) for placement, references, rebuild
 commands and validation. These are own-work archetypes, not replicas.
+
+### Close Ultra detail (R256)
+
+`build.py -- --detail` exports nearby Ultra variants into
+`app/assets/models/buildings/detail/`, using the ordinary model names and footprint contract.
+`details.py` supplies glazing bars and main-roof drainage; normalized window coordinates and
+a second UV channel carry stable room variation. Tall French blocks retain their existing
+balcony/dormer geometry budget and add simulated interiors without additional glazing bars.
+The ordinary GLBs and placement manifest stay unchanged.
+
+`art/textures/building_scans.py` converts archived CC0 plaster/roof scans to neutral shared
+albedo, OpenGL normal and roughness maps, preserving the regional palette colours.
+`orqwa_world::nearby_building_details` derives close frames, sills, glazing and trim from saved shell
+surfaces only for Ultra, grouped into 64 m culling cells. The production renderer selects
+detail within 160 m, with a 20 m fade; lower presets upload the original geometry.
+Nearby requests also bound allocation: camera movement adds the cells newly in reach and
+releases far façade buffers, instead of adding detailed geometry to every uploaded course chunk.
+See [implementation, review and reproduction](../docs/building-realism-study.md).
+
+### Parts buildings are assembled from (R262)
+
+`parts.py` builds the window and door that homes no model fits are assembled from on their
+mapped outlines (ADR 0041, step 7), into `app/assets/models/buildings/parts/`:
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/buildings/parts.py
+```
+
+Each part stands on a wall in the x–z plane facing −y, its origin on the wall under the
+middle of its opening at its storey's floor. Its opening covers the casing the generated walls
+draw (1.48 m along the wall, 0.95–2.44 m up; `app/shaders/building.gdshader`), so the world
+lays parts where the walls draw windows (`lay_parts` in `core/orqwa-world/src/buildings`) and
+the walls' windows show where the parts have faded, beyond the model range. The window has a
+frame with mullion and transom, a sill, shutters and a flower box; the door a stone surround,
+a step and a tiled canopy. Materials are the models' (`frame`, `glass`, `shutter`, `stone`,
+`door`, `tiles`, `wood`, `flowers`, `leaves`), so the app styles them alike, shutters and
+flowers by each building's variant. The window has 92 triangles, the door 58. `blender_io.py`
+holds the export shared with `build.py`.
 
 ## Vegetation (`vegetation/`)
 

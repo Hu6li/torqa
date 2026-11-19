@@ -29,7 +29,16 @@ pub struct Region {
     /// update. `None` for a download ORQWA did not make itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// What its extract holds, as [`CONTENT`] counts: 0 for extracts made before it did.
+    #[serde(default)]
+    pub content: u32,
 }
+
+/// What extracts hold: 1 the roads' surfaces and roundabouts, 2 also what buildings are,
+/// 3 also their shape and look (ADR 0041). A region whose extract holds less is not ready, so its download is read again.
+/// The directory [`VERSION`] stays: courses carry the cells they used under it, and a cell
+/// without buildings reads as one whose buildings say nothing.
+pub const CONTENT: u32 = 3;
 
 /// Where region `id`'s download goes in the map cache `osm_dir`.
 #[must_use]
@@ -187,7 +196,9 @@ pub fn installed(osm_dir: &Path) -> Vec<Region> {
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
         .filter_map(|path| serde_json::from_slice(&fs::read(path).ok()?).ok())
-        .filter(|region: &Region| osm_dir.join(VERSION).join(&region.extract).is_dir())
+        .filter(|region: &Region| {
+            region.content >= CONTENT && osm_dir.join(VERSION).join(&region.extract).is_dir()
+        })
         .collect();
     regions.sort_by(|a, b| a.id.cmp(&b.id));
     regions
@@ -211,8 +222,17 @@ pub fn for_course(carried: &[String], ready: &[Region]) -> Vec<String> {
     extracts
 }
 
-/// The region of an extract's name: all but its date (`-yyyy-mm-dd`).
+/// The region of an extract's name: all but its date (`-yyyy-mm-dd`) and what it holds
+/// (`-c<content>`, if given).
 fn region_of(extract: &str) -> Option<&str> {
+    let extract = match extract.rsplit_once("-c") {
+        Some((before, content))
+            if !content.is_empty() && content.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            before
+        }
+        _ => extract,
+    };
     let (region, date) = extract.split_at_checked(extract.len().checked_sub(11)?)?;
     let digits = |range: std::ops::Range<usize>| date[range].bytes().all(|b| b.is_ascii_digit());
     let dated = date.len() == 11
@@ -257,6 +277,7 @@ pub fn install(
         extract: made.name,
         data_time: made.data_time,
         source: source.map(ToOwned::to_owned),
+        content: CONTENT,
     };
     let json = serde_json::to_vec_pretty(&region).map_err(|e| OsmError::Invalid(e.to_string()))?;
     let aside = record.with_extension("json.part");
@@ -305,7 +326,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(region.extract, "bern-2026-10-24");
+        assert_eq!(region.extract, format!("bern-2026-10-24-c{CONTENT}"));
         assert_eq!(installed(&osm), vec![region]);
         fs::remove_dir_all(osm).unwrap();
     }
@@ -332,7 +353,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(region.extract, "bern-2026-10-25");
+        assert_eq!(region.extract, format!("bern-2026-10-25-c{CONTENT}"));
         assert_eq!(installed(&osm), vec![region]);
         let extracts: Vec<_> = fs::read_dir(osm.join(VERSION)).unwrap().collect();
         assert_eq!(extracts.len(), 1);
@@ -393,6 +414,7 @@ mod tests {
             extract: extract.to_owned(),
             data_time: None,
             source: None,
+            content: CONTENT,
         };
         let here = [
             ready("switzerland", "switzerland-2026-11-20"),
@@ -418,6 +440,11 @@ mod tests {
             own
         });
         assert_eq!(region_of("bern-2026-10-24"), Some("bern"));
+        assert_eq!(region_of("bern-2026-10-24-c2"), Some("bern"));
+        assert_eq!(
+            region_of("us-california-2026-11-20-c12"),
+            Some("us-california")
+        );
         assert_eq!(region_of("bern-latest"), None);
     }
 
@@ -436,5 +463,44 @@ mod tests {
 
         assert_eq!(installed(&osm), []);
         fs::remove_dir_all(osm).unwrap();
+    }
+
+    #[test]
+    fn a_region_whose_extract_holds_less_than_buildings_is_read_again() {
+        let osm = std::env::temp_dir().join(format!("orqwa-content-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&osm);
+        fs::create_dir_all(osm.join(VERSION).join("bern-2026-10-24")).unwrap();
+        fs::create_dir_all(osm.join(DOWNLOADS)).unwrap();
+        let record = |content: &str| {
+            format!(r#"{{"id":"bern","name":"Bern","extract":"bern-2026-10-24"{content}}}"#)
+        };
+        fs::write(osm.join(DOWNLOADS).join("bern.json"), record("")).unwrap();
+        assert_eq!(installed(&osm), [], "made before extracts held buildings");
+        fs::write(
+            osm.join(DOWNLOADS).join("bern.json"),
+            record(&format!(r#","content":{CONTENT}"#)),
+        )
+        .unwrap();
+        assert_eq!(installed(&osm).len(), 1);
+        fs::remove_dir_all(&osm).unwrap();
+    }
+
+    #[test]
+    fn a_course_takes_its_regions_extract_made_again_for_more_content() {
+        // The same download, extracted again now that extracts hold what buildings are: a
+        // course carrying the extract from before takes the new one when opened (R144).
+        let ready = Region {
+            id: "bern".to_owned(),
+            name: "Bern".to_owned(),
+            extract: format!("bern-2026-10-24-c{CONTENT}"),
+            data_time: None,
+            source: None,
+            content: CONTENT,
+        };
+        let carried = ["bern-2026-10-24".to_owned()];
+        assert_eq!(
+            for_course(&carried, std::slice::from_ref(&ready)),
+            [ready.extract]
+        );
     }
 }

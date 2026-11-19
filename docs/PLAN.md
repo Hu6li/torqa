@@ -533,6 +533,45 @@ physically based materials and light, restyled group by group.
   six-storey Haussmann-inspired city houses and three château-inspired stone keeps for
   metropolitan France and Corsica. [Assets and validation](regional-buildings.md).
 - [ ] More locally distinct architecture sets and house/landmark types across Asia.
+- [x] Standalone [building realism study](building-realism-study.md): fixed-camera house and
+  town-façade comparisons, scanned plaster/roof materials, glazing bars, curtains, drainage,
+  cornices and open balcony railings; application assets and generation unchanged.
+- [x] Integrate the reviewed building detail into nearby models and generated façades (R256):
+  extra geometry and window interiors only on Ultra within 160 m; shared scanned materials,
+  unchanged kept-world data and no additional geometry on Low–High.
+- [x] Record native M5 Pro town samples for R256, including movement-bound façade allocation
+  and identical Medium primitive/draw-call counts. [Evidence](building-realism-study.md#native-measurement-2026-11-08).
+- [x] No see-through buildings while appearances swap (ordinary/close and model/shell): only
+  the outgoing appearance dithers over an opaque replacement. Shop windows show a lit sales
+  floor instead of curtains, and fewer home windows have curtains or blinds (R256).
+- [x] Close façades stream with ADR 0040's chunk residency: chunks let go of release their
+  additions, which are read through the chunk store.
+- [x] Close façade refreshes add only the 64 m cells newly in reach and keep the rest uploaded;
+  each chunk's façades are read once while near, not on every 64 m of movement.
+- [ ] Native check of the swap on the Mac (software renders show it fixed; see the study).
+- Buildings from map data ([ADR 0041](adr/0041-building-shape.md)):
+  - [x] Step 1 — measure what OpenStreetMap says of buildings beyond their outline
+    (`orqwa-cli building-census`): about one building in ten in Switzerland and Germany
+  - [x] Step 2 — buildings on slopes stand as built, with a lower storey instead of a blank
+    plinth (#554, R257)
+  - [x] Step 3 — the heights the tiles carry, for fitted models too; buildings mapped in
+    parts drawn as their parts (`hide_3d`, `render_min_height`, R258)
+  - [x] Step 4 — walls along the mapped outline and a roof computed over it, every building
+    (R259)
+  - [x] Step 5 — the kind of every building (`building=*`) in the map detail extract (R260)
+  - [x] Step 6 — roof shapes, levels, colours and materials from the extract (R261)
+  - [x] Step 7 — buildings assembled on their outlines from Blender parts (R262): windows and
+    doors on homes of the general region
+  - [x] No building left out by the road (R263): the road lies in the street its buildings
+    line, and what still stands on it or a street is cut along it, with passages over them
+  - [x] Roofs like the neighbours' (R264): a building without a mapped roof takes the roofs
+    mapped around it, those of buildings its size first
+  - [ ] Storeys like the neighbours': from the buildings around that map their levels
+  - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
+  - [ ] ~~National data (GWR, swissBUILDINGS3D, lidar surface models) where the map is thin~~ —
+    dropped 2026-11-19: buildings come from the map and our rules (ADR 0041)
+- [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not
+  verify the target hardware.
 - [x] Quality presets Low–Ultra in settings, frame-time budget per preset (60 fps; a lower
   preset is suggested when a ride stays below)
 - [x] **Benchmark graphics** in Settings → Graphics (R151, #353): offline calibration with

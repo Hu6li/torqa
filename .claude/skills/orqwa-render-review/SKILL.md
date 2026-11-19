@@ -18,6 +18,15 @@ shots, run them in the background, and read the PNGs with the Read tool. Output 
 
 ## Ready-made
 
+For close building detail (R256), export `building_detail_render_fixture` from the world
+crate's ignored tests and render `app/tools/render_building_details.gd`. It captures the same
+model and Rust-derived shell on Medium and Ultra with fixed cameras/light. Pair with town
+course views, Winter and the 160 m transition. `BUILDING_DETAIL=1` selects Ultra variants in
+`scripts/render-models.sh`; preserve the ordinary gallery too. View distance must never
+extend close details or enable them on a lower preset. Native FPS remains separate evidence.
+Also check allocated façade geometry after moving and jumping: nearby streaming must release
+far additions instead of retaining close-detail buffers for the whole course.
+
 For seasons (#350), `SEASON=Summer scripts/render-seasons.sh` in the dev container draws
 the real materials on fixed trees and meadow flowers at 700 m without course preparation.
 Review its tree and flower close-ups, then pair with identical route views (`SEASON` also
