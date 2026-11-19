@@ -371,6 +371,9 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_environment.fog_light_color = sky_horizon
 	# A low sun lights the haze from its side.
 	_environment.fog_sun_scatter = LOW_SUN_SCATTER if elevation < 20.0 else 0.0
+	# The sky hazes itself, the engine's fog left out of its passes (sky.gdshader).
+	_sky.set_shader_parameter("haze_color", _environment.fog_light_color)
+	_sky.set_shader_parameter("haze_sun_scatter", _environment.fog_sun_scatter)
 	_apply_valley_fog()
 	var raining: float = 1.0 if weather == "Rain" else 0.0
 	UrbanSurfaces.set_conditions(raining, sky_horizon)
@@ -570,6 +573,8 @@ func _ready() -> void:
 	_environment.ambient_light_sky_contribution = 0.9
 	# Haze towards distant terrain takes the sky's colour (R45).
 	_environment.fog_aerial_perspective = 0.6
+	_sky.set_shader_parameter("haze_aerial", _environment.fog_aerial_perspective)
+	_sky.set_shader_parameter("haze_sky", _environment.fog_sky_affect)
 	_plant_material.shader = preload("res://shaders/plants.gdshader")
 	_plant_material.set_shader_parameter("flower_colors", Palette.colors("plants.flowers"))
 	_rail_material.shader = preload("res://shaders/rail.gdshader")
@@ -616,7 +621,7 @@ func _process(delta: float) -> void:
 		_rain.global_position = _camera.global_position + Vector3.UP * RAIN_ABOVE
 	if visible:
 		_cloud_offset += CLOUD_DRIFT * delta
-		_sky.set_shader_parameter("cloud_offset", _cloud_offset)
+		RenderingServer.global_shader_parameter_set("cloud_offset", _cloud_offset)
 	if _free and visible:
 		_fly(delta)
 	if not visible or _orqwa == null:

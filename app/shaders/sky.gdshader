@@ -3,7 +3,13 @@
 // warm at sunrise and sunset on its own — with the sun's disc and soft, sunlit clouds of
 // fractal noise overhead, fading into the haze at the horizon. Overcast weather greys the
 // atmosphere and closes the cloud cover.
+//
+// Drawn in three passes, as each part needs (a tablet's GPU spent ~10 ms a frame on the sky at
+// full resolution): the smooth atmosphere at a quarter of the resolution, the clouds over it at
+// half, and only the sun's disc and the haze at full. The engine would fog each pass again, so
+// the haze is the shader's own, applied once.
 shader_type sky;
+render_mode use_half_res_pass, use_quarter_res_pass, disable_fog;
 
 // Clouds' sunlit and shaded colours, and the overcast sky's (palette `sky.*`).
 uniform vec3 cloud_color : source_color = vec3(0.957, 0.961, 0.969);
@@ -14,11 +20,18 @@ uniform vec3 ground_color : source_color = vec3(0.3, 0.33, 0.25);
 // Share of the sky covered (0 clear, 1 overcast) and how grey the weather is.
 uniform float cloud_cover : hint_range(0.0, 1.0) = 0.35;
 uniform float cloud_darkness : hint_range(0.0, 1.0) = 0.0;
-// How far the clouds have drifted, in cloud-layer units (set by the world, slowly).
-uniform vec2 cloud_offset = vec2(0.0);
+// How far the clouds have drifted, in cloud-layer units (set by the world, slowly). A global:
+// changing a material's own uniform every frame would redraw the sky's lighting every frame.
+global uniform vec2 cloud_offset;
 // Brightness of the scattered light; the sun's intensity in the scattering model.
 uniform float sky_energy = 1.0;
 uniform float sun_size : hint_range(0.0, 0.1) = 0.012;
+// The environment's fog as it falls on the sky (its light colour, aerial perspective, sun
+// scatter and sky affect), copied by the world.
+uniform vec3 haze_color : source_color = vec3(0.8, 0.85, 0.9);
+uniform float haze_aerial = 0.6;
+uniform float haze_sun_scatter = 0.0;
+uniform float haze_sky = 0.25;
 
 const float PLANET = 6360e3;
 const float ATMOSPHERE = 6420e3;
@@ -122,9 +135,8 @@ vec3 sunlight(vec3 sun) {
 	return exp(-(RAYLEIGH * depth.x + MIE * 1.1 * depth.y));
 }
 
-void sky() {
-	vec3 dir = EYEDIR;
-	vec3 sun = LIGHT0_DIRECTION;
+// Atmosphere, overcast and, below the horizon, the ground: everything but clouds and sun.
+vec3 backdrop(vec3 dir, vec3 sun) {
 	// Below the horizon the atmosphere is seen just above it, then the ground's colour.
 	vec3 look = normalize(vec3(dir.x, max(dir.y, 0.0) + 0.002, dir.z));
 	vec3 air = atmosphere(look, sun) * sky_energy;
@@ -133,36 +145,70 @@ void sky() {
 	if (dir.y < 0.0) {
 		colour = mix(colour, ground_color * sky_energy * 0.5, clamp(-dir.y * 6.0, 0.0, 1.0));
 	}
+	return colour;
+}
 
+// Where the cloud layer is seen along `dir` (overhead only), wrapped so the hash keeps its
+// precision however far the clouds drifted. Its pattern shrinks towards the horizon. The pattern
+// jumps where it wraps: centred half a wrap away, that line stays out of the sky until the clouds
+// have drifted for a day and more, not overhead from the start (#560).
+vec2 cloud_uv(vec3 dir) {
+	return mod(dir.xz / (dir.y + 0.08) * 0.35 + cloud_offset + 512.0, 1024.0);
+}
+
+// How much cloud covers the sky along `dir`, from the layer's density there.
+float cloud_amount(vec3 dir, float density) {
+	float threshold = mix(0.68, 0.22, cloud_cover);
+	// Far clouds sink into the haze.
+	return smoothstep(threshold, threshold + 0.25, density) * smoothstep(0.0, 0.18, dir.y);
+}
+
+// `colour` with the sunlit clouds over it.
+vec3 with_clouds(vec3 dir, vec3 sun, vec3 colour) {
+	if (dir.y <= 0.0) {
+		return colour;
+	}
 	vec3 sun_colour = sunlight(sun);
-	float clouds = 0.0;
-	if (dir.y > 0.0) {
-		// The cloud layer as a plane overhead: its pattern shrinks towards the horizon.
-		// Wrapped, so the hash keeps its precision however far the clouds drifted. The pattern
-		// jumps where it wraps: centred half a wrap away, that line stays out of the sky until
-		// the clouds have drifted for a day and more, not overhead from the start (#560).
-		vec2 uv = mod(dir.xz / (dir.y + 0.08) * 0.35 + cloud_offset + 512.0, 1024.0);
-		float density = fbm(uv, 6);
-		float threshold = mix(0.68, 0.22, cloud_cover);
-		clouds = smoothstep(threshold, threshold + 0.25, density);
-		// Light through the cloud: thinner towards the sun means brighter.
-		float towards = fbm(uv + sun.xz * 0.06, 6);
-		float lit = clamp(0.75 - (towards - density) * 2.5 - (density - threshold) * 0.8, 0.0, 1.0);
-		vec3 shade = mix(cloud_shade_color, cloud_shade_color * 0.55, cloud_darkness);
-		vec3 bright = cloud_color * mix(sun_colour, vec3(0.8), cloud_darkness);
-		vec3 cloud = mix(shade, bright, lit) * sky_energy;
-		// A silver lining near the sun.
-		float near_sun = pow(max(dot(dir, sun), 0.0), 8.0);
-		cloud += sun_colour * near_sun * (1.0 - clouds) * 0.6 * sky_energy * (1.0 - cloud_darkness);
-		// Far clouds sink into the haze.
-		clouds *= smoothstep(0.0, 0.18, dir.y);
-		colour = mix(colour, cloud, clouds);
-	}
+	vec2 uv = cloud_uv(dir);
+	float density = fbm(uv, 6);
+	float threshold = mix(0.68, 0.22, cloud_cover);
+	float clouds = smoothstep(threshold, threshold + 0.25, density);
+	// Light through the cloud: thinner towards the sun means brighter.
+	float towards = fbm(uv + sun.xz * 0.06, 6);
+	float lit = clamp(0.75 - (towards - density) * 2.5 - (density - threshold) * 0.8, 0.0, 1.0);
+	vec3 shade = mix(cloud_shade_color, cloud_shade_color * 0.55, cloud_darkness);
+	vec3 bright = cloud_color * mix(sun_colour, vec3(0.8), cloud_darkness);
+	vec3 cloud = mix(shade, bright, lit) * sky_energy;
+	// A silver lining near the sun.
+	float near_sun = pow(max(dot(dir, sun), 0.0), 8.0);
+	cloud += sun_colour * near_sun * (1.0 - clouds) * 0.6 * sky_energy * (1.0 - cloud_darkness);
+	return mix(colour, cloud, cloud_amount(dir, density));
+}
 
-	// The sun's disc; not in the cubemap that lights the world, where the sun light does that.
-	if (!AT_CUBEMAP_PASS) {
-		float disc = smoothstep(cos(sun_size), cos(sun_size * 0.8), dot(dir, sun));
-		colour += sun_colour * disc * 40.0 * (1.0 - clouds) * (1.0 - cloud_darkness);
+void sky() {
+	vec3 dir = EYEDIR;
+	vec3 sun = LIGHT0_DIRECTION;
+	if (AT_QUARTER_RES_PASS) {
+		COLOR = backdrop(dir, sun);
+	} else if (AT_HALF_RES_PASS) {
+		COLOR = with_clouds(dir, sun, QUARTER_RES_COLOR.rgb);
+	} else {
+		vec3 colour = HALF_RES_COLOR.rgb;
+		// The sun's disc and the haze; not in the cubemap that lights the world, where the sun
+		// light does the one and the engine leaves out the other.
+		if (!AT_CUBEMAP_PASS) {
+			float mu = dot(dir, sun);
+			if (mu > cos(sun_size)) {
+				float clouds = dir.y > 0.0 ? cloud_amount(dir, fbm(cloud_uv(dir), 6)) : 0.0;
+				float disc = smoothstep(cos(sun_size), cos(sun_size * 0.8), mu);
+				colour += sunlight(sun) * disc * 40.0 * (1.0 - clouds) * (1.0 - cloud_darkness);
+			}
+			vec3 haze = mix(haze_color, colour, haze_aerial);
+			if (haze_sun_scatter > 0.001) {
+				haze += LIGHT0_COLOR * LIGHT0_ENERGY * pow(max(mu, 0.0), 8.0) * PI * haze_sun_scatter;
+			}
+			colour = mix(colour, haze, haze_sky);
+		}
+		COLOR = colour;
 	}
-	COLOR = colour;
 }
