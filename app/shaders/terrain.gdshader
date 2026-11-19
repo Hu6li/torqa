@@ -101,14 +101,19 @@ float distance2(vec3 colour, vec3 kind) {
 // How much the interpolated cover colour is `kind`'s, against the closest cover's distance
 // `nearest`: 1 for the closest, fading towards the neighbouring cover across the cell. Relative
 // to the closest, so a colour halfway between two far-apart covers still belongs to both.
+// A share under a thousandth, a quarter of an 8-bit colour step, is dropped, so a cover is only
+// textured where it can show: tablets cannot afford every layer on every pixel. Where a layer
+// switches off it adds nothing visible, so a 2x2 quad sampled across that edge cannot show.
 float weight(vec3 colour, vec3 kind, float nearest) {
-	return exp(-(distance2(colour, kind) - nearest) * 400.0);
+	float w = exp(-(distance2(colour, kind) - nearest) * 400.0);
+	return w < 0.001 ? 0.0 : w;
 }
 
-// A texture laid on the ground from above: albedo out, the bent normal returned.
-vec3 from_above(sampler2D albedo, sampler2D normal_map, float tile, float strength, out vec3 colour) {
+// A texture laid on the ground from above, `patches` mixing its two scales: albedo out, the
+// bent normal returned.
+vec3 from_above(sampler2D albedo, sampler2D normal_map, float tile, float strength, float patches,
+		out vec3 colour) {
 	vec2 uv = ground_tiles(world_position.xz, tile);
-	float patches = ground_noise(world_position.xz / 23.0);
 	vec3 near = texture(albedo, uv).rgb;
 	// Wrapped on its own, unturned: a turned copy would break at the wrap.
 	vec3 far = texture(albedo, ground_tiles(world_position.xz, tile * 2.7) + 0.31).rgb;
@@ -117,20 +122,30 @@ vec3 from_above(sampler2D albedo, sampler2D normal_map, float tile, float streng
 	return ground_bend(world_normal, detail, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), strength);
 }
 
-// Rock from three sides, weighted by which way the ground faces.
+// Rock from three sides, weighted by which way the ground faces. A side with less than a
+// hundredth of the blend is left out: flat rock then reads one side, a cliff two.
 vec3 rock_sides(out vec3 colour) {
 	vec3 blend = pow(abs(world_normal), vec3(4.0));
 	blend /= blend.x + blend.y + blend.z;
+	blend *= step(vec3(0.01), blend);
+	blend /= blend.x + blend.y + blend.z;
 	vec3 p = ground_tiles3(world_position, rock_tile);
-	vec3 x_colour = texture(rock_albedo, p.zy).rgb;
-	vec3 y_colour = texture(rock_albedo, p.xz).rgb;
-	vec3 z_colour = texture(rock_albedo, p.xy).rgb;
-	colour = x_colour * blend.x + y_colour * blend.y + z_colour * blend.z;
 	vec3 n = world_normal;
-	vec3 x_normal = ground_bend(n, ground_unpack(texture(rock_normal, p.zy)), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), 1.0);
-	vec3 y_normal = ground_bend(n, ground_unpack(texture(rock_normal, p.xz)), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), 1.0);
-	vec3 z_normal = ground_bend(n, ground_unpack(texture(rock_normal, p.xy)), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), 1.0);
-	vec3 normal = normalize(x_normal * blend.x + y_normal * blend.y + z_normal * blend.z);
+	colour = vec3(0.0);
+	vec3 normal = vec3(0.0);
+	if (blend.x > 0.0) {
+		colour += texture(rock_albedo, p.zy).rgb * blend.x;
+		normal += ground_bend(n, ground_unpack(texture(rock_normal, p.zy)), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), 1.0) * blend.x;
+	}
+	if (blend.y > 0.0) {
+		colour += texture(rock_albedo, p.xz).rgb * blend.y;
+		normal += ground_bend(n, ground_unpack(texture(rock_normal, p.xz)), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), 1.0) * blend.y;
+	}
+	if (blend.z > 0.0) {
+		colour += texture(rock_albedo, p.xy).rgb * blend.z;
+		normal += ground_bend(n, ground_unpack(texture(rock_normal, p.xy)), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), 1.0) * blend.z;
+	}
+	normal = normalize(normal);
 	rock_weathering(world_position, world_normal, 8.0, colour, normal);
 	return normal;
 }
@@ -152,51 +167,79 @@ void fragment() {
 	float w_commercial = weight(colour, cover_commercial, nearest);
 	float total = w_meadow + w_farmland + w_forest + w_industrial + w_rock + w_urban + w_commercial;
 
-	vec3 grass;
-	vec3 grass_n = from_above(grass_albedo, grass_normal, grass_tile, 0.8, grass);
-	vec3 dirt;
-	vec3 dirt_n = from_above(dirt_albedo, dirt_normal, dirt_tile, 1.0, dirt);
-	vec3 gravel;
-	vec3 gravel_n = from_above(gravel_albedo, gravel_normal, gravel_tile, 1.0, gravel);
-	vec3 rock;
-	vec3 rock_n = rock_sides(rock);
+	float patches = ground_noise(world_position.xz / 23.0);
+	float bed = smoothstep(0.3, 0.7, cover.a);
+	// Each layer only where it can show. Earth breaks through on banks no flatter than this,
+	// whatever the texture's red (see `bank` below), rock on slopes no flatter than that
+	// (see `steep`); unsampled, their black never reaches either threshold.
+	bool banks = world_normal.y < rock_slope + 0.18;
+	bool cliffs = world_normal.y < rock_slope + 0.15;
+	vec3 grass = vec3(0.0);
+	vec3 grass_n = world_normal;
+	if (w_meadow + w_farmland + w_forest > 0.0) {
+		grass_n = from_above(grass_albedo, grass_normal, grass_tile, 0.8, patches, grass);
+	}
+	vec3 dirt = vec3(0.0);
+	vec3 dirt_n = world_normal;
+	if (w_forest > 0.0 || bed > 0.0 || banks) {
+		dirt_n = from_above(dirt_albedo, dirt_normal, dirt_tile, 1.0, patches, dirt);
+	}
+	vec3 gravel = vec3(0.0);
+	vec3 gravel_n = world_normal;
+	if (w_industrial > 0.0) {
+		gravel_n = from_above(gravel_albedo, gravel_normal, gravel_tile, 1.0, patches, gravel);
+	}
+	vec3 rock = vec3(0.0);
+	vec3 rock_n = world_normal;
+	if (w_rock > 0.0 || cliffs) {
+		rock_n = rock_sides(rock);
+	}
 	vec3 paving = vec3(0.0);
 	vec3 asphalt = vec3(0.0);
 	vec3 paving_n = world_normal;
 	vec3 asphalt_n = world_normal;
-	// Rural fragments retain the existing texture budget.
-	if (w_urban + w_commercial + w_industrial > 0.01) {
-		paving_n = from_above(paving_albedo, paving_normal, 2.0, 1.0, paving);
-		asphalt_n = from_above(asphalt_albedo, asphalt_normal, 2.5, 1.0, asphalt);
+	if (w_urban + w_commercial + w_industrial > 0.0) {
+		paving_n = from_above(paving_albedo, paving_normal, 2.0, 1.0, patches, paving);
+		asphalt_n = from_above(asphalt_albedo, asphalt_normal, 2.5, 1.0, patches, asphalt);
 	}
 
 	// Grass as it grows here: a deep green. The texture is baked about three times too bright for
 	// grass in sunlight, a pale lime from afar.
 	vec3 green = grass * vec3(0.34, 0.44, 0.27);
 	// Fields: green grass, ripening towards straw in patches.
-	float ripe = ground_noise(world_position.xz / 60.0);
-	vec3 field = mix(green, grass * vec3(0.9, 0.72, 0.4), 0.1 + 0.3 * ripe);
+	vec3 field = vec3(0.0);
+	if (w_farmland > 0.0) {
+		float ripe = ground_noise(world_position.xz / 60.0);
+		field = mix(green, grass * vec3(0.9, 0.72, 0.4), 0.1 + 0.3 * ripe);
+	}
 	// Forest floor: dark moss and grass, earth and needles showing through in patches.
-	float bare = smoothstep(0.5, 0.8, ground_noise(world_position.xz / 7.0));
-	vec3 moss = grass * vec3(0.6, 0.68, 0.5);
-	vec3 floor_colour = mix(moss, dirt * 0.7, bare * 0.7);
-	vec3 floor_normal = normalize(mix(grass_n, dirt_n, bare * 0.7));
+	vec3 floor_colour = vec3(0.0);
+	vec3 floor_normal = world_normal;
+	if (w_forest > 0.0) {
+		float bare = smoothstep(0.5, 0.8, ground_noise(world_position.xz / 7.0));
+		vec3 moss = grass * vec3(0.6, 0.68, 0.5);
+		floor_colour = mix(moss, dirt * 0.7, bare * 0.7);
+		floor_normal = normalize(mix(grass_n, dirt_n, bare * 0.7));
+	}
 	// Far off and where the woods are thinned, the crowns cover the floor; `canopy` is how much
 	// of the ground here they cover.
-	float far = smoothstep(canopy_from, canopy_full, length(VERTEX));
-	if (route_size.x > 0.0) {
-		vec2 cell = (world_position.xz - route_origin) / route_size;
-		float metres = texture(route_distance, cell).r * 255.0 * route_step;
-		// Outside the grid lies the land beyond the corridor.
-		if (any(lessThan(cell, vec2(0.0))) || any(greaterThan(cell, vec2(1.0)))) {
-			metres = dense_forest * 2.0;
+	float far = 0.0;
+	if (w_forest > 0.0) {
+		far = smoothstep(canopy_from, canopy_full, length(VERTEX));
+		if (route_size.x > 0.0) {
+			vec2 cell = (world_position.xz - route_origin) / route_size;
+			float metres = texture(route_distance, cell).r * 255.0 * route_step;
+			// Outside the grid lies the land beyond the corridor.
+			if (any(lessThan(cell, vec2(0.0))) || any(greaterThan(cell, vec2(1.0)))) {
+				metres = dense_forest * 2.0;
+			}
+			far = max(far, smoothstep(dense_forest - 60.0, dense_forest, metres));
 		}
-		far = max(far, smoothstep(dense_forest - 60.0, dense_forest, metres));
 	}
 	float canopy = far * w_forest / total;
 	if (canopy > 0.001) {
 		vec3 crowns;
-		vec3 crowns_n = from_above(canopy_albedo, canopy_normal, canopy_tile, 1.0, crowns);
+		vec3 crowns_n = from_above(canopy_albedo, canopy_normal, canopy_tile, 1.0, patches, crowns);
 		vec2 patch = floor(world_position.xz / 24.0);
 		vec3 blossom = spring_colour(patch);
 		float brightness = dot(crowns, vec3(0.2126, 0.7152, 0.0722));
@@ -213,11 +256,15 @@ void fragment() {
 
 	// Meadows vary as growth does: lusher and drier patches over a hundred metres and more,
 	// drier on steep ground, yellower above the tree line.
-	float lush = ground_noise(world_position.xz / 90.0) * 0.6 + ground_noise(world_position.xz / 310.0) * 0.4;
-	vec3 meadow = green * mix(vec3(1.08, 1.04, 1.04), vec3(0.82, 0.9, 0.96), lush);
-	float dry = smoothstep(0.97, 0.8, world_normal.y) * 0.25
-		+ smoothstep(1700.0, 2300.0, world_position.y) * 0.6;
-	meadow = mix(meadow, meadow * vec3(1.25, 1.08, 0.62), clamp(dry, 0.0, 1.0));
+	vec3 meadow = vec3(0.0);
+	if (w_meadow > 0.0) {
+		float lush = ground_noise(world_position.xz / 90.0) * 0.6
+			+ ground_noise(world_position.xz / 310.0) * 0.4;
+		meadow = green * mix(vec3(1.08, 1.04, 1.04), vec3(0.82, 0.9, 0.96), lush);
+		float dry = smoothstep(0.97, 0.8, world_normal.y) * 0.25
+			+ smoothstep(1700.0, 2300.0, world_position.y) * 0.6;
+		meadow = mix(meadow, meadow * vec3(1.25, 1.08, 0.62), clamp(dry, 0.0, 1.0));
+	}
 	vec3 albedo = (meadow * w_meadow + field * w_farmland + floor_colour * w_forest
 		+ mix(gravel, asphalt, 0.7) * w_industrial + rock * w_rock
 		+ paving * w_urban + mix(asphalt, paving, 0.2) * w_commercial) / total;
@@ -227,29 +274,35 @@ void fragment() {
 	float roughness = 0.92;
 
 	// The bed under water: dark wet earth.
-	float bed = smoothstep(0.3, 0.7, cover.a);
 	albedo = mix(albedo, dirt * 0.45, bed);
 	normal = normalize(mix(normal, dirt_n, bed));
 
 	// Steep banks show earth through the grass, steeper ground is bare rock; the edges broken up
 	// by the textures themselves.
-	float bank = 1.0 - smoothstep(rock_slope + 0.02, rock_slope + 0.12, world_normal.y + (dirt.r - 0.3) * 0.2);
-	// Crowns hide the earth of steep wooded slopes, and their rock up to cliffs.
-	bank *= 1.0 - canopy;
-	albedo = mix(albedo, dirt * 0.8, bank * 0.6 * (1.0 - bed));
-	normal = normalize(mix(normal, dirt_n, bank * 0.6 * (1.0 - bed)));
-	// Exposure breaks through in patches rather than tracing straight terrain cells.
-	vec2 face = vec2(world_position.x + world_position.z * 0.73, world_position.y);
-	float exposure = (ground_noise(face / 5.0) - 0.5) * 0.16;
-	float steep = 1.0 - smoothstep(rock_slope - 0.03, rock_slope + 0.03, world_normal.y + exposure + (rock.r - 0.4) * 0.1);
-	steep *= 1.0 - canopy * smoothstep(0.3, 0.45, world_normal.y);
-	// Exposed channel sides are rock too; triplanar mapping avoids stretched vertical mud.
-	albedo = mix(albedo, rock * mix(1.0, 0.55, bed), steep);
-	normal = normalize(mix(normal, rock_n, steep));
+	if (banks) {
+		float bank = 1.0 - smoothstep(rock_slope + 0.02, rock_slope + 0.12, world_normal.y + (dirt.r - 0.3) * 0.2);
+		// Crowns hide the earth of steep wooded slopes, and their rock up to cliffs.
+		bank *= 1.0 - canopy;
+		albedo = mix(albedo, dirt * 0.8, bank * 0.6 * (1.0 - bed));
+		normal = normalize(mix(normal, dirt_n, bank * 0.6 * (1.0 - bed)));
+	}
+	if (cliffs) {
+		// Exposure breaks through in patches rather than tracing straight terrain cells.
+		vec2 face = vec2(world_position.x + world_position.z * 0.73, world_position.y);
+		float exposure = (ground_noise(face / 5.0) - 0.5) * 0.16;
+		float steep = 1.0 - smoothstep(rock_slope - 0.03, rock_slope + 0.03, world_normal.y + exposure + (rock.r - 0.4) * 0.1);
+		steep *= 1.0 - canopy * smoothstep(0.3, 0.45, world_normal.y);
+		// Exposed channel sides are rock too; triplanar mapping avoids stretched vertical mud.
+		albedo = mix(albedo, rock * mix(1.0, 0.55, bed), steep);
+		normal = normalize(mix(normal, rock_n, steep));
+	}
 
 	// Snow above the snow line, thinning out over a hundred metres, gone from steep faces.
-	float snow = smoothstep(snow_line - 60.0, snow_line + 60.0, world_position.y + (ground_noise(world_position.xz / 30.0) - 0.5) * 120.0);
-	snow *= smoothstep(0.6, 0.8, world_normal.y) * (1.0 - bed);
+	float snow = 0.0;
+	if (world_position.y > snow_line - 120.0) {
+		snow = smoothstep(snow_line - 60.0, snow_line + 60.0, world_position.y + (ground_noise(world_position.xz / 30.0) - 0.5) * 120.0);
+		snow *= smoothstep(0.6, 0.8, world_normal.y) * (1.0 - bed);
+	}
 	snow = mix(snow, winter_ground_cover(world_position, world_normal) * (1.0 - bed), winter_strength);
 	albedo = mix(albedo, snow_color, snow);
 	normal = normalize(mix(normal, world_normal, snow * 0.7));
