@@ -10,6 +10,7 @@
 
 mod models;
 mod parts;
+pub(crate) mod passage;
 mod region;
 mod shape;
 mod skeleton;
@@ -46,6 +47,12 @@ const MODEL_RECTANGULAR: f64 = 0.9;
 /// and Japan, 55 % of outlines. The others stand on their mapped outline under a hipped roof
 /// from its straight skeleton (ADR 0041, step 4).
 const DRAWN_RECTANGULAR: f64 = 0.95;
+/// Pieces of a building cut along the road stand on their outline, which keeps it clear,
+/// unless that is its rectangle: one cut along a wall.
+const CUT_RECTANGULAR: f64 = 0.995;
+/// The piece of a building over the road starts this high above its ground: a storey and a
+/// window sill, so its first row of windows shows whole above the passage.
+const PASSAGE: f64 = STOREY + 1.0;
 /// Churches keep their nave shape even with a choir or porch, castles theirs with towers
 /// standing out, and lighthouses theirs though round (a circle fills 79 % of its square).
 const RECTANGULAR_CHURCH: f64 = 0.7;
@@ -251,6 +258,20 @@ pub(crate) struct Plot<'a> {
     pub(crate) region: Region,
     /// Whether it is drawn whole or as one of the parts of a building mapped in parts.
     pub(crate) drawn: Drawn,
+    /// Whether it is a piece of a building the road or a street runs through.
+    pub(crate) cut: passage::Cut,
+}
+
+impl Plot<'_> {
+    /// The outline it is drawn on ([`drawn_outline`]); a piece cut along the road stands on
+    /// its own outline, which keeps the road clear.
+    pub(crate) fn outline(&self) -> Vec<Point> {
+        if self.cut == passage::Cut::Whole {
+            drawn_outline(&self.footprint)
+        } else {
+            self.footprint.clone()
+        }
+    }
 }
 
 /// How a plot is drawn. A building mapped in parts stands as its parts, each from its own
@@ -339,12 +360,9 @@ const PURPOSE_REACH: f64 = 12.0;
 const STREET_REACH: f64 = 40.0;
 /// Index cell size of [`Frontage`].
 const FRONTAGE_CELL: f64 = 25.0;
-/// A street's middle this far inside a building's outline runs through it (#100); less is
-/// taken for the map's inaccuracy.
-const THROUGH_DEPTH: f64 = 1.0;
 
-/// The paved streets on the ground and the road ridden, as points every few metres: shops face
-/// them, and buildings keep off them.
+/// The paved streets on the ground and the road ridden, as points every few metres, which
+/// shops face.
 pub(crate) struct Frontage {
     cells: HashMap<(i64, i64), Vec<Point>>,
 }
@@ -375,26 +393,6 @@ impl Frontage {
             }
         }
         best.map(|b| b.1)
-    }
-
-    /// Whether a street runs through the building with this footprint.
-    pub(crate) fn runs_through(&self, footprint: &[Point]) -> bool {
-        let Some(&first) = footprint.first() else {
-            return false;
-        };
-        let (low, high) = footprint.iter().fold((first, first), |(low, high), p| {
-            (
-                (low.0.min(p.0), low.1.min(p.1)),
-                (high.0.max(p.0), high.1.max(p.1)),
-            )
-        });
-        let ((low_e, low_n), (high_e, high_n)) = (frontage_cell(low), frontage_cell(high));
-        (low_e..=high_e)
-            .flat_map(|x| (low_n..=high_n).map(move |y| (x, y)))
-            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
-            .any(|&point| {
-                contains(footprint, point) && outline_distance(footprint, point) > THROUGH_DEPTH
-            })
     }
 }
 
@@ -452,7 +450,7 @@ pub(crate) fn mark_purpose(plots: &mut [Plot], points: &[Point], purpose: Purpos
 }
 
 /// Distance from `point` to the outline (a closed ring) of a footprint.
-fn outline_distance(footprint: &[Point], point: Point) -> f64 {
+pub(crate) fn outline_distance(footprint: &[Point], point: Point) -> f64 {
     (0..footprint.len())
         .map(|k| {
             let (a, b) = (footprint[k], footprint[(k + 1) % footprint.len()]);
@@ -614,9 +612,24 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         .map(|&(e, n)| heights.at(e, n))
         .fold(f64::INFINITY, f64::min);
     let model_ground = mean.max(highest - MODEL_SET_IN);
-    let ground = mean.max(highest - SET_IN);
-    // A part raised off the ground (an overhang, a tower's upper stage) starts there.
-    let raised = plot.building.min_height.map(|height| ground + height);
+    // The piece of a building over the road starts high enough to pass beneath where the
+    // road beneath it is highest, on a road climbing through it too.
+    let over = matches!(plot.cut, passage::Cut::Over(_));
+    let ground = if over {
+        highest
+    } else {
+        mean.max(highest - SET_IN)
+    };
+    // A part raised off the ground (an overhang, a tower's upper stage) starts there, and so
+    // does the piece over the road.
+    let passage = over.then_some(ground + PASSAGE);
+    let raised = match (
+        plot.building.min_height.map(|height| ground + height),
+        passage,
+    ) {
+        (Some(part), Some(passage)) => Some(part.max(passage)),
+        (part, passage) => part.or(passage),
+    };
     if let (Some(bottom), Some(height)) = (raised, plot.building.height)
         && bottom > ground + height - STOREY / 2.0
     {
@@ -624,10 +637,13 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
     }
     let area = signed_area(footprint);
     let dice = Dice(plot.building.id);
-    let kind = kind(plot, area, ground, &dice);
+    // The pieces of a building cut along the road are what the whole building is.
+    let kind = kind(plot, plot.cut.whole_area().unwrap_or(area), ground, &dice);
     let tropical = plot.climate.tropical_at(ground);
     let special = matches!(kind, Kind::Church | Kind::Castle | Kind::Lighthouse);
-    let fill = if special {
+    let fill = if plot.cut != passage::Cut::Whole {
+        CUT_RECTANGULAR
+    } else if special {
         RECTANGULAR_CHURCH
     } else {
         RECTANGULAR
@@ -649,11 +665,13 @@ pub(crate) fn add(chunk: &mut ChunkBuildings, plot: &Plot, heights: &HeightGrid,
         MODEL_BASEMENT
     };
     // A shop's front is drawn on the shell, which shows it up close too; a part is no whole
-    // building a model could stand for.
+    // building a model could stand for, nor are the pieces of one cut along the road, which
+    // stand under one design.
     let fit = rect
         .filter(|r| special || area / r.area() >= MODEL_RECTANGULAR)
         .filter(|_| model_ground - lowest < basement && plot.shop.is_none())
-        .filter(|_| plot.drawn == Drawn::Whole && raised.is_none())
+        .filter(|_| plot.drawn == Drawn::Whole && plot.cut == passage::Cut::Whole)
+        .filter(|_| raised.is_none())
         .and_then(|rect| {
             let wanted = Wanted {
                 kind,
@@ -1908,6 +1926,7 @@ fn assembled(plot: &Plot, kind: Kind, design: &Design, tropical: bool) -> bool {
         && plot.shop.is_none()
         && plot.drawn == Drawn::Whole
         && plot.building.min_height.is_none()
+        && !matches!(plot.cut, passage::Cut::Over(_))
 }
 
 /// Appends a part's instance in Godot `MultiMesh` buffer layout: its x along the wall,
@@ -3015,11 +3034,15 @@ fn belfry(b: &mut Builder, tower: &Rect, top: f64) {
     }
 }
 
-/// The outline a building is drawn on, for keeping the road clear: models and rectangular
-/// shells stand on the rectangle fitted around its footprint, which can reach beyond the
-/// footprint itself (a clipped corner drawn whole), and holds all of it (#138).
+/// The outline a building is drawn on, for keeping the road clear: one that may become a
+/// model or a rectangular shell stands on the rectangle fitted around its footprint, which can
+/// reach beyond the footprint itself (a clipped corner drawn whole, #138); any other stands on
+/// its footprint (ADR 0041, step 4), whose rectangle can reach far beyond its walls.
 pub(crate) fn drawn_outline(footprint: &[Point]) -> Vec<Point> {
-    Rect::around(footprint).map_or_else(|| footprint.to_vec(), |rect| rect.corners())
+    let area = signed_area(footprint);
+    Rect::around(footprint)
+        .filter(|rect| area / rect.area() >= MODEL_RECTANGULAR.min(DRAWN_RECTANGULAR))
+        .map_or_else(|| footprint.to_vec(), |rect| rect.corners())
 }
 
 #[cfg(test)]
@@ -3038,6 +3061,7 @@ mod tests {
             climate: Climate::Temperate,
             region: Region::Generic,
             drawn: Drawn::Whole,
+            cut: passage::Cut::Whole,
         }
     }
 

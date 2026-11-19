@@ -290,6 +290,54 @@ façade detail of Ultra (R256) is derived from the chunk's shells only, so it do
 frames of its own over the parts. A cell's layout changed, so the stored format is 4; kept
 worlds of format 3 are built again. Generator 48.
 
+## Amendment 2026-11-19: buildings by the road
+
+Roads stay clear of buildings (#100, #138), and so far that meant leaving a building out:
+those whose walls came within 1 m of the ridden road's edge, at its drawn width, checked on the
+rectangle around the footprint, and those a paved street ran through. On the Grosse Scheidegg
+course that took 643 of the 122,789 buildings in the corridor, most of them standing in
+villages right by the road. But the road's width is mostly estimated from its class, and where
+houses stand closer to its middle than that, it is the width that is wrong, not the houses.
+Now no building is left out (R263):
+
+- **The road is as wide as the buildings leave room for.** Where the outline a building is
+  drawn on comes closer to the ridden road's middle than its estimated half width, the road
+  narrows to keep 0.3 m off the wall, down to 3.5 m (`RoadIndex::fit_between`), easing in and
+  out over the distance other width changes take. Where the road runs inside a building's
+  outline, as through a gate, it is 3.5 m throughout. Everything that follows the road's
+  width follows: its mesh, the ground shaped around it, sidewalks, props and where riders
+  ride (`RoadWidths` reads the drawn road). On Grosse Scheidegg 2.1 km of 236 km narrow by
+  more than 0.5 m, 349 m of it to 3.5 m.
+- **Buildings mapped raised off the ground span the road** (`min_height` of 3 m or more: a
+  bridge between two buildings, upper floors over a street). They are neither cut nor narrow
+  the road.
+- **What still stands on the road is cut along it** (`buildings::passage`). The outline the
+  building is drawn on is cut along the stretch of road it reaches deepest onto, at the road's
+  edges, and again along each further stretch where the road bends away from that line; a
+  piece still reaching less than 0.3 m onto the road after 24 cuts stands as it is. The pieces
+  beside the road stand as buildings on their own outlines, of the kind and design the whole
+  building is, as shells or assembled from parts but not as models, which would give each
+  piece a house of its own. A piece across the road's middle is raised over it for riders to
+  pass beneath, from a storey and a window sill (4 m) above the highest ground under it, so
+  its first row of windows shows whole; with no storey above that, it is not drawn. Pieces
+  under a bridge's deck, and scraps of less than 4 m² or 0.75 m thick, are left out.
+- **Streets running through a building** (their middle more than 1 m inside, entering and
+  leaving it) cut it the same way, at 3.5 m wide, with the piece across raised: a passage. A
+  street ending inside, as a farm lane at a barn's door, leaves the building whole, and
+  streets pass beneath roofs on posts (`building=roof`, carports) without cutting them.
+- **Buildings over tunnels stay.** The ridden road's tunnels are no carriageway on the ground.
+
+The outline a building is drawn on (`drawn_outline`) is the one checked, not the rectangle
+around its footprint: since step 4 only footprints filling 90 % of it are drawn on it, and the
+rectangle of an L or a house with a bay reaches far beyond its walls. Pieces stand on their own
+outline unless it is its rectangle (a cut along a wall), so the rectangle never reaches back
+onto the road.
+
+On Grosse Scheidegg 6 raised buildings span the road and 137 buildings are cut into 397
+pieces, 121 of them with a piece across: 2 over the ridden road, the others over streets.
+None keeps less than half its area. The road ridden again, which is drawn once, is left out of
+both narrowing and cutting. Generator 49.
+
 ## Consequences
 
 - No world, course or network change in this step: the census reads a download the rider

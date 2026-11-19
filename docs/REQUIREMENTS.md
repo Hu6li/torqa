@@ -778,3 +778,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R262 | Refines R89 and R259 (2026-11-18): **homes no model fits are assembled from parts on their mapped outline**. Houses, chalets and farmhouses of the general region whose walls have windows, standing on the ground and without a shop front, get a window on every storey of every wall where their walls draw one, with frame, mullion and transom, sill, and shutters and flower boxes as models have them, and a front door with a canopy in the middle of the ground floor of the longest wall whose ground there lies by the floor, never sunk in the ground; a storey the ground buries on a wall, on a slope, gets no windows there. Parts show up close, as models do, over the windows their walls draw further off; the walls stand at every distance. Gables and lower storeys keep the windows the walls draw. Kept worlds of an earlier format are built again. |
+
+## Buildings by the road
+
+| ID | Requirement |
+|---|---|
+| R263 | Refines R16 and R259 (2026-11-19, #100, #138): **no building is left out for the road, and the road stays clear**. Where buildings stand closer to the ridden road than its estimated width, the road narrows to the room they leave, down to 3.5 m, easing in and out; riders, sidewalks and the ground beside it follow. What still stands on the road is cut along its edges: the pieces beside it stand, and the piece across its middle is raised at least 4 m above the road for riders to pass beneath, as through a gate. A paved street running through a building cuts it the same way into a passage; one ending inside it leaves it whole, and streets pass beneath roofs on posts. Buildings mapped raised off the ground (bridges between buildings) span the road whole, and buildings above tunnels stay. Kept worlds offer regeneration (R101). |

@@ -2450,11 +2450,46 @@ fn slope_at(east: f32) -> f32 {
     500.0 + 0.1 * east
 }
 
+/// Half the drawn road's width at `north` on the test road due north.
+fn road_half(world: &World, north: f64) -> f32 {
+    #[allow(clippy::cast_possible_truncation)] // metres
+    let width = crate::RoadWidths::new(&world.road)
+        .at(0.0, north, Meters(500.0))
+        .0 as f32;
+    width / 2.0
+}
+
+/// Building faces of a world reaching onto the test road due north between `from` and `to`
+/// below `clear` metres above it.
+fn faces_on_road(world: &World, (from, to): (f32, f32), clear: f32) -> usize {
+    let middle = f32::midpoint(from, to);
+    building_faces(world, (0.0, middle), (to - from) / 2.0 + 30.0)
+        .iter()
+        .filter(|face| {
+            let [east, height, south] = face.middle();
+            let north = -south;
+            let on = (from..=to).contains(&north)
+                && height < 500.0 + clear
+                && east.abs() < road_half(world, f64::from(north)) - 0.05;
+            if on {
+                eprintln!(
+                    "ON ROAD {:?} normal {:?} half {}",
+                    face.corners,
+                    face.normal,
+                    road_half(world, f64::from(north))
+                );
+            }
+            on
+        })
+        .count()
+}
+
 #[tokio::test]
-async fn buildings_drawn_into_the_road_are_left_out() {
+async fn buildings_drawn_into_the_road_narrow_it_and_stay() {
     // A square house turned 45° to the road, its corner towards it clipped in the map: the
     // footprint keeps 4.2 m off the centre line, but the house is drawn on the whole square,
-    // its corner 2.5 m off, on the road (#138). The same house further off stays.
+    // its corner 2.5 m off, on the road as the map estimates it (#138). The road is no wider
+    // than the houses beside it leave room for, so it narrows there and the house stays.
     let diamond = |east: f64, clip: f64| {
         let reach = clip - east + 6.0;
         let points = [
@@ -2485,8 +2520,68 @@ async fn buildings_drawn_into_the_road_are_left_out() {
     .await;
 
     let faces = |east: f32| building_faces(&world, (east, 500.0), 7.0).len();
-    assert_eq!(faces(8.5), 0, "a house drawn on the road");
+    assert!(faces(8.5) > 0, "the house reaching onto the road is gone");
     assert!(faces(30.0) > 0, "the house off the road is gone");
+    let (narrowed, open) = (road_half(&world, 500.0), road_half(&world, 800.0));
+    assert!(
+        (1.7..=2.5).contains(&narrowed),
+        "the road keeps its width by the house: {narrowed}"
+    );
+    assert!(
+        open > narrowed + 0.5,
+        "the road narrows away from the house"
+    );
+    assert_eq!(
+        faces_on_road(&world, (480.0, 520.0), 20.0),
+        0,
+        "a wall stands on the road"
+    );
+}
+
+#[tokio::test]
+async fn buildings_whose_walls_keep_off_the_road_stay_by_it() {
+    // An L-shaped house turned so the corner it leaves open faces the road: its walls keep
+    // 6 m off the centre line, but the rectangle around it reaches onto the road. It is drawn
+    // on its outline (ADR 0041, step 4), so it stays.
+    let turn = std::f64::consts::FRAC_PI_4 * 3.0;
+    let l_shape: Vec<(f64, f64)> = [
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 4.0),
+        (4.0, 4.0),
+        (4.0, 10.0),
+        (0.0, 10.0),
+    ]
+    .iter()
+    .map(|&(x, y): &(f64, f64)| {
+        (
+            16.0 + x * turn.cos() - y * turn.sin(),
+            500.0 + x * turn.sin() + y * turn.cos(),
+        )
+    })
+    .collect();
+    let mut outline: Vec<_> = l_shape.iter().map(|&(e, n)| at(e, n)).collect();
+    outline.push(outline[0]);
+    let house = Building {
+        id: 170,
+        outline,
+        height: None,
+        levels: Some(2.0),
+        color: None,
+        min_height: None,
+        in_parts: false,
+        kind: None,
+        shape: None,
+    };
+    let world = world(&MapData {
+        buildings: vec![house],
+        ..MapData::default()
+    })
+    .await;
+    assert!(
+        !building_faces(&world, (11.0, 500.0), 8.0).is_empty(),
+        "the house by the road is gone"
+    );
 }
 
 #[tokio::test]
@@ -4007,11 +4102,11 @@ async fn shops_get_a_front_and_an_awning_onto_their_street() {
 }
 
 #[tokio::test]
-async fn roads_stay_clear_of_buildings() {
+async fn roads_stay_clear_of_buildings_standing_across_them() {
     use orqwa_osm::{Road, RoadClass};
 
     // A 60 × 20 m block across the road ridden (its corners far from it), a 40 × 12 m block
-    // a street runs through, and a house beside each.
+    // a street runs through, a barn a lane ends in, and a house beside each block.
     let building = |id: i64, outline| Building {
         id,
         outline,
@@ -4023,19 +4118,24 @@ async fn roads_stay_clear_of_buildings() {
         kind: None,
         shape: None,
     };
+    let street = |line| Road {
+        class: RoadClass::Street,
+        details: orqwa_osm::RoadDetails::default(),
+        line,
+        structure: None,
+    };
     let world = world(&MapData {
         buildings: vec![
             building(41, rectangle(0.0, 300.0, 30.0, 10.0)),
             building(42, rectangle(20.0, 400.0, 6.0, 4.5)),
             building(43, rectangle(100.0, 600.0, 20.0, 6.0)),
             building(44, rectangle(100.0, 615.0, 6.0, 4.0)),
+            building(45, rectangle(100.0, 800.0, 12.0, 8.0)),
         ],
-        roads: vec![Road {
-            class: RoadClass::Street,
-            details: orqwa_osm::RoadDetails::default(),
-            line: vec![at(40.0, 600.0), at(200.0, 600.0)],
-            structure: None,
-        }],
+        roads: vec![
+            street(vec![at(40.0, 600.0), at(200.0, 600.0)]),
+            street(vec![at(40.0, 800.0), at(100.0, 800.0)]),
+        ],
         ..MapData::default()
     })
     .await;
@@ -4047,13 +4147,141 @@ async fn roads_stay_clear_of_buildings() {
                 .iter()
                 .any(|m| (m.origin[0] - east).hypot(-m.origin[2] - north) < radius)
     };
-    assert!(!stands((0.0, 300.0), 25.0), "a block stands on the road");
-    assert!(!stands((100.0, 600.0), 8.0), "a block stands on the street");
+    // Riders pass beneath the block's middle: nothing stands on the road below it, and the
+    // block stands on either side and over the road.
+    assert_eq!(
+        faces_on_road(&world, (280.0, 320.0), 3.9),
+        0,
+        "a block stands on the road"
+    );
+    assert!(
+        stands((-15.0, 300.0), 5.0) && stands((15.0, 300.0), 5.0),
+        "the block is gone"
+    );
+    let over = building_faces(&world, (0.0, 300.0), 1.5);
+    assert!(
+        !over.is_empty() && lowest(&over) >= 503.9,
+        "nothing passes over the road where the block stands"
+    );
+    // The same where the street runs through the other block.
+    let on_street = building_faces(&world, (100.0, 600.0), 25.0)
+        .into_iter()
+        .filter(|face| {
+            let [east, height, south] = face.middle();
+            (80.5..=119.5).contains(&east)
+                && (-south - 600.0).abs() < 1.7
+                && height < slope_at(east) + 3.9
+        })
+        .count();
+    assert_eq!(on_street, 0, "a block stands on the street");
+    let side = |north: f32| {
+        building_faces(&world, (100.0, 600.0), 25.0)
+            .iter()
+            .any(|face| (-face.middle()[2] - north).abs() < 2.0)
+            || models
+                .iter()
+                .any(|m| (-m.origin[2] - north).abs() < 2.0 && (m.origin[0] - 100.0).abs() < 20.0)
+    };
+    assert!(side(604.0) && side(596.0), "the block is gone");
     assert!(stands((20.0, 400.0), 5.0), "the house by the road is gone");
     assert!(
         stands((100.0, 615.0), 3.0),
         "the house by the street is gone"
     );
+    // The lane leads to the barn's door: the barn stands whole on it.
+    assert!(
+        stands((100.0, 800.0), 10.0),
+        "the barn a lane ends in is gone"
+    );
+    let cut = building_faces(&world, (100.0, 800.0), 10.0)
+        .into_iter()
+        .filter(|face| {
+            let [east, height, south] = face.middle();
+            (-south - 800.0).abs() < 2.0 && height < slope_at(east) + 3.0
+        })
+        .count();
+    assert_eq!(cut, 0, "the barn a lane ends in is cut along it");
+}
+
+#[tokio::test]
+async fn buildings_raised_over_the_road_span_it_whole() {
+    // A bridge between two buildings, mapped from 5 m up to 8 m, across the road.
+    let world = world(&MapData {
+        buildings: vec![Building {
+            id: 47,
+            outline: rectangle(0.0, 500.0, 12.0, 3.0),
+            height: Some(8.0),
+            levels: None,
+            color: None,
+            min_height: Some(5.0),
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        ..MapData::default()
+    })
+    .await;
+
+    let bridge = building_faces(&world, (0.0, 500.0), 14.0);
+    assert!(!bridge.is_empty(), "the bridge is gone");
+    assert!(lowest(&bridge) > 504.0, "the bridge comes down to the road");
+    let cut = bridge
+        .iter()
+        // Walls cut along the road face across it, below the roof and its chimney.
+        .filter(|face| {
+            face.normal[0].abs() > 0.9 && face.middle()[0].abs() < 10.0 && face.middle()[1] < 508.0
+        })
+        .count();
+    assert_eq!(cut, 0, "the bridge is cut along the road");
+    assert!(
+        road_half(&world, 500.0) > 2.5,
+        "the road narrows under the bridge"
+    );
+}
+
+#[tokio::test]
+async fn buildings_above_a_tunnel_of_the_road_stay_whole() {
+    // A hill 60 m high over the road's tunnel, and a house on top of it, right above the road.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (60.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let route = route_north(&[Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 250.0), at(0.0, 750.0)],
+    }])
+    .await;
+    let map = MapData {
+        buildings: vec![Building {
+            id: 46,
+            outline: rectangle(0.0, 500.0, 5.0, 4.0),
+            height: None,
+            levels: Some(2.0),
+            color: None,
+            min_height: None,
+            in_parts: false,
+            kind: None,
+            shape: None,
+        }],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Hill, &map, &mut |_, _| {}).await;
+
+    let house = building_faces(&world, (0.0, 500.0), 12.0);
+    assert!(!house.is_empty(), "the house above the tunnel is gone");
+    let cut = house
+        .iter()
+        // Walls cut along the road face across it.
+        .filter(|face| face.normal[0].abs() > 0.9 && face.middle()[0].abs() < 4.0)
+        .count();
+    assert_eq!(cut, 0, "the house above the tunnel is cut along the road");
 }
 
 #[tokio::test]

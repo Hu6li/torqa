@@ -276,9 +276,11 @@ async fn sidewalk_clipping_respects_the_drawn_outline_of_an_irregular_building()
         height_on(&world, |c| &c.urban, 3.3, -501.5).is_some(),
         "the strip outside the drawn building remains open"
     );
+    // Filling 77 % of its rectangle, it is drawn on its mapped footprint (ADR 0041, step 4):
+    // its walls keep sidewalks out, its notch does not.
     assert!(
-        height_on(&world, |c| &c.urban, 4.7, -501.5).is_none(),
-        "the fitted model occupies the notch in its mapped footprint"
+        height_on(&world, |c| &c.urban, 5.5, -498.5).is_none(),
+        "a sidewalk inside the building's walls"
     );
 }
 

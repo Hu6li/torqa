@@ -562,6 +562,11 @@ physically based materials and light, restyled group by group.
   - [x] Step 6 — roof shapes, levels, colours and materials from the extract (R261)
   - [x] Step 7 — buildings assembled on their outlines from Blender parts (R262): windows and
     doors on homes of the general region
+  - [x] No building left out by the road (R263): the road narrows to the buildings beside it,
+    and what still stands on it or a street is cut along it, with passages over them
+  - [ ] Heights and kinds guessed from their surroundings (villages, footprints) where the map
+    gives none, tuned on the buildings that map their levels
+  - [ ] Swiss register of buildings (GWR): storeys and categories where the map is thin
   - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
   - [ ] National surveys (swissBUILDINGS3D first) where the map is thin: own ADR
 - [ ] Complete Medium/M1 and long-course frame-rate acceptance for R256; M5 samples do not

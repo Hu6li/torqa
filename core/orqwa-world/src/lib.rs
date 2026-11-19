@@ -75,7 +75,7 @@ pub use vegetation::Trees;
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 48;
+pub const GENERATOR: u32 = 49;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -492,8 +492,13 @@ pub async fn try_generate_into<M: ElevationModel, E: Send>(
     let land = LandIndex::new(&map.areas, &projection);
     let climate = climate::Climate::at(route.points()[0].lat);
     let lone_lighthouses = buildings::lone_lighthouses(map, &projection);
-    let buildings =
-        buildings_by_chunk((map, &lone_lighthouses), &projection, &road, &land, climate);
+    let buildings = buildings_by_chunk(
+        (map, &lone_lighthouses),
+        &projection,
+        &mut road,
+        &land,
+        climate,
+    );
     check()?;
     let mut ways = Ways::new(map, &projection, &road, model).await;
     check()?;
@@ -791,7 +796,7 @@ fn so_far<'a>(
 fn buildings_by_chunk<'a>(
     (map, extra): (&'a MapData, &'a [orqwa_osm::Building]),
     projection: &LocalProjection,
-    road: &RoadIndex,
+    road: &mut RoadIndex,
     land: &LandIndex,
     climate: climate::Climate,
 ) -> HashMap<(i32, i32), Vec<buildings::Plot<'a>>> {
@@ -814,50 +819,56 @@ fn buildings_by_chunk<'a>(
         .flat_map(|r| drape::densify(&project(&r.line), 3.0))
         .chain(road.samples(3.0));
     let frontage = buildings::Frontage::new(streets);
-    let mut plots = Vec::new();
-    for building in map.buildings.iter().chain(extra) {
-        let footprint = buildings::footprint(building, projection);
-        let Some(&(east, north)) = footprint.first() else {
-            continue;
-        };
-        // Roads stay clear (#100): buildings mapped across them (e.g. bad data) are left out,
-        // those reaching into the road ridden by a corner or a wall as drawn (#138), and those
-        // a street runs through.
-        let mut outline = buildings::drawn_outline(&footprint);
-        outline.push(outline[0]);
-        let on_road = drape::densify(&outline, 2.0)
+    let passing = buildings::passage::Streets::new(
+        map.roads
             .iter()
-            .any(|&(e, n)| road.edge_distance(e, n) < 1.0);
-        if on_road
-            || frontage.runs_through(&footprint)
-            || road.nearest(east, north, CORRIDOR).is_none()
-        {
-            continue;
+            .filter(|r| {
+                r.structure.is_none()
+                    && matches!(
+                        r.class,
+                        RoadClass::Major | RoadClass::Street | RoadClass::Service
+                    )
+            })
+            .map(|r| project(&r.line))
+            .filter(|line| line.len() >= 2)
+            .collect(),
+    );
+    let footprints: Vec<_> = map
+        .buildings
+        .iter()
+        .chain(extra)
+        .map(|building| (building, buildings::footprint(building, projection)))
+        .filter(|(_, footprint)| {
+            footprint
+                .first()
+                .is_some_and(|&(e, n)| road.nearest(e, n, CORRIDOR).is_some())
+        })
+        .collect();
+    // The road is as wide as the buildings beside it leave room for; those it passes beneath
+    // leave all of it.
+    let walls: Vec<_> = footprints
+        .iter()
+        .filter(|(building, _)| {
+            buildings::passage::Beneath::of(building) != buildings::passage::Beneath::Everything
+        })
+        .map(|(_, footprint)| {
+            let mut ring = buildings::drawn_outline(footprint);
+            ring.push(ring[0]);
+            ring
+        })
+        .collect();
+    road.fit_between(walls.iter().map(Vec::as_slice));
+    let mut plots = Vec::new();
+    // Roads stay clear (#100), of buildings mapped across them as of those reaching onto them
+    // by a corner or a wall as drawn (#138): those are cut along them.
+    for (building, footprint) in footprints {
+        // Pieces of a building stand in the setting of the whole.
+        let centre = buildings::centroid(&footprint);
+        let beneath = buildings::passage::Beneath::of(building);
+        for (footprint, cut) in buildings::passage::pieces(footprint, beneath, road, &passing) {
+            let piece = (footprint, cut, centre);
+            plots.push(plot(building, piece, land, projection, climate));
         }
-        let (e, n) = buildings::centroid(&footprint);
-        let setting = if land.has(e, n, LandCover::Industrial) {
-            buildings::Setting::Industrial
-        } else if land.has(e, n, LandCover::Commercial) {
-            buildings::Setting::Commercial
-        } else if land.has(e, n, LandCover::Public) {
-            buildings::Setting::Public
-        } else if land.has(e, n, LandCover::Residential) {
-            buildings::Setting::Town
-        } else {
-            buildings::Setting::Countryside
-        };
-        plots.push(buildings::Plot {
-            building,
-            footprint,
-            setting,
-            church: false,
-            shop: None,
-            purpose: None,
-            landmark: None,
-            climate,
-            region: buildings::Region::at(projection.unproject(e, n)),
-            drawn: buildings::Drawn::Whole,
-        });
     }
     buildings::mark_churches(&mut plots, &project(&map.churches));
     for (points, landmark) in [
@@ -885,6 +896,40 @@ fn buildings_by_chunk<'a>(
             .push(plot);
     }
     by_chunk
+}
+
+/// A building, or a piece of one, near the route, in the setting of the land it stands on.
+fn plot<'a>(
+    building: &'a orqwa_osm::Building,
+    (footprint, cut, (e, n)): (Vec<(f64, f64)>, buildings::passage::Cut, (f64, f64)),
+    land: &LandIndex,
+    projection: &LocalProjection,
+    climate: climate::Climate,
+) -> buildings::Plot<'a> {
+    let setting = if land.has(e, n, LandCover::Industrial) {
+        buildings::Setting::Industrial
+    } else if land.has(e, n, LandCover::Commercial) {
+        buildings::Setting::Commercial
+    } else if land.has(e, n, LandCover::Public) {
+        buildings::Setting::Public
+    } else if land.has(e, n, LandCover::Residential) {
+        buildings::Setting::Town
+    } else {
+        buildings::Setting::Countryside
+    };
+    buildings::Plot {
+        building,
+        footprint,
+        setting,
+        church: false,
+        shop: None,
+        purpose: None,
+        landmark: None,
+        climate,
+        region: buildings::Region::at(projection.unproject(e, n)),
+        drawn: buildings::Drawn::Whole,
+        cut,
+    }
 }
 
 /// What every chunk is built from, shared by the chunks built at the same time.

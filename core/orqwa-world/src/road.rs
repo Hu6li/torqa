@@ -20,6 +20,12 @@ const BEVEL_DROP: f64 = 0.25;
 const SKIRT_DEPTH: f64 = 1.2;
 const SKIRT_REACH: f64 = 0.8;
 
+/// The narrowest the road is drawn where buildings stand closer to it than its width: room
+/// for a car, or riders two abreast.
+pub(crate) const NARROWEST: f64 = 3.5;
+/// Walls stand this far off the road's edge, beyond the bevel's lip.
+const WALL_CLEARANCE: f64 = 0.3;
+
 /// Vertices across the road: skirt, bevel and edge on either side.
 pub(crate) const RING: usize = 6;
 /// Where the road turns more than this at a point (radians), it turns in a fan of rings this
@@ -171,6 +177,97 @@ impl RoadIndex {
 
     pub(crate) fn half_width_at(&self, east: f64, north: f64) -> f64 {
         self.appearance_at(east, north).width / 2.0
+    }
+
+    /// Narrows the road on the ground where buildings stand closer to it than its width, which
+    /// is mostly estimated from the road's class: the buildings show how wide it really is.
+    /// Their `walls` (closed rings) keep `WALL_CLEARANCE` off its edge, down to a road of
+    /// `NARROWEST`; narrower places, where the map has a building across the road, are left
+    /// to the buildings ([`crate::buildings::passage`]). Widths ease into a narrowing over
+    /// the distance other width changes take.
+    pub(crate) fn fit_between<'a>(&mut self, walls: impl Iterator<Item = &'a [(f64, f64)]>) {
+        let mut halves: Vec<f64> = self
+            .segments
+            .iter()
+            .map(|s| s.appearance.map_or(0.0, |a| a.width / 2.0))
+            .collect();
+        for wall in walls {
+            // Most buildings stand far from the road.
+            let Some(&(east, north)) = wall.first() else {
+                continue;
+            };
+            if self.on_ground_near(east, north).next().is_none() {
+                continue;
+            }
+            for (east, north) in crate::drape::densify(wall, 1.0) {
+                for index in self.on_ground_near(east, north) {
+                    let segment = &self.segments[index];
+                    let distance = closest_on_segment(segment, east, north).0;
+                    let fits = (distance - WALL_CLEARANCE).max(NARROWEST / 2.0);
+                    // Through a building, as through a gate, the road is narrowest throughout.
+                    let middle = (
+                        f64::midpoint(segment.a.0, segment.b.0),
+                        f64::midpoint(segment.a.1, segment.b.1),
+                    );
+                    let inside = crate::buildings::contains(wall, middle);
+                    halves[index] = halves[index].min(if inside { NARROWEST / 2.0 } else { fits });
+                }
+            }
+        }
+        for line in &self.lines {
+            for reverse in [false, true] {
+                let indices: Vec<_> = if reverse {
+                    line.clone().rev().collect()
+                } else {
+                    line.clone().collect()
+                };
+                let mut previous: Option<f64> = None;
+                for i in indices {
+                    let segment = &self.segments[i];
+                    let step = (segment.distance_b - segment.distance_a).max(0.0) * 0.1;
+                    if let Some(half) = previous {
+                        halves[i] = halves[i].min(half + step);
+                    }
+                    previous = Some(halves[i]);
+                }
+            }
+        }
+        for (segment, half) in self.segments.iter_mut().zip(halves) {
+            if let Some(look) = segment.appearance.as_mut() {
+                look.width = look.width.min(2.0 * half);
+            }
+        }
+    }
+
+    /// The segments of road on the ground whose cells lie around a point, ridden the first
+    /// time.
+    fn on_ground_near(&self, east: f64, north: f64) -> impl Iterator<Item = usize> + '_ {
+        let (ce, cn) = cell_of(east, north);
+        (ce - 1..=ce + 1)
+            .flat_map(move |x| (cn - 1..=cn + 1).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .copied()
+            .filter(|&i| self.segments[i].surface == Surface::Ground && !self.segments[i].repeat)
+    }
+
+    /// The road's carriageway around a point, which buildings keep clear of: each stretch's
+    /// ends, half width and whether it is a bridge. Tunnels are left out, as buildings may
+    /// stand above them, and so is the road ridden again, which is drawn once.
+    pub(crate) fn carriageway_near(
+        &self,
+        east: f64,
+        north: f64,
+    ) -> impl Iterator<Item = ((f64, f64), (f64, f64), f64, bool)> + '_ {
+        let (ce, cn) = cell_of(east, north);
+        (ce - 1..=ce + 1)
+            .flat_map(move |x| (cn - 1..=cn + 1).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .map(|&i| &self.segments[i])
+            .filter(|s| s.surface != Surface::Tunnel && !s.repeat)
+            .map(|s| {
+                let half = s.appearance.unwrap_or_default().width / 2.0;
+                (s.a, s.b, half, s.surface == Surface::Bridge)
+            })
     }
 
     pub(crate) fn edge_distance(&self, east: f64, north: f64) -> f64 {
