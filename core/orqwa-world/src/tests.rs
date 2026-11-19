@@ -986,6 +986,197 @@ async fn the_land_stands_in_for_the_chunks_not_drawn() {
     );
 }
 
+/// The coarse land's height at `point` (x and z, in route coordinates): the lowest of its faces
+/// there.
+fn land_height(land: &Horizon, point: [f32; 2]) -> Option<f32> {
+    let mut lowest: Option<f32> = None;
+    for mesh in [&land.ground, &land.water] {
+        for t in mesh.indices.as_chunks::<3>().0 {
+            let [p0, p1, p2] = t.map(|i| mesh.vertices[i as usize]);
+            let (e1, e2) = (
+                [p1[0] - p0[0], p1[2] - p0[2]],
+                [p2[0] - p0[0], p2[2] - p0[2]],
+            );
+            let rel = [point[0] - p0[0], point[1] - p0[2]];
+            let det = e1[0] * e2[1] - e2[0] * e1[1];
+            if det.abs() < 1e-6 {
+                continue;
+            }
+            let along1 = (rel[0] * e2[1] - e2[0] * rel[1]) / det;
+            let along2 = (e1[0] * rel[1] - rel[0] * e1[1]) / det;
+            if along1 < -1e-4 || along2 < -1e-4 || along1 + along2 > 1.0 + 1e-4 {
+                continue;
+            }
+            let height = p0[1] + along1 * (p1[1] - p0[1]) + along2 * (p2[1] - p0[1]);
+            lowest = Some(lowest.map_or(height, |l| l.min(height)));
+        }
+    }
+    lowest
+}
+
+/// A skirt's extent at each place along it: `(x, z)` → its top and bottom.
+fn skirt_extents(skirt: &MeshData) -> Vec<([f32; 2], f32, f32)> {
+    let mut extents: Vec<([f32; 2], f32, f32)> = Vec::new();
+    for v in &skirt.vertices {
+        match extents
+            .iter_mut()
+            .find(|(at, _, _)| (at[0] - v[0]).abs() < 1e-3 && (at[1] - v[2]).abs() < 1e-3)
+        {
+            Some((_, top, bottom)) => {
+                *top = top.max(v[1]);
+                *bottom = bottom.min(v[1]);
+            }
+            None => extents.push(([v[0], v[2]], v[1], v[1])),
+        }
+    }
+    extents
+}
+
+#[tokio::test]
+async fn no_crack_opens_where_the_ground_meets_the_land_standing_in() {
+    // Ridges and hollows far finer than the land's facets: along the chunks' sides it lies well
+    // above and below the detailed ground.
+    struct Ridges;
+    impl ElevationModel for Ridges {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(800.0 + 60.0 * (north / 70.0).sin() * (east / 90.0).cos()))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Ridges, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Ridges).await;
+    let parts = HorizonParts::new(&route, &land);
+
+    // Wherever a chunk is drawn and the land beside it stands in for its neighbour, or lies
+    // beyond the corridor, the ground's edge hangs down to below that land (#560): from below,
+    // the sky showed through between them, from above a dark crack.
+    let half = CHUNK_SIZE as f32 / 2.0;
+    let mut deepest = 0.0f32;
+    for chunk in &world.chunks {
+        let skirt = parts.skirt(chunk);
+        assert_valid(&skirt);
+        let extents = skirt_extents(&skirt);
+        let [cx, _, cz] = chunk.center;
+        for v in &chunk.mesh.vertices {
+            if (v[0].abs() - half).abs() >= 0.01 && (v[2].abs() - half).abs() >= 0.01 {
+                continue;
+            }
+            let beside = land_height(&land, [v[0] + cx, v[2] + cz]).expect("land beside the chunk");
+            let Some(&(_, top, bottom)) = extents
+                .iter()
+                .find(|(at, _, _)| (at[0] - v[0]).abs() < 1e-3 && (at[1] - v[2]).abs() < 1e-3)
+            else {
+                panic!(
+                    "no skirt at the edge {v:?} of the chunk at {:?}",
+                    chunk.center
+                );
+            };
+            assert!(
+                (top - v[1]).abs() < 1e-3,
+                "the skirt leaves the edge {v:?} at {top}"
+            );
+            assert!(
+                bottom <= beside - 1.0 && bottom <= v[1] - 2.0,
+                "the skirt at {v:?} ends at {bottom}, the land beside it lies at {beside}"
+            );
+            deepest = deepest.max(v[1] - beside);
+        }
+        // It faces out of the chunk, as the cracks are seen from there.
+        for t in skirt.indices.as_chunks::<3>().0 {
+            let [p0, p1, p2] = t.map(|i| skirt.vertices[i as usize]);
+            let (to2, to1) = (
+                [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]],
+                [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]],
+            );
+            // Front faces wind clockwise: their normal is (p2 − p0) × (p1 − p0), here
+            // horizontal.
+            let normal = [
+                to2[1] * to1[2] - to2[2] * to1[1],
+                to2[0] * to1[1] - to2[1] * to1[0],
+            ];
+            if normal[0].hypot(normal[1]) < 1e-3 {
+                continue;
+            }
+            let middle = [(p0[0] + p1[0] + p2[0]) / 3.0, (p0[2] + p1[2] + p2[2]) / 3.0];
+            assert!(
+                normal[0] * middle[0] + normal[1] * middle[1] > 0.0,
+                "the skirt at {middle:?} of the chunk at {:?} faces in",
+                chunk.center
+            );
+        }
+    }
+    assert!(
+        deepest > 10.0,
+        "the land never lay far below the ground: {deepest} m"
+    );
+}
+
+#[tokio::test]
+async fn the_ground_hangs_into_no_tunnel_of_the_road_ridden() {
+    // The road runs along the side of two rows of chunks (x = 0), in a tunnel under a hill 60 m
+    // high, which the land's facets cut far lower.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (60.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let route = route_north(&[Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 250.0), at(0.0, 750.0)],
+    }])
+    .await;
+    let world = generate(&route, &mut Hill, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Hill).await;
+    let parts = HorizonParts::new(&route, &land);
+    let road = |north: f32| {
+        route
+            .points()
+            .iter()
+            .min_by(|p, q| {
+                (p.distance.0 - f64::from(north))
+                    .abs()
+                    .total_cmp(&(q.distance.0 - f64::from(north)).abs())
+            })
+            .map(|p| p.elevation.0 as f32)
+            .unwrap()
+    };
+
+    // In the tube (`structures`) the rider would see a skirt as a wall across the road.
+    let (mut over_tunnel, mut beside_it) = (0, 0);
+    for chunk in &world.chunks {
+        let [cx, _, cz] = chunk.center;
+        for ([x, z], top, bottom) in skirt_extents(&parts.skirt(chunk)) {
+            let (east, north) = (x + cx, -(z + cz));
+            if top - bottom < 0.01 || east.abs() > 5.0 {
+                continue;
+            }
+            if (250.0..=750.0).contains(&north) {
+                assert!(
+                    bottom >= road(north) + 7.5,
+                    "a skirt reaches down to {bottom} into the tunnel at {north} m north"
+                );
+                over_tunnel += 1;
+            } else if !(200.0..=800.0).contains(&north) {
+                beside_it += 1;
+            }
+        }
+    }
+    assert!(over_tunnel > 0, "no ground hangs over the tunnel");
+    assert!(beside_it > 0, "no ground hangs beside the road outside it");
+}
+
 #[tokio::test]
 async fn roundabouts_get_a_raised_island_with_a_kerb() {
     use orqwa_osm::{Road, RoadClass};

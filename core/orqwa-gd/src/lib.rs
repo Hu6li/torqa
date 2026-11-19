@@ -3909,9 +3909,11 @@ impl OrqwaApp {
             .map_or_else(VarDictionary::new, horizon_arrays)
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, urban, water,
-    /// plants, props, labels, wires, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks` and `water`
-    /// (lakes, rivers and streams) are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
+    /// World chunk `index`: `{center, terrain, skirt, buildings, modelled, streets, tracks, urban,
+    /// water, plants, props, labels, wires, grass, flowers}`. `terrain`, `skirt` (hanging from
+    /// the terrain's edges below the distant land beside them, #560), `buildings`, `streets`,
+    /// `tracks` and `water` (lakes, rivers and streams) are mesh arrays (`{vertices, normals, uvs,
+    /// colors, indices}`); `skirt` is empty until `horizon_meshes` was called;
     /// `urban` is another mesh array, with paving/concrete/asphalt/curb codes in its colours.
     /// `plants` maps vegetation model names (trees, bushes, ferns, rocks) to `MultiMesh` buffers
     /// (transform and colour), `props` maps roadside model names (guard rails, posts, poles) to
@@ -3939,7 +3941,9 @@ impl OrqwaApp {
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
-        graphics::chunk_arrays(&chunk, tree_density)
+        let mut arrays = graphics::chunk_arrays(&chunk, tree_density);
+        arrays.set("skirt", &mesh_arrays(&self.horizon_parts.skirt(&chunk)));
+        arrays
     }
 
     /// Like `world_chunk_with_tree_density`, with the selected season's grass/flower balance.
@@ -3961,7 +3965,9 @@ impl OrqwaApp {
             return VarDictionary::new();
         };
         let season = orqwa_domain::season::Season::from_name(&name.to_string()).unwrap_or_default();
-        graphics::chunk_arrays_for_season(&chunk, tree_density, season)
+        let mut arrays = graphics::chunk_arrays_for_season(&chunk, tree_density, season);
+        arrays.set("skirt", &mesh_arrays(&self.horizon_parts.skirt(&chunk)));
+        arrays
     }
 
     /// The close façade cells of chunk `index` around world `(x, z)` for Ultra (R256), given the

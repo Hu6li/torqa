@@ -267,6 +267,17 @@ func _add_chunk(world: RideWorld, chunk: Dictionary, index: int) -> Node3D:
 	world._ground_lods.make(ground, terrain_arrays)
 	ground.visibility_range_end = RideWorld.VISIBILITY_RANGE * world._distance
 	node.add_child(ground)
+	var skirt_arrays: Dictionary = chunk.get("skirt", {})
+	var skirt_vertices: PackedVector3Array = skirt_arrays.get("vertices", PackedVector3Array())
+	if not skirt_vertices.is_empty():
+		# Not with the ground: its coarser versions could fold the skirt away.
+		var skirt: MeshInstance3D = world._mesh_instance(
+			skirt_arrays, world._terrain_material, true
+		)
+		skirt.visibility_range_end = ground.visibility_range_end
+		# Below the ground wherever the land beside it is drawn too.
+		skirt.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		node.add_child(skirt)
 	if index >= 0:
 		_add_stand_in(world, node, index)
 	for surface: Array in [
