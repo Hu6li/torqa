@@ -267,6 +267,7 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 		AuthoredMaterials.prepare(state)
 		node = document.generate_scene(state) as Node3D
 		if node != null:
+			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
 	_made_lock.lock()
 	_made[file] = node

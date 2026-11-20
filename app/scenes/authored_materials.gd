@@ -24,6 +24,22 @@ static func prepare(state: GLTFState) -> void:
 		image_texture.set_image(image)
 
 
+## Lets the vertex colours of `root`'s meshes multiply their base colour, as glTF defines them
+## (`COLOR_0`); Godot's runtime glTF loader leaves them out of the material.
+static func use_vertex_colours(root: Node) -> void:
+	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: ArrayMesh = (node as MeshInstance3D).mesh as ArrayMesh
+		if mesh == null:
+			continue
+		for surface: int in mesh.get_surface_count():
+			var material: BaseMaterial3D = mesh.surface_get_material(surface) as BaseMaterial3D
+			if material == null or not mesh.surface_get_format(surface) & Mesh.ARRAY_FORMAT_COLOR:
+				continue
+			material = material.duplicate() as BaseMaterial3D
+			material.vertex_color_use_as_albedo = true
+			mesh.surface_set_material(surface, material)
+
+
 ## Replaces the materials of `root` that carry terrain layers by ORQWA's terrain material.
 static func apply_terrain_layers(state: GLTFState, root: Node) -> void:
 	var described: Array = state.json.get("materials", [])
