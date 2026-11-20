@@ -567,6 +567,8 @@ physically based materials and light, restyled group by group.
     line, and what still stands on it or a street is cut along it, with passages over them
   - [x] Roofs like the neighbours' (R264): a building without a mapped roof takes the roofs
     mapped around it, those of buildings its size first
+  - [x] No flat-roofed chalets (R265): a building under a flat roof, mapped or like the
+    neighbours', is a house of its region, never a chalet or a Bernese farmhouse
   - [ ] Storeys like the neighbours': from the buildings around that map their levels
   - [ ] Regional parts (Nordic, French, Japanese windows), parts on gables and lower storeys
   - [ ] ~~National data (GWR, swissBUILDINGS3D, lidar surface models) where the map is thin~~ —
@@ -594,12 +596,12 @@ physically based materials and light, restyled group by group.
   verify native FPS and Low's rendering cost without changing kept worlds.
   - [x] Tall and broad conifers have one short, slender leader, blended into upper whorls at
     every detail level, with front, side, rear and elevated model renders for silhouette review.
-- [x] Distant land under the corridor too (R265, #560): the coarse land stands in for every
+- [x] Distant land under the corridor too (R266, #560): the coarse land stands in for every
   chunk of the detailed ground that is not drawn, so the sky no longer shows through mountains
   where the route runs on into the distance; the detailed ground's edges hang below the land
   beside them, so no crack opens where the two meet
 - [x] Lakes cover all the detailed ground they reach, also where map tiles cut them into
-  pieces, and the clouds show no seam (R266, #560)
+  pieces, and the clouds show no seam (R267, #560)
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
   - [x] Forest ground turns into a baked canopy of crowns with distance, nearer the fewer trees
     are drawn, out to the horizon; tracks and paths end at 1 km
