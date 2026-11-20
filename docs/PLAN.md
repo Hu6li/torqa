@@ -1259,7 +1259,8 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] ADR 0042 and the format specification (`.oqx`, format 1)
 - [x] Reader and validator in `orqwa-storage`, with a fuzz target and `orqwa-cli world-check`
 - [x] Routes from a world's points (`Route::from_world`), in the world's own metres
-- [ ] Library and app: `worlds/`, one entry per route, opening without building
+- [x] Library and app: `worlds/`, one entry per route, opening without building or fetching;
+  rides without positions for worlds not on Earth; no renaming, saving or group rides
 - [ ] Godot: runtime glTF sections and assets, levels of detail, terrain layers, the world's
   light, textures compressed into the cache
 - [ ] A test world made by a script; the usage guide in the wiki

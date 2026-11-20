@@ -224,7 +224,9 @@ lays up to eight tiling detail layers over the base colour near the camera:
 ## Checking a file
 
 `orqwa-cli world-check <file.oqx>` checks a file as importing it does and shows what it holds,
-for tools that write world files.
+for tools that write world files. `orqwa-cli world-pack <folder> <file.oqx>` packs a folder
+holding `world.json` and the parts it names into a world file and checks it: glTF and images
+are stored, routes and `instances` files deflated.
 
 ## What ORQWA does with a world file
 

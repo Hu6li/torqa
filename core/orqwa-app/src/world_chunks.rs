@@ -67,6 +67,14 @@ impl WorldChunks {
         this
     }
 
+    /// No chunks, complete: a world file's (ADR 0042), which the scene reads itself.
+    pub(crate) fn none() -> Self {
+        let this = Self::building(None, false);
+        let _ = this.centres.set(Vec::new());
+        this.complete.store(true, Ordering::Relaxed);
+        this
+    }
+
     /// The chunks of a world about to be built into `store`, or into memory without one.
     pub(crate) fn building(store: Option<Arc<Building>>, required: bool) -> Self {
         Self {

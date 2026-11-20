@@ -549,6 +549,7 @@ mod tests {
                     countries: None,
                     map_detail: Vec::new(),
                 },
+                world: None,
             },
             estimated: None,
             last_ridden: None,

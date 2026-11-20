@@ -83,6 +83,8 @@ pub struct Imported {
     pub countries: Option<Vec<CourseCountry>>,
     /// Whether traffic keeps left at each route point; `None` where its country is unknown.
     pub driving_left: Vec<Option<bool>>,
+    /// The world file the route runs through, for a world's route (R266).
+    pub authored: Option<std::sync::Arc<crate::authored::Authored>>,
 }
 
 /// Reads a GPX file and imports it with [`import_gpx`], named after the file if the track has
@@ -209,6 +211,7 @@ pub async fn import_gpx(
         minimap,
         countries: None,
         driving_left,
+        authored: None,
     })
 }
 

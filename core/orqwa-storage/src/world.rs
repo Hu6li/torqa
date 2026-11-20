@@ -19,7 +19,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use zip::{CompressionMethod, ZipArchive};
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 pub use instances::InstanceGroup;
 
@@ -857,5 +858,54 @@ impl WorldFile {
         )
         .map_err(|e| prefixed(name, e))?;
         Ok(bytes)
+    }
+}
+
+/// Packs the folder `from` into the world file `to`: `world.json` and every part it names,
+/// under their names relative to the folder, then checks the result as importing would.
+/// Written beside `to` first and moved there once checked, so a failed pack leaves nothing.
+/// For tools that write worlds as folders.
+///
+/// # Errors
+/// [`WorldError`] if the folder's description or a part is missing or breaks the format.
+pub fn pack(from: &Path, to: &Path) -> Result<Description, WorldError> {
+    let description = description_of(&std::fs::read(from.join(DESCRIPTION))?)?;
+    let parts = description.parts()?;
+    let partial = to.with_extension("oqx.part");
+    let written = (|| {
+        let mut zip = ZipWriter::new(io::BufWriter::new(File::create(&partial)?));
+        // Parts already compressed (textures in glTF, images) gain nothing from deflating, and
+        // stored ones read faster.
+        let stored = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Stored)
+            .large_file(true);
+        let deflated = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .large_file(true);
+        let names =
+            std::iter::once((DESCRIPTION, Part::Route)).chain(parts.iter().map(|(n, p)| (*n, *p)));
+        for (name, part) in names {
+            let options = match part {
+                Part::Glb | Part::Sky | Part::Preview => stored,
+                Part::Instances | Part::Route => deflated,
+            };
+            zip.start_file(name, options)?;
+            io::copy(&mut File::open(from.join(name))?, &mut zip)?;
+        }
+        zip.finish()?
+            .into_inner()
+            .map_err(io::IntoInnerError::into_error)?
+            .sync_all()?;
+        validate(&partial)
+    })();
+    match written {
+        Ok(description) => {
+            std::fs::rename(&partial, to)?;
+            Ok(description)
+        }
+        Err(error) => {
+            let _ = std::fs::remove_file(&partial);
+            Err(error)
+        }
     }
 }

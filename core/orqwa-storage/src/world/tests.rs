@@ -406,3 +406,23 @@ fn archives_beyond_the_format_are_refused_before_reading_entries() {
     assert!(validate(&path).is_err());
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn a_folder_packs_into_a_world_that_passes_its_checks() {
+    let folder = std::env::temp_dir().join(format!("orqwa-world-folder-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    for (name, bytes) in entries() {
+        let path = folder.join(&name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    let out = folder.with_extension("oqx");
+    assert_eq!(pack(&folder, &out).unwrap().name, "Test world");
+    assert_eq!(validate(&out).unwrap().routes[0].id, "loop");
+    // A part missing from the folder packs nothing.
+    std::fs::remove_file(folder.join("routes/loop.json")).unwrap();
+    std::fs::remove_file(&out).unwrap();
+    assert!(pack(&folder, &out).is_err());
+    assert!(!out.exists() && !out.with_extension("oqx.part").exists());
+    std::fs::remove_dir_all(folder).unwrap();
+}

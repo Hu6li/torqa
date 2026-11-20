@@ -287,6 +287,10 @@ msgstr ""
 msgid "A short chime as a card tells of a climb topped, a milestone or a record."
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "A world's routes keep the names their author gave them."
+msgstr ""
+
 #: core/orqwa-upload/src/intervals.rs
 msgid "API key"
 msgstr ""
@@ -3153,6 +3157,10 @@ msgstr ""
 
 #: app/scenes/minimap.gd
 msgid "Route"
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Routes of worlds cannot be ridden in group rides."
 msgstr ""
 
 #: app/scenes/courses_tab.gd

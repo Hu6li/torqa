@@ -535,6 +535,12 @@ msgstr "Export nach %s nicht möglich."
 msgid "Could not import %s."
 msgstr "%s konnte nicht importiert werden."
 
+msgid "A world's routes keep the names their author gave them."
+msgstr "Die Strecken einer Welt behalten die Namen, die ihnen ihr Autor gegeben hat."
+
+msgid "Routes of worlds cannot be ridden in group rides."
+msgstr "Strecken von Welten können nicht in Gruppenfahrten gefahren werden."
+
 msgid "Could not import the workout."
 msgstr "Das Training konnte nicht importiert werden."
 

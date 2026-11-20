@@ -1111,6 +1111,10 @@ async fn chosen(
 ) -> Result<SharedActivity, String> {
     let mut name = String::new();
     let (course_id, course_key) = if let Some(path) = &course {
+        // Worlds are not shared from ORQWA (R269).
+        if crate::authored::WorldRoute::parse(path).is_some() {
+            return Err(crate::failure::Kind::WorldGroup.message().to_owned());
+        }
         let file = path.clone();
         let (manifest, key) = tokio::task::spawn_blocking(move || {
             let manifest = orqwa_storage::course::shared::validate(&file)?;

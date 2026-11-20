@@ -98,6 +98,14 @@ enum Command {
         /// The world file.
         file: PathBuf,
     },
+    /// Pack a folder holding a world's `world.json` and the parts it names into a world file,
+    /// and check it.
+    WorldPack {
+        /// The folder.
+        folder: PathBuf,
+        /// The world file to write.
+        out: PathBuf,
+    },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -258,6 +266,11 @@ async fn main() -> Result<()> {
         Command::BuildingCensus { pbf } => building_census(pbf).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
         Command::WorldCheck { file } => world_check(&file),
+        Command::WorldPack { folder, out } => {
+            orqwa_storage::world::pack(&folder, &out)
+                .with_context(|| format!("cannot pack {}", folder.display()))?;
+            world_check(&out)
+        }
         Command::SampleRides(args) => sample_rides::write(&args),
     }
 }

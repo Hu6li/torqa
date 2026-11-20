@@ -51,20 +51,41 @@ impl RoadWidths {
             }
             let (a, width_a) = section(triangle[0]);
             let (b, width_b) = section(triangle[1]);
-            let index = result.spans.len();
-            result.spans.push(Span {
+            result.add(Span {
                 a,
                 b,
                 widths: [width_a, width_b],
             });
-            let (from, to) = (cell(a[0], -a[2]), cell(b[0], -b[2]));
-            for x in from.0.min(to.0)..=from.0.max(to.0) {
-                for y in from.1.min(to.1)..=from.1.max(to.1) {
-                    result.cells.entry((x, y)).or_default().push(index);
-                }
-            }
         }
         result
+    }
+
+    /// A road known by the line down its middle and its width along it, such as a world
+    /// file's route (ADR 0042): points in the scene's axes (east, elevation, −north), each
+    /// with the road's width there.
+    #[must_use]
+    pub fn along(points: &[([f64; 3], f64)]) -> Self {
+        let mut result = Self::default();
+        for pair in points.windows(2) {
+            let ((a, width_a), (b, width_b)) = (pair[0], pair[1]);
+            result.add(Span {
+                a,
+                b,
+                widths: [width_a, width_b],
+            });
+        }
+        result
+    }
+
+    fn add(&mut self, span: Span) {
+        let index = self.spans.len();
+        let (from, to) = (cell(span.a[0], -span.a[2]), cell(span.b[0], -span.b[2]));
+        self.spans.push(span);
+        for x in from.0.min(to.0)..=from.0.max(to.0) {
+            for y in from.1.min(to.1)..=from.1.max(to.1) {
+                self.cells.entry((x, y)).or_default().push(index);
+            }
+        }
     }
 
     /// Carriageway width at metres east/north and the route's elevation. Height distinguishes
