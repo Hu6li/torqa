@@ -10,8 +10,9 @@
 //! and loaded only around the rider, so farther along the route the coarse land stands in for
 //! it, chunk by chunk ([`HorizonParts`]); otherwise the sky showed through where the route runs
 //! on into the distance. Where the detailed ground ends beside it, the two do not meet: the
-//! coarse land lies lower on ridges and higher in hollows. The detailed ground's edges hang
-//! down below it ([`HorizonParts::skirt`]), so no crack opens between them.
+//! coarse land lies lower on ridges and higher in hollows. Both hang skirts from their edges
+//! down below the other, facing it ([`HorizonParts::skirt`] and the land's own), so no crack
+//! opens between them, whichever side it is seen from.
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -44,6 +45,10 @@ const WATER_LIFT: f64 = 0.02;
 /// either.
 const SKIRT_BELOW: f64 = 2.0;
 const SKIRT_DEPTH: f64 = 3.0;
+/// The land's edges beside the detailed ground hang this far: as far as the ground may lie
+/// below them in a hollow or a gorge their facets span. Wherever that ground is drawn, it hides
+/// what hangs below it.
+const LAND_SKIRT_DEPTH: f64 = 300.0;
 /// The edges keep out of the ridden road's tunnels: the tube (`structures`) and a margin, this
 /// far either side of the line and this high above the road.
 const TUNNEL_CLEAR_RADIUS: f64 = 8.0;
@@ -160,6 +165,11 @@ pub struct HorizonParts {
     pub corridor: BTreeMap<(i32, i32), Horizon>,
     /// The ridden road's tunnels, each its centre line as `[east, north, road height]`.
     tunnels: Vec<Vec<[f64; 3]>>,
+    /// Skirts of the land under each chunk, facing its neighbours, and of the land beyond,
+    /// facing the chunks it borders: where the land lies above the detailed ground's edge, the
+    /// sky showed through below it, seen from the ground's side.
+    skirts: BTreeMap<(i32, i32), MeshData>,
+    outside_skirt: MeshData,
 }
 
 impl HorizonParts {
@@ -199,7 +209,127 @@ impl HorizonParts {
                 target.append(cell);
             }
         }
+        parts.hang_land_skirts(horizon);
         parts
+    }
+
+    /// The skirt of the land beyond the detailed ground, drawn with it.
+    #[must_use]
+    pub fn outside_skirt(&self) -> &MeshData {
+        &self.outside_skirt
+    }
+
+    /// The skirt of the land under chunk `key`, drawn with it.
+    #[must_use]
+    pub fn skirt_under(&self, key: (i32, i32)) -> Option<&MeshData> {
+        self.skirts.get(&key)
+    }
+
+    /// The skirts of the land under every chunk not in `drawn`, drawn with [`Self::fill`].
+    #[must_use]
+    pub fn fill_skirts(&self, drawn: &BTreeSet<(i32, i32)>) -> MeshData {
+        let mut skirts = MeshData::default();
+        for (key, skirt) in &self.skirts {
+            if !drawn.contains(key) {
+                skirts.append(skirt.clone());
+            }
+        }
+        skirts
+    }
+
+    /// Hangs the land's skirts along every side of the chunks of the detailed ground: the land
+    /// under a chunk faces its neighbour, the land beyond faces the chunk.
+    #[allow(clippy::cast_possible_truncation)] // f32 GPU data
+    fn hang_land_skirts(&mut self, horizon: &Horizon) {
+        let corners = corner_heights(horizon);
+        let mut colours: HashMap<(i64, i64), [f32; 4]> = HashMap::new();
+        for cell in cells(&horizon.ground) {
+            let [east, _, south] = cell_middle(&cell).map(f64::from);
+            colours.insert((cell_of(east), cell_of(-south)), cell.colors[0]);
+        }
+        let meadow = landcover::color(None);
+        #[allow(clippy::cast_precision_loss)] // grid indices stay small
+        let at = |(e, n): (i64, i64), height: f64| {
+            [
+                (e as f64 * CELL) as f32,
+                height as f32,
+                (-(n as f64) * CELL) as f32,
+            ]
+        };
+        let keys: Vec<(i32, i32)> = self.corridor.keys().copied().collect();
+        for key in keys {
+            let tunnels = TunnelRoofs::new(&self.tunnels, crate::stages::centre(key));
+            let (first_e, first_n) = (
+                i64::from(key.0) * CHUNK_CELLS,
+                i64::from(key.1) * CHUNK_CELLS,
+            );
+            // East, west, north and south: the direction out, east and north and as drawn.
+            for (out_e, out_n, out) in [
+                (1, 0, [1.0, 0.0, 0.0]),
+                (-1, 0, [-1.0, 0.0, 0.0]),
+                (0, 1, [0.0, 0.0, -1.0]),
+                (0, -1, [0.0, 0.0, 1.0]),
+            ] {
+                let neighbour = (key.0 + out_e, key.1 + out_n);
+                let start = (
+                    first_e + if out_e > 0 { CHUNK_CELLS } else { 0 },
+                    first_n + if out_n > 0 { CHUNK_CELLS } else { 0 },
+                );
+                let step = (i64::from(out_n.abs()), i64::from(out_e.abs()));
+                for k in 0..CHUNK_CELLS {
+                    let ends = [k, k + 1].map(|j| (start.0 + step.0 * j, start.1 + step.1 * j));
+                    let (Some(&high_a), Some(&high_b)) =
+                        (corners.get(&ends[0]), corners.get(&ends[1]))
+                    else {
+                        continue;
+                    };
+                    // The cells either side: inside the chunk, and beyond.
+                    let base = (start.0 + step.0 * k, start.1 + step.1 * k);
+                    let inner = (
+                        base.0 - i64::from(out_e.max(0)),
+                        base.1 - i64::from(out_n.max(0)),
+                    );
+                    let outer = (
+                        base.0 + i64::from(out_e.min(0)),
+                        base.1 + i64::from(out_n.min(0)),
+                    );
+                    #[allow(clippy::cast_precision_loss)] // grid indices stay small
+                    let hanging = |corner: (i64, i64), high: f64, colour: [f32; 4]| {
+                        let (east, north) = (corner.0 as f64 * CELL, corner.1 as f64 * CELL);
+                        let low = (high - LAND_SKIRT_DEPTH)
+                            .max(tunnels.roof(east, north))
+                            .min(high);
+                        Hanging {
+                            at: at(corner, high),
+                            low: low as f32,
+                            normal: [0.0, 1.0, 0.0],
+                            uv: [0.0, 0.0],
+                            color: Some(colour),
+                        }
+                    };
+                    let colour = colours.get(&inner).copied().unwrap_or(meadow);
+                    curtain(
+                        self.skirts.entry(key).or_default(),
+                        [
+                            hanging(ends[0], high_a, colour),
+                            hanging(ends[1], high_b, colour),
+                        ],
+                        out,
+                    );
+                    if !self.corridor.contains_key(&neighbour) {
+                        let colour = colours.get(&outer).copied().unwrap_or(meadow);
+                        curtain(
+                            &mut self.outside_skirt,
+                            [
+                                hanging(ends[0], high_a, colour),
+                                hanging(ends[1], high_b, colour),
+                            ],
+                            out.map(|v| -v),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// The land under every chunk not in `drawn`, as one: it fills in for the chunks that are
@@ -258,15 +388,17 @@ impl HorizonParts {
                 };
                 let (low_a, low_b) = (bottom(pa), bottom(pb));
                 if low_a < pa[1] || low_b < pb[1] {
-                    // Front faces wind clockwise as seen: with `a` before `b`, the quad below
-                    // faces (−dz, dx) across the edge.
-                    let (dx, dz) = (pb[0] - pa[0], pb[2] - pa[2]);
-                    let ends = if -dz * outward[0] + dx * outward[2] >= 0.0 {
-                        [(a, low_a), (b, low_b)]
-                    } else {
-                        [(b, low_b), (a, low_a)]
+                    let hanging = |k: u32, low: f32| {
+                        let k = k as usize;
+                        Hanging {
+                            at: mesh.vertices[k],
+                            low,
+                            normal: mesh.normals[k],
+                            uv: mesh.uvs[k],
+                            color: mesh.colors.get(k).copied(),
+                        }
                     };
-                    hang(&mut skirt, mesh, ends);
+                    curtain(&mut skirt, [hanging(a, low_a), hanging(b, low_b)], outward);
                 }
             }
         }
@@ -274,16 +406,33 @@ impl HorizonParts {
     }
 }
 
-/// Hangs a quad from the edge between `ends` of `ground` (each a vertex and how low it hangs).
-fn hang(skirt: &mut MeshData, ground: &MeshData, ends: [(u32, f32); 2]) {
+/// One end of a skirt's edge: where it hangs from, how low, and what it is drawn with.
+struct Hanging {
+    at: [f32; 3],
+    low: f32,
+    normal: [f32; 3],
+    uv: [f32; 2],
+    color: Option<[f32; 4]>,
+}
+
+/// Hangs a quad from the edge between `ends`, facing `outward` (horizontal).
+fn curtain(skirt: &mut MeshData, ends: [Hanging; 2], outward: [f32; 3]) {
+    // Front faces wind clockwise as seen: from the first end to the second, the quad below
+    // faces (−dz, dx) across the edge.
+    let (dx, dz) = (ends[1].at[0] - ends[0].at[0], ends[1].at[2] - ends[0].at[2]);
+    let ends = if -dz * outward[0] + dx * outward[2] >= 0.0 {
+        ends
+    } else {
+        let [a, b] = ends;
+        [b, a]
+    };
     let base = u32::try_from(skirt.vertices.len()).expect("a skirt fits u32");
-    for (k, low) in ends.map(|(k, low)| (k as usize, low)) {
-        let p = ground.vertices[k];
-        for y in [p[1], low] {
-            skirt.vertices.push([p[0], y, p[2]]);
-            skirt.normals.push(ground.normals[k]);
-            skirt.uvs.push(ground.uvs[k]);
-            if let Some(&color) = ground.colors.get(k) {
+    for end in ends {
+        for y in [end.at[1], end.low] {
+            skirt.vertices.push([end.at[0], y, end.at[2]]);
+            skirt.normals.push(end.normal);
+            skirt.uvs.push(end.uv);
+            if let Some(color) = end.color {
                 skirt.colors.push(color);
             }
         }
@@ -295,11 +444,25 @@ fn hang(skirt: &mut MeshData, ground: &MeshData, ends: [(u32, f32); 2]) {
         .extend([top_a, top_b, low_b, top_a, low_b, low_a]);
 }
 
+/// The land's height at its grid's corners, by grid line east and north; a lake's lie above
+/// the ground's sunk ones.
+fn corner_heights(land: &Horizon) -> HashMap<(i64, i64), f64> {
+    let mut corners: HashMap<(i64, i64), f64> = HashMap::new();
+    for v in land.ground.vertices.iter().chain(&land.water.vertices) {
+        let corner = (grid_line(f64::from(v[0])), grid_line(-f64::from(v[2])));
+        let height = f64::from(v[1]);
+        corners
+            .entry(corner)
+            .and_modify(|h| *h = h.min(height))
+            .or_insert(height);
+    }
+    corners
+}
+
 /// The coarse land along a chunk's sides, which run along its cell lines: there it is straight
 /// from corner to corner.
 struct LandBeside {
-    /// Its corners under the chunk by grid line, east and north; a lake's lie above the
-    /// ground's sunk ones.
+    /// Its corners under the chunk ([`corner_heights`]).
     corners: HashMap<(i64, i64), f64>,
     /// The chunk's first cell, east and north.
     first: (i64, i64),
@@ -307,15 +470,7 @@ struct LandBeside {
 
 impl LandBeside {
     fn new(under: &Horizon, key: (i32, i32)) -> Self {
-        let mut corners: HashMap<(i64, i64), f64> = HashMap::new();
-        for v in under.ground.vertices.iter().chain(&under.water.vertices) {
-            let corner = (grid_line(f64::from(v[0])), grid_line(-f64::from(v[2])));
-            let height = f64::from(v[1]);
-            corners
-                .entry(corner)
-                .and_modify(|h| *h = h.min(height))
-                .or_insert(height);
-        }
+        let corners = corner_heights(under);
         let first = (
             i64::from(key.0) * CHUNK_CELLS,
             i64::from(key.1) * CHUNK_CELLS,

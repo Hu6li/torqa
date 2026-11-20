@@ -3868,7 +3868,10 @@ impl OrqwaApp {
             return VarDictionary::new();
         };
         self.horizon_parts = orqwa_world::HorizonParts::new(route, &world.horizon);
-        horizon_arrays(&self.horizon_parts.outside)
+        horizon_arrays(
+            &self.horizon_parts.outside,
+            self.horizon_parts.outside_skirt(),
+        )
     }
 
     /// The land under every chunk of the detailed ground but those in `drawn` (chunk indices),
@@ -3887,7 +3890,10 @@ impl OrqwaApp {
             .filter_map(|&index| centres.get(usize::try_from(index).ok()?))
             .map(|&center| orqwa_world::chunk_key(center))
             .collect();
-        horizon_arrays(&self.horizon_parts.fill(&drawn))
+        horizon_arrays(
+            &self.horizon_parts.fill(&drawn),
+            &self.horizon_parts.fill_skirts(&drawn),
+        )
     }
 
     /// The land under world chunk `index`, as `horizon_meshes` gives it, in route coordinates:
@@ -3900,13 +3906,17 @@ impl OrqwaApp {
             .as_ref()
             .and_then(App::world_chunks)
             .and_then(|chunks| chunks.centres().get(usize::try_from(index).ok()?).copied());
-        center
-            .and_then(|center| {
-                self.horizon_parts
-                    .corridor
-                    .get(&orqwa_world::chunk_key(center))
-            })
-            .map_or_else(VarDictionary::new, horizon_arrays)
+        let Some(key) = center.map(orqwa_world::chunk_key) else {
+            return VarDictionary::new();
+        };
+        match (
+            self.horizon_parts.corridor.get(&key),
+            self.horizon_parts.skirt_under(key),
+        ) {
+            (Some(land), Some(skirt)) => horizon_arrays(land, skirt),
+            (Some(land), None) => horizon_arrays(land, &orqwa_world::MeshData::default()),
+            (None, _) => VarDictionary::new(),
+        }
     }
 
     /// World chunk `index`: `{center, terrain, skirt, buildings, modelled, streets, tracks, urban,
@@ -4926,10 +4936,12 @@ fn uploads_dict(entry: &orqwa_app::HistoryEntry) -> VarDictionary {
     dict
 }
 
-/// Distant land as `{ground, water}` mesh arrays.
-fn horizon_arrays(land: &orqwa_world::Horizon) -> VarDictionary {
+/// Distant land as `{ground, water}` mesh arrays, its `skirt` drawn with its ground.
+fn horizon_arrays(land: &orqwa_world::Horizon, skirt: &orqwa_world::MeshData) -> VarDictionary {
+    let mut ground = land.ground.clone();
+    ground.append(skirt.clone());
     vdict! {
-        "ground" => &mesh_arrays(&land.ground),
+        "ground" => &mesh_arrays(&ground),
         "water" => &mesh_arrays(&land.water),
     }
 }

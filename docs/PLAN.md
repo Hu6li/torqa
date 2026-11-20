@@ -598,8 +598,8 @@ physically based materials and light, restyled group by group.
     every detail level, with front, side, rear and elevated model renders for silhouette review.
 - [x] Distant land under the corridor too (R266, #560): the coarse land stands in for every
   chunk of the detailed ground that is not drawn, so the sky no longer shows through mountains
-  where the route runs on into the distance; the detailed ground's edges hang below the land
-  beside them, so no crack opens where the two meet
+  where the route runs on into the distance; the edges of the detailed ground and of the land
+  hang below each other, so no crack opens where the two meet
 - [x] Lakes cover all the detailed ground they reach, also where map tiles cut them into
   pieces, and the clouds show no seam (R267, #560)
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
