@@ -10,6 +10,8 @@ extends Node3D
 const REPLAN_M: float = 20.0
 ## Scenes made at once on worker threads.
 const PARSING: int = 3
+## How far the camera sees in a world file's world: its horizon may reach far beyond ORQWA's.
+const FAR_M: float = 200000.0
 
 var _orqwa: OrqwaApp
 var _sections: Array[Dictionary] = []
@@ -27,8 +29,16 @@ var _asked: Dictionary[String, bool] = {}
 var _parsing: Dictionary[String, int] = {}
 var _made: Dictionary[String, Node3D] = {}
 var _made_lock: Mutex = Mutex.new()
-## Asset level files → their meshes, made once and shared by every section.
+## Scenes made, used from the next frame: the rendering server finishes setting up what a
+## worker thread created only then.
+var _settling: Dictionary[String, Node3D] = {}
+## Whether scenes are made on worker threads: not without a display, whose stand-in rendering
+## server is not safe to call from them.
+var _threaded: bool = DisplayServer.get_name() != "headless"
+## Asset level files → their meshes, made once and shared by every section; and the same with
+## materials taking each copy's tint (`instances` files' tint flag).
 var _asset_meshes: Dictionary[String, Mesh] = {}
+var _tinted_meshes: Dictionary[String, Mesh] = {}
 var _horizon: String = ""
 var _horizon_node: Node3D
 ## The sky panorama asked for, and the environment and brightness it is for.
@@ -78,6 +88,10 @@ func stop() -> void:
 			node.free()
 	_made.clear()
 	_made_lock.unlock()
+	for node: Node3D in _settling.values():
+		if node != null:
+			node.free()
+	_settling.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -90,6 +104,7 @@ func stop() -> void:
 	_placed.clear()
 	_asked.clear()
 	_asset_meshes.clear()
+	_tinted_meshes.clear()
 	_horizon = ""
 	_horizon_node = null
 	_panorama = ""
@@ -136,10 +151,14 @@ func show_panorama(sky: Dictionary, environment: Environment) -> void:
 
 
 ## Follows the camera at `camera`, drawing as far as `view_m`: plans the sections' levels of
-## detail, asks for what is missing and puts what is ready into the scene.
-func update(camera: Vector3, view_m: float) -> void:
+## detail, asks for what is missing and puts what is ready into the scene. `lens`, the scene's
+## camera, is kept seeing as far as a world's far landscape reaches, whatever the graphics
+## settings set since.
+func update(camera: Vector3, view_m: float, lens: Camera3D = null) -> void:
 	if _orqwa == null:
 		return
+	if lens != null:
+		lens.far = maxf(lens.far, FAR_M)
 	if _focus.distance_to(camera) >= REPLAN_M or view_m != _view_m:
 		_view_m = view_m
 		_plan(camera)
@@ -225,7 +244,14 @@ func _take_parts() -> void:
 			_use_panorama(image)
 		elif part is PackedByteArray:
 			var bytes: PackedByteArray = part
-			_parsing[file] = WorkerThreadPool.add_task(_make_scene.bind(file, bytes))
+			if _threaded:
+				_parsing[file] = WorkerThreadPool.add_task(_make_scene.bind(file, bytes))
+			else:
+				_make_scene(file, bytes)
+				_made_lock.lock()
+				_settling[file] = _made.get(file)
+				_made.erase(file)
+				_made_lock.unlock()
 		elif part is Array:
 			var groups: Array = part
 			_place_assets(file, groups)
@@ -250,6 +276,9 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 ## Puts the scenes made since into the world: each section's best level so far replaces the one
 ## it showed.
 func _show_ready() -> void:
+	for file: String in _settling.keys():
+		_use_scene(file, _settling[file])
+	_settling.clear()
 	var finished: Array[String] = []
 	for file: String in _parsing:
 		if WorkerThreadPool.is_task_completed(_parsing[file]):
@@ -261,7 +290,7 @@ func _show_ready() -> void:
 		var node: Node3D = _made.get(file)
 		_made.erase(file)
 		_made_lock.unlock()
-		_use_scene(file, node)
+		_settling[file] = node
 
 
 func _use_scene(file: String, node: Node3D) -> void:
@@ -278,7 +307,9 @@ func _use_scene(file: String, node: Node3D) -> void:
 		var asset_lods: Array = asset["lods"]
 		for level: Dictionary in asset_lods:
 			if level["file"] == file:
-				_asset_meshes[file] = _first_mesh(node)
+				var mesh: Mesh = _first_mesh(node)
+				_asset_meshes[file] = mesh
+				_tinted_meshes[file] = _tinted(mesh)
 				node.free()
 				_refresh_asset_meshes()
 				return
@@ -370,7 +401,7 @@ func _choose_asset_lods(index: int, distance: float) -> void:
 		if file.is_empty():
 			continue
 		if _asset_meshes.has(file):
-			instance.multimesh.mesh = _asset_meshes[file]
+			instance.multimesh.mesh = _mesh_for(instance, file)
 		else:
 			_ask(file)
 
@@ -382,7 +413,7 @@ func _refresh_asset_meshes() -> void:
 		for instance: MultiMeshInstance3D in nodes:
 			var file: String = instance.get_meta("file", "")
 			if _asset_meshes.has(file):
-				instance.multimesh.mesh = _asset_meshes[file]
+				instance.multimesh.mesh = _mesh_for(instance, file)
 
 
 func _let_go(index: int) -> void:
@@ -397,6 +428,26 @@ func _let_go(index: int) -> void:
 		for instance: MultiMeshInstance3D in nodes:
 			instance.queue_free()
 		_placed.erase(index)
+
+
+func _mesh_for(instance: MultiMeshInstance3D, file: String) -> Mesh:
+	return _tinted_meshes[file] if instance.multimesh.use_colors else _asset_meshes[file]
+
+
+## A copy of `mesh` whose materials multiply each copy's tint into their colour: Godot passes
+## a MultiMesh's colours through the vertex colour.
+static func _tinted(mesh: Mesh) -> Mesh:
+	if mesh == null:
+		return null
+	var copy: Mesh = mesh.duplicate() as Mesh
+	for surface: int in copy.get_surface_count():
+		var material: BaseMaterial3D = copy.surface_get_material(surface) as BaseMaterial3D
+		if material != null:
+			material = material.duplicate() as BaseMaterial3D
+			material.vertex_color_use_as_albedo = true
+			material.vertex_color_is_srgb = true
+			copy.surface_set_material(surface, material)
+	return copy
 
 
 static func _first_mesh(node: Node) -> Mesh:

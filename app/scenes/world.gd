@@ -631,7 +631,7 @@ func _process(delta: float) -> void:
 	if _orqwa != null and _orqwa.world_failed():
 		return
 	if _authored.active():
-		_authored.update(_camera.global_position, view_distance())
+		_authored.update(_camera.global_position, view_distance(), _camera)
 	_ground_lods.add_ready()
 	if _rain.emitting:
 		# Round the camera, falling straight whichever way it looks.
