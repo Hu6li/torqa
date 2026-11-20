@@ -4717,6 +4717,7 @@ fn route_dict(route: &orqwa_app::RouteSummary) -> VarDictionary {
     let source = match route.elevation_source {
         ElevationSource::Terrain => "terrain",
         ElevationSource::File => "file",
+        ElevationSource::World => "world",
     };
     vdict! {
         "name" => route.name.as_str(),

@@ -10,11 +10,13 @@ mod projection;
 mod snap;
 mod structures;
 mod turns;
+mod world;
 
 pub use climbs::{Climb, ClimbCategory};
 pub use curve::catmull_rom;
 pub use profile::{ElevationProfile, Gradients};
 pub use projection::LocalProjection;
+pub use world::WorldPoint;
 
 use std::f64::consts::{PI, TAU};
 
@@ -121,6 +123,8 @@ pub enum ElevationSource {
     Terrain,
     /// Elevations recorded in the file.
     File,
+    /// The route of a world file (R267, ADR 0042): authored, taken as it is.
+    World,
 }
 
 /// A point of the resampled route.
@@ -180,6 +184,10 @@ pub struct Route {
     climbs: Vec<Climb>,
     /// Stretches taken out (see [`Route::without_turns_in_place`]).
     cuts: Vec<turns::Cut>,
+    /// Where its flat coordinates start, for a world's route: the world's origin, so positions
+    /// along it are the world's own metres ([`LocalProjection::for_route`]). Otherwise the
+    /// first point.
+    origin: Option<(f64, f64)>,
 }
 
 impl Route {
@@ -249,7 +257,7 @@ impl Route {
 
         let window = match source {
             ElevationSource::Terrain => TERRAIN_SMOOTHING,
-            ElevationSource::File => GPX_SMOOTHING,
+            ElevationSource::File | ElevationSource::World => GPX_SMOOTHING,
         };
         let mut raw: Vec<f64> = points
             .iter()
@@ -290,6 +298,7 @@ impl Route {
             points,
             elevation_source: source,
             cuts: Vec::new(),
+            origin: None,
         })
     }
 
@@ -317,6 +326,13 @@ impl Route {
                 if d > cut.at { d + cut.length } else { d }
             },
         ))
+    }
+
+    /// Where the route's flat coordinates start: latitude and longitude of (0, 0).
+    #[must_use]
+    pub fn origin(&self) -> (f64, f64) {
+        self.origin
+            .unwrap_or_else(|| (self.points[0].lat, self.points[0].lon))
     }
 
     /// Name from the file, if any.

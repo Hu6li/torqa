@@ -714,6 +714,7 @@ fn print_route(route: &Route) {
     let source = match route.elevation_source() {
         ElevationSource::Terrain => "terrain model (Mapterhorn / AWS Terrain Tiles)",
         ElevationSource::File => "GPX file",
+        ElevationSource::World => "the world file's route",
     };
     println!(
         "{}: {:.2} km, {:.0} m climbing, steepest {:.1} %, elevation from {source}",

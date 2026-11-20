@@ -14,14 +14,21 @@ pub struct LocalProjection {
 }
 
 impl LocalProjection {
-    /// A projection centred on the first point of `route`.
+    /// A projection centred on the route's origin: its first point, or the origin of the
+    /// world it runs through ([`Route::origin`]).
     #[must_use]
     pub fn for_route(route: &Route) -> Self {
-        let start = route.points()[0];
+        let (lat, lon) = route.origin();
+        Self::at(lat, lon)
+    }
+
+    /// A projection centred on a latitude and longitude.
+    #[must_use]
+    pub fn at(lat: f64, lon: f64) -> Self {
         Self {
-            origin_lat: start.lat,
-            origin_lon: start.lon,
-            meters_per_degree_lon: EARTH_RADIUS.to_radians() * start.lat.to_radians().cos(),
+            origin_lat: lat,
+            origin_lon: lon,
+            meters_per_degree_lon: EARTH_RADIUS.to_radians() * lat.to_radians().cos(),
         }
     }
 
