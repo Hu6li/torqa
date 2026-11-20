@@ -44,6 +44,7 @@ use orqwa_world::{DetailCell, MapFeature};
 mod android_audio;
 #[cfg(target_os = "android")]
 mod android_memory;
+mod authored;
 mod background;
 mod graphics;
 mod group;
@@ -3850,6 +3851,66 @@ impl OrqwaApp {
         }
     }
 
+    /// The world file the loaded route runs through (R266, ADR 0042), as `authored::description`
+    /// gives it; empty for a course ORQWA builds the world of.
+    #[func]
+    fn authored_world(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::authored)
+            .map_or_else(VarDictionary::new, |world| {
+                authored::description(world.file.description())
+            })
+    }
+
+    /// Whether the loaded route is a world file's (R266): its light is the author's, so time of
+    /// day, weather and season are not offered (R268).
+    #[func]
+    fn is_authored_world(&self) -> bool {
+        self.app
+            .as_ref()
+            .is_some_and(|app| app.authored().is_some())
+    }
+
+    /// The credits the loaded world file requires (R266), shown during its rides instead of
+    /// the map's and terrain's; empty for a course.
+    #[func]
+    fn authored_attribution(&self) -> PackedStringArray {
+        self.app
+            .as_ref()
+            .and_then(App::authored)
+            .map(|world| {
+                world
+                    .file
+                    .description()
+                    .attribution
+                    .iter()
+                    .map(GString::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Reads part `name` of the loaded world file in the background, for `take_world_part`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn request_world_part(&self, name: GString) {
+        if let Some(app) = self.app.as_ref() {
+            app.request_world_part(&name.to_string());
+        }
+    }
+
+    /// Part `name` of the loaded world file once read, as `authored::part` gives it; `null`
+    /// until then. Handed over once.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn take_world_part(&self, name: GString) -> Variant {
+        self.app
+            .as_ref()
+            .and_then(|app| app.take_world_part(&name.to_string()))
+            .map_or_else(Variant::nil, authored::part)
+    }
+
     /// The land beyond the corridor: `{ground, water}` as mesh arrays in route coordinates,
     /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes.
     #[func]
@@ -4790,6 +4851,8 @@ fn course_dict(course: &orqwa_app::CourseEntry, locale: &str) -> VarDictionary {
         // Tacx RLV courses are known only by distance and slope: no 3D world.
         "located" => course.manifest.video.as_ref().is_none_or(|v| v.located),
         "countries" => &countries,
+        // A world's route (R266): its world, licence and every route deleted with it.
+        "world" => &course.world.as_ref().map_or_else(VarDictionary::new, authored::info),
     }
 }
 

@@ -185,7 +185,9 @@ func refresh() -> void:
 	_course.set_item_metadata(0, "")
 	for entry: Dictionary in _courses:
 		var video: String = entry.get("video", "")
-		if not video.is_empty():
+		var world: Dictionary = entry.get("world", {})
+		# Worlds are not shared (R269).
+		if not video.is_empty() or not world.is_empty():
 			continue
 		var course_name: String = entry["name"]
 		_course.add_item(course_name)

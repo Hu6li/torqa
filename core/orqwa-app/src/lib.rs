@@ -2028,6 +2028,30 @@ impl App {
         courses
     }
 
+    /// The world file the loaded route runs through, if it is a world's route (R266).
+    #[must_use]
+    pub fn authored(&self) -> Option<&authored::Authored> {
+        self.authored.as_deref()
+    }
+
+    /// Reads the part `name` of the loaded world file in the background, for
+    /// [`App::take_world_part`]. Does nothing for a part being read already.
+    pub fn request_world_part(&self, name: &str) {
+        let Some(world) = self.authored.clone() else {
+            return;
+        };
+        if world.ask(name) {
+            let name = name.to_owned();
+            self.runtime.spawn_blocking(move || world.read(&name));
+        }
+    }
+
+    /// The part `name` of the loaded world file once read; `None` until then.
+    #[must_use]
+    pub fn take_world_part(&self, name: &str) -> Option<Result<authored::Part, String>> {
+        self.authored.as_ref()?.take(name)
+    }
+
     /// The library's folder of world files (R266): beside the courses, apart from them.
     #[must_use]
     pub fn worlds_dir(&self) -> PathBuf {
@@ -2190,14 +2214,18 @@ impl App {
     /// was prepared; `None` without one.
     #[must_use]
     pub fn course_preview(path: &Path) -> Option<Vec<u8>> {
-        course::preview(path)
+        match authored::WorldRoute::parse(path) {
+            // A world's picture is its author's (R266).
+            Some(which) => authored::preview(&which.file),
+            None => course::preview(path),
+        }
     }
 
     /// Whether the course at `path` is to get a new map picture: it has none, or one of its
     /// route's corridor only, from before #203.
     #[must_use]
     pub fn course_preview_outdated(path: &Path) -> bool {
-        course::preview_outdated(path)
+        authored::WorldRoute::parse(path).is_none() && course::preview_outdated(path)
     }
 
     /// The map to draw the picture of the course at `path` from (#203), if it is the loaded

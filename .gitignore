@@ -22,3 +22,6 @@ __pycache__/
 .claude/settings.local.json
 # Blender keeps the previous version of a saved file beside it.
 *.blend1
+
+# Worlds built by art/worlds scripts before packing
+art/worlds/build/

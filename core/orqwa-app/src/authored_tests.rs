@@ -78,7 +78,7 @@ fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
             "environment": {
                 "sun": {"elevation_deg": 30, "azimuth_deg": 220, "colour": [1, 0.95, 0.9], "energy": 1.5},
                 "ambient": {"colour": [0.6, 0.7, 0.8], "energy": 0.8},
-                "sky": {"kind": "gradient", "zenith": [0.2, 0.4, 0.7], "horizon": [0.7, 0.8, 0.9], "clouds": 0.1}
+                "sky": {"kind": "atmosphere", "clouds": 0.3}
             },
             "sections": [{"center": [2000.0, 200.0, 600.0], "radius": 300.0,
                           "lods": [{"file": "sections/0/lod0.glb"}]}],

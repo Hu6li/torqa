@@ -80,8 +80,8 @@ preview.png                the library's picture
   origin (the projection ORQWA's worlds use), so rides, records and ghosts work as on courses.
   A world not placed on Earth (`located: false`) saves its rides without positions, like a
   video course without GPS.
-- **The world's own light.** `world.json` gives the sun, the sky (ORQWA's sky with the
-  author's colours, or the author's panorama), ambient light and fog. ORQWA's time of day,
+- **The world's own light.** `world.json` gives the sun, the sky (ORQWA's atmosphere lit by
+  that sun, with the author's clouds, or the author's panorama), ambient light and fog. ORQWA's time of day,
   weather and seasons do not apply, and none of its live effects reach an authored world:
   no snow, wet roads, puddles, wind or autumn leaves. The rider's graphics quality still sets
   view distance, levels of detail, shadows and screen effects.
@@ -113,8 +113,12 @@ preview.png                the library's picture
 - Authors work in any tool that writes glTF; ORQWA needs no exporter for stage 1.
 - ORQWA gains a runtime glTF loader. It keeps the author's materials, unlike the loaders of
   ORQWA's own models, which replace them with ORQWA's shaders.
-- Textures loaded at runtime are not compressed for the GPU. ORQWA compresses them on first load
-  and keeps the result in the cache: the first ride of a world waits longer, later rides do not.
+- Textures loaded at runtime are not compressed for the GPU: Godot's compressors exist in its
+  editor only (`Image.compress` is unavailable in exported programs). PNG, JPEG and WebP
+  textures take their full size in video memory, with mipmaps ORQWA makes on loading, so
+  authors keep them as small as the view allows. GPU-compressed textures (KTX2 with Basis
+  Universal, `KHR_texture_basisu`, which Godot transcodes to the GPU's own format) may follow
+  once they are tested.
 - World files are large: a realistic 20 km world is expected at several gigabytes. They use
   ZIP64 and higher limits than course files; [world-files.md](../world-files.md) sets them.
 - Authored worlds look the same in every season and weather. Opt-in material tags that let

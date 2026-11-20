@@ -183,14 +183,13 @@ pub struct Ambient {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Sky {
-    /// ORQWA's sky in the author's colours.
-    Gradient {
-        /// sRGB colour overhead.
-        zenith: [f64; 3],
-        /// sRGB colour at the horizon.
-        horizon: [f64; 3],
-        /// Cloud cover, 0 (none) to 1 (overcast).
+    /// ORQWA's sky: the atmosphere lit by the world's sun, with clouds.
+    Atmosphere {
+        /// Cloud cover, 0 (none) to 1 (closed).
         clouds: f64,
+        /// How grey the clouds and the sky are, 0 (fair) to 1 (overcast).
+        #[serde(default)]
+        overcast: f64,
     },
     /// An equirectangular picture of the sky.
     Panorama {
@@ -428,12 +427,8 @@ impl Environment {
             return Err(invalid("ambient light out of range"));
         }
         match &self.sky {
-            Sky::Gradient {
-                zenith,
-                horizon,
-                clouds,
-            } => {
-                if !colour_ok(*zenith) || !colour_ok(*horizon) || !(0.0..=1.0).contains(clouds) {
+            Sky::Atmosphere { clouds, overcast } => {
+                if !(0.0..=1.0).contains(clouds) || !(0.0..=1.0).contains(overcast) {
                     return Err(invalid("sky out of range"));
                 }
             }

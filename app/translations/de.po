@@ -536,10 +536,10 @@ msgid "Could not import %s."
 msgstr "%s konnte nicht importiert werden."
 
 msgid "A world's routes keep the names their author gave them."
-msgstr "Die Strecken einer Welt behalten die Namen, die ihnen ihr Autor gegeben hat."
+msgstr "Die Routen einer Welt behalten die Namen, die ihnen ihr Autor gegeben hat."
 
 msgid "Routes of worlds cannot be ridden in group rides."
-msgstr "Strecken von Welten können nicht in Gruppenfahrten gefahren werden."
+msgstr "Routen von Welten können nicht in Gruppenfahrten gefahren werden."
 
 msgid "Could not import the workout."
 msgstr "Das Training konnte nicht importiert werden."
@@ -1243,8 +1243,8 @@ msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video"
 msgid "Only the HUD, on top of other windows, e.g. over a video (O)"
 msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video (O)"
 
-msgid "Open a GPX route, video or ORQWA course"
-msgstr "GPX-Datei, Video oder ORQWA-Strecke öffnen"
+msgid "Open a GPX route, video, ORQWA course or world"
+msgstr "GPX-Datei, Video, ORQWA-Strecke oder -Welt öffnen"
 
 msgid "Open a course first."
 msgstr "Wähle zuerst eine Route aus."
@@ -1447,8 +1447,8 @@ msgstr "Leicht hügelig"
 msgid "Route"
 msgstr "Strecke"
 
-msgid "Routes, videos and courses"
-msgstr "GPX-Routen, Videos und ORQWA-Routen"
+msgid "Routes, videos, courses and worlds"
+msgstr "GPX-Routen, Videos, ORQWA-Routen und -Welten"
 
 msgid "Sat"
 msgstr "Sa"
@@ -1719,6 +1719,21 @@ msgstr "Beim Starten von ORQWA ist ein Fehler aufgetreten."
 
 msgid "ORQWA courses"
 msgstr "ORQWA-Routen"
+
+msgid "ORQWA worlds"
+msgstr "ORQWA-Welten"
+
+msgid "World: %s"
+msgstr "Welt: %s"
+
+msgid "By %s"
+msgstr "Von %s"
+
+msgid "Licence: %s"
+msgstr "Lizenz: %s"
+
+msgid "Deleting it deletes the world %s with all its routes: %s. Your rides on them are kept."
+msgstr "Damit wird die Welt %s mit allen ihren Routen gelöscht: %s. Deine Aktivitäten darauf bleiben erhalten."
 
 msgid "ORQWA is connected. You can close this page."
 msgstr "ORQWA ist verbunden. Du kannst diese Seite schliessen."

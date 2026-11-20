@@ -55,6 +55,11 @@ func _init(rename_tooltip: String = "", in_place: bool = true) -> void:
 	_button.pressed.connect(func() -> void: edit_requested.emit())
 
 
+## Shows or hides the pencil: a title that cannot be changed has none.
+func set_editable(editable: bool) -> void:
+	_button.visible = editable
+
+
 ## Places `button` beside the pencil, on the title's own line, so the two align (#190).
 func add_action(button: Button) -> void:
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER

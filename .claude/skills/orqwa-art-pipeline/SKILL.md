@@ -290,6 +290,17 @@ refresh their model gallery and a woodland close-up after shape or placement cha
   `helmet-side`, `helmet-rear`, face and chase views on both riders. Keep it white and
   unbranded.
 
+## World files (`art/worlds`, ADR 0042)
+
+Worlds authored outside ORQWA (`.oqx`, `docs/world-files.md`) are glTF the app loads at
+runtime with the author's own materials — none of the name-based material contracts above
+apply. `art/worlds/test_world.py` builds the test world; `art/worlds/glb.py` adds
+`ORQWA_terrain_layers` to an exported `.glb`. Blender's axes (x east, y north, z up) export to
+the format's (x east, y up, −z north); place every part relative to its section's centre, build
+roads from the route's own points, and pack with `orqwa-cli world-pack` (it validates). Keep
+textures small: runtime glTF textures are uncompressed in video memory. Sellable worlds (Lake
+Biel) live in the private `ORQWA/orqwa-worlds` repository, never here.
+
 ## Not a model: the remote's clip
 
 `art/remote/keep_awake.py` renders the silent H.264 + AAC clip the phone remote's page plays to

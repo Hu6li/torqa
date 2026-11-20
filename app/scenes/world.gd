@@ -268,6 +268,8 @@ var _rail_material: ShaderMaterial = ShaderMaterial.new()
 ## The railways near the route, on their own lines like the road (#85).
 var _railways: MeshInstance3D
 var _ground_lods: GroundLods = GroundLods.new()
+## A world file's world, when the course is one (R266); ORQWA's own world stays empty then.
+var _authored: AuthoredWorld
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -326,6 +328,9 @@ func set_camera(mode: int) -> void:
 
 ## Sets the light, sky, fog and precipitation for a time of day and a weather.
 func apply_conditions(time_of_day: String, weather: String) -> void:
+	if _authored.active():
+		# A world file's light is its author's (R268).
+		return
 	var time: Dictionary = TIMES.get(time_of_day, TIMES["Midday"])
 	var elevation: float = time["elevation"]
 	var azimuth: float = time["azimuth"]
@@ -501,6 +506,11 @@ func apply_options(options: Dictionary) -> void:
 
 ## How far around the rider chunks are uploaded with graphics `quality` and `options` (R224):
 ## a course's world is ridden once that much of it is built (ADR 0040).
+## How far the scene draws now, metres.
+func view_distance() -> float:
+	return VISIBILITY_RANGE * _distance
+
+
 static func upload_radius(quality: String, options: Dictionary) -> float:
 	var view_distance: String = options.get("view_distance", "auto")
 	var preset: Dictionary = QUALITY.get(view_distance, QUALITY.get(quality, QUALITY["medium"]))
@@ -510,6 +520,9 @@ static func upload_radius(quality: String, options: Dictionary) -> float:
 
 ## The rider (or the free camera) has come where chunks of the world are still being built.
 func waiting_for_world() -> bool:
+	if _authored.active():
+		# A world file is never built, only read.
+		return false
 	_streaming.follow(self)
 	return _streaming.missing()
 
@@ -517,6 +530,8 @@ func waiting_for_world() -> bool:
 ## Every chunk within reach of the rider (or the free camera) where they are now is in the
 ## scene: the rest of a long course never is (ADR 0040).
 func chunks_uploaded() -> bool:
+	if _authored.active():
+		return _authored.ready_around(_streaming._current_focus(self))
 	if _benchmark == null and _chunk_count > 0:
 		_streaming.follow(self)
 	return _streaming.complete(self)
@@ -524,6 +539,8 @@ func chunks_uploaded() -> bool:
 
 ## The visible surroundings of where the rider (or the free camera) is now are in the scene.
 func surroundings_ready() -> bool:
+	if _authored.active():
+		return _authored.ready_around(_streaming._current_focus(self))
 	_streaming.follow(self)
 	return _streaming.nearby_ready()
 
@@ -545,6 +562,9 @@ func _ready() -> void:
 	_ghost = RiderAvatar.new()
 	_group_riders = GroupRidersWorld.new()
 	add_child(_group_riders)
+	_authored = AuthoredWorld.new()
+	_authored.name = "Authored"
+	add_child(_authored)
 	_horizon_ground = MeshInstance3D.new()
 	_horizon_water = MeshInstance3D.new()
 	_railways = MeshInstance3D.new()
@@ -610,6 +630,8 @@ func _process(delta: float) -> void:
 	_build_some_chunks()
 	if _orqwa != null and _orqwa.world_failed():
 		return
+	if _authored.active():
+		_authored.update(_camera.global_position, view_distance())
 	_ground_lods.add_ready()
 	if _rain.emitting:
 		# Round the camera, falling straight whichever way it looks.
@@ -643,6 +665,16 @@ func _apply_rider() -> void:
 func _on_world_ready(_info: Dictionary) -> void:
 	if not _orqwa.check_world_memory():
 		return
+	var authored: Dictionary = _orqwa.authored_world()
+	if authored.is_empty():
+		if _authored.active():
+			_authored.stop()
+			_environment.sky.sky_material = _sky
+			apply_conditions(_time_of_day, _weather)
+	else:
+		_authored.start(_orqwa, authored)
+		var conditions: Dictionary = authored["environment"]
+		_authored.light(self, conditions)
 	apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())

@@ -55,6 +55,8 @@ var _videos_button: Button = Button.new()
 var _spinner: Spinner = Spinner.new()
 var _delete_button: Button = Button.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
+## A world's route (R266): its world, publisher and licence.
+var _world: Label = Label.new()
 var _edit_dialog: CourseEditDialog = CourseEditDialog.new()
 ## Courses with a video are ridden along it or in 3D, as chosen when riding (#44).
 var _view_dialog: AcceptDialog = AcceptDialog.new()
@@ -82,6 +84,8 @@ func open(course: Dictionary) -> void:
 	_regenerating = false
 	_regenerate.hide()
 	_title.text = course["name"]
+	var world: Dictionary = course.get("world", {})
+	_show_world(world)
 	_show_figures()
 	var track: PackedVector2Array = course.get("track", PackedVector2Array())
 	var profile: PackedVector2Array = course.get("profile", PackedVector2Array())
@@ -221,6 +225,10 @@ func _init() -> void:
 	# Beside the pencil, as on a ride in the history (#190).
 	_title.add_action(_delete_button)
 	left.add_child(_title)
+	_world.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_world.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_world.add_theme_color_override("font_color", UiTheme.MUTED)
+	left.add_child(_world)
 	# The figures beside the map, or under it in a small window (R94).
 	var overview: ReflowGrid = ReflowGrid.new()
 	overview.expand_room = MAP_ROOM
@@ -388,6 +396,30 @@ func _open_editor() -> void:
 	var video: Dictionary = _orqwa.video() if loaded else {}
 	var course_name: String = _course.get("name", "")
 	_edit_dialog.edit(_orqwa, course_name, video, loaded)
+
+
+## A world's route is named by its author and goes with its world (R266); a course is the
+## rider's own.
+func _show_world(world: Dictionary) -> void:
+	_world.visible = not world.is_empty()
+	_title.set_editable(world.is_empty())
+	if world.is_empty():
+		_confirm_delete.dialog_text = tr("Its file is deleted; your rides on it are kept.")
+		return
+	var parts: PackedStringArray = PackedStringArray()
+	var version: String = world["version"]
+	var world_name: String = world["world"]
+	parts.append(tr("World: %s") % (world_name + ("" if version.is_empty() else " " + version)))
+	var publisher: String = world["publisher"]
+	if not publisher.is_empty():
+		parts.append(tr("By %s") % publisher)
+	parts.append(tr("Licence: %s") % world["licence"])
+	_world.text = " · ".join(parts)
+	var routes: PackedStringArray = world["routes"]
+	_confirm_delete.dialog_text = (
+		tr("Deleting it deletes the world %s with all its routes: %s. Your rides on them are kept.")
+		% [world_name, ", ".join(routes)]
+	)
 
 
 func _rename(new_name: String) -> void:

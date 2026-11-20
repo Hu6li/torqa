@@ -518,6 +518,25 @@ one.
 scripts/art.sh blender --background --factory-startup --python art/remote/keep_awake.py
 ```
 
+## The test world (`worlds/`)
+
+`worlds/test_world.py` builds the small world file the app's tests ride
+(`core/fixtures/worlds/test-loop.oqx`, [ADR 0042](../docs/adr/0042-world-files.md)): 600 m
+of road climbing 3 % over a bridge, a brick tower, trees placed as instances, two sections in
+two levels of detail, a horizon and its own afternoon light. Its textures are made by the script
+(noise and a brick pattern), so the world is CC0 like the script. `worlds/glb.py` reads and
+writes `.glb` files in plain Python and adds ORQWA's terrain layers, which Blender's glTF
+export cannot write; tools building worlds can use it too.
+
+```sh
+scripts/art.sh blender --background --factory-startup --python art/worlds/test_world.py
+scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-pack \
+    ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
+```
+
+The road is built from the route's own points, so the rider rides on it, not above or in it
+(docs/world-files.md, Routes). The unpacked world in `worlds/build/` is not committed.
+
 ## Gallery
 
 Every model as the world draws it, in its palette colours and light: buildings, plants and

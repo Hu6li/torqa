@@ -3,17 +3,20 @@
 //! app by a path, `<world file>#<route id>`, so the library, the course page and the rides on it
 //! need no second way to name what is ridden.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
 use orqwa_routes::{Route, Surface, WorldPoint};
 use orqwa_storage::course::Manifest;
-use orqwa_storage::world::{self, Description, DrivesOn, WorldFile};
+use orqwa_storage::world::{self, DrivesOn, InstanceGroup, WorldFile};
 use tracing::warn;
 
 use crate::CourseEntry;
+
+/// The world file format, for the scene to read descriptions with.
+pub use orqwa_storage::world::{Description, Lod, Sky};
 
 /// Between a world file's path and a route's id in the path naming a world's route.
 const ROUTE_MARK: char = '#';
@@ -79,6 +82,19 @@ pub struct Authored {
     pub route: String,
     /// The road's width at each of the route's points, metres.
     pub widths: Vec<f64>,
+    /// Parts of the world read for the scene, until it takes them.
+    parts: Mutex<HashMap<String, Result<Part, String>>>,
+    /// Parts asked for and not taken yet.
+    asked: Mutex<HashSet<String>>,
+}
+
+/// A part of a world read for the scene.
+#[derive(Debug)]
+pub enum Part {
+    /// A `.glb` or an image, as the file holds it.
+    Bytes(Vec<u8>),
+    /// The copies of assets an `instances` file places.
+    Instances(Vec<InstanceGroup>),
 }
 
 impl Authored {
@@ -87,6 +103,38 @@ impl Authored {
     pub fn located(&self) -> bool {
         self.file.description().origin.located
     }
+
+    /// Notes that the scene wants the part `name`; false if it was asked for already.
+    pub(crate) fn ask(&self, name: &str) -> bool {
+        lock(&self.asked).insert(name.to_owned())
+    }
+
+    /// Reads the part `name`, for [`Authored::take`]: slow, run on a worker.
+    pub(crate) fn read(&self, name: &str) {
+        // The format names each kind of part by its extension (docs/world-files.md).
+        let extension = Path::new(name).extension().and_then(|e| e.to_str());
+        let part = match extension {
+            Some("bin") => self.file.instances(name).map(Part::Instances),
+            Some("glb") => self.file.glb(name).map(Part::Bytes),
+            _ => self.file.image(name).map(Part::Bytes),
+        };
+        lock(&self.parts).insert(name.to_owned(), part.map_err(|e| e.to_string()));
+    }
+
+    /// The part `name` once it is read, handed over once: the scene asks again for one it let
+    /// go of.
+    #[must_use]
+    pub fn take(&self, name: &str) -> Option<Result<Part, String>> {
+        let part = lock(&self.parts).remove(name)?;
+        lock(&self.asked).remove(name);
+        Some(part)
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// A world's route opened: the route as authored, whether traffic keeps left at each of its
@@ -126,6 +174,8 @@ pub fn open(which: &WorldRoute) -> Result<Opened, String> {
             file,
             route: which.route.clone(),
             widths,
+            parts: Mutex::new(HashMap::new()),
+            asked: Mutex::new(HashSet::new()),
         },
         name,
     ))
@@ -188,10 +238,7 @@ impl Library {
         let Ok(listing) = std::fs::read_dir(dir) else {
             return Vec::new();
         };
-        let mut read = self
-            .read
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut read = lock(&self.read);
         let mut entries = Vec::new();
         let mut present = Vec::new();
         for path in listing.filter_map(Result::ok).map(|entry| entry.path()) {
@@ -279,6 +326,14 @@ fn manifest(world: &Description, route: &Route, name: String) -> Manifest {
         countries: Some(Vec::new()),
         map_detail: Vec::new(),
     }
+}
+
+/// The picture of the world file at `path`, if it has one.
+#[must_use]
+pub fn preview(path: &Path) -> Option<Vec<u8>> {
+    let file = WorldFile::open(path).ok()?;
+    let name = file.description().preview.clone()?;
+    file.image(&name).ok()
 }
 
 /// Copies a checked world file into `dir`: a new version of a world already there (by its id)

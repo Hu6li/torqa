@@ -38,6 +38,9 @@ var _voice_row: Array[Control] = []
 ## The controls of the options that only change the 3D world, of those of video courses, and
 ## of trainer difficulty, which a workout's ERG power leaves no part in.
 var _world_rows: Array[Control] = []
+## Time of day, weather and season: not offered in a world file's world, whose light is its
+## author's (R268).
+var _condition_rows: Array[Control] = []
 var _video_rows: Array[Control] = []
 var _trainer_rows: Array[Control] = []
 
@@ -70,6 +73,7 @@ func _init() -> void:
 	_row("Time of day", _time, null, true)
 	_row("Weather", _weather, null, true)
 	_row("Season", _season, null, true)
+	_condition_rows = _world_rows.slice(_world_rows.size() - 9)
 	_row("Wind sound", _wind_volume, _wind_label, true)
 	_row("Bicycle sound", _bike_volume, _bike_label, true)
 	_row("Voice chat", _voice_volume, _voice_label)
@@ -198,6 +202,9 @@ func show_option_groups(world: bool, video: bool, trainer: bool = true) -> void:
 		control.visible = video
 	for control: Control in _trainer_rows:
 		control.visible = trainer
+	var authored: bool = _orqwa != null and _orqwa.is_authored_world()
+	for control: Control in _condition_rows:
+		control.visible = world and not authored
 
 
 func _changed() -> void:

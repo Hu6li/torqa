@@ -92,7 +92,7 @@ pub(super) fn description() -> Value {
         "environment": {
             "sun": {"elevation_deg": 30, "azimuth_deg": 220, "colour": [1, 0.95, 0.9], "energy": 1.5},
             "ambient": {"colour": [0.6, 0.7, 0.8], "energy": 0.8},
-            "sky": {"kind": "gradient", "zenith": [0.2, 0.4, 0.7], "horizon": [0.7, 0.8, 0.9], "clouds": 0.1}
+            "sky": {"kind": "atmosphere", "clouds": 0.3}
         },
         "sections": [{
             "center": [70.0, 0.0, 430.0],

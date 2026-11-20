@@ -268,7 +268,7 @@ func _init() -> void:
 	scroll.add_child(_gallery)
 	add_child(scroll)
 
-	_file_dialog.title = tr("Open a GPX route, video or ORQWA course")
+	_file_dialog.title = tr("Open a GPX route, video, ORQWA course or world")
 	_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	var videos: PackedStringArray = PackedStringArray()
@@ -276,7 +276,10 @@ func _init() -> void:
 		videos.append("*." + extension)
 	var filters: PackedStringArray = PackedStringArray(
 		[
-			"*.gpx, *.oqc, %s ; %s" % [", ".join(videos), tr("Routes, videos and courses")],
+			(
+				"*.gpx, *.oqc, *.oqx, %s ; %s"
+				% [", ".join(videos), tr("Routes, videos, courses and worlds")]
+			),
 			"*.gpx ; " + tr("GPX routes"),
 			(
 				"%s ; %s"
@@ -286,6 +289,7 @@ func _init() -> void:
 				]
 			),
 			"*.oqc ; " + tr("ORQWA courses"),
+			"*.oqx ; " + tr("ORQWA worlds"),
 		]
 	)
 	_file_dialog.filters = PickedFile.open_filters(filters)
@@ -714,7 +718,7 @@ static func _select(option: OptionButton, choice: String) -> void:
 
 func _on_file_selected(picked: String) -> void:
 	var refusal: String = PickedFile.refusal(
-		picked, PackedStringArray(["gpx", "oqc"]) + OrqwaApp.video_extensions()
+		picked, PackedStringArray(["gpx", "oqc", "oqx"]) + OrqwaApp.video_extensions()
 	)
 	if not refusal.is_empty():
 		_status.text = refusal
@@ -723,6 +727,11 @@ func _on_file_selected(picked: String) -> void:
 	var path: String = PickedFile.local_path(picked)
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()
+	if extension == "oqx":
+		# A world's routes keep their author's names (R266): nothing to name.
+		_importing = "oqc"
+		_orqwa.import_course(path)
+		return
 	if not extension in ["oqc", "gpx", "xml", "rlv"]:
 		# Set so that a video that cannot be read is reported like a failed import.
 		_importing = "probe"

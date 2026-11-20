@@ -146,7 +146,7 @@ func begin(options: Dictionary) -> void:
 	# Heart-rate zones span half the maximum to the maximum: the chart shows all of them.
 	var max_heart_rate: float = _orqwa.profile().get("max_heart_rate_bpm", 185.0)
 	_chart.heart_rate_range = Vector2(max_heart_rate * 0.5, max_heart_rate)
-	(get_node("Attribution") as Control).visible = not on_its_own
+	AuthoredWorld.show_credits(get_node("Attribution") as Label, _orqwa, not on_its_own)
 	for panel: Control in [%Minimap.get_parent(), %Profile.get_parent().get_parent()]:
 		panel.visible = not on_its_own
 	_place_workout_panel(on_its_own)
