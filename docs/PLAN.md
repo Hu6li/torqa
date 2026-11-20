@@ -1263,7 +1263,7 @@ the format and riding it; the realistic Lake Biel world is built in a private re
   rides without positions for worlds not on Earth; no renaming, saving or group rides
 - [x] Godot: runtime glTF sections and assets, levels of detail, terrain layers, the world's
   light and credits; textures mipmapped (GPU compression needs KTX2/Basis, not yet tested)
-- [ ] A test world made by a script; the usage guide in the wiki
+- [x] A test world made by a script; the usage guide in the wiki
 - [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data
 - [ ] Stage 3: an editor; `.oqc` courses as a starting point
 - **Exit:** a rider imports a world file and rides each of its routes offline, as authored
