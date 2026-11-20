@@ -1251,6 +1251,22 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
+### Phase 14 — Authored worlds (R266–R269, #433, [ADR 0042](adr/0042-world-files.md))
+
+Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
+the format and riding it; the realistic Lake Biel world is built in a private repository.
+
+- [x] ADR 0042 and the format specification (`.oqx`, format 1)
+- [ ] Reader and validator in `orqwa-storage`, with a fuzz target
+- [ ] Routes from a world's points (`Route::from_points`), rides with or without positions
+- [ ] Library and app: `worlds/`, one entry per route, opening without building
+- [ ] Godot: runtime glTF sections and assets, levels of detail, terrain layers, the world's
+  light, textures compressed into the cache
+- [ ] A test world made by a script; the usage guide in the wiki
+- [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data
+- [ ] Stage 3: an editor; `.oqc` courses as a starting point
+- **Exit:** a rider imports a world file and rides each of its routes offline, as authored
+
 ### The name ORQWA (R102, [ADR 0026](adr/0026-the-name-orqwa.md))
 The project is named ORQWA (orca, torque and watt).
 - [x] Code identifiers: crates `orqwa-*`, `OrqwaApp` and the extension `orqwa_gd`, `ORQWA_*`

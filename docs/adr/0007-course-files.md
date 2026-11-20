@@ -139,3 +139,8 @@ stays: older ORQWA versions leave both unread. Opened in the library of a comput
 region's detail ready, a course takes it and its file is rewritten with it (R144, ADR 0033).
 Sharing or syncing that `.oqc` carries the map detail used; the receiving device needs neither
 the full Geofabrik download nor a separate copy of its extracted region cache.
+
+## Amendment 2026-11-20 — authored worlds are another file (ADR 0042)
+
+Course files stay inputs only. Worlds an author builds outside ORQWA, ridden as they are and
+never rebuilt, are a file of their own, `.oqx` ([ADR 0042](0042-world-files.md)).
