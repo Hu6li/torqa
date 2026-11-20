@@ -135,7 +135,8 @@ then per group:
   flags             u32, bit 0: each copy carries a tint
   count × copy      12 f32: the 3 × 4 matrix [r00 r01 r02 x  r10 r11 r12 y  r20 r21 r22 z],
                     row by row, in the section's glTF frame;
-                    then, with the tint flag, 4 f32: an sRGB multiplier and alpha
+                    then, with the tint flag, 4 f32: an sRGB multiplier and alpha,
+                    applied to every material of the asset
 ```
 
 Matrices may rotate and scale but not shear. A file ends after its last group.
@@ -215,7 +216,8 @@ lays up to eight tiling detail layers over the base colour near the camera:
   blue and alpha channels weigh layers 0–3 and 4–7.
 - `layers`: 1–8 layers, each an `albedo` texture, an optional `normal` texture, a `roughness`
   (0–1) and the size in metres one repeat of its textures covers. Layers repeat in the
-  horizontal plane of the world, so the ground needs no texture coordinates for them.
+  horizontal plane of the world, and on steep ground also from the side, so the ground needs no
+  texture coordinates for them and cliffs do not stretch them.
 - Near the camera, the albedo is the base colour times each layer's albedo divided by its
   average colour, blended by the weights and by `strength` (0–1). From `fade_m[0]` to
   `fade_m[1]` metres the layers fade out, leaving the base colour.

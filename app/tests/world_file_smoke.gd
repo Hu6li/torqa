@@ -34,6 +34,10 @@ func _run() -> void:
 		_light()
 		_options()
 		_page(course)
+	_world._authored.stop()
+	_main.queue_free()
+	await process_frame
+	await process_frame
 	if not _failed:
 		print("WORLD FILE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
