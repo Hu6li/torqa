@@ -23,28 +23,34 @@ func _run() -> void:
 	for name: String in TREES:
 		_model(name)
 	_batches()
-	_rebatch()
+	_low_in_place()
 	await _ground()
 	if not _failed:
 		print("TREE LOD SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
 
 
-func _rebatch() -> void:
+func _low_in_place() -> void:
 	var world: RideWorld = (load("res://scenes/world.tscn") as PackedScene).instantiate()
 	root.add_child(world)
-	world.apply_quality("ultra", {"tree_density": "low"})
+	# High, as Low, draws no building detail: switching that would rebuild the world.
+	world.apply_quality("high", {"tree_density": "low"})
 	var terrain: Node3D = world.get_node("Terrain")
 	var streaming: WorldStreaming = world.get("_streaming")
-	var uploaded: Node3D = Node3D.new()
-	terrain.add_child(uploaded)
-	streaming._uploaded[0] = uploaded
-	# Density stays 12.5%; switching to Low must still restore its cheaper batch budget.
+	var chunk: Node3D = Node3D.new()
+	terrain.add_child(chunk)
+	streaming._uploaded[0] = chunk
+	var buffer: PackedFloat32Array = [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 5, 1, 1, 1, 1]
+	VegetationModels.add_to(chunk, "conifer_tall", buffer, 1200, 600)
+	var tree: GeometryInstance3D = chunk.get_child(0)
+	# Density stays 12.5% and every preset batches alike: Low takes coarser levels in place.
 	world.apply_quality("low")
 	_check(
-		terrain.get_child_count() == 0 and streaming.uploaded() == 0,
-		"Low refreshes uploaded batches"
+		terrain.get_child_count() == 1 and streaming.uploaded() == 1, "Low keeps uploaded batches"
 	)
+	_check(tree.lod_bias < 1.0, "Low takes uploaded trees' coarser levels sooner")
+	world.apply_quality("high", {"tree_density": "low"})
+	_check(tree.lod_bias == 1.0, "other presets keep trees' full detail nearby")
 	world.free()
 
 
@@ -107,31 +113,48 @@ func _lod_indices(mesh: ArrayMesh, surface_index: int, vertex_count: int) -> voi
 func _batches() -> void:
 	var buffer: PackedFloat32Array = PackedFloat32Array()
 	var expected: Array[PackedFloat32Array] = []
-	for point: Vector3 in [Vector3(-2, 7, 3), Vector3(170, 9, -4), Vector3(350, 12, 310)]:
-		var record: PackedFloat32Array = [
-			1, 0, 0, point.x, 0, 1, 0, point.y, 0, 0, 1, point.z, 0.2, 0.4, 0.6, 1
-		]
-		expected.append(record)
-		buffer.append_array(record)
-	for cell_m: float in [160.0, 480.0]:
-		var parent: Node3D = Node3D.new()
-		VegetationModels.add_to(parent, "conifer_tall", buffer, 1200, 600, cell_m)
-		var found: Array[PackedFloat32Array] = []
-		for child: Node in parent.get_children():
-			var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
-			_check(placed.has_meta("tree"), "batched trees retain their range metadata")
-			_check(placed.visibility_range_end == 1200, "tree range remains independent of LOD")
-			# The dummy renderer retains bulk buffers but not per-instance GPU readbacks.
-			var uploaded: PackedFloat32Array = placed.multimesh.buffer
-			_check(uploaded.size() == placed.multimesh.instance_count * 16, "complete records")
-			for index: int in placed.multimesh.instance_count:
-				found.append(uploaded.slice(index * 16, (index + 1) * 16))
-		_check(found.size() == expected.size(), "batching retains every tree")
-		for record: PackedFloat32Array in expected:
-			_check(found.has(record), "placement and colour retained across batch boundaries")
-		if cell_m == 480:
-			_check(parent.get_child_count() == 1, "Low keeps its original draw-call budget")
-		parent.free()
+	# Plants across a whole 480 m chunk, placed relative to its centre as uploaded.
+	for column: int in 12:
+		for row: int in 12:
+			var x: float = -220.0 + column * 40.0
+			var z: float = -220.0 + row * 40.0
+			var record: PackedFloat32Array = [
+				1, 0, 0, x, 0, 1, 0, 7.0 + row, 0, 0, 1, z, 0.2, 0.4, 0.6, 1
+			]
+			expected.append(record)
+			buffer.append_array(record)
+	# Every preset, Low too: one close tree must not keep a whole chunk at full detail.
+	var parent: Node3D = Node3D.new()
+	VegetationModels.add_to(parent, "conifer_tall", buffer, 1200, 600, 0.5)
+	_check(parent.get_child_count() == 16, "a chunk's trees are batched on a 160 m grid")
+	var found: Array[PackedFloat32Array] = []
+	for child: Node in parent.get_children():
+		var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
+		_check(placed.has_meta("tree"), "batched trees retain their range metadata")
+		_check(placed.visibility_range_end == 1200, "tree range remains independent of LOD")
+		_check(placed.lod_bias == 0.5, "a preset's tree LOD bias reaches every batch")
+		# The dummy renderer retains bulk buffers but not per-instance GPU readbacks.
+		var uploaded: PackedFloat32Array = placed.multimesh.buffer
+		_check(uploaded.size() == placed.multimesh.instance_count * 16, "complete records")
+		for index: int in placed.multimesh.instance_count:
+			found.append(uploaded.slice(index * 16, (index + 1) * 16))
+	_check(found.size() == expected.size(), "batching retains every tree")
+	for record: PackedFloat32Array in expected:
+		_check(found.has(record), "placement and colour retained across batch boundaries")
+	parent.free()
+	# Ferns have no coarser levels, but a tablet still draws them cheaper in cells.
+	var ferns: Node3D = Node3D.new()
+	VegetationModels.add_to(ferns, "fern_upright", buffer, 1200, 390, 0.5)
+	_check(ferns.get_child_count() == 16, "a chunk's small plants are batched in the same cells")
+	var ferns_found: int = 0
+	for child: Node in ferns.get_children():
+		var placed: MultiMeshInstance3D = child as MultiMeshInstance3D
+		_check(not placed.has_meta("tree"), "small plants are not taken for trees")
+		_check(placed.visibility_range_end == 390, "small plants keep their own range")
+		_check(placed.lod_bias == 1.0, "the tree LOD bias leaves small plants alone")
+		ferns_found += placed.multimesh.instance_count
+	_check(ferns_found == expected.size(), "batching retains every small plant")
+	ferns.free()
 
 
 func _triangles(mesh: ArrayMesh) -> int:

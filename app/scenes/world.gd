@@ -86,12 +86,14 @@ const FREE_TURN: float = 1.2
 const JUMP_M: float = 50.0
 ## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
 ## scales terrain and details; trees have their own range and uploaded density (R108).
+## `tree_lod_bias` below 1 takes trees' coarser levels sooner: on Low it saves a tablet GPU
+## 2–4 ms per frame.
 ## MSAA stays at 2×; 4× previously caused bright distant pixels to spread through bloom.
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
 	{
 		"tree_density": 0.125,
-		"tree_cell": 480.0,
+		"tree_lod_bias": 0.5,
 		"tree_range": 600.0,
 		"model_range": 200.0,
 		"building_detail": false,
@@ -113,7 +115,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"medium":
 	{
 		"tree_density": 0.25,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 1200.0,
 		"model_range": 400.0,
 		"building_detail": false,
@@ -135,7 +137,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"high":
 	{
 		"tree_density": 0.5,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 2200.0,
 		"model_range": 600.0,
 		"building_detail": false,
@@ -157,7 +159,7 @@ const QUALITY: Dictionary[String, Dictionary] = {
 	"ultra":
 	{
 		"tree_density": 1.0,
-		"tree_cell": 160.0,
+		"tree_lod_bias": 1.0,
 		"tree_range": 3240.0,
 		"model_range": 900.0,
 		"building_detail": true,
@@ -371,6 +373,9 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 	_environment.fog_light_color = sky_horizon
 	# A low sun lights the haze from its side.
 	_environment.fog_sun_scatter = LOW_SUN_SCATTER if elevation < 20.0 else 0.0
+	# The sky hazes itself, the engine's fog left out of its passes (sky.gdshader).
+	_sky.set_shader_parameter("haze_color", _environment.fog_light_color)
+	_sky.set_shader_parameter("haze_sun_scatter", _environment.fog_sun_scatter)
 	_apply_valley_fog()
 	var raining: float = 1.0 if weather == "Rain" else 0.0
 	UrbanSurfaces.set_conditions(raining, sky_horizon)
@@ -388,7 +393,6 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 ## the preset).
 func apply_quality(name: String, options: Dictionary = {}) -> void:
 	var previous_density: float = _quality["tree_density"]
-	var previous_cell: float = _quality["tree_cell"]
 	var previous_building_detail: bool = _quality["building_detail"]
 	var preset: Dictionary = QUALITY.get(name, QUALITY["medium"])
 	_quality = preset.duplicate()
@@ -431,7 +435,6 @@ func apply_quality(name: String, options: Dictionary = {}) -> void:
 	# A course may already be uploaded when settings change before the next ride.
 	if (
 		previous_density != _quality["tree_density"]
-		or previous_cell != _quality["tree_cell"]
 		or previous_building_detail != _quality["building_detail"]
 	):
 		WorldPreparation.restart(self)
@@ -570,6 +573,8 @@ func _ready() -> void:
 	_environment.ambient_light_sky_contribution = 0.9
 	# Haze towards distant terrain takes the sky's colour (R45).
 	_environment.fog_aerial_perspective = 0.6
+	_sky.set_shader_parameter("haze_aerial", _environment.fog_aerial_perspective)
+	_sky.set_shader_parameter("haze_sky", _environment.fog_sky_affect)
 	_plant_material.shader = preload("res://shaders/plants.gdshader")
 	_plant_material.set_shader_parameter("flower_colors", Palette.colors("plants.flowers"))
 	_rail_material.shader = preload("res://shaders/rail.gdshader")
@@ -616,7 +621,7 @@ func _process(delta: float) -> void:
 		_rain.global_position = _camera.global_position + Vector3.UP * RAIN_ABOVE
 	if visible:
 		_cloud_offset += CLOUD_DRIFT * delta
-		_sky.set_shader_parameter("cloud_offset", _cloud_offset)
+		RenderingServer.global_shader_parameter_set("cloud_offset", _cloud_offset)
 	if _free and visible:
 		_fly(delta)
 	if not visible or _orqwa == null:
@@ -660,6 +665,7 @@ func _on_world_ready(_info: Dictionary) -> void:
 	_horizon_ground.material_override = _terrain_material
 	_horizon_water.mesh = WorldMeshes.from_arrays(lakes)
 	_horizon_water.material_override = _water_material
+	_streaming.horizon_changed()
 	_railways.mesh = WorldMeshes.from_arrays(_orqwa.railways_mesh())
 	_railways.material_override = _rail_material
 	for added: Node in _structures.get_children():
@@ -685,6 +691,7 @@ func _on_world_grew(info: Dictionary) -> void:
 
 func _build_some_chunks() -> void:
 	_streaming.upload_some(self)
+	_streaming.update_fill(self)
 
 
 ## `compressed` as in `WorldMeshes.from_arrays`.
@@ -906,6 +913,9 @@ func _set_distance(factor: float) -> void:
 			var tree_range: float = _quality["tree_range"]
 			geometry.visibility_range_end = tree_range
 			geometry.visibility_range_end_margin = minf(tree_range * 0.15, 300.0)
+			geometry.lod_bias = _quality["tree_lod_bias"]
+		elif geometry.has_meta("stand_in") or geometry.has_meta("chunk_water"):
+			WorldStreaming.follow_distance(geometry, factor)
 		elif geometry.visibility_range_end > 0.0 and not geometry.has_meta("fixed_range"):
 			geometry.visibility_range_end *= change
 	_camera.far = maxf(VISIBILITY_RANGE * factor * 1.6, HORIZON_RANGE)

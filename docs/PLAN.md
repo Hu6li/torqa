@@ -89,8 +89,9 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
   map, so a shared or synced course is rebuilt offline anywhere without downloading the region
   again; video courses refer to their video instead of embedding it.
 - **3D world generation**: a 1.5 km corridor around the route, coarse land beyond it out to
-  12 km; DEM → chunked heightmap meshes, finer near the road; the road shaped into the ground
-  along the route snapped to the map; streets, railways, bridges and tunnels from the map;
+  12 km and under it, standing in for the corridor's chunks where they are not drawn; DEM →
+  chunked heightmap meshes, finer near the road; the road shaped into the ground along the
+  route snapped to the map; streets, railways, bridges and tunnels from the map;
   buildings as Blender models fitted to the mapped outlines (simple shells further out and for
   odd outlines); MultiMesh vegetation by land cover; water in channels. Built when a ride
   starts, terrain chunks on all cores.
@@ -595,6 +596,12 @@ physically based materials and light, restyled group by group.
   verify native FPS and Low's rendering cost without changing kept worlds.
   - [x] Tall and broad conifers have one short, slender leader, blended into upper whorls at
     every detail level, with front, side, rear and elevated model renders for silhouette review.
+- [x] Distant land under the corridor too (R266, #560): the coarse land stands in for every
+  chunk of the detailed ground that is not drawn, so the sky no longer shows through mountains
+  where the route runs on into the distance; the edges of the detailed ground and of the land
+  hang below each other, so no crack opens where the two meet
+- [x] Lakes cover all the detailed ground they reach, also where map tiles cut them into
+  pieces, and the clouds show no seam (R267, #560)
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
   - [x] Forest ground turns into a baked canopy of crowns with distance, nearer the fewer trees
     are drawn, out to the horizon; tracks and paths end at 1 km

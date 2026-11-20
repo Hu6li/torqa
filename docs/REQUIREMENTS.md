@@ -230,6 +230,15 @@ square gaps, clipped ends or paving across the carriageway. Curb stones have joi
 beveled lip; lowered entrances remain continuous. Placement is inferred from the existing
 road and land-use data, with mapped green spaces preserved.
 
+Rendering implementation note (2026-11-16, R43/R108, #542): Low no longer keeps chunk-sized
+tree batches. Every preset batches trees in 160 m cells so far trees take their simpler
+levels, and Low takes them sooner; on the Galaxy Tab S7 this costs about 1 ms of CPU and saves
+7–14 ms of GPU time per frame. Population, placement and kept worlds are unchanged.
+
+Rendering implementation note (2026-11-16, R43, #542): bushes, ferns and rocks are batched in
+the same 160 m cells as trees on every preset; on the Galaxy Tab S7 this saves about 2–3 ms of
+GPU time per frame in forest and nothing in open country, with the same plants and ranges.
+
 ## Workouts & overlay
 
 | ID | Requirement |
@@ -791,3 +800,10 @@ residency even when generation finishes the whole course before riding.
 |---|---|
 | R264 | Refines R261 (2026-11-19): **where a region's map detail is downloaded, a building whose roof the map leaves out takes the roofs mapped around it**: flat, gabled or hipped as often as the mapped roofs of buildings its size within a few kilometres are, so a village of pitched roofs has no flat-roofed hotels, schools or barns, and a town centre of flat roofs keeps them. Where too few roofs are mapped nearby, each kind of building keeps its own roof. The same building gets the same roof every time. Kept worlds offer regeneration (R101). |
 | R265 | Refines R164 and R264 (2026-11-19): **chalets and Bernese farmhouses always have pitched roofs**. A building whose roof is flat, as mapped or as the roofs mapped around it make it, is built as a house of its region under that flat roof, never as a timber chalet or a farmhouse, in the mountains as in the countryside; pitched roofs like the neighbours' leave chalets and farmhouses as they are. Kept worlds offer regeneration (R101). |
+
+## Distant land
+
+| ID | Requirement |
+|---|---|
+| R266 | Refines R45 and #75 (2026-11-19, #560): **the land never has holes where the route runs on into the distance**. The coarse distant land also lies under the route's detailed corridor and stands in for each chunk wherever that chunk is not drawn: beyond the drawn distance, before it is loaded, while it is still being built, or when it cannot be read. On every preset, mountains along the route therefore stay whole out to the horizon, without sky showing through them or the sky's ground colour lying across a valley. Where drawn detailed ground meets the coarse land, which lies lower on ridges and higher in hollows, no crack opens between them, seen from above or below, from either side: the edges of each reach down below the other, facing it, but never into the ridden road's tunnels. Nearby chunks keep their detailed ground unchanged. Worlds kept from before offer to be built again (R101). |
+| R267 | Refines R266 (2026-11-19, #560): **lakes and the sky stay whole too**. A lake covers all the detailed ground it reaches, also where the map's tiles cut it into pieces whose corners lie beyond the corridor; no bare lake bed shows through it as a flat slab. The sky's clouds show no straight seam, however long the rider has ridden. Worlds kept from before offer to be built again (R101). |

@@ -865,24 +865,10 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
         }
     }
     let route = route_north(&[]).await;
-    let world = generate(&route, &mut Far, &MapData::default(), &mut |_, _| {}).await;
     let land = horizon(&route, &mut Far).await;
 
     assert_valid(&land.ground);
     assert_valid(&land.water);
-    let detailed = |x: f32, z: f32| {
-        world.chunks.iter().any(|c| {
-            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
-                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
-        })
-    };
-    for cell in land.ground.vertices.as_chunks::<4>().0 {
-        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
-        assert!(
-            !detailed(middle[0], middle[1]),
-            "land over the detailed ground at {middle:?}"
-        );
-    }
     // Out to the horizon, west and east, at the land's height (a little lower).
     let reach = land
         .ground
@@ -914,6 +900,394 @@ async fn the_land_reaches_from_the_detailed_ground_to_the_horizon() {
             .all(|v| v[0] >= 6000.0 && (v[1] - 600.02).abs() < 0.01)
     );
     assert!(land.ground.vertices.iter().all(|v| v[0] <= 6240.0));
+}
+
+#[tokio::test]
+async fn the_land_stands_in_for_the_chunks_not_drawn() {
+    struct Slope;
+    impl ElevationModel for Slope {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            std::future::ready(Ok(500.0 + 1000.0 * (lon - 7.0)))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Slope, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Slope).await;
+
+    // Under every chunk of the detailed ground lies land of its own, covering the whole
+    // chunk, to stand in for it where it is not drawn (#560); the rest never overlaps it.
+    let detailed = |x: f32, z: f32| {
+        world.chunks.iter().any(|c| {
+            (x - c.center[0]).abs() < CHUNK_SIZE as f32 / 2.0
+                && (z - c.center[2]).abs() < CHUNK_SIZE as f32 / 2.0
+        })
+    };
+    let parts = HorizonParts::new(&route, &land);
+    for cell in parts.outside.ground.vertices.as_chunks::<4>().0 {
+        let middle = [0, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+        assert!(
+            !detailed(middle[0], middle[1]),
+            "always drawn land over the detailed ground at {middle:?}"
+        );
+    }
+    let keys: BTreeSet<(i32, i32)> = world.chunks.iter().map(|c| chunk_key(c.center)).collect();
+    assert_eq!(
+        parts.corridor.keys().copied().collect::<BTreeSet<_>>(),
+        keys
+    );
+    for chunk in &world.chunks {
+        let under = &parts.corridor[&chunk_key(chunk.center)].ground;
+        let (half, [x, _, z]) = (CHUNK_SIZE as f32 / 2.0, chunk.center);
+        let covered: f32 = under
+            .vertices
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|cell| (cell[1][0] - cell[0][0]) * (cell[2][2] - cell[0][2]).abs())
+            .sum();
+        assert!(
+            (covered - (2.0 * half).powi(2)).abs() < 1.0,
+            "{covered} m² of land under the chunk at {:?}",
+            chunk.center
+        );
+        assert!(
+            under
+                .vertices
+                .iter()
+                .all(|v| (v[0] - x).abs() <= half && (v[2] - z).abs() <= half)
+        );
+    }
+    // What is not drawn is filled in, nothing else: drawn chunks and the fill leave no gap.
+    let drawn: BTreeSet<(i32, i32)> = keys.iter().copied().step_by(2).collect();
+    let fill = parts.fill(&drawn);
+    let filled: BTreeSet<(i32, i32)> = fill
+        .ground
+        .vertices
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|cell| {
+            let middle = [0, 1, 2].map(|k| cell.iter().map(|v| v[k]).sum::<f32>() / 4.0);
+            chunk_key(middle)
+        })
+        .collect();
+    assert_eq!(filled, &keys - &drawn);
+    assert_eq!(
+        parts.fill(&BTreeSet::new()).ground.vertices.len(),
+        parts
+            .corridor
+            .values()
+            .map(|p| p.ground.vertices.len())
+            .sum::<usize>()
+    );
+}
+
+/// The coarse land's height at `point` (x and z, in route coordinates): the lowest of its faces
+/// there.
+fn land_height(land: &Horizon, point: [f32; 2]) -> Option<f32> {
+    let mut lowest: Option<f32> = None;
+    for mesh in [&land.ground, &land.water] {
+        for t in mesh.indices.as_chunks::<3>().0 {
+            let [p0, p1, p2] = t.map(|i| mesh.vertices[i as usize]);
+            let (e1, e2) = (
+                [p1[0] - p0[0], p1[2] - p0[2]],
+                [p2[0] - p0[0], p2[2] - p0[2]],
+            );
+            let rel = [point[0] - p0[0], point[1] - p0[2]];
+            let det = e1[0] * e2[1] - e2[0] * e1[1];
+            if det.abs() < 1e-6 {
+                continue;
+            }
+            let along1 = (rel[0] * e2[1] - e2[0] * rel[1]) / det;
+            let along2 = (e1[0] * rel[1] - rel[0] * e1[1]) / det;
+            if along1 < -1e-4 || along2 < -1e-4 || along1 + along2 > 1.0 + 1e-4 {
+                continue;
+            }
+            let height = p0[1] + along1 * (p1[1] - p0[1]) + along2 * (p2[1] - p0[1]);
+            lowest = Some(lowest.map_or(height, |l| l.min(height)));
+        }
+    }
+    lowest
+}
+
+/// A skirt's extent at each place along it: `(x, z)` → its top and bottom.
+fn skirt_extents(skirt: &MeshData) -> Vec<([f32; 2], f32, f32)> {
+    let mut extents: Vec<([f32; 2], f32, f32)> = Vec::new();
+    for v in &skirt.vertices {
+        match extents
+            .iter_mut()
+            .find(|(at, _, _)| (at[0] - v[0]).abs() < 1e-3 && (at[1] - v[2]).abs() < 1e-3)
+        {
+            Some((_, top, bottom)) => {
+                *top = top.max(v[1]);
+                *bottom = bottom.min(v[1]);
+            }
+            None => extents.push(([v[0], v[2]], v[1], v[1])),
+        }
+    }
+    extents
+}
+
+/// The heights an upright `skirt` covers on the vertical line through `point` (x and z, in its
+/// coordinates), from triangles facing `toward` (horizontal): each triangle's span there.
+fn skirt_cover(skirt: &MeshData, point: [f32; 2], toward: [f32; 2]) -> Vec<(f32, f32)> {
+    let mut spans = Vec::new();
+    for t in skirt.indices.as_chunks::<3>().0 {
+        let [p0, p1, p2] = t.map(|i| skirt.vertices[i as usize]);
+        let (to2, to1) = (
+            [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]],
+            [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]],
+        );
+        // Front faces wind clockwise: their normal is (p2 − p0) × (p1 − p0).
+        let normal = [
+            to2[1] * to1[2] - to2[2] * to1[1],
+            to2[0] * to1[1] - to2[1] * to1[0],
+        ];
+        if normal[0] * toward[0] + normal[1] * toward[1] <= 0.0 {
+            continue;
+        }
+        // Where the vertical line meets the triangle's edges.
+        let mut heights = Vec::new();
+        for (from, to) in [(p0, p1), (p1, p2), (p2, p0)] {
+            let along = [to[0] - from[0], to[2] - from[2]];
+            let length = along[0].hypot(along[1]);
+            let off = [point[0] - from[0], point[1] - from[2]];
+            if length < 1e-4 {
+                if off[0].hypot(off[1]) < 1e-2 {
+                    heights.extend([from[1], to[1]]);
+                }
+                continue;
+            }
+            let share = (off[0] * along[0] + off[1] * along[1]) / (length * length);
+            let aside = (off[0] * along[1] - off[1] * along[0]).abs() / length;
+            if aside < 1e-2 && (-1e-4..=1.0 + 1e-4).contains(&share) {
+                heights.push(from[1] + share * (to[1] - from[1]));
+            }
+        }
+        if let (Some(low), Some(high)) = (
+            heights.iter().copied().reduce(f32::min),
+            heights.iter().copied().reduce(f32::max),
+        ) {
+            spans.push((low, high));
+        }
+    }
+    spans
+}
+
+/// Whether `spans` together cover the heights from `low` to `high`.
+fn covers(spans: &[(f32, f32)], low: f32, high: f32) -> bool {
+    let mut reached = low;
+    let mut sorted = spans.to_vec();
+    sorted.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (bottom, top) in sorted {
+        if bottom <= reached + 1e-3 {
+            reached = reached.max(top);
+        }
+    }
+    reached >= high - 1e-3
+}
+
+/// Asserts that the land beside edge vertex `v` of `chunk`, lying at `beside` above it, hangs
+/// a skirt from there down below the edge, facing into the chunk.
+fn assert_land_hangs_below(parts: &HorizonParts, chunk: &TerrainChunk, v: [f32; 3], beside: f32) {
+    let half = CHUNK_SIZE as f32 / 2.0;
+    let key = chunk_key(chunk.center);
+    let [cx, _, cz] = chunk.center;
+    for (axis, out) in [(0, [1.0, 0.0]), (2, [0.0, 1.0])] {
+        if (v[axis].abs() - half).abs() >= 0.01 {
+            continue;
+        }
+        let side = v[axis].signum();
+        let step = side as i32;
+        let neighbour = if axis == 0 {
+            (key.0 + step, key.1)
+        } else {
+            (key.0, key.1 - step)
+        };
+        let land_skirt = if parts.corridor.contains_key(&neighbour) {
+            parts
+                .skirt_under(neighbour)
+                .expect("a skirt under the neighbour")
+        } else {
+            parts.outside_skirt()
+        };
+        let toward = [-out[0] * side, -out[1] * side];
+        let spans = skirt_cover(land_skirt, [v[0] + cx, v[2] + cz], toward);
+        assert!(
+            covers(&spans, v[1] - 1.0, beside),
+            "no land skirt from {beside} down below the edge {v:?} of the chunk at {:?}",
+            chunk.center
+        );
+    }
+}
+
+#[tokio::test]
+async fn no_crack_opens_where_the_ground_meets_the_land_standing_in() {
+    // Ridges and hollows far finer than the land's facets, around the road's height: along the
+    // chunks' sides the land lies well above and below the detailed ground.
+    struct Ridges;
+    impl ElevationModel for Ridges {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(500.0 + 60.0 * (north / 70.0).sin() * (east / 90.0).cos()))
+        }
+    }
+    let route = route_north(&[]).await;
+    let world = generate(&route, &mut Ridges, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Ridges).await;
+    let parts = HorizonParts::new(&route, &land);
+
+    // Wherever a chunk is drawn and the land beside it stands in for its neighbour, or lies
+    // beyond the corridor, the ground's edge hangs down to below that land (#560): from below,
+    // the sky showed through between them, from above a dark crack.
+    let half = CHUNK_SIZE as f32 / 2.0;
+    let (mut deepest, mut highest) = (0.0f32, 0.0f32);
+    for chunk in &world.chunks {
+        let skirt = parts.skirt(chunk);
+        assert_valid(&skirt);
+        let extents = skirt_extents(&skirt);
+        let [cx, _, cz] = chunk.center;
+        for v in &chunk.mesh.vertices {
+            if (v[0].abs() - half).abs() >= 0.01 && (v[2].abs() - half).abs() >= 0.01 {
+                continue;
+            }
+            let beside = land_height(&land, [v[0] + cx, v[2] + cz]).expect("land beside the chunk");
+            let Some(&(_, top, bottom)) = extents
+                .iter()
+                .find(|(at, _, _)| (at[0] - v[0]).abs() < 1e-3 && (at[1] - v[2]).abs() < 1e-3)
+            else {
+                panic!(
+                    "no skirt at the edge {v:?} of the chunk at {:?}",
+                    chunk.center
+                );
+            };
+            assert!(
+                (top - v[1]).abs() < 1e-3,
+                "the skirt leaves the edge {v:?} at {top}"
+            );
+            assert!(
+                bottom <= beside - 1.0 && bottom <= v[1] - 2.0,
+                "the skirt at {v:?} ends at {bottom}, the land beside it lies at {beside}"
+            );
+            deepest = deepest.max(v[1] - beside);
+            // Where the land lies higher, its own edge hangs down below the ground's, facing
+            // into the chunk: seen from the chunk, the sky showed through under the land.
+            if beside > v[1] {
+                assert_land_hangs_below(&parts, chunk, *v, beside);
+                highest = highest.max(beside - v[1]);
+            }
+        }
+        // It faces out of the chunk, as the cracks are seen from there.
+        for t in skirt.indices.as_chunks::<3>().0 {
+            let [p0, p1, p2] = t.map(|i| skirt.vertices[i as usize]);
+            let (to2, to1) = (
+                [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]],
+                [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]],
+            );
+            // Front faces wind clockwise: their normal is (p2 − p0) × (p1 − p0), here
+            // horizontal.
+            let normal = [
+                to2[1] * to1[2] - to2[2] * to1[1],
+                to2[0] * to1[1] - to2[1] * to1[0],
+            ];
+            if normal[0].hypot(normal[1]) < 1e-3 {
+                continue;
+            }
+            let middle = [(p0[0] + p1[0] + p2[0]) / 3.0, (p0[2] + p1[2] + p2[2]) / 3.0];
+            assert!(
+                normal[0] * middle[0] + normal[1] * middle[1] > 0.0,
+                "the skirt at {middle:?} of the chunk at {:?} faces in",
+                chunk.center
+            );
+        }
+    }
+    assert!(
+        deepest > 10.0,
+        "the land never lay far below the ground: {deepest} m"
+    );
+    assert!(
+        highest > 10.0,
+        "the land never lay far above the ground: {highest} m"
+    );
+}
+
+#[tokio::test]
+async fn the_ground_hangs_into_no_tunnel_of_the_road_ridden() {
+    // The road runs along the side of two rows of chunks (x = 0), in a tunnel under a hill 60 m
+    // high, which the land's facets cut far lower.
+    struct Hill;
+    impl ElevationModel for Hill {
+        fn elevation(
+            &mut self,
+            lat: f64,
+            _lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let north = (lat - 46.0) * METERS_PER_DEGREE;
+            std::future::ready(Ok(500.0 + (60.0 - 0.3 * (north - 500.0).abs()).max(0.0)))
+        }
+    }
+    let route = route_north(&[Structure {
+        kind: StructureKind::Tunnel,
+        line: vec![at(0.0, 250.0), at(0.0, 750.0)],
+    }])
+    .await;
+    let world = generate(&route, &mut Hill, &MapData::default(), &mut |_, _| {}).await;
+    let land = horizon(&route, &mut Hill).await;
+    let parts = HorizonParts::new(&route, &land);
+    let road = |north: f32| {
+        route
+            .points()
+            .iter()
+            .min_by(|p, q| {
+                (p.distance.0 - f64::from(north))
+                    .abs()
+                    .total_cmp(&(q.distance.0 - f64::from(north)).abs())
+            })
+            .map(|p| p.elevation.0 as f32)
+            .unwrap()
+    };
+
+    // In the tube (`structures`) the rider would see a skirt as a wall across the road.
+    let (mut over_tunnel, mut beside_it) = (0, 0);
+    let land_skirts = parts
+        .corridor
+        .keys()
+        .filter_map(|&key| parts.skirt_under(key))
+        .chain([parts.outside_skirt()])
+        .map(|skirt| ([0.0; 3], skirt.clone()));
+    for ([cx, _, cz], skirt) in world
+        .chunks
+        .iter()
+        .map(|chunk| (chunk.center, parts.skirt(chunk)))
+        .chain(land_skirts)
+    {
+        for ([x, z], top, bottom) in skirt_extents(&skirt) {
+            let (east, north) = (x + cx, -(z + cz));
+            if top - bottom < 0.01 || east.abs() > 5.0 {
+                continue;
+            }
+            if (250.0..=750.0).contains(&north) {
+                assert!(
+                    bottom >= road(north) + 7.5,
+                    "a skirt reaches down to {bottom} into the tunnel at {north} m north"
+                );
+                over_tunnel += 1;
+            } else if !(200.0..=800.0).contains(&north) {
+                beside_it += 1;
+            }
+        }
+    }
+    assert!(over_tunnel > 0, "no ground hangs over the tunnel");
+    assert!(beside_it > 0, "no ground hangs beside the road outside it");
 }
 
 #[tokio::test]
@@ -6329,6 +6703,58 @@ async fn lakes_lie_level_in_the_land() {
             assert!(bed < water - 0.2, "the bed at {bed} under water at {water}");
         }
     }
+}
+
+#[tokio::test]
+async fn a_lake_cut_by_map_tiles_covers_all_the_ground_it_reaches() {
+    // Map tiles cut a lake into pieces (#560): one beside the road, and one whose corners all
+    // lie beyond the corridor while its edge runs within it, 1.3 km east of the road.
+    struct Lake;
+    impl ElevationModel for Lake {
+        fn elevation(
+            &mut self,
+            _lat: f64,
+            lon: f64,
+        ) -> impl std::future::Future<Output = Result<f64, String>> + Send {
+            let east = (lon - 7.0) * METERS_PER_DEGREE * 46f64.to_radians().cos();
+            std::future::ready(Ok(if east > 50.0 { 429.0 } else { 440.0 }))
+        }
+    }
+    let piece = |east: f64, north: f64, half_east: f64, half_north: f64| Area {
+        cover: LandCover::Water,
+        outer: vec![rectangle(east, north, half_east, half_north)],
+        inner: vec![],
+    };
+    let near = piece(700.0, 500.0, 600.0, 700.0);
+    let far = piece(2150.0, 500.0, 850.0, 2000.0);
+    let route = route_north(&[]).await;
+    let map = MapData {
+        areas: vec![near, far],
+        ..MapData::default()
+    };
+    let world = generate(&route, &mut Lake, &map, &mut |_, _| {}).await;
+
+    // Water wherever the detailed ground lies over either piece.
+    let mut checked = 0;
+    for x in (200..=2900).step_by(50) {
+        for north in (-1400..=2400).step_by(50) {
+            #[allow(clippy::cast_precision_loss)] // small numbers
+            let (x, z) = (x as f32, -(north as f32));
+            let inside_near = (110.0..1290.0).contains(&x) && (-190.0..1190.0).contains(&-z);
+            let inside_far = (1310.0..2990.0).contains(&x) && (-1490.0..2490.0).contains(&-z);
+            if !(inside_near || inside_far) || ground_at(&world, x, z).is_none() {
+                continue;
+            }
+            assert!(
+                height_on(&world, |c| &c.water, x, z).is_some(),
+                "no water at {x}, {z}"
+            );
+            if inside_far {
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 100, "{checked} points of the far piece checked");
 }
 
 #[tokio::test]

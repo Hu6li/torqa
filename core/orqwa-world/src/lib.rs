@@ -57,7 +57,7 @@ pub use benchmark::benchmark;
 pub use building_details::{DetailCell, Facades, building_details, in_reach, out_of_reach};
 pub use climate::{SeasonClimate, season_climate};
 pub use forest_mask::{ForestMask, forest_mask};
-pub use horizon::{HORIZON, Horizon, horizon};
+pub use horizon::{HORIZON, Horizon, HorizonParts, chunk_key, horizon};
 use landcover::LandIndex;
 pub use minimap::{FlatMap, MapFeature, minimap};
 use pace::Workers;
@@ -75,7 +75,7 @@ pub use vegetation::Trees;
 /// differently: a world kept with an older one is still ridden, and its course offers to build
 /// it again (R101). A change that also makes kept worlds unreadable raises
 /// [`stored::FORMAT`] instead or as well.
-pub const GENERATOR: u32 = 52;
+pub const GENERATOR: u32 = 53;
 
 /// Edge length of a terrain chunk.
 pub(crate) const CHUNK_SIZE: f64 = 480.0;
@@ -334,8 +334,8 @@ pub struct World {
     /// The railways of the map near the route, in route coordinates (`u` across the bed of
     /// ballast, below 0 and above 1 on its shoulders, `v` metres along).
     pub railways: MeshData,
-    /// The land beyond the corridor, from [`horizon`] (empty until it is made: it needs a coarse
-    /// terrain model of its own).
+    /// The coarse land around the route, beyond the corridor and under it, from [`horizon`]
+    /// (empty until it is made: it needs a coarse terrain model of its own).
     pub horizon: Horizon,
     /// Terrain samples that had no elevation data and followed the road instead.
     pub fallback_samples: usize,
