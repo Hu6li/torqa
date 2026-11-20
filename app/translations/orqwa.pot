@@ -2563,6 +2563,10 @@ msgstr ""
 msgid "ORQWA cannot open %s: it opens %s files."
 msgstr ""
 
+#: app/ui/update_dialog.gd
+msgid "ORQWA cannot update itself, as its folder cannot be changed."
+msgstr ""
+
 #: app/scenes/account_dialog.gd
 msgid "ORQWA could not connect. Go back to ORQWA to try again."
 msgstr ""
