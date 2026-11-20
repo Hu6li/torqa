@@ -182,7 +182,8 @@ Every `.glb` is glTF 2.0 in its binary form, self-contained:
   lie within it.
 - Images come from buffer views, as `image/png`, `image/jpeg` or, with `EXT_texture_webp`,
   `image/webp`. No `uri` anywhere.
-- Static scenes: no `animations`, `skins` or `cameras`.
+- Static scenes: no `animations`, `skins` or `cameras`. Nodes form trees.
+- No sparse accessors.
 - Extensions used are among `KHR_texture_transform`, `KHR_materials_emissive_strength`,
   `KHR_materials_unlit`, `KHR_mesh_quantization`, `EXT_texture_webp` and
   `ORQWA_terrain_layers`. Only the first five may be required.
@@ -219,6 +220,11 @@ lays up to eight tiling detail layers over the base colour near the camera:
   `fade_m[1]` metres the layers fade out, leaving the base colour.
 - List it in `extensionsUsed`, not `extensionsRequired`: viewers that do not know it show the
   base colour.
+
+## Checking a file
+
+`orqwa-cli world-check <file.oqx>` checks a file as importing it does and shows what it holds,
+for tools that write world files.
 
 ## What ORQWA does with a world file
 

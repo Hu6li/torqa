@@ -13,7 +13,7 @@ mod voice;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use orqwa_app::paths;
 use orqwa_devices::ble::Bluetooth;
@@ -91,6 +91,12 @@ enum Command {
         /// The regions' downloads.
         #[arg(required = true)]
         pbf: Vec<PathBuf>,
+    },
+    /// Check a world file (`.oqx`, ADR 0042) against the format, as importing it does, and show
+    /// what it holds.
+    WorldCheck {
+        /// The world file.
+        file: PathBuf,
     },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
@@ -251,8 +257,35 @@ async fn main() -> Result<()> {
         Command::Detail { pbf, out, region } => detail(pbf, out, region).await,
         Command::BuildingCensus { pbf } => building_census(pbf).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
+        Command::WorldCheck { file } => world_check(&file),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
+}
+
+fn world_check(file: &std::path::Path) -> Result<()> {
+    let started = std::time::Instant::now();
+    let world = orqwa_storage::world::validate(file)
+        .with_context(|| format!("{} is not a valid world file", file.display()))?;
+    println!(
+        "{} {} — {}",
+        world.name,
+        world.version.as_deref().unwrap_or(""),
+        world.licence
+    );
+    println!(
+        "{} sections, {} assets, horizon: {}",
+        world.sections.len(),
+        world.assets.len(),
+        if world.horizon.is_some() { "yes" } else { "no" }
+    );
+    for route in &world.routes {
+        println!("route {}: {}", route.id, route.name);
+    }
+    for credit in &world.attribution {
+        println!("credit: {credit}");
+    }
+    println!("valid, checked in {:.1} s", started.elapsed().as_secs_f64());
+    Ok(())
 }
 
 #[allow(clippy::cast_precision_loss)] // megabytes shown to a tenth

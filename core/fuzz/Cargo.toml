@@ -88,3 +88,10 @@ path = "fuzz_targets/course.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "world"
+path = "fuzz_targets/world.rs"
+test = false
+doc = false
+bench = false
