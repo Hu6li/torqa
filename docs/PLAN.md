@@ -141,6 +141,10 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
     download leaves ORQWA as it was, and the next start removes the old release
   - [x] A folder ORQWA may not change gets the release page and the reason; tested as an
     ordinary user too, since root ignores the permissions
+  - [x] A real x86_64 export updated itself end to end in the dev container, against a stand-in
+    for GitHub with its own trusted certificate: offered, downloaded, swapped in under the
+    rider's folder name, started again and the old release removed; run as an ordinary user
+    from a folder only root may change, it offered the release page and said why
   - [ ] Updated by hand from the first release carrying it to the next one, on x86_64 and arm64
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
