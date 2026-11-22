@@ -81,7 +81,10 @@ of a section centred on [e, n, h] lies at east `e + x`, north `n − z` and elev
   "horizon": "horizon.glb",
   "preview": "preview.png",
   "routes": [
-    { "id": "twann-chasseral", "name": "Twann – Chasseral", "file": "routes/twann-chasseral.json" }
+    {
+      "id": "twann-chasseral", "name": "Twann – Chasseral", "file": "routes/twann-chasseral.json",
+      "countries": [{ "code": "CH", "names": { "en": "Switzerland", "de": "Schweiz", "": "Schweiz" } }]
+    }
   ]
 }
 ```
@@ -106,6 +109,19 @@ of a section centred on [e, n, h] lies at east `e + x`, north `n − z` and elev
 | `routes` | At least one. Ids are unique, 1–64 of `a–z 0–9 -`. |
 
 Every number is finite. Colours are sRGB, from 0 to 1.
+
+Each route may include `countries`: countries it passes, in order, using the same metadata as
+course files. `code` is a unique, uppercase two-letter ISO 3166-1 code. Optional `names` maps
+language codes (`en`, `de`, `de_CH`, …) to names, with the empty key for the country's own
+name. A language code has at most 64 bytes and no control characters; names have 1–1,024
+UTF-8 bytes without control characters. The library shows their codes and names and uses them
+for country search, filters and groups. ORQWA fetches nothing to infer them. Omission or an
+empty list means unknown; routes of a world with `origin.located: false` must omit them or
+use an empty list. Existing format-1 files without this metadata still open.
+
+World-file routes appear under the library's **World** type, separately from generated **3D**
+and **Video** courses. Their cards carry a **World** pill beside the name, matching the
+**Video** pill. `preview.png` keeps its aspect ratio, with rounded image corners.
 
 ### Sections and levels of detail
 

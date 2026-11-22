@@ -437,7 +437,10 @@ def main():
                                                 {"file": "assets/tree/lod1.glb"}]}],
             "horizon": "horizon.glb",
             "preview": "preview.png",
-            "routes": [{"id": "loop", "name": "Test loop", "file": "routes/loop.json"}],
+            "routes": [{"id": "loop", "name": "Test loop", "file": "routes/loop.json",
+                        "countries": [{"code": "CH", "names": {
+                            "en": "Switzerland", "de": "Schweiz", "": "Schweiz"
+                        }}]}],
         }, file, indent=1)
     shutil.rmtree(os.path.join(OUT, "sources"))
     print(f"test world written to {OUT}")

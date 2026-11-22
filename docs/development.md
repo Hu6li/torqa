@@ -556,6 +556,12 @@ checks scrolling at the minimum window size. Do not run rendering alongside chec
 
 Additional UI fixtures use the same real controls without hardware or account credentials:
 
+`SCREENSHOT_WORLDS_ONLY=1 scripts/screenshots.sh` imports the test world and captures the
+World filter, its rounded cover and country, and the course page in English and German.
+Use an isolated `XDG_DATA_HOME`; this mode needs no scenery build or sample ride history.
+`path_card_render_smoke.gd` checks rendered corners for landscape, square and portrait images
+and for the route-only fallback as part of `scripts/check.sh`.
+
 `SCREENSHOT_SUMMARY_ONLY=1 scripts/screenshots.sh` captures just the quick finish dialog over
 a finished fake-trainer workout as `summary-quick.png`, without rendering a 3D world.
 Use a fresh `XDG_DATA_HOME` to show the workout's first power PR in that capture; this mode

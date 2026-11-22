@@ -9,6 +9,7 @@ use orqwa_domain::units::{Meters, Percent, Rpm, Watts};
 use orqwa_physics::DescentMode;
 use serde_json::json;
 
+use crate::library::{CourseKind, CourseQuery, Group, GroupKey, View};
 use crate::tests::{run_until, temp_dir};
 use crate::{App, AppEvent, GhostChoice, TrainerChoice, WHOLE_WORLD, authored};
 
@@ -63,6 +64,11 @@ fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
     write("routes/flat.json", route(0.0));
     write("routes/climb.json", route(0.04));
     write("sections/0/lod0.glb", glb());
+    let countries = if located {
+        json!([{"code": "CH", "names": {"en": "Switzerland", "de": "Schweiz"}}])
+    } else {
+        json!([])
+    };
     write(
         "world.json",
         serde_json::to_vec(&json!({
@@ -83,7 +89,8 @@ fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
             "sections": [{"center": [2000.0, 200.0, 600.0], "radius": 300.0,
                           "lods": [{"file": "sections/0/lod0.glb"}]}],
             "routes": [
-                {"id": "flat", "name": "Along the lake", "file": "routes/flat.json"},
+                {"id": "flat", "name": "Along the lake", "file": "routes/flat.json",
+                 "countries": countries},
                 {"id": "climb", "name": "Up the hill", "file": "routes/climb.json"}
             ]
         }))
@@ -123,11 +130,30 @@ fn a_world_file_is_imported_whole_and_each_route_is_a_ride() {
     let info = climb.world.as_ref().unwrap();
     assert_eq!(info.licence, "All rights reserved");
     assert_eq!(info.routes, ["Along the lake", "Up the hill"]);
-    assert_eq!(
-        climb.manifest.countries,
-        Some(Vec::new()),
-        "nothing to look up"
-    );
+    assert_eq!(climb.manifest.countries, Some(Vec::new()));
+    let lake = courses.iter().find(|c| c.path == first).unwrap();
+    let countries = lake.manifest.countries.as_ref().unwrap();
+    assert_eq!(countries[0].code, "CH");
+    assert_eq!(countries[0].names["de"], "Schweiz");
+
+    // Countries are per route and participate in the same offline search and filters.
+    let query = CourseQuery {
+        kinds: vec![CourseKind::World],
+        countries: vec!["CH".into()],
+        search: "Schweiz".into(),
+        locale: "de_CH".into(),
+        view: View {
+            group: GroupKey::Country,
+            ..View::default()
+        },
+        ..CourseQuery::default()
+    };
+    let gallery = app.course_library(&query);
+    assert_eq!(gallery.groups.len(), 1);
+    assert_eq!(gallery.groups[0].group, Group::Country(Some("CH".into())));
+    assert_eq!(gallery.groups[0].label, "Schweiz");
+    assert_eq!(gallery.groups[0].courses.len(), 1);
+    assert_eq!(gallery.groups[0].courses[0].entry.path, first);
 
     // A new version of the same world replaces it; a broken file is refused whole.
     app.import_course(world(&dir, "Lake", "1.1", true));

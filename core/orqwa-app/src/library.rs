@@ -42,18 +42,21 @@ macro_rules! named {
     };
 }
 
-/// Whether a course is ridden in the 3D world or along a video (R17).
+/// Whether a course uses a generated world, a video or an authored world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CourseKind {
     /// Ridden in the 3D world.
     ThreeD,
     /// Ridden along a video, with or without a place (Tacx RLV).
     Video,
+    /// Ridden in a world authored outside ORQWA (R266).
+    World,
 }
 
 named!(CourseKind {
     ThreeD => "3d",
     Video => "video",
+    World => "world",
 });
 
 /// How hilly a course is, by how much it climbs per kilometre.
@@ -181,7 +184,7 @@ pub enum GroupKey {
     /// One gallery, no groups.
     #[default]
     None,
-    /// 3D and video courses.
+    /// Generated 3D, video and authored world courses.
     Kind,
     /// Flat to mountainous.
     Terrain,
@@ -249,10 +252,12 @@ pub struct LibraryCourse {
 }
 
 impl LibraryCourse {
-    /// Whether it is ridden in the 3D world or along a video.
+    /// Whether it uses a generated world, a video or an authored world.
     #[must_use]
     pub fn kind(&self) -> CourseKind {
-        if self.entry.manifest.video.is_some() {
+        if self.entry.world.is_some() {
+            CourseKind::World
+        } else if self.entry.manifest.video.is_some() {
             CourseKind::Video
         } else {
             CourseKind::ThreeD
@@ -348,7 +353,7 @@ pub struct CourseGroup {
 pub struct Gallery {
     /// How many courses the library holds, shown or not.
     pub total: usize,
-    /// The groups with courses shown, in their own order (3D before video, flat to
+    /// The groups with courses shown, in their own order (3D, video, world; flat to
     /// mountainous, short to long, countries by name and those not known last).
     pub groups: Vec<CourseGroup>,
     /// The countries the library's courses pass, shown or not, by name, then
@@ -568,6 +573,54 @@ mod tests {
             located: true,
         });
         course
+    }
+
+    #[test]
+    fn worlds_have_their_own_type_filter_and_group() {
+        let mut authored = course("Authored", 20.0, 400.0);
+        authored.entry.world = Some(crate::authored::WorldInfo {
+            world: "Lake".into(),
+            version: None,
+            publisher: None,
+            licence: "CC0-1.0".into(),
+            routes: vec!["Authored".into()],
+        });
+        let courses = vec![
+            course("Generated", 20.0, 400.0),
+            video(course("Recorded", 20.0, 400.0)),
+            authored,
+        ];
+        assert_eq!(CourseKind::from_name("world"), Some(CourseKind::World));
+        for (kind, expected) in [
+            (CourseKind::ThreeD, "Generated"),
+            (CourseKind::Video, "Recorded"),
+            (CourseKind::World, "Authored"),
+        ] {
+            let query = CourseQuery {
+                kinds: vec![kind],
+                ..CourseQuery::default()
+            };
+            let found = gallery(courses.clone(), &query, UnitSystem::Metric);
+            assert_eq!(names(&found), [[expected]]);
+        }
+        let combined = CourseQuery {
+            kinds: vec![CourseKind::Video, CourseKind::World],
+            ..CourseQuery::default()
+        };
+        assert_eq!(
+            names(&gallery(courses.clone(), &combined, UnitSystem::Metric)),
+            [["Authored", "Recorded"]]
+        );
+        let grouped = CourseQuery {
+            view: View {
+                group: GroupKey::Kind,
+                ..View::default()
+            },
+            ..CourseQuery::default()
+        };
+        let found = gallery(courses, &grouped, UnitSystem::Metric);
+        assert_eq!(names(&found), [["Generated"], ["Recorded"], ["Authored"]]);
+        assert_eq!(found.groups[2].group, Group::Kind(CourseKind::World));
     }
 
     fn country(code: &str, names: &[(&str, &str)]) -> CourseCountry {

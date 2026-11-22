@@ -1,7 +1,7 @@
 class_name CourseCard
 extends PanelContainer
 ## A course in the gallery (R39): its path card, name and key figures in rows, with the time
-## the rider is estimated to take (R67), marked if it is ridden along a video (R17); click to
+## the rider is estimated to take (R67), marked for video (R17) or world routes (R271); click to
 ## open it, or reach it with the keyboard or the remote and press OK (#228), when a ring shows
 ## it has the focus. The elevation profile is left to the course page. The gallery sets its
 ## width, so its cards share the row; the route grows with it.
@@ -61,8 +61,11 @@ func _init(course: Dictionary, imperial: bool) -> void:
 	var heading: HBoxContainer = HBoxContainer.new()
 	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	heading.add_child(_title)
-	if not str(course.get("video", "")).is_empty():
-		heading.add_child(video_badge())
+	var world: Dictionary = course.get("world", {})
+	if not world.is_empty():
+		heading.add_child(_type_badge(TranslationServer.translate("World")))
+	elif not str(course.get("video", "")).is_empty():
+		heading.add_child(_type_badge(TranslationServer.translate("Video")))
 	rows.add_child(heading)
 	var grid: GridContainer = figure_rows(course, imperial)
 	# From the profile the course file keeps (R67); the course page rides the whole route.
@@ -99,14 +102,14 @@ func name_tooltip() -> String:
 	return _title.tooltip_text
 
 
-## The mark of a video course.
-static func video_badge() -> PanelContainer:
+## Both course types share the same pill so their marks have equal weight in the gallery.
+static func _type_badge(text: String) -> PanelContainer:
 	var badge: PanelContainer = PanelContainer.new()
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	badge.add_theme_stylebox_override("panel", UiTheme.chip(true))
 	var label: Label = Label.new()
-	label.text = TranslationServer.translate("Video")
+	label.text = text
 	label.add_theme_font_size_override("font_size", 12)
 	badge.add_child(label)
 	return badge

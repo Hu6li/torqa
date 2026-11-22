@@ -35,7 +35,7 @@ const GROUP_LABELS: Dictionary[String, String] = {
 	"length": "Length",
 	"country": "Country",
 }
-const KIND_LABELS: Dictionary[String, String] = {"3d": "3D", "video": "Video"}
+const KIND_LABELS: Dictionary[String, String] = {"3d": "3D", "video": "Video", "world": "World"}
 const TERRAIN_LABELS: Dictionary[String, String] = {
 	"flat": "Flat",
 	"rolling": "Rolling",

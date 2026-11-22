@@ -9,6 +9,7 @@
 # SCREENSHOT_CONTINUATION_ONLY=1 captures continuation controls in English/German.
 # SCREENSHOT_CONTINUATION_FILTER_ONLY=1 captures the progress filter without building a world.
 # SCREENSHOT_RIDE_OPTIONS_ONLY=1 stops after course detail and the ride's settings.
+# SCREENSHOT_WORLDS_ONLY=1 captures the World type filter and an imported world's course page.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +19,7 @@ mkdir -p "$out"
 # Weeks of made-up rides, so the history and the Analysis tab (R61) have something to show.
 if [ "${SCREENSHOT_ERRORS_ONLY:-}" != 1 ] && [ "${SCREENSHOT_SETTINGS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GROUP_ONLY:-}" != 1 ] \
+    && [ "${SCREENSHOT_WORLDS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GROUP_RIDERS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_GRAPHICS_ONLY:-}" != 1 ] \
     && [ "${SCREENSHOT_CALORIES_ONLY:-}" != 1 ] \

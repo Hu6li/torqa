@@ -357,6 +357,45 @@ fn routes_are_long_enough_and_without_repeated_points() {
 }
 
 #[test]
+fn route_countries_are_optional_offline_metadata() {
+    let path = archive(&entries());
+    assert_eq!(validate(&path).unwrap().routes[0].countries, []);
+    std::fs::remove_file(path).unwrap();
+    let path = archive(&with_description(|d| {
+        d["routes"][0]["countries"] = json!([
+            {"code": "CH", "names": {"en": "Switzerland", "de": "Schweiz"}},
+            {"code": "FR"}
+        ]);
+    }));
+    let countries = validate(&path).unwrap().routes[0].countries.clone();
+    assert_eq!(countries[0].code, "CH");
+    assert_eq!(countries[0].names["de"], "Schweiz");
+    assert_eq!(countries[1].code, "FR");
+    assert!(countries[1].names.is_empty());
+    std::fs::remove_file(path).unwrap();
+    for codes in [json!(["ch"]), json!(["CHE"]), json!(["CH", "CH"])] {
+        refused(
+            &with_description(|d| {
+                d["routes"][0]["countries"] = codes
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|code| json!({"code": code}))
+                    .collect();
+            }),
+            "route countries",
+        );
+    }
+    refused(
+        &with_description(|d| {
+            d["origin"]["located"] = json!(false);
+            d["routes"][0]["countries"] = json!([{"code": "CH"}]);
+        }),
+        "not on Earth",
+    );
+}
+
+#[test]
 fn a_world_file_is_read_as_it_is_and_never_changed() {
     let path = archive(&entries());
     let before = std::fs::read(&path).unwrap();

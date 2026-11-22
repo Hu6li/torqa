@@ -120,6 +120,13 @@ Use **Filters → Progress → In progress** to find the active rider's saved co
 |---|---|
 | ![Progress beside the existing course filters](images/app/courses-filters.png) | ![Compact progress filter](images/continuation/courses-filters-compact-de.png) |
 
+Use **Type → World** for routes from world files. Their cards carry a **World** pill beside
+the name and show the countries supplied by the author. Square covers keep rounded corners.
+
+| World filter | German |
+|---|---|
+| ![World filter, rounded cover and country](images/worlds/library-filter-en.png) | ![Welt filter and country](images/worlds/library-filter-de.png) |
+
 ![Group ride activity previews and invitations](images/groups/lobby-en.png)
 
 ![A friend sees what the organizer is choosing](images/groups/preview-en.png)

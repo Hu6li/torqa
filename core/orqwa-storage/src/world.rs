@@ -256,6 +256,9 @@ pub struct RouteEntry {
     pub name: String,
     /// Its points in the file, under `routes/`.
     pub file: String,
+    /// Countries this route passes, in order, supplied by its author for the offline library.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub countries: Vec<crate::course::CourseCountry>,
 }
 
 /// A route's points (R267).
@@ -396,6 +399,26 @@ impl Description {
                 return Err(invalid(format!("route id {:?} is not allowed", route.id)));
             }
             text("route name", &route.name, 1024)?;
+            if !self.origin.located && !route.countries.is_empty() {
+                return Err(invalid("a route not on Earth has no countries"));
+            }
+            let mut codes = BTreeSet::new();
+            for country in &route.countries {
+                if country.code.len() != 2
+                    || !country.code.bytes().all(|c| c.is_ascii_uppercase())
+                    || !codes.insert(&country.code)
+                {
+                    return Err(invalid(
+                        "route countries need unique two-letter uppercase codes",
+                    ));
+                }
+                for (language, name) in &country.names {
+                    if language.len() > 64 || language.chars().any(char::is_control) {
+                        return Err(invalid("country language code is not allowed"));
+                    }
+                    text("country name", name, 1024)?;
+                }
+            }
             name(&route.file, "routes/", ".json", Part::Route, &mut parts)?;
         }
         Ok(parts)

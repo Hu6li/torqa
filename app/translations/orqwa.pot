@@ -4187,6 +4187,10 @@ msgstr ""
 msgid "Workouts"
 msgstr ""
 
+#: app/scenes/courses_tab.gd app/ui/course_card.gd
+msgid "World"
+msgstr ""
+
 #: app/scenes/course_detail.gd
 msgid "World: %s"
 msgstr ""

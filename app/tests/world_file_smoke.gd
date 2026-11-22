@@ -56,6 +56,11 @@ func _imported() -> Dictionary:
 			_check(path == _added, "the course added is the world's route")
 			_check(licence == "CC0-1.0", "the library knows the world's licence")
 			_check(length > 590.0, "the route's length comes from the world")
+			var countries: Array = course["countries"]
+			_check(countries.size() == 1, "the author supplies one country")
+			if countries.size() == 1:
+				var code: String = countries[0]["code"]
+				_check(code == "CH", "the author supplies the country code")
 			return course
 	_check(false, "the library lists the world's route")
 	return {}

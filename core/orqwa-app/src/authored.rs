@@ -294,7 +294,7 @@ fn routes_of(path: &Path) -> Result<Vec<CourseEntry>, String> {
             let (route, _, _, name) = open(&which)?;
             Ok(CourseEntry {
                 path: which.path(),
-                manifest: manifest(description, &route, name),
+                manifest: manifest(description, entry, &route, name),
                 world: Some(info.clone()),
             })
         })
@@ -302,7 +302,12 @@ fn routes_of(path: &Path) -> Result<Vec<CourseEntry>, String> {
 }
 
 /// What a course's manifest would say of a world's route.
-fn manifest(world: &Description, route: &Route, name: String) -> Manifest {
+fn manifest(
+    world: &Description,
+    entry: &world::RouteEntry,
+    route: &Route,
+    name: String,
+) -> Manifest {
     Manifest {
         format: orqwa_storage::course::FORMAT_VERSION,
         generator: world
@@ -322,8 +327,8 @@ fn manifest(world: &Description, route: &Route, name: String) -> Manifest {
             crate::PREVIEW_POINTS,
         )),
         video: None,
-        // A world's place is the author's to tell; none is looked up (R269: nothing is fetched).
-        countries: Some(Vec::new()),
+        // The author supplies them: importing a world never fetches map data.
+        countries: Some(entry.countries.clone()),
         map_detail: Vec::new(),
     }
 }

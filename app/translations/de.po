@@ -3397,6 +3397,9 @@ msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den frei
 msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
 msgstr "Die Vorbereitung dieser Strecke benötigt etwa %s zusätzlichen Arbeitsspeicher; %s sind nach einer Reserve von %s für Android verfügbar. Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
 
+msgid "World"
+msgstr "Welt"
+
 msgid "Could not check Android's available memory. Reopen ORQWA and try again."
 msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden. Öffne ORQWA erneut und versuche es noch einmal."
 

@@ -58,6 +58,7 @@ def main():
     for name, seconds, options in (
         ("surface", 120, ["--rendering-driver", "vulkan", "--resolution", "800x240"]),
         ("nameplate_render", 90, ["--rendering-driver", "vulkan", "--resolution", "800x450"]),
+        ("path_card_render", 90, ["--rendering-driver", "vulkan", "--resolution", "320x240"]),
         ("idle_pointer", 90, []),
     ):
         run_check(

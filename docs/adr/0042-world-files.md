@@ -110,6 +110,11 @@ preview.png                the library's picture
 
 ## Consequences
 
+**Amendment (2026-11-22, R270).** World routes have a distinct **World** library type.
+Each route may carry its countries and translated names, using the course metadata shape,
+so cards, country search, filters and groups work offline without modifying the world file.
+Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
+
 - Authors work in any tool that writes glTF; ORQWA needs no exporter for stage 1.
 - ORQWA gains a runtime glTF loader. It keeps the author's materials, unlike the loaders of
   ORQWA's own models, which replace them with ORQWA's shaders.
