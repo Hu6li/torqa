@@ -174,7 +174,8 @@ func ready_around(focus: Vector2) -> bool:
 	_plan(Vector3(focus.x, 0.0, -focus.y))
 	for index: int in _wanted:
 		var wanted: int = _wanted[index]
-		if wanted == 0 and not _shown.has(index):
+		# A coarser level still standing in for the nearest one is not ready yet.
+		if wanted == 0 and _shown.get(index, -1) != 0:
 			return false
 		var instances: String = _sections[index]["instances"]
 		if wanted == 0 and not instances.is_empty() and not _placed.has(index):
