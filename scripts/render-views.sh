@@ -5,8 +5,9 @@
 # VIEWS="village-chase lake-drone" renders only some; OUT_DIR changes the folder, QUALITY the
 # graphics preset (medium by default). GPX=<file> with SHOTS="name:distance:camera ..." renders
 # shots of any route instead (e.g. one from an issue); COURSE=<file.oqc> uses its saved inputs
-# offline; COURSE=<file.oqx> with WORLD_ROUTE=<id> rides a world file's route (ADR 0042). Camera 0 chase, 1 first person, 2 drone,
-# with :right,up,back a camera standing aside (see app/tools/render_views.gd).
+# offline; COURSE=<file.oqx> with WORLD_ROUTE=<id> rides a world file's route (ADR 0042).
+# Camera 0 chase, 1 first person, 2 drone, with :right,up,back a camera standing aside (see
+# app/tools/render_views.gd). RENDER_TIMEOUT (seconds, 1800 by default) bounds each Godot run.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,8 +32,9 @@ if [ -n "${COURSE:-}" ]; then
     routes="$(realpath "$COURSE")"
 fi
 for route in $routes; do
-    # A script error leaves Godot waiting for the world forever, hence the timeout.
-    output="$(ROUTE="$route" OUT_DIR="$out" ORQWA_RENDER_SOFTWARE=1 timeout 1800 xvfb-run -a -s "-screen 0 1600x900x24" \
+    # A script error leaves Godot waiting for the world forever, hence the timeout. World files
+    # render slowly in software (minutes a shot in a village): RENDER_TIMEOUT raises it.
+    output="$(ROUTE="$route" OUT_DIR="$out" ORQWA_RENDER_SOFTWARE=1 timeout "${RENDER_TIMEOUT:-1800}" xvfb-run -a -s "-screen 0 1600x900x24" \
         godot --path "$root/app" --rendering-driver vulkan --resolution 1280x720 \
         -s res://tools/render_views.gd 2>&1)" || status=1
     echo "$output" | grep -E "^saved" || true

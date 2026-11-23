@@ -159,7 +159,8 @@ func update(camera: Vector3, view_m: float, lens: Camera3D = null) -> void:
 		return
 	if lens != null:
 		lens.far = maxf(lens.far, FAR_M)
-	if _focus.distance_to(camera) >= REPLAN_M or view_m != _view_m:
+	var moved: float = Vector2(_focus.x, _focus.z).distance_to(Vector2(camera.x, camera.z))
+	if moved >= REPLAN_M or view_m != _view_m:
 		_view_m = view_m
 		_plan(camera)
 	_take_parts()
@@ -172,10 +173,18 @@ func ready_around(focus: Vector2) -> bool:
 	if _orqwa == null:
 		return true
 	_plan(Vector3(focus.x, 0.0, -focus.y))
+	var here: Vector2 = Vector2(focus.x, -focus.y)
 	for index: int in _wanted:
 		var wanted: int = _wanted[index]
-		# A coarser level still standing in for the nearest one is not ready yet.
-		if wanted == 0 and _shown.get(index, -1) != 0:
+		if wanted == 0 and not _shown.has(index):
+			return false
+		# A coarser level still standing in for the nearest one is not ready yet, where the
+		# nearest is clearly wanted: at the edge of its reach the camera's own plan may differ.
+		var lods: Array = _sections[index]["lods"]
+		var nearest: Dictionary = lods[0]
+		var reach: float = nearest.get("until_m", INF)
+		var inside: bool = _distance(_sections[index], here) < reach - 2.0 * REPLAN_M
+		if wanted == 0 and _shown[index] != 0 and inside:
 			return false
 		var instances: String = _sections[index]["instances"]
 		if wanted == 0 and not instances.is_empty() and not _placed.has(index):
@@ -183,14 +192,19 @@ func ready_around(focus: Vector2) -> bool:
 	return true
 
 
+## How far `here` (x, z) lies from a section's edge, as its levels of detail are chosen by.
+static func _distance(section: Dictionary, here: Vector2) -> float:
+	var center: Vector3 = section["center"]
+	var radius: float = section["radius"]
+	return maxf(here.distance_to(Vector2(center.x, center.z)) - radius, 0.0)
+
+
 func _plan(camera: Vector3) -> void:
 	_focus = camera
 	var here: Vector2 = Vector2(camera.x, camera.z)
 	for index: int in _sections.size():
 		var section: Dictionary = _sections[index]
-		var center: Vector3 = section["center"]
-		var radius: float = section["radius"]
-		var distance: float = maxf(here.distance_to(Vector2(center.x, center.z)) - radius, 0.0)
+		var distance: float = _distance(section, here)
 		var wanted: int = -1
 		if distance <= _view_m:
 			var lods: Array = section["lods"]

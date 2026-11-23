@@ -892,8 +892,8 @@ pub fn pack(from: &Path, to: &Path) -> Result<Description, WorldError> {
     let partial = to.with_extension("oqx.part");
     let written = (|| {
         let mut zip = ZipWriter::new(io::BufWriter::new(File::create(&partial)?));
-        // Parts already compressed (textures in glTF, images) gain nothing from deflating, and
-        // stored ones read faster.
+        // Images are compressed already: deflating gains nothing. glTF geometry, floats and
+        // indices, halves and inflates in milliseconds.
         let stored = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Stored)
             .large_file(true);
@@ -904,8 +904,8 @@ pub fn pack(from: &Path, to: &Path) -> Result<Description, WorldError> {
             std::iter::once((DESCRIPTION, Part::Route)).chain(parts.iter().map(|(n, p)| (*n, *p)));
         for (name, part) in names {
             let options = match part {
-                Part::Glb | Part::Sky | Part::Preview => stored,
-                Part::Instances | Part::Route => deflated,
+                Part::Sky | Part::Preview => stored,
+                Part::Glb | Part::Instances | Part::Route => deflated,
             };
             zip.start_file(name, options)?;
             io::copy(&mut File::open(from.join(name))?, &mut zip)?;
