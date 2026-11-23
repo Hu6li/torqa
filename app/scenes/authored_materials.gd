@@ -11,17 +11,66 @@ const MAX_LAYERS: int = 8
 const DARKEST_MEAN: float = 0.02
 
 
-## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer.
-static func prepare(state: GLTFState) -> void:
-	for texture: Texture2D in state.get_images():
-		var image_texture: ImageTexture = texture as ImageTexture
+## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer; and
+## returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]` pairs
+## without, for `finish_cutouts` on the main thread.
+static func prepare(state: GLTFState) -> Array[Array]:
+	var cutoffs: Dictionary[int, float] = _cutout_images(state)
+	var cutouts: Array[Array] = []
+	var images: Array[Texture2D] = state.get_images()
+	for index: int in images.size():
+		var image_texture: ImageTexture = images[index] as ImageTexture
 		if image_texture == null:
 			continue
 		var image: Image = image_texture.get_image()
 		if image == null or image.has_mipmaps() or image.is_compressed():
 			continue
+		if cutoffs.has(index):
+			cutouts.append([image_texture, cutoffs[index]])
+			continue
 		image.generate_mipmaps()
 		image_texture.set_image(image)
+	return cutouts
+
+
+## Gives cut-out textures (`prepare`) mipmaps that keep their cover: averaged, the alpha of
+## scattered leaves falls below the cutoff as they shrink on screen, until a crown shows only
+## its trunk. Calls the core, so on the main thread.
+static func finish_cutouts(cutouts: Array[Array]) -> void:
+	for cutout: Array in cutouts:
+		var texture: ImageTexture = cutout[0]
+		var cutoff: float = cutout[1]
+		var image: Image = texture.get_image()
+		image.convert(Image.FORMAT_RGBA8)
+		var width: int = image.get_width()
+		var height: int = image.get_height()
+		var chain: PackedByteArray = OrqwaCore.cutout_mipmaps(
+			image.get_data(), width, height, cutoff
+		)
+		if chain.is_empty():
+			image.generate_mipmaps()
+		else:
+			image.set_data(width, height, true, Image.FORMAT_RGBA8, chain)
+		texture.set_image(image)
+
+
+## The images cut-out materials take their colour from, and those materials' cutoffs.
+static func _cutout_images(state: GLTFState) -> Dictionary[int, float]:
+	var found: Dictionary[int, float] = {}
+	var textures: Array[GLTFTexture] = state.get_textures()
+	var described: Array = state.json.get("materials", [])
+	for entry: Variant in described:
+		var material: Dictionary = entry
+		if material.get("alphaMode", "OPAQUE") != "MASK":
+			continue
+		var pbr: Dictionary = material.get("pbrMetallicRoughness", {})
+		var base: Dictionary = pbr.get("baseColorTexture", {})
+		var number: float = base.get("index", -1.0)
+		var index: int = int(number)
+		var cutoff: float = material.get("alphaCutoff", 0.5)
+		if index >= 0 and index < textures.size() and textures[index].src_image >= 0:
+			found[textures[index].src_image] = cutoff
+	return found
 
 
 ## Lets the vertex colours of `root`'s meshes multiply their base colour, as glTF defines them

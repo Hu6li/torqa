@@ -1,9 +1,9 @@
 extends SceneTree
 ## World files (R266–R269, ADR 0042) in the app: imported, listed by route, opened without
 ## building, their sections, placed assets, far landscape and own light in the scene, with the
-## author's materials (mipmapped textures, ORQWA's terrain layers on the ground), and the rider's
-## time, weather and season neither offered nor applied. Uses the test world of
-## art/worlds/test_world.py.
+## author's materials (mipmapped textures, ORQWA's terrain layers on the ground, cut-out leaves
+## keeping their cover in smaller mipmaps), and the rider's time, weather and season neither
+## offered nor applied. Uses the test world of art/worlds/test_world.py.
 ## Run: godot --headless --path app -s res://tests/world_file_smoke.gd
 
 const FIXTURE: String = "../core/fixtures/worlds/test-loop.oqx"
@@ -28,6 +28,7 @@ func _run() -> void:
 	_world = _main.get_node("World")
 	_orqwa.set_graphics_quality("low")
 	_orqwa.course_added.connect(func(path: String) -> void: _added = path)
+	_cutouts()
 	var course: Dictionary = await _imported()
 	if not course.is_empty():
 		await _opened(course)
@@ -141,6 +142,35 @@ func _page(course: Dictionary) -> void:
 	var dialog: ConfirmationDialog = page.get("_confirm_delete")
 	_check("Test loop" in dialog.dialog_text, "deleting names the world's routes")
 	page.free()
+
+
+## Scattered leaves, a third of the texels: averaged plainly, a few levels down none would reach
+## the cutoff and a crown would show its trunk only.
+func _cutouts() -> void:
+	var size: int = 64
+	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 7
+	for y: int in size:
+		for x: int in size:
+			image.set_pixel(x, y, Color(0.2, 0.4, 0.1, 1.0 if rng.randi() % 3 == 0 else 0.0))
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	var cutouts: Array[Array] = [[texture, 0.5]]
+	AuthoredMaterials.finish_cutouts(cutouts)
+	var made: Image = texture.get_image()
+	_check(made.has_mipmaps(), "cut-out textures get mipmaps")
+	var level: Image = Image.create_from_data(
+		8,
+		8,
+		false,
+		Image.FORMAT_RGBA8,
+		made.get_data().slice(made.get_mipmap_offset(3), made.get_mipmap_offset(4))
+	)
+	var covered: int = 0
+	for y: int in 8:
+		for x: int in 8:
+			covered += 1 if level.get_pixel(x, y).a >= 0.5 else 0
+	_check(covered >= 64 / 4, "cut-out leaves keep their cover at 8 × 8 (%d of 64)" % covered)
 
 
 func _wait_until(done: Callable, what: String) -> void:

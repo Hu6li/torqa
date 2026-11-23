@@ -279,11 +279,12 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 	var state: GLTFState = GLTFState.new()
 	var node: Node3D = null
 	if document.append_from_buffer(bytes, "", state) == OK:
-		AuthoredMaterials.prepare(state)
+		var cutouts: Array[Array] = AuthoredMaterials.prepare(state)
 		node = document.generate_scene(state) as Node3D
 		if node != null:
 			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
+			node.set_meta("cutouts", cutouts)
 	_made_lock.lock()
 	_made[file] = node
 	_made_lock.unlock()
@@ -313,6 +314,8 @@ func _use_scene(file: String, node: Node3D) -> void:
 	if node == null:
 		push_warning("world file part %s is not a scene Godot can read" % file)
 		return
+	var cutouts: Array[Array] = node.get_meta("cutouts", [] as Array[Array])
+	AuthoredMaterials.finish_cutouts(cutouts)
 	if file == _horizon:
 		node.name = "Horizon"
 		_horizon_node = node

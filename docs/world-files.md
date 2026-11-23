@@ -207,7 +207,10 @@ Every `.glb` is glTF 2.0 in its binary form, self-contained:
   `ORQWA_terrain_layers`. Only the first five may be required.
 
 Materials are glTF's metallic-roughness PBR, drawn as they are, with Godot's standard
-material. Alpha modes work as glTF defines them; use `MASK` for leaves and fences.
+material. Alpha modes work as glTF defines them; use `MASK` for leaves and fences. A `MASK`
+material's base colour texture gets mipmaps that keep its cover: each smaller level holds as
+much of its area at or above `alphaCutoff` as the full image, so scattered leaves do not thin
+out and vanish as a tree shrinks on screen.
 
 ### `ORQWA_terrain_layers`
 

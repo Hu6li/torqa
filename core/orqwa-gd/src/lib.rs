@@ -69,6 +69,31 @@ impl OrqwaCore {
         microphone_permission::access(request).into()
     }
 
+    /// The mipmap chain of a world file's cut-out texture (RGBA8, `width` × `height`), each
+    /// level keeping the image's cover at `cutoff` (ADR 0042), as `Image.create_from_data`
+    /// takes it; empty if `rgba` is not that image.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn cutout_mipmaps(
+        rgba: PackedByteArray,
+        width: i64,
+        height: i64,
+        cutoff: f64,
+    ) -> PackedByteArray {
+        let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
+            return PackedByteArray::new();
+        };
+        let bytes = rgba.as_slice();
+        if width == 0 || height == 0 || bytes.len() != width * height * 4 {
+            return PackedByteArray::new();
+        }
+        #[allow(clippy::cast_possible_truncation)] // a share in 0–1
+        let cutoff = cutoff as f32;
+        PackedByteArray::from(
+            orqwa_app::authored::cutout::mipmaps(bytes, width, height, cutoff).as_slice(),
+        )
+    }
+
     /// Version of the ORQWA core.
     #[func]
     fn version() -> GString {
@@ -3986,7 +4011,7 @@ impl OrqwaApp {
     /// metres by cell (`Vector2i`), and `dropped`, the loaded cells to let go of. The chunk's
     /// façades are read once, until [`let_go_of_building_details`](Self::let_go_of_building_details).
     #[func]
-    #[allow(clippy::needless_pass_by_value)] // Godot passes arrays by value.
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot.
     fn world_building_details(
         &self,
         index: i64,

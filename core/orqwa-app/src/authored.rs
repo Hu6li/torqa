@@ -15,6 +15,8 @@ use tracing::warn;
 
 use crate::CourseEntry;
 
+pub mod cutout;
+
 /// The world file format, for the scene to read descriptions with.
 pub use orqwa_storage::world::{Description, Lod, Sky};
 
