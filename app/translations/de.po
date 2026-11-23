@@ -295,6 +295,9 @@ msgstr "ORQWA ist freie Software unter der GNU General Public License, Version 3
 msgid "Version %s"
 msgstr "Version %s"
 
+msgid "Version %s is available (you have %s)."
+msgstr "Version %s ist verfügbar (du hast %s)."
+
 msgid "Version %s, branch %s, commit %s"
 msgstr "Version %s, Branch %s, Commit %s"
 
@@ -2190,9 +2193,6 @@ msgstr "Es konnte nicht nach einer neueren Version von ORQWA gesucht werden."
 msgid "Could not start the update's installer."
 msgstr "Das Installationsprogramm des Updates konnte nicht gestartet werden."
 
-msgid "Download it from its release page."
-msgstr "Lade sie von ihrer Release-Seite herunter."
-
 msgid "Downloading ORQWA %s…"
 msgstr "ORQWA %s wird heruntergeladen …"
 
@@ -2214,21 +2214,12 @@ msgstr "Release-Seite öffnen"
 msgid "ORQWA %s is available."
 msgstr "ORQWA %s ist verfügbar."
 
-msgid "ORQWA %s is available; you have %s."
-msgstr "ORQWA %s ist verfügbar; du hast %s."
-
 #: app/ui/picked_file.gd
 msgid "ORQWA cannot open %s: it opens %s files."
 msgstr "ORQWA kann %s nicht öffnen: Es öffnet Dateien vom Typ %s."
 
-msgid "ORQWA downloads and installs it; then open ORQWA again."
-msgstr "ORQWA lädt sie herunter und installiert sie; öffne ORQWA danach wieder."
-
-msgid "ORQWA downloads it, closes and installs it, then starts again."
-msgstr "ORQWA lädt sie herunter, schliesst sich, installiert sie und startet dann neu."
-
-msgid "Your rides and settings stay as they are."
-msgstr "Deine Fahrten und Einstellungen bleiben, wie sie sind."
+msgid "Your rides and settings are kept."
+msgstr "Deine Fahrten und Einstellungen bleiben erhalten."
 
 msgid "ORQWA is up to date."
 msgstr "ORQWA ist auf dem neuesten Stand."
@@ -2580,6 +2571,12 @@ msgstr "%s m"
 
 msgid "Could not complete the group ride action."
 msgstr "Die Aktion für die Gruppenfahrt konnte nicht abgeschlossen werden."
+
+msgid "“%s” downloads and installs the new version, then restarts the app."
+msgstr "„%s“ lädt die neue Version herunter, installiert sie und startet die App neu."
+
+msgid "“%s” downloads and installs the new version. Open the app again when it's done."
+msgstr "„%s“ lädt die neue Version herunter und installiert sie. Öffne die App danach wieder."
 
 msgid "%.1f / %.1f MiB"
 msgstr "%.1f / %.1f MiB"
@@ -3315,6 +3312,9 @@ msgstr "Wieder verbunden"
 
 msgid "You are back with the group."
 msgstr "Du bist wieder bei der Gruppe."
+
+msgid "You can download the new version from the release page."
+msgstr "Du kannst die neue Version von der Release-Seite herunterladen."
 
 msgid "Group ended"
 msgstr "Gruppe beendet"

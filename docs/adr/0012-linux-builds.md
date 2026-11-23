@@ -41,6 +41,8 @@ Options considered:
   glibc rises with it.
 - No desktop integration yet (`.desktop` file, icon, menu entry): riders start `ORQWA.x86_64`
   from the unpacked folder. Flatpak or AppImage can add this later.
+- The unpacked folder is also what updates replace: ORQWA puts a newer release's tarball in its
+  place when the rider agrees (R268, ADR 0023 amendment 2026-11-20).
 - The arm64 export packs both compressed-texture layers (S3TC/BPTC and ETC2/ASTC, about
   0.7 MB more per 1024 px texture): arm64 desktops have GPUs of either kind, and the headless
   smoke test reads only S3TC. See ADR 0020 on the import settings behind it.

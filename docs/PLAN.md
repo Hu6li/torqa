@@ -34,7 +34,8 @@ core/                      Rust workspace (tokio + tracing)
                            a ShiftInput
                            (ADR 0019)
   orqwa-update/            a newer release on GitHub, its Windows installer downloaded and
-                           started over ORQWA (ADR 0023)
+                           started over ORQWA, its Linux tarball put in place of ORQWA's
+                           folder (ADR 0023)
   orqwa-app/               application layer: commands + update() per frame for front ends,
                            the analysis across a rider's rides
   orqwa-gd/                gdext bindings (OrqwaApp node), the sample course (R95)
@@ -134,6 +135,18 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
     now), offered on the start page or after the ride; Windows downloads and installs the new
     MSI and restarts, elsewhere the release page opens; the real GitHub check tried by hand,
     the download and install wait for the first release carrying the MSI
+- [ ] Linux updates in place (R268, ADR 0023 amendment 2026-11-20):
+  - [x] The release's tarball for this processor downloaded, unpacked beside ORQWA's folder with
+    the system's `tar`, checked, swapped in under the folder's name and started once the old
+    ORQWA has quit; a broken download leaves ORQWA as it was, and the next start removes the
+    old release
+  - [x] A folder ORQWA may not change gets the release page; tested as an ordinary user too,
+    since root ignores the permissions
+  - [x] A real x86_64 export updated itself end to end in the dev container, against a stand-in
+    for GitHub with its own trusted certificate: offered, downloaded, swapped in under the
+    rider's folder name, started again and the old release removed; run as an ordinary user
+    from a folder only root may change, it offered the release page
+  - [ ] Updated by hand from the first release carrying it to the next one, on x86_64 and arm64
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices

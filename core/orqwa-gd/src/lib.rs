@@ -201,6 +201,8 @@ impl INode for OrqwaApp {
         } else {
             // Set once per process; a second node keeps the first one's.
             let _ = tracing::subscriber::set_global_default(log::StderrLog);
+            // Started again after an update, the replaced release can go (R268).
+            App::clean_up_update();
             let app = App::new(data_dir(), paths::cache_dir()).map(|mut app| {
                 app.set_lower_priority(background::lower_this_thread);
                 app

@@ -1331,10 +1331,6 @@ msgstr ""
 msgid "Download again"
 msgstr ""
 
-#: app/ui/update_dialog.gd
-msgid "Download it from its release page."
-msgstr ""
-
 #: app/ui/group_next_step.gd
 msgid "Download stopped. Try again when you're ready."
 msgstr ""
@@ -2555,10 +2551,6 @@ msgstr ""
 msgid "ORQWA %s is available."
 msgstr ""
 
-#: app/ui/update_dialog.gd
-msgid "ORQWA %s is available; you have %s."
-msgstr ""
-
 #: app/ui/picked_file.gd
 msgid "ORQWA cannot open %s: it opens %s files."
 msgstr ""
@@ -2589,14 +2581,6 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "ORQWA courses"
-msgstr ""
-
-#: app/ui/update_dialog.gd
-msgid "ORQWA downloads and installs it; then open ORQWA again."
-msgstr ""
-
-#: app/ui/update_dialog.gd
-msgid "ORQWA downloads it, closes and installs it, then starts again."
 msgstr ""
 
 #: app/scenes/account_dialog.gd
@@ -3911,6 +3895,10 @@ msgstr ""
 msgid "Version %s"
 msgstr ""
 
+#: app/ui/update_dialog.gd
+msgid "Version %s is available (you have %s)."
+msgstr ""
+
 #: app/ui/about_page.gd
 msgid "Version %s, branch %s, commit %s"
 msgstr ""
@@ -4183,6 +4171,10 @@ msgstr ""
 msgid "You are back with the group."
 msgstr ""
 
+#: app/ui/update_dialog.gd
+msgid "You can download the new version from the release page."
+msgstr ""
+
 #: app/ui/continuation_dialog.gd
 msgid "You haven't finished this course. Would you like to save your place?"
 msgstr ""
@@ -4308,7 +4300,7 @@ msgid "Your rides"
 msgstr ""
 
 #: app/ui/update_dialog.gd
-msgid "Your rides and settings stay as they are."
+msgid "Your rides and settings are kept."
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -4429,6 +4421,14 @@ msgstr ""
 
 #: app/scenes/profile_tab.gd
 msgid "“%s” and all their rides are deleted."
+msgstr ""
+
+#: app/ui/update_dialog.gd
+msgid "“%s” downloads and installs the new version, then restarts the app."
+msgstr ""
+
+#: app/ui/update_dialog.gd
+msgid "“%s” downloads and installs the new version. Open the app again when it's done."
 msgstr ""
 
 #: app/ui/power_record_badges.gd
