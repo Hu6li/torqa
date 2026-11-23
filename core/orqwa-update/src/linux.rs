@@ -1,12 +1,12 @@
 //! Updating an unpacked Linux release in place (R268, ADR 0023): the new release's tarball is
 //! unpacked beside ORQWA's folder, the two folders are swapped and the new ORQWA is started.
-//! Linux lets a running program's folder be renamed, so ORQWA need not quit first; the old
-//! folder is removed at the next start.
+//! Linux lets a running program's folder be renamed, so ORQWA need not quit first; the new one
+//! starts once it has, and removes the old folder.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::{CannotInstall, UpdateError};
+use crate::UpdateError;
 
 /// The extension every release folder holds beside the program.
 const EXTENSION: &str = "liborqwa_gd.so";
@@ -25,18 +25,16 @@ struct Layout {
 }
 
 impl Layout {
-    fn of(app: &Path) -> Result<Self, CannotInstall> {
-        let folder = app.parent().ok_or(CannotInstall::NotARelease)?;
-        let parent = folder.parent().ok_or(CannotInstall::NotARelease)?;
-        let name = folder.file_name().and_then(|n| n.to_str());
-        let program = app.file_name().and_then(|n| n.to_str());
-        let (Some(name), Some(program)) = (name, program) else {
-            return Err(CannotInstall::NotARelease);
-        };
+    /// The release `app` runs from; none when started from the editor or moved out of it.
+    fn of(app: &Path) -> Option<Self> {
+        let folder = app.parent()?;
+        let parent = folder.parent()?;
+        let name = folder.file_name()?.to_str()?;
+        let program = app.file_name()?.to_str()?;
         if !app.is_file() || !folder.join(EXTENSION).is_file() {
-            return Err(CannotInstall::NotARelease);
+            return None;
         }
-        Ok(Self {
+        Some(Self {
             parent: parent.to_owned(),
             folder: folder.to_owned(),
             name: name.to_owned(),
@@ -57,24 +55,33 @@ impl Layout {
 
 /// Whether ORQWA at `app` can replace its own folder: an unpacked release (the program beside
 /// its extension) in a folder the rider may change.
-pub(crate) fn can_install_at(app: &Path) -> Result<(), CannotInstall> {
-    let layout = Layout::of(app)?;
+pub(crate) fn can_install(app: &Path) -> bool {
+    let Some(layout) = Layout::of(app) else {
+        return false;
+    };
     // Swapping needs both folders' entries in the parent changed. Trying is the only check
     // that also holds for ACLs, read-only mounts and root.
     let probe = layout
         .parent
         .join(format!(".{}-probe-{}", layout.name, std::process::id()));
-    std::fs::create_dir(&probe).map_err(|_| CannotInstall::ReadOnly)?;
+    if std::fs::create_dir(&probe).is_err() {
+        return false;
+    }
     let _ = std::fs::remove_dir(&probe);
-    Ok(())
+    true
 }
 
 /// Puts the release in `tarball` in place of ORQWA at `app` and starts it there; the caller
 /// quits at once. Until the swap, any failure leaves ORQWA as it was.
 pub(crate) fn install(tarball: &Path, app: &Path) -> Result<(), UpdateError> {
+    install_after(tarball, app, std::process::id())
+}
+
+/// [`install`], the new ORQWA starting once the process `running` has exited.
+fn install_after(tarball: &Path, app: &Path, running: u32) -> Result<(), UpdateError> {
     let failed =
         |what: &str, e: &dyn std::fmt::Display| UpdateError::Install(format!("{what}: {e}"));
-    let layout = Layout::of(app).map_err(|e| failed("no release folder", &e))?;
+    let layout = Layout::of(app).ok_or_else(|| failed("no release folder", &app.display()))?;
     let staging = layout.staging();
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir(&staging).map_err(|e| failed("cannot make room for it", &e))?;
@@ -94,8 +101,16 @@ pub(crate) fn install(tarball: &Path, app: &Path) -> Result<(), UpdateError> {
     }
     let _ = std::fs::remove_dir(&staging);
     let _ = std::fs::remove_file(tarball);
-    // The update is in place: a rider whose ORQWA does not start again opens it as usual.
-    if let Err(error) = Command::new(layout.folder.join(&layout.program)).spawn() {
+    // Started at once, the new ORQWA would share the rider's files and the trainer's connection
+    // with the one still quitting. The update is in place either way: a rider whose ORQWA does
+    // not start again opens it as usual.
+    let start = Command::new("sh")
+        .arg("-c")
+        .arg("while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; exec \"$0\"")
+        .arg(layout.folder.join(&layout.program))
+        .arg(running.to_string())
+        .spawn();
+    if let Err(error) = start {
         tracing::warn!(%error, "updated, but cannot start ORQWA again");
     }
     Ok(())
@@ -133,7 +148,7 @@ fn unpack(tarball: &Path, staging: &Path, program: &str) -> Result<PathBuf, Upda
 /// Removes what an update left beside ORQWA at `app`: the replaced release and an unfinished
 /// unpacking. Only beside a release folder, and only the names an update gives them.
 pub(crate) fn clean_up(app: &Path) {
-    let Ok(layout) = Layout::of(app) else {
+    let Some(layout) = Layout::of(app) else {
         return;
     };
     for leftover in [layout.old(), layout.staging()] {
@@ -204,11 +219,20 @@ mod tests {
         let update = tarball(&dir, "0.6.0", true);
         let app = folder.join("ORQWA.x86_64");
 
-        install(&update, &app).unwrap();
+        // Stands in for the ORQWA that is quitting; unreaped, it still counts as running.
+        let mut quitting = Command::new("true").spawn().unwrap();
+
+        install_after(&update, &app, quitting.id()).unwrap();
 
         assert_eq!(read(&folder.join("release")), "0.6.0");
         assert!(!update.exists(), "the tarball is no longer needed");
         assert!(!dir.join("apps/.orqwa-bike-update").exists());
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(
+            !folder.join("started").exists(),
+            "not started while the old ORQWA still runs"
+        );
+        quitting.wait().unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
         while !folder.join("started").exists() {
             assert!(Instant::now() < deadline, "the new ORQWA was not started");
@@ -256,9 +280,9 @@ mod tests {
         release(&folder, "0.5.0", false);
         let app = folder.join("ORQWA.x86_64");
 
-        assert_eq!(can_install_at(&app), Err(CannotInstall::NotARelease));
+        assert!(!can_install(&app));
         std::fs::write(folder.join(EXTENSION), "so").unwrap();
-        assert_eq!(can_install_at(&app), Ok(()));
+        assert!(can_install(&app));
         assert!(
             std::fs::read_dir(&dir).unwrap().count() == 1,
             "the check leaves nothing behind"
@@ -274,16 +298,16 @@ mod tests {
         let app = parent.join("ORQWA/ORQWA.x86_64");
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o555)).unwrap();
 
-        let result = can_install_at(&app);
+        let result = can_install(&app);
         let writable_anyway = std::fs::create_dir(parent.join("probe")).is_ok();
 
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
         if writable_anyway {
             // Root ignores the permissions, so the folder is changeable after all.
             eprintln!("permissions do not hold for this user; checked that the probe agrees");
-            assert_eq!(result, Ok(()));
+            assert!(result);
         } else {
-            assert_eq!(result, Err(CannotInstall::ReadOnly));
+            assert!(!result);
         }
         std::fs::remove_dir_all(dir).unwrap();
     }

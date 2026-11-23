@@ -140,13 +140,6 @@ impl App {
         orqwa_update::clean_up();
     }
 
-    /// Whether ORQWA would install updates itself but its folder lies where the rider may not
-    /// change it (R268): the rider is told why and gets the release page.
-    #[must_use]
-    pub fn update_folder_read_only() -> bool {
-        orqwa_update::can_install_here() == Err(orqwa_update::CannotInstall::ReadOnly)
-    }
-
     /// The downloaded update, for the front end that installs it itself: on Android, ORQWA's
     /// Android plugin hands the APK to Android's installer (ADR 0024).
     #[must_use]

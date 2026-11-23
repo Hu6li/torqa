@@ -224,53 +224,18 @@ pub async fn download(
     Ok(path)
 }
 
-/// Why ORQWA cannot install an update itself here; the rider downloads it instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum CannotInstall {
-    /// This system has no way for ORQWA to install itself (macOS).
-    #[error("ORQWA does not install updates itself on this system")]
-    System,
-    /// ORQWA is not an unpacked release: started from the editor, or its files were moved.
-    #[error("ORQWA is not an unpacked release")]
-    NotARelease,
-    /// ORQWA's folder lies where the rider may not change it.
-    #[error("ORQWA's folder cannot be changed")]
-    ReadOnly,
-}
-
-/// Whether ORQWA, running as `app`, can install an update itself.
-///
-/// # Errors
-/// Why it cannot: on Linux only an unpacked release in a folder the rider may change can.
-pub fn can_install_at(app: &Path) -> Result<(), CannotInstall> {
+/// Whether the running ORQWA can install an update itself; elsewhere the rider downloads it.
+/// On Linux only an unpacked release in a folder the rider may change can (R268).
+#[must_use]
+pub fn can_install() -> bool {
     #[cfg(target_os = "linux")]
     {
-        linux::can_install_at(app)
+        std::env::current_exe().is_ok_and(|app| linux::can_install(&app))
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = app;
-        if cfg!(any(windows, target_os = "android")) {
-            Ok(())
-        } else {
-            Err(CannotInstall::System)
-        }
+        cfg!(any(windows, target_os = "android"))
     }
-}
-
-/// Whether the running ORQWA can install an update itself.
-///
-/// # Errors
-/// Why it cannot, as [`can_install_at`].
-pub fn can_install_here() -> Result<(), CannotInstall> {
-    let app = std::env::current_exe().map_err(|_| CannotInstall::NotARelease)?;
-    can_install_at(&app)
-}
-
-/// Whether the running ORQWA can install an update itself; elsewhere the rider downloads it.
-#[must_use]
-pub fn can_install() -> bool {
-    can_install_here().is_ok()
 }
 
 /// The name a downloaded installer of `version` is saved as, ending as its release name does.

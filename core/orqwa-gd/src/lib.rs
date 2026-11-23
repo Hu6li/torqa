@@ -74,13 +74,6 @@ impl OrqwaCore {
         GString::from(orqwa_domain::version())
     }
 
-    /// Whether ORQWA would install updates itself but its folder lies where the rider may not
-    /// change it (R268), so the rider downloads them instead.
-    #[func]
-    fn update_folder_read_only() -> bool {
-        App::update_folder_read_only()
-    }
-
     /// The commit the core is built from, abbreviated; empty when the build could not tell
     /// (R83).
     #[func]

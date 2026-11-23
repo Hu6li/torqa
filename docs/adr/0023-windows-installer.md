@@ -112,14 +112,15 @@ Options considered:
 - **When it may.** Only an unpacked release updates itself: the program beside
   `liborqwa_gd.so`, in a folder whose parent the rider may change. ORQWA tries to make and
   remove a folder there, the one check that also holds for ACLs, read-only mounts and root.
-  Elsewhere the offer opens the release page, saying why when the folder cannot be changed.
+  Elsewhere the offer opens the release page, as on macOS; the wiki says where to unpack.
 - **Installing.** The tarball for this processor is downloaded into the cache
   (`updates/ORQWA-<version>.tar.gz`) and kept only when complete. The system's `tar` unpacks it
   into `.<folder>-update` beside ORQWA's folder, on the same file system, and the result must
   hold the running program's name, runnable, beside the extension. Then ORQWA's folder is
-  renamed to `.<folder>-old`, the new one takes its name, and the new program is started.
-  Linux lets a running program's folder be renamed, so unlike Windows nothing waits for ORQWA
-  to quit; ORQWA quits at once. A failed second rename puts the old folder back. Up to the
+  renamed to `.<folder>-old` and the new one takes its name. Linux lets a running program's
+  folder be renamed, so the swap needs no helper; only starting the new program waits, in a
+  `sh` loop, until the old process has exited, so the two never share the rider's files or the
+  trainer's connection. A failed second rename puts the old folder back. Up to the
   swap, any failure leaves ORQWA as it was.
 - **Afterwards.** The next start removes `.<folder>-old` and an unfinished `.<folder>-update`,
   and only beside a release folder. Files riders put into ORQWA's folder go with the old

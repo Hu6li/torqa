@@ -15,8 +15,6 @@ var _page: String = ""
 var _installable: bool = false
 ## Android forbids every app to install apps here (Advanced Protection or the device's admin).
 var _forbidden: bool = false
-## ORQWA's folder lies where the rider may not change it, so ORQWA cannot replace it (Linux).
-var _read_only: bool = false
 ## The installer is being downloaded.
 var _downloading: bool = false
 
@@ -55,7 +53,6 @@ func offer(version: String, page: String, installable: bool) -> void:
 		and not Engine.get_singleton(ANDROID).call(&"canInstallUpdates")
 	)
 	_installable = installable and not _forbidden
-	_read_only = not installable and OrqwaCore.update_folder_read_only()
 	_downloading = false
 	_show_offer()
 	UiScale.popup(self, Vector2i(560, 220))
@@ -76,9 +73,6 @@ func _show_offer() -> void:
 			text += " " + tr("This device lets no app install apps, so ORQWA cannot update itself.")
 			text += " " + tr("If Advanced Protection is on, turn it off in Android's settings.")
 			text += " " + tr("It is under Security & privacy; then check for updates again.")
-		elif _read_only:
-			text += " " + tr("ORQWA cannot update itself, as its folder cannot be changed.")
-			text += " " + tr("Download it from its release page.")
 		else:
 			text += " " + tr("Download it from its release page.")
 		ok_button_text = tr("Open the release page")

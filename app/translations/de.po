@@ -2221,9 +2221,6 @@ msgstr "ORQWA %s ist verfügbar; du hast %s."
 msgid "ORQWA cannot open %s: it opens %s files."
 msgstr "ORQWA kann %s nicht öffnen: Es öffnet Dateien vom Typ %s."
 
-msgid "ORQWA cannot update itself, as its folder cannot be changed."
-msgstr "ORQWA kann sich nicht selbst aktualisieren, da sein Ordner nicht geändert werden kann."
-
 msgid "ORQWA downloads and installs it; then open ORQWA again."
 msgstr "ORQWA lädt sie herunter und installiert sie; öffne ORQWA danach wieder."
 
