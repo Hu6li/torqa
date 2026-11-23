@@ -120,7 +120,7 @@ msgid "%s didn't add you in time, or the connection was blocked"
 msgstr ""
 
 #: app/scenes/ride_screen.gd
-msgid "%s disconnected — reconnecting…"
+msgid "%s disconnected. Reconnecting…"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -172,7 +172,7 @@ msgid "%s not found"
 msgstr ""
 
 #: app/ui/ride_devices.gd
-msgid "%s not found — wake it, then reconnect again."
+msgid "%s not found. Wake it, then reconnect."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -536,7 +536,7 @@ msgid "Autumn"
 msgstr ""
 
 #: app/ui/hud_editor.gd
-msgid "Available — drag in to add, drop here to remove"
+msgid "Available: drag in to add, drop here to remove"
 msgstr ""
 
 #: core/orqwa-app/src/hud.rs
@@ -1460,7 +1460,7 @@ msgid "Estimated calories based on power (24% efficiency)."
 msgstr ""
 
 #: core/orqwa-app/src/hud.rs
-msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, you can choose an assumed effort in Rider settings."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -1647,6 +1647,10 @@ msgstr ""
 msgid "Fold the controls away"
 msgstr ""
 
+#: app/translations/extra-msgids.txt
+msgid "For more detailed 3D worlds, download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "For powerful GPUs: the sharpest shadows, the most grass and the farthest view."
 msgstr ""
@@ -1816,7 +1820,7 @@ msgid "HUD"
 msgstr ""
 
 #: app/ui/hud_editor.gd
-msgid "HUD — drop figures where you want them"
+msgid "HUD: drop figures where you want them"
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -2052,7 +2056,7 @@ msgid "Jun"
 msgstr ""
 
 #: app/ui/moment_lines.gd
-msgid "Just {left} to go, give it everything you have left!"
+msgid "Just {left} to go, give it everything!"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -2456,7 +2460,7 @@ msgid "No signal"
 msgstr ""
 
 #: app/scenes/start_page.gd
-msgid "No trainer connected — choose one under Devices."
+msgid "No trainer connected. Choose one under Devices."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2676,7 +2680,7 @@ msgid "Optional age for heart-rate calories (18–100). Increases each New Year.
 msgstr ""
 
 #: app/ui/profile_form.gd
-msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+msgid "Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -4017,10 +4021,6 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Wake the devices first."
-msgstr ""
-
-#: app/translations/extra-msgids.txt
-msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
 msgstr ""
 
 #: app/ui/workout_panel.gd
