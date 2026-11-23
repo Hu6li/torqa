@@ -1,5 +1,5 @@
 //! ORQWA World files (`.oqx`, ADR 0042): worlds an author built outside ORQWA, ridden as they
-//! are (R266). The format is specified in `docs/world-files.md`.
+//! are (R268). The format is specified in `docs/world-files.md`.
 //!
 //! [`validate`] checks a whole file before it enters the library. [`WorldFile`] reads one that
 //! is there, and checks each part again as it reads it: the file may have changed on disk since.
@@ -126,7 +126,7 @@ pub struct Origin {
     pub lat: f64,
     /// Longitude of (0, 0), degrees.
     pub lon: f64,
-    /// Whether the world is a place on Earth, so rides keep their positions (R267).
+    /// Whether the world is a place on Earth, so rides keep their positions (R269).
     pub located: bool,
 }
 
@@ -140,7 +140,7 @@ pub enum DrivesOn {
     Left,
 }
 
-/// A world's light (R268).
+/// A world's light (R270).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Environment {
@@ -261,7 +261,7 @@ pub struct RouteEntry {
     pub countries: Vec<crate::course::CourseCountry>,
 }
 
-/// A route's points (R267).
+/// A route's points (R269).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutePoints {
@@ -651,7 +651,7 @@ pub fn read_description(path: &Path) -> Result<Description, WorldError> {
     description_of(&read_capped(entry, size, MAX_DESCRIPTION_BYTES)?)
 }
 
-/// Checks a whole world file against the format (R266): its archive, its description and every
+/// Checks a whole world file against the format (R268): its archive, its description and every
 /// part it names, each read to its last byte. Run on a worker: it reads gigabytes.
 ///
 /// # Errors

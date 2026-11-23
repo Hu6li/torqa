@@ -241,6 +241,8 @@ pub struct OrqwaApp {
     last_failure: VarDictionary,
     startup_failure: Option<Failure>,
     updated_at: Instant,
+    /// The loaded world's distant land split by its chunks (#560), made with `horizon_meshes`.
+    horizon_parts: orqwa_world::HorizonParts,
 }
 
 #[godot_api]
@@ -281,6 +283,7 @@ impl INode for OrqwaApp {
             last_failure: VarDictionary::new(),
             startup_failure,
             updated_at: Instant::now(),
+            horizon_parts: orqwa_world::HorizonParts::default(),
         }
     }
 
@@ -3904,7 +3907,7 @@ impl OrqwaApp {
         }
     }
 
-    /// The world file the loaded route runs through (R266, ADR 0042), as `authored::description`
+    /// The world file the loaded route runs through (R268, ADR 0042), as `authored::description`
     /// gives it; empty for a course ORQWA builds the world of.
     #[func]
     fn authored_world(&self) -> VarDictionary {
@@ -3916,8 +3919,8 @@ impl OrqwaApp {
             })
     }
 
-    /// Whether the loaded route is a world file's (R266): its light is the author's, so time of
-    /// day, weather and season are not offered (R268).
+    /// Whether the loaded route is a world file's (R268): its light is the author's, so time of
+    /// day, weather and season are not offered (R270).
     #[func]
     fn is_authored_world(&self) -> bool {
         self.app
@@ -3925,7 +3928,7 @@ impl OrqwaApp {
             .is_some_and(|app| app.authored().is_some())
     }
 
-    /// The credits the loaded world file requires (R266), shown during its rides instead of
+    /// The credits the loaded world file requires (R268), shown during its rides instead of
     /// the map's and terrain's; empty for a course.
     #[func]
     fn authored_attribution(&self) -> PackedStringArray {
@@ -3965,23 +3968,76 @@ impl OrqwaApp {
     }
 
     /// The land beyond the corridor: `{ground, water}` as mesh arrays in route coordinates,
-    /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes.
+    /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes. Call it
+    /// once a world is ready: it also prepares the land under the chunks for `horizon_fill` and
+    /// `horizon_under` (#560).
     #[func]
-    fn horizon_meshes(&self) -> VarDictionary {
-        self.app
+    fn horizon_meshes(&mut self) -> VarDictionary {
+        let Some((world, route)) = self
+            .app
             .as_ref()
-            .and_then(App::world)
-            .map_or_else(VarDictionary::new, |world| {
-                vdict! {
-                    "ground" => &mesh_arrays(&world.horizon.ground),
-                    "water" => &mesh_arrays(&world.horizon.water),
-                }
-            })
+            .and_then(|app| Some((app.world()?, app.route()?)))
+        else {
+            self.horizon_parts = orqwa_world::HorizonParts::default();
+            return VarDictionary::new();
+        };
+        self.horizon_parts = orqwa_world::HorizonParts::new(route, &world.horizon);
+        horizon_arrays(
+            &self.horizon_parts.outside,
+            self.horizon_parts.outside_skirt(),
+        )
     }
 
-    /// World chunk `index`: `{center, terrain, buildings, modelled, streets, tracks, urban, water,
-    /// plants, props, labels, wires, grass, flowers}`. `terrain`, `buildings`, `streets`, `tracks` and `water`
-    /// (lakes, rivers and streams) are mesh arrays (`{vertices, normals, uvs, colors, indices}`);
+    /// The land under every chunk of the detailed ground but those in `drawn` (chunk indices),
+    /// as `horizon_meshes` gives it: it fills in for the chunks not in the scene.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn horizon_fill(&self, drawn: PackedInt32Array) -> VarDictionary {
+        let centres = self
+            .app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .map_or(&[][..], |chunks| chunks.centres());
+        let drawn = drawn
+            .as_slice()
+            .iter()
+            .filter_map(|&index| centres.get(usize::try_from(index).ok()?))
+            .map(|&center| orqwa_world::chunk_key(center))
+            .collect();
+        horizon_arrays(
+            &self.horizon_parts.fill(&drawn),
+            &self.horizon_parts.fill_skirts(&drawn),
+        )
+    }
+
+    /// The land under world chunk `index`, as `horizon_meshes` gives it, in route coordinates:
+    /// it stands in for the chunk where the chunk is too far away to be drawn. Empty for a
+    /// world kept from before the land covered the corridor.
+    #[func]
+    fn horizon_under(&self, index: i64) -> VarDictionary {
+        let center = self
+            .app
+            .as_ref()
+            .and_then(App::world_chunks)
+            .and_then(|chunks| chunks.centres().get(usize::try_from(index).ok()?).copied());
+        let Some(key) = center.map(orqwa_world::chunk_key) else {
+            return VarDictionary::new();
+        };
+        match (
+            self.horizon_parts.corridor.get(&key),
+            self.horizon_parts.skirt_under(key),
+        ) {
+            (Some(land), Some(skirt)) => horizon_arrays(land, skirt),
+            (Some(land), None) => horizon_arrays(land, &orqwa_world::MeshData::default()),
+            (None, _) => VarDictionary::new(),
+        }
+    }
+
+    /// World chunk `index`: `{center, terrain, skirt, buildings, modelled, streets, tracks, urban,
+    /// water, plants, props, labels, wires, grass, flowers}`. `terrain`, `skirt` (hanging from
+    /// the terrain's edges below the distant land beside them, #560), `buildings`, `streets`,
+    /// `tracks` and `water` (lakes, rivers and streams) are mesh arrays (`{vertices, normals, uvs,
+    /// colors, indices}`); `skirt` is empty until `horizon_meshes` was called;
     /// `urban` is another mesh array, with paving/concrete/asphalt/curb codes in its colours.
     /// `plants` maps vegetation model names (trees, bushes, ferns, rocks) to `MultiMesh` buffers
     /// (transform and colour), `props` maps roadside model names (guard rails, posts, poles) to
@@ -4009,7 +4065,9 @@ impl OrqwaApp {
         let Some(chunk) = chunk else {
             return VarDictionary::new();
         };
-        graphics::chunk_arrays(&chunk, tree_density)
+        let mut arrays = graphics::chunk_arrays(&chunk, tree_density);
+        arrays.set("skirt", &mesh_arrays(&self.horizon_parts.skirt(&chunk)));
+        arrays
     }
 
     /// Like `world_chunk_with_tree_density`, with the selected season's grass/flower balance.
@@ -4031,7 +4089,9 @@ impl OrqwaApp {
             return VarDictionary::new();
         };
         let season = orqwa_domain::season::Season::from_name(&name.to_string()).unwrap_or_default();
-        graphics::chunk_arrays_for_season(&chunk, tree_density, season)
+        let mut arrays = graphics::chunk_arrays_for_season(&chunk, tree_density, season);
+        arrays.set("skirt", &mesh_arrays(&self.horizon_parts.skirt(&chunk)));
+        arrays
     }
 
     /// The close façade cells of chunk `index` around world `(x, z)` for Ultra (R256), given the
@@ -4904,7 +4964,7 @@ fn course_dict(course: &orqwa_app::CourseEntry, locale: &str) -> VarDictionary {
         // Tacx RLV courses are known only by distance and slope: no 3D world.
         "located" => course.manifest.video.as_ref().is_none_or(|v| v.located),
         "countries" => &countries,
-        // A world's route (R266): its world, licence and every route deleted with it.
+        // A world's route (R268): its world, licence and every route deleted with it.
         "world" => &course.world.as_ref().map_or_else(VarDictionary::new, authored::info),
     }
 }
@@ -4991,6 +5051,16 @@ fn uploads_dict(entry: &orqwa_app::HistoryEntry) -> VarDictionary {
         dict.set(platform.as_str(), upload.url.as_str());
     }
     dict
+}
+
+/// Distant land as `{ground, water}` mesh arrays, its `skirt` drawn with its ground.
+fn horizon_arrays(land: &orqwa_world::Horizon, skirt: &orqwa_world::MeshData) -> VarDictionary {
+    let mut ground = land.ground.clone();
+    ground.append(skirt.clone());
+    vdict! {
+        "ground" => &mesh_arrays(&ground),
+        "water" => &mesh_arrays(&land.water),
+    }
 }
 
 /// Converts mesh data to the arrays Godot's `ArrayMesh` takes; `colors` is empty when the

@@ -49,7 +49,7 @@ pub enum CourseKind {
     ThreeD,
     /// Ridden along a video, with or without a place (Tacx RLV).
     Video,
-    /// Ridden in a world authored outside ORQWA (R266).
+    /// Ridden in a world authored outside ORQWA (R268).
     World,
 }
 

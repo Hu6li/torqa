@@ -177,6 +177,7 @@ func _tree_quality(world: RideWorld) -> void:
 	_check(overridden_density == low_density, "density stays with Low")
 	world.apply_quality("low", {"view_distance": "low"})
 	_check(tree.visibility_range_end == low_range, "range returns without accumulating scaling")
+	_check(tree.lod_bias < 1.0, "Low takes uploaded trees' coarser levels sooner")
 	terrain.remove_child(tree)
 	tree.free()
 	world.apply_quality("ultra", {"view_distance": "low"})

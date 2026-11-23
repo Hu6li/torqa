@@ -1,4 +1,4 @@
-//! What world files must be (R266, docs/world-files.md): whole files are checked before they
+//! What world files must be (R268, docs/world-files.md): whole files are checked before they
 //! enter the library, and reading one never changes it.
 
 use std::io::Write as _;

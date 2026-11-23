@@ -1,6 +1,6 @@
 class_name AuthoredWorld
 extends Node3D
-## A world file's world in the scene (R266, R268, ADR 0042): its sections in the level of detail
+## A world file's world in the scene (R268, R270, ADR 0042): its sections in the level of detail
 ## their distance asks for, the assets placed in them, and its far landscape, all with the
 ## author's own materials. The core reads parts in the background; they are turned into scenes
 ## on worker threads, so the frame never waits for a world being loaded. A section keeps the
@@ -51,7 +51,7 @@ var _focus: Vector3 = Vector3.INF
 var _view_m: float = RideWorld.VISIBILITY_RANGE
 
 
-## Shows the ride's credits in `label` if `shown`: a world file's own (R266), else the map's
+## Shows the ride's credits in `label` if `shown`: a world file's own (R268), else the map's
 ## and terrain's the label was made with.
 static func show_credits(label: Label, orqwa: OrqwaApp, shown: bool) -> void:
 	label.visible = shown
@@ -114,7 +114,7 @@ func stop() -> void:
 	_focus = Vector3.INF
 
 
-## The light of a world file (R268): its sun, ambient light, sky and fog, whatever time of day,
+## The light of a world file (R270): its sun, ambient light, sky and fog, whatever time of day,
 ## weather or season the rider chose; no rain, puddles or wind.
 func light(world: RideWorld, conditions: Dictionary) -> void:
 	var sun: Dictionary = conditions["sun"]

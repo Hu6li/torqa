@@ -110,7 +110,7 @@ preview.png                the library's picture
 
 ## Consequences
 
-**Amendment (2026-11-22, R270).** World routes have a distinct **World** library type.
+**Amendment (2026-11-22, R272).** World routes have a distinct **World** library type.
 Each route may carry its countries and translated names, using the course metadata shape,
 so cards, country search, filters and groups work offline without modifying the world file.
 Omitted countries stay unknown; worlds not placed on Earth cannot supply them.

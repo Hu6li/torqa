@@ -236,7 +236,7 @@ pub struct CourseEntry {
     pub path: PathBuf,
     /// What the course file says about itself; for a world's route, what a course's would.
     pub manifest: Manifest,
-    /// For a world's route, what the library tells of its world (R266).
+    /// For a world's route, what the library tells of its world (R268).
     pub world: Option<authored::WorldInfo>,
 }
 
@@ -858,7 +858,7 @@ pub struct App {
     group_radius: Meters,
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
-    /// The world file of the loaded route, if it is a world's (R266).
+    /// The world file of the loaded route, if it is a world's (R268).
     authored: Option<Arc<authored::Authored>>,
     /// The world files in the library, read once per version.
     worlds: authored::Library,
@@ -1208,7 +1208,7 @@ impl App {
         }
     }
     pub(crate) fn open_shared_course(&mut self, path: PathBuf) {
-        // Worlds are not shared (R269): a group's course is always a course file.
+        // Worlds are not shared (R271): a group's course is always a course file.
         if authored::WorldRoute::parse(&path).is_none() {
             self.open_course_mode(path, true);
         }
@@ -1321,7 +1321,7 @@ impl App {
         });
     }
 
-    /// Opens a world's route (R266): read as authored, with nothing to fetch, match or build.
+    /// Opens a world's route (R268): read as authored, with nothing to fetch, match or build.
     /// Reports [`AppEvent::RouteLoaded`] like [`App::open_course`]; its world is "built" at
     /// once by [`App::build_world`], as the scene reads it from the file itself.
     fn open_world_route(&mut self, path: PathBuf, which: authored::WorldRoute) {
@@ -1705,7 +1705,7 @@ impl App {
             return Err(AppError::CourseNotReady);
         };
         if (self.world.is_none() && self.video.is_none()) || self.authored.is_some() {
-            // A world's route is in the library already, as its world (R266).
+            // A world's route is in the library already, as its world (R268).
             return Err(AppError::CourseNotReady);
         }
         let naming = self.naming.take();
@@ -1862,7 +1862,7 @@ impl App {
     /// # Errors
     /// [`AppError::Reported`] if the file cannot be deleted.
     pub fn delete_course(&mut self, path: &Path) -> Result<(), AppError> {
-        // A world's route goes with its world, all its routes (R266): the course page names them.
+        // A world's route goes with its world, all its routes (R268): the course page names them.
         if let Some(which) = authored::WorldRoute::parse(path) {
             if self
                 .authored
@@ -1950,7 +1950,7 @@ impl App {
     }
 
     /// Copies a course file into the library; reports [`AppEvent::CourseAdded`]. A world file
-    /// (R266) is checked whole first and goes into [`App::worlds_dir`]; the course added is its
+    /// (R268) is checked whole first and goes into [`App::worlds_dir`]; the course added is its
     /// first route.
     pub fn import_course(&mut self, path: PathBuf) {
         if path
@@ -2028,7 +2028,7 @@ impl App {
         courses
     }
 
-    /// The world file the loaded route runs through, if it is a world's route (R266).
+    /// The world file the loaded route runs through, if it is a world's route (R268).
     #[must_use]
     pub fn authored(&self) -> Option<&authored::Authored> {
         self.authored.as_deref()
@@ -2052,7 +2052,7 @@ impl App {
         self.authored.as_ref()?.take(name)
     }
 
-    /// The library's folder of world files (R266): beside the courses, apart from them.
+    /// The library's folder of world files (R268): beside the courses, apart from them.
     #[must_use]
     pub fn worlds_dir(&self) -> PathBuf {
         self.data_dir.join("worlds")
@@ -2215,7 +2215,7 @@ impl App {
     #[must_use]
     pub fn course_preview(path: &Path) -> Option<Vec<u8>> {
         match authored::WorldRoute::parse(path) {
-            // A world's picture is its author's (R266).
+            // A world's picture is its author's (R268).
             Some(which) => authored::preview(&which.file),
             None => course::preview(path),
         }
@@ -2600,7 +2600,7 @@ impl App {
     #[allow(clippy::too_many_lines)] // one load-scoped task: early hand-over, completion and errors
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
         if self.authored.is_some() {
-            // A world file is its world (R266): nothing is built, the scene reads the file.
+            // A world file is its world (R268): nothing is built, the scene reads the file.
             let loaded = LoadedWorld {
                 world: Arc::new(orqwa_world::World::default()),
                 chunks: Arc::new(WorldChunks::none()),
@@ -3858,7 +3858,7 @@ impl App {
             .join(paths::activity_file_name(start));
         let unplaced: Vec<orqwa_domain::recording::Sample>;
         let samples = if self.authored.as_ref().is_some_and(|world| !world.located()) {
-            // A world not placed on Earth has no positions to give (R267): an indoor ride.
+            // A world not placed on Earth has no positions to give (R269): an indoor ride.
             unplaced = active
                 .ride
                 .samples()

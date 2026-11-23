@@ -39,7 +39,7 @@ var _voice_row: Array[Control] = []
 ## of trainer difficulty, which a workout's ERG power leaves no part in.
 var _world_rows: Array[Control] = []
 ## Time of day, weather and season: not offered in a world file's world, whose light is its
-## author's (R268).
+## author's (R270).
 var _condition_rows: Array[Control] = []
 var _video_rows: Array[Control] = []
 var _trainer_rows: Array[Control] = []

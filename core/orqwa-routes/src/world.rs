@@ -1,4 +1,4 @@
-//! Routes of world files (R267, ADR 0042): the line an author drew through their world, ridden
+//! Routes of world files (R269, ADR 0042): the line an author drew through their world, ridden
 //! as it is. Unlike a GPX track it is not matched to a map, its elevations are not corrected or
 //! smoothed, and its distances are the world's own flat metres.
 

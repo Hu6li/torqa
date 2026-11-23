@@ -89,8 +89,9 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
   map, so a shared or synced course is rebuilt offline anywhere without downloading the region
   again; video courses refer to their video instead of embedding it.
 - **3D world generation**: a 1.5 km corridor around the route, coarse land beyond it out to
-  12 km; DEM → chunked heightmap meshes, finer near the road; the road shaped into the ground
-  along the route snapped to the map; streets, railways, bridges and tunnels from the map;
+  12 km and under it, standing in for the corridor's chunks where they are not drawn; DEM →
+  chunked heightmap meshes, finer near the road; the road shaped into the ground along the
+  route snapped to the map; streets, railways, bridges and tunnels from the map;
   buildings as Blender models fitted to the mapped outlines (simple shells further out and for
   odd outlines); MultiMesh vegetation by land cover; water in channels. Built when a ride
   starts, terrain chunks on all cores.
@@ -595,6 +596,12 @@ physically based materials and light, restyled group by group.
   verify native FPS and Low's rendering cost without changing kept worlds.
   - [x] Tall and broad conifers have one short, slender leader, blended into upper whorls at
     every detail level, with front, side, rear and elevated model renders for silhouette review.
+- [x] Distant land under the corridor too (R266, #560): the coarse land stands in for every
+  chunk of the detailed ground that is not drawn, so the sky no longer shows through mountains
+  where the route runs on into the distance; the edges of the detailed ground and of the land
+  hang below each other, so no crack opens where the two meet
+- [x] Lakes cover all the detailed ground they reach, also where map tiles cut them into
+  pieces, and the clouds show no seam (R267, #560)
 - [ ] Distant woods read as dense forest (R146, [measurements](benchmarks/distant-forest.md)):
   - [x] Forest ground turns into a baked canopy of crowns with distance, nearer the fewer trees
     are drawn, out to the horizon; tracks and paths end at 1 km
@@ -1251,7 +1258,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
-### Phase 14 — Authored worlds (R266–R269, #433, [ADR 0042](adr/0042-world-files.md))
+### Phase 14 — Authored worlds (R268–R271, #433, [ADR 0042](adr/0042-world-files.md))
 
 Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
 the format and riding it; the realistic Lake Biel world is built in a private repository.
@@ -1265,8 +1272,8 @@ the format and riding it; the realistic Lake Biel world is built in a private re
   light and credits; textures mipmapped (GPU compression needs KTX2/Basis, not yet tested)
 - [x] A test world made by a script; the usage guide in the wiki
 - [x] World type filter and grouping; author-supplied countries per route for offline cards,
-  country search and filtering; rounded covers at any aspect ratio (R270)
-- [x] World pill beside the course name, matching the Video pill (R271)
+  country search and filtering; rounded covers at any aspect ratio (R272)
+- [x] World pill beside the course name, matching the Video pill (R273)
 - [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data
 - [ ] Stage 3: an editor; `.oqc` courses as a starting point
 - **Exit:** a rider imports a world file and rides each of its routes offline, as authored

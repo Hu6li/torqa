@@ -83,7 +83,7 @@ pub struct Imported {
     pub countries: Option<Vec<CourseCountry>>,
     /// Whether traffic keeps left at each route point; `None` where its country is unknown.
     pub driving_left: Vec<Option<bool>>,
-    /// The world file the route runs through, for a world's route (R266).
+    /// The world file the route runs through, for a world's route (R268).
     pub authored: Option<std::sync::Arc<crate::authored::Authored>>,
 }
 
