@@ -4,7 +4,7 @@ extends ConfirmationDialog
 ## it, ORQWA starting again when done; on Linux the new release takes ORQWA's folder and starts
 ## (R268); on Android ORQWA's Android plugin installs the APK and Android closes ORQWA
 ## (ADR 0024); elsewhere it opens the release page. Shown only outside rides; the rider's rides
-## and settings stay as they are.
+## and settings are kept.
 
 ## ORQWA's Android plugin, there only on Android.
 const ANDROID: StringName = &"OrqwaAndroid"
@@ -59,14 +59,19 @@ func offer(version: String, page: String, installable: bool) -> void:
 
 
 func _show_offer() -> void:
-	var text: String = tr("ORQWA %s is available; you have %s.") % [_version, OrqwaCore.version()]
+	var text: String = (
+		tr("Version %s is available (you have %s).") % [_version, OrqwaCore.version()]
+	)
 	if _installable:
-		if Engine.has_singleton(ANDROID):
-			text += " " + tr("ORQWA downloads and installs it; then open ORQWA again.")
-		else:
-			text += " " + tr("ORQWA downloads it, closes and installs it, then starts again.")
-		text += " " + tr("Your rides and settings stay as they are.")
 		ok_button_text = tr("Update now")
+		# Names the button as translated, so the text always matches it.
+		var how: String = tr("“%s” downloads and installs the new version, then restarts the app.")
+		if Engine.has_singleton(ANDROID):
+			how = tr(
+				"“%s” downloads and installs the new version. Open the app again when it's done."
+			)
+		text += " " + how % ok_button_text
+		text += " " + tr("Your rides and settings are kept.")
 	else:
 		if _forbidden:
 			# Advanced Protection allows no exception for one app: only turning it off helps.
@@ -74,7 +79,7 @@ func _show_offer() -> void:
 			text += " " + tr("If Advanced Protection is on, turn it off in Android's settings.")
 			text += " " + tr("It is under Security & privacy; then check for updates again.")
 		else:
-			text += " " + tr("Download it from its release page.")
+			text += " " + tr("You can download the new version from the release page.")
 		ok_button_text = tr("Open the release page")
 	dialog_text = text
 	cancel_button_text = tr("Later")
