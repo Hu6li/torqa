@@ -72,6 +72,9 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   For a prepared course, set `COURSE=core/orqwa-gd/courses/twann-chasseral.oqc` and
   `SHOTS="shortcut:4200:2:0,180,-20"` (adjust the distance/camera as needed). This opens its saved
   inputs and builds offline, rather than preparing a GPX with fresh provider requests.
+  A world file renders with `COURSE=<file.oqx> WORLD_ROUTE=<route id>`; its village shots take
+  many minutes in software, so set `RENDER_TIMEOUT` (seconds) above the default 30 minutes,
+  which otherwise stops Godot and silently drops the remaining shots.
 
 - `scripts/render-showcase.sh` (on the host, with the portable Godot editor and a release
   extension in `app/bin/`) — website and gallery pictures of saved courses on a real GPU at
