@@ -94,6 +94,34 @@ impl OrqwaCore {
         )
     }
 
+    /// The copies an `instances` group places (`per_copy` floats each) sorted into an asset's
+    /// levels of detail by each one's horizontal distance from (`x`, `z`) in the section's frame,
+    /// one buffer per level of `until` (metres, the last may be `INF`) (ADR 0042); empty if
+    /// `buffer` is not whole copies.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn copies_by_distance(
+        buffer: PackedFloat32Array,
+        per_copy: i64,
+        x: f64,
+        z: f64,
+        until: PackedFloat32Array,
+    ) -> Array<PackedFloat32Array> {
+        let floats = buffer.as_slice();
+        let Ok(per_copy) = usize::try_from(per_copy) else {
+            return Array::new();
+        };
+        if per_copy < 12 || !floats.len().is_multiple_of(per_copy) {
+            return Array::new();
+        }
+        #[allow(clippy::cast_possible_truncation)] // metres within a world
+        let here = [x as f32, z as f32];
+        orqwa_app::authored::copies::by_distance(floats, per_copy, here, until.as_slice())
+            .iter()
+            .map(|level| PackedFloat32Array::from(level.as_slice()))
+            .collect()
+    }
+
     /// Version of the ORQWA core.
     #[func]
     fn version() -> GString {

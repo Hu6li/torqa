@@ -21,7 +21,9 @@ var _wanted: Dictionary[int, int] = {}
 ## Section → the level of detail shown and its node.
 var _shown: Dictionary[int, int] = {}
 var _section_nodes: Dictionary[int, Node3D] = {}
-## Section → its placed assets: `{groups, nodes: Array[MultiMeshInstance3D], lod}`.
+## Section → its placed assets: per `instances` group `{asset, buffer, per_copy, whole, nodes}`,
+## a node per level of the asset's detail, each drawing the copies at that level's distance;
+## `whole` is the level all copies were last given together (-1 when split).
 var _placed: Dictionary[int, Dictionary] = {}
 ## Parts asked of the core and not taken yet.
 var _asked: Dictionary[String, bool] = {}
@@ -225,7 +227,7 @@ func _plan(camera: Vector3) -> void:
 		if not instances.is_empty() and not _placed.has(index):
 			_ask(instances)
 		elif _placed.has(index):
-			_choose_asset_lods(index, distance)
+			_choose_asset_lods(index)
 
 
 func _lod_file(section: Dictionary, lod: int) -> String:
@@ -376,63 +378,112 @@ func _place_assets(file: String, groups: Array) -> void:
 		var section: Dictionary = _sections[index]
 		if section["instances"] != file:
 			continue
-		var nodes: Array[MultiMeshInstance3D] = []
+		var placed: Array[Dictionary] = []
 		for group: Dictionary in groups:
-			var multimesh: MultiMesh = MultiMesh.new()
-			multimesh.transform_format = MultiMesh.TRANSFORM_3D
-			multimesh.use_colors = group["tinted"]
-			var buffer: PackedFloat32Array = group["buffer"]
-			var per_copy: int = 16 if multimesh.use_colors else 12
-			multimesh.instance_count = buffer.size() / per_copy
-			multimesh.buffer = buffer
-			var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
-			instance.multimesh = multimesh
-			instance.position = section["center"]
-			instance.set_meta("asset", group["asset"])
-			add_child(instance)
-			nodes.append(instance)
-		_placed[index] = {"nodes": nodes, "lod": -1}
-		var center: Vector3 = section["center"]
-		var radius: float = section["radius"]
-		var here: Vector2 = Vector2(_focus.x, _focus.z)
-		_choose_asset_lods(index, maxf(here.distance_to(Vector2(center.x, center.z)) - radius, 0.0))
+			var asset: int = group["asset"]
+			if asset < 0 or asset >= _assets.size():
+				continue
+			var tinted: bool = group["tinted"]
+			var asset_lods: Array = _assets[asset]["lods"]
+			var nodes: Array[MultiMeshInstance3D] = []
+			for level: Dictionary in asset_lods:
+				var multimesh: MultiMesh = MultiMesh.new()
+				multimesh.transform_format = MultiMesh.TRANSFORM_3D
+				multimesh.use_colors = tinted
+				var instance: MultiMeshInstance3D = MultiMeshInstance3D.new()
+				instance.multimesh = multimesh
+				instance.position = section["center"]
+				instance.visible = false
+				instance.set_meta("file", level["file"])
+				add_child(instance)
+				nodes.append(instance)
+			(
+				placed
+				. append(
+					{
+						"asset": asset,
+						"buffer": group["buffer"],
+						"per_copy": 16 if tinted else 12,
+						"whole": -2,
+						"nodes": nodes,
+					}
+				)
+			)
+		_placed[index] = {"groups": placed}
+		_choose_asset_lods(index)
 		return
 
 
-## Gives a section's placed assets the level of detail for `distance`, asking for the meshes
-## not made yet.
-func _choose_asset_lods(index: int, distance: float) -> void:
-	var placed: Dictionary = _placed[index]
-	var nodes: Array[MultiMeshInstance3D] = placed["nodes"]
-	for instance: MultiMeshInstance3D in nodes:
-		var asset: int = instance.get_meta("asset")
-		if asset < 0 or asset >= _assets.size():
-			continue
+## Gives each copy placed in a section the level of its asset's detail its own distance from
+## the camera asks for (ADR 0042), asking for the meshes not made yet. Where the whole section
+## lies within one level, its copies go there together without being sorted.
+func _choose_asset_lods(index: int) -> void:
+	var section: Dictionary = _sections[index]
+	var center: Vector3 = section["center"]
+	var radius: float = section["radius"]
+	var here: Vector2 = Vector2(_focus.x - center.x, _focus.z - center.z)
+	var nearest: float = maxf(here.length() - radius, 0.0)
+	var furthest: float = here.length() + radius
+	var groups: Array[Dictionary] = _placed[index]["groups"]
+	for group: Dictionary in groups:
+		var asset: int = group["asset"]
 		var asset_lods: Array = _assets[asset]["lods"]
-		var file: String = ""
+		var until: PackedFloat32Array = PackedFloat32Array()
 		for level: Dictionary in asset_lods:
-			var until: float = level["until_m"]
-			if distance < until:
-				file = level["file"]
-				break
-		instance.visible = not file.is_empty()
-		instance.set_meta("file", file)
-		if file.is_empty():
-			continue
-		if _asset_meshes.has(file):
-			instance.multimesh.mesh = _mesh_for(instance, file)
+			var limit: float = level.get("until_m", INF)
+			until.append(limit)
+		var near_level: int = _level_at(until, nearest)
+		var whole: int = near_level if near_level == _level_at(until, furthest) else -1
+		var was: int = group["whole"]
+		var buffer: PackedFloat32Array = group["buffer"]
+		var per_copy: int = group["per_copy"]
+		var levels: Array[PackedFloat32Array] = []
+		if whole >= 0:
+			if whole == was:
+				continue
+			for level: int in until.size():
+				levels.append(buffer if level == whole else PackedFloat32Array())
 		else:
-			_ask(file)
+			levels = OrqwaCore.copies_by_distance(buffer, per_copy, here.x, here.y, until)
+		group["whole"] = whole
+		var nodes: Array[MultiMeshInstance3D] = group["nodes"]
+		for level: int in mini(nodes.size(), levels.size()):
+			_draw_copies(nodes[level], levels[level], per_copy)
+
+
+## The first of the levels ending at `until` that reaches past `distance`; their count if none.
+static func _level_at(until: PackedFloat32Array, distance: float) -> int:
+	for level: int in until.size():
+		if distance < until[level]:
+			return level
+	return until.size()
+
+
+func _draw_copies(instance: MultiMeshInstance3D, copies: PackedFloat32Array, per_copy: int) -> void:
+	var multimesh: MultiMesh = instance.multimesh
+	var count: int = copies.size() / per_copy
+	instance.visible = count > 0
+	if multimesh.instance_count != count:
+		multimesh.instance_count = count
+	if count == 0:
+		return
+	multimesh.buffer = copies
+	var file: String = instance.get_meta("file")
+	if _asset_meshes.has(file):
+		multimesh.mesh = _mesh_for(instance, file)
+	else:
+		_ask(file)
 
 
 func _refresh_asset_meshes() -> void:
 	for index: int in _placed:
-		var placed: Dictionary = _placed[index]
-		var nodes: Array[MultiMeshInstance3D] = placed["nodes"]
-		for instance: MultiMeshInstance3D in nodes:
-			var file: String = instance.get_meta("file", "")
-			if _asset_meshes.has(file):
-				instance.multimesh.mesh = _mesh_for(instance, file)
+		var groups: Array[Dictionary] = _placed[index]["groups"]
+		for group: Dictionary in groups:
+			var nodes: Array[MultiMeshInstance3D] = group["nodes"]
+			for instance: MultiMeshInstance3D in nodes:
+				var file: String = instance.get_meta("file")
+				if _asset_meshes.has(file) and instance.multimesh.mesh == null:
+					instance.multimesh.mesh = _mesh_for(instance, file)
 
 
 func _let_go(index: int) -> void:
@@ -442,10 +493,11 @@ func _let_go(index: int) -> void:
 	_section_nodes.erase(index)
 	_shown.erase(index)
 	if _placed.has(index):
-		var placed: Dictionary = _placed[index]
-		var nodes: Array[MultiMeshInstance3D] = placed["nodes"]
-		for instance: MultiMeshInstance3D in nodes:
-			instance.queue_free()
+		var groups: Array[Dictionary] = _placed[index]["groups"]
+		for group: Dictionary in groups:
+			var nodes: Array[MultiMeshInstance3D] = group["nodes"]
+			for instance: MultiMeshInstance3D in nodes:
+				instance.queue_free()
 		_placed.erase(index)
 
 

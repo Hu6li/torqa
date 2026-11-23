@@ -137,9 +137,10 @@ not to need thousands of them.
 ### Assets and `instances` files
 
 An asset is a model placed many times: each of its `.glb` files holds one mesh (of any number
-of primitives and materials), placed at the origin. Its levels of detail switch by the distance
-from the camera to the section the copies are in. An `instances` file places assets within its
-section, in little-endian binary:
+of primitives and materials), placed at the origin. Its levels of detail switch for each copy
+by its own distance from the camera, horizontally, as a section's do: `until_m` is measured to
+the copy, not to its section, so the near and far side of a section need not share one level.
+An `instances` file places assets within its section, in little-endian binary:
 
 ```
 "OQXI"              4 bytes
