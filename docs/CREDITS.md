@@ -132,6 +132,10 @@ The Blender skills in `.claude/skills/blender-*` are from
 [ra100/blender-claude-plugin](https://github.com/ra100/blender-claude-plugin) (commit `78e9151`),
 **MIT**; see `.claude/skills/README.md`.
 
+The `humanizer` skill in `.claude/skills/humanizer` is from
+[blader/humanizer](https://github.com/blader/humanizer) (commit `8b067c5`), **MIT**, © 2025
+Siqi Chen; see `.claude/skills/README.md`.
+
 ## Data
 
 The offline Asian and Nordic architecture classifiers (`core/orqwa-world/data/asia.json` and

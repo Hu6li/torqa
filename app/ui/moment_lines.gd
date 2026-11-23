@@ -38,7 +38,7 @@ const LINES: Dictionary[String, Array] = {
 	"one_to_go":
 	[
 		[
-			"Just {left} to go, give it everything you have left!",
+			"Just {left} to go, give it everything!",
 			"Only {left} left, so bring it home strong!",
 		],
 		"{left} to go.",

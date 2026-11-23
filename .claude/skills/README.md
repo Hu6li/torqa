@@ -24,3 +24,12 @@ advice does not apply here; ORQWA runs Blender headless (see `orqwa-art-pipeline
   `blender-scene-rendering`, `blender-geometry-nodes`.
 
 To update them, copy the folders again from upstream and change the commit above.
+
+Imported unchanged from [blader/humanizer](https://github.com/blader/humanizer) at commit
+`8b067c5`, MIT licence (`LICENSE` in its folder):
+
+- `humanizer` — removes AI writing patterns from prose. Use it on the usage wiki, the
+  repository docs and UI strings; when it changes a UI string, update the `msgid` in every
+  translation and regenerate the template.
+
+To update it, copy the folder again from upstream and change the commit above.

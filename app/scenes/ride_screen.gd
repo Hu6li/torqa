@@ -948,7 +948,7 @@ func _on_device_connected(device_name: String) -> void:
 
 
 func _on_device_disconnected(device_name: String) -> void:
-	_show_toast(tr("%s disconnected — reconnecting…") % tr(device_name))
+	_show_toast(tr("%s disconnected. Reconnecting…") % tr(device_name))
 
 
 ## A reconnect from the ride settings (R69) did not find some devices.

@@ -87,7 +87,7 @@ func _init() -> void:
 	_calorie_sex.add_item(tr("Female"))
 	_calorie_sex.add_item(tr("Male"))
 	_calorie_sex.tooltip_text = tr(
-		"Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+		"Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
 	)
 	_calorie_effort.add_item(tr("No estimate"))
 	_calorie_effort.add_item(tr("Easy effort"))

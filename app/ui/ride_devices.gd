@@ -120,4 +120,4 @@ func _on_failed() -> void:
 
 
 func _on_remembered_missing(names: PackedStringArray) -> void:
-	_note.text = tr("%s not found — wake it, then reconnect again.") % ", ".join(names)
+	_note.text = tr("%s not found. Wake it, then reconnect.") % ", ".join(names)

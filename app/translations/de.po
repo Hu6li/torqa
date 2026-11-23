@@ -88,7 +88,7 @@ msgstr "%s zurück"
 msgid "%s connected"
 msgstr "%s verbunden"
 
-msgid "%s disconnected — reconnecting…"
+msgid "%s disconnected. Reconnecting…"
 msgstr "Verbindung zu %s getrennt — wird wiederhergestellt …"
 
 msgid "%s does not follow this route."
@@ -130,13 +130,13 @@ msgstr "Modelle und Daten"
 msgid "No devices connected yet: connect them under Devices on the start page."
 msgstr "Noch keine Geräte verbunden. Verbinde sie auf der Startseite unter Geräte."
 
-msgid "No trainer connected — choose one under Devices."
+msgid "No trainer connected. Choose one under Devices."
 msgstr "Kein Trainer verbunden — wähle einen unter Geräte."
 
 msgid "Not found: %s. Wake the devices, then scan again."
 msgstr "Nicht gefunden: %s. Wecke die Geräte auf und suche erneut."
 
-msgid "%s not found — wake it, then reconnect again."
+msgid "%s not found. Wake it, then reconnect."
 msgstr "%s nicht gefunden — aktiviere das Gerät und verbinde es erneut."
 
 msgid "%s was not found. It holds the course's slopes: put it next to the RLV file."
@@ -229,7 +229,7 @@ msgstr "Zu deinen Trainings hinzugefügt."
 msgid "ORQWA keeps each rendered world on this computer after it is built, so rides on that course start right away. A saved world uses about 10 MB per kilometre. If an update changes how the world looks, regenerate it from the course page."
 msgstr "ORQWA behält jede gerenderte Welt nach dem Erstellen auf diesem Computer, damit Fahrten auf dieser Route sofort starten. Eine gespeicherte Welt belegt etwa 10 MB pro Kilometer. Ändert ein Update das Aussehen, erstelle die Welt auf ihrer Routenseite neu."
 
-msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
+msgid "For more detailed 3D worlds, download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
 msgstr "Möchtest du detailreichere 3D-Welten? Lade die Regionen herunter, in denen du fährst, und öffne dann eine Route, um die Kartendetails in ihrer .oqc-Datei zu speichern. Teile die Datei, damit andere offline mit diesen Details fahren können, ohne die Region erneut herunterzuladen."
 
 msgid "Against all time"
@@ -316,7 +316,7 @@ msgstr "Automatisch"
 msgid "Automatic: a cadence sensor, else the power meter, else the trainer"
 msgstr "Automatisch: ein Trittfrequenzsensor, sonst das Powermeter, sonst der Trainer"
 
-msgid "Available — drag in to add, drop here to remove"
+msgid "Available: drag in to add, drop here to remove"
 msgstr "Verfügbare Datenfelder — zum Hinzufügen in die Vorschau ziehen, zum Entfernen hier ablegen"
 
 msgid "Avg cadence"
@@ -913,7 +913,7 @@ msgstr "HC"
 msgid "HUD"
 msgstr "HUD"
 
-msgid "HUD — drop figures where you want them"
+msgid "HUD: drop figures where you want them"
 msgstr "HUD — Datenfelder dorthin ziehen, wo sie erscheinen sollen"
 
 msgid "Hard"
@@ -2281,7 +2281,7 @@ msgstr "Die halbe Strecke liegt schon hinter dir, lass es weiter rollen!"
 msgid "Halfway."
 msgstr "Halbzeit."
 
-msgid "Just {left} to go, give it everything you have left!"
+msgid "Just {left} to go, give it everything!"
 msgstr "Nur noch {left}, gib alles, was du noch hast!"
 
 msgid "Only {left} left, so bring it home strong!"
@@ -3171,7 +3171,7 @@ msgstr "Geschätzte Kalorien aus Herzfrequenz, Alter, Geschlecht und Gewicht."
 msgid "Estimated calories based on power (24% efficiency)."
 msgstr "Geschätzte Kalorien aus der Leistung (24 % Wirkungsgrad)."
 
-msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, you can choose an assumed effort in Rider settings."
 msgstr "Geschätzte Kalorien. Verwendet zuerst die Leistung, dann die Herzfrequenz mit deinem Alter und Geschlecht. Ohne beides kannst du in den Fahrereinstellungen eine Belastung annehmen."
 
 msgid "Female"
@@ -3201,7 +3201,7 @@ msgstr "Nur aufgezeichnete Sekunden mit ausreichenden Angaben sind enthalten."
 msgid "Optional age for heart-rate calories (18–100). Increases each New Year. 0 means not set."
 msgstr "Optionales Alter für Kalorien aus der Herzfrequenz (18–100). Steigt zu jedem Jahreswechsel. 0 heisst nicht angegeben."
 
-msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+msgid "Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
 msgstr "Optionales Geschlecht für Kalorien aus der Herzfrequenz. Unabhängig von deinem Avatar. Bei Leistung ist kein Geschlecht nötig."
 
 msgid "Rough calorie estimate based on your assumed effort and weight."
