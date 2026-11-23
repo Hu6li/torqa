@@ -8,6 +8,7 @@ extends SceneTree
 
 const FIXTURE: String = "../core/fixtures/worlds/test-loop.oqx"
 const TERRAIN_SHADER: String = "res://shaders/authored_terrain.gdshader"
+const DIFFUSE_TERRAIN_SHADER: String = "res://shaders/authored_terrain_diffuse.gdshader"
 
 var _failed: bool = false
 var _main: Control
@@ -29,6 +30,7 @@ func _run() -> void:
 	_orqwa.set_graphics_quality("low")
 	_orqwa.course_added.connect(func(path: String) -> void: _added = path)
 	_cutouts()
+	_diffuse_materials()
 	var course: Dictionary = await _imported()
 	if not course.is_empty():
 		await _opened(course)
@@ -89,7 +91,11 @@ func _opened(course: Dictionary) -> void:
 			var material: Material = mesh.surface_get_material(surface)
 			if material is ShaderMaterial:
 				terrain = (
-					terrain or (material as ShaderMaterial).shader.resource_path == TERRAIN_SHADER
+					terrain
+					or (
+						(material as ShaderMaterial).shader.resource_path
+						in [TERRAIN_SHADER, DIFFUSE_TERRAIN_SHADER]
+					)
 				)
 			elif material is StandardMaterial3D:
 				var albedo: Texture2D = (material as StandardMaterial3D).albedo_texture
@@ -171,6 +177,40 @@ func _cutouts() -> void:
 		for x: int in 8:
 			covered += 1 if level.get_pixel(x, y).a >= 0.5 else 0
 	_check(covered >= 64 / 4, "cut-out leaves keep their cover at 8 × 8 (%d of 64)" % covered)
+
+
+func _diffuse_materials() -> void:
+	var dry: StandardMaterial3D = StandardMaterial3D.new()
+	dry.albedo_color = Color(0.12, 0.14, 0.08)
+	dry.roughness = 0.98
+	var glass: StandardMaterial3D = StandardMaterial3D.new()
+	glass.roughness = 0.08
+	var metal: StandardMaterial3D = StandardMaterial3D.new()
+	metal.metallic = 1.0
+	var materials: Array[Material] = [dry, glass, metal]
+	var state: GLTFState = GLTFState.new()
+	state.set_materials(materials)
+	state.json = {
+		"materials": [{"extras": {"ORQWA_diffuse": true}}, {}, {"extras": {"ORQWA_diffuse": true}}]
+	}
+	AuthoredMaterials.prepare(state)
+	_check(
+		dry.specular_mode == BaseMaterial3D.SPECULAR_DISABLED, "diffuse surfaces have no sky sheen"
+	)
+	_check(
+		dry.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
+		"diffuse surfaces keep lighting and shadows"
+	)
+	_check(is_equal_approx(dry.roughness, 0.98), "diffuse surfaces keep authored roughness")
+	_check(glass.specular_mode != BaseMaterial3D.SPECULAR_DISABLED, "glass keeps its reflection")
+	_check(metal.specular_mode != BaseMaterial3D.SPECULAR_DISABLED, "metal keeps its reflection")
+	var terrain: ShaderMaterial = AuthoredMaterials._terrain(state, {}, dry)
+	_check(
+		terrain.shader.resource_path == DIFFUSE_TERRAIN_SHADER,
+		"terrain layers preserve diffuse response"
+	)
+	var colour: Color = terrain.get_shader_parameter("base_color")
+	_check(colour == dry.albedo_color, "diffuse terrain keeps the authored colour")
 
 
 func _wait_until(done: Callable, what: String) -> void:

@@ -213,6 +213,26 @@ material's base colour texture gets mipmaps that keep its cover: each smaller le
 much of its area at or above `alphaCutoff` as the full image, so scattered leaves do not thin
 out and vanish as a tree shrinks on screen.
 
+### Diffuse surfaces
+
+Dry porous surfaces can request diffuse lighting without the broad sky reflection that
+remains even at high roughness:
+
+```json
+"extras": { "ORQWA_diffuse": true }
+```
+
+This disables direct specular lobes and reflected sky radiance while preserving diffuse
+sunlight, sky irradiance, shadows, normal maps, textures, cut-out alpha and vertex colours.
+Unlike `KHR_materials_unlit`, it remains lit. Instance tints keep their display-colour
+conversion while glTF mesh colours remain linear.
+The flag applies to nonmetal materials. Glass,
+water and metal should retain their ordinary PBR response. Terrain-layer materials preserve
+the same diffuse response both near the camera and after their detail fades out.
+
+This is optional glTF application metadata, not an extension. Older ORQWA versions can still
+import the file and use its ordinary PBR materials; the flag requires the viewer update.
+
 ### `ORQWA_terrain_layers`
 
 Ground textured from aerial photos is soft at a rider's eye height. This material extension

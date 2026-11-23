@@ -6,6 +6,7 @@ extends RefCounted
 ## the worker thread that makes the scene.
 
 const TERRAIN_LAYERS: String = "ORQWA_terrain_layers"
+const DIFFUSE_MATERIAL: String = "ORQWA_diffuse"
 const MAX_LAYERS: int = 8
 ## A layer's average colour is never darker than this, so a dark layer cannot blow up the base.
 const DARKEST_MEAN: float = 0.02
@@ -15,6 +16,7 @@ const DARKEST_MEAN: float = 0.02
 ## returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]` pairs
 ## without, for `finish_cutouts` on the main thread.
 static func prepare(state: GLTFState) -> Array[Array]:
+	_diffuse_materials(state)
 	var cutoffs: Dictionary[int, float] = _cutout_images(state)
 	var cutouts: Array[Array] = []
 	var images: Array[Texture2D] = state.get_images()
@@ -31,6 +33,24 @@ static func prepare(state: GLTFState) -> Array[Array]:
 		image.generate_mipmaps()
 		image_texture.set_image(image)
 	return cutouts
+
+
+## Roughness spreads a reflection rather than removing it. Dry porous surfaces may request
+## diffuse lighting explicitly, retaining sunlight, shadows and normal maps at every LOD.
+static func _diffuse_materials(state: GLTFState) -> void:
+	var described: Array = state.json.get("materials", [])
+	var materials: Array[Material] = state.get_materials()
+	for index: int in mini(described.size(), materials.size()):
+		var entry: Dictionary = described[index]
+		var metadata: Variant = entry.get("extras", {})
+		var material: BaseMaterial3D = materials[index] as BaseMaterial3D
+		if not metadata is Dictionary or material == null:
+			continue
+		var extras: Dictionary = metadata
+		var diffuse: Variant = extras.get(DIFFUSE_MATERIAL, false)
+		if diffuse is bool and diffuse and material.metallic == 0.0:
+			material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			material.metallic_specular = 0.0
 
 
 ## Gives cut-out textures (`prepare`) mipmaps that keep their cover: averaged, the alpha of
@@ -130,10 +150,13 @@ static func _terrain(state: GLTFState, layers: Dictionary, base: Material) -> Sh
 	terrain.shader = preload("res://shaders/authored_terrain.gdshader")
 	var standard: BaseMaterial3D = base as BaseMaterial3D
 	if standard != null:
+		if standard.specular_mode == BaseMaterial3D.SPECULAR_DISABLED:
+			terrain.shader = preload("res://shaders/authored_terrain_diffuse.gdshader")
 		terrain.set_shader_parameter("base_color", standard.albedo_color)
 		terrain.set_shader_parameter("base_texture", standard.albedo_texture)
 		terrain.set_shader_parameter("has_base_texture", standard.albedo_texture != null)
 		terrain.set_shader_parameter("base_roughness", standard.roughness)
+		terrain.set_shader_parameter("base_specular", standard.metallic_specular)
 	var weights: Array = layers.get("weights", [])
 	for index: int in mini(weights.size(), 2):
 		terrain.set_shader_parameter("weights_%d" % index, _texture(state, weights[index]))

@@ -129,3 +129,10 @@ Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
 - Authored worlds look the same in every season and weather. Opt-in material tags that let
   ORQWA's effects reach chosen parts may follow.
 - A rider cannot ride a world route in a group ride until sharing of bought worlds is decided.
+
+**Amendment (2026-11-23, R274).** `extras.ORQWA_diffuse: true` lets an author disable a dry
+nonmetal surface's specular reflection without making it unlit. This preserves sunlight,
+shadows, normals and vertex colours; terrain layers carry the same response. The flag
+is optional glTF metadata; older viewers ignore it without rejecting the file. Existing
+materials retain their PBR response. Authors must use consistent albedo and lighting across
+tree LODs: swapping a lit near tree for a separately graded unlit atlas changes its colour.
