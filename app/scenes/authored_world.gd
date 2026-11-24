@@ -58,6 +58,24 @@ func _init() -> void:
 	_details = AuthoredDetails.new(self, _ask)
 
 
+func _exit_tree() -> void:
+	_finish_parsing()
+
+
+## The caller stops streaming first. Frames must keep running while workers finish GPU work.
+func finish_pending() -> void:
+	while true:
+		var pending: bool = false
+		for task: int in _parsing.values():
+			if not WorkerThreadPool.is_task_completed(task):
+				pending = true
+				break
+		if not pending:
+			stop()
+			return
+		await get_tree().process_frame
+
+
 ## Optional authored scenery follows the preset, independently of view-distance overrides.
 func apply_quality(quality: String) -> void:
 	_details.apply_quality(quality)
@@ -94,19 +112,7 @@ func start(orqwa: OrqwaApp, info: Dictionary) -> void:
 
 ## Lets go of the world shown, if any.
 func stop() -> void:
-	for task: int in _parsing.values():
-		WorkerThreadPool.wait_for_task_completion(task)
-	_parsing.clear()
-	_made_lock.lock()
-	for node: Node3D in _made.values():
-		if node != null:
-			node.free()
-	_made.clear()
-	_made_lock.unlock()
-	for node: Node3D in _settling.values():
-		if node != null:
-			node.free()
-	_settling.clear()
+	_finish_parsing()
 	_details.clear()
 	for child: Node in get_children():
 		remove_child(child)
@@ -127,6 +133,24 @@ func stop() -> void:
 	_panorama = ""
 	_panorama_environment = null
 	_focus = Vector3.INF
+
+
+## Workers must release their callables and unattached scenes before this owner is destroyed.
+## Active children are left to Node's normal exit/free order when the tree itself is closing.
+func _finish_parsing() -> void:
+	for task: int in _parsing.values():
+		WorkerThreadPool.wait_for_task_completion(task)
+	_parsing.clear()
+	_made_lock.lock()
+	for node: Node3D in _made.values():
+		if node != null:
+			node.free()
+	_made.clear()
+	_made_lock.unlock()
+	for node: Node3D in _settling.values():
+		if node != null:
+			node.free()
+	_settling.clear()
 
 
 ## The light of a world file (R284): its sun, ambient light, sky and fog, whatever time of day,
@@ -280,9 +304,11 @@ func _take_parts() -> void:
 		elif part is PackedByteArray:
 			var bytes: PackedByteArray = part
 			if _threaded:
-				_parsing[file] = WorkerThreadPool.add_task(_make_scene.bind(file, bytes))
+				_parsing[file] = WorkerThreadPool.add_task(
+					_make_scene.bind(file, bytes, _made, _made_lock)
+				)
 			else:
-				_make_scene(file, bytes)
+				_make_scene(file, bytes, _made, _made_lock)
 				_made_lock.lock()
 				_settling[file] = _made.get(file)
 				_made.erase(file)
@@ -294,7 +320,9 @@ func _take_parts() -> void:
 
 ## Runs on a worker thread: the scene of a `.glb`, its textures with mipmaps and its ground
 ## with ORQWA's terrain layers.
-func _make_scene(file: String, bytes: PackedByteArray) -> void:
+static func _make_scene(
+	file: String, bytes: PackedByteArray, made: Dictionary[String, Node3D], made_lock: Mutex
+) -> void:
 	var document: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
 	var node: Node3D = null
@@ -307,9 +335,9 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
 			node.set_meta("cutouts", cutouts)
-	_made_lock.lock()
-	_made[file] = node
-	_made_lock.unlock()
+	made_lock.lock()
+	made[file] = node
+	made_lock.unlock()
 
 
 ## Optional glTF node metadata links a horizon group to a section, without burying either

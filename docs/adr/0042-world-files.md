@@ -161,3 +161,16 @@ index's straight spans. Reprojection pulled the smooth position sideways in tigh
 and changed its progress along the lane. Generated roads still use their fitted carriageway
 correction. This fixes avatar and ghost placement without changing the route, its key,
 physics, elevation or stored data; existing worlds need no regeneration for the motion fix.
+
+**Amendment (2026-11-25, R294).** Preparing a new authored ride moves the hidden camera's
+horizontal position to the requested entry. Otherwise the ordinary frame loop can stream
+around the previous ride's camera while preparation streams around the entry, repeatedly
+evicting each other's scenes and preventing the second ride from starting. The normal camera
+pose is set when riding starts. Scene parsing runs through a static worker callable with an
+explicit mailbox and mutex. Both replacing the world and leaving the tree join every pending
+task and free its unattached results before the owner can be destroyed. Active children follow
+Node's normal teardown order. Closing the window or exiting for an update first cancels
+preparation and stops streaming, then keeps processing frames until parsing finishes. A join
+inside engine teardown can deadlock pending scene work. The final tree
+exit therefore has no pending authored workers to join. The world file and the stored-world
+format stay unchanged.

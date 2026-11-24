@@ -56,6 +56,7 @@ def main():
             f"{name.upper().replace('_', ' ')} SMOKE TEST PASSED",
         )
     for name, seconds, options in (
+        ("authored_reload", 120, ["--rendering-driver", "vulkan", "--resolution", "800x450"]),
         ("surface", 120, ["--rendering-driver", "vulkan", "--resolution", "800x240"]),
         ("nameplate_render", 90, ["--rendering-driver", "vulkan", "--resolution", "800x450"]),
         ("path_card_render", 90, ["--rendering-driver", "vulkan", "--resolution", "320x240"]),
