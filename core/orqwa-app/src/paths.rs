@@ -48,7 +48,7 @@ pub fn cache_dir() -> PathBuf {
     base.join("orqwa")
 }
 
-/// This device's own folder for activating sold worlds (ADR 0043, R279): the device secret and
+/// This device's own folder for activating sold worlds (ADR 0043, R293): the device secret and
 /// activations. It never roams with a profile or syncs with the data folder, and is no cache a
 /// cleaner empties: copied to another device, it would open nothing there anyway.
 #[must_use]

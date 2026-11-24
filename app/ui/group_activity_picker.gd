@@ -186,7 +186,7 @@ func refresh() -> void:
 	for entry: Dictionary in _courses:
 		var video: String = entry.get("video", "")
 		var world: Dictionary = entry.get("world", {})
-		# Worlds are not shared (R271).
+		# Worlds are not shared (R285).
 		if not video.is_empty() or not world.is_empty():
 			continue
 		var course_name: String = entry["name"]

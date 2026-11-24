@@ -90,6 +90,21 @@ const PATHS: Dictionary[String, String] = {
 	"ascending": '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
 	"descending": '<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>',
 	"speaking": SPEAKER,
+	"camera":
+	'<path d="M3.5 8h3.5l1.5-2.5h7L17 8h3.5v11h-17z"/><circle cx="12" cy="13.2" r="3.3"/>',
+	# Round the rider, the dot, seen from above: to their left is clockwise (R276).
+	"orbit_right":
+	(
+		'<circle cx="12" cy="12" r="2" fill="COLOR" stroke="none"/>'
+		+ '<path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M10.8 7.05H7.05V3.3"/>'
+	),
+	"orbit_left":
+	(
+		'<circle cx="12" cy="12" r="2" fill="COLOR" stroke="none"/>'
+		+ '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M13.2 7.05h3.75V3.3"/>'
+	),
+	"nearer": '<circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5.2-5.2M8 10.5h5M10.5 8v5"/>',
+	"further": '<circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5.2-5.2M8 10.5h5"/>',
 }
 static var _cache: Dictionary[String, ImageTexture] = {}
 

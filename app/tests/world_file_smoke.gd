@@ -1,9 +1,9 @@
 extends SceneTree
-## World files (R268–R271, ADR 0042) in the app: imported, listed by route, opened without
+## World files (R282–R285, ADR 0042) in the app: imported, listed by route, opened without
 ## building, their sections, placed assets, far landscape and own light in the scene, with the
 ## author's materials (mipmapped textures, ORQWA's terrain layers on the ground, cut-out leaves
 ## keeping their cover in smaller mipmaps), and the rider's time, weather and season neither
-## offered nor applied. A paid world (R279) is listed locked and its page asks for the licence
+## offered nor applied. A paid world (R293) is listed locked and its page asks for the licence
 ## key. Uses the test world of art/worlds/test_world.py, and a paid copy of it.
 ## Run: godot --headless --path app -s res://tests/world_file_smoke.gd
 
@@ -117,7 +117,7 @@ func _trees_placed() -> bool:
 	return false
 
 
-## The world's own sun stays, whatever the rider's time of day and weather (R270).
+## The world's own sun stays, whatever the rider's time of day and weather (R284).
 func _light() -> void:
 	var sun: DirectionalLight3D = _world.get_node("Sun")
 	_check(is_equal_approx(sun.light_energy, 1.5), "the world's sun shines")

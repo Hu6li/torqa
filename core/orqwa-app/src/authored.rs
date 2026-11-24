@@ -1,4 +1,4 @@
-//! Worlds authored outside ORQWA (R268–R271, ADR 0042): world files in the library's
+//! Worlds authored outside ORQWA (R282–R285, ADR 0042): world files in the library's
 //! `worlds/` folder, each of their routes a ride of its own. A route is known to the rest of the
 //! app by a path, `<world file>#<route id>`, so the library, the course page and the rides on it
 //! need no second way to name what is ridden.
@@ -77,7 +77,7 @@ pub struct WorldInfo {
     pub routes: Vec<String>,
     /// The world's id, which activations name.
     pub id: String,
-    /// Whether it is sold and not activated on this device (R279).
+    /// Whether it is sold and not activated on this device (R293).
     pub locked: bool,
     /// Who bought it, if it is activated on this device.
     pub licensee: Option<String>,
@@ -92,7 +92,7 @@ pub struct Authored {
     pub route: String,
     /// The road's width at each of the route's points, metres.
     pub widths: Vec<f64>,
-    /// Who bought it, if it is sold and activated on this device (R279).
+    /// Who bought it, if it is sold and activated on this device (R293).
     pub licensee: Option<String>,
     /// Parts of the world read for the scene, until it takes them.
     parts: Mutex<HashMap<String, Result<Part, String>>>,
@@ -110,7 +110,7 @@ pub enum Part {
 }
 
 impl Authored {
-    /// Whether rides on it keep their positions (R269).
+    /// Whether rides on it keep their positions (R283).
     #[must_use]
     pub fn located(&self) -> bool {
         self.file.description().origin.located

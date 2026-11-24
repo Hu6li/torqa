@@ -209,7 +209,7 @@ pub const METRICS: &[Metric] = &[
     metric("training_stress", "TSS", "", 0, MetricKind::Number, 38.0),
     metric("work", "Work", "kJ", 0, MetricKind::Number, 412.0),
     metric("calories", "Calories", "kcal", 0, MetricKind::Number, 410.0).described(
-        "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+        "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, you can choose an assumed effort in Rider settings."
     ),
 ];
 

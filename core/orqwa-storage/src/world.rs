@@ -1,11 +1,11 @@
 //! ORQWA World files (`.oqx`, ADR 0042): worlds an author built outside ORQWA, ridden as they
-//! are (R268). The format is specified in `docs/world-files.md`.
+//! are (R282). The format is specified in `docs/world-files.md`.
 //!
 //! [`validate`] checks a whole file before it enters the library. [`WorldFile`] reads one that
 //! is there, and checks each part again as it reads it: the file may have changed on disk since.
 //! Nothing here writes to, repairs or deletes a world file.
 //!
-//! Only files the maintainers signed open (ADR 0043, R278): `manifest.json` lists every other
+//! Only files the maintainers signed open (ADR 0043, R292): `manifest.json` lists every other
 //! entry with its SHA-512 and `signature.json` signs it. The signature is checked before
 //! anything else is read, and each entry against its hash whenever it is read. Encrypted parts
 //! open with the content key an activation gives ([`WorldFile::unlock`]).
@@ -83,13 +83,13 @@ pub enum WorldError {
     /// The file breaks a rule of the format: which, and where.
     #[error("{0}")]
     Invalid(String),
-    /// The file has no signature (R278).
+    /// The file has no signature (R292).
     #[error("this world is not signed by ORQWA")]
     Unsigned,
-    /// The signature, its key or the world was refused (R278, R280).
+    /// The signature, its key or the world was refused (R292, R294).
     #[error("{0}")]
     Licence(#[from] LicenceError),
-    /// An encrypted part was asked for before the world was unlocked (R279).
+    /// An encrypted part was asked for before the world was unlocked (R293).
     #[error("this world is locked: activate it to ride it")]
     Locked,
 }
@@ -150,7 +150,7 @@ pub struct Origin {
     pub lat: f64,
     /// Longitude of (0, 0), degrees.
     pub lon: f64,
-    /// Whether the world is a place on Earth, so rides keep their positions (R269).
+    /// Whether the world is a place on Earth, so rides keep their positions (R283).
     pub located: bool,
 }
 
@@ -164,7 +164,7 @@ pub enum DrivesOn {
     Left,
 }
 
-/// A world's light (R270).
+/// A world's light (R284).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Environment {
@@ -285,7 +285,7 @@ pub struct RouteEntry {
     pub countries: Vec<crate::course::CourseCountry>,
 }
 
-/// A route's points (R269).
+/// A route's points (R283).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutePoints {
@@ -761,7 +761,7 @@ pub fn read_description(path: &Path, trust: &Trust) -> Result<Description, World
     Ok(signed(&mut open_zip(path)?, Some(trust))?.description)
 }
 
-/// Checks a whole world file against the format (R268, R278): its signature, its archive, its
+/// Checks a whole world file against the format (R282, R292): its signature, its archive, its
 /// description and every part it names, each read to its last byte and compared with its
 /// signed hash. Encrypted parts are checked against their hash and size only; their content is
 /// checked whenever they are read unlocked. Run on a worker: it reads gigabytes.

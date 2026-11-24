@@ -50,7 +50,7 @@ static func prepare(
 	return false
 
 
-## A world file's world needs no building (R268): the sections around `focus` are loaded.
+## A world file's world needs no building (R282): the sections around `focus` are loaded.
 static func _prepare_authored(
 	world: RideWorld, orqwa: OrqwaApp, focus: Vector2, progress: Callable, requested: Callable
 ) -> bool:

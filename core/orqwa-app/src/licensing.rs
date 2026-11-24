@@ -1,4 +1,4 @@
-//! Sold worlds on this device (ADR 0043, R279): which worlds it may open, activating one with a
+//! Sold worlds on this device (ADR 0043, R293): which worlds it may open, activating one with a
 //! licence key and releasing it again. The device secret and activations live in the device
 //! folder ([`crate::paths::device_dir`]), never in the data folder that riders sync. Only
 //! activating and releasing reach the network; opening an activated world never does.

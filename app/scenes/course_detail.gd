@@ -55,9 +55,9 @@ var _videos_button: Button = Button.new()
 var _spinner: Spinner = Spinner.new()
 var _delete_button: Button = Button.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
-## A world's route (R268): its world, publisher and licence.
+## A world's route (R282): its world, publisher and licence.
 var _world: Label = Label.new()
-## A sold world (R279): activate it here, or release this device.
+## A sold world (R293): activate it here, or release this device.
 var _licence: WorldLicence = WorldLicence.new()
 var _edit_dialog: CourseEditDialog = CourseEditDialog.new()
 ## Courses with a video are ridden along it or in 3D, as chosen when riding (#44).
@@ -411,7 +411,7 @@ func _open_editor() -> void:
 	_edit_dialog.edit(_orqwa, course_name, video, loaded)
 
 
-## A world's route is named by its author and goes with its world (R268); a course is the
+## A world's route is named by its author and goes with its world (R282); a course is the
 ## rider's own.
 func _show_world(world: Dictionary) -> void:
 	_world.visible = not world.is_empty()

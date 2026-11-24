@@ -34,7 +34,8 @@ core/                      Rust workspace (tokio + tracing)
                            a ShiftInput
                            (ADR 0019)
   orqwa-update/            a newer release on GitHub, its Windows installer downloaded and
-                           started over ORQWA (ADR 0023)
+                           started over ORQWA, its Linux tarball put in place of ORQWA's
+                           folder (ADR 0023)
   orqwa-app/               application layer: commands + update() per frame for front ends,
                            the analysis across a rider's rides
   orqwa-gd/                gdext bindings (OrqwaApp node), the sample course (R95)
@@ -134,6 +135,18 @@ scripts/                   container helpers: checks, builds (GDExtension, FFmpe
     now), offered on the start page or after the ride; Windows downloads and installs the new
     MSI and restarts, elsewhere the release page opens; the real GitHub check tried by hand,
     the download and install wait for the first release carrying the MSI
+- [ ] Linux updates in place (R268, ADR 0023 amendment 2026-11-20):
+  - [x] The release's tarball for this processor downloaded, unpacked beside ORQWA's folder with
+    the system's `tar`, checked, swapped in under the folder's name and started once the old
+    ORQWA has quit; a broken download leaves ORQWA as it was, and the next start removes the
+    old release
+  - [x] A folder ORQWA may not change gets the release page; tested as an ordinary user too,
+    since root ignores the permissions
+  - [x] A real x86_64 export updated itself end to end in the dev container, against a stand-in
+    for GitHub with its own trusted certificate: offered, downloaded, swapped in under the
+    rider's folder name, started again and the old release removed; run as an ordinary user
+    from a folder only root may change, it offered the release page
+  - [ ] Updated by hand from the first release carrying it to the next one, on x86_64 and arm64
 - **Exit:** macOS CI artifact runs on M1 and calls into Rust
 
 ### Phase 1 — Devices
@@ -443,6 +456,10 @@ Built in rideable steps:
   the choice is kept and ORQWA starts that way
 - [x] Full-screen button beside Overlay in the ride control bar (R150, #376), with an
   icon and tooltip that follow the window when switched by the keyboard or settings too
+- [x] Chase and drone from eight sides, 45° apart, near, normal or far (R276): Shift + left and
+  right go round the rider, Shift + up and down nearer and further; small buttons above the
+  ride bar do the same, and the side is a ride option; first person looks round, up and down
+  with them; the free camera keeps Shift + arrows
 - [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
   full screen (R177, #439)
 - [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a
@@ -1258,7 +1275,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
-### Phase 14 — Authored worlds (R268–R281, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
+### Phase 14 — Authored worlds (R282–R295, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
 
 Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
 the format and riding it; the realistic Lake Biel world is built in a private repository.
@@ -1272,12 +1289,12 @@ the format and riding it; the realistic Lake Biel world is built in a private re
   light and credits; textures mipmapped (GPU compression needs KTX2/Basis, not yet tested)
 - [x] A test world made by a script; the usage guide in the wiki
 - [x] World type filter and grouping; author-supplied countries per route for offline cards,
-  country search and filtering; rounded covers at any aspect ratio (R272)
-- [x] World pill beside the course name, matching the Video pill (R273)
-- [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R274)
-- [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R275)
-- [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R276–R277)
-- [x] ADR 0043: signed and licensed world files (R278–R281)
+  country search and filtering; rounded covers at any aspect ratio (R286)
+- [x] World pill beside the course name, matching the Video pill (R287)
+- [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R288)
+- [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R289)
+- [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R290–R291)
+- [x] ADR 0043: signed and licensed world files (R292–R295)
 - [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, revocation lists,
   chunked AES-256-GCM, device secret and activations; aws-lc-rs 1.19 as a direct dependency
 - [x] Signature and hashes checked in `orqwa_storage::world`; encrypted parts read once
@@ -1291,7 +1308,7 @@ the format and riding it; the realistic Lake Biel world is built in a private re
   list in the wiki
 - [ ] The activation server's real address in place of `activate.orqwa.invalid` (before release)
 - [ ] Activation server (private repository) and the shop page
-- [ ] Premium video courses in world files (R281): FFmpeg reading decrypted, seekable entries
+- [ ] Premium video courses in world files (R295): FFmpeg reading decrypted, seekable entries
 - [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,
   linked from the website and release pages for riders to download and import; no code in
   ORQWA. The usage guide says where to get it once it is published

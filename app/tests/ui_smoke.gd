@@ -71,6 +71,7 @@ func _ride_settings() -> void:
 	root.add_child(options)
 	var wanted: Dictionary = {
 		"camera": 2,
+		"camera_angle": 6,
 		"difficulty": 75.0,
 		"flat_descents": true,
 		"time": "Evening",

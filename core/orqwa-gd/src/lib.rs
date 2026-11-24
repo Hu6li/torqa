@@ -255,6 +255,8 @@ impl INode for OrqwaApp {
         } else {
             // Set once per process; a second node keeps the first one's.
             let _ = tracing::subscriber::set_global_default(log::StderrLog);
+            // Started again after an update, the replaced release can go (R268).
+            App::clean_up_update();
             let app = App::new(data_dir(), paths::cache_dir()).map(|mut app| {
                 app.set_lower_priority(background::lower_this_thread);
                 app
@@ -399,7 +401,7 @@ impl OrqwaApp {
     fn courses_changed();
 
     /// The sold world of the course at `path` was activated on this device (`activated`) or
-    /// released from it (R279).
+    /// released from it (R293).
     #[signal]
     fn world_licence_changed(path: GString, activated: bool);
 
@@ -1002,7 +1004,7 @@ impl OrqwaApp {
     }
 
     /// Activates the sold world of the course at `path` on this device with the rider's
-    /// licence key (R279); emits `world_licence_changed` or `failed`.
+    /// licence key (R293); emits `world_licence_changed` or `failed`.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     fn activate_world(&mut self, path: GString, licence_key: GString) {
@@ -1020,7 +1022,7 @@ impl OrqwaApp {
         }
     }
 
-    /// Releases this device from the sold world of the course at `path` (R279); emits
+    /// Releases this device from the sold world of the course at `path` (R293); emits
     /// `world_licence_changed` or `failed`.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
@@ -3941,7 +3943,7 @@ impl OrqwaApp {
         }
     }
 
-    /// The world file the loaded route runs through (R268, ADR 0042), as `authored::description`
+    /// The world file the loaded route runs through (R282, ADR 0042), as `authored::description`
     /// gives it; empty for a course ORQWA builds the world of.
     #[func]
     fn authored_world(&self) -> VarDictionary {
@@ -3953,8 +3955,8 @@ impl OrqwaApp {
             })
     }
 
-    /// Whether the loaded route is a world file's (R268): its light is the author's, so time of
-    /// day, weather and season are not offered (R270).
+    /// Whether the loaded route is a world file's (R282): its light is the author's, so time of
+    /// day, weather and season are not offered (R284).
     #[func]
     fn is_authored_world(&self) -> bool {
         self.app
@@ -3962,7 +3964,7 @@ impl OrqwaApp {
             .is_some_and(|app| app.authored().is_some())
     }
 
-    /// The credits the loaded world file requires (R268), shown during its rides instead of
+    /// The credits the loaded world file requires (R282), shown during its rides instead of
     /// the map's and terrain's; empty for a course.
     #[func]
     fn authored_attribution(&self) -> PackedStringArray {
@@ -5004,7 +5006,7 @@ fn course_dict(course: &orqwa_app::CourseEntry, locale: &str) -> VarDictionary {
         // Tacx RLV courses are known only by distance and slope: no 3D world.
         "located" => course.manifest.video.as_ref().is_none_or(|v| v.located),
         "countries" => &countries,
-        // A world's route (R268): its world, licence and every route deleted with it.
+        // A world's route (R282): its world, licence and every route deleted with it.
         "world" => &course.world.as_ref().map_or_else(VarDictionary::new, authored::info),
     }
 }

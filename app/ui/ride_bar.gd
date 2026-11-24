@@ -57,36 +57,36 @@ func _init() -> void:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	add_child(row)
-	_icon_button(_fold, "fold", "")
+	icon_button(_fold, "fold", "")
 	_fold.pressed.connect(_toggle_fold)
 	row.add_child(_fold)
 	_tools.add_theme_constant_override("separation", 4)
 	row.add_child(_tools)
-	_icon_button(
+	icon_button(
 		_settings, "cog", tr("Camera, difficulty, weather, HUD; finish or abort (keyboard: S)")
 	)
 	_settings.pressed.connect(settings_requested.emit)
 	_tools.add_child(_settings)
-	_icon_button(_group, "group", tr("Group Rides: riders, voice chat, shared workout, leaving"))
+	icon_button(_group, "group", tr("Group Rides: riders, voice chat, shared workout, leaving"))
 	_group.pressed.connect(group_requested.emit)
 	_group.hide()
 	_tools.add_child(_group)
-	_icon_button(_microphone, "microphone", tr("Turn your microphone off"))
+	icon_button(_microphone, "microphone", tr("Turn your microphone off"))
 	_microphone.pressed.connect(microphone_requested.emit)
 	_microphone.hide()
 	_tools.add_child(_microphone)
-	_icon_button(
+	icon_button(
 		_overlay, "overlay", tr("Only the HUD, on top of other windows, e.g. over a video (O)")
 	)
 	_overlay.pressed.connect(overlay_requested.emit)
 	_tools.add_child(_overlay)
-	_icon_button(_fullscreen, "fullscreen", tr("Full screen (F11)"))
+	icon_button(_fullscreen, "fullscreen", tr("Full screen (F11)"))
 	_fullscreen.pressed.connect(fullscreen_requested.emit)
 	_tools.add_child(_fullscreen)
-	_icon_button(_pause, "pause", tr("Pause the ride: the clock and the trainer wait (P)"))
+	icon_button(_pause, "pause", tr("Pause the ride: the clock and the trainer wait (P)"))
 	_pause.pressed.connect(pause_requested.emit)
 	_tools.add_child(_pause)
-	_icon_button(_back, "back", tr("Back"))
+	icon_button(_back, "back", tr("Back"))
 	_back.pressed.connect(back_requested.emit)
 	_back.hide()
 	_tools.add_child(_back)
@@ -204,8 +204,9 @@ func _toggle_fold() -> void:
 	folded_changed.emit(folded)
 
 
-func _icon_button(button: Button, icon: String, tooltip: String) -> void:
-	button.icon = UiIcons.texture(icon, ICON)
+## Makes `button` one of the bar's icon buttons, drawn at `size` pixels.
+static func icon_button(button: Button, icon: String, tooltip: String, size: int = ICON) -> void:
+	button.icon = UiIcons.texture(icon, size)
 	button.tooltip_text = tooltip
 	button.focus_mode = Control.FOCUS_NONE
 	button.add_theme_stylebox_override("normal", UiTheme.icon_button(Color.TRANSPARENT))

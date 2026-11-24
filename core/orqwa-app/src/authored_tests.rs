@@ -1,4 +1,4 @@
-//! Worlds authored outside ORQWA in the app (R268–R271): imported whole, each route a ride,
+//! Worlds authored outside ORQWA in the app (R282–R285): imported whole, each route a ride,
 //! ridden as authored without building or fetching anything, never shared or renamed.
 
 use std::path::{Path, PathBuf};
@@ -50,7 +50,7 @@ fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
     sealed(dir, name, version, located, None)
 }
 
-/// A world file as [`world`] makes it, encrypted with `content_key` if it is sold (R279).
+/// A world file as [`world`] makes it, encrypted with `content_key` if it is sold (R293).
 fn sealed(
     dir: &Path,
     name: &str,

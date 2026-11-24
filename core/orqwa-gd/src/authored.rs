@@ -93,7 +93,7 @@ pub fn description(world: &Description) -> VarDictionary {
 
 /// What the library tells of a world's route: `{world, version, publisher, licence, routes,
 /// locked, licensee}`; `locked` while a sold world is not activated on this device, `licensee`
-/// the buyer's name once it is (R279), else empty.
+/// the buyer's name once it is (R293), else empty.
 pub fn info(world: &WorldInfo) -> VarDictionary {
     let routes: PackedStringArray = world.routes.iter().map(GString::from).collect();
     vdict! {

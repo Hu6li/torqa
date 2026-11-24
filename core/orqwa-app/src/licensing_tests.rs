@@ -1,4 +1,4 @@
-//! Activating sold worlds (R279): kept on this device only, nothing kept on a refusal, released
+//! Activating sold worlds (R293): kept on this device only, nothing kept on a refusal, released
 //! only when the server confirms, never beside the data folder.
 
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};

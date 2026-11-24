@@ -23,7 +23,8 @@ ORQWA — offline-first, open-source (GPL-3.0) indoor cycling app. Read before w
 
 Project skills live in `.claude/skills/` (see its README): the art direction (`orqwa-look`),
 the Blender pipeline (`orqwa-art-pipeline`), render review (`orqwa-render-review`) and imported
-Blender references. Use them for any visual or model work.
+Blender references. Use them for any visual or model work. The imported `humanizer` skill edits
+prose: use it on docs, the wiki and UI strings.
 
 ## Architecture boundary
 

@@ -3,7 +3,7 @@
 // camera up to eight tiling layers add the detail a photo cannot, each weighted by the author's
 // masks and tiled in the world's horizontal plane, or on steep ground, cliffs and banks, from
 // the side too, so it never stretches. A layer's albedo is divided by its own average colour,
-// so it changes texture, not tone. The world's light is its own (R270): no
+// so it changes texture, not tone. The world's light is its own (R284): no
 // seasons, snow or wetness here.
 shader_type spatial;
 render_mode cull_back;

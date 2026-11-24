@@ -1,7 +1,7 @@
 class_name CourseCard
 extends PanelContainer
 ## A course in the gallery (R39): its path card, name and key figures in rows, with the time
-## the rider is estimated to take (R67), marked for video (R17) or world routes (R273); click to
+## the rider is estimated to take (R67), marked for video (R17) or world routes (R287); click to
 ## open it, or reach it with the keyboard or the remote and press OK (#228), when a ring shows
 ## it has the focus. The elevation profile is left to the course page. The gallery sets its
 ## width, so its cards share the row; the route grows with it.

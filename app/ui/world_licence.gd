@@ -1,6 +1,6 @@
 class_name WorldLicence
 extends VBoxContainer
-## A sold world on its course page (R279, ADR 0043). Locked: the licence key from the purchase
+## A sold world on its course page (R293, ADR 0043). Locked: the licence key from the purchase
 ## and Activate. Activated on this device: who bought it, and Release this device, which frees
 ## one of the licence's devices. Logic stays in the core; this only asks and shows.
 

@@ -1,7 +1,7 @@
 //! Newer versions of ORQWA (R99, ADR 0023): looked for at start-up unless this computer turned
-//! that off, or when the rider asks; never during a ride. On Windows and Android the new
-//! installer is downloaded and installed over ORQWA when the rider agrees; elsewhere the rider
-//! gets its page.
+//! that off, or when the rider asks; never during a ride. On Windows, Android and Linux the new
+//! installer is downloaded and installed over ORQWA when the rider agrees (on Linux where ORQWA
+//! may replace its own folder, R268); elsewhere the rider gets its page.
 
 use std::path::PathBuf;
 
@@ -123,15 +123,21 @@ impl App {
         if self.ride.is_some() {
             return Err(failed(&"not during a ride"));
         }
-        let msi = self
+        let installer = self
             .updates
             .downloaded
             .clone()
             .ok_or_else(|| failed(&"nothing downloaded"))?;
         let app = std::env::current_exe().map_err(|e| failed(&e))?;
-        orqwa_update::install(&msi, &app).map_err(|e| failed(&e))?;
-        info!(installer = %msi.display(), "installing the update");
+        orqwa_update::install(&installer, &app).map_err(|e| failed(&e))?;
+        info!(installer = %installer.display(), "installing the update");
         Ok(())
+    }
+
+    /// Removes what an update left beside the running ORQWA once it started again: on Linux
+    /// the replaced release's folder (R268).
+    pub fn clean_up_update() {
+        orqwa_update::clean_up();
     }
 
     /// The downloaded update, for the front end that installs it itself: on Android, ORQWA's

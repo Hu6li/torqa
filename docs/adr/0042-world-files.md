@@ -110,7 +110,7 @@ preview.png                the library's picture
 
 ## Consequences
 
-**Amendment (2026-11-22, R272).** World routes have a distinct **World** library type.
+**Amendment (2026-11-22, R286).** World routes have a distinct **World** library type.
 Each route may carry its countries and translated names, using the course metadata shape,
 so cards, country search, filters and groups work offline without modifying the world file.
 Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
@@ -130,14 +130,14 @@ Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
   ORQWA's effects reach chosen parts may follow.
 - A rider cannot ride a world route in a group ride until sharing of bought worlds is decided.
 
-**Amendment (2026-11-23, R274).** `extras.ORQWA_diffuse: true` lets an author disable a dry
+**Amendment (2026-11-23, R288).** `extras.ORQWA_diffuse: true` lets an author disable a dry
 nonmetal surface's specular reflection without making it unlit. This preserves sunlight,
 shadows, normals and vertex colours; terrain layers carry the same response. The flag
 is optional glTF metadata; older viewers ignore it without rejecting the file. Existing
 materials retain their PBR response. Authors must use consistent albedo and lighting across
 tree LODs: swapping a lit near tree for a separately graded unlit atlas changes its colour.
 
-**Amendment (2026-11-24, R275).** Optional node metadata `extras.ORQWA_section` links a
+**Amendment (2026-11-24, R289).** Optional node metadata `extras.ORQWA_section` links a
 horizon subtree to its zero-based section index. The viewer shows it only while that section
 is unloaded, including when the horizon arrives after detailed terrain. This allows exact
 coarse background copies and stitched, non-overlapping outer terrain. Burying an overlapping
@@ -145,7 +145,7 @@ horizon by a fixed height created visible cliffs at the covered area's edge; dra
 same water footprint in terrain and water meshes also caused depth fighting. Authors must
 give land and water separate footprints with matching shoreline heights. The format stays
 version 1; the optional metadata requires the updated viewer to switch backgrounds.
-**Amendment (2026-11-24, R278–R281, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
+**Amendment (2026-11-24, R292–R295, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
 gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
 maintainers. Parts other than `world.json`, `preview.png` and the routes may be encrypted, and
 a device activated with a licence key opens them, on at most 5 devices per purchase. Stage 3's
