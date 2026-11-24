@@ -110,7 +110,7 @@ func _keys_and_buttons() -> void:
 	world.set_camera(RideWorld.CameraMode.FIRST_PERSON)
 	await _press(KEY_RIGHT)
 	_check(world.camera() == RideWorld.CameraMode.FIRST_PERSON, "first person stays")
-	_check(view.look == 7 and world.camera_angle() == 0, "and turns the view as round the rider")
+	_check(view.look == 1 and world.camera_angle() == 0, "and looks the way the arrow points")
 	world.set_camera(RideWorld.CameraMode.CHASE)
 	_check(view.look == 0, "it looks ahead again next time")
 	await _press(KEY_RIGHT)

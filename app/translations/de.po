@@ -397,11 +397,11 @@ msgstr "Kamera weiter weg oder nach unten schauen (Shift + ↓)"
 msgid "Camera nearer, or look up (Shift + ↑)"
 msgstr "Kamera näher oder nach oben schauen (Shift + ↑)"
 
-msgid "Camera round to the left, or look right (Shift + ←)"
-msgstr "Kamera links herum oder nach rechts schauen (Shift + ←)"
+msgid "Camera round to the left (Shift + ←); in first person, look right"
+msgstr "Kamera links herum (Shift + ←); in der Egoperspektive nach rechts schauen"
 
-msgid "Camera round to the right, or look left (Shift + →)"
-msgstr "Kamera rechts herum oder nach links schauen (Shift + →)"
+msgid "Camera round to the right (Shift + →); in first person, look left"
+msgstr "Kamera rechts herum (Shift + →); in der Egoperspektive nach links schauen"
 
 msgid "Front"
 msgstr "Vorne"

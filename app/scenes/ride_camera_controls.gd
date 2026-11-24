@@ -50,7 +50,12 @@ func press(key: InputEventKey) -> void:
 		# It looks around with Shift + arrows instead (#78).
 		return
 	elif key.keycode in [KEY_LEFT, KEY_RIGHT]:
-		_turn(1 if key.keycode == KEY_RIGHT else -1, false)
+		var step: int = 1 if key.keycode == KEY_RIGHT else -1
+		# From the rider's eyes an arrow looks the way it points; the buttons swing the view as
+		# round the rider.
+		if _world.camera() == RideWorld.CameraMode.FIRST_PERSON:
+			step = -step
+		_turn(step, false)
 	else:
 		_turn(-1 if key.keycode == KEY_UP else 1, true)
 
