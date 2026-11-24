@@ -201,9 +201,11 @@ rides at the line's elevation, a quarter of the road's `width` to the `drives_on
 - At least two points, and at least 100 m long. Consecutive points are distinct.
 - `surface` is `ground`, `bridge` or `tunnel`.
 - `width` is optional: the width of the road the rider is on, in metres (default 5).
-- ORQWA samples the line every 10 m, with straight lines between the samples, measuring
-  distance horizontally. **The road surface must lie on that line**: build the road from the
-  route's own points, sampled the same way, or riders float above or sink into it on crests.
+- ORQWA samples the line every 10 m, measuring distance horizontally. Elevations interpolate
+  straight between these samples; the horizontal position and heading follow the smooth
+  curve through them. **The road surface must lie on that line**: use the same elevation
+  sampling or riders float above or sink into it on crests. Avatar lane placement follows
+  the continuous curve too, without projecting it onto the width index's straight chords.
 
 ## Light
 
