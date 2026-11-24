@@ -332,7 +332,9 @@ before they are encrypted. `--dev` seals with the development key instead, which
 development builds trust (`--features dev-keys`; they never compile without debug
 assertions). `--trust <root.pub.json>` also trusts a root not yet built into ORQWA.
 
-The maintainers make and certify keys offline, with their password in `ORQWA_KEY_PASSWORD`:
+The maintainers make and certify keys offline, with their password in `ORQWA_KEY_PASSWORD`.
+These commands and `world-seal` work in every `orqwa-cli` but are left out of its help, which
+lists what riders use:
 
 | Command | |
 |---|---|

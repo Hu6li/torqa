@@ -102,16 +102,21 @@ enum Command {
         #[arg(long)]
         trust: Option<PathBuf>,
     },
+    // The maintainers' tools for world files (ADR 0043) work in every build but stay out of
+    // the help: riders have no use for them.
     /// Seal a folder holding a world's `world.json` and the parts it names into a signed world
     /// file, encrypted for sale with `--content-key`, and check it.
+    #[command(hide = true)]
     WorldSeal(worlds::SealArgs),
     /// Make a key (a root, a world key or an activation key), encrypted with
     /// `ORQWA_KEY_PASSWORD`; its public half goes beside it as `*.pub.json`.
+    #[command(hide = true)]
     KeyNew {
         /// Where to write the key.
         out: PathBuf,
     },
     /// Let a root certify a world key or an activation key.
+    #[command(hide = true)]
     KeyCertify {
         /// The root's key.
         #[arg(long)]
@@ -129,6 +134,7 @@ enum Command {
         out: PathBuf,
     },
     /// Let a root sign a list of withdrawn keys and worlds.
+    #[command(hide = true)]
     RevocationSign {
         /// The root's key.
         #[arg(long)]
@@ -139,6 +145,7 @@ enum Command {
         out: PathBuf,
     },
     /// Make a world's content key. Secret: it goes to the activation server.
+    #[command(hide = true)]
     ContentKeyNew {
         /// The key's id, such as "lake-biel-2026-11".
         id: String,
