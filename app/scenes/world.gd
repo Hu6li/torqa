@@ -326,8 +326,8 @@ func camera_angle() -> int:
 
 ## Takes the camera `step` sides round the rider, positive towards their right, or `step`
 ## distances further (nearer if negative), and returns the new side's or distance's name; first
-## person looks round instead, or down (up if negative). The free camera gives way to the drone
-## it left.
+## person turns the head the way the view would swing instead, or looks down (up if negative).
+## The free camera gives way to the drone it left.
 func turn_camera(step: int, further: bool = false) -> String:
 	if _free:
 		set_camera(_camera_mode)

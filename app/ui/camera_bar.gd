@@ -26,13 +26,13 @@ func _init() -> void:
 	_add(
 		row,
 		"orbit_left",
-		tr("Camera round to the left, or look left (Shift + ←)"),
+		tr("Camera round to the left, or look right (Shift + ←)"),
 		orbit_requested.emit.bind(-1)
 	)
 	_add(
 		row,
 		"orbit_right",
-		tr("Camera round to the right, or look right (Shift + →)"),
+		tr("Camera round to the right, or look left (Shift + →)"),
 		orbit_requested.emit.bind(1)
 	)
 	_add(

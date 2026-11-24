@@ -688,11 +688,11 @@ msgid "Camera nearer, or look up (Shift + ↑)"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera round to the left, or look left (Shift + ←)"
+msgid "Camera round to the left, or look right (Shift + ←)"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera round to the right, or look right (Shift + →)"
+msgid "Camera round to the right, or look left (Shift + →)"
 msgstr ""
 
 #: app/ui/ride_bar.gd

@@ -78,13 +78,14 @@ func _first_person() -> void:
 	var mode: int = RideWorld.CameraMode.FIRST_PERSON
 	var ahead: Transform3D = eyes.target(mode, rider, INF)
 	_check((-ahead.basis.z).z < -0.99, "first person looks down the road")
-	_check(eyes.turn(mode, 2, false) == "Right", "two steps right")
+	# As round the rider, left swings the view clockwise: the head turns right.
+	_check(eyes.turn(mode, -2, false) == "Right", "two steps left look right")
 	var right: Vector3 = -eyes.target(mode, rider, INF).basis.z
 	_check(right.x > 0.99, "looks to the right: %s" % right)
-	_check(eyes.turn(mode, 2, false) == "Behind", "and on, behind")
+	_check(eyes.turn(mode, -2, false) == "Behind", "and on, behind")
 	var behind: Vector3 = -eyes.target(mode, rider, INF).basis.z
 	_check(behind.z > 0.99, "looks back: %s" % behind)
-	_check(eyes.turn(mode, -3, false) == "Ahead right", "back round to the left")
+	_check(eyes.turn(mode, 3, false) == "Ahead right", "back round the other way")
 	eyes.face_ahead()
 	var level: float = (-eyes.target(mode, rider, INF).basis.z).y
 	_check(eyes.turn(mode, -1, true) == "Up", "Shift + up looks up")
@@ -109,7 +110,7 @@ func _keys_and_buttons() -> void:
 	world.set_camera(RideWorld.CameraMode.FIRST_PERSON)
 	await _press(KEY_RIGHT)
 	_check(world.camera() == RideWorld.CameraMode.FIRST_PERSON, "first person stays")
-	_check(view.look == 1 and world.camera_angle() == 0, "and looks to the right instead")
+	_check(view.look == 7 and world.camera_angle() == 0, "and turns the view as round the rider")
 	world.set_camera(RideWorld.CameraMode.CHASE)
 	_check(view.look == 0, "it looks ahead again next time")
 	await _press(KEY_RIGHT)

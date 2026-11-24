@@ -63,14 +63,14 @@ var _lift: float = 0.0
 
 
 ## Takes the camera `step` sides round the rider, or `step` distances further if `further`, and
-## returns the new side's or distance's name; in first person it looks `step` steps to the right
-## instead, or `step` steps down.
+## returns the new side's or distance's name. In first person it turns the head `step` steps to
+## the left instead, so the view swings the same way as round the rider, or looks `step` down.
 func turn(mode: int, step: int, further: bool) -> String:
 	if mode == RideWorld.CameraMode.FIRST_PERSON:
 		if further:
 			tilt -= step
 			return TILT_NAMES[tilt]
-		look += step
+		look -= step
 		return LOOKS[look]
 	if further:
 		distance += step
