@@ -355,6 +355,75 @@ msgstr "Kamera, Trainer-Schwierigkeit, Wetter, HUD; beenden oder abbrechen (Tast
 msgid "Camera: %s"
 msgstr "Kamera: %s"
 
+msgid "Ahead"
+msgstr "Nach vorne"
+
+msgid "Ahead left"
+msgstr "Vorne links"
+
+msgid "Ahead right"
+msgstr "Vorne rechts"
+
+msgid "Down"
+msgstr "Nach unten"
+
+msgid "Level"
+msgstr "Geradeaus"
+
+msgid "Looking: %s"
+msgstr "Blick: %s"
+
+msgid "Up"
+msgstr "Nach oben"
+
+msgid "Behind"
+msgstr "Hinten"
+
+msgid "Behind left"
+msgstr "Hinten links"
+
+msgid "Behind right"
+msgstr "Hinten rechts"
+
+msgid "Camera angle"
+msgstr "Kamerawinkel"
+
+msgid "Camera distance: %s"
+msgstr "Kameraabstand: %s"
+
+msgid "Camera further away, or look down (Shift + ↓)"
+msgstr "Kamera weiter weg oder nach unten schauen (Shift + ↓)"
+
+msgid "Camera nearer, or look up (Shift + ↑)"
+msgstr "Kamera näher oder nach oben schauen (Shift + ↑)"
+
+msgid "Camera round to the left (Shift + ←); in first person, look right"
+msgstr "Kamera links herum (Shift + ←); in der Egoperspektive nach rechts schauen"
+
+msgid "Camera round to the right (Shift + →); in first person, look left"
+msgstr "Kamera rechts herum (Shift + →); in der Egoperspektive nach links schauen"
+
+msgid "Front"
+msgstr "Vorne"
+
+msgid "Front left"
+msgstr "Vorne links"
+
+msgid "Front right"
+msgstr "Vorne rechts"
+
+msgid "Left"
+msgstr "Links"
+
+msgid "Next camera (C)"
+msgstr "Nächste Kamera (C)"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Right"
+msgstr "Rechts"
+
 msgid "Cancel"
 msgstr "Abbrechen"
 
