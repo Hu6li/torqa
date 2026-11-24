@@ -154,3 +154,10 @@ model. Only Ultra requests it. The section's normal content remains independent,
 viewer releases the optional scene when it leaves close range or the preset changes.
 Per-object visibility ranges with fades avoid a whole section's clutter switching at once.
 Older viewers ignore the metadata. Authored and generated world storage layouts do not change.
+
+**Amendment (2026-11-24, R293).** An authored road already uses its route as its middle.
+Its spatial width index must supply width without projecting the rider back onto that
+index's straight spans. Reprojection pulled the smooth position sideways in tight bends
+and changed its progress along the lane. Generated roads still use their fitted carriageway
+correction. This fixes avatar and ghost placement without changing the route, its key,
+physics, elevation or stored data; existing worlds need no regeneration for the motion fix.
