@@ -151,7 +151,17 @@ impl OrqwaCore {
     /// The branch and commit together, as the log and bug reports name the build (R130).
     #[func]
     fn build() -> GString {
-        GString::from(&build_name(BRANCH, COMMIT))
+        let name = build_name(BRANCH, COMMIT);
+        // A build anyone can sign worlds for says so where the rider sees the version (ADR 0043).
+        if orqwa_licence::DEV_KEYS {
+            let joined = if name.is_empty() {
+                String::new()
+            } else {
+                format!("{name}, ")
+            };
+            return GString::from(&format!("{joined}development keys"));
+        }
+        GString::from(&name)
     }
 
     /// Where ORQWA's source code is.

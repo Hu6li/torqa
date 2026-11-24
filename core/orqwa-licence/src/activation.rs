@@ -48,17 +48,13 @@ fn wrapping_key(
     device: &str,
     content_key: &str,
 ) -> LessSafeKey {
-    let key: [u8; 32] = derive(
-        b"ORQWA orqwa-1 wrap",
-        device_key.bytes(),
-        &[
-            world.as_bytes(),
-            b"\0",
-            device.as_bytes(),
-            b"\0",
-            content_key.as_bytes(),
-        ],
-    );
+    // Each field with its length first: no choice of ids can make two requests derive one key.
+    let mut info = Vec::new();
+    for field in [world, device, content_key] {
+        info.extend_from_slice(&u32::try_from(field.len()).unwrap_or(u32::MAX).to_be_bytes());
+        info.extend_from_slice(field.as_bytes());
+    }
+    let key: [u8; 32] = derive(b"ORQWA orqwa-1 wrap", device_key.bytes(), &[&info]);
     LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key).expect("32 bytes for AES-256"))
 }
 

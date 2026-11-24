@@ -207,11 +207,14 @@ async fn a_device_folder_inside_the_data_folder_activates_nothing() {
 }
 
 #[tokio::test]
-async fn newer_withdrawals_from_the_server_are_kept() {
+async fn withdrawals_from_the_server_are_kept() {
     let list = Revocations {
         sequence: 3,
         keys: vec![],
-        worlds: vec![],
+        worlds: vec![orqwa_licence::trust::WithdrawnWorld {
+            id: "11111111-2222-4333-8444-555555555555".into(),
+            version: None,
+        }],
     };
     let signed = Signed::sign(&list, Context::Revocations, &dev::root()).unwrap();
     let (url, _) = server(move |path, body| {
@@ -226,7 +229,12 @@ async fn newer_withdrawals_from_the_server_are_kept() {
         .await
         .unwrap();
     let restarted = Licensing::with_server(device, &data, &url, true);
-    assert_eq!(restarted.trust().revocations().sequence, 3);
+    let trust = restarted.trust();
+    assert!(
+        trust
+            .revocations()
+            .world("11111111-2222-4333-8444-555555555555", None)
+    );
 }
 
 #[tokio::test]

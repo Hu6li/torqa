@@ -92,12 +92,10 @@ impl Licensing {
             warn!(dir = %dir.display(), "the device folder lies in the data folder: no activations");
         }
         let mut trust = Trust::builtin();
-        if let Some(signed) = std::fs::read_to_string(dir.join(REVOCATIONS))
-            .ok()
-            .and_then(|text| serde_json::from_str::<Signed>(&text).ok())
-            && let Err(error) = trust.accept_revocations(&signed)
-        {
-            warn!(%error, "ignoring the stored withdrawals");
+        for signed in stored_revocations(&dir) {
+            if let Err(error) = trust.accept_revocations(&signed) {
+                warn!(%error, "ignoring stored withdrawals no root signed");
+            }
         }
         Self {
             inner: Arc::new(Inner {
@@ -205,26 +203,39 @@ impl Licensing {
         Ok(activation.licensee)
     }
 
-    /// Frees this device's slot for `world` and forgets its activation. If the server cannot
-    /// be reached the activation stays, so the slot is never lost unnoticed.
+    /// Forgets the activation of `world` on this device and frees its slot. The activation goes
+    /// first, so a freed slot never leaves the world open here; if the server cannot be reached
+    /// it is put back, so the slot is never lost unnoticed either.
     ///
     /// # Errors
-    /// [`LicensingError`] if the device folder is unusable, or the server cannot be reached or
-    /// refuses.
+    /// [`LicensingError`] if the device folder is unusable, the activation cannot be removed, or
+    /// the server cannot be reached or refuses.
     pub async fn release(&self, world: &str) -> Result<(), LicensingError> {
         let device = self.device()?;
+        let path = self.activation_file(world);
+        let kept = match std::fs::read(&path) {
+            Ok(bytes) => {
+                std::fs::remove_file(&path)?;
+                Some(bytes)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
         let request = ReleaseRequest {
             world: world.to_owned(),
             device: device.id().to_owned(),
             device_key: device.key().bytes().to_vec(),
         };
         match self.post("/v1/release", &request).await {
-            Ok(_) | Err(LicensingError::Refused(Refusal::UnknownDevice)) => {}
-            Err(error) => return Err(error),
-        }
-        match std::fs::remove_file(self.activation_file(world)) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
-            _ => Ok(()),
+            Ok(_) | Err(LicensingError::Refused(Refusal::UnknownDevice)) => Ok(()),
+            Err(error) => {
+                if let Some(bytes) = kept
+                    && let Err(restore) = device::write_private(&path, &bytes)
+                {
+                    warn!(%restore, "cannot put the activation back");
+                }
+                Err(error)
+            }
         }
     }
 
@@ -236,7 +247,11 @@ impl Licensing {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         match trust.accept_revocations(signed) {
             Ok(true) => {
-                let kept = serde_json::to_string_pretty(signed)
+                // Every list that withdrew something is kept: they add up, each checked again
+                // when ORQWA starts.
+                let mut lists = stored_revocations(&self.inner.dir);
+                lists.push(signed.clone());
+                let kept = serde_json::to_string_pretty(&lists)
                     .map_err(std::io::Error::other)
                     .and_then(|text| {
                         device::write_private(&self.inner.dir.join(REVOCATIONS), text.as_bytes())
@@ -317,6 +332,14 @@ fn client(server: &str) -> Result<reqwest::Client, LicensingError> {
     builder
         .build()
         .map_err(|e| LicensingError::Unreachable(e.to_string()))
+}
+
+/// The withdrawal lists this device has kept, each still to be checked.
+fn stored_revocations(dir: &Path) -> Vec<Signed> {
+    std::fs::read_to_string(dir.join(REVOCATIONS))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

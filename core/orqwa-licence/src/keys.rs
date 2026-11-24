@@ -70,14 +70,26 @@ pub struct PublicKey {
     pub ml_dsa: Vec<u8>,
 }
 
+/// Ed25519's public key, and ML-DSA-65's, in bytes.
+const ED25519_PUBLIC: usize = 32;
+const ML_DSA_65_PUBLIC: usize = 1952;
+
 impl PublicKey {
+    /// Whether both halves have their scheme's length.
+    #[must_use]
+    pub fn well_formed(&self) -> bool {
+        self.ed25519.len() == ED25519_PUBLIC && self.ml_dsa.len() == ML_DSA_65_PUBLIC
+    }
+
     /// This key's id.
     #[must_use]
     pub fn id(&self) -> KeyId {
         let mut context = aws_lc_rs::digest::Context::new(&aws_lc_rs::digest::SHA512);
         context.update(format!("ORQWA {SUITE} key\0").as_bytes());
-        context.update(&self.ed25519);
-        context.update(&self.ml_dsa);
+        for part in [&self.ed25519, &self.ml_dsa] {
+            context.update(&u32::try_from(part.len()).unwrap_or(u32::MAX).to_be_bytes());
+            context.update(part);
+        }
         KeyId(hex(&context.finish().as_ref()[..16]))
     }
 
@@ -91,6 +103,9 @@ impl PublicKey {
         bytes: &[u8],
         signature: &Signature,
     ) -> Result<(), LicenceError> {
+        if !self.well_formed() {
+            return Err(LicenceError::BadSignature);
+        }
         let message = context.message(bytes);
         let ed =
             UnparsedPublicKey::new(&ED25519, &self.ed25519).verify(&message, &signature.ed25519);
@@ -349,6 +364,7 @@ mod tests {
         assert_eq!(a.public(), b.public());
         assert_eq!(a.public().id(), b.public().id());
         assert_eq!(a.public().id().0.len(), 32);
+        assert!(a.public().well_formed());
         assert_ne!(a.public().id(), KeyPair::generate().unwrap().public().id());
     }
 

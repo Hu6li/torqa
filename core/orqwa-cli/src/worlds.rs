@@ -129,6 +129,25 @@ pub fn key_certify(
 pub fn revocation_sign(root: &Path, list: &Path, out: &Path) -> Result<()> {
     let root = read_key(root)?;
     let list: Revocations = read_json(list)?;
+    // A malformed id would withdraw nothing, silently.
+    for key in &list.keys {
+        if key.0.len() != 32
+            || !key
+                .0
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            bail!(
+                "{} is not a key id (32 lowercase hexadecimal digits)",
+                key.0
+            );
+        }
+    }
+    for world in &list.worlds {
+        if world.id.len() != 36 || world.id.chars().filter(|c| *c == '-').count() != 4 {
+            bail!("{} is not a world id (a UUID)", world.id);
+        }
+    }
     let signed = Signed::sign(&list, Context::Revocations, &root)?;
     write_new(out, &serde_json::to_string_pretty(&signed)?)?;
     println!(

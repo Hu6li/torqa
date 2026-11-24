@@ -92,11 +92,12 @@ pub struct WithdrawnWorld {
     pub version: Option<String>,
 }
 
-/// Withdrawn keys and worlds. A higher `sequence` replaces a lower one, never the reverse.
+/// Withdrawn keys and worlds. Lists only ever add up: what any trusted root withdrew stays
+/// withdrawn, so no list (not even one from a leaked root) can take a withdrawal back. Fields a
+/// later ORQWA adds are ignored, not a reason to drop the list.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Revocations {
-    /// Counts up with every new list.
+    /// Counts up with every new list, for people; ORQWA merges lists whatever their number.
     pub sequence: u64,
     /// Withdrawn keys, roots included.
     #[serde(default)]
@@ -107,10 +108,28 @@ pub struct Revocations {
 }
 
 impl Revocations {
+    /// Adds what `other` withdraws; true if it withdrew anything new.
+    pub fn merge(&mut self, other: Revocations) -> bool {
+        let before = (self.keys.len(), self.worlds.len());
+        for key in other.keys {
+            let key = KeyId(key.0.to_ascii_lowercase());
+            if !self.keys.contains(&key) {
+                self.keys.push(key);
+            }
+        }
+        for world in other.worlds {
+            if !self.worlds.contains(&world) {
+                self.worlds.push(world);
+            }
+        }
+        self.sequence = self.sequence.max(other.sequence);
+        (self.keys.len(), self.worlds.len()) != before
+    }
+
     /// Whether `key` is withdrawn.
     #[must_use]
     pub fn key(&self, key: &KeyId) -> bool {
-        self.keys.contains(key)
+        self.keys.iter().any(|k| k.0.eq_ignore_ascii_case(&key.0))
     }
 
     /// Whether this version of the world is withdrawn.
@@ -177,11 +196,7 @@ impl Trust {
     pub fn accept_revocations(&mut self, signed: &Signed) -> Result<bool, LicenceError> {
         let root = self.root(&signed.by)?;
         let list: Revocations = signed.open(Context::Revocations, root)?;
-        if list.sequence <= self.revocations.sequence {
-            return Ok(false);
-        }
-        self.revocations = list;
-        Ok(true)
+        Ok(self.revocations.merge(list))
     }
 
     /// The certificate, if a trusted root signed it, for `purpose`, and neither is withdrawn.
@@ -292,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn withdrawals_refuse_keys_and_only_ever_grow_newer() {
+    fn withdrawals_refuse_keys_and_are_never_taken_back() {
         let root = KeyPair::generate().unwrap();
         let key = KeyPair::generate().unwrap();
         let certificate = certify(&root, key.public(), Purpose::World, "world key").unwrap();
@@ -315,13 +330,54 @@ mod tests {
             Err(LicenceError::Revoked(_))
         ));
 
-        let older = Signed::sign(&list(1, vec![]), Context::Revocations, &root).unwrap();
-        assert!(!trust.accept_revocations(&older).unwrap());
-        assert_eq!(trust.revocations().sequence, 2);
+        // An empty list, older or newer, takes nothing back: not even one numbered last.
+        for sequence in [1, 3, u64::MAX] {
+            let empty = Signed::sign(&list(sequence, vec![]), Context::Revocations, &root).unwrap();
+            assert!(!trust.accept_revocations(&empty).unwrap());
+            assert!(trust.certificate(&certificate, Purpose::World).is_err());
+        }
 
-        let forged = Signed::sign(&list(3, vec![]), Context::Revocations, &key).unwrap();
+        let forged = Signed::sign(&list(4, vec![]), Context::Revocations, &key).unwrap();
         assert!(trust.accept_revocations(&forged).is_err());
-        assert_eq!(trust.revocations().sequence, 2);
+    }
+
+    #[test]
+    fn a_leaked_root_cannot_lock_out_the_other_roots_withdrawal_of_it() {
+        let leaked = KeyPair::generate().unwrap();
+        let backup = KeyPair::generate().unwrap();
+        let mut trust = Trust::new(
+            vec![leaked.public().clone(), backup.public().clone()],
+            Revocations::default(),
+        );
+        let list = |sequence, keys| Revocations {
+            sequence,
+            keys,
+            worlds: vec![],
+        };
+        let numbered_last =
+            Signed::sign(&list(u64::MAX, vec![]), Context::Revocations, &leaked).unwrap();
+        trust.accept_revocations(&numbered_last).unwrap();
+        let withdrawal = Signed::sign(
+            &list(1, vec![leaked.public().id()]),
+            Context::Revocations,
+            &backup,
+        )
+        .unwrap();
+        assert!(trust.accept_revocations(&withdrawal).unwrap());
+        let key = KeyPair::generate().unwrap();
+        let by_leaked = certify(&leaked, key.public(), Purpose::World, "x").unwrap();
+        assert!(matches!(
+            trust.certificate(&by_leaked, Purpose::World),
+            Err(LicenceError::Revoked(_))
+        ));
+    }
+
+    #[test]
+    fn a_list_with_fields_from_a_later_orqwa_still_counts() {
+        let list: Revocations =
+            serde_json::from_str(r#"{"sequence": 2, "keys": ["AB"], "worlds": [], "reason": "x"}"#)
+                .unwrap();
+        assert!(list.key(&KeyId("ab".into())));
     }
 
     #[test]

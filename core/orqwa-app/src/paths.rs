@@ -79,10 +79,39 @@ fn android_device_dir(app_cache: &Path) -> PathBuf {
 }
 
 /// Whether `device` lies outside `data`, so syncing the data folder never carries activations.
+/// Either may not exist yet (a first start): the nearest folder that does is resolved, links and
+/// all, and the rest appended. macOS and Windows compare names regardless of case, as their
+/// file systems do.
 #[must_use]
 pub fn outside(device: &Path, data: &Path) -> bool {
-    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    !real(device).starts_with(real(data)) && !device.starts_with(data)
+    let fold = |p: PathBuf| {
+        if cfg!(any(target_os = "macos", windows)) {
+            PathBuf::from(p.to_string_lossy().to_lowercase())
+        } else {
+            p
+        }
+    };
+    let device = fold(resolved(device));
+    let data = fold(resolved(data));
+    !device.starts_with(&data)
+}
+
+/// `path` with its nearest existing folder resolved, and what does not exist yet appended.
+fn resolved(path: &Path) -> PathBuf {
+    let mut existing = path;
+    let mut missing = Vec::new();
+    while std::fs::symlink_metadata(existing).is_err() {
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name.to_owned());
+                existing = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+    let mut resolved = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
+    resolved.extend(missing.iter().rev());
+    resolved
 }
 
 /// ORQWA's data and cache directories on Android (ADR 0024), from the app's cache directory that
@@ -212,6 +241,19 @@ mod tests {
         assert!(outside(&device, &android_dirs(app_cache).0));
         assert!(outside(&device, &android_dirs(app_cache).1));
         assert!(!outside(Path::new("/x/data/device"), Path::new("/x/data")));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_device_folder_reached_through_a_link_is_seen_inside_the_data_folder() {
+        let root = std::env::temp_dir().join(format!("orqwa-paths-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::os::unix::fs::symlink(root.join("data"), root.join("link")).unwrap();
+        // Neither device folder exists yet, as on a first start.
+        assert!(!outside(&root.join("link/device"), &root.join("data")));
+        assert!(outside(&root.join("state/device"), &root.join("data")));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

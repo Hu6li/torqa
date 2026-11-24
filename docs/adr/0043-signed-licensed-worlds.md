@@ -24,7 +24,9 @@ impossible to run outside the official ORQWA. What can be done:
 
 - Encrypt the world, so a copied file is useless without a key.
 - Hand out keys only per device and count the devices.
-- Put the buyer's name in what is handed out, so a leaked key points back to them.
+- Show the buyer's name on the world's page. This does not trace a leak: what leaks is the
+  content key or decrypted parts, which are the same for every buyer. Tracing would need a key
+  or a hidden mark per buyer, which this decision leaves out.
 - Rely on the world's own licence (copyright, not the GPL) and on the name ORQWA
   ([ADR 0026](0026-the-name-orqwa.md)).
 
@@ -79,22 +81,30 @@ video reader can seek.
   places. Only their public keys are built into ORQWA. A root signs certificates and revocation
   lists, and nothing else. A new root comes with an ORQWA release; a root is withdrawn only if
   it leaks. **Either root alone is trusted fully** (1 of 2): the backup exists so that losing
-  one root costs nothing. Either can sign a revocation list, and a newer list replaces an older
-  one whole, so a leaked root could withdraw the other or take back withdrawals until a release
-  removes it. Both are kept offline for that reason.
+  one root costs nothing. Either can sign a revocation list. Lists only add withdrawals, so a
+  leaked root cannot take one back or lock out a later list; it could still withdraw the other
+  root and its keys, which stops new worlds and activations until a release removes the leaked
+  root. Both are kept offline for that reason.
 - **Working keys**: a **world key** that seals world files and an **activation key** that the
   activation server signs with. Each has a certificate signed by a root, with its purpose, a
   name and both public keys. A certificate has no end date: a device's clock cannot be trusted,
   and a sold world must keep opening, so a key ends only by withdrawal. Every world file and
   every activation carries its certificate, so a working key is replaced by making a new one
-  and having a root certify it. **ORQWA needs no update for that**, and files signed with the old key keep working.
-- **Revocation**: a list signed by a root, numbered, naming withdrawn working keys and
-  withdrawn versions of worlds. Each ORQWA release carries the newest list. The activation
-  server returns it with every activation, and ORQWA keeps the highest-numbered list it has
-  seen. A world signed with a withdrawn key is sealed again and offered to its buyers.
+  and having a root certify it. **ORQWA needs no update for that**, and files signed with the
+  old key keep working.
+- **Revocation**: a list signed by a root, numbered for people, naming withdrawn working keys
+  and withdrawn versions of worlds. Each ORQWA release carries the lists known when it was
+  built. The activation server returns the newest with every activation. ORQWA merges every
+  list a trusted root signed and keeps them: a withdrawal is never taken back, whatever the
+  numbers. A mistaken withdrawal is undone only by a new key. A world signed with a withdrawn
+  key is sealed again and offered to its buyers. Fields a later ORQWA adds to a list are
+  ignored, not a reason to drop it.
 - **Development root**: a separate root for tests, fuzzing and worlds still being built. ORQWA
   trusts it only when built with the `dev-keys` feature. The programs ORQWA ships (`orqwa-gd`,
-  `orqwa-cli`) refuse to compile a release build that has it; tests and examples may.
+  `orqwa-cli`) refuse to compile a release build that has it; tests and examples may. Godot's
+  debug and release exports use the same library, so a build that trusts it says
+  "development keys" beside its version in About and at start, and CI's release jobs check
+  that their release CLI refuses the development-signed test world.
 
 ### The file
 
@@ -139,8 +149,13 @@ signature.json   the working key's certificate and both signatures over manifest
   device id, the buyer's name, and the world's content key sealed under a key derived from the
   device key. It also returns the newest revocation list.
 - Activations do not expire. After activation, the world opens without any network access.
-- **Release this device** asks the server to free the slot and deletes the activation. A
-  device that is lost or wiped is released from the shop's account page.
+- **Release this device** deletes the activation, then asks the server to free the slot; if
+  the server cannot be reached, the activation is put back. A device that is lost or wiped is
+  released from the shop's account page.
+- **The server limits releases per licence** (a few a year, set on the server). An activation
+  never expires, so one copied aside before releasing keeps opening on that device, and so
+  would one a modified ORQWA keeps. Without a limit, releasing and restoring would give any
+  number of devices; with it, a buyer can move between devices but not multiply them.
 - The world's course page names the buyer ("Licensed to …") next to its credits.
 - **One content key per world**, kept across its versions, so an activation keeps working for a
   new version. If a content key must change (it leaked), the server issues new activations and

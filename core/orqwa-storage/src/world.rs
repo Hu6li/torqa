@@ -838,55 +838,64 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
                     .ok_or_else(|| invalid(format!("{name}: not named by world.json")))?,
             )
         };
+        let changed = || invalid(format!("{name}: does not match its signature"));
+        // The signed size first: a changed part may declare far more, and nothing is parsed then.
+        if signed_entry.is_some_and(|e| e.size != declared) {
+            return Err(changed());
+        }
         let mut hashing = Hashing::new((&mut entry).take(declared + 1));
-        let read = match part {
-            None => 0,
-            Some(part) if signed_entry.is_some_and(|e| e.encrypted) => {
-                let plain = signed_entry.and_then(|e| e.plain_size);
-                if !part.encryptable()
-                    || plain.is_none_or(|plain| plain > part.limit())
-                    || declared > sealed_limit(part.limit())
-                    || stream::plain_len(declared).is_none()
-                {
-                    return Err(invalid(format!(
-                        "{name}: not a part that may be encrypted so"
-                    )));
-                }
-                0
-            }
-            Some(part) => {
-                if declared > part.limit() {
-                    return Err(invalid(format!("{name}: larger than its limit")));
-                }
-                match part {
-                    Part::Glb => glb::check_stream(&mut hashing, declared).map_err(at)?,
-                    Part::Instances => {
-                        instances::read(&mut hashing, description.assets.len(), false)
-                            .map_err(at)?
-                            .1
+        let parsed: Result<u64, WorldError> = (|| {
+            Ok(match part {
+                None => 0,
+                Some(part) if signed_entry.is_some_and(|e| e.encrypted) => {
+                    let plain = signed_entry.and_then(|e| e.plain_size);
+                    if !part.encryptable()
+                        || plain.is_none_or(|plain| plain > part.limit())
+                        || declared > sealed_limit(part.limit())
+                        || stream::plain_len(declared).is_none()
+                    {
+                        return Err(invalid(format!(
+                            "{name}: not a part that may be encrypted so"
+                        )));
                     }
-                    Part::Route => {
-                        let bytes = read_capped(&mut hashing, declared, part.limit())?;
-                        let route: RoutePoints = parse(&name, &bytes)?;
-                        route.check().map_err(at)?;
-                        declared
+                    0
+                }
+                Some(part) => {
+                    if declared > part.limit() {
+                        return Err(invalid(format!("{name}: larger than its limit")));
                     }
-                    Part::Sky | Part::Preview => {
-                        image(&mut hashing, part == Part::Preview).map_err(at)?
+                    match part {
+                        Part::Glb => glb::check_stream(&mut hashing, declared).map_err(at)?,
+                        Part::Instances => {
+                            instances::read(&mut hashing, description.assets.len(), false)
+                                .map_err(at)?
+                                .1
+                        }
+                        Part::Route => {
+                            let bytes = read_capped(&mut hashing, declared, part.limit())?;
+                            let route: RoutePoints = parse(&name, &bytes)?;
+                            route.check().map_err(at)?;
+                            declared
+                        }
+                        Part::Sky | Part::Preview => {
+                            image(&mut hashing, part == Part::Preview).map_err(at)?
+                        }
                     }
                 }
-            }
-        };
+            })
+        })();
         let (digest, total) = hashing.finish()?;
+        // A part changed after signing is reported as that, whatever its parser made of it.
+        if signed_entry.is_some_and(|e| !e.matches(&digest, total)) {
+            return Err(changed());
+        }
+        let read = parsed?;
         let encrypted = signed_entry.is_some_and(|e| e.encrypted);
         if part == Some(Part::Instances) && !encrypted && total != read {
             return Err(invalid(format!("{name}: bytes after its last group")));
         }
         if total != declared {
             return Err(invalid(format!("{name}: not as long as its archive says")));
-        }
-        if signed_entry.is_some_and(|e| !e.matches(&digest, total)) {
-            return Err(invalid(format!("{name}: does not match its signature")));
         }
         if encrypted && entry.compression() != CompressionMethod::Stored {
             return Err(invalid(format!(
@@ -1058,15 +1067,21 @@ impl WorldFile {
         } else {
             known.limit
         };
+        let changed = || invalid(format!("{name}: does not match its signature"));
         let bytes = {
             let mut zip = self
                 .zip
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            read_named(&mut zip, name, limit)?
+            let entry = zip.by_name(name)?;
+            // Refused before reading: a changed part may declare far more than was signed.
+            if entry.size() != signed.size {
+                return Err(changed());
+            }
+            read_capped(entry, signed.size, limit).map_err(|e| prefixed(name, e))?
         };
         if !signed.matches(&sha512(&bytes), bytes.len() as u64) {
-            return Err(invalid(format!("{name}: does not match its signature")));
+            return Err(changed());
         }
         let Some(key) = self.key.as_ref().filter(|_| signed.encrypted) else {
             return Ok(bytes);

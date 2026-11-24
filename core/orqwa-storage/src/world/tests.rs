@@ -659,3 +659,19 @@ fn what_the_library_needs_is_never_encrypted() {
     assert!(read_description(&path, &trust()).is_err());
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn a_part_swapped_after_signing_is_refused_as_changed_before_it_is_read_or_parsed() {
+    // A larger part, and one its parser would refuse: both are reported as changed.
+    for swapped in [vec![0u8; 4096], b"not glTF at all".to_vec()] {
+        let mut all = signature(&entries()).to_vec();
+        all.extend(with("sections/0/lod0.glb", swapped));
+        let path = unsigned_archive(&all);
+        let error = validate(&path, &trust()).unwrap_err().to_string();
+        assert!(error.contains("does not match its signature"), "{error}");
+        let world = WorldFile::open(&path, &trust()).unwrap();
+        let error = world.glb("sections/0/lod0.glb").unwrap_err().to_string();
+        assert!(error.contains("does not match its signature"), "{error}");
+        std::fs::remove_file(path).unwrap();
+    }
+}
