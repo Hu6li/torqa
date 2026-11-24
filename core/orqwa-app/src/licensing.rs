@@ -203,40 +203,65 @@ impl Licensing {
         Ok(activation.licensee)
     }
 
-    /// Forgets the activation of `world` on this device and frees its slot. The activation goes
-    /// first, so a freed slot never leaves the world open here; if the server cannot be reached
-    /// it is put back, so the slot is never lost unnoticed either.
+    /// Releases this device from every paid world on it, freeing its slot in each licence, then
+    /// gives it a new identity: activations kept aside, or put back, open nothing afterwards.
+    /// They are set aside first, so a freed slot never leaves a world open here; if the server
+    /// cannot be reached or refuses, they are put back and the device stays as it was.
     ///
     /// # Errors
-    /// [`LicensingError`] if the device folder is unusable, the activation cannot be removed, or
-    /// the server cannot be reached or refuses.
-    pub async fn release(&self, world: &str) -> Result<(), LicensingError> {
+    /// [`LicensingError`] if the device folder is unusable, an activation cannot be set aside,
+    /// or the server cannot be reached or refuses.
+    pub async fn release(&self) -> Result<(), LicensingError> {
         let device = self.device()?;
-        let path = self.activation_file(world);
-        let kept = match std::fs::read(&path) {
-            Ok(bytes) => {
-                std::fs::remove_file(&path)?;
-                Some(bytes)
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error.into()),
-        };
+        let kept = self.set_activations_aside()?;
         let request = ReleaseRequest {
-            world: world.to_owned(),
             device: device.id().to_owned(),
             device_key: device.key().bytes().to_vec(),
         };
         match self.post("/v1/release", &request).await {
-            Ok(_) | Err(LicensingError::Refused(Refusal::UnknownDevice)) => Ok(()),
+            Ok(_) | Err(LicensingError::Refused(Refusal::UnknownDevice)) => {
+                Device::renew(&self.inner.dir, &self.machine()?)?;
+                Ok(())
+            }
             Err(error) => {
-                if let Some(bytes) = kept
-                    && let Err(restore) = device::write_private(&path, &bytes)
-                {
-                    warn!(%restore, "cannot put the activation back");
+                for (path, bytes) in kept {
+                    if let Err(restore) = device::write_private(&path, &bytes) {
+                        warn!(%restore, path = %path.display(), "cannot put an activation back");
+                    }
                 }
                 Err(error)
             }
         }
+    }
+
+    /// Removes every activation on this device, handing back what each held; all or none.
+    fn set_activations_aside(&self) -> Result<Vec<(PathBuf, Vec<u8>)>, LicensingError> {
+        let dir = self.inner.dir.join(ACTIVATIONS);
+        let listing = match std::fs::read_dir(&dir) {
+            Ok(listing) => listing,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        let mut kept = Vec::new();
+        for path in listing.filter_map(Result::ok).map(|entry| entry.path()) {
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let removed = std::fs::read(&path).and_then(|bytes| {
+                std::fs::remove_file(&path)?;
+                Ok(bytes)
+            });
+            match removed {
+                Ok(bytes) => kept.push((path, bytes)),
+                Err(error) => {
+                    for (path, bytes) in kept {
+                        let _ = device::write_private(&path, &bytes);
+                    }
+                    return Err(error.into());
+                }
+            }
+        }
+        Ok(kept)
     }
 
     fn take_revocations(&self, signed: &Signed) {

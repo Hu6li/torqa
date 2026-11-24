@@ -193,6 +193,9 @@ pub enum Kind {
     DeviceFolder,
     /// This device's id could not be read, so paid worlds cannot be activated on it.
     NoMachineId,
+    /// A licence on this device has released as many devices as it may for now. Try again
+    /// later, or ask the shop.
+    ReleaseLimit,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -322,6 +325,9 @@ impl Kind {
             }
             Self::NoMachineId => {
                 "This device's id could not be read, so paid worlds cannot be activated on it."
+            }
+            Self::ReleaseLimit => {
+                "A licence on this device has released as many devices as it may for now. Try again later, or ask the shop."
             }
             Self::MemoryPressure => {
                 "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."

@@ -2,7 +2,7 @@ class_name WorldLicence
 extends VBoxContainer
 ## A sold world on its course page (R293, ADR 0043). Locked: the licence key from the purchase
 ## and Activate. Activated on this device: who bought it, and Release this device, which frees
-## one of the licence's devices. Logic stays in the core; this only asks and shows.
+## this device in every paid world's licence. Logic stays in the core; this only asks and shows.
 
 ## The world was activated or released here: the course page shows it again.
 signal changed
@@ -65,13 +65,15 @@ func _init() -> void:
 	_locked.add_child(row)
 	add_child(_locked)
 	_release.text = tr("Release this device")
-	_release.tooltip_text = tr("Frees one of the licence's devices; the world locks here")
+	_release.tooltip_text = tr("Frees this device in every paid world's licence; they lock here")
 	_release.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_release.pressed.connect(_confirm_release.popup_centered)
 	add_child(_release)
 	_confirm_release.title = tr("Release this device?")
-	_confirm_release.dialog_text = tr(
-		"The world locks on this device, and one of the licence's devices is free again."
+	_confirm_release.dialog_text = (
+		tr("All paid worlds lock on this device; each of their licences has a device free again.")
+		+ " "
+		+ tr("A licence can release only a few devices a year.")
 	)
 	_confirm_release.dialog_autowrap = true
 	_confirm_release.ok_button_text = tr("Release")

@@ -34,13 +34,12 @@ pub struct ActivateResponse {
     pub revocations: Option<Signed>,
 }
 
-/// `POST /v1/release`: free this device's slot. The device proves itself with its key; the
-/// licence key is not stored, so it is not needed.
+/// `POST /v1/release`: free this device's slot in every licence it holds one in. The device
+/// proves itself with its key; the licence key is not stored, so it is not needed. ORQWA then
+/// starts a new device identity, so an activation kept aside opens nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReleaseRequest {
-    /// The world's id.
-    pub world: String,
     /// The device's id.
     pub device: String,
     /// The device's key.
@@ -54,12 +53,14 @@ pub struct ReleaseRequest {
 pub enum Refusal {
     /// The licence key is unknown, withdrawn or not for this world.
     Licence,
-    /// The licence is active on 5 devices already.
+    /// The licence is active on as many devices as it allows.
     DeviceLimit,
     /// This device id is active with another key: another computer.
     OtherDevice,
-    /// Release: the server knows no such device for the world.
+    /// Release: the server knows no such device.
     UnknownDevice,
+    /// Release: a licence on this device has released as many devices as it may for now.
+    ReleaseLimit,
     /// Too many attempts; try later.
     TooMany,
 }

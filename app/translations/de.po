@@ -3490,8 +3490,6 @@ msgstr "%s konnte nicht aktiviert werden."
 msgid "Could not release this device from %s."
 msgstr "Dieses Gerät konnte nicht von %s freigegeben werden."
 
-msgid "Frees one of the licence's devices; the world locks here"
-msgstr "Gibt eines der Geräte der Lizenz frei; die Welt wird hier gesperrt"
 
 msgid "Licence key"
 msgstr "Lizenzschlüssel"
@@ -3508,8 +3506,6 @@ msgstr "Dieses Gerät freigeben"
 msgid "Release this device?"
 msgstr "Dieses Gerät freigeben?"
 
-msgid "The world locks on this device, and one of the licence's devices is free again."
-msgstr "Die Welt wird auf diesem Gerät gesperrt, und eines der Geräte der Lizenz ist wieder frei."
 
 msgid "This licence is active on all the devices it allows. Release one of them, then activate here."
 msgstr "Diese Lizenz ist bereits auf allen erlaubten Geräten aktiv. Gib eines davon frei und aktiviere dann hier."
@@ -3528,3 +3524,15 @@ msgstr "Kostenpflichtige Welten können hier nicht aktiviert werden: Der Geräte
 
 msgid "This device's id could not be read, so paid worlds cannot be activated on it."
 msgstr "Die Kennung dieses Geräts konnte nicht gelesen werden, daher können kostenpflichtige Welten darauf nicht aktiviert werden."
+
+msgid "Frees this device in every paid world's licence; they lock here"
+msgstr "Gibt dieses Gerät in der Lizenz jeder kostenpflichtigen Welt frei; sie werden hier gesperrt"
+
+msgid "All paid worlds lock on this device; each of their licences has a device free again."
+msgstr "Alle kostenpflichtigen Welten werden auf diesem Gerät gesperrt; jede ihrer Lizenzen hat wieder ein Gerät frei."
+
+msgid "A licence can release only a few devices a year."
+msgstr "Eine Lizenz kann nur wenige Geräte pro Jahr freigeben."
+
+msgid "A licence on this device has released as many devices as it may for now. Try again later, or ask the shop."
+msgstr "Eine Lizenz auf diesem Gerät hat vorerst so viele Geräte freigegeben wie erlaubt. Versuche es später noch einmal oder wende dich an den Shop."

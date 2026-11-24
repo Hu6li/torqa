@@ -170,28 +170,69 @@ async fn an_activation_for_another_device_is_not_kept() {
     assert!(licensing.activation(WORLD).is_none());
 }
 
+const OTHER_WORLD: &str = "2a7d3c51-9b8e-4f60-a1d2-3e4f5a6b7c8d";
+
 #[tokio::test]
-async fn releasing_forgets_the_activation_only_once_the_server_confirms() {
+async fn releasing_frees_every_world_here_only_once_the_server_confirms() {
     let (url, _) = server(activating);
     let (device, data) = dirs("release");
     let online = licensing(&device, &data, &url, b"m");
     online.activate(WORLD, "key").await.unwrap();
+    online.activate(OTHER_WORLD, "other key").await.unwrap();
 
     let closed = TcpListener::bind("127.0.0.1:0").unwrap();
     let offline_url = format!("http://{}", closed.local_addr().unwrap());
     drop(closed);
     let offline = licensing(&device, &data, &offline_url, b"m");
     assert!(matches!(
-        offline.release(WORLD).await,
+        offline.release().await,
         Err(LicensingError::Unreachable(_))
     ));
     assert!(
         offline.activation(WORLD).is_some(),
-        "the slot is not lost unnoticed"
+        "the slots are not lost unnoticed"
     );
+    assert!(offline.activation(OTHER_WORLD).is_some());
 
-    online.release(WORLD).await.unwrap();
+    online.release().await.unwrap();
     assert!(online.activation(WORLD).is_none());
+    assert!(online.activation(OTHER_WORLD).is_none());
+}
+
+#[tokio::test]
+async fn an_activation_kept_aside_opens_nothing_after_the_release() {
+    let (url, _) = server(activating);
+    let (device, data) = dirs("kept-aside");
+    let licensing = licensing(&device, &data, &url, b"m");
+    licensing.activate(WORLD, "key").await.unwrap();
+    let file = device.join(ACTIVATIONS).join(format!("{WORLD}.json"));
+    let copy = std::fs::read(&file).unwrap();
+
+    licensing.release().await.unwrap();
+    std::fs::write(&file, &copy).unwrap();
+    assert!(
+        licensing.activation(WORLD).is_none(),
+        "the device is another one now"
+    );
+}
+
+#[tokio::test]
+async fn a_refused_release_keeps_everything() {
+    let (url, _) = server(|path, body| {
+        if path == "/v1/release" {
+            (403, br#"{"refusal":"release_limit"}"#.to_vec())
+        } else {
+            activating(path, body)
+        }
+    });
+    let (device, data) = dirs("release-limit");
+    let licensing = licensing(&device, &data, &url, b"m");
+    licensing.activate(WORLD, "key").await.unwrap();
+    assert!(matches!(
+        licensing.release().await,
+        Err(LicensingError::Refused(Refusal::ReleaseLimit))
+    ));
+    assert!(licensing.activation(WORLD).is_some());
 }
 
 #[tokio::test]

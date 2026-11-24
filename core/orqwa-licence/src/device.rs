@@ -122,6 +122,21 @@ impl Device {
         )))
     }
 
+    /// Replaces the device kept in `dir` with a new identity, as after releasing it: activations
+    /// sealed for the old one, even copies put back, open nothing.
+    ///
+    /// # Errors
+    /// [`LicenceError::NoMachine`] without a machine id, or if the file cannot be written.
+    pub fn renew(dir: &Path, machine: &[u8]) -> Result<Self, LicenceError> {
+        if machine.is_empty() {
+            return Err(LicenceError::NoMachine);
+        }
+        let (text, device) = Self::fresh(machine, &machine_hash(machine))?;
+        fs::create_dir_all(dir)?;
+        write_private(&dir.join(FILE), text.as_bytes())?;
+        Ok(device)
+    }
+
     /// A new identity for this machine, and its device file.
     fn fresh(machine: &[u8], here: &str) -> Result<(String, Self), LicenceError> {
         let id = hex(&random::<16>()?);
@@ -293,6 +308,20 @@ mod tests {
         assert_eq!(
             Device::load_or_create(&dir, b"other machine").unwrap().id(),
             there.id()
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_renewed_device_is_another_device() {
+        let dir = dir("renewed");
+        let before = Device::load_or_create(&dir, b"m").unwrap();
+        let renewed = Device::renew(&dir, b"m").unwrap();
+        assert_ne!(before.id(), renewed.id());
+        assert_ne!(before.key(), renewed.key());
+        assert_eq!(
+            Device::load_or_create(&dir, b"m").unwrap().id(),
+            renewed.id()
         );
         fs::remove_dir_all(dir).unwrap();
     }

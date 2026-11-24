@@ -580,6 +580,7 @@ fn licence_failure(error: &licensing::LicensingError, activating: bool, name: &s
         E::Refused(R::DeviceLimit) => Kind::DeviceLimit,
         E::Refused(R::OtherDevice) => Kind::OtherDevice,
         E::Refused(R::TooMany) => Kind::TooManyAttempts,
+        E::Refused(R::ReleaseLimit) => Kind::ReleaseLimit,
         E::InDataFolder(dir) => {
             return Failure::new(Kind::DeviceFolder, error).arg(dir.display());
         }
@@ -2057,8 +2058,8 @@ impl App {
         self.change_licence(path, Some(licence_key));
     }
 
-    /// Releases this device from the sold world of the course at `path`, freeing one of the
-    /// licence's devices (R293). [`AppEvent::WorldLicence`] follows, or an error.
+    /// Releases this device from every paid world on it, freeing its slot in each licence
+    /// (R293); asked from the course at `path`. [`AppEvent::WorldLicence`] follows, or an error.
     pub fn release_world(&mut self, path: &Path) {
         self.change_licence(path, None);
     }
@@ -2101,7 +2102,7 @@ impl App {
             let activating = licence_key.is_some();
             let done = match licence_key {
                 Some(key) => licensing.activate(&description.id, &key).await.map(drop),
-                None => licensing.release(&description.id).await,
+                None => licensing.release().await,
             };
             let _ = tx.send(match done {
                 Ok(()) => JobResult::WorldLicence(course, activating),

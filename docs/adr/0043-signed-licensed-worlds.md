@@ -149,13 +149,17 @@ signature.json   the working key's certificate and both signatures over manifest
   device id, the buyer's name, and the world's content key sealed under a key derived from the
   device key. It also returns the newest revocation list.
 - Activations do not expire. After activation, the world opens without any network access.
-- **Release this device** deletes the activation, then asks the server to free the slot; if
-  the server cannot be reached, the activation is put back. A device that is lost or wiped is
-  released from the shop's account page.
-- **The server limits releases per licence** (a few a year, set on the server). An activation
-  never expires, so one copied aside before releasing keeps opening on that device, and so
-  would one a modified ORQWA keeps. Without a limit, releasing and restoring would give any
-  number of devices; with it, a buyer can move between devices but not multiply them.
+- **Release this device** releases the whole device: every paid world on it. ORQWA sets all
+  its activations aside and asks the server to free the device's slot in every licence. On
+  success the device gets a **new identity** (id and secret), so an activation copied aside and
+  put back is sealed for a device that no longer exists and opens nothing. If the server cannot
+  be reached or refuses, the activations are put back and the device stays as it was. A device
+  that is lost or wiped is released from the shop's account page.
+- **The server limits releases per licence** (a few a year, in a rolling window, releases
+  from the shop included), and counts slot assignments, not reinstalls: at most 5 devices at
+  once and a few new ones a year. With the new identity a kept activation no longer survives a
+  release in ORQWA; the limit bounds what a modified ORQWA, which may skip the new identity,
+  could still do.
 - The world's course page names the buyer ("Licensed to …") next to its credits.
 - **One content key per world**, kept across its versions, so an activation keeps working for a
   new version. If a content key must change (it leaked), the server issues new activations and
@@ -175,6 +179,21 @@ signature.json   the working key's certificate and both signatures over manifest
   derives a different device key, so the activations do not open there, and the copied identity
   is replaced by a new one: that computer becomes a device of its own and activates as one.
 - The licence key is not stored.
+
+### Telling ORQWA from a fork
+
+The server cannot reliably tell the official ORQWA from a fork, and ORQWA does not try:
+
+- A secret built into release builds ships in every copy; extracted once, it serves every
+  fork. Under the GPL a hidden key that only our builds hold is also questionable.
+- Code signing proves a program to the operating system, not to our server: a signed app's
+  requests can be replayed.
+- Only platform attestation would prove it (Google Play Integrity, Apple App Attest), and only
+  for Play-installed Android and Apple's mobile systems, at the price of depending on Google;
+  nothing comparable exists on macOS, Windows or Linux.
+
+The content licence, the name ORQWA, the release limit and the server's watch for unusual
+patterns (one licence activating from many places) carry this instead.
 
 ### Not in ORQWA
 

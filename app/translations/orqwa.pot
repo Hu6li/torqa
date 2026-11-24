@@ -275,6 +275,14 @@ msgstr ""
 msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
 msgstr ""
 
+#: app/ui/world_licence.gd
+msgid "A licence can release only a few devices a year."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "A licence on this device has released as many devices as it may for now. Try again later, or ask the shop."
+msgstr ""
+
 #: app/scenes/devices_tab.gd
 msgid "A phone or tablet on the same Wi-Fi shifts and controls the ride"
 msgstr ""
@@ -421,6 +429,10 @@ msgstr ""
 
 #: app/ui/workout_panel.gd
 msgid "All out"
+msgstr ""
+
+#: app/ui/world_licence.gd
+msgid "All paid worlds lock on this device; each of their licences has a device free again."
 msgstr ""
 
 #: app/scenes/profile_tab.gd
@@ -1780,7 +1792,7 @@ msgid "Free ride · no workout"
 msgstr ""
 
 #: app/ui/world_licence.gd
-msgid "Frees one of the licence's devices; the world locks here"
+msgid "Frees this device in every paid world's licence; they lock here"
 msgstr ""
 
 #: app/ui/fitness_chart.gd
@@ -3833,10 +3845,6 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "The video and the route do not match."
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "The world locks on this device, and one of the licence's devices is free again."
 msgstr ""
 
 #: app/ui/group_away_reply.gd
