@@ -3,10 +3,12 @@ extends SceneTree
 ## building, their sections, placed assets, far landscape and own light in the scene, with the
 ## author's materials (mipmapped textures, ORQWA's terrain layers on the ground, cut-out leaves
 ## keeping their cover in smaller mipmaps), and the rider's time, weather and season neither
-## offered nor applied. Uses the test world of art/worlds/test_world.py.
+## offered nor applied. A paid world (R279) is listed locked and its page asks for the licence
+## key. Uses the test world of art/worlds/test_world.py, and a paid copy of it.
 ## Run: godot --headless --path app -s res://tests/world_file_smoke.gd
 
 const FIXTURE: String = "../core/fixtures/worlds/test-loop.oqx"
+const PAID: String = "../core/fixtures/worlds/test-loop-paid.oqx"
 const TERRAIN_SHADER: String = "res://shaders/authored_terrain.gdshader"
 const DIFFUSE_TERRAIN_SHADER: String = "res://shaders/authored_terrain_diffuse.gdshader"
 
@@ -38,6 +40,7 @@ func _run() -> void:
 		_light()
 		_options()
 		_page(course)
+		await _paid()
 	_world._authored.stop()
 	_main.queue_free()
 	await process_frame
@@ -148,6 +151,33 @@ func _page(course: Dictionary) -> void:
 	_check(not pencil.visible, "a world's route cannot be renamed")
 	var dialog: ConfirmationDialog = page.get("_confirm_delete")
 	_check("Test loop" in dialog.dialog_text, "deleting names the world's routes")
+	page.free()
+
+
+## Its scenery is encrypted and no activation for it exists on this device: the page asks for
+## the licence key instead of loading the world.
+func _paid() -> void:
+	_added = ""
+	var fixture: String = ProjectSettings.globalize_path("res://").path_join(PAID)
+	_orqwa.import_course(fixture.simplify_path())
+	await _wait_until(func() -> bool: return not _added.is_empty(), "the paid world is imported")
+	var paid: Dictionary = {}
+	for course: Dictionary in _orqwa.courses():
+		if course["path"] == _added:
+			paid = course
+	var world: Dictionary = paid.get("world", {})
+	var locked: bool = world.get("locked", false)
+	_check(locked, "a paid world is listed locked")
+	var licensee: String = world.get("licensee", "")
+	_check(licensee.is_empty(), "a locked world names no buyer")
+	var page: CourseDetail = CourseDetail.new()
+	page.bind(_orqwa)
+	root.add_child(page)
+	page.open(paid)
+	var licence: WorldLicence = page.get("_licence")
+	_check(licence.locked(), "its page asks for the licence key")
+	var ride: Button = page.get("_ride_button")
+	_check(ride.disabled, "a locked world offers no ride")
 	page.free()
 
 

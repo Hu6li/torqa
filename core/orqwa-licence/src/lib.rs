@@ -22,6 +22,7 @@ pub mod dev;
 pub mod device;
 pub mod keys;
 pub mod manifest;
+pub mod protocol;
 pub mod stream;
 pub mod trust;
 

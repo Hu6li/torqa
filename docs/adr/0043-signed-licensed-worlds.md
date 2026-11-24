@@ -114,23 +114,44 @@ signature.json   the working key's certificate and both signatures over manifest
 
 ### Activation
 
-- On first use, ORQWA makes a **device secret** of 32 random bytes and a random device id. Both
-  live in a private folder that is never synced or cleared as a cache
-  (`paths::device_dir()`).
+- On first use, ORQWA makes a **device secret** of 32 random bytes and a random device id, kept
+  in a private device folder (`paths::device_dir()`). The **device key** is derived from the
+  secret and the operating system's machine id, read afresh each time; the machine id never
+  leaves the device.
 - To activate, the rider enters the licence key from the purchase. ORQWA sends the licence key,
-  the world's id, the device id and the device secret to the activation server over TLS with
+  the world's id, the device id and the device key to the activation server over TLS with
   X25519MLKEM768.
-- The server refuses a sixth device for the licence. Otherwise it returns an **activation**
-  signed with the activation key: licence id, world id, device id, the buyer's name, and the
-  world's content key sealed under a key derived from the device secret. It also returns the
-  newest revocation list.
-- ORQWA mixes the operating system's machine id into the key that opens the activation. The
-  machine id never leaves the device. Copying the private folder to another computer does not
-  copy the activation.
+- **The server counts devices.** For each licence it keeps the devices it activated: the
+  device id and a hash of its device key.
+  - A known device id with the same key gets its activation again and uses no new slot, as
+    after reinstalling ORQWA.
+  - A known device id with a **different** key is refused. Otherwise one id could be shared by
+    many computers and counted once.
+  - A new device is added while fewer than 5 are counted; a sixth is refused, with a message to
+    release one first.
+- The server returns an **activation** signed with the activation key: licence id, world id,
+  device id, the buyer's name, and the world's content key sealed under a key derived from the
+  device key. It also returns the newest revocation list.
 - Activations do not expire. After activation, the world opens without any network access.
 - **Release this device** asks the server to free the slot and deletes the activation. A
   device that is lost or wiped is released from the shop's account page.
 - The world's course page names the buyer ("Licensed to …") next to its credits.
+- **One content key per world**, kept across its versions, so an activation keeps working for a
+  new version. If a content key must change (it leaked), the server issues new activations and
+  ORQWA asks the rider to activate again, on the same slot.
+
+### Nothing syncs to another device
+
+- World files live in `worlds/` in the data folder, which riders may sync: they are encrypted
+  and open nothing by themselves.
+- The device secret and activations live only in the device folder, which never roams:
+  `~/Library/Application Support/org.orqwa.device` on macOS, `%LOCALAPPDATA%\orqwa\device` on
+  Windows, `$XDG_STATE_HOME/orqwa` on Linux and the app's private `files/device` on Android
+  (no sync app reaches it). ORQWA refuses to use a device folder inside the data folder.
+- Android's backup of app data stays off, so a restored phone does not carry them.
+- If a copy reaches another computer anyway, its machine id derives a different device key:
+  the activations do not open there, and activating there is refused as above.
+- The licence key is not stored.
 
 ### Not in ORQWA
 
@@ -159,8 +180,8 @@ comes in its own change.
 - Activating needs the internet once per device and world. The activation server is listed
   where riders read which servers ORQWA contacts.
 - The device secret and machine id stay on the device. The server learns a random device id,
-  the device secret it needs to seal the key, and the licence key; nothing that identifies the
-  computer.
+  the device key it needs to seal the content key, and the licence key; nothing that
+  identifies the computer.
 - A rider who reinstalls the operating system uses a new slot until the old one is released.
 - aws-lc-rs becomes a direct dependency, updated to 1.19. Nothing new is added to the tree.
 - Tests, the fuzzer and the test world use the development root. The fuzzer skips signatures,

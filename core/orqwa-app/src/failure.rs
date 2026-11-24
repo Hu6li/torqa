@@ -173,6 +173,20 @@ pub enum Kind {
     WorldName,
     /// Routes of worlds cannot be ridden in group rides.
     WorldGroup,
+    /// Activate this world to ride it.
+    WorldLocked,
+    /// Could not activate %s.
+    ActivateWorld,
+    /// This licence key does not unlock this world.
+    LicenceRefused,
+    /// This licence is active on 5 devices already. Release one of them, then activate here.
+    DeviceLimit,
+    /// Another computer uses this device's activation. Release it there first.
+    OtherDevice,
+    /// Too many attempts. Try again later.
+    TooManyAttempts,
+    /// Could not release this device from %s.
+    ReleaseWorld,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -286,6 +300,17 @@ impl Kind {
             }
             Self::WorldName => "A world's routes keep the names their author gave them.",
             Self::WorldGroup => "Routes of worlds cannot be ridden in group rides.",
+            Self::WorldLocked => "Activate this world to ride it.",
+            Self::ActivateWorld => "Could not activate %s.",
+            Self::LicenceRefused => "This licence key does not unlock this world.",
+            Self::DeviceLimit => {
+                "This licence is active on 5 devices already. Release one of them, then activate here."
+            }
+            Self::OtherDevice => {
+                "Another computer uses this device's activation. Release it there first."
+            }
+            Self::TooManyAttempts => "Too many attempts. Try again later.",
+            Self::ReleaseWorld => "Could not release this device from %s.",
             Self::MemoryPressure => {
                 "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
             }

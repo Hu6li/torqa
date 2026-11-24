@@ -48,6 +48,42 @@ pub fn cache_dir() -> PathBuf {
     base.join("orqwa")
 }
 
+/// This device's own folder for activating sold worlds (ADR 0043, R279): the device secret and
+/// activations. It never roams with a profile or syncs with the data folder, and is no cache a
+/// cleaner empties: copied to another device, it would open nothing there anyway.
+#[must_use]
+pub fn device_dir() -> PathBuf {
+    if cfg!(target_os = "android") {
+        return android_device_dir(&std::env::temp_dir());
+    }
+    let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
+    let home = env("HOME").or_else(|| env("USERPROFILE"));
+    let dir = if cfg!(target_os = "macos") {
+        home.map(|h| h.join("Library/Application Support/org.orqwa.device"))
+    } else if cfg!(windows) {
+        env("LOCALAPPDATA").map(|d| d.join("orqwa").join("device"))
+    } else {
+        env("XDG_STATE_HOME")
+            .or_else(|| home.map(|h| h.join(".local/state")))
+            .map(|d| d.join("orqwa"))
+    };
+    dir.unwrap_or_else(|| std::env::temp_dir().join("orqwa-device"))
+}
+
+/// The device folder on Android: in the app's private `files`, beside the private data folder,
+/// where no sync app reaches.
+fn android_device_dir(app_cache: &Path) -> PathBuf {
+    let app = app_cache.parent().unwrap_or(app_cache);
+    app.join("files").join("device")
+}
+
+/// Whether `device` lies outside `data`, so syncing the data folder never carries activations.
+#[must_use]
+pub fn outside(device: &Path, data: &Path) -> bool {
+    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    !real(device).starts_with(real(data)) && !device.starts_with(data)
+}
+
 /// ORQWA's data and cache directories on Android (ADR 0024), from the app's cache directory that
 /// Android gives as the temporary one (`/data/user/0/<app>/cache`): data goes beside it into the
 /// app's own `files`, which Android never clears, unlike the cache when space runs short.
@@ -160,6 +196,19 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn the_device_folder_is_never_in_the_data_folder() {
+        assert!(outside(&device_dir(), &data_dir()));
+        let app_cache = Path::new("/data/user/0/org.orqwa.bike/cache");
+        let device = android_device_dir(app_cache);
+        assert_eq!(
+            device,
+            PathBuf::from("/data/user/0/org.orqwa.bike/files/device")
+        );
+        assert!(outside(&device, &android_dirs(app_cache).0));
+        assert!(!outside(Path::new("/x/data/device"), Path::new("/x/data")));
+    }
 
     #[test]
     fn on_android_data_stays_out_of_the_cache() {

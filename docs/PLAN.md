@@ -1285,9 +1285,11 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `content-key-new`,
   `world-seal`; the test world sealed with the development key; `dev-keys` does not compile
   without debug assertions
-- [ ] App and Godot: the activation client, locked worlds, **Activate** with a licence key,
-  **Release this device**, the buyer named on the course page; the usage guide and server list
-  in the wiki
+- [x] App and Godot: the activation client (TLS 1.3 with X25519MLKEM768 only), locked worlds,
+  **Activate** with a licence key, **Release this device**, the buyer named on the course page;
+  the device folder outside the data folder, Android's backup off; the usage guide and server
+  list in the wiki
+- [ ] The activation server's real address in place of `activate.orqwa.invalid` (before release)
 - [ ] Activation server (private repository) and the shop page
 - [ ] Premium video courses in world files (R281): FFmpeg reading decrypted, seekable entries
 - [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data

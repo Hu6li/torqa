@@ -584,6 +584,9 @@ mod tests {
             publisher: None,
             licence: "CC0-1.0".into(),
             routes: vec!["Authored".into()],
+            id: "6f1c1d84-6a1e-4d55-9a53-0d9e2f1f7a10".into(),
+            locked: false,
+            licensee: None,
         });
         let courses = vec![
             course("Generated", 20.0, 400.0),

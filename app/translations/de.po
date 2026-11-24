@@ -3405,3 +3405,51 @@ msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden
 
 msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
 msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "Activate"
+msgstr "Aktivieren"
+
+msgid "Activate this world to ride it."
+msgstr "Aktiviere diese Welt, um sie zu fahren."
+
+msgid "Another computer uses this device's activation. Release it there first."
+msgstr "Ein anderer Computer verwendet die Aktivierung dieses Geräts. Gib sie dort zuerst frei."
+
+msgid "Could not activate %s."
+msgstr "%s konnte nicht aktiviert werden."
+
+msgid "Could not release this device from %s."
+msgstr "Dieses Gerät konnte nicht von %s freigegeben werden."
+
+msgid "Frees one of the licence's devices; the world locks here"
+msgstr "Gibt eines der Geräte der Lizenz frei; die Welt wird hier gesperrt"
+
+msgid "Licence key"
+msgstr "Lizenzschlüssel"
+
+msgid "Licensed to %s"
+msgstr "Lizenziert für %s"
+
+msgid "Release"
+msgstr "Freigeben"
+
+msgid "Release this device"
+msgstr "Dieses Gerät freigeben"
+
+msgid "Release this device?"
+msgstr "Dieses Gerät freigeben?"
+
+msgid "The world locks on this device, and one of the licence's devices is free again."
+msgstr "Die Welt wird auf diesem Gerät gesperrt, und eines der Geräte der Lizenz ist wieder frei."
+
+msgid "This licence is active on 5 devices already. Release one of them, then activate here."
+msgstr "Diese Lizenz ist bereits auf 5 Geräten aktiv. Gib eines davon frei und aktiviere dann hier."
+
+msgid "This licence key does not unlock this world."
+msgstr "Dieser Lizenzschlüssel schaltet diese Welt nicht frei."
+
+msgid "This is a paid world. Enter the licence key from your purchase to ride it on this device."
+msgstr "Dies ist eine kostenpflichtige Welt. Gib den Lizenzschlüssel aus deinem Kauf ein, um sie auf diesem Gerät zu fahren."
+
+msgid "Too many attempts. Try again later."
+msgstr "Zu viele Versuche. Versuche es später noch einmal."
